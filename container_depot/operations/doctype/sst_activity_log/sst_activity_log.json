@@ -1,0 +1,96 @@
+{
+  "actions": [],
+  "autoname": "SSTL-.YYYY.-.#####",
+  "description": "Append-only SST audit log. Writeable only by System Manager and the SST Service role.",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "sst",
+    "action",
+    "result",
+    "column_break_1",
+    "booking_code",
+    "timestamp",
+    "payload_section",
+    "payload_json"
+  ],
+  "fields": [
+    {
+      "fieldname": "sst",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Terminal",
+      "options": "Self Service Terminal",
+      "reqd": 1
+    },
+    {
+      "fieldname": "action",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Action",
+      "options": "Code Scan\nValidate\nOrder Issued\nHeartbeat\nError",
+      "reqd": 1
+    },
+    {
+      "fieldname": "result",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Result",
+      "options": "OK\nError"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "booking_code",
+      "fieldtype": "Link",
+      "label": "Booking Code",
+      "options": "Booking Code"
+    },
+    {
+      "fieldname": "timestamp",
+      "fieldtype": "Datetime",
+      "label": "Timestamp",
+      "reqd": 1
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "payload_section",
+      "fieldtype": "Section Break",
+      "label": "Payload"
+    },
+    {
+      "fieldname": "payload_json",
+      "fieldtype": "Long Text",
+      "label": "Payload (JSON)"
+    }
+  ],
+  "in_create": 0,
+  "links": [],
+  "modified": "2026-05-29",
+  "module": "Operations",
+  "name": "SST Activity Log",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "Container Depot SST Service"
+    },
+    {
+      "read": 1,
+      "role": "Container Depot"
+    }
+  ],
+  "sort_field": "timestamp",
+  "sort_order": "DESC"
+}

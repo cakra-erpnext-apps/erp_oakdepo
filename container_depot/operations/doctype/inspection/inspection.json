@@ -13,6 +13,12 @@
     "container",
     "container_no",
     "voucher",
+    "booking_code",
+    "order_section",
+    "order_doctype",
+    "order_ref",
+    "reference_eir_in",
+    "client_uuid",
     "section_break_2",
     "inspector",
     "driver",
@@ -77,10 +83,49 @@
       "read_only": 1
     },
     {
+      "description": "Deprecated by Voucher→Booking migration. New entries should use booking_code + order_doctype/order_ref.",
       "fieldname": "voucher",
       "fieldtype": "Link",
-      "label": "Voucher",
+      "label": "Voucher [Deprecated]",
       "options": "Voucher"
+    },
+    {
+      "fieldname": "booking_code",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Booking Code",
+      "options": "Booking Code"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "order_section",
+      "fieldtype": "Section Break",
+      "label": "Order Reference"
+    },
+    {
+      "fieldname": "order_doctype",
+      "fieldtype": "Link",
+      "label": "Order DocType",
+      "options": "DocType"
+    },
+    {
+      "fieldname": "order_ref",
+      "fieldtype": "Dynamic Link",
+      "label": "Order",
+      "options": "order_doctype"
+    },
+    {
+      "description": "For EIR-Out: link to the matching EIR-In so the surveyor can diff photos and damage entries.",
+      "fieldname": "reference_eir_in",
+      "fieldtype": "Link",
+      "label": "Reference EIR-In",
+      "options": "Inspection"
+    },
+    {
+      "description": "Idempotency key for offline-EIR batch ingestion (Phase 7). Dedup is enforced in code; blank rows are allowed.",
+      "fieldname": "client_uuid",
+      "fieldtype": "Data",
+      "label": "Offline Client UUID"
     },
     {
       "fieldname": "section_break_2",

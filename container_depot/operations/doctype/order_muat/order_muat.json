@@ -1,0 +1,164 @@
+{
+  "actions": [],
+  "autoname": "ORD-MT-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "booking_code",
+    "order_status",
+    "column_break_1",
+    "container",
+    "container_no",
+    "destination",
+    "cleaning_section",
+    "cleaning_certificate",
+    "truck_section",
+    "truck_plate",
+    "transporter",
+    "transporter_name",
+    "column_break_2",
+    "driver_name",
+    "driver_phone",
+    "sst_section",
+    "sst",
+    "created_offline",
+    "gate_in_time",
+    "qr_code"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Order Muat"
+    },
+    {
+      "fieldname": "booking_code",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Booking Code",
+      "options": "Booking Code",
+      "reqd": 1
+    },
+    {
+      "default": "Issued",
+      "fieldname": "order_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Order Status",
+      "options": "Issued\nEIR In Progress\nReady To Load\nCompleted\nHold",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "label": "Container",
+      "options": "Container"
+    },
+    {
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Container No"
+    },
+    {
+      "fieldname": "destination",
+      "fieldtype": "Data",
+      "label": "Destination"
+    },
+    {
+      "fieldname": "cleaning_section",
+      "fieldtype": "Section Break",
+      "label": "Cleaning"
+    },
+    {
+      "description": "Required on print and submit (PRO-OPS-08 §8.2).",
+      "fieldname": "cleaning_certificate",
+      "fieldtype": "Link",
+      "label": "Cleaning Certificate",
+      "options": "Cleaning Certificate",
+      "reqd": 1
+    },
+    {
+      "fieldname": "truck_section",
+      "fieldtype": "Section Break",
+      "label": "Truck & Driver"
+    },
+    {
+      "fieldname": "truck_plate",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Truck Plate"
+    },
+    {
+      "fieldname": "transporter",
+      "fieldtype": "Link",
+      "label": "Transporter",
+      "options": "Supplier"
+    },
+    {
+      "fieldname": "transporter_name",
+      "fieldtype": "Data",
+      "label": "Transporter Name (fallback)"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "driver_name",
+      "fieldtype": "Data",
+      "label": "Driver Name"
+    },
+    {
+      "fieldname": "driver_phone",
+      "fieldtype": "Data",
+      "label": "Driver Phone"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "sst_section",
+      "fieldtype": "Section Break",
+      "label": "SST"
+    },
+    {
+      "fieldname": "sst",
+      "fieldtype": "Link",
+      "label": "SST",
+      "options": "Self Service Terminal"
+    },
+    {
+      "default": "0",
+      "fieldname": "created_offline",
+      "fieldtype": "Check",
+      "label": "Created Offline"
+    },
+    {
+      "fieldname": "gate_in_time",
+      "fieldtype": "Datetime",
+      "label": "Gate-In Time"
+    },
+    {
+      "fieldname": "qr_code",
+      "fieldtype": "Attach Image",
+      "label": "QR Code",
+      "read_only": 1
+    }
+  ],
+  "is_submittable": 1,
+  "links": [],
+  "modified": "2026-05-29",
+  "module": "Operations",
+  "name": "Order Muat",
+  "search_fields": "booking_code, container_no, truck_plate, destination",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "container_no",
+  "track_changes": 1
+}

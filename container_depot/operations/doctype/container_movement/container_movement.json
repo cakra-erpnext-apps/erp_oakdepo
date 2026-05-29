@@ -10,6 +10,10 @@
     "movement_timestamp",
     "moved_by",
     "equipment",
+    "event_type",
+    "status_section",
+    "from_status",
+    "to_status",
     "column_break_1",
     "from_zone",
     "from_row",
@@ -55,6 +59,32 @@
       "options": "Equipment Maintenance"
     },
     {
+      "default": "Yard",
+      "fieldname": "event_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Event Type",
+      "options": "Yard\nStatus\nCombined",
+      "reqd": 1
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "status_section",
+      "fieldtype": "Section Break",
+      "label": "Status Transition"
+    },
+    {
+      "fieldname": "from_status",
+      "fieldtype": "Data",
+      "label": "From Status"
+    },
+    {
+      "fieldname": "to_status",
+      "fieldtype": "Data",
+      "label": "To Status"
+    },
+    {
       "fieldname": "column_break_1",
       "fieldtype": "Column Break"
     },
@@ -88,7 +118,7 @@
       "fieldtype": "Select",
       "label": "To Zone",
       "options": "Storage_Yard_A\nStorage_Yard_B\nCleaning_Bay_C\nWorkshop_D\nSurvey_Lane_E\nGate_F\nPreClean_Buffer",
-      "reqd": 1,
+      "mandatory_depends_on": "eval:doc.event_type==\"Yard\" || doc.event_type==\"Combined\"",
       "in_list_view": 1
     },
     {

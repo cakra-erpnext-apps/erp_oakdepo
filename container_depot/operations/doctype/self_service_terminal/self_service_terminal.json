@@ -1,0 +1,57 @@
+{
+  "actions": [],
+  "autoname": "field:terminal_id",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "terminal_id",
+    "gate_location",
+    "api_user",
+    "printer_status",
+    "last_heartbeat"
+  ],
+  "fields": [
+    {
+      "bold": 1,
+      "fieldname": "terminal_id",
+      "fieldtype": "Data",
+      "label": "Terminal ID",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "gate_location",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Gate / Location"
+    },
+    {
+      "description": "User account whose API token authenticates this terminal. Must hold the Container Depot SST Service role.",
+      "fieldname": "api_user",
+      "fieldtype": "Link",
+      "label": "API User",
+      "options": "User"
+    },
+    {
+      "default": "Unknown",
+      "fieldname": "printer_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Printer Status",
+      "options": "Unknown\nOK\nWarning\nOffline\nStale"
+    },
+    {
+      "fieldname": "last_heartbeat",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Last Heartbeat"
+    }
+  ],
+  "links": [],
+  "modified": "2026-05-29",
+  "module": "Operations",
+  "name": "Self Service Terminal",
+  "search_fields": "terminal_id, gate_location",
+  "sort_field": "modified",
+  "sort_order": "DESC"
+}

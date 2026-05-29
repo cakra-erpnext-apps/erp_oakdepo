@@ -31,6 +31,9 @@ website_route_rules = [
 	{"from_route": "/api/v1/inspection/upload-evidence", "to_route": "container_depot.api.upload_inspection_evidence"},
 	{"from_route": "/api/v1/webhook/message", "to_route": "container_depot.api.handle_webhook"},
 	{"from_route": "/api/v1/agent/skills", "to_route": "container_depot.api.get_agent_skills"},
+	{"from_route": "/api/v1/sst/issue-order", "to_route": "container_depot.api.sst_issue_order"},
+	{"from_route": "/api/v1/sst/heartbeat", "to_route": "container_depot.api.sst_heartbeat"},
+	{"from_route": "/api/v1/inspection/offline-batch", "to_route": "container_depot.api.upload_inspection_offline_batch"},
 ]
 
 # Includes in <head>

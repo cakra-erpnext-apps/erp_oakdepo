@@ -10,6 +10,10 @@
     "status",
     "column_break_1",
     "voucher",
+    "booking_code",
+    "order_section",
+    "order_doctype",
+    "order_ref",
     "container_no",
     "section_break_2",
     "security_guard",
@@ -49,10 +53,36 @@
       "fieldtype": "Column Break"
     },
     {
+      "description": "Deprecated by Voucher→Booking migration. Retained for backward compatibility; new entries should set booking_code + order_doctype/order_ref instead.",
       "fieldname": "voucher",
       "fieldtype": "Link",
-      "label": "Voucher (Bon Bongkar)",
+      "label": "Voucher (Bon Bongkar) [Deprecated]",
       "options": "Voucher"
+    },
+    {
+      "fieldname": "booking_code",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Booking Code",
+      "options": "Booking Code"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "order_section",
+      "fieldtype": "Section Break",
+      "label": "Order Reference"
+    },
+    {
+      "fieldname": "order_doctype",
+      "fieldtype": "Link",
+      "label": "Order DocType",
+      "options": "DocType"
+    },
+    {
+      "fieldname": "order_ref",
+      "fieldtype": "Dynamic Link",
+      "label": "Order",
+      "options": "order_doctype"
     },
     {
       "fieldname": "container_no",

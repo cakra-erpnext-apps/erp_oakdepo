@@ -83,6 +83,9 @@ def _assert_voucher_id(value) -> str:
 	return candidate
 
 
+BOOKING_CODE_RE = re.compile(r"^OAK-[A-F0-9]{6,32}$")
+
+
 def _parse_qr_payload(qr_data) -> str:
 	"""Accept either a bare voucher id or the ``OAK|<voucher>|<type>|<client>``
 	payload produced by :meth:`Voucher.generate_qr_data`. Returns the voucher id.
@@ -96,6 +99,25 @@ def _parse_qr_payload(qr_data) -> str:
 			frappe.throw(_("Malformed OAK QR payload."), frappe.ValidationError)
 		raw = parts[1]
 	return _assert_voucher_id(raw)
+
+
+def _parse_booking_code_payload(qr_data) -> str:
+	"""Like :func:`_parse_qr_payload` but for Booking Code QR payloads.
+
+	Accepts ``OAK|OAK-...`` (issued by Booking Code) or a bare ``OAK-...``.
+	"""
+	if not qr_data or not isinstance(qr_data, str):
+		frappe.throw(_("qr_data is required."), frappe.ValidationError)
+	raw = qr_data.strip()
+	if raw.upper().startswith("OAK|"):
+		parts = raw.split("|")
+		if len(parts) < 2 or not parts[1]:
+			frappe.throw(_("Malformed OAK QR payload."), frappe.ValidationError)
+		raw = parts[1]
+	candidate = raw.upper()
+	if not BOOKING_CODE_RE.match(candidate):
+		frappe.throw(_("Invalid Booking Code format."), frappe.ValidationError)
+	return candidate
 
 
 def _verify_webhook_signature(raw_body: bytes, signature_header, secret: str) -> bool:
@@ -768,6 +790,173 @@ Please try one of these:
 # ---------------------------------------------------------------------------
 # Agent Skills Definition (for Hermes/OpenClaw)
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# SST endpoints
+# ---------------------------------------------------------------------------
+
+
+def _resolve_sst_for_session() -> str | None:
+	"""Return the Self Service Terminal whose api_user is the calling user."""
+	user = frappe.session.user
+	if not user or user == "Guest":
+		return None
+	return frappe.db.get_value("Self Service Terminal", {"api_user": user}, "name")
+
+
+def _log_sst_activity(sst, action, *, booking_code=None, payload=None, result="OK"):
+	if not sst:
+		return
+	try:
+		frappe.get_doc({
+			"doctype": "SST Activity Log",
+			"sst": sst,
+			"action": action,
+			"booking_code": booking_code,
+			"payload_json": json.dumps(payload, default=str) if payload else None,
+			"result": result,
+			"timestamp": now_datetime(),
+		}).insert(ignore_permissions=True)
+	except Exception:
+		# Log write must never break the primary operation.
+		frappe.log_error(frappe.get_traceback(), "container_depot SST log write failed")
+
+
+@frappe.whitelist(methods=["POST"])
+def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=None, transporter=None, ex_vessel=None, destination=None, cleaning_certificate=None):
+	"""Validate a scanned Booking Code and issue the matching Order.
+
+	The calling user must hold the ``Container Depot SST Service`` role and be
+	linked as the ``api_user`` of a Self Service Terminal. Returns the new
+	Order's name plus the QR payload to reprint if needed.
+	"""
+	_require_authenticated_user()
+	sst = _resolve_sst_for_session()
+	code = _parse_booking_code_payload(qr_data)
+	bc = frappe.db.get_value(
+		"Booking Code",
+		code,
+		["name", "state", "direction", "container", "container_no", "booking", "expires_at"],
+		as_dict=True,
+	)
+	if not bc:
+		_log_sst_activity(sst, "Code Scan", payload={"qr_data": qr_data}, result="Error")
+		frappe.throw(_("Booking Code not found."))
+	if bc.state != "Active":
+		_log_sst_activity(sst, "Validate", booking_code=bc.name, payload={"state": bc.state}, result="Error")
+		frappe.throw(_("Booking Code {0} state is {1}.").format(bc.name, bc.state))
+
+	common = {
+		"booking_code": bc.name,
+		"container": bc.container,
+		"container_no": bc.container_no,
+		"truck_plate": truck_plate,
+		"transporter": transporter,
+		"driver_name": driver_name,
+		"driver_phone": driver_phone,
+		"sst": sst,
+		"order_status": "Issued",
+		"gate_in_time": now_datetime(),
+	}
+	if bc.direction == "Tank In":
+		common["ex_vessel"] = ex_vessel
+		order = frappe.get_doc({"doctype": "Order Bongkar", **common})
+	else:
+		if not cleaning_certificate:
+			_log_sst_activity(sst, "Validate", booking_code=bc.name, payload={"missing": "cleaning_certificate"}, result="Error")
+			frappe.throw(_("Cleaning Certificate is required to issue an Order Muat."))
+		common["destination"] = destination
+		common["cleaning_certificate"] = cleaning_certificate
+		order = frappe.get_doc({"doctype": "Order Muat", **common})
+
+	order.insert(ignore_permissions=True)
+	# Booking Code is single-use: flip to Used so subsequent scans are rejected.
+	frappe.db.set_value("Booking Code", bc.name, "state", "Used", update_modified=False)
+	_log_sst_activity(
+		sst,
+		"Order Issued",
+		booking_code=bc.name,
+		payload={"order": order.name, "doctype": order.doctype},
+	)
+	return {
+		"success": True,
+		"order_doctype": order.doctype,
+		"order_name": order.name,
+		"booking_code": bc.name,
+		"qr_payload": f"OAK|{bc.name}",
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def sst_heartbeat(printer_status="OK"):
+	"""SST terminals call this every N minutes to update last_heartbeat."""
+	_require_authenticated_user()
+	sst = _resolve_sst_for_session()
+	if not sst:
+		frappe.throw(_("Calling user is not linked to a Self Service Terminal."))
+	frappe.db.set_value(
+		"Self Service Terminal",
+		sst,
+		{"printer_status": printer_status, "last_heartbeat": now_datetime()},
+		update_modified=False,
+	)
+	_log_sst_activity(sst, "Heartbeat", payload={"printer_status": printer_status})
+	return {"success": True, "sst": sst}
+
+
+@frappe.whitelist(methods=["POST"])
+def upload_inspection_offline_batch(items):
+	"""Accept a JSON batch of EIR records collected offline by a SST/device.
+
+	Each item: ``{client_uuid, container_no, inspection_type, inspector, photos}``.
+	Deduped by ``client_uuid``. Items with bad shape are skipped, not 400'd.
+	"""
+	_require_authenticated_user()
+	if isinstance(items, str):
+		try:
+			items = json.loads(items)
+		except json.JSONDecodeError:
+			frappe.throw(_("items must be a JSON array."), frappe.ValidationError)
+	if not isinstance(items, list):
+		frappe.throw(_("items must be a list."), frappe.ValidationError)
+
+	created, skipped = [], []
+	for raw in items:
+		if not isinstance(raw, dict):
+			continue
+		client_uuid = raw.get("client_uuid")
+		if not client_uuid:
+			skipped.append({"reason": "missing client_uuid"})
+			continue
+		# Dedup: if any Inspection already has this uuid in its remarks, skip.
+		if frappe.db.exists("Inspection", {"client_uuid": client_uuid}):
+			skipped.append({"client_uuid": client_uuid, "reason": "already-ingested"})
+			continue
+		try:
+			container_no = _normalize_container_no(raw.get("container_no"))
+		except frappe.ValidationError as e:
+			skipped.append({"client_uuid": client_uuid, "reason": str(e)})
+			continue
+		try:
+			res = upload_inspection_evidence(
+				container_no=container_no,
+				photos=raw.get("photos") or [],
+				inspection_type=raw.get("inspection_type") or "EIR-In",
+				inspector=raw.get("inspector"),
+			)
+			if res.get("success"):
+				# Tag with the client_uuid for idempotency.
+				frappe.db.set_value(
+					"Inspection", {"inspection_id": res["inspection_id"]}, "client_uuid", client_uuid
+				)
+				created.append({"client_uuid": client_uuid, "inspection_id": res["inspection_id"]})
+			else:
+				skipped.append({"client_uuid": client_uuid, "reason": res.get("error")})
+		except Exception as e:
+			skipped.append({"client_uuid": client_uuid, "reason": str(e)})
+
+	return {"success": True, "created": created, "skipped": skipped}
 
 
 @frappe.whitelist(methods=["GET"], allow_guest=True)
