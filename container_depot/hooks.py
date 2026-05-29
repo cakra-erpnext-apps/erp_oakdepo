@@ -9,6 +9,7 @@ app_license = "MIT"
 # ------------
 
 after_install = "container_depot.install.after_install"
+after_migrate = "container_depot.install.after_migrate"
 
 # API Routes
 # ----------
