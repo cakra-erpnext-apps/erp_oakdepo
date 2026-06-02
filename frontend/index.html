@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="id">
+	<head>
+		<meta charset="UTF-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, viewport-fit=cover maximum-scale=1.0, user-scalable=no"
+		/>
+		<title>Depot ESS</title>
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Depot ESS" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="white" />
+		<meta name="theme-color" content="#171717" />
+
+		<!-- PWA: static manifest (see public/manifest.json) -->
+		<link rel="manifest" href="/assets/container_depot/ess/manifest.json" />
+		<link
+			rel="icon"
+			type="image/png"
+			sizes="192x192"
+			href="/assets/container_depot/ess/icons/icon-192.png"
+		/>
+		<link
+			rel="apple-touch-icon"
+			href="/assets/container_depot/ess/icons/icon-192.png"
+		/>
+	</head>
+	<body class="antialiased bg-gray-50">
+		<div id="app"></div>
+		<div id="modals"></div>
+		<div id="popovers"></div>
+
+		<!-- Frappe injects these when www/depot.html is rendered server-side.
+		     In `vite dev` they stay as literals and main.js falls back to a
+		     dev boot fetch. -->
+		<script>
+			window.csrf_token = "{{ csrf_token }}"
+			window.site_name = "{{ site_name }}"
+			if (!window.frappe) window.frappe = {}
+			frappe.boot = {{ boot }}
+		</script>
+
+		<script type="module" src="/src/main.js"></script>
+	</body>
+</html>

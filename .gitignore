@@ -5,3 +5,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Frontend (ESS PWA) — node deps and build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+container_depot/public/ess/
+container_depot/www/depot.html
