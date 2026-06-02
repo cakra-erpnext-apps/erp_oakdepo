@@ -8,9 +8,15 @@ Not part of the test suite or the app's install — a throwaway helper.
 """
 
 import frappe
-from frappe.utils import add_days, today
+from frappe.utils import add_days, add_to_date, now_datetime, today
+
+from container_depot.tests._booking_helpers import make_contract
 
 DEPOT = "DEMO"
+# Fixed, hex-only code so it matches validate_qr's OAK-[A-F0-9]{6,32} and is easy
+# to type into the /gate page. Targets DEMU1000001 (principal Stolt).
+DEMO_CODE = "OAK-DEC0DE"
+DEMO_CODE_CONTAINER = "DEMU1000001"
 # container_no -> raw Container.status (must be 11 ISO chars: DEMU + 7 digits)
 TANKS = {
 	"DEMU1000001": ("Available", "Stolt"),
@@ -102,16 +108,51 @@ def seed():
 				}
 			).insert(ignore_permissions=True)
 
+	# Active Booking Code so the /gate page (F4) can validate + gate-in end to end.
+	if not frappe.db.exists("Booking Code", DEMO_CODE):
+		customer = _customer("Stolt")
+		booking = frappe.get_doc(
+			{
+				"doctype": "Isotank Booking",
+				"direction": "Tank In",
+				"customer": customer,
+				"contract": make_contract(customer),
+				"booking_status": "Confirmed",
+				"items": [{"container_no": DEMO_CODE_CONTAINER}],
+			}
+		).insert(ignore_permissions=True)
+		frappe.get_doc(
+			{
+				"doctype": "Booking Code",
+				"code": DEMO_CODE,
+				"booking": booking.name,
+				"direction": "Tank In",
+				"container_no": DEMO_CODE_CONTAINER,
+				"container": DEMO_CODE_CONTAINER,
+				"state": "Active",
+				"issued_at": now_datetime(),
+				"expires_at": add_to_date(now_datetime(), hours=720),
+			}
+		).insert(ignore_permissions=True)
+
 	frappe.db.commit()
-	print("SEEDED", {"depot": DEPOT, "containers": list(TANKS.keys())})
+	print("SEEDED", {"depot": DEPOT, "containers": list(TANKS.keys()), "booking_code": DEMO_CODE})
 
 
 def clear():
 	names = list(TANKS.keys())
+	# Gate artifacts from F4 testing (Gate Entry is submittable -> cancel first).
+	for ge in frappe.get_all("Gate Entry", filters={"container": ["in", names]}, pluck="name"):
+		frappe.db.set_value("Gate Entry", ge, "docstatus", 2)
+	frappe.db.delete("Gate Entry", {"container": ["in", names]})
+	booking = frappe.db.get_value("Booking Code", DEMO_CODE, "booking")
+	frappe.db.delete("Booking Code", {"name": DEMO_CODE})
+	if booking:
+		frappe.db.delete("Isotank Booking", {"name": booking})
 	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection", "Periodic Test"]:
 		frappe.db.delete(dt, {"container": ["in", names]})
 	frappe.db.delete("Container", {"name": ["in", names]})
 	if frappe.db.exists("Depot", DEPOT):
 		frappe.db.delete("Depot", {"name": DEPOT})
 	frappe.db.commit()
-	print("CLEARED", {"depot": DEPOT, "containers": names})
+	print("CLEARED", {"depot": DEPOT, "containers": names, "booking_code": DEMO_CODE})
