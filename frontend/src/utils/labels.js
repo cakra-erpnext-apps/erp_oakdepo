@@ -25,6 +25,9 @@ export const labels = {
 	lastCargo: "Muatan Terakhir", // Last cargo
 	lastTest: "Tes Terakhir", // Last test date
 	location: "Lokasi Yard", // Yard location
+	documents: "Dokumen", // Documents
+	noDocuments: "Belum ada dokumen", // No documents yet
+	viewPrint: "Lihat / Cetak", // View / Print
 	ptDue: "Tes Periodik Jatuh Tempo", // Periodic test due
 	ptDueFlag: "PT Jatuh Tempo", // PT due (short)
 }

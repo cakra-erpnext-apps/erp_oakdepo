@@ -20,6 +20,7 @@ from container_depot.ess.inventory import (
 	get_tank_list,
 	get_tank_detail,
 )
+from container_depot.ess.documents import get_tank_documents, _pdf_url
 
 ESS_DEPOT = "ESST"
 # Raw status seeded per container -> expected derived bucket.
@@ -155,6 +156,30 @@ class TestEssInventory(FrappeTestCase):
 		self.assertTrue(res["pt_due"])
 		for key in ("capacity", "tare_weight", "last_test_date", "yard_zone", "container_type"):
 			self.assertIn(key, res)
+
+	def test_tank_documents(self):
+		# ESST1000007 has an open Inspection (EIR); ESST1000006 a Repair Order.
+		eir = get_tank_documents("ESST1000007")
+		self.assertTrue(eir["success"])
+		cats = {d["category"] for d in eir["documents"]}
+		self.assertIn("EIR", cats)
+		ins = next(d for d in eir["documents"] if d["category"] == "EIR")
+		self.assertEqual(ins["doctype"], "Inspection")
+		self.assertIn("download_pdf", ins["pdf_url"])
+		self.assertIn("doctype=Inspection", ins["pdf_url"])
+		# Browser-native print view is the primary (wkhtmltopdf-independent) link.
+		self.assertIn("/printview", ins["view_url"])
+		self.assertIn("trigger_print=1", ins["view_url"])
+
+		rep = get_tank_documents("ESST1000006")
+		self.assertIn("Estimasi Perbaikan", {d["category"] for d in rep["documents"]})
+
+	def test_pdf_url_uses_cleaning_cert_format(self):
+		url = _pdf_url("Cleaning Certificate", "CERT-2026-00001", "Cleaning Certificate Format")
+		self.assertIn("doctype=Cleaning+Certificate", url)
+		self.assertIn("format=Cleaning+Certificate+Format", url)
+		# Standard format omits the format param entirely.
+		self.assertNotIn("format=", _pdf_url("Inspection", "EIR-2026-00001"))
 
 	def test_guest_is_rejected(self):
 		frappe.set_user("Guest")

@@ -36,6 +36,39 @@
 					<dd class="text-right text-sm font-medium">{{ row.value }}</dd>
 				</div>
 			</dl>
+
+			<!-- F2 — documents (EIR, cleaning cert, repair estimate, bon) -->
+			<section>
+				<h2 class="mb-2 text-sm font-semibold text-gray-700">{{ labels.documents }}</h2>
+				<p v-if="documents.loading && !documents.data" class="text-sm text-gray-500">
+					{{ labels.loading }}
+				</p>
+				<p v-else-if="documents.error" class="text-sm text-red-600">
+					{{ labels.error }}
+					<button class="underline" @click="documents.reload()">{{ labels.retry }}</button>
+				</p>
+				<p v-else-if="!docs.length" class="text-sm text-gray-500">{{ labels.noDocuments }}</p>
+				<ul v-else class="divide-y rounded-lg border bg-white">
+					<li v-for="d in docs" :key="d.doctype + d.name">
+						<a
+							:href="d.view_url"
+							target="_blank"
+							rel="noopener"
+							class="flex items-center justify-between gap-3 px-3 py-3 hover:bg-gray-50"
+						>
+							<div class="min-w-0">
+								<p class="truncate text-sm font-medium">{{ d.label }}</p>
+								<p class="text-xs text-gray-500">
+									{{ d.category }}<span v-if="d.date"> · {{ d.date }}</span>
+								</p>
+							</div>
+							<span class="shrink-0 text-xs font-medium text-blue-600">
+								{{ labels.viewPrint }} ↗
+							</span>
+						</a>
+					</li>
+				</ul>
+			</section>
 		</template>
 	</div>
 </template>
@@ -56,6 +89,15 @@ const detail = createResource({
 	makeParams: () => ({ container: props.name }),
 	auto: true,
 })
+
+const documents = createResource({
+	url: "container_depot.ess.documents.get_tank_documents",
+	method: "GET",
+	makeParams: () => ({ container: props.name }),
+	auto: true,
+})
+
+const docs = computed(() => documents.data?.documents || [])
 
 function fmtNum(v, unit) {
 	if (v === null || v === undefined || v === "" || Number(v) === 0) return null
