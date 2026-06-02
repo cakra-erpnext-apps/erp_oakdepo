@@ -18,6 +18,11 @@ const routes = [
 		component: () => import("@/pages/TankDetail.vue"),
 		props: true,
 	},
+	{
+		path: "/gate",
+		name: "GateEntry",
+		component: () => import("@/pages/GateEntry.vue"),
+	},
 ]
 
 const router = createRouter({

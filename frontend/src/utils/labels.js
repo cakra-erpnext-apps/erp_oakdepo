@@ -33,6 +33,18 @@ export const labels = {
 	estimateTotal: "Total Estimasi", // Estimate total
 	billing: "Penagihan", // Billing
 	technician: "Teknisi", // Technician
+	gate: "Gate", // Gate
+	gateDesc: "Validasi kode booking & catat gate-in", // Validate booking & gate-in
+	bookingCode: "Kode Booking", // Booking code
+	bookingCodePlaceholder: "OAK-XXXXXX", // placeholder
+	validate: "Validasi", // Validate
+	direction: "Arah", // Direction
+	truckPlate: "Nopol Truk", // Truck plate
+	driverName: "Nama Sopir", // Driver name
+	registerGate: "Catat Gate-In", // Register gate-in
+	gateOk: "Gate-in tercatat", // Gate registered
+	codeInvalid: "Kode tidak valid / tidak aktif", // Invalid/inactive code
+	reset: "Ulangi", // Reset/again
 	ptDue: "Tes Periodik Jatuh Tempo", // Periodic test due
 	ptDueFlag: "PT Jatuh Tempo", // PT due (short)
 }
@@ -83,6 +95,15 @@ export function repairStatusLabel(s) {
 
 export function billingLabel(s) {
 	return billingLabels[s] || s || "—"
+}
+
+export const directionLabels = {
+	"Tank In": "Tank Masuk",
+	"Tank Out": "Tank Keluar",
+}
+
+export function directionLabel(s) {
+	return directionLabels[s] || s || "—"
 }
 
 // Format a number as Indonesian Rupiah.
