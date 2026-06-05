@@ -5,52 +5,46 @@
   "engine": "InnoDB",
   "field_order": [
     "header_section",
-    "booking_code",
+    "booking",
+    "ro",
     "order_status",
     "column_break_1",
-    "container",
-    "container_no",
+    "shipper",
     "destination",
-    "cleaning_section",
-    "cleaning_certificate",
-    "commercial_section",
-    "order_type",
-    "quantity",
-    "price_per_container",
-    "column_break_comm",
-    "total_amount",
-    "expected_date",
-    "vessel_name",
-    "port_name",
-    "notes",
-    "sales_invoice",
+    "tanggal_muat",
+    "containers",
     "truck_section",
     "truck_plate",
-    "transporter",
-    "transporter_name",
+    "angkutan",
     "column_break_2",
     "driver_name",
     "driver_phone",
+    "notes",
     "sst_section",
     "sst",
     "created_offline",
-    "gate_in_time",
-    "qr_code"
+    "gate_in_time"
   ],
   "fields": [
     {
       "fieldname": "header_section",
       "fieldtype": "Section Break",
-      "label": "Order Muat"
+      "label": "Bon Muat"
     },
     {
-      "fieldname": "booking_code",
+      "fieldname": "booking",
       "fieldtype": "Link",
       "in_list_view": 1,
       "in_standard_filter": 1,
-      "label": "Booking Code",
-      "options": "Booking Code",
+      "label": "Booking",
+      "options": "Isotank Booking",
+      "read_only": 1,
       "reqd": 1
+    },
+    {
+      "fieldname": "ro",
+      "fieldtype": "Data",
+      "label": "R/O"
     },
     {
       "default": "Issued",
@@ -67,16 +61,12 @@
       "fieldtype": "Column Break"
     },
     {
-      "fieldname": "container",
+      "description": "Defaults to the booking customer; can be overridden.",
+      "fieldname": "shipper",
       "fieldtype": "Link",
-      "label": "Container",
-      "options": "Container"
-    },
-    {
-      "fieldname": "container_no",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Container No"
+      "in_standard_filter": 1,
+      "label": "Shipper",
+      "options": "Customer"
     },
     {
       "fieldname": "destination",
@@ -84,75 +74,17 @@
       "label": "Destination"
     },
     {
-      "fieldname": "cleaning_section",
-      "fieldtype": "Section Break",
-      "label": "Cleaning"
-    },
-    {
-      "description": "Required on print and submit (PRO-OPS-08 §8.2).",
-      "fieldname": "cleaning_certificate",
-      "fieldtype": "Link",
-      "label": "Cleaning Certificate",
-      "options": "Cleaning Certificate",
-      "reqd": 1
-    },
-    {
-      "fieldname": "commercial_section",
-      "fieldtype": "Section Break",
-      "label": "Order & Billing"
-    },
-    {
-      "fieldname": "order_type",
-      "fieldtype": "Select",
-      "label": "Order Type",
-      "options": "\nLift On\nLift Off\nPeriodic Test\nLeak Test\nHaulage"
-    },
-    {
-      "fieldname": "quantity",
-      "fieldtype": "Int",
-      "label": "Quantity (ctr)"
-    },
-    {
-      "fieldname": "price_per_container",
-      "fieldtype": "Currency",
-      "label": "Price per Container"
-    },
-    {
-      "fieldname": "column_break_comm",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "total_amount",
-      "fieldtype": "Currency",
-      "label": "Total Amount",
-      "read_only": 1
-    },
-    {
-      "fieldname": "expected_date",
+      "fieldname": "tanggal_muat",
       "fieldtype": "Date",
-      "label": "Expected Date"
+      "label": "Tgl. Muat"
     },
     {
-      "fieldname": "vessel_name",
-      "fieldtype": "Data",
-      "label": "Vessel Name"
-    },
-    {
-      "fieldname": "port_name",
-      "fieldtype": "Data",
-      "label": "Port Name"
-    },
-    {
-      "fieldname": "notes",
-      "fieldtype": "Small Text",
-      "label": "Notes"
-    },
-    {
-      "fieldname": "sales_invoice",
-      "fieldtype": "Link",
-      "label": "Sales Invoice",
-      "options": "Sales Invoice",
-      "read_only": 1
+      "description": "Containers on this bon (max 3). Each row needs a valid Cleaning Certificate. Only still-pending containers of this booking may be added.",
+      "fieldname": "containers",
+      "fieldtype": "Table",
+      "label": "Containers",
+      "options": "Order Container Item",
+      "reqd": 1
     },
     {
       "fieldname": "truck_section",
@@ -163,18 +95,12 @@
       "fieldname": "truck_plate",
       "fieldtype": "Data",
       "in_list_view": 1,
-      "label": "Truck Plate"
+      "label": "No. Pol (Truck Plate)"
     },
     {
-      "fieldname": "transporter",
-      "fieldtype": "Link",
-      "label": "Transporter",
-      "options": "Supplier"
-    },
-    {
-      "fieldname": "transporter_name",
+      "fieldname": "angkutan",
       "fieldtype": "Data",
-      "label": "Transporter Name (fallback)"
+      "label": "Angkutan"
     },
     {
       "fieldname": "column_break_2",
@@ -183,12 +109,17 @@
     {
       "fieldname": "driver_name",
       "fieldtype": "Data",
-      "label": "Driver Name"
+      "label": "Supir (Driver)"
     },
     {
       "fieldname": "driver_phone",
       "fieldtype": "Data",
       "label": "Driver Phone"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Note"
     },
     {
       "collapsible": 1,
@@ -212,22 +143,16 @@
       "fieldname": "gate_in_time",
       "fieldtype": "Datetime",
       "label": "Gate-In Time"
-    },
-    {
-      "fieldname": "qr_code",
-      "fieldtype": "Attach Image",
-      "label": "QR Code",
-      "read_only": 1
     }
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-05-29",
+  "modified": "2026-06-04",
   "module": "Operations",
   "name": "Order Muat",
-  "search_fields": "booking_code, container_no, truck_plate, destination",
+  "search_fields": "booking, truck_plate, shipper, destination",
   "sort_field": "creation",
   "sort_order": "DESC",
-  "title_field": "container_no",
+  "title_field": "booking",
   "track_changes": 1
 }

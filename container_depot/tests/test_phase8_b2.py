@@ -26,12 +26,6 @@ class TestB2Doctypes(FrappeTestCase):
 		self.assertEqual(f.fieldtype, "Link")
 		self.assertEqual(f.options, "Surveyor Company")
 
-	def test_booking_shipping_line_is_link(self):
-		f = frappe.get_meta("Isotank Booking").get_field("shipping_line")
-		self.assertEqual(f.fieldtype, "Link")
-		self.assertEqual(f.options, "Shipping Line")
-
-
 class TestReleaseDOFlow(FrappeTestCase):
 	CONTAINER_NO = "RDOU8880001"
 

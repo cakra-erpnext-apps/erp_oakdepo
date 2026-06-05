@@ -21,34 +21,42 @@ class TestB1Fields(FrappeTestCase):
 				self.assertIn(opt, (field.options or ""), f"{doctype}.{fieldname} missing option {opt}")
 
 	def test_isotank_booking_fields(self):
-		self._assert_field("Isotank Booking", "ownership", "Select", ["COC", "SOC"])
-		# shipping_line was converted from Data -> Link (Shipping Line) in B2.
-		self._assert_field("Isotank Booking", "shipping_line", "Link", ["Shipping Line"])
-		self._assert_field("Isotank Booking", "tank_principal", "Link", ["Customer"])
+		# Shipping line lives on the Container master, not the booking.
 		self._assert_field("Isotank Booking", "do_reference", "Data")
 		self._assert_field("Isotank Booking", "do_document", "Attach")
 
 	def test_isotank_booking_item_fields(self):
-		self._assert_field("Isotank Booking Item", "truck", "Data")
+		# Vehicle fields use the depot's paperwork vocabulary (truck_plate / supir).
+		self._assert_field("Isotank Booking Item", "truck_plate", "Data")
 		self._assert_field("Isotank Booking Item", "driver", "Data")
+		self._assert_field("Isotank Booking Item", "driver_phone", "Data")
+		# Per-container bongkar / order info.
+		self._assert_field("Isotank Booking Item", "ro", "Data")
+		self._assert_field("Isotank Booking Item", "tanggal_bongkar", "Date")
+		self._assert_field("Isotank Booking Item", "shipper", "Link", ["Customer"])
+		self._assert_field("Isotank Booking Item", "ex_vessel", "Data")
+		self._assert_field("Isotank Booking Item", "angkutan", "Link", ["Customer"])
 		self._assert_field("Isotank Booking Item", "condition", "Select", ["Empty", "Laden"])
-		self._assert_field("Isotank Booking Item", "appointment_date", "Date")
-		self._assert_field("Isotank Booking Item", "appointment_time", "Time")
 		self._assert_field("Isotank Booking Item", "gate_in", "Datetime")
 		self._assert_field("Isotank Booking Item", "gate_out", "Datetime")
 		self._assert_field("Isotank Booking Item", "eir", "Link", ["Inspection"])
 		self._assert_field("Isotank Booking Item", "item_status", "Select", ["Pending", "In Yard", "Completed"])
 
 	def test_order_fields(self):
+		# Orders are operational bons now (no billing fields). They reference a
+		# booking, a shipper, and carry containers in a child table.
 		for dt in ("Order Bongkar", "Order Muat"):
-			self._assert_field(dt, "order_type", "Select", ["Lift On", "Lift Off", "Haulage"])
-			self._assert_field(dt, "quantity", "Int")
-			self._assert_field(dt, "price_per_container", "Currency")
-			self._assert_field(dt, "total_amount", "Currency")
-			self._assert_field(dt, "expected_date", "Date")
-			self._assert_field(dt, "vessel_name", "Data")
-			self._assert_field(dt, "port_name", "Data")
-			self._assert_field(dt, "sales_invoice", "Link", ["Sales Invoice"])
+			self._assert_field(dt, "booking", "Link", ["Isotank Booking"])
+			self._assert_field(dt, "shipper", "Link", ["Customer"])
+			self._assert_field(dt, "ro", "Data")
+			self._assert_field(dt, "angkutan", "Data")
+			self._assert_field(dt, "containers", "Table", ["Order Container Item"])
+		self._assert_field("Order Bongkar", "tanggal_bongkar", "Date")
+		self._assert_field("Order Muat", "tanggal_muat", "Date")
+		self._assert_field("Order Muat", "destination", "Data")
+		# Per-container remarks + cleaning cert live on the child table.
+		self._assert_field("Order Container Item", "remarks", "Data")
+		self._assert_field("Order Container Item", "cleaning_certificate", "Link", ["Cleaning Certificate"])
 
 	def test_container_seal_and_shipper_fields(self):
 		for seal in ("seal_manhole", "seal_airline", "seal_bottom_outlet", "seal_top_discharge", "seal_vapour_valve"):

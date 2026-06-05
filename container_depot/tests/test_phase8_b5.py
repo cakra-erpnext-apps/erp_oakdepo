@@ -48,11 +48,6 @@ class TestBookingGuards(FrappeTestCase):
 		self.assertEqual(b.docstatus, 1)
 		self.assertTrue(frappe.db.exists("Booking Code", {"booking": b.name}))
 
-	def test_past_appointment_blocked(self):
-		b = self._booking(items=[{"container_no": "TANK0005551", "appointment_date": add_days(today(), -2)}])
-		with self.assertRaises(frappe.ValidationError):
-			b.insert(ignore_permissions=True)
-
 
 class TestTopBookingAccrual(FrappeTestCase):
 	"""B7: a TOP booking submits but does NOT create a per-transaction Sales

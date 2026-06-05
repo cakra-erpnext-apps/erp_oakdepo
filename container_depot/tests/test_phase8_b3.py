@@ -28,41 +28,9 @@ class TestPricing(FrappeTestCase):
 		self.assertEqual((total, rate), (300000, 100000))
 
 
-# --------------------------------------------------------------------------- #
-# Auto-invoice on Order submit
-# --------------------------------------------------------------------------- #
-class TestOrderAutoInvoice(FrappeTestCase):
-	CONTAINER_NO = "AINV0001230"
-
-	def setUp(self):
-		self.customer = ensure_test_customer("B3 Invoice Customer")
-
-	def tearDown(self):
-		frappe.db.rollback()
-
-	def test_order_bongkar_creates_sales_invoice(self):
-		code = make_booking_code(
-			customer=self.customer, container_no=self.CONTAINER_NO, direction="Tank In"
-		)
-		order = frappe.get_doc({
-			"doctype": "Order Bongkar",
-			"booking_code": code.name,
-			"order_status": "Issued",
-			"order_type": "Lift Off",
-			"quantity": 2,
-			"price_per_container": 300000,
-		})
-		order.insert(ignore_permissions=True)
-		self.assertEqual(order.total_amount, 600000)
-		order.submit()
-		order.reload()
-		self.assertTrue(order.sales_invoice, "sales_invoice not linked after submit")
-		si = frappe.db.get_value(
-			"Sales Invoice", order.sales_invoice, ["due_date", "grand_total", "customer"], as_dict=True
-		)
-		self.assertEqual(si.customer, self.customer)
-		self.assertEqual(getdate(si.due_date), getdate(add_days(today(), 30)))
-		self.assertEqual(si.grand_total, 600000)
+# NOTE: Order-level auto-invoicing was removed — the bon (Order Bongkar/Muat) is
+# operational only. Lift on/off is billed at the booking (Cash at submit; TOP via
+# consolidated_billing). See test_phase10 / test_phase8_b4 for booking-side billing.
 
 
 # --------------------------------------------------------------------------- #

@@ -12,6 +12,8 @@ container_depot.patches.v0_9.canonicalize_container_status
 container_depot.patches.v0_9.seed_b2_masters
 container_depot.patches.v0_9.seed_ppn_template
 container_depot.patches.v0_9.seed_surveyor_companies
+container_depot.patches.v0_10.backfill_order_containers
+container_depot.patches.v0_10.rename_booking_item_truck_to_truck_plate
 container_depot.patches.v0_11.seed_item_groups
 container_depot.patches.v0_11.seed_price_lists
 container_depot.patches.v0_11.seed_service_items

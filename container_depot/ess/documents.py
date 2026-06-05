@@ -118,23 +118,27 @@ def get_tank_documents(container):
 		)
 
 	for doctype, category in (("Order Bongkar", "Bon Bongkar"), ("Order Muat", "Bon Muat")):
-		for r in frappe.get_list(
-			doctype,
-			filters={"container": container},
-			fields=["name", "order_status", "creation"],
-			order_by="creation desc",
-			limit_page_length=0,
-		):
+		# Orders carry containers in the Order Container Item child table; find the
+		# bons that include this container, then load each parent once.
+		parents = frappe.get_all(
+			"Order Container Item",
+			filters={"container": container, "parenttype": doctype},
+			pluck="parent",
+		)
+		for name in dict.fromkeys(parents):
+			r = frappe.db.get_value(doctype, name, ["order_status", "creation"], as_dict=True)
+			if not r:
+				continue
 			documents.append(
 				{
 					"category": category,
-					"label": r.name,
+					"label": name,
 					"doctype": doctype,
-					"name": r.name,
+					"name": name,
 					"status": r.order_status,
 					"date": _date(r.creation),
-					"view_url": _view_url(doctype, r.name),
-					"pdf_url": _pdf_url(doctype, r.name),
+					"view_url": _view_url(doctype, name),
+					"pdf_url": _pdf_url(doctype, name),
 				}
 			)
 

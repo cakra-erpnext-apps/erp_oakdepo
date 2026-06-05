@@ -15,10 +15,6 @@
     "contract",
     "payment_type",
     "ownership_section",
-    "ownership",
-    "shipping_line",
-    "tank_principal",
-    "column_break_own",
     "do_reference",
     "do_document",
     "commercial_section",
@@ -56,12 +52,14 @@
     },
     {
       "default": "Pending Payment",
+      "description": "System-managed: set automatically by the booking workflow (submit/payment/cancel). Not edited by hand.",
       "fieldname": "booking_status",
       "fieldtype": "Select",
       "in_list_view": 1,
       "in_standard_filter": 1,
       "label": "Booking Status",
-      "options": "Pending Payment\nPending Confirmation\nConfirmed\nIn Progress\nCompleted\nCancelled\nBlocked",
+      "options": "Pending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
+      "read_only": 1,
       "reqd": 1
     },
     {
@@ -102,32 +100,7 @@
     {
       "fieldname": "ownership_section",
       "fieldtype": "Section Break",
-      "label": "Ownership & Delivery Order"
-    },
-    {
-      "description": "COC = Carrier Owned Container (shipping line owns); SOC = Shipper Owned Container (tank principal owns).",
-      "fieldname": "ownership",
-      "fieldtype": "Select",
-      "label": "Ownership",
-      "options": "\nCOC\nSOC"
-    },
-    {
-      "depends_on": "eval:doc.ownership=='COC'",
-      "fieldname": "shipping_line",
-      "fieldtype": "Link",
-      "label": "Shipping Line",
-      "options": "Shipping Line"
-    },
-    {
-      "depends_on": "eval:doc.ownership=='SOC'",
-      "fieldname": "tank_principal",
-      "fieldtype": "Link",
-      "label": "Tank Principal",
-      "options": "Customer"
-    },
-    {
-      "fieldname": "column_break_own",
-      "fieldtype": "Column Break"
+      "label": "Delivery Order"
     },
     {
       "description": "Delivery Order reference — required before Submit to confirm the booking (both Lift On and Lift Off). A draft may be saved without it.",

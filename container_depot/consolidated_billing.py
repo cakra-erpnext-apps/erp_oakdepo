@@ -17,7 +17,7 @@ from frappe import _
 from frappe.utils import add_days, getdate, today
 
 from container_depot import invoicing
-from container_depot.monthly_invoicing import _active_contract, _days_in_depot, _order_customer
+from container_depot.monthly_invoicing import _active_contract, _days_in_depot
 from container_depot.pricing import resolve_tariff_rate
 
 
@@ -42,32 +42,6 @@ def _booking_lines(customer, lo, hi):
 		qty = frappe.db.count("Isotank Booking Item", {"parent": r.name}) or 1
 		lines.append({"description": f"Booking {r.name} · {service} · {qty} ctr", "qty": qty, "rate": rate})
 		refs.append(("Isotank Booking", r.name))
-	return lines, refs
-
-
-def _order_lines(customer, lo, hi):
-	"""Unbilled submitted Order Bongkar / Order Muat for the customer."""
-	lines, refs = [], []
-	for dt in ("Order Bongkar", "Order Muat"):
-		rows = frappe.get_all(
-			dt,
-			filters={
-				"docstatus": 1,
-				"creation": ["between", [lo, hi]],
-				"total_amount": [">", 0],
-				"sales_invoice": ["is", "not set"],
-			},
-			fields=["name", "order_type", "quantity", "price_per_container"],
-		)
-		for r in rows:
-			if _order_customer(r.name, dt) != customer:
-				continue
-			lines.append({
-				"description": f"{r.order_type or dt} {r.name}",
-				"qty": r.quantity or 1,
-				"rate": r.price_per_container or 0,
-			})
-			refs.append((dt, r.name))
 	return lines, refs
 
 
@@ -147,7 +121,7 @@ def bill_customer(customer, from_date=None, to_date=None):
 	lo, hi = f"{from_d} 00:00:00", f"{to_d} 23:59:59"
 
 	lines, refs = [], []
-	for builder in (_booking_lines, _order_lines, _cleaning_lines, _mr_lines):
+	for builder in (_booking_lines, _cleaning_lines, _mr_lines):
 		blines, brefs = builder(customer, lo, hi)
 		lines += blines
 		refs += brefs
@@ -173,7 +147,7 @@ def bill_customer(customer, from_date=None, to_date=None):
 			frappe.db.set_value(dt, name, {"sales_invoice": si, "payment_status": "Invoiced"}, update_modified=False)
 		elif dt == "Repair Order":
 			frappe.db.set_value(dt, name, "billing_status", "Client Billed", update_modified=False)
-		else:  # Order Bongkar / Order Muat / Cleaning Order
+		else:  # Cleaning Order
 			frappe.db.set_value(dt, name, "sales_invoice", si, update_modified=False)
 	for cname in storage_marks:
 		frappe.db.set_value("Container", cname, "storage_billed_until", to_d, update_modified=False)

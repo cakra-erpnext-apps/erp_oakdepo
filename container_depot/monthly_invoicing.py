@@ -15,7 +15,10 @@ from frappe.utils import add_months, get_first_day, get_last_day, getdate, today
 
 from container_depot.pricing import resolve_tariff_rate
 
-CATEGORIES = ("Cleaning", "M&R", "Storage", "Order Service")
+# Lift on/off charges are billed at the BOOKING (Cash: paid at submit; TOP: swept
+# by consolidated_billing). The voucher (Order Bongkar/Muat) is operational only,
+# so there is no order-based billing category here.
+CATEGORIES = ("Cleaning", "M&R", "Storage")
 
 
 def _period_window(period=None):
@@ -43,14 +46,6 @@ def _is_postpaid(customer):
 		frappe.db.get_value("Depot Contract", {"customer": customer, "status": "Active"}, "payment_type")
 		== "TOP"
 	)
-
-
-def _order_customer(order_name, doctype):
-	code = frappe.db.get_value(doctype, order_name, "booking_code")
-	if not code:
-		return None
-	booking = frappe.db.get_value("Booking Code", code, "booking")
-	return frappe.db.get_value("Isotank Booking", booking, "customer") if booking else None
 
 
 # --------------------------------------------------------------------------- #
@@ -96,29 +91,6 @@ def _cleaning_items(customer, from_date, to_date):
 			"service_date": getdate(r.cleaning_end),
 			"amount": rate,
 		})
-	return items
-
-
-def _order_service_items(customer, from_date, to_date):
-	lo, hi = _bounds(from_date, to_date)
-	items = []
-	for doctype in ("Order Bongkar", "Order Muat"):
-		rows = frappe.get_all(
-			doctype,
-			filters={"creation": ["between", [lo, hi]], "total_amount": [">", 0]},
-			fields=["name", "container", "total_amount", "order_type", "creation"],
-		)
-		for r in rows:
-			if _order_customer(r.name, doctype) != customer:
-				continue
-			items.append({
-				"container": r.container,
-				"reference_doctype": doctype,
-				"reference_name": r.name,
-				"description": f"{r.order_type or 'Order'} {r.name}",
-				"service_date": getdate(r.creation),
-				"amount": r.total_amount or 0,
-			})
 	return items
 
 
@@ -174,7 +146,6 @@ _BUILDERS = {
 	"Cleaning": _cleaning_items,
 	"M&R": _mr_items,
 	"Storage": _storage_items,
-	"Order Service": _order_service_items,
 }
 
 

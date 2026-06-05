@@ -1,0 +1,70 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "booking_code",
+    "container",
+    "container_no",
+    "remarks",
+    "status_tag",
+    "cleaning_certificate"
+  ],
+  "fields": [
+    {
+      "fieldname": "booking_code",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Booking Code",
+      "options": "Booking Code",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "booking_code.container",
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "label": "Container",
+      "options": "Container",
+      "read_only": 1
+    },
+    {
+      "fetch_from": "booking_code.container_no",
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Container No",
+      "read_only": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Remarks"
+    },
+    {
+      "default": "Dirty",
+      "fetch_from": "booking_code.status_tag",
+      "fieldname": "status_tag",
+      "fieldtype": "Select",
+      "label": "Status Tag",
+      "options": "Dirty\nClean"
+    },
+    {
+      "description": "Required for Order Muat (Tank Out) rows; enforced in the controller. Hidden on Order Bongkar.",
+      "fieldname": "cleaning_certificate",
+      "fieldtype": "Link",
+      "label": "Cleaning Certificate",
+      "options": "Cleaning Certificate"
+    }
+  ],
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-04",
+  "module": "Operations",
+  "name": "Order Container Item",
+  "sort_field": "creation",
+  "sort_order": "DESC"
+}

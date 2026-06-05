@@ -814,44 +814,80 @@ def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=No
 		_log_sst_activity(sst, "Validate", booking_code=bc.name, payload={"state": bc.state}, result="Error")
 		frappe.throw(_("Booking Code {0} state is {1}.").format(bc.name, bc.state))
 
-	common = {
-		"booking_code": bc.name,
-		"container": bc.container,
-		"container_no": bc.container_no,
+	# Build vehicle data and delegate to the shared atomic core (handles the
+	# row-lock, order creation, and flipping the code to Used). SST scans exactly
+	# one code; the core accepts 1..3 so both entry points share one code path.
+	vehicle_data = {
 		"truck_plate": truck_plate,
-		"transporter": transporter,
 		"driver_name": driver_name,
 		"driver_phone": driver_phone,
-		"sst": sst,
-		"order_status": "Issued",
-		"gate_in_time": now_datetime(),
+		"transporter": transporter,
 	}
 	if bc.direction == "Tank In":
-		common["ex_vessel"] = ex_vessel
-		order = frappe.get_doc({"doctype": "Order Bongkar", **common})
+		vehicle_data["ex_vessel"] = ex_vessel
 	else:
 		if not cleaning_certificate:
 			_log_sst_activity(sst, "Validate", booking_code=bc.name, payload={"missing": "cleaning_certificate"}, result="Error")
 			frappe.throw(_("Cleaning Certificate is required to issue an Order Muat."))
-		common["destination"] = destination
-		common["cleaning_certificate"] = cleaning_certificate
-		order = frappe.get_doc({"doctype": "Order Muat", **common})
+		vehicle_data["destination"] = destination
+		vehicle_data["cleaning_certificates"] = {bc.name: cleaning_certificate}
 
-	order.insert(ignore_permissions=True)
-	# Booking Code is single-use: flip to Used so subsequent scans are rejected.
-	frappe.db.set_value("Booking Code", bc.name, "state", "Used", update_modified=False)
+	from container_depot.operations.order_generation import make_order
+
+	order_name = make_order(bc.booking, [bc.name], vehicle_data=vehicle_data, sst=sst)
+	order_doctype = "Order Bongkar" if bc.direction == "Tank In" else "Order Muat"
 	_log_sst_activity(
 		sst,
 		"Order Issued",
 		booking_code=bc.name,
-		payload={"order": order.name, "doctype": order.doctype},
+		payload={"order": order_name, "doctype": order_doctype},
 	)
 	return {
 		"success": True,
-		"order_doctype": order.doctype,
-		"order_name": order.name,
+		"order_doctype": order_doctype,
+		"order_name": order_name,
 		"booking_code": bc.name,
 		"qr_payload": f"OAK|{bc.name}",
+	}
+
+
+@frappe.whitelist()
+def get_booking_pending_containers(booking):
+	"""Containers on a booking still issuable onto a bon: Active, unexpired
+	Booking Codes. Drives the DMS 'Generate Bon / Order' dialog.
+
+	Read-only; left unrestricted on HTTP method so the desk's ``frappe.call``
+	(which POSTs by default) can reach it."""
+	_require_authenticated_user()
+	if not booking or not frappe.db.exists("Isotank Booking", booking):
+		frappe.throw(_("Booking {0} not found.").format(booking))
+	return frappe.get_all(
+		"Booking Code",
+		filters={"booking": booking, "state": "Active", "expires_at": (">", now_datetime())},
+		fields=["name as booking_code", "container", "container_no", "status_tag", "direction"],
+		order_by="container_no",
+	)
+
+
+@frappe.whitelist(methods=["POST"])
+def generate_order_from_booking(booking, selected_codes, vehicle_data=None):
+	"""DMS desktop entry point: issue ONE bon (1..3 containers) from a booking.
+
+	Thin wrapper over the shared atomic core so the SST and DMS paths can never
+	drift apart.
+	"""
+	_require_authenticated_user()
+	from container_depot.operations.order_generation import make_order
+
+	vd = vehicle_data
+	if isinstance(vd, str) and vd:
+		vd = json.loads(vd)
+	order_name = make_order(booking, selected_codes, vehicle_data=vd or {})
+	direction = frappe.db.get_value("Isotank Booking", booking, "direction")
+	return {
+		"success": True,
+		"order_doctype": "Order Bongkar" if direction == "Tank In" else "Order Muat",
+		"order_name": order_name,
 	}
 
 

@@ -45,7 +45,6 @@ class IsotankBooking(Document):
 		self._sync_lift_type()
 		self._resolve_containers()
 		self._sync_payment_type_from_contract()
-		self._validate_appointments()
 		if self.direction == "Tank Out":
 			self._validate_tank_out_gating()
 
@@ -68,6 +67,14 @@ class IsotankBooking(Document):
 			update_modified=False,
 		)
 		self._auto_invoice()
+
+	def on_cancel(self):
+		# Status is system-managed; a cancelled booking voids its still-Active codes.
+		self.db_set("booking_status", "Cancelled", update_modified=False)
+		for code in frappe.get_all(
+			"Booking Code", filters={"booking": self.name, "state": "Active"}, pluck="name"
+		):
+			frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
 
 	def on_cancel(self):
 		self._discard_unpaid_draft_invoice()
@@ -145,7 +152,7 @@ class IsotankBooking(Document):
 			"container_no": container_no,
 			"container_type": container_type or "ISO Tank",
 			"status": "Booked",
-			"principal": self.tank_principal or self.customer,
+			"principal": self.customer,
 		})
 		doc.insert(ignore_permissions=True)
 		return doc.name
@@ -176,16 +183,6 @@ class IsotankBooking(Document):
 		attached later."""
 		if not self.do_reference:
 			frappe.throw(_("A Delivery Order reference is required to confirm this booking."))
-
-	def _validate_appointments(self):
-		"""Container appointment dates must not be in the past."""
-		for item in self.items or []:
-			if item.appointment_date and getdate(item.appointment_date) < getdate(today()):
-				frappe.throw(
-					_("Appointment date {0} for {1} is in the past.").format(
-						item.appointment_date, item.container_no or "(no number)"
-					)
-				)
 
 	# ---- billing --------------------------------------------------------
 	def _booking_amount(self):
@@ -411,7 +408,10 @@ class IsotankBooking(Document):
 				{"booking_status": "Pending Payment", "block_reason": None},
 				update_modified=False,
 			)
-			frappe.db.commit()
+			# Persist across the about-to-throw rollback. Skipped under tests, where
+			# a mid-test commit would break FrappeTestCase isolation and leak data.
+			if not frappe.flags.in_test:
+				frappe.db.commit()
 		frappe.throw(reason)
 
 	def _enforce_top_credit(self, contract):
@@ -459,7 +459,10 @@ class IsotankBooking(Document):
 				{"booking_status": "Blocked", "block_reason": reason},
 				update_modified=False,
 			)
-			frappe.db.commit()
+			# Persist across the about-to-throw rollback. Skipped under tests, where
+			# a mid-test commit would break FrappeTestCase isolation and leak data.
+			if not frappe.flags.in_test:
+				frappe.db.commit()
 		frappe.throw(reason)
 
 	def _issue_booking_codes(self):
