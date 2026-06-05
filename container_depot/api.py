@@ -699,9 +699,9 @@ def handle_repair_status(message, from_user, session_id):
 	response = f"*Repair Status: {container_no}*\n"
 	response += f"Current Status: {(doc.status or '').replace('_', ' ')}\n"
 
-	if doc.status == "Needs_Repair":
-		response += f"\n⚠️ Container needs repair.\nLocation: {doc.current_location or 'Workshop'}\n"
-	elif doc.status == "Repairing":
+	if doc.status == "Awaiting_MR_Approval":
+		response += f"\n⚠️ Container awaiting M&R approval.\nLocation: {doc.current_location or 'Workshop'}\n"
+	elif doc.status == "Repair_In_Progress":
 		response += f"\n🔧 Repair in progress.\nLocation: {doc.current_location or 'Workshop'}\n"
 	else:
 		response += "\nNo active repair work.\n"

@@ -1,0 +1,291 @@
+"""ESS PWA read endpoints — Feature F1 (Tank Inventory & Live Status).
+
+All endpoints are GET, authenticated (Guest rejected via the shared
+``_require_authenticated_user`` guard), and **permission-aware**: container
+reads go through ``frappe.get_list`` / ``frappe.has_permission``, so the
+Custom DocPerm matrix seeded by ``install.py`` *and* any ``User Permission``
+(e.g. depot scoping on ``Container.depot``) filter the results automatically.
+There is no permission logic in the PWA.
+
+Status is **derived server-side** here — the raw ``Container.status`` Select
+carries the full lifecycle (normalised in B0: duplicate removed, portal states
+added), but the UI only ever needs five buckets. :func:`derive_status` collapses
+the raw status (kept in sync with the latest Container Movement by
+``Container.on_update``) plus open Repair / Cleaning / Inspection records into
+those five canonical buckets.
+"""
+
+from __future__ import annotations
+
+import frappe
+from frappe.utils import add_to_date, cint, getdate, today
+
+from container_depot.api import _require_authenticated_user
+from container_depot.tasks import PT_REMINDER_DAYS
+
+# Canonical ESS status buckets (keys are stable; labels live in the front-end).
+BUCKETS = ("in_depot", "cleaning", "repair_survey", "ready", "gate_out")
+
+# Raw statuses that are NOT physically in the depot yet and must be excluded from
+# live inventory counts/lists. `Booked` = a tank reserved by an Isotank Booking
+# whose Container master was created at booking time but has not yet gated in.
+EXCLUDED_FROM_INVENTORY = ("Booked",)
+
+# Open-state filters for the service doctypes that override a tank's bucket.
+OPEN_CLEANING = ("Pending", "In_Progress")
+OPEN_REPAIR = ("Draft", "Pending Approval", "Approved", "In Progress")
+OPEN_INSPECTION = ("Draft", "Submitted")
+
+# Raw Container.status values mapped to each canonical UI bucket. The status
+# enum was normalised (duplicate `In_Workshop` removed; portal lifecycle states
+# added) — these sets keep the five buckets stable across that change.
+_GATE_OUT_RAW = {"Gate_Out", "Released_Pending_Pickup"}
+_READY_RAW = {"Ready_For_Release", "Ready_For_Service", "Cleaning_Cert_Issued", "Empty_Clean"}
+_CLEANING_RAW = {
+	"Needs_Cleaning",
+	"Pending_Cleaning",
+	"Cleaning_In_Progress",
+	"Cleaning_Completed",
+	"Awaiting_Recleaning_Approval",
+	"Recleaning_In_Progress",
+}
+_REPAIR_RAW = {
+	"Pending_Survey",
+	"Survey_In_Progress",
+	"Awaiting_MR_Approval",
+	"Repair_In_Progress",
+	"Inspecting",
+}
+
+# Fields surfaced in the tank list (kept lean for the < 2s/1000-tank target).
+_LIST_FIELDS = [
+	"name",
+	"container_no",
+	"container_type",
+	"principal",
+	"depot",
+	"yard_zone",
+	"status",
+]
+
+
+def derive_status(raw_status, open_cleaning=False, open_repair=False, open_inspection=False):
+	"""Collapse a raw Container.status + open-service signals into one bucket.
+
+	Precedence: explicit terminal/ready states win, then an open Cleaning Order,
+	then any open Repair Order / Inspection, then the raw service states, else
+	the tank is simply in the depot.
+	"""
+	if raw_status in _GATE_OUT_RAW:
+		return "gate_out"
+	if raw_status in _READY_RAW:
+		return "ready"
+	if open_cleaning or raw_status in _CLEANING_RAW:
+		return "cleaning"
+	if open_repair or open_inspection or raw_status in _REPAIR_RAW:
+		return "repair_survey"
+	return "in_depot"
+
+
+def _open_service_sets(names):
+	"""Return (cleaning, repair, inspection) sets of container names with an open
+	order of each type, restricted to ``names`` (already permission-filtered)."""
+	if not names:
+		return set(), set(), set()
+	cleaning = set(
+		frappe.get_all(
+			"Cleaning Order",
+			filters={"container": ["in", names], "status": ["in", OPEN_CLEANING]},
+			pluck="container",
+		)
+	)
+	repair = set(
+		frappe.get_all(
+			"Repair Order",
+			filters={"container": ["in", names], "status": ["in", OPEN_REPAIR]},
+			pluck="container",
+		)
+	)
+	inspection = set(
+		frappe.get_all(
+			"Inspection",
+			filters={
+				"container": ["in", names],
+				"status": ["in", OPEN_INSPECTION],
+				"docstatus": ["<", 2],
+			},
+			pluck="container",
+		)
+	)
+	return cleaning, repair, inspection
+
+
+def _pt_due_set(names):
+	"""Container names with a due/overdue open Periodic Test, using the same
+	horizon as the daily ``remind_periodic_test_due`` job so counts reconcile."""
+	if not names:
+		return set()
+	horizon = add_to_date(getdate(today()), days=PT_REMINDER_DAYS)
+	rows = frappe.get_all(
+		"Periodic Test",
+		filters={
+			"container": ["in", names],
+			"status": ["not in", ["Completed", "Cancelled"]],
+			"docstatus": ["<", 2],
+		},
+		fields=["container", "due_date"],
+	)
+	return {r.container for r in rows if r.due_date and getdate(r.due_date) <= horizon}
+
+
+@frappe.whitelist(methods=["GET"])
+def get_inventory_summary(depot=None):
+	"""Status-count header + periodic-test-due count, depot-scoped.
+
+	GET /api/v1/ess/inventory-summary
+	"""
+	_require_authenticated_user()
+
+	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
+	if depot:
+		filters["depot"] = depot
+
+	# Permission-aware: User Permissions on Depot (and DocPerms) filter this.
+	containers = frappe.get_list(
+		"Container",
+		filters=filters,
+		fields=["name", "status"],
+		limit_page_length=0,
+	)
+	names = [c.name for c in containers]
+	cleaning, repair, inspection = _open_service_sets(names)
+	pt_due = _pt_due_set(names)
+
+	counts = {b: 0 for b in BUCKETS}
+	for c in containers:
+		bucket = derive_status(
+			c.status, c.name in cleaning, c.name in repair, c.name in inspection
+		)
+		counts[bucket] += 1
+
+	return {
+		"success": True,
+		"counts": counts,
+		"periodic_test_due": len(pt_due),
+		"total": len(names),
+	}
+
+
+@frappe.whitelist(methods=["GET"])
+def get_tank_list(
+	search=None, principal=None, status=None, yard_zone=None, depot=None, start=0, page_length=50
+):
+	"""Searchable / filterable / paginated tank list with derived status.
+
+	A custom endpoint (not /api/resource) is required because the status filter
+	and the rows themselves expose the *derived* bucket, which has no column to
+	filter on server-side. Container reads remain permission-aware.
+
+	GET /api/v1/ess/tank-list
+	"""
+	_require_authenticated_user()
+
+	start = cint(start)
+	page_length = cint(page_length) or 50
+	# Tolerate client quirks where an absent filter arrives as "" / "undefined".
+	if status in (None, "", "undefined", "null"):
+		status = None
+	elif status not in BUCKETS:
+		frappe.throw(frappe._("Invalid status filter: {0}").format(status), frappe.ValidationError)
+
+	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
+	if principal:
+		filters["principal"] = principal
+	if yard_zone:
+		filters["yard_zone"] = yard_zone
+	if depot:
+		filters["depot"] = depot
+	if search:
+		# PRD: search by tank number.
+		filters["container_no"] = ["like", f"%{search.strip()}%"]
+
+	rows = frappe.get_list(
+		"Container",
+		filters=filters,
+		fields=_LIST_FIELDS,
+		order_by="container_no asc",
+		limit_page_length=0,
+	)
+	names = [r.name for r in rows]
+	cleaning, repair, inspection = _open_service_sets(names)
+	pt_due = _pt_due_set(names)
+
+	items = []
+	for r in rows:
+		bucket = derive_status(
+			r.status, r.name in cleaning, r.name in repair, r.name in inspection
+		)
+		if status and bucket != status:
+			continue
+		items.append(
+			{
+				"name": r.name,
+				"container_no": r.container_no,
+				"container_type": r.container_type,
+				"principal": r.principal,
+				"depot": r.depot,
+				"yard_zone": r.yard_zone,
+				"status": bucket,
+				"pt_due": r.name in pt_due,
+			}
+		)
+
+	total = len(items)
+	return {
+		"success": True,
+		"total": total,
+		"start": start,
+		"page_length": page_length,
+		"items": items[start : start + page_length],
+	}
+
+
+@frappe.whitelist(methods=["GET"])
+def get_tank_detail(container):
+	"""Single-tank detail with derived status + periodic-test-due flag.
+
+	GET /api/v1/ess/tank-detail
+	"""
+	_require_authenticated_user()
+	# Enforces both DocPerm read and any User Permission (depot) on this record.
+	frappe.has_permission("Container", doc=container, ptype="read", throw=True)
+
+	doc = frappe.get_doc("Container", container)
+	cleaning, repair, inspection = _open_service_sets([doc.name])
+	pt_due = _pt_due_set([doc.name])
+	bucket = derive_status(
+		doc.status, doc.name in cleaning, doc.name in repair, doc.name in inspection
+	)
+
+	return {
+		"success": True,
+		"name": doc.name,
+		"container_no": doc.container_no,
+		"container_type": doc.container_type,
+		"size": doc.size,
+		"principal": doc.principal,
+		"depot": doc.depot,
+		"yard_zone": doc.yard_zone,
+		"current_location": doc.current_location,
+		"last_cargo": doc.last_cargo,
+		"capacity": doc.capacity,
+		"tare_weight": doc.tare_weight,
+		"max_gross_weight": doc.max_gross_weight,
+		"last_test_date": str(doc.last_test_date) if doc.last_test_date else None,
+		"next_pt_due": str(doc.next_pt_due) if doc.next_pt_due else None,
+		"serial_no": doc.serial_no,
+		"eir_in_date": str(doc.eir_in_date) if doc.eir_in_date else None,
+		"eir_out_date": str(doc.eir_out_date) if doc.eir_out_date else None,
+		"status": bucket,
+		"pt_due": bool(pt_due),
+	}

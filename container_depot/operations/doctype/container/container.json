@@ -12,6 +12,7 @@
     "status",
     "column_break_1",
     "principal",
+    "shipper",
     "depot",
     "current_location",
     "yard_zone",
@@ -21,11 +22,19 @@
     "inspection_info",
     "eir_in_date",
     "eir_out_date",
+    "storage_billed_until",
     "column_break_2",
     "last_cargo",
     "cleaning_status",
     "repair_status",
     "certification_status",
+    "seals_section",
+    "seal_manhole",
+    "seal_airline",
+    "seal_bottom_outlet",
+    "column_break_seal",
+    "seal_top_discharge",
+    "seal_vapour_valve",
     "tank_spec_section",
     "serial_no",
     "manufacture_date",
@@ -69,7 +78,7 @@
       "fieldname": "status",
       "fieldtype": "Select",
       "label": "Status",
-      "options": "Available\nGate_In\nInspecting\nNeeds_Cleaning\nNeeds_Repair\nIn_Workshop\nPending_Repair\nPending_Survey\nPending_Cleaning\nCleaning_In_Progress\nRepair_In_Progress\nSurvey_In_Progress\nReady_For_Service\nReady_For_Release\nGate_Out\nIn_Workshop",
+      "options": "Booked\nAvailable\nGate_In\nInspecting\nEmpty_Clean\nNeeds_Cleaning\nPending_Cleaning\nCleaning_In_Progress\nCleaning_Completed\nPending_Survey\nSurvey_In_Progress\nAwaiting_MR_Approval\nRepair_In_Progress\nAwaiting_Recleaning_Approval\nRecleaning_In_Progress\nCleaning_Cert_Issued\nReady_For_Release\nReleased_Pending_Pickup\nGate_Out\nReady_For_Service",
       "reqd": 1
     },
     {
@@ -80,6 +89,13 @@
       "fieldname": "principal",
       "fieldtype": "Link",
       "label": "Principal (Owner)",
+      "options": "Customer"
+    },
+    {
+      "description": "Shipper for the current release cycle (filled at Release DO).",
+      "fieldname": "shipper",
+      "fieldtype": "Link",
+      "label": "Shipper",
       "options": "Customer"
     },
     {
@@ -131,6 +147,13 @@
       "label": "EIR-Out Date"
     },
     {
+      "description": "Watermark: storage already billed up to this date. Advanced by consolidated billing so re-runs never double-charge storage days.",
+      "fieldname": "storage_billed_until",
+      "fieldtype": "Date",
+      "label": "Storage Billed Until",
+      "read_only": 1
+    },
+    {
       "fieldname": "column_break_2",
       "fieldtype": "Column Break"
     },
@@ -156,6 +179,42 @@
       "fieldtype": "Select",
       "label": "Certification Status",
       "options": "Not_Required\nPending\nCompleted"
+    },
+    {
+      "collapsible": 1,
+      "description": "Seal numbers recorded at survey / release (ISO tank 5-point).",
+      "fieldname": "seals_section",
+      "fieldtype": "Section Break",
+      "label": "Seals"
+    },
+    {
+      "fieldname": "seal_manhole",
+      "fieldtype": "Data",
+      "label": "Manhole Seal"
+    },
+    {
+      "fieldname": "seal_airline",
+      "fieldtype": "Data",
+      "label": "Airline Seal"
+    },
+    {
+      "fieldname": "seal_bottom_outlet",
+      "fieldtype": "Data",
+      "label": "Bottom Outlet Seal"
+    },
+    {
+      "fieldname": "column_break_seal",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "seal_top_discharge",
+      "fieldtype": "Data",
+      "label": "Top Discharge Seal"
+    },
+    {
+      "fieldname": "seal_vapour_valve",
+      "fieldtype": "Data",
+      "label": "Vapour Valve Seal"
     },
     {
       "collapsible": 1,

@@ -1,0 +1,80 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "CPU-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "customer",
+    "user",
+    "column_break_1",
+    "portal_role",
+    "approval_status",
+    "details_section",
+    "phone",
+    "added_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Customer",
+      "options": "Customer",
+      "reqd": 1
+    },
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "User",
+      "options": "User",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Intra-company role for this portal user.",
+      "fieldname": "portal_role",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Portal Role",
+      "options": "Admin\nOperations\nFinance\nViewer"
+    },
+    {
+      "default": "Pending Approval",
+      "fieldname": "approval_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Approval Status",
+      "options": "Pending Approval\nActive\nInactive"
+    },
+    {
+      "fieldname": "details_section",
+      "fieldtype": "Section Break",
+      "label": "Details"
+    },
+    {
+      "fieldname": "phone",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "fieldname": "added_on",
+      "fieldtype": "Date",
+      "label": "Added On"
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "Customer Portal User",
+  "search_fields": "customer, user, portal_role",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

@@ -11,6 +11,17 @@
     "container",
     "container_no",
     "ex_vessel",
+    "commercial_section",
+    "order_type",
+    "quantity",
+    "price_per_container",
+    "column_break_comm",
+    "total_amount",
+    "expected_date",
+    "vessel_name",
+    "port_name",
+    "notes",
+    "sales_invoice",
     "truck_section",
     "truck_plate",
     "transporter",
@@ -69,6 +80,64 @@
       "fieldname": "ex_vessel",
       "fieldtype": "Data",
       "label": "Ex Vessel"
+    },
+    {
+      "fieldname": "commercial_section",
+      "fieldtype": "Section Break",
+      "label": "Order & Billing"
+    },
+    {
+      "fieldname": "order_type",
+      "fieldtype": "Select",
+      "label": "Order Type",
+      "options": "\nLift On\nLift Off\nPeriodic Test\nLeak Test\nHaulage"
+    },
+    {
+      "fieldname": "quantity",
+      "fieldtype": "Int",
+      "label": "Quantity (ctr)"
+    },
+    {
+      "fieldname": "price_per_container",
+      "fieldtype": "Currency",
+      "label": "Price per Container"
+    },
+    {
+      "fieldname": "column_break_comm",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "total_amount",
+      "fieldtype": "Currency",
+      "label": "Total Amount",
+      "read_only": 1
+    },
+    {
+      "fieldname": "expected_date",
+      "fieldtype": "Date",
+      "label": "Expected Date"
+    },
+    {
+      "fieldname": "vessel_name",
+      "fieldtype": "Data",
+      "label": "Vessel Name"
+    },
+    {
+      "fieldname": "port_name",
+      "fieldtype": "Data",
+      "label": "Port Name"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    },
+    {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
     },
     {
       "fieldname": "truck_section",

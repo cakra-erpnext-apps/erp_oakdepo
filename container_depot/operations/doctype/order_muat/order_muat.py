@@ -4,7 +4,9 @@ from frappe.model.document import Document
 from frappe.utils import getdate, today
 
 from container_depot.operations.doctype.order_bongkar.order_bongkar import (
+	_compute_amount,
 	_fill_qr_image,
+	_invoice_order,
 	_validate_booking_code,
 )
 
@@ -14,6 +16,10 @@ class OrderMuat(Document):
 		_validate_booking_code(self, "Tank Out")
 		self._validate_cleaning_cert()
 		_fill_qr_image(self)
+		_compute_amount(self)
+
+	def on_submit(self):
+		_invoice_order(self)
 
 	def _validate_cleaning_cert(self):
 		if not self.cleaning_certificate:

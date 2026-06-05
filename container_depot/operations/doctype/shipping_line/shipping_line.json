@@ -1,0 +1,41 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "field:shipping_line_name",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "shipping_line_name",
+    "code",
+    "is_active"
+  ],
+  "fields": [
+    {
+      "bold": 1,
+      "fieldname": "shipping_line_name",
+      "fieldtype": "Data",
+      "label": "Shipping Line",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "code",
+      "fieldtype": "Data",
+      "label": "SCAC / Code"
+    },
+    {
+      "default": "1",
+      "fieldname": "is_active",
+      "fieldtype": "Check",
+      "label": "Active"
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "Shipping Line",
+  "search_fields": "shipping_line_name, code",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "shipping_line_name"
+}

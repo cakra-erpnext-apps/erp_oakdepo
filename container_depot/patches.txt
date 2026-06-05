@@ -8,3 +8,12 @@ container_depot.patches.v0_6.seed_depots
 container_depot.patches.v0_6.canonicalize_cleaning_types
 container_depot.patches.v0_6.seed_eir_codes
 container_depot.patches.v0_6.migrate_damage_component
+container_depot.patches.v0_9.canonicalize_container_status
+container_depot.patches.v0_9.seed_b2_masters
+container_depot.patches.v0_9.seed_ppn_template
+container_depot.patches.v0_9.seed_surveyor_companies
+container_depot.patches.v0_11.seed_item_groups
+container_depot.patches.v0_11.seed_price_lists
+container_depot.patches.v0_11.seed_service_items
+container_depot.patches.v0_11.seed_product_bundles
+container_depot.patches.v0_11.seed_contract_template

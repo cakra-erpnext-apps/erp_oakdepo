@@ -1,0 +1,10 @@
+{
+  "name": "Release DO Format",
+  "doc_type": "Release DO",
+  "module": "Operations",
+  "standard": "Yes",
+  "custom_format": 1,
+  "print_format_type": "Jinja Template",
+  "doctype": "Print Format",
+  "html": "<div class=\"release-do\">\n  <h2 style=\"text-align:center;margin-bottom:0\">RELEASE / DELIVERY ORDER</h2>\n  <p style=\"text-align:center;margin-top:2px\"><strong>{{ doc.name }}</strong> &middot; {{ frappe.utils.formatdate(doc.release_date) }}</p>\n  <hr>\n  <table class=\"table table-sm\" style=\"width:100%\">\n    <tr>\n      <td style=\"width:50%\"><strong>Tank Owner:</strong> {{ doc.tank_owner or '-' }}</td>\n      <td><strong>Depot:</strong> {{ doc.depot or '-' }}</td>\n    </tr>\n    <tr>\n      <td><strong>Shipper:</strong> {{ doc.shipper or '-' }}</td>\n      <td><strong>PIC:</strong> {{ doc.shipper_contact or '-' }}</td>\n    </tr>\n    <tr>\n      <td><strong>Cargo:</strong> {{ doc.cargo or '-' }}</td>\n      <td><strong>Status:</strong> {{ doc.status }}</td>\n    </tr>\n    <tr>\n      <td><strong>POL:</strong> {{ doc.pol or '-' }}</td>\n      <td><strong>POD:</strong> {{ doc.pod or '-' }} &middot; <strong>ETD:</strong> {{ frappe.utils.formatdate(doc.etd) if doc.etd else '-' }}</td>\n    </tr>\n  </table>\n  <table class=\"table table-bordered\" style=\"width:100%;margin-top:8px\">\n    <thead><tr><th>#</th><th>Container No</th><th>Seal No</th><th>Cargo Weight (kg)</th></tr></thead>\n    <tbody>\n      {% for row in doc.containers %}\n      <tr>\n        <td>{{ loop.index }}</td>\n        <td>{{ row.container_no or row.container }}</td>\n        <td>{{ row.seal or '-' }}</td>\n        <td>{{ row.cargo_weight or '-' }}</td>\n      </tr>\n      {% endfor %}\n    </tbody>\n  </table>\n  {% if doc.notes %}<p><strong>Notes:</strong> {{ doc.notes }}</p>{% endif %}\n</div>"
+}

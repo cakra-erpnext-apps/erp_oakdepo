@@ -6,7 +6,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# ESS PWA frontend (Vite) — dependencies & generated typings
+# Frontend (ESS PWA) — node deps and generated typings
 frontend/node_modules/
 frontend/dist/
 frontend/auto-imports.d.ts

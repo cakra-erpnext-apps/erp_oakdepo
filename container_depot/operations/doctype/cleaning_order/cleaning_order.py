@@ -54,12 +54,41 @@ class CleaningOrder(Document):
 		return score
 
 	def on_submit(self):
-		"""Update container status when cleaning order is submitted"""
-		if self.container:
-			container = frappe.get_doc("Container", self.container)
+		"""Update container status when cleaning order is submitted."""
+		self._propagate_to_container()
+
+	def on_update_after_submit(self):
+		"""Status / approval edits after submit also drive the container so a
+		re-clean can progress Pending -> In_Progress -> Completed over time."""
+		self._propagate_to_container()
+
+	def _propagate_to_container(self):
+		"""Mirror the cleaning order's progress onto its container.
+
+		Re-cleaning (post-survey) uses the portal lifecycle states; a normal
+		first clean keeps the original behaviour (-> Ready_For_Service).
+		"""
+		if not self.container:
+			return
+		container = frappe.get_doc("Container", self.container)
+
+		if self.is_recleaning:
+			if self.status == "In_Progress":
+				container.cleaning_status = "In_Progress"
+				container.status = "Recleaning_In_Progress"
+			elif self.status == "Completed":
+				container.cleaning_status = "Completed"
+				container.status = "Cleaning_Completed"
+		else:
 			if self.status == "In_Progress":
 				container.cleaning_status = "In_Progress"
 			elif self.status == "Completed":
 				container.cleaning_status = "Completed"
 				container.status = "Ready_For_Service"
+
+		# Controller-driven status change: bypass the manual-transition guard.
+		frappe.flags.in_status_automation = True
+		try:
 			container.save(ignore_permissions=True)
+		finally:
+			frappe.flags.in_status_automation = False

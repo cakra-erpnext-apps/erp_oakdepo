@@ -30,6 +30,13 @@ def _cleanup_customer_world(customer: str):
 	if contracts:
 		frappe.db.delete("Tariff Rate", {"parent": ("in", contracts)})
 		frappe.db.delete("Depot Contract", {"name": ("in", contracts)})
+	# Auto-created draft Cash invoices (B6) — drop drafts so they don't accumulate.
+	frappe.db.delete("Sales Invoice", {"customer": customer, "docstatus": 0})
+	# Pre-arrival (Booked) phantom containers spawned by booking resolution (B6).
+	booked = frappe.get_all("Container", filters={"principal": customer, "status": "Booked"}, pluck="name")
+	if booked:
+		frappe.db.delete("Container Movement", {"container": ("in", booked)})
+		frappe.db.delete("Container", {"name": ("in", booked)})
 	frappe.db.commit()
 
 
@@ -48,14 +55,19 @@ def _make_active_contract(customer: str, *, payment_type: str, credit_limit=0, p
 	return doc.name
 
 
-class TestTopCreditBlock(FrappeTestCase):
+class TestTopAccrual(FrappeTestCase):
+	"""TOP is now postpaid/accrual (B7): bookings submit freely (no credit gate),
+	carry NO per-transaction Sales Invoice, and accrue ``payment_status=Unpaid``
+	until the depot runs consolidated billing."""
+
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
 		cls.customer = ensure_test_customer(CUSTOMER_TOP)
 		_cleanup_customer_world(cls.customer)
+		# Tiny credit limit on purpose — TOP no longer gates on it.
 		cls.contract = _make_active_contract(
-			cls.customer, payment_type="TOP", credit_limit=1_000_000, payment_terms="NET 30"
+			cls.customer, payment_type="TOP", credit_limit=1, payment_terms="NET 30"
 		)
 
 	@classmethod
@@ -70,49 +82,20 @@ class TestTopCreditBlock(FrappeTestCase):
 			"customer": self.customer,
 			"contract": self.contract,
 			"booking_status": "Pending Confirmation",
+			"do_reference": "DO-TOP",
+			"do_document": "/files/do.pdf",
 			"items": [{"container_no": "TANK0000001"}],
 		})
 
-	def test_top_block_over_credit_limit(self):
-		# Stub the outstanding-amount SQL to look "over limit" without seeding invoices.
-		original_sql = frappe.db.sql
-
-		def fake_sql(query, *args, **kwargs):
-			if "SUM(outstanding_amount)" in query and "tabSales Invoice" in query:
-				return [[2_000_000]]
-			return original_sql(query, *args, **kwargs)
-
-		frappe.db.sql = fake_sql
-		try:
-			b = self._booking()
-			b.insert(ignore_permissions=True)
-			with self.assertRaises(frappe.ValidationError):
-				b.submit()
-			b.reload()
-			self.assertEqual(b.booking_status, "Blocked")
-			self.assertIn("credit", (b.block_reason or "").lower())
-		finally:
-			frappe.db.sql = original_sql
-
-	def test_top_block_overdue_invoice(self):
-		original_count = frappe.db.count
-
-		def fake_count(doctype, filters=None, *a, **kw):
-			if doctype == "Sales Invoice" and filters and filters.get("status") == "Overdue":
-				return 1
-			return original_count(doctype, filters=filters, *a, **kw)
-
-		frappe.db.count = fake_count
-		try:
-			b = self._booking()
-			b.insert(ignore_permissions=True)
-			with self.assertRaises(frappe.ValidationError):
-				b.submit()
-			b.reload()
-			self.assertEqual(b.booking_status, "Blocked")
-			self.assertIn("overdue", (b.block_reason or "").lower())
-		finally:
-			frappe.db.count = original_count
+	def test_top_submits_freely_and_accrues(self):
+		b = self._booking()
+		b.insert(ignore_permissions=True)
+		b.submit()  # no credit gate, no Blocked
+		b.reload()
+		self.assertEqual(b.docstatus, 1)
+		self.assertFalse(b.sales_invoice, "TOP booking must NOT create a per-transaction invoice")
+		self.assertEqual(b.payment_status, "Unpaid")
+		self.assertTrue(frappe.db.exists("Booking Code", {"booking": b.name}))
 
 
 class TestCashPaidInvoice(FrappeTestCase):
@@ -128,20 +111,23 @@ class TestCashPaidInvoice(FrappeTestCase):
 		_cleanup_customer_world(cls.customer)
 		super().tearDownClass()
 
-	def test_cash_booking_blocked_without_invoice(self):
+	def test_cash_booking_held_pending_payment_without_invoice(self):
 		b = frappe.get_doc({
 			"doctype": "Isotank Booking",
 			"direction": "Tank In",
 			"customer": self.customer,
 			"contract": self.contract,
 			"booking_status": "Pending Confirmation",
+			"do_reference": "DO-CASH",
 			"items": [{"container_no": "TANK0000002"}],
 		})
 		b.insert(ignore_permissions=True)
 		with self.assertRaises(frappe.ValidationError):
 			b.submit()
 		b.reload()
-		self.assertEqual(b.booking_status, "Blocked")
+		# Cash awaiting payment is parked at Pending Payment, not hard-Blocked.
+		self.assertEqual(b.booking_status, "Pending Payment")
+		self.assertEqual(b.docstatus, 0)
 
 
 class TestTankOutGating(FrappeTestCase):
@@ -223,7 +209,7 @@ class TestTankOutGating(FrappeTestCase):
 		self.assertEqual(b.direction, "Tank Out")
 
 	def test_tank_out_blocked_when_container_not_ready(self):
-		frappe.db.set_value("Container", self.container, "status", "In_Workshop")
+		frappe.db.set_value("Container", self.container, "status", "Repair_In_Progress")
 		try:
 			frappe.db.delete("Cleaning Certificate", {"container": self.container})
 			cert = frappe.get_doc({

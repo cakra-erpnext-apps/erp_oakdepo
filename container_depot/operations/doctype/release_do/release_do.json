@@ -1,0 +1,147 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "RDO-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "tank_owner",
+    "depot",
+    "column_break_1",
+    "status",
+    "release_date",
+    "shipper_section",
+    "shipper",
+    "shipper_contact",
+    "shipper_email",
+    "column_break_2",
+    "cargo",
+    "etd",
+    "pol",
+    "pod",
+    "containers_section",
+    "containers",
+    "notes_section",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Release Delivery Order"
+    },
+    {
+      "fieldname": "tank_owner",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Tank Owner",
+      "options": "Customer",
+      "reqd": 1
+    },
+    {
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Depot",
+      "options": "Depot"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "allow_on_submit": 1,
+      "default": "Issued",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Issued\nPicked Up",
+      "reqd": 1
+    },
+    {
+      "fieldname": "release_date",
+      "fieldtype": "Date",
+      "label": "Release Date"
+    },
+    {
+      "fieldname": "shipper_section",
+      "fieldtype": "Section Break",
+      "label": "Shipper"
+    },
+    {
+      "fieldname": "shipper",
+      "fieldtype": "Data",
+      "label": "Shipper"
+    },
+    {
+      "fieldname": "shipper_contact",
+      "fieldtype": "Data",
+      "label": "Shipper Contact (PIC)"
+    },
+    {
+      "fieldname": "shipper_email",
+      "fieldtype": "Data",
+      "label": "Shipper Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "cargo",
+      "fieldtype": "Data",
+      "label": "Cargo"
+    },
+    {
+      "fieldname": "etd",
+      "fieldtype": "Date",
+      "label": "ETD"
+    },
+    {
+      "fieldname": "pol",
+      "fieldtype": "Data",
+      "label": "Port of Loading"
+    },
+    {
+      "fieldname": "pod",
+      "fieldtype": "Data",
+      "label": "Port of Discharge"
+    },
+    {
+      "fieldname": "containers_section",
+      "fieldtype": "Section Break",
+      "label": "Containers"
+    },
+    {
+      "fieldname": "containers",
+      "fieldtype": "Table",
+      "label": "Containers",
+      "options": "Release DO Item",
+      "reqd": 1
+    },
+    {
+      "fieldname": "notes_section",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "is_submittable": 1,
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "Release DO",
+  "search_fields": "tank_owner, status, shipper",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "tank_owner",
+  "track_changes": 1
+}

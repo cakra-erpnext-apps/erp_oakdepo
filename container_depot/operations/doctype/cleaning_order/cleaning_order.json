@@ -8,6 +8,8 @@
     "order_info",
     "order_id",
     "status",
+    "approval_status",
+    "is_recleaning",
     "column_break_1",
     "container",
     "container_no",
@@ -26,7 +28,8 @@
     "cleaning_end",
     "column_break_4",
     "created_by",
-    "completed_by"
+    "completed_by",
+    "sales_invoice"
   ],
   "fields": [
     {
@@ -42,12 +45,29 @@
       "read_only": 1
     },
     {
+      "allow_on_submit": 1,
       "default": "Pending",
       "fieldname": "status",
       "fieldtype": "Select",
       "label": "Status",
       "options": "Pending\nIn_Progress\nCompleted\nCancelled",
       "reqd": 1
+    },
+    {
+      "allow_on_submit": 1,
+      "default": "Not Required",
+      "description": "Tank Owner approval for a re-cleaning order.",
+      "fieldname": "approval_status",
+      "fieldtype": "Select",
+      "label": "Tank Owner Approval",
+      "options": "Not Required\nPending\nApproved\nRejected"
+    },
+    {
+      "default": "0",
+      "description": "Set when this order is a re-clean after a failed cleanliness survey.",
+      "fieldname": "is_recleaning",
+      "fieldtype": "Check",
+      "label": "Is Re-cleaning"
     },
     {
       "fieldname": "column_break_1",
@@ -153,6 +173,14 @@
       "fieldtype": "Link",
       "label": "Completed By",
       "options": "User"
+    },
+    {
+      "description": "Set when this cleaning is swept into a consolidated/monthly Sales Invoice. Prevents double-billing.",
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
     }
   ],
   "is_submittable": 1,

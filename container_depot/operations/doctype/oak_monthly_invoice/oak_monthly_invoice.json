@@ -1,0 +1,138 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "OMI-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "customer",
+    "category",
+    "period",
+    "column_break_1",
+    "status",
+    "from_date",
+    "to_date",
+    "amounts_section",
+    "subtotal",
+    "ppn",
+    "column_break_2",
+    "total",
+    "sales_invoice",
+    "items_section",
+    "items"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Monthly Invoice"
+    },
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Customer",
+      "options": "Customer",
+      "reqd": 1
+    },
+    {
+      "fieldname": "category",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Category",
+      "options": "Cleaning\nM&R\nStorage\nOrder Service",
+      "reqd": 1
+    },
+    {
+      "description": "Billing period, YYYY-MM.",
+      "fieldname": "period",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Period",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Unpaid",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "Unpaid\nPaid\nCancelled"
+    },
+    {
+      "fieldname": "from_date",
+      "fieldtype": "Date",
+      "label": "From Date",
+      "read_only": 1
+    },
+    {
+      "fieldname": "to_date",
+      "fieldtype": "Date",
+      "label": "To Date",
+      "read_only": 1
+    },
+    {
+      "fieldname": "amounts_section",
+      "fieldtype": "Section Break",
+      "label": "Amounts"
+    },
+    {
+      "fieldname": "subtotal",
+      "fieldtype": "Currency",
+      "label": "Subtotal",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ppn",
+      "fieldtype": "Currency",
+      "label": "PPN (11%)",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "total",
+      "fieldtype": "Currency",
+      "label": "Total",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
+    },
+    {
+      "fieldname": "items_section",
+      "fieldtype": "Section Break",
+      "label": "Line Items"
+    },
+    {
+      "fieldname": "items",
+      "fieldtype": "Table",
+      "label": "Items",
+      "options": "OAK Monthly Invoice Item"
+    }
+  ],
+  "is_submittable": 1,
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "OAK Monthly Invoice",
+  "search_fields": "customer, period, category, status",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "customer",
+  "track_changes": 1
+}

@@ -1,0 +1,75 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "OBR-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "customer",
+    "from_date",
+    "to_date",
+    "column_break_1",
+    "sales_invoice",
+    "total",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Customer",
+      "options": "Customer",
+      "reqd": 1
+    },
+    {
+      "description": "Optional. Leave blank to bill everything unbilled up to To Date / today.",
+      "fieldname": "from_date",
+      "fieldtype": "Date",
+      "label": "From Date"
+    },
+    {
+      "description": "Optional. Defaults to today.",
+      "fieldname": "to_date",
+      "fieldtype": "Date",
+      "label": "To Date"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "The consolidated draft Sales Invoice generated on submit.",
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
+    },
+    {
+      "fieldname": "total",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Total (incl. PPN)",
+      "read_only": 1
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "is_submittable": 1,
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "OAK Billing Run",
+  "permissions": [],
+  "search_fields": "customer, sales_invoice",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "customer",
+  "track_changes": 1
+}

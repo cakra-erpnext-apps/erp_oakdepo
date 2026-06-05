@@ -1,0 +1,85 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "field:surveyor_name",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "surveyor_name",
+    "is_active",
+    "column_break_1",
+    "rating",
+    "contact_section",
+    "contact_person",
+    "email",
+    "column_break_2",
+    "phone",
+    "specialty"
+  ],
+  "fields": [
+    {
+      "bold": 1,
+      "fieldname": "surveyor_name",
+      "fieldtype": "Data",
+      "label": "Surveyor Company",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "is_active",
+      "fieldtype": "Check",
+      "label": "Active"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Performance rating 0-5.",
+      "fieldname": "rating",
+      "fieldtype": "Float",
+      "label": "Rating",
+      "precision": "1"
+    },
+    {
+      "fieldname": "contact_section",
+      "fieldtype": "Section Break",
+      "label": "Contact"
+    },
+    {
+      "fieldname": "contact_person",
+      "fieldtype": "Data",
+      "label": "Contact Person"
+    },
+    {
+      "fieldname": "email",
+      "fieldtype": "Data",
+      "label": "Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "phone",
+      "fieldtype": "Data",
+      "label": "Phone"
+    },
+    {
+      "fieldname": "specialty",
+      "fieldtype": "Small Text",
+      "label": "Specialty"
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "Surveyor Company",
+  "search_fields": "surveyor_name, contact_person, email",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "surveyor_name",
+  "track_changes": 1
+}

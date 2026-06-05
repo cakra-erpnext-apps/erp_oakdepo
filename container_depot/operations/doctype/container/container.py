@@ -2,6 +2,8 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 
+from container_depot.state_machine import assert_transition
+
 
 class Container(Document):
 	def validate(self):
@@ -11,6 +13,13 @@ class Container(Document):
 			cleaned = self.container_no.replace("-", "").replace(" ", "").upper()
 			if len(cleaned) != 11:
 				frappe.throw(f"Container number must be 11 characters (ISO format). Got: {len(cleaned)}")
+
+		# Guard manual status transitions against the canonical state machine.
+		# Internal automation (Repair/Cleaning/Inspection controllers) and
+		# migrations bypass via frappe.flags.in_status_automation.
+		if not self.is_new() and self.has_value_changed("status"):
+			previous = self.get_doc_before_save()
+			assert_transition(previous.status if previous else None, self.status)
 
 	def before_save(self):
 		"""Auto-format container number"""

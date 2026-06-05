@@ -1,23 +1,32 @@
 {
   "actions": [],
   "allow_import": 1,
-  "autoname": "Prompt",
+  "autoname": "",
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
     "header_section",
     "direction",
+    "lift_type",
     "booking_status",
     "column_break_1",
     "customer",
     "depot",
     "contract",
     "payment_type",
+    "ownership_section",
+    "ownership",
+    "shipping_line",
+    "tank_principal",
+    "column_break_own",
+    "do_reference",
+    "do_document",
     "commercial_section",
     "job_reference_no",
     "agent",
     "column_break_2",
     "sales_invoice",
+    "payment_status",
     "block_reason",
     "items_section",
     "items"
@@ -36,6 +45,14 @@
       "label": "Direction",
       "options": "Tank In\nTank Out",
       "reqd": 1
+    },
+    {
+      "description": "Auto-derived from Direction (billing/crane view): Tank In = Lift Off (drop at depot), Tank Out = Lift On (take from depot).",
+      "fieldname": "lift_type",
+      "fieldtype": "Select",
+      "label": "Lift Type",
+      "options": "\nLift On\nLift Off",
+      "read_only": 1
     },
     {
       "default": "Pending Payment",
@@ -65,14 +82,15 @@
       "fieldtype": "Link",
       "in_standard_filter": 1,
       "label": "Depot",
-      "options": "Depot"
+      "options": "Depot",
+      "reqd": 1
     },
     {
+      "description": "Optional. Leave empty for a walk-in Cash booking (no standing contract); the Cashier marks the Sales Invoice Paid to release the booking code.",
       "fieldname": "contract",
       "fieldtype": "Link",
       "label": "Contract",
-      "options": "Depot Contract",
-      "reqd": 1
+      "options": "Depot Contract"
     },
     {
       "fetch_from": "contract.payment_type",
@@ -80,6 +98,49 @@
       "fieldtype": "Data",
       "label": "Payment Type",
       "read_only": 1
+    },
+    {
+      "fieldname": "ownership_section",
+      "fieldtype": "Section Break",
+      "label": "Ownership & Delivery Order"
+    },
+    {
+      "description": "COC = Carrier Owned Container (shipping line owns); SOC = Shipper Owned Container (tank principal owns).",
+      "fieldname": "ownership",
+      "fieldtype": "Select",
+      "label": "Ownership",
+      "options": "\nCOC\nSOC"
+    },
+    {
+      "depends_on": "eval:doc.ownership=='COC'",
+      "fieldname": "shipping_line",
+      "fieldtype": "Link",
+      "label": "Shipping Line",
+      "options": "Shipping Line"
+    },
+    {
+      "depends_on": "eval:doc.ownership=='SOC'",
+      "fieldname": "tank_principal",
+      "fieldtype": "Link",
+      "label": "Tank Principal",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "column_break_own",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Delivery Order reference — required before Submit to confirm the booking (both Lift On and Lift Off). A draft may be saved without it.",
+      "fieldname": "do_reference",
+      "fieldtype": "Data",
+      "label": "DO Reference",
+      "mandatory_depends_on": "eval:doc.docstatus==1"
+    },
+    {
+      "description": "Scan/PDF of the Delivery Order. Optional — may be attached later.",
+      "fieldname": "do_document",
+      "fieldtype": "Attach",
+      "label": "DO Document"
     },
     {
       "fieldname": "commercial_section",
@@ -105,6 +166,17 @@
       "fieldtype": "Link",
       "label": "Sales Invoice",
       "options": "Sales Invoice"
+    },
+    {
+      "default": "Unpaid",
+      "description": "TOP bookings accrue 'Unpaid' until the depot runs consolidated billing (then 'Invoiced'). Cash bookings are 'Paid' at submit.",
+      "fieldname": "payment_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Payment Status",
+      "options": "Unpaid\nInvoiced\nPaid",
+      "read_only": 1
     },
     {
       "fieldname": "block_reason",

@@ -64,5 +64,10 @@ class RepairOrder(Document):
 			container_doc.status = "Ready_For_Service"
 		elif self.status == "Cancelled":
 			container_doc.repair_status = "Not_Required"
-			
-		container_doc.save(ignore_permissions=True)
+
+		# Controller-driven status change: bypass the manual-transition guard.
+		frappe.flags.in_status_automation = True
+		try:
+			container_doc.save(ignore_permissions=True)
+		finally:
+			frappe.flags.in_status_automation = False

@@ -7,11 +7,35 @@ app_description = "Container and ISO Tank Management System"
 app_email = "info@oakdepot.com"
 app_license = "MIT"
 
+# Required apps
+# -------------
+# ERPNext is a hard dependency: the app imports erpnext (e.g. invoicing.py uses
+# erpnext.controllers.accounts_controller) and builds on ERPNext selling masters
+# (Item / Price List / Product Bundle / Sales Invoice). Declaring it here makes
+# `bench install-app` fail fast on a frappe-only site instead of erroring later.
+required_apps = ["erpnext"]
+
 # Installation
 # ------------
 
 after_install = "container_depot.install.after_install"
 after_migrate = "container_depot.install.after_migrate"
+
+# Document Events
+# ---------------
+
+doc_events = {
+	"Customer Portal User": {
+		"after_insert": "container_depot.portal.sync_portal_user_permission",
+		"on_update": "container_depot.portal.sync_portal_user_permission",
+	},
+	# Keep an Isotank Booking's payment_status in step with its Sales Invoice when
+	# a payment is recorded / reversed. Scoped to bookings only.
+	"Payment Entry": {
+		"on_submit": "container_depot.operations.doctype.isotank_booking.isotank_booking.on_payment_entry_change",
+		"on_cancel": "container_depot.operations.doctype.isotank_booking.isotank_booking.on_payment_entry_change",
+	},
+}
 
 # Scheduled Jobs
 # --------------
@@ -22,10 +46,15 @@ scheduler_events = {
 	],
 	"daily": [
 		"container_depot.tasks.remind_periodic_test_due",
+		"container_depot.tasks.notify_customers",
 	],
 	"cron": {
 		"*/5 * * * *": [
 			"container_depot.tasks.mark_stale_sst_heartbeats",
+		],
+		# 02:00 on the 1st of each month: bill the prior month.
+		"0 2 1 * *": [
+			"container_depot.tasks.generate_monthly_invoices",
 		],
 	},
 }
@@ -44,6 +73,10 @@ website_route_rules = [
 	{"from_route": "/api/v1/sst/issue-order", "to_route": "container_depot.api.sst_issue_order"},
 	{"from_route": "/api/v1/sst/heartbeat", "to_route": "container_depot.api.sst_heartbeat"},
 	{"from_route": "/api/v1/inspection/offline-batch", "to_route": "container_depot.api.upload_inspection_offline_batch"},
+	# ESS PWA read endpoints (F1 — Tank Inventory & Live Status)
+	{"from_route": "/api/v1/ess/inventory-summary", "to_route": "container_depot.ess.inventory.get_inventory_summary"},
+	{"from_route": "/api/v1/ess/tank-list", "to_route": "container_depot.ess.inventory.get_tank_list"},
+	{"from_route": "/api/v1/ess/tank-detail", "to_route": "container_depot.ess.inventory.get_tank_detail"},
 ]
 
 # Branding / Logo (env-driven)

@@ -19,6 +19,14 @@
     "order_ref",
     "reference_eir_in",
     "client_uuid",
+    "survey_section",
+    "survey_type",
+    "priority",
+    "deadline",
+    "column_break_sr",
+    "requested_by",
+    "tank_owner",
+    "surveyor_company",
     "section_break_2",
     "inspector",
     "driver",
@@ -38,6 +46,13 @@
     "max_gross_weight",
     "last_test_date",
     "last_cargo",
+    "seal_section",
+    "seal_manhole",
+    "seal_airline",
+    "seal_bottom_outlet",
+    "column_break_seal2",
+    "seal_top_discharge",
+    "seal_vapour_valve",
     "eir_photos_section",
     "exterior_photos",
     "damage_section",
@@ -137,6 +152,52 @@
       "fieldname": "client_uuid",
       "fieldtype": "Data",
       "label": "Offline Client UUID"
+    },
+    {
+      "collapsible": 1,
+      "description": "Set when this inspection fulfils a customer survey request (Detailed Survey).",
+      "fieldname": "survey_section",
+      "fieldtype": "Section Break",
+      "label": "Survey Request"
+    },
+    {
+      "fieldname": "survey_type",
+      "fieldtype": "Select",
+      "label": "Survey Type",
+      "options": "\nCleanliness Survey\nGate-In Survey\nPre-Cleaning Survey\nM&R Pre-Inspection"
+    },
+    {
+      "fieldname": "priority",
+      "fieldtype": "Select",
+      "label": "Priority",
+      "options": "\nHigh\nMedium\nLow"
+    },
+    {
+      "fieldname": "deadline",
+      "fieldtype": "Date",
+      "label": "Deadline"
+    },
+    {
+      "fieldname": "column_break_sr",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "requested_by",
+      "fieldtype": "Data",
+      "label": "Requested By"
+    },
+    {
+      "fieldname": "tank_owner",
+      "fieldtype": "Link",
+      "label": "Tank Owner",
+      "options": "Customer"
+    },
+    {
+      "description": "Assigned 3rd-party surveyor (for Detailed Survey requests).",
+      "fieldname": "surveyor_company",
+      "fieldtype": "Link",
+      "label": "Surveyor Company",
+      "options": "Surveyor Company"
     },
     {
       "fieldname": "section_break_2",
@@ -247,6 +308,42 @@
       "fieldtype": "Data",
       "label": "Last Cargo",
       "read_only": 1
+    },
+    {
+      "collapsible": 1,
+      "description": "5-point seal numbers recorded by the surveyor (feed Container + Release DO).",
+      "fieldname": "seal_section",
+      "fieldtype": "Section Break",
+      "label": "Seals"
+    },
+    {
+      "fieldname": "seal_manhole",
+      "fieldtype": "Data",
+      "label": "Manhole Seal"
+    },
+    {
+      "fieldname": "seal_airline",
+      "fieldtype": "Data",
+      "label": "Airline Seal"
+    },
+    {
+      "fieldname": "seal_bottom_outlet",
+      "fieldtype": "Data",
+      "label": "Bottom Outlet Seal"
+    },
+    {
+      "fieldname": "column_break_seal2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "seal_top_discharge",
+      "fieldtype": "Data",
+      "label": "Top Discharge Seal"
+    },
+    {
+      "fieldname": "seal_vapour_valve",
+      "fieldtype": "Data",
+      "label": "Vapour Valve Seal"
     },
     {
       "fieldname": "eir_photos_section",

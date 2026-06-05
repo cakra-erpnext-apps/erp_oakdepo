@@ -26,6 +26,14 @@ PHASE6_ROLES = [
 	"Commercial",
 	"Management",
 	"IT Support",
+	# Cash counter. Confirms walk-in payment by marking the booking's Sales
+	# Invoice Paid (which releases the booking code on submit). The payment side
+	# itself (Payment Entry / Sales Invoice) uses ERPNext's built-in "Accounts
+	# User" role — we deliberately do NOT add Custom DocPerms to those core
+	# doctypes, since any custom perm row would override ERPNext's standard
+	# accounting permissions. Assign cashier logins both "Cashier" and
+	# "Accounts User".
+	"Cashier",
 ]
 
 # Permission matrix: doctype -> {role: perm_dict}. perm_dict keys match the
@@ -44,6 +52,8 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "amend": 1, "report": 1, "export": 1, "share": 1},
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
 		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
+		# Cashier confirms cash payment then submits to release the booking code.
+		"Cashier":           {"read": 1, "write": 1, "submit": 1, "report": 1},
 		"Security":          {"read": 1, "report": 1},
 		"Surveyor":          {"read": 1, "report": 1},
 		"Operator Kalmar":   {"read": 1, "report": 1},
@@ -55,6 +65,8 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Security":          {"read": 1, "report": 1},
 		"Admin Ops":         {"read": 1, "write": 1, "create": 1, "report": 1},
 		"Commercial":        {"read": 1, "write": 1, "create": 1, "report": 1},
+		# Cashier reads/prints the QR voucher for the driver at the counter.
+		"Cashier":           {"read": 1, "report": 1},
 		"Ops Supervisor":    {"read": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1},
 	},
@@ -98,6 +110,14 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Surveyor":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
 		"Operator Kalmar":   {"read": 1, "report": 1},
+	},
+	"Repair Order": {
+		# Tank Owner (Customer) approves/rejects M&R from Desk: status edit only.
+		"Customer":          {"read": 1, "write": 1, "report": 1},
+		"Surveyor":          {"read": 1, "write": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
+		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
 	"Cleaning Certificate": {
 		"Customer":          {"read": 1, "report": 1},
@@ -151,6 +171,50 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
+	# ---- B2 additions (customer portal backbone) -----------------------
+	"Release DO": {
+		"Customer":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
+		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
+		"Operator Kalmar":   {"read": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1, "export": 1},
+	},
+	"Survey Request": {
+		"Customer":          {"read": 1, "create": 1, "report": 1},
+		"Surveyor":          {"read": 1, "write": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
+		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
+	},
+	"Surveyor Company": {
+		"Surveyor":          {"read": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
+		"Commercial":        {"read": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1},
+	},
+	"Customer Portal User": {
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
+		"Commercial":        {"read": 1, "report": 1},
+		"IT Support":        {"read": 1, "create": 1, "write": 1, "report": 1},
+	},
+	"Shipping Line": {
+		"Customer":          {"read": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
+		"Commercial":        {"read": 1, "report": 1},
+	},
+	# ---- B4 additions (monthly billing) --------------------------------
+	"OAK Monthly Invoice": {
+		"Customer":          {"read": 1, "report": 1, "export": 1},
+		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1, "export": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1, "export": 1},
+	},
+	# ---- B7 additions (postpaid consolidated billing) ------------------
+	"OAK Billing Run": {
+		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1, "export": 1},
+		"Cashier":           {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1, "export": 1},
+	},
 }
 
 
@@ -158,6 +222,8 @@ def after_install():
 	"""Run after install hook for container_depot app"""
 	ensure_roles_exist()
 	setup_permissions()
+	setup_custom_fields()
+	ensure_selling_settings()
 	setup_workspace()
 	sync_branding()
 
@@ -168,6 +234,11 @@ def after_migrate():
 	# setup_permissions() is idempotent (existence-check on Custom DocPerm) so
 	# running it on every migrate just picks up new DocTypes as they're added.
 	setup_permissions()
+	# create_custom_fields is idempotent (upserts by dt+fieldname).
+	setup_custom_fields()
+	# Keep the depot-pricing invariant: Bertschi Product Bundles must bill at the
+	# bundle parent's flat Item Price, not a recomputed sum of component prices.
+	ensure_selling_settings()
 	# Workspace Sidebar JSON isn't picked up by Frappe's standard module-sync,
 	# so we re-import the file every migrate. Idempotent (force=True replaces
 	# the existing rows in-place).
@@ -260,6 +331,102 @@ def _sync_default_letter_head(logo_pdf: str) -> None:
 			"content": content,
 			"is_default": 1 if set_default else 0,
 		}).insert(ignore_permissions=True)
+
+
+# Custom fields this app adds to standard ERPNext doctypes. Keyed by target
+# doctype; applied idempotently via Frappe's create_custom_fields helper.
+CUSTOM_FIELDS = {
+	"Customer": [
+		{
+			"fieldname": "oak_customer_type",
+			"label": "OAK Customer Type",
+			"fieldtype": "Select",
+			# Portal capability: Tank Owner books storage/cleaning/M&R/release;
+			# Transporter does gate lift on/off. "Both" covers dual-role clients.
+			"options": "\nTank Owner\nTransporter\nBoth",
+			"insert_after": "customer_group",
+			"in_standard_filter": 1,
+		}
+	],
+	# Depot-pricing fields (pricing spec §3.2). Repair services price as
+	# manhour × Price List manhour_rate + material_cost; packages are flagged so
+	# they can be filtered apart from single services.
+	"Item": [
+		{
+			"fieldname": "depot_pricing_section",
+			"label": "Depot Pricing",
+			"fieldtype": "Section Break",
+			"insert_after": "stock_uom",
+			"collapsible": 1,
+		},
+		{
+			"fieldname": "is_depot_package",
+			"label": "Is Depot Package",
+			"fieldtype": "Check",
+			"insert_after": "depot_pricing_section",
+			"in_standard_filter": 1,
+			"description": "Bundle parent sold at one flat price (e.g. a Bertschi package).",
+		},
+		{
+			"fieldname": "service_unit",
+			"label": "Service Unit",
+			"fieldtype": "Data",
+			"insert_after": "is_depot_package",
+			"description": "Billing unit from the rate card (tank / per / day / hour).",
+		},
+		{
+			"fieldname": "manhour",
+			"label": "Manhour",
+			"fieldtype": "Float",
+			"insert_after": "service_unit",
+			"description": "Standard labour hours for a repair service. Effective rate = manhour × Price List manhour rate + material cost.",
+		},
+		{
+			"fieldname": "material_cost",
+			"label": "Material Cost",
+			"fieldtype": "Currency",
+			"insert_after": "manhour",
+			"description": "Spare-part / material cost added on top of labour for a repair service.",
+		},
+	],
+	"Price List": [
+		{
+			"fieldname": "manhour_rate",
+			"label": "Manhour Rate",
+			"fieldtype": "Currency",
+			"options": "currency",
+			"insert_after": "currency",
+			"description": "Labour rate per hour for repair services priced as manhour × rate + material (e.g. OAK 4.50, Bertschi 4.00).",
+		}
+	],
+}
+
+
+def setup_custom_fields():
+	"""Create/refresh app custom fields on standard doctypes (idempotent)."""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+	create_custom_fields(CUSTOM_FIELDS, ignore_validate=True)
+	frappe.db.commit()
+
+
+def ensure_selling_settings():
+	"""Pin Selling Settings so Product Bundle parents bill at their own flat price.
+
+	With ``editable_bundle_item_rates`` ON, ERPNext recomputes a bundle's rate from
+	the sum of its component Item Prices (see erpnext stock ``packed_item``). The
+	Bertschi packages are sold at a single negotiated price held on the bundle
+	parent's Item Price, so we keep this OFF. Idempotent: only writes when needed,
+	and never breaks a migrate if Selling Settings is unavailable (frappe-only site).
+	"""
+	try:
+		if not frappe.db.exists("DocType", "Selling Settings"):
+			return
+		if frappe.db.get_single_value("Selling Settings", "editable_bundle_item_rates"):
+			frappe.db.set_single_value("Selling Settings", "editable_bundle_item_rates", 0)
+			frappe.db.commit()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "container_depot selling-settings sync failed")
 
 
 def sync_workspace_sidebar():

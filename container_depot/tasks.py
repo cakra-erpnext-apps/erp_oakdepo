@@ -12,6 +12,80 @@ SST_STALE_AFTER_MINUTES = 15
 PT_REMINDER_DAYS = 30
 
 
+def generate_monthly_invoices() -> int:
+	"""Monthly (1st of month): build prior-month categorized invoices for every
+	Tank Owner. Thin wrapper so the heavy logic stays in monthly_invoicing."""
+	from container_depot.monthly_invoicing import generate_monthly_invoices as _run
+
+	return _run()
+
+
+def _portal_users(customer) -> list[str]:
+	"""Active Customer Portal User logins for a customer."""
+	if not customer:
+		return []
+	return frappe.get_all(
+		"Customer Portal User",
+		filters={"customer": customer, "approval_status": "Active"},
+		pluck="user",
+	)
+
+
+def _open_todo(reference_type, reference_name, user, description, priority="Medium") -> bool:
+	"""Create one Open ToDo per (reference, user); returns True if created."""
+	if frappe.db.exists(
+		"ToDo",
+		{"reference_type": reference_type, "reference_name": reference_name, "allocated_to": user, "status": "Open"},
+	):
+		return False
+	frappe.get_doc({
+		"doctype": "ToDo",
+		"description": description,
+		"reference_type": reference_type,
+		"reference_name": reference_name,
+		"allocated_to": user,
+		"priority": priority,
+		"status": "Open",
+	}).insert(ignore_permissions=True)
+	return True
+
+
+def notify_customers() -> int:
+	"""Daily: nudge customer portal users about items needing their attention —
+	M&R repair orders awaiting approval and overdue Sales Invoices.
+
+	Returns the count of ToDos created. Idempotent (one Open ToDo per reference).
+	"""
+	created = 0
+
+	# 1. Repair Orders awaiting Tank Owner approval.
+	for ro in frappe.get_all(
+		"Repair Order",
+		filters={"status": "Pending Approval"},
+		fields=["name", "principal", "container"],
+	):
+		for user in _portal_users(ro.principal):
+			if _open_todo(
+				"Repair Order", ro.name, user,
+				f"M&R {ro.name} for {ro.container} awaits your approval.", "High",
+			):
+				created += 1
+
+	# 2. Overdue Sales Invoices.
+	for si in frappe.get_all(
+		"Sales Invoice",
+		filters={"status": "Overdue", "docstatus": 1},
+		fields=["name", "customer"],
+	):
+		for user in _portal_users(si.customer):
+			if _open_todo("Sales Invoice", si.name, user, f"Invoice {si.name} is overdue."):
+				created += 1
+
+	if created:
+		frappe.db.commit()
+	return created
+
+
 def expire_booking_codes() -> int:
 	"""Flip Active Booking Codes whose ``expires_at`` is in the past to Expired.
 

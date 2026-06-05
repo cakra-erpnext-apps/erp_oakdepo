@@ -8,19 +8,31 @@
   "field_order": [
     "container",
     "container_no",
+    "container_type",
     "status_tag",
+    "condition",
     "clean_flag",
+    "item_status",
     "column_break_1",
     "ex_cargo",
     "tare_weight",
     "max_gross",
     "manufacture",
     "last_test",
-    "booking_code"
+    "booking_code",
+    "logistics_section",
+    "truck",
+    "driver",
+    "appointment_date",
+    "appointment_time",
+    "column_break_log",
+    "gate_in",
+    "gate_out",
+    "eir"
   ],
   "fields": [
     {
-      "description": "Required for Tank Out direction (must reference an existing Container).",
+      "description": "Pick an existing tank from the master, or use \"+ Create New\" to register a new one. For a brand-new Tank In, the new master is born in the pre-arrival 'Booked' state.",
       "fieldname": "container",
       "fieldtype": "Link",
       "in_list_view": 1,
@@ -28,11 +40,17 @@
       "options": "Container"
     },
     {
-      "description": "Used when the container number is announced before the Container record exists (Tank In).",
+      "description": "Auto-filled from the Container master; kept for gate / booking-code lookups.",
       "fieldname": "container_no",
       "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Container No"
+      "label": "Container No",
+      "read_only": 1
+    },
+    {
+      "fieldname": "container_type",
+      "fieldtype": "Select",
+      "label": "Container Type",
+      "options": "\nISO Tank\n20ft Dry\n40ft HC\n20ft Reefer\n40ft Reefer\nOpen Top\nFlat Rack"
     },
     {
       "default": "Dirty",
@@ -43,10 +61,28 @@
       "options": "Dirty\nClean"
     },
     {
+      "default": "Empty",
+      "description": "Empty (Kosong) / Laden (Berisi).",
+      "fieldname": "condition",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Condition",
+      "options": "Empty\nLaden",
+      "reqd": 1
+    },
+    {
       "default": "0",
       "fieldname": "clean_flag",
       "fieldtype": "Check",
       "label": "Clean Flag"
+    },
+    {
+      "default": "Pending",
+      "fieldname": "item_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Item Status",
+      "options": "Pending\nIn Yard\nCompleted"
     },
     {
       "fieldname": "column_break_1",
@@ -83,6 +119,57 @@
       "label": "Booking Code",
       "options": "Booking Code",
       "read_only": 1
+    },
+    {
+      "fieldname": "logistics_section",
+      "fieldtype": "Section Break",
+      "label": "Vehicle & Gate"
+    },
+    {
+      "fieldname": "truck",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Truck Number"
+    },
+    {
+      "fieldname": "driver",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Driver"
+    },
+    {
+      "description": "Planned arrival slot. Actual arrival is recorded at Gate Entry.",
+      "fieldname": "appointment_date",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Appointment Date"
+    },
+    {
+      "fieldname": "appointment_time",
+      "fieldtype": "Time",
+      "label": "Appointment Time"
+    },
+    {
+      "fieldname": "column_break_log",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "gate_in",
+      "fieldtype": "Datetime",
+      "label": "Gate In",
+      "read_only": 1
+    },
+    {
+      "fieldname": "gate_out",
+      "fieldtype": "Datetime",
+      "label": "Gate Out",
+      "read_only": 1
+    },
+    {
+      "fieldname": "eir",
+      "fieldtype": "Link",
+      "label": "EIR (Inspection)",
+      "options": "Inspection"
     }
   ],
   "istable": 1,

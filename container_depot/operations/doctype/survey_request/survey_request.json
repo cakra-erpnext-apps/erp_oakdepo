@@ -1,0 +1,160 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "SRV-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "container",
+    "container_no",
+    "container_type",
+    "depot",
+    "column_break_1",
+    "status",
+    "tank_owner",
+    "surveyor_company",
+    "details_section",
+    "survey_type",
+    "priority",
+    "last_cargo",
+    "location",
+    "column_break_2",
+    "requested_date",
+    "deadline",
+    "inspection",
+    "notes_section",
+    "notes"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Survey Request"
+    },
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Container",
+      "options": "Container",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "container.container_no",
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "label": "Container No",
+      "read_only": 1
+    },
+    {
+      "fetch_from": "container.container_type",
+      "fieldname": "container_type",
+      "fieldtype": "Data",
+      "label": "Container Type",
+      "read_only": 1
+    },
+    {
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Depot",
+      "options": "Depot"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Pending Survey",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Pending Survey\nIn Progress\nCompleted\nCancelled",
+      "reqd": 1
+    },
+    {
+      "fieldname": "tank_owner",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Tank Owner",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "surveyor_company",
+      "fieldtype": "Link",
+      "label": "Assigned Surveyor",
+      "options": "Surveyor Company"
+    },
+    {
+      "fieldname": "details_section",
+      "fieldtype": "Section Break",
+      "label": "Details"
+    },
+    {
+      "fieldname": "survey_type",
+      "fieldtype": "Select",
+      "label": "Survey Type",
+      "options": "\nCleanliness Survey\nGate-In Survey\nPre-Cleaning Survey\nM&R Pre-Inspection"
+    },
+    {
+      "fieldname": "priority",
+      "fieldtype": "Select",
+      "label": "Priority",
+      "options": "\nHigh\nMedium\nLow"
+    },
+    {
+      "fieldname": "last_cargo",
+      "fieldtype": "Data",
+      "label": "Last Cargo"
+    },
+    {
+      "fieldname": "location",
+      "fieldtype": "Data",
+      "label": "Location"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "requested_date",
+      "fieldtype": "Date",
+      "label": "Requested Date"
+    },
+    {
+      "fieldname": "deadline",
+      "fieldtype": "Date",
+      "label": "Deadline"
+    },
+    {
+      "description": "The Inspection (EIR) created to fulfil this request.",
+      "fieldname": "inspection",
+      "fieldtype": "Link",
+      "label": "Inspection",
+      "options": "Inspection",
+      "read_only": 1
+    },
+    {
+      "fieldname": "notes_section",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "notes",
+      "fieldtype": "Small Text",
+      "label": "Notes"
+    }
+  ],
+  "is_submittable": 1,
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "Survey Request",
+  "search_fields": "container_no, tank_owner, status",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "container_no",
+  "track_changes": 1
+}

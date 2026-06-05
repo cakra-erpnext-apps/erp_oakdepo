@@ -1,0 +1,51 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "container",
+    "container_no",
+    "seal",
+    "cargo_weight"
+  ],
+  "fields": [
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Container",
+      "options": "Container",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "container.container_no",
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Container No",
+      "read_only": 1
+    },
+    {
+      "fieldname": "seal",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Seal No"
+    },
+    {
+      "fieldname": "cargo_weight",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Cargo Weight (kg)"
+    }
+  ],
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-03",
+  "module": "Operations",
+  "name": "Release DO Item",
+  "sort_field": "creation",
+  "sort_order": "DESC"
+}
