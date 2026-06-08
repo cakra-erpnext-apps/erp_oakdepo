@@ -226,6 +226,7 @@ def after_install():
 	ensure_selling_settings()
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
+	ensure_multi_currency_billing()
 	setup_workspace()
 	sync_branding()
 
@@ -247,6 +248,7 @@ def after_migrate():
 	# patch for wiring each customer's default from its Depot Contract mode.
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
+	ensure_multi_currency_billing()
 	# Workspace Sidebar JSON isn't picked up by Frappe's standard module-sync,
 	# so we re-import the file every migrate. Idempotent (force=True replaces
 	# the existing rows in-place).
@@ -583,6 +585,32 @@ def _ensure_mode_of_payment(name: str, mop_type: str, companies: list, account_f
 		doc.insert(ignore_permissions=True)
 	elif dirty:
 		doc.save(ignore_permissions=True)
+
+
+def ensure_multi_currency_billing():
+	"""Allow foreign-currency (USD) invoices against the single party receivable.
+
+	The depot books in IDR (company base currency) but quotes some principals
+	(OAK, Bertschi) in USD via their Price List. Turning this on lets one IDR
+	receivable account hold those USD invoices — tracked per-party with an
+	exchange rate — instead of forcing a separate USD receivable account. This is
+	native ERPNext multi-currency; the company base currency is unchanged.
+
+	Idempotent + defensive: only writes when the flag is off, never breaks a
+	migrate. Per-customer billing currency is set by the set_customer_billing_currency
+	patch (from each customer's Price List currency).
+	"""
+	try:
+		if not frappe.db.exists("DocType", "Accounts Settings"):
+			return
+		field = "allow_multi_currency_invoices_against_single_party_account"
+		if field not in {df.fieldname for df in frappe.get_meta("Accounts Settings").fields}:
+			return
+		if not frappe.db.get_single_value("Accounts Settings", field):
+			frappe.db.set_single_value("Accounts Settings", field, 1)
+			frappe.db.commit()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "container_depot multi-currency setting failed")
 
 
 def sync_workspace_sidebar():

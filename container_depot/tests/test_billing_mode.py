@@ -19,8 +19,10 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.install import (
 	ensure_modes_of_payment,
+	ensure_multi_currency_billing,
 	ensure_payment_terms_templates,
 )
+from container_depot.patches.v0_13 import set_customer_billing_currency as currency_patch
 from container_depot.patches.v0_13 import set_customer_payment_terms as backfill_patch
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_isotank_booking import (
@@ -175,6 +177,55 @@ class TestContractBackfill(FrappeTestCase):
 			frappe.db.get_value("Customer", customer, "payment_terms"),
 			"Net 30",
 			"backfill must not overwrite an existing default",
+		)
+
+
+class TestMultiCurrencyBilling(FrappeTestCase):
+	"""One IDR company can invoice USD principals (native multi-currency)."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		ensure_multi_currency_billing()
+		# A USD and an IDR Price List to drive the backfill heuristic.
+		cls.usd_pl = frappe.db.get_value("Price List", {"currency": "USD", "selling": 1}, "name")
+		cls.idr_pl = frappe.db.get_value("Price List", {"currency": "IDR", "selling": 1}, "name")
+
+	def tearDown(self):
+		frappe.db.rollback()
+
+	def test_single_party_flag_enabled(self):
+		self.assertTrue(
+			frappe.db.get_single_value(
+				"Accounts Settings",
+				"allow_multi_currency_invoices_against_single_party_account",
+			),
+			"multi-currency-against-single-party flag must be enabled",
+		)
+
+	def test_foreign_price_list_sets_billing_currency(self):
+		if not self.usd_pl:
+			self.skipTest("no USD selling Price List seeded")
+		customer = ensure_test_customer("Billing USD Customer")
+		frappe.db.set_value(
+			"Customer", customer, {"default_price_list": self.usd_pl, "default_currency": None}
+		)
+		currency_patch.backfill()
+		self.assertEqual(
+			frappe.db.get_value("Customer", customer, "default_currency"), "USD"
+		)
+
+	def test_base_currency_customer_left_untouched(self):
+		if not self.idr_pl:
+			self.skipTest("no IDR selling Price List seeded")
+		customer = ensure_test_customer("Billing IDR Customer")
+		frappe.db.set_value(
+			"Customer", customer, {"default_price_list": self.idr_pl, "default_currency": None}
+		)
+		currency_patch.backfill()
+		self.assertFalse(
+			frappe.db.get_value("Customer", customer, "default_currency"),
+			"base-currency (IDR) customer should keep the company default, not be set",
 		)
 
 

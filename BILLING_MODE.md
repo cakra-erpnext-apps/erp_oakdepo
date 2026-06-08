@@ -90,6 +90,26 @@ auto-create dan tidak ada efek akuntansi** dari "terlewat".
 
 ---
 
+## 4b. Multi-currency (1 company, invoice USD)
+
+Company tetap base **IDR** (GL & laporan IDR), tapi principal yang di-quote USD
+(price list OAK / Bertschi) bisa **diinvoice dalam USD** — fitur native ERPNext.
+
+Di-setup oleh:
+- `install.ensure_multi_currency_billing()` — menyalakan Accounts Settings
+  **"Allow multi-currency invoices against single party account"** sehingga satu
+  akun piutang IDR bisa menampung invoice USD (di-track per-party + exchange
+  rate). Base currency company **tidak** diubah.
+- patch `v0_13.set_customer_billing_currency` — set `Customer.default_currency` =
+  currency Price List customer, **hanya** bila currency itu asing (bukan base
+  company) dan `default_currency` masih kosong. Jadi Bertschi → USD; customer
+  IDR dibiarkan (default ke base).
+
+> Catatan: patch memakai `db.set_value` (lewati guard "ubah currency saat sudah
+> ada transaksi"). Di site yang sudah punya invoice IDR untuk customer yang sama,
+> review dulu sebelum mengganti billing currency-nya. Untuk bayar invoice USD via
+> akun bank IDR, isi exchange rate di Payment Entry (selisih kurs otomatis).
+
 ## 5. Idempotency & lokasi kode
 
 - `container_depot/install.py`
