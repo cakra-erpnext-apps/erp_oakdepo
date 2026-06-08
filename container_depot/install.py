@@ -224,6 +224,8 @@ def after_install():
 	setup_permissions()
 	setup_custom_fields()
 	ensure_selling_settings()
+	ensure_payment_terms_templates()
+	ensure_modes_of_payment()
 	setup_workspace()
 	sync_branding()
 
@@ -239,6 +241,12 @@ def after_migrate():
 	# Keep the depot-pricing invariant: Bertschi Product Bundles must bill at the
 	# bundle parent's flat Item Price, not a recomputed sum of component prices.
 	ensure_selling_settings()
+	# Cash-vs-Termin billing primitives (Payment Terms Templates + Modes of
+	# Payment account mapping). Idempotent — created on fresh install AND kept in
+	# sync for existing sites on every migrate. See set_customer_payment_terms
+	# patch for wiring each customer's default from its Depot Contract mode.
+	ensure_payment_terms_templates()
+	ensure_modes_of_payment()
 	# Workspace Sidebar JSON isn't picked up by Frappe's standard module-sync,
 	# so we re-import the file every migrate. Idempotent (force=True replaces
 	# the existing rows in-place).
@@ -427,6 +435,154 @@ def ensure_selling_settings():
 			frappe.db.commit()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "container_depot selling-settings sync failed")
+
+
+# ---------------------------------------------------------------------------
+# Cash-vs-Termin billing primitives (native ERPNext, minim custom)
+# ---------------------------------------------------------------------------
+# Two billing modes for MDN depot operations:
+#   - Bayar langsung (Cash/Bank) -> Mode of Payment + Payment Entry.
+#   - Bayar nanti (termin)       -> Payment Terms Template on the invoice.
+# The DEFAULT lives on Customer.payment_terms (built-in field, flows into a new
+# Sales Invoice's payment_terms_template) and is overridable per invoice. The
+# statement side (Process Statement Of Accounts) is read-only and is NOT seeded
+# here — it never creates accounting documents. See BILLING_MODE.md.
+
+# Payment Terms Templates are GLOBAL (not company-scoped). Each maps to one
+# Payment Term row at 100% invoice portion. Idempotent: created only if absent so
+# an owner can re-tune the rows without a migrate clobbering them.
+PAYMENT_TERMS = {
+	"Immediate": {
+		"due_date_based_on": "Day(s) after invoice date",
+		"credit_days": 0,
+		"description": "Bayar langsung — jatuh tempo = tanggal invoice.",
+	},
+	"Net 30": {
+		"due_date_based_on": "Day(s) after invoice date",
+		"credit_days": 30,
+		"description": "Jatuh tempo 30 hari setelah tanggal invoice.",
+	},
+	"End of Following Month": {
+		"due_date_based_on": "Month(s) after the end of the invoice month",
+		"credit_months": 1,
+		"description": "Jatuh tempo akhir bulan berikutnya (1 bulan setelah akhir bulan invoice).",
+	},
+}
+
+
+def ensure_payment_terms_templates():
+	"""Create Payment Term + Payment Terms Template masters for Cash-vs-Termin.
+
+	Idempotent and defensive: never breaks a migrate on a site where the Accounts
+	module / Payment Terms Template doctype is unavailable.
+	"""
+	try:
+		if not frappe.db.exists("DocType", "Payment Terms Template"):
+			return
+		for name, spec in PAYMENT_TERMS.items():
+			_ensure_payment_term(name, spec)
+			_ensure_payment_terms_template(name, spec)
+		frappe.db.commit()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "container_depot payment-terms seed failed")
+
+
+def _term_fields(spec: dict) -> dict:
+	row = {
+		"invoice_portion": 100,
+		"due_date_based_on": spec["due_date_based_on"],
+		"description": spec.get("description"),
+		"credit_days": spec.get("credit_days", 0),
+		"credit_months": spec.get("credit_months", 0),
+	}
+	return row
+
+
+def _ensure_payment_term(name: str, spec: dict) -> None:
+	if frappe.db.exists("Payment Term", name):
+		return
+	doc = {"doctype": "Payment Term", "payment_term_name": name}
+	doc.update(_term_fields(spec))
+	frappe.get_doc(doc).insert(ignore_permissions=True)
+
+
+def _ensure_payment_terms_template(name: str, spec: dict) -> None:
+	if frappe.db.exists("Payment Terms Template", name):
+		return
+	row = {"payment_term": name}
+	row.update(_term_fields(spec))
+	frappe.get_doc({
+		"doctype": "Payment Terms Template",
+		"template_name": name,
+		"terms": [row],
+	}).insert(ignore_permissions=True)
+
+
+def ensure_modes_of_payment():
+	"""Ensure Cash + Bank Transfer Modes of Payment exist and are mapped to a
+	sensible default account for EVERY company (idempotent).
+
+	Cash maps to each company's Cash account; Bank Transfer to a Bank account.
+	Existing rows are never duplicated; only missing company mappings are added.
+	"""
+	try:
+		if not frappe.db.exists("DocType", "Mode of Payment"):
+			return
+		companies = frappe.get_all("Company", pluck="name")
+		if not companies:
+			return
+		_ensure_mode_of_payment("Cash", "Cash", companies, _cash_account)
+		_ensure_mode_of_payment("Bank Transfer", "Bank", companies, _bank_account)
+		frappe.db.commit()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "container_depot mode-of-payment seed failed")
+
+
+def _cash_account(company: str):
+	acc = frappe.db.get_value("Company", company, "default_cash_account")
+	if acc and frappe.db.get_value("Account", acc, "account_type") == "Cash":
+		return acc
+	return frappe.db.get_value(
+		"Account", {"company": company, "account_type": "Cash", "is_group": 0}, "name"
+	)
+
+
+def _bank_account(company: str):
+	acc = frappe.db.get_value("Company", company, "default_bank_account")
+	if acc and frappe.db.get_value("Account", acc, "account_type") == "Bank":
+		return acc
+	return frappe.db.get_value(
+		"Account", {"company": company, "account_type": "Bank", "is_group": 0}, "name"
+	)
+
+
+def _ensure_mode_of_payment(name: str, mop_type: str, companies: list, account_fn) -> None:
+	if frappe.db.exists("Mode of Payment", name):
+		doc = frappe.get_doc("Mode of Payment", name)
+	else:
+		doc = frappe.new_doc("Mode of Payment")
+		doc.mode_of_payment = name
+		doc.enabled = 1
+
+	dirty = False
+	if doc.type != mop_type:
+		doc.type = mop_type
+		dirty = True
+
+	existing = {a.company for a in (doc.accounts or [])}
+	for company in companies:
+		if company in existing:
+			continue
+		account = account_fn(company)
+		if not account:
+			continue
+		doc.append("accounts", {"company": company, "default_account": account})
+		dirty = True
+
+	if doc.is_new():
+		doc.insert(ignore_permissions=True)
+	elif dirty:
+		doc.save(ignore_permissions=True)
 
 
 def sync_workspace_sidebar():
