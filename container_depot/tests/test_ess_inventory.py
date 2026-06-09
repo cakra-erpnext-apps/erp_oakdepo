@@ -22,6 +22,7 @@ from container_depot.ess.inventory import (
 )
 from container_depot.ess.documents import get_tank_documents, _pdf_url
 from container_depot.ess.repairs import get_tank_repairs, set_repair_status
+from container_depot.tests.test_api import ensure_test_branch
 
 ESS_DEPOT = "ESST"
 # Raw status seeded per container -> expected derived bucket.
@@ -48,7 +49,7 @@ def _teardown():
 
 def _build():
 	frappe.get_doc(
-		{"doctype": "Depot", "depot_code": ESS_DEPOT, "depot_name": "ESS Test Depot"}
+		{"doctype": "Depot", "depot_code": ESS_DEPOT, "depot_name": "ESS Test Depot", "branch": ensure_test_branch()}
 	).insert(ignore_permissions=True)
 	for no, status in TANKS.items():
 		frappe.get_doc(

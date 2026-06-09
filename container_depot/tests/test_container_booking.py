@@ -64,6 +64,124 @@ def _make_active_contract(customer: str, *, payment_type: str, credit_limit=0, p
 	return doc.name
 
 
+class TestTankInFlow(FrappeTestCase):
+	"""Tank In / Lift Off: pricing + payment mode come from the customer's contract,
+	branch/principal fall back for programmatic callers, the Booking Code's Clean/Dirty
+	tag is derived from the line condition, and a booking can't be confirmed without a
+	contract."""
+
+	CUSTOMER = "Tank In Flow Co"
+	NOCON = "Tank In No-Contract Co"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.customer = ensure_test_customer(cls.CUSTOMER)
+		cls.nocon = ensure_test_customer(cls.NOCON)
+		_cleanup_customer_world(cls.customer)
+		_cleanup_customer_world(cls.nocon)
+		cls.contract = _make_active_contract(
+			cls.customer, payment_type="Both", credit_limit=1_000_000, payment_terms="NET 30"
+		)
+		cls.price_list = frappe.db.get_value("Depot Contract", cls.contract, "generated_price_list")
+
+	@classmethod
+	def tearDownClass(cls):
+		_cleanup_customer_world(cls.customer)
+		_cleanup_customer_world(cls.nocon)
+		super().tearDownClass()
+
+	def _booking(self, customer, **over):
+		doc = {
+			"doctype": "Container Booking",
+			"customer": customer,
+			"do_reference": "DO-TI",
+			"items": [{"container_no": "TANK0000050", "condition": "EMPTY CLEAN"}],
+		}
+		doc.update(over)
+		return frappe.get_doc(doc)
+
+	def test_customer_payment_modes_follow_contract(self):
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			customer_payment_modes,
+		)
+
+		self.assertEqual(set(customer_payment_modes(self.customer)), {"Cash", "TOP"})  # Both
+		self.assertEqual(customer_payment_modes(self.nocon), [])  # no contract → must create one
+
+	def test_lift_rate_for_reads_active_list(self):
+		# Rate + currency come from the customer's active (contract-published) price list —
+		# the operator never picks a list, only the lift service.
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			lift_rate_for,
+		)
+
+		hit = lift_rate_for(self.customer, "Lift Off")
+		self.assertEqual(hit["rate"], 250000)
+		self.assertEqual(hit["currency"], "IDR")  # follows the price-list currency
+		self.assertEqual(lift_rate_for(None, "Lift Off")["rate"], 0)
+
+	def test_currency_follows_price_list(self):
+		# The actual bug: a USD price list must format Lift Rate in USD, not the system
+		# default. No exchange-rate conversion — the price-list currency is used as-is.
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			lift_rate_for,
+		)
+
+		usd_cust = ensure_test_customer("Tank In USD Co")
+		_cleanup_customer_world(usd_cust)
+		try:
+			c = frappe.get_doc({
+				"doctype": "Depot Contract", "customer": usd_cust, "currency": "USD",
+				"status": "Active", "payment_type": "Cash",
+				"valid_from": today(), "valid_to": add_days(today(), 365),
+				"tariff_lines": [{"item": "Lift Off", "rate": 36}],
+			}).insert(ignore_permissions=True)
+			hit = lift_rate_for(usd_cust, "Lift Off")
+			self.assertEqual(hit["currency"], "USD")
+			self.assertEqual(hit["rate"], 36)
+		finally:
+			_cleanup_customer_world(usd_cust)
+
+	def test_booking_prices_from_active_list(self):
+		b = self._booking(self.customer, lift_item="Lift Off")
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.contract, self.contract)      # resolved (hidden) for payment modes
+		self.assertEqual(b.price_list, self.price_list)  # auto-resolved from the customer
+		self.assertEqual(b.lift_rate, 250000)            # from the active price list
+		self.assertEqual(b.currency, "IDR")              # follows the price-list currency
+		self.assertTrue(b.branch)                        # branch fell back
+		self.assertEqual(b.principal, self.customer)     # principal defaulted to customer
+
+	def test_draft_empty_items_ok_submit_requires_them(self):
+		# An empty Containers table is tolerated on a draft (so the DO can be attached
+		# before the tanks are listed)…
+		b = self._booking(self.customer, lift_item="Lift Off", items=[])
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.docstatus, 0)
+		# …but confirmation requires at least one container line.
+		with self.assertRaises(frappe.ValidationError):
+			b.submit()
+
+	def test_status_tag_derived_from_condition(self):
+		# The Clean/Dirty gate tag is derived from a line's condition at booking-code
+		# issuance (a pure function); it is no longer stored on the line.
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			status_tag_for_condition,
+		)
+
+		self.assertEqual(status_tag_for_condition("EMPTY CLEAN"), "Clean")
+		self.assertEqual(status_tag_for_condition("EMPTY DIRTY"), "Dirty")
+		self.assertEqual(status_tag_for_condition("LADEN"), "Dirty")
+		self.assertEqual(status_tag_for_condition(None), "Dirty")
+
+	def test_no_contract_blocks_submit(self):
+		b = self._booking(self.nocon, items=[{"container_no": "TANK0000053", "condition": "EMPTY CLEAN"}])
+		b.insert(ignore_permissions=True)  # draft is allowed while the contract is set up
+		with self.assertRaises(frappe.ValidationError):
+			b.submit()  # confirmation needs a contract / price list
+
+
 class TestTopAccrual(FrappeTestCase):
 	"""TOP is now postpaid/accrual (B7): bookings submit freely (no credit gate),
 	carry NO per-transaction Sales Invoice, and accrue ``payment_status=Unpaid``

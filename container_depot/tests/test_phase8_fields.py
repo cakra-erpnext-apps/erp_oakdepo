@@ -26,21 +26,18 @@ class TestB1Fields(FrappeTestCase):
 		self._assert_field("Container Booking", "do_document", "Attach")
 
 	def test_container_booking_item_fields(self):
+		# Tank In line: a container (filtered to the Principal), its condition + cargo,
+		# optional vehicle / R/O details, and the estimated unload date.
+		self._assert_field("Container Booking Item", "container", "Link", ["Container"])
+		self._assert_field("Container Booking Item", "condition", "Select", ["EMPTY CLEAN", "EMPTY DIRTY", "LADEN"])
+		self._assert_field("Container Booking Item", "cargo", "Link", ["Cargo"])
 		# Vehicle fields use the depot's paperwork vocabulary (truck_plate / supir).
 		self._assert_field("Container Booking Item", "truck_plate", "Data")
 		self._assert_field("Container Booking Item", "driver", "Data")
 		self._assert_field("Container Booking Item", "driver_phone", "Data")
-		# Per-container bongkar / order info.
 		self._assert_field("Container Booking Item", "ro", "Data")
 		self._assert_field("Container Booking Item", "tanggal_bongkar", "Date")
-		self._assert_field("Container Booking Item", "shipper", "Link", ["Customer"])
-		self._assert_field("Container Booking Item", "ex_vessel", "Data")
-		self._assert_field("Container Booking Item", "angkutan", "Link", ["Customer"])
-		self._assert_field("Container Booking Item", "condition", "Select", ["Empty", "Laden"])
-		self._assert_field("Container Booking Item", "gate_in", "Datetime")
-		self._assert_field("Container Booking Item", "gate_out", "Datetime")
-		self._assert_field("Container Booking Item", "eir", "Link", ["Inspection"])
-		self._assert_field("Container Booking Item", "item_status", "Select", ["Pending", "In Yard", "Completed"])
+		self._assert_field("Container Booking Item", "remarks", "Small Text")
 
 	def test_order_fields(self):
 		# Orders are operational bons now (no billing fields). They reference a

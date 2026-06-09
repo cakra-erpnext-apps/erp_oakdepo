@@ -9,6 +9,7 @@
     "header_section",
     "depot_code",
     "depot_name",
+    "branch",
     "is_active",
     "column_break_1",
     "city",
@@ -36,6 +37,16 @@
       "reqd": 1
     },
     {
+      "description": "Branch this depot belongs to. Many depots map to one branch.",
+      "fieldname": "branch",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Branch",
+      "options": "Branch",
+      "reqd": 1
+    },
+    {
       "default": "1",
       "fieldname": "is_active",
       "fieldtype": "Check",
@@ -60,7 +71,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-06-02",
+  "modified": "2026-06-12",
   "module": "Operations",
   "name": "Depot",
   "search_fields": "depot_code, depot_name, city",

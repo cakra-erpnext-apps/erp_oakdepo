@@ -7,183 +7,105 @@
   "engine": "InnoDB",
   "field_order": [
     "container",
-    "container_no",
-    "container_type",
-    "status_tag",
     "condition",
-    "item_status",
-    "column_break_1",
-    "booking_code",
-    "bongkar_section",
-    "ro",
-    "tanggal_bongkar",
-    "shipper",
-    "ex_vessel",
-    "logistics_section",
+    "cargo",
     "truck_plate",
     "driver",
     "driver_phone",
-    "angkutan",
-    "column_break_log",
-    "gate_in",
-    "gate_out",
-    "eir"
+    "ro",
+    "tanggal_bongkar",
+    "remarks",
+    "container_no",
+    "booking_code"
   ],
   "fields": [
     {
-      "columns": 1,
-      "description": "Pick an existing tank from the master, or use \"+ Create New\" to register a new one. For a brand-new Tank In, the new master is born in the pre-arrival 'Booked' state.",
+      "columns": 3,
+      "description": "Tank from the Container master, filtered to the booking's Principal (Tank Owner).",
       "fieldname": "container",
       "fieldtype": "Link",
       "in_list_view": 1,
       "label": "Container",
-      "options": "Container"
+      "options": "Container",
+      "reqd": 1
+    },
+    {
+      "columns": 2,
+      "default": "EMPTY CLEAN",
+      "fieldname": "condition",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Condition",
+      "options": "EMPTY CLEAN\nEMPTY DIRTY\nLADEN",
+      "reqd": 1
+    },
+    {
+      "columns": 2,
+      "default": "Empty Clean",
+      "fieldname": "cargo",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Cargo",
+      "options": "Cargo",
+      "reqd": 1
+    },
+    {
+      "columns": 2,
+      "fieldname": "truck_plate",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Truck Number"
+    },
+    {
+      "fieldname": "driver",
+      "fieldtype": "Data",
+      "label": "Name Driver"
+    },
+    {
+      "fieldname": "driver_phone",
+      "fieldtype": "Data",
+      "label": "No. Driver"
+    },
+    {
+      "fieldname": "ro",
+      "fieldtype": "Data",
+      "label": "R/O"
+    },
+    {
+      "columns": 2,
+      "default": "Today",
+      "description": "When the container arrives and is unloaded. Defaults to today.",
+      "fieldname": "tanggal_bongkar",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Estimation Tanggal Bongkar",
+      "reqd": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks / Note"
     },
     {
       "description": "Auto-filled from the Container master; kept for gate / booking-code lookups.",
       "fieldname": "container_no",
       "fieldtype": "Data",
+      "hidden": 1,
       "label": "Container No",
       "read_only": 1
     },
     {
-      "fieldname": "container_type",
-      "fieldtype": "Select",
-      "label": "Container Type",
-      "options": "\nISO Tank\n20ft Dry\n40ft HC\n20ft Reefer\n40ft Reefer\nOpen Top\nFlat Rack"
-    },
-    {
-      "columns": 1,
-      "default": "Dirty",
-      "fieldname": "status_tag",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "label": "Status Tag",
-      "options": "Dirty\nClean"
-    },
-    {
-      "columns": 1,
-      "default": "Empty",
-      "description": "Empty (Kosong) / Laden (Berisi).",
-      "fieldname": "condition",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "label": "Condition",
-      "options": "Empty\nLaden",
-      "reqd": 1
-    },
-    {
-      "default": "Pending",
-      "fieldname": "item_status",
-      "fieldtype": "Select",
-      "label": "Item Status",
-      "options": "Pending\nIn Yard\nCompleted"
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
       "fieldname": "booking_code",
       "fieldtype": "Link",
+      "hidden": 1,
       "label": "Booking Code",
       "options": "Booking Code",
       "read_only": 1
-    },
-    {
-      "fieldname": "bongkar_section",
-      "fieldtype": "Section Break",
-      "label": "Bongkar / Order Info"
-    },
-    {
-      "columns": 1,
-      "fieldname": "ro",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "R/O"
-    },
-    {
-      "columns": 1,
-      "default": "Today",
-      "description": "Defaults to today; adjust if the unloading date differs.",
-      "fieldname": "tanggal_bongkar",
-      "fieldtype": "Date",
-      "in_list_view": 1,
-      "label": "Tanggal Bongkar"
-    },
-    {
-      "columns": 1,
-      "fieldname": "shipper",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Shipper",
-      "options": "Customer"
-    },
-    {
-      "columns": 1,
-      "fieldname": "ex_vessel",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Ex Vessel"
-    },
-    {
-      "fieldname": "logistics_section",
-      "fieldtype": "Section Break",
-      "label": "Vehicle & Gate"
-    },
-    {
-      "columns": 1,
-      "fieldname": "truck_plate",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Truck Plate"
-    },
-    {
-      "columns": 1,
-      "fieldname": "driver",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Supir"
-    },
-    {
-      "fieldname": "driver_phone",
-      "fieldtype": "Data",
-      "label": "Nomor Supir"
-    },
-    {
-      "columns": 1,
-      "fieldname": "angkutan",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Angkutan",
-      "options": "Customer"
-    },
-    {
-      "fieldname": "column_break_log",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "gate_in",
-      "fieldtype": "Datetime",
-      "label": "Gate In",
-      "read_only": 1
-    },
-    {
-      "fieldname": "gate_out",
-      "fieldtype": "Datetime",
-      "label": "Gate Out",
-      "read_only": 1
-    },
-    {
-      "fieldname": "eir",
-      "fieldtype": "Link",
-      "label": "EIR (Inspection)",
-      "options": "Inspection"
     }
   ],
   "istable": 1,
   "links": [],
-  "modified": "2026-06-04",
+  "modified": "2026-06-15",
   "module": "Operations",
   "name": "Container Booking Item",
   "sort_field": "creation",

@@ -18,16 +18,27 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
-from frappe.utils import add_to_date, getdate, now_datetime, today
+from frappe.utils import add_to_date, cint, getdate, now_datetime, today
 
 from container_depot import invoicing, pricing, pricing_model
 from container_depot.operations.doctype.booking_code.booking_code import (
 	CODE_TTL_HOURS,
 	generate_code,
 )
+from container_depot.operations.doctype.depot_contract.depot_contract import (
+	get_active_contract,
+)
 
 
 CONTAINER_READY_STATUSES = {"Available", "Ready_For_Service", "Ready_For_Release", "Ready"}
+
+
+def status_tag_for_condition(condition: str | None) -> str:
+	"""Clean/Dirty gate tag carried onto a Booking Code, derived from a line's
+	``condition``: EMPTY CLEAN → ``Clean``; anything else (EMPTY DIRTY / LADEN / unset)
+	→ ``Dirty``. A pure function — the tag is computed at booking-code issuance, not
+	stored on the line (the line only keeps ``condition``)."""
+	return "Clean" if condition == "EMPTY CLEAN" else "Dirty"
 
 
 class ContainerBooking(Document):
@@ -39,7 +50,9 @@ class ContainerBooking(Document):
 	# ---- lifecycle ------------------------------------------------------
 	def validate(self):
 		self._ensure_depot()
+		self._ensure_branch_and_principal()
 		self._sync_lift_type()
+		self._resolve_pricing_context()
 		self._resolve_containers()
 		self._sync_payment_type_from_contract()
 		if self.direction == "Tank Out":
@@ -50,6 +63,7 @@ class ContainerBooking(Document):
 		self._sync_payment_status_from_invoice()
 
 	def before_submit(self):
+		self._require_contract()
 		self._enforce_payment_rules()
 		self._validate_do()
 
@@ -167,6 +181,56 @@ class ContainerBooking(Document):
 		if depot:
 			self.depot = depot
 
+	def _ensure_branch_and_principal(self):
+		"""Branch and Principal (Tank Owner) are mandatory and enforced on the Desk
+		form. Programmatic callers (tests / API) that omit them fall back — branch from
+		the depot (or any branch), principal from the booking customer — so every
+		booking still carries both rather than failing the mandatory check (mirrors
+		``_ensure_depot``)."""
+		if not self.principal:
+			self.principal = self.customer
+		if not self.branch:
+			self.branch = (
+				frappe.db.get_value("Depot", self.depot, "branch") if self.depot else None
+			) or frappe.db.get_value("Branch", {}, "name")
+
+	# ---- pricing context (customer contract / price list) ---------------
+	def _resolve_pricing_context(self):
+		"""Pricing follows the customer's *active* Price List — the one published by their
+		active contract and mirrored onto ``Customer.default_price_list``. It is resolved
+		automatically (hidden, never picked by hand); its currency (USD / IDR) drives the
+		Lift Rate with no exchange-rate conversion. The operator only picks the Lift
+		Service, and its rate is read from that active list. The customer's active contract
+		is also resolved (hidden) for the allowed payment modes; the hard "must have a
+		contract / price list" rule is enforced at submit."""
+		contract = get_active_contract(self.customer) if self.customer else None
+		self.contract = contract.name if contract else None
+		# The customer's active price list — auto-resolved, not shown or picked. Empty
+		# only for a walk-in with no default list (then the Lift Rate stays 0).
+		self.price_list = pricing_model.price_list_for_customer(self.customer) if self.customer else None
+		# Programmatic submit (tests / API) without an explicit lift pick falls back to the
+		# standard Lift Off / Lift On item; the Desk form makes the operator pick it.
+		if self.docstatus == 1 and self.customer and not self.lift_item:
+			self.lift_item = pricing.LIFT_OFF_ITEM if self.direction == "Tank In" else pricing.LIFT_ON_ITEM
+		if self.price_list:
+			self.currency = frappe.db.get_value("Price List", self.price_list, "currency") or self.currency
+			self.lift_rate = (
+				pricing_model.resolve_price(self.lift_item, self.price_list) if self.lift_item else 0
+			) or 0
+		else:
+			self.lift_rate = 0
+
+	def _require_contract(self):
+		"""Block confirmation until the customer has an agreed price list. The lift
+		charge and payment terms both come from the contract, so there is nothing to
+		bill against without one."""
+		if not self.contract:
+			frappe.throw(
+				_("{0} has no active contract / price list — create one for this customer first.").format(
+					self.customer or _("This customer")
+				)
+			)
+
 	# ---- container resolution (single-input model) ----------------------
 	def _resolve_containers(self):
 		"""Reconcile each item's container reference into a real Container record.
@@ -183,12 +247,18 @@ class ContainerBooking(Document):
 		  if missing (born in the pre-arrival ``Booked`` state). Tank Out never
 		  auto-creates — it must reference an existing tank.
 
+		The Clean/Dirty gate tag carried onto each Booking Code is derived from the line's
+		``condition`` at issuance (see ``status_tag_for_condition``) — it is not stored
+		on the line.
+
 		For Tank In, a never-gated-in container is normalised to ``Booked`` so it
 		stays out of live inventory until it physically arrives.
 		"""
-		for idx, item in enumerate(self.items or [], start=1):
+		for item in self.items or []:
 			if item.container_no:
 				item.container_no = item.container_no.strip().upper()
+			if not item.container and not item.container_no:
+				continue  # blank row — allowed on a draft; containers are enforced at submit
 			if item.container:
 				cn = frappe.db.get_value("Container", item.container, "container_no")
 				if cn:
@@ -196,26 +266,25 @@ class ContainerBooking(Document):
 			elif item.container_no:
 				name = frappe.db.get_value("Container", {"container_no": item.container_no})
 				if not name and self.direction == "Tank In":
-					name = self._create_pre_arrival_container(item.container_no, item.container_type)
+					name = self._create_pre_arrival_container(item.container_no)
 				if name:
 					item.container = name
-			if not item.container and not item.container_no:
-				frappe.throw(_("Item row {0}: pick a Container or enter a Container No.").format(idx))
 			if self.direction == "Tank In" and item.container:
 				self._mark_pre_arrival(item.container)
 
-	def _create_pre_arrival_container(self, container_no, container_type=None):
+	def _create_pre_arrival_container(self, container_no):
 		"""Create a Container master for a pre-announced (not-yet-arrived) tank.
 
 		Stamped with ``created_by_booking`` so cancelling this booking can clean
 		the phantom up (delete it) — as opposed to a pre-existing tank that this
-		booking merely flipped to ``Booked``, which cancel only reverts."""
+		booking merely flipped to ``Booked``, which cancel only reverts. Owned by the
+		booking's Principal (Tank Owner)."""
 		doc = frappe.get_doc({
 			"doctype": "Container",
 			"container_no": container_no,
-			"container_type": container_type or "ISO Tank",
+			"container_type": "ISO Tank",
 			"status": "Booked",
-			"principal": self.customer,
+			"principal": self.principal or self.customer,
 			"created_by_booking": self.name,
 		})
 		# This runs inside the booking's own validate — the booking row is not in
@@ -253,25 +322,20 @@ class ContainerBooking(Document):
 
 	# ---- billing --------------------------------------------------------
 	def _resolve_service_rate(self, service):
-		"""Per-unit selling rate for a booking's lift ``service``.
-
-		* **With a contract** → that contract's negotiated ``Tariff Rate`` (the
-		  live billing path — unchanged).
-		* **Without a contract (walk-in)** → the customer's Price List, where the
-		  service name doubles as the catalog Item code (``Lift On`` / ``Lift Off``
-		  are seeded Items): priced via ``pricing_model`` (flat Item Price, or the
-		  manhour formula for repair items).
-
-		Returns 0 when nothing prices it (walk-in with no Price List, or the list
-		has no Item Price for the service) so the Cashier can fill the rate in on
-		the draft invoice — same graceful fallback as before."""
+		"""Per-unit selling rate for a booking's lift ``service`` — read from the customer's
+		active Price List (resolved in ``_resolve_pricing_context``), then the customer's
+		contract tariff, then their default Price List (walk-in / draft). The first two
+		normally point at the same published list. Returns 0 when nothing prices it so the
+		Cashier can fill the rate in on the draft invoice."""
+		if self.price_list:
+			return pricing_model.resolve_price(service, self.price_list) or 0
 		if self.contract:
 			return pricing.resolve_tariff_rate(self.contract, service)
 		price_list = pricing_model.price_list_for_customer(self.customer)
-		return pricing_model.resolve_price(service, price_list) if price_list else 0
+		return (pricing_model.resolve_price(service, price_list) if price_list else 0) or 0
 
 	def _booking_amount(self):
-		service = self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
+		service = self.lift_item or self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
 		rate = self._resolve_service_rate(service)
 		qty = len(self.items or []) or 1
 		return rate * qty, rate, service
@@ -290,7 +354,7 @@ class ContainerBooking(Document):
 			return
 		if (self.payment_type or "Cash") != "Cash":
 			return
-		service = self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
+		service = self.lift_item or self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
 		rate = self._resolve_service_rate(service)
 		qty = len(self.items or []) or 1
 		try:
@@ -574,7 +638,7 @@ class ContainerBooking(Document):
 					frappe.db.get_value("Container", item.container, "container_no")
 					if item.container else None
 				),
-				"status_tag": item.status_tag or "Dirty",
+				"status_tag": status_tag_for_condition(item.condition),
 				"state": "Active",
 				"issued_at": issued_at,
 				"expires_at": expires_at,
@@ -587,6 +651,57 @@ class ContainerBooking(Document):
 				code.name,
 				update_modified=False,
 			)
+
+
+# ---- Tank In booking link queries / pricing helpers (whitelisted) -----------
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def lift_item_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Lift services (Lift On / Lift Off) priced in the customer's *active* Price List —
+	the options for a booking's Lift Service field. The price list is resolved from the
+	customer (their contract-published / default list), never picked by hand."""
+	customer = (filters or {}).get("customer")
+	price_list = pricing_model.price_list_for_customer(customer) if customer else None
+	if not price_list:
+		return []
+	like = f"%{txt or ''}%"
+	return frappe.db.sql(
+		"""
+		SELECT ip.item_code
+		FROM `tabItem Price` ip
+		WHERE ip.selling = 1 AND ip.price_list = %(pl)s
+		  AND ip.item_code IN %(lifts)s
+		  AND ip.item_code LIKE %(like)s
+		ORDER BY ip.item_code
+		LIMIT {start}, {page_len}
+		""".format(start=cint(start), page_len=cint(page_len)),
+		{"pl": price_list, "lifts": (pricing.LIFT_OFF_ITEM, pricing.LIFT_ON_ITEM), "like": like},
+	)
+
+
+@frappe.whitelist()
+def lift_rate_for(customer, item):
+	"""Selling rate + currency for a lift Item from the customer's *active* Price List, so
+	the form can format Lift Rate in the price-list currency (USD / IDR) before save. The
+	list is resolved from the customer — no exchange-rate conversion, nothing picked."""
+	price_list = pricing_model.price_list_for_customer(customer) if customer else None
+	if not price_list or not item:
+		return {"rate": 0, "currency": None}
+	rate = pricing_model.resolve_price(item, price_list) or 0
+	currency = frappe.db.get_value("Price List", price_list, "currency")
+	return {"rate": rate, "currency": currency}
+
+
+@frappe.whitelist()
+def customer_payment_modes(customer):
+	"""Payment modes a customer's bookings may use, from their active contract:
+	``["Cash"]`` / ``["TOP"]`` / ``["Cash", "TOP"]``. Returns ``[]`` when the customer
+	has no active contract — the caller must create a contract / price list first."""
+	contract = get_active_contract(customer) if customer else None
+	if not contract:
+		return []
+	return ["Cash", "TOP"] if contract.payment_type == "Both" else [contract.payment_type]
 
 
 # ---- payment-status sync (booking ↔ its Sales Invoice) ----------------------

@@ -1,29 +1,37 @@
 {
   "actions": [],
-  "allow_import": 1,
-  "autoname": "",
+  "allow_rename": 1,
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
     "header_section",
+    "branch",
+    "booking_status",
     "direction",
     "lift_type",
-    "booking_status",
     "column_break_1",
-    "customer",
     "depot",
+    "parties_section",
+    "customer",
+    "column_break_parties",
+    "principal",
+    "pricing_section",
+    "lift_item",
+    "lift_rate",
+    "price_list",
+    "currency",
     "contract",
+    "column_break_pricing",
     "payment_type",
-    "ownership_section",
+    "payment_status",
+    "sales_invoice",
+    "block_reason",
+    "do_section",
     "do_reference",
     "do_document",
-    "commercial_section",
-    "job_reference_no",
-    "agent",
-    "column_break_2",
-    "sales_invoice",
-    "payment_status",
-    "block_reason",
+    "notes_section",
+    "sales_name",
+    "remarks",
     "items_section",
     "items"
   ],
@@ -34,21 +42,12 @@
       "label": "Booking"
     },
     {
-      "fieldname": "direction",
-      "fieldtype": "Select",
-      "in_list_view": 1,
+      "fieldname": "branch",
+      "fieldtype": "Link",
       "in_standard_filter": 1,
-      "label": "Direction",
-      "options": "Tank In\nTank Out",
+      "label": "Branch",
+      "options": "Branch",
       "reqd": 1
-    },
-    {
-      "description": "Auto-derived from Direction (billing/crane view): Tank In = Lift Off (drop at depot), Tank Out = Lift On (take from depot).",
-      "fieldname": "lift_type",
-      "fieldtype": "Select",
-      "label": "Lift Type",
-      "options": "\nLift On\nLift Off",
-      "read_only": 1
     },
     {
       "default": "Pending Payment",
@@ -63,19 +62,30 @@
       "reqd": 1
     },
     {
+      "default": "Tank In",
+      "description": "This flow handles Tank In / Lift Off only. Tank Out is hidden for now.",
+      "fieldname": "direction",
+      "fieldtype": "Select",
+      "hidden": 1,
+      "label": "Direction",
+      "options": "Tank In\nTank Out",
+      "read_only": 1
+    },
+    {
+      "description": "Auto-derived from Direction (billing/crane view): Tank In = Lift Off, Tank Out = Lift On.",
+      "fieldname": "lift_type",
+      "fieldtype": "Select",
+      "hidden": 1,
+      "label": "Lift Type",
+      "options": "\nLift On\nLift Off",
+      "read_only": 1
+    },
+    {
       "fieldname": "column_break_1",
       "fieldtype": "Column Break"
     },
     {
-      "fieldname": "customer",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "in_standard_filter": 1,
-      "label": "Customer",
-      "options": "Customer",
-      "reqd": 1
-    },
-    {
+      "description": "Depot to drop at. Filtered to the chosen Branch.",
       "fieldname": "depot",
       "fieldtype": "Link",
       "in_standard_filter": 1,
@@ -84,100 +94,171 @@
       "reqd": 1
     },
     {
-      "description": "Optional. Leave empty for a walk-in Cash booking (no standing contract); the Cashier marks the Sales Invoice Paid to release the booking code.",
-      "fieldname": "contract",
+      "fieldname": "parties_section",
+      "fieldtype": "Section Break",
+      "label": "Parties"
+    },
+    {
+      "fieldname": "customer",
       "fieldtype": "Link",
-      "label": "Contract",
-      "options": "Depot Contract"
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Customer (Shipper / Angkutan)",
+      "options": "Customer",
+      "reqd": 1
     },
     {
-      "description": "Actual mode for this booking. Locked to the contract, except a Both contract lets you choose; walk-ins are Cash.",
-      "fieldname": "payment_type",
-      "fieldtype": "Select",
-      "label": "Payment Type",
-      "options": "Cash\nTOP"
-    },
-    {
-      "fieldname": "ownership_section",
-      "fieldtype": "Section Break",
-      "label": "Delivery Order"
-    },
-    {
-      "description": "Delivery Order reference — required before Submit to confirm the booking (both Lift On and Lift Off). A draft may be saved without it.",
-      "fieldname": "do_reference",
-      "fieldtype": "Data",
-      "label": "DO Reference",
-      "mandatory_depends_on": "eval:doc.docstatus==1"
-    },
-    {
-      "description": "Scan/PDF of the Delivery Order. Optional — may be attached later.",
-      "fieldname": "do_document",
-      "fieldtype": "Attach",
-      "label": "DO Document"
-    },
-    {
-      "fieldname": "commercial_section",
-      "fieldtype": "Section Break",
-      "label": "Commercial"
-    },
-    {
-      "fieldname": "job_reference_no",
-      "fieldtype": "Data",
-      "label": "Job Reference No"
-    },
-    {
-      "fieldname": "agent",
-      "fieldtype": "Data",
-      "label": "Agent"
-    },
-    {
-      "fieldname": "column_break_2",
+      "fieldname": "column_break_parties",
       "fieldtype": "Column Break"
     },
     {
-      "fieldname": "sales_invoice",
+      "description": "Tank owner. The container picker on each line is filtered to this customer's tanks.",
+      "fieldname": "principal",
       "fieldtype": "Link",
-      "label": "Sales Invoice",
-      "options": "Sales Invoice"
+      "label": "Principal / Tank Owner",
+      "options": "Customer",
+      "reqd": 1
+    },
+    {
+      "description": "Tank In = Lift Off (drop at depot), Tank Out = Lift On (take from depot).",
+      "fieldname": "pricing_section",
+      "fieldtype": "Section Break",
+      "label": "Pricing & Payment"
+    },
+    {
+      "description": "System-resolved from the customer's active contract / price list (mirrored onto the Customer default). Drives the Lift Rate currency (USD / IDR) — no exchange-rate conversion. Not picked by hand.",
+      "fieldname": "price_list",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Price List",
+      "options": "Price List",
+      "read_only": 1
+    },
+    {
+      "description": "Lift service (Lift Off / Lift On), priced in the customer's active price list.",
+      "fieldname": "lift_item",
+      "fieldtype": "Link",
+      "label": "Lift Service",
+      "mandatory_depends_on": "eval:doc.docstatus==1",
+      "options": "Item"
+    },
+    {
+      "description": "Resolved from the customer's price list for the chosen lift service.",
+      "fieldname": "lift_rate",
+      "fieldtype": "Currency",
+      "label": "Lift Rate",
+      "options": "currency",
+      "read_only": 1
+    },
+    {
+      "description": "Currency of the customer's price list (drives Lift Rate formatting).",
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Currency",
+      "options": "Currency",
+      "read_only": 1
+    },
+    {
+      "description": "Auto-resolved from the customer's active contract; drives tariff and payment mode.",
+      "fieldname": "contract",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Contract",
+      "options": "Depot Contract",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_pricing",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Narrowed to the customer's contract mode. Cash must be paid before approval; TOP accrues and is billed per terms.",
+      "fieldname": "payment_type",
+      "fieldtype": "Select",
+      "label": "Payment Type",
+      "options": "Cash\nTOP",
+      "reqd": 1
     },
     {
       "default": "Unpaid",
-      "description": "TOP bookings accrue 'Unpaid' until the depot runs consolidated billing (then 'Invoiced'). Cash bookings are 'Paid' at submit.",
+      "depends_on": "eval:doc.payment_type=='Cash'",
+      "description": "Tracks the Sales Invoice for Cash bookings. Hidden for TOP (billed later via consolidated billing).",
       "fieldname": "payment_status",
       "fieldtype": "Select",
-      "in_list_view": 1,
       "in_standard_filter": 1,
       "label": "Payment Status",
       "options": "Unpaid\nInvoiced\nPaid",
       "read_only": 1
     },
     {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
+    },
+    {
+      "depends_on": "eval:doc.block_reason",
       "fieldname": "block_reason",
       "fieldtype": "Small Text",
       "label": "Block Reason",
       "read_only": 1
     },
     {
+      "fieldname": "do_section",
+      "fieldtype": "Section Break",
+      "label": "Delivery Order"
+    },
+    {
+      "description": "Delivery Order reference. Required before Submit to confirm the booking; a draft may be saved without it.",
+      "fieldname": "do_reference",
+      "fieldtype": "Data",
+      "label": "DO Reference",
+      "mandatory_depends_on": "eval:doc.docstatus==1"
+    },
+    {
+      "description": "Scan / PDF of the Delivery Order. Required before Submit.",
+      "fieldname": "do_document",
+      "fieldtype": "Attach",
+      "label": "DO Document",
+      "mandatory_depends_on": "eval:doc.docstatus==1"
+    },
+    {
+      "fieldname": "notes_section",
+      "fieldtype": "Section Break",
+      "label": "Notes"
+    },
+    {
+      "fieldname": "sales_name",
+      "fieldtype": "Data",
+      "label": "Sales Name"
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    },
+    {
       "fieldname": "items_section",
       "fieldtype": "Section Break",
-      "label": "Items"
+      "label": "Containers"
     },
     {
       "fieldname": "items",
       "fieldtype": "Table",
-      "label": "Items",
-      "options": "Container Booking Item",
-      "reqd": 1
+      "label": "Containers",
+      "mandatory_depends_on": "eval:doc.docstatus==1",
+      "options": "Container Booking Item"
     }
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-12",
+  "modified": "2026-06-15",
   "module": "Operations",
   "name": "Container Booking",
-  "search_fields": "customer, direction, booking_status",
+  "search_fields": "customer, branch, booking_status",
   "sort_field": "creation",
   "sort_order": "DESC",
-  "title_field": "customer",
-  "track_changes": 1
+  "title_field": "customer"
 }

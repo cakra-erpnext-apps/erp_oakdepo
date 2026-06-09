@@ -321,6 +321,15 @@ def ensure_test_customer(name: str) -> str:
 	return doc.name
 
 
+def ensure_test_branch(name: str = "Test Branch") -> str:
+	"""Idempotently create (or fetch) a Branch for tests. Returns its name (Depot.branch
+	is mandatory, so depot fixtures need a real Branch to point at)."""
+	if frappe.db.exists("Branch", name):
+		return name
+	frappe.get_doc({"doctype": "Branch", "branch": name}).insert(ignore_permissions=True)
+	return name
+
+
 def cleanup_test_data():
 	print("\n--- Cleaning up test records ---")
 	

@@ -1,39 +1,90 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
+// Tank In / Lift Off booking. Branch scopes the depot; Customer drives the payment
+// modes and resolves the active Price List server-side (its currency — USD / IDR —
+// drives the Lift Rate, no exchange rate); the operator only picks the Lift Service.
+// Principal (Tank Owner) scopes the container picker on each line.
 frappe.ui.form.on('Container Booking', {
+	onload(frm) {
+		frm.trigger('_set_queries');
+	},
 	refresh(frm) {
-		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar/Muat),
+		frm.trigger('_set_queries');
+		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
 		if (!frm.is_new() && frm.doc.booking_status === 'Confirmed') {
 			frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
 		}
-		frm.trigger('_apply_payment_type_lock');
 	},
-	contract(frm) {
-		frm.trigger('_apply_payment_type_lock');
+	branch(frm) {
+		// Depot is scoped to the branch; drop a now-mismatched depot.
+		if (frm.doc.depot) frm.set_value('depot', null);
+		frm.trigger('_set_queries');
 	},
-	_apply_payment_type_lock(frm) {
-		// Payment Type follows the contract: a Cash or TOP contract locks it to that
-		// mode, and a walk-in (no contract) is always Cash. Only a "Both" contract lets
-		// the operator choose Cash or TOP here. The server enforces the same on save.
-		const lock = (ro) => frm.set_df_property('payment_type', 'read_only', ro ? 1 : 0);
-		if (!frm.doc.contract) {
-			if (!frm.doc.payment_type) frm.set_value('payment_type', 'Cash');
-			lock(1);
-			return;
-		}
-		frappe.db.get_value('Depot Contract', frm.doc.contract, 'payment_type').then((r) => {
-			const cpt = r.message && r.message.payment_type;
-			if (cpt === 'Both') {
-				if (!frm.doc.payment_type) frm.set_value('payment_type', 'Cash');
-				lock(0);
-			} else if (cpt) {
-				frm.set_value('payment_type', cpt);
-				lock(1);
-			}
+	customer(frm) {
+		// New customer -> reset the lift pick + rate; the active price list / currency is
+		// re-resolved server-side on save. Re-derive the allowed payment modes.
+		frm.set_value('lift_item', null);
+		frm.set_value('lift_rate', 0);
+		frm.set_value('currency', null);
+		frm.trigger('_set_queries');
+		frm.trigger('_apply_payment_modes');
+	},
+	principal(frm) {
+		// Container picker filters to this owner's tanks; clear lines that no longer fit.
+		(frm.doc.items || []).forEach((row) => {
+			if (row.container) frappe.model.set_value(row.doctype, row.name, 'container', null);
 		});
-	}
+		frm.trigger('_set_queries');
+	},
+	lift_item(frm) {
+		frm.trigger('_fetch_lift_rate');
+	},
+	_set_queries(frm) {
+		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));
+		frm.set_query('container', 'items', () => ({ filters: { principal: frm.doc.principal || '' } }));
+		// Lift services are scoped to the customer's active price list (resolved server-side).
+		frm.set_query('lift_item', () => ({
+			query: 'container_depot.operations.doctype.container_booking.container_booking.lift_item_query',
+			filters: { customer: frm.doc.customer },
+		}));
+	},
+	_apply_payment_modes(frm) {
+		// Payment Type is constrained to the customer's contract mode (Cash / TOP / Both).
+		// No active contract -> no options; the operator must create a contract first.
+		if (!frm.doc.customer) return;
+		frappe.call({
+			method: 'container_depot.operations.doctype.container_booking.container_booking.customer_payment_modes',
+			args: { customer: frm.doc.customer },
+			callback(r) {
+				const modes = r.message || [];
+				if (!modes.length) {
+					frappe.msgprint(__('{0} has no active contract / price list. Create one for this customer first.', [frm.doc.customer]));
+					frm.set_df_property('payment_type', 'options', ['']);
+					frm.set_value('payment_type', null);
+					return;
+				}
+				frm.set_df_property('payment_type', 'options', modes.join('\n'));
+				if (!modes.includes(frm.doc.payment_type)) frm.set_value('payment_type', modes[0]);
+				// Single mode -> lock; Both -> let the operator choose.
+				frm.set_df_property('payment_type', 'read_only', modes.length === 1 ? 1 : 0);
+			},
+		});
+	},
+	_fetch_lift_rate(frm) {
+		if (!frm.doc.customer || !frm.doc.lift_item) { frm.set_value('lift_rate', 0); return; }
+		frappe.call({
+			method: 'container_depot.operations.doctype.container_booking.container_booking.lift_rate_for',
+			args: { customer: frm.doc.customer, item: frm.doc.lift_item },
+			callback(r) {
+				const d = r.message || {};
+				// Set currency first so Lift Rate formats in the price-list currency (USD/IDR).
+				if (d.currency) frm.set_value('currency', d.currency);
+				frm.set_value('lift_rate', d.rate || 0);
+			},
+		});
+	},
 });
 
 const MAX_CONTAINERS_PER_ORDER = 3;

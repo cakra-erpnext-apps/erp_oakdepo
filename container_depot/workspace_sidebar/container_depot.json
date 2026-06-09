@@ -171,6 +171,28 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "Depot",
+   "link_to": "Depot",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Branch",
+   "link_to": "Branch",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Container",
    "link_to": "Container",
    "link_type": "DocType",
@@ -381,7 +403,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-05-29 21:00:00.000000",
+ "modified": "2026-06-12 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",
