@@ -6,19 +6,11 @@
   "field_order": [
     "header_section",
     "booking",
-    "ro",
     "order_status",
     "column_break_1",
     "shipper",
-    "tanggal_bongkar",
     "ex_vessel",
     "containers",
-    "truck_section",
-    "truck_plate",
-    "angkutan",
-    "column_break_2",
-    "driver_name",
-    "driver_phone",
     "notes",
     "sst_section",
     "sst",
@@ -40,11 +32,6 @@
       "options": "Container Booking",
       "read_only": 1,
       "reqd": 1
-    },
-    {
-      "fieldname": "ro",
-      "fieldtype": "Data",
-      "label": "R/O"
     },
     {
       "default": "Issued",
@@ -69,52 +56,17 @@
       "options": "Customer"
     },
     {
-      "fieldname": "tanggal_bongkar",
-      "fieldtype": "Date",
-      "label": "Tgl. Bongkar"
-    },
-    {
       "fieldname": "ex_vessel",
       "fieldtype": "Data",
       "label": "Ex Vessel"
     },
     {
-      "description": "Containers on this bon (max 3). Only containers of this booking that are still pending may be added.",
+      "description": "Containers on this bon (max 2). Same shape as the booking's container lines (Container Booking Item) — truck / driver / R-O / condition / cargo / Tgl. Bongkar live per row.",
       "fieldname": "containers",
       "fieldtype": "Table",
       "label": "Containers",
-      "options": "Order Container Item",
+      "options": "Container Booking Item",
       "reqd": 1
-    },
-    {
-      "fieldname": "truck_section",
-      "fieldtype": "Section Break",
-      "label": "Truck & Driver"
-    },
-    {
-      "fieldname": "truck_plate",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "No. Pol (Truck Plate)"
-    },
-    {
-      "fieldname": "angkutan",
-      "fieldtype": "Data",
-      "label": "Angkutan"
-    },
-    {
-      "fieldname": "column_break_2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "driver_name",
-      "fieldtype": "Data",
-      "label": "Supir (Driver)"
-    },
-    {
-      "fieldname": "driver_phone",
-      "fieldtype": "Data",
-      "label": "Driver Phone"
     },
     {
       "fieldname": "notes",
@@ -147,10 +99,10 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-04",
+  "modified": "2026-06-19",
   "module": "Operations",
   "name": "Order Bongkar",
-  "search_fields": "booking, truck_plate, shipper",
+  "search_fields": "booking, shipper",
   "sort_field": "creation",
   "sort_order": "DESC",
   "title_field": "booking",

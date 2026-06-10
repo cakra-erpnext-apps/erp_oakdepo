@@ -52,7 +52,7 @@ def _make_booking_code(*, direction, container_no, container=None, state="Active
 		"customer": customer,
 		"contract": contract_name,
 		"booking_status": "Confirmed",
-		"items": [{"container_no": "TANK0009999"}],
+		"items": [{"container_no": container_no}],
 	}).insert(ignore_permissions=True)
 	return frappe.get_doc({
 		"doctype": "Booking Code",

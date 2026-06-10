@@ -4,6 +4,7 @@ container_depot.patches.v0_16.clear_service_tariff_rows
 container_depot.patches.v0_17.drop_tariff_rate_qty
 container_depot.patches.v0_19.reshape_container_booking
 container_depot.patches.v0_20.drop_legacy_booking_columns
+container_depot.patches.v0_21.reshape_order_bongkar
 
 [post_model_sync]
 container_depot.patches.v0_2.migrate_container_principal_to_customer

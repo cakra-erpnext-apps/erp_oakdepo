@@ -861,11 +861,22 @@ def get_booking_pending_containers(booking):
 	_require_authenticated_user()
 	if not booking or not frappe.db.exists("Container Booking", booking):
 		frappe.throw(_("Booking {0} not found.").format(booking))
-	return frappe.get_all(
-		"Booking Code",
-		filters={"booking": booking, "state": "Active", "expires_at": (">", now_datetime())},
-		fields=["name as booking_code", "container", "container_no", "status_tag", "direction"],
-		order_by="container_no",
+	# Each pending container also carries its booking line's detail (condition / cargo /
+	# truck / driver / R-O / Tgl. Bongkar / remarks) so the Generate dialog can auto-fill
+	# the voucher from the first container picked.
+	return frappe.db.sql(
+		"""
+		SELECT bc.name AS booking_code, bc.container, bc.container_no, bc.status_tag, bc.direction,
+		       i.condition, i.cargo, i.truck_plate, i.driver, i.driver_phone, i.ro,
+		       i.tanggal_bongkar, i.remarks
+		FROM `tabBooking Code` bc
+		LEFT JOIN `tabContainer Booking Item` i
+		       ON i.parent = bc.booking AND i.container_no = bc.container_no
+		WHERE bc.booking = %(booking)s AND bc.state = 'Active' AND bc.expires_at > %(now)s
+		ORDER BY bc.container_no
+		""",
+		{"booking": booking, "now": now_datetime()},
+		as_dict=True,
 	)
 
 

@@ -82,23 +82,23 @@ def _states(codes):
 
 class TestMakeOrderCore(FrappeTestCase):
 	def test_multi_happy_path(self):
-		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCBKR0")
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="MCBKR0")
 		name = make_order(booking, codes)
 		order = frappe.get_doc("Order Bongkar", name)
-		self.assertEqual(len(order.containers), 3)
+		self.assertEqual(len(order.containers), 2)
 		self.assertEqual(order.booking, booking)
 		# Shipper defaults to the booking customer.
 		self.assertEqual(order.shipper, frappe.db.get_value("Container Booking", booking, "customer"))
 		# Containers carry exactly the selected codes.
 		self.assertEqual(sorted(r.booking_code for r in order.containers), sorted(codes))
 		# All codes consumed.
-		self.assertEqual(_states(codes), ["Used", "Used", "Used"])
+		self.assertEqual(_states(codes), ["Used", "Used"])
 
-	def test_rejects_more_than_3(self):
-		booking, codes = _booking_with_codes(code_direction="Tank In", count=4, prefix="MCMAX0")
+	def test_rejects_more_than_2(self):
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCMAX0")
 		with self.assertRaises(frappe.ValidationError):
 			make_order(booking, codes)
-		self.assertEqual(_states(codes), ["Active"] * 4)
+		self.assertEqual(_states(codes), ["Active"] * 3)
 		self.assertFalse(frappe.db.exists("Order Bongkar", {"booking": booking}))
 
 	def test_rejects_container_not_in_booking(self):
@@ -246,14 +246,31 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		result = generate_order_from_booking(
 			booking,
 			json.dumps(codes),
-			vehicle_data=json.dumps({"truck_plate": "B-1234-AA", "driver_name": "Budi"}),
+			vehicle_data=json.dumps({"truck_plate": "B-1234-AA", "driver": "Budi"}),
 		)
 		self.assertTrue(result["success"])
 		self.assertEqual(result["order_doctype"], "Order Bongkar")
 		order = frappe.get_doc("Order Bongkar", result["order_name"])
 		self.assertEqual(len(order.containers), 2)
-		self.assertEqual(order.truck_plate, "B-1234-AA")
+		# Truck / driver now live per-row (Container Booking Item), applied to every row.
+		self.assertTrue(all(r.truck_plate == "B-1234-AA" for r in order.containers))
+		self.assertTrue(all(r.driver == "Budi" for r in order.containers))
 		self.assertEqual(_states(codes), ["Used", "Used"])
+
+	def test_bongkar_writes_back_detail_to_booking(self):
+		# Generating a bon updates the booking's own container line with the voucher detail.
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCWB0")
+		make_order(
+			booking, codes,
+			vehicle_data={"truck_plate": "B-9-XY", "driver": "Andi", "tanggal_bongkar": today()},
+		)
+		cno = frappe.db.get_value("Booking Code", codes[0], "container_no")
+		item = frappe.db.get_value(
+			"Container Booking Item", {"parent": booking, "container_no": cno},
+			["truck_plate", "driver"], as_dict=True,
+		)
+		self.assertEqual(item.truck_plate, "B-9-XY")
+		self.assertEqual(item.driver, "Andi")
 
 	def test_pending_excludes_used_and_expired(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCPND0")

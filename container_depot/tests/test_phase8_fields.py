@@ -40,18 +40,21 @@ class TestB1Fields(FrappeTestCase):
 		self._assert_field("Container Booking Item", "remarks", "Small Text")
 
 	def test_order_fields(self):
-		# Orders are operational bons now (no billing fields). They reference a
-		# booking, a shipper, and carry containers in a child table.
+		# Orders are operational bons now (no billing fields). Both reference a booking
+		# and a shipper.
 		for dt in ("Order Bongkar", "Order Muat"):
 			self._assert_field(dt, "booking", "Link", ["Container Booking"])
 			self._assert_field(dt, "shipper", "Link", ["Customer"])
-			self._assert_field(dt, "ro", "Data")
-			self._assert_field(dt, "angkutan", "Data")
-			self._assert_field(dt, "containers", "Table", ["Order Container Item"])
-		self._assert_field("Order Bongkar", "tanggal_bongkar", "Date")
+		# Order Bongkar reuses the booking's Container Booking Item child: truck / driver /
+		# R-O / condition / cargo / Tgl. Bongkar live per row, not on the header.
+		self._assert_field("Order Bongkar", "containers", "Table", ["Container Booking Item"])
+		# Order Muat (Tank Out) keeps its own Order Container Item child + header fields.
+		self._assert_field("Order Muat", "containers", "Table", ["Order Container Item"])
+		self._assert_field("Order Muat", "ro", "Data")
+		self._assert_field("Order Muat", "angkutan", "Data")
 		self._assert_field("Order Muat", "tanggal_muat", "Date")
 		self._assert_field("Order Muat", "destination", "Data")
-		# Per-container remarks + cleaning cert live on the child table.
+		# Per-container remarks + cleaning cert live on the Order Muat child table.
 		self._assert_field("Order Container Item", "remarks", "Data")
 		self._assert_field("Order Container Item", "cleaning_certificate", "Link", ["Cleaning Certificate"])
 

@@ -4,7 +4,7 @@ from frappe.model.document import Document
 from frappe.utils import get_datetime, now_datetime
 
 # A single bon/voucher may carry at most this many containers.
-MAX_CONTAINERS_PER_ORDER = 3
+MAX_CONTAINERS_PER_ORDER = 2
 
 
 class OrderBongkar(Document):
@@ -41,7 +41,7 @@ def _code_owned_by_order(doc: Document, code: str) -> bool:
 		return False
 	return bool(
 		frappe.db.exists(
-			"Order Container Item",
+			"Container Booking Item",
 			{"parent": doc.name, "parenttype": doc.doctype, "booking_code": code},
 		)
 	)
@@ -94,11 +94,32 @@ def _validate_booking_code(doc: Document, expected_direction: str):
 				)
 			if bc.expires_at and get_datetime(bc.expires_at) < now_datetime():
 				frappe.throw(_("Booking Code {0} has expired.").format(row.booking_code))
-		# Auto-populate row container fields if blank.
-		if not row.get("container") and bc.container:
-			row.container = bc.container
+		# Auto-populate the row's container + booking-line detail from the booking line.
+		# Order Bongkar reuses Container Booking Item, whose condition / cargo / Tgl.
+		# Bongkar are required, so a manually added container inherits the booking's
+		# values (the generate path fills these too).
 		if not row.get("container_no") and bc.container_no:
 			row.container_no = bc.container_no
+		item = (
+			frappe.db.get_value(
+				"Container Booking Item",
+				{"parent": bc.booking, "container_no": row.get("container_no")},
+				["container", "condition", "cargo", "tanggal_bongkar", "truck_plate",
+				 "driver", "driver_phone", "ro", "remarks"],
+				as_dict=True,
+			)
+			if row.get("container_no")
+			else None
+		)
+		if not row.get("container"):
+			row.container = bc.container or (item.container if item else None)
+		if item:
+			for f in (
+				"condition", "cargo", "tanggal_bongkar", "truck_plate",
+				"driver", "driver_phone", "ro", "remarks",
+			):
+				if not row.get(f) and item.get(f):
+					row.set(f, item.get(f))
 
 
 def _reconcile_codes(doc: Document):

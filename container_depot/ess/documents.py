@@ -117,11 +117,15 @@ def get_tank_documents(container):
 			}
 		)
 
-	for doctype, category in (("Order Bongkar", "Bon Bongkar"), ("Order Muat", "Bon Muat")):
-		# Orders carry containers in the Order Container Item child table; find the
-		# bons that include this container, then load each parent once.
+	# Order Bongkar reuses the booking's Container Booking Item child; Order Muat still
+	# carries its own Order Container Item rows.
+	for doctype, category, child in (
+		("Order Bongkar", "Bon Bongkar", "Container Booking Item"),
+		("Order Muat", "Bon Muat", "Order Container Item"),
+	):
+		# Find the bons that include this container, then load each parent once.
 		parents = frappe.get_all(
-			"Order Container Item",
+			child,
 			filters={"container": container, "parenttype": doctype},
 			pluck="parent",
 		)

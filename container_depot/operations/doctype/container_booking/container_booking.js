@@ -117,7 +117,14 @@ function _confirm_void(frm) {
 	);
 }
 
-const MAX_CONTAINERS_PER_ORDER = 3;
+const MAX_CONTAINERS_PER_ORDER = 2;
+
+// Voucher detail (same fields as a Container Booking Item line): auto-filled from the
+// first picked container's booking line, and written back onto the booking lines on
+// Generate. Sent as vehicle_data to the server.
+const BONGKAR_DETAIL_FIELDS = [
+	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'tanggal_bongkar', 'remarks',
+];
 
 function open_generate_dialog(frm) {
 	frappe.call({
@@ -129,12 +136,13 @@ function open_generate_dialog(frm) {
 				frappe.msgprint(__('No pending containers left on this booking.'));
 				return;
 			}
-			const is_muat = frm.doc.direction === 'Tank Out';
 			const cont_by_code = {};
 			pending.forEach(p => { cont_by_code[p.booking_code] = p; });
+			let last_first = null;
 
 			const d = new frappe.ui.Dialog({
-				title: __('Generate {0}', [is_muat ? 'Order Muat' : 'Order Bongkar']),
+				title: __('Generate Order Bongkar'),
+				size: 'large',
 				fields: [
 					{
 						fieldname: 'codes',
@@ -143,23 +151,37 @@ function open_generate_dialog(frm) {
 						reqd: 1,
 						get_data: () => pending.map(p => ({
 							value: p.booking_code,
-							description: `${p.container_no || p.booking_code} · ${p.status_tag || ''}`
-						}))
+							description: `${p.container_no || p.booking_code} · ${p.status_tag || ''}`,
+						})),
+						onchange() {
+							const codes = d.get_value('codes') || [];
+							if (codes.length > MAX_CONTAINERS_PER_ORDER) {
+								frappe.show_alert({
+									message: __('Max {0} containers per voucher.', [MAX_CONTAINERS_PER_ORDER]),
+									indicator: 'orange',
+								});
+							}
+							// Auto-fill the voucher from the FIRST picked container's booking line.
+							const first = codes[0];
+							if (first && first !== last_first) {
+								last_first = first;
+								_fill_bongkar_detail(d, cont_by_code[first]);
+							}
+						},
 					},
-					{ fieldtype: 'Section Break', label: __('Bon') },
+					{ fieldtype: 'Section Break', label: __('Detail (auto-isi dari container pertama)') },
+					{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN' },
+					{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
+					{ fieldname: 'tanggal_bongkar', fieldtype: 'Date', label: __('Estimation Tanggal Bongkar'), default: frappe.datetime.get_today() },
+					{ fieldtype: 'Column Break' },
+					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('Truck Number') },
+					{ fieldname: 'driver', fieldtype: 'Data', label: __('Name Driver') },
+					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('No. Driver') },
 					{ fieldname: 'ro', fieldtype: 'Data', label: __('R/O') },
+					{ fieldtype: 'Section Break', label: __('Order') },
 					{ fieldname: 'shipper', fieldtype: 'Link', label: __('Shipper'), options: 'Customer', default: frm.doc.customer },
-					{ fieldtype: 'Column Break' },
-					{ fieldname: 'tanggal', fieldtype: 'Date', label: is_muat ? __('Tgl. Muat') : __('Tgl. Bongkar') },
-					is_muat
-						? { fieldname: 'destination', fieldtype: 'Data', label: __('Destination') }
-						: { fieldname: 'ex_vessel', fieldtype: 'Data', label: __('Ex Vessel') },
-					{ fieldtype: 'Section Break', label: __('Truck & Driver') },
-					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('No. Pol (Truck Plate)') },
-					{ fieldname: 'angkutan', fieldtype: 'Data', label: __('Angkutan') },
-					{ fieldtype: 'Column Break' },
-					{ fieldname: 'driver_name', fieldtype: 'Data', label: __('Supir (Driver)') },
-					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('Driver Phone') }
+					{ fieldname: 'ex_vessel', fieldtype: 'Data', label: __('Ex Vessel') },
+					{ fieldname: 'remarks', fieldtype: 'Small Text', label: __('Remarks') },
 				],
 				primary_action_label: __('Generate'),
 				primary_action(values) {
@@ -168,56 +190,22 @@ function open_generate_dialog(frm) {
 						frappe.msgprint(__('Pick 1 to {0} containers.', [MAX_CONTAINERS_PER_ORDER]));
 						return;
 					}
-					const vehicle_data = {
-						ro: values.ro,
-						shipper: values.shipper,
-						angkutan: values.angkutan,
-						tanggal: values.tanggal,
-						truck_plate: values.truck_plate,
-						driver_name: values.driver_name,
-						driver_phone: values.driver_phone
-					};
-					if (is_muat) {
-						vehicle_data.destination = values.destination;
-						// Tank Out needs a Cleaning Certificate per container.
-						collect_certs_then_generate(frm, d, codes, cont_by_code, vehicle_data);
-					} else {
-						vehicle_data.ex_vessel = values.ex_vessel;
-						submit_generation(frm, d, codes, vehicle_data);
-					}
-				}
+					const vehicle_data = { shipper: values.shipper, ex_vessel: values.ex_vessel };
+					BONGKAR_DETAIL_FIELDS.forEach((f) => { vehicle_data[f] = values[f]; });
+					submit_generation(frm, d, codes, vehicle_data);
+				},
 			});
 			d.show();
-		}
+		},
 	});
 }
 
-function collect_certs_then_generate(frm, parent_dialog, codes, cont_by_code, vehicle_data) {
-	const fields = [];
-	codes.forEach((code, i) => {
-		const p = cont_by_code[code] || {};
-		fields.push({
-			fieldname: `cert_${i}`,
-			fieldtype: 'Link',
-			options: 'Cleaning Certificate',
-			label: __('Cert for {0}', [p.container_no || code]),
-			reqd: 1,
-			get_query: () => ({ filters: { container: p.container, docstatus: 1 } })
-		});
+function _fill_bongkar_detail(d, p) {
+	// Copy the booking line's detail into the voucher's shared fields.
+	if (!p) return;
+	BONGKAR_DETAIL_FIELDS.forEach((f) => {
+		if (p[f] != null && p[f] !== '') d.set_value(f, p[f]);
 	});
-	const cd = new frappe.ui.Dialog({
-		title: __('Cleaning Certificates'),
-		fields,
-		primary_action_label: __('Generate'),
-		primary_action(values) {
-			const certs = {};
-			codes.forEach((code, i) => { certs[code] = values[`cert_${i}`]; });
-			vehicle_data.cleaning_certificates = certs;
-			cd.hide();
-			submit_generation(frm, parent_dialog, codes, vehicle_data);
-		}
-	});
-	cd.show();
 }
 
 function submit_generation(frm, dialog, codes, vehicle_data) {
