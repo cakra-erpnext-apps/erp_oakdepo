@@ -505,6 +505,22 @@ INVENTORY_CHARTS = [
 ]
 
 
+def _qualify_filters(filters, document_type):
+	"""Return dashboard filters in the 4-element ``[doctype, field, op, value]``
+	shape the Number Card / Dashboard Chart widgets require.
+
+	The specs above are written compactly as ``[field, op, value]``; the widget
+	reads element 0 as the doctype and element 1 as the fieldname, so a 3-element
+	filter is mis-parsed and the desk throws ``Invalid filter: <op>``. Prepend the
+	card/chart's own ``document_type`` so element 1 is the real field again.
+	Already-qualified 4-element filters pass through untouched."""
+	out = []
+	for f in filters or []:
+		f = list(f)
+		out.append([document_type, *f] if len(f) == 3 else f)
+	return out
+
+
 def _ensure_dashboard_doc(doctype: str, name: str, values: dict) -> None:
 	"""Upsert a Number Card / Dashboard Chart by its (autonamed) name — idempotent.
 
@@ -514,7 +530,11 @@ def _ensure_dashboard_doc(doctype: str, name: str, values: dict) -> None:
 
 	payload = dict(values)
 	if "filters_json" in payload:
-		payload["filters_json"] = json.dumps(payload["filters_json"])
+		# The widgets need 4-element [doctype, field, op, value] filters; qualify the
+		# compact 3-element specs so they aren't mis-read as [doctype, field, op].
+		payload["filters_json"] = json.dumps(
+			_qualify_filters(payload["filters_json"], payload.get("document_type"))
+		)
 	if frappe.db.exists(doctype, name):
 		doc = frappe.get_doc(doctype, name)
 		doc.update(payload)
