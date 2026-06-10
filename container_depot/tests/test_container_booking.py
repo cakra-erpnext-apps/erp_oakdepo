@@ -285,6 +285,34 @@ class TestCashPaidInvoice(FrappeTestCase):
 		self.assertEqual(b.booking_status, "Pending Payment")
 		self.assertEqual(b.docstatus, 0)
 
+	def test_paid_cash_booking_auto_confirms(self):
+		# Cash is pay-first: once the invoice is Paid, the booking auto-confirms (leaves
+		# Pending Payment, submits, issues Booking Codes) without a manual Submit.
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			sync_bookings_for_invoice,
+		)
+
+		b = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank In",
+			"customer": self.customer,
+			"contract": self.contract,
+			"do_reference": "DO-CASH-PAID",
+			"items": [{"container_no": "CASHPAID001"}],
+		}).insert(ignore_permissions=True)
+		si = b.sales_invoice
+		self.assertTrue(si, "Cash booking must auto-create a draft invoice")
+		# Cashier settles it: invoice submitted + Paid.
+		frappe.db.set_value(
+			"Sales Invoice", si, {"docstatus": 1, "status": "Paid", "outstanding_amount": 0}
+		)
+		sync_bookings_for_invoice(si)
+		b.reload()
+		self.assertEqual(b.docstatus, 1, "paid Cash booking must auto-confirm (submit)")
+		self.assertEqual(b.booking_status, "Confirmed")
+		self.assertEqual(b.payment_status, "Paid")
+		self.assertTrue(frappe.db.exists("Booking Code", {"booking": b.name}))
+
 
 class TestWalkInPriceListPricing(FrappeTestCase):
 	"""Walk-in (no contract): the booking's default rate is resolved from the
