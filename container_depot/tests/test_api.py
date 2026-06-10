@@ -191,7 +191,7 @@ def run_tests():
 		
 		container.reload()
 		assert container.repair_status == "Completed", "Container repair status should be Completed"
-		assert container.status == "Ready_For_Service", "Container status should be Ready_For_Service"
+		assert container.status == "Available", "Container status should be Available"
 		print("✓ Repair Order Completion state verified.")
 
 		# 8. Test Fuel Log calculations (New DocType)

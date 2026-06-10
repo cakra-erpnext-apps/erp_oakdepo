@@ -64,7 +64,7 @@ class TestReleaseDOFlow(FrappeTestCase):
 		frappe.db.commit()
 
 	def test_release_flow_issued_then_picked_up(self):
-		self._make_container("Ready_For_Release")
+		self._make_container("Available")
 		rdo = self._make_rdo()
 		rdo.insert(ignore_permissions=True)
 		rdo.submit()
@@ -81,7 +81,9 @@ class TestReleaseDOFlow(FrappeTestCase):
 		)
 
 	def test_release_blocks_ineligible_container(self):
-		self._make_container("Available")
+		# Available is now the release-eligible pool; a tank that still needs
+		# cleaning is the ineligible case.
+		self._make_container("Needs_Cleaning")
 		rdo = self._make_rdo()
 		with self.assertRaises(frappe.ValidationError):
 			rdo.insert(ignore_permissions=True)

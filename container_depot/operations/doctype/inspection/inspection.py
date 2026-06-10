@@ -72,7 +72,7 @@ class Inspection(Document):
 
 		* damage         -> Awaiting_MR_Approval (+ a Pending-Approval Repair Order)
 		* dirty (no dmg) -> Awaiting_Recleaning_Approval
-		* clean          -> Cleaning_Cert_Issued
+		* clean          -> Available
 		"""
 		# Carry the surveyor's seal readings onto the container.
 		for f in self.SEAL_FIELDS:
@@ -89,7 +89,7 @@ class Inspection(Document):
 			container.status = "Awaiting_Recleaning_Approval"
 			self._save_container(container)
 		else:
-			container.status = "Cleaning_Cert_Issued"
+			container.status = "Available"
 			container.certification_status = "Completed"
 			self._save_container(container)
 

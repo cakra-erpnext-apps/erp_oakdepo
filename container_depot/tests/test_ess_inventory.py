@@ -27,9 +27,9 @@ from container_depot.tests.test_api import ensure_test_branch
 ESS_DEPOT = "ESST"
 # Raw status seeded per container -> expected derived bucket.
 TANKS = {
-	"ESST1000001": "Available",  # in_depot (+ PT due)
+	"ESST1000001": "Gate_In",  # in_depot (just gated in, + PT due)
 	"ESST1000002": "Gate_Out",  # gate_out
-	"ESST1000003": "Ready_For_Release",  # ready
+	"ESST1000003": "Available",  # ready (consolidated ready pool)
 	"ESST1000004": "Available",  # cleaning (open CO)
 	"ESST1000005": "Repair_In_Progress",  # repair_survey
 	"ESST1000006": "Available",  # repair_survey (open RO)
@@ -108,22 +108,21 @@ class TestEssInventory(FrappeTestCase):
 
 	def test_derive_status_mapping(self):
 		self.assertEqual(derive_status("Gate_Out"), "gate_out")
-		self.assertEqual(derive_status("Ready_For_Release"), "ready")
-		self.assertEqual(derive_status("Ready_For_Service"), "ready")
-		# New portal lifecycle states bucket correctly.
-		self.assertEqual(derive_status("Cleaning_Cert_Issued"), "ready")
-		self.assertEqual(derive_status("Empty_Clean"), "ready")
 		self.assertEqual(derive_status("Released_Pending_Pickup"), "gate_out")
+		# The four old ready statuses collapsed into Available (the ready pool).
+		self.assertEqual(derive_status("Available"), "ready")
 		self.assertEqual(derive_status("Awaiting_MR_Approval"), "repair_survey")
 		self.assertEqual(derive_status("Repair_In_Progress"), "repair_survey")
 		self.assertEqual(derive_status("Awaiting_Recleaning_Approval"), "cleaning")
 		self.assertEqual(derive_status("Cleaning_Completed"), "cleaning")
-		self.assertEqual(derive_status("Available"), "in_depot")
+		# A freshly gated-in tank (not yet processed) is plain in_depot.
+		self.assertEqual(derive_status("Gate_In"), "in_depot")
+		# Open work overrides the Available->ready mapping so an active job still shows.
 		self.assertEqual(derive_status("Available", open_cleaning=True), "cleaning")
 		self.assertEqual(derive_status("Available", open_repair=True), "repair_survey")
 		self.assertEqual(derive_status("Available", open_inspection=True), "repair_survey")
-		# Explicit ready/gate-out win over an open order.
-		self.assertEqual(derive_status("Ready_For_Release", open_repair=True), "ready")
+		# Gate-out still wins over everything.
+		self.assertEqual(derive_status("Gate_Out", open_repair=True), "gate_out")
 
 	def test_inventory_summary_counts(self):
 		res = get_inventory_summary(depot=ESS_DEPOT)

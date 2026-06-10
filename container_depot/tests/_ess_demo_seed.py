@@ -22,7 +22,7 @@ TANKS = {
 	"DEMU1000001": ("Available", "Stolt"),
 	"DEMU1000002": ("Available", "Stolt"),
 	"DEMU1000003": ("Gate_Out", "Nichicon"),
-	"DEMU1000004": ("Ready_For_Release", "Bertschi"),
+	"DEMU1000004": ("Available", "Bertschi"),
 	"DEMU1000005": ("Available", "Bertschi"),  # -> cleaning (open CO)
 	"DEMU1000006": ("Repair_In_Progress", "NCS"),  # -> repair_survey
 	"DEMU1000007": ("Available", "NCS"),  # -> repair_survey (open RO)

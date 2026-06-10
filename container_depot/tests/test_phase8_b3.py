@@ -70,8 +70,9 @@ class TestSurveyLoop(FrappeTestCase):
 	def test_clean_survey_issues_cert(self):
 		self._container("Survey_In_Progress")
 		self._survey(has_damage=0, tank_status="Empty Clean", seal_manhole="M-01")
-		c = frappe.db.get_value("Container", self.NO, ["status", "seal_manhole"], as_dict=True)
-		self.assertEqual(c.status, "Cleaning_Cert_Issued")
+		c = frappe.db.get_value("Container", self.NO, ["status", "certification_status", "seal_manhole"], as_dict=True)
+		self.assertEqual(c.status, "Available")  # clean survey -> ready pool
+		self.assertEqual(c.certification_status, "Completed")  # the "cert issued" fact lives here now
 		self.assertEqual(c.seal_manhole, "M-01")  # surveyor seal carried over
 
 	def test_dirty_survey_awaits_recleaning(self):

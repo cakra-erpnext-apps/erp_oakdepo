@@ -4,7 +4,7 @@ frappe.query_reports["Container Status Report"] = {
 			"fieldname": "status",
 			"label": __("Status"),
 			"fieldtype": "Select",
-			"options": "\nAvailable\nGate_In\nInspecting\nEmpty_Clean\nNeeds_Cleaning\nPending_Cleaning\nCleaning_In_Progress\nCleaning_Completed\nPending_Survey\nSurvey_In_Progress\nAwaiting_MR_Approval\nRepair_In_Progress\nAwaiting_Recleaning_Approval\nRecleaning_In_Progress\nCleaning_Cert_Issued\nReady_For_Release\nReleased_Pending_Pickup\nGate_Out\nReady_For_Service"
+			"options": "\nAvailable\nGate_In\nInspecting\nNeeds_Cleaning\nPending_Cleaning\nCleaning_In_Progress\nCleaning_Completed\nPending_Survey\nSurvey_In_Progress\nAwaiting_MR_Approval\nRepair_In_Progress\nAwaiting_Recleaning_Approval\nRecleaning_In_Progress\nReleased_Pending_Pickup\nGate_Out"
 		},
 		{
 			"fieldname": "container_type",

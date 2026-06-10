@@ -40,7 +40,7 @@ OPEN_INSPECTION = ("Draft", "Submitted")
 # enum was normalised (duplicate `In_Workshop` removed; portal lifecycle states
 # added) — these sets keep the five buckets stable across that change.
 _GATE_OUT_RAW = {"Gate_Out", "Released_Pending_Pickup"}
-_READY_RAW = {"Ready_For_Release", "Ready_For_Service", "Cleaning_Cert_Issued", "Empty_Clean"}
+_READY_RAW = {"Available"}
 _CLEANING_RAW = {
 	"Needs_Cleaning",
 	"Pending_Cleaning",
@@ -72,18 +72,22 @@ _LIST_FIELDS = [
 def derive_status(raw_status, open_cleaning=False, open_repair=False, open_inspection=False):
 	"""Collapse a raw Container.status + open-service signals into one bucket.
 
-	Precedence: explicit terminal/ready states win, then an open Cleaning Order,
-	then any open Repair Order / Inspection, then the raw service states, else
-	the tank is simply in the depot.
+	Precedence: a gated-out tank is terminal; then active cleaning (an open
+	Cleaning Order or a cleaning raw state); then active survey/repair (an open
+	Repair Order / Inspection or a survey/repair raw state); then the consolidated
+	`Available` ready pool; else the tank is simply in the depot (e.g. just gated
+	in, pre-processing). Open work is checked BEFORE the `Available`->ready mapping
+	so a tank that is Available but currently being re-cleaned / re-surveyed still
+	surfaces the active job in the PWA instead of reading "ready".
 	"""
 	if raw_status in _GATE_OUT_RAW:
 		return "gate_out"
-	if raw_status in _READY_RAW:
-		return "ready"
 	if open_cleaning or raw_status in _CLEANING_RAW:
 		return "cleaning"
 	if open_repair or open_inspection or raw_status in _REPAIR_RAW:
 		return "repair_survey"
+	if raw_status in _READY_RAW:
+		return "ready"
 	return "in_depot"
 
 

@@ -191,7 +191,7 @@ class TestMakeOrderMuat(FrappeTestCase):
 					"doctype": "Container",
 					"container_no": cno,
 					"container_type": "ISO Tank",
-					"status": "Ready_For_Service",
+					"status": "Available",
 					"principal": customer,
 				}).insert(ignore_permissions=True)
 			cert = frappe.get_doc({

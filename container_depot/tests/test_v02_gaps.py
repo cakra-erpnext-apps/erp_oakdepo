@@ -71,7 +71,7 @@ class TestCleaningCanonical(FrappeTestCase):
 				"doctype": "Container",
 				"container_no": V02_CONTAINER,
 				"container_type": "ISO Tank",
-				"status": "Ready_For_Service",
+				"status": "Available",
 			}).insert(ignore_permissions=True)
 
 	@classmethod
@@ -112,7 +112,7 @@ class TestEIRDamageCode(FrappeTestCase):
 				"doctype": "Container",
 				"container_no": V02_CONTAINER,
 				"container_type": "ISO Tank",
-				"status": "Ready_For_Service",
+				"status": "Available",
 			}).insert(ignore_permissions=True)
 
 	@classmethod
@@ -161,7 +161,7 @@ class TestPeriodicTest(FrappeTestCase):
 				"doctype": "Container",
 				"container_no": V02_CONTAINER,
 				"container_type": "ISO Tank",
-				"status": "Ready_For_Service",
+				"status": "Available",
 				"principal": cls.customer,
 			}).insert(ignore_permissions=True)
 		cls.container = V02_CONTAINER

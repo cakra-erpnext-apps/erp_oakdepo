@@ -66,7 +66,7 @@ class CleaningOrder(Document):
 		"""Mirror the cleaning order's progress onto its container.
 
 		Re-cleaning (post-survey) uses the portal lifecycle states; a normal
-		first clean keeps the original behaviour (-> Ready_For_Service).
+		first clean keeps the original behaviour (-> Available).
 		"""
 		if not self.container:
 			return
@@ -86,7 +86,7 @@ class CleaningOrder(Document):
 				container.cleaning_status = "In_Progress"
 			elif self.status == "Completed":
 				container.cleaning_status = "Completed"
-				container.status = "Ready_For_Service"
+				container.status = "Available"
 
 		# Controller-driven status change: bypass the manual-transition guard.
 		frappe.flags.in_status_automation = True

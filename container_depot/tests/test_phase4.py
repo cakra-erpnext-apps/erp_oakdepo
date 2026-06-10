@@ -162,7 +162,7 @@ class TestSSTIssueOrder(FrappeTestCase):
 				"doctype": "Container",
 				"container_no": P4_CONTAINER_NO,
 				"container_type": "ISO Tank",
-				"status": "Ready_For_Service",
+				"status": "Available",
 				"principal": customer,
 			}).insert(ignore_permissions=True)
 		if not frappe.db.exists("Cleaning Certificate", {"container": P4_CONTAINER_NO, "docstatus": 1}):

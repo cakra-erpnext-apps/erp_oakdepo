@@ -563,13 +563,13 @@ class TestTankOutGating(FrappeTestCase):
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
 		_cleanup_customer_world(cls.customer)
 		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
-		# Seed a Container in Ready_For_Service.
+		# Seed a Container in the ready pool (Available).
 		if not frappe.db.exists("Container", CONTAINER_NO):
 			frappe.get_doc({
 				"doctype": "Container",
 				"container_no": CONTAINER_NO,
 				"container_type": "ISO Tank",
-				"status": "Ready_For_Service",
+				"status": "Available",
 				"principal": cls.customer,
 			}).insert(ignore_permissions=True)
 		cls.container = CONTAINER_NO
@@ -645,7 +645,7 @@ class TestTankOutGating(FrappeTestCase):
 				self._booking().insert(ignore_permissions=True)
 			self.assertIn("Ready", str(ctx.exception))
 		finally:
-			frappe.db.set_value("Container", self.container, "status", "Ready_For_Service")
+			frappe.db.set_value("Container", self.container, "status", "Available")
 
 
 class TestBookingCodeExpiry(FrappeTestCase):

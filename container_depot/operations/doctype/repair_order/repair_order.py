@@ -62,8 +62,8 @@ class RepairOrder(Document):
 			container_doc.status = "Repair_In_Progress"
 		elif self.status == "Completed":
 			container_doc.repair_status = "Completed"
-			# Move container back to Ready_For_Service (or Available) if repair is finished
-			container_doc.status = "Ready_For_Service"
+			# Repair finished → back to the ready pool.
+			container_doc.status = "Available"
 		elif self.status == "Cancelled":
 			container_doc.repair_status = "Not_Required"
 

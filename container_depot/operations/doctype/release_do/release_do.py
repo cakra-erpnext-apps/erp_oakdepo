@@ -2,8 +2,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
-# A container may be put on a Release DO only from one of these states.
-ELIGIBLE_STATUSES = {"Ready_For_Release", "Cleaning_Cert_Issued", "Empty_Clean"}
+# A container may be put on a Release DO only when it is in the ready pool.
+ELIGIBLE_STATUSES = {"Available"}
 
 
 class ReleaseDO(Document):
@@ -32,8 +32,8 @@ class ReleaseDO(Document):
 			self._set_container_status("Gate_Out")
 
 	def on_cancel(self):
-		"""Best-effort rollback: pending-pickup containers go back to ready."""
-		self._set_container_status("Ready_For_Release", only_from={"Released_Pending_Pickup"})
+		"""Best-effort rollback: pending-pickup containers go back to the ready pool."""
+		self._set_container_status("Available", only_from={"Released_Pending_Pickup"})
 
 	def _set_container_status(self, target, only_from=None):
 		from container_depot.operations.container_activity import log_container_activity

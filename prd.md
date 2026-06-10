@@ -140,7 +140,7 @@ Rationale for single repo: same reason Frappe HR ships its Vue app inside the `h
 1. Adm Ops issues Bon Muat; driver reports → **Order Muat** created *(Adm Ops)*
 2. Teknisi re-checks exterior + EIR-Out → **Inspection (EIR-Out)** *(Teknisi EIR)*
 3. If exterior dirty → notify Ops SPV → **Cleaning Order** raised; SPV approves *(Teknisi → Ops SPV)*
-4. Teknisi applies "ready for release" sticker → `Container.status = Ready_For_Release` *(Teknisi EIR)*
+4. Teknisi applies "ready for release" sticker → `Container.status = Available` *(Teknisi EIR)*
 5. Kalmar matches tank no. vs Bon Muat; signs → confirm + **Gate Entry** `Gate_Out_Completed` *(Operator Kalmar)*
 
 ---

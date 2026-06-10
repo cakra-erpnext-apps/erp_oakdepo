@@ -29,34 +29,32 @@ from frappe import _
 # Edges cover the customer lifecycle (survey/M&R/re-cleaning/release) plus the
 # internal gate-ops moves that existing controllers and tests perform.
 CONTAINER_TRANSITIONS = {
-	# Pre-arrival: a tank reserved by an Container Booking but not yet physically
+	# Pre-arrival: a tank reserved by a Container Booking but not yet physically
 	# at the gate. Excluded from live inventory (see ess/inventory.py).
 	"Booked": ["Gate_In", "Available"],
-	"Available": ["Gate_In", "Inspecting", "Pending_Survey", "Needs_Cleaning", "Empty_Clean", "Booked"],
-	"Gate_In": ["Inspecting", "Needs_Cleaning", "Empty_Clean", "Pending_Survey", "Available", "Gate_Out"],
-	"Inspecting": ["Gate_In", "Needs_Cleaning", "Empty_Clean", "Pending_Survey", "Awaiting_MR_Approval", "Available"],
-	"Empty_Clean": ["Pending_Survey", "Ready_For_Release", "Gate_Out"],
+	# `Available` is the ready hub. The four redundant ready-cluster statuses
+	# collapsed into it — the "why" (clean / certified / repaired) lives on the EIR,
+	# Cleaning Certificate and Repair Order, not the status enum. From here a tank
+	# re-enters the IN path (Gate_In) or takes the OUT path (Release DO →
+	# Released_Pending_Pickup); the document created decides the direction.
+	"Available": [
+		"Gate_In", "Inspecting", "Pending_Survey", "Needs_Cleaning",
+		"Booked", "Released_Pending_Pickup", "Gate_Out",
+	],
+	"Gate_In": ["Inspecting", "Needs_Cleaning", "Available", "Pending_Survey", "Gate_Out"],
+	"Inspecting": ["Gate_In", "Needs_Cleaning", "Available", "Pending_Survey", "Awaiting_MR_Approval"],
 	"Needs_Cleaning": ["Pending_Cleaning", "Cleaning_In_Progress"],
 	"Pending_Cleaning": ["Cleaning_In_Progress"],
 	"Cleaning_In_Progress": ["Cleaning_Completed"],
-	"Cleaning_Completed": ["Pending_Survey", "Ready_For_Release"],
+	"Cleaning_Completed": ["Pending_Survey", "Available"],
 	"Pending_Survey": ["Survey_In_Progress"],
-	"Survey_In_Progress": [
-		"Cleaning_Cert_Issued",
-		"Awaiting_MR_Approval",
-		"Awaiting_Recleaning_Approval",
-		"Ready_For_Release",
-	],
+	"Survey_In_Progress": ["Available", "Awaiting_MR_Approval", "Awaiting_Recleaning_Approval"],
 	"Awaiting_MR_Approval": ["Repair_In_Progress", "Pending_Survey"],
-	"Repair_In_Progress": ["Pending_Survey", "Cleaning_Cert_Issued", "Ready_For_Release", "Ready_For_Service"],
+	"Repair_In_Progress": ["Pending_Survey", "Available"],
 	"Awaiting_Recleaning_Approval": ["Recleaning_In_Progress", "Pending_Survey"],
 	"Recleaning_In_Progress": ["Cleaning_Completed", "Pending_Survey"],
-	"Cleaning_Cert_Issued": ["Ready_For_Release"],
-	"Ready_For_Release": ["Released_Pending_Pickup", "Gate_Out"],
 	"Released_Pending_Pickup": ["Gate_Out"],
 	"Gate_Out": ["Available", "Gate_In"],
-	# Retained synonym for repair/cleaning completion (collapses to `ready`).
-	"Ready_For_Service": ["Ready_For_Release", "Gate_Out", "Available", "Pending_Survey"],
 }
 
 
@@ -98,10 +96,6 @@ STAGE_BY_STATUS = {
 	"Awaiting_MR_Approval": "Repair (M&R)",
 	"Repair_In_Progress": "Repair (M&R)",
 	"Available": "Ready",
-	"Empty_Clean": "Ready",
-	"Cleaning_Cert_Issued": "Ready",
-	"Ready_For_Service": "Ready",
-	"Ready_For_Release": "Ready",
 	"Released_Pending_Pickup": "Outgoing",
 	"Gate_Out": "Departed",
 }

@@ -41,18 +41,18 @@ class TestContainerStateMachine(FrappeTestCase):
 		self.assertTrue(is_allowed("Gate_In", "Gate_In"))      # no-op
 		self.assertTrue(is_allowed("Available", "Gate_In"))    # legal edge
 		self.assertTrue(is_allowed("Survey_In_Progress", "Awaiting_MR_Approval"))
-		self.assertFalse(is_allowed("Available", "Released_Pending_Pickup"))  # illegal
+		self.assertFalse(is_allowed("Available", "Repair_In_Progress"))  # illegal (no jump into repair)
 		self.assertTrue(is_allowed("LegacyUnknown", "Gate_In"))  # unknown source passes
 
 	def test_assert_transition_raises_on_illegal(self):
 		with self.assertRaises(frappe.ValidationError):
-			assert_transition("Available", "Released_Pending_Pickup")
+			assert_transition("Available", "Repair_In_Progress")
 
 	def test_assert_transition_bypassed_by_automation_flag(self):
 		frappe.flags.in_status_automation = True
 		try:
 			# Would be illegal, but the automation flag short-circuits the guard.
-			assert_transition("Available", "Released_Pending_Pickup")
+			assert_transition("Available", "Repair_In_Progress")
 		finally:
 			frappe.flags.in_status_automation = False
 
@@ -68,7 +68,7 @@ class TestContainerStateMachine(FrappeTestCase):
 
 	def test_illegal_transition_blocked(self):
 		c = frappe.get_doc("Container", self.CONTAINER_NO)
-		c.status = "Released_Pending_Pickup"  # Available -> Released_Pending_Pickup is illegal
+		c.status = "Repair_In_Progress"  # Available -> Repair_In_Progress is illegal
 		with self.assertRaises(frappe.ValidationError):
 			c.save(ignore_permissions=True)
 
@@ -76,8 +76,7 @@ class TestContainerStateMachine(FrappeTestCase):
 		"""The customer survey->release happy path is a connected chain."""
 		path = [
 			"Gate_In", "Pending_Survey", "Survey_In_Progress",
-			"Cleaning_Cert_Issued", "Ready_For_Release",
-			"Released_Pending_Pickup", "Gate_Out",
+			"Available", "Released_Pending_Pickup", "Gate_Out",
 		]
 		prev = "Available"
 		for nxt in path:

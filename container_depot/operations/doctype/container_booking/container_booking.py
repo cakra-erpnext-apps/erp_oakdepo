@@ -32,7 +32,7 @@ from container_depot.operations.container_activity import log_container_activity
 from container_depot.state_machine import stage_for_status
 
 
-CONTAINER_READY_STATUSES = {"Available", "Ready_For_Service", "Ready_For_Release", "Ready"}
+CONTAINER_READY_STATUSES = {"Available"}
 
 
 def status_tag_for_condition(condition: str | None) -> str:

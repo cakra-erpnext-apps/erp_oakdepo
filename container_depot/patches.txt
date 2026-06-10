@@ -35,3 +35,4 @@ container_depot.patches.v0_18.migrate_rejected_status
 container_depot.patches.v0_19.backfill_depot_branch
 container_depot.patches.v0_22.backfill_inventory_stage
 container_depot.patches.v0_23.backfill_container_activity
+container_depot.patches.v0_24.consolidate_ready_statuses
