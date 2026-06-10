@@ -165,6 +165,27 @@ class TestTankInFlow(FrappeTestCase):
 		self.assertEqual(si.branch, b.branch)
 		self.assertEqual(si.items[0].item_code, "Lift Off")   # lift Item, not generic service
 
+	def test_void_draft_cancels_invoice_and_marks_cancelled(self):
+		# Cancel on a draft voids it without deleting: the document reads Cancelled
+		# (docstatus 2), payment status flips to Cancelled, and the auto-created invoice
+		# is cancelled but KEPT linked & visible on the booking.
+		from container_depot.operations.doctype.container_booking.container_booking import void_draft
+
+		b = self._booking(self.customer, lift_item="Lift Off")
+		b.insert(ignore_permissions=True)
+		si = b.sales_invoice
+		self.assertTrue(si and frappe.db.exists("Sales Invoice", si))
+		void_draft(b.name)
+		b.reload()
+		self.assertEqual(b.docstatus, 2, "voided booking reads as Cancelled, not Draft")
+		self.assertEqual(b.booking_status, "Cancelled")
+		self.assertEqual(b.payment_status, "Cancelled")
+		self.assertEqual(b.sales_invoice, si, "cancelled invoice stays linked & visible")
+		self.assertEqual(
+			frappe.db.get_value("Sales Invoice", si, "docstatus"), 2,
+			"the draft invoice is cancelled (kept), not deleted",
+		)
+
 	def test_draft_empty_items_ok_submit_requires_them(self):
 		# An empty Containers table is tolerated on a draft (so the DO can be attached
 		# before the tanks are listed)…
@@ -480,36 +501,30 @@ class TestBookingCancel(FrappeTestCase):
 		)
 		self.assertEqual(b.docstatus, 1)
 
-	def test_cancel_rolls_back_submitted_invoice(self):
-		# Cancelling a confirmed booking must not leave its invoice live — the booking
-		# link is dropped and the invoice rolled back.
+	def test_cancel_keeps_cancelled_invoice_linked(self):
+		# Cancelling a confirmed booking cancels its invoice but keeps it linked & visible,
+		# and flags payment status Cancelled.
 		b = self._submit_cash_booking("CXLPHANT001")
-		self.assertTrue(b.sales_invoice)
+		si = b.sales_invoice
+		self.assertTrue(si)
 		b.cancel()
 		b.reload()
-		self.assertFalse(b.sales_invoice, "invoice must be unlinked / rolled back on cancel")
+		self.assertEqual(b.sales_invoice, si, "the cancelled invoice stays linked for audit")
+		self.assertEqual(b.payment_status, "Cancelled")
 
-	def test_delete_draft_booking_removes_invoice(self):
-		# A draft Cash booking auto-creates a draft Sales Invoice; deleting the booking
-		# must take that draft invoice with it (no orphan charge).
+	def test_booking_cannot_be_deleted(self):
+		# A booking is never permanently deleted — only voided/cancelled. Empty items keep
+		# the test isolated (no pre-arrival phantom to leak).
 		b = frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",
 			"customer": self.customer,
 			"contract": self.contract,
 			"do_reference": "DO-CXL-DR",
-			"items": [{"container_no": "CXLPHANT001"}],
+			"items": [],
 		}).insert(ignore_permissions=True)
-		si = b.sales_invoice
-		self.assertTrue(
-			si and frappe.db.exists("Sales Invoice", si),
-			"draft Cash booking must auto-create a draft invoice",
-		)
-		frappe.delete_doc("Container Booking", b.name, ignore_permissions=True)
-		self.assertFalse(
-			frappe.db.exists("Sales Invoice", si),
-			"draft invoice must be deleted with the booking",
-		)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.delete_doc("Container Booking", b.name, ignore_permissions=True)
 
 
 class TestTankOutGating(FrappeTestCase):

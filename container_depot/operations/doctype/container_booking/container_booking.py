@@ -49,6 +49,10 @@ class ContainerBooking(Document):
 
 	# ---- lifecycle ------------------------------------------------------
 	def validate(self):
+		if self.docstatus == 0 and self.booking_status == "Cancelled":
+			# A voided draft (see ``void_draft``) is terminal — never re-price or
+			# re-reserve it, so a re-save can't resurrect its rolled-back invoice / tanks.
+			return
 		self._ensure_depot()
 		self._ensure_branch_and_principal()
 		self._sync_lift_type()
@@ -63,6 +67,8 @@ class ContainerBooking(Document):
 		self._sync_payment_status_from_invoice()
 
 	def before_submit(self):
+		if self.booking_status == "Cancelled":
+			frappe.throw(_("This booking was cancelled and cannot be confirmed. Create a new one."))
 		self._require_contract()
 		self._enforce_payment_rules()
 		self._validate_do()
@@ -85,9 +91,9 @@ class ContainerBooking(Document):
 		1. ``booking_status`` → ``Cancelled`` (system-managed).
 		2. Every still-``Active`` Booking Code is voided — a cancelled booking must
 		   not keep live 72h gate-access codes.
-		3. The auto-created Sales Invoice is rolled back — an unpaid draft is deleted; a
-		   submitted invoice is cancelled (its settling Payment Entries reversed first)
-		   so a voided booking carries no live charge.
+		3. The auto-created Sales Invoice is cancelled but kept linked (a draft is marked
+		   Cancelled in place; a submitted one has its Payment Entries reversed then is
+		   cancelled), and ``payment_status`` is set to Cancelled.
 		4. Pre-arrival containers are unwound (phantom deleted / flipped tank
 		   reverted) — see ``_release_pre_arrival_containers``.
 		"""
@@ -96,12 +102,15 @@ class ContainerBooking(Document):
 			"Booking Code", filters={"booking": self.name, "state": "Active"}, pluck="name"
 		):
 			frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
-		self._rollback_invoice()
+		self._cancel_invoice_keep_link()
+		self.db_set("payment_status", "Cancelled", update_modified=False)
 		self._release_pre_arrival_containers()
 
 	def on_trash(self):
-		self._rollback_invoice()
-		self._release_pre_arrival_containers()
+		# A booking is never permanently deleted — it is voided/cancelled (Cancel) so its
+		# audit trail and cancelled invoice stay. The UI Delete/Discard actions are also
+		# hidden in the form script; raw maintenance (frappe.db.delete) bypasses this guard.
+		frappe.throw(_("A Container Booking cannot be deleted — use Cancel to void it instead."))
 
 	def _release_pre_arrival_containers(self):
 		"""Unwind the Tank-In container reservations this booking made.
@@ -352,6 +361,8 @@ class ContainerBooking(Document):
 		(0 only when neither prices it, leaving it for the Cashier to fill in)."""
 		if self.sales_invoice or self.docstatus != 0:
 			return
+		if self.booking_status == "Cancelled":
+			return  # a voided draft must not resurrect its rolled-back invoice
 		if (self.payment_type or "Cash") != "Cash":
 			return
 		service = self.lift_item or self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
@@ -419,22 +430,23 @@ class ContainerBooking(Document):
 		if target:
 			self.payment_status = target
 
-	def _rollback_invoice(self):
-		"""Roll back the booking's auto-created Sales Invoice when the booking is
-		cancelled / deleted, so a voided booking never leaves a live charge behind:
+	def _cancel_invoice_keep_link(self):
+		"""Cancel the booking's auto-created Sales Invoice but KEEP it linked, so the
+		cancelled invoice stays visible on the booking for audit:
 
-		* **Draft** (unpaid, no ledger impact) → unlink + delete.
-		* **Submitted** → reverse settlement first (cancel any submitted Payment Entries
-		  that reference it), then cancel the invoice (its GL is reversed). The cancelled
-		  invoice is kept as an audit record; only the booking link is dropped.
+		* **Draft** auto-invoice (never submitted, no ledger impact) → mark it Cancelled
+		  in place (docstatus 2) so it shows as a cancelled invoice on the booking.
+		* **Submitted** → reverse settlement first (cancel its submitted Payment Entries),
+		  then cancel the invoice (its GL is reversed).
 
-		Best-effort: a failure here is logged and never blocks the booking cancel."""
+		Best-effort: a failure is logged and never blocks the booking cancel. The
+		``sales_invoice`` link is left intact either way."""
 		si = self.sales_invoice
 		if not si or not frappe.db.exists("Sales Invoice", si):
 			return
 		docstatus = frappe.db.get_value("Sales Invoice", si, "docstatus")
-		# Drop the booking → invoice link up front, regardless of what follows below.
-		frappe.db.set_value(self.doctype, self.name, "sales_invoice", None, update_modified=False)
+		if docstatus == 2:
+			return  # already cancelled
 		try:
 			if docstatus == 1:
 				self._cancel_linked_payments(si)
@@ -442,10 +454,11 @@ class ContainerBooking(Document):
 				inv.flags.ignore_permissions = True
 				inv.cancel()
 			else:
-				# Draft (or already cancelled) → no ledger impact, drop the record.
-				frappe.delete_doc("Sales Invoice", si, ignore_permissions=True, force=True)
+				frappe.db.set_value(
+					"Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
+				)
 		except Exception:
-			frappe.log_error(frappe.get_traceback(), f"booking invoice rollback failed: {self.name}")
+			frappe.log_error(frappe.get_traceback(), f"booking invoice cancel failed: {self.name}")
 
 	def _cancel_linked_payments(self, sales_invoice):
 		"""Cancel every submitted Payment Entry that settles ``sales_invoice`` so the
@@ -741,6 +754,29 @@ def customer_payment_modes(customer):
 	if not contract:
 		return []
 	return ["Cash", "TOP"] if contract.payment_type == "Both" else [contract.payment_type]
+
+
+@frappe.whitelist()
+def void_draft(booking):
+	"""Void a *draft* Container Booking without deleting it.
+
+	Cancel is the only 'undo' on a draft (a booking is never hard-deleted / discarded):
+	it rolls back what the draft spun up — the auto-created Sales Invoice (cancelled but
+	kept linked & visible) and the pre-arrival container reservations — sets the booking
+	+ payment status to Cancelled, and marks the document itself Cancelled (docstatus 2)
+	so it reads 'Cancelled', not 'Draft'. Submit stays the only approve."""
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.docstatus != 0:
+		frappe.throw(_("Only a draft booking can be cancelled here."))
+	doc._cancel_invoice_keep_link()
+	doc._release_pre_arrival_containers()
+	doc.db_set("booking_status", "Cancelled", update_modified=False)
+	doc.db_set("payment_status", "Cancelled", update_modified=False)
+	# A draft can't go through native submit→cancel, so mark Cancelled (docstatus 2)
+	# directly; child rows mirror the parent docstatus.
+	frappe.db.set_value("Container Booking", doc.name, "docstatus", 2, update_modified=False)
+	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=2 WHERE parent=%s", doc.name)
+	return doc.booking_status
 
 
 # ---- payment-status sync (booking ↔ its Sales Invoice) ----------------------

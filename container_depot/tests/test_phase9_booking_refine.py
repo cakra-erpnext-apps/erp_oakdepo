@@ -222,10 +222,9 @@ class TestPaymentStatusSync(FrappeTestCase):
 		self.assertEqual(b.payment_status, "Paid")
 
 
-class TestDiscardCleansInvoice(FrappeTestCase):
-	"""Discarding / cancelling a Cash booking removes its auto-created *unpaid
-	draft* Sales Invoice (an orphan with no ledger impact); a submitted / paid
-	invoice is left untouched."""
+class TestVoidCancelsInvoice(FrappeTestCase):
+	"""Cancelling (voiding) a draft Cash booking cancels its auto-created Sales Invoice
+	but KEEPS it linked & visible; a booking is never permanently deleted."""
 
 	def setUp(self):
 		_ensure_test_depot()
@@ -248,20 +247,31 @@ class TestDiscardCleansInvoice(FrappeTestCase):
 			"items": [{"container_no": cn}],
 		}).insert(ignore_permissions=True)
 
-	def test_discard_removes_unpaid_draft_invoice(self):
+	def test_void_cancels_draft_invoice_keeps_link(self):
+		from container_depot.operations.doctype.container_booking.container_booking import void_draft
+
 		b = self._draft("B6DISC00001")
 		si = b.sales_invoice
 		self.assertTrue(si and frappe.db.exists("Sales Invoice", si), "draft invoice not created")
-		b.delete(ignore_permissions=True)  # discard the draft booking
-		self.assertFalse(frappe.db.exists("Sales Invoice", si), "orphan draft invoice not cleaned up")
+		void_draft(b.name)
+		b.reload()
+		self.assertEqual(b.docstatus, 2, "voided booking reads Cancelled")
+		self.assertEqual(b.sales_invoice, si, "cancelled invoice stays linked & visible")
+		self.assertEqual(
+			frappe.db.get_value("Sales Invoice", si, "docstatus"), 2, "invoice must be cancelled"
+		)
 
-	def test_paid_invoice_survives_discard(self):
-		b = self._draft("B6DISC00002")
-		si = b.sales_invoice
-		# Pretend the Cashier submitted + paid it.
-		frappe.db.set_value("Sales Invoice", si, {"docstatus": 1, "status": "Paid", "outstanding_amount": 0})
-		b.delete(ignore_permissions=True)
-		self.assertTrue(frappe.db.exists("Sales Invoice", si), "submitted/paid invoice must not be auto-deleted")
+	def test_booking_cannot_be_deleted(self):
+		b = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank In",
+			"customer": self.customer,
+			"contract": self.contract,
+			"do_reference": "DO-DISC",
+			"items": [],
+		}).insert(ignore_permissions=True)
+		with self.assertRaises(frappe.ValidationError):
+			b.delete(ignore_permissions=True)
 
 
 class TestWalkInNoContract(FrappeTestCase):

@@ -182,13 +182,13 @@
     },
     {
       "default": "Unpaid",
-      "depends_on": "eval:doc.payment_type=='Cash'",
-      "description": "Tracks the Sales Invoice for Cash bookings. Hidden for TOP (billed later via consolidated billing).",
+      "depends_on": "eval:doc.payment_type=='Cash' || doc.booking_status=='Cancelled'",
+      "description": "Tracks the Sales Invoice for Cash bookings. Hidden for TOP (billed later via consolidated billing). Set to Cancelled when the booking is voided/cancelled.",
       "fieldname": "payment_status",
       "fieldtype": "Select",
       "in_standard_filter": 1,
       "label": "Payment Status",
-      "options": "Unpaid\nInvoiced\nPaid",
+      "options": "Unpaid\nInvoiced\nPaid\nCancelled",
       "read_only": 1
     },
     {
@@ -254,7 +254,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-15",
+  "modified": "2026-06-17",
   "module": "Operations",
   "name": "Container Booking",
   "search_fields": "customer, branch, booking_status",

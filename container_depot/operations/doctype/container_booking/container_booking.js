@@ -11,10 +11,25 @@ frappe.ui.form.on('Container Booking', {
 	},
 	refresh(frm) {
 		frm.trigger('_set_queries');
+		frm.trigger('_lock_actions');
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
 		if (!frm.is_new() && frm.doc.booking_status === 'Confirmed') {
 			frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
+		}
+	},
+	_lock_actions(frm) {
+		// A booking is never permanently deleted or silently discarded — it is voided
+		// (Cancel) so its cancelled invoice + audit trail stay. Strip both menu items
+		// (server also blocks delete in on_trash).
+		['Delete', 'Discard'].forEach((label) => {
+			frm.page.menu.find(`a[data-label="${encodeURIComponent(__(label))}"]`).parent().remove();
+		});
+		// Saved draft → the only undo is Cancel = void: cancel the draft's invoice (kept
+		// linked) + release reservations and mark it Cancelled. Submit (Approve) stays
+		// the primary action.
+		if (!frm.is_new() && frm.doc.docstatus === 0) {
+			frm.add_custom_button(__('Cancel'), () => _confirm_void(frm)).addClass('btn-danger');
 		}
 	},
 	branch(frm) {
@@ -86,6 +101,21 @@ frappe.ui.form.on('Container Booking', {
 		});
 	},
 });
+
+function _confirm_void(frm) {
+	frappe.confirm(
+		__('Cancel this booking? Its draft invoice and container reservations will be rolled back. The record is kept (not deleted).'),
+		() => {
+			frappe.call({
+				method: 'container_depot.operations.doctype.container_booking.container_booking.void_draft',
+				args: { booking: frm.doc.name },
+				freeze: true,
+				freeze_message: __('Cancelling …'),
+				callback: () => frm.reload_doc(),
+			});
+		}
+	);
+}
 
 const MAX_CONTAINERS_PER_ORDER = 3;
 
