@@ -6,7 +6,7 @@ from unittest import mock
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import now_datetime, today
+from frappe.utils import add_days, now_datetime, today
 
 from container_depot.operations.container_activity import log_container_activity
 from container_depot.tests._booking_helpers import make_booking_code
@@ -164,3 +164,70 @@ class TestContainerActivityReportAndBackfill(FrappeTestCase):
 				filters={"reference_doctype": "Container Movement", "reference_name": mv},
 			)
 			self.assertEqual(len(acts), 1)
+
+
+class TestContainerActivityBookingToOrderBongkar(FrappeTestCase):
+	"""End-to-end: a Booking and the Order Bongkar generated from it each append
+	one Container Activity row, linked back to the document that produced it."""
+
+	def test_booking_to_order_bongkar_records_activity(self):
+		from container_depot.operations.order_generation import make_order
+
+		cust = ensure_test_customer("Activity Flow Cust")
+		# A TOP (postpaid) contract lets the booking submit without the Cash
+		# paid-invoice gate, so the whole flow runs in one test.
+		frappe.get_doc({
+			"doctype": "Depot Contract",
+			"customer": cust,
+			"currency": "IDR",
+			"status": "Active",
+			"payment_type": "TOP",
+			"payment_terms": "NET 30",
+			"credit_limit": 100000000,
+			"valid_from": today(),
+			"valid_to": add_days(today(), 365),
+			"tariff_lines": [{"item": "Lift Off", "rate": 250000}],
+		}).insert(ignore_permissions=True)
+
+		# 1) Booking (Tank In). Submit auto-creates the pre-arrival Container,
+		#    issues its Booking Code, and logs a "Booking" activity per item.
+		booking = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank In",
+			"customer": cust,
+			"do_reference": "DO-ACTFLOW-001",
+			"items": [{"container_no": "ACTFLOW0001"}],
+		}).insert(ignore_permissions=True)
+		booking.submit()
+		booking.reload()
+
+		container = booking.items[0].container
+		code = booking.items[0].booking_code
+		self.assertTrue(container, "booking submit should resolve a Container")
+		self.assertTrue(code, "booking submit should issue a Booking Code")
+
+		# 2) Generate the Order Bongkar from that booking and submit it — logs an
+		#    "Order Bongkar" activity for the same container.
+		order = frappe.get_doc("Order Bongkar", make_order(booking.name, [code]))
+		order.submit()
+
+		# 3) Inspect the container's unified activity feed.
+		feed = frappe.get_all(
+			"Container Activity",
+			filters={"container": container},
+			fields=["activity_time", "activity_type", "reference_doctype", "reference_name", "summary"],
+			order_by="activity_time asc, creation asc",
+		)
+		print(f"\n=== Container Activity feed for {container} ({len(feed)} rows) ===")
+		for f in feed:
+			stamp = str(f["activity_time"])[:19]
+			print(f"  {stamp}  {f['activity_type']:<16} <- {f['reference_doctype']} {f['reference_name']}  | {f['summary'] or ''}")
+
+		by_type = {f["activity_type"]: f for f in feed}
+		self.assertIn("Booking", by_type, "Booking activity was not recorded")
+		self.assertIn("Order Bongkar", by_type, "Order Bongkar activity was not recorded")
+		# Each activity backlinks to the document that produced it.
+		self.assertEqual(by_type["Booking"]["reference_doctype"], "Container Booking")
+		self.assertEqual(by_type["Booking"]["reference_name"], booking.name)
+		self.assertEqual(by_type["Order Bongkar"]["reference_doctype"], "Order Bongkar")
+		self.assertEqual(by_type["Order Bongkar"]["reference_name"], order.name)
