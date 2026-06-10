@@ -285,9 +285,10 @@ class TestCashPaidInvoice(FrappeTestCase):
 		self.assertEqual(b.booking_status, "Pending Payment")
 		self.assertEqual(b.docstatus, 0)
 
-	def test_paid_cash_booking_auto_confirms(self):
-		# Cash is pay-first: once the invoice is Paid, the booking auto-confirms (leaves
-		# Pending Payment, submits, issues Booking Codes) without a manual Submit.
+	def test_paid_cash_booking_advances_to_pending_confirmation(self):
+		# Cash is pay-first: once the invoice is Paid, the booking advances from Pending
+		# Payment to Pending Confirmation (still a draft) so the admin verifies + submits
+		# by hand. It is NOT auto-submitted.
 		from container_depot.operations.doctype.container_booking.container_booking import (
 			sync_bookings_for_invoice,
 		)
@@ -302,16 +303,16 @@ class TestCashPaidInvoice(FrappeTestCase):
 		}).insert(ignore_permissions=True)
 		si = b.sales_invoice
 		self.assertTrue(si, "Cash booking must auto-create a draft invoice")
+		self.assertEqual(b.booking_status, "Pending Payment")
 		# Cashier settles it: invoice submitted + Paid.
 		frappe.db.set_value(
 			"Sales Invoice", si, {"docstatus": 1, "status": "Paid", "outstanding_amount": 0}
 		)
 		sync_bookings_for_invoice(si)
 		b.reload()
-		self.assertEqual(b.docstatus, 1, "paid Cash booking must auto-confirm (submit)")
-		self.assertEqual(b.booking_status, "Confirmed")
+		self.assertEqual(b.docstatus, 0, "booking is NOT auto-submitted")
+		self.assertEqual(b.booking_status, "Pending Confirmation")
 		self.assertEqual(b.payment_status, "Paid")
-		self.assertTrue(frappe.db.exists("Booking Code", {"booking": b.name}))
 
 
 class TestWalkInPriceListPricing(FrappeTestCase):

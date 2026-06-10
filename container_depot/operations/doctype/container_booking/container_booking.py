@@ -800,36 +800,33 @@ def _invoice_settlement(sales_invoice):
 
 
 def sync_bookings_for_invoice(sales_invoice):
-	"""Push a Sales Invoice's settlement state onto every Container Booking pinned to it,
-	and auto-confirm a Cash booking once its invoice is Paid.
+	"""Push a Sales Invoice's settlement state onto every Container Booking pinned to it.
 
 	Cash is 'pay first': the booking waits as a draft (Pending Payment) until the Cashier
-	settles its Sales Invoice. When the invoice reads Paid, the booking is submitted
-	automatically — it leaves Pending Payment, confirms, and issues its Booking Codes — so
-	the operator never has to come back and click Submit."""
+	settles its Sales Invoice. When the invoice reads Paid, the booking advances from
+	Pending Payment to **Pending Confirmation** (still a draft) — so the admin can verify
+	it and Submit it by hand. The booking is never auto-submitted."""
 	target = _invoice_settlement(sales_invoice)
 	if not target:
 		return
 	for name in frappe.get_all("Container Booking", filters={"sales_invoice": sales_invoice}, pluck="name"):
 		row = frappe.db.get_value(
-			"Container Booking", name, ["payment_status", "docstatus", "payment_type"], as_dict=True
+			"Container Booking", name,
+			["payment_status", "docstatus", "payment_type", "booking_status"], as_dict=True,
 		)
+		updates = {}
 		if row.payment_status != target:
-			frappe.db.set_value("Container Booking", name, "payment_status", target, update_modified=False)
-		if target == "Paid" and row.docstatus == 0 and (row.payment_type or "Cash") == "Cash":
-			_auto_confirm_paid_booking(name)
-
-
-def _auto_confirm_paid_booking(name):
-	"""Submit a paid Cash booking (draft) so it leaves Pending Payment and confirms.
-	Best-effort: if it isn't ready (e.g. DO reference still missing) it stays a draft and
-	the operator finishes it by hand — the payment itself is never blocked."""
-	try:
-		doc = frappe.get_doc("Container Booking", name)
-		if doc.docstatus == 0 and doc.booking_status != "Cancelled":
-			doc.submit()
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), f"auto-confirm paid Cash booking failed: {name}")
+			updates["payment_status"] = target
+		# Cash paid → ready for the operator's confirmation (no auto-submit).
+		if (
+			target == "Paid"
+			and row.docstatus == 0
+			and (row.payment_type or "Cash") == "Cash"
+			and row.booking_status == "Pending Payment"
+		):
+			updates["booking_status"] = "Pending Confirmation"
+		if updates:
+			frappe.db.set_value("Container Booking", name, updates, update_modified=False)
 
 
 def on_payment_entry_change(doc, method=None):
