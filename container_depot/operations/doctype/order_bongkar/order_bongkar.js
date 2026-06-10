@@ -4,6 +4,11 @@
 // A single bon/voucher carries at most this many containers.
 const MAX_CONTAINERS_PER_ORDER = 2;
 
+// Vehicle/paperwork fields a second container inherits from the first row as an
+// editable default. Everything else (condition / cargo / Tgl. Bongkar / remarks)
+// defaults from that container's own booking line, not from row one.
+const MIRROR_FROM_FIRST_ROW = ['truck_plate', 'driver', 'driver_phone', 'ro'];
+
 frappe.ui.form.on('Order Bongkar', {
 	refresh(frm) {
 		// Add/revise: only this booking's still-pending (Active) Booking Codes.
@@ -23,6 +28,7 @@ frappe.ui.form.on('Order Bongkar', {
 		const grid = frm.fields_dict.containers.grid;
 		// A Bon Bongkar has no cleaning certificate.
 		grid.update_docfield_property('cleaning_certificate', 'hidden', 1);
+		_lock_actions(frm);
 		_strip_row_buttons(frm);
 		_enforce_max_rows(frm);
 		grid.refresh();
@@ -30,8 +36,50 @@ frappe.ui.form.on('Order Bongkar', {
 	booking(frm) {
 		_default_shipper(frm);
 		_default_principal(frm);
+	},
+	containers_add(frm, cdt, cdn) {
+		// A second container mirrors the first row's truck / driver / R-O as an
+		// editable default; the rest comes from its own container's booking line.
+		const rows = frm.doc.containers || [];
+		if (rows.length <= 1) return;
+		const first = rows[0];
+		const row = locals[cdt][cdn];
+		if (!first || first.name === row.name) return;
+		MIRROR_FROM_FIRST_ROW.forEach((f) => {
+			if (first[f] && !row[f]) frappe.model.set_value(cdt, cdn, f, first[f]);
+		});
 	}
 });
+
+function _lock_actions(frm) {
+	// A bon is never deleted, duplicated, or used as a template for a New one —
+	// it is Cancelled to release its containers. Strip those menu items (server
+	// also hard-blocks delete in on_trash).
+	['Delete', 'Duplicate', __('New {0}', [__('Order Bongkar')])].forEach((label) => {
+		frm.page.menu.find(`a[data-label="${encodeURIComponent(__(label))}"]`).parent().remove();
+	});
+	// Saved draft → offer Cancel = void: release the booking codes (back to Active)
+	// so the containers can be put on a fresh voucher, and mark it Cancelled. A
+	// submitted bon keeps the native Cancel action (on_cancel releases the codes).
+	if (!frm.is_new() && frm.doc.docstatus === 0) {
+		frm.add_custom_button(__('Cancel'), () => _confirm_cancel(frm)).addClass('btn-danger');
+	}
+}
+
+function _confirm_cancel(frm) {
+	frappe.confirm(
+		__('Cancel this bon? Its containers are released (back to pending) so they can be put on a new voucher.'),
+		() => {
+			frappe.call({
+				method: 'container_depot.operations.doctype.order_bongkar.order_bongkar.cancel_order',
+				args: { order: frm.doc.name },
+				freeze: true,
+				freeze_message: __('Cancelling …'),
+				callback: () => frm.reload_doc(),
+			});
+		}
+	);
+}
 
 function _default_shipper(frm) {
 	if (frm.doc.booking && !frm.doc.shipper) {

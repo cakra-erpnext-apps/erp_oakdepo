@@ -335,6 +335,34 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		self.assertIn(c1, names)
 		self.assertNotIn(c2, names)
 
+	def test_cancel_draft_releases_codes(self):
+		# Cancelling a DRAFT bon frees its codes (Used -> Active) and marks it Cancelled,
+		# so the containers can be put on a fresh voucher.
+		from container_depot.operations.doctype.order_bongkar.order_bongkar import cancel_order
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCCD0")
+		name = make_order(booking, codes)
+		self.assertEqual(_states(codes), ["Used"])
+		cancel_order(name)
+		self.assertEqual(_states(codes), ["Active"])
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
+
+	def test_cancel_submitted_releases_codes(self):
+		# A submitted bon can still be cancelled; on_cancel releases its codes.
+		from container_depot.operations.doctype.order_bongkar.order_bongkar import cancel_order
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCCS0")
+		name = make_order(booking, codes)
+		frappe.get_doc("Order Bongkar", name).submit()
+		self.assertEqual(_states(codes), ["Used"])
+		cancel_order(name)
+		self.assertEqual(_states(codes), ["Active"])
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
+
+	def test_order_bongkar_cannot_be_deleted(self):
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCDL0")
+		name = make_order(booking, codes)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.delete_doc("Order Bongkar", name)
+
 	def test_pending_excludes_used_and_expired(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCPND0")
 		# Consume one, expire another by flipping state.

@@ -18,6 +18,13 @@ class OrderBongkar(Document):
 	def on_cancel(self):
 		_release_codes(self)
 
+	def on_trash(self):
+		# A bon is never deleted — Cancel it (draft or submitted) to release its
+		# containers and keep the audit trail. The UI Delete / Duplicate / New
+		# actions are stripped in the form script; raw maintenance
+		# (frappe.db.delete) bypasses this guard.
+		frappe.throw(_("An Order Bongkar cannot be deleted — use Cancel to void it instead."))
+
 
 def _order_rows(doc: Document):
 	"""Authoritative container rows for an order (the ``containers`` child table)."""
@@ -166,6 +173,31 @@ def _release_codes(doc: Document):
 	for r in _order_rows(doc):
 		if r.booking_code and frappe.db.get_value("Booking Code", r.booking_code, "state") == "Used":
 			frappe.db.set_value("Booking Code", r.booking_code, "state", "Active", update_modified=False)
+
+
+@frappe.whitelist()
+def cancel_order(order):
+	"""Cancel an Order Bongkar, releasing its Booking Codes back to ``Active`` so the
+	containers can be put on a fresh voucher again.
+
+	Works on a DRAFT (a draft can't pass through ``doc.cancel()``, so release the
+	codes and set Cancelled directly) and on a SUBMITTED bon (normal cancel →
+	``on_cancel`` releases the codes)."""
+	doc = frappe.get_doc("Order Bongkar", order)
+	if doc.docstatus == 2:
+		frappe.throw(_("Order {0} is already cancelled.").format(doc.name))
+	if doc.docstatus == 1:
+		doc.cancel()
+		return doc.name
+	# Draft: free the codes, then mark Cancelled directly (parent + child rows).
+	_release_codes(doc)
+	frappe.db.set_value("Order Bongkar", doc.name, "docstatus", 2, update_modified=False)
+	frappe.db.sql(
+		"UPDATE `tabContainer Booking Item` SET docstatus = 2 "
+		"WHERE parent = %s AND parenttype = 'Order Bongkar'",
+		doc.name,
+	)
+	return doc.name
 
 
 @frappe.whitelist()
