@@ -24,10 +24,19 @@ class CleaningCertificate(Document):
 
 	def on_submit(self):
 		"""Update container certification status upon submission"""
+		from container_depot.operations.container_activity import log_container_activity
+
 		if self.container:
 			container_doc = frappe.get_doc("Container", self.container)
 			container_doc.certification_status = "Completed"
 			container_doc.save(ignore_permissions=True)
+			log_container_activity(
+				self.container, "Cleaning Certificate",
+				reference_doctype=self.doctype, reference_name=self.name,
+				performed_by=self.get("certified_by"),
+				activity_time=self.get("clean_date"),
+				summary=f"{self.get('cleaning_method') or 'Cleaning'} certificate, valid until {self.valid_until}",
+			)
 
 	def is_valid(self) -> bool:
 		if not self.valid_until:

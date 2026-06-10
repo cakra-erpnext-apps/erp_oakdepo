@@ -1,0 +1,144 @@
+{
+  "actions": [],
+  "autoname": "hash",
+  "description": "Append-only unified history of business actions against a Container. Auto-written by each action document (Gate Entry, Inspection, Cleaning, Repair, Release, Orders, Periodic Test, Booking) via container_activity.log_container_activity. Container Movement remains the low-level status/yard log; this is the action layer that links back to the source record.",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "container",
+    "activity_time",
+    "activity_type",
+    "column_break_1",
+    "reference_doctype",
+    "reference_name",
+    "performed_by",
+    "status_section",
+    "from_status",
+    "to_status",
+    "column_break_2",
+    "principal",
+    "depot",
+    "summary_section",
+    "summary"
+  ],
+  "fields": [
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Container",
+      "options": "Container",
+      "reqd": 1
+    },
+    {
+      "fieldname": "activity_time",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Activity Time",
+      "reqd": 1
+    },
+    {
+      "fieldname": "activity_type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Activity Type",
+      "options": "Booking\nGate In\nInspection (EIR)\nCleaning\nCleaning Certificate\nRepair\nPeriodic Test\nOrder Bongkar\nOrder Muat\nRelease\nGate Out\nStatus Change",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "reference_doctype",
+      "fieldtype": "Link",
+      "label": "Reference Document Type",
+      "options": "DocType",
+      "read_only": 1
+    },
+    {
+      "fieldname": "reference_name",
+      "fieldtype": "Dynamic Link",
+      "in_list_view": 1,
+      "label": "Reference Name",
+      "options": "reference_doctype",
+      "read_only": 1
+    },
+    {
+      "fieldname": "performed_by",
+      "fieldtype": "Link",
+      "label": "Performed By",
+      "options": "User"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "status_section",
+      "fieldtype": "Section Break",
+      "label": "Status Transition"
+    },
+    {
+      "fieldname": "from_status",
+      "fieldtype": "Data",
+      "label": "From Status"
+    },
+    {
+      "fieldname": "to_status",
+      "fieldtype": "Data",
+      "label": "To Status"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "principal",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Principal",
+      "options": "Customer",
+      "read_only": 1
+    },
+    {
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Depot",
+      "options": "Depot",
+      "read_only": 1
+    },
+    {
+      "fieldname": "summary_section",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "summary",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "label": "Summary"
+    }
+  ],
+  "in_create": 0,
+  "links": [],
+  "modified": "2026-06-20",
+  "module": "Operations",
+  "name": "Container Activity",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "read": 1,
+      "role": "Container Depot"
+    }
+  ],
+  "sort_field": "activity_time",
+  "sort_order": "DESC",
+  "title_field": "container"
+}

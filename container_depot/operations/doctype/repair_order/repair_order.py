@@ -48,8 +48,10 @@ class RepairOrder(Document):
 		if not self.container:
 			return
 
+		before = self.get_doc_before_save()
+		prev_status = before.status if before else None
 		container_doc = frappe.get_doc("Container", self.container)
-		
+
 		# Map Repair Order status to Container status and repair_status
 		if self.status == "Draft":
 			container_doc.repair_status = "Pending_Estimate"
@@ -71,3 +73,15 @@ class RepairOrder(Document):
 			container_doc.save(ignore_permissions=True)
 		finally:
 			frappe.flags.in_status_automation = False
+
+		# Log a Repair milestone when the order is approved / progressed / finished.
+		if self.status in ("Approved", "In Progress", "Completed") and self.status != prev_status:
+			from container_depot.operations.container_activity import log_container_activity
+
+			log_container_activity(
+				self.container, "Repair",
+				reference_doctype=self.doctype, reference_name=self.name,
+				to_status=container_doc.status,
+				performed_by=self.get("technician"),
+				summary=f"Repair {self.status}" + (f" (cost {self.total_cost})" if self.get("total_cost") else ""),
+			)

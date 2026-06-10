@@ -38,7 +38,10 @@ class Inspection(Document):
 
 	def on_submit(self):
 		"""Update container status when inspection is submitted"""
+		from container_depot.operations.container_activity import log_container_activity
+
 		container = frappe.get_doc("Container", self.container)
+		from_status = container.status
 
 		if self.inspection_type == "EIR-In":
 			container.status = "Inspecting"
@@ -46,6 +49,15 @@ class Inspection(Document):
 			self._save_container(container)
 		elif self.inspection_type == "Detailed Survey":
 			self._apply_survey_result(container)
+
+		outcome = [p for p in (self.get("tank_status"), "damage found" if self.has_damage else None) if p]
+		log_container_activity(
+			self.container, "Inspection (EIR)",
+			reference_doctype=self.doctype, reference_name=self.name,
+			from_status=from_status, to_status=container.status,
+			performed_by=self.get("inspector"),
+			summary=f"{self.inspection_type}" + (": " + ", ".join(outcome) if outcome else ""),
+		)
 
 	def _save_container(self, container):
 		# Controller-driven status change: bypass the manual-transition guard.

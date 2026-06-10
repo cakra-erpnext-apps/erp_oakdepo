@@ -4,6 +4,7 @@ from frappe.model.document import Document
 from frappe.utils import getdate, today
 
 from container_depot.operations.doctype.order_bongkar.order_bongkar import (
+	_log_order_activity,
 	_order_rows,
 	_reconcile_codes,
 	_release_codes,
@@ -20,6 +21,9 @@ class OrderMuat(Document):
 
 	def on_update(self):
 		_reconcile_codes(self)
+
+	def on_submit(self):
+		_log_order_activity(self, "Order Muat")
 
 	def on_cancel(self):
 		_release_codes(self)

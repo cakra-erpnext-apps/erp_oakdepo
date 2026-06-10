@@ -15,6 +15,9 @@ class OrderBongkar(Document):
 	def on_update(self):
 		_reconcile_codes(self)
 
+	def on_submit(self):
+		_log_order_activity(self, "Order Bongkar")
+
 	def on_cancel(self):
 		_release_codes(self)
 
@@ -29,6 +32,20 @@ class OrderBongkar(Document):
 def _order_rows(doc: Document):
 	"""Authoritative container rows for an order (the ``containers`` child table)."""
 	return doc.get("containers") or []
+
+
+def _log_order_activity(order: Document, activity_type: str):
+	"""Append one Container Activity per container row when a bon is submitted
+	(shared by Order Bongkar + Order Muat)."""
+	from container_depot.operations.container_activity import log_container_activity
+
+	for row in _order_rows(order):
+		if row.get("container"):
+			log_container_activity(
+				row.container, activity_type,
+				reference_doctype=order.doctype, reference_name=order.name,
+				summary=f"{activity_type} issued" + (f" (shipper {order.get('shipper')})" if order.get("shipper") else ""),
+			)
 
 
 def _sync_booking(doc: Document):

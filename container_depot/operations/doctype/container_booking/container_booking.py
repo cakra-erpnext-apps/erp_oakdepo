@@ -28,6 +28,7 @@ from container_depot.operations.doctype.booking_code.booking_code import (
 from container_depot.operations.doctype.depot_contract.depot_contract import (
 	get_active_contract,
 )
+from container_depot.operations.container_activity import log_container_activity
 from container_depot.state_machine import stage_for_status
 
 
@@ -77,6 +78,13 @@ class ContainerBooking(Document):
 	def on_submit(self):
 		self._issue_booking_codes()
 		self.db_set("booking_status", "Confirmed", update_modified=False)
+		for item in (self.items or []):
+			if item.get("container"):
+				log_container_activity(
+					item.container, "Booking",
+					reference_doctype=self.doctype, reference_name=self.name,
+					summary=f"Booking confirmed ({self.get('direction') or 'Tank In'})",
+				)
 		# Cash bookings clear their (Paid) invoice at submit; TOP accrues Unpaid
 		# until swept by consolidated billing.
 		self.db_set(

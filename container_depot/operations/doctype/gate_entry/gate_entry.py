@@ -53,13 +53,24 @@ class GateEntry(Document):
 
 	def on_submit(self):
 		"""Update container status on gate entry submission"""
+		from container_depot.operations.container_activity import log_container_activity
+
 		container_ref = self.get("container") or self.container_no
 		if container_ref and frappe.db.exists("Container", container_ref):
 			container = frappe.get_doc("Container", container_ref)
+			from_status = container.status
 			container.status = "Gate_In"
 			container.eir_in_date = self.gate_in_timestamp or datetime.datetime.now()
 			container.save(ignore_permissions=True)
-		
+			log_container_activity(
+				container.name, "Gate In",
+				reference_doctype=self.doctype, reference_name=self.name,
+				from_status=from_status, to_status="Gate_In",
+				performed_by=self.get("security_guard"),
+				activity_time=self.gate_in_timestamp,
+				summary=f"Gate-in (Booking Code {self.booking_code})" if self.booking_code else "Gate-in",
+			)
+
 		# Generate and log UN/EDIFACT CODECO message
 		self.generate_codeco_message()
 

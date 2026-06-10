@@ -55,14 +55,14 @@ class CleaningOrder(Document):
 
 	def on_submit(self):
 		"""Update container status when cleaning order is submitted."""
-		self._propagate_to_container()
+		self._propagate_to_container(log_always=True)
 
 	def on_update_after_submit(self):
 		"""Status / approval edits after submit also drive the container so a
 		re-clean can progress Pending -> In_Progress -> Completed over time."""
 		self._propagate_to_container()
 
-	def _propagate_to_container(self):
+	def _propagate_to_container(self, log_always=False):
 		"""Mirror the cleaning order's progress onto its container.
 
 		Re-cleaning (post-survey) uses the portal lifecycle states; a normal
@@ -70,6 +70,8 @@ class CleaningOrder(Document):
 		"""
 		if not self.container:
 			return
+		before = self.get_doc_before_save()
+		prev_status = before.status if before else None
 		container = frappe.get_doc("Container", self.container)
 
 		if self.is_recleaning:
@@ -92,3 +94,17 @@ class CleaningOrder(Document):
 			container.save(ignore_permissions=True)
 		finally:
 			frappe.flags.in_status_automation = False
+
+		# Log a Cleaning milestone on start / completion (deduped against unrelated
+		# after-submit edits).
+		if self.status in ("In_Progress", "Completed") and (log_always or self.status != prev_status):
+			from container_depot.operations.container_activity import log_container_activity
+
+			label = "re-clean" if self.is_recleaning else "clean"
+			log_container_activity(
+				self.container, "Cleaning",
+				reference_doctype=self.doctype, reference_name=self.name,
+				to_status=container.status,
+				performed_by=self.get("completed_by") or self.get("assigned_to"),
+				summary=f"Cleaning {self.status.lower().replace('_', ' ')} ({label})",
+			)

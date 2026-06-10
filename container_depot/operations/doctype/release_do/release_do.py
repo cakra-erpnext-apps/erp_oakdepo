@@ -36,6 +36,12 @@ class ReleaseDO(Document):
 		self._set_container_status("Ready_For_Release", only_from={"Released_Pending_Pickup"})
 
 	def _set_container_status(self, target, only_from=None):
+		from container_depot.operations.container_activity import log_container_activity
+
+		activity = {
+			"Released_Pending_Pickup": ("Release", "Released — pending pickup"),
+			"Gate_Out": ("Gate Out", f"Gated out (Release DO {self.name})"),
+		}.get(target)
 		for row in self.containers:
 			if not row.container:
 				continue
@@ -44,6 +50,7 @@ class ReleaseDO(Document):
 				continue
 			if container.status == target:
 				continue
+			from_status = container.status
 			container.status = target
 			# Controller-driven change: bypass the manual-transition guard.
 			frappe.flags.in_status_automation = True
@@ -51,3 +58,10 @@ class ReleaseDO(Document):
 				container.save(ignore_permissions=True)
 			finally:
 				frappe.flags.in_status_automation = False
+			if activity:
+				log_container_activity(
+					container.name, activity[0],
+					reference_doctype=self.doctype, reference_name=self.name,
+					from_status=from_status, to_status=target,
+					summary=activity[1],
+				)

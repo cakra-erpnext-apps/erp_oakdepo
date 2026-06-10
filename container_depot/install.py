@@ -498,6 +498,10 @@ INVENTORY_CHARTS = [
 	 "document_type": "Container Movement", "chart_type": "Count", "based_on": "movement_timestamp",
 	 "timespan": "Last Month", "time_interval": "Daily", "type": "Line", "timeseries": 1,
 	 "filters_json": [["to_status", "=", "Gate_Out"]]},
+	{"chart_name": "Activity by Type (Last Month)",
+	 "document_type": "Container Activity", "chart_type": "Group By", "group_by_type": "Count",
+	 "group_by_based_on": "activity_type", "type": "Bar",
+	 "filters_json": [["activity_time", "Timespan", "last month"]]},
 ]
 
 

@@ -20,9 +20,13 @@
   {
    "chart_name": "Tank OUT (Last Month)",
    "label": "Tank OUT (Last Month)"
+  },
+  {
+   "chart_name": "Activity by Type (Last Month)",
+   "label": "Activity by Type (Last Month)"
   }
  ],
- "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Container Inventory \\u2014 Live Monitoring</b></span>\", \"col\": 12}}, {\"id\": \"nc_Stock In Depo\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Stock In Depo\", \"col\": 3}}, {\"id\": \"nc_Dirty Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Dirty Tank\", \"col\": 3}}, {\"id\": \"nc_Clean Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Clean Tank\", \"col\": 3}}, {\"id\": \"nc_Tanks In Cleaning\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Cleaning\", \"col\": 3}}, {\"id\": \"nc_Tanks In Survey or Repair\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Survey or Repair\", \"col\": 3}}, {\"id\": \"nc_Tanks Ready for Release\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks Ready for Release\", \"col\": 3}}, {\"id\": \"nc_Tank In Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank In Today\", \"col\": 3}}, {\"id\": \"nc_Tank Out Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank Out Today\", \"col\": 3}}, {\"id\": \"hdr2\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Stock & Flow</b></span>\", \"col\": 12}}, {\"id\": \"ch_Tanks by Stage\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Stage\", \"col\": 6}}, {\"id\": \"ch_Tanks by Principal\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Principal\", \"col\": 6}}, {\"id\": \"ch_Tanks by Yard Zone\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Yard Zone\", \"col\": 6}}, {\"id\": \"ch_Tank IN (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank IN (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Tank OUT (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank OUT (Last Month)\", \"col\": 6}}, {\"id\": \"hdr3\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Reports & Lists</b></span>\", \"col\": 12}}, {\"id\": \"cardRpt\", \"type\": \"card\", \"data\": {\"card_name\": \"Container Inventory Reports\", \"col\": 4}}]",
+ "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Container Inventory \\u2014 Live Monitoring</b></span>\", \"col\": 12}}, {\"id\": \"nc_Stock In Depo\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Stock In Depo\", \"col\": 3}}, {\"id\": \"nc_Dirty Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Dirty Tank\", \"col\": 3}}, {\"id\": \"nc_Clean Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Clean Tank\", \"col\": 3}}, {\"id\": \"nc_Tanks In Cleaning\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Cleaning\", \"col\": 3}}, {\"id\": \"nc_Tanks In Survey or Repair\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Survey or Repair\", \"col\": 3}}, {\"id\": \"nc_Tanks Ready for Release\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks Ready for Release\", \"col\": 3}}, {\"id\": \"nc_Tank In Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank In Today\", \"col\": 3}}, {\"id\": \"nc_Tank Out Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank Out Today\", \"col\": 3}}, {\"id\": \"hdr2\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Stock & Flow</b></span>\", \"col\": 12}}, {\"id\": \"ch_Tanks by Stage\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Stage\", \"col\": 6}}, {\"id\": \"ch_Tanks by Principal\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Principal\", \"col\": 6}}, {\"id\": \"ch_Tanks by Yard Zone\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Yard Zone\", \"col\": 6}}, {\"id\": \"ch_Tank IN (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank IN (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Tank OUT (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank OUT (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Activity by Type (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Activity by Type (Last Month)\", \"col\": 6}}, {\"id\": \"hdr3\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Reports & Lists</b></span>\", \"col\": 12}}, {\"id\": \"cardRpt\", \"type\": \"card\", \"data\": {\"card_name\": \"Container Inventory Reports\", \"col\": 4}}]",
  "creation": "2026-06-20 00:00:00.000000",
  "docstatus": 0,
  "doctype": "Workspace",
@@ -43,6 +47,16 @@
    "is_query_report": 0,
    "label": "Container Inventory",
    "link_to": "Container Inventory",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link",
+   "doctype": "Workspace Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Container Activity",
+   "link_to": "Container Activity",
    "link_type": "Report",
    "onboard": 0,
    "type": "Link",

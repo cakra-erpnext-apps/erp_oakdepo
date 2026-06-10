@@ -26,6 +26,14 @@ class PeriodicTest(Document):
 
 	def on_submit(self):
 		self._push_due_to_container()
+		from container_depot.operations.container_activity import log_container_activity
+
+		log_container_activity(
+			self.container, "Periodic Test",
+			reference_doctype=self.doctype, reference_name=self.name,
+			activity_time=self.get("periodic_date"),
+			summary=f"{self.get('test_type') or 'Periodic'} test, due {self.get('due_date')}",
+		)
 
 	def on_cancel(self):
 		self._push_due_to_container()
