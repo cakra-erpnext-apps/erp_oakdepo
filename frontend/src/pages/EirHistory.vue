@@ -2,7 +2,7 @@
 	<div class="mx-auto w-full max-w-lg space-y-4">
 		<div class="flex items-center justify-between gap-2">
 			<h1 class="text-lg font-semibold">{{ labels.eirHistoryTitle }}</h1>
-			<router-link to="/eir" class="shrink-0 text-sm text-blue-600 underline">
+			<router-link to="/eir" class="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
 				{{ labels.eirTitle }}
 			</router-link>
 		</div>
