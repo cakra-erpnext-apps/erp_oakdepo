@@ -132,6 +132,35 @@ class TestEirCreate(FrappeTestCase):
 		self.assertEqual(res["damage_rows"], 2)
 		self.assertEqual(frappe.get_doc("Inspection", res["name"]).has_damage, 0)
 
+	def test_create_with_item_photos(self):
+		c = _make_container("EIRC1000005")
+		res = eir.create_eir(
+			inspection_type="EIR-In", container=c,
+			lines=[{"item_code": "01", "damage_code": "11", "remarks": "dent"}],
+			photos=[
+				{"item_code": "01", "photo": "/private/files/a.jpg"},
+				{"item_code": "01", "photo": "/private/files/b.jpg"},  # multi per item
+				{"item_code": "03", "photo": "/private/files/c.jpg"},
+				{"item_code": "03", "photo": ""},                      # blank -> skipped
+			],
+			submit=False,
+		)
+		self.assertEqual(res["photo_rows"], 3)
+		doc = frappe.get_doc("Inspection", res["name"])
+		self.assertEqual(len(doc.item_photos), 3)
+		self.assertEqual(doc.item_photos[0].checklist_item, "01")
+		self.assertEqual(doc.item_photos[0].photo, "/private/files/a.jpg")
+		self.assertEqual(doc.item_photos[2].checklist_item, "03")
+
+	def test_create_rejects_unknown_photo_item(self):
+		c = _make_container("EIRC1000006")
+		with self.assertRaises(frappe.ValidationError):
+			eir.create_eir(
+				inspection_type="EIR-In", container=c,
+				photos=[{"item_code": "99", "photo": "/private/files/x.jpg"}],
+				submit=False,
+			)
+
 	def test_create_respects_permissions(self):
 		# No ignore_permissions on insert: a user without Inspection create is rejected.
 		c = _make_container("EIRC1000004")

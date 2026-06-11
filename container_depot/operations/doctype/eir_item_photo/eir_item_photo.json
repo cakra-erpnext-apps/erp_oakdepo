@@ -1,0 +1,55 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-06-11 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "checklist_item",
+  "area",
+  "item_name",
+  "photo"
+ ],
+ "fields": [
+  {
+   "description": "EIR checklist item (Area/Item) this photo documents.",
+   "fieldname": "checklist_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Checklist Item",
+   "options": "EIR Checklist Item",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "checklist_item.area",
+   "fieldname": "area",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Area",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "checklist_item.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "photo",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Photo",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-11 00:00:00.000000",
+ "module": "Operations",
+ "name": "EIR Item Photo"
+}

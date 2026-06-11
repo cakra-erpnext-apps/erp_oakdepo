@@ -72,6 +72,9 @@ export const labels = {
 	colDamage: "Kode Kerusakan", // Damage code
 	colRepair: "Kode Perbaikan", // Repair code
 	colRemarks: "Keterangan", // Remarks
+	photo: "Foto", // Photo
+	addPhoto: "Tambah Foto", // Add photo
+	photoError: "Gagal mengunggah foto", // Photo upload failed
 	acceptableHint: "Kosongkan baris yang kondisinya baik (Acceptable).", // Leave good rows blank
 	signOff: "Tanda Tangan & Catatan", // Sign-off
 	truckNo: "No. Truk", // Truck no

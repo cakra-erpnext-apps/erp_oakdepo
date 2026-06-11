@@ -47,6 +47,7 @@ def eir_create(
 	remarks=None,
 	depot=None,
 	lines=None,
+	photos=None,
 	submit=False,
 ):
 	"""POST /api/v1/ess/eir-create — build (and optionally submit) an EIR Inspection."""
@@ -64,5 +65,6 @@ def eir_create(
 		remarks=remarks,
 		depot=depot,
 		lines=lines,
+		photos=photos,
 		submit=submit,
 	)

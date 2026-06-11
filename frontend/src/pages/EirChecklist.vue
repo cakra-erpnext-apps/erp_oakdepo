@@ -102,6 +102,38 @@
 								<option v-for="r in repairCodes" :key="r.code" :value="r.code">{{ r.code }} — {{ r.description }}</option>
 							</select>
 						</div>
+						<!-- Photos for this item (multi) — saved per section, above the keterangan -->
+						<div class="mt-2 flex flex-wrap items-center gap-2">
+							<div v-for="(url, idx) in item.photos" :key="url" class="relative">
+								<img :src="url" class="h-14 w-14 rounded border object-cover" />
+								<button
+									type="button"
+									class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-xs leading-none text-white"
+									@click="removePhoto(item, idx)"
+								>
+									×
+								</button>
+							</div>
+							<label
+								class="flex h-14 w-14 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-gray-300 text-gray-400"
+							>
+								<input
+									type="file"
+									accept="image/*"
+									capture="environment"
+									multiple
+									class="hidden"
+									:disabled="item.uploading"
+									@change="onPhotoPick(item, $event)"
+								/>
+								<span v-if="item.uploading" class="text-xs">…</span>
+								<template v-else>
+									<span class="text-lg leading-none">＋</span>
+									<span class="text-[9px]">{{ labels.photo }}</span>
+								</template>
+							</label>
+						</div>
+						<p v-if="item.photoErr" class="mt-1 text-xs text-red-600">{{ item.photoErr }}</p>
 						<input
 							v-model.trim="item.remarks"
 							type="text"
@@ -193,7 +225,7 @@ const mastersRes = createResource({
 		damageCodes.value = data.damage_codes || []
 		repairCodes.value = data.repair_codes || []
 		rows.value = (data.checklist || []).map((i) =>
-			reactive({ ...i, damage_code: "", repair_code: "", remarks: "" })
+			reactive({ ...i, damage_code: "", repair_code: "", remarks: "", photos: [], uploading: false, photoErr: "" })
 		)
 	},
 })
@@ -273,6 +305,50 @@ function buildLines() {
 		}))
 }
 
+// Flat {item_code, photo} list — one entry per uploaded photo (multi per item).
+function buildPhotos() {
+	return rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
+}
+
+// Upload one image to Frappe and return its file_url. Reuses the session cookie +
+// the CSRF token injected into the /depot shell (www/depot.html).
+async function uploadFile(file) {
+	const fd = new FormData()
+	fd.append("file", file, file.name)
+	fd.append("is_private", 1)
+	fd.append("folder", "Home")
+	const res = await fetch("/api/method/upload_file", {
+		method: "POST",
+		headers: { "X-Frappe-CSRF-Token": window.csrf_token || "" },
+		body: fd,
+	})
+	if (!res.ok) throw new Error("upload failed")
+	const data = await res.json()
+	return data.message.file_url
+}
+
+async function onPhotoPick(item, event) {
+	const files = Array.from(event.target.files || [])
+	event.target.value = "" // allow re-picking the same file
+	if (!files.length) return
+	item.photoErr = ""
+	item.uploading = true
+	try {
+		for (const f of files) {
+			const url = await uploadFile(f)
+			item.photos.push(url)
+		}
+	} catch (e) {
+		item.photoErr = labels.photoError
+	} finally {
+		item.uploading = false
+	}
+}
+
+function removePhoto(item, idx) {
+	item.photos.splice(idx, 1)
+}
+
 function doCreate(submit) {
 	if (!header.value) return
 	createRes.submit({
@@ -286,6 +362,7 @@ function doCreate(submit) {
 		remarks: remarks.value || undefined,
 		depot: header.value.depot || undefined,
 		lines: JSON.stringify(buildLines()),
+		photos: JSON.stringify(buildPhotos()),
 		submit: submit,
 	})
 }
@@ -303,6 +380,8 @@ function reset() {
 		r.damage_code = ""
 		r.repair_code = ""
 		r.remarks = ""
+		r.photos = []
+		r.photoErr = ""
 	})
 }
 </script>

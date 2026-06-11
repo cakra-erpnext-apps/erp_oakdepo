@@ -184,6 +184,7 @@ def create_eir(
 	remarks: str | None = None,
 	depot: str | None = None,
 	lines=None,
+	photos=None,
 	submit=False,
 ) -> dict:
 	"""Build an Inspection (EIR) from a checklist payload.
@@ -206,6 +207,7 @@ def create_eir(
 		frappe.throw(_("container is required."))
 
 	lines = _coerce_lines(lines)
+	photos = _coerce_lines(photos)
 	submit = _as_bool(submit)
 
 	items = {
@@ -265,6 +267,19 @@ def create_eir(
 	for row in damage_rows:
 		doc.append("damage_log", row)
 
+	# Per-checklist-item photos (multi). The PWA uploads each image first (File) and
+	# sends a flat list of {item_code, photo(file_url)}; one child row per photo.
+	photo_count = 0
+	for ph in photos:
+		item_code = (ph.get("item_code") or "").strip()
+		photo = (ph.get("photo") or "").strip()
+		if not (item_code and photo):
+			continue
+		if item_code not in items:
+			frappe.throw(_("Unknown checklist item_code for photo: {0}").format(item_code or "(blank)"))
+		doc.append("item_photos", {"checklist_item": item_code, "photo": photo})
+		photo_count += 1
+
 	doc.insert()  # NOT ignore_permissions — let Frappe enforce Inspection create.
 	if submit:
 		doc.submit()  # on_submit moves the Container; we never set status here.
@@ -276,4 +291,5 @@ def create_eir(
 		"docstatus": doc.docstatus,
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
+		"photo_rows": photo_count,
 	}

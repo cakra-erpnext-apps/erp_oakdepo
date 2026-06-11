@@ -38,6 +38,7 @@
     "seal_vapour_valve",
     "eir_photos_section",
     "exterior_photos",
+    "item_photos",
     "damage_section",
     "has_damage",
     "damage_log",
@@ -268,6 +269,13 @@
       "options": "Inspection Photo"
     },
     {
+      "description": "Per-checklist-item photos (multi, captured in the PWA above each item's remarks).",
+      "fieldname": "item_photos",
+      "fieldtype": "Table",
+      "label": "Foto per Item",
+      "options": "EIR Item Photo"
+    },
+    {
       "fieldname": "damage_section",
       "fieldtype": "Section Break",
       "label": "Checklist Kerusakan"
@@ -447,7 +455,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-11 09:00:00.000000",
+  "modified": "2026-06-11 11:00:00.000000",
   "module": "Operations",
   "name": "Inspection",
   "search_fields": "inspection_id, container_no, inspection_type, status",
