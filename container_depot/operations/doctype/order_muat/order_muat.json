@@ -23,7 +23,8 @@
     "sst_section",
     "sst",
     "created_offline",
-    "gate_in_time"
+    "gate_in_time",
+    "qr_image"
   ],
   "fields": [
     {
@@ -143,11 +144,18 @@
       "fieldname": "gate_in_time",
       "fieldtype": "Datetime",
       "label": "Gate-In Time"
+    },
+    {
+      "description": "Scannable QR for this bon (payload OAK|<name>), generated on submit.",
+      "fieldname": "qr_image",
+      "fieldtype": "Attach Image",
+      "label": "QR Code",
+      "read_only": 1
     }
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-04",
+  "modified": "2026-06-22",
   "module": "Operations",
   "name": "Order Muat",
   "search_fields": "booking, truck_plate, shipper, destination",

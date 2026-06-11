@@ -18,6 +18,7 @@ class OrderBongkar(Document):
 	def on_submit(self):
 		_log_order_activity(self, "Order Bongkar")
 		_update_container_ex_vessel(self)
+		_ensure_order_qr(self)
 
 	def on_cancel(self):
 		_release_codes(self)
@@ -47,6 +48,27 @@ def _log_order_activity(order: Document, activity_type: str):
 				reference_doctype=order.doctype, reference_name=order.name,
 				summary=f"{activity_type} issued" + (f" (shipper {order.get('shipper')})" if order.get("shipper") else ""),
 			)
+
+
+def _ensure_order_qr(order: Document):
+	"""Render a scannable QR (payload ``OAK|{name}``) into ``qr_image`` once the bon
+	exists, so a printed bon can be scanned at the gate. Best-effort — mirrors Booking
+	Code's QR; skips if already set or if the ``qrcode`` lib is unavailable."""
+	if order.get("qr_image"):
+		return
+	try:
+		import base64
+		from io import BytesIO
+
+		import qrcode
+
+		img = qrcode.make(f"OAK|{order.name}")
+		buf = BytesIO()
+		img.save(buf, format="PNG")
+		b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+		order.db_set("qr_image", f"data:image/png;base64,{b64}", update_modified=False)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "order qr")
 
 
 def _update_container_ex_vessel(order: Document):

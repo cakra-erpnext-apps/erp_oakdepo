@@ -396,3 +396,57 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		frappe.db.set_value("Booking Code", codes[1], "state", "Expired", update_modified=False)
 		pending = get_booking_pending_containers(booking)
 		self.assertEqual([p["booking_code"] for p in pending], [codes[2]])
+
+
+class TestGate(FrappeTestCase):
+	"""Gate PWA backend: gate_lookup (resolve + detail) and gate_generate_order."""
+
+	def test_lookup_by_booking_code_returns_detail(self):
+		from container_depot.api import gate_lookup
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="GTLK0")
+		res = gate_lookup(codes[0])
+		self.assertTrue(res["valid"])
+		self.assertEqual(res["booking"], booking)
+		self.assertEqual(len(res["containers"]), 2)
+		self.assertIn(codes[0], [c["booking_code"] for c in res["containers"]])
+
+	def test_lookup_invalid_code(self):
+		from container_depot.api import gate_lookup
+		self.assertFalse(gate_lookup("OAK-DEADBEEF99")["valid"])
+
+	def test_lookup_by_order_code_resolves_to_booking(self):
+		from container_depot.api import gate_lookup
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTOR0")
+		order = make_order(booking, codes, submit=True)
+		res = gate_lookup(order)  # scan/type the bon's own code
+		self.assertTrue(res["valid"])
+		self.assertEqual(res["booking"], booking)
+		c = res["containers"][0]
+		self.assertEqual(c["order"]["name"], order)
+		self.assertEqual(c["order"]["doctype"], "Order Bongkar")
+
+	def test_lookup_payment_blocked_flag(self):
+		from container_depot.api import gate_lookup
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTPB0")
+		frappe.db.set_value("Container Booking", booking, {"payment_type": "Cash", "payment_status": "Unpaid"})
+		self.assertTrue(gate_lookup(codes[0])["payment_blocked"])
+		frappe.db.set_value("Container Booking", booking, "payment_status", "Paid")
+		self.assertFalse(gate_lookup(codes[0])["payment_blocked"])
+
+	def test_generate_blocks_cash_unpaid(self):
+		from container_depot.api import gate_generate_order
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTGB0")
+		frappe.db.set_value("Container Booking", booking, {"payment_type": "Cash", "payment_status": "Unpaid"})
+		with self.assertRaises(frappe.ValidationError):
+			gate_generate_order(booking, json.dumps(codes))
+
+	def test_generate_tank_in_issues_submitted_bon(self):
+		from container_depot.api import gate_generate_order, gate_lookup
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTGN0")
+		frappe.db.set_value("Container Booking", booking, "payment_type", "TOP")  # not Cash → not blocked
+		res = gate_generate_order(booking, json.dumps(codes))
+		self.assertTrue(res["success"])
+		self.assertEqual(res["order_doctype"], "Order Bongkar")
+		self.assertEqual(frappe.db.get_value("Order Bongkar", res["order_name"], "docstatus"), 1)
+		# Re-lookup: the container now carries the bon.
+		self.assertEqual(gate_lookup(codes[0])["containers"][0]["order"]["name"], res["order_name"])

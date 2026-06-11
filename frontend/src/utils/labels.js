@@ -33,11 +33,30 @@ export const labels = {
 	billing: "Penagihan", // Billing
 	technician: "Teknisi", // Technician
 	gate: "Gate", // Gate
-	gateDesc: "Validasi kode booking & catat gate-in", // Validate booking & gate-in
+	gateDesc: "Scan / validasi booking & terbitkan bon", // Scan/validate booking & issue bon
 	bookingCode: "Kode Booking", // Booking code
 	bookingCodePlaceholder: "OAK-XXXXXX", // placeholder
 	validate: "Validasi", // Validate
 	direction: "Arah", // Direction
+	// Gate — scan/type a Booking or Order code → detail panel → per-container bon
+	gateScanTitle: "Scan / Ketik Kode", // Scan / type code
+	gateScanPlaceholder: "Kode Booking / Order (OAK-… / ORD-…)",
+	gateLookup: "Cari", // Look up
+	branch: "Cabang", // Branch
+	bookingStatus: "Status Booking", // Booking status
+	customer: "Customer (Shipper/Angkutan)", // Customer
+	liftService: "Lift Service",
+	paymentType: "Tipe Bayar", // Payment type
+	paymentStatus: "Status Bayar", // Payment status
+	doReference: "DO Reference",
+	gateContainers: "Daftar Container", // Container list
+	gatePayBlocked: "Booking Cash belum dibayar — bayar ke kasir dulu.", // Cash unpaid
+	gateInvoiceNo: "No. Invoice", // Invoice no
+	gateGenerate: "Generate Bon", // Generate bon
+	gateSelectMax2: "Pilih maksimal 2 container per bon.", // max 2 per voucher
+	gateGenerated: "Bon berhasil dibuat", // bon created
+	gateNoContainers: "Tidak ada container.", // no containers
+	gateBon: "Bon", // bon (short)
 	truckPlate: "Nopol Truk", // Truck plate
 	driverName: "Nama Sopir", // Driver name
 	registerGate: "Catat Gate-In", // Register gate-in

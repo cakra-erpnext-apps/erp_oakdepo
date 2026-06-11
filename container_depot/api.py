@@ -902,6 +902,170 @@ def generate_order_from_booking(booking, selected_codes, vehicle_data=None):
 	}
 
 
+# ---------------------------------------------------------------------------
+# Gate PWA — scan/type a Booking Code or Order code → booking detail → per-container
+# bon generation (max 2). Cash bookings must be Paid (pay at the cashier first).
+# ---------------------------------------------------------------------------
+
+
+def _parse_gate_code(code) -> str:
+	"""Strip an optional ``OAK|`` QR prefix and upper-case. Accepts a Booking Code
+	(``OAK-…``), an Order (``ORD-…``), or a Container Booking name."""
+	if not code or not isinstance(code, str):
+		frappe.throw(_("code is required."), frappe.ValidationError)
+	raw = code.strip()
+	if raw.upper().startswith("OAK|"):
+		parts = raw.split("|", 1)
+		raw = parts[1].strip() if len(parts) > 1 else ""
+	return raw.upper()
+
+
+def _resolve_booking_from_code(raw) -> str | None:
+	"""Booking Code → its booking; Order Bongkar/Muat → its booking; or a Container
+	Booking name directly."""
+	if not raw:
+		return None
+	if frappe.db.exists("Booking Code", raw):
+		return frappe.db.get_value("Booking Code", raw, "booking")
+	if raw.startswith("ORD-BKR") and frappe.db.exists("Order Bongkar", raw):
+		return frappe.db.get_value("Order Bongkar", raw, "booking")
+	if raw.startswith("ORD-MT") and frappe.db.exists("Order Muat", raw):
+		return frappe.db.get_value("Order Muat", raw, "booking")
+	if frappe.db.exists("Container Booking", raw):
+		return raw
+	return None
+
+
+def _find_order_for_code(code) -> dict | None:
+	"""The non-voided Order (Bongkar/Muat) a Booking Code currently sits on, if any."""
+	for child_dt, parent_dt in (
+		("Container Booking Item", "Order Bongkar"),
+		("Order Container Item", "Order Muat"),
+	):
+		for row in frappe.get_all(
+			child_dt, filters={"booking_code": code, "parenttype": parent_dt}, fields=["parent"]
+		):
+			docstatus = frappe.db.get_value(parent_dt, row.parent, "docstatus")
+			if docstatus in (0, 1):  # draft or submitted (a voided bon = docstatus 2 frees the code)
+				return {"name": row.parent, "doctype": parent_dt, "docstatus": docstatus}
+	return None
+
+
+def _booking_gate_detail(booking) -> dict:
+	"""Header + per-container bon status for the gate panel, plus the Cash-unpaid gate."""
+	b = frappe.db.get_value(
+		"Container Booking",
+		booking,
+		[
+			"name", "branch", "depot", "booking_status", "direction", "customer", "principal",
+			"lift_item", "payment_type", "payment_status", "sales_invoice", "do_reference", "remarks",
+		],
+		as_dict=True,
+	)
+	payment_blocked = (b.payment_type == "Cash") and ((b.payment_status or "Unpaid") != "Paid")
+	containers = []
+	for c in frappe.get_all(
+		"Booking Code",
+		filters={"booking": booking},
+		fields=["name", "container", "container_no", "state", "direction"],
+		order_by="container_no asc",
+	):
+		containers.append({
+			"booking_code": c.name,
+			"container": c.container,
+			"container_no": c.container_no,
+			"code_state": c.state,
+			"direction": c.direction,
+			"order": _find_order_for_code(c.name),
+		})
+	return {
+		"booking": b.name,
+		"branch": b.branch,
+		"depot": b.depot,
+		"booking_status": b.booking_status,
+		"direction": b.direction,
+		"customer": b.customer,
+		"customer_name": frappe.db.get_value("Customer", b.customer, "customer_name") if b.customer else None,
+		"principal": b.principal,
+		"principal_name": frappe.db.get_value("Customer", b.principal, "customer_name") if b.principal else None,
+		"lift_item": b.lift_item,
+		"payment_type": b.payment_type,
+		"payment_status": b.payment_status,
+		"sales_invoice": b.sales_invoice,
+		"do_reference": b.do_reference,
+		"remarks": b.remarks,
+		"payment_blocked": payment_blocked,
+		"containers": containers,
+	}
+
+
+@frappe.whitelist()
+def gate_lookup(code):
+	"""Gate PWA: resolve a scanned/typed code — Booking Code (``OAK-…``), Order
+	Bongkar/Muat (``ORD-…``), or a Container Booking name — to its booking and return
+	the gate detail (header + per-container bon status + Cash-unpaid block)."""
+	_require_authenticated_user()
+	raw = _parse_gate_code(code)
+	booking = _resolve_booking_from_code(raw)
+	if not booking:
+		return {"valid": False, "error": _("Kode tidak ditemukan / tidak valid: {0}").format(raw)}
+	return {"valid": True, **_booking_gate_detail(booking)}
+
+
+def _latest_valid_cleaning_cert(container) -> str | None:
+	"""The newest submitted, in-date Cleaning Certificate for a container (for Muat)."""
+	from frappe.utils import getdate, today
+
+	for r in frappe.get_all(
+		"Cleaning Certificate",
+		filters={"container": container, "docstatus": 1},
+		fields=["name", "valid_until"],
+		order_by="creation desc",
+	):
+		if not r.valid_until or getdate(r.valid_until) >= getdate(today()):
+			return r.name
+	return None
+
+
+@frappe.whitelist(methods=["POST"])
+def gate_generate_order(booking, selected_codes):
+	"""Gate PWA: issue a submitted bon for up to 2 of a booking's containers. Refuses
+	when a Cash booking isn't Paid (pay at the cashier first). For Tank Out (Order
+	Muat) a valid Cleaning Certificate is auto-resolved per container."""
+	_require_authenticated_user()
+	b = frappe.db.get_value(
+		"Container Booking", booking, ["payment_type", "payment_status", "direction"], as_dict=True
+	)
+	if not b:
+		frappe.throw(_("Booking {0} not found.").format(booking))
+	if (b.payment_type == "Cash") and ((b.payment_status or "Unpaid") != "Paid"):
+		frappe.throw(_("Booking Cash belum dibayar — bayar ke kasir dulu sebelum generate bon."))
+
+	from container_depot.operations.order_generation import _as_code_list, make_order
+
+	vehicle_data = {}
+	if b.direction == "Tank Out":
+		certs = {}
+		for code in _as_code_list(selected_codes):
+			container = frappe.db.get_value("Booking Code", code, "container")
+			cert = _latest_valid_cleaning_cert(container) if container else None
+			if not cert:
+				frappe.throw(
+					_("Container {0} belum punya Cleaning Certificate valid untuk Order Muat.").format(
+						container or code
+					)
+				)
+			certs[code] = cert
+		vehicle_data["cleaning_certificates"] = certs
+
+	order_name = make_order(booking, selected_codes, vehicle_data=vehicle_data, submit=True)
+	return {
+		"success": True,
+		"order_name": order_name,
+		"order_doctype": "Order Bongkar" if b.direction == "Tank In" else "Order Muat",
+	}
+
+
 @frappe.whitelist(methods=["POST"])
 def sst_heartbeat(printer_status="OK"):
 	"""SST terminals call this every N minutes to update last_heartbeat."""
