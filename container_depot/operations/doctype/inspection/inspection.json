@@ -32,6 +32,7 @@
     "column_break_tank2",
     "tank_status",
     "exterior_photos",
+    "inspection_photos_section",
     "item_photos",
     "damage_section",
     "has_damage",
@@ -244,10 +245,14 @@
       "options": "Inspection Photo"
     },
     {
-      "description": "Per-checklist-item photos (captured in the PWA above each item's remarks). Hidden on the form; managed by the PWA.",
+      "fieldname": "inspection_photos_section",
+      "fieldtype": "Section Break",
+      "label": "Foto Inspeksi"
+    },
+    {
+      "description": "Foto per item checklist (ditangkap di PWA). Tiap baris tampil Area + Item + foto, sesuai kategorinya.",
       "fieldname": "item_photos",
       "fieldtype": "Table",
-      "hidden": 1,
       "label": "Foto per Item",
       "options": "Inspection Item Photo"
     },
@@ -467,7 +472,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-11 15:30:00.000000",
+  "modified": "2026-06-11 16:00:00.000000",
   "module": "Operations",
   "name": "Inspection",
   "search_fields": "inspection_id, container_no, inspection_type, status",
