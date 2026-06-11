@@ -27,6 +27,7 @@
     "storage_billed_until",
     "column_break_2",
     "last_cargo",
+    "ex_vessel",
     "cleaning_status",
     "repair_status",
     "certification_status",
@@ -184,6 +185,12 @@
       "options": "Cargo"
     },
     {
+      "description": "Arrival vessel, copied from the most recent Order Bongkar when it is submitted.",
+      "fieldname": "ex_vessel",
+      "fieldtype": "Data",
+      "label": "Ex Vessel"
+    },
+    {
       "fieldname": "cleaning_status",
       "fieldtype": "Select",
       "label": "Cleaning Status",
@@ -291,7 +298,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-06-20",
+  "modified": "2026-06-21",
   "module": "Operations",
   "name": "Container",
   "search_fields": "container_no, container_type, status, principal",

@@ -17,6 +17,7 @@ class OrderBongkar(Document):
 
 	def on_submit(self):
 		_log_order_activity(self, "Order Bongkar")
+		_update_container_ex_vessel(self)
 
 	def on_cancel(self):
 		_release_codes(self)
@@ -46,6 +47,18 @@ def _log_order_activity(order: Document, activity_type: str):
 				reference_doctype=order.doctype, reference_name=order.name,
 				summary=f"{activity_type} issued" + (f" (shipper {order.get('shipper')})" if order.get("shipper") else ""),
 			)
+
+
+def _update_container_ex_vessel(order: Document):
+	"""Stamp each container's ``ex_vessel`` from the bon's Ex Vessel on submit, so the
+	Container master reflects the vessel the tank last arrived on (read back by the EIR
+	header). Plain field write — no Container controller side-effects."""
+	ex_vessel = order.get("ex_vessel")
+	if not ex_vessel:
+		return
+	for row in _order_rows(order):
+		if row.get("container"):
+			frappe.db.set_value("Container", row.container, "ex_vessel", ex_vessel)
 
 
 def _sync_booking(doc: Document):

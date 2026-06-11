@@ -42,7 +42,68 @@ def get_eir_masters() -> dict:
 		fields=["name as code", "description"],
 		order_by="code asc",
 	)
-	return {"checklist": checklist, "damage_codes": damage_codes, "repair_codes": repair_codes}
+	# Active cargos for the EIR's "set last cargo" picker (name == cargo_name).
+	cargos = frappe.get_all("Cargo", filters={"is_active": 1}, pluck="name", order_by="name asc")
+	return {
+		"checklist": checklist,
+		"damage_codes": damage_codes,
+		"repair_codes": repair_codes,
+		"cargos": cargos,
+	}
+
+
+def _voucher_doctype(inspection_type: str | None) -> str:
+	"""EIR-In references the unloading bon (Order Bongkar); every other EIR (EIR-Out)
+	references the loading bon (Order Muat)."""
+	return "Order Bongkar" if inspection_type == "EIR-In" else "Order Muat"
+
+
+def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In") -> dict:
+	"""Read the EIR's read-only shipment snapshot from a referred voucher (bon).
+
+	EIR-In → Order Bongkar (shipper only; the unloading bon has no truck/driver).
+	EIR-Out → Order Muat (truck plate, driver, driver phone, shipper). Missing fields
+	come back as ``None``. The voucher's fields are entered when the bon is generated;
+	here they are pulled read-only. ``voucher=None`` yields an all-None snapshot.
+	"""
+	doctype = _voucher_doctype(inspection_type)
+	snap = {
+		"voucher_doctype": doctype,
+		"referred_voucher": None,
+		"truck_no": None,
+		"driver": None,
+		"driver_phone": None,
+		"shipper": None,
+	}
+	if not voucher:
+		return snap
+	if not frappe.db.exists(doctype, voucher):
+		frappe.throw(_("{0} {1} not found.").format(doctype, voucher))
+	snap["referred_voucher"] = voucher
+	if doctype == "Order Muat":
+		row = frappe.db.get_value(
+			"Order Muat", voucher,
+			["truck_plate", "driver_name", "driver_phone", "shipper"], as_dict=True,
+		)
+		snap.update(
+			truck_no=row.truck_plate, driver=row.driver_name,
+			driver_phone=row.driver_phone, shipper=row.shipper,
+		)
+	else:  # Order Bongkar — shipper only.
+		snap["shipper"] = frappe.db.get_value("Order Bongkar", voucher, "shipper")
+	return snap
+
+
+def _apply_voucher(doc, referred_voucher: str | None) -> None:
+	"""Stamp the read-only shipment snapshot from ``referred_voucher`` onto an Inspection
+	(or clear it when no voucher). The voucher doctype follows the inspection type."""
+	snap = fetch_voucher(referred_voucher, doc.inspection_type)
+	doc.voucher_doctype = snap["voucher_doctype"]
+	doc.referred_voucher = snap["referred_voucher"]
+	doc.truck_no = snap["truck_no"]
+	doc.driver = snap["driver"]
+	doc.driver_phone = snap["driver_phone"]
+	doc.shipper = snap["shipper"]
 
 
 def iso6346_parts(container_no: str | None) -> dict:
@@ -115,18 +176,17 @@ def prefill(
 	c = frappe.db.get_value(
 		"Container", name,
 		["name", "container_no", "serial_no", "manufacture_date", "capacity",
-		 "tare_weight", "max_gross_weight", "last_test_date", "last_cargo", "depot", "principal"],
+		 "tare_weight", "max_gross_weight", "last_test_date", "last_cargo", "ex_vessel",
+		 "depot", "principal"],
 		as_dict=True,
 	)
 	if not c:
 		frappe.throw(_("Container {0} not found.").format(name))
 
-	# Principal / tank owner is a property of the container itself.
+	# Principal / tank owner and the ex-vessel are properties of the container itself
+	# (ex_vessel is stamped onto the Container when its Order Bongkar is submitted).
 	principal = c.principal
-
-	ex_vessel = frappe.db.get_value("Order Bongkar", order_bongkar, "ex_vessel") if order_bongkar else None
-	if not ex_vessel and booking:
-		ex_vessel = frappe.db.get_value("Order Bongkar", {"booking": booking}, "ex_vessel")
+	ex_vessel = c.ex_vessel
 
 	parts = iso6346_parts(c.container_no)
 	return {
@@ -249,6 +309,9 @@ def create_eir(
 	remarks: str | None = None,
 	depot: str | None = None,
 	signature: str | None = None,
+	referred_voucher: str | None = None,
+	cargo: str | None = None,
+	eir_date: str | None = None,
 	lines=None,
 	photos=None,
 	submit=False,
@@ -292,6 +355,10 @@ def create_eir(
 	doc.depot = depot
 	doc.inspector = frappe.session.user
 	doc.inspector_signature = signature
+	doc.eir_date = eir_date
+	doc.cargo = cargo
+	if referred_voucher:
+		_apply_voucher(doc, referred_voucher)  # overrides truck_no; sets driver / driver_phone / shipper
 	doc.has_damage = 1 if has_damage else 0
 	if order_ref:
 		doc.order_doctype = order_doctype or "Order Bongkar"
@@ -322,13 +389,20 @@ def _draft_payload(doc, header: dict) -> dict:
 	"""
 	header["inspection"] = doc.name
 	header["inspection_type"] = doc.inspection_type
+	header["eir_date"] = doc.eir_date
 	header["tank_status"] = doc.tank_status
+	header["cargo"] = doc.cargo  # draft's chosen cargo (defaults to the master's last_cargo)
+	header["referred_voucher"] = doc.referred_voucher
+	header["voucher_doctype"] = doc.voucher_doctype
 	header["truck_no"] = doc.truck_no
+	header["driver"] = doc.driver
+	header["driver_phone"] = doc.driver_phone
+	header["shipper"] = doc.shipper
 	header["emkl"] = doc.emkl
 	header["doc_remarks"] = doc.remarks
 	header["inspector_signature"] = doc.inspector_signature
 	if doc.vessel:
-		header["vessel"] = doc.vessel  # draft overrides the master-derived ex_vessel
+		header["vessel"] = doc.vessel  # legacy free-text vessel (kept for back-compat)
 	header["lines"] = [
 		{
 			"item_code": d.checklist_item,
@@ -370,6 +444,7 @@ def open_draft(container=None, container_no=None, inspection_type="EIR-In") -> d
 		doc.inspection_type = inspection_type
 		doc.container = name
 		doc.depot = header.get("depot")
+		doc.cargo = header.get("last_cargo")  # start from the container's current cargo
 		doc.inspector = frappe.session.user
 		doc.insert()  # NOT ignore_permissions — only EIR creators can open a draft.
 
@@ -385,6 +460,9 @@ def save_draft(
 	emkl: str | None = None,
 	remarks: str | None = None,
 	signature: str | None = None,
+	referred_voucher: str | None = None,
+	cargo: str | None = None,
+	eir_date: str | None = None,
 	lines=None,
 	photos=None,
 	submit=False,
@@ -392,10 +470,12 @@ def save_draft(
 	"""Update an existing draft EIR — the PWA auto-save (and finalize) action.
 
 	The PWA owns the draft's checklist state, so ``damage_log`` + ``item_photos`` (and
-	the EIR-creator ``inspector_signature``) are replaced wholesale from the payload.
-	``submit`` finalizes the EIR: the Inspection
-	is submitted and its ``on_submit`` drives the container (we never set status here).
-	Permissions are enforced (no bypass).
+	the EIR-creator ``inspector_signature``) are replaced wholesale from the payload. The
+	truck/driver/shipper snapshot is re-resolved from ``referred_voucher``; ``cargo`` is
+	recorded on the draft but only written back to ``Container.last_cargo`` on submit.
+	``submit`` finalizes the EIR: the Inspection is submitted and its ``on_submit`` drives
+	the container's status + cargo writeback (we never set status here). Permissions are
+	enforced (no bypass).
 	"""
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
@@ -409,11 +489,15 @@ def save_draft(
 	if inspection_type in ("EIR-In", "EIR-Out"):
 		doc.inspection_type = inspection_type
 	doc.tank_status = tank_status
-	doc.vessel = vessel
-	doc.truck_no = truck_no
+	doc.vessel = vessel  # legacy free-text; ex_vessel now comes from the Container master
 	doc.emkl = emkl
 	doc.remarks = remarks
+	doc.eir_date = eir_date
+	doc.cargo = cargo  # written to Container.last_cargo only on submit (drafts never touch the master)
 	doc.inspector_signature = signature
+	# The voucher owns truck_no / driver / driver_phone / shipper (read-only snapshot);
+	# the legacy ``truck_no`` arg is ignored. No voucher -> these are cleared.
+	_apply_voucher(doc, referred_voucher)
 	doc.has_damage = 1 if has_damage else 0
 	doc.set("damage_log", damage_rows)
 	doc.set("item_photos", photo_rows)

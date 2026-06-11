@@ -44,6 +44,49 @@
 
 		<!-- Steps 2-6 appear once a draft is open -->
 		<template v-if="header">
+			<!-- Step 1b — referred voucher: pull shipper / truck / driver (read-only) -->
+			<section class="space-y-3 rounded-lg border bg-white p-4">
+				<p class="text-sm font-semibold text-gray-700">{{ labels.referredVoucher }}</p>
+				<div>
+					<div class="flex gap-2">
+						<input
+							v-model.trim="referredVoucher"
+							type="text"
+							:placeholder="voucherPlaceholder"
+							class="w-full rounded-md border px-3 py-2 text-sm"
+							@keyup.enter="doVoucherFetch"
+						/>
+						<button
+							class="shrink-0 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+							:disabled="voucherRes.loading"
+							@click="doVoucherFetch"
+						>
+							{{ voucherRes.loading ? "…" : labels.eirFetch }}
+						</button>
+					</div>
+					<p class="mt-1 text-xs text-gray-400">{{ voucherHint }}</p>
+					<p v-if="voucherError" class="mt-1 text-sm text-red-600">{{ voucherError }}</p>
+				</div>
+				<dl class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+					<div>
+						<dt class="text-gray-500">{{ labels.shipper }}</dt>
+						<dd class="font-medium">{{ shipper || "—" }}</dd>
+					</div>
+					<div>
+						<dt class="text-gray-500">{{ labels.truckNo }}</dt>
+						<dd class="font-medium">{{ truckNo || "—" }}</dd>
+					</div>
+					<div>
+						<dt class="text-gray-500">{{ labels.driverName }}</dt>
+						<dd class="font-medium">{{ driver || "—" }}</dd>
+					</div>
+					<div>
+						<dt class="text-gray-500">{{ labels.driverPhone }}</dt>
+						<dd class="font-medium">{{ driverPhone || "—" }}</dd>
+					</div>
+				</dl>
+			</section>
+
 			<!-- Step 2 — tank header (all from the Container master) -->
 			<section class="space-y-3 rounded-lg border bg-white p-4">
 				<p class="text-sm font-semibold text-gray-700">{{ labels.eirHeader }}</p>
@@ -53,32 +96,36 @@
 						<dd class="font-medium">{{ f.value ?? "—" }}</dd>
 					</div>
 				</dl>
-				<div class="grid grid-cols-2 gap-2">
-					<div>
-						<label class="text-sm font-medium">{{ labels.vessel }}</label>
-						<input v-model.trim="vessel" type="text" class="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
-					</div>
-					<div>
-						<label class="text-sm font-medium">{{ labels.tanggal }}</label>
-						<input v-model="tanggal" type="date" class="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
-					</div>
+				<div>
+					<label class="text-sm font-medium">{{ labels.tanggal }}</label>
+					<input v-model="tanggal" type="date" class="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
 				</div>
 			</section>
 
 			<!-- Step 3 — tank status -->
 			<section class="space-y-2 rounded-lg border bg-white p-4">
 				<label class="text-sm font-medium">{{ labels.tankStatus }}</label>
-				<div class="grid grid-cols-2 gap-2">
+				<div class="grid grid-cols-3 gap-2">
 					<button
-						v-for="s in [labels.emptyClean, labels.emptyDirty]"
+						v-for="s in [labels.emptyClean, labels.emptyDirty, labels.laden]"
 						:key="s"
-						class="rounded-md border px-3 py-3 text-sm font-semibold"
+						class="rounded-md border px-2 py-3 text-sm font-semibold"
 						:class="tankStatus === s ? 'border-blue-600 bg-blue-50 text-blue-700' : 'bg-white text-gray-700'"
 						@click="tankStatus = s"
 					>
 						{{ s }}
 					</button>
 				</div>
+			</section>
+
+			<!-- Step 3b — cargo (updates the container's Last Cargo on submit) -->
+			<section class="space-y-2 rounded-lg border bg-white p-4">
+				<label class="text-sm font-medium">{{ labels.cargo }}</label>
+				<select v-model="cargo" class="w-full rounded-md border px-3 py-2 text-sm">
+					<option value="">— {{ labels.cargo }} —</option>
+					<option v-for="c in cargos" :key="c" :value="c">{{ c }}</option>
+				</select>
+				<p class="text-xs text-gray-400">{{ labels.cargoHint }}</p>
 			</section>
 
 			<!-- Step 4 — checklist grid (fixed 50 rows, grouped by area) -->
@@ -148,16 +195,6 @@
 			<!-- Step 5 — sign-off -->
 			<section class="space-y-3 rounded-lg border bg-white p-4">
 				<p class="text-sm font-semibold text-gray-700">{{ labels.signOff }}</p>
-				<div class="grid grid-cols-2 gap-2">
-					<div>
-						<label class="text-sm font-medium">{{ labels.truckNo }}</label>
-						<input v-model.trim="truckNo" type="text" class="mt-1 w-full rounded-md border px-3 py-2 text-sm uppercase" />
-					</div>
-					<div>
-						<label class="text-sm font-medium">{{ labels.emkl }}</label>
-						<input v-model.trim="emkl" type="text" class="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
-					</div>
-				</div>
 				<div>
 					<label class="text-sm font-medium">{{ labels.eirRemarks }}</label>
 					<textarea v-model.trim="remarks" rows="2" class="mt-1 w-full rounded-md border px-3 py-2 text-sm"></textarea>
@@ -237,12 +274,18 @@ const containerNo = ref("")
 const eirType = ref("EIR-In")
 const header = ref(null)
 const inspection = ref(null)
-const vessel = ref("")
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
-const truckNo = ref("")
-const emkl = ref("")
 const remarks = ref("")
+// Referred-voucher reference + its read-only shipment snapshot (from the bon).
+const referredVoucher = ref("")
+const truckNo = ref("")
+const driver = ref("")
+const driverPhone = ref("")
+const shipper = ref("")
+// Cargo recorded on the EIR (writes Container.last_cargo on submit only).
+const cargo = ref("")
+const cargos = ref([])
 const result = ref(null)
 const savedOk = ref(false) // last auto-save succeeded
 const submitted = ref(null) // finalized EIR name (shown after Submit)
@@ -261,6 +304,7 @@ const mastersRes = createResource({
 	onSuccess(data) {
 		damageCodes.value = data.damage_codes || []
 		repairCodes.value = data.repair_codes || []
+		cargos.value = data.cargos || []
 		rows.value = (data.checklist || []).map((i) =>
 			reactive({ ...i, damage_code: "", repair_code: "", remarks: "", photos: [], uploading: false, photoErr: "" })
 		)
@@ -296,6 +340,7 @@ const headerCells = computed(() => {
 		{ label: labels.tare, value: h.tare_weight },
 		{ label: labels.maxGross, value: h.max_gross_weight },
 		{ label: labels.lastCargo, value: h.last_cargo },
+		{ label: labels.exVessel, value: h.ex_vessel },
 		{ label: labels.depot, value: h.depot },
 	]
 })
@@ -313,11 +358,15 @@ const openRes = createResource({
 		result.value = null
 		savedOk.value = false
 		if (data.inspection_type) eirType.value = data.inspection_type
-		vessel.value = data.vessel || ""
+		tanggal.value = data.eir_date || new Date().toISOString().slice(0, 10)
 		tankStatus.value = data.tank_status || ""
-		truckNo.value = data.truck_no || ""
-		emkl.value = data.emkl || ""
 		remarks.value = data.doc_remarks || ""
+		referredVoucher.value = data.referred_voucher || ""
+		truckNo.value = data.truck_no || ""
+		driver.value = data.driver || ""
+		driverPhone.value = data.driver_phone || ""
+		shipper.value = data.shipper || ""
+		cargo.value = data.cargo || data.last_cargo || ""
 		signatureUrl.value = data.inspector_signature || ""
 		signing.value = false
 		applyDraftToRows(data)
@@ -350,6 +399,29 @@ const saveError = computed(() => {
 	if (saveRes.error) return saveRes.error.messages?.[0] || saveRes.error.message
 	return null
 })
+
+// Referred voucher — fetch the read-only shipment snapshot (Order Bongkar for EIR-In,
+// Order Muat for EIR-Out). On success, persist the validated reference via auto-save.
+const voucherRes = createResource({
+	url: "container_depot.ess.inspections.eir_voucher",
+	method: "GET",
+	onSuccess(data) {
+		truckNo.value = data.truck_no || ""
+		driver.value = data.driver || ""
+		driverPhone.value = data.driver_phone || ""
+		shipper.value = data.shipper || ""
+		scheduleSave() // persist the (now validated) voucher reference onto the draft
+	},
+})
+const voucherError = computed(() => {
+	if (voucherRes.error) return voucherRes.error.messages?.[0] || voucherRes.error.message
+	return null
+})
+const voucherPlaceholder = computed(() => (eirType.value === "EIR-In" ? "ORD-BKR-…" : "ORD-MT-…"))
+const voucherHint = computed(() => (eirType.value === "EIR-In" ? labels.voucherHintIn : labels.voucherHintOut))
+function doVoucherFetch() {
+	voucherRes.submit({ voucher: referredVoucher.value || "", inspection_type: eirType.value })
+}
 
 // Restore the draft's saved checklist lines + photos onto the (master) rows.
 function applyDraftToRows(data) {
@@ -540,10 +612,10 @@ function doSave(submit = false) {
 	saveRes.submit({
 		inspection: inspection.value,
 		inspection_type: eirType.value,
+		eir_date: tanggal.value || undefined,
 		tank_status: tankStatus.value || undefined,
-		vessel: vessel.value || undefined,
-		truck_no: truckNo.value || undefined,
-		emkl: emkl.value || undefined,
+		referred_voucher: referredVoucher.value || undefined,
+		cargo: cargo.value || undefined,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
 		lines: JSON.stringify(buildLines()),
@@ -561,18 +633,33 @@ function scheduleSave() {
 }
 
 // Header fields + the whole checklist (codes, remarks, photos) trigger an auto-save.
-watch([eirType, vessel, tankStatus, truckNo, emkl, remarks, signatureUrl], scheduleSave)
+// The voucher reference is persisted via doVoucherFetch (only after it validates), so
+// it is intentionally not watched here.
+watch([eirType, tanggal, tankStatus, cargo, remarks, signatureUrl], scheduleSave)
 watch(rows, scheduleSave, { deep: true })
+
+// Flipping EIR direction changes the voucher doctype — clear the stale reference + snapshot.
+watch(eirType, () => {
+	if (suppressSave.value) return // a draft load sets the type; don't wipe its voucher
+	referredVoucher.value = ""
+	truckNo.value = ""
+	driver.value = ""
+	driverPhone.value = ""
+	shipper.value = ""
+})
 
 function reset() {
 	containerNo.value = ""
 	header.value = null
 	inspection.value = null
-	vessel.value = ""
 	tankStatus.value = ""
-	truckNo.value = ""
-	emkl.value = ""
 	remarks.value = ""
+	referredVoucher.value = ""
+	truckNo.value = ""
+	driver.value = ""
+	driverPhone.value = ""
+	shipper.value = ""
+	cargo.value = ""
 	signatureUrl.value = ""
 	signing.value = false
 	sigHasInk = false

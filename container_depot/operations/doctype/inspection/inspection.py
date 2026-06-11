@@ -39,11 +39,17 @@ class Inspection(Document):
 	)
 
 	def on_submit(self):
-		"""Update container status when inspection is submitted"""
+		"""Update container status + last cargo when inspection is submitted"""
 		from container_depot.operations.container_activity import log_container_activity
 
 		container = frappe.get_doc("Container", self.container)
 		from_status = container.status
+
+		# Cargo recorded on the EIR updates the master's Last Cargo on submit only —
+		# drafts never touch the master. Set before any save below.
+		cargo_changed = bool(self.get("cargo")) and container.last_cargo != self.cargo
+		if cargo_changed:
+			container.last_cargo = self.cargo
 
 		if self.inspection_type == "EIR-In":
 			container.status = "Inspecting"
@@ -51,6 +57,9 @@ class Inspection(Document):
 			self._save_container(container)
 		elif self.inspection_type == "Detailed Survey":
 			self._apply_survey_result(container)
+		elif cargo_changed:
+			# No status transition (e.g. EIR-Out) but the cargo changed — persist it.
+			self._save_container(container)
 
 		outcome = [p for p in (self.get("tank_status"), "damage found" if self.has_damage else None) if p]
 		log_container_activity(

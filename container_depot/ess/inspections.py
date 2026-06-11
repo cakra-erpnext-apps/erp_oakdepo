@@ -33,6 +33,17 @@ def eir_prefill(container=None, container_no=None, booking_code=None, order_bong
 	)
 
 
+@frappe.whitelist(methods=["GET"])
+def eir_voucher(voucher=None, inspection_type="EIR-In"):
+	"""GET /api/v1/ess/eir-voucher — read-only shipment snapshot from a referred voucher.
+
+	EIR-In resolves an Order Bongkar (shipper), EIR-Out an Order Muat (truck / driver /
+	driver phone / shipper). See ``operations.eir.fetch_voucher``.
+	"""
+	_require_authenticated_user()
+	return eir.fetch_voucher(voucher=voucher, inspection_type=inspection_type)
+
+
 @frappe.whitelist(methods=["POST"])
 def eir_open_draft(container=None, container_no=None, inspection_type="EIR-In"):
 	"""POST /api/v1/ess/eir-open-draft — get-or-create the container's draft EIR.
@@ -53,6 +64,9 @@ def eir_save_draft(
 	emkl=None,
 	remarks=None,
 	signature=None,
+	referred_voucher=None,
+	cargo=None,
+	eir_date=None,
 	lines=None,
 	photos=None,
 	submit=False,
@@ -68,6 +82,9 @@ def eir_save_draft(
 		emkl=emkl,
 		remarks=remarks,
 		signature=signature,
+		referred_voucher=referred_voucher,
+		cargo=cargo,
+		eir_date=eir_date,
 		lines=lines,
 		photos=photos,
 		submit=submit,
@@ -88,6 +105,9 @@ def eir_create(
 	remarks=None,
 	depot=None,
 	signature=None,
+	referred_voucher=None,
+	cargo=None,
+	eir_date=None,
 	lines=None,
 	photos=None,
 	submit=False,
@@ -107,6 +127,9 @@ def eir_create(
 		remarks=remarks,
 		depot=depot,
 		signature=signature,
+		referred_voucher=referred_voucher,
+		cargo=cargo,
+		eir_date=eir_date,
 		lines=lines,
 		photos=photos,
 		submit=submit,

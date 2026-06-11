@@ -64,10 +64,14 @@ export const labels = {
 	serialNo: "Serial No",
 	dateManufacture: "Tgl. Manufaktur", // Date of manufacture
 	ownerPrincipal: "Prinsipal (Pemilik)", // Principal / owner (from Container master)
+	exVessel: "Ex Vessel", // Ex vessel (from Container master)
 	tanggal: "Tanggal", // Date
 	tankStatus: "Status Tank", // Tank status
 	emptyClean: "Empty Clean",
 	emptyDirty: "Empty Dirty",
+	laden: "Laden",
+	cargo: "Cargo", // Cargo (sets the container's Last Cargo on submit)
+	cargoHint: "Mengubah Last Cargo container — tersimpan saat EIR disubmit.",
 	checklist: "Checklist Pemeriksaan", // Inspection checklist
 	colItem: "Item",
 	colDamage: "Kode Kerusakan", // Damage code
@@ -80,6 +84,11 @@ export const labels = {
 	signOff: "Tanda Tangan & Catatan", // Sign-off
 	truckNo: "No. Truk", // Truck no
 	emkl: "EMKL",
+	driverPhone: "Nomor Driver", // Driver phone (from voucher)
+	shipper: "Shipper", // Shipper (from voucher)
+	referredVoucher: "Voucher Referensi", // Referred voucher (bon)
+	voucherHintIn: "EIR-In: data diambil dari Order Bongkar.",
+	voucherHintOut: "EIR-Out: data diambil dari Order Muat.",
 	eirRemarks: "Catatan", // Remarks
 	officer: "Petugas", // Officer
 	saveDraft: "Simpan Draf", // Save draft

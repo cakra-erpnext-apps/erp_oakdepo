@@ -20,6 +20,36 @@ def _make_container(cno, *, status="Gate_In", **kw):
 	}).insert(ignore_permissions=True).name
 
 
+def _ensure_cargo(name):
+	if not frappe.db.exists("Cargo", name):
+		frappe.get_doc({"doctype": "Cargo", "cargo_name": name, "is_active": 1}).insert(
+			ignore_permissions=True, ignore_mandatory=True
+		)
+	return name
+
+
+def _make_order_muat(shipper, *, truck="B-9001-XY", driver="Budi", phone="08110001"):
+	"""Minimal Order Muat (loading bon) for voucher tests — validation + mandatory are
+	bypassed; we only read truck / driver / shipper back via fetch_voucher."""
+	doc = frappe.get_doc({
+		"doctype": "Order Muat", "shipper": shipper,
+		"truck_plate": truck, "driver_name": driver, "driver_phone": phone,
+	})
+	doc.flags.ignore_validate = True
+	doc.insert(ignore_permissions=True, ignore_mandatory=True)
+	return doc.name
+
+
+def _make_order_bongkar(shipper, *, ex_vessel="MV TEST"):
+	"""Minimal Order Bongkar (unloading bon) for voucher tests."""
+	doc = frappe.get_doc({
+		"doctype": "Order Bongkar", "shipper": shipper, "ex_vessel": ex_vessel,
+	})
+	doc.flags.ignore_validate = True
+	doc.insert(ignore_permissions=True, ignore_mandatory=True)
+	return doc.name
+
+
 class TestEirMasters(FrappeTestCase):
 	def test_masters_shape_and_counts(self):
 		m = eir.get_eir_masters()
@@ -284,3 +314,96 @@ class TestEirDraft(FrappeTestCase):
 		)
 		d2 = eir.open_draft(container_no="EIRD1000006")
 		self.assertEqual(d2["inspector_signature"], "/private/files/sign-1.png")
+
+
+class TestEirVoucher(FrappeTestCase):
+	def test_fetch_voucher_order_muat_for_eir_out(self):
+		cust = ensure_test_customer("EIR Voucher Cust")
+		om = _make_order_muat(cust)
+		snap = eir.fetch_voucher(om, "EIR-Out")
+		self.assertEqual(snap["voucher_doctype"], "Order Muat")
+		self.assertEqual(snap["referred_voucher"], om)
+		self.assertEqual(snap["truck_no"], "B-9001-XY")
+		self.assertEqual(snap["driver"], "Budi")
+		self.assertEqual(snap["driver_phone"], "08110001")
+		self.assertEqual(snap["shipper"], cust)
+
+	def test_fetch_voucher_order_bongkar_for_eir_in(self):
+		# EIR-In references the unloading bon — shipper only, no truck/driver.
+		cust = ensure_test_customer("EIR Voucher Cust")
+		ob = _make_order_bongkar(cust)
+		snap = eir.fetch_voucher(ob, "EIR-In")
+		self.assertEqual(snap["voucher_doctype"], "Order Bongkar")
+		self.assertEqual(snap["shipper"], cust)
+		self.assertIsNone(snap["truck_no"])
+		self.assertIsNone(snap["driver"])
+
+	def test_fetch_voucher_none_is_empty(self):
+		snap = eir.fetch_voucher(None, "EIR-Out")
+		self.assertEqual(snap["voucher_doctype"], "Order Muat")
+		self.assertIsNone(snap["referred_voucher"])
+		self.assertIsNone(snap["shipper"])
+
+	def test_fetch_voucher_not_found_raises(self):
+		with self.assertRaises(frappe.ValidationError):
+			eir.fetch_voucher("ORD-MT-9999-99999", "EIR-Out")
+
+	def test_save_draft_applies_muat_voucher(self):
+		# Saving a draft with a referred voucher snapshots truck/driver/shipper onto it.
+		cust = ensure_test_customer("EIR Voucher Cust")
+		om = _make_order_muat(cust, truck="B-7", driver="Sari", phone="0822")
+		_make_container("EIRV1000001")
+		d = eir.open_draft(container_no="EIRV1000001", inspection_type="EIR-Out")
+		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",
+					   referred_voucher=om, lines=[])
+		d2 = eir.open_draft(container_no="EIRV1000001", inspection_type="EIR-Out")
+		self.assertEqual(d2["referred_voucher"], om)
+		self.assertEqual(d2["truck_no"], "B-7")
+		self.assertEqual(d2["driver"], "Sari")
+		self.assertEqual(d2["driver_phone"], "0822")
+		self.assertEqual(d2["shipper"], cust)
+
+
+class TestEirCargoAndExVessel(FrappeTestCase):
+	def test_draft_cargo_does_not_touch_master(self):
+		_ensure_cargo("Acetone")
+		_ensure_cargo("Acetic Acid")
+		c = _make_container("EIRV2000001", last_cargo="Acetone")
+		d = eir.open_draft(container_no="EIRV2000001")
+		eir.save_draft(inspection=d["inspection"], cargo="Acetic Acid", lines=[])
+		# Draft saved a different cargo, but the master is untouched until submit.
+		self.assertEqual(frappe.db.get_value("Container", c, "last_cargo"), "Acetone")
+
+	def test_submit_cargo_writes_master(self):
+		_ensure_cargo("Acetone")
+		_ensure_cargo("Acetic Acid")
+		c = _make_container("EIRV2000002", status="Gate_In", last_cargo="Acetone")
+		d = eir.open_draft(container_no="EIRV2000002", inspection_type="EIR-In")
+		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
+					   tank_status="Empty Dirty", cargo="Acetic Acid",
+					   lines=[{"item_code": "01", "damage_code": "11"}], submit=True)
+		self.assertEqual(frappe.db.get_value("Container", c, "last_cargo"), "Acetic Acid")
+
+	def test_prefill_returns_container_ex_vessel(self):
+		_make_container("EIRV3000001", ex_vessel="MV NEPTUNE")
+		data = eir.prefill(container_no="EIRV3000001")
+		self.assertEqual(data["ex_vessel"], "MV NEPTUNE")
+
+	def test_order_bongkar_stamps_container_ex_vessel(self):
+		from container_depot.operations.doctype.order_bongkar.order_bongkar import (
+			_update_container_ex_vessel,
+		)
+		c = _make_container("EIRV3000002")
+		# Not inserted — the writeback only reads ex_vessel + the container rows.
+		ob = frappe.get_doc({
+			"doctype": "Order Bongkar", "ex_vessel": "MV ATLANTIC",
+			"containers": [{"container": c, "container_no": c}],
+		})
+		_update_container_ex_vessel(ob)
+		self.assertEqual(frappe.db.get_value("Container", c, "ex_vessel"), "MV ATLANTIC")
+
+	def test_tank_status_laden_accepted(self):
+		c = _make_container("EIRV3000003")
+		res = eir.create_eir(inspection_type="EIR-In", container=c, tank_status="Laden",
+							 lines=[], submit=False)
+		self.assertEqual(frappe.db.get_value("Inspection", res["name"], "tank_status"), "Laden")

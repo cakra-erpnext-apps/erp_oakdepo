@@ -8,6 +8,7 @@
     "tab_eir",
     "inspection_info",
     "inspection_type",
+    "eir_date",
     "status",
     "booking_code",
     "container",
@@ -18,6 +19,7 @@
     "gate_in_timestamp",
     "gate_out_timestamp",
     "vessel",
+    "ex_vessel",
     "tank_template_section",
     "serial_no",
     "manufacture_date",
@@ -27,6 +29,7 @@
     "tare_weight",
     "max_gross_weight",
     "last_cargo",
+    "cargo",
     "column_break_tank2",
     "tank_status",
     "seal_section",
@@ -42,15 +45,20 @@
     "damage_section",
     "has_damage",
     "damage_log",
-    "signoff_section",
+    "voucher_section",
+    "referred_voucher",
+    "voucher_doctype",
+    "shipper",
+    "column_break_voucher",
     "truck_no",
-    "emkl",
-    "column_break_signoff1",
     "driver",
+    "driver_phone",
+    "emkl",
+    "signoff_section",
+    "remarks",
+    "column_break_signoff2",
     "driver_signature",
     "inspector_signature",
-    "column_break_signoff2",
-    "remarks",
     "tab_survey",
     "survey_section",
     "survey_type",
@@ -90,6 +98,12 @@
       "label": "Inspection Type",
       "options": "EIR-In\nEIR-Out\nDetailed Survey\nPost-Repair",
       "reqd": 1
+    },
+    {
+      "default": "Today",
+      "fieldname": "eir_date",
+      "fieldtype": "Date",
+      "label": "EIR Date"
     },
     {
       "default": "Draft",
@@ -153,6 +167,14 @@
       "label": "Vessel"
     },
     {
+      "description": "Arrival vessel — read from the Container master (set when an Order Bongkar is submitted).",
+      "fetch_from": "container.ex_vessel",
+      "fieldname": "ex_vessel",
+      "fieldtype": "Data",
+      "label": "Ex Vessel",
+      "read_only": 1
+    },
+    {
       "fieldname": "tank_template_section",
       "fieldtype": "Section Break",
       "label": "Kondisi Tank"
@@ -212,6 +234,13 @@
       "read_only": 1
     },
     {
+      "description": "Cargo recorded on this EIR; written back to the Container's Last Cargo when the EIR is submitted (drafts do not change the master).",
+      "fieldname": "cargo",
+      "fieldtype": "Link",
+      "label": "Cargo",
+      "options": "Cargo"
+    },
+    {
       "fieldname": "column_break_tank2",
       "fieldtype": "Column Break"
     },
@@ -220,7 +249,7 @@
       "fieldname": "tank_status",
       "fieldtype": "Select",
       "label": "Tank Status",
-      "options": "\nEmpty Clean\nEmpty Dirty"
+      "options": "\nEmpty Clean\nEmpty Dirty\nLaden"
     },
     {
       "collapsible": 1,
@@ -294,14 +323,53 @@
       "options": "Inspection Damage Entry"
     },
     {
-      "fieldname": "signoff_section",
+      "fieldname": "voucher_section",
       "fieldtype": "Section Break",
-      "label": "Sign-off"
+      "label": "Voucher & Pengiriman"
+    },
+    {
+      "description": "Referred voucher (bon): Order Bongkar for EIR-In, Order Muat for EIR-Out. Truck / driver / shipper are pulled from it (read-only here; entered when the voucher is generated).",
+      "fieldname": "referred_voucher",
+      "fieldtype": "Dynamic Link",
+      "label": "Referred Voucher",
+      "options": "voucher_doctype"
+    },
+    {
+      "fieldname": "voucher_doctype",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Voucher DocType",
+      "options": "DocType",
+      "read_only": 1
+    },
+    {
+      "fieldname": "shipper",
+      "fieldtype": "Link",
+      "label": "Shipper",
+      "options": "Customer",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_voucher",
+      "fieldtype": "Column Break"
     },
     {
       "fieldname": "truck_no",
       "fieldtype": "Data",
-      "label": "Truck No"
+      "label": "Truck No",
+      "read_only": 1
+    },
+    {
+      "fieldname": "driver",
+      "fieldtype": "Data",
+      "label": "Driver Name",
+      "read_only": 1
+    },
+    {
+      "fieldname": "driver_phone",
+      "fieldtype": "Data",
+      "label": "Driver Phone",
+      "read_only": 1
     },
     {
       "fieldname": "emkl",
@@ -309,13 +377,18 @@
       "label": "EMKL / Forwarder"
     },
     {
-      "fieldname": "column_break_signoff1",
-      "fieldtype": "Column Break"
+      "fieldname": "signoff_section",
+      "fieldtype": "Section Break",
+      "label": "Tanda Tangan & Catatan"
     },
     {
-      "fieldname": "driver",
-      "fieldtype": "Data",
-      "label": "Driver Name"
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    },
+    {
+      "fieldname": "column_break_signoff2",
+      "fieldtype": "Column Break"
     },
     {
       "fieldname": "driver_signature",
@@ -327,15 +400,6 @@
       "fieldname": "inspector_signature",
       "fieldtype": "Attach Image",
       "label": "Inspector Signature"
-    },
-    {
-      "fieldname": "column_break_signoff2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "remarks",
-      "fieldtype": "Small Text",
-      "label": "Remarks"
     },
     {
       "depends_on": "eval:['Detailed Survey','Post-Repair'].includes(doc.inspection_type)",
@@ -462,7 +526,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-11 13:00:00.000000",
+  "modified": "2026-06-11 14:00:00.000000",
   "module": "Operations",
   "name": "Inspection",
   "search_fields": "inspection_id, container_no, inspection_type, status",
