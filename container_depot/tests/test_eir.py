@@ -242,3 +242,20 @@ class TestEirDraft(FrappeTestCase):
 						   lines=[{"item_code": "01", "damage_code": "11"}], submit=True)
 		with self.assertRaises(frappe.ValidationError):
 			eir.save_draft(inspection=res["name"], lines=[{"item_code": "02", "damage_code": "12"}])
+
+	def test_save_draft_submit_finalizes(self):
+		# The Submit button saves then finalizes: the draft is submitted and its
+		# on_submit moves the container; a later fetch starts a fresh draft.
+		c = _make_container("EIRD1000005", status="Gate_In")
+		d = eir.open_draft(container_no="EIRD1000005")
+		res = eir.save_draft(
+			inspection=d["inspection"], inspection_type="EIR-In", tank_status="Empty Dirty",
+			lines=[{"item_code": "01", "damage_code": "11", "remarks": "dent"}],
+			submit=True,
+		)
+		self.assertEqual(res["docstatus"], 1)
+		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		self.assertEqual(cont.status, "Inspecting")
+		self.assertTrue(cont.eir_in_date)
+		d2 = eir.open_draft(container_no="EIRD1000005")
+		self.assertNotEqual(d2["inspection"], d["inspection"])

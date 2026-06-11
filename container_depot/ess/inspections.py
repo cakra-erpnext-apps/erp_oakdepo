@@ -54,8 +54,9 @@ def eir_save_draft(
 	remarks=None,
 	lines=None,
 	photos=None,
+	submit=False,
 ):
-	"""POST /api/v1/ess/eir-save-draft — persist edits onto an existing draft EIR."""
+	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR."""
 	_require_authenticated_user()
 	return eir.save_draft(
 		inspection=inspection,
@@ -67,6 +68,7 @@ def eir_save_draft(
 		remarks=remarks,
 		lines=lines,
 		photos=photos,
+		submit=submit,
 	)
 
 

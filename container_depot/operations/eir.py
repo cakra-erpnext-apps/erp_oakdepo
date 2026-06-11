@@ -383,17 +383,20 @@ def save_draft(
 	remarks: str | None = None,
 	lines=None,
 	photos=None,
+	submit=False,
 ) -> dict:
-	"""Update an existing draft EIR (the PWA persist action).
+	"""Update an existing draft EIR — the PWA auto-save (and finalize) action.
 
 	The PWA owns the draft's checklist state, so ``damage_log`` + ``item_photos`` are
-	replaced wholesale from the payload. The EIR is NOT submitted here (no status
-	transition); it stays a recorded draft. Permissions are enforced (no bypass).
+	replaced wholesale from the payload. ``submit`` finalizes the EIR: the Inspection
+	is submitted and its ``on_submit`` drives the container (we never set status here).
+	Permissions are enforced (no bypass).
 	"""
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection))
 
+	submit = _as_bool(submit)
 	items = _checklist_items()
 	damage_rows, has_damage = _build_damage_rows(_coerce_lines(lines), items)
 	photo_rows = _build_photo_rows(_coerce_lines(photos), items)
@@ -408,11 +411,16 @@ def save_draft(
 	doc.has_damage = 1 if has_damage else 0
 	doc.set("damage_log", damage_rows)
 	doc.set("item_photos", photo_rows)
-	doc.save()  # NOT ignore_permissions.
+
+	if submit:
+		doc.submit()  # on_submit moves the Container; we never set status here.
+	else:
+		doc.save()  # NOT ignore_permissions.
 
 	return {
 		"success": True,
 		"inspection": doc.name,
+		"docstatus": doc.docstatus,
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
 		"photo_rows": len(photo_rows),

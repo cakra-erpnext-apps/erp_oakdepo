@@ -165,27 +165,38 @@
 				<p class="text-sm text-gray-500">{{ labels.officer }}: <span class="font-medium text-gray-800">{{ session.user }}</span></p>
 			</section>
 
-			<!-- Step 6 — save the draft (no submit: the draft IS the record) -->
+			<!-- Step 6 — auto-save status + finalize -->
 			<section class="space-y-2">
+				<p class="text-xs">
+					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
+					<span v-else-if="saveError" class="text-red-600">{{ saveError }}</span>
+					<span v-else-if="savedOk" class="text-green-600">✓ {{ labels.draftSaved }}</span>
+					<span v-else class="text-gray-400">{{ labels.eirAutosaveHint }}</span>
+				</p>
 				<button
 					class="w-full rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
 					:disabled="saveRes.loading"
-					@click="doSave"
+					@click="doSave(true)"
 				>
-					{{ saveRes.loading ? "…" : labels.saveDraft }}
+					{{ saveRes.loading ? "…" : labels.submitEir }}
 				</button>
-				<p v-if="saveError" class="text-sm text-red-600">{{ saveError }}</p>
-				<p v-if="result && result.success" class="text-sm text-green-700">
-					✓ {{ labels.draftSaved }} · {{ result.inspection }}
-				</p>
-				<button class="text-sm text-blue-600 underline" @click="reset">{{ labels.newEir }}</button>
+				<button class="block w-full text-center text-sm text-blue-600 underline" @click="reset">
+					{{ labels.newEir }}
+				</button>
 			</section>
 		</template>
+
+		<!-- Finalized -->
+		<section v-if="submitted" class="rounded-lg border border-green-200 bg-green-50 p-4">
+			<p class="font-medium text-green-800">✓ {{ labels.eirSubmitted }}</p>
+			<p class="mt-1 text-sm text-gray-700">{{ submitted }}</p>
+			<button class="mt-2 text-sm text-blue-600 underline" @click="submitted = null">{{ labels.newEir }}</button>
+		</section>
 	</div>
 </template>
 
 <script setup>
-import { computed, reactive, ref } from "vue"
+import { computed, nextTick, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { session } from "@/data/session"
@@ -201,6 +212,10 @@ const truckNo = ref("")
 const emkl = ref("")
 const remarks = ref("")
 const result = ref(null)
+const savedOk = ref(false) // last auto-save succeeded
+const submitted = ref(null) // finalized EIR name (shown after Submit)
+const suppressSave = ref(false) // mute auto-save while a draft is being loaded
+let saveTimer = null
 
 const rows = ref([])
 const damageCodes = ref([])
@@ -258,9 +273,12 @@ const openRes = createResource({
 	url: "container_depot.ess.inspections.eir_open_draft",
 	method: "POST",
 	onSuccess(data) {
+		// Mute auto-save while we populate the form from the loaded draft.
+		suppressSave.value = true
 		header.value = data
 		inspection.value = data.inspection
 		result.value = null
+		savedOk.value = false
 		if (data.inspection_type) eirType.value = data.inspection_type
 		vessel.value = data.vessel || ""
 		tankStatus.value = data.tank_status || ""
@@ -268,6 +286,9 @@ const openRes = createResource({
 		emkl.value = data.emkl || ""
 		remarks.value = data.doc_remarks || ""
 		applyDraftToRows(data)
+		nextTick(() => {
+			suppressSave.value = false
+		})
 	},
 })
 
@@ -276,6 +297,13 @@ const saveRes = createResource({
 	method: "POST",
 	onSuccess(data) {
 		result.value = data
+		if (data.docstatus === 1) {
+			// Finalized — show the success banner and clear the form for the next unit.
+			submitted.value = data.inspection
+			reset()
+		} else {
+			savedOk.value = true
+		}
 	},
 })
 
@@ -312,6 +340,7 @@ function applyDraftToRows(data) {
 function doFetch() {
 	if (!containerNo.value) return
 	result.value = null
+	submitted.value = null
 	openRes.submit({ container_no: containerNo.value, inspection_type: eirType.value })
 }
 
@@ -370,9 +399,13 @@ function removePhoto(item, idx) {
 	item.photos.splice(idx, 1)
 }
 
-// Persist edits onto the already-created draft (no new record, no submit).
-function doSave() {
+// Persist the draft. submit=false = auto-save; submit=true = finalize (Submit).
+function doSave(submit = false) {
 	if (!inspection.value) return
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+		saveTimer = null
+	}
 	saveRes.submit({
 		inspection: inspection.value,
 		inspection_type: eirType.value,
@@ -383,8 +416,21 @@ function doSave() {
 		remarks: remarks.value || undefined,
 		lines: JSON.stringify(buildLines()),
 		photos: JSON.stringify(buildPhotos()),
+		submit: submit ? 1 : 0,
 	})
 }
+
+// Auto-save on every action: debounce so rapid edits collapse into one request.
+function scheduleSave() {
+	if (!inspection.value || suppressSave.value) return
+	savedOk.value = false
+	if (saveTimer) clearTimeout(saveTimer)
+	saveTimer = setTimeout(() => doSave(false), 700)
+}
+
+// Header fields + the whole checklist (codes, remarks, photos) trigger an auto-save.
+watch([eirType, vessel, tankStatus, truckNo, emkl, remarks], scheduleSave)
+watch(rows, scheduleSave, { deep: true })
 
 function reset() {
 	containerNo.value = ""

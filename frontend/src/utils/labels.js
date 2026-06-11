@@ -85,7 +85,10 @@ export const labels = {
 	submitEir: "Submit EIR",
 	eirCreated: "EIR berhasil dibuat", // EIR created
 	eirDraftHint: "Draf EIR otomatis dibuat/ dibuka saat ambil data.", // auto draft hint
-	draftSaved: "Draf tersimpan", // Draft saved
+	eirAutosaveHint: "Perubahan tersimpan otomatis.", // changes auto-saved
+	savingDraft: "Menyimpan…", // Saving…
+	draftSaved: "Tersimpan", // Saved
+	eirSubmitted: "EIR berhasil disubmit", // EIR submitted
 	newEir: "EIR container lain", // Start another container
 }
 
