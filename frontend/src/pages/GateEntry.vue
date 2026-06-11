@@ -23,6 +23,14 @@
 					{{ lookupRes.loading ? "…" : labels.gateLookup }}
 				</button>
 			</div>
+			<button
+				class="flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+				@click="startScan"
+			>
+				<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+				{{ labels.gateScan }}
+			</button>
+			<p v-if="scanErr" class="text-sm text-amber-600">{{ scanErr }}</p>
 			<p v-if="lookupRes.error" class="text-sm text-red-600">{{ lookupError }}</p>
 			<p v-else-if="detail && !detail.valid" class="text-sm text-red-600">{{ detail.error }}</p>
 		</section>
@@ -95,12 +103,28 @@
 
 			<button class="text-sm text-blue-600 underline" @click="reset">{{ labels.reset }}</button>
 		</template>
+
+		<!-- Camera QR scanner overlay -->
+		<div
+			v-if="scanning"
+			class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-4"
+		>
+			<p class="text-sm text-white">{{ labels.gateScanHint }}</p>
+			<div id="gate-reader" class="w-full max-w-sm overflow-hidden rounded-lg bg-black"></div>
+			<button
+				class="rounded-md bg-white px-6 py-2.5 text-sm font-semibold text-gray-900"
+				@click="stopScan"
+			>
+				{{ labels.gateScanClose }}
+			</button>
+		</div>
 	</div>
 </template>
 
 <script setup>
-import { computed, nextTick, ref } from "vue"
+import { computed, nextTick, onBeforeUnmount, ref } from "vue"
 import { createResource } from "frappe-ui"
+import { Html5Qrcode } from "html5-qrcode"
 import { labels, directionLabel } from "@/utils/labels"
 
 const code = ref("")
@@ -108,6 +132,9 @@ const scanInput = ref(null)
 const detail = ref(null)
 const selected = ref([])
 const genResult = ref(null)
+const scanning = ref(false)
+const scanErr = ref("")
+let qrScanner = null
 
 const lookupRes = createResource({
 	url: "container_depot.api.gate_lookup",
@@ -181,7 +208,50 @@ function doGenerate() {
 		})
 }
 
+// --- Camera QR scanner (html5-qrcode) ---
+async function startScan() {
+	scanErr.value = ""
+	scanning.value = true
+	await nextTick()
+	try {
+		qrScanner = new Html5Qrcode("gate-reader")
+		await qrScanner.start(
+			{ facingMode: "environment" },
+			{ fps: 10, qrbox: { width: 240, height: 240 } },
+			onScanDetected,
+			() => {}, // per-frame decode miss — ignore
+		)
+	} catch (e) {
+		scanErr.value = labels.gateScanError
+		stopScan()
+	}
+}
+
+function onScanDetected(text) {
+	if (!qrScanner) return // guard against repeat success callbacks
+	stopScan() // nulls qrScanner synchronously so this fires exactly once
+	code.value = (text || "").trim()
+	doLookup()
+}
+
+async function stopScan() {
+	const scanner = qrScanner
+	qrScanner = null
+	scanning.value = false
+	if (scanner) {
+		try {
+			await scanner.stop()
+			scanner.clear()
+		} catch (e) {
+			/* already stopped */
+		}
+	}
+}
+
+onBeforeUnmount(stopScan)
+
 function reset() {
+	stopScan()
 	code.value = ""
 	detail.value = null
 	selected.value = []

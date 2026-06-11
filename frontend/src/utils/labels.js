@@ -41,6 +41,10 @@ export const labels = {
 	// Gate — scan/type a Booking or Order code → detail panel → per-container bon
 	gateScanTitle: "Scan / Ketik Kode", // Scan / type code
 	gateScanPlaceholder: "Kode Booking / Order (OAK-… / ORD-…)",
+	gateScan: "Scan Kamera", // Scan with camera
+	gateScanClose: "Tutup", // Close scanner
+	gateScanError: "Tidak bisa akses kamera — ketik kode manual.", // camera error
+	gateScanHint: "Arahkan kamera ke QR booking / bon.", // aim camera hint
 	gateLookup: "Cari", // Look up
 	branch: "Cabang", // Branch
 	bookingStatus: "Status Booking", // Booking status
