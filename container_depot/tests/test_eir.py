@@ -43,11 +43,19 @@ def _make_order_muat(shipper, container, *, truck="B-9001-XY", driver="Budi", ph
 	return doc.name
 
 
-def _make_order_bongkar(shipper, container, *, ex_vessel="MV TEST", submit=True):
-	"""Minimal Order Bongkar (unloading bon) carrying ``container``."""
+def _make_order_bongkar(shipper, container, *, ex_vessel="MV TEST", truck="B-2", driver="Andi",
+						phone="0833", condition="EMPTY DIRTY", cargo=None, submit=True):
+	"""Order Bongkar (unloading bon) carrying ``container`` with its per-container detail
+	(truck / driver / driver phone / condition / cargo) on the Container Booking Item row."""
+	row = {
+		"container": container, "container_no": container,
+		"truck_plate": truck, "driver": driver, "driver_phone": phone, "condition": condition,
+	}
+	if cargo:
+		row["cargo"] = cargo
 	doc = frappe.get_doc({
 		"doctype": "Order Bongkar", "shipper": shipper, "ex_vessel": ex_vessel,
-		"containers": [{"container": container, "container_no": container}],
+		"containers": [row],
 	})
 	doc.flags.ignore_validate = True
 	doc.insert(ignore_permissions=True, ignore_mandatory=True)
@@ -336,15 +344,20 @@ class TestEirVoucher(FrappeTestCase):
 		self.assertEqual(snap["shipper"], cust)
 
 	def test_fetch_voucher_order_bongkar_for_eir_in(self):
-		# EIR-In references the unloading bon — shipper only, no truck/driver.
+		# EIR-In: per-container detail comes from the Order Bongkar's Container Booking Item.
 		cust = ensure_test_customer("EIR Voucher Cust")
+		_ensure_cargo("Acetone")
 		c = _make_container("EIRV1000011")
-		ob = _make_order_bongkar(cust, c)
+		ob = _make_order_bongkar(cust, c, truck="B-2", driver="Andi", phone="0833",
+								 condition="EMPTY DIRTY", cargo="Acetone")
 		snap = eir.fetch_voucher(ob, "EIR-In", container=c)
 		self.assertEqual(snap["voucher_doctype"], "Order Bongkar")
 		self.assertEqual(snap["shipper"], cust)
-		self.assertIsNone(snap["truck_no"])
-		self.assertIsNone(snap["driver"])
+		self.assertEqual(snap["truck_no"], "B-2")
+		self.assertEqual(snap["driver"], "Andi")
+		self.assertEqual(snap["driver_phone"], "0833")
+		self.assertEqual(snap["tank_status"], "Empty Dirty")
+		self.assertEqual(snap["cargo"], "Acetone")
 
 	def test_fetch_voucher_none_is_empty(self):
 		snap = eir.fetch_voucher(None, "EIR-Out")

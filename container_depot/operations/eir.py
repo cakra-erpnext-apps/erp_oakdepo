@@ -72,13 +72,66 @@ def _voucher_has_container(doctype: str, voucher: str, container: str) -> bool:
 	))
 
 
-def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", container: str | None = None) -> dict:
-	"""Read the EIR's read-only shipment snapshot from a referred voucher (bon).
+# Container Booking Item.condition (UPPER) -> Inspection.tank_status (Title).
+_CONDITION_TO_TANK_STATUS = {
+	"EMPTY CLEAN": "Empty Clean",
+	"EMPTY DIRTY": "Empty Dirty",
+	"LADEN": "Laden",
+}
 
-	EIR-In → Order Bongkar (shipper only; the unloading bon has no truck/driver).
-	EIR-Out → Order Muat (truck plate, driver, driver phone, shipper). Missing fields
-	come back as ``None``. The voucher's fields are entered when the bon is generated;
-	here they are pulled read-only. ``voucher=None`` yields an all-None snapshot.
+# Per-container detail fields read from a Container Booking Item row.
+_CBI_DETAIL = ["truck_plate", "driver", "driver_phone", "condition", "cargo"]
+
+
+def _booking_item_detail(booking, container):
+	"""The booking's Container Booking Item line for ``container`` (per-container detail)."""
+	if not (booking and container):
+		return frappe._dict()
+	return frappe.db.get_value(
+		"Container Booking Item",
+		{"parent": booking, "parenttype": "Container Booking", "container": container},
+		_CBI_DETAIL, as_dict=True,
+	) or frappe._dict()
+
+
+def _voucher_detail(doctype, voucher, container):
+	"""Per-container shipment detail (truck / driver / driver phone / condition / cargo)
+	from Container Booking Item.
+
+	Order Bongkar's own ``containers`` ARE Container Booking Item rows, so the detail is
+	read straight from the matching row. Order Muat uses Order Container Item (no detail)
+	and carries truck/driver on its header — its condition/cargo come from the booking's
+	Container Booking Item line for the same container.
+	"""
+	if doctype == "Order Bongkar":
+		return frappe.db.get_value(
+			"Container Booking Item",
+			{"parent": voucher, "parenttype": "Order Bongkar", "container": container},
+			_CBI_DETAIL, as_dict=True,
+		) or frappe._dict()
+	header = frappe.db.get_value(
+		"Order Muat", voucher,
+		["truck_plate", "driver_name", "driver_phone", "booking"], as_dict=True,
+	) or frappe._dict()
+	bk = _booking_item_detail(header.get("booking"), container)
+	return frappe._dict(
+		truck_plate=header.get("truck_plate"),
+		driver=header.get("driver_name"),
+		driver_phone=header.get("driver_phone"),
+		condition=bk.get("condition"),
+		cargo=bk.get("cargo"),
+	)
+
+
+def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", container: str | None = None) -> dict:
+	"""Read the EIR's shipment snapshot for ``container`` from a referred voucher (bon).
+
+	The per-container detail (truck no, driver, driver phone, tank status, cargo) comes
+	from **Container Booking Item**: for EIR-In the Order Bongkar's own rows carry it; for
+	EIR-Out the Order Muat keeps truck/driver on its header and the condition/cargo come
+	from the booking line. ``shipper`` is the bon header. truck/driver/phone are stored
+	read-only on the EIR; tank_status/cargo are returned as editable defaults. Missing
+	fields come back ``None``; ``voucher=None`` yields an all-None snapshot.
 
 	The voucher must be **submitted** and (when ``container`` is given) must actually
 	carry that container — an EIR can only reference the bon the tank is really on.
@@ -91,6 +144,8 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 		"driver": None,
 		"driver_phone": None,
 		"shipper": None,
+		"tank_status": None,
+		"cargo": None,
 	}
 	if not voucher:
 		return snap
@@ -102,17 +157,13 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 	if container and not _voucher_has_container(doctype, voucher, container):
 		frappe.throw(_("Container {0} is not on {1} {2}.").format(container, doctype, voucher))
 	snap["referred_voucher"] = voucher
-	if doctype == "Order Muat":
-		row = frappe.db.get_value(
-			"Order Muat", voucher,
-			["truck_plate", "driver_name", "driver_phone", "shipper"], as_dict=True,
-		)
-		snap.update(
-			truck_no=row.truck_plate, driver=row.driver_name,
-			driver_phone=row.driver_phone, shipper=row.shipper,
-		)
-	else:  # Order Bongkar — shipper only.
-		snap["shipper"] = frappe.db.get_value("Order Bongkar", voucher, "shipper")
+	snap["shipper"] = frappe.db.get_value(doctype, voucher, "shipper")
+	detail = _voucher_detail(doctype, voucher, container)
+	snap["truck_no"] = detail.get("truck_plate")
+	snap["driver"] = detail.get("driver")
+	snap["driver_phone"] = detail.get("driver_phone")
+	snap["tank_status"] = _CONDITION_TO_TANK_STATUS.get((detail.get("condition") or "").strip().upper())
+	snap["cargo"] = detail.get("cargo")
 	return snap
 
 

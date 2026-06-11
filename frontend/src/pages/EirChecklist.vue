@@ -410,9 +410,13 @@ const voucherRes = createResource({
 		driver.value = data.driver || ""
 		driverPhone.value = data.driver_phone || ""
 		shipper.value = data.shipper || ""
+		// Tank status + cargo are pulled from the voucher (Container Booking Item) as
+		// editable defaults — the user can still change them before submit.
+		if (data.tank_status) tankStatus.value = data.tank_status
+		if (data.cargo) cargo.value = data.cargo
 		// Persist immediately (no debounce): the voucher reference and its snapshot
 		// (truck / driver / driver phone / shipper) are saved onto the draft the moment
-		// they are fetched. The server re-resolves the snapshot from referred_voucher.
+		// they are fetched. The server re-resolves the read-only snapshot from the ref.
 		doSave(false)
 	},
 })
