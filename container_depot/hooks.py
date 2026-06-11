@@ -81,6 +81,9 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/eir-masters", "to_route": "container_depot.ess.inspections.eir_masters"},
 	{"from_route": "/api/v1/ess/eir-prefill", "to_route": "container_depot.ess.inspections.eir_prefill"},
 	{"from_route": "/api/v1/ess/eir-create", "to_route": "container_depot.ess.inspections.eir_create"},
+	# SPA deep links: serve the /depot shell for any sub-route so a hard refresh on
+	# e.g. /depot/eir doesn't 404 — the Vue router then renders the route client-side.
+	{"from_route": "/depot/<path:app_path>", "to_route": "depot"},
 ]
 
 # Branding / Logo (env-driven)
