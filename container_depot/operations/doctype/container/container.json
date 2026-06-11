@@ -76,7 +76,7 @@
       "options": "20'\n40'\n45'\nOther"
     },
     {
-      "default": "Available",
+      "default": "Gate_Out",
       "fieldname": "status",
       "fieldtype": "Select",
       "label": "Status",
