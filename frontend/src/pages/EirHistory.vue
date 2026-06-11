@@ -45,22 +45,34 @@
 			</li>
 		</ul>
 
-		<div v-if="totalPages > 1" class="flex items-center justify-between text-sm">
-			<button
-				class="rounded-md border bg-white px-3 py-1.5 disabled:opacity-40"
-				:disabled="page <= 1 || history.loading"
-				@click="goTo(page - 1)"
-			>
-				‹ {{ labels.prev }}
-			</button>
-			<span class="text-gray-500">{{ page }} / {{ totalPages }} · {{ total }}</span>
-			<button
-				class="rounded-md border bg-white px-3 py-1.5 disabled:opacity-40"
-				:disabled="page >= totalPages || history.loading"
-				@click="goTo(page + 1)"
-			>
-				{{ labels.next }} ›
-			</button>
+		<div v-if="total > 0" class="space-y-1">
+			<div class="flex flex-wrap items-center justify-center gap-1">
+				<button
+					class="rounded-md border bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+					:disabled="page <= 1 || history.loading"
+					@click="goTo(page - 1)"
+				>
+					‹ {{ labels.prev }}
+				</button>
+				<button
+					v-for="p in pageWindow"
+					:key="p"
+					class="min-w-[2.25rem] rounded-md border px-3 py-1.5 text-sm font-medium"
+					:class="p === page ? 'border-blue-600 bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'"
+					:disabled="history.loading"
+					@click="goTo(p)"
+				>
+					{{ p }}
+				</button>
+				<button
+					class="rounded-md border bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+					:disabled="page >= totalPages || history.loading"
+					@click="goTo(page + 1)"
+				>
+					{{ labels.next }} ›
+				</button>
+			</div>
+			<p class="text-center text-xs text-gray-400">{{ page }} / {{ totalPages }} · {{ total }} EIR</p>
 		</div>
 	</div>
 </template>
@@ -99,6 +111,18 @@ const history = createResource({
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE)))
+
+// A window of up to 5 page numbers centred on the current page.
+const pageWindow = computed(() => {
+	const tp = totalPages.value
+	const max = 5
+	let startP = Math.max(1, page.value - Math.floor(max / 2))
+	const endP = Math.min(tp, startP + max - 1)
+	startP = Math.max(1, endP - max + 1)
+	const out = []
+	for (let p = startP; p <= endP; p++) out.push(p)
+	return out
+})
 
 function goTo(p) {
 	page.value = Math.min(Math.max(1, p), totalPages.value)

@@ -1,10 +1,19 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4">
-		<div class="flex items-center justify-between gap-2">
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			<h1 class="text-lg font-semibold">{{ labels.eirTitle }}</h1>
-			<div class="flex shrink-0 items-center gap-3 text-sm">
-				<router-link to="/eir/history" class="text-blue-600 underline">{{ labels.eirHistory }}</router-link>
-				<button v-if="header" class="text-blue-600 underline" @click="reset">
+			<div class="flex items-center gap-2">
+				<router-link
+					to="/eir/history"
+					class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+				>
+					{{ labels.eirHistory }}
+				</router-link>
+				<button
+					v-if="header"
+					class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+					@click="reset"
+				>
 					{{ labels.newEir }}
 				</button>
 			</div>
