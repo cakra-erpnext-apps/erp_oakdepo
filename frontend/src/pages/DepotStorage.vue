@@ -3,10 +3,13 @@
 		<!-- Header -->
 		<div class="flex items-center gap-2">
 			<span class="oak-icon-tile h-9 w-9 bg-leaf-50 text-leaf-600"><Icon name="layers" :size="20" /></span>
-			<div>
+			<div class="min-w-0 flex-1">
 				<h1 class="text-lg font-extrabold leading-tight tracking-tight">{{ labels.storageTitle }}</h1>
 				<p class="text-xs text-gray-500">{{ labels.storageDesc }}</p>
 			</div>
+			<span v-if="branch" class="oak-chip shrink-0 bg-gray-100 text-gray-600">
+				<Icon name="map-pin" :size="12" /> {{ branch }}
+			</span>
 		</div>
 
 		<!-- Place an isotank -->
@@ -158,52 +161,60 @@
 			</div>
 		</section>
 
-		<!-- Zone occupancy overview -->
+		<!-- Zone occupancy overview (depot accordion) -->
 		<section class="space-y-2">
-			<div class="flex items-center justify-between gap-2">
-				<p class="oak-section-title">{{ labels.storageOccupancy }}</p>
-				<div v-if="depots.length > 1" class="flex rounded-lg bg-gray-100 p-0.5">
-					<button
-						v-for="d in depots"
-						:key="d.code"
-						class="rounded-md px-3 py-1 text-xs font-semibold transition"
-						:class="activeDepot === d.code ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'"
-						@click="activeDepot = d.code"
-					>
-						{{ d.name }}
-					</button>
-				</div>
-			</div>
-
+			<p class="oak-section-title">{{ labels.storageOccupancy }}</p>
 			<p v-if="overviewRes.loading" class="oak-card p-6 text-center text-sm text-gray-400">{{ labels.loading }}</p>
 			<p v-else-if="overviewRes.error" class="oak-card p-6 text-center text-sm text-red-500">{{ labels.error }}</p>
-			<p v-else-if="!groupedZones.length" class="oak-card p-6 text-center text-sm text-gray-400">{{ labels.storageNoZones }}</p>
-			<template v-else>
-				<div v-for="g in groupedZones" :key="g.block || 'none'" class="space-y-2">
-					<p v-if="g.block" class="px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ g.block }}</p>
-					<div class="grid gap-2 sm:grid-cols-2">
-						<button
-							v-for="z in g.zones"
-							:key="z.zone_code"
-							class="oak-card oak-press space-y-2 p-3 text-left"
-							@click="openZone(z)"
-						>
-							<div class="flex items-start justify-between gap-2">
-								<p class="text-sm font-bold text-gray-900">{{ z.zone_name }}</p>
-								<span class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ categoryLabel(z.category) }}</span>
+			<p v-else-if="!overviewDepots.length" class="oak-card p-6 text-center text-sm text-gray-400">{{ labels.storageNoZones }}</p>
+			<div v-else class="space-y-2">
+				<div v-for="d in overviewDepots" :key="d.code" class="oak-card overflow-hidden">
+					<button
+						class="flex w-full items-center gap-3 px-4 py-3 text-left"
+						@click="expandedDepot = expandedDepot === d.code ? null : d.code"
+					>
+						<Icon :name="expandedDepot === d.code ? 'chevron-down' : 'chevron-right'" :size="18" class="shrink-0 text-gray-400" />
+						<div class="min-w-0 flex-1">
+							<div class="flex items-center justify-between gap-2">
+								<p class="truncate text-sm font-bold text-gray-900">{{ d.name }}</p>
+								<span class="shrink-0 text-xs font-medium" :class="d.full_count ? 'text-red-600' : 'text-gray-500'">
+									{{ d.occupied }}/{{ d.capacity || "∞" }}<span v-if="d.utilization != null"> · {{ d.utilization }}%</span>
+								</span>
 							</div>
-							<div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
-								<div class="h-full rounded-full transition-all" :class="barClass(z)" :style="{ width: barWidth(z) }"></div>
+							<div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+								<div class="h-full rounded-full transition-all" :class="depotBarClass(d)" :style="{ width: depotBar(d) }"></div>
 							</div>
-							<p class="text-xs font-medium" :class="z.is_full ? 'text-red-600' : 'text-gray-500'">
-								{{ z.occupied }}/{{ z.capacity || "∞" }}
-								<span v-if="z.utilization != null"> · {{ z.utilization }}%</span>
-								<span v-if="z.is_full"> · {{ labels.storageFull }}</span>
-							</p>
-						</button>
+						</div>
+					</button>
+					<div v-if="expandedDepot === d.code" class="space-y-2 border-t border-gray-100 px-3 py-3">
+						<p v-if="!blocksForDepot(d.code).length" class="py-2 text-center text-xs text-gray-400">{{ labels.storageNoZones }}</p>
+						<div v-for="g in blocksForDepot(d.code)" :key="g.block || 'none'" class="space-y-2">
+							<p v-if="g.block" class="px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ g.block }}</p>
+							<div class="grid gap-2 sm:grid-cols-2">
+								<button
+									v-for="z in g.zones"
+									:key="z.zone_code"
+									class="oak-card oak-press space-y-2 p-3 text-left"
+									@click="openZone(z)"
+								>
+									<div class="flex items-start justify-between gap-2">
+										<p class="text-sm font-bold text-gray-900">{{ z.zone_name }}</p>
+										<span class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ categoryLabel(z.category) }}</span>
+									</div>
+									<div class="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+										<div class="h-full rounded-full transition-all" :class="barClass(z)" :style="{ width: barWidth(z) }"></div>
+									</div>
+									<p class="text-xs font-medium" :class="z.is_full ? 'text-red-600' : 'text-gray-500'">
+										{{ z.occupied }}/{{ z.capacity || "∞" }}
+										<span v-if="z.utilization != null"> · {{ z.utilization }}%</span>
+										<span v-if="z.is_full"> · {{ labels.storageFull }}</span>
+									</p>
+								</button>
+							</div>
+						</div>
 					</div>
 				</div>
-			</template>
+			</div>
 		</section>
 
 		<!-- SOP guide (collapsible) -->
@@ -237,19 +248,40 @@
 						<Icon name="x" :size="18" />
 					</button>
 				</div>
+				<!-- Sticky debounced search -->
+				<div class="border-b border-gray-100 p-3">
+					<input
+						v-model="zoneSearch"
+						type="text"
+						:placeholder="labels.storageSearchTank"
+						class="oak-input"
+						@input="onZoneSearch"
+					/>
+				</div>
 				<div class="flex-1 overflow-y-auto px-4 py-3">
-					<p v-if="zoneTanksRes.loading" class="py-6 text-center text-sm text-gray-400">{{ labels.loading }}</p>
-					<p v-else-if="!zoneTanks.length" class="py-6 text-center text-sm text-gray-400">{{ labels.storageNoTanks }}</p>
-					<ul v-else class="divide-y divide-gray-100">
-						<li v-for="t in zoneTanks" :key="t.name" class="flex items-center gap-3 py-2.5">
-							<span class="oak-icon-tile h-8 w-8 shrink-0 bg-gray-100 text-gray-400"><Icon name="package" :size="16" /></span>
-							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">{{ t.container_no }}</p>
-								<p v-if="t.principal" class="truncate text-xs text-gray-500">{{ t.principal }}</p>
-							</div>
-							<span class="oak-chip shrink-0" :class="statusColors[t.status]">{{ statusLabel(t.status) }}</span>
-						</li>
-					</ul>
+					<p v-if="zoneTanksRes.loading && !zoneItems.length" class="py-6 text-center text-sm text-gray-400">{{ labels.loading }}</p>
+					<p v-else-if="!zoneItems.length" class="py-6 text-center text-sm text-gray-400">{{ labels.storageNoTanks }}</p>
+					<template v-else>
+						<ul class="divide-y divide-gray-100">
+							<li v-for="t in zoneItems" :key="t.name" class="flex items-center gap-3 py-2.5">
+								<span class="oak-icon-tile h-8 w-8 shrink-0 bg-gray-100 text-gray-400"><Icon name="package" :size="16" /></span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate font-semibold text-gray-900">{{ t.container_no }}</p>
+									<p v-if="t.principal" class="truncate text-xs text-gray-500">{{ t.principal }}</p>
+								</div>
+								<span class="oak-chip shrink-0" :class="statusColors[t.status]">{{ statusLabel(t.status) }}</span>
+							</li>
+						</ul>
+						<button
+							v-if="zoneHasMore"
+							class="oak-btn oak-btn-secondary mt-3 w-full"
+							:disabled="zoneTanksRes.loading"
+							@click="loadZonePage(false)"
+						>
+							{{ zoneTanksRes.loading ? "…" : labels.storageLoadMore }}
+						</button>
+						<p class="mt-2 text-center text-xs text-gray-400">{{ zoneItems.length }} {{ labels.storageOf }} {{ zoneTotal }}</p>
+					</template>
 				</div>
 			</div>
 		</div>
@@ -257,7 +289,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue"
+import { computed, ref, onMounted } from "vue"
 import { createResource } from "frappe-ui"
 import {
 	labels,
@@ -266,6 +298,7 @@ import {
 	statusLabel,
 	statusColors,
 } from "@/utils/labels"
+import { userContext, branchLabel } from "@/data/context"
 import Icon from "@/components/Icon.vue"
 
 const BLOCK_ORDER = ["Blok Kiri", "Blok Kanan", ""]
@@ -278,10 +311,24 @@ const rec = ref(null)
 const selectedZone = ref(null)
 const form = ref({ row: "", tier: null, bay: "" })
 const placed = ref(null)
-const activeDepot = ref(null)
+const expandedDepot = ref(null) // which depot accordion is open
 const sopOpen = ref(false)
 const manualOpen = ref(false)
 const zoneModal = ref(null)
+
+// Zone tank list: server-side search + "Muat lebih" pagination state.
+const zoneSearch = ref("")
+const zoneItems = ref([])
+const zoneTotal = ref(0)
+const zoneStart = ref(0)
+const ZONE_PAGE = 50
+let zoneSearchTimer = null
+
+// Active branch label for the header ("Semua Branch" for HQ/unrestricted users).
+onMounted(() => {
+	if (!userContext.data) userContext.reload()
+})
+const branch = computed(() => branchLabel())
 
 // --- Resources ---
 const overviewRes = createResource({
@@ -289,7 +336,7 @@ const overviewRes = createResource({
 	method: "GET",
 	auto: true,
 	onSuccess(data) {
-		if (!activeDepot.value && data?.depots?.length) activeDepot.value = data.depots[0].code
+		if (!expandedDepot.value && data?.depots?.length) expandedDepot.value = data.depots[0].code
 	},
 })
 
@@ -318,15 +365,16 @@ const zoneTanksRes = createResource({
 })
 
 // --- Derived ---
-const depots = computed(() => overviewRes.data?.depots || [])
+const overviewDepots = computed(() => overviewRes.data?.depots || [])
 
-const groupedZones = computed(() => {
-	const zones = (overviewRes.data?.zones || []).filter((z) => !activeDepot.value || z.depot === activeDepot.value)
+// Zones of one depot, grouped by block in SOP order (for the expanded accordion).
+function blocksForDepot(code) {
+	const zones = (overviewRes.data?.zones || []).filter((z) => z.depot === code)
 	const byBlock = new Map()
 	for (const z of zones) {
-		const key = z.block || ""
-		if (!byBlock.has(key)) byBlock.set(key, [])
-		byBlock.get(key).push(z)
+		const k = z.block || ""
+		if (!byBlock.has(k)) byBlock.set(k, [])
+		byBlock.get(k).push(z)
 	}
 	return [...byBlock.keys()]
 		.sort((a, b) => {
@@ -334,7 +382,19 @@ const groupedZones = computed(() => {
 			return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
 		})
 		.map((block) => ({ block, zones: byBlock.get(block) }))
-})
+}
+
+function depotBar(d) {
+	if (!d.capacity) return d.occupied ? "100%" : "0%"
+	return Math.min(100, Math.round((d.occupied / d.capacity) * 100)) + "%"
+}
+function depotBarClass(d) {
+	const u = d.utilization
+	if (u == null) return "bg-gray-300"
+	if (u >= 90) return "bg-red-500"
+	if (u >= 70) return "bg-amber-500"
+	return "bg-leaf-500"
+}
 
 // When there is no recommendation, the manual picker opens automatically so the
 // operator is never blocked from placing a tank.
@@ -360,7 +420,7 @@ const selectedZoneName = computed(() => {
 	return z ? z.zone_name : selectedZone.value
 })
 
-const zoneTanks = computed(() => zoneTanksRes.data?.items || [])
+const zoneHasMore = computed(() => zoneItems.value.length < zoneTotal.value)
 
 const recommendError = computed(
 	() => recommendRes.error?.messages?.[0] || recommendRes.error?.message || null,
@@ -421,8 +481,35 @@ function doPlace() {
 		})
 }
 
+// Load one page of the open zone's tanks. ``reset`` starts a fresh search/list;
+// otherwise the next page is appended ("Muat lebih" / infinite scroll).
+function loadZonePage(reset) {
+	if (reset) {
+		zoneStart.value = 0
+		zoneItems.value = []
+	}
+	zoneTanksRes
+		.submit({
+			zone: zoneModal.value.zone_code,
+			search: zoneSearch.value || undefined,
+			start: zoneStart.value,
+			page_length: ZONE_PAGE,
+		})
+		.then((data) => {
+			zoneItems.value = reset ? data.items : zoneItems.value.concat(data.items)
+			zoneTotal.value = data.total
+			zoneStart.value += data.items.length
+		})
+}
+
 function openZone(z) {
 	zoneModal.value = z
-	zoneTanksRes.submit({ zone: z.zone_code })
+	zoneSearch.value = ""
+	loadZonePage(true)
+}
+
+function onZoneSearch() {
+	clearTimeout(zoneSearchTimer)
+	zoneSearchTimer = setTimeout(() => loadZonePage(true), 300)
 }
 </script>

@@ -51,3 +51,59 @@ def sync_user_branch_permissions(doc, method=None):
 	for branch, name in existing.items():
 		if branch not in desired:
 			frappe.delete_doc("User Permission", name, ignore_permissions=True, force=True)
+
+
+# --- branch-scoping helpers (Depot PWA) ------------------------------------
+# Resolve the logged-in user's allowed branches/depots from their Branch User
+# Permissions, following the same "empty selection = all branches" convention as
+# the sync above. Used by every branch-scoped ESS endpoint + the Gate/EIR guards.
+from frappe import _
+
+_ALL_BRANCHES = None  # sentinel meaning "no restriction"
+
+
+def get_user_branches(user=None):
+	"""Branches the user is restricted to (User Permission allow=Branch).
+
+	Returns a list of Branch names, or ``None`` when the user has no Branch
+	permission at all — the established convention that an empty selection means
+	'all branches' (HQ/admin view). Administrator/Guest are always unrestricted.
+	"""
+	user = user or frappe.session.user
+	if user in ("Administrator", "Guest"):
+		return _ALL_BRANCHES
+	branches = frappe.get_all(
+		"User Permission",
+		filters={"user": user, "allow": "Branch"},
+		pluck="for_value",
+	)
+	return branches or _ALL_BRANCHES
+
+
+def get_user_depots(user=None):
+	"""Active depots whose branch is in the user's allowed branches.
+
+	Returns ``None`` (no restriction) when the user is unrestricted, else a list
+	of Depot names (may be empty if the branch has no depots).
+	"""
+	branches = get_user_branches(user)
+	if branches is _ALL_BRANCHES:
+		return None
+	return frappe.get_all(
+		"Depot", filters={"branch": ["in", branches], "is_active": 1}, pluck="name"
+	)
+
+
+def assert_in_user_branch(branch=None, depot=None, user=None):
+	"""Raise PermissionError if the given branch/depot is outside the user's scope.
+
+	No-op for unrestricted users. When only ``depot`` is given, its branch is
+	resolved first. A blank branch/depot is treated as in-scope (nothing to block).
+	"""
+	allowed = get_user_branches(user)
+	if allowed is _ALL_BRANCHES:
+		return
+	if not branch and depot:
+		branch = frappe.db.get_value("Depot", depot, "branch")
+	if branch and branch not in allowed:
+		frappe.throw(_("Di luar branch Anda."), frappe.PermissionError)

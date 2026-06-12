@@ -189,6 +189,11 @@ export const labels = {
 	storageZoneTanks: "Isotank di zona", // Tanks in zone
 	storageNoTanks: "Belum ada isotank di zona ini.", // no tanks
 	storageSop: "Panduan SOP Penyusunan", // Stacking SOP guide
+	storageBranch: "Branch", // branch label in the storage header
+	storageLoadMore: "Muat lebih", // load more
+	storageSearchTank: "Cari nomor container…", // search containers in a zone
+	storageShowing: "menampilkan", // "X dari Y menampilkan"
+	storageOf: "dari", // X dari Y
 }
 
 // Canonical 5-bucket status labels (Indonesian primary / English).

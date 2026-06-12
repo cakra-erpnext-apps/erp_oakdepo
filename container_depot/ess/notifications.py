@@ -10,12 +10,46 @@ import frappe
 from frappe import _
 
 from container_depot.api import _require_authenticated_user
+from container_depot.operations.user_branch import get_user_branches
+
+# How to find a notification source document's branch. ``("field", x)`` reads the
+# branch field directly; ``("depot", x)`` reads a depot field then Depot.branch.
+_BRANCH_SOURCE = {
+	"Order Bongkar": ("field", "branch"),
+	"Order Muat": ("field", "branch"),
+	"Container Booking": ("field", "branch"),
+	"Inspection": ("depot", "depot"),
+	"Container": ("depot", "depot"),
+}
+
+
+def _doc_branch(doctype, name):
+	"""Best-effort branch for a notification's source document; None if unknown."""
+	src = _BRANCH_SOURCE.get(doctype)
+	if not src or not name:
+		return None
+	kind, field = src
+	val = frappe.db.get_value(doctype, name, field)
+	if not val:
+		return None
+	return val if kind == "field" else frappe.db.get_value("Depot", val, "branch")
+
+
+def _in_allowed_branch(log, allowed):
+	"""True if the log's source branch is in ``allowed`` (or can't be resolved —
+	unknown-branch logs are kept so system/global notifications never vanish)."""
+	b = _doc_branch(log.get("document_type"), log.get("document_name"))
+	return b is None or b in allowed
 
 
 @frappe.whitelist(methods=["GET"])
 def list_notifications(limit=20):
 	"""GET /api/method/…list_notifications — the caller's notifications (newest
-	first) plus the unread count for the bell badge."""
+	first) plus the unread count for the bell badge.
+
+	Branch-scoped: a notification whose source document belongs to another branch
+	is hidden, and the unread badge counts only in-branch unread logs. Users with no
+	Branch restriction (HQ/admin) see everything."""
 	_require_authenticated_user()
 	user = frappe.session.user
 	limit = min(max(int(limit or 20), 1), 50)
@@ -26,7 +60,21 @@ def list_notifications(limit=20):
 		order_by="creation desc",
 		limit=limit,
 	)
-	unread = frappe.db.count("Notification Log", {"for_user": user, "read": 0})
+
+	allowed = get_user_branches(user)
+	if allowed is None:  # all branches -> no filtering
+		unread = frappe.db.count("Notification Log", {"for_user": user, "read": 0})
+		return {"items": items, "unread": unread}
+
+	allowed = set(allowed)
+	items = [it for it in items if _in_allowed_branch(it, allowed)]
+	# Recompute unread off the branch-filtered set so the badge matches the feed.
+	unread_logs = frappe.get_all(
+		"Notification Log",
+		filters={"for_user": user, "read": 0},
+		fields=["name", "document_type", "document_name"],
+	)
+	unread = sum(1 for it in unread_logs if _in_allowed_branch(it, allowed))
 	return {"items": items, "unread": unread}
 
 

@@ -133,8 +133,10 @@ def _zone_view(zone, occupied):
 	}
 
 
-def zone_occupancy(depot=None):
-	"""Occupancy vs capacity for every active Yard Zone (optionally one depot).
+def zone_occupancy(depot=None, depots=None):
+	"""Occupancy vs capacity for active Yard Zones, optionally restricted to one
+	depot (``depot``) or a set of depots (``depots``). ``depots=[]`` yields no rows
+	(an explicitly empty branch scope).
 
 	Powers the Depot Storage overview. Returns a flat list sorted by depot, block,
 	then zone code; the PWA groups it for display.
@@ -142,6 +144,10 @@ def zone_occupancy(depot=None):
 	filters = {"is_active": 1}
 	if depot:
 		filters["depot"] = depot
+	elif depots is not None:
+		if not depots:
+			return []
+		filters["depot"] = ["in", depots]
 	zones = frappe.get_all(
 		"Yard Zone",
 		filters=filters,
@@ -153,6 +159,27 @@ def zone_occupancy(depot=None):
 	)
 	occupancy = _occupancy_map([z.name for z in zones])
 	return [_zone_view(z, occupancy.get(z.name, 0)) for z in zones]
+
+
+def depot_rollup(zone_views):
+	"""Aggregate zone occupancy into per-depot summaries for the accordion headers.
+
+	Returns {depot_code: {occupied, capacity, full_count, zone_count, utilization}}.
+	"""
+	by_depot = {}
+	for z in zone_views:
+		d = by_depot.setdefault(
+			z["depot"], {"occupied": 0, "capacity": 0, "full_count": 0, "zone_count": 0}
+		)
+		d["occupied"] += z["occupied"]
+		d["capacity"] += z["capacity"] or 0
+		d["full_count"] += 1 if z["is_full"] else 0
+		d["zone_count"] += 1
+	out = {}
+	for code, d in by_depot.items():
+		util = round((d["occupied"] / d["capacity"]) * 100, 1) if d["capacity"] else None
+		out[code] = {**d, "utilization": util}
+	return out
 
 
 def _scope_depots(container):

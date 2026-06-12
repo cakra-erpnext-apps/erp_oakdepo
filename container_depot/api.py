@@ -25,6 +25,8 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import now_datetime
 
+from container_depot.operations.user_branch import assert_in_user_branch
+
 # ---------------------------------------------------------------------------
 # Helpers — auth, input validation, signature
 # ---------------------------------------------------------------------------
@@ -952,7 +954,15 @@ def _find_order_for_code(code) -> dict | None:
 
 
 def _booking_gate_detail(booking) -> dict:
-	"""Header + per-container bon status for the gate panel, plus the Cash-unpaid gate."""
+	"""Header + per-container bon status for the gate panel, plus the Cash-unpaid gate.
+
+	Out-of-branch bookings are refused up front so a scoped gate user never sees a
+	booking (and its container/payment data) belonging to another branch."""
+	branch = frappe.db.get_value("Container Booking", booking, "branch")
+	try:
+		assert_in_user_branch(branch=branch)
+	except frappe.PermissionError:
+		return {"valid": False, "error": _("Booking ini di luar branch Anda.")}
 	b = frappe.db.get_value(
 		"Container Booking",
 		booking,

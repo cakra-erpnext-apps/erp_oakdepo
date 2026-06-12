@@ -21,6 +21,7 @@ import frappe
 from frappe.utils import add_to_date, cint, getdate, today
 
 from container_depot.api import _require_authenticated_user
+from container_depot.operations.user_branch import get_user_depots
 from container_depot.tasks import PT_REMINDER_DAYS
 
 # Canonical ESS status buckets (keys are stable; labels live in the front-end).
@@ -67,6 +68,27 @@ _LIST_FIELDS = [
 	"yard_zone",
 	"status",
 ]
+
+
+def _apply_user_depot_scope(filters, depot):
+	"""Intersect a Container query's depot filter with the user's allowed depots.
+
+	Container has no Branch field, so the native Branch User Permission does not
+	scope it — we filter on ``depot`` explicitly. Returns the (possibly updated)
+	filters dict, or None to signal 'no results' (the requested depot is outside
+	the user's branch scope)."""
+	allowed = get_user_depots()
+	if allowed is None:
+		if depot:
+			filters["depot"] = depot
+		return filters
+	if depot:
+		if depot not in allowed:
+			return None
+		filters["depot"] = depot
+	else:
+		filters["depot"] = ["in", allowed]
+	return filters
 
 
 def derive_status(raw_status, open_cleaning=False, open_repair=False, open_inspection=False):
@@ -151,8 +173,10 @@ def get_inventory_summary(depot=None):
 	_require_authenticated_user()
 
 	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
-	if depot:
-		filters["depot"] = depot
+	scoped = _apply_user_depot_scope(filters, depot)
+	if scoped is None:
+		return {"success": True, "counts": {b: 0 for b in BUCKETS}, "periodic_test_due": 0, "total": 0}
+	filters = scoped
 
 	# Permission-aware: User Permissions on Depot (and DocPerms) filter this.
 	containers = frappe.get_list(
@@ -207,8 +231,10 @@ def get_tank_list(
 		filters["principal"] = principal
 	if yard_zone:
 		filters["yard_zone"] = yard_zone
-	if depot:
-		filters["depot"] = depot
+	scoped = _apply_user_depot_scope(filters, depot)
+	if scoped is None:
+		return {"success": True, "total": 0, "start": start, "page_length": page_length, "items": []}
+	filters = scoped
 	if search:
 		# PRD: search by tank number.
 		filters["container_no"] = ["like", f"%{search.strip()}%"]

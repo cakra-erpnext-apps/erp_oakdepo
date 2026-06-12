@@ -17,6 +17,7 @@ from frappe import _
 
 from container_depot.api import _require_authenticated_user
 from container_depot.operations import yard
+from container_depot.operations.user_branch import get_user_depots
 
 # Roles allowed to RECORD a placement. Reads stay open to any authenticated PWA
 # user (and remain permission-aware on the underlying Container/Yard Zone rows).
@@ -31,22 +32,41 @@ def _require_yard_operator() -> None:
 
 @frappe.whitelist(methods=["GET"])
 def yard_overview(depot=None):
-	"""GET /api/v1/ess/yard-overview — zone occupancy vs capacity + the depot list.
+	"""GET /api/v1/ess/yard-overview — branch-scoped zones + per-depot rollup.
 
-	The ``depots`` array drives the PWA's depot toggle; ``zones`` is the flat,
-	occupancy-annotated list the page groups by depot/block.
+	Zones are restricted to the user's allowed depots (``get_user_depots``; ``None``
+	= all branches). ``depots`` carries a per-depot occupancy rollup that drives the
+	PWA's depot accordion headers; ``zones`` is the flat list grouped per depot/block.
 	"""
 	_require_authenticated_user()
-	zones = yard.zone_occupancy(depot=depot)
+	allowed = get_user_depots()
+	if depot and allowed is not None and depot not in allowed:
+		return {"success": True, "zones": [], "depots": []}
+	zones = yard.zone_occupancy(depot=depot, depots=None if depot else allowed)
 
+	rollup = yard.depot_rollup(zones)
 	codes = list(dict.fromkeys(z["depot"] for z in zones if z["depot"]))
-	names = (
-		frappe.get_all("Depot", filters={"name": ["in", codes]}, fields=["name", "depot_name"])
+	meta = (
+		{
+			d.name: d
+			for d in frappe.get_all(
+				"Depot", filters={"name": ["in", codes]}, fields=["name", "depot_name", "branch"]
+			)
+		}
 		if codes
-		else []
+		else {}
 	)
-	name_by_code = {d.name: d.depot_name for d in names}
-	depots = [{"code": c, "name": name_by_code.get(c, c)} for c in codes]
+	depots = [
+		{
+			"code": c,
+			"name": meta.get(c, frappe._dict()).depot_name or c,
+			"branch": meta.get(c, frappe._dict()).branch,
+			**rollup.get(
+				c, {"occupied": 0, "capacity": 0, "utilization": None, "full_count": 0, "zone_count": 0}
+			),
+		}
+		for c in codes
+	]
 
 	return {"success": True, "zones": zones, "depots": depots}
 

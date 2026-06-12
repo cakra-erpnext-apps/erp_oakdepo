@@ -18,9 +18,17 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from container_depot.operations.user_branch import assert_in_user_branch
+
 # Damage code "v" = Acceptable — it is recorded as a condition but does not mean
 # the tank "has damage".
 ACCEPTABLE_DAMAGE_CODE = "v"
+
+
+def _guard_container_branch(container_name) -> None:
+	"""Block EIR actions on a container whose depot is outside the user's branch."""
+	depot = frappe.db.get_value("Container", container_name, "depot")
+	assert_in_user_branch(depot=depot)
 
 
 def get_eir_masters() -> dict:
@@ -257,6 +265,8 @@ def prefill(
 	if not c:
 		frappe.throw(_("Container {0} not found.").format(name))
 
+	_guard_container_branch(c.name)
+
 	# Principal / tank owner and the ex-vessel are properties of the container itself
 	# (ex_vessel is stamped onto the Container when its Order Bongkar is submitted).
 	principal = c.principal
@@ -408,6 +418,7 @@ def create_eir(
 		frappe.throw(_("inspection_type must be EIR-In or EIR-Out."))
 	if not container:
 		frappe.throw(_("container is required."))
+	_guard_container_branch(container)
 
 	lines = _coerce_lines(lines)
 	photos = _coerce_lines(photos)
