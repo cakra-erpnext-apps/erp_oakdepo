@@ -175,6 +175,7 @@ export const labels = {
 	storageRecommended: "Disarankan", // Recommended
 	storageNoRecommend: "Tidak ada zona yang cocok untuk status ini.", // no match
 	storageSelectZone: "Pilih zona penempatan", // pick a zone
+	storageManualPick: "Pilih zona manual / lainnya", // manual zone picker toggle
 	storageRow: "Baris", // Row
 	storageTier: "Tumpukan", // Tier
 	storageBay: "Bay",

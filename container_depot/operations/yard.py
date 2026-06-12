@@ -155,29 +155,55 @@ def zone_occupancy(depot=None):
 	return [_zone_view(z, occupancy.get(z.name, 0)) for z in zones]
 
 
-def recommend_zones(container_no):
-	"""Rank the candidate zones for placing a container, emptiest-first.
+def _scope_depots(container):
+	"""Ordered candidate depots for placing this container (per-branch policy).
 
-	Resolves the container's target category from its status (+ tank condition),
-	then returns every active zone in the SAME depot and category, each annotated
-	with live occupancy. The first zone with free space is flagged ``recommended``.
+	The container's own depot comes first, then every other active depot in the
+	same branch — so a tank in a depot that has no zones of its own (or no zone of
+	the target category) can still be placed in a sibling depot of the same branch.
+	"""
+	own = container.depot
+	if not own:
+		return [], None
+	branch = frappe.db.get_value("Depot", own, "branch")
+	depots = [own]
+	if branch:
+		for d in frappe.get_all(
+			"Depot", filters={"branch": branch, "is_active": 1}, pluck="name", order_by="name asc"
+		):
+			if d not in depots:
+				depots.append(d)
+	return depots, branch
+
+
+def recommend_zones(container_no):
+	"""Rank candidate zones for a container and list every in-scope zone.
+
+	Scope = the container's own depot first, then sibling depots in the same branch
+	(:func:`_scope_depots`). ``zones`` are the target-category candidates ranked
+	same-depot-first then emptiest-first, with the first non-full one flagged
+	``recommended``. ``all_zones`` is every active zone in scope (all categories) so
+	the operator can always place a tank manually, even when ``zones`` is empty.
 	"""
 	container = _resolve_container(container_no)
 	category = _target_category(container)
+	depots, branch = _scope_depots(container)
 	result = {
 		"container_no": container.container_no,
 		"status": container.status,
 		"depot": container.depot,
+		"branch": branch,
 		"condition": _latest_tank_condition(container.name),
 		"target_category": category,
 		"zones": [],
+		"all_zones": [],
 	}
-	if not category or not container.depot:
+	if not depots:
 		return result
 
 	zones = frappe.get_all(
 		"Yard Zone",
-		filters={"is_active": 1, "depot": container.depot, "category": category},
+		filters={"is_active": 1, "depot": ["in", depots]},
 		fields=[
 			"name", "zone_name", "depot", "block", "category",
 			"capacity", "max_rows", "max_rows_full", "max_tiers",
@@ -185,14 +211,27 @@ def recommend_zones(container_no):
 		order_by="name asc",
 	)
 	occupancy = _occupancy_map([z.name for z in zones])
-	views = [_zone_view(z, occupancy.get(z.name, 0)) for z in zones]
-	# Emptiest first; zones without a capacity sort last (unknown headroom).
-	views.sort(key=lambda v: (v["utilization"] is None, v["utilization"] or 0))
-	for v in views:
-		if not v["is_full"]:
-			v["recommended"] = True
-			break
-	result["zones"] = views
+	own = container.depot
+
+	def view(z):
+		v = _zone_view(z, occupancy.get(z.name, 0))
+		v["same_depot"] = z.depot == own
+		return v
+
+	all_views = [view(z) for z in zones]
+	# Manual list: own-depot zones first, then grouped by category for the picker.
+	all_views.sort(key=lambda v: (not v["same_depot"], v["category"], v["zone_name"]))
+	result["all_zones"] = all_views
+
+	if category:
+		# Recommended candidates: own depot first, then emptiest (unknown headroom last).
+		cands = [v for v in all_views if v["category"] == category]
+		cands.sort(key=lambda v: (not v["same_depot"], v["utilization"] is None, v["utilization"] or 0))
+		for v in cands:
+			if not v["is_full"]:
+				v["recommended"] = True
+				break
+		result["zones"] = cands
 	return result
 
 

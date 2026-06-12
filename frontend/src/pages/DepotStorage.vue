@@ -49,6 +49,7 @@
 					</span>
 				</div>
 
+				<!-- Recommended zones (target category; scope = own depot then same branch) -->
 				<template v-if="rec.zones && rec.zones.length">
 					<p class="oak-label">{{ labels.storageSelectZone }}</p>
 					<div class="space-y-2">
@@ -69,6 +70,7 @@
 									{{ z.occupied }}/{{ z.capacity || "∞" }}
 									<span v-if="z.is_full"> · {{ labels.storageFull }}</span>
 									<span v-else-if="z.free != null"> · {{ z.free }} {{ labels.storageSlotsFree }}</span>
+									<span v-if="!z.same_depot" class="text-gray-400"> · {{ z.depot }}</span>
 								</p>
 							</div>
 							<span v-if="z.recommended" class="oak-chip shrink-0 bg-leaf-100 text-leaf-800">
@@ -76,9 +78,51 @@
 							</span>
 						</button>
 					</div>
+				</template>
+				<p v-else class="flex items-center gap-1.5 text-sm text-amber-600">
+					<Icon name="alert-triangle" :size="15" /> {{ labels.storageNoRecommend }}
+				</p>
 
-					<!-- Placement coordinates -->
-					<div v-if="selectedZone" class="grid grid-cols-3 gap-2">
+				<!-- Manual picker: every active zone in scope (own depot + same branch) -->
+				<div v-if="rec.all_zones && rec.all_zones.length" class="space-y-2">
+					<button class="oak-link inline-flex items-center gap-1 text-sm" @click="manualOpen = !manualOpen">
+						<Icon :name="manualPickerOpen ? 'chevron-up' : 'chevron-down'" :size="14" />
+						{{ labels.storageManualPick }}
+					</button>
+					<div v-if="manualPickerOpen" class="space-y-3">
+						<div v-for="g in manualGroups" :key="g.category" class="space-y-1.5">
+							<p class="px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ categoryLabel(g.category) }}</p>
+							<button
+								v-for="z in g.zones"
+								:key="z.zone_code"
+								class="flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition"
+								:class="selectedZone === z.zone_code
+									? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
+									: 'border-gray-200 bg-white hover:border-gray-300'"
+								:disabled="z.is_full"
+								@click="selectZone(z)"
+							>
+								<div class="min-w-0 flex-1">
+									<p class="truncate text-sm font-semibold text-gray-900">{{ z.zone_name }}</p>
+									<p class="text-xs" :class="z.is_full ? 'text-red-600' : 'text-gray-500'">
+										{{ z.occupied }}/{{ z.capacity || "∞" }}
+										<span v-if="z.is_full"> · {{ labels.storageFull }}</span>
+										<span v-if="!z.same_depot" class="text-gray-400"> · {{ z.depot }}</span>
+									</p>
+								</div>
+								<Icon v-if="selectedZone === z.zone_code" name="check" :size="16" class="shrink-0 text-brand-600" />
+							</button>
+						</div>
+					</div>
+				</div>
+
+				<!-- Placement coordinates + confirm (works for ANY selected zone) -->
+				<div v-if="selectedZone" class="space-y-2 border-t border-gray-100 pt-3">
+					<p class="text-xs text-gray-500">
+						{{ labels.storagePlace }} →
+						<span class="font-semibold text-gray-800">{{ selectedZoneName }}</span>
+					</p>
+					<div class="grid grid-cols-3 gap-2">
 						<div>
 							<label class="oak-label">{{ labels.storageRow }}</label>
 							<input v-model.trim="form.row" type="text" inputmode="numeric" class="oak-input" />
@@ -93,7 +137,6 @@
 						</div>
 					</div>
 					<button
-						v-if="selectedZone"
 						class="oak-btn oak-btn-primary w-full"
 						:disabled="placeRes.loading"
 						@click="doPlace"
@@ -104,10 +147,7 @@
 					<p v-if="placeError" class="flex items-center gap-1.5 text-sm text-red-600">
 						<Icon name="alert-circle" :size="15" /> {{ placeError }}
 					</p>
-				</template>
-				<p v-else class="flex items-center gap-1.5 text-sm text-amber-600">
-					<Icon name="alert-triangle" :size="15" /> {{ labels.storageNoRecommend }}
-				</p>
+				</div>
 
 				<div
 					v-if="placed"
@@ -229,6 +269,9 @@ import {
 import Icon from "@/components/Icon.vue"
 
 const BLOCK_ORDER = ["Blok Kiri", "Blok Kanan", ""]
+const CATEGORY_ORDER = [
+	"Empty Dirty Queue", "Cleaning Bay", "Ready", "Empty Clean", "Workshop", "Survey", "Gate",
+]
 
 const containerNo = ref("")
 const rec = ref(null)
@@ -237,6 +280,7 @@ const form = ref({ row: "", tier: null, bay: "" })
 const placed = ref(null)
 const activeDepot = ref(null)
 const sopOpen = ref(false)
+const manualOpen = ref(false)
 const zoneModal = ref(null)
 
 // --- Resources ---
@@ -256,6 +300,7 @@ const recommendRes = createResource({
 		rec.value = data
 		selectedZone.value = null
 		placed.value = null
+		manualOpen.value = false
 		// Auto-select the recommended zone for a one-tap happy path.
 		const pick = (data.zones || []).find((z) => z.recommended)
 		if (pick) selectedZone.value = pick.zone_code
@@ -289,6 +334,30 @@ const groupedZones = computed(() => {
 			return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
 		})
 		.map((block) => ({ block, zones: byBlock.get(block) }))
+})
+
+// When there is no recommendation, the manual picker opens automatically so the
+// operator is never blocked from placing a tank.
+const manualPickerOpen = computed(() => manualOpen.value || !(rec.value?.zones || []).length)
+
+const manualGroups = computed(() => {
+	const all = rec.value?.all_zones || []
+	const byCat = new Map()
+	for (const z of all) {
+		if (!byCat.has(z.category)) byCat.set(z.category, [])
+		byCat.get(z.category).push(z)
+	}
+	return [...byCat.keys()]
+		.sort((a, b) => {
+			const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b)
+			return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+		})
+		.map((category) => ({ category, zones: byCat.get(category) }))
+})
+
+const selectedZoneName = computed(() => {
+	const z = (rec.value?.all_zones || []).find((x) => x.zone_code === selectedZone.value)
+	return z ? z.zone_name : selectedZone.value
 })
 
 const zoneTanks = computed(() => zoneTanksRes.data?.items || [])

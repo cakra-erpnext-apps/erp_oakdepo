@@ -40,3 +40,4 @@ container_depot.patches.v0_24.consolidate_ready_statuses
 container_depot.patches.v0_25.seed_eir_checklist
 container_depot.patches.v0_27.seed_yard_zones
 container_depot.patches.v0_28.backfill_order_branch
+container_depot.patches.v0_29.backfill_depot_branch_by_city

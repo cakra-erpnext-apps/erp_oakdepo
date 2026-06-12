@@ -24,6 +24,7 @@ from container_depot.ess.yard import yard_overview, yard_place, yard_recommend, 
 from container_depot.tests.test_api import ensure_test_branch
 
 DEPOT = "YZTD"
+DEPOT2 = "YZTD2"  # sibling depot in the SAME branch, with NO zones of its own
 PREFIX = "YZTU"
 
 # Shared, read-only fixture zones: (code, category, capacity).
@@ -65,8 +66,9 @@ def _teardown():
 	frappe.db.delete("Container Movement", {"container": ["like", f"{PREFIX}%"]})
 	frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 	frappe.db.delete("Yard Zone", {"name": ["like", "YZT-%"]})
-	if frappe.db.exists("Depot", DEPOT):
-		frappe.db.delete("Depot", {"name": DEPOT})
+	for dep in (DEPOT, DEPOT2):
+		if frappe.db.exists("Depot", dep):
+			frappe.db.delete("Depot", {"name": dep})
 	frappe.db.commit()
 
 
@@ -83,6 +85,14 @@ def _build():
 	_container("YZTU0000003", "Available")  # recommend target -> Ready
 	_container("YZTU0000004", "Gate_Out")  # no placeable category
 	_container("YZTU0000010", "Cleaning_In_Progress")  # recommend target -> Cleaning Bay
+	# Sibling depot in the same branch, with NO zones — exercises the branch fallback.
+	frappe.get_doc({
+		"doctype": "Depot",
+		"depot_code": DEPOT2,
+		"depot_name": "Yard Zone Test Depot 2",
+		"branch": ensure_test_branch(),
+	}).insert(ignore_permissions=True)
+	_container("YZTU0000020", "Available", depot=DEPOT2)  # no zones in its own depot
 	frappe.db.commit()
 
 
@@ -125,6 +135,19 @@ class TestYard(FrappeTestCase):
 		res = recommend_zones("YZTU0000004")
 		self.assertIsNone(res["target_category"])
 		self.assertEqual(res["zones"], [])
+		# Even with no recommendation, every in-scope zone is offered for manual placement.
+		self.assertTrue(len(res["all_zones"]) >= 3)
+
+	def test_recommend_branch_fallback(self):
+		# YZTU0000020 sits in DEPOT2 (no zones); recommendation falls back to the
+		# sibling depot in the same branch (DEPOT).
+		res = recommend_zones("YZTU0000020")
+		self.assertEqual(res["target_category"], "Ready")
+		self.assertEqual({z["zone_code"] for z in res["zones"]}, {"YZT-READY-A", "YZT-READY-B"})
+		self.assertTrue(all(not z["same_depot"] for z in res["zones"]))
+		# Emptiest sibling zone is the recommended one.
+		self.assertEqual(res["zones"][0]["zone_code"], "YZT-READY-B")
+		self.assertTrue(res["zones"][0]["recommended"])
 
 	def test_recommend_unknown_container_raises(self):
 		with self.assertRaises(frappe.DoesNotExistError):
