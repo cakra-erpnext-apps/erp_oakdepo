@@ -80,6 +80,7 @@
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
 								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }} · {{ fmtDate(r.eir_date || r.creation) }}</p>
+								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
 							</div>
 							<span class="oak-chip shrink-0 bg-amber-100 text-amber-800">{{ labels.eirResume }}</span>
 						</button>
@@ -106,6 +107,7 @@
 						<div class="min-w-0 flex-1">
 							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
 							<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span> · {{ fmtDate(r.eir_date || r.creation) }}</p>
+							<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
 						</div>
 						<span class="oak-chip shrink-0 bg-leaf-100 text-leaf-800">{{ labels.eirStatusSubmitted }}</span>
 					</li>
