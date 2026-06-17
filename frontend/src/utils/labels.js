@@ -17,6 +17,8 @@ export const labels = {
 	notifications: "Notifikasi", // Notifications
 	notifEmpty: "Belum ada notifikasi", // No notifications yet
 	notifMarkAll: "Tandai semua dibaca", // Mark all read
+	notifSound: "Suara notifikasi", // Notification sound toggle
+	notifSoundOn: "Suara notifikasi aktif", // sound turned on
 	search: "Cari nomor tank…", // Search tank number
 	filter: "Filter",
 	principal: "Prinsipal", // Principal
@@ -68,7 +70,9 @@ export const labels = {
 	paymentStatus: "Status Bayar", // Payment status
 	doReference: "DO Reference",
 	gateContainers: "Daftar Container", // Container list
-	gatePayBlocked: "Booking Cash belum dibayar — bayar ke kasir dulu.", // Cash unpaid
+	gatePayBlocked: "Pembayaran harus dibayar cash terlebih dahulu di kasir.", // Cash unpaid
+	gateNotSubmitted: "Booking sudah dibayar tapi belum dikonfirmasi/disubmit — hubungi admin.", // paid but draft
+	gateBlockedTitle: "Belum bisa diproses di gate", // gate blocked heading
 	gateInvoiceNo: "No. Invoice", // Invoice no
 	gateGenerate: "Generate Bon", // Generate bon
 	gateSelectMax2: "Pilih maksimal 2 container per bon.", // max 2 per voucher
@@ -181,6 +185,16 @@ export const labels = {
 	storageStatus: "Status", // Status
 	storageCondition: "Kondisi", // Tank condition
 	storageTargetCategory: "Kategori Tujuan", // Target category
+	storageEirTitle: "Hasil Inspeksi EIR Terakhir", // Latest EIR result
+	storageEirCargo: "Cargo", // Cargo
+	storageEirTank: "Status Tank", // Tank status
+	storageEirBy: "Pembuat EIR", // EIR created by
+	storageDamages: "Kerusakan", // Damages
+	storageNoDamage: "Tidak ada kerusakan tercatat.", // no damage logged
+	storageShowPhotos: "Lihat foto", // show damage photos
+	storageHidePhotos: "Sembunyikan foto", // hide damage photos
+	storageRemarks: "Catatan", // Remarks
+	storageNoEir: "Belum ada EIR yang disubmit untuk container ini.", // no submitted EIR
 	storageRecommended: "Disarankan", // Recommended
 	storageNoRecommend: "Tidak ada zona yang cocok untuk status ini.", // no match
 	storageNoDepot: "Container belum di-assign ke depot — set depot-nya dulu (master Container) sebelum atur zona.", // container has no depot

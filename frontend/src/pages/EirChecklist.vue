@@ -365,6 +365,7 @@
 import { computed, nextTick, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
+import { toast } from "@/utils/toast"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
 
@@ -515,10 +516,14 @@ const saveRes = createResource({
 		if (data.docstatus === 1) {
 			// Finalized — show the success banner and clear the form for the next unit.
 			submitted.value = data.inspection
+			toast.success(labels.eirSubmitted, { title: data.inspection_id || data.inspection })
 			reset()
 		} else {
 			savedOk.value = true
 		}
+	},
+	onError(err) {
+		toast.error(err?.messages?.[0] || err?.message || labels.error)
 	},
 })
 

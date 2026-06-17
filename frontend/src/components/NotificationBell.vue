@@ -53,6 +53,25 @@
 						</li>
 					</ul>
 				</div>
+				<!-- Footer: toggle the toast/notification chime -->
+				<button
+					class="flex items-center justify-between gap-2 border-t border-gray-100 px-4 py-2.5 text-sm text-gray-600 transition hover:bg-gray-50"
+					@click="toggleSound"
+				>
+					<span class="flex items-center gap-2">
+						<Icon :name="soundOn ? 'volume-2' : 'volume-x'" :size="16" />
+						{{ labels.notifSound }}
+					</span>
+					<span
+						class="inline-flex h-5 w-9 items-center rounded-full px-0.5 transition"
+						:class="soundOn ? 'bg-brand-600' : 'bg-gray-300'"
+					>
+						<span
+							class="h-4 w-4 rounded-full bg-white shadow transition"
+							:class="soundOn ? 'translate-x-4' : 'translate-x-0'"
+						></span>
+					</span>
+				</button>
 			</div>
 		</template>
 	</div>
@@ -66,11 +85,18 @@ import relativeTime from "dayjs/plugin/relativeTime"
 import "dayjs/locale/id"
 import Icon from "@/components/Icon.vue"
 import { labels } from "@/utils/labels"
+import { toast, toastSoundOn, setToastSound } from "@/utils/toast"
 
 dayjs.extend(relativeTime)
 dayjs.locale("id")
 
 const open = ref(false)
+const soundOn = ref(toastSoundOn())
+function toggleSound() {
+	setToastSound(!soundOn.value)
+	soundOn.value = toastSoundOn()
+	if (soundOn.value) toast.info(labels.notifSoundOn)
+}
 const items = ref([])
 const unread = ref(0)
 let timer = null
