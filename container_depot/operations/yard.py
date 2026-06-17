@@ -62,6 +62,35 @@ def _resolve_container(container_no):
 	return frappe.get_doc("Container", name)
 
 
+def _current_position(container):
+	"""The tank's current placement (zone + row/tier/bay), or ``None`` if not yet placed.
+
+	Lets the recommendation panel show where the tank sits right now before suggesting
+	where it should go next."""
+	zone = container.get("yard_zone")
+	if not zone:
+		return None
+	row, tier, bay = container.get("row"), container.get("tier"), container.get("bay")
+	if not (row or tier or bay):
+		slot = None
+	else:
+		slot = " · ".join(
+			p for p in (
+				f"Baris {row}" if row else None,
+				f"Tumpukan {tier}" if tier else None,
+				f"Bay {bay}" if bay else None,
+			) if p
+		)
+	return {
+		"zone_code": zone,
+		"zone_name": frappe.db.get_value("Yard Zone", zone, "zone_name") or zone,
+		"row": row,
+		"tier": tier,
+		"bay": bay,
+		"slot": slot,
+	}
+
+
 def _latest_tank_condition(container_name):
 	"""Most recent submitted Inspection tank condition (Empty Clean/Dirty/Laden), or None."""
 	rows = frappe.get_all(
@@ -378,6 +407,7 @@ def recommend_zones(container_no):
 		"condition": (eir or {}).get("tank_status") or _latest_tank_condition(container.name),
 		"target_category": category,
 		"eir": eir,
+		"current": _current_position(container),
 		"zones": [],
 		"all_zones": [],
 	}

@@ -194,6 +194,7 @@ export const labels = {
 	storageStatus: "Status", // Status
 	storageCondition: "Kondisi", // Tank condition
 	storageTargetCategory: "Kategori Tujuan", // Target category
+	storageCurrentPos: "Posisi Sekarang", // current placement of the tank
 	storageEirTitle: "Hasil Inspeksi EIR Terakhir", // Latest EIR result
 	storageEirCargo: "Cargo", // Cargo
 	storageEirTank: "Status Tank", // Tank status
