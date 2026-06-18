@@ -78,6 +78,13 @@ const menu = [
 		tile: "bg-brand-50 text-brand-600",
 	},
 	{
+		to: "/mr",
+		icon: "tool",
+		title: labels.mrTitleFull,
+		desc: labels.mrDesc,
+		tile: "bg-leaf-50 text-leaf-600",
+	},
+	{
 		to: "/storage",
 		icon: "layers",
 		title: labels.storage,

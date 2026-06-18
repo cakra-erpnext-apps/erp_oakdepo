@@ -28,6 +28,11 @@ const routes = [
 		component: () => import("@/pages/CleaningOrder.vue"),
 	},
 	{
+		path: "/mr",
+		name: "MaintenanceRepair",
+		component: () => import("@/pages/MaintenanceRepair.vue"),
+	},
+	{
 		path: "/storage",
 		name: "DepotStorage",
 		component: () => import("@/pages/DepotStorage.vue"),

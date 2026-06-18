@@ -8,7 +8,9 @@
     "repair_info",
     "repair_order_id",
     "container",
+    "container_no",
     "inspection",
+    "warehouse",
     "status",
     "column_break_1",
     "principal",
@@ -16,11 +18,17 @@
     "technician",
     "start_date",
     "completion_date",
+    "damages_section",
+    "damages",
+    "used_section",
+    "used_items",
     "estimation_items_section",
     "estimation_items",
     "cost_section",
     "total_cost",
-    "billing_status"
+    "billing_status",
+    "remarks",
+    "stock_entry"
   ],
   "fields": [
     {
@@ -41,6 +49,14 @@
       "label": "Container",
       "options": "Container",
       "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fetch_from": "container.container_no",
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "label": "Container No",
+      "read_only": 1,
       "in_list_view": 1
     },
     {
@@ -82,6 +98,13 @@
       "options": "Employee"
     },
     {
+      "description": "Source warehouse the repair parts are issued from when the M&R is completed.",
+      "fieldname": "warehouse",
+      "fieldtype": "Link",
+      "label": "Source Warehouse (Parts)",
+      "options": "Warehouse"
+    },
+    {
       "fieldname": "start_date",
       "fieldtype": "Datetime",
       "label": "Start Date"
@@ -92,14 +115,41 @@
       "label": "Completion Date"
     },
     {
-      "fieldname": "estimation_items_section",
+      "fieldname": "damages_section",
       "fieldtype": "Section Break",
-      "label": "Estimation Items"
+      "label": "EIR Damage Entries (copied)"
     },
     {
+      "description": "Read-only snapshot of the EIR damage findings (with photos) that triggered this M&R.",
+      "fieldname": "damages",
+      "fieldtype": "Table",
+      "label": "Damages",
+      "options": "Repair Damage Entry",
+      "read_only": 1
+    },
+    {
+      "fieldname": "used_section",
+      "fieldtype": "Section Break",
+      "label": "Service & Parts Used"
+    },
+    {
+      "description": "Services / parts used (priced per principal via Item Price). Stock parts are issued from the source warehouse on completion.",
+      "fieldname": "used_items",
+      "fieldtype": "Table",
+      "label": "Used Items",
+      "options": "Repair Used Item"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "estimation_items_section",
+      "fieldtype": "Section Break",
+      "label": "Legacy Estimate (read-only)"
+    },
+    {
+      "description": "Legacy estimate lines (pre-split). New M&R uses Activities + Parts above.",
       "fieldname": "estimation_items",
       "fieldtype": "Table",
-      "label": "Estimation Items",
+      "label": "Estimation Items (legacy)",
       "options": "Repair Estimate Item"
     },
     {
@@ -120,6 +170,19 @@
       "label": "Billing Status",
       "options": "Unbilled\nClient Billed\nPrincipal Billed\nCompleted",
       "reqd": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    },
+    {
+      "description": "The Material Issue Stock Entry that consumed the repair parts (created when this M&R is completed).",
+      "fieldname": "stock_entry",
+      "fieldtype": "Link",
+      "label": "Parts Issue (Stock Entry)",
+      "options": "Stock Entry",
+      "read_only": 1
     }
   ],
   "links": [],

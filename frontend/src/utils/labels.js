@@ -222,6 +222,53 @@ export const labels = {
 	cleaningPrevCargo: "Cargo Sebelumnya",
 	cleaningMfgDate: "Tgl. Pembuatan",
 	cleaningLastTest: "Last Test",
+	// M&R (Maintenance & Repair — workshop team; auto-created from EIRs with damage)
+	mrTitle: "M&R", // page + Home tile + nav title
+	mrTitleFull: "M&R (Maintenance & Repair)",
+	mrDesc: "Perbaikan/ganti part container dari temuan EIR", // Home tile subtitle
+	navMr: "M&R", // bottom-nav label
+	mrOrdersHint: "Pilih M&R untuk dikerjakan", // worklist hint
+	mrOrdersSearch: "Cari no. container / M&R…",
+	mrOrdersEmpty: "Tidak ada M&R terbuka.",
+	mrBack: "Kembali",
+	mrTankDetails: "Data Tank",
+	mrRefEir: "Referensi EIR",
+	// Source warehouse (top of form)
+	mrWarehouse: "Gudang Sumber Part", // source warehouse
+	mrWarehousePick: "Pilih gudang…",
+	mrWarehouseChanged: "Gudang diganti — part yang dipilih dikosongkan",
+	// Section 1 — EIR damage entries (read-only copy, with photos)
+	mrDamagesTitle: "Temuan Kerusakan (EIR)",
+	mrNoDamages: "Tidak ada temuan kerusakan dari EIR.",
+	mrCodeDamage: "Kerusakan",
+	mrCodeRepair: "Perbaikan",
+	// Section 2 — services & parts used (from the owner's Item Price)
+	mrUsedTitle: "Service & Part Terpakai",
+	mrUsedHint: "Pilih service/part dari Item Price owner. Stok part berkurang saat selesai.",
+	mrAddUsed: "Tambah Item",
+	mrNoUsed: "Belum ada item.",
+	mrItem: "Item (Service / Part)",
+	mrPickItem: "Pilih service / part…",
+	mrPhotos: "Foto Bukti",
+	mrAddPhoto: "Tambah Foto",
+	mrPhotoUploading: "Mengunggah…",
+	mrPhotoError: "Gagal mengunggah foto",
+	mrQty: "Qty",
+	mrOnHand: "Stok", // on-hand stock
+	mrRemark: "Catatan",
+	mrRemarks: "Catatan Umum",
+	mrSearchItem: "Cari item…",
+	mrItemsEmpty: "Item tidak ditemukan (cek Item Price owner).",
+	mrStartFull: "Mulai Perbaikan", // start repair (in form)
+	mrStartFirst: "Mulai perbaikan dulu sebelum bisa diselesaikan.", // gate hint
+	mrStart: "Mulai", // start (worklist)
+	mrStarted: "Perbaikan dimulai", // started toast
+	mrInProgress: "Dikerjakan", // In Progress chip
+	mrSave: "Simpan", // save draft
+	mrSaved: "Tersimpan",
+	mrComplete: "Selesaikan", // complete (issues stock)
+	mrCompleted: "M&R selesai & part dikeluarkan dari stok", // completed toast
+	mrRemove: "Hapus", // remove part row
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle

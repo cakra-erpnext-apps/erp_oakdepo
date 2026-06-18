@@ -15,6 +15,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.api import _require_authenticated_user
+from container_depot.operations import mr
 
 # Allowed Repair Order status transitions (matches the doctype Select options).
 REPAIR_TRANSITIONS = {
@@ -127,3 +128,53 @@ def set_repair_status(repair_order, status):
 		"total_cost": doc.total_cost,
 		"next_statuses": REPAIR_TRANSITIONS.get(doc.status, []),
 	}
+
+
+# --- PWA M&R menu (Maintenance & Repair) -------------------------------------
+# Thin wrappers over operations.mr — the M&R worklist the team works in the PWA
+# (auto-created from EIRs with damage). All resolution/build logic lives in mr.py.
+
+
+@frappe.whitelist(methods=["GET"])
+def mr_orders(start=0, page_length=20, search=None):
+	"""GET /api/v1/ess/mr-orders — open M&R worklist (depot-scoped)."""
+	_require_authenticated_user()
+	return mr.list_open_mr_orders(start=start, page_length=page_length, search=search)
+
+
+@frappe.whitelist(methods=["GET"])
+def mr_order_detail(repair_order=None):
+	"""GET /api/v1/ess/mr-order-detail — one M&R's damages (EIR copy) + used items + warehouses."""
+	_require_authenticated_user()
+	return mr.get_mr_order_detail(repair_order)
+
+
+@frappe.whitelist(methods=["GET"])
+def mr_warehouses(repair_order=None, container=None):
+	"""GET /api/v1/ess/mr-warehouses — branch-filtered source-warehouse options."""
+	_require_authenticated_user()
+	return mr.list_warehouses(repair_order=repair_order, container=container)
+
+
+@frappe.whitelist(methods=["GET"])
+def mr_items(search=None, repair_order=None, start=0, page_length=20):
+	"""GET /api/v1/ess/mr-items — Item picker (service or part) priced in the owner's list."""
+	_require_authenticated_user()
+	return mr.mr_item_search(search=search, repair_order=repair_order, start=start, page_length=page_length)
+
+
+@frappe.whitelist(methods=["POST"])
+def mr_start(repair_order=None):
+	"""POST /api/v1/ess/mr-start — start the M&R (In Progress)."""
+	_require_authenticated_user()
+	return mr.start_repair(repair_order)
+
+
+@frappe.whitelist(methods=["POST"])
+def mr_order_save(repair_order=None, used_items=None, technician=None, warehouse=None, remarks=None, submit=False):
+	"""POST /api/v1/ess/mr-order-save — save used items + fields (submit=1 completes + issues stock)."""
+	_require_authenticated_user()
+	return mr.save_mr_order(
+		repair_order=repair_order, used_items=used_items,
+		technician=technician, warehouse=warehouse, remarks=remarks, submit=submit,
+	)

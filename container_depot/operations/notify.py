@@ -28,6 +28,9 @@ BOOKING_ROLES = {PWA_ROLE, "Commercial", "Admin Ops", "Ops Supervisor", "Managem
 # Cleaning work — the yard/cleaning crew (Operator Kalmar) plus ops oversight. "Depot
 # PWA" is the blanket PWA role real cleaning users actually hold, so it is included.
 CLEANING_ROLES = {PWA_ROLE, "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
+# M&R (Maintenance & Repair) — the workshop/surveyor crew who pick parts and repair,
+# plus ops oversight.
+MR_ROLES = {PWA_ROLE, "Surveyor", "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
 
 # Yard Zone category → short Indonesian label used in the EIR notification subject.
 CATEGORY_LABEL = {
@@ -132,6 +135,25 @@ def notify_cleaning_order_created(cleaning_order):
 		subject=subject,
 		branch=_depot_branch(co.depot),
 		roles=CLEANING_ROLES,
+	)
+
+
+def notify_repair_order_created(repair_order):
+	"""Fire when a Draft M&R is auto-created from an EIR with damage — tells the M&R
+	team a tank needs repair so they can pick parts and start work."""
+	ro = frappe.db.get_value(
+		"Repair Order", repair_order,
+		["name", "container", "container_no", "depot", "repair_order_id"], as_dict=True,
+	)
+	if not ro:
+		return
+	subject = f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container} — perlu perbaikan"
+	notify(
+		doctype="Repair Order",
+		name=ro.name,
+		subject=subject,
+		branch=_depot_branch(ro.depot),
+		roles=MR_ROLES,
 	)
 
 

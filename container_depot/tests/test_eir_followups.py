@@ -80,9 +80,12 @@ class TestEirFollowups(FrappeTestCase):
 		ro = frappe.db.get_value("Repair Order", name, ["container", "inspection", "status"], as_dict=True)
 		self.assertEqual(ro.container, c)
 		self.assertEqual(ro.inspection, dmg)
-		self.assertEqual(ro.status, "Pending Approval")
-		# Idempotent: one Repair Order per source EIR.
+		# EIR damage -> an editable Draft M&R (the team then picks the parts).
+		self.assertEqual(ro.status, "Draft")
+		# Idempotent: one open M&R per container.
 		self.assertEqual(eir_followups.create_repair_order_from_eir(dmg), name)
+		# It copied the EIR damage entry into the M&R's read-only Damages snapshot.
+		self.assertEqual(frappe.db.count("Repair Damage Entry", {"parent": name}), 1)
 
 	def test_no_repair_order_without_damage(self):
 		_, none = self._eir("FUPMR000004")

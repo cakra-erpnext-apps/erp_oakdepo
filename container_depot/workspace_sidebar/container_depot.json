@@ -182,7 +182,7 @@
             "collapsible": 1,
             "indent": 0,
             "keep_closed": 0,
-            "label": "Repair Order",
+            "label": "M&R (Maintenance & Repair)",
             "link_to": "Repair Order",
             "link_type": "DocType",
             "show_arrow": 0,

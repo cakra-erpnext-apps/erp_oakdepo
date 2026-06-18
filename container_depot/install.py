@@ -271,6 +271,10 @@ _PWA_DOCTYPE_PERMS = {
 	# (operations/cleaning.py), so the PWA role must carry write + submit.
 	"Cleaning Checklist Item": {"read": 1, "report": 1},
 	"Cleaning Order":          {"read": 1, "write": 1, "submit": 1, "report": 1},
+	# The PWA M&R menu edits Repair Orders WITHOUT ignore_permissions (operations/mr.py),
+	# so the PWA role must carry read + write (+ create for manual M&R). The Material
+	# Issue Stock Entry it raises on completion is created with ignore_permissions.
+	"Repair Order":            {"read": 1, "write": 1, "create": 1, "report": 1},
 	"Container":         {"read": 1, "report": 1},
 	"Yard Zone":         {"read": 1, "report": 1},
 	"Yard Placement Rule": {"read": 1, "report": 1},
@@ -591,6 +595,19 @@ CUSTOM_FIELDS = {
 			"options": "Allowed Branch",
 			"insert_after": "user_image",
 			"description": "Opsional. Kosongkan = akses semua branch. Pilih satu atau beberapa branch untuk membatasi data (mis. order) hanya ke branch tersebut.",
+		}
+	],
+	# Tag a Warehouse with its depot Branch so the M&R parts picker can scope the
+	# source-warehouse list by branch (blank = visible to all branches).
+	"Warehouse": [
+		{
+			"fieldname": "branch",
+			"label": "Branch",
+			"fieldtype": "Link",
+			"options": "Branch",
+			"insert_after": "company",
+			"in_standard_filter": 1,
+			"description": "Depot branch this warehouse belongs to. Kosong = tampil untuk semua branch. Dipakai untuk memfilter gudang sumber part di M&R.",
 		}
 	],
 }

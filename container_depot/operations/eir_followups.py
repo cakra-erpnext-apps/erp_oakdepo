@@ -41,6 +41,7 @@ def eir_real_damage_rows(inspection) -> list:
 		fields=[
 			"name", "checklist_item", "damage_type", "repair_code",
 			"damage_description", "severity", "area", "component",
+			"before_photo", "after_photo",
 		],
 		order_by="idx asc",
 	)
@@ -85,23 +86,97 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 	return co.name
 
 
+# An M&R is "open" (still in play) until it is finished or dropped.
+MR_OPEN_STATUSES = ["Draft", "Pending Approval", "Approved", "In Progress"]
+
+
+def open_repair_order(container) -> str | None:
+	"""The container's open (not Completed/Cancelled) Repair Order, if any."""
+	return frappe.db.get_value(
+		"Repair Order", {"container": container, "status": ["in", MR_OPEN_STATUSES]}, "name"
+	)
+
+
+def seed_damages_from_eir(ro, inspection) -> None:
+	"""Copy ALL of an EIR's damage entries (with their photos) into the M&R's read-only
+	``damages`` table — a self-contained snapshot of what the EIR found. The team then
+	records the services/parts used in a separate section.
+
+	The PWA stores EIR photos in ``item_photos`` keyed by checklist item (not on the
+	damage row), so for each finding we gather every photo of its checklist item, plus
+	any before/after photo on the row, into a ``photos`` JSON list."""
+	import json
+
+	photos_by_item: dict = {}
+	for p in frappe.get_all(
+		"Inspection Item Photo",
+		filters={"parent": inspection, "parenttype": "Inspection"},
+		fields=["checklist_item", "photo"],
+	):
+		if p.photo:
+			photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
+
+	rows = frappe.get_all(
+		"Inspection Damage Entry",
+		filters={"parent": inspection, "parenttype": "Inspection"},
+		fields=[
+			"checklist_item", "area", "component", "damage_type", "repair_code",
+			"damage_description", "severity", "part_face", "location",
+			"before_photo", "after_photo",
+		],
+		order_by="idx asc",
+	)
+	for r in rows:
+		photos = list(photos_by_item.get(r.get("checklist_item"), []))
+		for direct in (r.get("before_photo"), r.get("after_photo")):
+			if direct and direct not in photos:
+				photos.append(direct)
+		ro.append("damages", {
+			"checklist_item": r.get("checklist_item"),
+			"area": r.get("area"),
+			"component": r.get("component"),
+			"damage_code": r.get("damage_type"),
+			"repair_code": r.get("repair_code"),
+			"damage_description": r.get("damage_description"),
+			"severity": r.get("severity"),
+			"part_face": r.get("part_face"),
+			"location": r.get("location"),
+			"before_photo": r.get("before_photo"),
+			"after_photo": r.get("after_photo"),
+			"photos": json.dumps(photos) if photos else None,
+		})
+
+
 def create_repair_order_from_eir(inspection, ignore_permissions=True):
-	"""Create a Pending-Approval Repair Order (M&R) for an EIR with real damage findings.
-	Idempotent per source EIR (one Repair Order per ``inspection``). Carries the EIR's
-	``repair_estimate`` rows if present. Returns the Repair Order name, or ``None`` when
-	there is nothing to repair."""
-	if not eir_needs_mr(inspection):
+	"""Create a **Draft** M&R (Repair Order) for an EIR with real damage findings — the
+	team then edits it (picks inventory parts to replace/repair) before completing it.
+
+	Idempotent **per container**: returns the container's existing open M&R if one is
+	already in play (so an EIR-In draft and a later Detailed Survey don't double up).
+	Seeds one estimation line per real damage finding (component + description) as a
+	starting worklist. Returns the Repair Order name, or ``None`` when nothing is due."""
+	rows = eir_real_damage_rows(inspection)
+	if not rows:
 		return None
-	existing = frappe.db.get_value("Repair Order", {"inspection": inspection}, "name")
+	insp = frappe.db.get_value(
+		"Inspection", inspection, ["container", "depot"], as_dict=True
+	)
+	if not insp or not insp.container:
+		return None
+	existing = open_repair_order(insp.container)
 	if existing:
+		# Make sure the open M&R points back at an EIR (the draft may pre-date this one).
+		if not frappe.db.get_value("Repair Order", existing, "inspection"):
+			frappe.db.set_value("Repair Order", existing, "inspection", inspection, update_modified=False)
 		return existing
-	insp = frappe.get_doc("Inspection", inspection)
 	ro = frappe.new_doc("Repair Order")
 	ro.container = insp.container
-	ro.inspection = insp.name
-	ro.status = "Pending Approval"
+	ro.inspection = inspection  # EIR -> M&R -> (parts issued on completion)
+	ro.status = "Draft"
 	ro.billing_status = "Unbilled"
-	for row in (insp.repair_estimate or []):
-		ro.append("estimation_items", {k: v for k, v in row.as_dict().items() if k not in _ROW_EXCLUDE})
+	depot = insp.depot or frappe.db.get_value("Container", insp.container, "depot")
+	if depot:
+		ro.depot = depot
+	seed_damages_from_eir(ro, inspection)
 	ro.insert(ignore_permissions=ignore_permissions)
 	return ro.name

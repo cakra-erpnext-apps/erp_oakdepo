@@ -246,7 +246,6 @@
 									type="file"
 									accept="image/*"
 									capture="environment"
-									multiple
 									class="hidden"
 									:disabled="item.uploading"
 									@change="onPhotoPick(item, $event)"

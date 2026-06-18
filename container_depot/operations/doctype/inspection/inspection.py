@@ -96,6 +96,12 @@ class Inspection(Document):
 		if self.inspection_type == "EIR-In" and self.get("tank_status") == "Empty Dirty" and not self.has_damage:
 			self._ensure_cleaning_order(container)
 
+		# Damaged EIR-In → auto-create a Draft M&R (Repair Order) so the M&R team can
+		# pick the inventory parts to repair/replace, and notify them. The create call is
+		# a no-op when the EIR carries no real damage finding.
+		if self.inspection_type == "EIR-In":
+			self._ensure_repair_order_draft(container)
+
 	def _ensure_cleaning_order(self, container):
 		"""Create (idempotently) a Pending Cleaning Order for this dirty tank and notify
 		the cleaning team — only the first time, so re-submits don't spam."""
@@ -117,6 +123,27 @@ class Inspection(Document):
 			summary="Cleaning order auto-created from Empty-Dirty EIR",
 		)
 		notify_cleaning_order_created(order)
+
+	def _ensure_repair_order_draft(self, container):
+		"""Create (idempotently) a Draft M&R for a damaged tank and notify the M&R team —
+		only the first time, so re-submits don't spam. No-op when the EIR has no real
+		damage finding (``create_repair_order_from_eir`` returns ``None``)."""
+		from container_depot.operations import eir_followups
+		from container_depot.operations.container_activity import log_container_activity
+		from container_depot.operations.notify import notify_repair_order_created
+
+		had_open = bool(eir_followups.open_repair_order(container.name))
+		order = eir_followups.create_repair_order_from_eir(self.name)
+		if not order or had_open:
+			return  # nothing to repair / already in play — don't re-notify
+		log_container_activity(
+			container.name, "Repair",
+			reference_doctype="Repair Order", reference_name=order,
+			to_status=container.status,
+			performed_by=self.get("inspector"),
+			summary="M&R draft auto-created from EIR damage",
+		)
+		notify_repair_order_created(order)
 
 	def _save_container(self, container):
 		# Controller-driven status change: bypass the manual-transition guard.
@@ -149,9 +176,21 @@ class Inspection(Document):
 		self._complete_survey_request()
 
 	def _ensure_repair_order(self):
-		"""Create a Pending-Approval Repair Order from this survey's estimate so
-		the Tank Owner can approve M&R. Idempotent per inspection."""
-		if frappe.db.exists("Repair Order", {"inspection": self.name}):
+		"""Bring the container's M&R into the approval workflow from this survey.
+
+		If an open M&R already exists (e.g. a Draft auto-created at EIR-In), advance it to
+		Pending Approval and back-link this survey. Otherwise create one from the survey's
+		repair estimate. Idempotent per container — never a second open M&R."""
+		from container_depot.operations import eir_followups
+
+		existing = eir_followups.open_repair_order(self.container)
+		if existing:
+			ro = frappe.get_doc("Repair Order", existing)
+			if ro.status == "Draft":
+				ro.status = "Pending Approval"
+			if not ro.inspection:
+				ro.inspection = self.name
+			ro.save(ignore_permissions=True)
 			return
 		ro = frappe.new_doc("Repair Order")
 		ro.container = self.container

@@ -1,0 +1,90 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-06-18 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "item",
+    "item_name",
+    "is_stock_item",
+    "quantity",
+    "column_break_1",
+    "rate",
+    "amount",
+    "remark",
+    "photos"
+  ],
+  "fields": [
+    {
+      "description": "Service or spare part — must have an Item Price in the owner's price list.",
+      "fieldname": "item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Item (Service / Part)",
+      "options": "Item"
+    },
+    {
+      "fetch_from": "item.item_name",
+      "fieldname": "item_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Item Name",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "description": "Auto: a stock item is issued from the source warehouse on completion.",
+      "fieldname": "is_stock_item",
+      "fieldtype": "Check",
+      "label": "Stock Item",
+      "read_only": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "quantity",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Qty"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Unit selling rate from the owner's Item Price (auto; not shown in the PWA).",
+      "fieldname": "rate",
+      "fieldtype": "Currency",
+      "label": "Rate",
+      "read_only": 1
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "label": "Amount",
+      "read_only": 1
+    },
+    {
+      "fieldname": "remark",
+      "fieldtype": "Small Text",
+      "label": "Remark"
+    },
+    {
+      "description": "JSON array of evidence photo file URLs (multiple per used item).",
+      "fieldname": "photos",
+      "fieldtype": "Long Text",
+      "label": "Evidence Photos (JSON)"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-18 00:00:00.000000",
+  "module": "Operations",
+  "name": "Repair Used Item",
+  "owner": "Administrator",
+  "sort_field": "creation",
+  "sort_order": "DESC"
+}

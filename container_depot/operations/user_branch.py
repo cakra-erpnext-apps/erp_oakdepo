@@ -94,6 +94,30 @@ def get_user_depots(user=None):
 	)
 
 
+def get_user_warehouses(user=None, branch=None):
+	"""Non-group, enabled warehouses visible to the user — those tagged with a branch
+	in the user's allowed set, plus untagged warehouses (blank branch = all branches).
+
+	``branch`` further narrows the result to warehouses of that branch (untagged still
+	included). Returns ``None`` only when there is nothing to scope by (unrestricted
+	user AND no branch filter) — the caller then lists every warehouse.
+	"""
+	allowed = get_user_branches(user)
+	wanted = None
+	if allowed is not _ALL_BRANCHES:
+		wanted = set(allowed or [])
+	if branch:
+		wanted = ({branch} & wanted) if wanted is not None else {branch}
+	if wanted is None:
+		return None
+	rows = frappe.get_all(
+		"Warehouse",
+		filters={"is_group": 0, "disabled": 0},
+		fields=["name", "branch"],
+	)
+	return [r.name for r in rows if not r.branch or r.branch in wanted]
+
+
 def assert_in_user_branch(branch=None, depot=None, user=None):
 	"""Raise PermissionError if the given branch/depot is outside the user's scope.
 

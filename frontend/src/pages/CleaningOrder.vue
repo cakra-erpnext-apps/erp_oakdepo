@@ -245,11 +245,15 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref } from "vue"
+import { computed, nextTick, reactive, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
+
+const route = useRoute()
+const router = useRouter()
 
 const CLEANING_TYPES = [
 	"PP Wash", "Methanol Rinse", "Steam Wash", "Hot Water", "Chemical", "Detergent", "Nitrogen Purge",
@@ -360,10 +364,26 @@ const detailRes = createResource({
 	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
 })
 
+// The open order lives in the URL (?o=<name>) so a refresh restores the detail view
+// instead of dropping back to the worklist.
 function openOrder(o) {
-	submitted.value = null
-	detailRes.fetch({ cleaning_order: o.name })
+	router.push({ query: { o: o.name } })
 }
+
+watch(
+	() => route.query.o,
+	(o) => {
+		if (o) {
+			if (order.value?.name !== o) {
+				submitted.value = null
+				detailRes.fetch({ cleaning_order: o })
+			}
+		} else {
+			order.value = null
+		}
+	},
+	{ immediate: true }
+)
 
 // Mulai Cleaning (worklist or in-form)
 const startRes = createResource({
@@ -390,6 +410,7 @@ const saveRes = createResource({
 		if (data.docstatus === 1) {
 			submitted.value = data
 			order.value = null
+			if (route.query.o) router.replace({ query: {} })
 			toast.success(labels.cleaningSubmitted, { title: data.order_id || data.name })
 			reloadOrders()
 		} else {
@@ -419,9 +440,10 @@ function save(submit) {
 }
 
 function backToList() {
-	order.value = null
 	submitted.value = null
 	resetForm()
+	if (route.query.o) router.push({ query: {} })
+	else order.value = null
 	reloadOrders()
 }
 

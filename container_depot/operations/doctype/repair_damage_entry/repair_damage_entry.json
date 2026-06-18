@@ -1,0 +1,125 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-06-18 00:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "checklist_item",
+    "area",
+    "component",
+    "damage_code",
+    "repair_code",
+    "severity",
+    "column_break_1",
+    "part_face",
+    "location",
+    "damage_description",
+    "photo_section",
+    "photos",
+    "before_photo",
+    "after_photo"
+  ],
+  "fields": [
+    {
+      "fieldname": "checklist_item",
+      "fieldtype": "Link",
+      "label": "Checklist Item",
+      "options": "Inspection Checklist Item",
+      "read_only": 1
+    },
+    {
+      "fieldname": "area",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Area",
+      "read_only": 1
+    },
+    {
+      "fieldname": "component",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Component / Item",
+      "read_only": 1
+    },
+    {
+      "fieldname": "damage_code",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Damage Code",
+      "options": "Inspection Damage Code",
+      "read_only": 1
+    },
+    {
+      "fieldname": "repair_code",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Repair Code",
+      "options": "Inspection Repair Code",
+      "read_only": 1
+    },
+    {
+      "fieldname": "severity",
+      "fieldtype": "Data",
+      "label": "Severity",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "part_face",
+      "fieldtype": "Data",
+      "label": "Container Face / Part",
+      "read_only": 1
+    },
+    {
+      "fieldname": "location",
+      "fieldtype": "Data",
+      "label": "Location on Container",
+      "read_only": 1
+    },
+    {
+      "fieldname": "damage_description",
+      "fieldtype": "Small Text",
+      "label": "Description",
+      "read_only": 1
+    },
+    {
+      "fieldname": "photo_section",
+      "fieldtype": "Section Break",
+      "label": "EIR Photos"
+    },
+    {
+      "description": "JSON array of the EIR photo URLs for this finding (from the EIR item photos + before/after).",
+      "fieldname": "photos",
+      "fieldtype": "Long Text",
+      "label": "EIR Photos (JSON)",
+      "read_only": 1
+    },
+    {
+      "fieldname": "before_photo",
+      "fieldtype": "Attach Image",
+      "label": "Before Photo",
+      "read_only": 1
+    },
+    {
+      "fieldname": "after_photo",
+      "fieldtype": "Attach Image",
+      "label": "After Photo",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-06-18 00:00:00.000000",
+  "module": "Operations",
+  "name": "Repair Damage Entry",
+  "owner": "Administrator",
+  "sort_field": "creation",
+  "sort_order": "DESC"
+}

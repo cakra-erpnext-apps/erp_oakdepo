@@ -101,6 +101,13 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/cleaning-order-detail", "to_route": "container_depot.ess.cleaning.cleaning_order_detail"},
 	{"from_route": "/api/v1/ess/cleaning-start", "to_route": "container_depot.ess.cleaning.cleaning_start"},
 	{"from_route": "/api/v1/ess/cleaning-order-save", "to_route": "container_depot.ess.cleaning.cleaning_order_save"},
+	# ESS PWA M&R (Maintenance & Repair) endpoints — auto-created from EIRs with damage
+	{"from_route": "/api/v1/ess/mr-orders", "to_route": "container_depot.ess.repairs.mr_orders"},
+	{"from_route": "/api/v1/ess/mr-order-detail", "to_route": "container_depot.ess.repairs.mr_order_detail"},
+	{"from_route": "/api/v1/ess/mr-warehouses", "to_route": "container_depot.ess.repairs.mr_warehouses"},
+	{"from_route": "/api/v1/ess/mr-items", "to_route": "container_depot.ess.repairs.mr_items"},
+	{"from_route": "/api/v1/ess/mr-start", "to_route": "container_depot.ess.repairs.mr_start"},
+	{"from_route": "/api/v1/ess/mr-order-save", "to_route": "container_depot.ess.repairs.mr_order_save"},
 	# SPA deep links: serve the /depot shell for any sub-route so a hard refresh on
 	# e.g. /depot/eir doesn't 404 — the Vue router then renders the route client-side.
 	{"from_route": "/depot/<path:app_path>", "to_route": "depot"},

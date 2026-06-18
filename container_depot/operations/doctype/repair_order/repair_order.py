@@ -27,20 +27,43 @@ class RepairOrder(Document):
 			if principal:
 				self.principal = principal
 
+	def owner_price_list(self):
+		"""The selling Price List for this M&R's owner/principal — drives every rate
+		(harga ikut Item Price per principal). None when the owner has no price list."""
+		from container_depot.pricing_model import price_list_for_customer
+
+		principal = self.principal or frappe.db.get_value("Container", self.container, "principal")
+		return price_list_for_customer(principal) if principal else None
+
 	def calculate_totals(self):
-		"""Calculate line totals and overall total cost"""
+		"""Price every Used Item line from the owner's Item Price and roll up ``total_cost``
+		(the price is hidden in the PWA but still drives owner billing). Rates are NEVER
+		taken from the client — they always follow the Item Price (repair services:
+		manhour × manhour_rate + material_cost; parts: the flat price_list_rate). The copied
+		``damages`` carry no cost; legacy ``estimation_items`` keep their manual totals."""
+		from container_depot.pricing_model import resolve_price
+
+		price_list = self.owner_price_list()
 		total_cost = 0.0
+
+		for row in self.get("used_items") or []:
+			row.is_stock_item = (
+				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
+			)
+			row.rate = resolve_price(row.item, price_list) if row.item else 0.0
+			row.amount = float(row.quantity or 0.0) * float(row.rate or 0.0)
+			total_cost += row.amount
+
+		# Legacy estimate lines (pre-split) — manual qty × price + labour.
 		for item in self.get("estimation_items") or []:
 			quantity = float(item.quantity or 0.0)
 			unit_price = float(item.unit_price or 0.0)
 			item.total_price = quantity * unit_price
-
 			labor_hours = float(item.labor_hours or 0.0)
 			labor_rate = float(item.labor_rate or 0.0)
 			item.labor_total = labor_hours * labor_rate
-
 			total_cost += item.total_price + item.labor_total
-		
+
 		self.total_cost = total_cost
 
 	def update_container_status(self):

@@ -34,6 +34,7 @@ const tabs = [
 	{ to: "/gate", icon: "log-in", label: labels.navGate },
 	{ to: "/eir", icon: "clipboard", label: labels.navEir },
 	{ to: "/cleaning", icon: "droplet", label: labels.navCleaning },
+	{ to: "/mr", icon: "tool", label: labels.navMr },
 	{ to: "/storage", icon: "layers", label: labels.navStorage },
 ]
 
