@@ -306,6 +306,7 @@ def after_install():
 	ensure_roles_exist()
 	setup_permissions()
 	setup_custom_fields()
+	setup_property_setters()
 	ensure_selling_settings()
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
@@ -323,6 +324,9 @@ def after_migrate():
 	setup_permissions()
 	# create_custom_fields is idempotent (upserts by dt+fieldname).
 	setup_custom_fields()
+	# Doctype-level UX tweaks on standard doctypes (Property Setters, idempotent):
+	# Item links show the item name, Item Price 'New' uses the full form.
+	setup_property_setters()
 	# Container Inventory monitoring dashboard (Number Cards + Charts). Idempotent
 	# upsert by name; safe to re-run every migrate.
 	setup_inventory_dashboard()
@@ -568,6 +572,7 @@ CUSTOM_FIELDS = {
 			"fieldtype": "Currency",
 			"options": "currency",
 			"insert_after": "price_list_rate",
+			"allow_in_quick_entry": 1,
 			"description": "Labour rate per hour for repair services priced as manhour × rate + material. Held per Item Price so each principal's rate card can carry its own rate (e.g. OAK 4.50, Bertschi 4.00).",
 		}
 	],
@@ -631,6 +636,46 @@ def setup_custom_fields():
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 	create_custom_fields(CUSTOM_FIELDS, ignore_validate=True)
+	frappe.db.commit()
+
+
+# Doctype-level property tweaks on standard (ERPNext) doctypes. One Property Setter
+# per (doctype, property); applied on after_install + after_migrate.
+#   (doctype, fieldname|None, property, value, property_type)
+PROPERTY_SETTERS = [
+	# Item Link fields show the item NAME (title field) instead of the bare code,
+	# so pickers (incl. the Item Price item selector) are human-readable.
+	("Item", None, "show_title_field_in_link", "1", "Check"),
+	# Item Price "New" opens the full form, not the cramped quick-entry modal — the
+	# modal has no `frm`, so manhour rate is hidden and the price-list→currency
+	# fetch_from never fires. The full form shows manhour and live-fetches currency.
+	("Item Price", None, "quick_entry", "0", "Check"),
+]
+
+
+def _set_property(doctype, fieldname, prop, value, property_type):
+	"""Idempotent Property Setter upsert (doctype-level when fieldname is None)."""
+	existing = frappe.db.get_value("Property Setter", {"doc_type": doctype, "property": prop}, "name")
+	if existing:
+		frappe.db.set_value("Property Setter", existing, "value", str(value))
+		return
+	frappe.make_property_setter(
+		{
+			"doctype": doctype,
+			"doctype_or_field": "DocField" if fieldname else "DocType",
+			"fieldname": fieldname,
+			"property": prop,
+			"value": value,
+			"property_type": property_type,
+		},
+		ignore_validate=True,
+	)
+
+
+def setup_property_setters():
+	"""Apply app Property Setters on standard doctypes (idempotent)."""
+	for doctype, fieldname, prop, value, property_type in PROPERTY_SETTERS:
+		_set_property(doctype, fieldname, prop, value, property_type)
 	frappe.db.commit()
 
 
