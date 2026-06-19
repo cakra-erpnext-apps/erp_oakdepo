@@ -251,11 +251,23 @@ def get_active_contract(customer: str) -> dict | None:
 @frappe.validate_and_sanitize_search_inputs
 def tariff_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Link query for a Price List line's Item: only Items that have a selling Item
-	Price in the contract's Base Price List."""
+	Price in the contract's Base Price List. When NO Base Price List is set, fall back
+	to the full service catalog (every enabled, sellable Item) so a contract can still
+	be built from scratch and priced manually."""
 	base_pl = (filters or {}).get("base_price_list")
-	if not base_pl:
-		return []
 	like = f"%{txt or ''}%"
+	if not base_pl:
+		return frappe.db.sql(
+			"""
+			SELECT it.name, it.item_name
+			FROM `tabItem` it
+			WHERE it.is_sales_item = 1 AND it.disabled = 0
+			  AND (it.name LIKE %(like)s OR it.item_name LIKE %(like)s)
+			ORDER BY it.item_name
+			LIMIT {start}, {page_len}
+			""".format(start=cint(start), page_len=cint(page_len)),
+			{"like": like},
+		)
 	return frappe.db.sql(
 		"""
 		SELECT DISTINCT ip.item_code, it.item_name

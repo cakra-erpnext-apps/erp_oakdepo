@@ -57,6 +57,60 @@ frappe.ui.form.on("Depot Contract", {
 		if (!editable) return;
 		const group = __("Price List");
 
+		// "Add Items" — multi-select Items; each picked item becomes its own line
+		// (UoM defaults from the item; rate + manhour rate are always 0 for manual
+		// pricing). Already-added items are skipped so saving never hits a duplicate.
+		frm.add_custom_button(
+			__("Add Items"),
+			() => {
+				new frappe.ui.form.MultiSelectDialog({
+					doctype: "Item",
+					target: frm,
+					setters: { item_group: null },
+					add_filters_group: 1,
+					get_query() {
+						return { filters: { disabled: 0, is_sales_item: 1 } };
+					},
+					action(selections) {
+						if (!selections || !selections.length) return;
+						const existing = new Set((frm.doc.tariff_lines || []).map((r) => r.item));
+						const fresh = selections.filter((i) => !existing.has(i));
+						if (!fresh.length) {
+							frappe.show_alert({
+								message: __("All selected items are already added."),
+								indicator: "orange",
+							});
+							return;
+						}
+						frappe.db
+							.get_list("Item", {
+								filters: { name: ["in", fresh] },
+								fields: ["name", "stock_uom"],
+								limit: 0,
+							})
+							.then((items) => {
+								const uom = {};
+								items.forEach((it) => (uom[it.name] = it.stock_uom));
+								fresh.forEach((code) => {
+									const row = frm.add_child("tariff_lines");
+									row.item = code;
+									row.uom = uom[code] || null;
+									row.rate = 0;
+									row.manhour_rate = 0;
+									row.currency = frm.doc.currency;
+								});
+								frm.refresh_field("tariff_lines");
+								frappe.show_alert({
+									message: __("Added {0} item(s).", [fresh.length]),
+									indicator: "green",
+								});
+							});
+					},
+				});
+			},
+			group
+		);
+
 		// "Add from Menu" — bulk-add the Base Price List items of a chosen Depot
 		// Service Menu (e.g. all Maintenance items). Client-side; no save needed.
 		frm.add_custom_button(
@@ -256,8 +310,12 @@ frappe.ui.form.on("Tariff Rate", {
 		const row = locals[cdt][cdn];
 		if (!row.item) return;
 		if (!frm.doc.base_price_list) {
-			frappe.model.set_value(cdt, cdn, "item", null);
-			frappe.msgprint(__("Select a Base Price List before adding items."));
+			// No Base Price List: allow any service item. Default the UoM from the
+			// item itself; the rate is entered manually (no base list to copy from).
+			frappe.db.get_value("Item", row.item, "stock_uom", (r) => {
+				if (r && r.stock_uom) frappe.model.set_value(cdt, cdn, "uom", r.stock_uom);
+				frappe.model.set_value(cdt, cdn, "currency", frm.doc.currency || null);
+			});
 			return;
 		}
 		frappe.call({
