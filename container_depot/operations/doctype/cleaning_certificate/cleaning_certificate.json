@@ -62,11 +62,11 @@
       "options": "Cargo"
     },
     {
+      "description": "The cleaning Service(s) performed (free text — one or more billable services from the owner's price list).",
       "fieldname": "cleaning_method",
-      "fieldtype": "Select",
+      "fieldtype": "Data",
       "in_standard_filter": 1,
       "label": "Cleaning Method",
-      "options": "PP Wash\nMethanol Rinse\nSteam Wash\nHot Water\nChemical\nDetergent\nNitrogen Purge",
       "reqd": 1
     },
     {
@@ -90,7 +90,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-05-21",
+  "modified": "2026-06-24 13:00:00",
   "module": "Operations",
   "name": "Cleaning Certificate",
   "naming_rule": "Expression (BY ASSIGNMENT)",

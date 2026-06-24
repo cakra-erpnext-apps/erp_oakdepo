@@ -18,12 +18,44 @@ class CleaningOrder(Document):
 		return f"CO-{unique}"
 
 	def before_save(self):
-		"""Auto-populate container info"""
+		"""Auto-populate container info + price the owner's chosen cleaning services."""
 		if self.container:
 			container = frappe.get_doc("Container", self.container)
 			self.container_no = container.container_no
 			self.last_cargo = container.last_cargo
 			self.zone = container.yard_zone
+		self._resolve_cleaning_services()
+
+	def _resolve_cleaning_services(self):
+		"""Price every chosen cleaning Service (one or more) from the container Owner's
+		(Principal's) active Price List, so the order is ready to bill the tank owner. Each
+		row's ``rate`` is resolved; ``cleaning_total`` is their sum. No principal / no price
+		list leaves every rate (and the total) at 0."""
+		from container_depot import pricing_model
+
+		principal = frappe.db.get_value("Container", self.container, "principal") if self.container else None
+		price_list = pricing_model.price_list_for_customer(principal) if principal else None
+		# Tarif ditampilkan dalam mata uang Price List Owner (bisa beda dari mata uang company).
+		self.currency = (
+			(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
+			or frappe.defaults.get_global_default("currency")
+		)
+		total = 0
+		for row in self.cleaning_services:
+			row.currency = self.currency
+			if not row.cleaning_item:
+				row.rate = 0
+				continue
+			if not row.item_name:
+				row.item_name = frappe.db.get_value("Item", row.cleaning_item, "item_name")
+			row.rate = (pricing_model.resolve_price(row.cleaning_item, price_list) if price_list else 0) or 0
+			total += row.rate
+		self.cleaning_total = total
+
+	def _cleaning_method_label(self) -> str:
+		"""Human label of the chosen cleaning services (for the Cleaning Certificate)."""
+		names = [r.item_name or r.cleaning_item for r in self.cleaning_services if r.cleaning_item]
+		return ", ".join(names) if names else (self.cleaning_item or "")
 
 	def calculate_priority_score(self):
 		"""
@@ -158,7 +190,7 @@ class CleaningOrder(Document):
 		cert.container = self.container
 		cert.cleaning_order = self.name
 		cert.clean_date = self.date_of_issue or self.cleaning_end or datetime.datetime.now()
-		cert.cleaning_method = self.cleaning_type or "Steam Wash"
+		cert.cleaning_method = self._cleaning_method_label() or self.cleaning_type or "Steam Wash"
 		cert.certified_by = self.signed_by or self.completed_by or frappe.session.user
 		cert.prior_cargo = frappe.db.get_value("Container", self.container, "last_cargo")
 		cert.valid_until = None  # no expiry — validity is anchored per EIR
@@ -170,3 +202,31 @@ class CleaningOrder(Document):
 		cert.insert(ignore_permissions=True)
 		cert.submit()
 		return cert.name
+
+
+# ---------------------------------------------------------------------------
+# Link query: the cleaning Service items the container Owner is priced for.
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def cleaning_item_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Items for the Cleaning Order's "Metode Cleaning (Service)" field: the members of the
+	Depot Service Menu "Cleaning" that ALSO have a selling Item Price in the container
+	Owner's (Principal's) active Price List. The price list is resolved from the container's
+	principal — never picked by hand — so the surveyor only sees services the owner is
+	billable for. No principal / no price list → no options.
+	"""
+	from container_depot import pricing_model
+	from container_depot.operations import service_menu
+
+	flt = filters or {}
+	principal = flt.get("principal")
+	if not principal and flt.get("container"):
+		principal = frappe.db.get_value("Container", flt.get("container"), "principal")
+	price_list = pricing_model.price_list_for_customer(principal) if principal else None
+	if not price_list:
+		return []
+	items = service_menu.items_in_menu(
+		"Cleaning", txt=txt, base_price_list=price_list, limit=frappe.utils.cint(page_len) or 20
+	)
+	return [[i["item_code"], i.get("item_name")] for i in items]

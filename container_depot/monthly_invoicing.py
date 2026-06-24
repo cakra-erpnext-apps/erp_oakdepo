@@ -74,7 +74,7 @@ def _mr_items(customer, from_date, to_date):
 
 def _cleaning_items(customer, from_date, to_date):
 	lo, hi = _bounds(from_date, to_date)
-	rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
+	fallback_rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
 	rows = frappe.get_all(
 		"Cleaning Order",
 		filters={"status": "Completed", "cleaning_end": ["between", [lo, hi]]},
@@ -84,14 +84,28 @@ def _cleaning_items(customer, from_date, to_date):
 	for r in rows:
 		if frappe.db.get_value("Container", r.container, "principal") != customer:
 			continue
-		items.append({
-			"container": r.container,
-			"reference_doctype": "Cleaning Order",
-			"reference_name": r.name,
-			"description": f"Cleaning {r.name}",
-			"service_date": getdate(r.cleaning_end),
-			"amount": rate,
-		})
+		# Bill each chosen cleaning Service (owner-price-list rate) as its own line; orders
+		# with no priced service fall back to one line at the contract's flat cleaning tariff.
+		services = frappe.get_all(
+			"Cleaning Order Service", filters={"parent": r.name},
+			fields=["cleaning_item", "item_name", "rate"], order_by="idx asc",
+		)
+		priced = [s for s in services if s.cleaning_item and s.rate and s.rate > 0]
+		emit = (
+			[(s.cleaning_item, s.item_name or s.cleaning_item, s.rate) for s in priced]
+			if priced
+			else [(CLEANING_ITEM, None, fallback_rate)]
+		)
+		for item_code, item_name, rate in emit:
+			desc = f"Cleaning {r.name}" + (f" · {item_name}" if item_name else "")
+			items.append({
+				"container": r.container,
+				"reference_doctype": "Cleaning Order",
+				"reference_name": r.name,
+				"description": desc,
+				"service_date": getdate(r.cleaning_end),
+				"amount": rate,
+			})
 	return items
 
 

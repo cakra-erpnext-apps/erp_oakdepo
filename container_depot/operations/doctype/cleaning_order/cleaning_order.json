@@ -18,6 +18,11 @@
     "depot",
     "section_break_2",
     "last_cargo",
+    "cleaning_services",
+    "cleaning_total",
+    "currency",
+    "cleaning_item",
+    "cleaning_rate",
     "cleaning_type",
     "cleaning_instructions",
     "column_break_3",
@@ -138,10 +143,51 @@
       "options": "Cargo"
     },
     {
+      "description": "Layanan cleaning (bisa lebih dari satu) dari Depot Service Menu “Cleaning”, difilter ke Price List milik Owner (Principal) container. Tiap baris ditagihkan ke owner tank.",
+      "fieldname": "cleaning_services",
+      "fieldtype": "Table",
+      "label": "Metode Cleaning (Service)",
+      "options": "Cleaning Order Service"
+    },
+    {
+      "description": "Total tarif semua layanan cleaning, per Price List Owner — dipakai saat penagihan ke owner tank.",
+      "fieldname": "cleaning_total",
+      "fieldtype": "Currency",
+      "label": "Total Tarif (Price List Owner)",
+      "options": "currency",
+      "read_only": 1
+    },
+    {
+      "description": "Mata uang Price List Owner — tarif cleaning ditampilkan dalam mata uang ini.",
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "Currency",
+      "options": "Currency",
+      "read_only": 1
+    },
+    {
+      "description": "Deprecated — digantikan oleh tabel Metode Cleaning (Service). Disimpan untuk data lama.",
+      "fieldname": "cleaning_item",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Metode Cleaning (lama)",
+      "options": "Item"
+    },
+    {
+      "description": "Deprecated — digantikan oleh tabel Metode Cleaning (Service). Disimpan untuk data lama.",
+      "fieldname": "cleaning_rate",
+      "fieldtype": "Currency",
+      "hidden": 1,
+      "label": "Tarif (lama)",
+      "options": "currency",
+      "read_only": 1
+    },
+    {
+      "description": "Deprecated — digantikan oleh Metode Cleaning (Service). Disimpan untuk data lama.",
       "fieldname": "cleaning_type",
       "fieldtype": "Select",
-      "in_standard_filter": 1,
-      "label": "Cleaning Type",
+      "hidden": 1,
+      "label": "Cleaning Type (lama)",
       "options": "PP Wash\nMethanol Rinse\nSteam Wash\nHot Water\nChemical\nDetergent\nNitrogen Purge"
     },
     {
@@ -309,7 +355,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-05-16",
+  "modified": "2026-06-24 14:00:00",
   "module": "Operations",
   "name": "Cleaning Order",
   "search_fields": "order_id, container_no, status",

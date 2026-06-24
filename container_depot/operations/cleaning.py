@@ -107,6 +107,48 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		limit_start=cint(start),
 		limit_page_length=cint(page_length),
 	)
+	# Number of chosen cleaning services per order (NOT the price — hidden from the depot PWA).
+	names = [i.name for i in items]
+	if names:
+		from collections import Counter
+
+		counts = Counter(frappe.get_all("Cleaning Order Service", filters={"parent": ["in", names]}, pluck="parent"))
+		for i in items:
+			i["service_count"] = counts.get(i.name, 0)
+	return {"items": items, "total": frappe.db.count("Cleaning Order", filters)}
+
+
+def list_cleaning_history(start=0, page_length=10, search=None) -> dict:
+	"""Finished Cleaning Orders (Completed / Cancelled) — the PWA Cleaning "Riwayat" feed,
+	newest first, paginated + searchable, depot-scoped to the caller's branch. Detail reuses
+	``get_cleaning_order_detail``."""
+	from container_depot.operations.user_branch import get_user_depots
+
+	filters = {"status": ["in", ["Completed", "Cancelled"]]}
+	depots = get_user_depots()
+	if depots is not None:
+		filters["depot"] = ["in", depots or [""]]
+	or_filters = None
+	search = (search or "").strip()
+	if search and search.lower() != "undefined":
+		or_filters = {"container_no": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
+	items = frappe.get_all(
+		"Cleaning Order",
+		filters=filters,
+		or_filters=or_filters,
+		fields=["name", "order_id", "container", "container_no", "status", "cleaning_type",
+			"last_cargo", "depot", "cleaning_end", "order_created", "cleaning_certificate"],
+		order_by="creation desc",
+		limit_start=cint(start),
+		limit_page_length=cint(page_length),
+	)
+	names = [i.name for i in items]
+	if names:
+		from collections import Counter
+
+		counts = Counter(frappe.get_all("Cleaning Order Service", filters={"parent": ["in", names]}, pluck="parent"))
+		for i in items:
+			i["service_count"] = counts.get(i.name, 0)
 	return {"items": items, "total": frappe.db.count("Cleaning Order", filters)}
 
 
@@ -149,6 +191,25 @@ def start_cleaning(cleaning_order):
 	return {"success": True, "name": co.name, "status": "In_Progress", "container_status": cont.status}
 
 
+def _cleaning_item_options(container) -> list:
+	"""Cleaning Service items the container's Owner (Principal) is priced for: members of the
+	Depot Service Menu "Cleaning" that have a selling Item Price in the owner's active Price
+	List. Drives the PWA "Metode Cleaning" picker. The owner's RATE is deliberately NOT
+	exposed to the depot PWA (it's resolved + stored server-side for billing only). Empty
+	when there is no principal / no price list."""
+	from container_depot import pricing_model
+	from container_depot.operations import service_menu
+
+	principal = frappe.db.get_value("Container", container, "principal") if container else None
+	price_list = pricing_model.price_list_for_customer(principal) if principal else None
+	if not price_list:
+		return []
+	return [
+		{"item_code": i["item_code"], "item_name": i.get("item_name")}
+		for i in service_menu.items_in_menu("Cleaning", base_price_list=price_list)
+	]
+
+
 def get_cleaning_order_detail(cleaning_order) -> dict:
 	"""Everything the PWA form needs for one Cleaning Order: the order's own cleanliness
 	state, the tank spec from the Container master, the saved checklist, recent cargo
@@ -166,6 +227,14 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"container_no": co.container_no or c.container_no,
 		"inspection": co.inspection or _latest_eir(co.container),
 		"cleaning_type": co.cleaning_type,
+		# "Metode Cleaning" = one OR MORE billable Services from the Cleaning menu. The owner's
+		# rate/total is NOT sent to the depot PWA (billing-only); ``cleaning_services`` is what's
+		# chosen on this order, ``cleaning_items`` the full pickable catalogue for this owner.
+		"cleaning_services": [
+			{"item_code": r.cleaning_item, "item_name": r.item_name}
+			for r in co.cleaning_services
+		],
+		"cleaning_items": _cleaning_item_options(co.container),
 		"gas_free": co.gas_free,
 		"o2_percent": co.o2_percent,
 		"lel_percent": co.lel_percent,
@@ -240,6 +309,7 @@ def _build_checklist_rows(results) -> list:
 def save_cleaning_order(
 	cleaning_order=None,
 	cleaning_type=None,
+	cleaning_items=None,
 	gas_free=None,
 	o2_percent=None,
 	lel_percent=None,
@@ -261,6 +331,19 @@ def save_cleaning_order(
 		frappe.throw(_("Cleaning Order sudah selesai."))
 	_guard_container_branch(co.container)
 
+	# "Metode Cleaning" is now one OR MORE billable Service items (each priced from the
+	# owner's Price List); the controller resolves every row's rate + the total. The legacy
+	# free-text cleaning_type is still accepted for back-compat.
+	if cleaning_items is not None:
+		codes = _coerce_list(cleaning_items)
+		seen, rows = set(), []
+		for c in codes:
+			code = (c.get("item_code") if isinstance(c, dict) else c) or ""
+			code = code.strip()
+			if code and code not in seen:
+				seen.add(code)
+				rows.append({"cleaning_item": code})
+		co.set("cleaning_services", rows)
 	if cleaning_type is not None:
 		co.cleaning_type = cleaning_type
 	if gas_free is not None:

@@ -28,6 +28,13 @@ def cleaning_orders(start=0, page_length=20, search=None):
 
 
 @frappe.whitelist(methods=["GET"])
+def cleaning_history(start=0, page_length=10, search=None):
+	"""GET /api/v1/ess/cleaning-history — finished (Completed/Cancelled) cleaning orders."""
+	_require_authenticated_user()
+	return cleaning.list_cleaning_history(start=start, page_length=page_length, search=search)
+
+
+@frappe.whitelist(methods=["GET"])
 def cleaning_order_detail(cleaning_order=None):
 	"""GET /api/v1/ess/cleaning-order-detail — one order's cleanliness state + tank spec."""
 	_require_authenticated_user()
@@ -45,6 +52,7 @@ def cleaning_start(cleaning_order=None):
 def cleaning_order_save(
 	cleaning_order=None,
 	cleaning_type=None,
+	cleaning_items=None,
 	gas_free=None,
 	o2_percent=None,
 	lel_percent=None,
@@ -61,6 +69,7 @@ def cleaning_order_save(
 	return cleaning.save_cleaning_order(
 		cleaning_order=cleaning_order,
 		cleaning_type=cleaning_type,
+		cleaning_items=cleaning_items,
 		gas_free=gas_free,
 		o2_percent=o2_percent,
 		lel_percent=lel_percent,

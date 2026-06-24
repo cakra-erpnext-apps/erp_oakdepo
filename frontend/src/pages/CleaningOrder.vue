@@ -55,7 +55,7 @@
 					<div class="min-w-0 flex-1">
 						<p class="truncate font-bold text-gray-900">{{ o.container_no || o.container }}</p>
 						<p class="truncate text-xs text-gray-500">
-							{{ o.order_id }} · {{ o.cleaning_type || labels.cleaningTypeUnset }}
+							{{ o.order_id }}<template v-if="o.service_count"> · {{ o.service_count }} {{ labels.cleaningServicesCount }}</template><template v-else-if="o.cleaning_type"> · {{ o.cleaning_type }}</template>
 							<span v-if="o.last_cargo"> · {{ o.last_cargo }}</span>
 						</p>
 						<p class="truncate text-[11px] text-gray-400">{{ labels.createdOn }} {{ fmtDate(o.order_created) }}</p>
@@ -101,13 +101,61 @@
 				<p v-else class="text-sm text-gray-400">{{ labels.cleaningNoCargoHistory }}</p>
 			</section>
 
-			<!-- Cleaning method -->
-			<section class="oak-card p-4 space-y-2">
-				<label class="oak-label">{{ labels.cleaningType }}</label>
-				<select v-model="cleaningType" class="oak-input">
-					<option value="">— {{ labels.cleaningTypeUnset }} —</option>
-					<option v-for="t in CLEANING_TYPES" :key="t" :value="t">{{ t }}</option>
-				</select>
+			<!-- Cleaning method = one or more billable Services from the owner's price list
+			     (the owner's rate is hidden in the depot PWA — billing-only). -->
+			<section class="oak-card p-4 space-y-3">
+				<div class="flex items-center justify-between gap-2">
+					<p class="oak-section-title">{{ labels.cleaningType }}</p>
+					<span v-if="selectedItems.length" class="oak-chip shrink-0 bg-brand-50 text-brand-700">
+						{{ selectedItems.length }} {{ labels.cleaningServicesCount }}
+					</span>
+				</div>
+
+				<!-- Picked services (always visible, removable) -->
+				<div v-if="selectedServices.length" class="flex flex-wrap gap-1.5">
+					<span
+						v-for="s in selectedServices"
+						:key="s.item_code"
+						class="inline-flex items-center gap-1 rounded-full bg-brand-100 py-1 pl-2.5 pr-1.5 text-xs font-medium text-brand-700"
+					>
+						<span class="max-w-[10rem] truncate">{{ s.item_name }}</span>
+						<button type="button" class="rounded-full p-0.5 hover:bg-brand-200" @click="toggleService(s.item_code)">
+							<Icon name="x" :size="12" />
+						</button>
+					</span>
+				</div>
+
+				<p v-if="!cleaningItems.length" class="text-xs text-amber-600">{{ labels.cleaningNoPricedItems }}</p>
+				<template v-else>
+					<p class="text-xs text-gray-400">{{ labels.cleaningSelectServices }}</p>
+					<!-- Search (the owner's catalogue can be long) -->
+					<div class="relative">
+						<Icon name="search" :size="15" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+						<input v-model="serviceSearch" class="oak-input pl-8" :placeholder="labels.cleaningSearchServices" />
+					</div>
+					<!-- Catalogue: ~5 rows tall, scroll for the rest -->
+					<div class="max-h-64 space-y-2 overflow-y-auto pr-1">
+						<button
+							v-for="it in filteredCleaningItems"
+							:key="it.item_code"
+							type="button"
+							class="flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-colors"
+							:class="isServiceSelected(it.item_code) ? 'border-brand-500 bg-brand-50' : 'border-gray-100'"
+							@click="toggleService(it.item_code)"
+						>
+							<span
+								class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
+								:class="isServiceSelected(it.item_code) ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-300'"
+							>
+								<Icon v-if="isServiceSelected(it.item_code)" name="check" :size="14" />
+							</span>
+							<span class="min-w-0 flex-1 text-sm font-medium text-gray-800">{{ it.item_name || it.item_code }}</span>
+						</button>
+						<p v-if="!filteredCleaningItems.length" class="py-3 text-center text-xs text-gray-400">
+							{{ labels.cleaningNoMatch }}
+						</p>
+					</div>
+				</template>
 			</section>
 
 			<!-- Checklist -->
@@ -258,10 +306,6 @@ const router = useRouter()
 
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
 
-const CLEANING_TYPES = [
-	"PP Wash", "Methanol Rinse", "Steam Wash", "Hot Water", "Chemical", "Detergent", "Nitrogen Purge",
-]
-
 const search = ref("")
 const orders = ref([])
 const order = ref(null)
@@ -270,7 +314,33 @@ const submitted = ref(null)
 const checklist = ref([])
 const rows = ref([])
 
-const cleaningType = ref("")
+// "Metode Cleaning" = one OR MORE billable Services from the Cleaning menu, priced off the
+// container owner's price list. cleaningItems is the pickable catalogue (with rates);
+// selectedItems holds the item_codes the surveyor picked for this order.
+const selectedItems = ref([])
+const cleaningItems = ref([])
+const serviceSearch = ref("")
+const isServiceSelected = (code) => selectedItems.value.includes(code)
+function toggleService(code) {
+	const i = selectedItems.value.indexOf(code)
+	if (i === -1) selectedItems.value.push(code)
+	else selectedItems.value.splice(i, 1)
+}
+// The owner's catalogue can be long → filter by the search box.
+const filteredCleaningItems = computed(() => {
+	const q = serviceSearch.value.trim().toLowerCase()
+	if (!q) return cleaningItems.value
+	return cleaningItems.value.filter(
+		(i) => (i.item_name || "").toLowerCase().includes(q) || (i.item_code || "").toLowerCase().includes(q)
+	)
+})
+// Picked services, resolved to names for the always-visible chips.
+const selectedServices = computed(() =>
+	selectedItems.value.map((code) => {
+		const hit = cleaningItems.value.find((i) => i.item_code === code)
+		return { item_code: code, item_name: hit?.item_name || code }
+	})
+)
 const gasFree = ref("")
 const o2 = ref("")
 const lel = ref("")
@@ -354,7 +424,9 @@ const detailRes = createResource({
 	method: "GET",
 	onSuccess(data) {
 		order.value = data
-		cleaningType.value = data.cleaning_type || ""
+		cleaningItems.value = data.cleaning_items || []
+		selectedItems.value = (data.cleaning_services || []).map((s) => s.item_code).filter(Boolean)
+		serviceSearch.value = ""
 		gasFree.value = data.gas_free || ""
 		o2.value = data.o2_percent ?? ""
 		lel.value = data.lel_percent ?? ""
@@ -428,7 +500,7 @@ function save(submit) {
 	const results = rows.value.map((r) => ({ item_code: r.item_code, result: r.result, note: r.note || undefined }))
 	saveRes.fetch({
 		cleaning_order: order.value.name,
-		cleaning_type: cleaningType.value || undefined,
+		cleaning_items: JSON.stringify(selectedItems.value),
 		gas_free: gasFree.value || undefined,
 		o2_percent: o2.value !== "" ? o2.value : undefined,
 		lel_percent: lel.value !== "" ? lel.value : undefined,
@@ -451,7 +523,9 @@ function backToList() {
 }
 
 function resetForm() {
-	cleaningType.value = ""
+	selectedItems.value = []
+	cleaningItems.value = []
+	serviceSearch.value = ""
 	gasFree.value = ""
 	o2.value = ""
 	lel.value = ""

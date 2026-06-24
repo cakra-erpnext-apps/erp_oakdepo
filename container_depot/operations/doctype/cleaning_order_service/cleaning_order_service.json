@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "creation": "2026-06-24 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "cleaning_item",
+  "item_name",
+  "rate",
+  "currency"
+ ],
+ "fields": [
+  {
+   "columns": 6,
+   "description": "Service cleaning dari Depot Service Menu “Cleaning”, difilter ke Price List milik Owner (Principal) container.",
+   "fieldname": "cleaning_item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Service",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "columns": 4,
+   "fetch_from": "cleaning_item.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nama",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Tarif per Price List Owner — dipakai saat penagihan ke owner tank.",
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Tarif (Price List Owner)",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Mata uang Price List Owner (untuk format tarif di grid).",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-24 14:00:00.000000",
+ "module": "Operations",
+ "name": "Cleaning Order Service",
+ "permissions": [],
+ "sort_field": "idx",
+ "sort_order": "ASC"
+}

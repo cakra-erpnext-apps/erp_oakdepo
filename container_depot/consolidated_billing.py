@@ -46,10 +46,12 @@ def _booking_lines(customer, lo, hi):
 
 
 def _cleaning_lines(customer, lo, hi):
-	"""Completed, not-yet-billed cleaning for the customer's tanks (tariff-priced)."""
-	rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
-	if not rate or rate <= 0:
-		return [], []
+	"""Completed, not-yet-billed cleaning for the customer's tanks.
+
+	Each cleaning Service chosen on an order (``cleaning_services``) becomes its own invoice
+	line, billed at the rate locked from the owner's Price List at cleaning time. Orders with
+	no priced service fall back to ONE line at the contract's flat ``CLEANING_ITEM`` tariff."""
+	fallback_rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
 	rows = frappe.get_all(
 		"Cleaning Order",
 		filters={"status": "Completed", "cleaning_end": ["between", [lo, hi]], "sales_invoice": ["is", "not set"]},
@@ -59,8 +61,22 @@ def _cleaning_lines(customer, lo, hi):
 	for r in rows:
 		if frappe.db.get_value("Container", r.container, "principal") != customer:
 			continue
-		lines.append({"description": f"Cleaning {r.name}", "qty": 1, "rate": rate})
-		refs.append(("Cleaning Order", r.name))
+		services = frappe.get_all(
+			"Cleaning Order Service", filters={"parent": r.name},
+			fields=["cleaning_item", "item_name", "rate"], order_by="idx asc",
+		)
+		priced = [s for s in services if s.cleaning_item and s.rate and s.rate > 0]
+		if priced:
+			for s in priced:
+				lines.append({
+					"item_code": s.cleaning_item,
+					"description": f"Cleaning {r.name} · {s.item_name or s.cleaning_item}",
+					"qty": 1, "rate": s.rate,
+				})
+			refs.append(("Cleaning Order", r.name))
+		elif fallback_rate and fallback_rate > 0:
+			lines.append({"item_code": CLEANING_ITEM, "description": f"Cleaning {r.name}", "qty": 1, "rate": fallback_rate})
+			refs.append(("Cleaning Order", r.name))
 	return lines, refs
 
 
