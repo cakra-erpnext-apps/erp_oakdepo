@@ -20,7 +20,7 @@ x-app-volumes: &app-volumes
   - sites:/home/frappe/frappe-bench/sites
   - assets:/home/frappe/frappe-bench/assets
   - logs:/home/frappe/frappe-bench/logs
-  - ./container_depot:/home/frappe/frappe-bench/apps/container_depot
+  - ./:/home/frappe/frappe-bench/apps/container_depot
   - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
 
 services:
@@ -155,7 +155,7 @@ fi"]
       - sites:/home/frappe/frappe-bench/sites
       - assets:/home/frappe/frappe-bench/assets
       - logs:/home/frappe/frappe-bench/logs
-      - ./container_depot:/home/frappe/frappe-bench/apps/container_depot
+      - ./:/home/frappe/frappe-bench/apps/container_depot
       - ./nginx-inject.sh:/scripts/nginx-inject.sh:ro
     depends_on: [backend, websocket]
     networks: [frappe_net]
