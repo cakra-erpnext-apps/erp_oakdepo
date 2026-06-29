@@ -1,0 +1,190 @@
+name: erp_oakdepo_prod
+
+x-frappe-image: &frappe-image
+  image: frappe-crm:local
+  pull_policy: never
+
+x-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-depends-configurator: &depends-configurator
+  depends_on:
+    configurator:
+      condition: service_completed_successfully
+
+x-app-volumes: &app-volumes
+  - sites:/home/frappe/frappe-bench/sites
+  - assets:/home/frappe/frappe-bench/assets
+  - logs:/home/frappe/frappe-bench/logs
+  - ./container_depot:/home/frappe/frappe-bench/apps/container_depot
+  - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
+
+services:
+  mariadb:
+    image: mariadb:10.6
+    restart: unless-stopped
+    <<: *default-logging
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:?DB_ROOT_PASS not set in .env.prod}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes: ["mariadb-data:/var/lib/mysql"]
+    networks: [frappe_net]
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-p${DB_ROOT_PASS}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    <<: *default-logging
+    volumes: ["redis-cache-data:/data"]
+    networks: [frappe_net]
+
+  redis-queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    <<: *default-logging
+    volumes: ["redis-queue-data:/data"]
+    networks: [frappe_net]
+
+  configurator:
+    <<: *frappe-image
+    command: ["bash", "-c", "set -e
+echo -e 'frappe\nerpnext' > sites/apps.txt
+bench set-config -g db_host mariadb
+bench set-config -g db_port 3306
+bench set-config -g redis_cache redis://redis-cache:6379
+bench set-config -g redis_queue redis://redis-queue:6379
+bench set-config -g redis_socketio redis://redis-cache:6379
+bench set-config -g socketio_port 9000
+echo '[configurator] Done.'"]
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - assets:/home/frappe/frappe-bench/assets
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks: [frappe_net]
+
+  create-site:
+    <<: *frappe-image
+    command: ["bash", "-c", "set -e
+wait-for-it mariadb:3306 --timeout=120 -- echo 'MariaDB ready'
+env/bin/pip install -e apps/container_depot --no-deps -q
+echo -e 'frappe\nerpnext\ncontainer_depot' > sites/apps.txt
+if [ ! -d sites/${SITE_NAME} ]; then
+  bench new-site ${SITE_NAME} --mariadb-user-host-login-scope='%' --db-root-password ${DB_ROOT_PASS} --admin-password ${ADMIN_PASS} --install-app erpnext
+  bench --site ${SITE_NAME} install-app container_depot
+  bench --site ${SITE_NAME} migrate
+  bench --site ${SITE_NAME} set-config host_name https://${SITE_NAME}
+  bench --site ${SITE_NAME} set-config developer_mode 0
+  bench build --app container_depot --force
+  mkdir -p assets/container_depot
+  cp -rL apps/container_depot/frontend/dist assets/container_depot/frontend 2>/dev/null || true
+  echo '[create-site] Done.'
+else
+  echo '[create-site] Site exists — skip creation.'
+fi"]
+    environment:
+      SITE_NAME: ${SITE_NAME:?SITE_NAME not set in .env.prod}
+      DB_ROOT_PASS: ${DB_ROOT_PASS:?DB_ROOT_PASS not set in .env.prod}
+      ADMIN_PASS: ${ADMIN_PASS:?ADMIN_PASS not set in .env.prod}
+    volumes: *app-volumes
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+    networks: [frappe_net]
+
+  backend:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: ["bash", "/scripts/ensure-apps.sh", "start.sh"]
+    volumes: *app-volumes
+    networks: [frappe_net]
+
+  websocket:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: node /home/frappe/frappe-bench/apps/frappe/socketio.js
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - assets:/home/frappe/frappe-bench/assets
+      - logs:/home/frappe/frappe-bench/logs
+    networks: [frappe_net]
+
+  queue-short:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "short,default"]
+    volumes: *app-volumes
+    networks: [frappe_net]
+
+  queue-long:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: ["bash", "/scripts/ensure-apps.sh", "bench", "worker", "--queue", "long"]
+    volumes: *app-volumes
+    networks: [frappe_net]
+
+  scheduler:
+    <<: [*frappe-image, *depends-configurator, *default-logging]
+    restart: unless-stopped
+    command: ["bash", "/scripts/ensure-apps.sh", "bench", "schedule"]
+    volumes: *app-volumes
+    networks: [frappe_net]
+
+  frontend:
+    <<: [*frappe-image, *default-logging]
+    restart: unless-stopped
+    command: ["/bin/bash", "/scripts/nginx-inject.sh"]
+    environment:
+      BACKEND: backend:8000
+      SOCKETIO: websocket:9000
+      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:?SITE_NAME not set in .env.prod}
+      UPSTREAM_REAL_IP_ADDRESS: 0.0.0.0
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "on"
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - assets:/home/frappe/frappe-bench/assets
+      - logs:/home/frappe/frappe-bench/logs
+      - ./container_depot:/home/frappe/frappe-bench/apps/container_depot
+      - ./nginx-inject.sh:/scripts/nginx-inject.sh:ro
+    depends_on: [backend, websocket]
+    networks: [frappe_net]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    <<: *default-logging
+    environment:
+      SITE_NAME: ${SITE_NAME:?SITE_NAME not set in .env.prod}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL not set in .env.prod}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [frontend]
+    networks: [frappe_net]
+
+volumes:
+  mariadb-data:
+  redis-cache-data:
+  redis-queue-data:
+  sites:
+  assets:
+  logs:
+  caddy-data:
+  caddy-config:
+
+networks:
+  frappe_net:
+    driver: bridge
