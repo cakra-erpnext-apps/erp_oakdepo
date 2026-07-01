@@ -30,3 +30,4 @@ logs/
 .vscode/
 .idea/
 restore/
+compose.prod.yaml.bak-*

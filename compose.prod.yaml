@@ -21,7 +21,6 @@ x-app-volumes: &app-volumes
   - assets:/home/frappe/frappe-bench/assets
   - logs:/home/frappe/frappe-bench/logs
   - ./:/home/frappe/frappe-bench/apps/container_depot
-  - egg-info:/home/frappe/frappe-bench/apps/container_depot/container_depot.egg-info
   - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
 
 services:
@@ -181,7 +180,6 @@ volumes:
   sites:
   assets:
   logs:
-  egg-info:
 
 networks:
   frappe_net:
