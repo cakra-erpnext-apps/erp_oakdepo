@@ -1,7 +1,7 @@
 name: erp_oakdepo_prod
 
 x-frappe-image: &frappe-image
-  image: cakra-erpnext:prod
+  image: oakdepo-erpnext:prod
   pull_policy: never
 
 x-logging: &default-logging

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "erpnext",
+    "url": "https://github.com/cakra-erpnext-apps/erpnext",
+    "branch": "version-16"
+  },
+  {
+    "name": "hrms",
+    "url": "https://github.com/cakra-erpnext-apps/hrms",
+    "branch": "version-16"
+  },
+  {
+    "name": "crm",
+    "url": "https://github.com/cakra-erpnext-apps/crm",
+    "branch": "main"
+  },
+  {
+    "name": "helpdesk",
+    "url": "https://github.com/cakra-erpnext-apps/helpdesk",
+    "branch": "main"
+  },
+  {
+    "name": "raven",
+    "url": "https://github.com/cakra-erpnext-apps/raven",
+    "branch": "main"
+  },
+  {
+    "name": "gameplan",
+    "url": "https://github.com/cakra-erpnext-apps/gameplan",
+    "branch": "main"
+  },
+  {
+    "name": "telephony",
+    "url": "https://github.com/cakra-erpnext-apps/telephony",
+    "branch": "develop"
+  }
+]
