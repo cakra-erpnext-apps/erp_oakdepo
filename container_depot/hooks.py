@@ -178,7 +178,9 @@ jinja = {
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/container_depot/css/container_depot.css"
+# Small desk-form polish (e.g. aligning Section Break descriptions with their
+# centered section head/body — a Frappe rendering quirk). See public/css.
+app_include_css = "/assets/container_depot/css/container_depot.css"
 # app_include_js = "/assets/container_depot/js/container_depot.js"
 
 # include js, css files in header of web template

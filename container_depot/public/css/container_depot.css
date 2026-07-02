@@ -1,1 +1,20 @@
 /* Container Depot */
+
+/*
+ * Section Break descriptions — keep them aligned with their (centered) section
+ * head and fields.
+ *
+ * Frappe centers .section-head / .section-body with `margin: auto` under
+ * .std-form-layout, but pins .form-section-description with `margin-left: 0`
+ * (see apps/frappe/frappe/public/scss/desk/form.scss). On any viewport wider
+ * than --page-max-width (900px) the description then hugs the LEFT edge while
+ * its own header and the fields below it are centered — so it reads as
+ * "off-center". Give the description the same auto margins so its box lines up
+ * with the header. Scoped to non-full-width mode; full-width already left-
+ * aligns head, body and description together.
+ */
+body:not(.full-width) .std-form-layout .form-section > .form-section-description,
+body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-description {
+	margin-left: auto;
+	margin-right: auto;
+}
