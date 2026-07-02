@@ -48,12 +48,13 @@ class SurveyOrder(Document):
 
     def on_submit(self):
         if self.payment_type == "Cash":
-            # Cash: raise a submitted (Unpaid) Sales Invoice now — just awaiting payment.
+            # Cash: raise a DRAFT Sales Invoice now (review/add tax, then submit & collect).
             self._create_invoice()
             self.db_set("status", "Payment Pending")
         else:
             # TOP: no invoice yet — billed later via the per-customer invoice run.
             self.db_set("status", "Submitted")
+            self.db_set("invoice_status", "Not Invoiced")
 
     def _create_invoice(self):
         if self.sales_invoice:
@@ -90,12 +91,17 @@ class SurveyOrder(Document):
                 "(cek default Company & Customer). Survey Order tidak jadi disubmit."
             )
         # Leave the invoice as a DRAFT so the user can review / add tax before
-        # submitting & collecting payment.
+        # submitting & collecting payment. invoice_status tracks it live from here
+        # on (submit → Unpaid, payment → Paid) via the Sales Invoice / Payment Entry
+        # doc_event bridges below.
         self.db_set("sales_invoice", inv)
+        self.db_set("invoice_status", _survey_invoice_status(inv))
 
     def on_cancel(self):
         self._rollback_invoice()
         self.db_set("status", "Cancelled")
+        # Draft deleted → link cleared → "Not Invoiced"; submitted-then-cancelled → "Cancelled".
+        self.db_set("invoice_status", _survey_invoice_status(self.sales_invoice))
 
     def _rollback_invoice(self):
         """Roll back the linked Sales Invoice on cancel; block if it's been paid."""
@@ -117,6 +123,89 @@ class SurveyOrder(Document):
             )
         si.flags.ignore_permissions = True
         si.cancel()
+
+
+# ── Invoice-status sync (Survey Order ↔ its Sales Invoice) ─────────────────────
+# Mirrors the linked Sales Invoice's live state onto the Survey Order so the form
+# and list always show whether the survey is Draft / Unpaid / Paid / Cancelled —
+# instead of freezing at "Payment Pending". Same shape as the Container Booking
+# bridge: every handler is a no-op unless a Survey Order links the invoice, so
+# plain ERPNext invoices/payments are left untouched. Wired in hooks.doc_events.
+
+def _survey_invoice_status(sales_invoice):
+    """Map a linked Sales Invoice's live state to a Survey Order ``invoice_status``."""
+    if not sales_invoice or not frappe.db.exists("Sales Invoice", sales_invoice):
+        return "Not Invoiced"
+    si = frappe.db.get_value(
+        "Sales Invoice", sales_invoice,
+        ["docstatus", "status", "outstanding_amount", "grand_total"], as_dict=True,
+    )
+    if not si:
+        return "Not Invoiced"
+    if si.docstatus == 0:
+        return "Draft"
+    if si.docstatus == 2:
+        return "Cancelled"
+    # Submitted: read settlement from status / outstanding.
+    if si.status in ("Paid", "Credit Note Issued") or flt(si.outstanding_amount) <= 0:
+        return "Paid"
+    if "Overdue" in (si.status or ""):
+        return "Overdue"
+    if flt(si.outstanding_amount) < flt(si.grand_total):
+        return "Partly Paid"
+    return "Unpaid"
+
+
+def sync_survey_orders_for_invoice(sales_invoice):
+    """Push a Sales Invoice's live status onto every Survey Order pinned to it.
+    No-op unless a Survey Order links the invoice."""
+    status = _survey_invoice_status(sales_invoice)
+    for name in frappe.get_all("Survey Order", filters={"sales_invoice": sales_invoice}, pluck="name"):
+        row = frappe.db.get_value(
+            "Survey Order", name, ["docstatus", "status", "invoice_status"], as_dict=True
+        )
+        if not row or row.docstatus == 2:  # cancelled order — leave it be
+            continue
+        if row.invoice_status != status:
+            frappe.db.set_value("Survey Order", name, "invoice_status", status, update_modified=False)
+        # Close out a Cash order once its invoice is settled.
+        if status == "Paid" and row.status == "Payment Pending":
+            frappe.db.set_value("Survey Order", name, "status", "Paid", update_modified=False)
+
+
+# --- Sales Invoice / Payment Entry → Survey Order bridges (hooks.doc_events) -------
+def relink_amended_invoice(doc, method=None):
+    """after_insert: follow a Cash order's invoice across an amendment (new invoice
+    carries ``amended_from`` = the old one), then refresh invoice_status."""
+    if not doc.amended_from:
+        return
+    moved = frappe.get_all("Survey Order", filters={"sales_invoice": doc.amended_from}, pluck="name")
+    for name in moved:
+        frappe.db.set_value("Survey Order", name, "sales_invoice", doc.name, update_modified=False)
+    if moved:
+        sync_survey_orders_for_invoice(doc.name)
+
+
+def sync_survey_on_invoice_submit(doc, method=None):
+    """on_submit: Cash draft invoice submitted → Survey Order reads Unpaid (or Paid)."""
+    sync_survey_orders_for_invoice(doc.name)
+
+
+def sync_survey_on_invoice_cancel(doc, method=None):
+    """on_cancel: invoice cancelled directly → Survey Order reads Cancelled."""
+    sync_survey_orders_for_invoice(doc.name)
+
+
+def on_payment_entry_change(doc, method=None):
+    """Payment Entry on_submit / on_cancel: refresh the invoice_status of any Survey
+    Order tied to the Sales Invoice(s) this payment settles (runs after ERPNext has
+    recomputed the invoice outstanding, so the read is current)."""
+    seen = set()
+    for ref in (doc.get("references") or []):
+        si = ref.reference_name if ref.reference_doctype == "Sales Invoice" else None
+        if si and si not in seen:
+            seen.add(si)
+            sync_survey_orders_for_invoice(si)
 
 
 # ── Whitelisted helpers used by the client form ───────────────────────────────

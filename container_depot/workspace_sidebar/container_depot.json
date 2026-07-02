@@ -121,6 +121,18 @@
             "icon": "es-line-payments"
         },
         {
+            "child": 1,
+            "collapsible": 1,
+            "indent": 0,
+            "keep_closed": 0,
+            "label": "Order Billing Status",
+            "link_to": "Order Billing Status",
+            "link_type": "Report",
+            "show_arrow": 0,
+            "type": "Link",
+            "icon": "es-line-reports"
+        },
+        {
             "child": 0,
             "collapsible": 1,
             "icon": "tool",

@@ -604,6 +604,39 @@ CUSTOM_FIELDS = {
 			"insert_after": "customer",
 			"in_standard_filter": 1,
 			"description": "Depot branch this invoice was raised for (carried from the Container Booking).",
+		},
+		{
+			# Internal rollback manifest for consolidated ("generate") invoices — a JSON
+			# list of the depot orders swept into this invoice. Drives roll-back of those
+			# orders to un-invoiced when the invoice is discarded (on_trash) or cancelled,
+			# and marks the invoice as generated so its line items are frozen (see
+			# container_depot.consolidated_billing). Not user-editable.
+			"fieldname": "depot_billed_sources",
+			"label": "Depot Billed Sources",
+			"fieldtype": "Long Text",
+			"insert_after": "branch",
+			"hidden": 1,
+			"read_only": 1,
+			"no_copy": 1,
+			"print_hide": 1,
+			"description": "Internal: depot orders swept into this consolidated invoice (rollback manifest).",
+		},
+	],
+	# Back-link a Repair Order to the consolidated invoice it was billed into. Repair
+	# Order has no native invoice link (billing state lives in billing_status); this lets
+	# the Order Billing Status report show its live invoice status (Draft/Unpaid/Paid)
+	# like the other order types, and lets rollback clear the link. Set on Generate
+	# (consolidated_billing._mark_billed), cleared on rollback (_unmark_billed).
+	"Repair Order": [
+		{
+			"fieldname": "sales_invoice",
+			"label": "Sales Invoice",
+			"fieldtype": "Link",
+			"options": "Sales Invoice",
+			"insert_after": "billing_status",
+			"read_only": 1,
+			"no_copy": 1,
+			"description": "Consolidated invoice this repair was billed into (set on Generate, cleared on rollback).",
 		}
 	],
 	# Optional multi-branch tag on the User — pick zero, one, or many depot Branches to
@@ -654,12 +687,30 @@ PROPERTY_SETTERS = [
 	# modal has no `frm`, so manhour rate is hidden and the price-list→currency
 	# fetch_from never fires. The full form shows manhour and live-fetches currency.
 	("Item Price", None, "quick_entry", "0", "Check"),
+	# Hide Sales Invoice fields the depot never uses, decluttering the invoice form.
+	# Values are untouched (fields stay in the DB) — this is UI-only. Section break
+	# ``time_sheet_list`` hides the whole timesheet section; ``timesheets`` hidden too
+	# for good measure.
+	("Sales Invoice", "is_pos", "hidden", "1", "Check"),           # Include Payment (POS)
+	("Sales Invoice", "is_return", "hidden", "1", "Check"),        # Is Return (Credit Note)
+	("Sales Invoice", "is_debit_note", "hidden", "1", "Check"),    # Is Rate Adjustment Entry (Debit Note)
+	("Sales Invoice", "apply_tds", "hidden", "1", "Check"),        # Consider for Tax Withholding
+	("Sales Invoice", "scan_barcode", "hidden", "1", "Check"),     # Scan Barcode
+	("Sales Invoice", "update_stock", "hidden", "1", "Check"),     # Update Stock
+	("Sales Invoice", "time_sheet_list", "hidden", "1", "Check"),  # Time Sheet List (section)
+	("Sales Invoice", "timesheets", "hidden", "1", "Check"),       # Time Sheet List (table)
 ]
 
 
 def _set_property(doctype, fieldname, prop, value, property_type):
 	"""Idempotent Property Setter upsert (doctype-level when fieldname is None)."""
-	existing = frappe.db.get_value("Property Setter", {"doc_type": doctype, "property": prop}, "name")
+	# Key the existence check on field_name too — otherwise several field-level
+	# setters that share a (doc_type, property) pair (e.g. many ``hidden`` fields on
+	# Sales Invoice) collide and only the first is ever created.
+	filters = {"doc_type": doctype, "property": prop}
+	if fieldname:
+		filters["field_name"] = fieldname
+	existing = frappe.db.get_value("Property Setter", filters, "name")
 	if existing:
 		frappe.db.set_value("Property Setter", existing, "value", str(value))
 		return

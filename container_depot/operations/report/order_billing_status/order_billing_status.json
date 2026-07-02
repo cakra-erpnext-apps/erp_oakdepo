@@ -1,0 +1,22 @@
+{
+ "add_total_row": 0,
+ "columns": [],
+ "disabled": 0,
+ "doctype": "Report",
+ "filters": [],
+ "is_standard": "Yes",
+ "module": "Operations",
+ "name": "Order Billing Status",
+ "prepared_report": 0,
+ "ref_doctype": "Container Booking",
+ "report_name": "Order Billing Status",
+ "report_type": "Script Report",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Container Depot"},
+  {"role": "Commercial"},
+  {"role": "Admin Ops"},
+  {"role": "Cashier"},
+  {"role": "Management"}
+ ]
+}

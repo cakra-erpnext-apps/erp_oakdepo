@@ -1,7 +1,7 @@
 {
  "app": "container_depot",
  "charts": [],
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardInvoicing\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
  "creation": "2026-07-02 08:32:46.648541",
  "custom_blocks": [],
  "docstatus": 0,
@@ -166,6 +166,44 @@
    "link_to": "Periodic Test",
    "link_type": "DocType",
    "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Invoicing",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Order Billing Status",
+   "link_count": 0,
+   "link_to": "Order Billing Status",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Invoice",
+   "link_count": 0,
+   "link_to": "Sales Invoice",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "OAK Monthly Invoice",
+   "link_count": 0,
+   "link_to": "OAK Monthly Invoice",
+   "link_type": "DocType",
+   "onboard": 0,
    "type": "Link"
   },
   {

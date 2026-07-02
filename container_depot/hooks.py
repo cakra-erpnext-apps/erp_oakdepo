@@ -47,8 +47,14 @@ doc_events = {
 	# Keep an Container Booking's payment_status in step with its Sales Invoice when
 	# a payment is recorded / reversed. Scoped to bookings only.
 	"Payment Entry": {
-		"on_submit": "container_depot.operations.doctype.container_booking.container_booking.on_payment_entry_change",
-		"on_cancel": "container_depot.operations.doctype.container_booking.container_booking.on_payment_entry_change",
+		"on_submit": [
+			"container_depot.operations.doctype.container_booking.container_booking.on_payment_entry_change",
+			"container_depot.operations.doctype.survey_order.survey_order.on_payment_entry_change",
+		],
+		"on_cancel": [
+			"container_depot.operations.doctype.container_booking.container_booking.on_payment_entry_change",
+			"container_depot.operations.doctype.survey_order.survey_order.on_payment_entry_change",
+		],
 	},
 	# Keep a Container Booking pinned to a VALID Sales Invoice. EVERY handler below is a
 	# no-op unless a Container Booking links the invoice (or its amended_from), so general
@@ -57,9 +63,30 @@ doc_events = {
 	#   submit -> resync the booking's payment_status from the invoice
 	#   cancel -> mark the booking Unpaid so it can be regenerated
 	"Sales Invoice": {
-		"after_insert": "container_depot.operations.doctype.container_booking.container_booking.relink_amended_invoice",
-		"on_submit": "container_depot.operations.doctype.container_booking.container_booking.sync_booking_on_invoice_submit",
-		"on_cancel": "container_depot.operations.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
+		# A generated (consolidated) invoice's line items are frozen — no manual add /
+		# remove / edit. No-op on ordinary invoices (no billed-sources manifest).
+		"validate": [
+			"container_depot.consolidated_billing.protect_consolidated_items",
+		],
+		"after_insert": [
+			"container_depot.operations.doctype.container_booking.container_booking.relink_amended_invoice",
+			"container_depot.operations.doctype.survey_order.survey_order.relink_amended_invoice",
+		],
+		"on_submit": [
+			"container_depot.operations.doctype.container_booking.container_booking.sync_booking_on_invoice_submit",
+			"container_depot.operations.doctype.survey_order.survey_order.sync_survey_on_invoice_submit",
+		],
+		"on_cancel": [
+			"container_depot.operations.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
+			"container_depot.operations.doctype.survey_order.survey_order.sync_survey_on_invoice_cancel",
+			# Roll a generated invoice's orders back to un-invoiced (no-op otherwise).
+			"container_depot.consolidated_billing.rollback_billed_sources",
+		],
+		# Discarding a generated DRAFT invoice rolls its orders back to un-invoiced.
+		# Runs before Frappe's link-integrity check, so it also unblocks the delete.
+		"on_trash": [
+			"container_depot.consolidated_billing.rollback_billed_sources",
+		],
 	},
 }
 
@@ -168,7 +195,9 @@ jinja = {
 # website — set logo navbar web/portal dari env (lihat branding.py)
 update_website_context = "container_depot.branding.update_website_context"
 
-# doctype js = {"doctype" : "public/js/doctype.js"}
+# Client script for standard ERPNext Sales Invoice — surfaces a visible
+# "Batalkan & Kembalikan Order" button on generated (consolidated) invoices.
+doctype_js = {"Sales Invoice": "public/js/sales_invoice.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree = {"doctype" : "doctype_tree.js"}
 # doctype_calendar = {"doctype" : "public/js/doctype_calendar.js"}
