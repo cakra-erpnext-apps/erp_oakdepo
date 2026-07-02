@@ -1,390 +1,420 @@
 {
  "app": "container_depot",
- "creation": "2026-05-21 16:50:00.000000",
+ "charts": [],
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "creation": "2026-07-02 08:32:46.648541",
+ "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
  "hide_custom": 0,
- "icon": "ship",
+ "icon": "stock",
+ "idx": 0,
  "is_hidden": 0,
  "label": "Container Depot",
- "module": "Operations",
- "name": "Container Depot",
- "owner": "Administrator",
- "parent_page": "",
- "public": 1,
- "type": "Workspace",
- "title": "Container Depot",
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
  "links": [
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Bookings",
-   "type": "Card Break",
-   "doctype": "Workspace Link"
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Container Booking",
+   "link_count": 0,
    "link_to": "Container Booking",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Booking Code",
+   "link_count": 0,
    "link_to": "Booking Code",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Order Bongkar",
+   "link_count": 0,
    "link_to": "Order Bongkar",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Order Muat",
+   "link_count": 0,
    "link_to": "Order Muat",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Depot Contract",
+   "link_count": 0,
    "link_to": "Depot Contract",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Container Leasing",
+   "link_count": 0,
    "link_to": "Container Leasing",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Gate & Yard",
-   "type": "Card Break",
-   "doctype": "Workspace Link"
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Gate Entry",
+   "link_count": 0,
    "link_to": "Gate Entry",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Inspection (EIR)",
+   "link_count": 0,
    "link_to": "Inspection",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Cleaning Order",
+   "link_count": 0,
    "link_to": "Cleaning Order",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Cleaning Certificate",
+   "link_count": 0,
    "link_to": "Cleaning Certificate",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "M&R (Maintenance & Repair)",
+   "link_count": 0,
    "link_to": "Repair Order",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Container Movement",
+   "link_count": 0,
    "link_to": "Container Movement",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Survey Order",
+   "link_count": 0,
+   "link_to": "Survey Order",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Periodic Test",
+   "link_count": 0,
    "link_to": "Periodic Test",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Master Data",
-   "type": "Card Break",
-   "doctype": "Workspace Link"
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Container",
+   "link_count": 0,
    "link_to": "Container",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Cargo",
+   "link_count": 0,
    "link_to": "Cargo",
    "link_type": "DocType",
    "onboard": 0,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Customer",
+   "link_count": 0,
    "link_to": "Customer",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Equipment Maintenance",
+   "link_count": 0,
    "link_to": "Equipment Maintenance",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Fuel Log",
+   "link_count": 0,
    "link_to": "Fuel Log",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Gasket Inventory",
+   "link_count": 0,
    "link_to": "Gasket Inventory",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Depot",
+   "link_count": 0,
    "link_to": "Depot",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Inspection Damage Code",
+   "link_count": 0,
    "link_to": "Inspection Damage Code",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Inspection Repair Code",
+   "link_count": 0,
    "link_to": "Inspection Repair Code",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Inspection Checklist Item",
+   "link_count": 0,
    "link_to": "Inspection Checklist Item",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Cleaning Checklist Item",
+   "link_count": 0,
    "link_to": "Cleaning Checklist Item",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Yard Zone",
+   "link_count": 0,
    "link_to": "Yard Zone",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Yard Placement Rule",
+   "link_count": 0,
    "link_to": "Yard Placement Rule",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Depot Service Menu",
+   "link_count": 0,
    "link_to": "Depot Service Menu",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "SST & Audit",
-   "type": "Card Break",
-   "doctype": "Workspace Link"
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Self Service Terminal",
+   "link_count": 0,
    "link_to": "Self Service Terminal",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "SST Activity Log",
+   "link_count": 0,
    "link_to": "SST Activity Log",
    "link_type": "DocType",
    "onboard": 1,
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Reports",
-   "type": "Card Break",
-   "doctype": "Workspace Link"
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Daily Operations Report",
+   "link_count": 0,
    "link_to": "Daily Operations Report",
    "link_type": "Report",
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "onboard": 0,
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Container Status Report",
+   "link_count": 0,
    "link_to": "Container Status Report",
    "link_type": "Report",
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "onboard": 0,
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Gasket Inventory Status",
+   "link_count": 0,
    "link_to": "Gasket Inventory Status",
    "link_type": "Report",
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "onboard": 0,
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Yard Utilization Location",
+   "link_count": 0,
    "link_to": "Yard Utilization Location",
    "link_type": "Report",
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "onboard": 0,
+   "type": "Link"
   },
   {
    "hidden": 0,
    "is_query_report": 0,
    "label": "Inventory KPI per Principal",
+   "link_count": 0,
    "link_to": "Inventory KPI per Principal",
    "link_type": "Report",
-   "type": "Link",
-   "doctype": "Workspace Link"
+   "onboard": 0,
+   "type": "Link"
   }
- ]
+ ],
+ "modified": "2026-07-02 08:32:46.648541",
+ "modified_by": "Administrator",
+ "module": "Operations",
+ "name": "Container Depot",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 0.0,
+ "shortcuts": [],
+ "title": "Container Depot",
+ "type": "Workspace"
 }
