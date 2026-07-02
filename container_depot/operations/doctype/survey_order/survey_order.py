@@ -2,9 +2,11 @@
 
 Draft → (submit) → Payment Pending (Cash) / Submitted (TOP). Each row in the
 ``charges`` table is one survey charge for one container (container optional).
-On submit a submitted (Unpaid) Sales Invoice is raised for the Paid To with one
-line per charge. Cancelling the Survey Order rolls the invoice back (cancel),
-unless it already has a payment.
+On submit, **Cash** raises a DRAFT Sales Invoice (one line per charge) for the
+Paid To — left as draft so the user can review / add tax before submitting &
+collecting payment. **TOP** raises no invoice (billed later via the per-customer
+invoice run). Cancelling the Survey Order rolls its invoice back: a draft is
+deleted, a submitted one is cancelled (blocked if it already has a payment).
 """
 
 import frappe
@@ -45,14 +47,19 @@ class SurveyOrder(Document):
             frappe.throw("Total harus lebih dari 0.")
 
     def on_submit(self):
-        self._create_invoice()
-        self.db_set("status", "Payment Pending" if self.payment_type == "Cash" else "Submitted")
+        if self.payment_type == "Cash":
+            # Cash: raise a submitted (Unpaid) Sales Invoice now — just awaiting payment.
+            self._create_invoice()
+            self.db_set("status", "Payment Pending")
+        else:
+            # TOP: no invoice yet — billed later via the per-customer invoice run.
+            self.db_set("status", "Submitted")
 
     def _create_invoice(self):
         if self.sales_invoice:
             return
-        # Cash bills due today; TOP bills on 30-day terms.
-        due_days = 0 if self.payment_type == "Cash" else 30
+        # Cash bills due today (only Cash reaches this path).
+        due_days = 0
         lines = []
         for c in self.charges:
             if not c.item:
@@ -82,32 +89,34 @@ class SurveyOrder(Document):
                 "Gagal membuat Sales Invoice — site belum invoice-ready "
                 "(cek default Company & Customer). Survey Order tidak jadi disubmit."
             )
-        # User confirmed: raise the invoice as Submitted (Unpaid).
-        si = frappe.get_doc("Sales Invoice", inv)
-        si.flags.ignore_permissions = True
-        si.submit()
-        self.db_set("sales_invoice", si.name)
+        # Leave the invoice as a DRAFT so the user can review / add tax before
+        # submitting & collecting payment.
+        self.db_set("sales_invoice", inv)
 
     def on_cancel(self):
         self._rollback_invoice()
         self.db_set("status", "Cancelled")
 
     def _rollback_invoice(self):
-        """Cancel the linked Sales Invoice on rollback; block if it's been paid."""
+        """Roll back the linked Sales Invoice on cancel; block if it's been paid."""
         if not self.sales_invoice or not frappe.db.exists("Sales Invoice", self.sales_invoice):
             return
         si = frappe.get_doc("Sales Invoice", self.sales_invoice)
         if si.docstatus == 2:  # already cancelled — nothing to roll back
             return
+        if si.docstatus == 0:  # still a draft — unlink then delete it
+            name = si.name
+            self.db_set("sales_invoice", None)  # clear the link so delete isn't blocked
+            frappe.delete_doc("Sales Invoice", name, ignore_permissions=True)
+            return
         paid = flt(si.grand_total) - flt(si.outstanding_amount)
-        if si.docstatus == 1 and paid > 0:
+        if paid > 0:
             frappe.throw(
                 f"Sales Invoice {si.name} sudah menerima pembayaran ({paid:.2f}). "
                 "Batalkan / refund Payment Entry-nya dulu sebelum cancel Survey Order."
             )
-        if si.docstatus == 1:
-            si.flags.ignore_permissions = True
-            si.cancel()
+        si.flags.ignore_permissions = True
+        si.cancel()
 
 
 # ── Whitelisted helpers used by the client form ───────────────────────────────

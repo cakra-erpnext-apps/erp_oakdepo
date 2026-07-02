@@ -33,6 +33,7 @@ frappe.ui.form.on("Survey Order", {
 				const ctx = r.message || {};
 				frm.set_value("price_list", ctx.price_list || null);
 				if (ctx.currency) frm.set_value("currency", ctx.currency);
+				sync_charge_currency(frm);
 				if (!ctx.price_list) {
 					frappe.show_alert({
 						message: __("Paid To ini belum punya default Price List — harga charge diisi manual."),
@@ -42,11 +43,23 @@ frappe.ui.form.on("Survey Order", {
 			},
 		});
 	},
+
+	// Currency is header-level; push it into every charge row so the grid's Price
+	// column formats with the chosen currency. The child `currency` field drives
+	// the Price field's `options`, and its fetch_from only fills on save — so we
+	// sync it live here.
+	currency(frm) {
+		sync_charge_currency(frm);
+	},
 });
 
 // Charge grid: item picker filtered by the header price list; auto-price; header total.
 frappe.ui.form.on("Survey Order Charge", {
-	charges_add: (frm) => compute_total(frm),
+	charges_add(frm, cdt, cdn) {
+		// New row inherits the header currency so its Price cell formats correctly.
+		if (frm.doc.currency) frappe.model.set_value(cdt, cdn, "currency", frm.doc.currency);
+		compute_total(frm);
+	},
 	charges_remove: (frm) => compute_total(frm),
 
 	item(frm, cdt, cdn) {
@@ -69,4 +82,15 @@ frappe.ui.form.on("Survey Order Charge", {
 function compute_total(frm) {
 	const total = (frm.doc.charges || []).reduce((s, c) => s + flt(c.price), 0);
 	frm.set_value("total", total);
+}
+
+// Copy the header currency onto every charge row and re-render the grid so the
+// Price column shows the selected currency's symbol/format immediately.
+function sync_charge_currency(frm) {
+	(frm.doc.charges || []).forEach((row) => {
+		if (frm.doc.currency && row.currency !== frm.doc.currency) {
+			frappe.model.set_value(row.doctype, row.name, "currency", frm.doc.currency);
+		}
+	});
+	frm.refresh_field("charges");
 }

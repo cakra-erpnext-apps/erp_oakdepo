@@ -41,7 +41,7 @@
    "label": "Payment Type",
    "options": "TOP\nCash",
    "reqd": 1,
-   "description": "Cash → invoice due hari ini, status Payment Pending. TOP → due +30 hari, status Submitted."
+   "description": "Cash → langsung buat Sales Invoice DRAFT (review/tambah tax lalu submit manual), status Payment Pending. TOP → tanpa invoice; ditagih nanti saat generate invoice per customer, status Submitted."
   },
   {
    "fieldname": "column_break_head",
@@ -92,7 +92,6 @@
    "label": "Notes"
   },
   {
-   "collapsible": 1,
    "fieldname": "status_section",
    "fieldtype": "Section Break",
    "label": "Status"
