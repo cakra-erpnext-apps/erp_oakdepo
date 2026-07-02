@@ -261,10 +261,12 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
-	# ---- B7 additions (postpaid consolidated billing) ------------------
-	"OAK Billing Run": {
+	# ---- Survey Order (third-party survey charges billed to Paid To) ----
+	# Same tier as OAK Monthly Invoice (customer billing doc, submittable):
+	# Commercial/Admin Ops act; Customer (Paid To) & Management view-only.
+	"Survey Order": {
+		"Customer":          {"read": 1, "report": 1, "export": 1},
 		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1, "export": 1},
-		"Cashier":           {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
