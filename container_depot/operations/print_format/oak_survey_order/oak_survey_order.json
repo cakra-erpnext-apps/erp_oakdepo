@@ -1,0 +1,9 @@
+{
+  "name": "OAK Survey Order",
+  "doc_type": "Survey Order",
+  "module": "Operations",
+  "standard": "Yes",
+  "custom_format": 1,
+  "print_format_type": "Jinja Template",
+  "doctype": "Print Format"
+}

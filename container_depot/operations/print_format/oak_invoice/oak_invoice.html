@@ -1,0 +1,118 @@
+{%- macro rp(v) -%}{{ "{:,.0f}".format(frappe.utils.flt(v)).replace(",", ".") }}{%- endmacro -%}
+{%- set _bulan = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"] -%}
+{%- set _pd = frappe.utils.getdate(doc.posting_date) -%}
+<div class="oak-inv" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
+
+  <!-- ============ KOP / LETTERHEAD ============ -->
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="width:34%; vertical-align:middle; border:none; padding:0;">
+        <img src="{{ get_logo_pdf() }}" style="max-height:82px; max-width:100%;">
+      </td>
+      <td style="vertical-align:top; border:none; padding:0 6px;">
+        <div style="font-size:23px; font-weight:bold; color:#222; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
+        <div style="font-size:10.5px; color:#555; line-height:1.4; margin-top:3px;">
+          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
+          Kota Medan Sumatera Utara 20525<br>
+          Indonesia<br>
+          No Telp : 061-42064205 / 061-48732784
+        </div>
+      </td>
+      <td style="width:18%; vertical-align:bottom; text-align:right; border:none; padding:0;">
+        <div style="font-size:27px; color:#333; letter-spacing:1px;">INVOICE</div>
+      </td>
+    </tr>
+  </table>
+  <div style="border-bottom:1px solid #cfcfcf; margin:6px 0 10px;"></div>
+
+  <!-- ============ INVOICE TO + META ============ -->
+  <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">
+    <tr>
+      <td style="width:54%; vertical-align:top; border:none; padding:0 12px 0 0;">
+        <div style="color:#777; font-size:10.5px;">INVOICE TO :</div>
+        <div style="font-weight:bold; font-size:13.5px; margin-top:3px;">{{ doc.customer_name or doc.customer }}</div>
+        <div style="font-size:10.5px; color:#555; line-height:1.4; margin-top:2px;">{{ doc.address_display or "" }}</div>
+      </td>
+      <td style="width:46%; vertical-align:top; border:none; padding:0;">
+        <table style="width:100%; border-collapse:collapse; background-color:#ececec; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+          <tr><td style="padding:4px 8px; color:#666; width:40%; border:none;">INVOICE NO</td><td style="padding:4px 8px; border:none;">: {{ doc.name }}</td></tr>
+          <tr><td style="padding:4px 8px; color:#666; border:none;">INVOICE DATE</td><td style="padding:4px 8px; border:none;">: {{ _pd.day }} {{ _bulan[_pd.month] }} {{ _pd.year }}</td></tr>
+          <tr><td style="padding:4px 8px; color:#666; border:none;">REF NO</td><td style="padding:4px 8px; border:none;">: {{ doc.po_no or "" }}</td></tr>
+          <tr><td style="padding:4px 8px; color:#666; border:none;">FORMAT NO</td><td style="padding:4px 8px; border:none;">: FM-FIN-INV-02-01</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============ ITEMS ============ -->
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="color:#fff;">
+        <th style="padding:7px 8px; text-align:left; width:11%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">ITEM NO</th>
+        <th style="padding:7px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">ITEM DESCRIPTION</th>
+        <th style="padding:7px 8px; text-align:center; width:8%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">QTY</th>
+        <th style="padding:7px 8px; text-align:right; width:15%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">PRICE</th>
+        <th style="padding:7px 8px; text-align:right; width:14%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">DISCOUNT</th>
+        <th style="padding:7px 8px; text-align:right; width:16%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">TOTAL</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in doc.items %}
+      <tr style="border-bottom:1px solid #e2e2e2;">
+        <td style="padding:7px 8px; border:none;">{{ row.item_code or "" }}</td>
+        <td style="padding:7px 8px; border:none;">{{ row.description or row.item_name or "" }}</td>
+        <td style="padding:7px 8px; text-align:center; border:none;">{{ (row.qty or 0)|int }}</td>
+        <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.rate) }}</td>
+        <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.discount_amount) }}</td>
+        <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- ============ REMARKS + TOTALS ============ -->
+  <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+    <tr>
+      <td style="width:54%; vertical-align:top; border:none; padding:0 12px 0 0;">
+        <div style="background-color:#ececec; -webkit-print-color-adjust:exact; print-color-adjust:exact; padding:5px 8px; font-weight:bold; font-size:11px;">REMARKS</div>
+        <div style="padding:7px 4px; font-size:11px; white-space:pre-line;">{{ doc.remarks or "" }}</div>
+      </td>
+      <td style="width:46%; vertical-align:top; border:none; padding:0;">
+        <table style="width:100%; border-collapse:collapse;">
+          <tr><td style="padding:5px 8px; font-weight:bold; border:none;">Sub Total</td><td style="padding:5px 8px; text-align:right; font-weight:bold; border:none;">{{ rp(doc.total) }}</td></tr>
+          <tr><td style="padding:5px 8px; border:none;">Diskon</td><td style="padding:5px 8px; text-align:right; border:none;">{{ rp(doc.discount_amount) }}</td></tr>
+          <tr><td style="padding:5px 8px; border:none;">PPN</td><td style="padding:5px 8px; text-align:right; border:none;">{{ rp(doc.total_taxes_and_charges) }}</td></tr>
+          <tr style="color:#fff;">
+            <td style="padding:7px 8px; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">Total</td>
+            <td style="padding:7px 8px; text-align:right; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">{{ rp(doc.grand_total) }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============ CREATED BY + NOTE ============ -->
+  <table style="width:100%; border-collapse:collapse; margin-top:16px;">
+    <tr>
+      <td style="width:38%; vertical-align:top; border:none; padding:0;">
+        <div style="font-size:10px; color:#666;">CREATED BY :</div>
+        <div style="height:64px;"></div>
+        <div style="border-top:1px dotted #999; width:78%;"></div>
+        <div style="font-size:10px; color:#444; margin-top:2px;">{{ frappe.db.get_value("User", doc.owner, "full_name") or doc.owner }}</div>
+      </td>
+      <td style="vertical-align:top; border:none; padding:0; font-size:10px; color:#333;">
+        <strong>Note :</strong>
+        <ol style="margin:3px 0 0 16px; padding:0; line-height:1.45;">
+          <li>Batas pembatalan pembayaran lift off / lift on bisa dikembalikan pada tanggal yang sama.</li>
+          <li>Untuk revisi/batal invoice maksimal 3 hari setelah invoice terbit.</li>
+          <li>Pembayaran dapat transfer ke rekening :<br>
+            Bank Bca<br>
+            No. Rekening: 195-612-323-3<br>
+            Atas Nama PT. Oasis Anugerah Kasih
+          </li>
+        </ol>
+      </td>
+    </tr>
+  </table>
+
+</div>

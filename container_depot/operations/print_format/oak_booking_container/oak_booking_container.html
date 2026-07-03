@@ -1,0 +1,63 @@
+<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="width:28%; vertical-align:middle; border:none; padding:0;">
+        <img src="{{ get_logo_pdf() }}" style="max-height:76px; max-width:100%;">
+      </td>
+      <td style="vertical-align:middle; border:none; padding:0 6px;">
+        <div style="font-size:20px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
+        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
+          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
+          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
+          No Telp : 061-42064205 / 061-48732784
+        </div>
+      </td>
+      <td style="width:24%; vertical-align:middle; text-align:right; border:none; padding:0;">
+        <div style="font-size:17px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">BOOKING CONTAINER</div>
+        {% if qr_data_uri(doc.name) %}<img src="{{ qr_data_uri(doc.name) }}" style="width:88px; height:88px; margin-top:4px;">{% endif %}
+        <div style="font-size:11px; font-weight:bold;">{{ doc.name }}</div>
+      </td>
+    </tr>
+  </table>
+  <div style="border-bottom:2px solid #6f9b3f; margin:6px 0 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact;"></div>
+
+  <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px;">
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('booking_status') or '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Payment</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('payment_type') or '-' }} / {{ doc.get('payment_status') or '-' }}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">Depot / Branch</td><td style="border:none; padding:2px 6px;">: {{ doc.get('depot') or '-' }}{% if doc.get('branch') %} &middot; {{ doc.branch }}{% endif %}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">DO Ref</td><td style="border:none; padding:2px 6px;">: {{ doc.get('do_reference') or '-' }}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">Shipper / Angkutan</td><td style="border:none; padding:2px 6px;">: {{ doc.get('customer') or '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">Tank Owner</td><td style="border:none; padding:2px 6px;">: {{ doc.get('principal') or '-' }}</td>
+    </tr>
+  </table>
+
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="color:#fff;">
+        {% for h in ['#','CONTAINER NO','CONDITION','CARGO','TRUCK PLATE','DRIVER','R/O'] %}
+        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in doc.items %}
+      <tr style="border-bottom:1px solid #e2e2e2;">
+        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('container_no') or row.get('container') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('condition') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('cargo') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('truck_plate') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('driver') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('ro') or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if doc.get('remarks') %}<p style="font-size:11px; margin-top:10px;"><strong>Remarks:</strong> {{ doc.remarks }}</p>{% endif %}
+</div>

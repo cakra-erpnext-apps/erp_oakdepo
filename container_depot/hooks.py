@@ -171,6 +171,7 @@ jinja = {
 	"methods": [
 		"container_depot.branding.get_logo_main",
 		"container_depot.branding.get_logo_pdf",
+		"container_depot.print_utils.qr_data_uri",
 	]
 }
 

@@ -1,0 +1,68 @@
+{%- macro rp(v) -%}{{ "{:,.0f}".format(frappe.utils.flt(v)).replace(",", ".") }}{%- endmacro -%}
+<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="width:30%; vertical-align:middle; border:none; padding:0;">
+        <img src="{{ get_logo_pdf() }}" style="max-height:80px; max-width:100%;">
+      </td>
+      <td style="vertical-align:top; border:none; padding:0 6px;">
+        <div style="font-size:21px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
+        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
+          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
+          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
+          No Telp : 061-42064205 / 061-48732784
+        </div>
+      </td>
+      <td style="width:20%; vertical-align:bottom; text-align:right; border:none; padding:0;">
+        <div style="font-size:20px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">SURVEY ORDER</div>
+      </td>
+    </tr>
+  </table>
+  <div style="border-bottom:1px solid #cfcfcf; margin:6px 0 10px;"></div>
+
+  <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">
+    <tr>
+      <td style="width:54%; vertical-align:top; border:none; padding:0 12px 0 0;">
+        <div style="color:#777; font-size:10.5px;">PAID TO :</div>
+        <div style="font-weight:bold; font-size:13.5px; margin-top:3px;">{{ doc.get('paid_to') or '-' }}</div>
+      </td>
+      <td style="width:46%; vertical-align:top; border:none; padding:0;">
+        <table style="width:100%; border-collapse:collapse; background-color:#ececec; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+          <tr><td style="padding:4px 8px; color:#666; width:42%; border:none;">NO</td><td style="padding:4px 8px; border:none;">: {{ doc.name }}</td></tr>
+          <tr><td style="padding:4px 8px; color:#666; border:none;">PAYMENT</td><td style="padding:4px 8px; border:none;">: {{ doc.get('payment_type') or '-' }}</td></tr>
+          <tr><td style="padding:4px 8px; color:#666; border:none;">STATUS</td><td style="padding:4px 8px; border:none;">: {{ doc.get('status') or '-' }}</td></tr>
+          <tr><td style="padding:4px 8px; color:#666; border:none;">INVOICE</td><td style="padding:4px 8px; border:none;">: {{ doc.get('sales_invoice') or doc.get('invoice_status') or '-' }}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="color:#fff;">
+        <th style="padding:7px 8px; text-align:left; width:6%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">#</th>
+        <th style="padding:7px 8px; text-align:left; width:16%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">SURVEY DATE</th>
+        <th style="padding:7px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">ITEM</th>
+        <th style="padding:7px 8px; text-align:left; width:20%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">CONTAINER</th>
+        <th style="padding:7px 8px; text-align:right; width:20%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">PRICE</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in doc.charges %}
+      <tr style="border-bottom:1px solid #e2e2e2;">
+        <td style="padding:7px 8px; border:none;">{{ loop.index }}</td>
+        <td style="padding:7px 8px; border:none;">{{ frappe.utils.formatdate(row.get('survey_date')) if row.get('survey_date') else '-' }}</td>
+        <td style="padding:7px 8px; border:none;">{{ row.get('item') or '-' }}</td>
+        <td style="padding:7px 8px; border:none;">{{ row.get('container_no') or row.get('container') or '-' }}</td>
+        <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.get('price')) }}</td>
+      </tr>
+      {% endfor %}
+      <tr style="color:#fff;">
+        <td colspan="4" style="padding:7px 8px; text-align:right; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">TOTAL ({{ doc.get('currency') or '' }})</td>
+        <td style="padding:7px 8px; text-align:right; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">{{ rp(doc.get('total')) }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% if doc.get('notes') %}<p style="font-size:11px; margin-top:10px;"><strong>Notes:</strong> {{ doc.notes }}</p>{% endif %}
+</div>

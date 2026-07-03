@@ -1,0 +1,9 @@
+{
+  "name": "OAK Bon Muat",
+  "doc_type": "Order Muat",
+  "module": "Operations",
+  "standard": "Yes",
+  "custom_format": 1,
+  "print_format_type": "Jinja Template",
+  "doctype": "Print Format"
+}

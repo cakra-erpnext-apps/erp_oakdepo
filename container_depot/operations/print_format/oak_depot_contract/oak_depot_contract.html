@@ -1,0 +1,67 @@
+{%- macro rp(v) -%}{{ "{:,.0f}".format(frappe.utils.flt(v)).replace(",", ".") }}{%- endmacro -%}
+<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="width:28%; vertical-align:middle; border:none; padding:0;">
+        <img src="{{ get_logo_pdf() }}" style="max-height:76px; max-width:100%;">
+      </td>
+      <td style="vertical-align:top; border:none; padding:0 6px;">
+        <div style="font-size:20px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
+        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
+          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
+          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
+          No Telp : 061-42064205 / 061-48732784
+        </div>
+      </td>
+      <td style="width:22%; vertical-align:bottom; text-align:right; border:none; padding:0;">
+        <div style="font-size:17px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">KONTRAK DEPO</div>
+        <div style="font-size:11px; font-weight:bold; margin-top:2px;">{{ doc.name }}</div>
+      </td>
+    </tr>
+  </table>
+  <div style="border-bottom:2px solid #6f9b3f; margin:6px 0 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact;"></div>
+
+  <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px;">
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Customer</td><td style="border:none; padding:2px 6px; width:34%;">: <strong>{{ doc.get('customer') or '-' }}</strong></td>
+      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('status') or '-' }}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">Payment</td><td style="border:none; padding:2px 6px;">: {{ doc.get('payment_type') or '-' }}{% if doc.get('payment_terms') %} &middot; {{ doc.payment_terms }}{% endif %}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">Credit Limit</td><td style="border:none; padding:2px 6px;">: {{ rp(doc.get('credit_limit')) }} {{ doc.get('currency') or '' }}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">Berlaku</td><td style="border:none; padding:2px 6px;">: {{ frappe.utils.formatdate(doc.get('valid_from')) if doc.get('valid_from') else '-' }} &rarr; {{ frappe.utils.formatdate(doc.get('valid_to')) if doc.get('valid_to') else '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">Price List</td><td style="border:none; padding:2px 6px;">: {{ doc.get('base_price_list') or '-' }}</td>
+    </tr>
+  </table>
+
+  <div style="font-size:11px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; margin-bottom:4px;">TARIF</div>
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="color:#fff;">
+        {% for h in ['#','ITEM / SERVICE','UOM','RATE','MANHOUR RATE'] %}
+        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in doc.tariff_lines %}
+      <tr style="border-bottom:1px solid #e2e2e2;">
+        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('item') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('uom') or '-' }}</td>
+        <td style="padding:6px 8px; text-align:right; border:none;">{{ rp(row.get('rate')) }}</td>
+        <td style="padding:6px 8px; text-align:right; border:none;">{{ rp(row.get('manhour_rate')) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table style="width:100%; border-collapse:collapse; margin-top:40px;">
+    <tr>
+      <td style="width:50%; border:none; text-align:center; font-size:11px;">Pihak Pertama<br><br><br><br>( PT. Oasis Anugerah Kasih )</td>
+      <td style="width:50%; border:none; text-align:center; font-size:11px;">Pihak Kedua<br><br><br><br>( {{ doc.get('customer') or '.....................' }} )</td>
+    </tr>
+  </table>
+</div>

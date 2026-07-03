@@ -1,0 +1,9 @@
+{
+  "name": "OAK Repair Order",
+  "doc_type": "Repair Order",
+  "module": "Operations",
+  "standard": "Yes",
+  "custom_format": 1,
+  "print_format_type": "Jinja Template",
+  "doctype": "Print Format"
+}

@@ -1,0 +1,67 @@
+<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="width:28%; vertical-align:middle; border:none; padding:0;">
+        <img src="{{ get_logo_pdf() }}" style="max-height:76px; max-width:100%;">
+      </td>
+      <td style="vertical-align:middle; border:none; padding:0 6px;">
+        <div style="font-size:20px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
+        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
+          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
+          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
+          No Telp : 061-42064205 / 061-48732784
+        </div>
+      </td>
+      <td style="width:24%; vertical-align:middle; text-align:right; border:none; padding:0;">
+        <div style="font-size:17px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">BON MUAT</div>
+        {% set _qr = qr_data_uri(doc.name) %}
+        {% if _qr %}<img src="{{ _qr }}" style="width:90px; height:90px; margin-top:4px;">{% endif %}
+        <div style="font-size:11px; font-weight:bold;">{{ doc.name }}</div>
+      </td>
+    </tr>
+  </table>
+  <div style="border-bottom:2px solid #6f9b3f; margin:6px 0 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact;"></div>
+
+  <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px;">
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Booking</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('booking') or '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('order_status') or '-' }}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">Shipper</td><td style="border:none; padding:2px 6px;">: {{ doc.get('shipper') or '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">Destination</td><td style="border:none; padding:2px 6px;">: {{ doc.get('destination') or '-' }}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">No. Pol / Angkutan</td><td style="border:none; padding:2px 6px;">: {{ doc.get('truck_plate') or '-' }}{% if doc.get('angkutan') %} &middot; {{ doc.angkutan }}{% endif %}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">Supir</td><td style="border:none; padding:2px 6px;">: {{ doc.get('driver_name') or '-' }}{% if doc.get('driver_phone') %} ({{ doc.driver_phone }}){% endif %}</td>
+    </tr>
+    <tr>
+      <td style="border:none; padding:2px 6px; color:#666;">Tgl Muat</td><td style="border:none; padding:2px 6px;">: {{ frappe.utils.formatdate(doc.get('tanggal_muat')) if doc.get('tanggal_muat') else '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">R/O</td><td style="border:none; padding:2px 6px;">: {{ doc.get('ro') or '-' }}</td>
+    </tr>
+  </table>
+
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr style="color:#fff;">
+        {% for h in ['#','CONTAINER NO','BOOKING CODE','STATUS','CLEANING CERT','REMARKS'] %}
+        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in doc.containers %}
+      <tr style="border-bottom:1px solid #e2e2e2;">
+        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('container_no') or row.get('container') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('booking_code') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('status_tag') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('cleaning_certificate') or '-' }}</td>
+        <td style="padding:6px 8px; border:none;">{{ row.get('remarks') or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if doc.get('notes') %}<p style="font-size:11px; margin-top:10px;"><strong>Catatan:</strong> {{ doc.notes }}</p>{% endif %}
+</div>

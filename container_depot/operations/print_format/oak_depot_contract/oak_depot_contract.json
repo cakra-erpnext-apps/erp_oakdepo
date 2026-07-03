@@ -1,0 +1,9 @@
+{
+  "name": "OAK Depot Contract",
+  "doc_type": "Depot Contract",
+  "module": "Operations",
+  "standard": "Yes",
+  "custom_format": 1,
+  "print_format_type": "Jinja Template",
+  "doctype": "Print Format"
+}
