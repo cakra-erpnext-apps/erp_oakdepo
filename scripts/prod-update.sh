@@ -42,13 +42,17 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "
   env/bin/pip install -e apps/container_depot --no-deps -q
 "
 
+
+log "patch CRM assign_to compatibility"
+docker cp scripts/patch-crm-assign-to.py erp_oakdepo_prod-backend-1:/tmp/patch-crm-assign-to.py
+docker exec erp_oakdepo_prod-backend-1 bash -lc "python3 /tmp/patch-crm-assign-to.py"
 log "backup site"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench && bench --site '$SITE' backup"
 
 log "migrate"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench && bench --site '$SITE' migrate"
 
-log "build assets"
+log "build bench assets"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "
   set -euo pipefail
   cd /home/frappe/frappe-bench
@@ -60,6 +64,21 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "
   bench build --apps crm
 "
 
+log "build container_depot PWA frontend on host"
+if [ -f frontend/package.json ]; then
+  docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$ROOT:/workspace" \
+    -w /workspace/frontend \
+    node:20-bullseye bash -lc '
+      set -euo pipefail
+      export COREPACK_HOME=/tmp/corepack
+      corepack yarn install --frozen-lockfile || corepack yarn install
+      corepack yarn build
+    '
+else
+  echo "skip container_depot PWA frontend: package.json not found"
+fi
 log "materialize assets for nginx"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "
   set -euo pipefail

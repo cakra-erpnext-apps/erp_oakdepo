@@ -24,12 +24,14 @@ RUN bench init frappe-bench \
 WORKDIR /home/frappe/frappe-bench
 
 COPY --chown=frappe:frappe scripts/install-apps.py /tmp/install-apps.py
+COPY --chown=frappe:frappe scripts/patch-crm-assign-to.py /tmp/patch-crm-assign-to.py
 
 ENV CYPRESS_INSTALL_BINARY=0 \
     PUPPETEER_SKIP_DOWNLOAD=1 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-RUN python3 /tmp/install-apps.py
+RUN python3 /tmp/install-apps.py \
+    && python3 /tmp/patch-crm-assign-to.py
 
 USER root
 RUN mkdir -p /scripts && chown frappe:frappe /scripts
