@@ -12,6 +12,7 @@
     "status",
     "container",
     "container_no",
+    "reff_doc",
     "depot",
     "column_break_1",
     "inspector",
@@ -34,6 +35,7 @@
     "exterior_photos",
     "inspection_photos_section",
     "item_photos",
+    "has_unsorted_photos",
     "damage_section",
     "has_damage",
     "damage_log",
@@ -122,6 +124,12 @@
       "hidden": 1,
       "label": "Container Number",
       "read_only": 1
+    },
+    {
+      "description": "Nomor dokumen referensi (opsional). Mengalir otomatis ke Cleaning Order & M&R yang dibuat dari EIR ini.",
+      "fieldname": "reff_doc",
+      "fieldtype": "Data",
+      "label": "Reff Doc"
     },
     {
       "fieldname": "depot",
@@ -255,11 +263,22 @@
       "label": "Foto Inspeksi"
     },
     {
-      "description": "Foto per item checklist (ditangkap di PWA). Tiap baris tampil Area + Item + foto, sesuai kategorinya.",
+      "allow_on_submit": 1,
+      "description": "Foto per item checklist (ditangkap di PWA). Tiap baris tampil Area + Item + foto, sesuai kategorinya. Baris tanpa Checklist Item = foto cepat belum disortir; admin mengisi section-nya (boleh setelah submit).",
       "fieldname": "item_photos",
       "fieldtype": "Table",
       "label": "Foto per Item",
       "options": "Inspection Item Photo"
+    },
+    {
+      "allow_on_submit": 1,
+      "default": "0",
+      "description": "Ada foto cepat yang belum diberi section. Dihitung otomatis; filter list untuk EIR yang perlu disortir.",
+      "fieldname": "has_unsorted_photos",
+      "fieldtype": "Check",
+      "in_standard_filter": 1,
+      "label": "Ada Foto Belum Disortir",
+      "read_only": 1
     },
     {
       "fieldname": "damage_section",

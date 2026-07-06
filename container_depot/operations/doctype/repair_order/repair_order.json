@@ -10,6 +10,7 @@
     "container",
     "container_no",
     "inspection",
+    "reff_doc",
     "warehouse",
     "status",
     "column_break_1",
@@ -71,6 +72,12 @@
       "fieldtype": "Link",
       "label": "Inspection Reference",
       "options": "Inspection"
+    },
+    {
+      "description": "Nomor dokumen referensi (opsional). Terisi otomatis dari EIR, bisa diubah manual.",
+      "fieldname": "reff_doc",
+      "fieldtype": "Data",
+      "label": "Reff Doc"
     },
     {
       "default": "Draft",

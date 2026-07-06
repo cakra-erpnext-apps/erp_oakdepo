@@ -148,6 +148,9 @@ export const labels = {
 	emptyDirty: "Empty Dirty",
 	laden: "Laden",
 	cargo: "Cargo", // Cargo (sets the container's Last Cargo on submit)
+	cargoSearch: "Cari cargo…", // Search cargo (searchable select)
+	selectPlaceholder: "Pilih…", // Generic searchable-select placeholder
+	selectSearch: "Cari…", // Generic searchable-select search box
 	cargoHint: "Mengubah Last Cargo container — tersimpan saat EIR disubmit.",
 	checklist: "Checklist Pemeriksaan", // Inspection checklist
 	colItem: "Item",
@@ -158,6 +161,20 @@ export const labels = {
 	addPhoto: "Tambah Foto", // Add photo
 	photoError: "Gagal mengunggah foto", // Photo upload failed
 	acceptableHint: "Kosongkan baris yang kondisinya baik (Acceptable).", // Leave good rows blank
+	// Bulk "foto cepat" (no section) + section search
+	bulkPhotoTitle: "Foto Cepat", // Quick photos (bulk, no section)
+	bulkPhotoHint: "Foto dulu tanpa pilih section — admin yang menyortir ke section-nya nanti.", // Shoot first, sort later
+	sectionSearch: "Cari section / item…", // Search section (area) or item
+	sectionSearchEmpty: "Tidak ada yang cocok.", // Nothing matched
+	// EIR photo sorting (admin)
+	eirSortTitle: "Sortir Foto", // Sort photos
+	eirSortDesc: "Beri section untuk foto cepat", // Assign a section to bulk photos
+	eirSortEmpty: "Tidak ada EIR dengan foto belum disortir.", // No EIR needs sorting
+	eirSortPhotosEmpty: "Semua foto sudah disortir. 🎉", // All photos sorted
+	eirSortPick: "Pilih section untuk foto ini", // Pick a section for this photo
+	eirSortAssigned: "Foto diberi section", // Photo assigned to a section
+	eirSortUnsortedCount: "foto belum disortir", // N photos unsorted
+	eirSortOpen: "Sortir", // Sort (button)
 	signOff: "Tanda Tangan & Catatan", // Sign-off
 	truckNo: "No. Truk", // Truck no
 	emkl: "EMKL",
@@ -167,6 +184,9 @@ export const labels = {
 	voucherHintIn: "EIR-In: data diambil dari Order Bongkar.",
 	voucherHintOut: "EIR-Out: data diambil dari Order Muat.",
 	eirRemarks: "Catatan", // Remarks
+	reffDoc: "Reff Doc", // Reference document (optional; flows EIR -> Cleaning/M&R)
+	reffDocHint: "No. dokumen referensi (opsional).", // reff doc hint
+	reffDocAutoHint: "Terisi dari EIR, bisa diubah.", // reff doc auto-filled hint (cleaning/M&R)
 	officer: "Petugas", // Officer
 	saveDraft: "Simpan Draf", // Save draft
 	submitEir: "Submit EIR",

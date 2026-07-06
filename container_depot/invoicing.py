@@ -38,6 +38,52 @@ def ensure_service_item():
 	return SERVICE_ITEM
 
 
+def ensure_receivable_account(company, currency):
+	"""Return a Receivable account (for ``company``) denominated in ``currency``,
+	creating it once under the default receivable's parent if absent.
+
+	Returns None when no currency is given or it matches the company currency —
+	the caller then falls back to ERPNext's default receivable (company currency).
+
+	Rationale: ERPNext derives a Payment Entry's currency from the invoice's
+	party (``debit_to``) account currency, NOT from the invoice's document
+	currency. So a USD invoice booked to the IDR default receivable yields an IDR
+	payment. Pointing a foreign-currency invoice at a same-currency receivable is
+	what makes ``Create > Payment`` come out in the invoice currency.
+	"""
+	if not company or not currency:
+		return None
+	company_currency = frappe.db.get_value("Company", company, "default_currency")
+	if currency == company_currency:
+		return None
+
+	existing = frappe.db.get_value(
+		"Account",
+		{"company": company, "account_currency": currency,
+		 "account_type": "Receivable", "is_group": 0, "disabled": 0},
+		"name",
+	)
+	if existing:
+		return existing
+
+	default_recv = frappe.db.get_value("Company", company, "default_receivable_account")
+	parent = frappe.db.get_value("Account", default_recv, "parent_account") if default_recv else None
+	if not parent:
+		return None  # unusual CoA — leave the default receivable in place
+
+	acc = frappe.get_doc({
+		"doctype": "Account",
+		"account_name": f"Piutang {currency}",
+		"parent_account": parent,
+		"company": company,
+		"account_currency": currency,
+		"account_type": "Receivable",
+		"is_group": 0,
+	})
+	acc.insert(ignore_permissions=True)
+	return acc.name
+
+
 def _resolve_tax_template(title_or_name, company):
 	"""Resolve a Sales Taxes and Charges Template by exact name, or by title +
 	company (template names get a ' - <abbr>' suffix on creation)."""
@@ -54,7 +100,7 @@ def _resolve_tax_template(title_or_name, company):
 
 def create_draft_sales_invoice(
 	customer, lines, due_days=30, posting_date=None, remarks=None, taxes_and_charges=None,
-	currency=None, selling_price_list=None, branch=None,
+	currency=None, selling_price_list=None, branch=None, conversion_rate=None,
 ):
 	"""Create (and return the name of) a Draft Sales Invoice.
 
@@ -89,11 +135,18 @@ def create_draft_sales_invoice(
 	if selling_price_list:
 		si.selling_price_list = selling_price_list
 	if currency:
-		# Bill in the price-list currency, value-as-is: no FX conversion (rate 1), so a
-		# USD list bills USD and an IDR list bills IDR. ERPNext only needs a non-zero rate.
+		# Bill in the price-list currency. Exchange rate is optional: default 1
+		# (value-as-is, no FX) but a caller may pass a real rate. Point a foreign
+		# invoice at a same-currency receivable so Create > Payment comes out in
+		# the invoice currency (ERPNext takes payment currency from debit_to, not
+		# the document currency).
+		rate = conversion_rate or 1
 		si.currency = currency
-		si.conversion_rate = 1
-		si.plc_conversion_rate = 1
+		si.conversion_rate = rate
+		si.plc_conversion_rate = rate
+		recv = ensure_receivable_account(company, currency)
+		if recv:
+			si.debit_to = recv
 
 	for ln in lines:
 		item_code = ln.get("item_code")

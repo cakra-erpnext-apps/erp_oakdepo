@@ -23,6 +23,13 @@ frappe.ui.form.on('Inspection', {
 				__('Continue'),
 			);
 		}
+		// "Search by section" for sorting bulk ("foto cepat") photos: quick-filter the
+		// item_photos grid by Area — including a "Belum disortir" bucket for the photos the
+		// operator dumped without a section. Works on submitted EIRs (item_photos is
+		// allow_on_submit) so the admin can sort after the fact.
+		if (!frm.is_new() && (frm.doc.item_photos || []).length) {
+			frm.add_custom_button(__('Filter Foto per Section'), () => filter_photos_by_section(frm));
+		}
 	},
 
 	// Ticking "Has Damage" opens a single-row entry dialog with VALID Link fields.
@@ -62,6 +69,49 @@ function revert_to_draft(frm) {
 		},
 	);
 }
+
+// --- Bulk photo sorting (Desk) ---
+// Prompt for a section and show only the matching item_photos rows. "(Belum disortir)"
+// isolates the bulk "foto cepat" that still need a checklist_item assigned; "(Semua)"
+// clears the filter.
+function filter_photos_by_section(frm) {
+	const areas = [...new Set((frm.doc.item_photos || []).map((r) => r.area).filter(Boolean))].sort();
+	const options = [__('(Semua)'), __('(Belum disortir)'), ...areas].join('\n');
+	frappe.prompt(
+		[{ fieldname: 'area', fieldtype: 'Select', label: __('Section / Area'), options, reqd: 1 }],
+		(v) => apply_photo_filter(frm, v.area),
+		__('Filter Foto per Section'),
+		__('Terapkan'),
+	);
+}
+
+function apply_photo_filter(frm, area) {
+	const grid = frm.fields_dict.item_photos && frm.fields_dict.item_photos.grid;
+	if (!grid) return;
+	const all = area === __('(Semua)');
+	const unsorted = area === __('(Belum disortir)');
+	(grid.grid_rows || []).forEach((gr) => {
+		const a = (gr.doc || {}).area;
+		const match = all || (unsorted ? !a : a === area);
+		if (gr.wrapper) $(gr.wrapper).toggle(!!match);
+	});
+}
+
+// When the admin assigns a section to a bulk photo in the grid, fill Area/Item at once
+// (fetch_from also does this, but set it explicitly so the filter above sees it live).
+frappe.ui.form.on('Inspection Item Photo', {
+	checklist_item(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (!row.checklist_item) return;
+		frappe.db
+			.get_value('Inspection Checklist Item', row.checklist_item, ['item_name', 'area'])
+			.then((r) => {
+				const ci = r.message || {};
+				frappe.model.set_value(cdt, cdn, 'area', ci.area);
+				frappe.model.set_value(cdt, cdn, 'item_name', ci.item_name);
+			});
+	},
+});
 
 // --- B-D2: Inspection Damage Entry grid fetch triggers (manual in-grid editing) ---
 // Mirror create_eir's mapping so a row built by hand matches one built by the

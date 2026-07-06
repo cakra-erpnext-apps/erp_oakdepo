@@ -23,6 +23,11 @@ const routes = [
 		component: () => import("@/pages/EirHistory.vue"),
 	},
 	{
+		path: "/eir/sort",
+		name: "EirSort",
+		component: () => import("@/pages/EirSort.vue"),
+	},
+	{
 		path: "/gate/history",
 		name: "GateHistory",
 		component: () => import("@/pages/GateHistory.vue"),

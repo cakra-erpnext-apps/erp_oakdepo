@@ -11,9 +11,14 @@
 				</p>
 				<p v-else class="text-sm text-gray-500">{{ labels.mrOrdersHint }}</p>
 			</div>
-			<button v-if="order" class="oak-btn oak-btn-secondary px-3 py-2" @click="backToList">
-				<Icon name="arrow-left" :size="16" /> {{ labels.mrBack }}
-			</button>
+			<div class="flex shrink-0 items-center gap-2">
+				<router-link v-if="!order" to="/mr/history" class="oak-btn oak-btn-secondary px-3 py-2">
+					<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+				</router-link>
+				<button v-if="order" class="oak-btn oak-btn-secondary px-3 py-2" @click="backToList">
+					<Icon name="arrow-left" :size="16" /> {{ labels.mrBack }}
+				</button>
+			</div>
 		</div>
 
 		<!-- Completed confirmation -->
@@ -91,12 +96,15 @@
 			<!-- Source warehouse (top) -->
 			<section class="oak-card p-4 space-y-1">
 				<label class="oak-label">{{ labels.mrWarehouse }}</label>
-				<select v-if="canEditWarehouse" v-model="warehouse" class="oak-input">
-					<option value="">— {{ labels.mrWarehousePick }} —</option>
-					<option v-for="w in order.warehouses" :key="w.name" :value="w.name">
-						{{ w.warehouse_name }}<span v-if="w.branch"> · {{ w.branch }}</span>
-					</option>
-				</select>
+				<SearchSelect
+					v-if="canEditWarehouse"
+					v-model="warehouse"
+					:options="order.warehouses"
+					:option-value="(w) => w.name"
+					:option-label="(w) => (w.branch ? `${w.warehouse_name} · ${w.branch}` : w.warehouse_name)"
+					:placeholder="labels.mrWarehousePick"
+					:search-placeholder="labels.selectSearch"
+				/>
 				<p v-else class="text-sm font-medium text-gray-800">{{ warehouseName(warehouse) || "—" }}</p>
 			</section>
 
@@ -258,6 +266,8 @@
 
 			<!-- General remarks (editable while building) -->
 			<section v-if="isEditable" class="oak-card p-4 space-y-2">
+				<label class="oak-label">{{ labels.reffDoc }}</label>
+				<input v-model.trim="reffDoc" type="text" class="oak-input" :placeholder="labels.reffDocAutoHint" />
 				<label class="oak-label">{{ labels.mrRemarks }}</label>
 				<textarea v-model="remarks" rows="2" class="oak-input"></textarea>
 			</section>
@@ -360,6 +370,7 @@ import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import SearchSelect from "@/components/SearchSelect.vue"
 
 const route = useRoute()
 const router = useRouter()
@@ -372,6 +383,7 @@ const order = ref(null)
 const completed = ref(null)
 
 const warehouse = ref("")
+const reffDoc = ref("")
 const used = ref([])
 const remarks = ref("")
 const ownerNote = ref("")
@@ -438,6 +450,7 @@ const detailRes = createResource({
 		savedOk.value = false
 		order.value = data
 		warehouse.value = data.warehouse || ""
+		reffDoc.value = data.reff_doc || ""
 		remarks.value = data.remarks || ""
 		ownerNote.value = ""
 		used.value = (data.used_items || []).map((u) =>
@@ -597,6 +610,7 @@ function saveDraft() {
 		repair_order: order.value.name,
 		used_items: JSON.stringify(items),
 		warehouse: warehouse.value || undefined,
+		reff_doc: reffDoc.value,
 		remarks: remarks.value || undefined,
 		submit: 0,
 	})
@@ -611,7 +625,7 @@ function complete() {
 
 // Auto-save while building: the used items (qty / remark / photos), the source warehouse
 // and the general remarks each trigger a debounced draft save.
-watch([warehouse, remarks], scheduleSave)
+watch([warehouse, reffDoc, remarks], scheduleSave)
 watch(used, scheduleSave, { deep: true })
 
 function backToList() {
@@ -625,6 +639,7 @@ function backToList() {
 	completed.value = null
 	used.value = []
 	warehouse.value = ""
+	reffDoc.value = ""
 	remarks.value = ""
 	ownerNote.value = ""
 	if (route.query.o) router.push({ query: {} })

@@ -10,6 +10,9 @@
 			<span v-if="branch" class="oak-chip shrink-0 bg-gray-100 text-gray-600">
 				<Icon name="map-pin" :size="12" /> {{ branch }}
 			</span>
+			<router-link to="/storage/history" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
+				<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+			</router-link>
 		</div>
 
 		<!-- Place an isotank -->

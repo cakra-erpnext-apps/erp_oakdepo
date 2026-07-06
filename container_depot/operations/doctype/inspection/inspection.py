@@ -30,6 +30,11 @@ class Inspection(Document):
 			if 0 < len(exterior_views) < 4:
 				frappe.msgprint(f"Warning: Only {len(exterior_views)} exterior photos uploaded. 4 views (Front, Back, Left, Right) recommended for EIR-In.")
 
+		# Bulk "foto cepat" (item_photos without a checklist item) still need sorting.
+		# Recomputed on every save — including when the admin assigns the last one → 0 —
+		# so the list filter "Ada Foto Belum Disortir" stays accurate.
+		self.has_unsorted_photos = 1 if any(not p.checklist_item for p in self.item_photos) else 0
+
 	def on_submit(self):
 		"""Update container status + last cargo when inspection is submitted"""
 		from container_depot.operations.container_activity import log_container_activity

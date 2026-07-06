@@ -65,7 +65,7 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 	returns the existing open order (Pending / In_Progress) if one already exists.
 	Returns the Cleaning Order name, or ``None`` when no cleaning is due."""
 	insp = frappe.db.get_value(
-		"Inspection", inspection, ["container", "tank_status", "depot"], as_dict=True
+		"Inspection", inspection, ["container", "tank_status", "depot", "reff_doc"], as_dict=True
 	)
 	if not insp or not insp.container or insp.tank_status != EMPTY_DIRTY:
 		return None
@@ -73,10 +73,14 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 		"Cleaning Order", {"container": insp.container, "status": ["in", ["Pending", "In_Progress"]]}
 	)
 	if existing:
+		# Backfill the reference doc from the EIR if the open order doesn't have one yet.
+		if insp.reff_doc and not frappe.db.get_value("Cleaning Order", existing, "reff_doc"):
+			frappe.db.set_value("Cleaning Order", existing, "reff_doc", insp.reff_doc, update_modified=False)
 		return existing
 	co = frappe.new_doc("Cleaning Order")
 	co.container = insp.container
 	co.inspection = inspection  # EIR -> Cleaning Order -> Certificate
+	co.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
 	co.status = "Pending"
 	# Carry the depot (for branch-scoped notifications) — from the EIR, else the container.
 	depot = insp.depot or frappe.db.get_value("Container", insp.container, "depot")
@@ -160,7 +164,7 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True):
 	if not rows:
 		return None
 	insp = frappe.db.get_value(
-		"Inspection", inspection, ["container", "depot"], as_dict=True
+		"Inspection", inspection, ["container", "depot", "reff_doc"], as_dict=True
 	)
 	if not insp or not insp.container:
 		return None
@@ -169,10 +173,14 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True):
 		# Make sure the open M&R points back at an EIR (the draft may pre-date this one).
 		if not frappe.db.get_value("Repair Order", existing, "inspection"):
 			frappe.db.set_value("Repair Order", existing, "inspection", inspection, update_modified=False)
+		# Backfill the reference doc from the EIR if the open order doesn't have one yet.
+		if insp.reff_doc and not frappe.db.get_value("Repair Order", existing, "reff_doc"):
+			frappe.db.set_value("Repair Order", existing, "reff_doc", insp.reff_doc, update_modified=False)
 		return existing
 	ro = frappe.new_doc("Repair Order")
 	ro.container = insp.container
 	ro.inspection = inspection  # EIR -> M&R -> (parts issued on completion)
+	ro.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
 	ro.status = "Draft"
 	ro.billing_status = "Unbilled"
 	depot = insp.depot or frappe.db.get_value("Container", insp.container, "depot")

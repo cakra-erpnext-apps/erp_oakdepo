@@ -12,6 +12,9 @@
 					<p class="text-xs text-gray-500">{{ mode === 'form' ? (header?.container_no || '') : labels.eirOutSubtitle }}</p>
 				</div>
 			</div>
+			<router-link v-if="mode === 'list'" to="/eir/history" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
+				<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+			</router-link>
 			<span v-if="mode === 'form' && eirCode" class="oak-chip bg-gray-100 text-gray-600">{{ eirCode }}</span>
 		</div>
 
@@ -158,6 +161,31 @@
 					</label>
 				</section>
 
+				<!-- Foto Cepat (bulk): foto tanpa perlu pilih section; admin menyortir belakangan. -->
+				<section class="oak-section space-y-3">
+					<div class="flex items-center gap-2">
+						<Icon name="camera" :size="16" class="text-brand-500" />
+						<p class="oak-section-title">{{ labels.bulkPhotoTitle }}</p>
+					</div>
+					<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
+					<div class="flex flex-wrap items-center gap-2">
+						<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
+							<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos, idx)">
+								<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+							</button>
+							<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="removeBulkPhoto(idx)">
+								<Icon name="x" :size="12" />
+							</button>
+						</div>
+						<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
+							<input type="file" accept="image/*" capture="environment" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
+							<span v-if="bulkUploading" class="text-xs">…</span>
+							<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photo }}</span></template>
+						</label>
+					</div>
+					<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
+				</section>
+
 				<!-- Current condition / new findings checklist -->
 				<section class="oak-card overflow-hidden">
 					<div class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
@@ -167,19 +195,38 @@
 						</div>
 						<p class="text-xs text-gray-400">{{ labels.acceptableHint }}</p>
 					</div>
-					<div v-for="g in groups" :key="g.area">
-						<p class="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">{{ g.area }}</p>
-						<div v-for="item in g.items" :key="item.item_code" class="border-b border-gray-100 px-4 py-3 last:border-b-0">
+					<div class="border-b border-gray-100 px-4 py-2.5">
+						<div class="relative">
+							<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" :size="15" /></span>
+							<input v-model.trim="sectionSearch" type="text" :placeholder="labels.sectionSearch" class="oak-input pl-9" />
+						</div>
+					</div>
+					<!-- Bounded scroller: keep the checklist from running far down on mobile. -->
+					<div class="max-h-[70vh] overflow-y-auto overscroll-contain">
+						<p v-if="!filteredGroups.length" class="px-4 py-4 text-center text-sm text-gray-400">{{ labels.sectionSearchEmpty }}</p>
+						<div v-for="g in filteredGroups" :key="g.area">
+							<p class="sticky top-0 z-10 border-b border-gray-100 bg-gray-50/95 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 backdrop-blur">{{ g.area }}</p>
+							<div v-for="item in g.items" :key="item.item_code" class="border-b border-gray-100 px-4 py-3 last:border-b-0">
 							<p class="text-sm font-semibold text-gray-800">{{ item.printed_no }}. {{ item.item_name }}</p>
 							<div class="mt-2 grid grid-cols-2 gap-2">
-								<select v-model="item.damage_code" class="oak-input px-2.5 py-2">
-									<option value="">— {{ labels.colDamage }} —</option>
-									<option v-for="d in damageCodes" :key="d.code" :value="d.code">{{ d.code }} — {{ d.description }}</option>
-								</select>
-								<select v-model="item.repair_code" class="oak-input px-2.5 py-2">
-									<option value="">— {{ labels.colRepair }} —</option>
-									<option v-for="r in repairCodes" :key="r.code" :value="r.code">{{ r.code }} — {{ r.description }}</option>
-								</select>
+								<SearchSelect
+									v-model="item.damage_code"
+									:options="damageCodes"
+									:option-value="(d) => d.code"
+									:option-label="(d) => `${d.code} — ${d.description}`"
+									:placeholder="labels.colDamage"
+									:search-placeholder="labels.selectSearch"
+									trigger-class="px-2.5 py-2"
+								/>
+								<SearchSelect
+									v-model="item.repair_code"
+									:options="repairCodes"
+									:option-value="(r) => r.code"
+									:option-label="(r) => `${r.code} — ${r.description}`"
+									:placeholder="labels.colRepair"
+									:search-placeholder="labels.selectSearch"
+									trigger-class="px-2.5 py-2"
+								/>
 							</div>
 							<div class="mt-2 flex flex-wrap items-center gap-2">
 								<div v-for="(url, idx) in item.photos" :key="url" class="relative">
@@ -198,6 +245,7 @@
 							</div>
 							<p v-if="item.photoErr" class="mt-1 text-xs text-red-600">{{ item.photoErr }}</p>
 							<input v-model.trim="item.remarks" type="text" :placeholder="labels.colRemarks" class="oak-input mt-2 px-2.5 py-2" />
+							</div>
 						</div>
 					</div>
 				</section>
@@ -285,6 +333,7 @@ import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
+import SearchSelect from "@/components/SearchSelect.vue"
 
 const ACCEPTABLE_DAMAGE = "v"
 const NO_ACTION_REPAIR = "X"
@@ -339,6 +388,12 @@ const rows = ref([])
 const damageCodes = ref([])
 const repairCodes = ref([])
 
+// Foto Cepat (bulk): photos without a section (blank item_code), sorted by admin later.
+const bulkPhotos = ref([])
+const bulkUploading = ref(false)
+const bulkErr = ref("")
+const sectionSearch = ref("")
+
 const exteriorOptions = [
 	{ value: "Clean", label: labels.eirOutClean, active: "border-leaf-500 bg-leaf-500 text-white" },
 	{ value: "Dirty", label: labels.eirOutDirty, active: "border-amber-500 bg-amber-500 text-white" },
@@ -383,6 +438,22 @@ const groups = computed(() => {
 			out.push(cur)
 		}
 		cur.items.push(r)
+	}
+	return out
+})
+
+// Match the area (section) OR an item (number + name); narrow the group to matching items.
+const filteredGroups = computed(() => {
+	const q = sectionSearch.value.trim().toLowerCase()
+	if (!q) return groups.value
+	const out = []
+	for (const g of groups.value) {
+		if ((g.area || "").toLowerCase().includes(q)) {
+			out.push(g)
+			continue
+		}
+		const items = g.items.filter((it) => `${it.printed_no} ${it.item_name}`.toLowerCase().includes(q))
+		if (items.length) out.push({ area: g.area, items })
 	}
 	return out
 })
@@ -444,7 +515,12 @@ function applyDraftToRows(data) {
 	const lineMap = {}
 	;(data.lines || []).forEach((l) => { lineMap[l.item_code] = l })
 	const photoMap = {}
-	;(data.photos || []).forEach((p) => { (photoMap[p.item_code] = photoMap[p.item_code] || []).push(p.photo) })
+	const bulk = []
+	;(data.photos || []).forEach((p) => {
+		if (!p.item_code) { bulk.push(p.photo); return }
+		;(photoMap[p.item_code] = photoMap[p.item_code] || []).push(p.photo)
+	})
+	bulkPhotos.value = bulk
 	rows.value.forEach((r) => {
 		const l = lineMap[r.item_code]
 		r.damage_code = (l && l.damage_code) || ACCEPTABLE_DAMAGE
@@ -464,7 +540,9 @@ function buildLines() {
 	}))
 }
 function buildPhotos() {
-	return rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
+	const perItem = rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
+	const bulk = bulkPhotos.value.map((url) => ({ item_code: "", photo: url }))
+	return [...perItem, ...bulk]
 }
 
 // ---- file upload ----
@@ -498,6 +576,23 @@ async function onPhotoPick(item, event) {
 }
 function removePhoto(item, idx) {
 	item.photos.splice(idx, 1)
+}
+async function onBulkPhotoPick(event) {
+	const files = Array.from(event.target.files || [])
+	event.target.value = ""
+	if (!files.length) return
+	bulkErr.value = ""
+	bulkUploading.value = true
+	try {
+		for (const f of files) bulkPhotos.value.push(await uploadFile(f))
+	} catch (e) {
+		bulkErr.value = labels.photoError
+	} finally {
+		bulkUploading.value = false
+	}
+}
+function removeBulkPhoto(idx) {
+	bulkPhotos.value.splice(idx, 1)
 }
 
 // ---- signature pad ----
@@ -631,7 +726,7 @@ function scheduleSave() {
 	if (saveTimer) clearTimeout(saveTimer)
 	saveTimer = setTimeout(() => doSave(false), 1200)
 }
-watch([exteriorCondition, exteriorRemark, sealsIntact, sealRemark, remarks, cargo, rows], () => {
+watch([exteriorCondition, exteriorRemark, sealsIntact, sealRemark, remarks, cargo, rows, bulkPhotos], () => {
 	if (suppressSave.value || !inspection.value) return
 	scheduleSave()
 }, { deep: true })
@@ -658,6 +753,9 @@ function resetForm() {
 	sealRemark.value = ""
 	remarks.value = ""
 	signatureUrl.value = ""
+	bulkPhotos.value = []
+	bulkErr.value = ""
+	sectionSearch.value = ""
 	rows.value.forEach((r) => { r.damage_code = ACCEPTABLE_DAMAGE; r.repair_code = NO_ACTION_REPAIR; r.remarks = ""; r.photos = [] })
 }
 

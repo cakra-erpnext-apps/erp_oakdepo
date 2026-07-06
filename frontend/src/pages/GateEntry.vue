@@ -1,11 +1,16 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<div class="flex items-center gap-2">
-			<span class="oak-icon-tile h-9 w-9 bg-brand-50 text-brand-600"><Icon name="log-in" :size="20" /></span>
-			<div>
-				<h1 class="text-lg font-extrabold leading-tight tracking-tight">{{ labels.gate }}</h1>
-				<p class="text-xs text-gray-500">{{ labels.gateDesc }}</p>
+		<div class="flex items-center justify-between gap-2">
+			<div class="flex items-center gap-2">
+				<span class="oak-icon-tile h-9 w-9 bg-brand-50 text-brand-600"><Icon name="log-in" :size="20" /></span>
+				<div>
+					<h1 class="text-lg font-extrabold leading-tight tracking-tight">{{ labels.gate }}</h1>
+					<p class="text-xs text-gray-500">{{ labels.gateDesc }}</p>
+				</div>
 			</div>
+			<router-link to="/gate/history" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
+				<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+			</router-link>
 		</div>
 
 		<!-- Scan/type a Booking Code (OAK-…) or an Order code (ORD-…) -->
@@ -174,10 +179,13 @@
 								<span v-if="f.required" class="text-red-500">*</span>
 								<span v-else class="font-normal normal-case text-gray-400">({{ labels.optional }})</span>
 							</label>
-							<select v-if="f.type === 'select'" v-model="vehicle[f.key]" class="oak-input">
-								<option value="">—</option>
-								<option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
-							</select>
+							<SearchSelect
+								v-if="f.type === 'select'"
+								v-model="vehicle[f.key]"
+								:options="f.options"
+								:placeholder="labels.selectPlaceholder"
+								:search-placeholder="labels.selectSearch"
+							/>
 							<textarea v-else-if="f.type === 'textarea'" v-model.trim="vehicle[f.key]" rows="2" class="oak-input"></textarea>
 							<template v-else-if="f.type === 'datalist'">
 								<input v-model.trim="vehicle[f.key]" :list="`dl-${f.key}`" class="oak-input" autocomplete="off" />
@@ -225,6 +233,7 @@ import { Html5Qrcode } from "html5-qrcode"
 import { labels, directionLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
+import SearchSelect from "@/components/SearchSelect.vue"
 
 const code = ref("")
 const scanInput = ref(null)

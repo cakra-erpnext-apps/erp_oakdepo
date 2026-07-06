@@ -135,6 +135,7 @@ def eir_save_draft(
 	referred_voucher=None,
 	cargo=None,
 	eir_date=None,
+	reff_doc=None,
 	create_cleaning_order=None,
 	create_repair_order=None,
 	lines=None,
@@ -162,6 +163,7 @@ def eir_save_draft(
 		referred_voucher=referred_voucher,
 		cargo=cargo,
 		eir_date=eir_date,
+		reff_doc=reff_doc,
 		create_cleaning_order=create_cleaning_order,
 		create_repair_order=create_repair_order,
 		lines=lines,
@@ -191,6 +193,7 @@ def eir_create(
 	referred_voucher=None,
 	cargo=None,
 	eir_date=None,
+	reff_doc=None,
 	create_cleaning_order=None,
 	create_repair_order=None,
 	lines=None,
@@ -215,9 +218,35 @@ def eir_create(
 		referred_voucher=referred_voucher,
 		cargo=cargo,
 		eir_date=eir_date,
+		reff_doc=reff_doc,
 		create_cleaning_order=create_cleaning_order,
 		create_repair_order=create_repair_order,
 		lines=lines,
 		photos=photos,
 		submit=submit,
 	)
+
+
+@frappe.whitelist(methods=["GET"])
+def eir_unsorted(search=None, start=0, page_length=20):
+	"""GET /api/v1/ess/eir-unsorted — worklist of EIRs that still have bulk photos without a
+	section (admin photo-sorting). Branch-scoped. See ``eir.list_unsorted_eirs``."""
+	_require_authenticated_user()
+	return eir.list_unsorted_eirs(search=search, start=start, page_length=page_length)
+
+
+@frappe.whitelist(methods=["GET"])
+def eir_unsorted_photos(inspection=None):
+	"""GET /api/v1/ess/eir-unsorted-photos — foto cepat (bulk) yang belum diberi section
+	pada sebuah EIR, untuk layar sortir admin. See ``eir.unsorted_photos``."""
+	_require_authenticated_user()
+	return eir.unsorted_photos(inspection=inspection)
+
+
+@frappe.whitelist(methods=["POST"])
+def eir_assign_photo_section(inspection=None, row=None, item_code=None):
+	"""POST /api/v1/ess/eir-assign-photo-section — assign one bulk photo to a checklist
+	section (the admin "sortir" action). Works on a submitted EIR (allow_on_submit).
+	DocPerm-enforced (no bypass). See ``eir.assign_photo_section``."""
+	_require_authenticated_user()
+	return eir.assign_photo_section(inspection=inspection, row=row, item_code=item_code)

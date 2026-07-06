@@ -14,15 +14,16 @@
  ],
  "fields": [
   {
-   "description": "EIR checklist item (Area/Item) this photo documents.",
+   "allow_on_submit": 1,
+   "description": "EIR checklist item (Area/Item) this photo documents. Blank = belum disortir (bulk photo); admin assigns the section later, allowed even after submit.",
    "fieldname": "checklist_item",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Checklist Item",
-   "options": "Inspection Checklist Item",
-   "reqd": 1
+   "options": "Inspection Checklist Item"
   },
   {
+   "allow_on_submit": 1,
    "fetch_from": "checklist_item.area",
    "fieldname": "area",
    "fieldtype": "Data",
@@ -31,6 +32,7 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fetch_from": "checklist_item.item_name",
    "fieldname": "item_name",
    "fieldtype": "Data",

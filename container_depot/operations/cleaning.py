@@ -267,6 +267,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"seal_manhole": co.seal_manhole or c.seal_manhole,
 		"seal_airline": co.seal_airline or c.seal_airline,
 		"seal_bottom_outlet": co.seal_bottom_outlet or c.seal_bottom_outlet,
+		"reff_doc": co.reff_doc,
 		"remarks": co.remarks or DEFAULT_REMARKS,
 		"signed_by": co.signed_by or user,
 		"date_of_issue": co.date_of_issue or today(),
@@ -342,6 +343,7 @@ def save_cleaning_order(
 	seal_manhole=None,
 	seal_airline=None,
 	seal_bottom_outlet=None,
+	reff_doc=None,
 	remarks=None,
 	signature=None,
 	results=None,
@@ -382,6 +384,9 @@ def save_cleaning_order(
 		co.seal_airline = seal_airline
 	if seal_bottom_outlet is not None:
 		co.seal_bottom_outlet = seal_bottom_outlet
+	# Optional reference doc (usually pre-filled from the EIR; editable here).
+	if reff_doc is not None:
+		co.reff_doc = reff_doc
 	co.remarks = remarks if remarks is not None else (co.remarks or DEFAULT_REMARKS)
 	if signature:
 		co.surveyor_signature = signature

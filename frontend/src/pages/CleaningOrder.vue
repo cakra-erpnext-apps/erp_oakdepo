@@ -11,9 +11,14 @@
 				</p>
 				<p v-else class="text-sm text-gray-500">{{ labels.cleaningOrdersHint }}</p>
 			</div>
-			<button v-if="order" class="oak-btn oak-btn-secondary px-3 py-2" @click="backToList">
-				<Icon name="arrow-left" :size="16" /> {{ labels.cleaningBack }}
-			</button>
+			<div class="flex shrink-0 items-center gap-2">
+				<router-link v-if="!order" to="/cleaning/history" class="oak-btn oak-btn-secondary px-3 py-2">
+					<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+				</router-link>
+				<button v-if="order" class="oak-btn oak-btn-secondary px-3 py-2" @click="backToList">
+					<Icon name="arrow-left" :size="16" /> {{ labels.cleaningBack }}
+				</button>
+			</div>
 		</div>
 
 		<!-- Submitted confirmation -->
@@ -233,6 +238,8 @@
 
 			<!-- Remarks -->
 			<section class="oak-card p-4 space-y-2">
+				<label class="oak-label">{{ labels.reffDoc }}</label>
+				<input v-model.trim="reffDoc" type="text" class="oak-input mb-3" :placeholder="labels.reffDocAutoHint" />
 				<label class="oak-label">{{ labels.eirRemarks }}</label>
 				<textarea v-model="remarks" rows="3" class="oak-input"></textarea>
 			</section>
@@ -358,6 +365,7 @@ const lel = ref("")
 const sealManhole = ref("")
 const sealAirline = ref("")
 const sealBottom = ref("")
+const reffDoc = ref("")
 const remarks = ref("")
 
 const printUrl = computed(() =>
@@ -449,6 +457,7 @@ const detailRes = createResource({
 		sealManhole.value = data.seal_manhole || ""
 		sealAirline.value = data.seal_airline || ""
 		sealBottom.value = data.seal_bottom_outlet || ""
+		reffDoc.value = data.reff_doc || ""
 		remarks.value = data.remarks || data.default_remarks || ""
 		savedChecklist.value = data.saved_checklist || []
 		buildRows(savedChecklist.value)
@@ -551,6 +560,7 @@ function save(submit) {
 		seal_manhole: sealManhole.value || undefined,
 		seal_airline: sealAirline.value || undefined,
 		seal_bottom_outlet: sealBottom.value || undefined,
+		reff_doc: reffDoc.value,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
 		results: JSON.stringify(results),
@@ -583,6 +593,7 @@ function resetForm() {
 	sealManhole.value = ""
 	sealAirline.value = ""
 	sealBottom.value = ""
+	reffDoc.value = ""
 	remarks.value = ""
 	signatureUrl.value = ""
 	signing.value = false
@@ -698,7 +709,7 @@ function startResign() {
 
 // Auto-save on every edit: services, cleanliness checklist, gas free, seals, remarks and
 // the signature all trigger a debounced draft save.
-watch([gasFree, o2, lel, sealManhole, sealAirline, sealBottom, remarks, signatureUrl], scheduleSave)
+watch([gasFree, o2, lel, sealManhole, sealAirline, sealBottom, reffDoc, remarks, signatureUrl], scheduleSave)
 watch(selectedItems, scheduleSave, { deep: true })
 watch(rows, scheduleSave, { deep: true })
 </script>

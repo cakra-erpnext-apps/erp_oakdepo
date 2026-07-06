@@ -8,9 +8,14 @@
 					<p class="text-xs text-gray-500">{{ labels.storageBranch }}: {{ branch }}</p>
 				</div>
 			</div>
-			<router-link to="/storage" class="oak-btn oak-btn-secondary px-3 py-2">
-				<Icon name="layers" :size="16" /> {{ labels.storage }}
-			</router-link>
+			<div class="flex shrink-0 items-center gap-2">
+				<router-link to="/monitor/history" class="oak-btn oak-btn-secondary px-3 py-2">
+					<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+				</router-link>
+				<router-link to="/storage" class="oak-btn oak-btn-secondary px-3 py-2">
+					<Icon name="layers" :size="16" /> {{ labels.storage }}
+				</router-link>
+			</div>
 		</div>
 
 		<!-- Search -->
@@ -59,10 +64,17 @@
 		<!-- Principal filter -->
 		<div v-if="principals.length" class="flex items-center gap-2">
 			<Icon name="briefcase" :size="15" class="shrink-0 text-gray-400" />
-			<select v-model="principalFilter" class="oak-input" @change="reload(true)">
-				<option value="">{{ labels.monitorAllPrincipals }}</option>
-				<option v-for="p in principals" :key="p.name" :value="p.name">{{ p.label }}</option>
-			</select>
+			<SearchSelect
+				:model-value="principalFilter"
+				:options="principals"
+				:option-value="(p) => p.name"
+				:option-label="(p) => p.label"
+				:placeholder="labels.monitorAllPrincipals"
+				:clear-label="labels.monitorAllPrincipals"
+				:search-placeholder="labels.selectSearch"
+				class="flex-1"
+				@update:model-value="(v) => { principalFilter = v; reload(true) }"
+			/>
 		</div>
 
 		<!-- Loading skeleton -->
@@ -134,6 +146,7 @@ import { userContext, branchLabel } from "@/data/context"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import SearchSelect from "@/components/SearchSelect.vue"
 
 const PAGE = 50
 const router = useRouter()

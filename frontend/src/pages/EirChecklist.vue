@@ -9,6 +9,9 @@
 				</div>
 			</div>
 			<div class="flex items-center gap-2">
+				<router-link v-if="!header" to="/eir/sort" class="oak-btn oak-btn-secondary px-3 py-2">
+					<Icon name="layers" :size="16" /> {{ labels.eirSortOpen }}
+				</router-link>
 				<router-link to="/eir/history" class="oak-btn oak-btn-secondary px-3 py-2">
 					<Icon name="clock" :size="16" /> {{ labels.eirHistory }}
 				</router-link>
@@ -22,10 +25,11 @@
 		     Order Bongkar is submitted — the operator picks one to inspect instead of
 		     typing a container number. -->
 		<template v-if="!header">
-			<!-- Pending EIR worklist (branch-scoped) -->
+			<!-- Pending EIR worklist (branch-scoped) — amber/yellow to set "Menunggu
+			     Pemeriksaan" apart from the green "Selesai" (submitted) list below. -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
-					<Icon name="clipboard" :size="16" class="text-leaf-600" />
+					<Icon name="clipboard" :size="16" class="text-amber-500" />
 					<p class="oak-section-title">{{ labels.eirPendingList }}</p>
 				</div>
 				<div class="flex gap-2">
@@ -47,13 +51,13 @@
 				<ul v-else class="divide-y divide-gray-100">
 					<li v-for="r in pendingItems" :key="r.name">
 						<button class="flex w-full items-center gap-3 py-2.5 text-left" :disabled="openRes.loading" @click="resumeDraft(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="16" /></span>
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-amber-50 text-amber-600"><Icon name="clipboard" :size="16" /></span>
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
 								<p v-if="r.referred_voucher" class="truncate font-mono text-[11px] text-gray-500">{{ r.referred_voucher }}</p>
 								<p class="truncate text-xs text-gray-400">{{ r.tank_status || r.inspection_type }}</p>
 							</div>
-							<span class="oak-chip shrink-0 bg-leaf-100 text-leaf-800">{{ labels.eirOpenBtn }}</span>
+							<span class="oak-chip shrink-0 bg-amber-100 text-amber-800">{{ labels.eirOpenBtn }}</span>
 						</button>
 					</li>
 				</ul>
@@ -157,11 +161,55 @@
 			<!-- Step 3b — cargo (updates the container's Last Cargo on submit) -->
 			<section class="oak-section space-y-2">
 				<label class="oak-label">{{ labels.cargo }}</label>
-				<select v-model="cargo" class="oak-input">
-					<option value="">— {{ labels.cargo }} —</option>
-					<option v-for="c in cargos" :key="c" :value="c">{{ c }}</option>
-				</select>
+				<SearchSelect
+					v-model="cargo"
+					:options="cargos"
+					:placeholder="labels.cargo"
+					:search-placeholder="labels.cargoSearch"
+					:empty-label="labels.sectionSearchEmpty"
+				/>
 				<p class="text-xs text-gray-400">{{ labels.cargoHint }}</p>
+			</section>
+
+			<!-- Foto Cepat (bulk): foto tanpa perlu pilih section. Petugas cukup memotret di
+			     satu tempat; admin menyortir ke section-nya belakangan di Container Depot. -->
+			<section class="oak-section space-y-3">
+				<div class="flex items-center gap-2">
+					<Icon name="camera" :size="16" class="text-brand-500" />
+					<p class="oak-section-title">{{ labels.bulkPhotoTitle }}</p>
+				</div>
+				<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
+				<div class="flex flex-wrap items-center gap-2">
+					<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
+						<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+						<button
+							type="button"
+							class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
+							@click="removeBulkPhoto(idx)"
+						>
+							<Icon name="x" :size="12" />
+						</button>
+					</div>
+					<label
+						class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+					>
+						<input
+							type="file"
+							accept="image/*"
+							capture="environment"
+							multiple
+							class="hidden"
+							:disabled="bulkUploading"
+							@change="onBulkPhotoPick($event)"
+						/>
+						<span v-if="bulkUploading" class="text-xs">…</span>
+						<template v-else>
+							<Icon name="camera" :size="20" />
+							<span class="text-[9px] font-medium">{{ labels.photo }}</span>
+						</template>
+					</label>
+				</div>
+				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
 			</section>
 
 			<!-- Step 4 — checklist grid (fixed 50 rows, grouped by area) -->
@@ -173,25 +221,46 @@
 					</div>
 					<p class="text-xs text-gray-400">{{ labels.acceptableHint }}</p>
 				</div>
-				<div v-for="g in groups" :key="g.area">
-					<p class="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-500">
-						{{ g.area }}
-					</p>
-					<div
-						v-for="item in g.items"
-						:key="item.item_code"
-						class="border-b border-gray-100 px-4 py-3 last:border-b-0"
-					>
+				<!-- Search by section (area) — jump to the checklist group you need. -->
+				<div class="border-b border-gray-100 px-4 py-2.5">
+					<div class="relative">
+						<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" :size="15" /></span>
+						<input v-model.trim="sectionSearch" type="text" :placeholder="labels.sectionSearch" class="oak-input pl-9" />
+					</div>
+				</div>
+				<!-- Bounded scroller: keep the (fixed 50-row) checklist from running far down the
+				     page on mobile — it scrolls internally, area headers stick while scrolling. -->
+				<div class="max-h-[70vh] overflow-y-auto overscroll-contain">
+					<p v-if="!filteredGroups.length" class="px-4 py-4 text-center text-sm text-gray-400">{{ labels.sectionSearchEmpty }}</p>
+					<div v-for="g in filteredGroups" :key="g.area">
+						<p class="sticky top-0 z-10 border-b border-gray-100 bg-gray-50/95 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 backdrop-blur">
+							{{ g.area }}
+						</p>
+						<div
+							v-for="item in g.items"
+							:key="item.item_code"
+							class="border-b border-gray-100 px-4 py-3 last:border-b-0"
+						>
 						<p class="text-sm font-semibold text-gray-800">{{ item.printed_no }}. {{ item.item_name }}</p>
 						<div class="mt-2 grid grid-cols-2 gap-2">
-							<select v-model="item.damage_code" class="oak-input px-2.5 py-2">
-								<option value="">— {{ labels.colDamage }} —</option>
-								<option v-for="d in damageCodes" :key="d.code" :value="d.code">{{ d.code }} — {{ d.description }}</option>
-							</select>
-							<select v-model="item.repair_code" class="oak-input px-2.5 py-2">
-								<option value="">— {{ labels.colRepair }} —</option>
-								<option v-for="r in repairCodes" :key="r.code" :value="r.code">{{ r.code }} — {{ r.description }}</option>
-							</select>
+							<SearchSelect
+								v-model="item.damage_code"
+								:options="damageCodes"
+								:option-value="(d) => d.code"
+								:option-label="(d) => `${d.code} — ${d.description}`"
+								:placeholder="labels.colDamage"
+								:search-placeholder="labels.selectSearch"
+								trigger-class="px-2.5 py-2"
+							/>
+							<SearchSelect
+								v-model="item.repair_code"
+								:options="repairCodes"
+								:option-value="(r) => r.code"
+								:option-label="(r) => `${r.code} — ${r.description}`"
+								:placeholder="labels.colRepair"
+								:search-placeholder="labels.selectSearch"
+								trigger-class="px-2.5 py-2"
+							/>
 						</div>
 						<!-- Photos for this item (multi) — saved per section, above the keterangan -->
 						<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -230,6 +299,7 @@
 							:placeholder="labels.colRemarks"
 							class="oak-input mt-2 px-2.5 py-2"
 						/>
+						</div>
 					</div>
 				</div>
 			</section>
@@ -262,6 +332,10 @@
 				<div class="flex items-center gap-2">
 					<Icon name="edit-3" :size="16" class="text-gray-400" />
 					<p class="oak-section-title">{{ labels.signOff }}</p>
+				</div>
+				<div>
+					<label class="oak-label">{{ labels.reffDoc }}</label>
+					<input v-model.trim="reffDoc" type="text" class="oak-input" :placeholder="labels.reffDocHint" />
 				</div>
 				<div>
 					<label class="oak-label">{{ labels.eirRemarks }}</label>
@@ -345,6 +419,7 @@ import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
+import SearchSelect from "@/components/SearchSelect.vue"
 
 // EIR is always EIR-In here. EIR-Out is done via the 3rd-party Survey flow, not this
 // checklist, so there is no In/Out picker.
@@ -356,6 +431,7 @@ const eirCode = computed(() => header.value?.inspection_id || inspection.value |
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
 const remarks = ref("")
+const reffDoc = ref("")
 // Follow-up order opt-outs (default ON): create a Cleaning Order (when Empty Dirty) and/or
 // a draft M&R (when damaged) on submit. Unchecked = the order is not created.
 const createCleaning = ref(true)
@@ -378,6 +454,14 @@ let saveTimer = null
 const rows = ref([])
 const damageCodes = ref([])
 const repairCodes = ref([])
+
+// Foto Cepat (bulk): photos taken without picking a section — stored with a blank
+// item_code so the admin sorts them into a section later (see EirSort / Desk).
+const bulkPhotos = ref([])
+const bulkUploading = ref(false)
+const bulkErr = ref("")
+// Search by section (area) over the checklist groups.
+const sectionSearch = ref("")
 
 // Default condition: every part starts "Acceptable" (damage "v") + "No Action" (repair
 // "X"). A row only becomes a real finding when the operator picks another code or types a
@@ -426,6 +510,23 @@ const groups = computed(() => {
 	return out
 })
 
+// Checklist search: match the area (section) OR an item (number + name). When only some
+// items in a section match, the group is narrowed to those items so the result is tight.
+const filteredGroups = computed(() => {
+	const q = sectionSearch.value.trim().toLowerCase()
+	if (!q) return groups.value
+	const out = []
+	for (const g of groups.value) {
+		if ((g.area || "").toLowerCase().includes(q)) {
+			out.push(g)
+			continue
+		}
+		const items = g.items.filter((it) => `${it.printed_no} ${it.item_name}`.toLowerCase().includes(q))
+		if (items.length) out.push({ area: g.area, items })
+	}
+	return out
+})
+
 // Tank header: Container Number + the master fields (no ISO 6346 prefix/number/cd —
 // the container number is the identity; all values come from the Container master).
 const headerCells = computed(() => {
@@ -461,6 +562,7 @@ const openRes = createResource({
 		tanggal.value = data.eir_date || new Date().toISOString().slice(0, 10)
 		tankStatus.value = data.tank_status || ""
 		remarks.value = data.doc_remarks || ""
+		reffDoc.value = data.reff_doc || ""
 		referredVoucher.value = data.referred_voucher || ""
 		truckNo.value = data.truck_no || ""
 		driver.value = data.driver || ""
@@ -553,9 +655,16 @@ function applyDraftToRows(data) {
 		lineMap[l.item_code] = l
 	})
 	const photoMap = {}
+	const bulk = []
 	;(data.photos || []).forEach((p) => {
+		// A photo with no item_code is a bulk "foto cepat" not yet sorted into a section.
+		if (!p.item_code) {
+			bulk.push(p.photo)
+			return
+		}
 		;(photoMap[p.item_code] = photoMap[p.item_code] || []).push(p.photo)
 	})
+	bulkPhotos.value = bulk
 	rows.value.forEach((r) => {
 		const l = lineMap[r.item_code]
 		r.damage_code = (l && l.damage_code) || ACCEPTABLE_DAMAGE
@@ -578,9 +687,12 @@ function buildLines() {
 		}))
 }
 
-// Flat {item_code, photo} list — one entry per uploaded photo (multi per item).
+// Flat {item_code, photo} list — one entry per uploaded photo. Per-item photos carry
+// their item_code; bulk "foto cepat" carry a blank item_code (sorted later).
 function buildPhotos() {
-	return rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
+	const perItem = rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
+	const bulk = bulkPhotos.value.map((url) => ({ item_code: "", photo: url }))
+	return [...perItem, ...bulk]
 }
 
 // Upload one image to Frappe and return its file_url. Reuses the session cookie +
@@ -620,6 +732,29 @@ async function onPhotoPick(item, event) {
 
 function removePhoto(item, idx) {
 	item.photos.splice(idx, 1)
+}
+
+// Bulk "foto cepat": upload one or more images with no section attached.
+async function onBulkPhotoPick(event) {
+	const files = Array.from(event.target.files || [])
+	event.target.value = "" // allow re-picking the same file
+	if (!files.length) return
+	bulkErr.value = ""
+	bulkUploading.value = true
+	try {
+		for (const f of files) {
+			const url = await uploadFile(f)
+			bulkPhotos.value.push(url)
+		}
+	} catch (e) {
+		bulkErr.value = labels.photoError
+	} finally {
+		bulkUploading.value = false
+	}
+}
+
+function removeBulkPhoto(idx) {
+	bulkPhotos.value.splice(idx, 1)
 }
 
 // --- Virtual signature pad (EIR creator) -------------------------------------
@@ -732,6 +867,7 @@ function doSave(submit = false) {
 		tank_status: tankStatus.value || undefined,
 		referred_voucher: referredVoucher.value || undefined,
 		cargo: cargo.value || undefined,
+		reff_doc: reffDoc.value,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
 		create_cleaning_order: createCleaning.value ? 1 : 0,
@@ -764,14 +900,16 @@ function scheduleSave() {
 // Header fields + the whole checklist (codes, remarks, photos) trigger an auto-save.
 // The referred voucher is fixed at creation (read-only), so it is not watched here; it
 // is re-sent unchanged on every save so the server keeps its snapshot in sync.
-watch([tanggal, tankStatus, cargo, remarks, signatureUrl, createCleaning, createRepair], scheduleSave)
+watch([tanggal, tankStatus, cargo, remarks, reffDoc, signatureUrl, createCleaning, createRepair], scheduleSave)
 watch(rows, scheduleSave, { deep: true })
+watch(bulkPhotos, scheduleSave, { deep: true })
 
 function reset() {
 	header.value = null
 	inspection.value = null
 	tankStatus.value = ""
 	remarks.value = ""
+	reffDoc.value = ""
 	createCleaning.value = true
 	createRepair.value = true
 	referredVoucher.value = ""
@@ -785,6 +923,9 @@ function reset() {
 	sigHasInk = false
 	sigCtx = null
 	result.value = null
+	bulkPhotos.value = []
+	bulkErr.value = ""
+	sectionSearch.value = ""
 	rows.value.forEach((r) => {
 		r.damage_code = ACCEPTABLE_DAMAGE
 		r.repair_code = NO_ACTION_REPAIR

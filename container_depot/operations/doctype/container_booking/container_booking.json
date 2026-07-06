@@ -11,6 +11,7 @@
     "lift_type",
     "column_break_1",
     "depot",
+    "reff_doc",
     "parties_section",
     "customer",
     "column_break_parties",
@@ -94,6 +95,12 @@
       "label": "Depot",
       "options": "Depot",
       "reqd": 1
+    },
+    {
+      "description": "No. dokumen referensi (opsional). Mengalir ke bon, EIR, lalu Cleaning Order & M&R.",
+      "fieldname": "reff_doc",
+      "fieldtype": "Data",
+      "label": "Reff Doc"
     },
     {
       "fieldname": "parties_section",

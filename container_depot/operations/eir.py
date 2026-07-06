@@ -148,6 +148,19 @@ def _voucher_depot(doctype: str, voucher: str | None) -> str | None:
 	return frappe.db.get_value("Container Booking", booking, "depot")
 
 
+def _voucher_reff_doc(doctype: str, voucher: str | None) -> str | None:
+	"""The reference doc carried by a bon's Container Booking (``voucher.booking`` ->
+	``Container Booking.reff_doc``). This is what makes a Reff Doc entered on the booking
+	flow down the chain: Booking -> bon -> EIR -> Cleaning Order / M&R.
+	"""
+	if not voucher:
+		return None
+	booking = frappe.db.get_value(doctype, voucher, "booking")
+	if not booking:
+		return None
+	return frappe.db.get_value("Container Booking", booking, "reff_doc")
+
+
 def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", container: str | None = None) -> dict:
 	"""Read the EIR's shipment snapshot for ``container`` from a referred voucher (bon).
 
@@ -172,6 +185,7 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 		"tank_status": None,
 		"cargo": None,
 		"depot": None,
+		"reff_doc": None,
 	}
 	if not voucher:
 		return snap
@@ -185,6 +199,7 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 	snap["referred_voucher"] = voucher
 	snap["shipper"] = frappe.db.get_value(doctype, voucher, "shipper")
 	snap["depot"] = _voucher_depot(doctype, voucher)
+	snap["reff_doc"] = _voucher_reff_doc(doctype, voucher)
 	detail = _voucher_detail(doctype, voucher, container)
 	snap["truck_no"] = detail.get("truck_plate")
 	snap["driver"] = detail.get("driver")
@@ -208,6 +223,10 @@ def _apply_voucher(doc, referred_voucher: str | None) -> None:
 	# voucher is cleared (so it falls back to the Container master depot set at creation).
 	if snap.get("depot"):
 		doc.depot = snap["depot"]
+	# Reff Doc flows down from the bon's Container Booking, but only fills an EIR that has
+	# none yet — a value entered by hand on the EIR (or later cleared deliberately) wins.
+	if snap.get("reff_doc") and not doc.reff_doc:
+		doc.reff_doc = snap["reff_doc"]
 
 
 def latest_voucher_for_container(container: str | None, inspection_type: str) -> str | None:
@@ -630,16 +649,22 @@ def _build_damage_rows(lines, items):
 
 
 def _build_photo_rows(photos, items):
-	"""Map a flat ``[{item_code, photo}]`` payload to Inspection Item Photo rows (blanks skipped)."""
+	"""Map a flat ``[{item_code, photo}]`` payload to Inspection Item Photo rows.
+
+	A row is kept whenever it carries a ``photo``. ``item_code`` is OPTIONAL: blank
+	means "foto cepat" (bulk) not yet sorted into a section — stored with a null
+	``checklist_item`` for the admin to assign later. Only a non-blank *unknown*
+	code is rejected. (Rows with no photo are dropped.)
+	"""
 	rows = []
 	for ph in photos:
 		item_code = (ph.get("item_code") or "").strip()
 		photo = (ph.get("photo") or "").strip()
-		if not (item_code and photo):
+		if not photo:
 			continue
-		if item_code not in items:
-			frappe.throw(_("Unknown checklist item_code for photo: {0}").format(item_code or "(blank)"))
-		rows.append({"checklist_item": item_code, "photo": photo})
+		if item_code and item_code not in items:
+			frappe.throw(_("Unknown checklist item_code for photo: {0}").format(item_code))
+		rows.append({"checklist_item": item_code or None, "photo": photo})
 	return rows
 
 
@@ -659,6 +684,7 @@ def create_eir(
 	referred_voucher: str | None = None,
 	cargo: str | None = None,
 	eir_date: str | None = None,
+	reff_doc: str | None = None,
 	create_cleaning_order=None,
 	create_repair_order=None,
 	lines=None,
@@ -710,6 +736,7 @@ def create_eir(
 	doc.inspector_signature = signature
 	doc.eir_date = eir_date
 	doc.cargo = cargo
+	doc.reff_doc = reff_doc  # optional reference doc; flows into auto-created Cleaning / M&R
 	# Follow-up opt-outs (default checked via the doctype) — only overridden when supplied.
 	if create_cleaning_order is not None:
 		doc.create_cleaning_order = 1 if _as_bool(create_cleaning_order) else 0
@@ -766,6 +793,7 @@ def _draft_payload(doc, header: dict) -> dict:
 	# The draft's depot wins over the master's: it starts from the Container depot but is
 	# overridden by the referred bon's booking depot (see _apply_voucher).
 	header["depot"] = doc.depot or header.get("depot")
+	header["reff_doc"] = doc.reff_doc
 	header["referred_voucher"] = doc.referred_voucher
 	header["voucher_doctype"] = doc.voucher_doctype
 	header["truck_no"] = doc.truck_no
@@ -881,6 +909,7 @@ def save_draft(
 	referred_voucher: str | None = None,
 	cargo: str | None = None,
 	eir_date: str | None = None,
+	reff_doc: str | None = None,
 	create_cleaning_order=None,
 	create_repair_order=None,
 	lines=None,
@@ -918,6 +947,9 @@ def save_draft(
 	doc.remarks = remarks
 	doc.eir_date = eir_date
 	doc.cargo = cargo  # written to Container.last_cargo only on submit (drafts never touch the master)
+	# Optional reference doc — only overwritten when sent (EIR-Out saves omit it), so it isn't cleared.
+	if reff_doc is not None:
+		doc.reff_doc = reff_doc
 	doc.inspector_signature = signature
 	# Follow-up opt-outs: only set when the caller sends a value (the PWA always does), so a
 	# Desk-set choice is never silently overwritten by an omitted param.
@@ -953,6 +985,79 @@ def save_draft(
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
 		"photo_rows": len(photo_rows),
+	}
+
+
+def unsorted_photos(inspection: str) -> dict:
+	"""Foto cepat (bulk) yang belum diberi section pada sebuah EIR.
+
+	Untuk layar sortir PWA: kembalikan tiap baris ``item_photos`` tanpa
+	``checklist_item`` sebagai ``{row, photo}`` (``row`` = nama child row, dipakai
+	untuk ``assign_photo_section``). Branch-scoped.
+	"""
+	doc = frappe.get_doc("Inspection", inspection)
+	_guard_container_branch(doc.container)
+	photos = [
+		{"row": p.name, "photo": p.photo}
+		for p in doc.item_photos
+		if not p.checklist_item
+	]
+	return {
+		"inspection": doc.name,
+		"inspection_id": doc.inspection_id or doc.name,
+		"container_no": doc.container_no,
+		"docstatus": doc.docstatus,
+		"photos": photos,
+	}
+
+
+def assign_photo_section(inspection: str, row: str, item_code: str) -> dict:
+	"""Assign a bulk photo to a checklist section — the admin "sortir" action.
+
+	Sets ``checklist_item`` on one ``item_photos`` child row (identified by its child
+	``name``, or falling back to a matching ``photo`` URL). ``area``/``item_name`` then
+	fetch from the linked master. Works on a SUBMITTED EIR because those fields are
+	``allow_on_submit``. Permissions + branch are enforced (no bypass).
+	"""
+	item_code = (item_code or "").strip()
+	if not item_code:
+		frappe.throw(_("item_code is required to assign a section."))
+	if item_code not in _checklist_items():
+		frappe.throw(_("Unknown checklist item_code: {0}").format(item_code))
+
+	doc = frappe.get_doc("Inspection", inspection)
+	_guard_container_branch(doc.container)
+
+	target = None
+	for p in doc.item_photos:
+		if p.name == row or (not target and p.photo == row):
+			target = p
+			if p.name == row:
+				break
+	if not target:
+		frappe.throw(_("Photo row {0} not found on EIR {1}.").format(row, inspection))
+
+	target.checklist_item = item_code
+	# Refresh the fetched columns immediately (fetch_from only runs on the parent save
+	# path; set them so the return value is accurate even before reload).
+	master = _checklist_items()[item_code]
+	target.area = master.area
+	target.item_name = master.item_name
+
+	doc.save()  # NOT ignore_permissions; allow_on_submit lets this pass on a submitted doc.
+	# Persist the recomputed flag explicitly: on a submitted doc `validate`'s write to a
+	# parent field is only kept when the field is allow_on_submit; db_set guarantees it
+	# regardless and keeps the in-memory value in sync.
+	unsorted = 1 if any(not p.checklist_item for p in doc.item_photos) else 0
+	doc.db_set("has_unsorted_photos", unsorted)
+	return {
+		"success": True,
+		"inspection": doc.name,
+		"row": target.name,
+		"checklist_item": item_code,
+		"area": target.area,
+		"item_name": target.item_name,
+		"has_unsorted_photos": unsorted,
 	}
 
 
@@ -1041,6 +1146,48 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "inspection_type",
 			"tank_status", "referred_voucher", "voucher_doctype", "depot", "eir_date", "creation",
+		],
+		order_by="creation desc",
+		limit_start=start,
+		limit_page_length=page_length,
+	)
+	return {"items": items, "total": total, "start": start, "page_length": page_length}
+
+
+def list_unsorted_eirs(search=None, start=0, page_length=20) -> dict:
+	"""EIRs (any status, In or Out) that still carry bulk "foto cepat" without a section —
+	the admin's photo-sorting worklist. Branch-scoped by depot (empty user-branch = all);
+	newest first; searchable by container no / EIR id. Uses ``frappe.get_all`` so the admin
+	sees every unsorted EIR in their branch, not only ones they own.
+	"""
+	start = max(0, cint(start))
+	page_length = min(max(1, cint(page_length or 20)), 50)
+
+	filters = {"has_unsorted_photos": 1}
+	allowed = get_user_depots()
+	if allowed is not None:
+		if not allowed:
+			return {"items": [], "total": 0, "start": start, "page_length": page_length}
+		filters["depot"] = ["in", allowed]
+
+	term = str(search).strip() if search is not None else ""
+	if term.lower() in ("undefined", "null", "none"):
+		term = ""
+	or_filters = None
+	if term:
+		s = f"%{term}%"
+		or_filters = [["container_no", "like", s], ["inspection_id", "like", s]]
+
+	total = len(frappe.get_all(
+		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
+	))
+	items = frappe.get_all(
+		"Inspection",
+		filters=filters,
+		or_filters=or_filters,
+		fields=[
+			"name", "inspection_id", "container", "container_no", "inspection_type",
+			"docstatus", "depot", "eir_date", "creation",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1154,6 +1301,7 @@ def view_eir(inspection: str) -> dict:
 		"docstatus": doc.docstatus,
 		"eir_date": str(doc.eir_date) if doc.eir_date else None,
 		"depot": doc.depot,
+		"reff_doc": doc.get("reff_doc"),
 		"referred_voucher": doc.get("referred_voucher"),
 		"truck_no": doc.get("truck_no"),
 		"driver": doc.get("driver"),

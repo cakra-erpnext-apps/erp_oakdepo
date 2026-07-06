@@ -259,6 +259,7 @@ def get_mr_order_detail(repair_order) -> dict:
 		"warehouse": warehouse,
 		"warehouses": wh["warehouses"],
 		"branch": wh["branch"],
+		"reff_doc": ro.reff_doc,
 		"remarks": ro.remarks,
 		"stock_entry": ro.stock_entry,
 		# Owner-approval surface.
@@ -473,6 +474,7 @@ def save_mr_order(
 	used_items=None,
 	technician=None,
 	warehouse=None,
+	reff_doc=None,
 	remarks=None,
 	submit=False,
 ) -> dict:
@@ -503,6 +505,9 @@ def save_mr_order(
 		_apply_used_items(ro, used_items)
 	if technician is not None:
 		ro.technician = _clean(technician)
+	# Optional reference doc (usually pre-filled from the EIR; editable here).
+	if reff_doc is not None:
+		ro.reff_doc = reff_doc
 	if remarks is not None:
 		ro.remarks = remarks
 
