@@ -10,9 +10,6 @@ What it seeds
 -------------
 * Branch                 — Oak Medan, Oak Surabaya
 * Depot                  — OAK1, OAK2 (Medan) + OAKSBY (Surabaya)
-* Yard Zone              — reuses the SOP zones from patches.v0_27 for OAK1/OAK2,
-                           and adds an OAK SBY set (same pattern)
-* Yard Placement Rule    — reuses patches.v0_32 (status → category defaults)
 * Cleaning Checklist     — reuses patches.v0_31 (12 rows)
 * Cargo                  — reuses patches.v0_12 (data/cargo_list.json)
 * EIR masters            — reuses patches.v0_6 (Inspection Damage + Repair Code) and
@@ -34,8 +31,6 @@ import frappe
 # --- reuse existing in-app seeders (their data already ships inside the app) -------
 from container_depot.patches.v0_12.seed_cargo import execute as _seed_cargo
 from container_depot.patches.v0_31.seed_cleaning_checklist import execute as _seed_cleaning_checklist
-from container_depot.patches.v0_32.seed_yard_placement_rules import execute as _seed_yard_placement_rules
-from container_depot.patches.v0_27.seed_yard_zones import SOP_ZONES as _SOP_ZONES, _ensure_zone
 from container_depot.patches.v0_6.seed_eir_codes import execute as _seed_eir_codes
 from container_depot.patches.v0_25.seed_eir_checklist import execute as _seed_eir_checklist
 
@@ -51,17 +46,6 @@ DEPOTS = [
     ("OAK1", "OAK 1", "Oak Medan"),
     ("OAK2", "OAK 2", "Oak Medan"),
     ("OAKSBY", "OAK SBY", "Oak Surabaya"),
-]
-
-# Extra Yard Zones for OAK SBY — mirrors the single-yard OAK2 pattern in v0_27.
-# (zone_code, zone_name, depot, block, category, capacity)
-SBY_ZONES = [
-    ("OAKSBY-DIRTY", "OAK SBY · Antrean Cuci", "OAKSBY", "", "Empty Dirty Queue", 50),
-    ("OAKSBY-CLEAN", "OAK SBY · Empty Clean Masuk", "OAKSBY", "", "Empty Clean", 100),
-    ("OAKSBY-READY", "OAK SBY · Tank Ready", "OAKSBY", "", "Ready", 100),
-    ("OAKSBY-CBAY", "OAK SBY · Cleaning Bay", "OAKSBY", "", "Cleaning Bay", 12),
-    ("OAKSBY-WORKSHOP", "OAK SBY · Workshop", "OAKSBY", "", "Workshop", 15),
-    ("OAKSBY-SURVEY", "OAK SBY · Survey Lane", "OAKSBY", "", "Survey", 8),
 ]
 
 # Depot Service Menu → the Item Groups it filters. (name, sequence, [item groups])
@@ -358,14 +342,6 @@ def run():
         _ensure_depot(code, name, branch)
     print(f"[seed_dev] Depot: {len(DEPOTS)}")
 
-    # Yard Zones: reuse the SOP zones (OAK1/OAK2) from v0_27, then add OAK SBY.
-    for code, name, depot, block, category, capacity in _SOP_ZONES:
-        _ensure_zone(code, name, depot, block, category, capacity)
-    for code, name, depot, block, category, capacity in SBY_ZONES:
-        _ensure_zone(code, name, depot, block, category, capacity)
-    print(f"[seed_dev] Yard Zone: {len(_SOP_ZONES)} SOP + {len(SBY_ZONES)} SBY")
-
-    _seed_yard_placement_rules()   # patches.v0_32
     _seed_cleaning_checklist()     # patches.v0_31
     _seed_cargo()                  # patches.v0_12
     _seed_eir_codes()              # patches.v0_6  — Inspection Damage + Repair Code (EIR masters)
@@ -398,8 +374,8 @@ def clear():
     """Best-effort removal of the data this seeder created (curated set only).
 
     Leaves the shared masters from the reused patches (Cargo, Cleaning Checklist,
-    Yard Placement Rule, EIR Damage/Repair Codes, Inspection Checklist) in place —
-    those are standard masters, not dev-only.
+    EIR Damage/Repair Codes, Inspection Checklist) in place — those are standard
+    masters, not dev-only.
     """
     print("[seed_dev] clearing dev-seeded curated data ...")
 
@@ -416,10 +392,6 @@ def clear():
         _del("Item", name)
     for name in ITEM_GROUPS:
         _del("Item Group", name)
-    for code, *_ in SBY_ZONES:
-        _del("Yard Zone", code)
-    for code, *_ in _SOP_ZONES:
-        _del("Yard Zone", code)
     for code, _name, _branch in DEPOTS:
         _del("Depot", code)
     for name in BRANCHES:

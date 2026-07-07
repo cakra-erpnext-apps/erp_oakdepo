@@ -120,7 +120,7 @@ class TestDepotNotify(FrappeTestCase):
 		finally:
 			frappe.db.delete("Notification Log", {"document_name": "BKG-NOTIF-1"})
 
-	def test_eir_submit_notifies_in_branch_with_target_category(self):
+	def test_eir_submit_notifies_in_branch(self):
 		frappe.set_user("Administrator")
 		frappe.get_doc({
 			"doctype": "Container",
@@ -131,7 +131,6 @@ class TestDepotNotify(FrappeTestCase):
 			"principal": ensure_test_customer("Notify Test Principal"),
 		}).insert(ignore_permissions=True)
 		try:
-			# Empty Dirty, no damage -> target category "Empty Dirty Queue" (Antrean Cuci).
 			eir_ops.create_eir(
 				inspection_type="EIR-In",
 				container="NOTIFC00011",
@@ -144,7 +143,9 @@ class TestDepotNotify(FrappeTestCase):
 				fields=["subject"],
 			)
 			self.assertTrue(logs, "branch-A user should have received the EIR notification")
-			self.assertTrue(any("Antrean Cuci" in (l.subject or "") for l in logs))
+			# Subject carries the container + inspection type (no yard category anymore).
+			self.assertTrue(any("NOTIFC00011" in (l.subject or "") for l in logs))
+			self.assertTrue(any("EIR-In" in (l.subject or "") for l in logs))
 			# The out-of-branch user must NOT be notified.
 			self.assertFalse(
 				frappe.db.exists("Notification Log", {"for_user": U_B, "document_type": "Inspection"})

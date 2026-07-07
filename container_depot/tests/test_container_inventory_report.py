@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import unittest
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
@@ -54,12 +53,11 @@ class TestContainerInventoryReport(FrappeTestCase):
 		row = next(r for r in data if r["container_no"] == "INVRPTAGE01")
 		self.assertEqual(row["days_in_depo"], 7)
 
-	@unittest.skip("Yard zones / inventory-stage buckets removed in Phase 2 status refactor")
 	def test_stage_filter(self):
 		p = ensure_test_customer("InvRpt Stage Cust")
-		_make_container("INVRPTSTG01", "Available", p)        # Ready
-		_make_container("INVRPTSTG02", "In_Depot", p)   # Cleaning
-		_, data = execute({"principal": p, "inventory_stage": "Cleaning"})
+		_make_container("INVRPTSTG01", "Available", p)   # inventory_stage = Ready
+		_make_container("INVRPTSTG02", "In_Depot", p)    # inventory_stage = In Depot
+		_, data = execute({"principal": p, "inventory_stage": "In Depot"})
 		cnos = {r["container_no"] for r in data}
 		self.assertEqual(cnos, {"INVRPTSTG02"})
 

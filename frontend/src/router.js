@@ -53,16 +53,6 @@ const routes = [
 		component: () => import("@/pages/MrHistory.vue"),
 	},
 	{
-		path: "/storage",
-		name: "DepotStorage",
-		component: () => import("@/pages/DepotStorage.vue"),
-	},
-	{
-		path: "/storage/history",
-		name: "StorageHistory",
-		component: () => import("@/pages/StorageHistory.vue"),
-	},
-	{
 		path: "/monitor",
 		name: "MonitorContainer",
 		component: () => import("@/pages/MonitorContainer.vue"),

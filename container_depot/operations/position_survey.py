@@ -5,11 +5,12 @@ PWA wrappers (``ess/position_survey.py``) and any Desk / automation caller — t
 layer only adds auth + whitelisting.
 
 Flow (per outbound container): a Container Booking (Tank Out) submit provisions one
-``Container Position Survey`` (status ``Pending Survey``). A Surveyor records the found yard
-position (writing a ``Container Movement`` so the yard mapping updates) → ``Surveyed``. An
-Operator Kalmar approves ("udah turun") → ``Confirmed`` (submitted).
+``Container Position Survey`` (status ``Pending Survey``). A Surveyor writes a free-text
+note of where the container physically sits (+ photos) → ``Surveyed``. An Operator Kalmar
+approves ("udah turun") → ``Confirmed`` (submitted).
 
 Hard rule: this module NEVER writes ``Container.status`` — the survey has its own status.
+No yard zones / mapping: the location is a human note only.
 """
 
 from __future__ import annotations
@@ -114,7 +115,7 @@ def _list_by_status(status, start=0, page_length=20, search=None) -> dict:
 		or_filters=or_filters,
 		fields=[
 			"name", "container", "container_no", "status", "depot",
-			"booking", "yard_zone", "creation",
+			"booking", "location_note", "creation",
 		],
 		order_by="creation asc",
 		limit_start=cint(start),
@@ -137,26 +138,9 @@ def list_surveyed(start=0, page_length=20, search=None) -> dict:
 # Detail
 # ---------------------------------------------------------------------------
 def get_survey_detail(name: str) -> dict:
-	"""Full survey header + the container's current yard position + in-scope zones (for the
-	surveyor's zone picker) + photos. Branch-scoped."""
+	"""Full survey header + the surveyor's location note + photos. Branch-scoped."""
 	doc = frappe.get_doc(DOCTYPE, name)
 	_guard_container_branch(doc.container)
-
-	# In-scope zones + current position (best-effort; recommend_zones drives the yard picker).
-	zones, current, recommended = [], None, None
-	try:
-		from container_depot.operations.yard import recommend_zones
-
-		rec = recommend_zones(doc.container_no or doc.container)
-		zones = rec.get("all_zones") or []
-		current = rec.get("current")
-		# The first recommended candidate, if any, as a hint.
-		for z in rec.get("zones") or []:
-			if z.get("recommended"):
-				recommended = z.get("name")
-				break
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), f"recommend_zones for position survey {name}")
 
 	return {
 		"name": doc.name,
@@ -166,10 +150,7 @@ def get_survey_detail(name: str) -> dict:
 		"booking": doc.booking,
 		"status": doc.status,
 		"docstatus": doc.docstatus,
-		"yard_zone": doc.yard_zone,
-		"row": doc.row,
-		"bay": doc.bay,
-		"tier": doc.tier,
+		"location_note": doc.location_note,
 		"survey_notes": doc.survey_notes,
 		"surveyed_by": doc.surveyed_by,
 		"surveyed_on": doc.surveyed_on,
@@ -177,53 +158,28 @@ def get_survey_detail(name: str) -> dict:
 		"approved_on": doc.approved_on,
 		"approval_note": doc.approval_note,
 		"photos": [p.photo for p in doc.position_photos],
-		"current": current,
-		"recommended_zone": recommended,
-		"zones": zones,
 	}
 
 
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
-def record_survey_position(name, yard_zone, row=None, bay=None, tier=None, photos=None, notes=None) -> dict:
-	"""Surveyor action: record the found yard position + photos, then move to ``Surveyed``.
+def record_survey_position(name, location_note, photos=None, notes=None) -> dict:
+	"""Surveyor action: record where the container physically sits (free-text note + photos),
+	then move to ``Surveyed``.
 
-	The position is written to the ``Container Movement`` ledger (event ``Yard``) — the
-	Movement's ``after_insert`` syncs ``Container.yard_zone/row/bay/tier``, so the yard mapping
-	reflects reality. We insert the Movement directly (not ``yard.place_container``) so a found
-	position that happens to break an SOP limit is still recordable — a survey records reality,
-	it does not place a new tank. Permissions are enforced (no bypass).
+	No yard zone / Container Movement — the location is a human note only (the depot no longer
+	maps tanks to zones). Permissions are enforced (no bypass).
 	"""
 	doc = frappe.get_doc(DOCTYPE, name)
 	_guard_container_branch(doc.container)
 	if doc.status != PENDING:
 		frappe.throw(_("Survey {0} sudah bukan Pending Survey.").format(name))
-	if not yard_zone or not frappe.db.exists("Yard Zone", yard_zone):
-		frappe.throw(_("Yard Zone {0} tidak ditemukan.").format(yard_zone or ""))
+	location_note = (str(location_note).strip() if location_note is not None else "")
+	if not location_note:
+		frappe.throw(_("Isi dulu letak container-nya."))
 
-	tier = cint(tier) if tier not in (None, "") else None
-	row = (str(row).strip() or None) if row not in (None, "") else None
-	bay = (str(bay).strip() or None) if bay not in (None, "") else None
-
-	# Ledger write → after_insert syncs the Container's denormalised position.
-	movement = frappe.get_doc({
-		"doctype": "Container Movement",
-		"container": doc.container,
-		"event_type": "Yard",
-		"to_zone": yard_zone,
-		"to_row": row,
-		"to_bay": bay,
-		"to_tier": tier,
-		"moved_by": frappe.session.user,
-	})
-	movement.insert(ignore_permissions=True)  # the ledger is append-only automation
-
-	doc.yard_zone = yard_zone
-	doc.row = row
-	doc.bay = bay
-	doc.tier = tier
-	doc.movement = movement.name
+	doc.location_note = location_note
 	doc.survey_notes = notes
 	doc.surveyed_by = frappe.session.user
 	doc.surveyed_on = now_datetime()
@@ -235,8 +191,7 @@ def record_survey_position(name, yard_zone, row=None, bay=None, tier=None, photo
 		"success": True,
 		"name": doc.name,
 		"status": doc.status,
-		"movement": movement.name,
-		"yard_zone": yard_zone,
+		"location_note": location_note,
 	}
 
 

@@ -116,7 +116,6 @@ website_route_rules = [
 	{"from_route": "/api/v1/gate/validate-qr", "to_route": "container_depot.api.validate_qr"},
 	{"from_route": "/api/v1/gate/entry", "to_route": "container_depot.api.register_gate_entry"},
 	{"from_route": "/api/v1/yard/pending-lifts", "to_route": "container_depot.api.get_pending_lifts"},
-	{"from_route": "/api/v1/yard/update-location", "to_route": "container_depot.api.update_container_location"},
 	{"from_route": "/api/v1/inspection/upload-evidence", "to_route": "container_depot.api.upload_inspection_evidence"},
 	{"from_route": "/api/v1/webhook/message", "to_route": "container_depot.api.handle_webhook"},
 	{"from_route": "/api/v1/agent/skills", "to_route": "container_depot.api.get_agent_skills"},

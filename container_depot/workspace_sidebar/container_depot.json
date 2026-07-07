@@ -251,18 +251,6 @@
             "collapsible": 1,
             "indent": 0,
             "keep_closed": 0,
-            "label": "Yard Zone",
-            "link_to": "Yard Zone",
-            "link_type": "DocType",
-            "show_arrow": 0,
-            "type": "Link",
-            "icon": "es-line-tiles"
-        },
-        {
-            "child": 1,
-            "collapsible": 1,
-            "indent": 0,
-            "keep_closed": 0,
             "label": "Yard Placement Rule",
             "link_to": "Yard Placement Rule",
             "link_type": "DocType",
@@ -524,18 +512,6 @@
             "show_arrow": 0,
             "type": "Link",
             "icon": "es-line-status"
-        },
-        {
-            "child": 1,
-            "collapsible": 1,
-            "indent": 0,
-            "keep_closed": 0,
-            "label": "Yard Utilization Location",
-            "link_to": "Yard Utilization Location",
-            "link_type": "Report",
-            "show_arrow": 0,
-            "type": "Link",
-            "icon": "es-line-dashboard"
         }
     ],
     "modified": "2026-06-12 13:30:00.000000",

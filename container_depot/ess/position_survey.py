@@ -3,7 +3,7 @@
 
 Per the integration rule: endpoints here only add authentication + whitelisting + GET/POST
 gating; all logic lives in ``container_depot.operations.position_survey`` so the same code
-backs the PWA and any Desk / automation caller. Mirrors ``ess/cleaning.py`` + ``ess/yard.py``.
+backs the PWA and any Desk / automation caller. Mirrors ``ess/cleaning.py``.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from frappe import _
 from container_depot.api import _require_authenticated_user
 from container_depot.operations import position_survey
 
-# The "Position Fix" approval is restricted to yard operators (Operator Kalmar et al.),
-# mirroring ess/yard.py's YARD_OPERATOR_ROLES. Reads stay open to any authenticated PWA user.
+# The "Position Fix" approval is restricted to yard operators (Operator Kalmar et al.).
+# Reads stay open to any authenticated PWA user.
 KALMAR_ROLES = {"Operator Kalmar", "Admin Ops", "Ops Supervisor", "System Manager"}
 
 
@@ -41,18 +41,18 @@ def position_surveyed(start=0, page_length=20, search=None):
 
 @frappe.whitelist(methods=["GET"])
 def position_detail(name=None):
-	"""GET /api/v1/ess/position-detail — one survey's header + current position + zone picker."""
+	"""GET /api/v1/ess/position-detail — one survey's header + location note + photos."""
 	_require_authenticated_user()
 	return position_survey.get_survey_detail(name)
 
 
 @frappe.whitelist(methods=["POST"])
-def position_record(name=None, yard_zone=None, row=None, bay=None, tier=None, photos=None, notes=None):
-	"""POST /api/v1/ess/position-record — Surveyor records the found yard position + photos
-	(→ Surveyed). DocPerm (Surveyor) is enforced (no bypass)."""
+def position_record(name=None, location_note=None, photos=None, notes=None):
+	"""POST /api/v1/ess/position-record — Surveyor records the container's location note +
+	photos (→ Surveyed). DocPerm (Surveyor) is enforced (no bypass)."""
 	_require_authenticated_user()
 	return position_survey.record_survey_position(
-		name, yard_zone=yard_zone, row=row, bay=bay, tier=tier, photos=photos, notes=notes
+		name, location_note=location_note, photos=photos, notes=notes
 	)
 
 

@@ -9,7 +9,7 @@ export const labels = {
 	navHome: "Beranda", // Home tab
 	navGate: "Gate",
 	navEir: "EIR",
-	navStorage: "Depot Storage", // Depot Storage tab
+	navMonitor: "Monitor", // Monitor Container tab
 	navHistory: "Riwayat", // History tab (reachable from Home tile + EIR checklist)
 	greeting: "Halo", // "Halo, {name}"
 	homeHint: "Pilih menu untuk mulai bekerja", // Pick a menu to start
@@ -498,16 +498,11 @@ export const labels = {
 	surveyPosSearch: "Cari no. container / CPS…",
 	surveyPosEmpty: "Tidak ada container untuk disurvei.",
 	surveyPosCount: "container",
-	surveyPosCurrent: "Posisi Tercatat Sekarang",
-	surveyPosSection: "Posisi Ditemukan",
-	surveyPosZone: "Yard Zone",
-	surveyPosZonePick: "Pilih zona…",
-	surveyPosRecommend: "Rekomendasi",
-	surveyPosRow: "Baris",
-	surveyPosBay: "Bay",
-	surveyPosTier: "Tier",
+	surveyPosSection: "Letak Container",
+	surveyPosLocation: "Letak container di mana?",
+	surveyPosLocationHint: "mis. blok kanan dekat pos, tumpukan 2",
 	surveyPosPhotos: "Foto Posisi",
-	surveyPosNotes: "Catatan",
+	surveyPosNotes: "Catatan Tambahan",
 	surveyPosSave: "Simpan Posisi",
 	surveyPosSaved: "Posisi tersimpan",
 	// Operator Kalmar approval

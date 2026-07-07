@@ -141,35 +141,6 @@
 				</div>
 				<p v-else class="oak-card p-4 text-center text-sm text-gray-400">{{ labels.dashNoPending }}</p>
 			</section>
-
-			<!-- Okupansi yard -->
-			<section class="space-y-2">
-				<p class="oak-eyebrow flex items-center gap-1.5 px-1">
-					<Icon name="layers" :size="14" /> {{ labels.dashYardTitle }}
-				</p>
-				<router-link to="/storage" class="oak-card oak-press block p-4">
-					<div class="flex items-center justify-between gap-2">
-						<p class="oak-section-title">{{ labels.storage }}</p>
-						<span class="shrink-0 text-xs font-medium" :class="dash.yard.utilization >= 90 ? 'text-red-600' : 'text-gray-500'">
-							{{ dash.yard.occupied }}/{{ dash.yard.capacity || "∞" }}
-							<span v-if="dash.yard.capacity"> · {{ dash.yard.utilization }}%</span>
-						</span>
-					</div>
-					<div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-						<div class="h-full rounded-full transition-all" :class="barClass(dash.yard.utilization)" :style="{ width: barWidth(dash.yard.utilization) }"></div>
-					</div>
-					<div v-if="topZones.length" class="mt-3 space-y-2 border-t border-gray-100 pt-3">
-						<div v-for="z in topZones" :key="z.zone_name" class="flex items-center gap-2">
-							<p class="w-24 shrink-0 truncate text-xs font-medium text-gray-600">{{ z.zone_name }}</p>
-							<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-								<div class="h-full rounded-full" :class="barClass(z.utilization)" :style="{ width: barWidth(z.utilization) }"></div>
-							</div>
-							<span class="w-12 shrink-0 text-right text-[11px] text-gray-500">{{ z.occupied }}/{{ z.capacity || "∞" }}</span>
-						</div>
-					</div>
-					<p v-else class="mt-3 border-t border-gray-100 pt-3 text-center text-xs text-gray-400">{{ labels.dashYardEmpty }}</p>
-				</router-link>
-			</section>
 		</template>
 		</div>
 
@@ -262,11 +233,7 @@ const summaryPending = computed(() => {
 })
 const summaryAlerts = computed(() => {
 	const p = dash.value?.pending || {}
-	return (
-		(dash.value?.periodic_test_due || 0) +
-		(p.mr_approval || 0) +
-		((dash.value?.yard?.utilization || 0) >= 90 ? 1 : 0)
-	)
+	return (dash.value?.periodic_test_due || 0) + (p.mr_approval || 0)
 })
 
 // --- KPI: container per status (tap → Monitor pre-filtered to the bucket) ---
@@ -318,29 +285,12 @@ const pendingCards = computed(() => {
 	return rows.filter((r) => r.count > 0)
 })
 
-// --- KPI: yard occupancy (busiest zones first) ---
-const topZones = computed(() => {
-	const zones = (dash.value?.yard?.zones || []).slice()
-	zones.sort((a, b) => (b.utilization ?? -1) - (a.utilization ?? -1))
-	return zones.slice(0, 5)
-})
-function barWidth(u) {
-	return `${Math.min(Math.max(u || 0, 0), 100)}%`
-}
-function barClass(u) {
-	const v = u || 0
-	if (v >= 90) return "bg-red-500"
-	if (v >= 70) return "bg-amber-500"
-	return "bg-leaf-500"
-}
-
 // --- Menu tiles, grouped by workflow phase ---
 const tiles = {
 	gate: { to: "/gate", icon: "log-in", title: labels.gate, desc: labels.gateDesc, tile: "bg-brand-50 text-brand-600", wide: true },
 	eir: { to: "/eir", icon: "clipboard", title: labels.eir, desc: labels.eirDesc, tile: "bg-leaf-50 text-leaf-600" },
 	cleaning: { to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
 	mr: { to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
-	storage: { to: "/storage", icon: "layers", title: labels.storage, desc: labels.storageDesc, tile: "bg-leaf-50 text-leaf-600" },
 	monitor: { to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
 	surveyPos: { to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
 	posFix: { to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
@@ -349,7 +299,7 @@ const menuGroups = [
 	{ title: labels.grpGate, items: [tiles.gate] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
 	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr] },
-	{ title: labels.grpYard, items: [tiles.storage, tiles.monitor] },
+	{ title: labels.grpYard, items: [tiles.monitor] },
 	{ title: labels.grpSurvey, items: [tiles.surveyPos, tiles.posFix] },
 ]
 
@@ -359,7 +309,6 @@ const history = [
 	{ to: "/eir/history", icon: "clipboard", title: labels.eirHistoryTitle },
 	{ to: "/cleaning/history", icon: "droplet", title: labels.cleaningHistoryTitle },
 	{ to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
-	{ to: "/storage/history", icon: "layers", title: labels.storageHistoryTitle },
 	{ to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
 ]
 </script>

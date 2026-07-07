@@ -35,8 +35,6 @@ def _teardown():
 		for dt in ["Container Movement", "Container Activity", "Cleaning Order", "Repair Order", "Inspection"]:
 			frappe.db.delete(dt, {"container": ["in", names]})
 		frappe.db.delete("Container", {"name": ["in", names]})
-	if frappe.db.exists("Yard Zone", ZONE):
-		frappe.db.delete("Yard Zone", {"name": ZONE})
 	if frappe.db.exists("Depot", DEPOT):
 		frappe.db.delete("Depot", {"name": DEPOT})
 	frappe.db.commit()
@@ -59,34 +57,30 @@ class TestDashboardSummary(FrappeTestCase):
 		).insert(ignore_permissions=True)
 		self.principal = ensure_test_customer("Dashboard Test Principal")
 
-	def _container(self, no, status, yard_zone=None):
-		doc = {
+	def _container(self, no, status):
+		frappe.get_doc({
 			"doctype": "Container",
 			"container_no": no,
 			"container_type": "ISO Tank",
 			"status": status,
 			"depot": DEPOT,
 			"principal": self.principal,
-		}
-		if yard_zone:
-			doc["yard_zone"] = yard_zone
-		frappe.get_doc(doc).insert(ignore_permissions=True)
+		}).insert(ignore_permissions=True)
 		return no
 
 	# --- shape -------------------------------------------------------------
 	def test_summary_shape(self):
 		res = get_dashboard_summary()
 		self.assertTrue(res["success"])
-		for key in ("counts", "periodic_test_due", "total", "today", "pending", "yard"):
+		for key in ("counts", "periodic_test_due", "total", "today", "pending"):
 			self.assertIn(key, res)
+		# Yard occupancy was removed in the Phase 2 status/zone refactor.
+		self.assertNotIn("yard", res)
 		self.assertEqual(set(res["counts"]), set(BUCKETS))
 		for key in ("gate_in", "gate_out", "eir"):
 			self.assertIn(key, res["today"])
 		for key in ("eir_in", "eir_out", "cleaning", "mr_open", "mr_approval"):
 			self.assertIn(key, res["pending"])
-		for key in ("occupied", "capacity", "utilization", "zones"):
-			self.assertIn(key, res["yard"])
-		self.assertIsInstance(res["yard"]["zones"], list)
 
 	# --- status buckets (exact, depot-scoped) ------------------------------
 	def test_status_counts_scoped(self):
@@ -144,31 +138,6 @@ class TestDashboardSummary(FrappeTestCase):
 		self.assertEqual(after["cleaning"], before["cleaning"] + 1)
 		self.assertEqual(after["mr_open"], before["mr_open"] + 1)
 		self.assertEqual(after["mr_approval"], before["mr_approval"] + 1)
-
-	# --- yard occupancy (exact, depot-scoped) ------------------------------
-	def test_yard_occupancy_scoped(self):
-		frappe.get_doc(
-			{
-				"doctype": "Yard Zone",
-				"zone_code": ZONE,
-				"zone_name": "Dash Zone 1",
-				"depot": DEPOT,
-				"category": "Ready",
-				"capacity": 10,
-				"is_active": 1,
-			}
-		).insert(ignore_permissions=True)
-		self._container("DASH0000030", "Available", yard_zone=ZONE)
-
-		res = get_dashboard_summary(depot=DEPOT)
-		yard = res["yard"]
-		self.assertEqual(yard["occupied"], 1)
-		self.assertEqual(yard["capacity"], 10)
-		self.assertEqual(yard["utilization"], 10.0)
-		z = next((x for x in yard["zones"] if x["zone_name"] == "Dash Zone 1"), None)
-		self.assertIsNotNone(z)
-		self.assertEqual(z["occupied"], 1)
-		self.assertEqual(z["capacity"], 10)
 
 	# --- auth guard --------------------------------------------------------
 	def test_guest_is_rejected(self):

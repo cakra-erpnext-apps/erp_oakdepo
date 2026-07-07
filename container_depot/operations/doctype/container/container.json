@@ -135,10 +135,10 @@
   },
   {
    "fieldname": "yard_zone",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_standard_filter": 1,
    "label": "Yard Zone",
-   "options": "Yard Zone"
+   "description": "Legacy (unused): the depot no longer maps tanks to yard zones."
   },
   {
    "fieldname": "row",
@@ -171,7 +171,7 @@
    "label": "EIR-Out Date"
   },
   {
-   "description": "Latest Order Bongkar (unloading voucher) this container was placed on \u2014 stamped automatically when the bon is submitted.",
+   "description": "Latest Order Bongkar (unloading voucher) this container was placed on — stamped automatically when the bon is submitted.",
    "fieldname": "last_order_bongkar",
    "fieldtype": "Link",
    "in_list_view": 1,

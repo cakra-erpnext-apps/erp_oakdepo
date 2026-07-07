@@ -61,7 +61,6 @@ class SmokeRun:
 		self.company = None
 		self.branch = None
 		self.depot = None
-		self.yard_zone = None
 		self.lift_item = None
 		self.mr_item = None
 		self.customer = None       # golden customer (Both contract)
@@ -140,13 +139,6 @@ class SmokeRun:
 			}).insert(ignore_permissions=True).name)
 		else:
 			self.branch = frappe.db.get_value("Depot", self.depot, "branch") or self.branch
-		# Yard Zone in the depot — reuse, else make one.
-		self.yard_zone = frappe.db.get_value("Yard Zone", {"depot": self.depot}, "name")
-		if not self.yard_zone:
-			self.yard_zone = self.track("Yard Zone", frappe.get_doc({
-				"doctype": "Yard Zone", "depot": self.depot, "zone_name": f"{self.tag}-Z1",
-				"category": "Empty Clean", "capacity": 20,
-			}).insert(ignore_permissions=True).name)
 		# Lift item — reuse "Lift Off" (used across the suite/contracts), else make a service item.
 		self.lift_item = self._ensure_service_item("Lift Off")
 		# M&R used-item — a NON-STOCK service item so completion issues no stock (clean teardown).
@@ -155,7 +147,7 @@ class SmokeRun:
 		self.customer = self._ensure_customer(f"{CUST_PREFIX}{self.tag} Golden")
 		self.contract = self._ensure_contract(self.customer, payment_type="Both")
 		_log(f"masters: company={self.company} branch={self.branch} depot={self.depot} "
-			f"zone={self.yard_zone} lift={self.lift_item} mr_item={self.mr_item} "
+			f"lift={self.lift_item} mr_item={self.mr_item} "
 			f"customer={self.customer} contract={self.contract}")
 
 	def _ensure_service_item(self, code):
@@ -239,7 +231,6 @@ class SmokeRun:
 		from container_depot.ess import inventory as ess_inv
 		from container_depot.ess import notifications as ess_notif
 		from container_depot.ess import repairs as ess_mr
-		from container_depot.ess import yard as ess_yard
 		from container_depot.operations import order_generation, service_menu
 
 		self.container = self._cno(1)
@@ -392,15 +383,7 @@ class SmokeRun:
 		# --- 8b) M&R Reject branch (separate container) --------------------
 		self._exercise_mr_reject()
 
-		# --- 9) Yard / Depot Storage (ESS) --------------------------------
-		self.step("Yard · recommend zones (ESS)", lambda: ess_yard.yard_recommend(self.container))
-		self.step("Yard · place container (ESS)",
-			lambda: ess_yard.yard_place(container_no=self.container, zone=self.yard_zone))
-		self.step("Yard · zone tanks (ESS)", lambda: ess_yard.yard_zone_tanks(self.yard_zone))
-		self.step("Yard · overview (ESS)", lambda: ess_yard.yard_overview())
-		self.step("Yard · history (ESS)", lambda: ess_yard.yard_history(search=self.container))
-
-		# --- 10) Monitor / Inventory (ESS) --------------------------------
+		# --- 9) Monitor / Inventory (ESS) ---------------------------------
 		self.step("Monitor · tank list (ESS)", lambda: ess_inv.get_tank_list(search=self.container))
 		self.step("Monitor · tank detail (ESS)", lambda: ess_inv.get_tank_detail(self.container))
 		self.step("Monitor · inventory summary (ESS)", lambda: ess_inv.get_inventory_summary())
@@ -600,7 +583,7 @@ def probe():
 			return f"ERR {e}"
 	_log("=== PROD SMOKE PROBE ===")
 	_log(f"site={frappe.local.site}  user={frappe.session.user}  company={frappe.defaults.get_global_default('company')}")
-	for dt in ["Company", "Branch", "Depot", "Yard Zone", "Customer Group", "Territory",
+	for dt in ["Company", "Branch", "Depot", "Customer Group", "Territory",
 			"Cargo", "Inspection Damage Code", "Inspection Repair Code", "Inspection Checklist Item",
 			"Cleaning Checklist Item", "Depot Service Menu", "Warehouse", "Mode of Payment"]:
 		_log(f"  {dt:<28} {cnt(dt)}")

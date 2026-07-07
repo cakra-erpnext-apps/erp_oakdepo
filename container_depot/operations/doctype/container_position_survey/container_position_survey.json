@@ -14,12 +14,7 @@
     "booking",
     "booking_code",
     "survey_section",
-    "yard_zone",
-    "row",
-    "column_break_2",
-    "bay",
-    "tier",
-    "movement",
+    "location_note",
     "survey_meta_section",
     "surveyed_by",
     "surveyed_on",
@@ -94,40 +89,14 @@
     {
       "fieldname": "survey_section",
       "fieldtype": "Section Break",
-      "label": "Posisi Yard (Hasil Survey)"
+      "label": "Lokasi Container (Hasil Survey)"
     },
     {
-      "fieldname": "yard_zone",
-      "fieldtype": "Link",
-      "label": "Yard Zone",
-      "options": "Yard Zone"
-    },
-    {
-      "fieldname": "row",
-      "fieldtype": "Data",
-      "label": "Baris / Row"
-    },
-    {
-      "fieldname": "column_break_2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "bay",
-      "fieldtype": "Data",
-      "label": "Bay"
-    },
-    {
-      "fieldname": "tier",
-      "fieldtype": "Int",
-      "label": "Tier / Tumpukan"
-    },
-    {
-      "description": "The Container Movement ledger row created when the position was recorded.",
-      "fieldname": "movement",
-      "fieldtype": "Link",
-      "label": "Movement",
-      "options": "Container Movement",
-      "read_only": 1
+      "description": "Catatan bebas letak container di depo (mis. \"blok kanan dekat pos, tumpukan 2\").",
+      "fieldname": "location_note",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "label": "Letak Container"
     },
     {
       "fieldname": "survey_meta_section",

@@ -32,18 +32,6 @@ CLEANING_ROLES = {PWA_ROLE, "Operator Kalmar", "Admin Ops", "Ops Supervisor", "M
 # plus ops oversight.
 MR_ROLES = {PWA_ROLE, "Surveyor", "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
 
-# Yard Zone category → short Indonesian label used in the EIR notification subject.
-CATEGORY_LABEL = {
-	"Workshop": "Workshop (Repair)",
-	"Empty Dirty Queue": "Antrean Cuci",
-	"Cleaning Bay": "Cleaning Bay",
-	"Survey": "Survey (Inspecting)",
-	"Empty Clean": "Empty Clean",
-	"Ready": "Ready",
-	"Gate": "Gate",
-}
-
-
 def _recipients(branch, roles):
 	"""Enabled users holding any of ``roles`` whose branch scope includes ``branch``.
 
@@ -103,13 +91,11 @@ def _depot_branch(depot):
 	return frappe.db.get_value("Depot", depot, "branch") if depot else None
 
 
-def notify_eir_submitted(inspection, container, target_category):
-	"""Fire when an EIR (EIR-In / EIR-Out) is submitted — subject carries the
-	placement target category so the yard operator knows where the tank goes."""
+def notify_eir_submitted(inspection, container):
+	"""Fire when an EIR (EIR-In / EIR-Out) is submitted — tells the crew a tank was
+	inspected so cleaning / M&R can pick it up."""
 	code = inspection.get("inspection_id") or inspection.name
-	cat = CATEGORY_LABEL.get(target_category, target_category)
-	tail = f" → {cat}" if cat else ""
-	subject = f"EIR {code} • {container.container_no} • {inspection.inspection_type}{tail}"
+	subject = f"EIR {code} • {container.container_no} • {inspection.inspection_type}"
 	notify(
 		doctype="Inspection",
 		name=inspection.name,

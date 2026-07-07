@@ -163,14 +163,6 @@ class CleaningOrder(Document):
 				summary=f"Cleaning {self.status.lower().replace('_', ' ')} ({label})",
 			)
 
-	def _cleaning_bay_zone(self, depot):
-		"""The active Cleaning Bay Yard Zone for the depot (None if none configured)."""
-		if not depot:
-			return None
-		return frappe.db.get_value(
-			"Yard Zone", {"depot": depot, "category": "Cleaning Bay", "is_active": 1}, "name"
-		)
-
 	def _mint_cleaning_certificate(self) -> str:
 		"""Create + submit a no-expiry Cleaning Certificate from this completed order.
 

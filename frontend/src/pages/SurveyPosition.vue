@@ -50,7 +50,7 @@
 
 		<!-- =================== DETAIL =================== -->
 		<template v-else-if="mode === 'detail' && detail">
-			<!-- Container + current recorded position -->
+			<!-- Container header -->
 			<section class="oak-card grid grid-cols-2 gap-x-3 gap-y-2 p-4">
 				<div>
 					<p class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.containerNumber }}</p>
@@ -60,46 +60,17 @@
 					<p class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.depot }}</p>
 					<p class="truncate text-sm font-semibold text-gray-800">{{ detail.depot || "—" }}</p>
 				</div>
-				<div class="col-span-2">
-					<p class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.surveyPosCurrent }}</p>
-					<p class="text-sm font-semibold text-gray-800">{{ currentPositionText }}</p>
-				</div>
 			</section>
 
-			<!-- Yard position inputs -->
+			<!-- Location note (free text — "letak container di mana") -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
 					<Icon name="map-pin" :size="16" class="text-brand-500" />
 					<p class="oak-section-title">{{ labels.surveyPosSection }}</p>
 				</div>
 				<div>
-					<label class="oak-label">{{ labels.surveyPosZone }}</label>
-					<SearchSelect
-						v-model="form.yard_zone"
-						:options="detail.zones || []"
-						:option-value="(z) => z.name"
-						:option-label="(z) => `${z.zone_name || z.name}${z.category ? ' · ' + z.category : ''}`"
-						:group-by="(z) => z.category || '—'"
-						:placeholder="labels.surveyPosZonePick"
-						:search-placeholder="labels.selectSearch"
-					/>
-					<p v-if="detail.recommended_zone" class="mt-1 text-xs text-leaf-600">
-						<Icon name="check" :size="12" /> {{ labels.surveyPosRecommend }}: {{ zoneName(detail.recommended_zone) }}
-					</p>
-				</div>
-				<div class="grid grid-cols-3 gap-2">
-					<div>
-						<label class="oak-label">{{ labels.surveyPosRow }}</label>
-						<input v-model.trim="form.row" type="text" class="oak-input px-2.5 py-2" inputmode="numeric" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.surveyPosBay }}</label>
-						<input v-model.trim="form.bay" type="text" class="oak-input px-2.5 py-2" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.surveyPosTier }}</label>
-						<input v-model.number="form.tier" type="number" min="1" class="oak-input px-2.5 py-2" inputmode="numeric" />
-					</div>
+					<label class="oak-label">{{ labels.surveyPosLocation }}</label>
+					<textarea v-model.trim="form.location_note" rows="3" class="oak-input" :placeholder="labels.surveyPosLocationHint"></textarea>
 				</div>
 			</section>
 
@@ -136,7 +107,7 @@
 			<!-- Save -->
 			<section class="space-y-2">
 				<p v-if="saveError" class="text-xs text-red-600">{{ saveError }}</p>
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="recordRes.loading || !form.yard_zone" @click="save">
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="recordRes.loading || !form.location_note" @click="save">
 					<Icon v-if="!recordRes.loading" name="check-circle" :size="18" />
 					{{ recordRes.loading ? "…" : labels.surveyPosSave }}
 				</button>
@@ -152,7 +123,6 @@ import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
-import SearchSelect from "@/components/SearchSelect.vue"
 
 const mode = ref("list") // list | detail
 
@@ -178,7 +148,7 @@ function onSearchInput() {
 
 // ---- detail ----
 const detail = ref(null)
-const form = reactive({ yard_zone: "", row: "", bay: "", tier: null, notes: "" })
+const form = reactive({ location_note: "", notes: "" })
 const photos = ref([])
 const uploading = ref(false)
 const photoErr = ref("")
@@ -188,12 +158,9 @@ const detailRes = createResource({
 	method: "GET",
 	onSuccess(data) {
 		detail.value = data
-		form.yard_zone = data.recommended_zone || ""
-		form.row = ""
-		form.bay = ""
-		form.tier = null
-		form.notes = ""
-		photos.value = []
+		form.location_note = data.location_note || ""
+		form.notes = data.survey_notes || ""
+		photos.value = data.photos || []
 		mode.value = "detail"
 	},
 	onError(err) {
@@ -202,17 +169,6 @@ const detailRes = createResource({
 })
 function openItem(r) {
 	detailRes.submit({ name: r.name })
-}
-
-const currentPositionText = computed(() => {
-	const c = detail.value?.current
-	if (!c) return "—"
-	const parts = [c.zone_name || c.zone, c.row && `Baris ${c.row}`, c.bay && `Bay ${c.bay}`, c.tier && `Tier ${c.tier}`].filter(Boolean)
-	return parts.length ? parts.join(" · ") : "—"
-})
-function zoneName(name) {
-	const z = (detail.value?.zones || []).find((x) => x.name === name)
-	return z ? z.zone_name || z.name : name
 }
 
 // ---- photo upload (reuses the PWA upload_file pattern) ----
@@ -260,13 +216,10 @@ const recordRes = createResource({
 const saveError = computed(() => (recordRes.error ? recordRes.error.messages?.[0] || recordRes.error.message : null))
 
 function save() {
-	if (!detail.value || !form.yard_zone) return
+	if (!detail.value || !form.location_note) return
 	recordRes.submit({
 		name: detail.value.name,
-		yard_zone: form.yard_zone,
-		row: form.row || undefined,
-		bay: form.bay || undefined,
-		tier: form.tier || undefined,
+		location_note: form.location_note,
 		photos: JSON.stringify(photos.value),
 		notes: form.notes || undefined,
 	})

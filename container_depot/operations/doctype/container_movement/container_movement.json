@@ -90,9 +90,8 @@
     },
     {
       "fieldname": "from_zone",
-      "fieldtype": "Link",
-      "label": "From Zone",
-      "options": "Yard Zone"
+      "fieldtype": "Data",
+      "label": "From Zone (legacy)"
     },
     {
       "fieldname": "from_row",
@@ -115,10 +114,8 @@
     },
     {
       "fieldname": "to_zone",
-      "fieldtype": "Link",
-      "label": "To Zone",
-      "options": "Yard Zone",
-      "mandatory_depends_on": "eval:doc.event_type==\"Yard\" || doc.event_type==\"Combined\"",
+      "fieldtype": "Data",
+      "label": "To Zone (legacy)",
       "in_list_view": 1
     },
     {

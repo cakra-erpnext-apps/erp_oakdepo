@@ -12,9 +12,6 @@
 				<router-link to="/monitor/history" class="oak-btn oak-btn-secondary px-3 py-2">
 					<Icon name="clock" :size="16" /> {{ labels.navHistory }}
 				</router-link>
-				<router-link to="/storage" class="oak-btn oak-btn-secondary px-3 py-2">
-					<Icon name="layers" :size="16" /> {{ labels.storage }}
-				</router-link>
 			</div>
 		</div>
 
@@ -43,7 +40,7 @@
 			</button>
 		</div>
 
-		<!-- Quick filters: today + needs-move (mismatch) -->
+		<!-- Quick filter: today -->
 		<div class="flex gap-1.5">
 			<button
 				class="flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
@@ -51,13 +48,6 @@
 				@click="toggleToday"
 			>
 				<Icon name="calendar" :size="13" /> {{ labels.monitorToday }}
-			</button>
-			<button
-				class="flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
-				:class="needsMoveOnly ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 bg-white text-gray-600'"
-				@click="toggleNeedsMove"
-			>
-				<Icon name="alert-triangle" :size="13" /> {{ labels.monitorNeedsMove }}
 			</button>
 		</div>
 
@@ -92,7 +82,7 @@
 
 		<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
 			<li v-for="c in items" :key="c.name" class="flex items-center">
-				<button class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition hover:bg-gray-50" @click="openInStorage(c)">
+				<div class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
 					<span class="oak-icon-tile h-9 w-9 shrink-0 bg-gray-100 text-gray-500"><Icon name="package" :size="16" /></span>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center justify-between gap-2">
@@ -101,27 +91,22 @@
 						</div>
 						<p class="mt-0.5 truncate text-xs text-gray-500">
 							<span v-if="c.principal">{{ c.principal }}</span>
-							<span v-if="c.yard_zone"> · {{ c.yard_zone }}</span>
-							<span v-else> · {{ labels.monitorNoZone }}</span>
 							<span v-if="c.pt_due" class="text-red-500"> · {{ labels.monitorPtDue }}</span>
 						</p>
 						<p v-if="c.order_bongkar" class="mt-0.5 flex items-center gap-1 truncate font-mono text-[11px] text-gray-400">
 							<Icon name="file-text" :size="11" class="shrink-0" /> {{ c.order_bongkar }}
 						</p>
-						<p v-if="c.needs_move" class="mt-0.5 truncate text-xs font-semibold text-amber-600">
-							<Icon name="arrow-right" :size="11" class="inline" /> {{ labels.monitorMoveTo }}: {{ c.target_category }}
-						</p>
 					</div>
-				</button>
+				</div>
 				<button
-					v-if="c.raw_status === 'Released_Pending_Pickup'"
+					v-if="c.raw_status === 'Available'"
 					class="oak-btn oak-btn-primary mr-3 shrink-0 px-3 py-1.5 text-xs"
 					:disabled="gateOutRes.loading"
 					@click.stop="confirmGateOut(c)"
 				>
 					<Icon name="log-out" :size="14" /> {{ labels.gateOutAction }}
 				</button>
-				<Icon v-else name="chevron-right" :size="16" class="mr-4 shrink-0 text-gray-300" />
+				<span v-else class="mr-4 shrink-0"></span>
 			</li>
 		</ul>
 
@@ -139,7 +124,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { useRoute } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
@@ -149,13 +134,11 @@ import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 
 const PAGE = 50
-const router = useRouter()
 const route = useRoute()
 const search = ref("")
 const statusFilter = ref("ready") // default to "ready for pickup / siap muat"
 const principalFilter = ref("")
 const todayOnly = ref(false)
-const needsMoveOnly = ref(false)
 const items = ref([])
 const total = ref(0)
 const start = ref(0)
@@ -187,7 +170,6 @@ const tankRes = createResource({
 		status: statusFilter.value || "",
 		principal: principalFilter.value || "",
 		today: todayOnly.value ? 1 : 0,
-		needs_move: needsMoveOnly.value ? 1 : 0,
 		start: start.value,
 		page_length: PAGE,
 	}),
@@ -216,19 +198,10 @@ function toggleToday() {
 	todayOnly.value = !todayOnly.value
 	reload(true)
 }
-function toggleNeedsMove() {
-	needsMoveOnly.value = !needsMoveOnly.value
-	// "Perlu dipindahkan" spans all statuses — widen the status filter so nothing is hidden.
-	if (needsMoveOnly.value) statusFilter.value = ""
-	reload(true)
-}
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => reload(true), 300)
-}
-function openInStorage(c) {
-	router.push({ path: "/storage", query: { container: c.container_no || c.name } })
 }
 
 // TANK OUT — confirm + complete gate-out for a pickup-pending tank, then refresh so it

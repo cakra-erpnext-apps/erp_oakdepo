@@ -5,7 +5,6 @@ from container_depot.api import (
 	validate_qr,
 	register_gate_entry,
 	get_pending_lifts,
-	update_container_location,
 	upload_inspection_evidence
 )
 from container_depot.tests._booking_helpers import make_booking_code
@@ -93,21 +92,6 @@ def run_tests():
 		assert lifts_res.get("success") is True, "get_pending_lifts failed"
 		assert len(lifts_res.get("containers")) > 0, "No pending lifts returned"
 		print("✓ get_pending_lifts API verified successfully.")
-
-		# 5. Test update_container_location API
-		print("\n--- 5. Testing update_container_location API ---")
-		loc_res = update_container_location(
-			container_no=container_no,
-			yard_zone="Cleaning_Bay_C",
-			lifted_by="Administrator"
-		)
-		print(f"update_container_location result: {json.dumps(loc_res, indent=2)}")
-		assert loc_res.get("success") is True, "update_container_location failed"
-		
-		container.reload()
-		assert container.yard_zone == "Cleaning_Bay_C", "Container yard zone not updated"
-		assert container.current_location == "Cleaning_Bay_C", "Container location not updated"
-		print("✓ update_container_location API verified successfully.")
 
 		# 6. Test upload_inspection_evidence API
 		print("\n--- 6. Testing upload_inspection_evidence API ---")

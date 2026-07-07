@@ -12,9 +12,7 @@ skip-if-exists, no dummy transactional data, clear summary output.
 Seeded (in order)
 -----------------
 * Branch / Depot          — Oak Medan, Oak Surabaya · OAK1, OAK2, OAKSBY
-* Yard Zone               — SOP zones (OAK1/OAK2) + the OAK SBY set
-* Yard Placement Rule,    — reuse the in-app master patches (already shipped data)
-  Cleaning Checklist,
+* Cleaning Checklist,     — reuse the in-app master patches (already shipped data)
   Cargo, EIR Damage/Repair
   codes, EIR checklist
 * UOM / Item Group / Item — full OAK service + M&R parts + packages catalogue
@@ -56,15 +54,7 @@ def run():
         _dev._ensure_depot(code, name, branch)
     print(f"[seed_prod] Depot: {len(_dev.DEPOTS)}")
 
-    # Yard Zones: SOP zones (OAK1/OAK2) from patches.v0_27, then the OAK SBY set.
-    for code, name, depot, block, category, capacity in _dev._SOP_ZONES:
-        _dev._ensure_zone(code, name, depot, block, category, capacity)
-    for code, name, depot, block, category, capacity in _dev.SBY_ZONES:
-        _dev._ensure_zone(code, name, depot, block, category, capacity)
-    print(f"[seed_prod] Yard Zone: {len(_dev._SOP_ZONES)} SOP + {len(_dev.SBY_ZONES)} SBY")
-
     # Shared masters that already ship inside the app's patches (idempotent).
-    _dev._seed_yard_placement_rules()   # patches.v0_32
     _dev._seed_cleaning_checklist()     # patches.v0_31
     _dev._seed_cargo()                  # patches.v0_12
     _dev._seed_eir_codes()              # patches.v0_6  — Inspection Damage + Repair Code
@@ -97,9 +87,9 @@ def clear():
     """Reverse the curated set this seeder created.
 
     Delegates to the shared reversal in :func:`container_depot.seed_dev.clear`
-    (the curated Branch/Depot/Yard Zone/Item Group/Item/Service Menu/Customer
-    set). The shared patch masters — Cargo, Cleaning Checklist, Yard Placement
-    Rule, EIR codes/checklist — are standard masters and are left in place.
+    (the curated Branch/Depot/Item Group/Item/Service Menu/Customer set). The
+    shared patch masters — Cargo, Cleaning Checklist, EIR codes/checklist — are
+    standard masters and are left in place.
     """
     print("[seed_prod] clearing curated master data (delegating to seed_dev.clear) ...")
     _dev.clear()

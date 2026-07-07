@@ -81,17 +81,11 @@ class Inspection(Document):
 			summary=f"{self.inspection_type}" + (": " + ", ".join(outcome) if outcome else ""),
 		)
 
-		# In-app notification (PWA + Desk bell) for EIR-In/EIR-Out — carries the
-		# placement target category derived from THIS EIR (damage > Empty Dirty > Empty Clean).
+		# In-app notification (PWA + Desk bell) for EIR-In/EIR-Out.
 		if self.inspection_type in ("EIR-In", "EIR-Out"):
 			from container_depot.operations.notify import notify_eir_submitted
-			from container_depot.operations.yard import _target_category
 
-			category = _target_category(
-				container,
-				{"damage_count": 1 if self.has_damage else 0, "tank_status": self.get("tank_status")},
-			)
-			notify_eir_submitted(self, container, category)
+			notify_eir_submitted(self, container)
 
 		# Empty-Dirty (undamaged) EIR-In → auto-create a Cleaning Order so the cleaning
 		# team knows a tank is waiting, and notify them — but ONLY when the surveyor left

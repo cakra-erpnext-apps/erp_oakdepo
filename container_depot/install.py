@@ -177,15 +177,6 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Management":        {"read": 1, "report": 1, "export": 1},
 		"IT Support":        {"read": 1, "report": 1},
 	},
-	# Yard Zone master (Depot Storage feature). Operator Kalmar reads zones to place
-	# tanks; Admin Ops maintains the zone/capacity config.
-	"Yard Zone": {
-		"Operator Kalmar":   {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
 	"Inspection Damage Code": {
 		"Surveyor":          {"read": 1, "create": 1, "write": 1, "report": 1},
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
@@ -200,15 +191,6 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Surveyor":          {"read": 1, "report": 1},
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
 		"Ops Supervisor":    {"read": 1, "report": 1},
-	},
-	# Status -> allowed yard category master (drives placement + the 'needs move' list).
-	"Yard Placement Rule": {
-		"Operator Kalmar":   {"read": 1, "report": 1},
-		"Surveyor":          {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
 	},
 	"Periodic Test": {
 		"Customer":          {"read": 1, "report": 1},
@@ -297,8 +279,6 @@ _PWA_DOCTYPE_PERMS = {
 	# Issue Stock Entry it raises on completion is created with ignore_permissions.
 	"Repair Order":            {"read": 1, "write": 1, "create": 1, "report": 1},
 	"Container":         {"read": 1, "report": 1},
-	"Yard Zone":         {"read": 1, "report": 1},
-	"Yard Placement Rule": {"read": 1, "report": 1},
 	# The M&R item picker filters by the "Maintenance" Depot Service Menu under the
 	# caller's session (operations/service_menu.py), so the PWA role must read it.
 	"Depot Service Menu": {"read": 1, "report": 1},
@@ -785,9 +765,6 @@ INVENTORY_CHARTS = [
 	{"chart_name": "Tanks by Principal",
 	 "document_type": "Container", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "principal", "type": "Donut", "number_of_groups": 10, "filters_json": _IN_DEPO_FILTER},
-	{"chart_name": "Tanks by Yard Zone",
-	 "document_type": "Container", "chart_type": "Group By", "group_by_type": "Count",
-	 "group_by_based_on": "yard_zone", "type": "Bar", "filters_json": _IN_DEPO_FILTER},
 	{"chart_name": "Tank IN (Last Month)",
 	 "document_type": "Gate Entry", "chart_type": "Count", "based_on": "gate_in_timestamp",
 	 "timespan": "Last Month", "time_interval": "Daily", "type": "Line", "timeseries": 1},

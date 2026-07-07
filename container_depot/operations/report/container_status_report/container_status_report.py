@@ -39,12 +39,6 @@ def get_columns():
 			"width": 150
 		},
 		{
-			"fieldname": "yard_zone",
-			"label": "Yard Zone",
-			"fieldtype": "Data",
-			"width": 120
-		},
-		{
 			"fieldname": "cleaning_status",
 			"label": "Cleaning Status",
 			"fieldtype": "Data",
@@ -65,11 +59,9 @@ def get_data(filters):
 			query_filters["status"] = filters.get("status")
 		if filters.get("container_type"):
 			query_filters["container_type"] = filters.get("container_type")
-		if filters.get("yard_zone"):
-			query_filters["yard_zone"] = filters.get("yard_zone")
 
 	return frappe.get_all(
 		"Container",
 		filters=query_filters,
-		fields=["container_no", "container_type", "size", "status", "principal", "yard_zone", "cleaning_status", "repair_status"]
+		fields=["container_no", "container_type", "size", "status", "principal", "cleaning_status", "repair_status"]
 	)

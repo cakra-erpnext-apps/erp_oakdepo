@@ -195,8 +195,8 @@ def get_inventory_summary(depot=None):
 
 @frappe.whitelist(methods=["GET"])
 def get_tank_list(
-	search=None, principal=None, status=None, yard_zone=None, depot=None,
-	today=0, needs_move=0, start=0, page_length=50,
+	search=None, principal=None, status=None, depot=None,
+	today=0, start=0, page_length=50,
 ):
 	"""Searchable / filterable / paginated tank list with derived status.
 
@@ -219,8 +219,6 @@ def get_tank_list(
 	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
 	if principal:
 		filters["principal"] = principal
-	if yard_zone:
-		filters["yard_zone"] = yard_zone
 	scoped = _apply_user_depot_scope(filters, depot)
 	if scoped is None:
 		return {"success": True, "total": 0, "start": start, "page_length": page_length, "items": []}
@@ -240,15 +238,7 @@ def get_tank_list(
 	cleaning, repair, inspection = _open_service_sets(names)
 	pt_due = _pt_due_set(names)
 
-	# Placement-rule context for the "needs move" (mismatch) flag: the allowed yard
-	# categories per raw status vs the container's current zone category.
-	from container_depot.operations.yard import status_categories_map, zone_category_map
-
-	cats_map = status_categories_map()
-	zone_cat = zone_category_map([r.yard_zone for r in rows])
-
 	today_flag = cint(today)
-	needs_move_flag = cint(needs_move)
 	today_set = None
 	if today_flag and names:
 		today_set = set(
@@ -269,13 +259,6 @@ def get_tank_list(
 			continue
 		if today_set is not None and r.name not in today_set:
 			continue
-		allowed = cats_map.get(r.status) or []
-		current_cat = zone_cat.get(r.yard_zone) if r.yard_zone else None
-		# Mismatch when the status has allowed categories but the tank sits outside all
-		# of them (or isn't placed yet). The first allowed category is the suggested target.
-		nm = bool(allowed) and current_cat not in allowed
-		if needs_move_flag and not nm:
-			continue
 		items.append(
 			{
 				"name": r.name,
@@ -283,15 +266,10 @@ def get_tank_list(
 				"container_type": r.container_type,
 				"principal": r.principal,
 				"depot": r.depot,
-				"yard_zone": r.yard_zone,
 				"status": bucket,
 				"raw_status": r.status,  # exact Container.status (drives the gate-out action eligibility)
 				"order_bongkar": r.last_order_bongkar,
 				"pt_due": r.name in pt_due,
-				"needs_move": nm,
-				"target_category": allowed[0] if allowed else None,
-				"allowed_categories": allowed,
-				"current_category": current_cat,
 			}
 		)
 
@@ -373,20 +351,19 @@ def get_dashboard_summary(depot=None):
 	home screen loads every KPI in a single round-trip.
 
 	Pure aggregation: it reuses the existing, validated read functions
-	(:func:`get_inventory_summary`, the EIR / Cleaning / M&R worklist totals and
-	:func:`yard.zone_occupancy`) — the only extra queries are today's activity
-	counts and the M&R "Pending Approval" count. Sections:
+	(:func:`get_inventory_summary`, the EIR / Cleaning / M&R worklist totals) —
+	the only extra queries are today's activity counts and the M&R "Pending
+	Approval" count. Sections:
 
 	* ``counts`` / ``periodic_test_due`` / ``total`` — container per status bucket
 	* ``today`` — Gate In / Gate Out / EIR submitted today (Container Activity)
 	* ``pending`` — open EIR-In / EIR-Out / Cleaning / M&R (+ M&R awaiting approval)
-	* ``yard`` — overall occupancy rollup + per-zone occupancy
 
 	GET /api/v1/ess/dashboard-summary
 	"""
 	_require_authenticated_user()
 
-	from container_depot.operations import cleaning, eir, mr, yard
+	from container_depot.operations import cleaning, eir, mr
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
 
@@ -417,27 +394,6 @@ def get_dashboard_summary(depot=None):
 		"mr_approval": frappe.db.count("Repair Order", mr_appr_filters),
 	}
 
-	# 4) Yard occupancy per active zone + an overall rollup (mirrors ess/yard scope).
-	zones = yard.zone_occupancy(depot=depot, depots=None if depot else allowed)
-	occ = sum(cint(z["occupied"]) for z in zones)
-	cap = sum(cint(z["capacity"]) for z in zones)
-	yard_summary = {
-		"occupied": occ,
-		"capacity": cap,
-		"utilization": round((occ / cap) * 100, 1) if cap else 0.0,
-		"zones": [
-			{
-				"zone_name": z["zone_name"],
-				"category": z["category"],
-				"occupied": z["occupied"],
-				"capacity": z["capacity"],
-				"utilization": z["utilization"],
-				"is_full": z["is_full"],
-			}
-			for z in zones
-		],
-	}
-
 	return {
 		"success": True,
 		"counts": summary["counts"],
@@ -445,7 +401,6 @@ def get_dashboard_summary(depot=None):
 		"total": summary["total"],
 		"today": today_activity,
 		"pending": pending,
-		"yard": yard_summary,
 	}
 
 

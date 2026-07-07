@@ -1,9 +1,0 @@
-{
-  "doctype": "Report",
-  "name": "Yard Utilization Location",
-  "ref_doctype": "Container",
-  "report_type": "Script Report",
-  "is_standard": "Yes",
-  "module": "Operations",
-  "disabled": 0
-}

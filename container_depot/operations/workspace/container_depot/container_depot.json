@@ -327,16 +327,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Yard Zone",
-   "link_count": 0,
-   "link_to": "Yard Zone",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Yard Placement Rule",
    "link_count": 0,
    "link_to": "Yard Placement Rule",
@@ -416,16 +406,6 @@
    "label": "Gasket Inventory Status",
    "link_count": 0,
    "link_to": "Gasket Inventory Status",
-   "link_type": "Report",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Yard Utilization Location",
-   "link_count": 0,
-   "link_to": "Yard Utilization Location",
    "link_type": "Report",
    "onboard": 0,
    "type": "Link"

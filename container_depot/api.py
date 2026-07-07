@@ -262,7 +262,7 @@ def register_gate_entry(booking_code, container_no, security_guard=None, truck_p
 
 
 # ---------------------------------------------------------------------------
-# Yard Operations (Reachstacker)
+# Pending Lifts (Reachstacker) — booking-code lookup for a container to lift.
 # ---------------------------------------------------------------------------
 
 
@@ -292,7 +292,6 @@ def get_pending_lifts(booking_code=None, container_no=None):
 					"container_no": bc.container_no,
 					"status": bc.state,
 					"container_type": container_type or "ISO Tank",
-					"suggested_zone": get_suggested_zone(container_type or "ISO Tank", "Needs_Cleaning"),
 				})
 
 		elif container_no:
@@ -304,7 +303,6 @@ def get_pending_lifts(booking_code=None, container_no=None):
 			containers.append({
 				"container_no": container.container_no,
 				"status": container.status,
-				"yard_zone": container.yard_zone,
 			})
 
 		return {"success": True, "containers": containers}
@@ -313,48 +311,6 @@ def get_pending_lifts(booking_code=None, container_no=None):
 		return {"success": False, "error": str(e)}
 	except Exception as e:
 		return {"success": False, "error": str(e)}
-
-
-@frappe.whitelist(methods=["PATCH"])
-def update_container_location(container_no, yard_zone, lifted_by=None):
-	"""Update container location after lift. Authenticated only.
-
-	PATCH /api/v1/yard/update-location
-	"""
-	_require_authenticated_user()
-	container_no = _normalize_container_no(container_no)
-
-	try:
-		container_name = frappe.db.get_value("Container", {"container_no": container_no}, "name")
-		if not container_name:
-			return {"success": False, "error": "Container not found"}
-		container = frappe.get_doc("Container", container_name)
-
-		container.current_location = yard_zone
-		container.yard_zone = yard_zone
-		container.save(ignore_permissions=True)
-
-		return {
-			"success": True,
-			"container_no": container.container_no,
-			"yard_zone": yard_zone,
-		}
-
-	except frappe.ValidationError:
-		raise
-	except Exception as e:
-		return {"success": False, "error": str(e)}
-
-
-def get_suggested_zone(container_type, service_type):
-	if service_type == "Cleaning":
-		return "Cleaning_Bay_C"
-	elif service_type == "Repair":
-		return "Workshop_D"
-	elif service_type == "Survey":
-		return "Survey_Lane_E"
-	else:
-		return "Storage_Yard_A"
 
 
 # ---------------------------------------------------------------------------
@@ -1220,16 +1176,8 @@ def get_agent_skills():
 			"endpoint": "/api/v1/yard/pending-lifts",
 			"method": "GET",
 			"auth": "guest (rate-limited)",
-			"description": "Get the container pending lift for a Booking Code. Returns container number, status, and suggested yard zone.",
+			"description": "Get the container pending lift for a Booking Code. Returns container number and status.",
 			"parameters": ["booking_code", "container_no"],
-		},
-		{
-			"name": "update_container_location",
-			"endpoint": "/api/v1/yard/update-location",
-			"method": "PATCH",
-			"auth": "authenticated (SST service user)",
-			"description": "Update container yard location after reachstacker lift. Updates the container record.",
-			"parameters": ["container_no", "yard_zone", "lifted_by"],
 		},
 		{
 			"name": "upload_inspection_evidence",

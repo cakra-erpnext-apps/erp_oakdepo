@@ -1,6 +1,6 @@
 """Container Position Survey (Lift On) — provision from an outbound Container Booking,
-Surveyor records the yard position (writing a Container Movement + syncing the Container),
-Operator Kalmar approves ("udah turun") → Confirmed.
+Surveyor records a free-text location note (+ photos), Operator Kalmar approves
+("udah turun") → Confirmed. No yard zones / Container Movement — the location is a note.
 
 Self-cleaning: every fixture created here is hard-deleted in tearDown so the shared
 erp.localhost instance is left as it was.
@@ -15,7 +15,6 @@ from container_depot.operations import position_survey as ps
 from container_depot.tests.test_eir import _make_container
 
 DEPOT = "OAK1"
-ZONE = "CPSTEST-ZONE"
 
 
 class TestContainerPositionSurvey(FrappeTestCase):
@@ -23,23 +22,14 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self._containers = []
 		self._bookings = []
-		# A disposable yard zone under an existing depot for the recorded position.
-		if not frappe.db.exists("Yard Zone", ZONE):
-			frappe.get_doc({
-				"doctype": "Yard Zone", "zone_code": ZONE, "zone_name": "CPS Test Zone",
-				"depot": DEPOT, "category": "Ready", "is_active": 1, "capacity": 50,
-				"max_rows": 10, "max_rows_full": 10, "max_tiers": 6,
-			}).insert(ignore_permissions=True, ignore_mandatory=True)
 
 	def tearDown(self):
 		frappe.db.delete("Container Position Survey", {"container": ["in", self._containers or [""]]})
-		frappe.db.delete("Container Movement", {"container": ["in", self._containers or [""]]})
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
 		for c in self._containers:
 			frappe.db.delete("Container", {"name": c})
-		frappe.db.delete("Yard Zone", {"name": ZONE})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -83,34 +73,35 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		# Idempotent: a second run does not open a duplicate.
 		self.assertEqual(ps.provision_position_survey_for_booking(bk), [])
 
-	def test_record_position_writes_movement_and_syncs_container(self):
+	def test_record_position_saves_note_and_photos(self):
 		c = self._container("CPSREC00001")
 		name = self._new_survey(c)
 
 		res = ps.record_survey_position(
-			name, ZONE, row="2", bay="A", tier=1,
-			photos=["/files/pos1.jpg", "/files/pos2.jpg"], notes="ketemu di test zone",
+			name, "blok kanan dekat pos, tumpukan 2",
+			photos=["/files/pos1.jpg", "/files/pos2.jpg"], notes="ketemu di test",
 		)
 		self.assertTrue(res["success"])
 
 		doc = frappe.get_doc("Container Position Survey", name)
 		self.assertEqual(doc.status, ps.SURVEYED)
-		self.assertEqual(doc.yard_zone, ZONE)
+		self.assertEqual(doc.location_note, "blok kanan dekat pos, tumpukan 2")
+		self.assertEqual(doc.survey_notes, "ketemu di test")
 		self.assertEqual(len(doc.position_photos), 2)
-		self.assertTrue(doc.movement)
 		self.assertEqual(doc.surveyed_by, "Administrator")
+		# The survey never touches the container status / yard mapping.
+		self.assertEqual(frappe.db.count("Container Movement", {"container": c, "event_type": "Yard"}), 0)
 
-		# Container Movement created + Container's denormalised position synced.
-		mv = frappe.get_doc("Container Movement", doc.movement)
-		self.assertEqual(mv.event_type, "Yard")
-		self.assertEqual(mv.to_zone, ZONE)
-		self.assertEqual(frappe.db.get_value("Container", c, "yard_zone"), ZONE)
-		self.assertEqual(frappe.db.get_value("Container", c, "tier"), 1)
+	def test_record_requires_location_note(self):
+		c = self._container("CPSNOTE0001")
+		name = self._new_survey(c)
+		with self.assertRaises(frappe.ValidationError):
+			ps.record_survey_position(name, "")
 
 	def test_approve_confirms_and_submits(self):
 		c = self._container("CPSAPP00001")
 		name = self._new_survey(c)
-		ps.record_survey_position(name, ZONE, row="1", tier=1)
+		ps.record_survey_position(name, "ground slot A1")
 
 		out = ps.approve_position(name, note="ok udah turun")
 		self.assertTrue(out["success"])
@@ -122,17 +113,17 @@ class TestContainerPositionSurvey(FrappeTestCase):
 	def test_record_rejects_non_pending(self):
 		c = self._container("CPSGUARD001")
 		name = self._new_survey(c)
-		ps.record_survey_position(name, ZONE, tier=1)  # -> Surveyed
+		ps.record_survey_position(name, "posisi 1")  # -> Surveyed
 		# Recording again (no longer Pending) must be rejected.
 		with self.assertRaises(frappe.ValidationError):
-			ps.record_survey_position(name, ZONE, tier=2)
+			ps.record_survey_position(name, "posisi 2")
 
 	def test_worklists_split_by_status(self):
 		c1 = self._container("CPSWL000001")
 		c2 = self._container("CPSWL000002")
 		n1 = self._new_survey(c1)  # stays Pending
 		n2 = self._new_survey(c2)
-		ps.record_survey_position(n2, ZONE, tier=1)  # -> Surveyed
+		ps.record_survey_position(n2, "posisi 2")  # -> Surveyed
 
 		pending_names = {i["name"] for i in ps.list_pending_surveys(page_length=100)["items"]}
 		surveyed_names = {i["name"] for i in ps.list_surveyed(page_length=100)["items"]}

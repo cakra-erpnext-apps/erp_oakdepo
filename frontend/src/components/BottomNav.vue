@@ -35,7 +35,7 @@ const tabs = [
 	{ to: "/eir", icon: "clipboard", label: labels.navEir },
 	{ to: "/cleaning", icon: "droplet", label: labels.navCleaning },
 	{ to: "/mr", icon: "tool", label: labels.navMr },
-	{ to: "/storage", icon: "layers", label: labels.navStorage },
+	{ to: "/monitor", icon: "grid", label: labels.navMonitor || labels.monitorTitle },
 ]
 
 function isActive(t) {

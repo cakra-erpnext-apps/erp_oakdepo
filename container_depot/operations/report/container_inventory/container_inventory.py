@@ -1,7 +1,7 @@
 """Container Inventory — the live per-tank monitoring list.
 
-One row per Container with its monitoring stage, yard placement, in-date and
-age in the depo. Defaults to tanks physically in the depo (every
+One row per Container with its monitoring stage, in-date and age in the depo.
+Defaults to tanks physically in the depo (every
 ``inventory_stage`` except Pre-Arrival / Departed); flip ``in_depo_only`` off to
 include reserved + gated-out tanks. Reuses the derived ``inventory_stage`` kept
 in step by ``Container.before_save``.
@@ -28,7 +28,6 @@ def _columns():
 		{"fieldname": "size", "label": "Size", "fieldtype": "Data", "width": 70},
 		{"fieldname": "inventory_stage", "label": "Stage", "fieldtype": "Data", "width": 110},
 		{"fieldname": "status", "label": "Raw Status", "fieldtype": "Data", "width": 150},
-		{"fieldname": "yard_zone", "label": "Yard Zone", "fieldtype": "Data", "width": 120},
 		{"fieldname": "last_cargo", "label": "Last Cargo", "fieldtype": "Link", "options": "Cargo", "width": 120},
 		{"fieldname": "cleaning_status", "label": "Cleaning", "fieldtype": "Data", "width": 100},
 		{"fieldname": "repair_status", "label": "Repair", "fieldtype": "Data", "width": 110},
@@ -46,7 +45,7 @@ def _data(filters):
 	if filters.get("in_depo_only", 1):
 		where.append("c.inventory_stage IN %(in_depo)s")
 		params["in_depo"] = tuple(IN_DEPO_STAGES)
-	for field in ("principal", "depot", "inventory_stage", "yard_zone"):
+	for field in ("principal", "depot", "inventory_stage"):
 		if filters.get(field):
 			where.append(f"c.{field} = %({field})s")
 			params[field] = filters[field]
@@ -55,7 +54,7 @@ def _data(filters):
 	rows = frappe.db.sql(
 		f"""
 		SELECT c.container_no, c.principal, c.container_type, c.size, c.inventory_stage,
-		       c.status, c.yard_zone, c.last_cargo, c.cleaning_status, c.repair_status,
+		       c.status, c.last_cargo, c.cleaning_status, c.repair_status,
 		       c.eir_in_date, c.next_pt_due
 		FROM `tabContainer` c{clause}
 		ORDER BY c.principal, c.container_no
@@ -77,7 +76,6 @@ def _data(filters):
 			"size": r.size,
 			"inventory_stage": r.inventory_stage,
 			"status": r.status,
-			"yard_zone": r.yard_zone,
 			"last_cargo": r.last_cargo,
 			"cleaning_status": r.cleaning_status,
 			"repair_status": r.repair_status,

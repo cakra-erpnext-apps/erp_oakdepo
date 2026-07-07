@@ -127,14 +127,6 @@ class TestApiSecurity(FrappeTestCase):
 				)
 		self._as_guest(call)
 
-	def test_update_container_location_rejects_guest(self):
-		def call():
-			with self.assertRaises(frappe.PermissionError):
-				cdapi.update_container_location(
-					container_no="STLU123456-7", yard_zone="Storage_Yard_A"
-				)
-		self._as_guest(call)
-
 	def test_upload_inspection_evidence_rejects_guest(self):
 		def call():
 			with self.assertRaises(frappe.PermissionError):

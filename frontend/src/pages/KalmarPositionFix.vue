@@ -41,7 +41,7 @@
 							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
 							<p class="mt-0.5 truncate text-xs text-gray-500">
 								<span class="font-mono">{{ r.name }}</span>
-								<span v-if="r.yard_zone"> · {{ r.yard_zone }}</span>
+								<span v-if="r.location_note"> · {{ r.location_note }}</span>
 							</p>
 						</div>
 						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
@@ -64,7 +64,7 @@
 				</div>
 				<div class="col-span-2">
 					<p class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.posFixSurveyed }}</p>
-					<p class="text-sm font-semibold text-gray-800">{{ surveyedPositionText }}</p>
+					<p class="whitespace-pre-line text-sm font-semibold text-gray-800">{{ detail.location_note || "—" }}</p>
 					<p v-if="detail.surveyed_by" class="text-xs text-gray-400">{{ detail.surveyed_by }}<span v-if="detail.surveyed_on"> · {{ detail.surveyed_on }}</span></p>
 				</div>
 				<div v-if="detail.survey_notes" class="col-span-2">
@@ -146,13 +146,6 @@ const detailRes = createResource({
 function openItem(r) {
 	detailRes.submit({ name: r.name })
 }
-
-const surveyedPositionText = computed(() => {
-	const d = detail.value
-	if (!d) return "—"
-	const parts = [d.yard_zone, d.row && `Baris ${d.row}`, d.bay && `Bay ${d.bay}`, d.tier && `Tier ${d.tier}`].filter(Boolean)
-	return parts.length ? parts.join(" · ") : "—"
-})
 
 // ---- approve ----
 const approveRes = createResource({
