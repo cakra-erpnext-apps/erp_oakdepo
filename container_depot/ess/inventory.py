@@ -10,9 +10,9 @@ There is no permission logic in the PWA.
 Status is **derived server-side** here — the raw ``Container.status`` Select
 carries the full lifecycle (normalised in B0: duplicate removed, portal states
 added), but the UI only ever needs five buckets. :func:`derive_status` collapses
-the raw status (kept in sync with the latest Container Movement by
-``Container.on_update``) plus open Repair / Cleaning / Inspection records into
-those five canonical buckets.
+the raw status plus *active* (started) Cleaning / M&R work into those five
+canonical buckets: a tank shows in cleaning / repair only once the job is
+started; a merely-created order leaves it reading "Di Depo".
 """
 
 from __future__ import annotations
@@ -33,18 +33,18 @@ BUCKETS = ("in_depot", "cleaning", "repair_survey", "ready", "gate_out")
 # whose Container master was created at booking time but has not yet gated in.
 EXCLUDED_FROM_INVENTORY = ("Booked",)
 
-# Open-state filters for the service doctypes that override a tank's bucket.
-OPEN_CLEANING = ("Pending", "In_Progress")
-OPEN_REPAIR = ("Draft", "Pending Approval", "Approved", "In Progress")
-OPEN_INSPECTION = ("Draft", "Submitted")
+# A tank only lands in the cleaning / repair bucket once the crew has STARTED the job —
+# not when the order is merely created (a draft M&R, a pending Cleaning Order). Until then
+# the tank stays `in_depot`. "Started" = Cleaning Order In_Progress / Repair Order In Progress
+# (the states set by start_cleaning / start_repair).
+STARTED_CLEANING = ("In_Progress",)
+STARTED_REPAIR = ("In Progress",)
 
-# Container.status is presence-based now (Booked / In_Depot / Available / Gate_Out).
-# The cleaning/repair UI buckets are driven entirely by OPEN ORDERS (open_cleaning /
-# open_repair / open_inspection), not by the raw status, so those raw sets are empty.
+# Container.status is presence-based (Booked / In_Depot / Available / Gate_Out). `Available`
+# means recompute_availability found NO open orders, so it maps straight to the ready pool;
+# `Gate_Out` is terminal. Everything else present is `in_depot` unless active work overrides it.
 _GATE_OUT_RAW = {"Gate_Out"}
 _READY_RAW = {"Available"}
-_CLEANING_RAW: set[str] = set()
-_REPAIR_RAW: set[str] = set()
 
 # Fields surfaced in the tank list (kept lean for the < 2s/1000-tank target).
 _LIST_FIELDS = [
@@ -80,59 +80,47 @@ def _apply_user_depot_scope(filters, depot):
 	return filters
 
 
-def derive_status(raw_status, open_cleaning=False, open_repair=False, open_inspection=False):
-	"""Collapse a raw Container.status + open-service signals into one bucket.
+def derive_status(raw_status, cleaning_active=False, repair_active=False):
+	"""Collapse a raw Container.status + active-work signals into one Monitor bucket.
 
-	Precedence: a gated-out tank is terminal; then active cleaning (an open
-	Cleaning Order or a cleaning raw state); then active survey/repair (an open
-	Repair Order / Inspection or a survey/repair raw state); then the consolidated
-	`Available` ready pool; else the tank is simply in the depot (e.g. just gated
-	in, pre-processing). Open work is checked BEFORE the `Available`->ready mapping
-	so a tank that is Available but currently being re-cleaned / re-surveyed still
-	surfaces the active job in the PWA instead of reading "ready".
+	Precedence: a gated-out tank is terminal; then an ACTIVE (started) cleaning job;
+	then an ACTIVE (started) M&R job; then the `Available` ready pool (no open orders
+	at all — see recompute_availability); else the tank is simply in the depot (just
+	gated in, or an order created but not yet started). Only *started* work overrides
+	`in_depot` — a draft M&R / pending Cleaning Order leaves the tank reading "Di Depo".
 	"""
 	if raw_status in _GATE_OUT_RAW:
 		return "gate_out"
-	if open_cleaning or raw_status in _CLEANING_RAW:
+	if cleaning_active:
 		return "cleaning"
-	if open_repair or open_inspection or raw_status in _REPAIR_RAW:
+	if repair_active:
 		return "repair_survey"
 	if raw_status in _READY_RAW:
 		return "ready"
 	return "in_depot"
 
 
-def _open_service_sets(names):
-	"""Return (cleaning, repair, inspection) sets of container names with an open
-	order of each type, restricted to ``names`` (already permission-filtered)."""
+def _active_service_sets(names):
+	"""Return (cleaning, repair) sets of container names with an ACTIVE (started) order —
+	a Cleaning Order In_Progress / a Repair Order In Progress. Restricted to ``names``
+	(already permission-filtered)."""
 	if not names:
-		return set(), set(), set()
+		return set(), set()
 	cleaning = set(
 		frappe.get_all(
 			"Cleaning Order",
-			filters={"container": ["in", names], "status": ["in", OPEN_CLEANING]},
+			filters={"container": ["in", names], "status": ["in", STARTED_CLEANING]},
 			pluck="container",
 		)
 	)
 	repair = set(
 		frappe.get_all(
 			"Repair Order",
-			filters={"container": ["in", names], "status": ["in", OPEN_REPAIR]},
+			filters={"container": ["in", names], "status": ["in", STARTED_REPAIR]},
 			pluck="container",
 		)
 	)
-	inspection = set(
-		frappe.get_all(
-			"Inspection",
-			filters={
-				"container": ["in", names],
-				"status": ["in", OPEN_INSPECTION],
-				"docstatus": ["<", 2],
-			},
-			pluck="container",
-		)
-	)
-	return cleaning, repair, inspection
+	return cleaning, repair
 
 
 def _pt_due_set(names):
@@ -175,14 +163,12 @@ def get_inventory_summary(depot=None):
 		limit_page_length=0,
 	)
 	names = [c.name for c in containers]
-	cleaning, repair, inspection = _open_service_sets(names)
+	cleaning, repair = _active_service_sets(names)
 	pt_due = _pt_due_set(names)
 
 	counts = {b: 0 for b in BUCKETS}
 	for c in containers:
-		bucket = derive_status(
-			c.status, c.name in cleaning, c.name in repair, c.name in inspection
-		)
+		bucket = derive_status(c.status, c.name in cleaning, c.name in repair)
 		counts[bucket] += 1
 
 	return {
@@ -235,7 +221,7 @@ def get_tank_list(
 		limit_page_length=0,
 	)
 	names = [r.name for r in rows]
-	cleaning, repair, inspection = _open_service_sets(names)
+	cleaning, repair = _active_service_sets(names)
 	pt_due = _pt_due_set(names)
 
 	today_flag = cint(today)
@@ -252,9 +238,7 @@ def get_tank_list(
 
 	items = []
 	for r in rows:
-		bucket = derive_status(
-			r.status, r.name in cleaning, r.name in repair, r.name in inspection
-		)
+		bucket = derive_status(r.status, r.name in cleaning, r.name in repair)
 		if status and bucket != status:
 			continue
 		if today_set is not None and r.name not in today_set:
@@ -315,11 +299,9 @@ def get_tank_detail(container):
 	frappe.has_permission("Container", doc=container, ptype="read", throw=True)
 
 	doc = frappe.get_doc("Container", container)
-	cleaning, repair, inspection = _open_service_sets([doc.name])
+	cleaning, repair = _active_service_sets([doc.name])
 	pt_due = _pt_due_set([doc.name])
-	bucket = derive_status(
-		doc.status, doc.name in cleaning, doc.name in repair, doc.name in inspection
-	)
+	bucket = derive_status(doc.status, doc.name in cleaning, doc.name in repair)
 
 	return {
 		"success": True,

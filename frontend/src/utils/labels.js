@@ -578,7 +578,7 @@ export const labels = {
 export const statusLabels = {
 	in_depot: "Di Depo", // In Depot
 	cleaning: "Pencucian", // Cleaning
-	repair_survey: "Perbaikan & Survei", // Repair & Survey
+	repair_survey: "Perbaikan", // M&R in progress
 	ready: "Siap", // Ready
 	gate_out: "Keluar Gate", // Gate Out
 }
