@@ -98,7 +98,12 @@
 
 		<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
 			<li v-for="c in items" :key="c.name" class="flex items-center">
-				<div class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
+				<component
+					:is="c.order ? 'button' : 'div'"
+					class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+					:class="c.order ? 'transition hover:bg-gray-50' : ''"
+					@click="c.order && openOrder(c)"
+				>
 					<span class="oak-icon-tile h-9 w-9 shrink-0 bg-gray-100 text-gray-500"><Icon name="package" :size="16" /></span>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center justify-between gap-2">
@@ -109,11 +114,17 @@
 							<span v-if="c.principal">{{ c.principal }}</span>
 							<span v-if="c.pt_due" class="text-red-500"> · {{ labels.monitorPtDue }}</span>
 						</p>
+						<!-- What put the tank in this bucket (draft/pending/dikerjakan) + link to the order -->
+						<p v-if="c.order" class="mt-1 flex items-center gap-1 truncate text-xs font-semibold" :class="orderTint(c.status)">
+							<Icon :name="c.order.kind === 'M&R' ? 'tool' : 'droplet'" :size="12" class="shrink-0" />
+							{{ statusLabels[c.status] }} · {{ c.order.kind }}
+							<span class="font-mono font-normal text-gray-400">· {{ c.order.name }}</span>
+						</p>
 						<p v-if="c.order_bongkar" class="mt-0.5 flex items-center gap-1 truncate font-mono text-[11px] text-gray-400">
 							<Icon name="file-text" :size="11" class="shrink-0" /> {{ c.order_bongkar }}
 						</p>
 					</div>
-				</div>
+				</component>
 				<button
 					v-if="c.raw_status === 'Available'"
 					class="oak-btn oak-btn-primary mr-3 shrink-0 px-3 py-1.5 text-xs"
@@ -122,6 +133,7 @@
 				>
 					<Icon name="log-out" :size="14" /> {{ labels.gateOutAction }}
 				</button>
+				<Icon v-else-if="c.order" name="chevron-right" :size="16" class="mr-4 shrink-0 text-gray-300" />
 				<span v-else class="mr-4 shrink-0"></span>
 			</li>
 		</ul>
@@ -144,7 +156,7 @@
 
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue"
-import { useRoute } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
@@ -155,6 +167,7 @@ import SearchSelect from "@/components/SearchSelect.vue"
 
 const PAGE = 50
 const route = useRoute()
+const router = useRouter()
 const search = ref("")
 const statusFilter = ref("") // default to "Semua" — the field observer sees every container
 const principalFilter = ref("")
@@ -233,6 +246,17 @@ let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => reload(true), 300)
+}
+
+// Tap a draft/pending/dikerjakan row -> open the order that drives the bucket.
+function openOrder(c) {
+	if (!c.order) return
+	const path = c.order.kind === "M&R" ? "/mr" : "/cleaning"
+	router.push({ path, query: { o: c.order.name } })
+}
+// Text tint matching the status chip (leaf/amber/blue/gray) for the order descriptor.
+function orderTint(status) {
+	return { draft: "text-gray-600", pending: "text-amber-700", in_progress: "text-blue-700" }[status] || "text-gray-600"
 }
 
 // TANK OUT — confirm + complete gate-out for a pickup-pending tank, then refresh so it

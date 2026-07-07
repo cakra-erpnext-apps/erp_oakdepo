@@ -173,6 +173,18 @@ class TestEssInventory(FrappeTestCase):
 		available = get_tank_list(depot=ESS_DEPOT, status="available")
 		self.assertEqual({i["container_no"] for i in available["items"]}, {"ESST1000003", "ESST1000007"})
 
+	def test_tank_list_carries_driving_order(self):
+		# Each draft/pending/in_progress row names the order that drives it (kind + link).
+		rows = {i["container_no"]: i for i in get_tank_list(depot=ESS_DEPOT)["items"]}
+		self.assertEqual(rows["ESST1000006"]["order"]["kind"], "M&R")  # Draft M&R
+		self.assertEqual(rows["ESST1000006"]["order"]["doctype"], "Repair Order")
+		self.assertTrue(rows["ESST1000006"]["order"]["name"])
+		self.assertEqual(rows["ESST1000001"]["order"]["kind"], "Cleaning")  # Pending Cleaning
+		self.assertEqual(rows["ESST1000004"]["order"]["kind"], "Cleaning")  # in-progress cleaning
+		# available / gate_out carry no order link.
+		self.assertIsNone(rows["ESST1000003"]["order"])
+		self.assertIsNone(rows["ESST1000002"]["order"])
+
 	def test_tank_list_search(self):
 		res = get_tank_list(depot=ESS_DEPOT, search="ESST1000002")
 		self.assertEqual([i["container_no"] for i in res["items"]], ["ESST1000002"])

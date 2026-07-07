@@ -103,30 +103,47 @@ def derive_status(raw_status, in_progress=False, pending=False, draft=False):
 	return "available"
 
 
-def _order_state_sets(names):
-	"""Return (in_progress, pending, draft) sets of container names by their most-relevant
-	Cleaning/Repair order state. Restricted to ``names`` (already permission-filtered)."""
+# Order status -> (bucket state) per doctype, so a row can also name WHICH order drives it.
+_CLEANING_STATE = {s: "in_progress" for s in IN_PROGRESS_CLEANING}
+_CLEANING_STATE.update({s: "pending" for s in PENDING_CLEANING})
+_REPAIR_STATE = {s: "in_progress" for s in IN_PROGRESS_REPAIR}
+_REPAIR_STATE.update({s: "pending" for s in PENDING_REPAIR})
+_REPAIR_STATE.update({s: "draft" for s in DRAFT_REPAIR})
+_STATE_RANK = {"draft": 1, "pending": 2, "in_progress": 3}
+
+
+def _driving_orders(names):
+	"""Map container -> the order that drives its Monitor bucket: the most-advanced
+	(in_progress > pending > draft) Cleaning/M&R order, as
+	``{"state", "kind", "doctype", "name", "status"}``. Restricted to ``names``."""
 	if not names:
-		return set(), set(), set()
+		return {}
+	rows = []
+	for r in frappe.get_all(
+		"Cleaning Order",
+		filters={"container": ["in", names], "status": ["in", list(_CLEANING_STATE)]},
+		fields=["name", "container", "status"],
+	):
+		rows.append((r.container, _CLEANING_STATE[r.status], "Cleaning", "Cleaning Order", r.name, r.status))
+	for r in frappe.get_all(
+		"Repair Order",
+		filters={"container": ["in", names], "status": ["in", list(_REPAIR_STATE)]},
+		fields=["name", "container", "status"],
+	):
+		rows.append((r.container, _REPAIR_STATE[r.status], "M&R", "Repair Order", r.name, r.status))
+	out = {}
+	for container, state, kind, doctype, name, status in rows:
+		cur = out.get(container)
+		if cur is None or _STATE_RANK[state] > _STATE_RANK[cur["state"]]:
+			out[container] = {"state": state, "kind": kind, "doctype": doctype, "name": name, "status": status}
+	return out
 
-	def _co(statuses):
-		return set(frappe.get_all(
-			"Cleaning Order",
-			filters={"container": ["in", names], "status": ["in", statuses]},
-			pluck="container",
-		))
 
-	def _ro(statuses):
-		return set(frappe.get_all(
-			"Repair Order",
-			filters={"container": ["in", names], "status": ["in", statuses]},
-			pluck="container",
-		))
-
-	in_progress = _co(IN_PROGRESS_CLEANING) | _ro(IN_PROGRESS_REPAIR)
-	pending = _co(PENDING_CLEANING) | _ro(PENDING_REPAIR)
-	draft = _ro(DRAFT_REPAIR)
-	return in_progress, pending, draft
+def _order_ref(drv):
+	"""The frontend link payload for a driving order (or None)."""
+	if not drv:
+		return None
+	return {"kind": drv["kind"], "doctype": drv["doctype"], "name": drv["name"], "status": drv["status"]}
 
 
 def _pt_due_set(names):
@@ -169,12 +186,13 @@ def get_inventory_summary(depot=None):
 		limit_page_length=0,
 	)
 	names = [c.name for c in containers]
-	in_progress, pending, draft = _order_state_sets(names)
+	driving = _driving_orders(names)
 	pt_due = _pt_due_set(names)
 
 	counts = {b: 0 for b in BUCKETS}
 	for c in containers:
-		bucket = derive_status(c.status, c.name in in_progress, c.name in pending, c.name in draft)
+		st = (driving.get(c.name) or {}).get("state")
+		bucket = derive_status(c.status, st == "in_progress", st == "pending", st == "draft")
 		counts[bucket] += 1
 
 	return {
@@ -227,7 +245,7 @@ def get_tank_list(
 		limit_page_length=0,
 	)
 	names = [r.name for r in rows]
-	in_progress, pending, draft = _order_state_sets(names)
+	driving = _driving_orders(names)
 	pt_due = _pt_due_set(names)
 
 	today_flag = cint(today)
@@ -244,7 +262,9 @@ def get_tank_list(
 
 	items = []
 	for r in rows:
-		bucket = derive_status(r.status, r.name in in_progress, r.name in pending, r.name in draft)
+		drv = driving.get(r.name)
+		st = (drv or {}).get("state")
+		bucket = derive_status(r.status, st == "in_progress", st == "pending", st == "draft")
 		if status and bucket != status:
 			continue
 		if today_set is not None and r.name not in today_set:
@@ -260,6 +280,9 @@ def get_tank_list(
 				"raw_status": r.status,  # exact Container.status (drives the gate-out action eligibility)
 				"order_bongkar": r.last_order_bongkar,
 				"pt_due": r.name in pt_due,
+				# Which order put the tank in this bucket (draft/pending/in_progress) —
+				# lets the UI say "Draft M&R" and link straight to the order.
+				"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
 			}
 		)
 
@@ -325,9 +348,10 @@ def get_tank_detail(container):
 	frappe.has_permission("Container", doc=container, ptype="read", throw=True)
 
 	doc = frappe.get_doc("Container", container)
-	in_progress, pending, draft = _order_state_sets([doc.name])
+	drv = _driving_orders([doc.name]).get(doc.name)
+	st = (drv or {}).get("state")
 	pt_due = _pt_due_set([doc.name])
-	bucket = derive_status(doc.status, doc.name in in_progress, doc.name in pending, doc.name in draft)
+	bucket = derive_status(doc.status, st == "in_progress", st == "pending", st == "draft")
 
 	return {
 		"success": True,
@@ -350,6 +374,7 @@ def get_tank_detail(container):
 		"eir_out_date": str(doc.eir_out_date) if doc.eir_out_date else None,
 		"status": bucket,
 		"pt_due": bool(pt_due),
+		"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
 	}
 
 
