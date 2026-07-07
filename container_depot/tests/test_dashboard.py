@@ -84,15 +84,16 @@ class TestDashboardSummary(FrappeTestCase):
 
 	# --- status buckets (exact, depot-scoped) ------------------------------
 	def test_status_counts_scoped(self):
-		self._container("DASH0000001", "Available")  # ready
-		self._container("DASH0000002", "In_Depot")  # in_depot
-		self._container("DASH0000003", "In_Depot")  # in_depot (buckets are order-driven now)
+		# No orders on any of them -> all fall in the `available` bucket (order-state driven).
+		self._container("DASH0000001", "Available")
+		self._container("DASH0000002", "In_Depot")
+		self._container("DASH0000003", "In_Depot")
 		res = get_dashboard_summary(depot=DEPOT)
 		self.assertEqual(res["total"], 3)
-		self.assertEqual(res["counts"]["ready"], 1)
-		self.assertEqual(res["counts"]["in_depot"], 2)
-		self.assertEqual(res["counts"]["cleaning"], 0)
-		self.assertEqual(res["counts"]["repair_survey"], 0)
+		self.assertEqual(res["counts"]["available"], 3)
+		self.assertEqual(res["counts"]["draft"], 0)
+		self.assertEqual(res["counts"]["pending"], 0)
+		self.assertEqual(res["counts"]["in_progress"], 0)
 		self.assertEqual(res["counts"]["gate_out"], 0)
 
 	# --- today's activity (delta, instance-wide) ---------------------------

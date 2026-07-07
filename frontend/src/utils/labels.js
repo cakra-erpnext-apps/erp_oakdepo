@@ -521,14 +521,11 @@ export const labels = {
 	monitorDesc: "Pantau container per status & prinsipal", // Home tile subtitle
 	monitorSearch: "Cari nomor container…", // search placeholder
 	monitorAll: "Semua", // all statuses
-	monitorReady: "Siap Muat", // ready-for-pickup quick filter (ready bucket)
 	monitorAllPrincipals: "Semua Prinsipal", // principal filter default
+	monitorAllDepots: "Semua Depot", // depot filter default
 	monitorEmpty: "Tidak ada container untuk filter ini.", // empty state
 	monitorPtDue: "PT jatuh tempo", // periodic test due flag
 	monitorToday: "Hari Ini", // today filter
-	monitorNeedsMove: "Perlu Dipindahkan", // needs-move (mismatch) filter
-	monitorMoveTo: "Pindahkan ke", // move target prefix
-	monitorNoZone: "Belum ada zona", // no yard zone yet
 	storageTitle: "Depot Storage",
 	storagePlaceTitle: "Tempatkan Isotank", // Place an isotank
 	storagePlaceHint: "Masukkan nomor isotank — sistem menyarankan zona sesuai status.",
@@ -573,22 +570,22 @@ export const labels = {
 	storageOf: "dari", // X dari Y
 }
 
-// Canonical 5-bucket status labels (Indonesian primary / English).
+// Canonical Monitor status buckets — order-state per container (Indonesian / English).
 // Keys match the server-derived `status` buckets from the ESS endpoints.
 export const statusLabels = {
-	in_depot: "Di Depo", // In Depot
-	cleaning: "Pencucian", // Cleaning
-	repair_survey: "Perbaikan", // M&R in progress
-	ready: "Siap", // Ready
-	gate_out: "Keluar Gate", // Gate Out
+	available: "Available", // no open order
+	draft: "Draft", // M&R created, not submitted
+	pending: "Pending", // queued / awaiting approval
+	in_progress: "Dikerjakan", // cleaning / M&R started
+	gate_out: "Keluar", // Gate Out
 }
 
 // Tailwind chip colours per bucket (frappe-ui theme tokens).
 export const statusColors = {
-	in_depot: "bg-blue-100 text-blue-800",
-	cleaning: "bg-amber-100 text-amber-800",
-	repair_survey: "bg-orange-100 text-orange-800",
-	ready: "bg-leaf-100 text-leaf-800",
+	available: "bg-leaf-100 text-leaf-800",
+	draft: "bg-gray-100 text-gray-700",
+	pending: "bg-amber-100 text-amber-800",
+	in_progress: "bg-blue-100 text-blue-800",
 	gate_out: "bg-gray-200 text-gray-700",
 }
 

@@ -236,14 +236,14 @@ const summaryAlerts = computed(() => {
 	return (dash.value?.periodic_test_due || 0) + (p.mr_approval || 0)
 })
 
-// --- KPI: container per status (tap → Monitor pre-filtered to the bucket) ---
-const STATUS_ORDER = ["ready", "in_depot", "cleaning", "repair_survey", "gate_out"]
+// --- KPI: container per order-state (tap → Monitor pre-filtered to the bucket) ---
+const STATUS_ORDER = ["available", "draft", "pending", "in_progress", "gate_out"]
 // Per-bucket accent (number colour + side/dot tint) — aligned to statusColors.
 const STATUS_STYLE = {
-	ready: { num: "text-leaf-700", dot: "bg-leaf-500" },
-	in_depot: { num: "text-blue-700", dot: "bg-blue-500" },
-	cleaning: { num: "text-amber-700", dot: "bg-amber-500" },
-	repair_survey: { num: "text-orange-700", dot: "bg-orange-500" },
+	available: { num: "text-leaf-700", dot: "bg-leaf-500" },
+	draft: { num: "text-gray-600", dot: "bg-gray-400" },
+	pending: { num: "text-amber-700", dot: "bg-amber-500" },
+	in_progress: { num: "text-blue-700", dot: "bg-blue-500" },
 	gate_out: { num: "text-gray-600", dot: "bg-gray-400" },
 }
 const statusCards = computed(() => {

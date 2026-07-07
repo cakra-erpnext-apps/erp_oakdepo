@@ -25,17 +25,17 @@ from container_depot.ess.repairs import get_tank_repairs, set_repair_status
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
 
 ESS_DEPOT = "ESST"
-# Raw status seeded per container -> expected derived bucket. Buckets are driven by
-# *active* (started) work: only a Cleaning Order In_Progress / Repair Order In Progress
-# overrides in_depot. A created-but-not-started order (draft/pending) stays in_depot.
+# Raw status seeded per container -> expected Monitor bucket. Buckets are order-state
+# centric: a container is classified by its most-advanced Cleaning/M&R order state
+# (in_progress > pending > draft); no open order -> available.
 TANKS = {
-	"ESST1000001": "In_Depot",  # in_depot (just gated in, + PT due)
+	"ESST1000001": "In_Depot",  # pending (Cleaning Order Pending) + PT due
 	"ESST1000002": "Gate_Out",  # gate_out
-	"ESST1000003": "Available",  # ready (no orders at all)
-	"ESST1000004": "In_Depot",  # cleaning (Cleaning Order In_Progress)
-	"ESST1000005": "In_Depot",  # repair_survey (Repair Order In Progress)
-	"ESST1000006": "In_Depot",  # in_depot (Repair Order Draft — created, not started)
-	"ESST1000007": "In_Depot",  # in_depot (EIR-In Submitted — inspection never buckets)
+	"ESST1000003": "Available",  # available (no orders at all)
+	"ESST1000004": "In_Depot",  # in_progress (Cleaning Order In_Progress)
+	"ESST1000005": "In_Depot",  # in_progress (Repair Order In Progress)
+	"ESST1000006": "In_Depot",  # draft (Repair Order Draft — created, not submitted)
+	"ESST1000007": "In_Depot",  # available (EIR-In Submitted — inspection never buckets)
 }
 
 
@@ -64,17 +64,21 @@ def _build():
 				"principal": ensure_test_customer("ESS Inventory Test Principal"),
 			}
 		).insert(ignore_permissions=True)
-	# ESST1000004: cleaning STARTED (In_Progress) -> cleaning bucket.
+	# ESST1000001: Cleaning Order Pending (queued, not started) -> pending bucket.
+	frappe.get_doc(
+		{"doctype": "Cleaning Order", "container": "ESST1000001", "status": "Pending"}
+	).insert(ignore_permissions=True)
+	# ESST1000004: cleaning STARTED (In_Progress) -> in_progress bucket.
 	co = frappe.get_doc(
 		{"doctype": "Cleaning Order", "container": "ESST1000004", "status": "Pending"}
 	).insert(ignore_permissions=True)
 	frappe.db.set_value("Cleaning Order", co.name, "status", "In_Progress", update_modified=False)
-	# ESST1000005: M&R STARTED (In Progress) -> repair_survey bucket.
+	# ESST1000005: M&R STARTED (In Progress) -> in_progress bucket.
 	ro5 = frappe.get_doc(
 		{"doctype": "Repair Order", "container": "ESST1000005", "status": "Draft", "billing_status": "Unbilled"}
 	).insert(ignore_permissions=True)
 	frappe.db.set_value("Repair Order", ro5.name, "status", "In Progress", update_modified=False)
-	# ESST1000006: M&R created but NOT started (Draft) -> stays in_depot (also backs the
+	# ESST1000006: M&R created but NOT submitted (Draft) -> draft bucket (also backs the
 	# repairs/documents tests below, which expect a Draft RO).
 	frappe.get_doc(
 		{
@@ -119,31 +123,28 @@ class TestEssInventory(FrappeTestCase):
 		super().tearDownClass()
 
 	def test_derive_status_mapping(self):
-		# Presence-based raw status + ACTIVE (started) work signals drive the UI buckets.
+		# Order-state centric: classify by the most-advanced order state the tank carries.
 		self.assertEqual(derive_status("Gate_Out"), "gate_out")
-		self.assertEqual(derive_status("Available"), "ready")
-		# A present tank with no active work is plain in_depot.
-		self.assertEqual(derive_status("In_Depot"), "in_depot")
-		# Only STARTED work drives the cleaning / repair buckets.
-		self.assertEqual(derive_status("In_Depot", cleaning_active=True), "cleaning")
-		self.assertEqual(derive_status("In_Depot", repair_active=True), "repair_survey")
-		# Active work overrides the Available->ready mapping too (defensive — recompute
-		# normally keeps a tank with active work at In_Depot).
-		self.assertEqual(derive_status("Available", cleaning_active=True), "cleaning")
-		self.assertEqual(derive_status("Available", repair_active=True), "repair_survey")
-		# Cleaning takes precedence over repair when both are active.
-		self.assertEqual(derive_status("In_Depot", cleaning_active=True, repair_active=True), "cleaning")
-		# Gate-out wins over everything.
-		self.assertEqual(derive_status("Gate_Out", repair_active=True), "gate_out")
+		self.assertEqual(derive_status("Available"), "available")
+		# A present tank with no open order is available (nothing raised on it).
+		self.assertEqual(derive_status("In_Depot"), "available")
+		self.assertEqual(derive_status("In_Depot", draft=True), "draft")
+		self.assertEqual(derive_status("In_Depot", pending=True), "pending")
+		self.assertEqual(derive_status("In_Depot", in_progress=True), "in_progress")
+		# Most-advanced state wins when several coexist.
+		self.assertEqual(derive_status("In_Depot", in_progress=True, pending=True, draft=True), "in_progress")
+		self.assertEqual(derive_status("In_Depot", pending=True, draft=True), "pending")
+		# Gate-out is terminal.
+		self.assertEqual(derive_status("Gate_Out", in_progress=True), "gate_out")
 
 	def test_inventory_summary_counts(self):
 		res = get_inventory_summary(depot=ESS_DEPOT)
 		self.assertTrue(res["success"])
-		# in_depot = 1001 (idle) + 1006 (draft RO, not started) + 1007 (submitted EIR);
-		# cleaning = 1004 (CO In_Progress); repair_survey = 1005 (RO In Progress).
+		# available = 1003 (idle) + 1007 (submitted EIR, no order); draft = 1006;
+		# pending = 1001 (Cleaning Pending); in_progress = 1004 (CO IP) + 1005 (RO IP).
 		self.assertEqual(
 			res["counts"],
-			{"in_depot": 3, "cleaning": 1, "repair_survey": 1, "ready": 1, "gate_out": 1},
+			{"available": 2, "draft": 1, "pending": 1, "in_progress": 2, "gate_out": 1},
 		)
 		self.assertEqual(res["total"], 7)
 		self.assertEqual(res["periodic_test_due"], 1)
@@ -154,19 +155,23 @@ class TestEssInventory(FrappeTestCase):
 		self.assertEqual(len(res["items"]), 3)
 		# Each row carries a derived bucket + pt_due flag (not the raw status).
 		row = next(i for i in res["items"] if i["container_no"] == "ESST1000001")
-		self.assertEqual(row["status"], "in_depot")
+		self.assertEqual(row["status"], "pending")
 		self.assertTrue(row["pt_due"])
 
 	def test_tank_list_status_filter(self):
-		res = get_tank_list(depot=ESS_DEPOT, status="repair_survey")
-		self.assertEqual(res["total"], 1)  # only ESST1000005 (Repair Order In Progress)
-		self.assertEqual({i["container_no"] for i in res["items"]}, {"ESST1000005"})
-		self.assertEqual({i["status"] for i in res["items"]}, {"repair_survey"})
+		res = get_tank_list(depot=ESS_DEPOT, status="in_progress")
+		self.assertEqual(res["total"], 2)  # ESST1000004 (cleaning) + ESST1000005 (M&R) started
+		self.assertEqual({i["container_no"] for i in res["items"]}, {"ESST1000004", "ESST1000005"})
+		self.assertEqual({i["status"] for i in res["items"]}, {"in_progress"})
 
-	def test_tank_list_cleaning_filter_needs_started_job(self):
-		# A pending/draft order does NOT bucket; only the started cleaning shows.
-		res = get_tank_list(depot=ESS_DEPOT, status="cleaning")
-		self.assertEqual({i["container_no"] for i in res["items"]}, {"ESST1000004"})
+	def test_tank_list_draft_and_pending_buckets(self):
+		# A created-but-not-started order buckets by its state, not "in progress".
+		draft = get_tank_list(depot=ESS_DEPOT, status="draft")
+		self.assertEqual({i["container_no"] for i in draft["items"]}, {"ESST1000006"})
+		pending = get_tank_list(depot=ESS_DEPOT, status="pending")
+		self.assertEqual({i["container_no"] for i in pending["items"]}, {"ESST1000001"})
+		available = get_tank_list(depot=ESS_DEPOT, status="available")
+		self.assertEqual({i["container_no"] for i in available["items"]}, {"ESST1000003", "ESST1000007"})
 
 	def test_tank_list_search(self):
 		res = get_tank_list(depot=ESS_DEPOT, search="ESST1000002")
@@ -179,7 +184,7 @@ class TestEssInventory(FrappeTestCase):
 	def test_tank_detail(self):
 		res = get_tank_detail("ESST1000001")
 		self.assertTrue(res["success"])
-		self.assertEqual(res["status"], "in_depot")
+		self.assertEqual(res["status"], "pending")  # Cleaning Order Pending
 		self.assertTrue(res["pt_due"])
 		for key in ("capacity", "tare_weight", "last_test_date", "yard_zone", "container_type"):
 			self.assertIn(key, res)

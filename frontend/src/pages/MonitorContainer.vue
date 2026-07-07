@@ -51,6 +51,22 @@
 			</button>
 		</div>
 
+		<!-- Depot filter -->
+		<div v-if="depots.length > 1" class="flex items-center gap-2">
+			<Icon name="map-pin" :size="15" class="shrink-0 text-gray-400" />
+			<SearchSelect
+				:model-value="depotFilter"
+				:options="depots"
+				:option-value="(d) => d.code"
+				:option-label="(d) => d.name"
+				:placeholder="labels.monitorAllDepots"
+				:clear-label="labels.monitorAllDepots"
+				:search-placeholder="labels.selectSearch"
+				class="flex-1"
+				@update:model-value="(v) => { depotFilter = v; reload(true) }"
+			/>
+		</div>
+
 		<!-- Principal filter -->
 		<div v-if="principals.length" class="flex items-center gap-2">
 			<Icon name="briefcase" :size="15" class="shrink-0 text-gray-400" />
@@ -110,20 +126,24 @@
 			</li>
 		</ul>
 
-		<button
-			v-if="items.length < total"
-			class="oak-btn oak-btn-secondary w-full"
-			:disabled="tankRes.loading"
-			@click="loadMore"
-		>
-			{{ labels.storageLoadMore }} ({{ items.length }}/{{ total }})
-		</button>
-		<p v-else-if="items.length" class="text-center text-xs text-gray-400">{{ total }} container</p>
+		<!-- Infinite-scroll sentinel + count -->
+		<div v-if="items.length" class="space-y-2">
+			<div ref="sentinel" class="h-px"></div>
+			<button
+				v-if="items.length < total"
+				class="oak-btn oak-btn-secondary w-full"
+				:disabled="tankRes.loading"
+				@click="loadMore"
+			>
+				{{ tankRes.loading ? "…" : `${labels.storageLoadMore} (${items.length}/${total})` }}
+			</button>
+			<p class="text-center text-xs text-gray-400">{{ items.length }} / {{ total }} container</p>
+		</div>
 	</div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
@@ -136,22 +156,24 @@ import SearchSelect from "@/components/SearchSelect.vue"
 const PAGE = 50
 const route = useRoute()
 const search = ref("")
-const statusFilter = ref("ready") // default to "ready for pickup / siap muat"
+const statusFilter = ref("") // default to "Semua" — the field observer sees every container
 const principalFilter = ref("")
+const depotFilter = ref("")
 const todayOnly = ref(false)
 const items = ref([])
 const total = ref(0)
 const start = ref(0)
+const sentinel = ref(null)
 
 const branch = computed(() => branchLabel())
 
-// "Siap Muat" (ready) first, then the rest of the buckets; "" = all.
+// Order-state buckets: "" = all, then Available / Draft / Pending / Dikerjakan / Keluar.
 const statusChips = [
-	{ key: "ready", label: labels.monitorReady },
 	{ key: "", label: labels.monitorAll },
-	{ key: "cleaning", label: statusLabels.cleaning },
-	{ key: "repair_survey", label: statusLabels.repair_survey },
-	{ key: "in_depot", label: statusLabels.in_depot },
+	{ key: "available", label: statusLabels.available },
+	{ key: "draft", label: statusLabels.draft },
+	{ key: "pending", label: statusLabels.pending },
+	{ key: "in_progress", label: statusLabels.in_progress },
 	{ key: "gate_out", label: statusLabels.gate_out },
 ]
 
@@ -162,6 +184,13 @@ const principalsRes = createResource({
 })
 const principals = computed(() => principalsRes.data?.principals || [])
 
+const depotsRes = createResource({
+	url: "container_depot.ess.inventory.list_user_depots",
+	method: "GET",
+	auto: true,
+})
+const depots = computed(() => depotsRes.data?.depots || [])
+
 const tankRes = createResource({
 	url: "container_depot.ess.inventory.get_tank_list",
 	method: "GET",
@@ -169,6 +198,7 @@ const tankRes = createResource({
 		search: search.value || "",
 		status: statusFilter.value || "",
 		principal: principalFilter.value || "",
+		depot: depotFilter.value || "",
 		today: todayOnly.value ? 1 : 0,
 		start: start.value,
 		page_length: PAGE,
@@ -188,6 +218,7 @@ function reload(reset) {
 	tankRes.reload()
 }
 function loadMore() {
+	if (tankRes.loading || items.value.length >= total.value) return
 	tankRes.reload()
 }
 function setStatus(key) {
@@ -225,11 +256,28 @@ async function confirmGateOut(c) {
 	if (ok) gateOutRes.fetch({ container: c.name })
 }
 
+// Infinite-scroll: auto-load the next page when the sentinel scrolls into view.
+let observer = null
 onMounted(() => {
 	if (!userContext.data) userContext.reload()
 	// Honor a deep-link bucket from the dashboard status KPIs (?status=<bucket>).
 	const q = route.query.status
 	if (typeof q === "string" && statusChips.some((c) => c.key === q)) statusFilter.value = q
 	reload(true)
+
+	observer = new IntersectionObserver(
+		(entries) => {
+			if (entries.some((e) => e.isIntersecting)) loadMore()
+		},
+		{ rootMargin: "300px" },
+	)
+	if (sentinel.value) observer.observe(sentinel.value)
 })
+// The sentinel only exists once the list has rows — (re)observe it whenever it mounts.
+watch(sentinel, (el, old) => {
+	if (!observer) return
+	if (old) observer.unobserve(old)
+	if (el) observer.observe(el)
+})
+onBeforeUnmount(() => observer?.disconnect())
 </script>
