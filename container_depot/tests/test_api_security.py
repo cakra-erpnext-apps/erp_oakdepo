@@ -88,9 +88,10 @@ class TestApiSecurity(FrappeTestCase):
 		result = cdapi.validate_qr("OAK|")
 		self.assertFalse(result["valid"])
 
-	def test_normalize_container_no_rejects_non_iso_lengths(self):
-		with self.assertRaises(frappe.ValidationError):
-			cdapi._normalize_container_no("STLU1234")  # too short
+	def test_normalize_container_no_accepts_non_iso_length(self):
+		# Length is no longer enforced — real depot data carries short / non-ISO numbers,
+		# so only presence + a safe character set are required (not an 11-char shape).
+		self.assertEqual(cdapi._normalize_container_no("STLU1234"), "STLU1234")
 
 	def test_normalize_container_no_strips_and_uppercases(self):
 		self.assertEqual(cdapi._normalize_container_no(" stlu123456-7 "), "STLU123456-7")
@@ -154,9 +155,11 @@ class TestApiSecurity(FrappeTestCase):
 	# ------------------------------------------------------------------
 
 	def test_register_gate_entry_validates_container_no(self):
+		# Length is no longer checked, so an invalid input must fail the character-set
+		# guard instead (a '%' is rejected) — input validation still runs before DB writes.
 		with self.assertRaises(frappe.ValidationError):
 			cdapi.register_gate_entry(
-				booking_code="OAK-ABC123", container_no="BAD"
+				booking_code="OAK-ABC123", container_no="BAD%CHAR"
 			)
 
 	def test_register_gate_entry_validates_booking_code(self):

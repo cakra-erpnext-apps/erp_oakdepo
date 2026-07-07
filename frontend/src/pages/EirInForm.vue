@@ -15,6 +15,24 @@
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
 		<template v-if="header">
+			<!-- Work-timing gate: the checklist stays locked until the operator presses Mulai,
+			     so Mulai → Submit measures how long the inspection actually took. -->
+			<section v-if="!workStartedOn" class="oak-card space-y-3 p-5 text-center">
+				<span class="oak-icon-tile mx-auto h-12 w-12 bg-leaf-50 text-leaf-600"><Icon name="play" :size="24" /></span>
+				<div>
+					<p class="text-base font-extrabold text-gray-900">{{ labels.eirStartTitle }}</p>
+					<p class="mt-1 text-sm text-gray-500">{{ labels.eirStartHint }}</p>
+				</div>
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="startRes.loading" @click="startWork">
+					<Icon v-if="!startRes.loading" name="play" :size="18" />
+					{{ startRes.loading ? "…" : labels.eirStartBtn }}
+				</button>
+			</section>
+
+			<template v-else>
+			<p class="flex items-center gap-1.5 text-[11px] text-gray-400">
+				<Icon name="clock" :size="12" /> {{ labels.eirStartedAt }}: {{ workStartedOn }}
+			</p>
 			<!-- Step 1b — referred voucher: pull shipper / truck / driver (read-only) -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
@@ -312,6 +330,7 @@
 					{{ saveRes.loading ? "…" : labels.submitEir }}
 				</button>
 			</section>
+			</template>
 		</template>
 	</div>
 </template>
@@ -335,6 +354,7 @@ const emit = defineEmits(["back", "submitted"])
 const eirType = "EIR-In"
 const header = ref(null)
 const inspection = ref(null)
+const workStartedOn = ref("") // set once the operator presses Mulai; gates editing
 const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
@@ -442,6 +462,7 @@ const openRes = createResource({
 		suppressSave.value = true
 		header.value = data
 		inspection.value = data.inspection
+		workStartedOn.value = data.work_started_on || ""
 		result.value = null
 		savedOk.value = false
 		tanggal.value = data.eir_date || new Date().toISOString().slice(0, 10)
@@ -485,6 +506,21 @@ const saveRes = createResource({
 
 const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] || openRes.error.message : null))
 const saveError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] || saveRes.error.message : null))
+
+// Mulai: stamp work_started_on server-side, then unlock the checklist.
+const startRes = createResource({
+	url: "container_depot.ess.inspections.eir_start",
+	method: "POST",
+	onSuccess(data) {
+		workStartedOn.value = data.work_started_on || new Date().toISOString().slice(0, 19).replace("T", " ")
+	},
+	onError(err) {
+		toast.error(err?.messages?.[0] || err?.message || labels.error)
+	},
+})
+function startWork() {
+	if (inspection.value) startRes.submit({ inspection: inspection.value })
+}
 
 function applyDraftToRows(data) {
 	if (!data || !rows.value.length) return

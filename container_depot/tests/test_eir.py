@@ -258,6 +258,7 @@ class TestEirDraft(FrappeTestCase):
 	def test_save_draft_persists_and_reopens(self):
 		c = _make_container("EIRD1000002")
 		d = eir.open_draft(container_no="EIRD1000002")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		res = eir.save_draft(
 			inspection=d["inspection"], inspection_type="EIR-In",
 			tank_status="Empty Dirty", vessel="MV X", truck_no="B-9", emkl="PT Y",
@@ -283,6 +284,7 @@ class TestEirDraft(FrappeTestCase):
 	def test_save_draft_replaces_previous_state(self):
 		c = _make_container("EIRD1000003")
 		d = eir.open_draft(container_no="EIRD1000003")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], lines=[
 			{"item_code": "01", "damage_code": "11"},
 			{"item_code": "02", "damage_code": "12"},
@@ -306,6 +308,7 @@ class TestEirDraft(FrappeTestCase):
 		# on_submit moves the container; a later fetch starts a fresh draft.
 		c = _make_container("EIRD1000005", status="Gate_In")
 		d = eir.open_draft(container_no="EIRD1000005")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		res = eir.save_draft(
 			inspection=d["inspection"], inspection_type="EIR-In", tank_status="Empty Dirty",
 			lines=[{"item_code": "01", "damage_code": "11", "remarks": "dent"}],
@@ -322,6 +325,7 @@ class TestEirDraft(FrappeTestCase):
 		# The EIR-creator's virtual signature round-trips through save_draft/open_draft.
 		c = _make_container("EIRD1000006")
 		d = eir.open_draft(container_no="EIRD1000006")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(
 			inspection=d["inspection"], inspection_type="EIR-In",
 			signature="/private/files/sign-1.png",
@@ -393,6 +397,7 @@ class TestEirVoucher(FrappeTestCase):
 		c = _make_container("EIRV1000001")
 		om = _make_order_muat(cust, c, truck="B-7", driver="Sari", phone="0822")
 		d = eir.open_draft(container_no="EIRV1000001", inspection_type="EIR-Out")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",
 					   referred_voucher=om, lines=[])
 		d2 = eir.open_draft(container_no="EIRV1000001", inspection_type="EIR-Out")
@@ -492,6 +497,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		_ensure_cargo("Acetic Acid")
 		c = _make_container("EIRV2000001", last_cargo="Acetone")
 		d = eir.open_draft(container_no="EIRV2000001")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], cargo="Acetic Acid", lines=[])
 		# Draft saved a different cargo, but the master is untouched until submit.
 		self.assertEqual(frappe.db.get_value("Container", c, "last_cargo"), "Acetone")
@@ -501,6 +507,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		_ensure_cargo("Acetic Acid")
 		c = _make_container("EIRV2000002", status="Gate_In", last_cargo="Acetone")
 		d = eir.open_draft(container_no="EIRV2000002", inspection_type="EIR-In")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
 					   tank_status="Empty Dirty", cargo="Acetic Acid",
 					   lines=[{"item_code": "01", "damage_code": "11"}], submit=True)
@@ -509,6 +516,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 	def test_eir_in_submit_writes_eir_in_date(self):
 		c = _make_container("EIRV2000020", status="Gate_In")
 		d = eir.open_draft(container_no="EIRV2000020", inspection_type="EIR-In")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
 					   tank_status="Empty Dirty", lines=[], submit=True)
 		self.assertIsNotNone(frappe.db.get_value("Container", c, "eir_in_date"))
@@ -517,6 +525,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		# EIR-Out submit now records the container's gate-out date (was never written).
 		c = _make_container("EIRV2000021", status="Available")
 		d = eir.open_draft(container_no="EIRV2000021", inspection_type="EIR-Out")
+		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",
 					   tank_status="Empty Clean", lines=[], submit=True)
 		self.assertIsNotNone(frappe.db.get_value("Container", c, "eir_out_date"))

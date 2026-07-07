@@ -7,12 +7,8 @@ from container_depot.state_machine import assert_transition, stage_for_status
 
 class Container(Document):
 	def validate(self):
-		"""Validate container number format (ISO 11-character standard)"""
-		if self.container_no:
-			# ISO container format: 4 letters + 6 digits + 1 check digit
-			cleaned = self.container_no.replace("-", "").replace(" ", "").upper()
-			if len(cleaned) != 11:
-				frappe.throw(f"Container number must be 11 characters (ISO format). Got: {len(cleaned)}")
+		# Container number is required (enforced by the field) but not length-checked —
+		# real depot data carries non-ISO / short numbers, so only presence is required.
 
 		# Guard manual status transitions against the canonical state machine.
 		# Internal automation (Repair/Cleaning/Inspection controllers) and

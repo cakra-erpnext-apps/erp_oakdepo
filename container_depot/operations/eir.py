@@ -16,7 +16,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, getdate, today
+from frappe.utils import cint, getdate, now_datetime, time_diff_in_seconds, today
 
 from container_depot.operations.user_branch import assert_in_user_branch, get_user_depots
 
@@ -803,6 +803,11 @@ def _draft_payload(doc, header: dict) -> dict:
 	header["emkl"] = doc.emkl
 	header["doc_remarks"] = doc.remarks
 	header["inspector_signature"] = doc.inspector_signature
+	# Work-timing gate: the PWA locks the form until the operator presses "Mulai"
+	# (work_started_on), and stamps work_ended_on / work_duration on submit.
+	header["work_started_on"] = str(doc.work_started_on) if doc.work_started_on else None
+	header["work_ended_on"] = str(doc.work_ended_on) if doc.work_ended_on else None
+	header["work_duration"] = doc.work_duration or 0
 	if doc.vessel:
 		header["vessel"] = doc.vessel  # legacy free-text vessel (kept for back-compat)
 	header["lines"] = [
@@ -897,6 +902,24 @@ def open_eir_out(inspection: str) -> dict:
 	return payload
 
 
+def start_eir(inspection: str) -> dict:
+	"""Begin work on a draft EIR — stamps ``work_started_on`` (once) and unlocks editing.
+
+	The PWA keeps the checklist read-only until this is called, so the elapsed time from
+	Mulai → Submit measures how long the inspection actually took. Idempotent: a second
+	call keeps the original start time. Permissions + branch are enforced (no bypass)."""
+	if not inspection:
+		frappe.throw(_("inspection is required."))
+	doc = frappe.get_doc("Inspection", inspection)
+	if doc.docstatus != 0:
+		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection))
+	_guard_container_branch(doc.container)
+	doc.check_permission("write")
+	if not doc.work_started_on:
+		doc.db_set("work_started_on", now_datetime())
+	return {"success": True, "inspection": doc.name, "work_started_on": str(doc.work_started_on)}
+
+
 def save_draft(
 	inspection: str,
 	inspection_type: str | None = None,
@@ -933,6 +956,10 @@ def save_draft(
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection))
+	# Work-timing gate: editing is only allowed after the operator has pressed "Mulai"
+	# (see ``start_eir``), so every saved EIR carries a real work-start timestamp.
+	if not doc.work_started_on:
+		frappe.throw(_("Tekan \"Mulai\" dulu sebelum mengisi EIR ini."))
 
 	submit = _as_bool(submit)
 	items = _checklist_items()
@@ -974,6 +1001,10 @@ def save_draft(
 		doc.seal_remark = seal_remark or None
 
 	if submit:
+		# Stamp the end + elapsed work time (Mulai → Submit) before finalizing.
+		doc.work_ended_on = now_datetime()
+		if doc.work_started_on:
+			doc.work_duration = max(0, int(time_diff_in_seconds(doc.work_ended_on, doc.work_started_on)))
 		doc.submit()  # on_submit moves the Container; we never set status here.
 	else:
 		doc.save()  # NOT ignore_permissions.

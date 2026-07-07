@@ -42,18 +42,14 @@ def _require_authenticated_user() -> None:
 
 
 def _normalize_container_no(value) -> str:
-	"""Uppercase, validate ISO 11-char shape, and return the canonical form."""
+	"""Uppercase and return the canonical container number. Required (and kept to a safe
+	character set), but NOT length-checked — real depot data carries non-ISO / short
+	numbers, so only presence is enforced."""
 	if not value or not isinstance(value, str):
 		frappe.throw(_("container_no is required."), frappe.ValidationError)
 	candidate = value.strip().upper()
 	if not CONTAINER_NO_RE.match(candidate):
 		frappe.throw(_("Invalid container_no format."), frappe.ValidationError)
-	cleaned = candidate.replace("-", "").replace(" ", "")
-	if len(cleaned) != 11:
-		frappe.throw(
-			_("container_no must be 11 ISO characters (got {0}).").format(len(cleaned)),
-			frappe.ValidationError,
-		)
 	return candidate
 
 

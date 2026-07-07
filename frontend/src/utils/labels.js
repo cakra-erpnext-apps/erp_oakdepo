@@ -130,6 +130,10 @@ export const labels = {
 	eirDesc: "Buat laporan kondisi kontainer (EIR)", // Create container condition report
 	eirTitle: "Checklist EIR",
 	eirCombinedSubtitle: "Pemeriksaan masuk & keluar dalam satu daftar", // In & Out in one worklist
+	eirStartTitle: "Mulai Pemeriksaan", // start-work gate title
+	eirStartHint: "Tekan mulai untuk membuka checklist. Waktu pengerjaan mulai dihitung dari sini.",
+	eirStartBtn: "Mulai", // start button
+	eirStartedAt: "Dimulai", // started-at label
 	eirBadgeIn: "Masuk", // EIR-In badge
 	eirBadgeOut: "Keluar", // EIR-Out badge
 	eirPendingCount: "menunggu", // pending count suffix

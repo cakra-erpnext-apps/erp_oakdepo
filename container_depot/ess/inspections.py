@@ -73,6 +73,16 @@ def eir_open(inspection=None):
 	return eir.open_draft_by_name(inspection=inspection)
 
 
+@frappe.whitelist(methods=["POST"])
+def eir_start(inspection=None):
+	"""POST /api/v1/ess/eir-start — begin work on a draft EIR (stamps work_started_on).
+
+	The PWA locks the checklist until this is called so Mulai → Submit measures how long
+	the inspection took. Mutating, hence POST. See ``eir.start_eir``."""
+	_require_authenticated_user()
+	return eir.start_eir(inspection=inspection)
+
+
 @frappe.whitelist(methods=["GET"])
 def eir_out_pending(search=None, start=0, page_length=20):
 	"""GET /api/v1/ess/eir-out-pending — open (draft) EIR-Out worklist in the user's branch.

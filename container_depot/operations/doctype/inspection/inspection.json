@@ -1,555 +1,585 @@
 {
-  "actions": [],
-  "allow_import": 1,
-  "autoname": "EIR-.YYYY.-.#####",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "tab_eir",
-    "inspection_info",
-    "inspection_type",
-    "eir_date",
-    "status",
-    "container",
-    "container_no",
-    "reff_doc",
-    "depot",
-    "column_break_1",
-    "inspector",
-    "gate_in_timestamp",
-    "gate_out_timestamp",
-    "vessel",
-    "ex_vessel",
-    "tank_template_section",
-    "serial_no",
-    "manufacture_date",
-    "last_test_date",
-    "column_break_tank",
-    "capacity",
-    "tare_weight",
-    "max_gross_weight",
-    "last_cargo",
-    "cargo",
-    "column_break_tank2",
-    "tank_status",
-    "exterior_photos",
-    "inspection_photos_section",
-    "item_photos",
-    "has_unsorted_photos",
-    "damage_section",
-    "has_damage",
-    "damage_log",
-    "followup_section",
-    "create_cleaning_order",
-    "create_repair_order",
-    "voucher_section",
-    "referred_voucher",
-    "voucher_doctype",
-    "shipper",
-    "column_break_voucher",
-    "truck_no",
-    "driver",
-    "driver_phone",
-    "emkl",
-    "signoff_section",
-    "remarks",
-    "column_break_signoff2",
-    "inspector_signature",
-    "eir_out_section",
-    "exterior_condition",
-    "exterior_remark",
-    "column_break_eirout",
-    "seals_intact",
-    "seal_remark",
-    "cleaning_cert",
-    "cleaning_cert_valid_until",
-    "out_outcome",
-    "reference_eir_in",
-    "tab_mr",
-    "section_break_4",
-    "repair_estimate",
-    "total_estimate",
-    "approval_status",
-    "tab_system",
-    "order_section",
-    "inspection_id",
-    "order_doctype",
-    "order_ref",
-    "client_uuid",
-    "container_status_before_submit",
-    "container_last_cargo_before_submit"
-  ],
-  "fields": [
-    {
-      "fieldname": "tab_eir",
-      "fieldtype": "Tab Break",
-      "label": "EIR"
-    },
-    {
-      "fieldname": "inspection_info",
-      "fieldtype": "Section Break",
-      "label": "Identitas"
-    },
-    {
-      "fieldname": "inspection_type",
-      "fieldtype": "Select",
-      "label": "Inspection Type",
-      "options": "EIR-In\nEIR-Out",
-      "reqd": 1
-    },
-    {
-      "default": "Today",
-      "fieldname": "eir_date",
-      "fieldtype": "Date",
-      "label": "EIR Date"
-    },
-    {
-      "default": "Draft",
-      "fieldname": "status",
-      "fieldtype": "Select",
-      "label": "Status",
-      "options": "Draft\nSubmitted\nCompleted\nCancelled",
-      "reqd": 1
-    },
-    {
-      "fieldname": "container",
-      "fieldtype": "Link",
-      "label": "Container",
-      "options": "Container",
-      "reqd": 1
-    },
-    {
-      "fieldname": "container_no",
-      "fieldtype": "Data",
-      "hidden": 1,
-      "label": "Container Number",
-      "read_only": 1
-    },
-    {
-      "description": "Nomor dokumen referensi (opsional). Mengalir otomatis ke Cleaning Order & M&R yang dibuat dari EIR ini.",
-      "fieldname": "reff_doc",
-      "fieldtype": "Data",
-      "label": "Reff Doc"
-    },
-    {
-      "fieldname": "depot",
-      "fieldtype": "Link",
-      "in_standard_filter": 1,
-      "label": "Depot",
-      "options": "Depot"
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "inspector",
-      "fieldtype": "Link",
-      "label": "Inspector/Technician",
-      "options": "User",
-      "reqd": 1
-    },
-    {
-      "fieldname": "gate_in_timestamp",
-      "fieldtype": "Datetime",
-      "label": "Gate-In Timestamp"
-    },
-    {
-      "fieldname": "gate_out_timestamp",
-      "fieldtype": "Datetime",
-      "label": "Gate-Out Timestamp"
-    },
-    {
-      "fieldname": "vessel",
-      "fieldtype": "Data",
-      "label": "Vessel"
-    },
-    {
-      "description": "Arrival vessel — read from the Container master (set when an Order Bongkar is submitted).",
-      "fetch_from": "container.ex_vessel",
-      "fieldname": "ex_vessel",
-      "fieldtype": "Data",
-      "label": "Ex Vessel",
-      "read_only": 1
-    },
-    {
-      "fieldname": "tank_template_section",
-      "fieldtype": "Section Break",
-      "label": "Kondisi Tank"
-    },
-    {
-      "fetch_from": "container.serial_no",
-      "fieldname": "serial_no",
-      "fieldtype": "Data",
-      "label": "Serial No",
-      "read_only": 1
-    },
-    {
-      "fetch_from": "container.manufacture_date",
-      "fieldname": "manufacture_date",
-      "fieldtype": "Date",
-      "label": "Date of Manufacture",
-      "read_only": 1
-    },
-    {
-      "fetch_from": "container.last_test_date",
-      "fieldname": "last_test_date",
-      "fieldtype": "Date",
-      "label": "Last Test Date",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_tank",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fetch_from": "container.capacity",
-      "fieldname": "capacity",
-      "fieldtype": "Float",
-      "label": "Capacity (L)",
-      "read_only": 1
-    },
-    {
-      "fetch_from": "container.tare_weight",
-      "fieldname": "tare_weight",
-      "fieldtype": "Float",
-      "label": "Tare Weight (kg)",
-      "read_only": 1
-    },
-    {
-      "fetch_from": "container.max_gross_weight",
-      "fieldname": "max_gross_weight",
-      "fieldtype": "Float",
-      "label": "Max Gross Weight / MWG (kg)",
-      "read_only": 1
-    },
-    {
-      "fetch_from": "container.last_cargo",
-      "fieldname": "last_cargo",
-      "fieldtype": "Link",
-      "label": "Last Cargo",
-      "options": "Cargo",
-      "read_only": 1
-    },
-    {
-      "description": "Cargo recorded on this EIR; written back to the Container's Last Cargo when the EIR is submitted (drafts do not change the master).",
-      "fieldname": "cargo",
-      "fieldtype": "Link",
-      "label": "Cargo",
-      "options": "Cargo"
-    },
-    {
-      "fieldname": "column_break_tank2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "bold": 1,
-      "fieldname": "tank_status",
-      "fieldtype": "Select",
-      "label": "Tank Status",
-      "options": "\nEmpty Clean\nEmpty Dirty\nLaden"
-    },
-    {
-      "description": "Legacy exterior photos (Front/Back/Left/Right). Retired from the form; still fed by the upload-evidence API.",
-      "fieldname": "exterior_photos",
-      "fieldtype": "Table",
-      "hidden": 1,
-      "label": "Exterior Photos",
-      "options": "Inspection Photo"
-    },
-    {
-      "fieldname": "inspection_photos_section",
-      "fieldtype": "Section Break",
-      "label": "Foto Inspeksi"
-    },
-    {
-      "allow_on_submit": 1,
-      "description": "Foto per item checklist (ditangkap di PWA). Tiap baris tampil Area + Item + foto, sesuai kategorinya. Baris tanpa Checklist Item = foto cepat belum disortir; admin mengisi section-nya (boleh setelah submit).",
-      "fieldname": "item_photos",
-      "fieldtype": "Table",
-      "label": "Foto per Item",
-      "options": "Inspection Item Photo"
-    },
-    {
-      "allow_on_submit": 1,
-      "default": "0",
-      "description": "Ada foto cepat yang belum diberi section. Dihitung otomatis; filter list untuk EIR yang perlu disortir.",
-      "fieldname": "has_unsorted_photos",
-      "fieldtype": "Check",
-      "in_standard_filter": 1,
-      "label": "Ada Foto Belum Disortir",
-      "read_only": 1
-    },
-    {
-      "fieldname": "damage_section",
-      "fieldtype": "Section Break",
-      "label": "Checklist Kerusakan"
-    },
-    {
-      "default": "0",
-      "fieldname": "has_damage",
-      "fieldtype": "Check",
-      "label": "Has Damage"
-    },
-    {
-      "fieldname": "damage_log",
-      "fieldtype": "Table",
-      "label": "Damage Details",
-      "options": "Inspection Damage Entry"
-    },
-    {
-      "fieldname": "followup_section",
-      "fieldtype": "Section Break",
-      "label": "Tindak Lanjut (Order Otomatis)"
-    },
-    {
-      "default": "1",
-      "description": "Saat EIR disubmit, otomatis buat Cleaning Order bila tank Empty Dirty. Hilangkan centang agar tidak dibuatkan.",
-      "fieldname": "create_cleaning_order",
-      "fieldtype": "Check",
-      "label": "Buat Cleaning Order"
-    },
-    {
-      "default": "1",
-      "description": "Saat EIR disubmit, otomatis buat draft M&R (Repair Order) bila ada kerusakan. Hilangkan centang agar tidak dibuatkan.",
-      "fieldname": "create_repair_order",
-      "fieldtype": "Check",
-      "label": "Buat M&R (Repair Order)"
-    },
-    {
-      "fieldname": "voucher_section",
-      "fieldtype": "Section Break",
-      "label": "Voucher & Pengiriman"
-    },
-    {
-      "description": "Referred voucher (bon): Order Bongkar for EIR-In, Order Muat for EIR-Out. Truck / driver / shipper are pulled from it (read-only here; entered when the voucher is generated).",
-      "fieldname": "referred_voucher",
-      "fieldtype": "Dynamic Link",
-      "label": "Referred Voucher",
-      "options": "voucher_doctype"
-    },
-    {
-      "fieldname": "voucher_doctype",
-      "fieldtype": "Link",
-      "hidden": 1,
-      "label": "Voucher DocType",
-      "options": "DocType",
-      "read_only": 1
-    },
-    {
-      "fieldname": "shipper",
-      "fieldtype": "Link",
-      "label": "Shipper",
-      "options": "Customer",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_voucher",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "truck_no",
-      "fieldtype": "Data",
-      "label": "Truck No",
-      "read_only": 1
-    },
-    {
-      "fieldname": "driver",
-      "fieldtype": "Data",
-      "label": "Driver Name",
-      "read_only": 1
-    },
-    {
-      "fieldname": "driver_phone",
-      "fieldtype": "Data",
-      "label": "Driver Phone",
-      "read_only": 1
-    },
-    {
-      "fieldname": "emkl",
-      "fieldtype": "Data",
-      "label": "EMKL / Forwarder"
-    },
-    {
-      "fieldname": "signoff_section",
-      "fieldtype": "Section Break",
-      "label": "Tanda Tangan & Catatan"
-    },
-    {
-      "fieldname": "remarks",
-      "fieldtype": "Small Text",
-      "label": "Remarks"
-    },
-    {
-      "fieldname": "column_break_signoff2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "description": "Virtual signature of the EIR creator (inspector), captured in the PWA above Submit.",
-      "fieldname": "inspector_signature",
-      "fieldtype": "Attach Image",
-      "label": "Inspector Signature"
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "description": "Verifikasi pra-muat (EIR-Out): kebersihan eksterior, kelengkapan segel, dan validitas Cleaning Certificate vs EIR-In terakhir.",
-      "fieldname": "eir_out_section",
-      "fieldtype": "Section Break",
-      "label": "EIR-Out — Verifikasi Keluar"
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "fieldname": "exterior_condition",
-      "fieldtype": "Select",
-      "label": "Kondisi Eksterior",
-      "options": "\nClean\nDirty\nNeeds Wash"
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "fieldname": "exterior_remark",
-      "fieldtype": "Small Text",
-      "label": "Catatan Eksterior"
-    },
-    {
-      "fieldname": "column_break_eirout",
-      "fieldtype": "Column Break"
-    },
-    {
-      "default": "0",
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "fieldname": "seals_intact",
-      "fieldtype": "Check",
-      "label": "Segel Lengkap & Utuh"
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "fieldname": "seal_remark",
-      "fieldtype": "Data",
-      "label": "Catatan Segel"
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "description": "Cleaning Certificate yang divalidasi saat EIR-Out (auto dari Order Muat / cert valid terbaru).",
-      "fieldname": "cleaning_cert",
-      "fieldtype": "Link",
-      "label": "Cleaning Certificate",
-      "options": "Cleaning Certificate",
-      "read_only": 1
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "fieldname": "cleaning_cert_valid_until",
-      "fieldtype": "Date",
-      "label": "Cert Valid Until",
-      "read_only": 1
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "description": "Hasil EIR-Out: Ready To Load (bersih) atau Hold Pending Clearance (ada temuan). Diset saat submit.",
-      "fieldname": "out_outcome",
-      "fieldtype": "Select",
-      "label": "EIR-Out Outcome",
-      "options": "\nReady To Load\nHold Pending Clearance",
-      "read_only": 1
-    },
-    {
-      "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-      "description": "EIR-Out: link ke EIR-In terakhir sebagai pembanding (foto + temuan).",
-      "fieldname": "reference_eir_in",
-      "fieldtype": "Link",
-      "label": "Reference EIR-In",
-      "options": "Inspection",
-      "read_only": 1
-    },
-    {
-      "fieldname": "tab_mr",
-      "fieldtype": "Tab Break",
-      "label": "M&R & Estimasi"
-    },
-    {
-      "depends_on": "eval:doc.has_damage",
-      "fieldname": "section_break_4",
-      "fieldtype": "Section Break",
-      "label": "Estimasi Perbaikan"
-    },
-    {
-      "fieldname": "repair_estimate",
-      "fieldtype": "Table",
-      "label": "Repair Estimate",
-      "options": "Repair Estimate Item"
-    },
-    {
-      "fieldname": "total_estimate",
-      "fieldtype": "Currency",
-      "label": "Total Estimate",
-      "read_only": 1
-    },
-    {
-      "fieldname": "approval_status",
-      "fieldtype": "Select",
-      "label": "Principal Approval",
-      "options": "Not Required\nPending\nApproved\nRejected"
-    },
-    {
-      "fieldname": "tab_system",
-      "fieldtype": "Tab Break",
-      "label": "Sistem"
-    },
-    {
-      "fieldname": "order_section",
-      "fieldtype": "Section Break",
-      "label": "Sistem / Order"
-    },
-    {
-      "bold": 1,
-      "fieldname": "inspection_id",
-      "fieldtype": "Data",
-      "label": "Inspection ID",
-      "read_only": 1
-    },
-    {
-      "fieldname": "order_doctype",
-      "fieldtype": "Link",
-      "label": "Order DocType",
-      "options": "DocType"
-    },
-    {
-      "fieldname": "order_ref",
-      "fieldtype": "Dynamic Link",
-      "label": "Order",
-      "options": "order_doctype"
-    },
-    {
-      "description": "Idempotency key for offline-EIR batch ingestion (Phase 7). Dedup is enforced in code; blank rows are allowed.",
-      "fieldname": "client_uuid",
-      "fieldtype": "Data",
-      "hidden": 1,
-      "label": "Offline Client UUID"
-    },
-    {
-      "description": "Container status captured at submit time, used to undo the change on 'Kembalikan ke Draft'.",
-      "fieldname": "container_status_before_submit",
-      "fieldtype": "Data",
-      "hidden": 1,
-      "label": "Container Status Before Submit",
-      "read_only": 1
-    },
-    {
-      "description": "Container Last Cargo captured at submit time, used to undo the change on 'Kembalikan ke Draft'.",
-      "fieldname": "container_last_cargo_before_submit",
-      "fieldtype": "Data",
-      "hidden": 1,
-      "label": "Container Last Cargo Before Submit",
-      "read_only": 1
-    }
-  ],
-  "is_submittable": 1,
-  "links": [],
-  "modified": "2026-06-25 13:30:00.000000",
-  "module": "Operations",
-  "name": "Inspection",
-  "search_fields": "inspection_id, container_no, inspection_type, status",
-  "sort_field": "creation",
-  "sort_order": "DESC",
-  "title_field": "inspection_id"
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "EIR-.YYYY.-.#####",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tab_eir",
+  "inspection_info",
+  "inspection_type",
+  "eir_date",
+  "status",
+  "container",
+  "container_no",
+  "reff_doc",
+  "depot",
+  "column_break_1",
+  "inspector",
+  "gate_in_timestamp",
+  "gate_out_timestamp",
+  "vessel",
+  "ex_vessel",
+  "tank_template_section",
+  "serial_no",
+  "manufacture_date",
+  "last_test_date",
+  "column_break_tank",
+  "capacity",
+  "tare_weight",
+  "max_gross_weight",
+  "last_cargo",
+  "cargo",
+  "column_break_tank2",
+  "tank_status",
+  "exterior_photos",
+  "inspection_photos_section",
+  "item_photos",
+  "has_unsorted_photos",
+  "damage_section",
+  "has_damage",
+  "damage_log",
+  "followup_section",
+  "create_cleaning_order",
+  "create_repair_order",
+  "voucher_section",
+  "referred_voucher",
+  "voucher_doctype",
+  "shipper",
+  "column_break_voucher",
+  "truck_no",
+  "driver",
+  "driver_phone",
+  "emkl",
+  "signoff_section",
+  "remarks",
+  "column_break_signoff2",
+  "inspector_signature",
+  "eir_out_section",
+  "exterior_condition",
+  "exterior_remark",
+  "column_break_eirout",
+  "seals_intact",
+  "seal_remark",
+  "cleaning_cert",
+  "cleaning_cert_valid_until",
+  "out_outcome",
+  "reference_eir_in",
+  "tab_mr",
+  "section_break_4",
+  "repair_estimate",
+  "total_estimate",
+  "approval_status",
+  "tab_system",
+  "order_section",
+  "inspection_id",
+  "order_doctype",
+  "order_ref",
+  "client_uuid",
+  "container_status_before_submit",
+  "container_last_cargo_before_submit",
+  "work_timing_section",
+  "work_started_on",
+  "work_ended_on",
+  "work_duration"
+ ],
+ "fields": [
+  {
+   "fieldname": "tab_eir",
+   "fieldtype": "Tab Break",
+   "label": "EIR"
+  },
+  {
+   "fieldname": "inspection_info",
+   "fieldtype": "Section Break",
+   "label": "Identitas"
+  },
+  {
+   "fieldname": "inspection_type",
+   "fieldtype": "Select",
+   "label": "Inspection Type",
+   "options": "EIR-In\nEIR-Out",
+   "reqd": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "eir_date",
+   "fieldtype": "Date",
+   "label": "EIR Date"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nSubmitted\nCompleted\nCancelled",
+   "reqd": 1
+  },
+  {
+   "fieldname": "container",
+   "fieldtype": "Link",
+   "label": "Container",
+   "options": "Container",
+   "reqd": 1
+  },
+  {
+   "fieldname": "container_no",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Container Number",
+   "read_only": 1
+  },
+  {
+   "description": "Nomor dokumen referensi (opsional). Mengalir otomatis ke Cleaning Order & M&R yang dibuat dari EIR ini.",
+   "fieldname": "reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc"
+  },
+  {
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "inspector",
+   "fieldtype": "Link",
+   "label": "Inspector/Technician",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "gate_in_timestamp",
+   "fieldtype": "Datetime",
+   "label": "Gate-In Timestamp"
+  },
+  {
+   "fieldname": "gate_out_timestamp",
+   "fieldtype": "Datetime",
+   "label": "Gate-Out Timestamp"
+  },
+  {
+   "fieldname": "vessel",
+   "fieldtype": "Data",
+   "label": "Vessel"
+  },
+  {
+   "description": "Arrival vessel \u2014 read from the Container master (set when an Order Bongkar is submitted).",
+   "fetch_from": "container.ex_vessel",
+   "fieldname": "ex_vessel",
+   "fieldtype": "Data",
+   "label": "Ex Vessel",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tank_template_section",
+   "fieldtype": "Section Break",
+   "label": "Kondisi Tank"
+  },
+  {
+   "fetch_from": "container.serial_no",
+   "fieldname": "serial_no",
+   "fieldtype": "Data",
+   "label": "Serial No",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "container.manufacture_date",
+   "fieldname": "manufacture_date",
+   "fieldtype": "Date",
+   "label": "Date of Manufacture",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "container.last_test_date",
+   "fieldname": "last_test_date",
+   "fieldtype": "Date",
+   "label": "Last Test Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_tank",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "container.capacity",
+   "fieldname": "capacity",
+   "fieldtype": "Float",
+   "label": "Capacity (L)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "container.tare_weight",
+   "fieldname": "tare_weight",
+   "fieldtype": "Float",
+   "label": "Tare Weight (kg)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "container.max_gross_weight",
+   "fieldname": "max_gross_weight",
+   "fieldtype": "Float",
+   "label": "Max Gross Weight / MWG (kg)",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "container.last_cargo",
+   "fieldname": "last_cargo",
+   "fieldtype": "Link",
+   "label": "Last Cargo",
+   "options": "Cargo",
+   "read_only": 1
+  },
+  {
+   "description": "Cargo recorded on this EIR; written back to the Container's Last Cargo when the EIR is submitted (drafts do not change the master).",
+   "fieldname": "cargo",
+   "fieldtype": "Link",
+   "label": "Cargo",
+   "options": "Cargo"
+  },
+  {
+   "fieldname": "column_break_tank2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "tank_status",
+   "fieldtype": "Select",
+   "label": "Tank Status",
+   "options": "\nEmpty Clean\nEmpty Dirty\nLaden"
+  },
+  {
+   "description": "Legacy exterior photos (Front/Back/Left/Right). Retired from the form; still fed by the upload-evidence API.",
+   "fieldname": "exterior_photos",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Exterior Photos",
+   "options": "Inspection Photo"
+  },
+  {
+   "fieldname": "inspection_photos_section",
+   "fieldtype": "Section Break",
+   "label": "Foto Inspeksi"
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Foto per item checklist (ditangkap di PWA). Tiap baris tampil Area + Item + foto, sesuai kategorinya. Baris tanpa Checklist Item = foto cepat belum disortir; admin mengisi section-nya (boleh setelah submit).",
+   "fieldname": "item_photos",
+   "fieldtype": "Table",
+   "label": "Foto per Item",
+   "options": "Inspection Item Photo"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "description": "Ada foto cepat yang belum diberi section. Dihitung otomatis; filter list untuk EIR yang perlu disortir.",
+   "fieldname": "has_unsorted_photos",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Ada Foto Belum Disortir",
+   "read_only": 1
+  },
+  {
+   "fieldname": "damage_section",
+   "fieldtype": "Section Break",
+   "label": "Checklist Kerusakan"
+  },
+  {
+   "default": "0",
+   "fieldname": "has_damage",
+   "fieldtype": "Check",
+   "label": "Has Damage"
+  },
+  {
+   "fieldname": "damage_log",
+   "fieldtype": "Table",
+   "label": "Damage Details",
+   "options": "Inspection Damage Entry"
+  },
+  {
+   "fieldname": "followup_section",
+   "fieldtype": "Section Break",
+   "label": "Tindak Lanjut (Order Otomatis)"
+  },
+  {
+   "default": "1",
+   "description": "Saat EIR disubmit, otomatis buat Cleaning Order bila tank Empty Dirty. Hilangkan centang agar tidak dibuatkan.",
+   "fieldname": "create_cleaning_order",
+   "fieldtype": "Check",
+   "label": "Buat Cleaning Order"
+  },
+  {
+   "default": "1",
+   "description": "Saat EIR disubmit, otomatis buat draft M&R (Repair Order) bila ada kerusakan. Hilangkan centang agar tidak dibuatkan.",
+   "fieldname": "create_repair_order",
+   "fieldtype": "Check",
+   "label": "Buat M&R (Repair Order)"
+  },
+  {
+   "fieldname": "voucher_section",
+   "fieldtype": "Section Break",
+   "label": "Voucher & Pengiriman"
+  },
+  {
+   "description": "Referred voucher (bon): Order Bongkar for EIR-In, Order Muat for EIR-Out. Truck / driver / shipper are pulled from it (read-only here; entered when the voucher is generated).",
+   "fieldname": "referred_voucher",
+   "fieldtype": "Dynamic Link",
+   "label": "Referred Voucher",
+   "options": "voucher_doctype"
+  },
+  {
+   "fieldname": "voucher_doctype",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Voucher DocType",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "shipper",
+   "fieldtype": "Link",
+   "label": "Shipper",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_voucher",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "truck_no",
+   "fieldtype": "Data",
+   "label": "Truck No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver_phone",
+   "fieldtype": "Data",
+   "label": "Driver Phone",
+   "read_only": 1
+  },
+  {
+   "fieldname": "emkl",
+   "fieldtype": "Data",
+   "label": "EMKL / Forwarder"
+  },
+  {
+   "fieldname": "signoff_section",
+   "fieldtype": "Section Break",
+   "label": "Tanda Tangan & Catatan"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "column_break_signoff2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Virtual signature of the EIR creator (inspector), captured in the PWA above Submit.",
+   "fieldname": "inspector_signature",
+   "fieldtype": "Attach Image",
+   "label": "Inspector Signature"
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "description": "Verifikasi pra-muat (EIR-Out): kebersihan eksterior, kelengkapan segel, dan validitas Cleaning Certificate vs EIR-In terakhir.",
+   "fieldname": "eir_out_section",
+   "fieldtype": "Section Break",
+   "label": "EIR-Out \u2014 Verifikasi Keluar"
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "fieldname": "exterior_condition",
+   "fieldtype": "Select",
+   "label": "Kondisi Eksterior",
+   "options": "\nClean\nDirty\nNeeds Wash"
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "fieldname": "exterior_remark",
+   "fieldtype": "Small Text",
+   "label": "Catatan Eksterior"
+  },
+  {
+   "fieldname": "column_break_eirout",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "fieldname": "seals_intact",
+   "fieldtype": "Check",
+   "label": "Segel Lengkap & Utuh"
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "fieldname": "seal_remark",
+   "fieldtype": "Data",
+   "label": "Catatan Segel"
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "description": "Cleaning Certificate yang divalidasi saat EIR-Out (auto dari Order Muat / cert valid terbaru).",
+   "fieldname": "cleaning_cert",
+   "fieldtype": "Link",
+   "label": "Cleaning Certificate",
+   "options": "Cleaning Certificate",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "fieldname": "cleaning_cert_valid_until",
+   "fieldtype": "Date",
+   "label": "Cert Valid Until",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "description": "Hasil EIR-Out: Ready To Load (bersih) atau Hold Pending Clearance (ada temuan). Diset saat submit.",
+   "fieldname": "out_outcome",
+   "fieldtype": "Select",
+   "label": "EIR-Out Outcome",
+   "options": "\nReady To Load\nHold Pending Clearance",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
+   "description": "EIR-Out: link ke EIR-In terakhir sebagai pembanding (foto + temuan).",
+   "fieldname": "reference_eir_in",
+   "fieldtype": "Link",
+   "label": "Reference EIR-In",
+   "options": "Inspection",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tab_mr",
+   "fieldtype": "Tab Break",
+   "label": "M&R & Estimasi"
+  },
+  {
+   "depends_on": "eval:doc.has_damage",
+   "fieldname": "section_break_4",
+   "fieldtype": "Section Break",
+   "label": "Estimasi Perbaikan"
+  },
+  {
+   "fieldname": "repair_estimate",
+   "fieldtype": "Table",
+   "label": "Repair Estimate",
+   "options": "Repair Estimate Item"
+  },
+  {
+   "fieldname": "total_estimate",
+   "fieldtype": "Currency",
+   "label": "Total Estimate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "label": "Principal Approval",
+   "options": "Not Required\nPending\nApproved\nRejected"
+  },
+  {
+   "fieldname": "tab_system",
+   "fieldtype": "Tab Break",
+   "label": "Sistem"
+  },
+  {
+   "fieldname": "order_section",
+   "fieldtype": "Section Break",
+   "label": "Sistem / Order"
+  },
+  {
+   "bold": 1,
+   "fieldname": "inspection_id",
+   "fieldtype": "Data",
+   "label": "Inspection ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_doctype",
+   "fieldtype": "Link",
+   "label": "Order DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "order_ref",
+   "fieldtype": "Dynamic Link",
+   "label": "Order",
+   "options": "order_doctype"
+  },
+  {
+   "description": "Idempotency key for offline-EIR batch ingestion (Phase 7). Dedup is enforced in code; blank rows are allowed.",
+   "fieldname": "client_uuid",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Offline Client UUID"
+  },
+  {
+   "description": "Container status captured at submit time, used to undo the change on 'Kembalikan ke Draft'.",
+   "fieldname": "container_status_before_submit",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Container Status Before Submit",
+   "read_only": 1
+  },
+  {
+   "description": "Container Last Cargo captured at submit time, used to undo the change on 'Kembalikan ke Draft'.",
+   "fieldname": "container_last_cargo_before_submit",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Container Last Cargo Before Submit",
+   "read_only": 1
+  },
+  {
+   "fieldname": "work_timing_section",
+   "fieldtype": "Section Break",
+   "label": "Waktu Pengerjaan"
+  },
+  {
+   "fieldname": "work_started_on",
+   "fieldtype": "Datetime",
+   "label": "Mulai Pengerjaan",
+   "read_only": 1,
+   "description": "Diisi otomatis saat petugas menekan \"Mulai\" di PWA \u2014 EIR tak bisa diisi sebelum ini."
+  },
+  {
+   "fieldname": "work_ended_on",
+   "fieldtype": "Datetime",
+   "label": "Selesai Pengerjaan",
+   "read_only": 1,
+   "description": "Diisi otomatis saat EIR disubmit."
+  },
+  {
+   "fieldname": "work_duration",
+   "fieldtype": "Duration",
+   "label": "Durasi Pengerjaan",
+   "read_only": 1,
+   "description": "Selisih Selesai - Mulai (otomatis)."
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-25 13:30:00.000000",
+ "module": "Operations",
+ "name": "Inspection",
+ "search_fields": "inspection_id, container_no, inspection_type, status",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "inspection_id"
 }
