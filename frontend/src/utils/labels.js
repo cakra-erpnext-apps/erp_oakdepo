@@ -38,6 +38,7 @@ export const labels = {
 	grpInspeksi: "Inspeksi", // workflow group: EIR / EIR Out
 	grpPerawatan: "Perawatan", // workflow group: Cleaning / M&R
 	grpYard: "Yard & Monitor", // workflow group: Storage / Monitor
+	grpSurvey: "Survey Posisi", // workflow group: Container Position Survey (Lift On)
 	// In-PWA notification bell
 	notifications: "Notifikasi", // Notifications
 	notifEmpty: "Belum ada notifikasi", // No notifications yet
@@ -128,6 +129,10 @@ export const labels = {
 	eir: "EIR",
 	eirDesc: "Buat laporan kondisi kontainer (EIR)", // Create container condition report
 	eirTitle: "Checklist EIR",
+	eirCombinedSubtitle: "Pemeriksaan masuk & keluar dalam satu daftar", // In & Out in one worklist
+	eirBadgeIn: "Masuk", // EIR-In badge
+	eirBadgeOut: "Keluar", // EIR-Out badge
+	eirPendingCount: "menunggu", // pending count suffix
 	eirSource: "Sumber Data", // Source
 	eirFetch: "Ambil Data", // Fetch
 	containerNumber: "Nomor Container", // Container number (EIR is keyed on the unit)
@@ -483,6 +488,35 @@ export const labels = {
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
+	// --- Container Position Survey (Lift On) ---
+	surveyPosTitle: "Survey Container Position", // Surveyor menu/screen
+	surveyPosDesc: "Cari & petakan posisi container", // tile subtitle
+	surveyPosSearch: "Cari no. container / CPS…",
+	surveyPosEmpty: "Tidak ada container untuk disurvei.",
+	surveyPosCount: "container",
+	surveyPosCurrent: "Posisi Tercatat Sekarang",
+	surveyPosSection: "Posisi Ditemukan",
+	surveyPosZone: "Yard Zone",
+	surveyPosZonePick: "Pilih zona…",
+	surveyPosRecommend: "Rekomendasi",
+	surveyPosRow: "Baris",
+	surveyPosBay: "Bay",
+	surveyPosTier: "Tier",
+	surveyPosPhotos: "Foto Posisi",
+	surveyPosNotes: "Catatan",
+	surveyPosSave: "Simpan Posisi",
+	surveyPosSaved: "Posisi tersimpan",
+	// Operator Kalmar approval
+	posFixTitle: "Opt Kalmar Container Position Fix", // Kalmar menu/screen
+	posFixDesc: "Approve container 'udah turun'", // tile subtitle
+	posFixEmpty: "Tidak ada posisi menunggu approval.",
+	posFixSurveyed: "Posisi Hasil Survey",
+	posFixNote: "Catatan (opsional)",
+	posFixNoteHint: "mis. sudah diturunkan ke ground slot",
+	posFixApprove: "Approve (Udah Turun)",
+	posFixApproved: "Posisi di-approve",
+	posFixConfirmTitle: "Approve posisi?",
+	posFixConfirmMsg: "Konfirmasi container sudah turun & posisinya benar. Setelah di-approve, survey difinalisasi.",
 	// Monitor Container (inventory list, filter by status + principal)
 	monitorTitle: "Monitor Container", // page title
 	monitorDesc: "Pantau container per status & prinsipal", // Home tile subtitle

@@ -270,6 +270,15 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
+	# ---- Container Position Survey (Lift On yard-position mapping task) ----
+	# Surveyor records the found yard position; Operator Kalmar approves ("udah turun").
+	"Container Position Survey": {
+		"Surveyor":          {"read": 1, "write": 1, "submit": 1, "report": 1},
+		"Operator Kalmar":   {"read": 1, "write": 1, "submit": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
+		"Ops Supervisor":    {"read": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1},
+	},
 }
 
 # Depot PWA role gets the DocPerms the PWA exercises under the caller's session.
@@ -300,6 +309,9 @@ _PWA_DOCTYPE_PERMS = {
 	"Cleaning Certificate": {"read": 1, "report": 1},
 	"Container Booking": {"read": 1, "report": 1},
 	"Booking Code":      {"read": 1, "report": 1},
+	# The PWA position-survey menu records + submits Container Position Survey WITHOUT
+	# ignore_permissions (operations/position_survey.py), so the PWA role needs write + submit.
+	"Container Position Survey": {"read": 1, "write": 1, "create": 1, "submit": 1, "report": 1},
 }
 for _pwa_dt, _pwa_perms in _PWA_DOCTYPE_PERMS.items():
 	ROLE_DOCTYPE_PERMISSIONS.setdefault(_pwa_dt, {})[PWA_ROLE] = _pwa_perms

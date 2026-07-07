@@ -304,8 +304,7 @@ const todayCards = computed(() => {
 const pendingCards = computed(() => {
 	const p = dash.value?.pending || {}
 	const rows = [
-		{ to: "/eir", icon: "clipboard", tile: "bg-leaf-50 text-leaf-600", title: labels.eir, count: p.eir_in ?? 0 },
-		{ to: "/eir-out", icon: "log-out", tile: "bg-brand-50 text-brand-600", title: labels.eirOutTitle, count: p.eir_out ?? 0 },
+		{ to: "/eir", icon: "clipboard", tile: "bg-leaf-50 text-leaf-600", title: labels.eir, count: (p.eir_in ?? 0) + (p.eir_out ?? 0) },
 		{ to: "/cleaning", icon: "droplet", tile: "bg-brand-50 text-brand-600", title: labels.cleaningTitle, count: p.cleaning ?? 0 },
 		{
 			to: "/mr",
@@ -339,17 +338,19 @@ function barClass(u) {
 const tiles = {
 	gate: { to: "/gate", icon: "log-in", title: labels.gate, desc: labels.gateDesc, tile: "bg-brand-50 text-brand-600", wide: true },
 	eir: { to: "/eir", icon: "clipboard", title: labels.eir, desc: labels.eirDesc, tile: "bg-leaf-50 text-leaf-600" },
-	eirOut: { to: "/eir-out", icon: "log-out", title: labels.eirOutTitle, desc: labels.eirOutDesc, tile: "bg-brand-50 text-brand-600" },
 	cleaning: { to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
 	mr: { to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
 	storage: { to: "/storage", icon: "layers", title: labels.storage, desc: labels.storageDesc, tile: "bg-leaf-50 text-leaf-600" },
 	monitor: { to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
+	surveyPos: { to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
+	posFix: { to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
 }
 const menuGroups = [
 	{ title: labels.grpGate, items: [tiles.gate] },
-	{ title: labels.grpInspeksi, items: [tiles.eir, tiles.eirOut] },
+	{ title: labels.grpInspeksi, items: [tiles.eir] },
 	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr] },
 	{ title: labels.grpYard, items: [tiles.storage, tiles.monitor] },
+	{ title: labels.grpSurvey, items: [tiles.surveyPos, tiles.posFix] },
 ]
 
 // "Riwayat" — a history menu per main menu (list + tap-to-detail).

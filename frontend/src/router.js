@@ -14,8 +14,8 @@ const routes = [
 	},
 	{
 		path: "/eir",
-		name: "EirChecklist",
-		component: () => import("@/pages/EirChecklist.vue"),
+		name: "Eir",
+		component: () => import("@/pages/Eir.vue"),
 	},
 	{
 		path: "/eir/history",
@@ -68,14 +68,19 @@ const routes = [
 		component: () => import("@/pages/MonitorContainer.vue"),
 	},
 	{
-		path: "/eir-out",
-		name: "EirOut",
-		component: () => import("@/pages/EirOut.vue"),
-	},
-	{
 		path: "/monitor/history",
 		name: "MonitorHistory",
 		component: () => import("@/pages/MonitorHistory.vue"),
+	},
+	{
+		path: "/survey-position",
+		name: "SurveyPosition",
+		component: () => import("@/pages/SurveyPosition.vue"),
+	},
+	{
+		path: "/position-fix",
+		name: "KalmarPositionFix",
+		component: () => import("@/pages/KalmarPositionFix.vue"),
 	},
 ]
 

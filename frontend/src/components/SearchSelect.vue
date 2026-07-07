@@ -93,7 +93,9 @@ const searchInput = ref(null)
 const open = ref(false)
 const query = ref("")
 const highlight = ref(-1)
-const panelStyle = ref({})
+// Start fixed + off-screen so the panel is NEVER laid out statically at the end of
+// <body> on its first render (that briefly grew the page and jumped the view down).
+const panelStyle = ref({ position: "fixed", top: "-9999px", left: "0", visibility: "hidden" })
 
 function valueOf(o) {
 	if (props.optionValue) return props.optionValue(o)
@@ -161,16 +163,25 @@ function positionPanel() {
 	}
 }
 
+function resetPanelStyle() {
+	panelStyle.value = { position: "fixed", top: "-9999px", left: "0", visibility: "hidden" }
+}
+
 function toggle() {
 	if (props.disabled) return
 	open.value ? close() : openPanel()
 }
 function openPanel() {
-	open.value = true
 	query.value = ""
+	// Position from the trigger rect BEFORE the panel mounts, so its very first render is
+	// already fixed at the trigger (never a static block at the end of <body>).
+	positionPanel()
+	open.value = true
 	nextTick(() => {
-		positionPanel()
-		searchInput.value?.focus()
+		positionPanel() // refine once the panel exists (accurate height / flip)
+		// preventScroll: on mobile a plain focus() scrolls the page to the (teleported)
+		// input, yanking the view. The panel is already at the trigger — never scroll here.
+		searchInput.value?.focus({ preventScroll: true })
 	})
 	document.addEventListener("click", onDocClick, true)
 	window.addEventListener("scroll", positionPanel, true)
@@ -178,6 +189,7 @@ function openPanel() {
 }
 function close() {
 	open.value = false
+	resetPanelStyle()
 	document.removeEventListener("click", onDocClick, true)
 	window.removeEventListener("scroll", positionPanel, true)
 	window.removeEventListener("resize", positionPanel)

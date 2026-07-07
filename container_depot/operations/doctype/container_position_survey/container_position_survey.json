@@ -1,0 +1,207 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "CPS-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "container",
+    "container_no",
+    "depot",
+    "column_break_1",
+    "status",
+    "booking",
+    "booking_code",
+    "survey_section",
+    "yard_zone",
+    "row",
+    "column_break_2",
+    "bay",
+    "tier",
+    "movement",
+    "survey_meta_section",
+    "surveyed_by",
+    "surveyed_on",
+    "column_break_3",
+    "survey_notes",
+    "photos_section",
+    "position_photos",
+    "approval_section",
+    "approved_by",
+    "approved_on",
+    "column_break_4",
+    "approval_note"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Container Position Survey"
+    },
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Container",
+      "options": "Container",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "container.container_no",
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Container No",
+      "read_only": 1
+    },
+    {
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "in_standard_filter": 1,
+      "label": "Depot",
+      "options": "Depot"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Pending Survey",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Pending Survey\nSurveyed\nConfirmed\nCancelled",
+      "reqd": 1
+    },
+    {
+      "description": "The Container Booking (Tank Out) that generated this survey task.",
+      "fieldname": "booking",
+      "fieldtype": "Link",
+      "label": "Booking",
+      "options": "Container Booking",
+      "read_only": 1
+    },
+    {
+      "fieldname": "booking_code",
+      "fieldtype": "Link",
+      "label": "Booking Code",
+      "options": "Booking Code",
+      "read_only": 1
+    },
+    {
+      "fieldname": "survey_section",
+      "fieldtype": "Section Break",
+      "label": "Posisi Yard (Hasil Survey)"
+    },
+    {
+      "fieldname": "yard_zone",
+      "fieldtype": "Link",
+      "label": "Yard Zone",
+      "options": "Yard Zone"
+    },
+    {
+      "fieldname": "row",
+      "fieldtype": "Data",
+      "label": "Baris / Row"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "bay",
+      "fieldtype": "Data",
+      "label": "Bay"
+    },
+    {
+      "fieldname": "tier",
+      "fieldtype": "Int",
+      "label": "Tier / Tumpukan"
+    },
+    {
+      "description": "The Container Movement ledger row created when the position was recorded.",
+      "fieldname": "movement",
+      "fieldtype": "Link",
+      "label": "Movement",
+      "options": "Container Movement",
+      "read_only": 1
+    },
+    {
+      "fieldname": "survey_meta_section",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "surveyed_by",
+      "fieldtype": "Link",
+      "label": "Surveyed By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "surveyed_on",
+      "fieldtype": "Datetime",
+      "label": "Surveyed On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_3",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "survey_notes",
+      "fieldtype": "Small Text",
+      "label": "Survey Notes"
+    },
+    {
+      "fieldname": "photos_section",
+      "fieldtype": "Section Break",
+      "label": "Foto Posisi"
+    },
+    {
+      "fieldname": "position_photos",
+      "fieldtype": "Table",
+      "label": "Foto",
+      "options": "Container Position Survey Photo"
+    },
+    {
+      "fieldname": "approval_section",
+      "fieldtype": "Section Break",
+      "label": "Approval Kalmar (Position Fix)"
+    },
+    {
+      "fieldname": "approved_by",
+      "fieldtype": "Link",
+      "label": "Approved By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "approved_on",
+      "fieldtype": "Datetime",
+      "label": "Approved On",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_4",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "approval_note",
+      "fieldtype": "Small Text",
+      "label": "Approval Note"
+    }
+  ],
+  "is_submittable": 1,
+  "links": [],
+  "modified": "2026-07-06 00:00:00",
+  "module": "Operations",
+  "name": "Container Position Survey",
+  "search_fields": "container_no, status, depot",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "container_no",
+  "track_changes": 1
+}

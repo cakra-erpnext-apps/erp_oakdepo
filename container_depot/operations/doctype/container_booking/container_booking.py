@@ -32,6 +32,35 @@ from container_depot.state_machine import stage_for_status
 
 CONTAINER_READY_STATUSES = {"Available"}
 
+# The Item Group that holds every Lift Service (Lift On / Lift Off and any sized
+# variants such as "Lift On 20F"). The booking's Lift Service picker is scoped to it,
+# so a new sized service only needs to be filed under this group to become selectable.
+LOLO_ITEM_GROUP = "LOLO"
+
+
+def lift_direction_for(lift_item: str | None) -> str | None:
+	"""Map a Lift Service item to the booking's in/out ``direction`` from its name.
+
+	``lift_item`` is the ONE thing the operator picks; ``direction`` (Tank In / Tank Out)
+	and ``lift_type`` are derived from it — never entered separately. The read is by the
+	*Lift On* / *Lift Off* token in the name, tolerant of size / variant suffixes, so a
+	service named ``Lift On 20F`` (or ``20F Lift On``) still resolves to outbound:
+
+	* a name carrying *Lift On*  → ``Tank Out`` (tank lifted ON the truck / leaves depot)
+	* a name carrying *Lift Off* → ``Tank In``  (tank lifted OFF the truck / enters depot)
+	* empty / unrecognised / ambiguous → ``None`` (caller keeps the current direction).
+	"""
+	s = (lift_item or "").strip().lower()
+	if not s:
+		return None
+	has_on = "lift on" in s
+	has_off = "lift off" in s
+	if has_on and not has_off:
+		return "Tank Out"
+	if has_off and not has_on:
+		return "Tank In"
+	return None
+
 
 def status_tag_for_condition(condition: str | None) -> str:
 	"""Clean/Dirty gate tag carried onto a Booking Code, derived from a line's
@@ -44,6 +73,9 @@ def status_tag_for_condition(condition: str | None) -> str:
 class ContainerBooking(Document):
 	# ---- naming ---------------------------------------------------------
 	def autoname(self):
+		# Direction is derived from the picked Lift Service, so resolve it before the
+		# BKG-IN / BKG-OUT prefix is chosen (autoname runs before validate on insert).
+		self._sync_direction_from_lift()
 		prefix = "BKG-IN-" if self.direction == "Tank In" else "BKG-OUT-"
 		self.name = make_autoname(prefix + ".YYYY.-.#####")
 
@@ -55,7 +87,7 @@ class ContainerBooking(Document):
 			return
 		self._ensure_depot()
 		self._ensure_branch_and_principal()
-		self._sync_lift_type()
+		self._sync_direction_from_lift()
 		self._resolve_pricing_context()
 		self._resolve_containers()
 		self._compute_lift_amount()
@@ -98,6 +130,14 @@ class ContainerBooking(Document):
 			update_modified=False,
 		)
 		self._auto_invoice()
+		# Outbound (Lift On / Tank Out): task a Surveyor to locate each container's yard
+		# position before it is pulled. Best-effort — never block the booking submit.
+		if self.direction == "Tank Out":
+			try:
+				from container_depot.operations.position_survey import provision_position_survey_for_booking
+				provision_position_survey_for_booking(self.name)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(), f"provision position survey for {self.name}")
 		from container_depot.operations.notify import notify_booking_submitted
 		notify_booking_submitted(self)
 
@@ -186,18 +226,25 @@ class ContainerBooking(Document):
 		)
 		return bool(rows)
 
-	def _sync_lift_type(self):
-		"""Lift type is the billing/crane view of the same move as ``direction`` —
-		it is *derived*, never entered twice:
+	def _sync_direction_from_lift(self):
+		"""The operator picks ONE thing — the Lift Service (``lift_item``). ``direction``
+		(Tank In / Tank Out) and ``lift_type`` are both *derived* from it, never entered
+		separately:
 
-		* Tank In  → ``Lift Off`` (the tank is lifted OFF the truck / dropped at the
-		  depot).
-		* Tank Out → ``Lift On``  (the tank is lifted ON to the truck / taken from
-		  the depot).
+		* a Lift On service  → ``direction`` Tank Out, ``lift_type`` Lift On  (tank lifted
+		  ON to the truck / taken from the depot).
+		* a Lift Off service → ``direction`` Tank In,  ``lift_type`` Lift Off (tank lifted
+		  OFF the truck / dropped at the depot).
 
-		The value drives the tariff *service* lookup, so it is kept read-only and
-		always in lock-step with ``direction``."""
-		self.lift_type = "Lift Off" if self.direction == "Tank In" else "Lift On"
+		``direction`` stays the internal in/out flag the whole pipeline keys off (naming,
+		Tank Out gating, Order Bongkar vs Order Muat, EIR, booking codes, survey). It is
+		hidden/read-only on the form. When the service is empty (draft) or unrecognised,
+		direction keeps its current value (doctype default Tank In) so a half-filled draft
+		never flips arbitrarily. Tolerant of sized service names (e.g. ``Lift On 20F``)."""
+		derived = lift_direction_for(self.lift_item)
+		if derived:
+			self.direction = derived
+		self.lift_type = "Lift On" if self.direction == "Tank Out" else "Lift Off"
 
 	def _ensure_depot(self):
 		"""Depot is mandatory (multi-depot ops): the Desk form enforces it
@@ -745,17 +792,22 @@ def lift_item_query(doctype, txt, searchfield, start, page_len, filters):
 	if not price_list:
 		return []
 	like = f"%{txt or ''}%"
+	# Every Lift Service filed under the LOLO group and priced in the customer's active
+	# list — not a hard-coded ("Lift On", "Lift Off") pair — so sized variants like
+	# "Lift On 20F" become selectable by simply filing them under LOLO. Direction then
+	# derives from each item's name (see ``lift_direction_for``).
 	return frappe.db.sql(
 		"""
 		SELECT ip.item_code
 		FROM `tabItem Price` ip
+		JOIN `tabItem` it ON it.name = ip.item_code
 		WHERE ip.selling = 1 AND ip.price_list = %(pl)s
-		  AND ip.item_code IN %(lifts)s
+		  AND it.item_group = %(grp)s AND it.disabled = 0
 		  AND ip.item_code LIKE %(like)s
 		ORDER BY ip.item_code
 		LIMIT {start}, {page_len}
 		""".format(start=cint(start), page_len=cint(page_len)),
-		{"pl": price_list, "lifts": (pricing.LIFT_OFF_ITEM, pricing.LIFT_ON_ITEM), "like": like},
+		{"pl": price_list, "grp": LOLO_ITEM_GROUP, "like": like},
 	)
 
 
