@@ -14,7 +14,7 @@ class ReleaseDO(Document):
 			if not row.container:
 				continue
 			status = frappe.db.get_value("Container", row.container, "status")
-			if status in ELIGIBLE_STATUSES or status in ("Released_Pending_Pickup", "Gate_Out"):
+			if status in ELIGIBLE_STATUSES or status == "Gate_Out":
 				continue
 			frappe.throw(
 				_("Container {0} is not ready for release (status: {1}).").format(
@@ -23,8 +23,9 @@ class ReleaseDO(Document):
 			)
 
 	def on_submit(self):
-		"""Issue the DO: move each container to Released_Pending_Pickup."""
-		self._set_container_status("Released_Pending_Pickup")
+		"""Issuing the DO authorises pickup; there is no intermediate 'pending pickup'
+		status any more — the container stays Available until it physically gates out."""
+		return
 
 	def on_update_after_submit(self):
 		"""When the DO is marked Picked Up, gate the containers out."""
@@ -32,14 +33,17 @@ class ReleaseDO(Document):
 			self._set_container_status("Gate_Out")
 
 	def on_cancel(self):
-		"""Best-effort rollback: pending-pickup containers go back to the ready pool."""
-		self._set_container_status("Available", only_from={"Released_Pending_Pickup"})
+		"""Best-effort rollback: recompute each container's presence status."""
+		from container_depot.operations.container_status import recompute_availability
+
+		for row in self.containers:
+			if row.container:
+				recompute_availability(row.container)
 
 	def _set_container_status(self, target, only_from=None):
 		from container_depot.operations.container_activity import log_container_activity
 
 		activity = {
-			"Released_Pending_Pickup": ("Release", "Released — pending pickup"),
 			"Gate_Out": ("Gate Out", f"Gated out (Release DO {self.name})"),
 		}.get(target)
 		for row in self.containers:

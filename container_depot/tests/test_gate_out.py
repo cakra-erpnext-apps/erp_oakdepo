@@ -1,6 +1,6 @@
 """Tests for TANK OUT — the gate-out / load-complete action (PRO-OPS-009 §5.2 step 5).
 
-Covers the happy path (Released_Pending_Pickup -> Gate_Out with Movement + Activity +
+Covers the happy path (Available -> Gate_Out with Movement + Activity +
 Gate Entry stamping + inventory bucket), idempotency, the readiness guard, and the
 Available source. Each test is self-contained; FrappeTestCase rolls back per test and
 tearDown deletes any throwaway rows defensively (mark_gate_out never commits).
@@ -61,7 +61,7 @@ class TestGateOut(FrappeTestCase):
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 
 	def test_gate_out_happy_path(self):
-		c = _container(f"{PREFIX}9990001", "Released_Pending_Pickup")
+		c = _container(f"{PREFIX}9990001", "Available")
 		_clean_eir_out(c)
 		res = mark_gate_out(container=c)
 
@@ -100,11 +100,11 @@ class TestGateOut(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 
 	def test_gate_out_not_ready(self):
-		c = _container(f"{PREFIX}9990003", "Pending_Survey")
+		c = _container(f"{PREFIX}9990003", "In_Depot")
 		with self.assertRaises(frappe.ValidationError):
 			mark_gate_out(container=c)
 		# Nothing changed.
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Pending_Survey")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 		self.assertFalse(frappe.db.exists("Container Movement", {"container": c, "to_status": "Gate_Out"}))
 
 	def test_gate_out_from_available(self):

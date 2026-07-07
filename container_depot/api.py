@@ -224,7 +224,9 @@ def register_gate_entry(booking_code, container_no, security_guard=None, truck_p
 				"doctype": "Container",
 				"container_no": container_no,
 				"container_type": "ISO Tank",
-				"status": "Gate_In",
+				# Born pre-arrival; the Gate Entry submit below flips it to In_Depot
+				# (setting In_Depot here would trip the gate-in "already present" guard).
+				"status": "Booked",
 				"principal": _booking_customer(bc.booking),
 			})
 			# TODO(Phase 6): drop ignore_permissions once the SST service role is
@@ -250,7 +252,7 @@ def register_gate_entry(booking_code, container_no, security_guard=None, truck_p
 			"success": True,
 			"gate_entry_id": gate_entry.gate_entry_id,
 			"container_no": container_no,
-			"container_status": "Gate_In",
+			"container_status": "In_Depot",
 		}
 
 	except frappe.ValidationError:

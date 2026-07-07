@@ -75,14 +75,14 @@ class TestCleaningOrderFlow(FrappeTestCase):
 
 	# --- lifecycle ------------------------------------------------------------
 	def test_start_marks_in_progress(self):
-		c = self._container("CLNSTART001", status="Pending_Cleaning")
+		c = self._container("CLNSTART001", status="In_Depot")
 		co = self._order(c)
 		cleaning.start_cleaning(co)
 		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "status"), "In_Progress")
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Cleaning_In_Progress")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
 	def test_cannot_submit_before_start(self):
-		c = self._container("CLNNOST0001", status="Pending_Cleaning")
+		c = self._container("CLNNOST0001", status="In_Depot")
 		co = self._order(c)
 		with self.assertRaises(frappe.ValidationError):
 			cleaning.save_cleaning_order(cleaning_order=co, submit=True)
@@ -90,7 +90,7 @@ class TestCleaningOrderFlow(FrappeTestCase):
 
 	def test_start_then_submit_completes_and_mints_cert(self):
 		# OAK1 has a seeded Cleaning Bay zone (OAK1-CBAY).
-		c = self._container("CLNFULL0001", status="Pending_Cleaning", depot="OAK1")
+		c = self._container("CLNFULL0001", status="In_Depot", depot="OAK1")
 		co = self._order(c)
 		cleaning.start_cleaning(co)
 		res = cleaning.save_cleaning_order(
@@ -101,9 +101,8 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(res["status"], "Completed")
 		self.assertTrue(res["cleaning_certificate"])
 
-		cont = frappe.db.get_value("Container", c, ["status", "yard_zone"], as_dict=True)
+		cont = frappe.db.get_value("Container", c, ["status"], as_dict=True)
 		self.assertEqual(cont.status, "Available")
-		self.assertEqual(cont.yard_zone, "OAK1-CBAY")
 		# The minted cert (no expiry) satisfies the TANK OUT gate.
 		self.assertEqual(_latest_valid_cleaning_cert(c), res["cleaning_certificate"])
 		# All 12 checklist rows recorded on the order; the "No" line carried its note.
@@ -114,7 +113,7 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(odour.note, "faint odour")
 
 	def test_save_draft_keeps_order_open(self):
-		c = self._container("CLNDRAFT001", status="Pending_Cleaning")
+		c = self._container("CLNDRAFT001", status="In_Depot")
 		co = self._order(c)
 		cleaning.start_cleaning(co)
 		res = cleaning.save_cleaning_order(cleaning_order=co, gas_free="Yes", o2_percent=20.9, submit=False)

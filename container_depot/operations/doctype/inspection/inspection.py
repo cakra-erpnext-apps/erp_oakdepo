@@ -55,14 +55,12 @@ class Inspection(Document):
 
 		if self.inspection_type == "EIR-In":
 			container.eir_in_date = datetime.datetime.now()
-			# A dirty tank (no damage) for which the surveyor opted to create a Cleaning
-			# Order is queued straight for cleaning. A damaged tank — or one where cleaning
-			# was unchecked — stays in inspecting (repair routing handled separately).
+			# Status is no longer set here — a dirty/damaged tank simply keeps the
+			# container In_Depot via the open Cleaning/Repair order created below, and
+			# recompute_availability (end of on_submit) flips it to Available once every
+			# related order is done. Keep the cleaning hint for a dirty tank.
 			if self.get("create_cleaning_order") and self.get("tank_status") == "Empty Dirty" and not self.has_damage:
-				container.status = "Pending_Cleaning"
 				container.cleaning_status = "Pending"
-			else:
-				container.status = "Inspecting"
 			self._save_container(container)
 		elif self.inspection_type == "EIR-Out":
 			# Record the gate-out inspection date on the container (mirrors EIR-In).
@@ -109,6 +107,13 @@ class Inspection(Document):
 		# damage finding, so the checkbox is the operator's opt-out.
 		if self.inspection_type == "EIR-In" and self.get("create_repair_order"):
 			self._ensure_repair_order_draft(container)
+
+		# Presence-based status: now that this EIR is submitted and any follow-up
+		# Cleaning/Repair orders exist, recompute In_Depot vs Available for the tank.
+		if self.inspection_type == "EIR-In":
+			from container_depot.operations.container_status import recompute_availability
+
+			recompute_availability(self.container)
 
 	def _ensure_cleaning_order(self, container):
 		"""Create (idempotently) a Pending Cleaning Order for this dirty tank and notify

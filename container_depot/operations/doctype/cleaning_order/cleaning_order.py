@@ -128,32 +128,26 @@ class CleaningOrder(Document):
 		prev_status = before.status if before else None
 		container = frappe.get_doc("Container", self.container)
 
-		if self.is_recleaning:
-			if self.status == "In_Progress":
-				container.cleaning_status = "In_Progress"
-				container.status = "Recleaning_In_Progress"
-			elif self.status == "Completed":
-				container.cleaning_status = "Completed"
-				container.status = "Cleaning_Completed"
-		else:
-			if self.status == "In_Progress":
-				container.cleaning_status = "In_Progress"
-			elif self.status == "Completed":
-				container.cleaning_status = "Completed"
+		# Only the informational cleaning_status / certification_status hints are set here;
+		# the main Container.status is presence-based now and recomputed below.
+		if self.status == "In_Progress":
+			container.cleaning_status = "In_Progress"
+		elif self.status == "Completed":
+			container.cleaning_status = "Completed"
+			if not self.is_recleaning:
 				container.certification_status = "Completed"
-				container.status = "Available"
-				# Park the tank in the depot's Cleaning Bay zone. Physical yard movement is
-				# manual and may lag, so the system stamps the bay at completion.
-				bay = self._cleaning_bay_zone(container.depot)
-				if bay:
-					container.yard_zone = bay
 
-		# Controller-driven status change: bypass the manual-transition guard.
+		# Controller-driven save: bypass the manual-transition guard.
 		frappe.flags.in_status_automation = True
 		try:
 			container.save(ignore_permissions=True)
 		finally:
 			frappe.flags.in_status_automation = False
+
+		# Flip In_Depot <-> Available now that this cleaning order's state changed.
+		from container_depot.operations.container_status import recompute_availability
+
+		recompute_availability(self.container)
 
 		# Log a Cleaning milestone on start / completion (deduped against unrelated
 		# after-submit edits).

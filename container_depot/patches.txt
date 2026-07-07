@@ -46,3 +46,4 @@ container_depot.patches.v0_30.revive_expired_booking_codes
 container_depot.patches.v0_31.seed_cleaning_checklist
 container_depot.patches.v0_32.seed_yard_placement_rules
 container_depot.patches.v0_34.seed_depot_service_menus
+container_depot.patches.v0_35.collapse_container_statuses

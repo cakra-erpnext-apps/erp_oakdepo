@@ -147,7 +147,7 @@ def _days_in_depot(container, from_date, to_date):
 		return 0
 	gate_in = None
 	for m in moves:
-		if m.to_status in ("Gate_In", "Available") and gate_in is None:
+		if m.to_status in ("Gate_In", "In_Depot", "Available") and gate_in is None:
 			gate_in = getdate(m.movement_timestamp)
 		if m.to_status == "Gate_Out":
 			gate_in = None

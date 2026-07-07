@@ -57,15 +57,23 @@ class GateEntry(Document):
 
 		container_ref = self.get("container") or self.container_no
 		if container_ref and frappe.db.exists("Container", container_ref):
+			from container_depot.operations.container_status import IN_DEPOT, PRESENT
+
 			container = frappe.get_doc("Container", container_ref)
 			from_status = container.status
-			container.status = "Gate_In"
+			# Inbound rule: a tank must NOT already be inside a depot to gate in.
+			if container.status in PRESENT:
+				frappe.throw(
+					f"Container {container.container_no or container.name} sudah ada di depo "
+					f"(status {container.status}) — tidak bisa gate-in lagi."
+				)
+			container.status = IN_DEPOT
 			container.eir_in_date = self.gate_in_timestamp or datetime.datetime.now()
 			container.save(ignore_permissions=True)
 			log_container_activity(
 				container.name, "Gate In",
 				reference_doctype=self.doctype, reference_name=self.name,
-				from_status=from_status, to_status="Gate_In",
+				from_status=from_status, to_status=IN_DEPOT,
 				performed_by=self.get("security_guard"),
 				activity_time=self.gate_in_timestamp,
 				summary=f"Gate-in (Booking Code {self.booking_code})" if self.booking_code else "Gate-in",

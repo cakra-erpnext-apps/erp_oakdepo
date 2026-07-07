@@ -292,8 +292,8 @@ class SmokeRun:
 				lambda: api.register_gate_entry(booking_code=in_code, container_no=self.container,
 					truck_plate="L-1234-PT", driver_name="Pak Budi"))
 			if isinstance(res, dict):
-				self.assert_true("Gate In · success + container Gate_In",
-					res.get("success") and frappe.db.get_value("Container", self.container, "status") == "Gate_In",
+				self.assert_true("Gate In · success + container In_Depot",
+					res.get("success") and frappe.db.get_value("Container", self.container, "status") == "In_Depot",
 					f"res={res}")
 			ge = frappe.db.get_value("Gate Entry", {"container_no": self.container}, "name")
 			if ge:
@@ -329,8 +329,8 @@ class SmokeRun:
 						inspection=insp_in, inspection_type="EIR-In", tank_status="Empty Dirty",
 						referred_voucher=self.order_bongkar, create_cleaning_order=1, create_repair_order=1,
 						lines=self._damage_line(), submit=1))
-				self.assert_true("EIR-In · container → Inspecting",
-					frappe.db.get_value("Container", self.container, "status") == "Inspecting")
+				self.assert_true("EIR-In · container → In_Depot",
+					frappe.db.get_value("Container", self.container, "status") == "In_Depot")
 				self.step("EIR-In · eir_history (ESS)", lambda: ess_eir.eir_history(search=self.container))
 				self.step("EIR-In · eir_view (ESS)", lambda: ess_eir.eir_view(insp_in))
 
@@ -370,8 +370,8 @@ class SmokeRun:
 				lambda: ess_mr.mr_order_save(repair_order=ro,
 					used_items=[{"item": self.mr_item, "quantity": 1}]))
 			self.step("M&R · submit for approval (ESS)", lambda: ess_mr.mr_submit_approval(repair_order=ro))
-			self.assert_true("M&R · container → Awaiting_MR_Approval",
-				frappe.db.get_value("Container", self.container, "status") == "Awaiting_MR_Approval")
+			self.assert_true("M&R · container → In_Depot",
+				frappe.db.get_value("Container", self.container, "status") == "In_Depot")
 			self.step("M&R · owner requests revision (ESS)",
 				lambda: ess_mr.mr_decision(repair_order=ro, decision="Revision Requested", note="tolong revisi"))
 			self.step("M&R · re-edit used items (ESS)",
@@ -458,7 +458,7 @@ class SmokeRun:
 		def _seed_damaged_container():
 			frappe.get_doc({
 				"doctype": "Container", "container_no": cno, "container_type": "ISO Tank",
-				"status": "Gate_In", "principal": self.customer, "depot": self.depot,
+				"status": "In_Depot", "principal": self.customer, "depot": self.depot,
 			}).insert(ignore_permissions=True)
 			self.track("Container", cno)
 			res = eir_ops.create_eir(inspection_type="EIR-In", container=cno, tank_status="Empty Clean",
@@ -515,7 +515,7 @@ class SmokeRun:
 		if out_code:
 			self.track("Booking Code", out_code)
 
-		# --- 13) Release DO → Released_Pending_Pickup ---------------------
+		# --- 13) Release DO → Available ---------------------
 		def _mk_release():
 			r = frappe.get_doc({
 				"doctype": "Release DO", "tank_owner": self.customer, "depot": self.depot,
@@ -525,9 +525,9 @@ class SmokeRun:
 			r.flags.ignore_permissions = True
 			r.submit()
 			return r
-		self.step("Release DO · submit → Released_Pending_Pickup", _mk_release)
-		self.assert_true("Release DO · container Released_Pending_Pickup",
-			frappe.db.get_value("Container", self.container, "status") == "Released_Pending_Pickup")
+		self.step("Release DO · submit → Available", _mk_release)
+		self.assert_true("Release DO · container Available",
+			frappe.db.get_value("Container", self.container, "status") == "Available")
 
 		# --- 14) Gate-out BLOCKED without a clean EIR-Out -----------------
 		self.step("Gate Out · blocked before clean EIR-Out (ESS)",

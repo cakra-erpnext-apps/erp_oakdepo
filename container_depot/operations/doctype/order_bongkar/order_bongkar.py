@@ -133,7 +133,7 @@ def _sync_container_arrival(order: Document):
 			container.depot = depot
 			changed = True
 		if container.status in _ARRIVAL_SOURCE_STATUS:
-			container.status = "Gate_In"
+			container.status = "In_Depot"
 			changed = True
 		if changed:
 			container.save(ignore_permissions=True)

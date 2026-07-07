@@ -38,26 +38,13 @@ OPEN_CLEANING = ("Pending", "In_Progress")
 OPEN_REPAIR = ("Draft", "Pending Approval", "Approved", "In Progress")
 OPEN_INSPECTION = ("Draft", "Submitted")
 
-# Raw Container.status values mapped to each canonical UI bucket. The status
-# enum was normalised (duplicate `In_Workshop` removed; portal lifecycle states
-# added) — these sets keep the five buckets stable across that change.
-_GATE_OUT_RAW = {"Gate_Out", "Released_Pending_Pickup"}
+# Container.status is presence-based now (Booked / In_Depot / Available / Gate_Out).
+# The cleaning/repair UI buckets are driven entirely by OPEN ORDERS (open_cleaning /
+# open_repair / open_inspection), not by the raw status, so those raw sets are empty.
+_GATE_OUT_RAW = {"Gate_Out"}
 _READY_RAW = {"Available"}
-_CLEANING_RAW = {
-	"Needs_Cleaning",
-	"Pending_Cleaning",
-	"Cleaning_In_Progress",
-	"Cleaning_Completed",
-	"Awaiting_Recleaning_Approval",
-	"Recleaning_In_Progress",
-}
-_REPAIR_RAW = {
-	"Pending_Survey",
-	"Survey_In_Progress",
-	"Awaiting_MR_Approval",
-	"Repair_In_Progress",
-	"Inspecting",
-}
+_CLEANING_RAW: set[str] = set()
+_REPAIR_RAW: set[str] = set()
 
 # Fields surfaced in the tank list (kept lean for the < 2s/1000-tank target).
 _LIST_FIELDS = [

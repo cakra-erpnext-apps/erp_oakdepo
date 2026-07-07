@@ -1,5 +1,5 @@
 """Order Bongkar (Tank In) must push arrival facts onto the Container master:
-the booking's depot (always) and a Gate_In status (-> Incoming stage + movement),
+the booking's depot (always) and a In_Depot status (-> Incoming stage + movement),
 without regressing a tank already further along its lifecycle.
 """
 
@@ -44,15 +44,15 @@ class TestBongkarContainerSync(FrappeTestCase):
 
 		c = frappe.get_doc("Container", cname)
 		self.assertEqual(c.depot, depot)  # the fix: depot now stamped from the booking
-		self.assertEqual(c.status, "Gate_In")
-		self.assertEqual(c.inventory_stage, "Incoming")  # auto via before_save
+		self.assertEqual(c.status, "In_Depot")
+		self.assertEqual(c.inventory_stage, "In Depot")  # auto via before_save
 		self.assertTrue(
-			frappe.db.exists("Container Movement", {"container": cname, "to_status": "Gate_In"}),
+			frappe.db.exists("Container Movement", {"container": cname, "to_status": "In_Depot"}),
 			"a Status Container Movement should be logged",
 		)
 
 	def test_depot_synced_without_regressing_an_in_process_tank(self):
-		cname = _container("BKRSYNCB001", "Inspecting")
+		cname = _container("BKRSYNCB001", "In_Depot")
 		booking, codes = _booking_with_codes(
 			code_direction="Tank In", count=1, prefix="BKRSB0", containers=[cname]
 		)
@@ -62,4 +62,4 @@ class TestBongkarContainerSync(FrappeTestCase):
 
 		c = frappe.get_doc("Container", cname)
 		self.assertEqual(c.depot, depot)  # depot still synced
-		self.assertEqual(c.status, "Inspecting")  # but status NOT regressed to Gate_In
+		self.assertEqual(c.status, "In_Depot")  # but status NOT regressed to In_Depot

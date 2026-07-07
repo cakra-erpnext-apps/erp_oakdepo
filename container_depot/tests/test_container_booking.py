@@ -590,56 +590,30 @@ class TestTankOutGating(FrappeTestCase):
 			"items": [{"container": self.container}],
 		})
 
-	def test_tank_out_blocked_without_clean_cert(self):
-		frappe.db.delete("Cleaning Certificate", {"container": self.container})
-		frappe.db.commit()
-		with self.assertRaises(frappe.ValidationError) as ctx:
-			self._booking().insert(ignore_permissions=True)
-		self.assertIn("Cleaning Certificate", str(ctx.exception))
-
-	def test_tank_out_blocked_with_expired_cert(self):
-		frappe.db.delete("Cleaning Certificate", {"container": self.container})
-		cert = frappe.get_doc({
-			"doctype": "Cleaning Certificate",
-			"container": self.container,
-			"clean_date": add_days(today(), -90),
-			"valid_until": add_days(today(), -1),  # expired yesterday
-			"cleaning_method": "Steam Wash",
-		})
-		cert.insert(ignore_permissions=True)
-		cert.submit()
-		with self.assertRaises(frappe.ValidationError) as ctx:
-			self._booking().insert(ignore_permissions=True)
-		self.assertIn("expired", str(ctx.exception).lower())
-
-	def test_tank_out_passes_with_valid_cert(self):
-		frappe.db.delete("Cleaning Certificate", {"container": self.container})
-		cert = frappe.get_doc({
-			"doctype": "Cleaning Certificate",
-			"container": self.container,
-			"clean_date": now_datetime(),
-			"cleaning_method": "Hot Water",
-		})
-		cert.insert(ignore_permissions=True)
-		cert.submit()  # default valid_until = today + 30
-		b = self._booking()
-		b.insert(ignore_permissions=True)  # should NOT raise
-		self.assertEqual(b.direction, "Tank Out")
-
-	def test_tank_out_blocked_when_container_not_ready(self):
-		frappe.db.set_value("Container", self.container, "status", "Repair_In_Progress")
+	def test_tank_out_draft_allowed_when_not_available(self):
+		# A draft outbound booking may be saved while the tank is still In_Depot
+		# (work outstanding) — only the SUBMIT is gated (presence-based model).
+		frappe.db.set_value("Container", self.container, "status", "In_Depot")
 		try:
-			frappe.db.delete("Cleaning Certificate", {"container": self.container})
-			cert = frappe.get_doc({
-				"doctype": "Cleaning Certificate",
-				"container": self.container,
-				"clean_date": now_datetime(),
-				"cleaning_method": "Hot Water",
-			})
-			cert.insert(ignore_permissions=True)
-			cert.submit()
-			with self.assertRaises(frappe.ValidationError) as ctx:
-				self._booking().insert(ignore_permissions=True)
-			self.assertIn("Ready", str(ctx.exception))
+			b = self._booking()
+			b.insert(ignore_permissions=True)  # must NOT raise
+			self.assertEqual(b.direction, "Tank Out")
 		finally:
 			frappe.db.set_value("Container", self.container, "status", "Available")
+
+	def test_tank_out_submit_blocked_when_not_available(self):
+		# Submitting is refused until the container is Available (EIR / Cleaning / M&R done).
+		frappe.db.set_value("Container", self.container, "status", "In_Depot")
+		try:
+			b = self._booking()
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				b._validate_out_ready()
+			self.assertIn("belum siap keluar", str(ctx.exception))
+		finally:
+			frappe.db.set_value("Container", self.container, "status", "Available")
+
+	def test_tank_out_submit_passes_when_available(self):
+		frappe.db.set_value("Container", self.container, "status", "Available")
+		b = self._booking()
+		b._validate_out_ready()  # must NOT raise
+		self.assertEqual(b.direction, "Tank Out")

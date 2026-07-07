@@ -83,7 +83,7 @@ def run_tests():
 		
 		container.reload()
 		print(f"Container status after Gate-In: {container.status}")
-		assert container.status == "Gate_In", "Container status should be Gate_In"
+		assert container.status == "In_Depot", "Container status should be In_Depot"
 		print("✓ register_gate_entry API verified successfully.")
 
 		# 4. Test get_pending_lifts API
@@ -181,7 +181,7 @@ def run_tests():
 		
 		container.reload()
 		assert container.repair_status == "In_Progress", "Container repair status should be In_Progress"
-		assert container.status == "Repair_In_Progress", "Container status should be Repair_In_Progress"
+		assert container.status == "In_Depot", "Container status should be In_Depot"
 		print("✓ Repair Order In Progress state verified.")
 
 		# Complete the Repair Order

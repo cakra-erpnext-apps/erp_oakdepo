@@ -176,7 +176,7 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		# Approval is mandatory: the estimate must be submitted and approved before start.
 		self._to_in_progress(ro, [{"item": _SERVICE, "quantity": 1}])
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "In Progress")
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Repair_In_Progress")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
 	def test_start_requires_approval(self):
 		"""start_repair is rejected on a Draft M&R — approval is mandatory."""

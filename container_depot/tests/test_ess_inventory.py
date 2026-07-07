@@ -27,11 +27,11 @@ from container_depot.tests.test_api import ensure_test_branch, ensure_test_custo
 ESS_DEPOT = "ESST"
 # Raw status seeded per container -> expected derived bucket.
 TANKS = {
-	"ESST1000001": "Gate_In",  # in_depot (just gated in, + PT due)
+	"ESST1000001": "In_Depot",  # in_depot (just gated in, + PT due)
 	"ESST1000002": "Gate_Out",  # gate_out
 	"ESST1000003": "Available",  # ready (consolidated ready pool)
 	"ESST1000004": "Available",  # cleaning (open CO)
-	"ESST1000005": "Repair_In_Progress",  # repair_survey
+	"ESST1000005": "In_Depot",  # repair_survey
 	"ESST1000006": "Available",  # repair_survey (open RO)
 	"ESST1000007": "Available",  # repair_survey (open EIR)
 }
@@ -108,29 +108,29 @@ class TestEssInventory(FrappeTestCase):
 		super().tearDownClass()
 
 	def test_derive_status_mapping(self):
+		# Presence-based raw status + open-order signals drive the UI buckets.
 		self.assertEqual(derive_status("Gate_Out"), "gate_out")
-		self.assertEqual(derive_status("Released_Pending_Pickup"), "gate_out")
-		# The four old ready statuses collapsed into Available (the ready pool).
 		self.assertEqual(derive_status("Available"), "ready")
-		self.assertEqual(derive_status("Awaiting_MR_Approval"), "repair_survey")
-		self.assertEqual(derive_status("Repair_In_Progress"), "repair_survey")
-		self.assertEqual(derive_status("Awaiting_Recleaning_Approval"), "cleaning")
-		self.assertEqual(derive_status("Cleaning_Completed"), "cleaning")
-		# A freshly gated-in tank (not yet processed) is plain in_depot.
-		self.assertEqual(derive_status("Gate_In"), "in_depot")
+		# A present tank with no open work is plain in_depot.
+		self.assertEqual(derive_status("In_Depot"), "in_depot")
+		# Open work drives the cleaning / repair_survey buckets regardless of raw status.
+		self.assertEqual(derive_status("In_Depot", open_cleaning=True), "cleaning")
+		self.assertEqual(derive_status("In_Depot", open_repair=True), "repair_survey")
+		self.assertEqual(derive_status("In_Depot", open_inspection=True), "repair_survey")
 		# Open work overrides the Available->ready mapping so an active job still shows.
 		self.assertEqual(derive_status("Available", open_cleaning=True), "cleaning")
 		self.assertEqual(derive_status("Available", open_repair=True), "repair_survey")
 		self.assertEqual(derive_status("Available", open_inspection=True), "repair_survey")
-		# Gate-out still wins over everything.
+		# Gate-out wins over everything.
 		self.assertEqual(derive_status("Gate_Out", open_repair=True), "gate_out")
 
 	def test_inventory_summary_counts(self):
 		res = get_inventory_summary(depot=ESS_DEPOT)
 		self.assertTrue(res["success"])
+		# ESST1000005 is In_Depot with no open order → in_depot (buckets are order-driven now).
 		self.assertEqual(
 			res["counts"],
-			{"in_depot": 1, "cleaning": 1, "repair_survey": 3, "ready": 1, "gate_out": 1},
+			{"in_depot": 2, "cleaning": 1, "repair_survey": 2, "ready": 1, "gate_out": 1},
 		)
 		self.assertEqual(res["total"], 7)
 		self.assertEqual(res["periodic_test_due"], 1)
@@ -146,7 +146,7 @@ class TestEssInventory(FrappeTestCase):
 
 	def test_tank_list_status_filter(self):
 		res = get_tank_list(depot=ESS_DEPOT, status="repair_survey")
-		self.assertEqual(res["total"], 3)
+		self.assertEqual(res["total"], 2)  # ESST1000006 (open RO) + ESST1000007 (open EIR)
 		self.assertEqual({i["status"] for i in res["items"]}, {"repair_survey"})
 
 	def test_tank_list_search(self):
@@ -206,7 +206,7 @@ class TestEssInventory(FrappeTestCase):
 				"doctype": "Container",
 				"container_no": "ESST1009999",
 				"container_type": "ISO Tank",
-				"status": "Awaiting_MR_Approval",
+				"status": "In_Depot",
 				"depot": ESS_DEPOT,
 				"principal": ensure_test_customer("ESS Inventory Test Principal"),
 			}
@@ -230,7 +230,7 @@ class TestEssInventory(FrappeTestCase):
 			r2 = set_repair_status(ro.name, "Approved")
 			self.assertEqual(r2["status"], "Approved")
 			# Controller propagated the container status (reuse, not reimplement).
-			self.assertEqual(frappe.db.get_value("Container", c.name, "status"), "Repair_In_Progress")
+			self.assertEqual(frappe.db.get_value("Container", c.name, "status"), "In_Depot")
 		finally:
 			for dt in ["Container Movement"]:
 				frappe.db.delete(dt, {"container": c.name})

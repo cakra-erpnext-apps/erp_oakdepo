@@ -126,7 +126,7 @@ class TestDepotNotify(FrappeTestCase):
 			"doctype": "Container",
 			"container_no": "NOTIFC00011",
 			"container_type": "ISO Tank",
-			"status": "Gate_In",
+			"status": "In_Depot",
 			"depot": DEPOT_A,
 			"principal": ensure_test_customer("Notify Test Principal"),
 		}).insert(ignore_permissions=True)

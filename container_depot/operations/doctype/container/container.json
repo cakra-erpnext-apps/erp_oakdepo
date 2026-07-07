@@ -1,320 +1,320 @@
 {
-  "actions": [],
-  "allow_import": 1,
-  "autoname": "field:container_no",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "basic_info",
-    "container_no",
-    "container_type",
-    "size",
-    "status",
-    "inventory_stage",
-    "column_break_1",
-    "principal",
-    "created_by_booking",
-    "shipper",
-    "depot",
-    "current_location",
-    "yard_zone",
-    "row",
-    "bay",
-    "tier",
-    "inspection_info",
-    "eir_in_date",
-    "eir_out_date",
-    "last_order_bongkar",
-    "storage_billed_until",
-    "column_break_2",
-    "last_cargo",
-    "ex_vessel",
-    "cleaning_status",
-    "repair_status",
-    "certification_status",
-    "seals_section",
-    "seal_manhole",
-    "seal_airline",
-    "seal_bottom_outlet",
-    "column_break_seal",
-    "seal_top_discharge",
-    "seal_vapour_valve",
-    "tank_spec_section",
-    "serial_no",
-    "manufacture_date",
-    "capacity",
-    "column_break_tank",
-    "tare_weight",
-    "max_gross_weight",
-    "last_test_date",
-    "next_pt_due",
-    "timestamps"
-  ],
-  "fields": [
-    {
-      "fieldname": "basic_info",
-      "fieldtype": "Section Break",
-      "label": "Basic Information"
-    },
-    {
-      "bold": 1,
-      "fieldname": "container_no",
-      "fieldtype": "Data",
-      "label": "Container Number",
-      "reqd": 1,
-      "unique": 1
-    },
-    {
-      "fieldname": "container_type",
-      "fieldtype": "Select",
-      "label": "Container Type",
-      "options": "ISO Tank\n20ft Dry\n40ft HC\n20ft Reefer\n40ft Reefer\nOpen Top\nFlat Rack",
-      "reqd": 1
-    },
-    {
-      "fieldname": "size",
-      "fieldtype": "Select",
-      "label": "Size",
-      "options": "20'\n40'\n45'\nOther"
-    },
-    {
-      "default": "Gate_Out",
-      "fieldname": "status",
-      "fieldtype": "Select",
-      "label": "Status",
-      "options": "Booked\nAvailable\nGate_In\nInspecting\nNeeds_Cleaning\nPending_Cleaning\nCleaning_In_Progress\nCleaning_Completed\nPending_Survey\nSurvey_In_Progress\nAwaiting_MR_Approval\nRepair_In_Progress\nAwaiting_Recleaning_Approval\nRecleaning_In_Progress\nReleased_Pending_Pickup\nGate_Out",
-      "reqd": 1
-    },
-    {
-      "description": "Monitoring stage derived from Status (auto-maintained). Pre-Arrival and Departed are excluded from in-depo stock.",
-      "fieldname": "inventory_stage",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "in_standard_filter": 1,
-      "label": "Inventory Stage",
-      "options": "\nPre-Arrival\nIncoming\nCleaning\nSurvey\nRepair (M&R)\nReady\nOutgoing\nDeparted",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "principal",
-      "fieldtype": "Link",
-      "label": "Principal (Owner)",
-      "options": "Customer",
-      "reqd": 1
-    },
-    {
-      "description": "Set when this Container master was auto-created as a pre-arrival reservation for an Container Booking (Tank In, container not yet in the system). On that booking's cancellation, the phantom is deleted if it never gated in; pre-existing containers are only reverted to Available.",
-      "fieldname": "created_by_booking",
-      "fieldtype": "Link",
-      "label": "Created by Booking",
-      "options": "Container Booking",
-      "read_only": 1
-    },
-    {
-      "description": "Shipper for the current release cycle (filled at Release DO).",
-      "fieldname": "shipper",
-      "fieldtype": "Link",
-      "label": "Shipper",
-      "options": "Customer"
-    },
-    {
-      "fieldname": "depot",
-      "fieldtype": "Link",
-      "in_standard_filter": 1,
-      "label": "Depot",
-      "options": "Depot"
-    },
-    {
-      "fieldname": "current_location",
-      "fieldtype": "Data",
-      "label": "Current Location (Yard)"
-    },
-    {
-      "fieldname": "yard_zone",
-      "fieldtype": "Link",
-      "in_standard_filter": 1,
-      "label": "Yard Zone",
-      "options": "Yard Zone"
-    },
-    {
-      "fieldname": "row",
-      "fieldtype": "Data",
-      "label": "Row"
-    },
-    {
-      "fieldname": "bay",
-      "fieldtype": "Data",
-      "label": "Bay"
-    },
-    {
-      "fieldname": "tier",
-      "fieldtype": "Int",
-      "label": "Tier"
-    },
-    {
-      "fieldname": "inspection_info",
-      "fieldtype": "Section Break",
-      "label": "Inspection Information"
-    },
-    {
-      "fieldname": "eir_in_date",
-      "fieldtype": "Datetime",
-      "label": "EIR-In Date"
-    },
-    {
-      "fieldname": "eir_out_date",
-      "fieldtype": "Datetime",
-      "label": "EIR-Out Date"
-    },
-    {
-      "description": "Latest Order Bongkar (unloading voucher) this container was placed on — stamped automatically when the bon is submitted.",
-      "fieldname": "last_order_bongkar",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Order Bongkar",
-      "options": "Order Bongkar",
-      "read_only": 1
-    },
-    {
-      "description": "Watermark: storage already billed up to this date. Advanced by consolidated billing so re-runs never double-charge storage days.",
-      "fieldname": "storage_billed_until",
-      "fieldtype": "Date",
-      "label": "Storage Billed Until",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "last_cargo",
-      "fieldtype": "Link",
-      "label": "Last Cargo (for ISO Tanks)",
-      "options": "Cargo"
-    },
-    {
-      "description": "Arrival vessel, copied from the most recent Order Bongkar when it is submitted.",
-      "fieldname": "ex_vessel",
-      "fieldtype": "Data",
-      "label": "Ex Vessel"
-    },
-    {
-      "fieldname": "cleaning_status",
-      "fieldtype": "Select",
-      "label": "Cleaning Status",
-      "options": "Not_Required\nPending\nIn_Progress\nCompleted"
-    },
-    {
-      "fieldname": "repair_status",
-      "fieldtype": "Select",
-      "label": "Repair Status",
-      "options": "Not_Required\nPending_Estimate\nAwaiting_Approval\nIn_Progress\nCompleted"
-    },
-    {
-      "fieldname": "certification_status",
-      "fieldtype": "Select",
-      "label": "Certification Status",
-      "options": "Not_Required\nPending\nCompleted"
-    },
-    {
-      "collapsible": 1,
-      "description": "Seal numbers recorded at survey / release (ISO tank 5-point).",
-      "fieldname": "seals_section",
-      "fieldtype": "Section Break",
-      "label": "Seals"
-    },
-    {
-      "fieldname": "seal_manhole",
-      "fieldtype": "Data",
-      "label": "Manhole Seal"
-    },
-    {
-      "fieldname": "seal_airline",
-      "fieldtype": "Data",
-      "label": "Airline Seal"
-    },
-    {
-      "fieldname": "seal_bottom_outlet",
-      "fieldtype": "Data",
-      "label": "Bottom Outlet Seal"
-    },
-    {
-      "fieldname": "column_break_seal",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "seal_top_discharge",
-      "fieldtype": "Data",
-      "label": "Top Discharge Seal"
-    },
-    {
-      "fieldname": "seal_vapour_valve",
-      "fieldtype": "Data",
-      "label": "Vapour Valve Seal"
-    },
-    {
-      "collapsible": 1,
-      "fieldname": "tank_spec_section",
-      "fieldtype": "Section Break",
-      "label": "Tank Specifications (ISO Tank)"
-    },
-    {
-      "fieldname": "serial_no",
-      "fieldtype": "Data",
-      "label": "Serial No"
-    },
-    {
-      "fieldname": "manufacture_date",
-      "fieldtype": "Date",
-      "label": "Date of Manufacture"
-    },
-    {
-      "fieldname": "capacity",
-      "fieldtype": "Float",
-      "label": "Capacity (L)"
-    },
-    {
-      "fieldname": "column_break_tank",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "tare_weight",
-      "fieldtype": "Float",
-      "label": "Tare Weight (kg)"
-    },
-    {
-      "fieldname": "max_gross_weight",
-      "fieldtype": "Float",
-      "label": "Max Gross Weight / MWG (kg)"
-    },
-    {
-      "fieldname": "last_test_date",
-      "fieldtype": "Date",
-      "label": "Last Test Date"
-    },
-    {
-      "description": "Next periodic-test due date. Maintained from the latest Periodic Test; blocks TANK OUT once overdue.",
-      "fieldname": "next_pt_due",
-      "fieldtype": "Date",
-      "label": "Next Periodic Test Due",
-      "read_only": 1
-    },
-    {
-      "fieldname": "timestamps",
-      "fieldtype": "Section Break",
-      "label": "Timestamps"
-    }
-  ],
-  "links": [],
-  "modified": "2026-06-23",
-  "module": "Operations",
-  "name": "Container",
-  "search_fields": "container_no, container_type, status, principal",
-  "sort_field": "creation",
-  "sort_order": "DESC",
-  "title_field": "container_no"
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "field:container_no",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "basic_info",
+  "container_no",
+  "container_type",
+  "size",
+  "status",
+  "inventory_stage",
+  "column_break_1",
+  "principal",
+  "created_by_booking",
+  "shipper",
+  "depot",
+  "current_location",
+  "yard_zone",
+  "row",
+  "bay",
+  "tier",
+  "inspection_info",
+  "eir_in_date",
+  "eir_out_date",
+  "last_order_bongkar",
+  "storage_billed_until",
+  "column_break_2",
+  "last_cargo",
+  "ex_vessel",
+  "cleaning_status",
+  "repair_status",
+  "certification_status",
+  "seals_section",
+  "seal_manhole",
+  "seal_airline",
+  "seal_bottom_outlet",
+  "column_break_seal",
+  "seal_top_discharge",
+  "seal_vapour_valve",
+  "tank_spec_section",
+  "serial_no",
+  "manufacture_date",
+  "capacity",
+  "column_break_tank",
+  "tare_weight",
+  "max_gross_weight",
+  "last_test_date",
+  "next_pt_due",
+  "timestamps"
+ ],
+ "fields": [
+  {
+   "fieldname": "basic_info",
+   "fieldtype": "Section Break",
+   "label": "Basic Information"
+  },
+  {
+   "bold": 1,
+   "fieldname": "container_no",
+   "fieldtype": "Data",
+   "label": "Container Number",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "container_type",
+   "fieldtype": "Select",
+   "label": "Container Type",
+   "options": "ISO Tank\n20ft Dry\n40ft HC\n20ft Reefer\n40ft Reefer\nOpen Top\nFlat Rack",
+   "reqd": 1
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Select",
+   "label": "Size",
+   "options": "20'\n40'\n45'\nOther"
+  },
+  {
+   "default": "Booked",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Booked\nIn_Depot\nAvailable\nGate_Out",
+   "reqd": 1
+  },
+  {
+   "description": "Monitoring stage derived from Status (auto-maintained). Pre-Arrival and Departed are excluded from in-depo stock.",
+   "fieldname": "inventory_stage",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Inventory Stage",
+   "options": "\nPre-Arrival\nIn Depot\nReady\nDeparted",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "principal",
+   "fieldtype": "Link",
+   "label": "Principal (Owner)",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "description": "Set when this Container master was auto-created as a pre-arrival reservation for an Container Booking (Tank In, container not yet in the system). On that booking's cancellation, the phantom is deleted if it never gated in; pre-existing containers are only reverted to Available.",
+   "fieldname": "created_by_booking",
+   "fieldtype": "Link",
+   "label": "Created by Booking",
+   "options": "Container Booking",
+   "read_only": 1
+  },
+  {
+   "description": "Shipper for the current release cycle (filled at Release DO).",
+   "fieldname": "shipper",
+   "fieldtype": "Link",
+   "label": "Shipper",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot"
+  },
+  {
+   "fieldname": "current_location",
+   "fieldtype": "Data",
+   "label": "Current Location (Yard)"
+  },
+  {
+   "fieldname": "yard_zone",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Yard Zone",
+   "options": "Yard Zone"
+  },
+  {
+   "fieldname": "row",
+   "fieldtype": "Data",
+   "label": "Row"
+  },
+  {
+   "fieldname": "bay",
+   "fieldtype": "Data",
+   "label": "Bay"
+  },
+  {
+   "fieldname": "tier",
+   "fieldtype": "Int",
+   "label": "Tier"
+  },
+  {
+   "fieldname": "inspection_info",
+   "fieldtype": "Section Break",
+   "label": "Inspection Information"
+  },
+  {
+   "fieldname": "eir_in_date",
+   "fieldtype": "Datetime",
+   "label": "EIR-In Date"
+  },
+  {
+   "fieldname": "eir_out_date",
+   "fieldtype": "Datetime",
+   "label": "EIR-Out Date"
+  },
+  {
+   "description": "Latest Order Bongkar (unloading voucher) this container was placed on \u2014 stamped automatically when the bon is submitted.",
+   "fieldname": "last_order_bongkar",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Order Bongkar",
+   "options": "Order Bongkar",
+   "read_only": 1
+  },
+  {
+   "description": "Watermark: storage already billed up to this date. Advanced by consolidated billing so re-runs never double-charge storage days.",
+   "fieldname": "storage_billed_until",
+   "fieldtype": "Date",
+   "label": "Storage Billed Until",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_cargo",
+   "fieldtype": "Link",
+   "label": "Last Cargo (for ISO Tanks)",
+   "options": "Cargo"
+  },
+  {
+   "description": "Arrival vessel, copied from the most recent Order Bongkar when it is submitted.",
+   "fieldname": "ex_vessel",
+   "fieldtype": "Data",
+   "label": "Ex Vessel"
+  },
+  {
+   "fieldname": "cleaning_status",
+   "fieldtype": "Select",
+   "label": "Cleaning Status",
+   "options": "Not_Required\nPending\nIn_Progress\nCompleted"
+  },
+  {
+   "fieldname": "repair_status",
+   "fieldtype": "Select",
+   "label": "Repair Status",
+   "options": "Not_Required\nPending_Estimate\nAwaiting_Approval\nIn_Progress\nCompleted"
+  },
+  {
+   "fieldname": "certification_status",
+   "fieldtype": "Select",
+   "label": "Certification Status",
+   "options": "Not_Required\nPending\nCompleted"
+  },
+  {
+   "collapsible": 1,
+   "description": "Seal numbers recorded at survey / release (ISO tank 5-point).",
+   "fieldname": "seals_section",
+   "fieldtype": "Section Break",
+   "label": "Seals"
+  },
+  {
+   "fieldname": "seal_manhole",
+   "fieldtype": "Data",
+   "label": "Manhole Seal"
+  },
+  {
+   "fieldname": "seal_airline",
+   "fieldtype": "Data",
+   "label": "Airline Seal"
+  },
+  {
+   "fieldname": "seal_bottom_outlet",
+   "fieldtype": "Data",
+   "label": "Bottom Outlet Seal"
+  },
+  {
+   "fieldname": "column_break_seal",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "seal_top_discharge",
+   "fieldtype": "Data",
+   "label": "Top Discharge Seal"
+  },
+  {
+   "fieldname": "seal_vapour_valve",
+   "fieldtype": "Data",
+   "label": "Vapour Valve Seal"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "tank_spec_section",
+   "fieldtype": "Section Break",
+   "label": "Tank Specifications (ISO Tank)"
+  },
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Data",
+   "label": "Serial No"
+  },
+  {
+   "fieldname": "manufacture_date",
+   "fieldtype": "Date",
+   "label": "Date of Manufacture"
+  },
+  {
+   "fieldname": "capacity",
+   "fieldtype": "Float",
+   "label": "Capacity (L)"
+  },
+  {
+   "fieldname": "column_break_tank",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tare_weight",
+   "fieldtype": "Float",
+   "label": "Tare Weight (kg)"
+  },
+  {
+   "fieldname": "max_gross_weight",
+   "fieldtype": "Float",
+   "label": "Max Gross Weight / MWG (kg)"
+  },
+  {
+   "fieldname": "last_test_date",
+   "fieldtype": "Date",
+   "label": "Last Test Date"
+  },
+  {
+   "description": "Next periodic-test due date. Maintained from the latest Periodic Test; blocks TANK OUT once overdue.",
+   "fieldname": "next_pt_due",
+   "fieldtype": "Date",
+   "label": "Next Periodic Test Due",
+   "read_only": 1
+  },
+  {
+   "fieldname": "timestamps",
+   "fieldtype": "Section Break",
+   "label": "Timestamps"
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-23",
+ "module": "Operations",
+ "name": "Container",
+ "search_fields": "container_no, container_type, status, principal",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "container_no"
 }

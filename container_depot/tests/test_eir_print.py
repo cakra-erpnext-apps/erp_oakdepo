@@ -19,7 +19,7 @@ def _make_container(cno):
 		"doctype": "Container",
 		"container_no": cno,
 		"container_type": "ISO Tank",
-		"status": "Gate_In",
+		"status": "In_Depot",
 		"principal": ensure_test_customer("EIR Print Test Principal"),
 	}).insert(ignore_permissions=True).name
 

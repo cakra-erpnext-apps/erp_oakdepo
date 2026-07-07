@@ -149,7 +149,7 @@ class TestMRApproval(FrappeTestCase):
 		doc = frappe.get_doc("Repair Order", ro)
 		self.assertEqual(doc.status, "Pending Approval")
 		self.assertIsNotNone(doc.requested_on)
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Awaiting_MR_Approval")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
 	# --- approve --------------------------------------------------------------
 	def test_approve_all_totals_every_line(self):

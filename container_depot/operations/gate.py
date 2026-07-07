@@ -14,11 +14,9 @@ from frappe.utils import cint, now_datetime
 
 from container_depot.operations.user_branch import assert_in_user_branch, get_user_depots
 
-# Container statuses a tank may legitimately gate out FROM. The canonical OUT path is
-# Release DO → Released_Pending_Pickup → Gate_Out; ``Available`` is accepted too so the
-# action is robust whether or not a Release DO was raised (both are state-machine edges
-# into Gate_Out). Anything mid-process (cleaning / survey / repair / just-gated-in) is NOT.
-_GATE_OUT_SOURCES = ("Released_Pending_Pickup", "Available")
+# A tank may gate out only when it is Available (present + every related order done).
+# Anything still In_Depot (open cleaning / repair / EIR) is not ready.
+_GATE_OUT_SOURCES = ("Available",)
 
 _LIST_FIELDS = [
 	"name", "gate_entry_id", "container_no", "status", "booking_code", "depot",

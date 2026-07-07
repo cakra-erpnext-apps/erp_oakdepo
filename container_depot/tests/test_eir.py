@@ -10,7 +10,7 @@ from container_depot.tests._booking_helpers import make_booking_code
 from container_depot.tests.test_api import ensure_test_customer
 
 
-def _make_container(cno, *, status="Gate_In", **kw):
+def _make_container(cno, *, status="In_Depot", **kw):
 	kw.setdefault("principal", ensure_test_customer("EIR Test Principal"))
 	return frappe.get_doc({
 		"doctype": "Container",
@@ -151,7 +151,7 @@ class TestEirCreate(FrappeTestCase):
 	def test_submit_moves_container_via_controller(self):
 		# EIR-In submit must route the Container through Inspection.on_submit, NOT
 		# via any status code in the endpoint.
-		c = _make_container("EIRC1000002", status="Gate_In")
+		c = _make_container("EIRC1000002", status="In_Depot")
 		res = eir.create_eir(
 			inspection_type="EIR-In", container=c, tank_status="Empty Dirty",
 			truck_no="B-1234-XY", emkl="PT EMKL", remarks="ok",
@@ -164,7 +164,7 @@ class TestEirCreate(FrappeTestCase):
 		self.assertEqual(doc.truck_no, "B-1234-XY")
 		self.assertEqual(doc.emkl, "PT EMKL")
 		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
-		self.assertEqual(cont.status, "Inspecting")
+		self.assertEqual(cont.status, "In_Depot")
 		self.assertTrue(cont.eir_in_date)
 
 	def test_acceptable_skipped_and_repair_only_not_damage(self):
@@ -297,7 +297,7 @@ class TestEirDraft(FrappeTestCase):
 
 	def test_save_draft_rejects_submitted(self):
 		# Once submitted, the EIR is no longer a draft and save_draft must refuse.
-		c = _make_container("EIRD1000004", status="Gate_In")
+		c = _make_container("EIRD1000004", status="In_Depot")
 		res = eir.create_eir(inspection_type="EIR-In", container=c,
 						   lines=[{"item_code": "01", "damage_code": "11"}], submit=True)
 		with self.assertRaises(frappe.ValidationError):
@@ -306,7 +306,7 @@ class TestEirDraft(FrappeTestCase):
 	def test_save_draft_submit_finalizes(self):
 		# The Submit button saves then finalizes: the draft is submitted and its
 		# on_submit moves the container; a later fetch starts a fresh draft.
-		c = _make_container("EIRD1000005", status="Gate_In")
+		c = _make_container("EIRD1000005", status="In_Depot")
 		d = eir.open_draft(container_no="EIRD1000005")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		res = eir.save_draft(
@@ -316,7 +316,7 @@ class TestEirDraft(FrappeTestCase):
 		)
 		self.assertEqual(res["docstatus"], 1)
 		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
-		self.assertEqual(cont.status, "Inspecting")
+		self.assertEqual(cont.status, "In_Depot")
 		self.assertTrue(cont.eir_in_date)
 		d2 = eir.open_draft(container_no="EIRD1000005")
 		self.assertNotEqual(d2["inspection"], d["inspection"])
@@ -505,7 +505,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 	def test_submit_cargo_writes_master(self):
 		_ensure_cargo("Acetone")
 		_ensure_cargo("Acetic Acid")
-		c = _make_container("EIRV2000002", status="Gate_In", last_cargo="Acetone")
+		c = _make_container("EIRV2000002", status="In_Depot", last_cargo="Acetone")
 		d = eir.open_draft(container_no="EIRV2000002", inspection_type="EIR-In")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
@@ -514,7 +514,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Container", c, "last_cargo"), "Acetic Acid")
 
 	def test_eir_in_submit_writes_eir_in_date(self):
-		c = _make_container("EIRV2000020", status="Gate_In")
+		c = _make_container("EIRV2000020", status="In_Depot")
 		d = eir.open_draft(container_no="EIRV2000020", inspection_type="EIR-In")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
@@ -608,11 +608,11 @@ class TestEirRevert(FrappeTestCase):
 	"""revert_to_draft: the Desk-only 'Kembalikan ke Draft' for a submitted EIR."""
 
 	def test_revert_eir_in_restores_container_and_makes_draft(self):
-		c = _make_container("REVT1000001", status="Gate_In")
-		# Empty Clean → Inspecting (an Empty-Dirty EIR would instead queue a Cleaning
-		# Order; that path is covered by test_eir_cleaning_flow). This test is about revert.
+		c = _make_container("REVT1000001", status="In_Depot")
+		# Empty-Clean EIR-In with no follow-up orders → tank becomes Available (an
+		# Empty-Dirty EIR would instead queue a Cleaning Order; covered elsewhere).
 		res = eir.create_eir(inspection_type="EIR-In", container=c, tank_status="Empty Clean", submit=True)
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Inspecting")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
 
 		eir.revert_to_draft(res["name"])
 
@@ -620,10 +620,10 @@ class TestEirRevert(FrappeTestCase):
 		self.assertEqual(doc.docstatus, 0)
 		self.assertEqual(doc.status, "Draft")
 		# Container status undone back to its pre-submit value.
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_In")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
 	def test_reverted_eir_is_reopened_by_open_draft(self):
-		c = _make_container("REVT1000002", status="Gate_In")
+		c = _make_container("REVT1000002", status="In_Depot")
 		res = eir.create_eir(inspection_type="EIR-In", container=c, submit=True)
 		eir.revert_to_draft(res["name"])
 		# The PWA's get-or-create draft must return THE reverted EIR, not a new one.
@@ -631,7 +631,7 @@ class TestEirRevert(FrappeTestCase):
 		self.assertEqual(opened["inspection"], res["name"])
 
 	def test_revert_blocked_when_another_draft_exists(self):
-		c = _make_container("REVT1000003", status="Gate_In")
+		c = _make_container("REVT1000003", status="In_Depot")
 		submitted = eir.create_eir(inspection_type="EIR-In", container=c, submit=True)
 		# A second, still-draft EIR for the same container.
 		eir.create_eir(inspection_type="EIR-Out", container=c, submit=False)

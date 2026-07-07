@@ -23,7 +23,7 @@ from container_depot.tests.test_eir import _make_order_muat
 PREFIX = "EOUT"
 
 
-def _container(no, status="Released_Pending_Pickup"):
+def _container(no, status="Available"):
 	frappe.get_doc({
 		"doctype": "Container",
 		"container_no": no,
@@ -180,17 +180,17 @@ class TestEirOut(FrappeTestCase):
 		)
 
 	def test_gate_out_blocked_without_clean_eir_out(self):
-		c = _container(f"{PREFIX}0000009", status="Released_Pending_Pickup")
+		c = _container(f"{PREFIX}0000009", status="Available")
 		with self.assertRaises(frappe.ValidationError):
 			mark_gate_out(container=c)
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Released_Pending_Pickup")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
 
 	def test_gate_out_allowed_with_clean_eir_out(self):
-		c = _container(f"{PREFIX}0000010", status="Released_Pending_Pickup")
+		c = _container(f"{PREFIX}0000010", status="Available")
 		cert = _cert(c, add_days(today(), 20))
 		_submit_eir_out(c, exterior="Clean", seals=1, cert=cert, valid_until=add_days(today(), 20))
 		# Submit may have re-saved the container; force the pickup-ready status for the gate.
-		frappe.db.set_value("Container", c, "status", "Released_Pending_Pickup", update_modified=False)
+		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
 
 		res = mark_gate_out(container=c)
 		self.assertEqual(res["status"], "Gate_Out")

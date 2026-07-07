@@ -12,8 +12,8 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.operations.doctype.container_booking.container_booking import void_draft
 from container_depot.state_machine import (
-	CONTAINER_TRANSITIONS,
 	INVENTORY_STAGES,
+	STAGE_BY_STATUS,
 	stage_for_status,
 )
 from container_depot.tests._booking_helpers import make_contract
@@ -21,10 +21,8 @@ from container_depot.tests.test_api import ensure_test_customer
 
 
 def _all_statuses():
-	statuses = set(CONTAINER_TRANSITIONS.keys())
-	for targets in CONTAINER_TRANSITIONS.values():
-		statuses.update(targets)
-	return statuses
+	# Presence-based status set: Booked / In_Depot / Available / Gate_Out.
+	return set(STAGE_BY_STATUS.keys())
 
 
 def _make_container(cno, status="Available", principal=None):
@@ -47,12 +45,12 @@ class TestInventoryStage(FrappeTestCase):
 	def test_stage_follows_status_on_save(self):
 		c = _make_container("INVSTAGE001", status="Available")
 		self.assertEqual(c.inventory_stage, "Ready")  # Available -> Ready
-		c.status = "Gate_In"  # allowed Available -> Gate_In
+		c.status = "In_Depot"
 		c.save(ignore_permissions=True)
-		self.assertEqual(c.inventory_stage, "Incoming")
-		c.status = "Needs_Cleaning"  # Gate_In -> Needs_Cleaning
+		self.assertEqual(c.inventory_stage, "In Depot")
+		c.status = "Gate_Out"
 		c.save(ignore_permissions=True)
-		self.assertEqual(c.inventory_stage, "Cleaning")
+		self.assertEqual(c.inventory_stage, "Departed")
 
 	def test_gate_out_is_departed(self):
 		c = _make_container("INVSTAGE002", status="Gate_Out")

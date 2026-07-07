@@ -92,8 +92,8 @@ class ContainerBooking(Document):
 		self._resolve_containers()
 		self._compute_lift_amount()
 		self._sync_payment_type_from_contract()
-		if self.direction == "Tank Out":
-			self._validate_tank_out_gating()
+		# Readiness is enforced at SUBMIT (see before_submit), not here — an outbound
+		# booking may be saved as a draft while its container's EIR/Cleaning/M&R finish.
 
 	def after_insert(self):
 		# Notify Commercial / admin / Cashier that a new booking (and, for Cash, a
@@ -111,6 +111,11 @@ class ContainerBooking(Document):
 		self._require_contract()
 		self._enforce_payment_rules()
 		self._validate_do()
+		# Presence-based in/out gates (draft allowed; only submit is blocked).
+		if self.direction == "Tank Out":
+			self._validate_out_ready()
+		elif self.direction == "Tank In":
+			self._validate_in_not_present()
 
 	def on_submit(self):
 		self._issue_booking_codes()
@@ -583,10 +588,12 @@ class ContainerBooking(Document):
 			# Cash / TOP contract — the booking inherits the contract's single mode.
 			self.payment_type = contract.payment_type
 
-	def _validate_tank_out_gating(self):
-		"""TANK OUT requires every item to ref a clean+ready Container with a
-		Cleaning Certificate that's still valid today.
-		"""
+	def _validate_out_ready(self):
+		"""TANK OUT submit gate: every container must be Available — i.e. present and with
+		every related order (EIR-In, Cleaning, M&R) finished. A draft may be saved earlier;
+		only the submit is blocked while work is outstanding."""
+		from container_depot.operations.container_status import AVAILABLE
+
 		failures: list[str] = []
 		for item in self.items or []:
 			if not item.container:
@@ -597,46 +604,37 @@ class ContainerBooking(Document):
 				)
 				continue
 			c = frappe.db.get_value(
-				"Container",
-				item.container,
-				["status", "container_no", "next_pt_due"],
-				as_dict=True,
+				"Container", item.container, ["status", "container_no"], as_dict=True
 			)
 			if not c:
 				failures.append(_("Container {0} not found.").format(item.container))
 				continue
-			if c.status not in CONTAINER_READY_STATUSES:
+			if c.status != AVAILABLE:
 				failures.append(
-					_("Container {0} is not Ready (status={1}).").format(c.container_no, c.status)
+					_(
+						"Container {0} belum siap keluar (status {1}) — selesaikan EIR / Cleaning / "
+						"M&R dulu sebelum submit booking keluar."
+					).format(c.container_no, c.status)
 				)
-				continue
-			if c.next_pt_due and getdate(c.next_pt_due) < getdate(today()):
+
+		if failures:
+			frappe.throw("<br>".join(failures))
+
+	def _validate_in_not_present(self):
+		"""TANK IN submit gate: a container must NOT already be physically in a depot —
+		import only a tank that is not currently present (In_Depot / Available)."""
+		from container_depot.operations.container_status import PRESENT
+
+		failures: list[str] = []
+		for item in self.items or []:
+			if not item.container:
+				continue  # a brand-new pre-arrival phantom is created fresh — always fine
+			status = frappe.db.get_value("Container", item.container, "status")
+			if status in PRESENT:
 				failures.append(
-					_("Container {0} periodic test overdue (due {1}).").format(
-						c.container_no, c.next_pt_due
-					)
-				)
-				continue
-			cert = frappe.db.get_value(
-				"Cleaning Certificate",
-				{
-					"container": item.container,
-					"docstatus": 1,
-				},
-				["name", "valid_until"],
-				as_dict=True,
-				order_by="clean_date desc",
-			)
-			if not cert:
-				failures.append(
-					_("Container {0} has no submitted Cleaning Certificate.").format(c.container_no)
-				)
-				continue
-			if cert.valid_until and getdate(cert.valid_until) < getdate(today()):
-				failures.append(
-					_("Container {0} cleaning cert {1} expired on {2}.").format(
-						c.container_no, cert.name, cert.valid_until
-					)
+					_(
+						"Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk."
+					).format(item.container_no or item.container, status)
 				)
 
 		if failures:

@@ -36,7 +36,7 @@ class TestContainerActivityHelper(FrappeTestCase):
 		cust = ensure_test_customer("Activity Helper Cust")
 		c = _make_container("ACTHLP00001", principal=cust)
 		name = log_container_activity(
-			c, "Gate In", reference_doctype="Container", reference_name=c, to_status="Gate_In", summary="x"
+			c, "Gate In", reference_doctype="Container", reference_name=c, to_status="In_Depot", summary="x"
 		)
 		self.assertTrue(name)
 		row = frappe.get_doc("Container Activity", name)
@@ -65,7 +65,8 @@ class TestContainerActivityHelper(FrappeTestCase):
 class TestContainerActivityWiring(FrappeTestCase):
 	def test_gate_entry_logs_activity(self):
 		cust = ensure_test_customer("Activity Gate Cust")
-		c = _make_container("ACTGATE0001", principal=cust)
+		# Pre-arrival (Booked) so gate-in is allowed (a present tank can't gate in again).
+		c = _make_container("ACTGATE0001", status="Booked", principal=cust)
 		code = make_booking_code(customer=cust, container_no="ACTGATE0001", container=c)
 		ge = frappe.get_doc({
 			"doctype": "Gate Entry",
@@ -81,10 +82,10 @@ class TestContainerActivityWiring(FrappeTestCase):
 		self.assertEqual(len(acts), 1)
 		self.assertEqual(acts[0]["reference_doctype"], "Gate Entry")
 		self.assertEqual(acts[0]["reference_name"], ge.name)
-		self.assertEqual(acts[0]["to_status"], "Gate_In")
+		self.assertEqual(acts[0]["to_status"], "In_Depot")
 
 	def test_inspection_logs_activity(self):
-		c = _make_container("ACTINSP0001", status="Gate_In")
+		c = _make_container("ACTINSP0001", status="In_Depot")
 		insp = frappe.get_doc({
 			"doctype": "Inspection",
 			"container": c,
@@ -97,7 +98,7 @@ class TestContainerActivityWiring(FrappeTestCase):
 		acts = _activities(c, "Inspection (EIR)")
 		self.assertEqual(len(acts), 1)
 		self.assertEqual(acts[0]["reference_name"], insp.name)
-		self.assertEqual(acts[0]["to_status"], "Inspecting")
+		self.assertEqual(acts[0]["to_status"], "In_Depot")
 
 	def test_cleaning_certificate_logs_activity(self):
 		c = _make_container("ACTCERT0001")
@@ -145,7 +146,7 @@ class TestContainerActivityReportAndBackfill(FrappeTestCase):
 		c = _make_container("ACTBKFL0001", status="Available")
 		# A status change auto-creates a Container Movement.
 		doc = frappe.get_doc("Container", c)
-		doc.status = "Gate_In"
+		doc.status = "In_Depot"
 		doc.save(ignore_permissions=True)
 		mv = frappe.db.get_value("Container Movement", {"container": c}, "name")
 		self.assertTrue(mv)

@@ -38,6 +38,16 @@ class RepairOrder(Document):
 		self.calculate_totals()
 		self.update_container_status()
 
+	def on_update(self):
+		# This order's new status is now persisted — flip the container In_Depot <->
+		# Available based on whether any related order is still open.
+		from container_depot.operations.container_status import recompute_availability
+
+		recompute_availability(self.container)
+
+	def on_update_after_submit(self):
+		self.on_update()
+
 	def fetch_principal_from_container(self):
 		"""Fetch principal from Container master record"""
 		if self.container:
@@ -95,22 +105,18 @@ class RepairOrder(Document):
 		prev_status = before.status if before else None
 		container_doc = frappe.get_doc("Container", self.container)
 
-		# Map Repair Order status to Container status and repair_status
+		# Only the informational repair_status hint is mirrored here — the main
+		# Container.status is presence-based now and recomputed in on_update once this
+		# order's new status is persisted (In_Depot while open, Available when done).
 		if self.status == "Draft":
 			container_doc.repair_status = "Pending_Estimate"
 		elif self.status in ("Pending Approval", "Revision Requested"):
-			# Awaiting the owner's decision (or their requested revision) — tank parked.
 			container_doc.repair_status = "Awaiting_Approval"
-			container_doc.status = "Awaiting_MR_Approval"
 		elif self.status in ["Approved", "In Progress"]:
 			container_doc.repair_status = "In_Progress"
-			container_doc.status = "Repair_In_Progress"
 		elif self.status == "Completed":
 			container_doc.repair_status = "Completed"
-			# Repair finished → back to the ready pool.
-			container_doc.status = "Available"
 		elif self.status in ("Cancelled", "Rejected"):
-			# Rejected: damage not repaired — clear repair flag, container handled manually.
 			container_doc.repair_status = "Not_Required"
 
 		# Controller-driven status change: bypass the manual-transition guard.

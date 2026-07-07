@@ -197,15 +197,18 @@ def start_cleaning(cleaning_order):
 			{"status": "In_Progress", "cleaning_start": now_datetime()}, update_modified=True,
 		)
 	# The order is still a draft, so its controller propagation hasn't run — mirror the
-	# In_Progress stage onto the container here.
+	# In_Progress cleaning hint onto the container here (status stays presence-based).
 	cont = frappe.get_doc("Container", co.container)
-	cont.status = "Cleaning_In_Progress"
 	cont.cleaning_status = "In_Progress"
 	frappe.flags.in_status_automation = True
 	try:
 		cont.save(ignore_permissions=True)
 	finally:
 		frappe.flags.in_status_automation = False
+	# An open cleaning order keeps the tank In_Depot.
+	from container_depot.operations.container_status import recompute_availability
+
+	recompute_availability(co.container)
 
 	from container_depot.operations.container_activity import log_container_activity
 
