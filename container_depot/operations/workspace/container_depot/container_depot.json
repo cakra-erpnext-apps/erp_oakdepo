@@ -161,6 +161,16 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Container Position Survey",
+   "link_count": 0,
+   "link_to": "Container Position Survey",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Periodic Test",
    "link_count": 0,
    "link_to": "Periodic Test",
@@ -320,16 +330,6 @@
    "label": "Cleaning Checklist Item",
    "link_count": 0,
    "link_to": "Cleaning Checklist Item",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Yard Placement Rule",
-   "link_count": 0,
-   "link_to": "Yard Placement Rule",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"

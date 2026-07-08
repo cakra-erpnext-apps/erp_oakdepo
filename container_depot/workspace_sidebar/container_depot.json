@@ -226,6 +226,18 @@
             "icon": "es-line-details"
         },
         {
+            "child": 1,
+            "collapsible": 1,
+            "indent": 0,
+            "keep_closed": 0,
+            "label": "Container Position Survey",
+            "link_to": "Container Position Survey",
+            "link_type": "DocType",
+            "show_arrow": 0,
+            "type": "Link",
+            "icon": "es-line-map-pin"
+        },
+        {
             "child": 0,
             "collapsible": 1,
             "icon": "tag",
@@ -245,18 +257,6 @@
             "show_arrow": 0,
             "type": "Link",
             "icon": "es-line-storage"
-        },
-        {
-            "child": 1,
-            "collapsible": 1,
-            "indent": 0,
-            "keep_closed": 0,
-            "label": "Yard Placement Rule",
-            "link_to": "Yard Placement Rule",
-            "link_type": "DocType",
-            "show_arrow": 0,
-            "type": "Link",
-            "icon": "es-line-tiles"
         },
         {
             "child": 1,
