@@ -98,31 +98,37 @@
 
 		<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
 			<li v-for="c in items" :key="c.name" class="flex items-center">
+				<!-- The clickable area is a plain block (flex-1); the flex row lives on the inner
+				     div so it renders reliably (native <button> as a flex container mis-centers on
+				     some mobile webviews). -->
 				<component
 					:is="c.order ? 'button' : 'div'"
-					class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+					type="button"
+					class="block min-w-0 flex-1 px-4 py-3 text-left"
 					:class="c.order ? 'transition hover:bg-gray-50' : ''"
 					@click="c.order && openOrder(c)"
 				>
-					<span class="oak-icon-tile h-9 w-9 shrink-0 bg-gray-100 text-gray-500"><Icon name="package" :size="16" /></span>
-					<div class="min-w-0 flex-1">
-						<div class="flex items-center justify-between gap-2">
-							<p class="truncate font-semibold text-gray-900">{{ c.container_no || c.name }}</p>
-							<span class="oak-chip shrink-0" :class="statusColors[c.status] || 'bg-gray-100 text-gray-600'">{{ statusLabels[c.status] || c.status }}</span>
+					<div class="flex min-w-0 items-center gap-3">
+						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-gray-100 text-gray-500"><Icon name="package" :size="16" /></span>
+						<div class="min-w-0 flex-1">
+							<div class="flex items-center justify-between gap-2">
+								<p class="truncate font-semibold text-gray-900">{{ c.container_no || c.name }}</p>
+								<span class="oak-chip shrink-0" :class="statusColors[c.status] || 'bg-gray-100 text-gray-600'">{{ statusLabels[c.status] || c.status }}</span>
+							</div>
+							<p class="mt-0.5 truncate text-xs text-gray-500">
+								<span v-if="c.principal">{{ c.principal }}</span>
+								<span v-if="c.pt_due" class="text-red-500"> · {{ labels.monitorPtDue }}</span>
+							</p>
+							<!-- What put the tank in this bucket (draft/pending/dikerjakan) + link to the order -->
+							<p v-if="c.order" class="mt-1 flex items-center gap-1 truncate text-xs font-semibold" :class="orderTint(c.status)">
+								<Icon :name="c.order.kind === 'M&R' ? 'tool' : 'droplet'" :size="12" class="shrink-0" />
+								{{ statusLabels[c.status] }} · {{ c.order.kind }}
+								<span class="font-mono font-normal text-gray-400">· {{ c.order.name }}</span>
+							</p>
+							<p v-if="c.order_bongkar" class="mt-0.5 flex items-center gap-1 truncate font-mono text-[11px] text-gray-400">
+								<Icon name="file-text" :size="11" class="shrink-0" /> {{ c.order_bongkar }}
+							</p>
 						</div>
-						<p class="mt-0.5 truncate text-xs text-gray-500">
-							<span v-if="c.principal">{{ c.principal }}</span>
-							<span v-if="c.pt_due" class="text-red-500"> · {{ labels.monitorPtDue }}</span>
-						</p>
-						<!-- What put the tank in this bucket (draft/pending/dikerjakan) + link to the order -->
-						<p v-if="c.order" class="mt-1 flex items-center gap-1 truncate text-xs font-semibold" :class="orderTint(c.status)">
-							<Icon :name="c.order.kind === 'M&R' ? 'tool' : 'droplet'" :size="12" class="shrink-0" />
-							{{ statusLabels[c.status] }} · {{ c.order.kind }}
-							<span class="font-mono font-normal text-gray-400">· {{ c.order.name }}</span>
-						</p>
-						<p v-if="c.order_bongkar" class="mt-0.5 flex items-center gap-1 truncate font-mono text-[11px] text-gray-400">
-							<Icon name="file-text" :size="11" class="shrink-0" /> {{ c.order_bongkar }}
-						</p>
 					</div>
 				</component>
 				<button
