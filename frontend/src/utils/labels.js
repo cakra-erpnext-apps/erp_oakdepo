@@ -516,6 +516,16 @@ export const labels = {
 	posFixApproved: "Posisi di-approve",
 	posFixConfirmTitle: "Approve posisi?",
 	posFixConfirmMsg: "Konfirmasi container sudah turun & posisinya benar. Setelah di-approve, survey difinalisasi.",
+	// Survey Posisi history (finished surveys — Confirmed / Cancelled)
+	surveyPosHistoryTitle: "Riwayat Survey Posisi",
+	surveyPosHistoryDesc: "Survey posisi selesai / batal",
+	surveyPosHistoryCount: "survey",
+	surveyPosStatusConfirmed: "Selesai", // Confirmed
+	surveyPosStatusSurveyed: "Disurvei", // Surveyed
+	surveyPosStatusPending: "Menunggu", // Pending Survey
+	surveyPosStatusCancelled: "Batal", // Cancelled
+	surveyPosApprovedBy: "Di-approve oleh",
+	surveyPosSurveyedBy: "Disurvei oleh",
 	// Monitor Container (inventory list, filter by status + principal)
 	monitorTitle: "Monitor Container", // page title
 	monitorDesc: "Pantau container per status & prinsipal", // Home tile subtitle

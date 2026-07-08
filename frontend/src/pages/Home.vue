@@ -309,6 +309,7 @@ const history = [
 	{ to: "/eir/history", icon: "clipboard", title: labels.eirHistoryTitle },
 	{ to: "/cleaning/history", icon: "droplet", title: labels.cleaningHistoryTitle },
 	{ to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
+	{ to: "/survey-position/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
 	{ to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
 ]
 </script>

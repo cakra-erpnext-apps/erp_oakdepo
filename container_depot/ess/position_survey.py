@@ -40,6 +40,13 @@ def position_surveyed(start=0, page_length=20, search=None):
 
 
 @frappe.whitelist(methods=["GET"])
+def position_history(start=0, page_length=10, search=None):
+	"""GET /api/v1/ess/position-history — finished surveys (Confirmed / Cancelled), depot-scoped."""
+	_require_authenticated_user()
+	return position_survey.list_survey_history(start=start, page_length=page_length, search=search)
+
+
+@frappe.whitelist(methods=["GET"])
 def position_detail(name=None):
 	"""GET /api/v1/ess/position-detail — one survey's header + location note + photos."""
 	_require_authenticated_user()

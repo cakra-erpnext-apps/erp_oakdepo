@@ -134,6 +134,33 @@ def list_surveyed(start=0, page_length=20, search=None) -> dict:
 	return _list_by_status(SURVEYED, start=start, page_length=page_length, search=search)
 
 
+def list_survey_history(start=0, page_length=10, search=None) -> dict:
+	"""Finished surveys (Confirmed / Cancelled) — the PWA position-survey "Riwayat" feed,
+	newest first, paginated + searchable, depot-scoped to the caller's branch. Detail reuses
+	``get_survey_detail``. Mirrors ``cleaning.list_cleaning_history``."""
+	filters = {"status": ["in", [CONFIRMED, "Cancelled"]]}
+	depots = get_user_depots()
+	if depots is not None:
+		filters["depot"] = ["in", depots or [""]]  # restricted user: only their depots
+	or_filters = None
+	search = (search or "").strip()
+	if search and search.lower() not in ("undefined", "null", "none"):
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"]}
+	items = frappe.get_all(
+		DOCTYPE,
+		filters=filters,
+		or_filters=or_filters,
+		fields=[
+			"name", "container", "container_no", "status", "depot", "booking",
+			"location_note", "surveyed_by", "surveyed_on", "approved_by", "approved_on", "creation",
+		],
+		order_by="creation desc",
+		limit_start=cint(start),
+		limit_page_length=cint(page_length),
+	)
+	return {"items": items, "total": frappe.db.count(DOCTYPE, filters)}
+
+
 # ---------------------------------------------------------------------------
 # Detail
 # ---------------------------------------------------------------------------

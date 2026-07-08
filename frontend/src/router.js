@@ -68,6 +68,11 @@ const routes = [
 		component: () => import("@/pages/SurveyPosition.vue"),
 	},
 	{
+		path: "/survey-position/history",
+		name: "SurveyPositionHistory",
+		component: () => import("@/pages/SurveyPositionHistory.vue"),
+	},
+	{
 		path: "/position-fix",
 		name: "KalmarPositionFix",
 		component: () => import("@/pages/KalmarPositionFix.vue"),
