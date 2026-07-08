@@ -98,15 +98,17 @@
 
 		<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
 			<li v-for="c in items" :key="c.name" class="flex items-center">
-				<!-- The clickable area is a plain block (flex-1); the flex row lives on the inner
-				     div so it renders reliably (native <button> as a flex container mis-centers on
-				     some mobile webviews). -->
-				<component
-					:is="c.order ? 'button' : 'div'"
-					type="button"
-					class="block min-w-0 flex-1 px-4 py-3 text-left"
-					:class="c.order ? 'transition hover:bg-gray-50' : ''"
+				<!-- Always a <div> (never a native <button>): buttons render unreliably as flex
+				     items/containers on some webviews & Firefox, breaking the row layout. Clickable
+				     rows (those with an order) get button semantics via role/tabindex. -->
+				<div
+					class="min-w-0 flex-1 px-4 py-3 text-left"
+					:class="c.order ? 'cursor-pointer transition hover:bg-gray-50' : ''"
+					:role="c.order ? 'button' : null"
+					:tabindex="c.order ? 0 : null"
 					@click="c.order && openOrder(c)"
+					@keydown.enter="c.order && openOrder(c)"
+					@keydown.space.prevent="c.order && openOrder(c)"
 				>
 					<div class="flex min-w-0 items-center gap-3">
 						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-gray-100 text-gray-500"><Icon name="package" :size="16" /></span>
@@ -130,7 +132,7 @@
 							</p>
 						</div>
 					</div>
-				</component>
+				</div>
 				<button
 					v-if="c.raw_status === 'Available'"
 					class="oak-btn oak-btn-primary mr-3 shrink-0 px-3 py-1.5 text-xs"
