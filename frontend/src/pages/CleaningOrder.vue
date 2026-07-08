@@ -80,6 +80,26 @@
 
 		<!-- FORM -->
 		<template v-if="order && !submitted">
+			<!-- GATE: the order must be started before its detail/checklist is accessible. -->
+			<section v-if="order.status !== 'In_Progress'" class="oak-card space-y-4 p-5 text-center">
+				<span class="oak-icon-tile mx-auto h-14 w-14 bg-brand-50 text-brand-600"><Icon name="droplet" :size="26" /></span>
+				<div class="space-y-1">
+					<p class="font-bold text-gray-900">{{ order.container_no || order.container }}</p>
+					<p class="font-mono text-xs text-gray-400">{{ order.order_id }}</p>
+					<p class="text-sm text-gray-500">{{ labels.cleaningStartGate }}</p>
+				</div>
+				<button
+					class="oak-btn oak-btn-primary w-full py-3 text-base"
+					:disabled="startRes.loading"
+					@click="startCurrent"
+				>
+					<Icon v-if="startRes.loading" name="loader" :size="18" class="animate-spin" />
+					<span v-else>{{ labels.cleaningStartFull }}</span>
+				</button>
+			</section>
+
+			<!-- Detail — only once the order is In_Progress (started). -->
+			<template v-else>
 			<!-- Tank header -->
 			<section class="oak-card p-4">
 				<p class="oak-section-title mb-2">{{ labels.cleaningTankDetails }}</p>
@@ -284,22 +304,12 @@
 				<span v-else class="text-gray-400">{{ labels.autosaveHint }}</span>
 			</p>
 
-			<!-- Actions: must start before completing -->
-			<div v-if="order.status !== 'In_Progress'" class="space-y-2">
-				<p class="text-center text-xs text-amber-600">{{ labels.cleaningStartFirst }}</p>
-				<button
-					class="oak-btn oak-btn-primary w-full py-3 text-base"
-					:disabled="startRes.loading"
-					@click="startCurrent"
-				>
-					<Icon v-if="startRes.loading" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.cleaningStartFull }}</span>
-				</button>
-			</div>
-			<button v-else class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmComplete">
+			<!-- Finalize — the order is already In_Progress inside this branch. -->
+			<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmComplete">
 				<Icon v-if="saveRes.loading" name="loader" :size="18" class="animate-spin" />
 				<span v-else>{{ labels.cleaningComplete }}</span>
 			</button>
+			</template>
 		</template>
 	</div>
 </template>

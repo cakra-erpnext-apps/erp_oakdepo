@@ -376,6 +376,7 @@ export const labels = {
 	cleaningNoCargoHistory: "Belum ada riwayat cargo.", // no cargo history
 	cleaningStartFull: "Mulai Cleaning", // start button (in form)
 	cleaningStartFirst: "Mulai cleaning dulu sebelum bisa diselesaikan.", // gate hint
+	cleaningStartGate: "Order ini belum dimulai. Mulai dulu untuk mengisi detail cleaning.", // detail-access gate
 	cleaningSave: "Simpan", // save draft
 	cleaningComplete: "Selesaikan (Submit)", // complete/submit
 	cleaningSaved: "Tersimpan", // saved toast
