@@ -207,6 +207,65 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(doc.used_items[0].item, _PART)
 		self.assertEqual(doc.used_items[0].decision, "Pending")
 
+	# --- Admin-Ops bypass (skip the owner) ------------------------------------
+	def test_bypass_approves_directly_from_draft(self):
+		_, ro = self._draft_ro("MRABYP00001")
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[{"item": _PART, "quantity": 1}, {"item": _SERVICE, "quantity": 1}],
+			submit=False,
+		)
+		mr.bypass_approval(ro, note="urgent")
+		doc = frappe.get_doc("Repair Order", ro)
+		self.assertEqual(doc.status, "Approved")
+		self.assertTrue(all(r.decision == "Approved" for r in doc.used_items))
+		self.assertEqual(flt(doc.total_cost), 150.0)  # 100 + 50, no owner round-trip
+		self.assertEqual(doc.owner_note, "urgent")
+		self.assertIsNotNone(doc.decided_on)
+		# Ready to start straight away.
+		mr.start_repair(ro)
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "In Progress")
+
+	def test_bypass_requires_item(self):
+		_, ro = self._draft_ro("MRABYP00002")
+		with self.assertRaises(frappe.ValidationError):
+			mr.bypass_approval(ro)
+
+	def test_state_machine_allows_draft_to_approved_bypass(self):
+		# The direct edge is legal in the state machine (Admin-Ops-guarded in the ESS layer),
+		# so the controller's validate() must not reject it.
+		self.assertIn("Approved", mr.MR_TRANSITIONS["Draft"])
+		self.assertIn("Approved", mr.MR_TRANSITIONS["Revision Requested"])
+
+	def test_bypass_ess_guard_rejects_unauthorized(self):
+		from container_depot.ess import repairs
+
+		_, ro = self._draft_ro("MRABYP00003")
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				repairs.mr_bypass_approval(repair_order=ro)
+		finally:
+			frappe.set_user("Administrator")
+
+	# --- execution worklist (Approved / In Progress only) ---------------------
+	def test_execution_list_only_approved_and_in_progress(self):
+		_, ro_draft = self._draft_ro("MRAEXE00001")
+		mr.save_mr_order(repair_order=ro_draft, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		_, ro_appr = self._draft_ro("MRAEXE00002")
+		mr.save_mr_order(repair_order=ro_appr, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		mr.bypass_approval(ro_appr)
+		_, ro_prog = self._draft_ro("MRAEXE00003")
+		mr.save_mr_order(repair_order=ro_prog, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		mr.bypass_approval(ro_prog)
+		mr.start_repair(ro_prog)
+
+		names = {i["name"] for i in mr.list_mr_execution(page_length=500)["items"]}
+		self.assertIn(ro_appr, names)   # Approved
+		self.assertIn(ro_prog, names)   # In Progress
+		self.assertNotIn(ro_draft, names)  # Draft is estimate-phase (ERP only)
+
 	# --- guards ---------------------------------------------------------------
 	def test_controller_rejects_illegal_transition(self):
 		_, ro = self._draft_ro("MRAGRD00001")

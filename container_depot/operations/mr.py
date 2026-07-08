@@ -35,8 +35,11 @@ MR_MENU = "Maintenance"
 # estimate (Pending Approval) before any work starts; they may reject, or ask for a
 # revision, and may approve only some lines (partial approval, per Repair Used Item).
 MR_TRANSITIONS = {
-	"Draft": ["Pending Approval", "Cancelled"],
-	"Revision Requested": ["Pending Approval", "Cancelled"],  # editable like Draft
+	# "Approved" straight from Draft / Revision is the Admin-Ops BYPASS (skip the owner).
+	# It is code-guarded to Admin Ops in the ESS layer (bypass_approval); the state machine
+	# only declares it a legal edge so the controller's validate() doesn't reject it.
+	"Draft": ["Pending Approval", "Approved", "Cancelled"],
+	"Revision Requested": ["Pending Approval", "Approved", "Cancelled"],  # editable like Draft
 	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Cancelled"],
 	"Approved": ["In Progress", "Cancelled"],
 	"In Progress": ["Completed", "Cancelled"],
@@ -194,6 +197,32 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
 
 
+# Execution phase — the PWA M&R menu is the field/cleaning division's console: it only shows
+# work the owner (or an Admin-Ops bypass) has already approved. Estimate-building and the
+# owner decision live in Desk (ERP).
+MR_EXECUTION_STATUSES = ["Approved", "In Progress"]
+
+
+def list_mr_execution(start=0, page_length=20, search=None) -> dict:
+	"""Approved / In Progress M&R orders — the PWA execution worklist (start -> done).
+	Depot-scoped to the caller's branch."""
+	filters = {"status": ["in", MR_EXECUTION_STATUSES]}
+	depots = get_user_depots()
+	if depots is not None:
+		filters["depot"] = ["in", depots or [""]]
+	or_filters = None
+	search = (search or "").strip()
+	if search and search.lower() != "undefined":
+		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
+	items = frappe.get_all(
+		"Repair Order", filters=filters, or_filters=or_filters,
+		fields=["name", "repair_order_id", "container", "container_no", "status",
+			"principal", "depot", "total_cost", "creation"],
+		order_by="creation asc", limit_start=cint(start), limit_page_length=cint(page_length),
+	)
+	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
+
+
 def list_mr_history(start=0, page_length=10, search=None) -> dict:
 	"""Finished M&R orders (Completed / Rejected / Cancelled) — the PWA M&R "Riwayat" feed,
 	newest first, paginated + searchable, depot-scoped. Detail reuses ``get_mr_order_detail``."""
@@ -302,6 +331,37 @@ def submit_for_approval(repair_order):
 	from container_depot.operations.notify import notify_repair_order_pending_approval
 	notify_repair_order_pending_approval(ro.name)
 	return {"success": True, "name": ro.name, "status": ro.status}
+
+
+def bypass_approval(repair_order, note=None):
+	"""Admin-Ops BYPASS: approve the estimate directly (Draft / Revision Requested ->
+	Approved) without sending it to the owner. Same preconditions as ``submit_for_approval``
+	(≥1 used item); every still-Pending line is auto-approved so the total + stock issue are
+	consistent with a normal Approved.
+
+	The Admin-Ops role gate lives in the ESS wrapper (``mr_bypass_approval``); this function
+	enforces the branch + status preconditions only, mirroring ``record_decision``'s Approved
+	branch."""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status not in MR_EDITABLE_STATUSES:
+		frappe.throw(_("Bypass hanya dari Draft / Revision Requested (status: {0}).").format(ro.status))
+	if not (ro.used_items and len(ro.used_items) > 0):
+		frappe.throw(_("Tambahkan minimal satu item sebelum menyetujui."))
+	for r in ro.used_items:
+		if r.decision not in ("Approved", "Rejected"):
+			r.decision = "Approved"
+	if not any(r.decision == "Approved" for r in ro.used_items):
+		frappe.throw(_("Minimal satu item harus disetujui."))
+	ro.status = "Approved"
+	ro.owner_note = _clean(note) or _("Disetujui langsung oleh Admin Ops (bypass owner).")
+	ro.requested_on = ro.requested_on or now_datetime()
+	ro.decided_on = now_datetime()
+	ro.decided_by = frappe.session.user
+	ro.save()
+	from container_depot.operations.notify import notify_repair_order_decided
+	notify_repair_order_decided(ro.name)
+	return {"success": True, "name": ro.name, "status": ro.status, "total_cost": ro.total_cost}
 
 
 def _apply_line_decisions(ro, line_decisions) -> None:

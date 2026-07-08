@@ -76,6 +76,23 @@ frappe.ui.form.on('Repair Order', {
 			frm.add_custom_button(__('Submit for Approval'), () =>
 				mr_call(frm, 'container_depot.ess.repairs.mr_submit_approval', {})
 			).addClass('btn-primary');
+			// Admin-Ops bypass: approve directly without sending to the owner.
+			if (frappe.user.has_role('Admin Ops') || frappe.user.has_role('System Manager')) {
+				frm.add_custom_button(__('Approve Directly (Bypass Owner)'), () =>
+					frappe.prompt(
+						[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Catatan (opsional)') }],
+						(v) =>
+							mr_call(
+								frm,
+								'container_depot.ess.repairs.mr_bypass_approval',
+								{ note: v.note },
+								__('Setujui langsung tanpa persetujuan owner?')
+							),
+						__('Bypass Owner'),
+						__('Approve')
+					)
+				);
+			}
 		} else if (s === 'Pending Approval') {
 			frm.add_custom_button(__('Approve'), () => mr_approve(frm)).addClass('btn-primary');
 			frm.add_custom_button(__('Request Revision'), () =>

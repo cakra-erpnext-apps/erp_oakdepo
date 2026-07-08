@@ -144,6 +144,8 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/cleaning-order-save", "to_route": "container_depot.ess.cleaning.cleaning_order_save"},
 	# ESS PWA M&R (Maintenance & Repair) endpoints — auto-created from EIRs with damage
 	{"from_route": "/api/v1/ess/mr-orders", "to_route": "container_depot.ess.repairs.mr_orders"},
+	{"from_route": "/api/v1/ess/mr-execution", "to_route": "container_depot.ess.repairs.mr_execution"},
+	{"from_route": "/api/v1/ess/mr-bypass-approval", "to_route": "container_depot.ess.repairs.mr_bypass_approval"},
 	{"from_route": "/api/v1/ess/mr-order-detail", "to_route": "container_depot.ess.repairs.mr_order_detail"},
 	{"from_route": "/api/v1/ess/mr-warehouses", "to_route": "container_depot.ess.repairs.mr_warehouses"},
 	{"from_route": "/api/v1/ess/mr-items", "to_route": "container_depot.ess.repairs.mr_items"},

@@ -129,11 +129,33 @@ def set_repair_status(repair_order, status):
 # (auto-created from EIRs with damage). All resolution/build logic lives in mr.py.
 
 
+# The PWA M&R menu is the field/cleaning division's EXECUTION console: it may only start /
+# complete already-approved work. Estimate-building, the offer to the owner and the owner's
+# decision live in Desk (ERP). The bypass is Admin-Ops only.
+BYPASS_ROLES = {"Admin Ops", "System Manager"}
+
+
+def _require_admin_ops() -> None:
+	_require_authenticated_user()
+	if set(frappe.get_roles(frappe.session.user)).isdisjoint(BYPASS_ROLES):
+		frappe.throw(
+			frappe._("Hanya Admin Ops yang boleh menyetujui langsung (bypass owner)."),
+			frappe.PermissionError,
+		)
+
+
 @frappe.whitelist(methods=["GET"])
 def mr_orders(start=0, page_length=20, search=None):
 	"""GET /api/v1/ess/mr-orders — open M&R worklist (depot-scoped)."""
 	_require_authenticated_user()
 	return mr.list_open_mr_orders(start=start, page_length=page_length, search=search)
+
+
+@frappe.whitelist(methods=["GET"])
+def mr_execution(start=0, page_length=20, search=None):
+	"""GET /api/v1/ess/mr-execution — the PWA execution worklist: Approved / In Progress only."""
+	_require_authenticated_user()
+	return mr.list_mr_execution(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
@@ -179,6 +201,15 @@ def mr_decision(repair_order=None, decision=None, line_decisions=None, note=None
 	_require_authenticated_user()
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.record_decision(repair_order, decision, line_decisions=line_decisions, note=note)
+
+
+@frappe.whitelist(methods=["POST"])
+def mr_bypass_approval(repair_order=None, note=None):
+	"""POST /api/v1/ess/mr-bypass-approval — Admin-Ops direct approval (skip the owner):
+	Draft / Revision Requested -> Approved. Role-guarded to Admin Ops."""
+	_require_admin_ops()
+	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
+	return mr.bypass_approval(repair_order, note=note)
 
 
 @frappe.whitelist(methods=["POST"])

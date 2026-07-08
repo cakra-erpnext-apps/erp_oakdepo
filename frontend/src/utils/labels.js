@@ -490,6 +490,12 @@ export const labels = {
 	mrApprovedReadonly: "Estimasi disetujui — siap dikerjakan.",
 	mrAwaitingDecision: "Menunggu keputusan owner.",
 	mrNeedItemFirst: "Tambahkan minimal satu item dulu.",
+	// PWA M&R = execution-only console (divisi lapangan): only approved work, start -> done.
+	mrExecInProgress: "Sedang dikerjakan.",
+	mrExecPartsTitle: "Part Disetujui",
+	mrExecOrdersHint: "M&R siap dikerjakan", // worklist hint
+	mrExecEmpty: "Tidak ada M&R siap dikerjakan.",
+	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
