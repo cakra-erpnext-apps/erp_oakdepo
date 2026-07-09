@@ -63,28 +63,32 @@ def resolve_price(item_code: str, price_list: str) -> float:
 def item_rate_breakdown(item_code: str, price_list: str) -> dict:
 	"""The cost components behind a line's per-unit rate, so a Repair Order line can show
 	(and let Admin Ops adjust) manhour × manhour_rate + material_cost. A flat-priced part
-	(``Item.manhour == 0``) puts its whole Item Price into ``material_cost``."""
-	empty = {"manhour": 0.0, "manhour_rate": 0.0, "material_cost": 0.0, "rate": 0.0}
+	(``Item.manhour == 0``) puts its whole Item Price into ``material_cost``.
+
+	``currency`` is read from the Item Price itself (each Item Price carries its own), so a
+	Repair Order can mix currencies — it is NOT the site/company default."""
+	empty = {"manhour": 0.0, "manhour_rate": 0.0, "material_cost": 0.0, "rate": 0.0, "currency": None}
 	if not item_code:
 		return empty
+	ip = frappe.db.get_value(
+		"Item Price",
+		{"item_code": item_code, "price_list": price_list, "selling": 1},
+		["currency", "price_list_rate", "manhour_rate"],
+		as_dict=True,
+	) or frappe._dict()
 	manhour = flt(frappe.db.get_value("Item", item_code, "manhour"))
 	if manhour > 0:
-		manhour_rate = flt(
-			frappe.db.get_value(
-				"Item Price",
-				{"item_code": item_code, "price_list": price_list, "selling": 1},
-				"manhour_rate",
-			)
-		)
+		manhour_rate = flt(ip.manhour_rate)
 		material_cost = flt(frappe.db.get_value("Item", item_code, "material_cost"))
 	else:
 		manhour_rate = 0.0
-		material_cost = flt(item_price_rate(item_code, price_list) or 0.0)
+		material_cost = flt(ip.price_list_rate or 0.0)
 	return {
 		"manhour": manhour,
 		"manhour_rate": manhour_rate,
 		"material_cost": material_cost,
 		"rate": manhour * manhour_rate + material_cost,
+		"currency": ip.currency,
 	}
 
 

@@ -156,6 +156,8 @@ frappe.ui.form.on('Repair Used Item', {
 			args: { repair_order: frm.doc.name, item: row.item },
 			callback: (r) => {
 				const b = r.message || {};
+				// Currency follows the item's own Item Price (lines may differ).
+				frappe.model.set_value(cdt, cdn, 'currency', b.currency || '');
 				frappe.model.set_value(cdt, cdn, 'manhour', flt(b.manhour));
 				frappe.model.set_value(cdt, cdn, 'manhour_rate', flt(b.manhour_rate));
 				frappe.model.set_value(cdt, cdn, 'material_cost', flt(b.material_cost));
@@ -181,10 +183,24 @@ function recompute_used_row(frm, cdt, cdn) {
 }
 
 function recompute_used_total(frm) {
-	let total = 0;
+	// Group by currency — a Repair Order can mix currencies (each Item Price carries its own).
+	let numeric = 0;
+	const by_currency = {};
+	const default_currency = frappe.defaults.get_default('currency');
 	(frm.doc.used_items || []).forEach((r) => {
-		if ((r.decision || 'Pending') !== 'Rejected') total += flt(r.amount);
+		if ((r.decision || 'Pending') !== 'Rejected') {
+			numeric += flt(r.amount);
+			const cur = r.currency || default_currency;
+			by_currency[cur] = (by_currency[cur] || 0) + flt(r.amount);
+		}
 	});
-	frm.set_value('total_cost', total);
+	frm.set_value('total_cost', numeric);
+	frm.clear_table('totals');
+	Object.keys(by_currency).sort().forEach((cur) => {
+		const row = frm.add_child('totals');
+		row.currency = cur;
+		row.total = by_currency[cur];
+	});
+	frm.refresh_field('totals');
 }
 

@@ -305,6 +305,30 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(flt(row.rate), 26.0)   # 2 × 8 + 10
 		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 26.0)
 
+	# --- multi-currency totals ------------------------------------------------
+	def test_multi_currency_totals_grouped_by_item_price(self):
+		# Force one item's Item Price into a different currency to simulate a mixed RO.
+		eur_ip = frappe.db.get_value(
+			"Item Price", {"item_code": _SERVICE, "price_list": _PL, "selling": 1}, "name"
+		)
+		frappe.db.set_value("Item Price", eur_ip, "currency", "EUR")
+		self.addCleanup(lambda: frappe.db.set_value("Item Price", eur_ip, "currency", "USD"))
+
+		_, ro = self._draft_ro("MRAMUL00001")
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.append("used_items", {"item": _PART, "quantity": 1})     # 100 USD
+		doc.append("used_items", {"item": _SERVICE, "quantity": 2})  # 50 × 2 = 100 EUR
+		doc.save(ignore_permissions=True)
+
+		doc = frappe.get_doc("Repair Order", ro)
+		by_item = {r.item: r for r in doc.used_items}
+		self.assertEqual(by_item[_PART].currency, "USD")     # each line follows its Item Price
+		self.assertEqual(by_item[_SERVICE].currency, "EUR")
+		totals = {t.currency: flt(t.total) for t in doc.totals}
+		self.assertEqual(totals.get("USD"), 100.0)           # grouped per currency
+		self.assertEqual(totals.get("EUR"), 100.0)
+		self.assertEqual(flt(doc.total_cost), 200.0)         # numeric sum (legacy field)
+
 	# --- guards ---------------------------------------------------------------
 	def test_controller_rejects_illegal_transition(self):
 		_, ro = self._draft_ro("MRAGRD00001")

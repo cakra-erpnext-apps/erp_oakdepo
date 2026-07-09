@@ -64,42 +64,51 @@ class RepairOrder(Document):
 		return price_list_for_customer(principal) if principal else None
 
 	def calculate_totals(self):
-		"""Roll up ``total_cost`` from each Service & Parts line. Each line is costed as
-		``manhour × manhour_rate + material_cost`` (per unit) × qty. The manhour / rate /
-		material inputs default from the owner's Item Price the first time a line is added,
-		then stay ADJUSTABLE — Admin Ops can override them and the totals recompute here.
-		The copied ``damages`` carry no cost."""
+		"""Cost each Service & Parts line as ``manhour × manhour_rate + material_cost`` (per
+		unit) × qty. The manhour / rate / material inputs default from the owner's Item Price
+		the first time a line is added, then stay ADJUSTABLE — Admin Ops can override them.
+
+		Each line's currency follows its own Item Price, so a Repair Order can MIX currencies.
+		Totals are therefore grouped by currency into the ``totals`` table (one row per
+		currency); ``total_cost`` stays as the plain numeric sum (kept for the worklists /
+		billing report that still read a single figure). The copied ``damages`` carry no cost."""
 		from frappe.utils import flt
 
 		from container_depot.pricing_model import item_rate_breakdown
 
 		price_list = self.owner_price_list()
-		self.currency = (
-			frappe.db.get_value("Price List", price_list, "currency") if price_list else None
-		) or frappe.db.get_default("currency")
-		total_cost = 0.0
+		default_currency = frappe.db.get_default("currency")
+		numeric_total = 0.0
+		by_currency = {}
 
 		for row in self.get("used_items") or []:
-			row.currency = self.currency
 			row.is_stock_item = (
 				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
 			)
-			# Seed the adjustable cost inputs from the owner's price list the first time
-			# (a freshly-added line carries only item + qty); manual edits are kept afterwards.
+			breakdown = item_rate_breakdown(row.item, price_list) if row.item else {}
+			# Currency always follows the item's own Item Price (fixes the old default-to-IDR).
+			if row.item:
+				row.currency = breakdown.get("currency") or row.currency or default_currency
+			# Seed the adjustable cost inputs the first time (a fresh line carries only item +
+			# qty); manual edits are kept afterwards.
 			if row.item and not (flt(row.manhour) or flt(row.manhour_rate) or flt(row.material_cost)):
-				b = item_rate_breakdown(row.item, price_list)
-				row.manhour = b["manhour"]
-				row.manhour_rate = b["manhour_rate"]
-				row.material_cost = b["material_cost"]
+				row.manhour = breakdown.get("manhour") or 0.0
+				row.manhour_rate = breakdown.get("manhour_rate") or 0.0
+				row.material_cost = breakdown.get("material_cost") or 0.0
 			# Compute from the (possibly adjusted) line inputs.
 			row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
 			row.rate = row.manhour_amount + flt(row.material_cost)
 			row.amount = flt(row.quantity or 0.0) * flt(row.rate)
-			# Owner-rejected lines aren't repaired or billed — exclude from the total.
+			# Owner-rejected lines aren't repaired or billed — exclude from every total.
 			if (row.get("decision") or "Pending") != "Rejected":
-				total_cost += row.amount
+				numeric_total += row.amount
+				cur = row.currency or default_currency
+				by_currency[cur] = by_currency.get(cur, 0.0) + row.amount
 
-		self.total_cost = total_cost
+		self.total_cost = numeric_total
+		self.set("totals", [])
+		for cur, amt in sorted(by_currency.items()):
+			self.append("totals", {"currency": cur, "total": amt})
 
 	def update_container_status(self):
 		"""Update container's status and repair_status based on this Repair Order"""

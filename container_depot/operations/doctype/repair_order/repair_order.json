@@ -31,8 +31,8 @@
     "used_section",
     "used_items",
     "cost_section",
+    "totals",
     "total_cost",
-    "currency",
     "billing_status",
     "remarks",
     "stock_entry"
@@ -203,17 +203,18 @@
       "label": "Cost & Billing"
     },
     {
-      "fieldname": "total_cost",
-      "fieldtype": "Int",
-      "label": "Total Cost",
+      "description": "Total per currency — a Repair Order can mix currencies (each Item Price carries its own).",
+      "fieldname": "totals",
+      "fieldtype": "Table",
+      "label": "Total per Currency",
+      "options": "Repair Cost Total",
       "read_only": 1
     },
     {
-      "description": "Owner's price-list currency (drives the Rate/Amount on the parts above).",
-      "fieldname": "currency",
-      "fieldtype": "Link",
-      "label": "Currency",
-      "options": "Currency",
+      "description": "Plain numeric sum of all line amounts (currency-agnostic; see Total per Currency for the real breakdown).",
+      "fieldname": "total_cost",
+      "fieldtype": "Int",
+      "label": "Total Cost (numeric)",
       "read_only": 1
     },
     {
