@@ -123,6 +123,10 @@ frappe.ui.form.on('Repair Order', {
 		const pending = frm.doc.status === 'Pending Approval';
 		grid.cannot_add_rows = !editable;
 		grid.cannot_delete_rows = !editable;
+		// The adjustable cost inputs follow the estimate-build phase.
+		['item', 'quantity', 'manhour', 'manhour_rate', 'material_cost'].forEach((f) =>
+			grid.update_docfield_property(f, 'read_only', editable ? 0 : 1)
+		);
 		['decision', 'owner_remark'].forEach((f) => grid.update_docfield_property(f, 'read_only', pending ? 0 : 1));
 		grid.refresh();
 	},
@@ -139,4 +143,48 @@ frappe.ui.form.on('Repair Order', {
 		}
 	}
 });
+
+// Service & Parts Used — price each line as manhour × rate/manhour + material cost, keep it
+// adjustable, and preview Rate / Amount / Total live (the server recomputes on save).
+frappe.ui.form.on('Repair Used Item', {
+	item(frm, cdt, cdn) {
+		const row = frappe.get_doc(cdt, cdn);
+		if (!row.item || frm.is_new()) return;
+		// Default the cost inputs from the owner's Item Price for the picked item.
+		frappe.call({
+			method: 'container_depot.ess.repairs.mr_item_pricing',
+			args: { repair_order: frm.doc.name, item: row.item },
+			callback: (r) => {
+				const b = r.message || {};
+				frappe.model.set_value(cdt, cdn, 'manhour', flt(b.manhour));
+				frappe.model.set_value(cdt, cdn, 'manhour_rate', flt(b.manhour_rate));
+				frappe.model.set_value(cdt, cdn, 'material_cost', flt(b.material_cost));
+			},
+		});
+	},
+	quantity: recompute_used_row,
+	manhour: recompute_used_row,
+	manhour_rate: recompute_used_row,
+	material_cost: recompute_used_row,
+	decision: recompute_used_total,
+	used_items_remove: recompute_used_total,
+});
+
+function recompute_used_row(frm, cdt, cdn) {
+	const row = frappe.get_doc(cdt, cdn);
+	const manhour_amount = flt(row.manhour) * flt(row.manhour_rate);
+	const rate = manhour_amount + flt(row.material_cost);
+	frappe.model.set_value(cdt, cdn, 'manhour_amount', manhour_amount);
+	frappe.model.set_value(cdt, cdn, 'rate', rate);
+	frappe.model.set_value(cdt, cdn, 'amount', flt(row.quantity) * rate);
+	recompute_used_total(frm);
+}
+
+function recompute_used_total(frm) {
+	let total = 0;
+	(frm.doc.used_items || []).forEach((r) => {
+		if ((r.decision || 'Pending') !== 'Rejected') total += flt(r.amount);
+	});
+	frm.set_value('total_cost', total);
+}
 

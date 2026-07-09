@@ -149,6 +149,7 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/mr-order-detail", "to_route": "container_depot.ess.repairs.mr_order_detail"},
 	{"from_route": "/api/v1/ess/mr-warehouses", "to_route": "container_depot.ess.repairs.mr_warehouses"},
 	{"from_route": "/api/v1/ess/mr-items", "to_route": "container_depot.ess.repairs.mr_items"},
+	{"from_route": "/api/v1/ess/mr-item-pricing", "to_route": "container_depot.ess.repairs.mr_item_pricing"},
 	{"from_route": "/api/v1/ess/mr-submit-approval", "to_route": "container_depot.ess.repairs.mr_submit_approval"},
 	{"from_route": "/api/v1/ess/mr-decision", "to_route": "container_depot.ess.repairs.mr_decision"},
 	{"from_route": "/api/v1/ess/mr-start", "to_route": "container_depot.ess.repairs.mr_start"},

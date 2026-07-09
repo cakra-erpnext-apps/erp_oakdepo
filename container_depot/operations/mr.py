@@ -203,6 +203,15 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 MR_EXECUTION_STATUSES = ["Approved", "In Progress"]
 
 
+def item_pricing(repair_order, item) -> dict:
+	"""Cost breakdown (manhour / manhour_rate / material_cost / rate) for one item under the
+	Repair Order's owner price list — the Desk grid uses it to default a newly-picked line."""
+	from container_depot.pricing_model import item_rate_breakdown
+
+	price_list = frappe.get_doc("Repair Order", repair_order).owner_price_list()
+	return item_rate_breakdown(item, price_list)
+
+
 def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 	"""Approved / In Progress M&R orders — the PWA execution worklist (start -> done).
 	Depot-scoped to the caller's branch."""

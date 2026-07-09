@@ -186,6 +186,14 @@ def mr_items(search=None, repair_order=None, start=0, page_length=20):
 	return mr.mr_item_search(search=search, repair_order=repair_order, start=start, page_length=page_length)
 
 
+@frappe.whitelist(methods=["GET"])
+def mr_item_pricing(repair_order=None, item=None):
+	"""GET /api/v1/ess/mr-item-pricing — cost breakdown for one item (defaults a Desk line)."""
+	_require_authenticated_user()
+	frappe.has_permission("Repair Order", doc=repair_order, ptype="read", throw=True)
+	return mr.item_pricing(repair_order, item)
+
+
 @frappe.whitelist(methods=["POST"])
 def mr_submit_approval(repair_order=None):
 	"""POST /api/v1/ess/mr-submit-approval — submit the estimate to the owner (Pending Approval)."""

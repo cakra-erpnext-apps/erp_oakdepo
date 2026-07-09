@@ -266,6 +266,45 @@ class TestMRApproval(FrappeTestCase):
 		self.assertIn(ro_prog, names)   # In Progress
 		self.assertNotIn(ro_draft, names)  # Draft is estimate-phase (ERP only)
 
+	# --- manhour costing + adjustable rate ------------------------------------
+	def test_manhour_line_costs_and_is_adjustable(self):
+		# A repair service priced by manhour: rate = manhour × manhour_rate + material_cost.
+		svc = "MRA-REPAIR"
+		if not frappe.db.exists("Item", svc):
+			frappe.get_doc({
+				"doctype": "Item", "item_code": svc, "item_name": "MRA Weld",
+				"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups",
+				"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+				"manhour": 2.0, "material_cost": 10.0,
+			}).insert(ignore_permissions=True)
+		if not frappe.db.exists("Item Price", {"item_code": svc, "price_list": _PL, "selling": 1}):
+			frappe.get_doc({
+				"doctype": "Item Price", "item_code": svc, "price_list": _PL,
+				"selling": 1, "price_list_rate": 0, "manhour_rate": 5.0,
+			}).insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.db.exists("Item", svc) and frappe.delete_doc("Item", svc, force=True, ignore_permissions=True))
+
+		_, ro = self._draft_ro("MRAMHR00001")
+		# Build the line the Desk way (edit the child rows, then doc.save()).
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.append("used_items", {"item": svc, "quantity": 1})
+		doc.save(ignore_permissions=True)
+		row = frappe.get_doc("Repair Order", ro).used_items[0]
+		self.assertEqual(flt(row.manhour), 2.0)          # seeded from the Item
+		self.assertEqual(flt(row.manhour_rate), 5.0)     # seeded from the Item Price
+		self.assertEqual(flt(row.manhour_amount), 10.0)  # 2 × 5
+		self.assertEqual(flt(row.material_cost), 10.0)
+		self.assertEqual(flt(row.rate), 20.0)            # 10 (labour) + 10 (material)
+		self.assertEqual(flt(row.amount), 20.0)
+
+		# Adjust the manhour rate — the total must recompute from the line input (not re-seed).
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.used_items[0].manhour_rate = 8.0
+		doc.save(ignore_permissions=True)
+		row = frappe.get_doc("Repair Order", ro).used_items[0]
+		self.assertEqual(flt(row.rate), 26.0)   # 2 × 8 + 10
+		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 26.0)
+
 	# --- guards ---------------------------------------------------------------
 	def test_controller_rejects_illegal_transition(self):
 		_, ro = self._draft_ro("MRAGRD00001")

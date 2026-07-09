@@ -14,6 +14,10 @@
     "decision",
     "column_break_1",
     "currency",
+    "manhour",
+    "manhour_rate",
+    "manhour_amount",
+    "material_cost",
     "rate",
     "amount",
     "owner_remark",
@@ -75,16 +79,51 @@
       "read_only": 1
     },
     {
-      "description": "Unit selling rate from the owner's Item Price (auto; not shown in the PWA).",
+      "default": "0",
+      "description": "Labour hours for a repair service (defaults from the Item; adjustable).",
+      "fieldname": "manhour",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Manhour"
+    },
+    {
+      "description": "Rate per manhour from the owner's Item Price (adjustable).",
+      "fieldname": "manhour_rate",
+      "fieldtype": "Currency",
+      "label": "Rate / Manhour",
+      "options": "currency"
+    },
+    {
+      "description": "Manhour × Rate/Manhour = labour cost.",
+      "fieldname": "manhour_amount",
+      "fieldtype": "Currency",
+      "in_list_view": 1,
+      "label": "Manhour Cost",
+      "options": "currency",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "description": "Parts / material cost (for a flat-priced part this is its whole price). Adjustable.",
+      "fieldname": "material_cost",
+      "fieldtype": "Currency",
+      "label": "Material Cost",
+      "options": "currency"
+    },
+    {
+      "description": "Per-unit rate = Manhour Cost + Material Cost.",
       "fieldname": "rate",
       "fieldtype": "Currency",
+      "in_list_view": 1,
       "label": "Rate",
       "options": "currency",
       "read_only": 1
     },
     {
+      "description": "Qty × Rate.",
       "fieldname": "amount",
       "fieldtype": "Currency",
+      "in_list_view": 1,
       "label": "Amount",
       "options": "currency",
       "read_only": 1

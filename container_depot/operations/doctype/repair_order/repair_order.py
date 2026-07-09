@@ -64,12 +64,14 @@ class RepairOrder(Document):
 		return price_list_for_customer(principal) if principal else None
 
 	def calculate_totals(self):
-		"""Price every Used Item line from the owner's Item Price and roll up ``total_cost``
-		(the price is hidden in the PWA but still drives owner billing). Rates are NEVER
-		taken from the client — they always follow the Item Price (repair services:
-		manhour × manhour_rate + material_cost; parts: the flat price_list_rate). The copied
-		``damages`` carry no cost."""
-		from container_depot.pricing_model import resolve_price
+		"""Roll up ``total_cost`` from each Service & Parts line. Each line is costed as
+		``manhour × manhour_rate + material_cost`` (per unit) × qty. The manhour / rate /
+		material inputs default from the owner's Item Price the first time a line is added,
+		then stay ADJUSTABLE — Admin Ops can override them and the totals recompute here.
+		The copied ``damages`` carry no cost."""
+		from frappe.utils import flt
+
+		from container_depot.pricing_model import item_rate_breakdown
 
 		price_list = self.owner_price_list()
 		self.currency = (
@@ -82,8 +84,17 @@ class RepairOrder(Document):
 			row.is_stock_item = (
 				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
 			)
-			row.rate = resolve_price(row.item, price_list) if row.item else 0.0
-			row.amount = float(row.quantity or 0.0) * float(row.rate or 0.0)
+			# Seed the adjustable cost inputs from the owner's price list the first time
+			# (a freshly-added line carries only item + qty); manual edits are kept afterwards.
+			if row.item and not (flt(row.manhour) or flt(row.manhour_rate) or flt(row.material_cost)):
+				b = item_rate_breakdown(row.item, price_list)
+				row.manhour = b["manhour"]
+				row.manhour_rate = b["manhour_rate"]
+				row.material_cost = b["material_cost"]
+			# Compute from the (possibly adjusted) line inputs.
+			row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
+			row.rate = row.manhour_amount + flt(row.material_cost)
+			row.amount = flt(row.quantity or 0.0) * flt(row.rate)
 			# Owner-rejected lines aren't repaired or billed — exclude from the total.
 			if (row.get("decision") or "Pending") != "Rejected":
 				total_cost += row.amount
