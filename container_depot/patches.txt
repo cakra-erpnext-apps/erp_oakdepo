@@ -48,3 +48,4 @@ container_depot.patches.v0_32.seed_yard_placement_rules
 container_depot.patches.v0_34.seed_depot_service_menus
 container_depot.patches.v0_35.collapse_container_statuses
 container_depot.patches.v0_36.drop_yard_zones_and_placement_rules
+container_depot.patches.v0_37.split_used_item_labour_and_item_cost

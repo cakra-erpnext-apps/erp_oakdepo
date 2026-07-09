@@ -204,7 +204,7 @@ MR_EXECUTION_STATUSES = ["Approved", "In Progress"]
 
 
 def item_pricing(repair_order, item) -> dict:
-	"""Cost breakdown (manhour / manhour_rate / material_cost / rate) for one item under the
+	"""Cost inputs (manhour / manhour_rate / item_rate / currency) for one item under the
 	Repair Order's owner price list — the Desk grid uses it to default a newly-picked line."""
 	from container_depot.pricing_model import item_rate_breakdown
 
@@ -279,7 +279,10 @@ def get_mr_order_detail(repair_order) -> dict:
 		# Owner-approval: prices + per-line decision are exposed (the owner approves by cost).
 		"decision": r.decision or "Pending",
 		"owner_remark": r.owner_remark,
-		"rate": r.rate, "amount": r.amount,
+		# Labour + item breakdown; `amount` is the line's Total Cost.
+		"manhour": r.manhour, "manhour_rate": r.manhour_rate, "manhour_amount": r.manhour_amount,
+		"item_rate": r.item_rate, "item_amount": r.item_amount,
+		"amount": r.amount, "currency": r.currency,
 		"photos": _photos_list(r.photos),
 		"on_hand": _on_hand(r.item, warehouse) if r.item and r.is_stock_item else None,
 	} for r in ro.used_items]

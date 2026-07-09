@@ -10,15 +10,15 @@
     "item",
     "item_name",
     "is_stock_item",
-    "quantity",
     "decision",
-    "column_break_1",
-    "currency",
     "manhour",
     "manhour_rate",
     "manhour_amount",
-    "material_cost",
-    "rate",
+    "column_break_1",
+    "currency",
+    "quantity",
+    "item_rate",
+    "item_amount",
     "amount",
     "owner_remark",
     "remark",
@@ -49,13 +49,6 @@
       "read_only": 1
     },
     {
-      "default": "1",
-      "fieldname": "quantity",
-      "fieldtype": "Float",
-      "in_list_view": 1,
-      "label": "Qty"
-    },
-    {
       "default": "Pending",
       "description": "Owner's per-line decision. Only Approved lines are repaired, issued from stock, and billed.",
       "fieldname": "decision",
@@ -63,19 +56,6 @@
       "in_list_view": 1,
       "label": "Owner Decision",
       "options": "Pending\nApproved\nRejected"
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "description": "Owner price-list currency for this line (drives Rate/Amount display).",
-      "fieldname": "currency",
-      "fieldtype": "Link",
-      "hidden": 1,
-      "label": "Currency",
-      "options": "Currency",
-      "read_only": 1
     },
     {
       "default": "0",
@@ -94,36 +74,58 @@
       "options": "currency"
     },
     {
-      "description": "Manhour × Rate/Manhour (auto), but adjustable — override the labour cost directly if needed.",
+      "description": "Auto: Manhour × Rate / Manhour.",
       "fieldname": "manhour_amount",
       "fieldtype": "Currency",
       "in_list_view": 1,
-      "label": "Manhour Cost",
-      "options": "currency"
+      "label": "Amount Cost Manhour",
+      "options": "currency",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Owner price-list currency for this line (drives the currency of every amount).",
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Currency",
+      "options": "Currency",
+      "read_only": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "quantity",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "label": "Qty"
     },
     {
       "default": "0",
-      "description": "Parts / material cost (for a flat-priced part this is its whole price). Adjustable.",
-      "fieldname": "material_cost",
+      "description": "Per-unit item price from the owner's Item Price (adjustable).",
+      "fieldname": "item_rate",
       "fieldtype": "Currency",
       "in_list_view": 1,
-      "label": "Material Cost",
+      "label": "Item Rate",
       "options": "currency"
     },
     {
-      "description": "Per-unit rate = Manhour Cost + Material Cost (auto), but adjustable — override the final rate directly.",
-      "fieldname": "rate",
+      "description": "Auto: Qty × Item Rate.",
+      "fieldname": "item_amount",
       "fieldtype": "Currency",
       "in_list_view": 1,
-      "label": "Rate",
-      "options": "currency"
+      "label": "Amount Item Rate",
+      "options": "currency",
+      "read_only": 1
     },
     {
-      "description": "Qty × Rate.",
+      "description": "Auto: Amount Cost Manhour + Amount Item Rate.",
       "fieldname": "amount",
       "fieldtype": "Currency",
       "in_list_view": 1,
-      "label": "Amount",
+      "label": "Total Cost",
       "options": "currency",
       "read_only": 1
     },
@@ -148,7 +150,7 @@
   "index_web_pages_for_search": 1,
   "istable": 1,
   "links": [],
-  "modified": "2026-06-18 00:00:00.000000",
+  "modified": "2026-07-09 00:00:00.000000",
   "module": "Operations",
   "name": "Repair Used Item",
   "owner": "Administrator",

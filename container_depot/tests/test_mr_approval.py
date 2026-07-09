@@ -266,9 +266,9 @@ class TestMRApproval(FrappeTestCase):
 		self.assertIn(ro_prog, names)   # In Progress
 		self.assertNotIn(ro_draft, names)  # Draft is estimate-phase (ERP only)
 
-	# --- manhour costing + adjustable rate ------------------------------------
+	# --- labour + item costing, adjustable inputs -----------------------------
 	def test_manhour_line_costs_and_is_adjustable(self):
-		# A repair service priced by manhour: rate = manhour × manhour_rate + material_cost.
+		# Total Cost = (manhour × manhour_rate) + (qty × item_rate).
 		svc = "MRA-REPAIR"
 		if not frappe.db.exists("Item", svc):
 			frappe.get_doc({
@@ -287,25 +287,27 @@ class TestMRApproval(FrappeTestCase):
 		_, ro = self._draft_ro("MRAMHR00001")
 		# Build the line the Desk way (edit the child rows, then doc.save()).
 		doc = frappe.get_doc("Repair Order", ro)
-		doc.append("used_items", {"item": svc, "quantity": 1})
+		doc.append("used_items", {"item": svc, "quantity": 2})
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
 		self.assertEqual(flt(row.manhour), 2.0)          # seeded from the Item
 		self.assertEqual(flt(row.manhour_rate), 5.0)     # seeded from the Item Price
-		self.assertEqual(flt(row.manhour_amount), 10.0)  # 2 × 5
-		self.assertEqual(flt(row.material_cost), 10.0)
-		self.assertEqual(flt(row.rate), 20.0)            # 10 (labour) + 10 (material)
-		self.assertEqual(flt(row.amount), 20.0)
+		self.assertEqual(flt(row.item_rate), 10.0)       # seeded from Item.material_cost
+		self.assertEqual(flt(row.manhour_amount), 10.0)  # 2 × 5 (labour, NOT × qty)
+		self.assertEqual(flt(row.item_amount), 20.0)     # 2 × 10
+		self.assertEqual(flt(row.amount), 30.0)          # 10 + 20
+		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 30.0)
 
-		# Rate is adjustable — a direct override is honoured (not recomputed back), and the
-		# amount + total follow it.
+		# The inputs are adjustable; the three amounts are always re-derived from them.
 		doc = frappe.get_doc("Repair Order", ro)
-		doc.used_items[0].rate = 30.0
+		doc.used_items[0].manhour_rate = 8.0
+		doc.used_items[0].item_rate = 15.0
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
-		self.assertEqual(flt(row.rate), 30.0)     # honoured, not reset to 20
-		self.assertEqual(flt(row.amount), 30.0)   # qty (1) × 30
-		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 30.0)
+		self.assertEqual(flt(row.manhour_amount), 16.0)  # 2 × 8
+		self.assertEqual(flt(row.item_amount), 30.0)     # 2 × 15
+		self.assertEqual(flt(row.amount), 46.0)          # 16 + 30
+		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 46.0)
 
 	# --- multi-currency totals ------------------------------------------------
 	def test_multi_currency_totals_grouped_by_item_price(self):
@@ -345,8 +347,9 @@ class TestMRApproval(FrappeTestCase):
 		self._submit(ro, [{"item": _PART, "quantity": 1}])
 		d = mr.get_mr_order_detail(ro)
 		self.assertEqual(d["status"], "Pending Approval")
-		self.assertEqual(flt(d["used_items"][0]["rate"]), 100.0)
-		self.assertEqual(flt(d["used_items"][0]["amount"]), 100.0)
+		self.assertEqual(flt(d["used_items"][0]["item_rate"]), 100.0)
+		self.assertEqual(flt(d["used_items"][0]["item_amount"]), 100.0)
+		self.assertEqual(flt(d["used_items"][0]["amount"]), 100.0)  # labour (0) + item (100)
 		self.assertEqual(d["used_items"][0]["decision"], "Pending")
 		self.assertEqual(flt(d["total_cost"]), 100.0)
 		self.assertIn("Approved", d["actions"])

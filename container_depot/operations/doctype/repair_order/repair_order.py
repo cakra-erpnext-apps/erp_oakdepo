@@ -64,9 +64,15 @@ class RepairOrder(Document):
 		return price_list_for_customer(principal) if principal else None
 
 	def calculate_totals(self):
-		"""Cost each Service & Parts line as ``manhour × manhour_rate + material_cost`` (per
-		unit) × qty. The manhour / rate / material inputs default from the owner's Item Price
-		the first time a line is added, then stay ADJUSTABLE — Admin Ops can override them.
+		"""Cost each Service & Parts line as labour + item:
+
+		    Amount Cost Manhour = manhour × manhour_rate
+		    Amount Item Rate    = quantity × item_rate
+		    Total Cost (amount) = Amount Cost Manhour + Amount Item Rate
+
+		``manhour``, ``manhour_rate``, ``quantity`` and ``item_rate`` are the ADJUSTABLE inputs
+		(seeded from the owner's Item Price when a line is first added); the three amounts are
+		always derived here, so they stay read-only in the UI.
 
 		Each line's currency follows its own Item Price, so a Repair Order can MIX currencies.
 		Totals are therefore grouped by currency into the ``totals`` table (one row per
@@ -89,22 +95,16 @@ class RepairOrder(Document):
 			# Currency always follows the item's own Item Price (fixes the old default-to-IDR).
 			if row.item:
 				row.currency = breakdown.get("currency") or row.currency or default_currency
-			# Seed the cost inputs from the owner's Item Price the first time a line is added
-			# (a fresh line carries only item + qty); manual edits are kept afterwards.
-			if row.item and not (
-				flt(row.manhour) or flt(row.manhour_rate) or flt(row.material_cost)
-				or flt(row.manhour_amount) or flt(row.rate)
-			):
+			# Seed the adjustable inputs from the owner's Item Price the first time a line is
+			# added (a fresh line carries only item + qty); manual edits are kept afterwards.
+			if row.item and not (flt(row.manhour) or flt(row.manhour_rate) or flt(row.item_rate)):
 				row.manhour = breakdown.get("manhour") or 0.0
 				row.manhour_rate = breakdown.get("manhour_rate") or 0.0
-				row.material_cost = breakdown.get("material_cost") or 0.0
-			# Manhour Cost and Rate are adjustable: derive them when blank, otherwise TRUST the
-			# entered value (the Desk grid keeps them in sync live). Amount always = qty × rate.
-			if not flt(row.manhour_amount):
-				row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
-			if not flt(row.rate):
-				row.rate = flt(row.manhour_amount) + flt(row.material_cost)
-			row.amount = flt(row.quantity or 0.0) * flt(row.rate)
+				row.item_rate = breakdown.get("item_rate") or 0.0
+			# Derived amounts (read-only in the UI).
+			row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
+			row.item_amount = flt(row.quantity or 0.0) * flt(row.item_rate)
+			row.amount = row.manhour_amount + row.item_amount
 			# Owner-rejected lines aren't repaired or billed — exclude from every total.
 			if (row.get("decision") or "Pending") != "Rejected":
 				numeric_total += row.amount
