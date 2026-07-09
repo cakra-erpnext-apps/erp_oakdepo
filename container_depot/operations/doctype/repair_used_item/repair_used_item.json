@@ -37,7 +37,6 @@
       "fetch_from": "item.item_name",
       "fieldname": "item_name",
       "fieldtype": "Data",
-      "in_list_view": 1,
       "label": "Item Name",
       "read_only": 1
     },
@@ -90,6 +89,7 @@
       "description": "Rate per manhour from the owner's Item Price (adjustable).",
       "fieldname": "manhour_rate",
       "fieldtype": "Currency",
+      "in_list_view": 1,
       "label": "Rate / Manhour",
       "options": "currency"
     },
@@ -106,6 +106,7 @@
       "description": "Parts / material cost (for a flat-priced part this is its whole price). Adjustable.",
       "fieldname": "material_cost",
       "fieldtype": "Currency",
+      "in_list_view": 1,
       "label": "Material Cost",
       "options": "currency"
     },
