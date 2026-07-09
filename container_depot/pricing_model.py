@@ -77,11 +77,12 @@ def item_rate_breakdown(item_code: str, price_list: str) -> dict:
 		as_dict=True,
 	) or frappe._dict()
 	manhour = flt(frappe.db.get_value("Item", item_code, "manhour"))
+	# Always surface the Item Price manhour_rate as a default (even for a currently
+	# flat-priced item) so it can be shown and adjusted on the Repair Order line.
+	manhour_rate = flt(ip.manhour_rate)
 	if manhour > 0:
-		manhour_rate = flt(ip.manhour_rate)
 		material_cost = flt(frappe.db.get_value("Item", item_code, "material_cost"))
 	else:
-		manhour_rate = 0.0
 		material_cost = flt(ip.price_list_rate or 0.0)
 	return {
 		"manhour": manhour,

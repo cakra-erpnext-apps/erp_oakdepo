@@ -297,13 +297,15 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(flt(row.rate), 20.0)            # 10 (labour) + 10 (material)
 		self.assertEqual(flt(row.amount), 20.0)
 
-		# Adjust the manhour rate — the total must recompute from the line input (not re-seed).
+		# Rate is adjustable — a direct override is honoured (not recomputed back), and the
+		# amount + total follow it.
 		doc = frappe.get_doc("Repair Order", ro)
-		doc.used_items[0].manhour_rate = 8.0
+		doc.used_items[0].rate = 30.0
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
-		self.assertEqual(flt(row.rate), 26.0)   # 2 × 8 + 10
-		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 26.0)
+		self.assertEqual(flt(row.rate), 30.0)     # honoured, not reset to 20
+		self.assertEqual(flt(row.amount), 30.0)   # qty (1) × 30
+		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 30.0)
 
 	# --- multi-currency totals ------------------------------------------------
 	def test_multi_currency_totals_grouped_by_item_price(self):

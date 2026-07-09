@@ -89,15 +89,21 @@ class RepairOrder(Document):
 			# Currency always follows the item's own Item Price (fixes the old default-to-IDR).
 			if row.item:
 				row.currency = breakdown.get("currency") or row.currency or default_currency
-			# Seed the adjustable cost inputs the first time (a fresh line carries only item +
-			# qty); manual edits are kept afterwards.
-			if row.item and not (flt(row.manhour) or flt(row.manhour_rate) or flt(row.material_cost)):
+			# Seed the cost inputs from the owner's Item Price the first time a line is added
+			# (a fresh line carries only item + qty); manual edits are kept afterwards.
+			if row.item and not (
+				flt(row.manhour) or flt(row.manhour_rate) or flt(row.material_cost)
+				or flt(row.manhour_amount) or flt(row.rate)
+			):
 				row.manhour = breakdown.get("manhour") or 0.0
 				row.manhour_rate = breakdown.get("manhour_rate") or 0.0
 				row.material_cost = breakdown.get("material_cost") or 0.0
-			# Compute from the (possibly adjusted) line inputs.
-			row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
-			row.rate = row.manhour_amount + flt(row.material_cost)
+			# Manhour Cost and Rate are adjustable: derive them when blank, otherwise TRUST the
+			# entered value (the Desk grid keeps them in sync live). Amount always = qty × rate.
+			if not flt(row.manhour_amount):
+				row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
+			if not flt(row.rate):
+				row.rate = flt(row.manhour_amount) + flt(row.material_cost)
 			row.amount = flt(row.quantity or 0.0) * flt(row.rate)
 			# Owner-rejected lines aren't repaired or billed — exclude from every total.
 			if (row.get("decision") or "Pending") != "Rejected":

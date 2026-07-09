@@ -94,13 +94,12 @@
       "options": "currency"
     },
     {
-      "description": "Manhour × Rate/Manhour = labour cost.",
+      "description": "Manhour × Rate/Manhour (auto), but adjustable — override the labour cost directly if needed.",
       "fieldname": "manhour_amount",
       "fieldtype": "Currency",
       "in_list_view": 1,
       "label": "Manhour Cost",
-      "options": "currency",
-      "read_only": 1
+      "options": "currency"
     },
     {
       "default": "0",
@@ -111,13 +110,12 @@
       "options": "currency"
     },
     {
-      "description": "Per-unit rate = Manhour Cost + Material Cost.",
+      "description": "Per-unit rate = Manhour Cost + Material Cost (auto), but adjustable — override the final rate directly.",
       "fieldname": "rate",
       "fieldtype": "Currency",
       "in_list_view": 1,
       "label": "Rate",
-      "options": "currency",
-      "read_only": 1
+      "options": "currency"
     },
     {
       "description": "Qty × Rate.",

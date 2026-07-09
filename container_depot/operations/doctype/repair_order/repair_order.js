@@ -164,21 +164,43 @@ frappe.ui.form.on('Repair Used Item', {
 			},
 		});
 	},
-	quantity: recompute_used_row,
-	manhour: recompute_used_row,
-	manhour_rate: recompute_used_row,
-	material_cost: recompute_used_row,
+	// Labour inputs -> derive Manhour Cost, then Rate, then Amount.
+	manhour: price_from_labour,
+	manhour_rate: price_from_labour,
+	// Manhour Cost / Material Cost changed (incl. a manual Manhour Cost override) -> Rate, Amount.
+	manhour_amount: price_from_components,
+	material_cost: price_from_components,
+	// Rate manually overridden, or qty changed -> Amount only (Rate is trusted as final).
+	rate: price_amount_only,
+	quantity: price_amount_only,
 	decision: recompute_used_total,
 	used_items_remove: recompute_used_total,
 });
 
-function recompute_used_row(frm, cdt, cdn) {
+// Manhour Cost and Rate are adjustable: editing an upstream field recomputes downstream, but
+// a direct edit of Manhour Cost or Rate is honoured (we never recompute a field from its own
+// change). Amount is always qty × Rate. The server mirrors this on save.
+function price_from_labour(frm, cdt, cdn) {
 	const row = frappe.get_doc(cdt, cdn);
 	const manhour_amount = flt(row.manhour) * flt(row.manhour_rate);
 	const rate = manhour_amount + flt(row.material_cost);
 	frappe.model.set_value(cdt, cdn, 'manhour_amount', manhour_amount);
 	frappe.model.set_value(cdt, cdn, 'rate', rate);
 	frappe.model.set_value(cdt, cdn, 'amount', flt(row.quantity) * rate);
+	recompute_used_total(frm);
+}
+
+function price_from_components(frm, cdt, cdn) {
+	const row = frappe.get_doc(cdt, cdn);
+	const rate = flt(row.manhour_amount) + flt(row.material_cost);
+	frappe.model.set_value(cdt, cdn, 'rate', rate);
+	frappe.model.set_value(cdt, cdn, 'amount', flt(row.quantity) * rate);
+	recompute_used_total(frm);
+}
+
+function price_amount_only(frm, cdt, cdn) {
+	const row = frappe.get_doc(cdt, cdn);
+	frappe.model.set_value(cdt, cdn, 'amount', flt(row.quantity) * flt(row.rate));
 	recompute_used_total(frm);
 }
 
