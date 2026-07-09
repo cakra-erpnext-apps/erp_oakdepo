@@ -40,14 +40,24 @@ class TestMRApproval(FrappeTestCase):
 		except Exception:
 			frappe.db.rollback()
 
+	def _drop_repair_orders(self, names):
+		"""Delete Repair Orders AND their child rows — ``frappe.db.delete`` on the parent does
+		not cascade, which would leave orphaned Repair Used Item / Repair Cost Total rows."""
+		names = [n for n in names if n]
+		if not names:
+			return
+		for child in ("Repair Used Item", "Repair Cost Total", "Repair Estimate Item", "Repair Damage Entry"):
+			self._safe(lambda child=child: frappe.db.delete(child, {"parenttype": "Repair Order", "parent": ["in", names]}))
+		frappe.db.delete("Repair Order", {"name": ["in", names]})
+
 	def tearDown(self):
 		touched = frappe.get_all("Stock Entry Detail", filters={"item_code": _PART}, pluck="parent", distinct=True)
 		for se in set(self._stock_entries) | set(touched):
 			self._safe(lambda se=se: self._drop_stock_entry(se))
-		for o in self._orders:
-			self._safe(lambda o=o: frappe.db.delete("Repair Order", {"name": o}))
+		self._safe(lambda: self._drop_repair_orders(self._orders))
 		for c in self._containers:
-			self._safe(lambda c=c: frappe.db.delete("Repair Order", {"container": c}))
+			by_container = frappe.get_all("Repair Order", filters={"container": c}, pluck="name")
+			self._safe(lambda names=by_container: self._drop_repair_orders(names))
 			self._safe(lambda c=c: frappe.db.delete("Container Activity", {"container": c}))
 			self._safe(lambda c=c: frappe.db.delete("Container", {"name": c}))
 		for ins in self._inspections:
