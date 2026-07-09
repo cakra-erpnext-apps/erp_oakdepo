@@ -13,6 +13,7 @@
     "quantity",
     "decision",
     "column_break_1",
+    "currency",
     "rate",
     "amount",
     "owner_remark",
@@ -65,16 +66,27 @@
       "fieldtype": "Column Break"
     },
     {
+      "description": "Owner price-list currency for this line (drives Rate/Amount display).",
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Currency",
+      "options": "Currency",
+      "read_only": 1
+    },
+    {
       "description": "Unit selling rate from the owner's Item Price (auto; not shown in the PWA).",
       "fieldname": "rate",
       "fieldtype": "Currency",
       "label": "Rate",
+      "options": "currency",
       "read_only": 1
     },
     {
       "fieldname": "amount",
       "fieldtype": "Currency",
       "label": "Amount",
+      "options": "currency",
       "read_only": 1
     },
     {

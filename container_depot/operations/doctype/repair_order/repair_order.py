@@ -68,13 +68,17 @@ class RepairOrder(Document):
 		(the price is hidden in the PWA but still drives owner billing). Rates are NEVER
 		taken from the client — they always follow the Item Price (repair services:
 		manhour × manhour_rate + material_cost; parts: the flat price_list_rate). The copied
-		``damages`` carry no cost; legacy ``estimation_items`` keep their manual totals."""
+		``damages`` carry no cost."""
 		from container_depot.pricing_model import resolve_price
 
 		price_list = self.owner_price_list()
+		self.currency = (
+			frappe.db.get_value("Price List", price_list, "currency") if price_list else None
+		) or frappe.db.get_default("currency")
 		total_cost = 0.0
 
 		for row in self.get("used_items") or []:
+			row.currency = self.currency
 			row.is_stock_item = (
 				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
 			)
@@ -83,16 +87,6 @@ class RepairOrder(Document):
 			# Owner-rejected lines aren't repaired or billed — exclude from the total.
 			if (row.get("decision") or "Pending") != "Rejected":
 				total_cost += row.amount
-
-		# Legacy estimate lines (pre-split) — manual qty × price + labour.
-		for item in self.get("estimation_items") or []:
-			quantity = float(item.quantity or 0.0)
-			unit_price = float(item.unit_price or 0.0)
-			item.total_price = quantity * unit_price
-			labor_hours = float(item.labor_hours or 0.0)
-			labor_rate = float(item.labor_rate or 0.0)
-			item.labor_total = labor_hours * labor_rate
-			total_cost += item.total_price + item.labor_total
 
 		self.total_cost = total_cost
 

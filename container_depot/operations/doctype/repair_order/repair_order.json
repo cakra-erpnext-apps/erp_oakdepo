@@ -30,10 +30,9 @@
     "damages",
     "used_section",
     "used_items",
-    "estimation_items_section",
-    "estimation_items",
     "cost_section",
     "total_cost",
+    "currency",
     "billing_status",
     "remarks",
     "stock_entry"
@@ -199,19 +198,6 @@
       "options": "Repair Used Item"
     },
     {
-      "collapsible": 1,
-      "fieldname": "estimation_items_section",
-      "fieldtype": "Section Break",
-      "label": "Legacy Estimate (read-only)"
-    },
-    {
-      "description": "Legacy estimate lines (pre-split). New M&R uses Activities + Parts above.",
-      "fieldname": "estimation_items",
-      "fieldtype": "Table",
-      "label": "Estimation Items (legacy)",
-      "options": "Repair Estimate Item"
-    },
-    {
       "fieldname": "cost_section",
       "fieldtype": "Section Break",
       "label": "Cost & Billing"
@@ -220,6 +206,14 @@
       "fieldname": "total_cost",
       "fieldtype": "Int",
       "label": "Total Cost",
+      "read_only": 1
+    },
+    {
+      "description": "Owner's price-list currency (drives the Rate/Amount on the parts above).",
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "Currency",
+      "options": "Currency",
       "read_only": 1
     },
     {
