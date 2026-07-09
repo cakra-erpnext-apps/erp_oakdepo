@@ -218,7 +218,7 @@
     },
     {
       "fieldname": "total_cost",
-      "fieldtype": "Currency",
+      "fieldtype": "Int",
       "label": "Total Cost",
       "read_only": 1
     },

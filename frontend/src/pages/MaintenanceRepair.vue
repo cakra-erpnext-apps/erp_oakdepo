@@ -69,125 +69,124 @@
 
 		<!-- DETAIL (execution, read-only estimate) -->
 		<template v-if="order && !completed">
-			<!-- Status banner -->
-			<section
-				v-if="isApproved"
-				class="oak-card border-leaf-200 bg-leaf-50 p-3"
-			>
-				<p class="text-sm font-semibold text-leaf-700">{{ labels.mrApprovedReadonly }}</p>
-			</section>
-			<section
-				v-else-if="isInProgress"
-				class="oak-card border-indigo-200 bg-indigo-50 p-3"
-			>
-				<p class="text-sm font-semibold text-indigo-700">{{ labels.mrExecInProgress }}</p>
-			</section>
-			<section
-				v-else
-				class="oak-card border-amber-200 bg-amber-50 p-3"
-			>
-				<p class="text-sm font-semibold text-amber-800">{{ labels.mrExecErpBanner }}</p>
-			</section>
-
-			<!-- Tank header -->
-			<section class="oak-card p-4">
-				<p class="oak-section-title mb-2">{{ labels.mrTankDetails }}</p>
-				<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-					<div v-for="cell in headerCells" :key="cell.label" class="min-w-0">
-						<dt class="text-xs text-gray-400">{{ cell.label }}</dt>
-						<dd class="truncate font-medium text-gray-800">{{ cell.value || "—" }}</dd>
-					</div>
-				</dl>
-				<p v-if="order.inspection" class="mt-2 font-mono text-[11px] text-gray-400">
-					{{ labels.mrRefEir }}: {{ order.inspection }}
-				</p>
-			</section>
-
-			<!-- Damage findings (read-only, copied from EIR) -->
-			<section class="oak-card p-4 space-y-3">
-				<p class="oak-section-title">{{ labels.mrDamagesTitle }}</p>
-				<p v-if="!order.damages || !order.damages.length" class="py-2 text-center text-sm text-gray-400">
-					{{ labels.mrNoDamages }}
-				</p>
-				<div v-for="(d, i) in order.damages" :key="i" class="rounded-xl border border-gray-100 p-3 space-y-2">
-					<p class="font-semibold text-gray-900">{{ d.component || d.area || "—" }}</p>
-					<div class="flex flex-wrap gap-1.5 text-xs">
-						<span v-if="d.damage_code" class="oak-chip bg-red-50 text-red-700">
-							{{ labels.mrCodeDamage }}: {{ d.damage_code }}<span v-if="d.damage_desc"> — {{ d.damage_desc }}</span>
-						</span>
-						<span v-if="d.repair_code" class="oak-chip bg-blue-50 text-blue-700">
-							{{ labels.mrCodeRepair }}: {{ d.repair_code }}<span v-if="d.repair_desc"> — {{ d.repair_desc }}</span>
-						</span>
-					</div>
-					<p v-if="d.damage_description" class="text-sm text-gray-600">{{ d.damage_description }}</p>
-					<div v-if="d.photos && d.photos.length" class="flex flex-wrap gap-2">
-						<button v-for="(ph, pi) in d.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(d.photos, pi)">
-							<img :src="ph" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
-						</button>
-					</div>
+			<!-- GATE: an Approved (not-yet-started) order must be started before its work
+			     detail is shown — mirrors the Cleaning start gate. -->
+			<section v-if="isApproved" class="oak-card space-y-4 p-5 text-center">
+				<span class="oak-icon-tile mx-auto h-14 w-14 bg-brand-50 text-brand-600"><Icon name="tool" :size="26" /></span>
+				<div class="space-y-1">
+					<p class="font-bold text-gray-900">{{ order.container_no || order.container }}</p>
+					<p class="font-mono text-xs text-gray-400">{{ order.repair_order_id }}</p>
+					<p class="text-sm text-gray-500">{{ labels.mrExecStartGate }}</p>
 				</div>
-			</section>
-
-			<!-- Approved parts/services (read-only — the estimate is owned by ERP) -->
-			<section class="oak-card p-4 space-y-3">
-				<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
-				<p v-if="!repairLines.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
-				<div
-					v-for="(u, i) in repairLines"
-					:key="i"
-					class="rounded-xl border p-3 space-y-2"
-					:class="u.decision === 'Rejected' ? 'border-red-100 bg-red-50/40' : 'border-gray-100'"
-				>
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0">
-							<p class="truncate font-semibold text-gray-900">{{ u.item_name || u.item }}</p>
-							<p class="text-xs text-gray-500">
-								{{ labels.mrQty }} {{ u.quantity }}<span v-if="u.on_hand != null"> · {{ labels.mrOnHand }} {{ u.on_hand }}</span>
-							</p>
-							<p v-if="u.remark" class="text-xs text-gray-400">{{ u.remark }}</p>
-						</div>
-						<span class="oak-chip shrink-0" :class="decChipClass(u.decision)">{{ repairStatusLabel(u.decision) }}</span>
-					</div>
-					<div v-if="u.photos && u.photos.length" class="flex flex-wrap gap-2">
-						<button v-for="(ph, pi) in u.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(u.photos, pi)">
-							<img :src="ph" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-						</button>
-					</div>
-				</div>
-			</section>
-
-			<!-- Source warehouse (parts are issued from here on completion) -->
-			<section v-if="isExecution" class="oak-card p-4 space-y-1">
-				<label class="oak-label">{{ labels.mrWarehouse }}</label>
-				<SearchSelect
-					v-model="warehouse"
-					:options="order.warehouses"
-					:option-value="(w) => w.name"
-					:option-label="(w) => (w.branch ? `${w.warehouse_name} · ${w.branch}` : w.warehouse_name)"
-					:placeholder="labels.mrWarehousePick"
-					:search-placeholder="labels.selectSearch"
-				/>
-			</section>
-
-			<!-- Remarks (read-only) -->
-			<section v-if="order.remarks" class="oak-card p-4">
-				<p class="oak-section-title mb-1">{{ labels.mrRemarks }}</p>
-				<p class="whitespace-pre-line text-sm text-gray-700">{{ order.remarks }}</p>
-			</section>
-
-			<!-- Actions: start (Approved) / complete (In Progress) -->
-			<div v-if="isApproved" class="flex gap-2">
-				<button class="oak-btn oak-btn-primary flex-1 py-3" :disabled="startRes.loading" @click="startCurrent">
+				<button class="oak-btn oak-btn-primary w-full py-3 text-base" :disabled="startRes.loading" @click="startCurrent">
 					<Icon v-if="startRes.loading" name="loader" :size="18" class="animate-spin" />
 					<span v-else>{{ labels.mrStartFull }}</span>
 				</button>
-			</div>
-			<div v-else-if="isInProgress" class="flex gap-2">
-				<button class="oak-btn oak-btn-primary flex-1 py-3" :disabled="saveRes.loading" @click="confirmComplete">
+			</section>
+
+			<!-- Non-execution order opened via deep-link — managed in ERP. -->
+			<section v-else-if="!isInProgress" class="oak-card border-amber-200 bg-amber-50 p-3">
+				<p class="text-sm font-semibold text-amber-800">{{ labels.mrExecErpBanner }}</p>
+			</section>
+
+			<!-- WORK DETAIL — only once the order is In Progress (started). -->
+			<template v-else>
+				<section class="oak-card border-indigo-200 bg-indigo-50 p-3">
+					<p class="text-sm font-semibold text-indigo-700">{{ labels.mrExecInProgress }}</p>
+				</section>
+
+				<!-- Tank header -->
+				<section class="oak-card p-4">
+					<p class="oak-section-title mb-2">{{ labels.mrTankDetails }}</p>
+					<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+						<div v-for="cell in headerCells" :key="cell.label" class="min-w-0">
+							<dt class="text-xs text-gray-400">{{ cell.label }}</dt>
+							<dd class="truncate font-medium text-gray-800">{{ cell.value || "—" }}</dd>
+						</div>
+					</dl>
+					<p v-if="order.inspection" class="mt-2 font-mono text-[11px] text-gray-400">
+						{{ labels.mrRefEir }}: {{ order.inspection }}
+					</p>
+				</section>
+
+				<!-- Damage findings (read-only, copied from EIR) -->
+				<section class="oak-card p-4 space-y-3">
+					<p class="oak-section-title">{{ labels.mrDamagesTitle }}</p>
+					<p v-if="!order.damages || !order.damages.length" class="py-2 text-center text-sm text-gray-400">
+						{{ labels.mrNoDamages }}
+					</p>
+					<div v-for="(d, i) in order.damages" :key="i" class="rounded-xl border border-gray-100 p-3 space-y-2">
+						<p class="font-semibold text-gray-900">{{ d.component || d.area || "—" }}</p>
+						<div class="flex flex-wrap gap-1.5 text-xs">
+							<span v-if="d.damage_code" class="oak-chip bg-red-50 text-red-700">
+								{{ labels.mrCodeDamage }}: {{ d.damage_code }}<span v-if="d.damage_desc"> — {{ d.damage_desc }}</span>
+							</span>
+							<span v-if="d.repair_code" class="oak-chip bg-blue-50 text-blue-700">
+								{{ labels.mrCodeRepair }}: {{ d.repair_code }}<span v-if="d.repair_desc"> — {{ d.repair_desc }}</span>
+							</span>
+						</div>
+						<p v-if="d.damage_description" class="text-sm text-gray-600">{{ d.damage_description }}</p>
+						<div v-if="d.photos && d.photos.length" class="flex flex-wrap gap-2">
+							<button v-for="(ph, pi) in d.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(d.photos, pi)">
+								<img :src="ph" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+							</button>
+						</div>
+					</div>
+				</section>
+
+				<!-- Approved parts/services (read-only — the estimate is owned by ERP) -->
+				<section class="oak-card p-4 space-y-3">
+					<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
+					<p v-if="!repairLines.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
+					<div
+						v-for="(u, i) in repairLines"
+						:key="i"
+						class="rounded-xl border p-3 space-y-2"
+						:class="u.decision === 'Rejected' ? 'border-red-100 bg-red-50/40' : 'border-gray-100'"
+					>
+						<div class="flex items-start justify-between gap-2">
+							<div class="min-w-0">
+								<p class="truncate font-semibold text-gray-900">{{ u.item_name || u.item }}</p>
+								<p class="text-xs text-gray-500">
+									{{ labels.mrQty }} {{ u.quantity }}<span v-if="u.on_hand != null"> · {{ labels.mrOnHand }} {{ u.on_hand }}</span>
+								</p>
+								<p v-if="u.remark" class="text-xs text-gray-400">{{ u.remark }}</p>
+							</div>
+							<span class="oak-chip shrink-0" :class="decChipClass(u.decision)">{{ repairStatusLabel(u.decision) }}</span>
+						</div>
+						<div v-if="u.photos && u.photos.length" class="flex flex-wrap gap-2">
+							<button v-for="(ph, pi) in u.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(u.photos, pi)">
+								<img :src="ph" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
+							</button>
+						</div>
+					</div>
+				</section>
+
+				<!-- Source warehouse (parts are issued from here on completion) -->
+				<section class="oak-card p-4 space-y-1">
+					<label class="oak-label">{{ labels.mrWarehouse }}</label>
+					<SearchSelect
+						v-model="warehouse"
+						:options="order.warehouses"
+						:option-value="(w) => w.name"
+						:option-label="(w) => (w.branch ? `${w.warehouse_name} · ${w.branch}` : w.warehouse_name)"
+						:placeholder="labels.mrWarehousePick"
+						:search-placeholder="labels.selectSearch"
+					/>
+				</section>
+
+				<!-- Remarks (read-only) -->
+				<section v-if="order.remarks" class="oak-card p-4">
+					<p class="oak-section-title mb-1">{{ labels.mrRemarks }}</p>
+					<p class="whitespace-pre-line text-sm text-gray-700">{{ order.remarks }}</p>
+				</section>
+
+				<!-- Complete -->
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmComplete">
 					<Icon v-if="saveRes.loading" name="loader" :size="18" class="animate-spin" />
 					<span v-else>{{ labels.mrComplete }}</span>
 				</button>
-			</div>
+			</template>
 		</template>
 	</div>
 </template>

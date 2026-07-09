@@ -496,6 +496,7 @@ export const labels = {
 	mrExecOrdersHint: "M&R siap dikerjakan", // worklist hint
 	mrExecEmpty: "Tidak ada M&R siap dikerjakan.",
 	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
+	mrExecStartGate: "Mulai perbaikan dulu untuk melihat detail pekerjaan.", // start-first gate
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
