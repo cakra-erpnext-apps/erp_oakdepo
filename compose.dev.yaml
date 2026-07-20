@@ -1,0 +1,201 @@
+name: erp_oakdepo_dev
+
+# Dev stack for ERPOakDepo.
+#
+#   docker compose -f compose.dev.yaml build
+#   docker compose -f compose.dev.yaml up
+#
+# Serves on http://localhost:8000 (bench start, hot reload).
+# Volumes are project-scoped, so this never touches the erp_oakdepo_prod stack.
+
+x-frappe-image: &frappe-image
+  image: oakdepo-erpnext:dev
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+x-app-volumes: &app-volumes
+  - sites:/home/frappe/frappe-bench/sites
+  - logs:/home/frappe/frappe-bench/logs
+  - ./:/home/frappe/frappe-bench/apps/container_depot
+  # No egg-info volume here (prod has one): mounting a named volume inside the
+  # bind mount makes Docker create the mountpoint as root, and the `frappe` user
+  # then can't write it. `pip install -e` needs to. egg-info is gitignored anyway.
+
+services:
+  mariadb:
+    image: mariadb:10.8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-123}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    ports:
+      # Exposed for local DB tooling; prod keeps MariaDB internal.
+      - "3306:3306"
+    networks: [frappe_net]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis-cache:
+    image: redis:alpine
+    networks: [frappe_net]
+
+  redis-queue:
+    image: redis:alpine
+    networks: [frappe_net]
+
+  configurator:
+    <<: *frappe-image
+    command: |
+      bash -lc '
+        set -e
+        # container_depot is deliberately absent here, unlike compose.prod.yaml:
+        # `bench set-config` imports every app in apps.txt, and container_depot
+        # only exists via the bind mount + `pip install -e` done in create-site --
+        # this container has neither, so listing it fails with ModuleNotFoundError.
+        # create-site writes the full nine-app list once the app is installable.
+        echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony" > sites/apps.txt
+        bench set-config -g db_host mariadb
+        bench set-config -g db_port 3306
+        bench set-config -g redis_cache redis://redis-cache:6379
+        bench set-config -g redis_queue redis://redis-queue:6379
+        bench set-config -g redis_socketio redis://redis-cache:6379
+        bench set-config -g socketio_port 9000
+        bench set-config -gp developer_mode 1
+        echo "[configurator] Done."
+      '
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks: [frappe_net]
+
+  create-site:
+    <<: *frappe-image
+    command: |
+      bash -lc '
+        set -e
+        cd /home/frappe/frappe-bench
+        env/bin/pip install -e apps/container_depot --no-deps -q
+        # Same app list as compose.prod.yaml. install-app refuses any app missing
+        # from apps.txt with "App <x> not in apps.txt".
+        echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony\ncontainer_depot" > sites/apps.txt
+        # $$ escapes Compose interpolation so the shell reads these from `environment:`.
+        if [ ! -d "sites/$${SITE_NAME}" ]; then
+          bench new-site "$${SITE_NAME}" \
+            --mariadb-user-host-login-scope="%" \
+            --db-root-password "$${DB_ROOT_PASS}" \
+            --admin-password "$${ADMIN_PASS}" \
+            --install-app erpnext
+          bench --site "$${SITE_NAME}" install-app hrms
+          bench --site "$${SITE_NAME}" install-app crm
+          bench --site "$${SITE_NAME}" install-app helpdesk
+          bench --site "$${SITE_NAME}" install-app raven
+          bench --site "$${SITE_NAME}" install-app gameplan
+          bench --site "$${SITE_NAME}" install-app telephony
+          bench --site "$${SITE_NAME}" install-app container_depot
+          bench --site "$${SITE_NAME}" migrate
+          # Prod sets developer_mode 0 and host_name; dev wants neither.
+          bench --site "$${SITE_NAME}" set-config developer_mode 1
+          # Without allow_tests, `bench run-tests` prints "Testing is disabled for
+          # the site!" and exits 0 without running anything -- a silent pass.
+          bench --site "$${SITE_NAME}" set-config allow_tests true
+          echo "[create-site] Done."
+        else
+          echo "[create-site] Site exists — skip creation."
+        fi
+        # Outside the if on purpose: it is idempotent, and if it fails the site
+        # already exists, so keeping it inside would make every retry skip it.
+        # Dev-only, no prod counterpart -- a bare site has 0 Company and no depot
+        # masters, which makes the app unusable and collapses the test suite.
+        bench --site "$${SITE_NAME}" execute container_depot.dev_setup.run
+        bench use "$${SITE_NAME}"
+      '
+    environment:
+      SITE_NAME: ${SITE_NAME:-oakdepo.localhost}
+      DB_ROOT_PASS: ${DB_ROOT_PASS:-123}
+      ADMIN_PASS: ${ADMIN_PASS:-admin}
+    volumes: *app-volumes
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+    networks: [frappe_net]
+
+  frappe:
+    <<: *frappe-image
+    # `bench start` runs web + socketio + workers + scheduler + asset watcher
+    # under honcho, so dev gets hot reload from one log stream.
+    command: |
+      bash -lc '
+        set -e
+        cd /home/frappe/frappe-bench
+        bash /scripts/ensure-apps.sh true
+        # Same app list as prod, minus --production (dev wants unminified output).
+        #
+        # Structural deviation: prod builds in create-site, then cp -aL-s physical
+        # copies into sites/assets because its nginx container cannot follow the
+        # symlinks. Dev has no nginx, and apps/ is an image layer rather than a
+        # shared volume -- so a build in the one-shot create-site container dies
+        # with it, leaving sites/assets/assets.json (on the persistent sites volume)
+        # pointing at bundles that no longer exist -> 404 on every /assets/**.
+        # Building here instead keeps the symlinks intact so `bench watch` can
+        # rebuild live. Must run BEFORE `bench start`: honcho tears the whole
+        # container down if any of its processes dies, and a heavy concurrent build
+        # is enough to take the worker with it.
+        # Batched exactly like scripts/prod-update.sh. compose.prod.yaml builds all
+        # nine in one shot, but crm/helpdesk/gameplan each carry their own Vite
+        # frontend and building them together OOM-kills the container on a normal
+        # dev box. The marker (not a dist/ check) guards this: a half-finished run
+        # leaves frappe/dist in place, which would make a dist check skip the rest.
+        if [ ! -f .dev-assets-built ]; then
+          bench build --apps frappe,erpnext
+          bench build --apps container_depot
+          bench build --apps hrms,raven
+          bench build --apps helpdesk
+          bench build --apps gameplan
+          bench build --apps crm
+          bench build --apps telephony
+          touch .dev-assets-built
+        fi
+        # The /depot ESS PWA is a separate Vite app; its output (public/ess +
+        # www/depot.html) is gitignored, so a fresh checkout has no /depot route.
+        if [ ! -f apps/container_depot/container_depot/www/depot.html ]; then
+          (cd apps/container_depot/frontend && yarn install && yarn build)
+        fi
+        # The bundled Procfile is already redis-free (bench init ran with
+        # --skip-redis-config-generation), so it needs no regeneration.
+        bench start
+      '
+    environment:
+      SITE_NAME: ${SITE_NAME:-oakdepo.localhost}
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+      - ./:/home/frappe/frappe-bench/apps/container_depot
+      - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    depends_on:
+      create-site:
+        condition: service_completed_successfully
+    networks: [frappe_net]
+
+volumes:
+  mariadb-data:
+  sites:
+  logs:
+
+networks:
+  frappe_net:
+    driver: bridge
