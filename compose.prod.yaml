@@ -62,7 +62,7 @@ services:
     command: |
       bash -lc '
         set -e
-        echo -e "frappe\nerpnext" > sites/apps.txt
+        echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony\ncontainer_depot" > sites/apps.txt
         bench set-config -g db_host mariadb
         bench set-config -g db_port 3306
         bench set-config -g redis_cache redis://redis-cache:6379
@@ -89,24 +89,42 @@ services:
         echo "MariaDB ready"
         cd /home/frappe/frappe-bench
         env/bin/pip install -e apps/container_depot --no-deps -q
-        echo -e "frappe\nerpnext\ncontainer_depot" > sites/apps.txt
+        echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony\ncontainer_depot" > sites/apps.txt
         if [ ! -d "sites/${SITE_NAME}" ]; then
           bench new-site "${SITE_NAME}" --mariadb-user-host-login-scope="%" --db-root-password "${DB_ROOT_PASS}" --admin-password "${ADMIN_PASS}" --install-app erpnext
+          bench --site "${SITE_NAME}" install-app hrms
+          bench --site "${SITE_NAME}" install-app crm
+          bench --site "${SITE_NAME}" install-app helpdesk
+          bench --site "${SITE_NAME}" install-app raven
+          bench --site "${SITE_NAME}" install-app gameplan
+          bench --site "${SITE_NAME}" install-app telephony
           bench --site "${SITE_NAME}" install-app container_depot
           bench --site "${SITE_NAME}" migrate
           bench --site "${SITE_NAME}" set-config host_name "https://${SITE_NAME}"
           bench --site "${SITE_NAME}" set-config developer_mode 0
-          bench build --production --apps frappe,erpnext,container_depot
+          bench build --production --apps frappe,erpnext,hrms,crm,helpdesk,raven,gameplan,telephony,container_depot
           # Nginx runs in a separate container. Frappe build creates symlinks in sites/assets,
           # but symlink targets do not exist inside nginx. Use physical copies.
-          rm -rf sites/assets/frappe sites/assets/erpnext sites/assets/container_depot
+          rm -rf sites/assets/frappe sites/assets/erpnext sites/assets/hrms sites/assets/crm sites/assets/helpdesk sites/assets/raven sites/assets/gameplan sites/assets/telephony sites/assets/container_depot
           mkdir -p /tmp/oakdepo_assets
-          rm -rf /tmp/oakdepo_assets/frappe /tmp/oakdepo_assets/erpnext /tmp/oakdepo_assets/container_depot
+          rm -rf /tmp/oakdepo_assets/frappe /tmp/oakdepo_assets/erpnext /tmp/oakdepo_assets/hrms /tmp/oakdepo_assets/crm /tmp/oakdepo_assets/helpdesk /tmp/oakdepo_assets/raven /tmp/oakdepo_assets/gameplan /tmp/oakdepo_assets/telephony /tmp/oakdepo_assets/container_depot
           cp -aL apps/frappe/frappe/public /tmp/oakdepo_assets/frappe
           cp -aL apps/erpnext/erpnext/public /tmp/oakdepo_assets/erpnext
+          cp -aL apps/hrms/hrms/public /tmp/oakdepo_assets/hrms 2>/dev/null || true
+          cp -aL apps/crm/crm/public /tmp/oakdepo_assets/crm 2>/dev/null || true
+          cp -aL apps/helpdesk/helpdesk/public /tmp/oakdepo_assets/helpdesk 2>/dev/null || true
+          cp -aL apps/raven/raven/public /tmp/oakdepo_assets/raven 2>/dev/null || true
+          cp -aL apps/gameplan/gameplan/public /tmp/oakdepo_assets/gameplan 2>/dev/null || true
+          cp -aL apps/telephony/telephony/public /tmp/oakdepo_assets/telephony 2>/dev/null || true
           cp -aL apps/container_depot/container_depot/public /tmp/oakdepo_assets/container_depot
           mv /tmp/oakdepo_assets/frappe sites/assets/frappe
           mv /tmp/oakdepo_assets/erpnext sites/assets/erpnext
+          mv /tmp/oakdepo_assets/hrms sites/assets/hrms 2>/dev/null || true
+          mv /tmp/oakdepo_assets/crm sites/assets/crm 2>/dev/null || true
+          mv /tmp/oakdepo_assets/helpdesk sites/assets/helpdesk 2>/dev/null || true
+          mv /tmp/oakdepo_assets/raven sites/assets/raven 2>/dev/null || true
+          mv /tmp/oakdepo_assets/gameplan sites/assets/gameplan 2>/dev/null || true
+          mv /tmp/oakdepo_assets/telephony sites/assets/telephony 2>/dev/null || true
           mv /tmp/oakdepo_assets/container_depot sites/assets/container_depot
           cp -rL apps/container_depot/frontend/dist sites/assets/container_depot/frontend 2>/dev/null || true
           echo "[create-site] Done."
