@@ -62,7 +62,13 @@ services:
     command: |
       bash -lc '
         set -e
-        echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony\ncontainer_depot" > sites/apps.txt
+        # container_depot is intentionally absent: `bench set-config` imports every
+        # app listed here, and container_depot only exists via the bind mount +
+        # `pip install -e` that create-site does -- this container has neither, so
+        # listing it aborts the configurator with ModuleNotFoundError on a fresh
+        # deploy. create-site writes the full nine-app list once it is installable,
+        # and ensure-apps.sh re-appends it for the long-running services.
+        echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony" > sites/apps.txt
         bench set-config -g db_host mariadb
         bench set-config -g db_port 3306
         bench set-config -g redis_cache redis://redis-cache:6379
