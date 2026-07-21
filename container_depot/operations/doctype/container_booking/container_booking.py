@@ -32,6 +32,28 @@ from container_depot.state_machine import stage_for_status
 
 CONTAINER_READY_STATUSES = {"Available"}
 
+# container_summary is a Data field (140 chars). Keep whole container numbers and
+# append a "(+N)" marker rather than clipping one mid-number.
+_SUMMARY_MAXLEN = 140
+
+
+def build_container_summary(container_nos) -> str:
+	"""Join container numbers into the list-view summary, truncating with a ``(+N)``
+	remainder marker so a long booking never exceeds the Data field length. Shared by
+	the doctype's validate hook and the backfill patch so both format identically."""
+	nums = [n for n in (container_nos or []) if n]
+	summary = ", ".join(nums)
+	if len(summary) <= _SUMMARY_MAXLEN:
+		return summary
+	# Reserve room for the trailing " (+N)" marker (12 chars covers up to "(+9999)").
+	budget = _SUMMARY_MAXLEN - 12
+	out = []
+	for n in nums:
+		if len(", ".join(out + [n])) > budget:
+			break
+		out.append(n)
+	return ", ".join(out) + " (+{0})".format(len(nums) - len(out))
+
 # The Item Group that holds every Lift Service (Lift On / Lift Off and any sized
 # variants such as "Lift On 20F"). The booking's Lift Service picker is scoped to it,
 # so a new sized service only needs to be filed under this group to become selectable.
@@ -90,6 +112,8 @@ class ContainerBooking(Document):
 		self._sync_direction_from_lift()
 		self._resolve_pricing_context()
 		self._resolve_containers()
+		self._validate_unique_containers()
+		self._sync_container_summary()
 		self._compute_lift_amount()
 		self._sync_payment_type_from_contract()
 		# Readiness is enforced at SUBMIT (see before_submit), not here — an outbound
@@ -322,6 +346,37 @@ class ContainerBooking(Document):
 			)
 
 	# ---- container resolution (single-input model) ----------------------
+	def _validate_unique_containers(self):
+		"""One line per container. Booking the same tank twice would bill the lift
+		twice and issue two Booking Codes for it, so the gate would show a phantom
+		second container to move.
+
+		Runs after ``_resolve_containers`` so every row already carries a normalised
+		(stripped, upper-cased) ``container_no`` — comparing raw input would let
+		"tclu1234567" slip past "TCLU1234567".
+		"""
+		seen = {}
+		for row in self.items or []:
+			key = row.container_no or row.container
+			if not key:
+				continue  # blank row — allowed on a draft, containers are enforced at submit
+			if key in seen:
+				frappe.throw(
+					_("Container {0} is already on row {1} — each container may appear only once.").format(
+						key, seen[key]
+					),
+					title=_("Duplicate Container"),
+				)
+			seen[key] = row.idx
+
+	def _sync_container_summary(self):
+		"""Denormalise the container numbers onto a single Data field for the Desk list
+		view and search (a list column can't render a child table). Runs after
+		``_resolve_containers`` so every row already has a ``container_no``."""
+		self.container_summary = build_container_summary(
+			[i.container_no for i in (self.items or []) if i.container_no]
+		)
+
 	def _resolve_containers(self):
 		"""Reconcile each item's container reference into a real Container record.
 
@@ -853,6 +908,10 @@ def void_draft(booking):
 	# directly; child rows mirror the parent docstatus.
 	frappe.db.set_value("Container Booking", doc.name, "docstatus", 2, update_modified=False)
 	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=2 WHERE parent=%s", doc.name)
+	# Cancelled through the button, not native submit->cancel, so the on_cancel
+	# doc_event never fires — clear the "Booking baru ..." notification here too.
+	from container_depot.operations.notify import revoke
+	revoke("Container Booking", doc.name)
 	return doc.booking_status
 
 

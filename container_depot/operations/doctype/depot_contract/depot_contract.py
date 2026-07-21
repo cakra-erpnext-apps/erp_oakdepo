@@ -4,15 +4,16 @@ from frappe.model.document import Document
 from frappe.utils import cint, flt, getdate, today
 
 # Status workflow — the only transitions the action buttons (set_status) allow.
-# Draft / Negotiation are editable; Active and the terminal states are locked.
+# Draft is editable; Active and the terminal states are locked. A draft is
+# submitted straight to Active (the old Negotiation step was dropped), and an
+# Active contract ends either Void ("Invalid") or Expired.
 ALLOWED_TRANSITIONS = {
-	"Draft": ("Negotiation", "Void"),
-	"Negotiation": ("Draft", "Active", "Void"),
+	"Draft": ("Active", "Void"),
 	"Active": ("Expired", "Void"),
 	"Expired": (),
 	"Void": (),
 }
-EDITABLE_STATUSES = ("Draft", "Negotiation")
+EDITABLE_STATUSES = ("Draft",)
 
 
 class DepotContract(Document):
@@ -33,11 +34,30 @@ class DepotContract(Document):
 		for row in self.tariff_lines or []:
 			row.currency = self.currency
 
+	def after_insert(self):
+		from container_depot.operations.notify import notify_contract_created
+		notify_contract_created(self)
+
 	def on_update(self):
 		# Auto-expire on date rollover (may flip status to Expired in-place).
 		self._auto_expire_on_rollover()
 		# Publish / retire the customer Price List based on the status transition.
 		self._sync_published_price_list()
+		self._notify_status_change()
+
+	def _notify_status_change(self):
+		"""A contract is not submittable, so its status move IS its lifecycle: Active
+		announces the live tariff, Void kills the contract and with it the "menunggu
+		aktivasi" prompt still sitting in everyone's bell."""
+		before = self.get_doc_before_save()
+		if not before or before.status == self.status:
+			return
+		if self.status == "Active":
+			from container_depot.operations.notify import notify_contract_activated
+			notify_contract_activated(self)
+		elif self.status == "Void":
+			from container_depot.operations.notify import revoke
+			revoke(self.doctype, self.name)
 
 	def _auto_expire_on_rollover(self):
 		if self.status == "Active" and self.valid_to and getdate(self.valid_to) < getdate(today()):
@@ -410,13 +430,13 @@ def _to_rate(value, fallback) -> float:
 
 @frappe.whitelist()
 def import_tariff_lines(contract: str, text: str, replace=0) -> dict:
-	"""Bulk-fill a Draft/Negotiation contract's Price List lines from pasted Excel
-	text. Each line: ``item [, rate [, manhour_rate [, uom]]]`` (tab- or comma-sep).
+	"""Bulk-fill a Draft contract's Price List lines from pasted Excel text. Each
+	line: ``item [, rate [, manhour_rate [, uom]]]`` (tab- or comma-sep).
 	Blank rate/uom/manhour default from the Base Price List. Unknown items are
 	collected (not fatal). Returns ``{added, skipped, errors, total_lines}``."""
 	doc = frappe.get_doc("Depot Contract", contract)
 	if doc.status not in EDITABLE_STATUSES:
-		frappe.throw(_("Price List lines can only be imported while the contract is Draft or Negotiation."))
+		frappe.throw(_("Price List lines can only be imported while the contract is a Draft."))
 
 	rows = _parse_pasted_lines(text)
 	if not rows:
@@ -457,3 +477,142 @@ def import_tariff_lines(contract: str, text: str, replace=0) -> dict:
 		"errors": errors,
 		"total_lines": len(doc.tariff_lines or []),
 	}
+
+
+def _new_sheet(sheet_name: str, headers: list, widths: list):
+	"""Start an .xlsx with a styled, frozen, filterable header row.
+
+	Written with xlsxwriter directly rather than ``make_xlsx`` because that helper
+	emits a plain grid — no bold header, AutoFilter or freeze pane.
+
+	Returns ``(output, wb, ws, fmts)``; finish with :func:`_finish_sheet`.
+	"""
+	import io
+
+	import xlsxwriter
+
+	output = io.BytesIO()
+	wb = xlsxwriter.Workbook(output, {"in_memory": True})
+	ws = wb.add_worksheet(sheet_name)
+	fmts = {
+		"header": wb.add_format({"bold": True, "bg_color": "#E8E8E8", "border": 1}),
+		"group": wb.add_format({"bold": True, "bg_color": "#FFF2CC"}),
+	}
+	for col, title in enumerate(headers):
+		ws.write(0, col, title, fmts["header"])
+	for col, width in enumerate(widths):
+		ws.set_column(col, col, width)
+	ws.freeze_panes(1, 0)  # header stays put while scrolling
+	return output, wb, ws, fmts
+
+
+def _finish_sheet(output, wb, ws, filename: str, last_row: int, last_col: int):
+	"""Apply AutoFilter across every column, close the book and serve it."""
+	ws.autofilter(0, 0, max(last_row, 1), last_col)
+	wb.close()
+	frappe.response["type"] = "download"
+	frappe.response["filename"] = filename
+	frappe.response["filecontent"] = output.getvalue()
+
+
+@frappe.whitelist(methods=["GET"])
+def download_tariff_template():
+	"""Blank import template: the exact Item / Rate / Manhour columns the grid's
+	"Import Excel" button expects, with one illustrative row."""
+	headers = ["Item", "Rate", "Manhour"]
+	output, wb, ws, _fmts = _new_sheet("Template", headers, [46, 14, 14])
+	ws.write_row(1, 0, ["CONTOH-KODE-ITEM", 250000, 25000])
+	_finish_sheet(output, wb, ws, "tariff_import_template.xlsx", 1, len(headers) - 1)
+
+
+@frappe.whitelist(methods=["GET"])
+def download_item_master(base_price_list: str | None = None):
+	"""Reference list of the sellable items valid for a Price List line — the codes to
+	put in the template's Item column. Mirrors the form's item picker filter
+	(``is_sales_item=1, disabled=0``). When a Base Price List is given, its Rate /
+	Manhour are included so the sheet doubles as a starting rate card.
+
+	Rows are grouped under a bold Item Group banner for readability. Note the banner
+	rows are ordinary rows, so using the AutoFilter hides them along with the items
+	they head — that is the trade-off of sections in a filterable sheet.
+	"""
+	items = frappe.get_all(
+		"Item",
+		filters={"disabled": 0, "is_sales_item": 1},
+		fields=["name", "item_name", "stock_uom", "item_group"],
+		order_by="item_group asc, item_name asc",
+	)
+	grouped = {}
+	for it in items:
+		grouped.setdefault(it.item_group or _("Ungrouped"), []).append(it)
+
+	headers = ["Item", "Item Name", "UoM", "Rate", "Manhour"]
+	output, wb, ws, fmts = _new_sheet("Items", headers, [46, 46, 10, 14, 14])
+	row = 1
+	for group in sorted(grouped):
+		# Banner spans the full width so the section reads as one band.
+		ws.write(row, 0, group, fmts["group"])
+		for col in range(1, len(headers)):
+			ws.write(row, col, "", fmts["group"])
+		row += 1
+		for it in grouped[group]:
+			defaults = item_price_defaults(base_price_list, it.name) if base_price_list else {}
+			ws.write_row(row, 0, [
+				it.name,
+				it.item_name,
+				defaults.get("uom") or it.stock_uom,
+				defaults.get("rate") or "",
+				defaults.get("manhour_rate") or "",
+			])
+			row += 1
+	_finish_sheet(output, wb, ws, "item_master.xlsx", row - 1, len(headers) - 1)
+
+
+@frappe.whitelist()
+def parse_tariff_xlsx(file_url: str, base_price_list: str | None = None) -> dict:
+	"""Parse an uploaded .xlsx into Price List rows for the grid's "Import Excel" button.
+
+	Columns by position: Item, Rate, Manhour (a 4th UoM column is honoured if present);
+	a header row whose first cell is item/kode is skipped. Pure read — it resolves items
+	and defaults but touches no contract, so the caller can add the rows to a still-unsaved
+	form. Unknown items are collected in ``errors``, not fatal.
+
+	Returns ``{rows: [{item, uom, rate, manhour_rate}], errors: [...]}``.
+	"""
+	from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+
+	if not file_url:
+		frappe.throw(_("No file provided."))
+	raw_rows = read_xlsx_file_from_attached_file(file_url=file_url) or []
+
+	rows, errors = [], []
+	seen = set()
+	for cells in raw_rows:
+		if not cells:
+			continue
+		token = (str(cells[0]).strip() if cells[0] is not None else "")
+		if not token:
+			continue
+		if token.lower() in ("item", "item code", "kode", "kode item"):
+			continue  # header
+		item = _resolve_paste_item(token, base_price_list)
+		if not item:
+			errors.append(_("Unknown item: {0}").format(token))
+			continue
+		defaults = item_price_defaults(base_price_list, item) if base_price_list else {}
+		uom = defaults.get("uom")
+		if uom is None and len(cells) > 3 and cells[3] not in (None, ""):
+			uom = str(cells[3]).strip()
+		key = (item, uom or None)
+		if key in seen:
+			continue
+		seen.add(key)
+		rate = cells[1] if len(cells) > 1 else None
+		manhour = cells[2] if len(cells) > 2 else None
+		rows.append({
+			"item": item,
+			"uom": uom,
+			"rate": _to_rate(rate, defaults.get("rate")),
+			"manhour_rate": _to_rate(manhour, defaults.get("manhour_rate")),
+		})
+	return {"rows": rows, "errors": errors}

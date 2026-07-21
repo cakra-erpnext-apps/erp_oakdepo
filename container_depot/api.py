@@ -25,7 +25,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 from frappe.utils import now_datetime
 
-from container_depot.operations.user_branch import assert_in_user_branch
+from container_depot.operations.user_branch import assert_in_user_branch, get_user_branches
 
 # ---------------------------------------------------------------------------
 # Helpers — auth, input validation, signature
@@ -992,17 +992,81 @@ def gate_cargo_options():
 	return {"cargos": frappe.get_all("Cargo", filters={"is_active": 1}, pluck="name", order_by="name asc")}
 
 
+def _find_active_bookings_for_container(raw) -> list[dict]:
+	"""Active bookings (submitted, not Cancelled) holding an Active Booking Code for a
+	container number. Exact match first, then a LIKE fallback. Scoped to the user's
+	branches — out-of-branch bookings are dropped silently, never raised, because this
+	feeds a picker where an invisible row is correct but a hard error is not."""
+	if not raw:
+		return []
+	allowed = get_user_branches()  # None = unrestricted (HQ/admin)
+
+	def _query(container_clause, val):
+		conds = [
+			"bc.state = 'Active'",
+			"cb.docstatus = 1",
+			"cb.booking_status != 'Cancelled'",
+			container_clause,
+		]
+		params = {"val": val}
+		if allowed is not None:
+			conds.append("cb.branch IN %(branches)s")
+			params["branches"] = tuple(allowed) or ("",)
+		return frappe.db.sql(
+			"""
+			SELECT DISTINCT cb.name AS booking, cb.customer, cb.direction,
+			       cb.booking_status, cb.branch, bc.container_no
+			FROM `tabBooking Code` bc
+			JOIN `tabContainer Booking` cb ON cb.name = bc.booking
+			WHERE {conds}
+			ORDER BY cb.creation DESC
+			""".format(conds=" AND ".join(conds)),
+			params,
+			as_dict=True,
+		)
+
+	rows = _query("bc.container_no = %(val)s", raw)
+	if not rows:
+		rows = _query("bc.container_no LIKE %(val)s", "%{0}%".format(raw))
+	return rows
+
+
 @frappe.whitelist()
 def gate_lookup(code):
-	"""Gate PWA: resolve a scanned/typed code — Booking Code (``OAK-…``), Order
-	Bongkar/Muat (``ORD-…``), or a Container Booking name — to its booking and return
-	the gate detail (header + per-container bon status + Cash-unpaid block)."""
+	"""Gate PWA: resolve a scanned/typed value to a booking and return the gate detail
+	(header + per-container bon status + Cash-unpaid block).
+
+	Resolution order: an exact code first — Booking Code (``OAK-…``), Order Bongkar/Muat
+	(``ORD-…``), or a Container Booking name — preserving the original scan/pick flow
+	untouched. Only if that misses is the value treated as a container number: one
+	active booking resolves straight to its detail (same shape as an exact hit), several
+	return ``{valid, choices}`` for the operator to pick from."""
 	_require_authenticated_user()
 	raw = _parse_gate_code(code)
 	booking = _resolve_booking_from_code(raw)
-	if not booking:
-		return {"valid": False, "error": _("Kode tidak ditemukan / tidak valid: {0}").format(raw)}
-	return {"valid": True, **_booking_gate_detail(booking)}
+	if booking:
+		return {"valid": True, **_booking_gate_detail(booking)}
+	matches = _find_active_bookings_for_container(raw)
+	if len(matches) == 1:
+		return {"valid": True, **_booking_gate_detail(matches[0]["booking"])}
+	if len(matches) > 1:
+		return {
+			"valid": True,
+			"choices": [
+				{
+					"booking": m["booking"],
+					"customer": m["customer"],
+					"customer_name": frappe.db.get_value("Customer", m["customer"], "customer_name")
+					if m["customer"]
+					else None,
+					"direction": m["direction"],
+					"booking_status": m["booking_status"],
+					"container_no": m["container_no"],
+				}
+				for m in matches
+			],
+		}
+	return {"valid": False, "error": _("Kode / kontainer tidak ditemukan: {0}").format(raw)}
 
 
 def _latest_valid_cleaning_cert(container) -> str | None:

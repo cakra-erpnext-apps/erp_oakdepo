@@ -283,7 +283,9 @@ class TestDepotContract(FrappeTestCase):
 	def test_status_transition_guard_blocks_skips(self):
 		c = _make_contract(status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
-		# Draft -> Active is not allowed (must pass through Negotiation).
+		# Terminal states are dead ends — Void cannot be walked back to Active.
+		c.status = "Void"
+		c.save(ignore_permissions=True)
 		c.status = "Active"
 		with self.assertRaises(frappe.ValidationError):
 			c.save(ignore_permissions=True)
@@ -293,11 +295,13 @@ class TestDepotContract(FrappeTestCase):
 
 		c = _make_contract(status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
-		set_status(c.name, "Negotiation")
-		self.assertEqual(frappe.db.get_value("Depot Contract", c.name, "status"), "Negotiation")
+		# Draft submits straight to Active — the Negotiation step was removed.
 		set_status(c.name, "Active")
 		self.assertEqual(frappe.db.get_value("Depot Contract", c.name, "status"), "Active")
 		self.assertTrue(frappe.db.get_value("Depot Contract", c.name, "generated_price_list"))
+		# Active then ends at Expired (the "Invalid" button uses Void instead).
+		set_status(c.name, "Expired")
+		self.assertEqual(frappe.db.get_value("Depot Contract", c.name, "status"), "Expired")
 
 
 class TestContainerPrincipalLink(FrappeTestCase):

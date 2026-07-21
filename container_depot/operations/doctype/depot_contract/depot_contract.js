@@ -8,7 +8,13 @@
 // after the contract (handled server-side). Each line's currency follows the
 // contract currency so Rate / Manhour format in the Base Price List currency.
 //
-// Status is driven by workflow buttons (set_status), not picked from a dropdown.
+// Status is driven by workflow buttons (set_status), not picked from a dropdown:
+// Draft -> Submit -> Active, then Invalid / Expired.
+//
+// Bulk line entry lives on the grid itself ("Import Excel", next to Add Row), not
+// in a toolbar group. The server methods the old toolbar group used
+// (import_tariff_lines, base_price_list_lines_for_menu) are still whitelisted and
+// covered by tests / seed_prod — only their buttons were removed.
 
 function container_depot_transition(frm, target) {
 	const go = () =>
@@ -29,204 +35,117 @@ function container_depot_transition(frm, target) {
 frappe.ui.form.on("Depot Contract", {
 	onload(frm) {
 		frm.trigger("_set_tariff_item_query");
+		frm.trigger("_default_validity_window");
+	},
+	_default_validity_window(frm) {
+		// New contracts default to the current calendar year: Jan 1 → Dec 31. Computed
+		// here (not a JSON default) because the year is dynamic. Only fills blanks so a
+		// duplicated / amended contract keeps its own dates.
+		if (!frm.is_new()) return;
+		const year = new Date().getFullYear();
+		if (!frm.doc.valid_from) frm.set_value("valid_from", `${year}-01-01`);
+		if (!frm.doc.valid_to) frm.set_value("valid_to", `${year}-12-31`);
 	},
 	refresh(frm) {
 		frm.trigger("_set_tariff_item_query");
 		frm.trigger("_set_status_actions");
-		frm.trigger("_set_bulk_buttons");
+		frm.trigger("_set_grid_import_button");
 		frm.trigger("_apply_edit_lock");
+	},
+	_set_grid_import_button(frm) {
+		// "Import Excel" sits in the grid footer next to Add Row (grid.add_custom_button
+		// dedups by label, so calling this on every refresh is safe). Unlike the top
+		// "Paste from Excel", it parses the file server-side and adds the rows client-
+		// side, so it works on a brand-new, unsaved contract too.
+		const grid = frm.fields_dict.tariff_lines && frm.fields_dict.tariff_lines.grid;
+		if (!grid) return;
+		const editable = frm.is_new() || ["Draft"].includes(frm.doc.status);
+		if (!editable) return;
+		grid.add_custom_button(__("Import Excel"), () => {
+			const d = new frappe.ui.Dialog({
+				title: __("Import Price List from Excel"),
+				fields: [
+					{
+						fieldname: "hint",
+						fieldtype: "HTML",
+						options: `<p class="text-muted small">${__(
+							"Columns: Item, Rate, Manhour. Only Item is required — Rate/Manhour default to 0 (or the Base Price List, if set). A header row is skipped."
+						)}</p>`,
+					},
+					{ fieldname: "file", fieldtype: "Attach", label: __("Excel File (.xlsx)"), reqd: 1 },
+					{ fieldname: "replace", fieldtype: "Check", label: __("Replace existing lines") },
+				],
+				primary_action_label: __("Import"),
+				primary_action(values) {
+					frappe.call({
+						method: "container_depot.operations.doctype.depot_contract.depot_contract.parse_tariff_xlsx",
+						args: { file_url: values.file, base_price_list: frm.doc.base_price_list || null },
+						freeze: true,
+						freeze_message: __("Reading file…"),
+						callback(r) {
+							const res = r.message || {};
+							const rows = res.rows || [];
+							if (values.replace) frm.clear_table("tariff_lines");
+							rows.forEach((ln) => {
+								const row = frm.add_child("tariff_lines");
+								row.item = ln.item;
+								row.uom = ln.uom;
+								row.rate = ln.rate;
+								row.manhour_rate = ln.manhour_rate;
+								row.currency = frm.doc.currency;
+							});
+							frm.refresh_field("tariff_lines");
+							d.hide();
+							let msg = __("Added {0} line(s).", [rows.length]);
+							if ((res.errors || []).length) {
+								msg += "<br><b>" + __("Not imported:") + "</b><br>" + res.errors.join("<br>");
+								frappe.msgprint({
+									title: __("Import finished with warnings"),
+									message: msg,
+									indicator: "orange",
+								});
+							} else {
+								frappe.show_alert({ message: msg, indicator: "green" });
+							}
+						},
+					});
+				},
+			});
+			// Downloads live in the dialog so the template + valid item codes are one
+			// click away right where the user is about to import. window.open (not
+			// frappe.call) because these stream a file back, not JSON; the session
+			// cookie rides along so the GET is authenticated.
+			const base = "/api/method/container_depot.operations.doctype.depot_contract.depot_contract";
+			d.add_custom_action(__("Download Template"), () => {
+				window.open(`${base}.download_tariff_template`);
+			});
+			d.add_custom_action(__("Download Item Master"), () => {
+				const q = frm.doc.base_price_list
+					? `?base_price_list=${encodeURIComponent(frm.doc.base_price_list)}`
+					: "";
+				window.open(`${base}.download_item_master${q}`);
+			});
+			d.show();
+		});
 	},
 	_set_status_actions(frm) {
 		if (frm.is_new()) return;
 		// Status is set by these buttons (the field is read-only), following the flow
-		// Draft -> Negotiation -> Active -> Expired, with Void to cancel.
+		// Draft -> Active -> Expired, with Void as the invalidate/cancel terminal.
+		// "Invalid" and "Cancel" both land on Void — the same terminal state, named
+		// for what it means at each stage.
 		const ACTIONS = {
-			Draft: [["Start Negotiation", "Negotiation", "primary"], ["Cancel", "Void"]],
-			Negotiation: [["Activate", "Active", "primary"], ["Back to Draft", "Draft"], ["Cancel", "Void"]],
-			Active: [["Expire", "Expired"], ["Void", "Void"]],
+			Draft: [["Submit", "Active", "primary"], ["Cancel", "Void"]],
+			Active: [["Invalid", "Void"], ["Expired", "Expired"]],
 		};
 		(ACTIONS[frm.doc.status] || []).forEach(([label, target, type]) => {
 			const btn = frm.add_custom_button(__(label), () => container_depot_transition(frm, target));
 			if (type === "primary") btn.removeClass("btn-default").addClass("btn-primary");
 		});
 	},
-	_set_bulk_buttons(frm) {
-		// Fast ways to fill the Price List lines: by menu (filter) or pasted from Excel.
-		// Only while the contract is still editable.
-		const editable = frm.is_new() || ["Draft", "Negotiation"].includes(frm.doc.status);
-		if (!editable) return;
-		const group = __("Price List");
-
-		// "Add Items" — multi-select Items; each picked item becomes its own line
-		// (UoM defaults from the item; rate + manhour rate are always 0 for manual
-		// pricing). Already-added items are skipped so saving never hits a duplicate.
-		frm.add_custom_button(
-			__("Add Items"),
-			() => {
-				new frappe.ui.form.MultiSelectDialog({
-					doctype: "Item",
-					target: frm,
-					setters: { item_group: null },
-					add_filters_group: 1,
-					get_query() {
-						return { filters: { disabled: 0, is_sales_item: 1 } };
-					},
-					action(selections) {
-						if (!selections || !selections.length) return;
-						const existing = new Set((frm.doc.tariff_lines || []).map((r) => r.item));
-						const fresh = selections.filter((i) => !existing.has(i));
-						if (!fresh.length) {
-							frappe.show_alert({
-								message: __("All selected items are already added."),
-								indicator: "orange",
-							});
-							return;
-						}
-						frappe.db
-							.get_list("Item", {
-								filters: { name: ["in", fresh] },
-								fields: ["name", "stock_uom"],
-								limit: 0,
-							})
-							.then((items) => {
-								const uom = {};
-								items.forEach((it) => (uom[it.name] = it.stock_uom));
-								fresh.forEach((code) => {
-									const row = frm.add_child("tariff_lines");
-									row.item = code;
-									row.uom = uom[code] || null;
-									row.rate = 0;
-									row.manhour_rate = 0;
-									row.currency = frm.doc.currency;
-								});
-								frm.refresh_field("tariff_lines");
-								frappe.show_alert({
-									message: __("Added {0} item(s).", [fresh.length]),
-									indicator: "green",
-								});
-							});
-					},
-				});
-			},
-			group
-		);
-
-		// "Add from Menu" — bulk-add the Base Price List items of a chosen Depot
-		// Service Menu (e.g. all Maintenance items). Client-side; no save needed.
-		frm.add_custom_button(
-			__("Add from Menu"),
-			() => {
-				if (!frm.doc.base_price_list) {
-					frappe.msgprint(__("Select a Base Price List first."));
-					return;
-				}
-				const d = new frappe.ui.Dialog({
-					title: __("Add items from menu"),
-					fields: [
-						{
-							fieldname: "menu",
-							fieldtype: "Link",
-							options: "Depot Service Menu",
-							label: __("Service Menu"),
-							reqd: 1,
-							get_query: () => ({ filters: { is_active: 1 } }),
-						},
-						{ fieldname: "replace", fieldtype: "Check", label: __("Replace existing lines") },
-					],
-					primary_action_label: __("Add"),
-					primary_action(values) {
-						frappe.call({
-							method: "container_depot.operations.doctype.depot_contract.depot_contract.base_price_list_lines_for_menu",
-							args: { base_price_list: frm.doc.base_price_list, menu: values.menu },
-							callback(r) {
-								const rows = r.message || [];
-								if (values.replace) frm.clear_table("tariff_lines");
-								rows.forEach((ln) => {
-									const row = frm.add_child("tariff_lines");
-									row.item = ln.item;
-									row.uom = ln.uom;
-									row.rate = ln.rate;
-									row.manhour_rate = ln.manhour_rate;
-									row.currency = frm.doc.currency;
-								});
-								frm.refresh_field("tariff_lines");
-								d.hide();
-								frappe.show_alert({
-									message: __("Added {0} line(s) from {1}.", [rows.length, values.menu]),
-									indicator: "green",
-								});
-							},
-						});
-					},
-				});
-				d.show();
-			},
-			group
-		);
-
-		// "Paste from Excel" — server-side import (needs a saved contract).
-		frm.add_custom_button(
-			__("Paste from Excel"),
-			() => {
-				if (frm.is_new()) {
-					frappe.msgprint(__("Save the contract once before pasting lines."));
-					return;
-				}
-				if (!frm.doc.base_price_list) {
-					frappe.msgprint(__("Select a Base Price List first (it fills missing rate / UoM)."));
-					return;
-				}
-				const d = new frappe.ui.Dialog({
-					title: __("Paste from Excel"),
-					fields: [
-						{
-							fieldname: "hint",
-							fieldtype: "HTML",
-							options: `<p class="text-muted small">${__(
-								"One item per line. Columns (tab or comma): Item, Rate, Manhour Rate, UoM. Only Item is required — the rest default from the Base Price List."
-							)}</p>`,
-						},
-						{ fieldname: "text", fieldtype: "Small Text", label: __("Rows"), reqd: 1 },
-						{ fieldname: "replace", fieldtype: "Check", label: __("Replace existing lines") },
-					],
-					primary_action_label: __("Import"),
-					primary_action(values) {
-						frappe.call({
-							method: "container_depot.operations.doctype.depot_contract.depot_contract.import_tariff_lines",
-							args: { contract: frm.doc.name, text: values.text, replace: values.replace ? 1 : 0 },
-							freeze: true,
-							freeze_message: __("Importing…"),
-							callback(r) {
-								const m = r.message || {};
-								d.hide();
-								frm.reload_doc();
-								let msg = __("Added {0}, skipped {1}. Total {2} line(s).", [
-									m.added || 0,
-									m.skipped || 0,
-									m.total_lines || 0,
-								]);
-								if ((m.errors || []).length) {
-									msg += "<br><b>" + __("Not imported:") + "</b><br>" + m.errors.join("<br>");
-									frappe.msgprint({
-										title: __("Import finished with warnings"),
-										message: msg,
-										indicator: "orange",
-									});
-								} else {
-									frappe.show_alert({ message: msg, indicator: "green" });
-								}
-							},
-						});
-					},
-				});
-				d.show();
-			},
-			group
-		);
-	},
 	_apply_edit_lock(frm) {
-		// Editable only in Draft / Negotiation; Active and terminal states are locked.
-		const locked = !frm.is_new() && !["Draft", "Negotiation"].includes(frm.doc.status);
+		// Editable only in Draft; Active and terminal states are locked.
+		const locked = !frm.is_new() && !["Draft"].includes(frm.doc.status);
 		[
 			"customer", "currency", "base_price_list", "payment_type", "payment_terms",
 			"credit_limit", "valid_from", "valid_to", "tariff_lines", "generate_lines",

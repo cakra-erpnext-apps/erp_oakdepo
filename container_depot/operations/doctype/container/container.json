@@ -78,7 +78,7 @@
    "options": "20'\n40'\n45'\nOther"
   },
   {
-   "default": "Booked",
+   "default": "Gate_Out",
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
@@ -310,7 +310,7 @@
   }
  ],
  "links": [],
- "modified": "2026-06-23",
+ "modified": "2026-07-21 14:00:00",
  "module": "Operations",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

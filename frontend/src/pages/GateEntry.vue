@@ -52,6 +52,31 @@
 			</p>
 		</section>
 
+		<!-- Container matched more than one active booking — let the operator choose. -->
+		<section v-if="choices" class="oak-card animate-slide-up overflow-hidden">
+			<div class="flex items-center gap-3 border-b border-gray-100 bg-gray-50/70 px-4 py-3">
+				<span class="oak-icon-tile h-9 w-9 bg-amber-50 text-amber-600"><Icon name="layers" :size="18" /></span>
+				<p class="text-sm font-bold text-gray-900">{{ labels.gateChoicesTitle }}</p>
+			</div>
+			<ul class="divide-y divide-gray-100">
+				<li v-for="c in choices" :key="c.booking">
+					<button
+						class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
+						:disabled="lookupRes.loading"
+						@click="pickChoice(c.booking)"
+					>
+						<span class="min-w-0">
+							<span class="block truncate text-sm font-bold text-gray-900">{{ c.booking }}</span>
+							<span class="block truncate text-xs text-gray-500">
+								{{ c.container_no }} · {{ c.customer_name || c.customer }} · {{ directionLabel(c.direction) }}
+							</span>
+						</span>
+						<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-400" />
+					</button>
+				</li>
+			</ul>
+		</section>
+
 		<template v-if="valid">
 			<!-- Booking detail panel -->
 			<section class="oak-card animate-slide-up overflow-hidden">
@@ -273,7 +298,17 @@ const cargoRes = createResource({
 })
 const cargoOptions = computed(() => cargoRes.data?.cargos || [])
 
-const valid = computed(() => detail.value && detail.value.valid)
+// A real booking detail (has containers) vs. a multi-booking picker response.
+const valid = computed(() => detail.value && detail.value.valid && !!detail.value.booking)
+const choices = computed(() =>
+	detail.value && detail.value.valid && detail.value.choices ? detail.value.choices : null,
+)
+
+// Picking a booking from the container-search list re-runs the lookup by booking name,
+// which hits the exact-match branch and returns the full detail panel.
+function pickChoice(booking) {
+	lookupRes.submit({ code: booking })
+}
 
 // Vehicle/driver form fields — mirrors the Desk "Generate" dialog, adapted to the
 // booking direction. Keys are the exact make_order vehicle_data keys.

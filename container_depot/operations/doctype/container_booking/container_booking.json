@@ -36,7 +36,8 @@
     "sales_name",
     "remarks",
     "items_section",
-    "items"
+    "items",
+    "container_summary"
   ],
   "fields": [
     {
@@ -275,14 +276,22 @@
       "label": "Containers",
       "options": "Container Booking Item",
       "reqd": 1
+    },
+    {
+      "description": "Auto-filled from the container rows for the list view and search.",
+      "fieldname": "container_summary",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Containers",
+      "read_only": 1
     }
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-06-22",
+  "modified": "2026-07-21",
   "module": "Operations",
   "name": "Container Booking",
-  "search_fields": "customer, branch, booking_status",
+  "search_fields": "customer, branch, booking_status, container_summary",
   "sort_field": "creation",
   "sort_order": "DESC",
   "title_field": "customer"

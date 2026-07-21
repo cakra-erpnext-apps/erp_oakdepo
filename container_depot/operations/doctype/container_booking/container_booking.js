@@ -143,10 +143,37 @@ frappe.ui.form.on('Container Booking', {
 
 // A container line's own field change fires on the child-doctype handler.
 frappe.ui.form.on('Container Booking Item', {
-	container(frm) {
+	container(frm, cdt, cdn) {
+		_reject_duplicate_container(frm, cdt, cdn, 'container');
 		frm.trigger('_recompute_lift_amount');
 	},
+	container_no(frm, cdt, cdn) {
+		_reject_duplicate_container(frm, cdt, cdn, 'container_no');
+	},
 });
+
+// Instant feedback on picking a container already on another line — the server
+// re-checks this in validate(), but waiting for Save to say so is a poor trade when
+// the operator is still filling the grid. Clears the offending cell so the row can
+// be re-picked rather than leaving an invalid value that only fails later.
+function _reject_duplicate_container(frm, cdt, cdn, fieldname) {
+	const row = locals[cdt][cdn];
+	const value = row[fieldname];
+	if (!value) return;
+	const clash = (frm.doc.items || []).find(
+		(r) => r.name !== cdn && (r.container === value || r.container_no === value)
+	);
+	if (!clash) return;
+	frappe.model.set_value(cdt, cdn, fieldname, null);
+	frappe.msgprint({
+		title: __('Duplicate Container'),
+		message: __('Container {0} is already on row {1} — each container may appear only once.', [
+			value,
+			clash.idx,
+		]),
+		indicator: 'red',
+	});
+}
 
 function _confirm_void(frm) {
 	frappe.confirm(
@@ -255,16 +282,20 @@ function open_generate_dialog(frm) {
 						},
 					},
 					{ fieldtype: 'Section Break', label: __('Detail (auto-isi dari container pertama)') },
-					{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN' },
+					// Required set mirrors the PWA gate's Tank In form (GateEntry.vue
+					// vehicleFields): truck/driver/phone/condition identify the truck on the
+					// bon, so a voucher without them is not usable at the gate. The two paths
+					// generate the same document and must not disagree on what is mandatory.
+					{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
 					{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
 					// Estimation carried from the booking line (auto-filled, written back to the row) — hidden here.
 					{ fieldname: 'tanggal_bongkar', fieldtype: 'Date', label: __('Estimation Tanggal Bongkar'), hidden: 1 },
 					// Actual unload date for the bon; defaults to the estimation above.
 					{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
 					{ fieldtype: 'Column Break' },
-					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('Truck Number') },
-					{ fieldname: 'driver', fieldtype: 'Data', label: __('Name Driver') },
-					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('No. Driver') },
+					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('Truck Number'), reqd: 1 },
+					{ fieldname: 'driver', fieldtype: 'Data', label: __('Name Driver'), reqd: 1 },
+					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('No. Driver'), reqd: 1 },
 					{ fieldname: 'ro', fieldtype: 'Data', label: __('R/O') },
 					{ fieldtype: 'Section Break', label: __('Order') },
 					{ fieldname: 'shipper', fieldtype: 'Link', label: __('Shipper'), options: 'Customer', default: frm.doc.customer },
