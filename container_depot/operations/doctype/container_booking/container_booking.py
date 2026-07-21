@@ -135,6 +135,7 @@ class ContainerBooking(Document):
 		self._require_contract()
 		self._enforce_payment_rules()
 		self._validate_do()
+		self._validate_no_open_booking()
 		# Presence-based in/out gates (draft allowed; only submit is blocked).
 		if self.direction == "Tank Out":
 			self._validate_out_ready()
@@ -674,6 +675,49 @@ class ContainerBooking(Document):
 
 		if failures:
 			frappe.throw("<br>".join(failures))
+
+	def _validate_no_open_booking(self):
+		"""SUBMIT gate: a container must not already be spoken for by another booking.
+
+		The status gates alone never caught this. A Tank In tank sits at ``Booked`` — which
+		is not in ``PRESENT`` — and a Tank Out booking does not move the tank off
+		``Available``, so in both directions a second booking submitted cleanly and the
+		gate ended up holding two live codes for the same tank.
+
+		A Booking Code is the right signal: it is issued at submit and consumed
+		(``Used``) the moment the container is placed on a bon, so a still-``Active`` code
+		means exactly "confirmed, no bon yet". Once the bon exists the tank is in motion
+		and the next cycle's booking is legitimate, so ``Used`` codes never block.
+		Cancelling a booking voids its codes, so a cancelled booking never blocks either.
+
+		Cross-document, unlike ``_validate_unique_containers``, which only dedups the rows
+		of THIS form.
+		"""
+		failures: list[str] = []
+		for item in self.items or []:
+			keys = [k for k in (item.container, item.container_no) if k]
+			if not keys:
+				continue
+			conflicts = frappe.get_all(
+				"Booking Code",
+				filters={"state": "Active", "booking": ["!=", self.name or ""]},
+				or_filters=[["container", "in", keys], ["container_no", "in", keys]],
+				fields=["booking", "direction"],
+			)
+			seen = set()
+			for c in conflicts:
+				if c.booking in seen:
+					continue  # one message per clashing booking, not per code
+				seen.add(c.booking)
+				failures.append(
+					_(
+						"Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — "
+						"batalkan booking itu dulu atau terbitkan bon-nya."
+					).format(item.container_no or item.container, c.booking, c.direction or "-")
+				)
+
+		if failures:
+			frappe.throw("<br>".join(failures), title=_("Container Sudah Dibooking"))
 
 	def _validate_in_not_present(self):
 		"""TANK IN submit gate: a container must NOT already be physically in a depot —

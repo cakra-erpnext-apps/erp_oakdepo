@@ -86,7 +86,7 @@ class TestGateContainerSearch(FrappeTestCase):
 	def tearDown(self):
 		_cleanup(self.customer)
 
-	def _submit_booking(self, container_no: str) -> str:
+	def _submit_booking(self, container_no: str, *, bypass_open_booking_guard=False) -> str:
 		b = frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",
@@ -97,6 +97,11 @@ class TestGateContainerSearch(FrappeTestCase):
 			"do_document": "/files/do.pdf",
 			"items": [{"container_no": container_no}],
 		}).insert(ignore_permissions=True)
+		if bypass_open_booking_guard:
+			# A second live booking on one container is refused at submit now (see
+			# _validate_no_open_booking); ignore_validate skips that gate while still
+			# running on_submit, so the Booking Codes are issued as before.
+			b.flags.ignore_validate = True
 		b.submit()
 		return b.name
 
@@ -120,8 +125,10 @@ class TestGateContainerSearch(FrappeTestCase):
 		self.assertTrue(any(c["container_no"] == CONTAINER for c in res["containers"]))
 
 	def test_two_active_bookings_return_choices(self):
+		# Double booking is blocked at submit now, but rows created before that guard (or
+		# across branches) still exist, so the picker must keep working for them.
 		b1 = self._submit_booking(CONTAINER)
-		b2 = self._submit_booking(CONTAINER)
+		b2 = self._submit_booking(CONTAINER, bypass_open_booking_guard=True)
 		res = api.gate_lookup(CONTAINER)
 		self.assertTrue(res["valid"])
 		self.assertIn("choices", res)

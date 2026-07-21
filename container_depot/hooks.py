@@ -121,7 +121,7 @@ def _append_event(doctype, event, handler):
 
 for _dt in _REVOCABLE_DOCTYPES:
 	_append_event(_dt, "on_cancel", _REVOKE)
-for _dt in ("Inspection", "Cleaning Order", "Cleaning Certificate", "Survey Order", "Gate Entry"):
+for _dt in ("Inspection", "Cleaning Order", "Cleaning Certificate", "Repair Order", "Survey Order", "Gate Entry"):
 	_append_event(_dt, "on_trash", _REVOKE)
 del _dt
 
@@ -132,6 +132,9 @@ scheduler_events = {
 	"daily": [
 		"container_depot.tasks.remind_periodic_test_due",
 		"container_depot.tasks.notify_customers",
+		# Reconcile the bell: doc_events miss raw/bulk deletes, so sweep the feed
+		# entries whose source document is cancelled or gone.
+		"container_depot.tasks.sweep_stale_notifications",
 	],
 	"cron": {
 		"*/5 * * * *": [

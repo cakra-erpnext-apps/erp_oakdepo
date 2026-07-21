@@ -438,7 +438,7 @@ class TestBookingCancel(FrappeTestCase):
 		frappe.db.commit()
 		super().tearDownClass()
 
-	def _submit_cash_booking(self, container_no):
+	def _submit_cash_booking(self, container_no, *, bypass_open_booking_guard=False):
 		b = frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",
@@ -455,6 +455,10 @@ class TestBookingCancel(FrappeTestCase):
 				{"docstatus": 1, "status": "Paid", "outstanding_amount": 0},
 			)
 		b.reload()
+		if bypass_open_booking_guard:
+			# ignore_validate skips before_submit (where the guard lives) but still runs
+			# on_submit, so Booking Codes are issued exactly as they were historically.
+			b.flags.ignore_validate = True
 		b.submit()
 		return b
 
@@ -515,7 +519,10 @@ class TestBookingCancel(FrappeTestCase):
 				"principal": self.customer,
 			}).insert(ignore_permissions=True)
 		a = self._submit_cash_booking("CXLHELD0001")
-		b = self._submit_cash_booking("CXLHELD0001")  # second live booking on same tank
+		# A second live booking on the same tank is refused at submit now (see
+		# _validate_no_open_booking), so it is forced through here: the branch under test
+		# still has to hold for the rows that predate that guard.
+		b = self._submit_cash_booking("CXLHELD0001", bypass_open_booking_guard=True)
 		a.cancel()
 		self.assertEqual(
 			frappe.db.get_value("Container", "CXLHELD0001", "status"), "Booked",

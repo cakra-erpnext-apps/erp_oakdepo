@@ -143,6 +143,45 @@ def revoke_on_cancel(doc, method=None):
 	revoke(doc.doctype, doc.name)
 
 
+def sweep_stale_notifications() -> int:
+	"""Drop every notification whose source document is cancelled or gone. Returns the
+	count.
+
+	``revoke_on_cancel`` covers the ordinary paths, but doc_events only fire through the
+	ORM: a raw ``frappe.db.delete``, a bulk maintenance script or a test tear-down
+	removes the document and leaves its feed rows behind, pointing at nothing. Those
+	dead entries bury the live work in the bell and 404 when tapped, so this reconciles
+	daily rather than trusting every caller to go through the ORM.
+
+	Idempotent, and a no-op once the feed is clean.
+	"""
+	removed = 0
+	for doctype in REVOCABLE_DOCTYPES:
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		flagged = [
+			n for n in frappe.get_all(
+				"Notification Log",
+				filters={"document_type": doctype, "type": "Alert"},
+				pluck="document_name",
+				distinct=True,
+			) if n
+		]
+		if not flagged:
+			continue
+		live = set(frappe.get_all(
+			doctype, filters={"name": ("in", flagged), "docstatus": ("<", 2)}, pluck="name"
+		))
+		stale = [n for n in flagged if n not in live]
+		if stale:
+			frappe.db.delete(
+				"Notification Log",
+				{"document_type": doctype, "document_name": ("in", stale), "type": "Alert"},
+			)
+			removed += len(stale)
+	return removed
+
+
 def _depot_branch(depot):
 	return frappe.db.get_value("Depot", depot, "branch") if depot else None
 
