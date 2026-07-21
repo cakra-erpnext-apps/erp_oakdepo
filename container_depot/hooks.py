@@ -237,8 +237,14 @@ update_website_context = "container_depot.branding.update_website_context"
 
 # Client script for standard ERPNext Sales Invoice — surfaces a visible
 # "Batalkan & Kembalikan Order" button on generated (consolidated) invoices.
-doctype_js = {"Sales Invoice": "public/js/sales_invoice.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+# Communication — "Buat Order" buttons that seed a booking/M&R/survey/cleaning draft
+# from an incoming email (see operations/mail_to_order.py).
+doctype_js = {
+	"Sales Invoice": "public/js/sales_invoice.js",
+	"Communication": "public/js/communication.js",
+}
+# Communication list — on-demand "Tarik Email" (pull) button, scoped to the user's accounts.
+doctype_list_js = {"Communication": "public/js/communication_list.js"}
 # doctype_tree = {"doctype" : "doctype_tree.js"}
 # doctype_calendar = {"doctype" : "public/js/doctype_calendar.js"}
 

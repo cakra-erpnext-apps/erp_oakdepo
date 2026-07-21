@@ -15,6 +15,7 @@
     "container_no",
     "inspection",
     "reff_doc",
+    "reff_email",
     "priority_score",
     "depot",
     "section_break_2",
@@ -123,6 +124,16 @@
       "fieldname": "reff_doc",
       "fieldtype": "Data",
       "label": "Reff Doc"
+    },
+    {
+      "depends_on": "eval:doc.reff_email",
+      "description": "Email sumber order ini. Terisi otomatis saat order dibuat dari Communication — bukan isian manual.",
+      "fieldname": "reff_email",
+      "fieldtype": "Link",
+      "label": "Ref Email",
+      "no_copy": 1,
+      "options": "Communication",
+      "read_only": 1
     },
     {
       "default": "0",

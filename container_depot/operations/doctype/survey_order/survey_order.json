@@ -15,6 +15,7 @@
   "charges",
   "total",
   "notes_section",
+  "reff_email",
   "notes",
   "status_section",
   "status",
@@ -86,6 +87,16 @@
   {
    "fieldname": "notes_section",
    "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.reff_email",
+   "description": "Email sumber order ini. Terisi otomatis saat order dibuat dari Communication — bukan isian manual.",
+   "fieldname": "reff_email",
+   "fieldtype": "Link",
+   "label": "Ref Email",
+   "no_copy": 1,
+   "options": "Communication",
+   "read_only": 1
   },
   {
    "fieldname": "notes",

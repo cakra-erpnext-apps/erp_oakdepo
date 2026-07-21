@@ -1,7 +1,7 @@
 {
  "app": "container_depot",
  "charts": [],
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardInvoicing\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardMail\",\"type\":\"card\",\"data\":{\"card_name\":\"Correspondence\",\"col\":4}},{\"id\":\"cardInvoicing\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
  "creation": "2026-07-02 08:32:46.648541",
  "custom_blocks": [],
  "docstatus": 0,
@@ -174,6 +174,24 @@
    "label": "Periodic Test",
    "link_count": 0,
    "link_to": "Periodic Test",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Correspondence",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Communication (Email)",
+   "link_count": 0,
+   "link_to": "Communication",
    "link_type": "DocType",
    "onboard": 1,
    "type": "Link"
@@ -421,7 +439,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-02 08:32:46.648541",
+ "modified": "2026-07-21 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",
