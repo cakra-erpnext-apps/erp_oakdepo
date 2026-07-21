@@ -82,7 +82,10 @@ def _cleanup(customer: str):
 		_purge("Cleaning Certificate", by_container)
 		_purge("Cleaning Order", by_container)
 		_purge("Inspection", by_container)
-		frappe.db.delete("Container Movement", {"container": ("in", containers)})
+		# Both audit logs, not just movements — submitting a booking writes a
+		# Container Activity row too.
+		for log in ("Container Movement", "Container Activity"):
+			frappe.db.delete(log, {"container": ("in", containers)})
 		_purge("Container", {"name": ("in", containers)})
 
 	_purge("Depot Contract", by_customer, ("Tariff Rate",))

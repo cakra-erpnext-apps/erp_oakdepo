@@ -40,7 +40,10 @@ def _cleanup():
 	if bookings:
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
 	_purge("Container Booking", by_customer, ("Container Booking Item",))
-	frappe.db.delete("Container Movement", {"container": ("in", CONTAINERS)})
+	# Both audit logs, not just movements: submitting a booking writes a Container
+	# Activity row too, and leaving those behind strands them on a deleted container.
+	for log in ("Container Movement", "Container Activity"):
+		frappe.db.delete(log, {"container": ("in", CONTAINERS)})
 	_purge("Container", {"name": ("in", CONTAINERS)})
 	_purge("Depot Contract", by_customer, ("Tariff Rate",))
 	price_lists = frappe.get_all("Price List", filters=by_customer, pluck="name")

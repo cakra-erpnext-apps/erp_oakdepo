@@ -64,7 +64,9 @@ def _cleanup():
 		frappe.db.delete("Notification Log", {"document_type": "Order Bongkar", "document_name": ("in", bons)})
 		# Order Bongkar refuses delete_doc ("use Cancel to void it instead").
 		frappe.db.delete("Order Bongkar", {"name": ("in", bons)})
-	frappe.db.delete("Container Movement", {"container": ("in", CONTAINERS)})
+	# Both audit logs, not just movements — an EIR/bon writes Container Activity too.
+	for log in ("Container Movement", "Container Activity"):
+		frappe.db.delete(log, {"container": ("in", CONTAINERS)})
 	frappe.db.delete("Container", {"name": ("in", CONTAINERS)})
 	if frappe.db.exists("Customer", CUSTOMER):
 		frappe.db.delete("Customer", {"name": CUSTOMER})

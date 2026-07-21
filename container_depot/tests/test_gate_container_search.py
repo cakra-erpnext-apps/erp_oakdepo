@@ -53,7 +53,10 @@ def _cleanup(customer: str):
 	# moved on to another status and would otherwise be left behind.
 	containers = frappe.get_all("Container", filters={"principal": customer}, pluck="name")
 	if containers:
-		frappe.db.delete("Container Movement", {"container": ("in", containers)})
+		# Both audit logs, not just movements — submitting a booking writes a
+		# Container Activity row too.
+		for log in ("Container Movement", "Container Activity"):
+			frappe.db.delete(log, {"container": ("in", containers)})
 		frappe.db.delete("Container", {"name": ("in", containers)})
 	# Invoices are raw-deleted (not delete_doc) because a submitted one refuses to go
 	# without being cancelled first, and a cancelled one still lingers at docstatus 2.
