@@ -75,6 +75,9 @@ doc_events = {
 		"on_submit": [
 			"container_depot.operations.doctype.container_booking.container_booking.sync_booking_on_invoice_submit",
 			"container_depot.operations.doctype.survey_order.survey_order.sync_survey_on_invoice_submit",
+			# Tell the Cashier / Commercial there is a bill (and, unless it is already
+			# settled, money to collect).
+			"container_depot.operations.notify.notify_invoice_submitted",
 		],
 		"on_cancel": [
 			"container_depot.operations.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
@@ -89,6 +92,38 @@ doc_events = {
 		],
 	},
 }
+
+# Voiding a document revokes the notifications it raised, so a cancelled booking /
+# bon stops sitting in everyone's bell as work to do. Kept as a loop over
+# ``notify.REVOCABLE_DOCTYPES`` so a new notified doctype is wired up in one place.
+#
+# APPENDED, never assigned: Sales Invoice already carries handlers for these events
+# above, and overwriting them would silently unhook the booking/survey resync.
+#
+# Bookings and bons refuse deletion outright (their ``on_trash`` throws), so only the
+# deletable ones need the trash hook — a deleted document's notification would
+# otherwise link to nothing.
+#
+# Depot Contract and Repair Order are not submittable, so ``on_cancel`` never reaches
+# them; their controllers revoke on the status move to Void / Cancelled instead.
+from container_depot.operations.notify import REVOCABLE_DOCTYPES as _REVOCABLE_DOCTYPES
+
+_REVOKE = "container_depot.operations.notify.revoke_on_cancel"
+
+
+def _append_event(doctype, event, handler):
+	events = doc_events.setdefault(doctype, {})
+	existing = events.get(event) or []
+	if isinstance(existing, str):
+		existing = [existing]
+	events[event] = existing + [handler]
+
+
+for _dt in _REVOCABLE_DOCTYPES:
+	_append_event(_dt, "on_cancel", _REVOKE)
+for _dt in ("Inspection", "Cleaning Order", "Cleaning Certificate", "Survey Order", "Gate Entry"):
+	_append_event(_dt, "on_trash", _REVOKE)
+del _dt
 
 # Scheduled Jobs
 # --------------

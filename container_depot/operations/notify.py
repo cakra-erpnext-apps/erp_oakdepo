@@ -31,6 +31,13 @@ CLEANING_ROLES = {PWA_ROLE, "Operator Kalmar", "Admin Ops", "Ops Supervisor", "M
 # M&R (Maintenance & Repair) — the workshop/surveyor crew who pick parts and repair,
 # plus ops oversight.
 MR_ROLES = {PWA_ROLE, "Surveyor", "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
+# Contracts are commercial paperwork — no yard crew. Every booking prices off one, so
+# admin/ops need to know when one lands or goes live.
+CONTRACT_ROLES = {PWA_ROLE, "Commercial", "Admin Ops", "Ops Supervisor", "Management"}
+# Money: the Cashier collects, Commercial owns the customer, admin/management watch.
+BILLING_ROLES = {PWA_ROLE, "Cashier", "Commercial", "Admin Ops", "Management"}
+# Third-party survey charges — the Surveyor raises them, the Cashier collects on Cash.
+SURVEY_ROLES = {PWA_ROLE, "Surveyor", "Cashier", "Admin Ops", "Ops Supervisor", "Management"}
 
 def _recipients(branch, roles):
 	"""Enabled users holding any of ``roles`` whose branch scope includes ``branch``.
@@ -85,6 +92,55 @@ def notify(*, doctype, name, subject, branch=None, roles=None, notification_type
 	except Exception:
 		frappe.log_error(title="Depot notify failed", message=frappe.get_traceback())
 		return 0
+
+
+# Doctypes whose feed entries are revoked when the document is voided. Covers both
+# sources of Alert rows for these documents: ``notify`` below, and the built-in
+# Notification rules seeded by ``install.setup_document_notifications``.
+REVOCABLE_DOCTYPES = (
+	"Depot Contract",
+	"Container Booking",
+	"Order Bongkar",
+	"Order Muat",
+	"Sales Invoice",
+	"Inspection",
+	"Cleaning Order",
+	"Cleaning Certificate",
+	"Repair Order",
+	"Survey Order",
+	"Gate Entry",
+)
+
+
+def revoke(doctype, name):
+	"""Drop every event notification raised for a document. Returns the count.
+
+	A notification here is a *call to act* ("siap print", "siap dikerjakan"), never an
+	archive — once the document is void the prompt is dead, and leaving it behind only
+	buries the live work in everyone's bell. The audit trail lives on the cancelled
+	document itself, not in the feed.
+
+	Only ``Alert`` rows go. Assignment / Mention / Share rows are Frappe's own and have
+	their own lifecycle (ToDo, DocShare), so they are left alone.
+
+	Best-effort, like ``notify``: a feed hiccup must never abort the cancel it follows.
+	"""
+	if not (doctype and name):
+		return 0
+	try:
+		filters = {"document_type": doctype, "document_name": name, "type": "Alert"}
+		count = frappe.db.count("Notification Log", filters)
+		if count:
+			frappe.db.delete("Notification Log", filters)
+		return count
+	except Exception:
+		frappe.log_error(title="Depot notify revoke failed", message=frappe.get_traceback())
+		return 0
+
+
+def revoke_on_cancel(doc, method=None):
+	"""``doc_events`` hook — cancelling or deleting a document clears its feed."""
+	revoke(doc.doctype, doc.name)
 
 
 def _depot_branch(depot):
@@ -298,3 +354,86 @@ def notify_booking_submitted(booking):
 		branch=booking.get("branch"),
 		roles=BOOKING_ROLES,
 	)
+
+
+def _customer_name(customer):
+	"""Display name for a Customer link, falling back to the id (then a dash)."""
+	if not customer:
+		return "-"
+	return frappe.db.get_value("Customer", customer, "customer_name") or customer
+
+
+def notify_contract_created(contract):
+	"""Fire when a Depot Contract is drafted — Commercial/admin see a contract is
+	waiting to be activated (nothing can be priced or booked until it is)."""
+	# A contract seeded straight to Active (patches, data import) is already live, so
+	# only a real Draft gets the "waiting" call to action.
+	tail = " — menunggu aktivasi" if contract.get("status") == "Draft" else ""
+	subject = (
+		f"Kontrak baru {contract.name} • {_customer_name(contract.get('customer'))} • "
+		f"{contract.get('payment_type') or '-'}{tail}"
+	)
+	# Contracts carry no branch or depot: they are per-customer commercial paperwork
+	# that applies depot-wide, so this is a global event.
+	notify(doctype="Depot Contract", name=contract.name, subject=subject, roles=CONTRACT_ROLES)
+
+
+def notify_contract_activated(contract):
+	"""Fire when a Depot Contract goes Active — its tariff is now live, so bookings
+	can price off it."""
+	subject = (
+		f"Kontrak aktif {contract.name} • {_customer_name(contract.get('customer'))} • "
+		f"berlaku s/d {contract.get('valid_to') or '-'}"
+	)
+	notify(doctype="Depot Contract", name=contract.name, subject=subject, roles=CONTRACT_ROLES)
+
+
+def notify_invoice_submitted(invoice, method=None):
+	"""``doc_events`` hook — fire when a Sales Invoice is issued, so the Cashier knows
+	there is money to collect and Commercial sees the customer was billed.
+
+	Carries the outstanding amount rather than the total: a Cash booking's invoice is
+	already settled at submit, and "sisa 0" is the signal that nothing is owed.
+	"""
+	outstanding = frappe.utils.flt(invoice.get("outstanding_amount"))
+	money = frappe.utils.fmt_money(outstanding, currency=invoice.get("currency"))
+	tail = "lunas" if outstanding <= 0 else f"sisa {money} • jatuh tempo {invoice.get('due_date') or '-'}"
+	subject = f"Invoice {invoice.name} • {_customer_name(invoice.get('customer'))} • {tail}"
+	notify(
+		doctype="Sales Invoice",
+		name=invoice.name,
+		subject=subject,
+		branch=invoice.get("branch"),
+		roles=BILLING_ROLES,
+	)
+
+
+def notify_cleaning_certificate_issued(cert):
+	"""Fire when a Cleaning Certificate is submitted — the tank is certified clean, which
+	is what an Order Muat requires before it can load."""
+	container = cert.get("container_no") or cert.get("container") or "-"
+	# A statement-minted cert has no expiry (validity is anchored per EIR), so say so
+	# rather than printing an empty date.
+	validity = f"berlaku s/d {cert.get('valid_until')}" if cert.get("valid_until") else "tanpa masa berlaku"
+	subject = f"Cleaning Certificate {cert.name} • {container} • {validity}"
+	notify(
+		doctype="Cleaning Certificate",
+		name=cert.name,
+		subject=subject,
+		branch=_depot_branch(frappe.db.get_value("Container", cert.get("container"), "depot"))
+		if cert.get("container")
+		else None,
+		roles=CLEANING_ROLES,
+	)
+
+
+def notify_survey_order_submitted(order):
+	"""Fire when a Survey Order is submitted — third-party survey charges billed to the
+	Paid To. Cash raises a draft invoice to review and collect, so the Cashier is told."""
+	money = frappe.utils.fmt_money(frappe.utils.flt(order.get("total")), currency=order.get("currency"))
+	pay = order.get("payment_type") or "Cash"
+	tail = " • bayar di kasir" if pay == "Cash" else ""
+	subject = f"Survey Order {order.name} • {_customer_name(order.get('paid_to'))} • {money} • {pay}{tail}"
+	# Survey Order carries no branch/depot of its own; its charge rows may each name a
+	# different container, so there is no single branch to scope to.
+	notify(doctype="Survey Order", name=order.name, subject=subject, roles=SURVEY_ROLES)

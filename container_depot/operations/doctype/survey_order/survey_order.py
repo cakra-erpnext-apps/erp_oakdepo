@@ -55,6 +55,9 @@ class SurveyOrder(Document):
             # TOP: no invoice yet — billed later via the per-customer invoice run.
             self.db_set("status", "Submitted")
             self.db_set("invoice_status", "Not Invoiced")
+        # Announced after the status is settled so the notification reflects it.
+        from container_depot.operations.notify import notify_survey_order_submitted
+        notify_survey_order_submitted(self)
 
     def _create_invoice(self):
         if self.sales_invoice:

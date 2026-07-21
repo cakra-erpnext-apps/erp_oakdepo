@@ -41,6 +41,11 @@ class CleaningCertificate(Document):
 				summary=f"{self.get('cleaning_method') or 'Cleaning'} certificate, valid until {self.valid_until}",
 			)
 
+		# The tank is now certified clean — which is exactly what an Order Muat needs
+		# before it can load, so the cleaning crew and ops are told.
+		from container_depot.operations.notify import notify_cleaning_certificate_issued
+		notify_cleaning_certificate_issued(self)
+
 	def is_valid(self) -> bool:
 		if not self.valid_until:
 			return False

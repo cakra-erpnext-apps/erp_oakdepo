@@ -44,6 +44,20 @@ class RepairOrder(Document):
 		from container_depot.operations.container_status import recompute_availability
 
 		recompute_availability(self.container)
+		self._revoke_notifications_if_cancelled()
+
+	def _revoke_notifications_if_cancelled(self):
+		"""An M&R is not submittable, so Cancelled is its void — clear the "perlu
+		perbaikan" / "menunggu persetujuan owner" prompts still in the bell.
+
+		Rejected is deliberately NOT swept: the owner's refusal is an outcome the M&R
+		team has to see, and ``notify_repair_order_decided`` announces it.
+		"""
+		before = self.get_doc_before_save()
+		if before and before.status != self.status and self.status == "Cancelled":
+			from container_depot.operations.notify import revoke
+
+			revoke(self.doctype, self.name)
 
 	def on_update_after_submit(self):
 		self.on_update()
