@@ -82,7 +82,8 @@ export const labels = {
 	direction: "Arah", // Direction
 	// Gate — scan/type a Booking or Order code → detail panel → per-container bon
 	gateScanTitle: "Scan / Ketik Kode", // Scan / type code
-	gateScanPlaceholder: "Kode Booking / Order (OAK-… / ORD-…)",
+	gateScanPlaceholder: "Kode / No. Kontainer (OAK-… / ORD-… / ABCD1234567)",
+	gateChoicesTitle: "Beberapa booking aktif — pilih satu", // multiple active bookings, pick one
 	gateScan: "Scan Kamera", // Scan with camera
 	gateScanClose: "Tutup", // Close scanner
 	gateScanError: "Tidak bisa akses kamera — ketik kode manual.", // camera error
@@ -352,6 +353,14 @@ export const labels = {
 	eirPendingList: "EIR Menunggu Pemeriksaan", // EIRs awaiting inspection
 	eirPendingEmpty: "Belum ada EIR menunggu. EIR otomatis dibuat saat Order Bongkar di-submit.", // none pending
 	eirPendingSearch: "Cari no. container / voucher…", // search container no / voucher
+	// Worklist status split — a draft EIR is "belum" until Mulai stamps work_started_on,
+	// then "dikerjakan"; submitted ones live in the Selesai section below.
+	eirFilterAll: "Semua", // All
+	eirFilterNotStarted: "Belum", // Not started
+	eirFilterStarted: "Dikerjakan", // In progress
+	eirChipStarted: "Dikerjakan", // row badge for an in-progress EIR
+	eirFilterEmptyStarted: "Belum ada EIR yang sedang dikerjakan.", // no in-progress EIRs
+	eirFilterEmptyNotStarted: "Semua EIR sudah mulai dikerjakan. 🎉", // nothing left unstarted
 	eirOpenBtn: "Buka", // Open (a pending EIR)
 	eirBackToList: "Daftar EIR", // Back to the EIR worklist
 	eirVoucherLocked: "Otomatis dari Order Bongkar saat bon dibuat.", // voucher fixed at creation

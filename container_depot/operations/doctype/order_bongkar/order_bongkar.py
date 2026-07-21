@@ -28,6 +28,7 @@ class OrderBongkar(Document):
 
 	def on_cancel(self):
 		_release_codes(self)
+		_release_eirs(self, "EIR-In")
 
 	def on_trash(self):
 		# A bon is never deleted — Cancel it (draft or submitted) to release its
@@ -46,6 +47,18 @@ def _provision_eirs(order: Document):
 		provision_eirs_for_order_bongkar(order.name)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), f"provision EIRs for {order.name}")
+
+
+def _release_eirs(order: Document, inspection_type: str):
+	"""Unwind the draft EIRs this bon provisioned (see
+	``operations.eir.release_eirs_for_cancelled_order``). Shared by Order Bongkar
+	(EIR-In) and Order Muat (EIR-Out). Best-effort — an EIR hiccup never blocks a cancel.
+	"""
+	try:
+		from container_depot.operations.eir import release_eirs_for_cancelled_order
+		release_eirs_for_cancelled_order(order.name, inspection_type)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"release EIRs for {order.name}")
 
 
 def _order_rows(doc: Document):

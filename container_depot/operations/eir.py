@@ -450,6 +450,55 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 	return created
 
 
+def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EIR-In") -> dict:
+	"""Cancel-time counterpart of the provisioning above: unwind the draft EIRs that a
+	now-cancelled bon created, so none is left pointing at a voided voucher.
+
+	Without this a cancelled bon strands its EIRs: the draft still references it, and the
+	replacement bon does not adopt them (provisioning dedups on "container already has a
+	draft EIR-In"), so the tank's inspection is stuck for good.
+
+	Per draft, in order:
+
+    * a **replacement** submitted bon already carries the container → re-point at it, so
+      the surveyor keeps working against the bon the tank actually arrived on;
+    * else **never started** → delete. ``save_draft`` refuses to write before "Mulai", so
+      an EIR with no ``work_started_on`` provably holds no work; it only existed because
+      of this bon, exactly like the phantom containers a cancelled booking deletes;
+    * else → keep the work and just drop the dangling link. The stamped truck / driver /
+      shipper stay: they record the truck that really showed up, which the surveyor may
+      still be relying on.
+
+	Best-effort per draft — mirrors ``provision_eirs_for_order_bongkar``: one failure is
+	logged and never blocks the cancel.
+	"""
+	drafts = frappe.get_all(
+		"Inspection",
+		filters={"referred_voucher": order_name, "docstatus": 0, "inspection_type": inspection_type},
+		fields=["name", "container", "work_started_on"],
+	)
+	out = {"repointed": [], "deleted": [], "detached": []}
+	for d in drafts:
+		try:
+			# The bon is already at docstatus 2 by the time on_cancel runs, so this can
+			# never hand back the very bon being cancelled.
+			replacement = latest_voucher_for_container(d.container, inspection_type)
+			if replacement:
+				doc = frappe.get_doc("Inspection", d.name)
+				_apply_voucher(doc, replacement)
+				doc.save(ignore_permissions=True)
+				out["repointed"].append(d.name)
+			elif not d.work_started_on:
+				frappe.delete_doc("Inspection", d.name, ignore_permissions=True)
+				out["deleted"].append(d.name)
+			else:
+				frappe.db.set_value("Inspection", d.name, "referred_voucher", None, update_modified=False)
+				out["detached"].append(d.name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"release EIR {d.name} on {order_name}")
+	return out
+
+
 def iso6346_parts(container_no: str | None) -> dict:
 	"""Display-only ISO 6346 split of a container number — NOT stored anywhere.
 
@@ -986,7 +1035,15 @@ def save_draft(
 		doc.create_repair_order = 1 if _as_bool(create_repair_order) else 0
 	# The voucher owns truck_no / driver / driver_phone / shipper (read-only snapshot);
 	# the legacy ``truck_no`` arg is ignored. No voucher -> these are cleared.
-	_apply_voucher(doc, referred_voucher)
+	#
+	# Only re-resolved when it actually CHANGES. The PWA echoes back the voucher it was
+	# handed (the field is read-only there), so re-validating an unchanged one is pure
+	# overhead — and it was the first thing to blow up when a bon got cancelled
+	# ("… is not submitted yet" on every auto-save). Note this alone does NOT make such
+	# a draft savable: Frappe's own link check then raises CancelledLinkError. The fix
+	# is to never leave a draft on a voided bon — see release_eirs_for_cancelled_order.
+	if (referred_voucher or None) != (doc.referred_voucher or None):
+		_apply_voucher(doc, referred_voucher)
 	doc.has_damage = 1 if has_damage else 0
 	doc.set("damage_log", damage_rows)
 	doc.set("item_photos", photo_rows)
@@ -1177,6 +1234,9 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "inspection_type",
 			"tank_status", "referred_voucher", "voucher_doctype", "depot", "eir_date", "creation",
+			# Empty = not started yet, set = in progress (stamped by ``start_eir``). Drives
+			# the PWA worklist's belum / dikerjakan split.
+			"work_started_on",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1267,6 +1327,8 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "tank_status",
 			"referred_voucher", "depot", "eir_date", "creation",
+			# See list_pending_eirs: empty = not started, set = in progress.
+			"work_started_on",
 		],
 		order_by="creation desc",
 		limit_start=start,

@@ -9,6 +9,7 @@ from container_depot.operations.doctype.order_bongkar.order_bongkar import (
 	_order_rows,
 	_reconcile_codes,
 	_release_codes,
+	_release_eirs,
 	_sync_booking,
 	_validate_booking_code,
 )
@@ -39,6 +40,9 @@ class OrderMuat(Document):
 
 	def on_cancel(self):
 		_release_codes(self)
+		# Order Muat provisions EIR-Out drafts on submit, so cancelling must unwind them
+		# for the same reason Order Bongkar unwinds its EIR-In drafts.
+		_release_eirs(self, "EIR-Out")
 
 	def on_trash(self):
 		# A bon is never deleted — Void it (draft or submitted) to release its
