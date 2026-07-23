@@ -13,6 +13,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_set_queries');
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
+		frm.trigger('_flag_open_conflicts');
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
 		if (!frm.is_new() && frm.doc.booking_status === 'Confirmed') {
@@ -40,6 +41,44 @@ frappe.ui.form.on('Container Booking', {
 				}
 			});
 		}
+	},
+	_flag_open_conflicts(frm) {
+		// Draft-time heads-up: a container already carrying an Active Booking Code on
+		// another booking will be REFUSED at Submit (server _validate_no_open_booking).
+		// Codes are only issued at submit, so nothing warns the operator until then —
+		// this surfaces it early as a non-blocking intro banner. Same server query that
+		// backs the block, so the two can't disagree.
+		if (frm.doc.docstatus !== 0) {
+			frm.set_intro('');
+			return;
+		}
+		const rows = (frm.doc.items || [])
+			.filter((it) => it.container || it.container_no)
+			.map((it) => ({ container: it.container || null, container_no: it.container_no || null }));
+		if (!rows.length) {
+			frm.set_intro('');
+			return;
+		}
+		frappe.call({
+			method: 'container_depot.operations.doctype.container_booking.container_booking.open_booking_conflicts',
+			args: { booking: frm.doc.name, containers: JSON.stringify(rows) },
+			callback(r) {
+				const conflicts = r.message || [];
+				if (!conflicts.length) {
+					frm.set_intro('');
+					return;
+				}
+				const lines = conflicts.map((c) =>
+					__('Container {0} is already on booking {1} ({2}).', [c.container_no, c.booking, c.direction || '-'])
+				);
+				frm.set_intro(
+					__('Heads up — these containers are still booked elsewhere and will be refused at Submit until that booking is cancelled or its bon is issued:') +
+						'<br>' +
+						lines.join('<br>'),
+					'orange'
+				);
+			},
+		});
 	},
 	_set_grid_import_button(frm) {
 		// "Import Excel" sits in the Containers grid footer next to Add Row
@@ -97,6 +136,7 @@ frappe.ui.form.on('Container Booking', {
 							});
 							frm.refresh_field('items');
 							frm.trigger('_recompute_lift_amount');
+							frm.trigger('_flag_open_conflicts');
 							d.hide();
 							let msg = __('Added {0} row(s).', [added]);
 							if (skipped) msg += ' ' + __('{0} already on the grid, skipped.', [skipped]);
@@ -226,6 +266,8 @@ frappe.ui.form.on('Container Booking', {
 	},
 	items_remove(frm) {
 		frm.trigger('_recompute_lift_amount');
+		// A removed row may have cleared the last conflict — re-check.
+		frm.trigger('_flag_open_conflicts');
 	},
 });
 
@@ -234,9 +276,11 @@ frappe.ui.form.on('Container Booking Item', {
 	container(frm, cdt, cdn) {
 		_reject_duplicate_container(frm, cdt, cdn, 'container');
 		frm.trigger('_recompute_lift_amount');
+		frm.trigger('_flag_open_conflicts');
 	},
 	container_no(frm, cdt, cdn) {
 		_reject_duplicate_container(frm, cdt, cdn, 'container_no');
+		frm.trigger('_flag_open_conflicts');
 	},
 });
 

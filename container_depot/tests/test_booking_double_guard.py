@@ -155,3 +155,35 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		whichever booking submits first wins."""
 		self._book(C_IN, submit=False)
 		self._book(C_IN)  # must not raise
+
+	# --- draft-time early warning (open_booking_conflicts) ---------------
+	def test_warning_names_the_clashing_booking(self):
+		"""The draft banner uses the same query as the submit block, so it can only warn
+		about what Submit would actually refuse."""
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			open_booking_conflicts,
+		)
+
+		first = self._book(C_IN)
+		# A different (still-unsaved) booking looking at the same container.
+		warn = open_booking_conflicts("new-unsaved", [{"container_no": C_IN}])
+		self.assertEqual(len(warn), 1)
+		self.assertEqual(warn[0]["booking"], first.name)
+		self.assertEqual(warn[0]["direction"], "Tank In")
+
+	def test_warning_excludes_the_booking_itself(self):
+		"""A booking must not warn about its own codes, or every saved booking would flag
+		itself."""
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			open_booking_conflicts,
+		)
+
+		first = self._book(C_IN)
+		self.assertEqual(open_booking_conflicts(first.name, [{"container_no": C_IN}]), [])
+
+	def test_warning_is_silent_without_a_conflict(self):
+		from container_depot.operations.doctype.container_booking.container_booking import (
+			open_booking_conflicts,
+		)
+
+		self.assertEqual(open_booking_conflicts(None, [{"container_no": C_IN}]), [])

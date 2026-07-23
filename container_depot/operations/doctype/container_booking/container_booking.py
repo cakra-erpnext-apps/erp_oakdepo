@@ -693,30 +693,17 @@ class ContainerBooking(Document):
 		Cross-document, unlike ``_validate_unique_containers``, which only dedups the rows
 		of THIS form.
 		"""
-		failures: list[str] = []
-		for item in self.items or []:
-			keys = [k for k in (item.container, item.container_no) if k]
-			if not keys:
-				continue
-			conflicts = frappe.get_all(
-				"Booking Code",
-				filters={"state": "Active", "booking": ["!=", self.name or ""]},
-				or_filters=[["container", "in", keys], ["container_no", "in", keys]],
-				fields=["booking", "direction"],
-			)
-			seen = set()
-			for c in conflicts:
-				if c.booking in seen:
-					continue  # one message per clashing booking, not per code
-				seen.add(c.booking)
-				failures.append(
-					_(
-						"Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — "
-						"batalkan booking itu dulu atau terbitkan bon-nya."
-					).format(item.container_no or item.container, c.booking, c.direction or "-")
-				)
-
-		if failures:
+		conflicts = _find_booking_conflicts(
+			self.name, [(i.container, i.container_no) for i in (self.items or [])]
+		)
+		if conflicts:
+			failures = [
+				_(
+					"Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — "
+					"batalkan booking itu dulu atau terbitkan bon-nya."
+				).format(c["container_no"], c["booking"], c["direction"] or "-")
+				for c in conflicts
+			]
 			frappe.throw("<br>".join(failures), title=_("Container Sudah Dibooking"))
 
 	def _validate_in_not_present(self):
@@ -1155,6 +1142,54 @@ def on_payment_entry_change(doc, method=None):
 		if si and si not in seen:
 			seen.add(si)
 			sync_bookings_for_invoice(si)
+
+
+# --- Open-booking conflict (submit block + draft early warning) ---------------
+
+def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
+	"""Containers already spoken for by ANOTHER non-cancelled booking, keyed off a
+	still-``Active`` Booking Code (issued at submit, consumed -> ``Used`` when the tank
+	goes on a bon, voided on cancel — so ``Active`` means "confirmed, no bon yet").
+
+	``containers``: iterable of ``(container, container_no)`` pairs (either may be None).
+	Returns ``[{container_no, booking, direction}]``, one entry per (container, booking).
+
+	The single source of truth for both the submit block (``_validate_no_open_booking``)
+	and the draft-time early warning (``open_booking_conflicts``), so the warning can
+	never disagree with what Submit will actually refuse.
+	"""
+	out, seen = [], set()
+	for container, container_no in containers:
+		keys = [k for k in (container, container_no) if k]
+		if not keys:
+			continue
+		rows = frappe.get_all(
+			"Booking Code",
+			filters={"state": "Active", "booking": ["!=", exclude_booking or ""]},
+			or_filters=[["container", "in", keys], ["container_no", "in", keys]],
+			fields=["booking", "direction"],
+		)
+		for r in rows:
+			label = container_no or container
+			key = (label, r.booking)
+			if key in seen:
+				continue
+			seen.add(key)
+			out.append({"container_no": label, "booking": r.booking, "direction": r.direction})
+	return out
+
+
+@frappe.whitelist()
+def open_booking_conflicts(booking=None, containers=None) -> list[dict]:
+	"""Draft-time early warning for the form: which of the given containers are already
+	held by another active booking (see :func:`_find_booking_conflicts`). Purely
+	informational — Submit is where it is actually blocked — so it never throws.
+
+	``containers``: JSON (or list) of ``{container, container_no}`` — the grid rows.
+	"""
+	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
+	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
+	return _find_booking_conflicts(booking, pairs)
 
 
 # --- Container import (Desk grid "Import Excel") ------------------------------
