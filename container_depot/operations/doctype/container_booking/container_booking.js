@@ -43,11 +43,13 @@ frappe.ui.form.on('Container Booking', {
 		}
 	},
 	_flag_open_conflicts(frm) {
-		// Draft-time heads-up: a container already carrying an Active Booking Code on
-		// another booking will be REFUSED at Submit (server _validate_no_open_booking).
-		// Codes are only issued at submit, so nothing warns the operator until then —
-		// this surfaces it early as a non-blocking intro banner. Same server query that
-		// backs the block, so the two can't disagree.
+		// Draft-time heads-up in a single intro banner for the two things a draft can't
+		// surface until Submit (codes / status gates only run there):
+		//   1. the container is already held by another active booking, and
+		//   2. its status won't pass the chosen Lift service's gate (Lift Off wants a tank
+		//      NOT in the depot; Lift On wants one that is Available).
+		// Both call the SAME server helpers that back the actual submit blocks, so the
+		// warning can never disagree with what Submit will do. Non-blocking.
 		if (frm.doc.docstatus !== 0) {
 			frm.set_intro('');
 			return;
@@ -59,26 +61,40 @@ frappe.ui.form.on('Container Booking', {
 			frm.set_intro('');
 			return;
 		}
-		frappe.call({
-			method: 'container_depot.operations.doctype.container_booking.container_booking.open_booking_conflicts',
-			args: { booking: frm.doc.name, containers: JSON.stringify(rows) },
-			callback(r) {
-				const conflicts = r.message || [];
-				if (!conflicts.length) {
+		const payload = JSON.stringify(rows);
+		const base = 'container_depot.operations.doctype.container_booking.container_booking';
+		Promise.all([
+			frappe.xcall(`${base}.open_booking_conflicts`, { booking: frm.doc.name, containers: payload }),
+			// lift_item drives the direction the same way the server does, so the status
+			// warning is right the instant a Lift service is picked — before the save that
+			// would sync frm.doc.direction.
+			frappe.xcall(`${base}.status_direction_warnings`, {
+				lift_item: frm.doc.lift_item || null,
+				direction: frm.doc.direction || null,
+				containers: payload,
+			}),
+		])
+			.then(([conflicts, mismatches]) => {
+				const lines = [];
+				(conflicts || []).forEach((c) => {
+					lines.push(__('Container {0} is already on booking {1} ({2}).', [c.container_no, c.booking, c.direction || '-']));
+				});
+				(mismatches || []).forEach((m) => {
+					if (m.direction === 'Tank In') {
+						lines.push(__('Container {0} is already in the depot (status {1}) — a Tank In (Lift Off) will be refused.', [m.container_no, m.status]));
+					} else {
+						lines.push(__('Container {0} is not ready to leave (status {1}) — a Tank Out (Lift On) needs it Available.', [m.container_no, m.status]));
+					}
+				});
+				if (!lines.length) {
 					frm.set_intro('');
 					return;
 				}
-				const lines = conflicts.map((c) =>
-					__('Container {0} is already on booking {1} ({2}).', [c.container_no, c.booking, c.direction || '-'])
-				);
-				frm.set_intro(
-					__('Heads up — these containers are still booked elsewhere and will be refused at Submit until that booking is cancelled or its bon is issued:') +
-						'<br>' +
-						lines.join('<br>'),
-					'orange'
-				);
-			},
-		});
+				frm.set_intro(__('Heads up — these will be refused at Submit:') + '<br>' + lines.join('<br>'), 'orange');
+			})
+			.catch(() => {
+				/* non-blocking — a failed warning must never get in the operator's way */
+			});
 	},
 	_set_grid_import_button(frm) {
 		// "Import Excel" sits in the Containers grid footer next to Add Row
@@ -205,6 +221,8 @@ frappe.ui.form.on('Container Booking', {
 	},
 	lift_item(frm) {
 		frm.trigger('_fetch_lift_rate');
+		// Direction is derived from the Lift service, so the status warning changes with it.
+		frm.trigger('_flag_open_conflicts');
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));

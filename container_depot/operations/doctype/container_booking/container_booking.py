@@ -648,9 +648,9 @@ class ContainerBooking(Document):
 		"""TANK OUT submit gate: every container must be Available — i.e. present and with
 		every related order (EIR-In, Cleaning, M&R) finished. A draft may be saved earlier;
 		only the submit is blocked while work is outstanding."""
-		from container_depot.operations.container_status import AVAILABLE
-
 		failures: list[str] = []
+		# Submit-only hard requirement: a Tank Out must reference a real, existing tank
+		# (unlike Tank In, it never auto-creates one).
 		for item in self.items or []:
 			if not item.container:
 				failures.append(
@@ -658,20 +658,18 @@ class ContainerBooking(Document):
 						item.container_no or "(no number)"
 					)
 				)
-				continue
-			c = frappe.db.get_value(
-				"Container", item.container, ["status", "container_no"], as_dict=True
-			)
-			if not c:
+			elif not frappe.db.exists("Container", item.container):
 				failures.append(_("Container {0} not found.").format(item.container))
-				continue
-			if c.status != AVAILABLE:
-				failures.append(
-					_(
-						"Container {0} belum siap keluar (status {1}) — selesaikan EIR / Cleaning / "
-						"M&R dulu sebelum submit booking keluar."
-					).format(c.container_no, c.status)
-				)
+		# Status readiness — shared with the draft warning so the two never disagree.
+		for m in _find_status_mismatches(
+			"Tank Out", [(i.container, i.container_no) for i in (self.items or [])]
+		):
+			failures.append(
+				_(
+					"Container {0} belum siap keluar (status {1}) — selesaikan EIR / Cleaning / "
+					"M&R dulu sebelum submit booking keluar."
+				).format(m["container_no"], m["status"])
+			)
 
 		if failures:
 			frappe.throw("<br>".join(failures))
@@ -708,21 +706,18 @@ class ContainerBooking(Document):
 
 	def _validate_in_not_present(self):
 		"""TANK IN submit gate: a container must NOT already be physically in a depot —
-		import only a tank that is not currently present (In_Depot / Available)."""
-		from container_depot.operations.container_status import PRESENT
+		import only a tank that is not currently present (In_Depot / Available).
 
-		failures: list[str] = []
-		for item in self.items or []:
-			if not item.container:
-				continue  # a brand-new pre-arrival phantom is created fresh — always fine
-			status = frappe.db.get_value("Container", item.container, "status")
-			if status in PRESENT:
-				failures.append(
-					_(
-						"Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk."
-					).format(item.container_no or item.container, status)
-				)
-
+		Shares ``_find_status_mismatches`` with the draft warning; a brand-new pre-arrival
+		tank has no master yet, so it is skipped there and created fresh on save."""
+		failures = [
+			_(
+				"Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk."
+			).format(m["container_no"], m["status"])
+			for m in _find_status_mismatches(
+				"Tank In", [(i.container, i.container_no) for i in (self.items or [])]
+			)
+		]
 		if failures:
 			frappe.throw("<br>".join(failures))
 
@@ -1190,6 +1185,57 @@ def open_booking_conflicts(booking=None, containers=None) -> list[dict]:
 	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
 	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
 	return _find_booking_conflicts(booking, pairs)
+
+
+def _find_status_mismatches(direction, containers) -> list[dict]:
+	"""Containers whose CURRENT master status conflicts with the booking direction —
+	the single source of truth for the submit status gates AND the draft early warning,
+	so the two can never disagree. Mirrors the physical Lift service:
+
+	* Lift Off / Tank In — the tank must NOT already be in the depot (status not in
+	  ``PRESENT``); one that is present cannot be brought in again.
+	* Lift On / Tank Out — the tank must be ``Available`` (present and every EIR /
+	  Cleaning / M&R finished); anything else is not ready to leave.
+
+	Only containers that actually EXIST are judged: a Tank In may name a not-yet-created
+	tank (born ``Booked`` on save), which is fine and skipped. ``containers``: iterable of
+	``(container, container_no)`` pairs. Returns ``[{container_no, status, direction}]``.
+	"""
+	from container_depot.operations.container_status import AVAILABLE, PRESENT
+
+	out = []
+	for container, container_no in containers:
+		name = container or (
+			frappe.db.get_value("Container", {"container_no": container_no}) if container_no else None
+		)
+		if not name:
+			continue
+		status = frappe.db.get_value("Container", name, "status")
+		if not status:
+			continue
+		bad = (direction == "Tank In" and status in PRESENT) or (
+			direction == "Tank Out" and status != AVAILABLE
+		)
+		if bad:
+			out.append({"container_no": container_no or name, "status": status, "direction": direction})
+	return out
+
+
+@frappe.whitelist()
+def status_direction_warnings(lift_item=None, direction=None, containers=None) -> list[dict]:
+	"""Draft-time early warning: containers whose status will be refused for the chosen
+	Lift service (see :func:`_find_status_mismatches`). Never throws — Submit is where it
+	is blocked.
+
+	The direction is derived from ``lift_item`` with the SAME rule the form uses
+	(``lift_direction_for``), so the warning is correct the instant the operator picks a
+	Lift service — before the save that would sync ``direction`` server-side. Falls back
+	to the passed ``direction`` (then Tank In) when no lift item is set yet.
+	"""
+	resolved = lift_direction_for(lift_item) or direction or "Tank In"
+	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
+	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
+	return _find_status_mismatches(resolved, pairs)
 
 
 # --- Container import (Desk grid "Import Excel") ------------------------------
