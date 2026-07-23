@@ -80,7 +80,7 @@
 
 		<!-- FORM -->
 		<template v-if="order && !submitted">
-			<!-- GATE: the order must be started before its detail/checklist is accessible. -->
+			<!-- GATE: the order must be started before its detail is accessible. -->
 			<section v-if="order.status !== 'In_Progress'" class="oak-card space-y-4 p-5 text-center">
 				<span class="oak-icon-tile mx-auto h-14 w-14 bg-brand-50 text-brand-600"><Icon name="droplet" :size="26" /></span>
 				<div class="space-y-1">
@@ -98,8 +98,23 @@
 				</button>
 			</section>
 
-			<!-- Detail — only once the order is In_Progress (started). -->
+			<!-- Detail — read-only tank/method/cargo info; the operator only signs off. -->
 			<template v-else>
+			<!-- Cleaning method = the service(s) Admin Ops chose (read-only for the operator). -->
+			<section class="oak-card p-4 space-y-3">
+				<p class="oak-section-title">{{ labels.cleaningType }}</p>
+				<div v-if="order.cleaning_services && order.cleaning_services.length" class="flex flex-wrap gap-1.5">
+					<span
+						v-for="s in order.cleaning_services"
+						:key="s.item_code"
+						class="inline-flex items-center rounded-full bg-brand-100 px-2.5 py-1 text-xs font-medium text-brand-700"
+					>
+						{{ s.item_name || s.item_code }}
+					</span>
+				</div>
+				<p v-else class="text-sm text-gray-400">{{ labels.cleaningNoMethod }}</p>
+			</section>
+
 			<!-- Tank header -->
 			<section class="oak-card p-4">
 				<p class="oak-section-title mb-2">{{ labels.cleaningTankDetails }}</p>
@@ -111,6 +126,9 @@
 				</dl>
 				<p v-if="order.inspection" class="mt-2 font-mono text-[11px] text-gray-400">
 					{{ labels.cleaningRefEir }}: {{ order.inspection }}
+				</p>
+				<p v-if="order.reff_doc" class="font-mono text-[11px] text-gray-400">
+					{{ labels.reffDoc }}: {{ order.reff_doc }}
 				</p>
 			</section>
 
@@ -126,145 +144,13 @@
 				<p v-else class="text-sm text-gray-400">{{ labels.cleaningNoCargoHistory }}</p>
 			</section>
 
-			<!-- Cleaning method = one or more billable Services from the owner's price list
-			     (the owner's rate is hidden in the depot PWA — billing-only). -->
-			<section class="oak-card p-4 space-y-3">
-				<div class="flex items-center justify-between gap-2">
-					<p class="oak-section-title">{{ labels.cleaningType }}</p>
-					<span v-if="selectedItems.length" class="oak-chip shrink-0 bg-brand-50 text-brand-700">
-						{{ selectedItems.length }} {{ labels.cleaningServicesCount }}
-					</span>
-				</div>
-
-				<!-- Picked services (always visible, removable) -->
-				<div v-if="selectedServices.length" class="flex flex-wrap gap-1.5">
-					<span
-						v-for="s in selectedServices"
-						:key="s.item_code"
-						class="inline-flex items-center gap-1 rounded-full bg-brand-100 py-1 pl-2.5 pr-1.5 text-xs font-medium text-brand-700"
-					>
-						<span class="max-w-[10rem] truncate">{{ s.item_name }}</span>
-						<button type="button" class="rounded-full p-0.5 hover:bg-brand-200" @click="toggleService(s.item_code)">
-							<Icon name="x" :size="12" />
-						</button>
-					</span>
-				</div>
-
-				<p v-if="!cleaningItems.length" class="text-xs text-amber-600">{{ labels.cleaningNoPricedItems }}</p>
-				<template v-else>
-					<p class="text-xs text-gray-400">{{ labels.cleaningSelectServices }}</p>
-					<!-- Search (the owner's catalogue can be long) -->
-					<div class="relative">
-						<Icon name="search" :size="15" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-						<input v-model="serviceSearch" class="oak-input pl-8" :placeholder="labels.cleaningSearchServices" />
-					</div>
-					<!-- Catalogue: ~5 rows tall, scroll for the rest -->
-					<div class="max-h-64 space-y-2 overflow-y-auto pr-1">
-						<button
-							v-for="it in filteredCleaningItems"
-							:key="it.item_code"
-							type="button"
-							class="flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-colors"
-							:class="isServiceSelected(it.item_code) ? 'border-brand-500 bg-brand-50' : 'border-gray-100'"
-							@click="toggleService(it.item_code)"
-						>
-							<span
-								class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
-								:class="isServiceSelected(it.item_code) ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-300'"
-							>
-								<Icon v-if="isServiceSelected(it.item_code)" name="check" :size="14" />
-							</span>
-							<span class="min-w-0 flex-1 text-sm font-medium text-gray-800">{{ it.item_name || it.item_code }}</span>
-						</button>
-						<p v-if="!filteredCleaningItems.length" class="py-3 text-center text-xs text-gray-400">
-							{{ labels.cleaningNoMatch }}
-						</p>
-					</div>
-				</template>
-			</section>
-
-			<!-- Checklist -->
-			<section class="oak-card p-4 space-y-3">
-				<p class="oak-section-title">{{ labels.cleaningChecklist }}</p>
-				<div v-for="g in groups" :key="g.section" class="space-y-2">
-					<p class="text-xs font-bold uppercase tracking-wide text-gray-400">{{ g.section }}</p>
-					<div v-for="item in g.items" :key="item.item_code" class="rounded-xl border border-gray-100 p-2.5">
-						<div class="flex items-center justify-between gap-2">
-							<span class="min-w-0 flex-1 text-sm text-gray-800">{{ item.item_name }}</span>
-							<div class="flex shrink-0 gap-1">
-								<button
-									v-for="opt in ['Yes', 'No']"
-									:key="opt"
-									class="oak-toggle px-3 py-1.5 text-sm"
-									:class="item.result === opt ? 'oak-toggle-on' : 'oak-toggle-off'"
-									@click="item.result = opt"
-								>
-									{{ opt === 'Yes' ? labels.cleaningYes : labels.cleaningNo }}
-								</button>
-							</div>
-						</div>
-						<input
-							v-if="item.result === 'No'"
-							v-model="item.note"
-							class="oak-input mt-2 text-sm"
-							:placeholder="labels.cleaningNote"
-						/>
-					</div>
-				</div>
-			</section>
-
-			<!-- Gas free -->
+			<!-- Catatan -->
 			<section class="oak-card p-4 space-y-2">
-				<p class="oak-section-title">{{ labels.cleaningGasFree }}</p>
-				<div class="grid grid-cols-2 gap-2">
-					<button
-						v-for="opt in ['Yes', 'No']"
-						:key="opt"
-						class="oak-toggle px-2 py-3"
-						:class="gasFree === opt ? 'oak-toggle-on' : 'oak-toggle-off'"
-						@click="gasFree = opt"
-					>
-						{{ opt === 'Yes' ? labels.cleaningYes : labels.cleaningNo }}
-					</button>
-				</div>
-				<div class="grid grid-cols-2 gap-2">
-					<div>
-						<label class="oak-label">{{ labels.cleaningO2 }}</label>
-						<input v-model="o2" type="number" step="0.01" class="oak-input" inputmode="decimal" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.cleaningLel }}</label>
-						<input v-model="lel" type="number" step="0.01" class="oak-input" inputmode="decimal" />
-					</div>
-				</div>
-			</section>
-
-			<!-- Seals -->
-			<section class="oak-card p-4 space-y-2">
-				<p class="oak-section-title">{{ labels.cleaningSeals }}</p>
-				<div>
-					<label class="oak-label">{{ labels.cleaningSealManhole }}</label>
-					<input v-model="sealManhole" class="oak-input" />
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.cleaningSealAirline }}</label>
-					<input v-model="sealAirline" class="oak-input" />
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.cleaningSealBottom }}</label>
-					<input v-model="sealBottom" class="oak-input" />
-				</div>
-			</section>
-
-			<!-- Remarks -->
-			<section class="oak-card p-4 space-y-2">
-				<label class="oak-label">{{ labels.reffDoc }}</label>
-				<input v-model.trim="reffDoc" type="text" class="oak-input mb-3" :placeholder="labels.reffDocAutoHint" />
 				<label class="oak-label">{{ labels.eirRemarks }}</label>
 				<textarea v-model="remarks" rows="3" class="oak-input"></textarea>
 			</section>
 
-			<!-- Signature -->
+			<!-- Tanda Tangan -->
 			<section class="oak-card p-4 space-y-2">
 				<div class="flex items-center justify-between">
 					<p class="oak-section-title">{{ labels.cleaningSignature }}</p>
@@ -295,7 +181,7 @@
 				</div>
 			</section>
 
-			<!-- Auto-save status (changes persist on every edit) -->
+			<!-- Auto-save status (Catatan + Tanda Tangan persist on every edit) -->
 			<p class="flex items-center gap-1.5 text-xs">
 				<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
 				<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600">
@@ -315,7 +201,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from "vue"
+import { computed, nextTick, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
@@ -338,44 +224,8 @@ let saveTimer = null
 const savedOk = ref(false) // last auto-save succeeded
 const suppressSave = ref(false) // mute auto-save while a draft is being loaded
 
-const checklist = ref([])
-const rows = ref([])
-const savedChecklist = ref([]) // the loaded order's saved checklist results (survives a late masters load)
-
-// "Metode Cleaning" = one OR MORE billable Services from the Cleaning menu, priced off the
-// container owner's price list. cleaningItems is the pickable catalogue (with rates);
-// selectedItems holds the item_codes the surveyor picked for this order.
-const selectedItems = ref([])
-const cleaningItems = ref([])
-const serviceSearch = ref("")
-const isServiceSelected = (code) => selectedItems.value.includes(code)
-function toggleService(code) {
-	const i = selectedItems.value.indexOf(code)
-	if (i === -1) selectedItems.value.push(code)
-	else selectedItems.value.splice(i, 1)
-}
-// The owner's catalogue can be long → filter by the search box.
-const filteredCleaningItems = computed(() => {
-	const q = serviceSearch.value.trim().toLowerCase()
-	if (!q) return cleaningItems.value
-	return cleaningItems.value.filter(
-		(i) => (i.item_name || "").toLowerCase().includes(q) || (i.item_code || "").toLowerCase().includes(q)
-	)
-})
-// Picked services, resolved to names for the always-visible chips.
-const selectedServices = computed(() =>
-	selectedItems.value.map((code) => {
-		const hit = cleaningItems.value.find((i) => i.item_code === code)
-		return { item_code: code, item_name: hit?.item_name || code }
-	})
-)
-const gasFree = ref("")
-const o2 = ref("")
-const lel = ref("")
-const sealManhole = ref("")
-const sealAirline = ref("")
-const sealBottom = ref("")
-const reffDoc = ref("")
+// The operator only signs off now: Catatan (remarks) + Tanda Tangan (signature). The cleaning
+// method(s) are chosen upstream by Admin Ops and shown read-only.
 const remarks = ref("")
 
 const printUrl = computed(() =>
@@ -385,19 +235,6 @@ const printUrl = computed(() =>
 		  )}&format=Cleaning%20Order%20Format&no_letterhead=1`
 		: "#"
 )
-
-createResource({
-	url: "container_depot.ess.cleaning.cleaning_masters",
-	method: "GET",
-	auto: true,
-	onSuccess(data) {
-		checklist.value = data.checklist || []
-		if (!remarks.value) remarks.value = data.default_remarks || ""
-		// Rebuild from the loaded order's saved results (if any) so a late masters load never
-		// clobbers a saved checklist (which auto-save would then persist).
-		buildRows(savedChecklist.value)
-	},
-})
 
 const ordersRes = createResource({
 	url: "container_depot.ess.cleaning.cleaning_orders",
@@ -410,31 +247,6 @@ function reloadOrders() {
 	const s = search.value.trim()
 	ordersRes.fetch(s ? { search: s } : {})
 }
-
-function buildRows(saved) {
-	const savedMap = {}
-	for (const s of saved || []) savedMap[s.item_code] = s
-	rows.value = (checklist.value || []).map((i) =>
-		reactive({
-			...i,
-			result: savedMap[i.item_code]?.result || "Yes",
-			note: savedMap[i.item_code]?.note || "",
-		})
-	)
-}
-
-const groups = computed(() => {
-	const out = []
-	let cur = null
-	for (const r of rows.value) {
-		if (!cur || cur.section !== r.section) {
-			cur = { section: r.section, items: [] }
-			out.push(cur)
-		}
-		cur.items.push(r)
-	}
-	return out
-})
 
 const headerCells = computed(() => {
 	const h = order.value || {}
@@ -458,19 +270,7 @@ const detailRes = createResource({
 		suppressSave.value = true
 		savedOk.value = false
 		order.value = data
-		cleaningItems.value = data.cleaning_items || []
-		selectedItems.value = (data.cleaning_services || []).map((s) => s.item_code).filter(Boolean)
-		serviceSearch.value = ""
-		gasFree.value = data.gas_free || ""
-		o2.value = data.o2_percent ?? ""
-		lel.value = data.lel_percent ?? ""
-		sealManhole.value = data.seal_manhole || ""
-		sealAirline.value = data.seal_airline || ""
-		sealBottom.value = data.seal_bottom_outlet || ""
-		reffDoc.value = data.reff_doc || ""
 		remarks.value = data.remarks || data.default_remarks || ""
-		savedChecklist.value = data.saved_checklist || []
-		buildRows(savedChecklist.value)
 		nextTick(() => {
 			suppressSave.value = false
 		})
@@ -560,20 +360,10 @@ function save(submit) {
 		clearTimeout(saveTimer)
 		saveTimer = null
 	}
-	const results = rows.value.map((r) => ({ item_code: r.item_code, result: r.result, note: r.note || undefined }))
 	saveRes.fetch({
 		cleaning_order: order.value.name,
-		cleaning_items: JSON.stringify(selectedItems.value),
-		gas_free: gasFree.value || undefined,
-		o2_percent: o2.value !== "" ? o2.value : undefined,
-		lel_percent: lel.value !== "" ? lel.value : undefined,
-		seal_manhole: sealManhole.value || undefined,
-		seal_airline: sealAirline.value || undefined,
-		seal_bottom_outlet: sealBottom.value || undefined,
-		reff_doc: reffDoc.value,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
-		results: JSON.stringify(results),
 		submit: submit ? 1 : 0,
 	})
 }
@@ -594,21 +384,9 @@ function resetForm() {
 	}
 	suppressSave.value = true
 	savedOk.value = false
-	selectedItems.value = []
-	cleaningItems.value = []
-	serviceSearch.value = ""
-	gasFree.value = ""
-	o2.value = ""
-	lel.value = ""
-	sealManhole.value = ""
-	sealAirline.value = ""
-	sealBottom.value = ""
-	reffDoc.value = ""
 	remarks.value = ""
 	signatureUrl.value = ""
 	signing.value = false
-	savedChecklist.value = []
-	buildRows()
 }
 
 // --- file upload + virtual signature pad ------------------------------------
@@ -717,9 +495,6 @@ function startResign() {
 	nextTick(sigCtxInit)
 }
 
-// Auto-save on every edit: services, cleanliness checklist, gas free, seals, remarks and
-// the signature all trigger a debounced draft save.
-watch([gasFree, o2, lel, sealManhole, sealAirline, sealBottom, reffDoc, remarks, signatureUrl], scheduleSave)
-watch(selectedItems, scheduleSave, { deep: true })
-watch(rows, scheduleSave, { deep: true })
+// Auto-save on every edit: Catatan (remarks) + Tanda Tangan (signature).
+watch([remarks, signatureUrl], scheduleSave)
 </script>

@@ -110,6 +110,15 @@ def eir_view(inspection=None):
 	return eir.view_eir(inspection=inspection)
 
 
+@frappe.whitelist(methods=["POST"])
+def eir_request_revision(inspection=None, reason=None):
+	"""POST /api/v1/ess/eir-request-revision — ask Admin Ops to reopen a submitted EIR.
+
+	Mutating (notifies + drops an audit comment), hence POST. Does not edit the EIR."""
+	_require_authenticated_user()
+	return eir.request_revision(inspection=inspection, reason=reason)
+
+
 @frappe.whitelist(methods=["GET"])
 def eir_voucher(voucher=None, inspection_type="EIR-In", container=None):
 	"""GET /api/v1/ess/eir-voucher — read-only shipment snapshot from a referred voucher.

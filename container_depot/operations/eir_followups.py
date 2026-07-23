@@ -70,7 +70,8 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 	if not insp or not insp.container or insp.tank_status != EMPTY_DIRTY:
 		return None
 	existing = frappe.db.exists(
-		"Cleaning Order", {"container": insp.container, "status": ["in", ["Pending", "In_Progress"]]}
+		"Cleaning Order",
+		{"container": insp.container, "status": ["in", ["Service Setup", "Pending", "In_Progress"]]},
 	)
 	if existing:
 		# Backfill the reference doc from the EIR if the open order doesn't have one yet.
@@ -81,7 +82,9 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 	co.container = insp.container
 	co.inspection = inspection  # EIR -> Cleaning Order -> Certificate
 	co.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
-	co.status = "Pending"
+	# Land in Admin Ops' queue first (Service Setup); Admin Ops picks the cleaning method(s)
+	# and forwards it to the depot operator (-> Pending) from the Desk Cleaning Order.
+	co.status = "Service Setup"
 	# Carry the depot (for branch-scoped notifications) — from the EIR, else the container.
 	depot = insp.depot or frappe.db.get_value("Container", insp.container, "depot")
 	if depot and co.meta.has_field("depot"):

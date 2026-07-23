@@ -80,6 +80,7 @@
   "container_last_cargo_before_submit",
   "work_timing_section",
   "work_started_on",
+  "work_started_by",
   "work_ended_on",
   "work_duration"
  ],
@@ -559,6 +560,14 @@
    "description": "Diisi otomatis saat petugas menekan \"Mulai\" di PWA \u2014 EIR tak bisa diisi sebelum ini."
   },
   {
+   "fieldname": "work_started_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Dimulai Oleh",
+   "read_only": 1,
+   "description": "Akun yang menekan \"Mulai\" — dipakai untuk navigasi antar EIR yang dikerjakan akun ini."
+  },
+  {
    "fieldname": "work_ended_on",
    "fieldtype": "Datetime",
    "label": "Selesai Pengerjaan",
@@ -575,7 +584,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-25 13:30:00.000000",
+ "modified": "2026-07-23 11:00:00.000000",
  "module": "Operations",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

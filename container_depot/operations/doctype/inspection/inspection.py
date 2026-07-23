@@ -117,7 +117,8 @@ class Inspection(Document):
 		from container_depot.operations.notify import notify_cleaning_order_created
 
 		had_open = frappe.db.exists(
-			"Cleaning Order", {"container": container.name, "status": ["in", ["Pending", "In_Progress"]]}
+			"Cleaning Order",
+			{"container": container.name, "status": ["in", ["Service Setup", "Pending", "In_Progress"]]},
 		)
 		order = eir_followups.create_cleaning_order_from_eir(self.name)
 		if not order or had_open:

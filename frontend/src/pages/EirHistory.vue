@@ -59,19 +59,71 @@
 				</ul>
 			</section>
 
-			<a :href="printUrl(data)" target="_blank" rel="noopener" class="oak-btn oak-btn-secondary inline-flex px-3 py-2">
-				<Icon name="printer" :size="16" /> {{ labels.cleaningPrint }}
-			</a>
+			<div class="flex flex-wrap items-center gap-2">
+				<a :href="printUrl(data)" target="_blank" rel="noopener" class="oak-btn oak-btn-secondary inline-flex px-3 py-2">
+					<Icon name="printer" :size="16" /> {{ labels.cleaningPrint }}
+				</a>
+				<button
+					v-if="data.docstatus === 1 && revisionFor !== data.name"
+					type="button"
+					class="oak-btn oak-btn-secondary inline-flex px-3 py-2"
+					@click="openRevision(data.name)"
+				>
+					<Icon name="rotate-ccw" :size="16" /> {{ labels.eirReqRevision }}
+				</button>
+			</div>
+
+			<!-- Revision request: reason (optional) + send; notifies Admin Ops server-side. -->
+			<section v-if="revisionFor === data.name" class="oak-card space-y-2 p-4">
+				<p class="oak-section-title">{{ labels.eirReqRevision }}</p>
+				<p class="text-xs text-gray-400">{{ labels.eirReqRevisionHint }}</p>
+				<textarea v-model.trim="revisionReason" rows="2" :placeholder="labels.eirReqRevisionReason" class="oak-input"></textarea>
+				<div class="flex items-center gap-2">
+					<button type="button" class="oak-btn oak-btn-primary px-3 py-2" :disabled="revisionRes.loading" @click="sendRevision(data.name)">
+						<Icon v-if="!revisionRes.loading" name="send" :size="16" />
+						{{ revisionRes.loading ? "…" : labels.eirReqRevisionSend }}
+					</button>
+					<button type="button" class="oak-btn oak-btn-secondary px-3 py-2" :disabled="revisionRes.loading" @click="revisionFor = ''">
+						{{ labels.confirmCancel }}
+					</button>
+				</div>
+			</section>
 		</template>
 	</HistoryPage>
 </template>
 
 <script setup>
+import { ref } from "vue"
+import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
+import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
+
+// Revision request: which EIR's reason box is open, its text, and the POST resource.
+const revisionFor = ref("")
+const revisionReason = ref("")
+function openRevision(name) {
+	revisionFor.value = name
+	revisionReason.value = ""
+}
+const revisionRes = createResource({
+	url: "container_depot.ess.inspections.eir_request_revision",
+	method: "POST",
+	onSuccess() {
+		toast.success(labels.eirReqRevisionSent)
+		revisionFor.value = ""
+		revisionReason.value = ""
+	},
+	onError(err) {
+		toast.error(err?.messages?.[0] || err?.message || labels.error)
+	},
+})
+function sendRevision(name) {
+	revisionRes.submit({ inspection: name, reason: revisionReason.value || undefined })
+}
 
 function statusText(r) {
 	if (r.docstatus === 1) return labels.eirStatusSubmitted

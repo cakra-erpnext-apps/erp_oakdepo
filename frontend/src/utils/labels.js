@@ -137,6 +137,13 @@ export const labels = {
 	eirStartedAt: "Dimulai", // started-at label
 	eirBadgeIn: "Masuk", // EIR-In badge
 	eirBadgeOut: "Keluar", // EIR-Out badge
+	eirBadge: "EIR", // queue navigator counter prefix ("EIR 2 / 5")
+	eirNavPrev: "Sebelumnya", // queue navigator: previous EIR
+	eirNavNext: "Berikutnya", // queue navigator: next EIR
+	eirSelect: "Pilih", // enter batch-select mode
+	eirSelectCancel: "Batal", // leave batch-select mode
+	eirBatchOpen: "Buka", // open the picked EIRs as a navigable batch (no Mulai/submit needed)
+	eirBatchExit: "Keluar dari batch", // leave the batch navigator
 	eirPendingCount: "menunggu", // pending count suffix
 	eirSource: "Sumber Data", // Source
 	eirFetch: "Ambil Data", // Fetch
@@ -346,6 +353,12 @@ export const labels = {
 	eirNoDamage: "Tidak ada kerusakan dicatat.",
 	eirDamageCode: "D",
 	eirRepairCode: "R",
+	// Request edit/revision on a completed EIR (notifies Admin Ops)
+	eirReqRevision: "Ajukan Revisi ke Admin Ops", // Request revision
+	eirReqRevisionHint: "Minta Admin Ops membuka EIR ini agar bisa diperbaiki.",
+	eirReqRevisionReason: "Alasan revisi (opsional)", // Revision reason
+	eirReqRevisionSend: "Kirim Permintaan", // Send request
+	eirReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops", // Sent toast
 
 	prev: "Sebelumnya", // Previous
 	next: "Berikutnya", // Next
@@ -405,6 +418,7 @@ export const labels = {
 	createdOn: "Dibuat", // worklist row: created-on date prefix
 	cleaningOrder: "Cleaning Order",
 	cleaningType: "Metode Cleaning", // cleaning method (now one or more billable service items)
+	cleaningNoMethod: "Metode cleaning belum diset oleh Admin Ops.", // read-only method not yet chosen upstream
 	cleaningTypeUnset: "Belum diset", // not set
 	cleaningSelectServices: "Pilih layanan cleaning (bisa lebih dari satu)", // multi-select hint
 	cleaningServicesCount: "layanan", // worklist + count chip: "<n> layanan" (count, NOT price)

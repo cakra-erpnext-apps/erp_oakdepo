@@ -45,7 +45,8 @@ class TestEirCleaningFlow(FrappeTestCase):
 			"Cleaning Order", filters={"container": c}, fields=["name", "status", "inspection"]
 		)
 		self.assertEqual(len(orders), 1)
-		self.assertEqual(orders[0].status, "Pending")
+		# New orders land in Admin Ops' "Service Setup" queue before the operator worklist.
+		self.assertEqual(orders[0].status, "Service Setup")
 		# EIR -> Cleaning Order: the order carries its source EIR.
 		self.assertEqual(orders[0].inspection, eir_name)
 		container = frappe.db.get_value("Container", c, ["status", "cleaning_status"], as_dict=True)

@@ -110,7 +110,8 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue"
+import { computed, onMounted, ref } from "vue"
+import { useRoute } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
@@ -192,6 +193,14 @@ function closeDetail() {
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / props.pageLength)))
+
+// Deep link: ?open=<rowKey> opens that item's detail straight away (used by the EIR
+// landing's "Selesai" list so a tap jumps to the read-only detail + revision button).
+const route = useRoute()
+onMounted(() => {
+	const open = route.query.open
+	if (open) openDetail({ [props.rowKey]: String(open) })
+})
 
 // A window of up to 5 page numbers centred on the current page.
 const pageWindow = computed(() => {

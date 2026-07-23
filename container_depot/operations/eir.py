@@ -992,8 +992,15 @@ def start_eir(inspection: str) -> dict:
 	_guard_container_branch(doc.container)
 	doc.check_permission("write")
 	if not doc.work_started_on:
-		doc.db_set("work_started_on", now_datetime())
-	return {"success": True, "inspection": doc.name, "work_started_on": str(doc.work_started_on)}
+		# Stamp who started it too, so the PWA can scope the "next/prev EIR" navigator to
+		# the EIRs this account is working (idempotent: keep the original starter).
+		doc.db_set({"work_started_on": now_datetime(), "work_started_by": frappe.session.user})
+	return {
+		"success": True,
+		"inspection": doc.name,
+		"work_started_on": str(doc.work_started_on),
+		"work_started_by": doc.work_started_by,
+	}
 
 
 def save_draft(
@@ -1262,8 +1269,9 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			"name", "inspection_id", "container", "container_no", "inspection_type",
 			"tank_status", "referred_voucher", "voucher_doctype", "depot", "eir_date", "creation",
 			# Empty = not started yet, set = in progress (stamped by ``start_eir``). Drives
-			# the PWA worklist's belum / dikerjakan split.
-			"work_started_on",
+			# the PWA worklist's belum / dikerjakan split; work_started_by scopes the
+			# next/prev EIR navigator to the account that is working them.
+			"work_started_on", "work_started_by",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1354,8 +1362,9 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "tank_status",
 			"referred_voucher", "depot", "eir_date", "creation",
-			# See list_pending_eirs: empty = not started, set = in progress.
-			"work_started_on",
+			# See list_pending_eirs: empty = not started, set = in progress; work_started_by
+			# scopes the next/prev EIR navigator to the account working them.
+			"work_started_on", "work_started_by",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1432,6 +1441,54 @@ def view_eir(inspection: str) -> dict:
 		"damages": damages,
 		"damage_count": len(damages),
 	}
+
+
+def request_revision(inspection: str, reason: str | None = None) -> dict:
+	"""Operator asks Admin Ops to reopen a submitted EIR for edit/revision.
+
+	A submitted EIR can't be edited in the PWA, so this raises a request instead of
+	touching the record: it drops an audit comment on the EIR timeline and notifies Admin
+	Ops (+ ops oversight) in the container's branch via a Notification Log. Reopening
+	itself stays a human decision on the Desk side (``revert_to_draft``).
+	"""
+	from container_depot.operations import notify as _notify
+
+	if not inspection:
+		frappe.throw(_("inspection is required."))
+	doc = frappe.get_doc("Inspection", inspection)
+	if doc.inspection_type not in ("EIR-In", "EIR-Out"):
+		frappe.throw(_("{0} is not an EIR.").format(inspection))
+	if doc.docstatus != 1:
+		frappe.throw(_("Hanya EIR yang sudah selesai (submitted) yang bisa diajukan revisi."))
+	_guard_container_branch(doc.container)
+
+	reason = (reason or "").strip()
+	user = frappe.session.user
+	note = _("Permintaan revisi EIR oleh {0}").format(user)
+	if reason:
+		note += ": " + reason
+	# Audit trail on the EIR timeline (visible in Desk). Best-effort — the notification
+	# is what matters, so a comment-permission hiccup must not fail the request.
+	try:
+		doc.add_comment("Comment", note)
+	except Exception:
+		frappe.log_error(title="EIR revision comment", message=frappe.get_traceback())
+
+	eir_id = doc.inspection_id or doc.name
+	subject = _("Minta revisi EIR {0} • {1} • oleh {2}").format(
+		eir_id, doc.container_no or doc.container, user
+	)
+	if reason:
+		subject += f" — {reason}"
+	sent = _notify.notify(
+		doctype="Inspection",
+		name=doc.name,
+		subject=subject,
+		branch=_notify._depot_branch(doc.depot) if doc.get("depot") else None,
+		roles={_notify.PWA_ROLE, "Admin Ops", "Ops Supervisor"},
+		notification_type="Alert",
+	)
+	return {"success": True, "notified": sent, "inspection": doc.name}
 
 
 @frappe.whitelist()

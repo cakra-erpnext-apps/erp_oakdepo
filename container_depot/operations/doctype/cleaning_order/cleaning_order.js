@@ -12,6 +12,20 @@ frappe.ui.form.on('Cleaning Order', {
 	},
 	refresh(frm) {
 		frm.trigger('_set_queries');
+		frm.trigger('_forward_button');
+	},
+	_forward_button(frm) {
+		// Admin Ops step: while the order is in "Service Setup" they pick the cleaning
+		// method(s); the button forwards it to the depot operator worklist (-> Pending).
+		if (frm.is_new() || frm.doc.docstatus !== 0 || frm.doc.status !== 'Service Setup') return;
+		frm.add_custom_button(__('Teruskan ke Operator'), () => {
+			if (!(frm.doc.cleaning_services || []).length) {
+				frappe.msgprint(__('Pilih minimal satu metode cleaning (Service) dulu.'));
+				return;
+			}
+			frm.set_value('status', 'Pending');
+			frm.save().then(() => frappe.show_alert({ message: __('Diteruskan ke operator cuci.'), indicator: 'green' }));
+		}).addClass('btn-primary');
 	},
 	container(frm) {
 		// New container → its owner may price a different cleaning catalogue; drop the picks.

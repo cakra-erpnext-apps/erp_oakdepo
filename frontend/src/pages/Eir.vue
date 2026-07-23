@@ -1,14 +1,32 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
 		<!-- =================== FORM (In or Out) =================== -->
-		<component
-			:is="activeType === 'EIR-Out' ? EirOutForm : EirInForm"
-			v-if="activeInspection && activeType"
-			:key="activeInspection + activeType"
-			:inspection="activeInspection"
-			@back="closeForm"
-			@submitted="onSubmitted"
-		/>
+		<template v-if="activeInspection && activeType">
+			<!-- Queue navigator: only when this account is working more than one EIR. Lets the
+			     surveyor jump ◀ / ▶ between the EIRs they started without going back to the list;
+			     submitting one auto-advances to the next (see onSubmitted / onBack). -->
+			<div v-if="navQueue.length > 1 && activeIndex !== -1" class="oak-card space-y-2 p-2">
+				<div class="flex items-center justify-between gap-2">
+					<button class="oak-btn oak-btn-secondary px-3 py-2" :disabled="activeIndex <= 0" @click="goRel(-1)">
+						<Icon name="chevron-left" :size="16" /> {{ labels.eirNavPrev }}
+					</button>
+					<span class="shrink-0 text-sm font-bold text-gray-700">
+						{{ labels.eirBadge }} {{ activeIndex + 1 }} / {{ navQueue.length }}
+					</span>
+					<button class="oak-btn oak-btn-secondary px-3 py-2" :disabled="activeIndex >= navQueue.length - 1" @click="goRel(1)">
+						{{ labels.eirNavNext }} <Icon name="chevron-right" :size="16" />
+					</button>
+				</div>
+				<button class="oak-link mx-auto block text-xs" @click="clearBatch">{{ labels.eirBatchExit }}</button>
+			</div>
+			<component
+				:is="activeType === 'EIR-Out' ? EirOutForm : EirInForm"
+				:key="activeInspection + activeType"
+				:inspection="activeInspection"
+				@back="onBack"
+				@submitted="onSubmitted"
+			/>
+		</template>
 		<!-- ?e= without ?t= (hand-typed / shared link): the worklist is still resolving
 		     which direction this EIR is. Rendering the wrong form would call the wrong
 		     endpoint, so wait rather than guess. -->
@@ -40,9 +58,21 @@
 			<!-- Pending worklist (In + Out combined, badge per row). Capped to ~5 rows tall,
 			     scrolls internally so a long queue never runs far down the page. -->
 			<section class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="clipboard" :size="16" class="text-amber-500" />
-					<p class="oak-section-title">{{ labels.eirPendingList }}</p>
+				<div class="flex items-center justify-between gap-2">
+					<div class="flex items-center gap-2">
+						<Icon name="clipboard" :size="16" class="text-amber-500" />
+						<p class="oak-section-title">{{ labels.eirPendingList }}</p>
+					</div>
+					<!-- Batch mode: pick several EIRs, then "Mulai" starts them all under this
+					     account so the navigator/auto-advance can walk them (started-by-me). -->
+					<button
+						class="oak-btn px-3 py-1.5 text-xs"
+						:class="selectMode ? 'oak-btn-primary' : 'oak-btn-secondary'"
+						@click="toggleSelectMode"
+					>
+						<Icon :name="selectMode ? 'x' : 'check-square'" :size="14" />
+						{{ selectMode ? labels.eirSelectCancel : labels.eirSelect }}
+					</button>
 				</div>
 				<div class="flex gap-2">
 					<input
@@ -81,7 +111,15 @@
 				<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
 					<ul class="divide-y divide-gray-100">
 						<li v-for="r in visibleItems" :key="r.name">
-							<button class="flex h-[60px] w-full items-center gap-3 text-left" @click="openItem(r)">
+							<button class="flex h-[60px] w-full items-center gap-3 text-left" @click="rowClick(r)">
+								<!-- Select-mode tick box (replaces navigation while picking a batch). -->
+								<span
+									v-if="selectMode"
+									class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
+									:class="selected.has(r.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-300'"
+								>
+									<Icon v-if="selected.has(r.name)" name="check" :size="14" />
+								</span>
 								<span class="oak-icon-tile h-9 w-9 shrink-0" :class="r._type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-amber-50 text-amber-600'">
 									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'clipboard'" :size="16" />
 								</span>
@@ -107,7 +145,15 @@
 						</li>
 					</ul>
 				</div>
-				<p v-if="visibleItems.length" class="text-center text-xs text-gray-400">{{ visibleItems.length }} {{ labels.eirPendingCount }}</p>
+				<p v-if="visibleItems.length && !selectMode" class="text-center text-xs text-gray-400">{{ visibleItems.length }} {{ labels.eirPendingCount }}</p>
+				<button
+					v-if="selectMode"
+					class="oak-btn oak-btn-primary w-full py-2.5"
+					:disabled="!selected.size"
+					@click="openBatch"
+				>
+					<Icon name="arrow-right" :size="16" /> {{ labels.eirBatchOpen }} <template v-if="selected.size">({{ selected.size }})</template>
+				</button>
 				<p v-if="fetchError" class="flex items-center gap-1.5 text-sm text-red-600">
 					<Icon name="alert-circle" :size="15" /> {{ fetchError }}
 				</p>
@@ -127,16 +173,19 @@
 				</ul>
 				<p v-else-if="!doneItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.eirCompleteEmpty }}</p>
 				<ul v-else class="divide-y divide-gray-100">
-					<li v-for="r in doneItems" :key="r.name" class="flex items-center gap-3 py-2.5">
-						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="16" /></span>
-						<div class="min-w-0 flex-1">
-							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
-							<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
-							<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
-						</div>
-						<span class="oak-chip shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'">
-							{{ r.inspection_type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
-						</span>
+					<li v-for="r in doneItems" :key="r.name">
+						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="16" /></span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
+								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
+							</div>
+							<span class="oak-chip shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'">
+								{{ r.inspection_type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
+							</span>
+							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
+						</button>
 					</li>
 				</ul>
 			</section>
@@ -145,7 +194,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue"
+import { computed, reactive, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
@@ -192,6 +241,19 @@ const outRes = createResource({
 	auto: true,
 	onSuccess: (data) => (outItems.value = (data.items || []).map((x) => ({ ...x, _type: "EIR-Out" }))),
 })
+
+// --- queue navigator + batch selection --------------------------------------
+// "Pilih" (select mode) lets the surveyor tick several pending EIRs, then "Buka" opens
+// them as a batch. The navigator walks that picked set — no need to press Mulai and no
+// need to submit to move on; every edit already auto-saves. The batch persists (as names)
+// until it's cleared or every EIR in it leaves the pending list.
+const selectMode = ref(false)
+const selected = reactive(new Set())
+const autoAdvanceTo = ref(null) // next EIR to open after a submit (consumed by onBack)
+
+// The batch = the picked EIRs that are still pending, in worklist order.
+const navQueue = computed(() => pendingItems.value.filter((r) => selected.has(r.name)))
+const activeIndex = computed(() => navQueue.value.findIndex((r) => r.name === activeInspection.value))
 
 const loadingPending = computed(() => inRes.loading || outRes.loading)
 const fetchError = computed(() => {
@@ -242,8 +304,9 @@ function reloadPending() {
 	outRes.reload()
 }
 
-// Landing "recently submitted" — the caller's own latest completed EIRs (In & Out).
-const LANDING_LIMIT = 3
+// Landing "recently submitted" — the caller's own latest completed EIRs (In & Out),
+// newest first (no date filter). Tapping one opens its read-only detail (+ revision).
+const LANDING_LIMIT = 5
 const doneItems = ref([])
 const doneRes = createResource({
 	url: "container_depot.ess.inspections.eir_history",
@@ -253,17 +316,69 @@ const doneRes = createResource({
 	onSuccess: (data) => (doneItems.value = data.items || []),
 })
 
-function openItem(r) {
+function goItem(r) {
 	router.push({ query: { e: r.name, t: r._type === "EIR-Out" ? "out" : "in" } })
 }
-function closeForm() {
+// Completed EIRs are read-only: open the History detail (which carries the revision button).
+function goCompleted(r) {
+	router.push({ path: "/eir/history", query: { open: r.name } })
+}
+// Prev/next within the current account's queue.
+function goRel(delta) {
+	const target = navQueue.value[activeIndex.value + delta]
+	if (target) goItem(target)
+}
+
+// Worklist tap: select in batch mode, otherwise open the EIR.
+function rowClick(r) {
+	if (selectMode.value) {
+		if (selected.has(r.name)) selected.delete(r.name)
+		else selected.add(r.name)
+		return
+	}
+	goItem(r)
+}
+function toggleSelectMode() {
+	selectMode.value = !selectMode.value
+	selected.clear()
+}
+
+// Open the picked EIRs as a batch: just navigate to the first — no Mulai, no submit. The
+// selection stays as the batch so the ◀ / ▶ navigator can walk it. Each EIR still has its
+// own Mulai gate for editing; moving between them needs neither Mulai nor submit.
+function openBatch() {
+	const first = pendingItems.value.find((r) => selected.has(r.name)) // worklist order
+	if (!first) return
+	selectMode.value = false // keep `selected` — it IS the batch now
+	goItem(first)
+}
+// Leave the batch (clears the picked set) and drop back to the worklist.
+function clearBatch() {
+	selected.clear()
+	if (route.query.e) router.push({ query: {} })
+}
+
+function onBack() {
+	// After a submit the child emits `submitted` (which queued the next EIR) then `back`.
+	const next = autoAdvanceTo.value
+	autoAdvanceTo.value = null
+	if (next) {
+		goItem(next) // auto-advance to the next EIR in this account's queue
+		reloadPending()
+		doneRes.reload()
+		return
+	}
 	if (route.query.e) router.push({ query: {} })
 	reloadPending()
 	doneRes.reload()
 }
-function onSubmitted() {
-	// The child also emits `back`; just make sure the lists are fresh.
-	reloadPending()
-	doneRes.reload()
+function onSubmitted(name) {
+	// Capture the next EIR to jump to BEFORE the lists refresh (the just-submitted one is
+	// still in navQueue here). Prefer the following item, else the previous, else stop.
+	const q = navQueue.value
+	const i = q.findIndex((r) => r.name === name)
+	const next = i === -1 ? null : q[i + 1] || q[i - 1] || null
+	autoAdvanceTo.value = next && next.name !== name ? next : null
+	selected.delete(name) // the submitted EIR leaves the batch
 }
 </script>
