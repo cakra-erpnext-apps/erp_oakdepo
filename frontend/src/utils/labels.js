@@ -167,10 +167,20 @@ export const labels = {
 	colDamage: "Kode Kerusakan", // Damage code
 	colRepair: "Kode Perbaikan", // Repair code
 	colRemarks: "Keterangan", // Remarks
+	colRemarksManual: "Keterangan (isi manual, opsional)", // Note: manual only, never auto-filled
 	photo: "Foto", // Photo
 	addPhoto: "Tambah Foto", // Add photo
 	photoError: "Gagal mengunggah foto", // Photo upload failed
 	acceptableHint: "Kosongkan baris yang kondisinya baik (Acceptable).", // Leave good rows blank
+	// Search-to-add checklist (only damaged parts are added)
+	checklistSearchDamaged: "Cari section / part yang rusak…", // Search a section/part to add
+	checklistEmpty: "Belum ada kerusakan. Cari section / part di atas untuk menambah.", // No damage added yet
+	bookingCode: "Kode Booking", // Booking code (header)
+	// Mandatory-before-submit (EIR-In)
+	eirNeedComplete: "Lengkapi dulu sebelum submit:", // Complete before submitting
+	eirNeedCargo: "Cargo (Last Cargo)",
+	eirNeedTankStatus: "Status Tank",
+	eirNeedSignature: "Tanda tangan",
 	// Bulk "foto cepat" (no section) + section search
 	bulkPhotoTitle: "Foto Cepat", // Quick photos (bulk, no section)
 	bulkPhotoHint: "Foto dulu tanpa pilih section — admin yang menyortir ke section-nya nanti.", // Shoot first, sort later

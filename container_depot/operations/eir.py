@@ -824,6 +824,30 @@ def create_eir(
 	}
 
 
+def _resolve_booking_code_for_eir(doc) -> str | None:
+	"""The booking code behind this EIR's container, read from its referred bon's line.
+
+	``prefill(container=…)`` can't know it (no bon in the args), so opening an EIR by
+	container/name leaves ``booking_code`` blank. The draft DOES carry the bon
+	(``referred_voucher``); its per-container line holds the booking code. EIR-In refers an
+	Order Bongkar (its ``containers`` ARE Container Booking Item rows); EIR-Out an Order
+	Muat (Order Container Item rows). Best-effort — never raises.
+	"""
+	voucher = doc.get("referred_voucher")
+	if not (voucher and doc.container):
+		return None
+	child = {"Order Bongkar": "Container Booking Item", "Order Muat": "Order Container Item"}.get(
+		doc.get("voucher_doctype")
+	)
+	if not child:
+		return None
+	return frappe.db.get_value(
+		child,
+		{"parent": voucher, "parenttype": doc.get("voucher_doctype"), "container": doc.container},
+		"booking_code",
+	)
+
+
 def _draft_payload(doc, header: dict) -> dict:
 	"""Merge a draft Inspection's saved state onto the master-derived ``header``.
 
@@ -831,6 +855,9 @@ def _draft_payload(doc, header: dict) -> dict:
 	checklist lines, photos and user-entered fields come from the draft.
 	"""
 	header["inspection"] = doc.name
+	# prefill() only fills booking_code when resolved from a bon; opening by container
+	# leaves it blank, so recover it from the draft's referred bon for the PWA header.
+	header["booking_code"] = _resolve_booking_code_for_eir(doc) or header.get("booking_code")
 	header["inspection_id"] = doc.inspection_id or doc.name
 	header["inspection_type"] = doc.inspection_type
 	header["eir_date"] = doc.eir_date

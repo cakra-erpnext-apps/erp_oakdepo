@@ -9,6 +9,7 @@
 			<div class="min-w-0">
 				<h2 class="text-base font-extrabold leading-tight tracking-tight">{{ labels.eirBadgeIn }} · {{ header?.container_no || "" }}</h2>
 				<p v-if="eirCode" class="truncate font-mono text-[11px] text-gray-500">{{ eirCode }}</p>
+				<p v-if="bookingCode" class="truncate font-mono text-[11px] font-semibold text-brand-600">{{ labels.bookingCode }}: {{ bookingCode }}</p>
 			</div>
 		</div>
 
@@ -40,8 +41,16 @@
 					<p class="oak-section-title">{{ labels.referredVoucher }}</p>
 				</div>
 				<div class="rounded-xl bg-gray-50 p-3">
-					<p class="text-xs text-gray-500">{{ labels.referredVoucher }}</p>
-					<p class="font-mono font-semibold text-gray-800">{{ referredVoucher || "—" }}</p>
+					<div class="grid grid-cols-2 gap-3">
+						<div>
+							<p class="text-xs text-gray-500">{{ labels.bookingCode }}</p>
+							<p class="font-mono font-semibold text-brand-600">{{ bookingCode || "—" }}</p>
+						</div>
+						<div>
+							<p class="text-xs text-gray-500">{{ labels.referredVoucher }}</p>
+							<p class="font-mono font-semibold text-gray-800">{{ referredVoucher || "—" }}</p>
+						</div>
+					</div>
 					<p class="mt-1 text-[11px] text-gray-400">{{ labels.eirVoucherLocked }}</p>
 				</div>
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl bg-gray-50 p-3 text-sm">
@@ -149,95 +158,14 @@
 				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
 			</section>
 
-			<!-- Step 4 — checklist grid (fixed 50 rows, grouped by area) -->
-			<section class="oak-card overflow-hidden">
-				<div class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
-					<div class="flex items-center gap-2">
-						<Icon name="check-square" :size="16" class="text-gray-400" />
-						<p class="oak-section-title">{{ labels.checklist }}</p>
-					</div>
-					<p class="text-xs text-gray-400">{{ labels.acceptableHint }}</p>
-				</div>
-				<div class="border-b border-gray-100 px-4 py-2.5">
-					<div class="relative">
-						<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" :size="15" /></span>
-						<input v-model.trim="sectionSearch" type="text" :placeholder="labels.sectionSearch" class="oak-input pl-9" />
-					</div>
-				</div>
-				<div class="max-h-[70vh] overflow-y-auto overscroll-contain">
-					<p v-if="!filteredGroups.length" class="px-4 py-4 text-center text-sm text-gray-400">{{ labels.sectionSearchEmpty }}</p>
-					<div v-for="g in filteredGroups" :key="g.area">
-						<p class="sticky top-0 z-10 border-b border-gray-100 bg-gray-50/95 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 backdrop-blur">
-							{{ g.area }}
-						</p>
-						<div
-							v-for="item in g.items"
-							:key="item.item_code"
-							class="border-b border-gray-100 px-4 py-3 last:border-b-0"
-						>
-						<p class="text-sm font-semibold text-gray-800">{{ item.printed_no }}. {{ item.item_name }}</p>
-						<div class="mt-2 grid grid-cols-2 gap-2">
-							<SearchSelect
-								v-model="item.damage_code"
-								:options="damageCodes"
-								:option-value="(d) => d.code"
-								:option-label="(d) => `${d.code} — ${d.description}`"
-								:placeholder="labels.colDamage"
-								:search-placeholder="labels.selectSearch"
-								trigger-class="px-2.5 py-2"
-							/>
-							<SearchSelect
-								v-model="item.repair_code"
-								:options="repairCodes"
-								:option-value="(r) => r.code"
-								:option-label="(r) => `${r.code} — ${r.description}`"
-								:placeholder="labels.colRepair"
-								:search-placeholder="labels.selectSearch"
-								trigger-class="px-2.5 py-2"
-							/>
-						</div>
-						<div class="mt-2 flex flex-wrap items-center gap-2">
-							<div v-for="(url, idx) in item.photos" :key="url" class="relative">
-								<button type="button" class="oak-press block" @click="openLightbox(item.photos, idx)">
-									<img :src="url" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-								</button>
-								<button
-									type="button"
-									class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
-									@click="removePhoto(item, idx)"
-								>
-									<Icon name="x" :size="12" />
-								</button>
-							</div>
-							<label
-								class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
-							>
-								<input
-									type="file"
-									accept="image/*"
-									capture="environment"
-									class="hidden"
-									:disabled="item.uploading"
-									@change="onPhotoPick(item, $event)"
-								/>
-								<span v-if="item.uploading" class="text-xs">…</span>
-								<template v-else>
-									<Icon name="camera" :size="18" />
-									<span class="text-[9px] font-medium">{{ labels.photo }}</span>
-								</template>
-							</label>
-						</div>
-						<p v-if="item.photoErr" class="mt-1 text-xs text-red-600">{{ item.photoErr }}</p>
-						<input
-							v-model.trim="item.remarks"
-							type="text"
-							:placeholder="labels.colRemarks"
-							class="oak-input mt-2 px-2.5 py-2"
-						/>
-						</div>
-					</div>
-				</div>
-			</section>
+			<!-- Step 4 — checklist: search a section/part, add only the damaged ones -->
+			<ChecklistDamage
+				:rows="rows"
+				:damage-codes="damageCodes"
+				:repair-codes="repairCodes"
+				:upload="uploadFile"
+				:title="labels.checklist"
+			/>
 
 			<!-- Step 4b — follow-up orders (opt-out): create Cleaning Order and/or M&R on submit. -->
 			<section v-if="showCleaningToggle || showRepairToggle" class="oak-section space-y-3">
@@ -315,6 +243,13 @@
 
 			<!-- Step 6 — auto-save status + finalize -->
 			<section class="space-y-2">
+				<!-- Required-before-submit: Cargo + Tank Status + Signature. -->
+				<div v-if="missingFields.length" class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+					<p class="flex items-center gap-1.5 font-semibold text-amber-700">
+						<Icon name="alert-triangle" :size="16" /> {{ labels.eirNeedComplete }}
+					</p>
+					<p class="mt-0.5 pl-6 text-xs text-amber-700">{{ missingFields.join(", ") }}</p>
+				</div>
 				<p class="flex items-center gap-1.5 text-xs">
 					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
 					<span v-else-if="saveError" class="text-red-600">{{ saveError }}</span>
@@ -323,7 +258,7 @@
 				</p>
 				<button
 					class="oak-btn oak-btn-primary w-full py-3"
-					:disabled="saveRes.loading"
+					:disabled="saveRes.loading || missingFields.length > 0"
 					@click="confirmSubmit"
 				>
 					<Icon v-if="!saveRes.loading" name="check-circle" :size="18" />
@@ -345,6 +280,7 @@ import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
+import ChecklistDamage from "@/components/ChecklistDamage.vue"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -369,6 +305,7 @@ const driverPhone = ref("")
 const shipper = ref("")
 const cargo = ref("")
 const cargos = ref([])
+const bookingCode = ref("")
 const result = ref(null)
 const savedOk = ref(false)
 const suppressSave = ref(false)
@@ -381,7 +318,6 @@ const repairCodes = ref([])
 const bulkPhotos = ref([])
 const bulkUploading = ref(false)
 const bulkErr = ref("")
-const sectionSearch = ref("")
 
 const ACCEPTABLE_DAMAGE = "v"
 const NO_ACTION_REPAIR = "X"
@@ -395,6 +331,15 @@ const hasDamage = computed(() => rows.value.some(rowHasFinding))
 const showCleaningToggle = computed(() => tankStatus.value === "Empty Dirty")
 const showRepairToggle = computed(() => hasDamage.value)
 
+// Required before Submit (per ops): Cargo (Last Cargo) + Tank Status + Signature.
+const missingFields = computed(() => {
+	const out = []
+	if (!cargo.value) out.push(labels.eirNeedCargo)
+	if (!tankStatus.value) out.push(labels.eirNeedTankStatus)
+	if (!signatureUrl.value) out.push(labels.eirNeedSignature)
+	return out
+})
+
 const mastersRes = createResource({
 	url: "container_depot.ess.inspections.eir_masters",
 	method: "GET",
@@ -404,38 +349,10 @@ const mastersRes = createResource({
 		repairCodes.value = data.repair_codes || []
 		cargos.value = data.cargos || []
 		rows.value = (data.checklist || []).map((i) =>
-			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "" })
+			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "", added: false })
 		)
 		if (header.value) applyDraftToRows(header.value)
 	},
-})
-
-const groups = computed(() => {
-	const out = []
-	let cur = null
-	for (const r of rows.value) {
-		if (!cur || cur.area !== r.area) {
-			cur = { area: r.area, items: [] }
-			out.push(cur)
-		}
-		cur.items.push(r)
-	}
-	return out
-})
-
-const filteredGroups = computed(() => {
-	const q = sectionSearch.value.trim().toLowerCase()
-	if (!q) return groups.value
-	const out = []
-	for (const g of groups.value) {
-		if ((g.area || "").toLowerCase().includes(q)) {
-			out.push(g)
-			continue
-		}
-		const items = g.items.filter((it) => `${it.printed_no} ${it.item_name}`.toLowerCase().includes(q))
-		if (items.length) out.push({ area: g.area, items })
-	}
-	return out
 })
 
 const headerCells = computed(() => {
@@ -475,6 +392,7 @@ const openRes = createResource({
 		driverPhone.value = data.driver_phone || ""
 		shipper.value = data.shipper || ""
 		cargo.value = data.cargo || data.last_cargo || ""
+		bookingCode.value = data.booking_code || ""
 		createCleaning.value = data.create_cleaning_order !== 0
 		createRepair.value = data.create_repair_order !== 0
 		signatureUrl.value = data.inspector_signature || ""
@@ -545,6 +463,8 @@ function applyDraftToRows(data) {
 		r.remarks = (l && l.remarks) || ""
 		r.photos = photoMap[r.item_code] ? [...photoMap[r.item_code]] : []
 		r.photoErr = ""
+		// A saved row (has a finding or photos) is shown as an added card; the rest stay hidden.
+		r.added = rowHasFinding(r) || r.photos.length > 0
 	})
 }
 
@@ -578,28 +498,6 @@ async function uploadFile(file) {
 	if (!res.ok) throw new Error("upload failed")
 	const data = await res.json()
 	return data.message.file_url
-}
-
-async function onPhotoPick(item, event) {
-	const files = Array.from(event.target.files || [])
-	event.target.value = ""
-	if (!files.length) return
-	item.photoErr = ""
-	item.uploading = true
-	try {
-		for (const f of files) {
-			const url = await uploadFile(f)
-			item.photos.push(url)
-		}
-	} catch (e) {
-		item.photoErr = labels.photoError
-	} finally {
-		item.uploading = false
-	}
-}
-
-function removePhoto(item, idx) {
-	item.photos.splice(idx, 1)
 }
 
 async function onBulkPhotoPick(event) {
@@ -740,6 +638,11 @@ function doSave(submit = false) {
 }
 
 async function confirmSubmit() {
+	// Belt-and-suspenders: the button is already disabled while anything is missing.
+	if (missingFields.value.length) {
+		toast.error(`${labels.eirNeedComplete} ${missingFields.value.join(", ")}`)
+		return
+	}
 	const ok = await confirm({
 		title: labels.confirmSubmitTitle,
 		message: labels.confirmSubmitMessage,

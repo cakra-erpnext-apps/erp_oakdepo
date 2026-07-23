@@ -9,6 +9,7 @@
 			<div class="min-w-0 flex-1">
 				<h2 class="text-base font-extrabold leading-tight tracking-tight">{{ labels.eirBadgeOut }} · {{ header?.container_no || "" }}</h2>
 				<p v-if="eirCode" class="truncate font-mono text-[11px] text-gray-500">{{ eirCode }}</p>
+				<p v-if="bookingCode" class="truncate font-mono text-[11px] font-semibold text-brand-600">{{ labels.bookingCode }}: {{ bookingCode }}</p>
 			</div>
 		</div>
 
@@ -159,68 +160,14 @@
 				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
 			</section>
 
-			<!-- Current condition / new findings checklist -->
-			<section class="oak-card overflow-hidden">
-				<div class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
-					<div class="flex items-center gap-2">
-						<Icon name="check-square" :size="16" class="text-gray-400" />
-						<p class="oak-section-title">{{ labels.eirOutCurrent }}</p>
-					</div>
-					<p class="text-xs text-gray-400">{{ labels.acceptableHint }}</p>
-				</div>
-				<div class="border-b border-gray-100 px-4 py-2.5">
-					<div class="relative">
-						<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" :size="15" /></span>
-						<input v-model.trim="sectionSearch" type="text" :placeholder="labels.sectionSearch" class="oak-input pl-9" />
-					</div>
-				</div>
-				<div class="max-h-[70vh] overflow-y-auto overscroll-contain">
-					<p v-if="!filteredGroups.length" class="px-4 py-4 text-center text-sm text-gray-400">{{ labels.sectionSearchEmpty }}</p>
-					<div v-for="g in filteredGroups" :key="g.area">
-						<p class="sticky top-0 z-10 border-b border-gray-100 bg-gray-50/95 px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-gray-500 backdrop-blur">{{ g.area }}</p>
-						<div v-for="item in g.items" :key="item.item_code" class="border-b border-gray-100 px-4 py-3 last:border-b-0">
-						<p class="text-sm font-semibold text-gray-800">{{ item.printed_no }}. {{ item.item_name }}</p>
-						<div class="mt-2 grid grid-cols-2 gap-2">
-							<SearchSelect
-								v-model="item.damage_code"
-								:options="damageCodes"
-								:option-value="(d) => d.code"
-								:option-label="(d) => `${d.code} — ${d.description}`"
-								:placeholder="labels.colDamage"
-								:search-placeholder="labels.selectSearch"
-								trigger-class="px-2.5 py-2"
-							/>
-							<SearchSelect
-								v-model="item.repair_code"
-								:options="repairCodes"
-								:option-value="(r) => r.code"
-								:option-label="(r) => `${r.code} — ${r.description}`"
-								:placeholder="labels.colRepair"
-								:search-placeholder="labels.selectSearch"
-								trigger-class="px-2.5 py-2"
-							/>
-						</div>
-						<div class="mt-2 flex flex-wrap items-center gap-2">
-							<div v-for="(url, idx) in item.photos" :key="url" class="relative">
-								<button type="button" class="oak-press block" @click="openLightbox(item.photos, idx)">
-									<img :src="url" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-								</button>
-								<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="removePhoto(item, idx)">
-									<Icon name="x" :size="12" />
-								</button>
-							</div>
-							<label class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
-								<input type="file" accept="image/*" capture="environment" class="hidden" :disabled="item.uploading" @change="onPhotoPick(item, $event)" />
-								<span v-if="item.uploading" class="text-xs">…</span>
-								<template v-else><Icon name="camera" :size="18" /><span class="text-[9px] font-medium">{{ labels.photo }}</span></template>
-							</label>
-						</div>
-						<p v-if="item.photoErr" class="mt-1 text-xs text-red-600">{{ item.photoErr }}</p>
-						<input v-model.trim="item.remarks" type="text" :placeholder="labels.colRemarks" class="oak-input mt-2 px-2.5 py-2" />
-						</div>
-					</div>
-				</div>
-			</section>
+			<!-- Current condition / new findings — search a section/part, add only the damaged ones -->
+			<ChecklistDamage
+				:rows="rows"
+				:damage-codes="damageCodes"
+				:repair-codes="repairCodes"
+				:upload="uploadFile"
+				:title="labels.eirOutCurrent"
+			/>
 
 			<!-- Sign-off -->
 			<section class="oak-section space-y-3">
@@ -293,7 +240,7 @@ import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
-import SearchSelect from "@/components/SearchSelect.vue"
+import ChecklistDamage from "@/components/ChecklistDamage.vue"
 
 // Form-only EIR-Out view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -318,6 +265,7 @@ const tankStatus = ref("")
 const remarks = ref("")
 const referredVoucher = ref("")
 const cargo = ref("")
+const bookingCode = ref("")
 const exteriorCondition = ref("")
 const exteriorRemark = ref("")
 const sealsIntact = ref(false)
@@ -333,7 +281,6 @@ const repairCodes = ref([])
 const bulkPhotos = ref([])
 const bulkUploading = ref(false)
 const bulkErr = ref("")
-const sectionSearch = ref("")
 
 const exteriorOptions = [
 	{ value: "Clean", label: labels.eirOutClean, active: "border-leaf-500 bg-leaf-500 text-white" },
@@ -370,34 +317,6 @@ const headerCells = computed(() => {
 	]
 })
 
-const groups = computed(() => {
-	const out = []
-	let cur = null
-	for (const r of rows.value) {
-		if (!cur || cur.area !== r.area) {
-			cur = { area: r.area, items: [] }
-			out.push(cur)
-		}
-		cur.items.push(r)
-	}
-	return out
-})
-
-const filteredGroups = computed(() => {
-	const q = sectionSearch.value.trim().toLowerCase()
-	if (!q) return groups.value
-	const out = []
-	for (const g of groups.value) {
-		if ((g.area || "").toLowerCase().includes(q)) {
-			out.push(g)
-			continue
-		}
-		const items = g.items.filter((it) => `${it.printed_no} ${it.item_name}`.toLowerCase().includes(q))
-		if (items.length) out.push({ area: g.area, items })
-	}
-	return out
-})
-
 // ---- masters (checklist + codes), loaded once ----
 const mastersRes = createResource({
 	url: "container_depot.ess.inspections.eir_masters",
@@ -407,7 +326,7 @@ const mastersRes = createResource({
 		damageCodes.value = data.damage_codes || []
 		repairCodes.value = data.repair_codes || []
 		rows.value = (data.checklist || []).map((i) =>
-			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "" })
+			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "", added: false })
 		)
 		if (header.value) applyDraftToRows(header.value)
 	},
@@ -428,6 +347,7 @@ const openRes = createResource({
 		remarks.value = data.doc_remarks || ""
 		referredVoucher.value = data.referred_voucher || ""
 		cargo.value = data.cargo || data.last_cargo || ""
+		bookingCode.value = data.booking_code || ""
 		exteriorCondition.value = data.exterior_condition || ""
 		exteriorRemark.value = data.exterior_remark || ""
 		sealsIntact.value = data.seals_intact === 1
@@ -477,6 +397,7 @@ function applyDraftToRows(data) {
 		r.remarks = (l && l.remarks) || ""
 		r.photos = photoMap[r.item_code] ? [...photoMap[r.item_code]] : []
 		r.photoErr = ""
+		r.added = rowHasFinding(r) || r.photos.length > 0
 	})
 }
 
@@ -508,23 +429,6 @@ async function uploadFile(file) {
 	if (!res.ok) throw new Error("upload failed")
 	const data = await res.json()
 	return data.message.file_url
-}
-async function onPhotoPick(item, event) {
-	const files = Array.from(event.target.files || [])
-	event.target.value = ""
-	if (!files.length) return
-	item.photoErr = ""
-	item.uploading = true
-	try {
-		for (const f of files) item.photos.push(await uploadFile(f))
-	} catch (e) {
-		item.photoErr = labels.photoError
-	} finally {
-		item.uploading = false
-	}
-}
-function removePhoto(item, idx) {
-	item.photos.splice(idx, 1)
 }
 async function onBulkPhotoPick(event) {
 	const files = Array.from(event.target.files || [])
