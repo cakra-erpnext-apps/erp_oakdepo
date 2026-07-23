@@ -34,6 +34,32 @@ function mr_approve(frm) {
 	});
 }
 
+// The Admin-Ops-only actions (publish / withdraw / bypass). System Manager counts too so
+// an admin is never locked out of their own instance. The server re-checks the role — this
+// only decides whether the button is worth showing.
+function is_admin_ops() {
+	return frappe.user.has_role('Admin Ops') || frappe.user.has_role('System Manager');
+}
+
+// Admin-Ops bypass: approve directly without sending it to the owner. Offered wherever the
+// estimate is still in depot hands (Draft / Revision Requested / Service Setup).
+function mr_bypass_button(frm) {
+	frm.add_custom_button(__('Approve Directly (Bypass Owner)'), () =>
+		frappe.prompt(
+			[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Catatan (opsional)') }],
+			(v) =>
+				mr_call(
+					frm,
+					'container_depot.ess.repairs.mr_bypass_approval',
+					{ note: v.note },
+					__('Setujui langsung tanpa persetujuan owner?')
+				),
+			__('Bypass Owner'),
+			__('Approve')
+		)
+	);
+}
+
 function mr_decision_with_note(frm, decision, title) {
 	frappe.prompt(
 		[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Owner Note') }],
@@ -56,7 +82,8 @@ frappe.ui.form.on('Repair Order', {
 		// Status intro banner.
 		const intros = {
 			Draft: [__('Draft. Add the used items (estimate), then Submit for Approval.'), 'blue'],
-			'Pending Approval': [__('Awaiting the owner\'s decision. Set each line\'s decision, then Approve / Reject / Request Revision.'), 'orange'],
+			'Service Setup': [__('With Admin Ops — NOT visible to the customer yet. Arrange the estimate, then Show to Customer.'), 'blue'],
+			'Pending Approval': [__('Live on the customer web, awaiting the owner\'s decision. Admin Ops can still Withdraw it.'), 'orange'],
 			'Revision Requested': [__('Owner asked for a revision. Adjust the items and Submit for Approval again.'), 'orange'],
 			Approved: [__('Approved by the owner. Ready to start repair work.'), 'green'],
 			Rejected: [__('Rejected by the owner.'), 'red'],
@@ -76,29 +103,45 @@ frappe.ui.form.on('Repair Order', {
 			frm.add_custom_button(__('Submit for Approval'), () =>
 				mr_call(frm, 'container_depot.ess.repairs.mr_submit_approval', {})
 			).addClass('btn-primary');
-			// Admin-Ops bypass: approve directly without sending to the owner.
-			if (frappe.user.has_role('Admin Ops') || frappe.user.has_role('System Manager')) {
-				frm.add_custom_button(__('Approve Directly (Bypass Owner)'), () =>
-					frappe.prompt(
-						[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Catatan (opsional)') }],
-						(v) =>
-							mr_call(
-								frm,
-								'container_depot.ess.repairs.mr_bypass_approval',
-								{ note: v.note },
-								__('Setujui langsung tanpa persetujuan owner?')
-							),
-						__('Bypass Owner'),
-						__('Approve')
+			if (is_admin_ops()) mr_bypass_button(frm);
+		} else if (s === 'Service Setup') {
+			// The Admin-Ops gate: nothing reaches the customer web until this is clicked.
+			if (is_admin_ops()) {
+				frm.add_custom_button(__('Show to Customer'), () =>
+					mr_call(
+						frm,
+						'container_depot.ess.repairs.mr_publish_to_owner',
+						{},
+						__('Tampilkan estimasi ini ke customer web untuk disetujui owner?')
 					)
-				);
+				).addClass('btn-primary');
 			}
+			// Bypass stays available here too: Admin Ops may approve without asking the owner.
+			if (is_admin_ops()) mr_bypass_button(frm);
 		} else if (s === 'Pending Approval') {
 			frm.add_custom_button(__('Approve'), () => mr_approve(frm)).addClass('btn-primary');
 			frm.add_custom_button(__('Request Revision'), () =>
 				mr_decision_with_note(frm, 'Revision Requested', 'Request Revision')
 			);
 			frm.add_custom_button(__('Reject'), () => mr_decision_with_note(frm, 'Rejected', 'Reject M&R'));
+			// "Tarik ulang" — pull it back off the customer web to arrange it again. Only
+			// while the owner has not decided (the server enforces that too).
+			if (is_admin_ops()) {
+				frm.add_custom_button(__('Withdraw from Customer'), () =>
+					frappe.prompt(
+						[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
+						(v) =>
+							mr_call(
+								frm,
+								'container_depot.ess.repairs.mr_withdraw_from_owner',
+								{ note: v.note },
+								__('Tarik estimasi ini dari customer web? Keputusan per-item direset dan bisa diajukan ulang.')
+							),
+						__('Withdraw from Customer'),
+						__('Withdraw')
+					)
+				);
+			}
 		} else if (s === 'Approved') {
 			frm.add_custom_button(__('Start Repair'), () =>
 				mr_call(frm, 'container_depot.ess.repairs.mr_start', {})
@@ -108,7 +151,7 @@ frappe.ui.form.on('Repair Order', {
 				mr_call(frm, 'container_depot.ess.repairs.mr_order_save', { submit: 1 }, __('Selesaikan M&R dan keluarkan part yang disetujui dari stok?'))
 			).addClass('btn-primary');
 		}
-		if (['Draft', 'Revision Requested', 'Pending Approval', 'Approved', 'In Progress'].includes(s)) {
+		if (['Draft', 'Service Setup', 'Revision Requested', 'Pending Approval', 'Approved', 'In Progress'].includes(s)) {
 			frm.add_custom_button(__('Cancel M&R'), () =>
 				mr_call(frm, 'container_depot.ess.repairs.set_repair_status', { status: 'Cancelled' }, __('Batalkan M&R ini?'))
 			);
@@ -117,9 +160,11 @@ frappe.ui.form.on('Repair Order', {
 	_lock_estimate_grid(frm) {
 		const grid = frm.fields_dict.used_items && frm.fields_dict.used_items.grid;
 		if (!grid) return;
-		// Estimate editable only while Draft / Revision Requested. The per-line owner
-		// decision + remark are editable only while Pending Approval.
-		const editable = ['Draft', 'Revision Requested'].includes(frm.doc.status);
+		// Estimate editable while it is still in depot/Admin-Ops hands — Service Setup
+		// included, since arranging it before the customer sees it is the point of that
+		// step. The per-line owner decision + remark are editable only while Pending
+		// Approval (mirrors MR_EDITABLE_STATUSES server-side).
+		const editable = ['Draft', 'Revision Requested', 'Service Setup'].includes(frm.doc.status);
 		const pending = frm.doc.status === 'Pending Approval';
 		grid.cannot_add_rows = !editable;
 		grid.cannot_delete_rows = !editable;

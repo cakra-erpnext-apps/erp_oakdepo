@@ -204,6 +204,25 @@ def mr_submit_approval(repair_order=None):
 
 
 @frappe.whitelist(methods=["POST"])
+def mr_publish_to_owner(repair_order=None):
+	"""POST /api/v1/ess/mr-publish-to-owner — Admin Ops shows the arranged estimate on the
+	customer web: Service Setup -> Pending Approval. Role-guarded to Admin Ops."""
+	_require_admin_ops()
+	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
+	return mr.publish_to_owner(repair_order)
+
+
+@frappe.whitelist(methods=["POST"])
+def mr_withdraw_from_owner(repair_order=None, note=None):
+	"""POST /api/v1/ess/mr-withdraw-from-owner — Admin Ops pulls the estimate back off the
+	customer web ("tarik ulang"): Pending Approval -> Service Setup. Role-guarded to
+	Admin Ops."""
+	_require_admin_ops()
+	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
+	return mr.withdraw_from_owner(repair_order, note=note)
+
+
+@frappe.whitelist(methods=["POST"])
 def mr_decision(repair_order=None, decision=None, line_decisions=None, note=None):
 	"""POST /api/v1/ess/mr-decision — record the owner's decision (Approved / Rejected /
 	Revision Requested), with optional per-line decisions (partial approval)."""

@@ -35,20 +35,31 @@ MR_MENU = "Maintenance"
 # estimate (Pending Approval) before any work starts; they may reject, or ask for a
 # revision, and may approve only some lines (partial approval, per Repair Used Item).
 MR_TRANSITIONS = {
-	# "Approved" straight from Draft / Revision is the Admin-Ops BYPASS (skip the owner).
-	# It is code-guarded to Admin Ops in the ESS layer (bypass_approval); the state machine
-	# only declares it a legal edge so the controller's validate() doesn't reject it.
-	"Draft": ["Pending Approval", "Approved", "Cancelled"],
-	"Revision Requested": ["Pending Approval", "Approved", "Cancelled"],  # editable like Draft
-	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Cancelled"],
+	# "Approved" straight from Draft / Revision / Service Setup is the Admin-Ops BYPASS
+	# (skip the owner). It is code-guarded to Admin Ops in the ESS layer (bypass_approval);
+	# the state machine only declares it a legal edge so validate() doesn't reject it.
+	#
+	# ``Service Setup`` is the Admin-Ops staging step: the workshop hands the estimate over
+	# there, Admin Ops arranges it, and only ``publish_to_owner`` moves it to Pending
+	# Approval — the first status the customer web can see. Pending Approval -> Service
+	# Setup is the withdraw ("tarik ulang"), which re-opens editing for a re-submit.
+	"Draft": ["Service Setup", "Approved", "Cancelled"],
+	"Revision Requested": ["Service Setup", "Approved", "Cancelled"],  # editable like Draft
+	"Service Setup": ["Pending Approval", "Draft", "Approved", "Cancelled"],
+	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Service Setup", "Cancelled"],
 	"Approved": ["In Progress", "Cancelled"],
 	"In Progress": ["Completed", "Cancelled"],
 	"Completed": [],
 	"Rejected": [],
 	"Cancelled": [],
 }
-# Statuses where the depot may still edit the estimate (used items).
-MR_EDITABLE_STATUSES = ("Draft", "Revision Requested")
+# Statuses where the depot may still edit the estimate (used items). Service Setup is
+# included: arranging the estimate before the customer sees it is the whole point of it.
+MR_EDITABLE_STATUSES = ("Draft", "Revision Requested", "Service Setup")
+
+# Statuses the customer web may show. The owner only ever sees an estimate Admin Ops has
+# explicitly published — never a Draft or a Service Setup still being arranged.
+MR_CUSTOMER_VISIBLE_STATUSES = ("Pending Approval", "Approved", "Rejected", "In Progress", "Completed")
 
 # Tank-spec fields read from the Container master for the form header.
 _CONTAINER_FIELDS = [
@@ -325,23 +336,80 @@ def get_mr_order_detail(repair_order) -> dict:
 
 # --- owner approval ----------------------------------------------------------
 def submit_for_approval(repair_order):
-	"""Submit the estimate to the container owner: Draft / Revision Requested ->
-	Pending Approval. Requires at least one used item; resets per-line decisions to
-	Pending so a re-submitted revision starts a fresh decision round."""
+	"""Hand the estimate to Admin Ops: Draft / Revision Requested -> Service Setup.
+
+	This does NOT reach the customer. Admin Ops arranges the estimate in Service Setup and
+	then :func:`publish_to_owner` puts it on the customer web. Requires at least one used
+	item; per-line decisions are reset to Pending so a re-submitted revision starts a fresh
+	decision round.
+	"""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
-	if ro.status not in MR_EDITABLE_STATUSES:
-		frappe.throw(_("M&R hanya bisa diajukan dari Draft / Revision Requested (status: {0}).").format(ro.status))
+	if ro.status not in ("Draft", "Revision Requested"):
+		frappe.throw(
+			_("M&R hanya bisa diajukan dari Draft / Revision Requested (status: {0}).").format(ro.status)
+		)
 	if not (ro.used_items and len(ro.used_items) > 0):
-		frappe.throw(_("Tambahkan minimal satu item sebelum mengajukan ke owner."))
+		frappe.throw(_("Tambahkan minimal satu item sebelum mengajukan."))
 	for r in ro.used_items:
 		r.decision = "Pending"
 		r.owner_remark = None
+	ro.status = "Service Setup"
+	ro.save()
+	from container_depot.operations.notify import notify_repair_order_service_setup
+	notify_repair_order_service_setup(ro.name)
+	return {"success": True, "name": ro.name, "status": ro.status}
+
+
+def publish_to_owner(repair_order):
+	"""Admin Ops publishes the arranged estimate to the customer web: Service Setup ->
+	Pending Approval.
+
+	This is the moment the owner can first see (and decide on) the estimate, so
+	``requested_on`` is stamped here rather than at ``submit_for_approval`` — it measures
+	how long the OWNER has had it, not how long it sat with Admin Ops. Re-publishing after
+	a withdraw restarts that clock, which is what "ajukan ulang" means.
+	"""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status != "Service Setup":
+		frappe.throw(
+			_("Hanya M&R berstatus Service Setup yang bisa ditampilkan ke customer (status: {0}).").format(ro.status)
+		)
+	if not (ro.used_items and len(ro.used_items) > 0):
+		frappe.throw(_("Tambahkan minimal satu item sebelum menampilkan ke customer."))
 	ro.status = "Pending Approval"
 	ro.requested_on = now_datetime()
 	ro.save()
 	from container_depot.operations.notify import notify_repair_order_pending_approval
 	notify_repair_order_pending_approval(ro.name)
+	return {"success": True, "name": ro.name, "status": ro.status}
+
+
+def withdraw_from_owner(repair_order, note=None):
+	"""Admin Ops pulls a published estimate back off the customer web ("tarik ulang"):
+	Pending Approval -> Service Setup.
+
+	Only while the owner has not decided — once they have (Approved / Rejected / Revision
+	Requested) the decision stands and this refuses, so a withdrawal can never erase an
+	answer the customer already gave. Per-line decisions are reset to Pending because the
+	re-published estimate is a fresh round; ``requested_on`` is cleared for the same reason
+	(``publish_to_owner`` re-stamps it).
+	"""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status != "Pending Approval":
+		frappe.throw(
+			_("Hanya M&R yang sedang menunggu keputusan owner yang bisa ditarik (status: {0}).").format(ro.status)
+		)
+	for r in ro.used_items or []:
+		r.decision = "Pending"
+		r.owner_remark = None
+	ro.status = "Service Setup"
+	ro.requested_on = None
+	if note:
+		ro.owner_note = _clean(note)
+	ro.save()
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 

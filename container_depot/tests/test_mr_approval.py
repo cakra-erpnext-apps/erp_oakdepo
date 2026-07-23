@@ -144,8 +144,12 @@ class TestMRApproval(FrappeTestCase):
 		return c, ro
 
 	def _submit(self, ro, used_items, warehouse=None):
+		"""Estimate -> workshop submit (Admin Ops) -> published to the customer. The
+		publish step is the Admin-Ops gate added later; these tests are about what the
+		OWNER does, so the helper drives straight through it to Pending Approval."""
 		mr.save_mr_order(repair_order=ro, used_items=used_items, warehouse=warehouse, submit=False)
 		mr.submit_for_approval(ro)
+		mr.publish_to_owner(ro)
 
 	# --- submit ---------------------------------------------------------------
 	def test_submit_requires_item(self):
@@ -212,6 +216,10 @@ class TestMRApproval(FrappeTestCase):
 		# Editable again — change the estimate and re-submit; decisions reset to Pending.
 		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 2}], submit=False)
 		mr.submit_for_approval(ro)
+		# A revised estimate goes back through the Admin-Ops gate before the customer
+		# sees it again, exactly like a first-time one.
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Service Setup")
+		mr.publish_to_owner(ro)
 		doc = frappe.get_doc("Repair Order", ro)
 		self.assertEqual(doc.status, "Pending Approval")
 		self.assertEqual(doc.used_items[0].item, _PART)

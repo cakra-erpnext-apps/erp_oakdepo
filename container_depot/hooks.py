@@ -190,6 +190,9 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/mr-item-pricing", "to_route": "container_depot.ess.repairs.mr_item_pricing"},
 	{"from_route": "/api/v1/ess/mr-submit-approval", "to_route": "container_depot.ess.repairs.mr_submit_approval"},
 	{"from_route": "/api/v1/ess/mr-decision", "to_route": "container_depot.ess.repairs.mr_decision"},
+	# Admin Ops gate between the workshop's estimate and the customer web.
+	{"from_route": "/api/v1/ess/mr-publish-to-owner", "to_route": "container_depot.ess.repairs.mr_publish_to_owner"},
+	{"from_route": "/api/v1/ess/mr-withdraw-from-owner", "to_route": "container_depot.ess.repairs.mr_withdraw_from_owner"},
 	{"from_route": "/api/v1/ess/mr-start", "to_route": "container_depot.ess.repairs.mr_start"},
 	{"from_route": "/api/v1/ess/mr-order-save", "to_route": "container_depot.ess.repairs.mr_order_save"},
 	{"from_route": "/api/v1/ess/gate-out", "to_route": "container_depot.ess.gate.gate_out"},

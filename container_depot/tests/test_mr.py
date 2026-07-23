@@ -126,10 +126,12 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		return _SERVICE
 
 	def _to_in_progress(self, ro, used_items, warehouse=None):
-		"""Drive a Draft M&R through the owner-approval gate into In Progress:
-		save the estimate -> submit -> owner Approves -> start."""
+		"""Drive a Draft M&R through the owner-approval gate into In Progress: save the
+		estimate -> workshop submits to Admin Ops -> Admin Ops publishes to the customer
+		-> owner Approves -> start."""
 		mr.save_mr_order(repair_order=ro, used_items=used_items, warehouse=warehouse, submit=False)
 		mr.submit_for_approval(ro)
+		mr.publish_to_owner(ro)  # Admin-Ops gate — the owner can't decide before this
 		mr.record_decision(ro, "Approved")
 		mr.start_repair(ro)
 

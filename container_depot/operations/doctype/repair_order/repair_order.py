@@ -142,7 +142,9 @@ class RepairOrder(Document):
 		# Only the informational repair_status hint is mirrored here — the main
 		# Container.status is presence-based now and recomputed in on_update once this
 		# order's new status is persisted (In_Depot while open, Available when done).
-		if self.status == "Draft":
+		if self.status in ("Draft", "Service Setup"):
+			# Service Setup is still estimate-building (Admin Ops arranging it) — the owner
+			# has not been asked yet, so it is not "awaiting approval".
 			container_doc.repair_status = "Pending_Estimate"
 		elif self.status in ("Pending Approval", "Revision Requested"):
 			container_doc.repair_status = "Awaiting_Approval"

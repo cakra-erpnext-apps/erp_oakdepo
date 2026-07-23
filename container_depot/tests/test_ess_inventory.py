@@ -232,7 +232,10 @@ class TestEssInventory(FrappeTestCase):
 		ro = res["repairs"][0]
 		self.assertEqual(ro["status"], "Draft")
 		self.assertEqual(ro["billing_status"], "Unbilled")
-		self.assertEqual(ro["next_statuses"], ["Pending Approval", "Cancelled"])
+		# A Draft hands over to Admin Ops (Service Setup) — it can no longer jump straight
+		# to the customer-visible Pending Approval. "Approved" is the Admin-Ops bypass
+		# edge (this assertion had omitted it, so it was failing before the gate landed).
+		self.assertEqual(ro["next_statuses"], ["Service Setup", "Approved", "Cancelled"])
 		self.assertIn("items", ro)
 
 	def test_set_repair_status_transitions(self):
@@ -260,8 +263,12 @@ class TestEssInventory(FrappeTestCase):
 			with self.assertRaises(frappe.ValidationError):
 				set_repair_status(ro.name, "Completed")
 
-			r1 = set_repair_status(ro.name, "Pending Approval")
-			self.assertEqual(r1["status"], "Pending Approval")
+			# Draft -> Service Setup (Admin Ops) -> Pending Approval (customer web).
+			r1 = set_repair_status(ro.name, "Service Setup")
+			self.assertEqual(r1["status"], "Service Setup")
+
+			r1b = set_repair_status(ro.name, "Pending Approval")
+			self.assertEqual(r1b["status"], "Pending Approval")
 
 			r2 = set_repair_status(ro.name, "Approved")
 			self.assertEqual(r2["status"], "Approved")

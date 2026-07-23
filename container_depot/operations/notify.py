@@ -238,6 +238,29 @@ def notify_repair_order_created(repair_order):
 	)
 
 
+def notify_repair_order_service_setup(repair_order):
+	"""Fire when the workshop hands an estimate to Admin Ops (-> Service Setup) — it is
+	NOT on the customer web yet and sits there until Admin Ops publishes it, so this is
+	the prompt that stops it being forgotten."""
+	ro = frappe.db.get_value(
+		"Repair Order", repair_order,
+		["name", "container", "container_no", "depot", "repair_order_id", "total_cost"], as_dict=True,
+	)
+	if not ro:
+		return
+	subject = (
+		f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container} — "
+		f"perlu ditata Admin Ops sebelum tampil ke customer (est. {ro.total_cost or 0})"
+	)
+	notify(
+		doctype="Repair Order",
+		name=ro.name,
+		subject=subject,
+		branch=_depot_branch(ro.depot),
+		roles=MR_ROLES,
+	)
+
+
 def notify_repair_order_pending_approval(repair_order):
 	"""Fire when an M&R estimate is submitted to the owner — tells the team a decision
 	is awaited (and, once owner self-service is live, the owner). Carries the cost."""
