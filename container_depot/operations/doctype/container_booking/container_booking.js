@@ -12,6 +12,7 @@ frappe.ui.form.on('Container Booking', {
 	refresh(frm) {
 		frm.trigger('_set_queries');
 		frm.trigger('_lock_actions');
+		frm.trigger('_set_grid_import_button');
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
 		if (!frm.is_new() && frm.doc.booking_status === 'Confirmed') {
@@ -39,6 +40,93 @@ frappe.ui.form.on('Container Booking', {
 				}
 			});
 		}
+	},
+	_set_grid_import_button(frm) {
+		// "Import Excel" sits in the Containers grid footer next to Add Row
+		// (grid.add_custom_button dedups by label, so calling it on every refresh is
+		// safe). Parses the file server-side and adds the rows client-side, so it works
+		// on a brand-new, unsaved booking too. Mirrors Depot Contract's tariff import.
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (!grid) return;
+		// Editable only while the booking is an unsaved / draft record.
+		if (!(frm.is_new() || frm.doc.docstatus === 0)) return;
+		grid.add_custom_button(__('Import Excel'), () => {
+			const d = new frappe.ui.Dialog({
+				title: __('Import Containers from Excel'),
+				fields: [
+					{
+						fieldname: 'hint',
+						fieldtype: 'HTML',
+						options: `<p class="text-muted small">${__(
+							'Columns: Container, Condition (EMPTY CLEAN / EMPTY DIRTY / LADEN). A header row is skipped. A new Tank In container shows in the grid after Save.'
+						)}</p>`,
+					},
+					{ fieldname: 'file', fieldtype: 'Attach', label: __('Excel File (.xlsx)'), reqd: 1 },
+					{ fieldname: 'replace', fieldtype: 'Check', label: __('Replace existing rows') },
+				],
+				primary_action_label: __('Import'),
+				primary_action(values) {
+					frappe.call({
+						method: 'container_depot.operations.doctype.container_booking.container_booking.parse_container_xlsx',
+						args: { file_url: values.file },
+						freeze: true,
+						freeze_message: __('Reading file…'),
+						callback(r) {
+							const res = r.message || {};
+							const rows = res.rows || [];
+							if (values.replace) frm.clear_table('items');
+							// Skip containers already on the grid (server also dedups on save).
+							const existing = new Set();
+							(frm.doc.items || []).forEach((it) => {
+								if (it.container_no) existing.add(it.container_no.toUpperCase());
+								if (it.container) existing.add(it.container);
+							});
+							let added = 0,
+								skipped = 0;
+							rows.forEach((ln) => {
+								if (existing.has(ln.container_no) || (ln.container && existing.has(ln.container))) {
+									skipped++;
+									return;
+								}
+								const row = frm.add_child('items');
+								row.container_no = ln.container_no;
+								row.condition = ln.condition;
+								if (ln.container) row.container = ln.container;
+								existing.add(ln.container_no);
+								added++;
+							});
+							frm.refresh_field('items');
+							frm.trigger('_recompute_lift_amount');
+							d.hide();
+							let msg = __('Added {0} row(s).', [added]);
+							if (skipped) msg += ' ' + __('{0} already on the grid, skipped.', [skipped]);
+							const warns = res.errors || [];
+							if (warns.length) {
+								frappe.msgprint({
+									title: __('Import finished with warnings'),
+									message: msg + '<br><b>' + __('Not imported:') + '</b><br>' + warns.join('<br>'),
+									indicator: 'orange',
+								});
+							} else {
+								frappe.show_alert({ message: msg, indicator: 'green' });
+							}
+						},
+					});
+				},
+			});
+			// Downloads live in the dialog so the template + valid container numbers are one
+			// click away. window.open (not frappe.call) because these stream a file back,
+			// not JSON; the session cookie rides along so the GET is authenticated.
+			const base = '/api/method/container_depot.operations.doctype.container_booking.container_booking';
+			d.add_custom_action(__('Download Template'), () => {
+				window.open(`${base}.download_container_template`);
+			});
+			d.add_custom_action(__('Download Master Container'), () => {
+				const q = frm.doc.principal ? `?principal=${encodeURIComponent(frm.doc.principal)}` : '';
+				window.open(`${base}.download_container_master${q}`);
+			});
+			d.show();
+		});
 	},
 	_lock_actions(frm) {
 		// A booking is never permanently deleted or silently discarded — it is voided

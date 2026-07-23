@@ -1155,3 +1155,105 @@ def on_payment_entry_change(doc, method=None):
 		if si and si not in seen:
 			seen.add(si)
 			sync_bookings_for_invoice(si)
+
+
+# --- Container import (Desk grid "Import Excel") ------------------------------
+
+# The Condition column accepts exactly these — mirrors the Container Booking Item
+# ``condition`` Select. Kept here so the template + parser share one greppable source.
+CONTAINER_CONDITIONS = ("EMPTY CLEAN", "EMPTY DIRTY", "LADEN")
+
+
+@frappe.whitelist(methods=["GET"])
+def download_container_template():
+	"""Blank import template for the booking's Containers grid: Container + Condition,
+	with one illustrative row and a dropdown constraining Condition to the valid set."""
+	from container_depot.xlsx_utils import finish_sheet, new_sheet
+
+	headers = ["Container", "Condition"]
+	output, wb, ws, _fmts = new_sheet("Template", headers, [24, 18])
+	ws.write_row(1, 0, ["ABCD1234567", CONTAINER_CONDITIONS[0]])
+	# Dropdown on the Condition column so the file cannot carry a typo'd condition.
+	ws.data_validation(1, 1, 1000, 1, {"validate": "list", "source": list(CONTAINER_CONDITIONS)})
+	finish_sheet(output, wb, ws, "container_import_template.xlsx", 1, len(headers) - 1)
+
+
+@frappe.whitelist(methods=["GET"])
+def download_container_master(principal: str | None = None):
+	"""Reference list of existing containers under a bold Principal (owner) banner — the
+	numbers to put in the template's Container column. Optional ``principal`` scopes it to
+	one owner (the form passes its Principal). A Tank In booking may name a not-yet-arrived
+	container absent here; it is created on save."""
+	from container_depot.xlsx_utils import finish_sheet, new_sheet
+
+	filters = {"principal": principal} if principal else {}
+	containers = frappe.get_all(
+		"Container",
+		filters=filters,
+		fields=["container_no", "container_type", "size", "status", "principal"],
+		order_by="principal asc, container_no asc",
+	)
+	grouped = {}
+	for c in containers:
+		grouped.setdefault(c.principal or _("(no owner)"), []).append(c)
+
+	headers = ["Container", "Type", "Size", "Status"]
+	output, wb, ws, fmts = new_sheet("Containers", headers, [24, 14, 10, 14])
+	row = 1
+	for owner in sorted(grouped):
+		# Banner spans the full width so the section reads as one band.
+		ws.write(row, 0, owner, fmts["group"])
+		for col in range(1, len(headers)):
+			ws.write(row, col, "", fmts["group"])
+		row += 1
+		for c in grouped[owner]:
+			ws.write_row(row, 0, [c.container_no, c.container_type, c.size, c.status])
+			row += 1
+	finish_sheet(output, wb, ws, "container_master.xlsx", row - 1, len(headers) - 1)
+
+
+@frappe.whitelist()
+def parse_container_xlsx(file_url: str) -> dict:
+	"""Parse an uploaded .xlsx into container rows for the booking grid's "Import Excel".
+
+	Columns by position: Container, Condition. A header row whose first cell is
+	container / kontainer is skipped. Pure read — it resolves an existing Container master
+	to its link when present (so the grid shows it at once) but never creates one, so it is
+	safe on an unsaved form; a Tank In booking's new tanks are born on save. Duplicate
+	container numbers within the file are collapsed. An unknown condition is reported in
+	``errors`` and the row skipped; a blank condition defaults to EMPTY CLEAN.
+
+	Returns ``{rows: [{container_no, condition, container}], errors: [...]}``.
+	"""
+	from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+
+	if not file_url:
+		frappe.throw(_("No file provided."))
+	raw_rows = read_xlsx_file_from_attached_file(file_url=file_url) or []
+
+	rows, errors, seen = [], [], set()
+	for cells in raw_rows:
+		if not cells:
+			continue
+		cno = str(cells[0]).strip().upper() if cells[0] is not None else ""
+		if not cno:
+			continue
+		if cno.lower() in ("container", "container no", "kontainer", "no kontainer"):
+			continue  # header
+		if cno in seen:
+			continue
+		raw_cond = str(cells[1]).strip().upper() if len(cells) > 1 and cells[1] is not None else ""
+		if not raw_cond:
+			condition = CONTAINER_CONDITIONS[0]
+		elif raw_cond in CONTAINER_CONDITIONS:
+			condition = raw_cond
+		else:
+			errors.append(_("Row {0}: unknown condition {1}").format(cno, raw_cond))
+			continue
+		seen.add(cno)
+		rows.append({
+			"container_no": cno,
+			"condition": condition,
+			"container": frappe.db.get_value("Container", {"container_no": cno}),
+		})
+	return {"rows": rows, "errors": errors}

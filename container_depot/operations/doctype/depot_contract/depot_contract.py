@@ -479,40 +479,10 @@ def import_tariff_lines(contract: str, text: str, replace=0) -> dict:
 	}
 
 
-def _new_sheet(sheet_name: str, headers: list, widths: list):
-	"""Start an .xlsx with a styled, frozen, filterable header row.
-
-	Written with xlsxwriter directly rather than ``make_xlsx`` because that helper
-	emits a plain grid — no bold header, AutoFilter or freeze pane.
-
-	Returns ``(output, wb, ws, fmts)``; finish with :func:`_finish_sheet`.
-	"""
-	import io
-
-	import xlsxwriter
-
-	output = io.BytesIO()
-	wb = xlsxwriter.Workbook(output, {"in_memory": True})
-	ws = wb.add_worksheet(sheet_name)
-	fmts = {
-		"header": wb.add_format({"bold": True, "bg_color": "#E8E8E8", "border": 1}),
-		"group": wb.add_format({"bold": True, "bg_color": "#FFF2CC"}),
-	}
-	for col, title in enumerate(headers):
-		ws.write(0, col, title, fmts["header"])
-	for col, width in enumerate(widths):
-		ws.set_column(col, col, width)
-	ws.freeze_panes(1, 0)  # header stays put while scrolling
-	return output, wb, ws, fmts
-
-
-def _finish_sheet(output, wb, ws, filename: str, last_row: int, last_col: int):
-	"""Apply AutoFilter across every column, close the book and serve it."""
-	ws.autofilter(0, 0, max(last_row, 1), last_col)
-	wb.close()
-	frappe.response["type"] = "download"
-	frappe.response["filename"] = filename
-	frappe.response["filecontent"] = output.getvalue()
+# The .xlsx builders moved to a shared module (Container Booking imports them too);
+# kept under the old private names so the download functions below are untouched.
+from container_depot.xlsx_utils import finish_sheet as _finish_sheet
+from container_depot.xlsx_utils import new_sheet as _new_sheet
 
 
 @frappe.whitelist(methods=["GET"])
