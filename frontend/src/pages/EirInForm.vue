@@ -331,10 +331,11 @@ const hasDamage = computed(() => rows.value.some(rowHasFinding))
 const showCleaningToggle = computed(() => tankStatus.value === "Empty Dirty")
 const showRepairToggle = computed(() => hasDamage.value)
 
-// Required before Submit (per ops): Cargo (Last Cargo) + Tank Status + Signature.
+// Required before Submit (per ops): Tank Status + Signature, plus Cargo (Last Cargo) —
+// except when the tank is Empty Clean, where there is no prior cargo to record.
 const missingFields = computed(() => {
 	const out = []
-	if (!cargo.value) out.push(labels.eirNeedCargo)
+	if (!cargo.value && tankStatus.value !== "Empty Clean") out.push(labels.eirNeedCargo)
 	if (!tankStatus.value) out.push(labels.eirNeedTankStatus)
 	if (!signatureUrl.value) out.push(labels.eirNeedSignature)
 	return out

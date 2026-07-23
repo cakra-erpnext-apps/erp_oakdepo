@@ -5,15 +5,25 @@
 			<!-- Queue navigator: only when this account is working more than one EIR. Lets the
 			     surveyor jump ◀ / ▶ between the EIRs they started without going back to the list;
 			     submitting one auto-advances to the next (see onSubmitted / onBack). -->
-			<div v-if="navQueue.length > 1 && activeIndex !== -1" class="oak-card space-y-2 p-2">
+			<!-- Sticky so the ◀ / ▶ controls stay reachable while scrolling a long EIR form.
+			     Pinned just below the app header (≈3.5rem tall + safe-area). -->
+			<div
+				v-if="navQueue.length > 1 && activeIndex !== -1"
+				class="oak-card sticky z-10 space-y-2 p-2 top-[calc(env(safe-area-inset-top,0px)+3.5rem)]"
+			>
 				<div class="flex items-center justify-between gap-2">
-					<button class="oak-btn oak-btn-secondary px-3 py-2" :disabled="activeIndex <= 0" @click="goRel(-1)">
+					<button class="oak-btn oak-btn-secondary px-3 py-2" @click="goRel(-1)">
 						<Icon name="chevron-left" :size="16" /> {{ labels.eirNavPrev }}
 					</button>
-					<span class="shrink-0 text-sm font-bold text-gray-700">
-						{{ labels.eirBadge }} {{ activeIndex + 1 }} / {{ navQueue.length }}
-					</span>
-					<button class="oak-btn oak-btn-secondary px-3 py-2" :disabled="activeIndex >= navQueue.length - 1" @click="goRel(1)">
+					<div class="flex min-w-0 flex-col items-center leading-tight">
+						<span class="text-[11px] font-semibold text-gray-400">
+							{{ labels.eirBadge }} {{ activeIndex + 1 }} / {{ navQueue.length }}
+						</span>
+						<span class="max-w-[9rem] truncate text-sm font-bold text-gray-800">
+							{{ activeItem?.container_no || activeItem?.container || "—" }}
+						</span>
+					</div>
+					<button class="oak-btn oak-btn-secondary px-3 py-2" @click="goRel(1)">
 						{{ labels.eirNavNext }} <Icon name="chevron-right" :size="16" />
 					</button>
 				</div>
@@ -194,7 +204,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from "vue"
+import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
@@ -251,9 +261,24 @@ const selectMode = ref(false)
 const selected = reactive(new Set())
 const autoAdvanceTo = ref(null) // next EIR to open after a submit (consumed by onBack)
 
+// Persist the batch so a page refresh on an open EIR keeps the navigator (the ?e= URL alone
+// only restores the single open EIR). sessionStorage = scoped to this tab/session.
+const BATCH_KEY = "eir_batch"
+try {
+	const saved = JSON.parse(sessionStorage.getItem(BATCH_KEY) || "[]")
+	if (Array.isArray(saved)) saved.forEach((n) => selected.add(n))
+} catch {
+	/* ignore malformed storage */
+}
+watch(
+	() => Array.from(selected),
+	(arr) => sessionStorage.setItem(BATCH_KEY, JSON.stringify(arr))
+)
+
 // The batch = the picked EIRs that are still pending, in worklist order.
 const navQueue = computed(() => pendingItems.value.filter((r) => selected.has(r.name)))
 const activeIndex = computed(() => navQueue.value.findIndex((r) => r.name === activeInspection.value))
+const activeItem = computed(() => navQueue.value[activeIndex.value] || null)
 
 const loadingPending = computed(() => inRes.loading || outRes.loading)
 const fetchError = computed(() => {
@@ -323,10 +348,35 @@ function goItem(r) {
 function goCompleted(r) {
 	router.push({ path: "/eir/history", query: { open: r.name } })
 }
-// Prev/next within the current account's queue.
+// Prev/next within the picked batch — keep the scroll position so moving between EIRs lands
+// on the SAME section (e.g. the photos) instead of jumping back to the top. The next form
+// re-mounts (collapsing height), so we re-apply the saved offset over a few frames until the
+// page is tall enough to reach it again.
 function goRel(delta) {
-	const target = navQueue.value[activeIndex.value + delta]
-	if (target) goItem(target)
+	const len = navQueue.value.length
+	if (len < 2) return
+	// Wrap around: Next on the last EIR loops back to the first (and Prev on the first to
+	// the last), so you can keep cycling the batch without hitting a dead end.
+	const target = navQueue.value[(activeIndex.value + delta + len) % len]
+	if (!target) return
+	restoreScrollTo(window.scrollY)
+	goItem(target)
+}
+function restoreScrollTo(y) {
+	if (y <= 0) return
+	let tries = 0
+	const tick = () => {
+		const maxY = document.documentElement.scrollHeight - window.innerHeight
+		if (maxY >= y - 2 || tries >= 90) {
+			window.scrollTo(0, Math.min(y, Math.max(0, maxY)))
+			// One late re-apply catches images/thumbnails that settle after first paint.
+			if (tries < 90) setTimeout(() => window.scrollTo(0, Math.min(y, Math.max(0, document.documentElement.scrollHeight - window.innerHeight))), 250)
+			return
+		}
+		tries++
+		requestAnimationFrame(tick)
+	}
+	requestAnimationFrame(tick)
 }
 
 // Worklist tap: select in batch mode, otherwise open the EIR.
