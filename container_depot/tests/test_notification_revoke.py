@@ -3,7 +3,7 @@
 Two things are under test:
 
 * each doctype in the notified set actually drops something in the bell when its
-  event fires (contract, booking, invoice, cleaning certificate, survey order);
+  event fires (contract, booking, invoice, survey order);
 * voiding a document takes its notifications back down, so a cancelled booking / bon
   stops sitting there as work to do.
 
@@ -79,7 +79,6 @@ def _cleanup(customer: str):
 	if containers:
 		by_container = {"container": ("in", containers)}
 		_purge("Repair Order", by_container, ("Repair Damage Entry", "Repair Used Item", "Repair Cost Total"))
-		_purge("Cleaning Certificate", by_container)
 		_purge("Cleaning Order", by_container)
 		_purge("Inspection", by_container)
 		# Both audit logs, not just movements — submitting a booking writes a
@@ -197,22 +196,6 @@ class TestNotificationRevoke(FrappeTestCase):
 		c.status = "Void"
 		c.save(ignore_permissions=True)
 		self.assertEqual(_feed("Depot Contract", c.name), 0)
-
-	def test_cleaning_certificate_issue_notifies(self):
-		self._container()
-		cert = frappe.get_doc({
-			"doctype": "Cleaning Certificate",
-			"container": CONTAINER,
-			"clean_date": now_datetime(),
-			"cleaning_method": "Steam",
-		}).insert(ignore_permissions=True)
-		cert.submit()
-		_log("Cleaning Certificate", cert.name)
-		self.assertGreaterEqual(_feed("Cleaning Certificate", cert.name), 1)
-
-		cert.reload()
-		cert.cancel()
-		self.assertEqual(_feed("Cleaning Certificate", cert.name), 0)
 
 	def test_survey_order_submit_notifies_and_cancel_clears(self):
 		order = frappe.get_doc({

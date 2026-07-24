@@ -15,7 +15,7 @@ from container_depot.operations import cleaning
 
 @frappe.whitelist(methods=["GET"])
 def cleaning_masters():
-	"""GET /api/v1/ess/cleaning-masters — checklist taxonomy + default remarks."""
+	"""GET /api/v1/ess/cleaning-masters — default sign-off remarks."""
 	_require_authenticated_user()
 	return cleaning.get_cleaning_masters()
 
@@ -53,33 +53,19 @@ def cleaning_order_save(
 	cleaning_order=None,
 	cleaning_type=None,
 	cleaning_items=None,
-	gas_free=None,
-	o2_percent=None,
-	lel_percent=None,
-	seal_manhole=None,
-	seal_airline=None,
-	seal_bottom_outlet=None,
 	reff_doc=None,
 	remarks=None,
 	signature=None,
-	results=None,
 	submit=False,
 ):
-	"""POST /api/v1/ess/cleaning-order-save — save cleanliness detail (submit=1 completes)."""
+	"""POST /api/v1/ess/cleaning-order-save — save the sign-off (submit=1 completes)."""
 	_require_authenticated_user()
 	return cleaning.save_cleaning_order(
 		cleaning_order=cleaning_order,
 		cleaning_type=cleaning_type,
 		cleaning_items=cleaning_items,
-		gas_free=gas_free,
-		o2_percent=o2_percent,
-		lel_percent=lel_percent,
-		seal_manhole=seal_manhole,
-		seal_airline=seal_airline,
-		seal_bottom_outlet=seal_bottom_outlet,
 		reff_doc=reff_doc,
 		remarks=remarks,
 		signature=signature,
-		results=results,
 		submit=submit,
 	)

@@ -58,7 +58,7 @@ def run():
     _dev._seed_cleaning_checklist()     # patches.v0_31
     _dev._seed_cargo()                  # patches.v0_12
     _dev._seed_eir_codes()              # patches.v0_6  — Inspection Damage + Repair Code
-    _dev._seed_eir_checklist()          # patches.v0_25 — Inspection Checklist Item (50 rows)
+    _dev._seed_eir_checklist()          # patches.v0_39 — Inspection Checklist Item (138 rows)
 
     for uom in sorted({i[2] for i in _dev.ITEMS}):
         _dev._ensure_uom(uom)

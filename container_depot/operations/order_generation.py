@@ -84,8 +84,7 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 
 	``vehicle_data`` (optional dict): ``truck_plate``, ``driver_name``,
 	``driver_phone``, ``transporter``, ``ex_vessel`` (Tank In),
-	``destination`` (Tank Out), and ``cleaning_certificates`` = {code: cert}
-	(Tank Out, one per container).
+	``destination`` (Tank Out).
 
 	``submit``: when true (the user-facing "generate" actions), the bon is
 	submitted in the same transaction so it goes live immediately — its
@@ -101,7 +100,6 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		frappe.throw(_("Booking {0} not found.").format(booking))
 
 	vehicle_data = vehicle_data or {}
-	certs = vehicle_data.get("cleaning_certificates") or {}
 
 	frappe.db.savepoint("make_order")
 	try:
@@ -169,10 +167,9 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 					"container": r.container,
 					"container_no": r.container_no,
 					"remarks": remarks.get(r.name) if isinstance(remarks, dict) else None,
-					"cleaning_certificate": certs.get(r.name),
 				})
-		# validate() re-runs the Active/direction/scoping/count checks (and per-row
-		# cleaning cert for Muat) as defense in depth.
+		# validate() re-runs the Active/direction/scoping/count checks (and, for Muat,
+		# the finished-Cleaning-Order gate) as defense in depth.
 		order.insert(ignore_permissions=True)
 
 		# Single-use: consume each code so later scans/selections are rejected.

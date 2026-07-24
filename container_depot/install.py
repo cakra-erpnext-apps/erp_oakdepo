@@ -134,19 +134,14 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
-	"Cleaning Certificate": {
-		"Customer":          {"read": 1, "report": 1},
-		"Surveyor":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-	},
 	"Cleaning Checklist Item": {
 		"Surveyor":          {"read": 1, "report": 1},
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
 		"Ops Supervisor":    {"read": 1, "report": 1},
 	},
 	# Cleaning Order — the cleaning team's worklist (auto-created from Empty-Dirty EIRs).
-	# The team fills the cleanliness checklist and submits it (= Completed), which mints
-	# the Cleaning Certificate. Editable + submittable from the PWA.
+	# The team fills the cleanliness checklist and submits it (= Completed), which is the
+	# proof Order Muat requires before load-out. Editable + submittable from the PWA.
 	"Cleaning Order": {
 		"Surveyor":          {"read": 1, "write": 1, "submit": 1, "report": 1},
 		"Operator Kalmar":   {"read": 1, "write": 1, "submit": 1, "report": 1},
@@ -285,8 +280,6 @@ _PWA_DOCTYPE_PERMS = {
 	"Cargo":             {"read": 1, "report": 1},
 	"Order Bongkar":     {"read": 1, "report": 1},
 	"Order Muat":        {"read": 1, "report": 1},
-	# EIR-Out shows the tank's Cleaning Certificate (no + validity) before load-out.
-	"Cleaning Certificate": {"read": 1, "report": 1},
 	"Container Booking": {"read": 1, "report": 1},
 	"Booking Code":      {"read": 1, "report": 1},
 	# The PWA position-survey menu records + submits Container Position Survey WITHOUT
@@ -613,6 +606,59 @@ CUSTOM_FIELDS = {
 			"print_hide": 1,
 			"description": "Internal: depot orders swept into this consolidated invoice (rollback manifest).",
 		},
+		# --- Labour (manhour) -------------------------------------------------------
+		# Every item line carries the manhour its contract books for it (see the Sales
+		# Invoice Item field below). The hours are NOT priced into the line — they are
+		# totalled here and charged once, so the invoice reads:
+		#
+		#     Total Price + (Total Manhour × Hour) -> tax -> Grand Total
+		#
+		# These live in the standard Totals block, right under Total / Net Total, so labour
+		# is read side by side with the price it accompanies instead of in a section of its
+		# own that has to be hunted for.
+		{
+			"fieldname": "total_manhour",
+			"label": "Total Manhour (jam)",
+			"fieldtype": "Float",
+			"precision": "2",
+			"insert_after": "net_total",
+			"read_only": 1,
+			"description": "Jumlah manhour semua item (tidak dikali qty). Di luar Total.",
+		},
+		{
+			"fieldname": "manhour_hour",
+			"label": "Hour (pengali)",
+			"fieldtype": "Float",
+			"precision": "2",
+			"default": "4",
+			"insert_after": "total_manhour",
+			"description": "Bisa diubah per invoice.",
+		},
+		{
+			"fieldname": "manhour_amount",
+			"label": "Biaya Manhour",
+			"fieldtype": "Currency",
+			"options": "currency",
+			"insert_after": "manhour_hour",
+			"read_only": 1,
+			"bold": 1,
+			"description": "Total Manhour × Hour — masuk ke Grand Total.",
+		},
+	],
+	# The manhour the contract books for this service. Shown in the items grid beside the
+	# qty and summed into the invoice's Total Manhour; never folded into the line's amount,
+	# and never scaled by qty — unlike the rate, it is the labour the line books as a whole.
+	"Sales Invoice Item": [
+		{
+			"fieldname": "manhour",
+			"label": "Manhour",
+			"fieldtype": "Float",
+			"precision": "2",
+			"insert_after": "qty",
+			"in_list_view": 1,
+			"columns": 1,
+			"description": "Manhour dari Price List kontrak — tidak dikali qty dan tidak menambah harga baris ini. Ditotal di header lalu dikali Hour.",
+		}
 	],
 	# Back-link a Repair Order to the consolidated invoice it was billed into. Repair
 	# Order has no native invoice link (billing state lives in billing_status); this lets

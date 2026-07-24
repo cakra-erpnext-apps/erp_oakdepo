@@ -224,26 +224,6 @@ def run_tests():
 		assert container.tier == 3, f"Expected 3, got {container.tier}"
 		print("✓ Container Movement updates verified successfully.")
 
-		# 10. Test Cleaning Certificate workflow and container state change
-		print("\n--- 10. Testing Cleaning Certificate ---")
-		cert = frappe.get_doc({
-			"doctype": "Cleaning Certificate",
-			"container": container.name,
-			"cleaning_method": "Chemical",
-			"remarks": "Cleaned thoroughly"
-		})
-		cert.insert(ignore_permissions=True)
-		print(f"✓ Created Cleaning Certificate Draft: {cert.name}")
-		
-		# Submit the certificate
-		cert.submit()
-		print(f"✓ Submitted Cleaning Certificate: {cert.name}")
-		
-		# Verify container was updated
-		container.reload()
-		assert container.certification_status == "Completed", f"Expected Completed, got {container.certification_status}"
-		print("✓ Cleaning Certificate workflow verified successfully.")
-
 		# 11. Test Gasket Inventory stock level reorder point trigger
 		print("\n--- 11. Testing Gasket Inventory reorder point ---")
 		gasket = frappe.get_doc({
@@ -317,7 +297,7 @@ def ensure_test_branch(name: str = "Test Branch") -> str:
 def cleanup_test_data():
 	print("\n--- Cleaning up test records ---")
 	
-	# Delete Comments for Gate Entry and Cleaning Certificate
+	# Delete Comments for Gate Entry
 	gate_entry_names = frappe.db.get_values("Gate Entry", {"container_no": "TSTU1234567"}, "name")
 	if gate_entry_names:
 		frappe.db.delete("Comment", {"reference_doctype": "Gate Entry", "reference_name": ["in", gate_entry_names]})
@@ -336,12 +316,6 @@ def cleanup_test_data():
 	
 	# Delete Container Movement
 	frappe.db.delete("Container Movement", {"container": "TSTU1234567"})
-	
-	# Delete Cleaning Certificate comments and documents
-	cert_names = frappe.db.get_values("Cleaning Certificate", {"container": "TSTU1234567"}, "name")
-	if cert_names:
-		frappe.db.delete("Comment", {"reference_doctype": "Cleaning Certificate", "reference_name": ["in", cert_names]})
-	frappe.db.delete("Cleaning Certificate", {"container": "TSTU1234567"})
 	
 	# Delete Container
 	frappe.db.delete("Container", {"container_no": "TSTU1234567"})

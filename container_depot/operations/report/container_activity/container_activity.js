@@ -6,7 +6,7 @@ frappe.query_reports["Container Activity"] = {
 			fieldname: "activity_type",
 			label: __("Activity Type"),
 			fieldtype: "Select",
-			options: "\nBooking\nGate In\nInspection (EIR)\nCleaning\nCleaning Certificate\nRepair\nPeriodic Test\nOrder Bongkar\nOrder Muat\nRelease\nGate Out\nStatus Change",
+			options: "\nBooking\nGate In\nInspection (EIR)\nCleaning\nRepair\nPeriodic Test\nOrder Bongkar\nOrder Muat\nRelease\nGate Out\nStatus Change",
 		},
 		{ fieldname: "principal", label: __("Principal"), fieldtype: "Link", options: "Customer" },
 		{ fieldname: "depot", label: __("Depot"), fieldtype: "Link", options: "Depot" },

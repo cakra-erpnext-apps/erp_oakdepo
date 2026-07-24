@@ -1,0 +1,39 @@
+{
+ "actions": [],
+ "creation": "2026-07-23 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "repair_code",
+  "is_primary"
+ ],
+ "fields": [
+  {
+   "columns": 4,
+   "fieldname": "repair_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Repair Code",
+   "options": "Inspection Repair Code",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "default": "0",
+   "description": "Primary (recommended) action for this part; unchecked = optional alternative.",
+   "fieldname": "is_primary",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Primary"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-23 12:00:00.000000",
+ "module": "Operations",
+ "name": "Inspection Checklist Repair Option",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC"
+}

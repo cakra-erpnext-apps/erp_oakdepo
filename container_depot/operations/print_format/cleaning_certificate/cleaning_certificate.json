@@ -1,9 +1,0 @@
-{
-  "name": "Cleaning Certificate Format",
-  "doc_type": "Cleaning Certificate",
-  "module": "Operations",
-  "standard": "Yes",
-  "custom_format": 1,
-  "print_format_type": "Jinja Template",
-  "doctype": "Print Format"
-}

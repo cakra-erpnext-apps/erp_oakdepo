@@ -12,7 +12,16 @@
 		<div class="border-b border-gray-100 px-4 py-2.5">
 			<div class="relative">
 				<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" :size="15" /></span>
-				<input v-model.trim="query" type="text" :placeholder="labels.checklistSearchDamaged" class="oak-input pl-9" />
+				<input v-model.trim="query" type="text" :placeholder="labels.checklistSearchDamaged" class="oak-input pl-9 pr-9" />
+				<button
+					v-if="query"
+					type="button"
+					class="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+					:aria-label="labels.clear"
+					@click="query = ''"
+				>
+					<Icon name="x" :size="15" />
+				</button>
 			</div>
 			<!-- Live results while typing; pick one to add its fill-in card below. -->
 			<div v-if="query" class="mt-2 overflow-hidden rounded-xl border border-gray-200">
@@ -48,7 +57,7 @@
 			<div class="mt-2 grid grid-cols-2 gap-2">
 				<SearchSelect
 					v-model="r.damage_code"
-					:options="damageCodes"
+					:options="damageOptionsFor(r)"
 					:option-value="(d) => d.code"
 					:option-label="(d) => `${d.code} — ${d.description}`"
 					:placeholder="labels.colDamage"
@@ -57,7 +66,7 @@
 				/>
 				<SearchSelect
 					v-model="r.repair_code"
-					:options="repairCodes"
+					:options="repairOptionsFor(r)"
 					:option-value="(r2) => r2.code"
 					:option-label="(r2) => `${r2.code} — ${r2.description}`"
 					:placeholder="labels.colRepair"
@@ -116,6 +125,24 @@ const props = defineProps({
 const query = ref("")
 
 const addedRows = computed(() => props.rows.filter((r) => r.added))
+
+// Per-part code filtering: each checklist part carries the defect / repair codes that make
+// sense for it (seeded from the EIR workbook onto Inspection Checklist Item). A part with no
+// mapping falls back to the full list, and a value already saved on the row is always kept
+// as an option so an existing EIR never loses its selection.
+function narrow(all, allowed, current, key) {
+	if (!allowed || !allowed.length) return all
+	const keep = new Set(allowed)
+	if (current) keep.add(current)
+	// Preserve the mapping's order (primary repairs first), then anything extra.
+	const byCode = new Map(all.map((o) => [o[key], o]))
+	const out = []
+	for (const code of allowed) if (byCode.has(code)) out.push(byCode.get(code))
+	for (const o of all) if (keep.has(o[key]) && !out.includes(o)) out.push(o)
+	return out
+}
+const damageOptionsFor = (r) => narrow(props.damageCodes, r.damage_codes, r.damage_code, "code")
+const repairOptionsFor = (r) => narrow(props.repairCodes, r.repair_codes, r.repair_code, "code")
 
 // Picker: items not yet added, grouped by area, matched on section name OR part text.
 const pickerGroups = computed(() => {

@@ -105,7 +105,6 @@ REVOCABLE_DOCTYPES = (
 	"Sales Invoice",
 	"Inspection",
 	"Cleaning Order",
-	"Cleaning Certificate",
 	"Repair Order",
 	"Survey Order",
 	"Gate Entry",
@@ -467,25 +466,6 @@ def notify_invoice_submitted(invoice, method=None):
 		subject=subject,
 		branch=invoice.get("branch"),
 		roles=BILLING_ROLES,
-	)
-
-
-def notify_cleaning_certificate_issued(cert):
-	"""Fire when a Cleaning Certificate is submitted — the tank is certified clean, which
-	is what an Order Muat requires before it can load."""
-	container = cert.get("container_no") or cert.get("container") or "-"
-	# A statement-minted cert has no expiry (validity is anchored per EIR), so say so
-	# rather than printing an empty date.
-	validity = f"berlaku s/d {cert.get('valid_until')}" if cert.get("valid_until") else "tanpa masa berlaku"
-	subject = f"Cleaning Certificate {cert.name} • {container} • {validity}"
-	notify(
-		doctype="Cleaning Certificate",
-		name=cert.name,
-		subject=subject,
-		branch=_depot_branch(frappe.db.get_value("Container", cert.get("container"), "depot"))
-		if cert.get("container")
-		else None,
-		roles=CLEANING_ROLES,
 	)
 
 

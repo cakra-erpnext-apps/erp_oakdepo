@@ -1,7 +1,7 @@
 """Tests for FASE G — EIR OUT Digital (surveyor load-out inspection vs last EIR-In).
 
-Covers: cleaning-cert validity helper, latest EIR-In baseline, auto-provision of EIR-Out
-drafts from an Order Muat (with reference + cert), the comparison payload, the submit
+Covers: latest EIR-In baseline, auto-provision of EIR-Out drafts from an Order Muat
+(with its EIR-In reference), the comparison payload, the submit
 outcome (Ready To Load vs Hold + Order Muat status), the open-draft per-type separation,
 and the gate-out enforcement (no clean EIR-Out -> blocked).
 
@@ -15,7 +15,6 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
 from container_depot.operations import eir
-from container_depot.operations.cleaning import get_latest_valid_cleaning_cert
 from container_depot.operations.gate import mark_gate_out
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
@@ -34,14 +33,12 @@ def _container(no, status="Available"):
 	return no
 
 
-def _cert(container, valid_until):
+def _finish_cleaning(container):
+	"""The submitted, Completed Cleaning Order that now stands for "this tank is clean"."""
 	doc = frappe.get_doc({
-		"doctype": "Cleaning Certificate",
-		"container": container,
-		"clean_date": today(),
-		"valid_until": valid_until,
+		"doctype": "Cleaning Order", "container": container, "status": "Completed",
 	}).insert(ignore_permissions=True, ignore_mandatory=True)
-	frappe.db.set_value("Cleaning Certificate", doc.name, "docstatus", 1, update_modified=False)
+	frappe.db.set_value("Cleaning Order", doc.name, "docstatus", 1, update_modified=False)
 	return doc.name
 
 
@@ -60,7 +57,7 @@ def _eir_in(container, *, damage=False):
 	return res["name"]
 
 
-def _submit_eir_out(container, *, exterior="Clean", seals=1, cert=None, valid_until=None,
+def _submit_eir_out(container, *, exterior="Clean", seals=1,
 		has_damage=False, order_muat=None):
 	"""Create + submit an EIR-Out directly (bypasses the worklist) and return its name."""
 	doc = frappe.new_doc("Inspection")
@@ -70,9 +67,6 @@ def _submit_eir_out(container, *, exterior="Clean", seals=1, cert=None, valid_un
 	doc.depot = frappe.db.get_value("Container", container, "depot")
 	doc.exterior_condition = exterior
 	doc.seals_intact = seals
-	if cert:
-		doc.cleaning_cert = cert
-		doc.cleaning_cert_valid_until = valid_until
 	doc.has_damage = 1 if has_damage else 0
 	if order_muat:
 		doc.referred_voucher = order_muat
@@ -88,23 +82,9 @@ class TestEirOut(FrappeTestCase):
 		frappe.db.delete("Container Movement", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
-		frappe.db.delete("Cleaning Certificate", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Repair Order", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Cleaning Order", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
-
-	def test_cleaning_cert_validity(self):
-		c = _container(f"{PREFIX}0000001")
-		_cert(c, add_days(today(), 10))
-		got = get_latest_valid_cleaning_cert(c)
-		self.assertIsNotNone(got)
-		self.assertTrue(got["valid"])
-
-		c2 = _container(f"{PREFIX}0000002")
-		_cert(c2, add_days(today(), -1))  # expired yesterday
-		got2 = get_latest_valid_cleaning_cert(c2)
-		self.assertIsNotNone(got2)
-		self.assertFalse(got2["valid"])
 
 	def test_latest_eir_in(self):
 		c = _container(f"{PREFIX}0000003")
@@ -116,7 +96,7 @@ class TestEirOut(FrappeTestCase):
 	def test_provision_eir_out_from_order_muat(self):
 		c = _container(f"{PREFIX}0000004")
 		ein = _eir_in(c, damage=True)
-		_cert(c, add_days(today(), 20))
+		_finish_cleaning(c)
 		shipper = ensure_test_customer("EIR-Out Shipper")
 		om = _make_order_muat(shipper, c)
 
@@ -125,7 +105,6 @@ class TestEirOut(FrappeTestCase):
 		eo = frappe.get_doc("Inspection", created[0])
 		self.assertEqual(eo.inspection_type, "EIR-Out")
 		self.assertEqual(eo.reference_eir_in, ein)
-		self.assertTrue(eo.cleaning_cert)
 		self.assertEqual(eo.referred_voucher, om)
 
 		# Idempotent — a second provision creates no duplicate.
@@ -138,7 +117,7 @@ class TestEirOut(FrappeTestCase):
 	def test_open_eir_out_reference(self):
 		c = _container(f"{PREFIX}0000005")
 		_eir_in(c, damage=True)
-		_cert(c, add_days(today(), 20))
+		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
 		eo = eir.provision_eir_out_for_order_muat(om)[0]
 
@@ -146,27 +125,24 @@ class TestEirOut(FrappeTestCase):
 		ref = payload["reference"]
 		self.assertIsNotNone(ref["eir_in"])
 		self.assertTrue(ref["eir_in"]["damages"])  # baseline had a finding
-		self.assertTrue(ref["cleaning_cert"]["valid"])
 
 	def test_submit_clean_sets_ready_to_load(self):
 		c = _container(f"{PREFIX}0000006")
 		_eir_in(c)
-		cert = _cert(c, add_days(today(), 20))
+		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
 
-		name = _submit_eir_out(c, exterior="Clean", seals=1, cert=cert,
-			valid_until=add_days(today(), 20), order_muat=om)
+		name = _submit_eir_out(c, exterior="Clean", seals=1, order_muat=om)
 		self.assertEqual(frappe.db.get_value("Inspection", name, "out_outcome"), "Ready To Load")
 		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Ready To Load")
 
 	def test_submit_dirty_sets_hold(self):
 		c = _container(f"{PREFIX}0000007")
 		_eir_in(c)
-		cert = _cert(c, add_days(today(), 20))
+		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
 
-		name = _submit_eir_out(c, exterior="Dirty", seals=1, cert=cert,
-			valid_until=add_days(today(), 20), order_muat=om)
+		name = _submit_eir_out(c, exterior="Dirty", seals=1, order_muat=om)
 		self.assertEqual(frappe.db.get_value("Inspection", name, "out_outcome"), "Hold Pending Clearance")
 		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Hold")
 
@@ -187,8 +163,8 @@ class TestEirOut(FrappeTestCase):
 
 	def test_gate_out_allowed_with_clean_eir_out(self):
 		c = _container(f"{PREFIX}0000010", status="Available")
-		cert = _cert(c, add_days(today(), 20))
-		_submit_eir_out(c, exterior="Clean", seals=1, cert=cert, valid_until=add_days(today(), 20))
+		_finish_cleaning(c)
+		_submit_eir_out(c, exterior="Clean", seals=1,)
 		# Submit may have re-saved the container; force the pickup-ready status for the gate.
 		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
 

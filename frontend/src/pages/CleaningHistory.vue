@@ -23,9 +23,6 @@
 					</span>
 					<span class="shrink-0">{{ fmtDate(item.cleaning_end || item.order_created) }}</span>
 				</div>
-				<p v-if="item.cleaning_certificate" class="truncate text-[11px] text-leaf-600">
-					<Icon name="award" :size="11" /> {{ item.cleaning_certificate }}
-				</p>
 			</div>
 		</template>
 
@@ -60,15 +57,6 @@
 				<a :href="printOrderUrl(data)" target="_blank" rel="noopener" class="oak-btn oak-btn-secondary inline-flex px-3 py-2">
 					<Icon name="printer" :size="16" /> {{ labels.cleaningPrint }}
 				</a>
-				<a
-					v-if="data.cleaning_certificate"
-					:href="printCertUrl(data)"
-					target="_blank"
-					rel="noopener"
-					class="oak-btn oak-btn-secondary inline-flex px-3 py-2"
-				>
-					<Icon name="award" :size="16" /> {{ labels.cleaningCertPrint }}
-				</a>
 			</div>
 		</template>
 	</HistoryPage>
@@ -97,7 +85,6 @@ function cells(d) {
 		{ label: labels.cleaningPrevCargo, value: d.previous_cargo },
 		{ label: labels.cleaningTankType, value: d.tank_type },
 		{ label: labels.cleaningRefEir, value: d.inspection },
-		{ label: labels.cleaningGasFree, value: d.gas_free },
 		{ label: labels.cleaningDateIssue, value: fmtDate(d.date_of_issue) },
 	]
 }
@@ -105,10 +92,5 @@ function printOrderUrl(d) {
 	return `/api/method/frappe.utils.print_format.download_pdf?doctype=Cleaning%20Order&name=${encodeURIComponent(
 		d.name
 	)}&format=Cleaning%20Order%20Format&no_letterhead=1`
-}
-function printCertUrl(d) {
-	return `/api/method/frappe.utils.print_format.download_pdf?doctype=Cleaning%20Certificate&name=${encodeURIComponent(
-		d.cleaning_certificate
-	)}&format=Cleaning%20Certificate%20Format&no_letterhead=1`
 }
 </script>

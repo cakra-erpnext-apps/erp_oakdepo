@@ -182,7 +182,6 @@ class TestMakeOrderMuat(FrappeTestCase):
 	def setUpClass(cls):
 		super().setUpClass()
 		customer = ensure_test_customer(MC_CUSTOMER)
-		cls.certs = {}
 		for cno in cls.CONTAINERS:
 			if not frappe.db.exists("Container", cno):
 				frappe.get_doc({
@@ -192,50 +191,59 @@ class TestMakeOrderMuat(FrappeTestCase):
 					"status": "Available",
 					"principal": customer,
 				}).insert(ignore_permissions=True)
-			cert = frappe.get_doc({
-				"doctype": "Cleaning Certificate",
-				"container": cno,
-				"clean_date": now_datetime(),
-				"cleaning_method": "Hot Water",
-			})
-			cert.insert(ignore_permissions=True)
-			cert.submit()
-			cls.certs[cno] = cert.name
+
+	@staticmethod
+	def _finish_cleaning(container):
+		"""Give a container the submitted, Completed Cleaning Order the Muat gate wants."""
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": container, "status": "Completed",
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Cleaning Order", co.name, "docstatus", 1, update_modified=False)
+		return co.name
+
+	@staticmethod
+	def _drop_cleaning(container):
+		frappe.db.delete("Cleaning Order", {"container": container})
 
 	@classmethod
 	def tearDownClass(cls):
 		super().tearDownClass()
 
-	def test_muat_requires_cert_per_row(self):
+	def test_muat_requires_finished_cleaning_per_row(self):
+		for c in self.CONTAINERS:
+			self._drop_cleaning(c)
 		booking, codes = _booking_with_codes(
 			code_direction="Tank Out", count=2, prefix="MCMT0", containers=self.CONTAINERS
 		)
-		# No certs supplied -> rejected.
+		# Neither container has a finished Cleaning Order -> rejected.
 		with self.assertRaises(frappe.ValidationError):
 			make_order(booking, codes)
 		self.assertEqual(_states(codes), ["Active", "Active"])
 
-	def test_muat_with_valid_certs(self):
+	def test_muat_with_finished_cleaning(self):
+		for c in self.CONTAINERS:
+			self._finish_cleaning(c)
 		booking, codes = _booking_with_codes(
 			code_direction="Tank Out", count=2, prefix="MCMV0", containers=self.CONTAINERS
 		)
-		vd = {"cleaning_certificates": {codes[0]: self.certs[self.CONTAINERS[0]],
-									   codes[1]: self.certs[self.CONTAINERS[1]]}}
-		name = make_order(booking, codes, vehicle_data=vd)
+		name = make_order(booking, codes)
 		order = frappe.get_doc("Order Muat", name)
 		self.assertEqual(len(order.containers), 2)
 		self.assertEqual(_states(codes), ["Used", "Used"])
+		for c in self.CONTAINERS:
+			self._drop_cleaning(c)
 
-	def test_muat_rejects_cert_for_wrong_container(self):
+	def test_muat_rejects_when_one_container_uncleaned(self):
+		for c in self.CONTAINERS:
+			self._drop_cleaning(c)
+		self._finish_cleaning(self.CONTAINERS[0])  # only the first is clean
 		booking, codes = _booking_with_codes(
 			code_direction="Tank Out", count=2, prefix="MCMW0", containers=self.CONTAINERS
 		)
-		# Swap the certs so each row's cert is for the OTHER container.
-		vd = {"cleaning_certificates": {codes[0]: self.certs[self.CONTAINERS[1]],
-									   codes[1]: self.certs[self.CONTAINERS[0]]}}
 		with self.assertRaises(frappe.ValidationError):
-			make_order(booking, codes, vehicle_data=vd)
+			make_order(booking, codes)
 		self.assertEqual(_states(codes), ["Active", "Active"])
+		self._drop_cleaning(self.CONTAINERS[0])
 
 
 class TestGenerateOrderFromBookingAPI(FrappeTestCase):

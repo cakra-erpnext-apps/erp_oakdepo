@@ -99,10 +99,22 @@ class TestPricingModel(FrappeTestCase):
 		frappe.db.commit()
 		super().tearDownClass()
 
-	def test_repair_item_priced_dynamically_per_principal(self):
-		# Same Item, different Item Price manhour_rate -> different effective rate.
-		self.assertAlmostEqual(effective_item_rate(REPAIR_ITEM, OAK_PL), 0.5 * 4.50 + 10.0)
-		self.assertAlmostEqual(effective_item_rate(REPAIR_ITEM, BERT_PL), 0.5 * 4.00 + 10.0)
+	def test_labour_is_never_folded_into_the_rate(self):
+		"""The rate is the tariff alone — labour is billed once, on the invoice.
+
+		The repair item carries a manhour in both lists and no flat price, so a resolver
+		that still merged labour in would return a non-zero rate here (and the invoice's
+		own manhour line would then charge those hours a second time)."""
+		for pl in (OAK_PL, BERT_PL):
+			self.assertEqual(effective_item_rate(REPAIR_ITEM, pl), 0.0)
+
+	def test_manhour_is_readable_per_principal(self):
+		# The hours stay reachable beside the rate — that is what billing totals.
+		from container_depot.pricing import manhour_for
+
+		self.assertAlmostEqual(manhour_for(REPAIR_ITEM, OAK_PL), 4.50)
+		self.assertAlmostEqual(manhour_for(REPAIR_ITEM, BERT_PL), 4.00)
+		self.assertEqual(manhour_for(FIXED_ITEM, OAK_PL), 0.0)
 
 	def test_fixed_item_uses_flat_item_price(self):
 		self.assertAlmostEqual(effective_item_rate(FIXED_ITEM, OAK_PL), 36.0)

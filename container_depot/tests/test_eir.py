@@ -67,15 +67,26 @@ def _make_order_bongkar(shipper, container, *, ex_vessel="MV TEST", truck="B-2",
 
 class TestEirMasters(FrappeTestCase):
 	def test_masters_shape_and_counts(self):
+		# Positional taxonomy (v0_39): 138 parts across Front .. Internal Shell.
 		m = eir.get_eir_masters()
-		self.assertEqual(len(m["checklist"]), 50)
-		self.assertEqual([m["checklist"][0]["sequence"], m["checklist"][-1]["sequence"]], [1, 50])
-		self.assertEqual(m["checklist"][0]["item_name"], "Underside")
-		self.assertEqual(len(m["damage_codes"]), 29)
+		self.assertEqual(len(m["checklist"]), 138)
+		self.assertEqual([m["checklist"][0]["sequence"], m["checklist"][-1]["sequence"]], [1, 138])
+		self.assertEqual(m["checklist"][0]["item_name"], "Front Top Rail")
+		self.assertEqual(len(m["damage_codes"]), 36)
 		self.assertEqual(len(m["repair_codes"]), 25)
 		# code list carries code + description.
 		self.assertIn("code", m["damage_codes"][0])
 		self.assertIn("description", m["damage_codes"][0])
+
+	def test_checklist_carries_per_part_codes(self):
+		"""Every part narrows the PWA pickers to the codes valid for it (workbook-seeded),
+		with the primary repair action first."""
+		m = eir.get_eir_masters()
+		self.assertTrue(all(c["damage_codes"] and c["repair_codes"] for c in m["checklist"]))
+		front_top_rail = m["checklist"][0]
+		self.assertIn("11", front_top_rail["damage_codes"])  # Dented
+		self.assertEqual(front_top_rail["repair_codes"][0], "30")  # Straighten (primary)
+		self.assertIn("X", front_top_rail["repair_codes"])  # No Action (optional, last)
 
 	def test_iso6346_parts(self):
 		p = eir.iso6346_parts("EIRP1000001")

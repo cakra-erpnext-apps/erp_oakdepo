@@ -218,10 +218,10 @@ class TestEssInventory(FrappeTestCase):
 		rep = get_tank_documents("ESST1000006")
 		self.assertIn("Estimasi Perbaikan", {d["category"] for d in rep["documents"]})
 
-	def test_pdf_url_uses_cleaning_cert_format(self):
-		url = _pdf_url("Cleaning Certificate", "CERT-2026-00001", "Cleaning Certificate Format")
-		self.assertIn("doctype=Cleaning+Certificate", url)
-		self.assertIn("format=Cleaning+Certificate+Format", url)
+	def test_pdf_url_uses_cleaning_order_format(self):
+		url = _pdf_url("Cleaning Order", "CO-2026-00001", "Cleaning Order Format")
+		self.assertIn("doctype=Cleaning+Order", url)
+		self.assertIn("format=Cleaning+Order+Format", url)
 		# Standard format omits the format param entirely.
 		self.assertNotIn("format=", _pdf_url("Inspection", "EIR-2026-00001"))
 

@@ -5,7 +5,7 @@ Sections (one row each, ``metric`` column carries the label):
 - Containers by status
 - Bookings by status (today)
 - Pending Orders (Bongkar / Muat)
-- Overdue Cleaning Certificates (valid_until < today)
+- Open Cleaning Orders (not yet finished)
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ def execute(filters=None):
 	data.extend(_bookings_today())
 	data.append(_separator("Orders"))
 	data.extend(_pending_orders())
-	data.append(_separator("Cleaning Certificates"))
-	data.extend(_overdue_certs())
+	data.append(_separator("Cleaning"))
+	data.extend(_open_cleaning_orders())
 
 	return columns, data
 
@@ -88,9 +88,13 @@ def _pending_orders():
 	return out
 
 
-def _overdue_certs():
-	count = frappe.db.count(
-		"Cleaning Certificate",
-		{"docstatus": 1, "valid_until": ("<", today())},
-	)
-	return [{"section": "Cleaning Certificates", "metric": "Expired", "count": count}]
+def _open_cleaning_orders():
+	"""Cleaning still outstanding — a tank cannot be loaded out until its order is done."""
+	out = []
+	for status in ("Service Setup", "Pending", "In_Progress"):
+		out.append({
+			"section": "Cleaning",
+			"metric": status.replace("_", " "),
+			"count": frappe.db.count("Cleaning Order", {"status": status, "docstatus": 0}),
+		})
+	return out

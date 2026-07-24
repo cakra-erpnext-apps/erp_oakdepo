@@ -6,9 +6,9 @@ KPIs, optionally scoped to a single depot via the ``depot`` filter:
 - Stock In Depo   — containers currently in the depot (status != Gate_Out)
 - Dirty / Clean   — by Container.cleaning_status
 - Total IN / OUT  — submitted Container Booking items by direction
-- Total Cleaned   — submitted Cleaning Certificates
+- Total Cleaned   — submitted, Completed Cleaning Orders
 - Total PT2.5 / PT5 — Periodic Tests by type
-- PP Wash / Methanol / Steam — Cleaning Certificates by cleaning_method
+- PP Wash / Methanol / Steam — Cleaning Orders by chosen service / legacy type
 
 All activity counts are attributed to the principal that owns the container the
 activity is against. Cleaning sub-types (§2) and depot (§3) and Periodic Test
@@ -56,10 +56,10 @@ def _data(depot):
 	# Activity metrics, attributed via the container's principal.
 	total_in = _booking_counts(depot, "Tank In")
 	total_out = _booking_counts(depot, "Tank Out")
-	total_cleaned = _cert_counts(depot, None)
-	pp_wash = _cert_counts(depot, "PP Wash")
-	methanol = _cert_counts(depot, "Methanol Rinse")
-	steam = _cert_counts(depot, "Steam Wash")
+	total_cleaned = _cleaned_counts(depot, None)
+	pp_wash = _cleaned_counts(depot, "PP Wash")
+	methanol = _cleaned_counts(depot, "Methanol Rinse")
+	steam = _cleaned_counts(depot, "Steam Wash")
 	pt_25 = _pt_counts(depot, "2,5Y")
 	pt_5 = _pt_counts(depot, "5Y")
 
@@ -129,19 +129,27 @@ def _booking_counts(depot, direction):
 	return {r["principal"]: r["c"] for r in rows}
 
 
-def _cert_counts(depot, method):
+def _cleaned_counts(depot, method):
+	"""Finished cleanings per principal. ``method`` narrows to a cleaning kind, matched
+	against the chosen Service item names (the current mechanism) or the legacy
+	``cleaning_type`` free-text kept on older orders."""
 	params = []
 	method_clause = ""
 	if method:
-		params.append(method)
-		method_clause = " AND cc.cleaning_method = %s"
+		like = f"%{method}%"
+		params.extend([method, like])
+		method_clause = (
+			" AND (co.cleaning_type = %s OR EXISTS ("
+			"   SELECT 1 FROM `tabCleaning Order Service` cos"
+			"   WHERE cos.parent = co.name AND cos.item_name LIKE %s))"
+		)
 	clause = _depot_clause("c", depot, params)
 	rows = frappe.db.sql(
 		f"""
 		SELECT c.principal AS principal, COUNT(*) AS c
-		FROM `tabCleaning Certificate` cc
-		JOIN `tabContainer` c ON cc.container = c.name
-		WHERE cc.docstatus = 1
+		FROM `tabCleaning Order` co
+		JOIN `tabContainer` c ON co.container = c.name
+		WHERE co.docstatus = 1 AND co.status = 'Completed'
 		  AND c.principal IS NOT NULL AND c.principal != ''{method_clause}{clause}
 		GROUP BY c.principal
 		""",

@@ -1,177 +1,177 @@
 {
-  "actions": [],
-  "autoname": "ORD-MT-.YYYY.-.#####",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "header_section",
-    "booking",
-    "ro",
-    "order_status",
-    "branch",
-    "column_break_1",
-    "shipper",
-    "destination",
-    "tanggal_muat",
-    "containers",
-    "truck_section",
-    "truck_plate",
-    "angkutan",
-    "column_break_2",
-    "driver_name",
-    "driver_phone",
-    "notes",
-    "sst_section",
-    "sst",
-    "created_offline",
-    "gate_in_time",
-    "qr_image"
-  ],
-  "fields": [
-    {
-      "fieldname": "header_section",
-      "fieldtype": "Section Break",
-      "label": "Bon Muat"
-    },
-    {
-      "fieldname": "booking",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "in_standard_filter": 1,
-      "label": "Booking",
-      "options": "Container Booking",
-      "read_only": 1,
-      "reqd": 1
-    },
-    {
-      "fieldname": "ro",
-      "fieldtype": "Data",
-      "label": "R/O"
-    },
-    {
-      "default": "Issued",
-      "fieldname": "order_status",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "in_standard_filter": 1,
-      "label": "Order Status",
-      "options": "Issued\nEIR In Progress\nReady To Load\nCompleted\nHold",
-      "reqd": 1
-    },
-    {
-      "description": "Depot branch, carried from the booking. Drives per-branch User Permission filtering.",
-      "fetch_from": "booking.branch",
-      "fieldname": "branch",
-      "fieldtype": "Link",
-      "in_standard_filter": 1,
-      "label": "Branch",
-      "options": "Branch",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "description": "Defaults to the booking customer; can be overridden.",
-      "fieldname": "shipper",
-      "fieldtype": "Link",
-      "in_standard_filter": 1,
-      "label": "Shipper",
-      "options": "Customer"
-    },
-    {
-      "fieldname": "destination",
-      "fieldtype": "Data",
-      "label": "Destination"
-    },
-    {
-      "fieldname": "tanggal_muat",
-      "fieldtype": "Date",
-      "label": "Tgl. Muat"
-    },
-    {
-      "description": "Containers on this bon (max 3). Each row needs a valid Cleaning Certificate. Only still-pending containers of this booking may be added.",
-      "fieldname": "containers",
-      "fieldtype": "Table",
-      "label": "Containers",
-      "options": "Order Container Item",
-      "reqd": 1
-    },
-    {
-      "fieldname": "truck_section",
-      "fieldtype": "Section Break",
-      "label": "Truck & Driver"
-    },
-    {
-      "fieldname": "truck_plate",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "No. Pol (Truck Plate)"
-    },
-    {
-      "fieldname": "angkutan",
-      "fieldtype": "Data",
-      "label": "Angkutan"
-    },
-    {
-      "fieldname": "column_break_2",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "driver_name",
-      "fieldtype": "Data",
-      "label": "Supir (Driver)"
-    },
-    {
-      "fieldname": "driver_phone",
-      "fieldtype": "Data",
-      "label": "Driver Phone"
-    },
-    {
-      "fieldname": "notes",
-      "fieldtype": "Small Text",
-      "label": "Note"
-    },
-    {
-      "collapsible": 1,
-      "fieldname": "sst_section",
-      "fieldtype": "Section Break",
-      "label": "SST"
-    },
-    {
-      "fieldname": "sst",
-      "fieldtype": "Link",
-      "label": "SST",
-      "options": "Self Service Terminal"
-    },
-    {
-      "default": "0",
-      "fieldname": "created_offline",
-      "fieldtype": "Check",
-      "label": "Created Offline"
-    },
-    {
-      "fieldname": "gate_in_time",
-      "fieldtype": "Datetime",
-      "label": "Gate-In Time"
-    },
-    {
-      "description": "Scannable QR for this bon (payload OAK|<name>), generated on submit.",
-      "fieldname": "qr_image",
-      "fieldtype": "Attach Image",
-      "label": "QR Code",
-      "read_only": 1
-    }
-  ],
-  "is_submittable": 1,
-  "links": [],
-  "modified": "2026-06-23",
-  "module": "Operations",
-  "name": "Order Muat",
-  "search_fields": "booking, truck_plate, shipper, destination",
-  "sort_field": "creation",
-  "sort_order": "DESC",
-  "title_field": "booking",
-  "track_changes": 1
+ "actions": [],
+ "autoname": "ORD-MT-.YYYY.-.#####",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "header_section",
+  "booking",
+  "ro",
+  "order_status",
+  "branch",
+  "column_break_1",
+  "shipper",
+  "destination",
+  "tanggal_muat",
+  "containers",
+  "truck_section",
+  "truck_plate",
+  "angkutan",
+  "column_break_2",
+  "driver_name",
+  "driver_phone",
+  "notes",
+  "sst_section",
+  "sst",
+  "created_offline",
+  "gate_in_time",
+  "qr_image"
+ ],
+ "fields": [
+  {
+   "fieldname": "header_section",
+   "fieldtype": "Section Break",
+   "label": "Bon Muat"
+  },
+  {
+   "fieldname": "booking",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Booking",
+   "options": "Container Booking",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "ro",
+   "fieldtype": "Data",
+   "label": "R/O"
+  },
+  {
+   "default": "Issued",
+   "fieldname": "order_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Order Status",
+   "options": "Issued\nEIR In Progress\nReady To Load\nCompleted\nHold",
+   "reqd": 1
+  },
+  {
+   "description": "Depot branch, carried from the booking. Drives per-branch User Permission filtering.",
+   "fetch_from": "booking.branch",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Branch",
+   "options": "Branch",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Defaults to the booking customer; can be overridden.",
+   "fieldname": "shipper",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Shipper",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "destination",
+   "fieldtype": "Data",
+   "label": "Destination"
+  },
+  {
+   "fieldname": "tanggal_muat",
+   "fieldtype": "Date",
+   "label": "Tgl. Muat"
+  },
+  {
+   "description": "Containers on this bon (max 3). Each row's container needs a finished Cleaning Order. Only still-pending containers of this booking may be added.",
+   "fieldname": "containers",
+   "fieldtype": "Table",
+   "label": "Containers",
+   "options": "Order Container Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "truck_section",
+   "fieldtype": "Section Break",
+   "label": "Truck & Driver"
+  },
+  {
+   "fieldname": "truck_plate",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "No. Pol (Truck Plate)"
+  },
+  {
+   "fieldname": "angkutan",
+   "fieldtype": "Data",
+   "label": "Angkutan"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Supir (Driver)"
+  },
+  {
+   "fieldname": "driver_phone",
+   "fieldtype": "Data",
+   "label": "Driver Phone"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sst_section",
+   "fieldtype": "Section Break",
+   "label": "SST"
+  },
+  {
+   "fieldname": "sst",
+   "fieldtype": "Link",
+   "label": "SST",
+   "options": "Self Service Terminal"
+  },
+  {
+   "default": "0",
+   "fieldname": "created_offline",
+   "fieldtype": "Check",
+   "label": "Created Offline"
+  },
+  {
+   "fieldname": "gate_in_time",
+   "fieldtype": "Datetime",
+   "label": "Gate-In Time"
+  },
+  {
+   "description": "Scannable QR for this bon (payload OAK|<name>), generated on submit.",
+   "fieldname": "qr_image",
+   "fieldtype": "Attach Image",
+   "label": "QR Code",
+   "read_only": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-07-23 15:00:00.000000",
+ "module": "Operations",
+ "name": "Order Muat",
+ "search_fields": "booking, truck_plate, shipper, destination",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "booking",
+ "track_changes": 1
 }

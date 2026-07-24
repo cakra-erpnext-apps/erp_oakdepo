@@ -67,6 +67,9 @@ doc_events = {
 		# remove / edit. No-op on ordinary invoices (no billed-sources manifest).
 		"validate": [
 			"container_depot.consolidated_billing.protect_consolidated_items",
+			# Total the lines' manhours and charge them once: Total Price + (Manhour × Hour).
+			# No-op on an invoice whose lines book no labour.
+			"container_depot.invoicing.apply_manhour_charge",
 		],
 		"after_insert": [
 			"container_depot.operations.doctype.container_booking.container_booking.relink_amended_invoice",
@@ -121,7 +124,7 @@ def _append_event(doctype, event, handler):
 
 for _dt in _REVOCABLE_DOCTYPES:
 	_append_event(_dt, "on_cancel", _REVOKE)
-for _dt in ("Inspection", "Cleaning Order", "Cleaning Certificate", "Repair Order", "Survey Order", "Gate Entry"):
+for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Survey Order", "Gate Entry"):
 	_append_event(_dt, "on_trash", _REVOKE)
 del _dt
 

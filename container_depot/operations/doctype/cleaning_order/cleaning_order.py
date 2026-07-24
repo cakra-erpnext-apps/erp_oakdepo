@@ -27,33 +27,52 @@ class CleaningOrder(Document):
 		self._resolve_cleaning_services()
 
 	def _resolve_cleaning_services(self):
-		"""Price every chosen cleaning Service (one or more) from the container Owner's
-		(Principal's) active Price List, so the order is ready to bill the tank owner. Each
-		row's ``rate`` is resolved; ``cleaning_total`` is their sum. No principal / no price
-		list leaves every rate (and the total) at 0."""
-		from container_depot import pricing_model
+		"""Seed every chosen cleaning Service (one or more) from the contract that owns the
+		container, so the order starts on the rates negotiated with the tank owner.
 
-		principal = frappe.db.get_value("Container", self.container, "principal") if self.container else None
-		price_list = pricing_model.price_list_for_customer(principal) if principal else None
-		# Tarif ditampilkan dalam mata uang Price List Owner (bisa beda dari mata uang company).
+		Each row carries the two things the contract states about that service, side by side
+		and NEVER merged into one number:
+		  * ``rate``         — the tariff (money), summed into ``cleaning_total``
+		  * ``manhour_rate`` — the labour hours it books, summed into ``manhour_total``
+
+		The hours are not costed here on purpose: billing totals the manhours of everything
+		on the invoice and charges them once, on their own line. Adding them to the tariff
+		would mean paying for labour twice.
+
+		Both are only a BASE PRICE: they are seeded once (when the row is still at 0) and
+		never overwritten afterwards, so Admin Ops can negotiate a one-off figure on the
+		order without a later save silently resetting it back to the contract.
+		No contract / no price list leaves them at 0 for Admin Ops to fill in.
+		"""
+		from frappe.utils import flt
+
+		from container_depot import pricing
+
+		price_list = price_list_for_container(self.container)
+		# Tarif ditampilkan dalam mata uang Price List kontrak (bisa beda dari mata uang company).
 		self.currency = (
 			(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
 			or frappe.defaults.get_global_default("currency")
 		)
-		total = 0
+		service_total = manhour_total = 0.0
 		for row in self.cleaning_services:
 			row.currency = self.currency
 			if not row.cleaning_item:
 				row.rate = 0
-				continue
-			if not row.item_name:
-				row.item_name = frappe.db.get_value("Item", row.cleaning_item, "item_name")
-			row.rate = (pricing_model.resolve_price(row.cleaning_item, price_list) if price_list else 0) or 0
-			total += row.rate
-		self.cleaning_total = total
+			else:
+				if not row.item_name:
+					row.item_name = frappe.db.get_value("Item", row.cleaning_item, "item_name")
+				if not flt(row.rate):
+					row.rate = base_rate_for(row.cleaning_item, price_list)
+				if not flt(row.manhour_rate):
+					row.manhour_rate = pricing.manhour_for(row.cleaning_item, price_list)
+			service_total += flt(row.rate)
+			manhour_total += flt(row.manhour_rate)
+		self.cleaning_total = service_total
+		self.manhour_total = manhour_total
 
 	def _cleaning_method_label(self) -> str:
-		"""Human label of the chosen cleaning services (for the Cleaning Certificate)."""
+		"""Human label of the chosen cleaning services (printed on the cleaning report)."""
 		names = [r.item_name or r.cleaning_item for r in self.cleaning_services if r.cleaning_item]
 		return ", ".join(names) if names else (self.cleaning_item or "")
 
@@ -105,11 +124,9 @@ class CleaningOrder(Document):
 
 	def on_submit(self):
 		"""Update container status when cleaning order is submitted. For a normal clean
-		this completes the tank (-> Available, parked in the Cleaning Bay) and mints the
-		no-expiry Cleaning Certificate that the TANK OUT gate checks for."""
+		this completes the tank (-> Available, parked in the Cleaning Bay). A submitted
+		Completed order IS the TANK OUT proof — Order Muat checks for it directly."""
 		self._propagate_to_container(log_always=True)
-		if not self.is_recleaning and self.status == "Completed":
-			self.db_set("cleaning_certificate", self._mint_cleaning_certificate(), update_modified=False)
 
 	def on_update_after_submit(self):
 		"""Status / approval edits after submit also drive the container so a
@@ -163,31 +180,33 @@ class CleaningOrder(Document):
 				summary=f"Cleaning {self.status.lower().replace('_', ' ')} ({label})",
 			)
 
-	def _mint_cleaning_certificate(self) -> str:
-		"""Create + submit a no-expiry Cleaning Certificate from this completed order.
 
-		Idempotent: returns the already-minted certificate if present. The cert is the
-		gating token consumed by Order Muat / ``_latest_valid_cleaning_cert``; the rich
-		cleanliness detail (checklist, gas free, seals) stays on this order. Validity is
-		anchored per source EIR (no time expiry), so ``valid_until = None``."""
-		if self.cleaning_certificate:
-			return self.cleaning_certificate
-		cert = frappe.new_doc("Cleaning Certificate")
-		cert.container = self.container
-		cert.cleaning_order = self.name
-		cert.clean_date = self.date_of_issue or self.cleaning_end or datetime.datetime.now()
-		cert.cleaning_method = self._cleaning_method_label() or self.cleaning_type or "Steam Wash"
-		cert.certified_by = self.signed_by or self.completed_by or frappe.session.user
-		cert.prior_cargo = frappe.db.get_value("Container", self.container, "last_cargo")
-		cert.valid_until = None  # no expiry — validity is anchored per EIR
-		cert.flags.no_expiry = True
-		cert.remarks = (
-			f"Auto-issued from Cleaning Order {self.name}"
-			+ (f" (EIR {self.inspection})" if self.inspection else "")
-		)
-		cert.insert(ignore_permissions=True)
-		cert.submit()
-		return cert.name
+# ---------------------------------------------------------------------------
+# Base pricing: the contract that owns the container.
+# ---------------------------------------------------------------------------
+def price_list_for_container(container) -> str | None:
+	"""The Price List that carries the base prices for this container's cleaning.
+
+	An Active ``Depot Contract`` publishes its negotiated tariff lines to a customer Price
+	List (``generated_price_list``); that contract — the one the tank Owner (Principal)
+	holds — is the source of truth for what cleaning costs them. A tank whose owner has no
+	active contract (walk-in) falls back to the owner's rate card, then the site default.
+	"""
+	from container_depot import pricing, pricing_model
+
+	principal = frappe.db.get_value("Container", container, "principal") if container else None
+	if not principal:
+		return None
+	return pricing.contract_price_list(principal) or pricing_model.price_list_for_customer(principal)
+
+
+def base_rate_for(item_code, price_list) -> float:
+	"""Contract base price of one cleaning Service (0 when unpriced / no contract)."""
+	from container_depot import pricing_model
+
+	if not (item_code and price_list):
+		return 0.0
+	return pricing_model.resolve_price(item_code, price_list) or 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -197,22 +216,52 @@ class CleaningOrder(Document):
 @frappe.validate_and_sanitize_search_inputs
 def cleaning_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Items for the Cleaning Order's "Metode Cleaning (Service)" field: the members of the
-	Depot Service Menu "Cleaning" that ALSO have a selling Item Price in the container
-	Owner's (Principal's) active Price List. The price list is resolved from the container's
+	Depot Service Menu "Cleaning" that ALSO have a selling Item Price in the Price List of
+	the contract owning the container. The contract is resolved from the container's
 	principal — never picked by hand — so the surveyor only sees services the owner is
-	billable for. No principal / no price list → no options.
+	billable for. No contract / no price list → no options.
 	"""
-	from container_depot import pricing_model
 	from container_depot.operations import service_menu
 
 	flt = filters or {}
-	principal = flt.get("principal")
-	if not principal and flt.get("container"):
-		principal = frappe.db.get_value("Container", flt.get("container"), "principal")
-	price_list = pricing_model.price_list_for_customer(principal) if principal else None
+	container = flt.get("container")
+	price_list = price_list_for_container(container) if container else None
+	if not price_list and flt.get("principal"):
+		from container_depot import pricing_model
+
+		price_list = pricing_model.price_list_for_customer(flt.get("principal"))
 	if not price_list:
 		return []
 	items = service_menu.items_in_menu(
 		"Cleaning", txt=txt, base_price_list=price_list, limit=frappe.utils.cint(page_len) or 20
 	)
 	return [[i["item_code"], i.get("item_name")] for i in items]
+
+
+# ---------------------------------------------------------------------------
+# Live pricing for the Desk form (so the grid fills on pick, not only on save).
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+def service_pricing(container=None, item_code=None) -> dict:
+	"""Base figures of one cleaning Service under the contract that owns the container:
+	its tariff and the labour hours the contract books for it.
+
+	The Desk form calls this the moment a Service is picked so the row's Tarif and Manhour
+	(and the totals) fill in immediately instead of only after a save. Both are just a
+	starting point — the fields stay editable and the seeded value is never re-applied.
+	Read-only lookup.
+	"""
+	from container_depot import pricing
+
+	price_list = price_list_for_container(container)
+	currency = (
+		(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
+		or frappe.defaults.get_global_default("currency")
+	)
+	return {
+		"rate": base_rate_for(item_code, price_list),
+		"manhour_rate": pricing.manhour_for(item_code, price_list),
+		"currency": currency,
+		"item_name": frappe.db.get_value("Item", item_code, "item_name") if item_code else None,
+		"price_list": price_list,
+	}

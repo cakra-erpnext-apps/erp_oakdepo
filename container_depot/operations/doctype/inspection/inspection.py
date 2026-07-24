@@ -90,8 +90,8 @@ class Inspection(Document):
 		# Empty-Dirty (undamaged) EIR-In → auto-create a Cleaning Order so the cleaning
 		# team knows a tank is waiting, and notify them — but ONLY when the surveyor left
 		# "Buat Cleaning Order" checked. (create_cleaning_order_from_eir itself no-ops for a
-		# non-dirty tank, so the checkbox is the operator's opt-out.) After cleaning, a
-		# Cleaning Statement issues the Cleaning Certificate — see operations/cleaning.py.
+		# non-dirty tank, so the checkbox is the operator's opt-out.) The finished Cleaning
+		# Order is itself the TANK OUT proof — see operations/cleaning.py.
 		if self.inspection_type == "EIR-In" and self.get("create_cleaning_order"):
 			self._ensure_cleaning_order(container)
 
@@ -164,25 +164,16 @@ class Inspection(Document):
 	def _apply_eir_out_outcome(self):
 		"""Score an EIR-Out's readiness and signal it on the referenced Order Muat.
 
-		Clean = exterior Clean + seals intact + cleaning cert valid + no new damage. A clean
+		Clean = exterior Clean + seals intact + no new damage. A clean
 		EIR-Out flips the Order Muat to ``Ready To Load`` and notifies Operator Kalmar; any
 		finding flips it to ``Hold`` and notifies the Ops Supervisor. The container status is
 		NOT touched here (it stays on the OUT path; gate-out is the final move) — readiness
 		lives on the Order Muat, and gate-out enforces a clean EIR-Out (see operations/gate)."""
-		from frappe.utils import getdate, today
-
-		# Cleaning certificate validity (blank valid_until = statement-minted = valid forever,
-		# matching the Order Muat gate).
-		vu = self.get("cleaning_cert_valid_until")
-		cert_valid = bool(self.get("cleaning_cert")) and ((not vu) or getdate(vu) >= getdate(today()))
-
 		reasons = []
 		if (self.get("exterior_condition") or "") != "Clean":
 			reasons.append(f"eksterior {self.get('exterior_condition') or 'belum dinilai'}")
 		if not self.get("seals_intact"):
 			reasons.append("segel tidak lengkap/utuh")
-		if not cert_valid:
-			reasons.append("cleaning certificate tidak valid")
 		if self.has_damage:
 			reasons.append("ada temuan kerusakan")
 

@@ -747,7 +747,7 @@ def _log_sst_activity(sst, action, *, booking_code=None, payload=None, result="O
 
 
 @frappe.whitelist(methods=["POST"])
-def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=None, transporter=None, ex_vessel=None, destination=None, cleaning_certificate=None):
+def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=None, transporter=None, ex_vessel=None, destination=None):
 	"""Validate a scanned Booking Code and issue the matching Order.
 
 	The calling user must hold the ``Container Depot SST Service`` role and be
@@ -782,11 +782,8 @@ def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=No
 	if bc.direction == "Tank In":
 		vehicle_data["ex_vessel"] = ex_vessel
 	else:
-		if not cleaning_certificate:
-			_log_sst_activity(sst, "Validate", booking_code=bc.name, payload={"missing": "cleaning_certificate"}, result="Error")
-			frappe.throw(_("Cleaning Certificate is required to issue an Order Muat."))
+		# Cleaning is gated on the Cleaning Order itself (Order Muat validates it).
 		vehicle_data["destination"] = destination
-		vehicle_data["cleaning_certificates"] = {bc.name: cleaning_certificate}
 
 	from container_depot.operations.order_generation import make_order
 
@@ -1069,21 +1066,6 @@ def gate_lookup(code):
 	return {"valid": False, "error": _("Kode / kontainer tidak ditemukan: {0}").format(raw)}
 
 
-def _latest_valid_cleaning_cert(container) -> str | None:
-	"""The newest submitted, in-date Cleaning Certificate for a container (for Muat)."""
-	from frappe.utils import getdate, today
-
-	for r in frappe.get_all(
-		"Cleaning Certificate",
-		filters={"container": container, "docstatus": 1},
-		fields=["name", "valid_until"],
-		order_by="creation desc",
-	):
-		if not r.valid_until or getdate(r.valid_until) >= getdate(today()):
-			return r.name
-	return None
-
-
 @frappe.whitelist(methods=["POST"])
 def gate_generate_order(booking, selected_codes, vehicle_data=None):
 	"""Gate PWA: issue a submitted bon for up to 2 of a booking's containers. Refuses
@@ -1095,7 +1077,7 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None):
 	``condition``/``cargo``/``tanggal_bongkar_actual``/``shipper``/``ex_vessel``/
 	``remarks``; Tank Out: ``truck_plate``/``driver_name``/``driver_phone``/``ro``/
 	``angkutan``/``destination``/``tanggal_muat``/``shipper``/``remarks``). For Tank
-	Out a valid Cleaning Certificate is auto-resolved per container."""
+	Out, Order Muat itself refuses any container without a finished Cleaning Order."""
 	_require_authenticated_user()
 	b = frappe.db.get_value(
 		"Container Booking", booking, ["payment_type", "payment_status", "direction", "docstatus"], as_dict=True
@@ -1115,18 +1097,6 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None):
 	vd = dict(vd) if isinstance(vd, dict) else {}  # copy; never mutate the caller's dict
 
 	if b.direction == "Tank Out":
-		certs = {}
-		for code in _as_code_list(selected_codes):
-			container = frappe.db.get_value("Booking Code", code, "container")
-			cert = _latest_valid_cleaning_cert(container) if container else None
-			if not cert:
-				frappe.throw(
-					_("Container {0} belum punya Cleaning Certificate valid untuk Order Muat.").format(
-						container or code
-					)
-				)
-			certs[code] = cert
-		vd["cleaning_certificates"] = certs
 		# Order Muat reads per-container remarks as a {code: text} dict — expand a single
 		# form string to every selected container so it isn't silently dropped.
 		if isinstance(vd.get("remarks"), str) and vd["remarks"].strip():

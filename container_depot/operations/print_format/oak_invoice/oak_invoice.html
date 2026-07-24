@@ -50,10 +50,12 @@
       <tr style="color:#fff;">
         <th style="padding:7px 8px; text-align:left; width:11%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">ITEM NO</th>
         <th style="padding:7px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">ITEM DESCRIPTION</th>
-        <th style="padding:7px 8px; text-align:center; width:8%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">QTY</th>
-        <th style="padding:7px 8px; text-align:right; width:15%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">PRICE</th>
-        <th style="padding:7px 8px; text-align:right; width:14%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">DISCOUNT</th>
-        <th style="padding:7px 8px; text-align:right; width:16%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">TOTAL</th>
+        <th style="padding:7px 8px; text-align:center; width:7%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">QTY</th>
+        <!-- Manhour sits beside the price, never inside it: the hours are totalled below. -->
+        <th style="padding:7px 8px; text-align:center; width:9%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">MANHOUR</th>
+        <th style="padding:7px 8px; text-align:right; width:14%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">PRICE</th>
+        <th style="padding:7px 8px; text-align:right; width:12%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">DISCOUNT</th>
+        <th style="padding:7px 8px; text-align:right; width:15%; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">TOTAL</th>
       </tr>
     </thead>
     <tbody>
@@ -61,7 +63,10 @@
       <tr style="border-bottom:1px solid #e2e2e2;">
         <td style="padding:7px 8px; border:none;">{{ row.item_code or "" }}</td>
         <td style="padding:7px 8px; border:none;">{{ row.description or row.item_name or "" }}</td>
-        <td style="padding:7px 8px; text-align:center; border:none;">{{ (row.qty or 0)|int }}</td>
+        <!-- %g, not |int: manhour is fractional (0.5 / 1.5) and truncating it printed 0.
+             Whole quantities still print without decimals. -->
+        <td style="padding:7px 8px; text-align:center; border:none;">{{ "%g"|format(row.qty or 0) }}</td>
+        <td style="padding:7px 8px; text-align:center; border:none;">{{ "%g"|format(row.manhour or 0) }}</td>
         <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.rate) }}</td>
         <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.discount_amount) }}</td>
         <td style="padding:7px 8px; text-align:right; border:none;">{{ rp(row.amount) }}</td>
@@ -79,9 +84,28 @@
       </td>
       <td style="width:46%; vertical-align:top; border:none; padding:0;">
         <table style="width:100%; border-collapse:collapse;">
-          <tr><td style="padding:5px 8px; font-weight:bold; border:none;">Sub Total</td><td style="padding:5px 8px; text-align:right; font-weight:bold; border:none;">{{ rp(doc.total) }}</td></tr>
+          <tr><td style="padding:5px 8px; font-weight:bold; border:none;">Total Price</td><td style="padding:5px 8px; text-align:right; font-weight:bold; border:none;">{{ rp(doc.total) }}</td></tr>
           <tr><td style="padding:5px 8px; border:none;">Diskon</td><td style="padding:5px 8px; text-align:right; border:none;">{{ rp(doc.discount_amount) }}</td></tr>
-          <tr><td style="padding:5px 8px; border:none;">PPN</td><td style="padding:5px 8px; text-align:right; border:none;">{{ rp(doc.total_taxes_and_charges) }}</td></tr>
+          {%- if doc.total_manhour %}
+          <!-- Labour, settled once: the hours off every line x the Hour multiplier. Shaded
+               as one block so it reads as its own subtotal, not as part of Total Price. -->
+          <tr style="background-color:#f4f4f4; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+            <td style="padding:5px 8px; border:none;">Total Manhour <span style="color:#666;">&times; Hour {{ "%g"|format(doc.manhour_hour or 0) }}</span></td>
+            <td style="padding:5px 8px; text-align:right; border:none;">{{ "%g"|format(doc.total_manhour) }} jam</td>
+          </tr>
+          <tr style="background-color:#f4f4f4; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+            <td style="padding:5px 8px; font-weight:bold; border:none;">Biaya Manhour</td>
+            <td style="padding:5px 8px; text-align:right; font-weight:bold; border:none;">{{ rp(doc.manhour_amount) }}</td>
+          </tr>
+          <!-- What tax is actually charged on: services + labour. -->
+          <tr style="border-top:1px solid #cfcfcf;">
+            <td style="padding:5px 8px; font-weight:bold; border-left:none; border-right:none; border-bottom:none;">Subtotal</td>
+            <td style="padding:5px 8px; text-align:right; font-weight:bold; border-left:none; border-right:none; border-bottom:none;">{{ rp((doc.total or 0) + (doc.manhour_amount or 0)) }}</td>
+          </tr>
+          {%- endif %}
+          <!-- The labour charge rides in total_taxes_and_charges (it is an Actual charge
+               row), so net it out here — otherwise it would be shown twice. -->
+          <tr><td style="padding:5px 8px; border:none;">PPN</td><td style="padding:5px 8px; text-align:right; border:none;">{{ rp((doc.total_taxes_and_charges or 0) - (doc.manhour_amount or 0)) }}</td></tr>
           <tr style="color:#fff;">
             <td style="padding:7px 8px; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">Total</td>
             <td style="padding:7px 8px; text-align:right; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">{{ rp(doc.grand_total) }}</td>

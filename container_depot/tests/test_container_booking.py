@@ -556,8 +556,7 @@ class TestBookingCancel(FrappeTestCase):
 
 
 class TestTankOutGating(FrappeTestCase):
-	"""Direction=Tank Out requires every item Container to be Ready + have a
-	valid Cleaning Certificate."""
+	"""Direction=Tank Out requires every item Container to be Ready."""
 
 	CUSTOMER = "Phase3 TankOut Customer"
 
@@ -581,8 +580,7 @@ class TestTankOutGating(FrappeTestCase):
 	@classmethod
 	def tearDownClass(cls):
 		_cleanup_customer_world(cls.customer)
-		# Clean up cleaning certs + container created here.
-		frappe.db.delete("Cleaning Certificate", {"container": cls.container})
+		frappe.db.delete("Cleaning Order", {"container": cls.container})
 		frappe.db.delete("Container", {"container_no": cls.container})
 		frappe.db.commit()
 		super().tearDownClass()

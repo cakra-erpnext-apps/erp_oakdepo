@@ -63,7 +63,9 @@ class TestEirFollowups(FrappeTestCase):
 		self.assertTrue(name)
 		co = frappe.db.get_value("Cleaning Order", name, ["container", "status"], as_dict=True)
 		self.assertEqual(co.container, c)
-		self.assertEqual(co.status, "Pending")
+		# New orders land in Admin Ops' queue first; they only reach the operator worklist
+		# (Pending) once the cleaning services have been picked and forwarded.
+		self.assertEqual(co.status, "Service Setup")
 		# Idempotent: a second call returns the same open order, not a duplicate.
 		self.assertEqual(eir_followups.create_cleaning_order_from_eir(dirty), name)
 

@@ -71,7 +71,7 @@ class SmokeRun:
 		self.out_booking = None
 		self.order_bongkar = None
 		self.order_muat = None
-		self.cleaning_cert = None
+		self.cleaning_done = False
 
 	# -- registry -----------------------------------------------------------
 	def track(self, doctype, name):
@@ -325,7 +325,7 @@ class SmokeRun:
 				self.step("EIR-In · eir_history (ESS)", lambda: ess_eir.eir_history(search=self.container))
 				self.step("EIR-In · eir_view (ESS)", lambda: ess_eir.eir_view(insp_in))
 
-		# --- 7) Cleaning (ESS) → mints Cleaning Certificate ---------------
+		# --- 7) Cleaning (ESS) → Completed order = the TANK OUT proof ------
 		self.assert_true("Service Menu · 'Cleaning' menu is active/real",
 			service_menu.is_real_menu("Cleaning"))
 		co = frappe.db.get_value("Cleaning Order",
@@ -336,16 +336,15 @@ class SmokeRun:
 			self.step("Cleaning · order_detail + Service-Menu options (ESS)",
 				lambda: ess_cleaning.cleaning_order_detail(co))
 			self.step("Cleaning · start (ESS)", lambda: ess_cleaning.cleaning_start(co))
-			self.step("Cleaning · save + submit → mint certificate (ESS)",
+			self.step("Cleaning · save + submit → Completed (ESS)",
 				lambda: ess_cleaning.cleaning_order_save(cleaning_order=co, cleaning_type="Steam Wash",
-					gas_free="Yes", o2_percent=21, lel_percent=0, remarks="prod-smoke clean", submit=1))
-			cert = frappe.db.get_value("Cleaning Certificate", {"container": self.container, "docstatus": 1}, "name")
-			if cert:
-				self.cleaning_cert = cert
-				self.track("Cleaning Certificate", cert)
-			self.assert_true("Cleaning · certificate minted + container Available",
-				bool(cert) and frappe.db.get_value("Container", self.container, "status") == "Available",
-				f"cert={cert} status={frappe.db.get_value('Container', self.container, 'status')}")
+					remarks="prod-smoke clean", submit=1))
+			done = frappe.db.exists("Cleaning Order",
+				{"container": self.container, "status": "Completed", "docstatus": 1})
+			self.cleaning_done = bool(done)
+			self.assert_true("Cleaning · order Completed + container Available",
+				bool(done) and frappe.db.get_value("Container", self.container, "status") == "Available",
+				f"completed={bool(done)} status={frappe.db.get_value('Container', self.container, 'status')}")
 
 		# --- 8) M&R (ESS): approval workflow, revision, partial approve ----
 		self.assert_true("Service Menu · 'Maintenance' menu is active/real",
@@ -469,9 +468,9 @@ class SmokeRun:
 		from container_depot.operations import order_generation
 
 		if not (self.container and frappe.db.get_value("Container", self.container, "status") == "Available"
-				and self.cleaning_cert):
-			self.assert_true("Tank Out · precondition (golden container Available + cert)", False,
-				"golden container not Available with a cert — Tank In did not complete")
+				and self.cleaning_done):
+			self.assert_true("Tank Out · precondition (golden container Available + cleaned)", False,
+				"golden container not Available with a finished cleaning — Tank In did not complete")
 			return
 
 		# --- 12) Tank Out booking (TOP submits freely) --------------------
@@ -522,12 +521,11 @@ class SmokeRun:
 				name = order_generation.make_order(self.out_booking, [out_code], vehicle_data={
 					"truck_plate": "L-5678-PT", "driver_name": "Pak Muat", "driver_phone": "0811222333",
 					"destination": "Pelabuhan Tanjung Perak",
-					"cleaning_certificates": {out_code: self.cleaning_cert},
 				}, submit=True)
 				self.order_muat = name
 				self.track("Order Muat", name)
 				return name
-			self.step("Order Muat · make_order + submit (cert-gated)", _mk_muat)
+			self.step("Order Muat · make_order + submit (cleaning-gated)", _mk_muat)
 
 		# --- 16) EIR-Out HOLD (dirty / seal broken) ----------------------
 		hold_draft = frappe.db.get_value("Inspection",
@@ -651,7 +649,6 @@ def _teardown(prefix=CPREFIX, cust_prefix=CUST_PREFIX):
 	gate = names("Gate Entry", {"container_no": ["like", f"{prefix}%"]})
 	insp = names("Inspection", {"container": ["in", conts or [""]]}) if conts else []
 	clean = names("Cleaning Order", {"container": ["in", conts or [""]]}) if conts else []
-	cert = names("Cleaning Certificate", {"container": ["in", conts or [""]]}) if conts else []
 	ro = names("Repair Order", {"container": ["in", conts or [""]]}) if conts else []
 	# Release DO: by tank_owner OR by its child containers (survives a deleted customer).
 	rdo = list(set(
@@ -700,7 +697,7 @@ def _teardown(prefix=CPREFIX, cust_prefix=CUST_PREFIX):
 	# raw deletes ignore inter-doc links — but transactionals-before-masters keeps it tidy.
 	for dt, rows in [
 		("Payment Entry", pe), ("Sales Invoice", si), ("Stock Entry", se),
-		("Gate Entry", gate), ("Inspection", insp), ("Cleaning Certificate", cert),
+		("Gate Entry", gate), ("Inspection", insp),
 		("Cleaning Order", clean), ("Repair Order", ro), ("Release DO", rdo),
 		("Order Muat", orders_m), ("Order Bongkar", orders_b),
 		("Booking Code", codes), ("Container Booking", bookings),

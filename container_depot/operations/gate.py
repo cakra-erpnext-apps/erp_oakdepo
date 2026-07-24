@@ -171,8 +171,8 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 		)
 
 	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is submitted
-	# clean (out_outcome = Ready To Load). Cleaning-cert validity is already enforced when
-	# the Order Muat is created (order_muat._validate_cleaning_cert).
+	# clean (out_outcome = Ready To Load). The finished-cleaning requirement is already
+	# enforced when the Order Muat is created (order_muat._validate_cleaning_done).
 	if not frappe.db.exists(
 		"Inspection",
 		{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},

@@ -13,7 +13,7 @@ What it seeds
 * Cleaning Checklist     — reuses patches.v0_31 (12 rows)
 * Cargo                  — reuses patches.v0_12 (data/cargo_list.json)
 * EIR masters            — reuses patches.v0_6 (Inspection Damage + Repair Code) and
-                           patches.v0_25 (Inspection Checklist Item, 50 rows)
+                           patches.v0_39 (Inspection Checklist Item, 138 rows)
 * Item Group + Item      — from reference/seed/{Item_Group,Item}.csv (embedded below);
                            item_code == item_name (the descriptive name is the identity)
 * Depot Service Menu     — Booking / Cleaning / Maintenance (group filters)
@@ -32,7 +32,9 @@ import frappe
 from container_depot.patches.v0_12.seed_cargo import execute as _seed_cargo
 from container_depot.patches.v0_31.seed_cleaning_checklist import execute as _seed_cleaning_checklist
 from container_depot.patches.v0_6.seed_eir_codes import execute as _seed_eir_codes
-from container_depot.patches.v0_25.seed_eir_checklist import execute as _seed_eir_checklist
+from container_depot.patches.v0_39.seed_eir_checklist_positional import (
+    execute as _seed_eir_checklist,
+)
 
 # ----------------------------------------------------------------------------------
 # Curated dev data
@@ -345,7 +347,7 @@ def run():
     _seed_cleaning_checklist()     # patches.v0_31
     _seed_cargo()                  # patches.v0_12
     _seed_eir_codes()              # patches.v0_6  — Inspection Damage + Repair Code (EIR masters)
-    _seed_eir_checklist()          # patches.v0_25 — Inspection Checklist Item (10 areas, 50 rows)
+    _seed_eir_checklist()          # patches.v0_39 — Inspection Checklist Item (8 areas, 138 rows)
 
     for uom in sorted({i[2] for i in ITEMS}):
         _ensure_uom(uom)

@@ -13,7 +13,10 @@
   "column_break_1",
   "area",
   "item_name",
-  "is_active"
+  "is_active",
+  "codes_section",
+  "allowed_damage_codes",
+  "allowed_repair_codes"
  ],
  "fields": [
   {
@@ -63,11 +66,29 @@
    "fieldname": "is_active",
    "fieldtype": "Check",
    "label": "Is Active"
+  },
+  {
+   "description": "Which defect / repair codes make sense for THIS part. The PWA EIR checklist narrows its pickers to these; leaving a table empty falls back to the full code list.",
+   "fieldname": "codes_section",
+   "fieldtype": "Section Break",
+   "label": "Kode yang Berlaku"
+  },
+  {
+   "fieldname": "allowed_damage_codes",
+   "fieldtype": "Table MultiSelect",
+   "label": "Possible Defect Codes",
+   "options": "Inspection Checklist Damage Option"
+  },
+  {
+   "fieldname": "allowed_repair_codes",
+   "fieldtype": "Table",
+   "label": "Repair Actions",
+   "options": "Inspection Checklist Repair Option"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-11 00:00:00.000000",
+ "modified": "2026-07-23 12:00:00.000000",
  "module": "Operations",
  "name": "Inspection Checklist Item",
  "naming_rule": "By fieldname",

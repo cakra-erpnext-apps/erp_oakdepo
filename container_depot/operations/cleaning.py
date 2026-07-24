@@ -5,9 +5,8 @@ same functions back both the ESS PWA wrappers (``ess/cleaning.py``) and any Desk
 automation caller — the endpoint layer only adds auth + whitelisting.
 
 Flow: EIR (Empty Dirty) -> Cleaning Order (auto-created, Pending) -> the team starts
-it (In_Progress) -> fills the cleanliness checklist and submits -> Completed, which
-mints the Cleaning Certificate. The cleanliness detail (checklist / gas free / seals /
-signature) lives on the Cleaning Order itself — there is no separate statement doc.
+it (In_Progress) -> signs off and submits -> Completed. A submitted Completed order IS
+the TANK OUT proof; the sign-off detail (remarks + surveyor signature) lives on it.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ DEFAULT_REMARKS = "TANK ALREADY STEAM 100°C\nTANK ALREADY PASSED LEAK TEST 1 BA
 _CONTAINER_FIELDS = [
 	"name", "container_no", "container_type", "manufacture_date", "last_test_date",
 	"tare_weight", "max_gross_weight", "capacity", "principal", "last_cargo",
-	"depot", "seal_manhole", "seal_airline", "seal_bottom_outlet",
+	"depot",
 ]
 
 
@@ -38,40 +37,8 @@ def _guard_container_branch(container_name) -> None:
 
 
 def get_cleaning_masters() -> dict:
-	"""Checklist taxonomy (grouped by section) + default remarks for the PWA form."""
-	checklist = frappe.get_all(
-		"Cleaning Checklist Item",
-		filters={"is_active": 1},
-		fields=["item_code", "section", "item_name", "sequence"],
-		order_by="sequence asc",
-	)
-	return {"checklist": checklist, "default_remarks": DEFAULT_REMARKS}
-
-
-def get_latest_valid_cleaning_cert(container) -> dict | None:
-	"""Latest submitted Cleaning Certificate for a container + its validity.
-
-	Validity mirrors the Order Muat gate (``order_muat._validate_cleaning_cert``): a cert
-	is valid when it has no expiry (statement-minted = valid forever) OR ``valid_until >=
-	today``. Returns ``{name, valid_until, valid}`` for the newest submitted cert, or
-	``None`` when the container has none. Used by the EIR-Out flow to show + verify the
-	cleaning certificate before load-out.
-	"""
-	row = frappe.db.get_value(
-		"Cleaning Certificate",
-		{"container": container, "docstatus": 1},
-		["name", "valid_until"],
-		as_dict=True,
-		order_by="creation desc",
-	)
-	if not row:
-		return None
-	valid = (not row.valid_until) or getdate(row.valid_until) >= getdate(today())
-	return {
-		"name": row.name,
-		"valid_until": str(row.valid_until) if row.valid_until else None,
-		"valid": bool(valid),
-	}
+	"""Default sign-off remarks for the PWA cleaning form."""
+	return {"default_remarks": DEFAULT_REMARKS}
 
 
 def _latest_eir(container: str) -> str | None:
@@ -163,7 +130,7 @@ def list_cleaning_history(start=0, page_length=10, search=None) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "order_id", "container", "container_no", "status", "cleaning_type",
-			"last_cargo", "depot", "cleaning_end", "order_created", "cleaning_certificate"],
+			"last_cargo", "depot", "cleaning_end", "order_created"],
 		order_by="creation desc",
 		limit_start=cint(start),
 		limit_page_length=cint(page_length),
@@ -181,7 +148,7 @@ def list_cleaning_history(start=0, page_length=10, search=None) -> dict:
 def start_cleaning(cleaning_order):
 	"""Move a Cleaning Order from Pending to In_Progress (the team has started work) and
 	mirror it onto the container (-> Cleaning_In_Progress). The order stays a draft — it
-	is only submitted (Completed) when the cleanliness checklist is finalized."""
+	is only submitted (Completed) when the operator signs it off."""
 	co = frappe.db.get_value(
 		"Cleaning Order", cleaning_order, ["name", "container", "status", "docstatus"], as_dict=True
 	)
@@ -241,8 +208,8 @@ def _cleaning_item_options(container) -> list:
 
 def get_cleaning_order_detail(cleaning_order) -> dict:
 	"""Everything the PWA form needs for one Cleaning Order: the order's own cleanliness
-	state, the tank spec from the Container master, the saved checklist, recent cargo
-	history and the issue defaults."""
+	state, the tank spec from the Container master, recent cargo history and the issue
+	defaults."""
 	co = frappe.get_doc("Cleaning Order", cleaning_order)
 	_guard_container_branch(co.container)
 	c = frappe.db.get_value("Container", co.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
@@ -264,18 +231,11 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 			for r in co.cleaning_services
 		],
 		"cleaning_items": _cleaning_item_options(co.container),
-		"gas_free": co.gas_free,
-		"o2_percent": co.o2_percent,
-		"lel_percent": co.lel_percent,
-		"seal_manhole": co.seal_manhole or c.seal_manhole,
-		"seal_airline": co.seal_airline or c.seal_airline,
-		"seal_bottom_outlet": co.seal_bottom_outlet or c.seal_bottom_outlet,
 		"reff_doc": co.reff_doc,
 		"remarks": co.remarks or DEFAULT_REMARKS,
 		"signed_by": co.signed_by or user,
 		"date_of_issue": co.date_of_issue or today(),
 		"place_of_issue": co.place_of_issue or _default_place_of_issue(user, c.depot),
-		"cleaning_certificate": co.cleaning_certificate,
 		# Tank spec (read-only, from the Container master).
 		"tank_type": c.container_type,
 		"date_of_manufacture": c.manufacture_date,
@@ -285,10 +245,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"capacity": c.capacity,
 		"client": c.principal,
 		"previous_cargo": c.last_cargo,
-		# Saved checklist + recent cargo history + defaults.
-		"saved_checklist": [
-			{"item_code": r.checklist_item, "result": r.result, "note": r.note} for r in co.checklist
-		],
+		# Recent cargo history + defaults.
 		"cargo_history": cargo_history(co.container),
 		"default_remarks": DEFAULT_REMARKS,
 	}
@@ -306,54 +263,17 @@ def _as_bool(value) -> bool:
 	return bool(value)
 
 
-def _build_checklist_rows(results) -> list:
-	"""Map the surveyor's payload to checklist rows for ALL active items. ``results`` is
-	a flat ``[{item_code, result, note}]`` payload; missing items default to "Yes"."""
-	items = frappe.get_all(
-		"Cleaning Checklist Item",
-		filters={"is_active": 1},
-		fields=["item_code", "section", "item_name"],
-		order_by="sequence asc",
-	)
-	by_code = {}
-	for r in _coerce_list(results):
-		code = (r.get("item_code") or "").strip()
-		if code:
-			by_code[code] = r
-	rows = []
-	for it in items:
-		payload = by_code.get(it.item_code, {})
-		result = (payload.get("result") or "").strip() or "Yes"
-		if result not in ("Yes", "No"):
-			frappe.throw(_("Checklist result must be Yes or No (item {0}).").format(it.item_code))
-		rows.append({
-			"checklist_item": it.item_code,
-			"section": it.section,
-			"item_name": it.item_name,
-			"result": result,
-			"note": (payload.get("note") or "").strip() or None,
-		})
-	return rows
-
-
 def save_cleaning_order(
 	cleaning_order=None,
 	cleaning_type=None,
 	cleaning_items=None,
-	gas_free=None,
-	o2_percent=None,
-	lel_percent=None,
-	seal_manhole=None,
-	seal_airline=None,
-	seal_bottom_outlet=None,
 	reff_doc=None,
 	remarks=None,
 	signature=None,
-	results=None,
 	submit=False,
 ) -> dict:
 	"""Save the cleanliness detail onto a Cleaning Order and, when ``submit`` is true,
-	complete it (which mints the Cleaning Certificate). Submitting requires the order to
+	complete it. Submitting requires the order to
 	have been started (``before_submit`` guards this). Permissions are NOT bypassed."""
 	if not cleaning_order:
 		frappe.throw(_("cleaning_order is required."))
@@ -377,16 +297,6 @@ def save_cleaning_order(
 		co.set("cleaning_services", rows)
 	if cleaning_type is not None:
 		co.cleaning_type = cleaning_type
-	if gas_free is not None:
-		co.gas_free = gas_free
-	co.o2_percent = o2_percent
-	co.lel_percent = lel_percent
-	if seal_manhole is not None:
-		co.seal_manhole = seal_manhole
-	if seal_airline is not None:
-		co.seal_airline = seal_airline
-	if seal_bottom_outlet is not None:
-		co.seal_bottom_outlet = seal_bottom_outlet
 	# Optional reference doc (usually pre-filled from the EIR; editable here).
 	if reff_doc is not None:
 		co.reff_doc = reff_doc
@@ -399,8 +309,6 @@ def save_cleaning_order(
 		co.date_of_issue = today()
 	if not co.place_of_issue:
 		co.place_of_issue = _default_place_of_issue(frappe.session.user, co.depot)
-	if results is not None:
-		co.set("checklist", _build_checklist_rows(results))
 
 	co.save()  # NOT ignore_permissions — Frappe enforces Cleaning Order write on the caller.
 	if _as_bool(submit):
@@ -412,5 +320,4 @@ def save_cleaning_order(
 		"order_id": co.order_id,
 		"status": co.status,
 		"docstatus": co.docstatus,
-		"cleaning_certificate": co.get("cleaning_certificate"),
 	}

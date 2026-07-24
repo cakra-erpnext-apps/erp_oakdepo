@@ -33,6 +33,36 @@ def _guard_container_branch(container_name) -> None:
 	assert_in_user_branch(depot=depot)
 
 
+def _attach_allowed_codes(checklist: list) -> None:
+	"""Attach each checklist part's valid defect / repair codes (from the workbook-seeded
+	tables on ``Inspection Checklist Item``) so the PWA can narrow its pickers to the codes
+	that make sense for that part. A part with an empty table keeps the full code list.
+
+	Repairs keep the workbook's primary (✓) vs optional (○) split: primaries come first.
+	"""
+	names = [c["item_code"] for c in checklist]
+	if not names:
+		return
+	damages, repairs = {}, {}
+	for row in frappe.get_all(
+		"Inspection Checklist Damage Option",
+		filters={"parent": ["in", names], "parenttype": "Inspection Checklist Item"},
+		fields=["parent", "damage_code"],
+		order_by="idx asc",
+	):
+		damages.setdefault(row.parent, []).append(row.damage_code)
+	for row in frappe.get_all(
+		"Inspection Checklist Repair Option",
+		filters={"parent": ["in", names], "parenttype": "Inspection Checklist Item"},
+		fields=["parent", "repair_code", "is_primary"],
+		order_by="is_primary desc, idx asc",
+	):
+		repairs.setdefault(row.parent, []).append(row.repair_code)
+	for c in checklist:
+		c["damage_codes"] = damages.get(c["item_code"], [])
+		c["repair_codes"] = repairs.get(c["item_code"], [])
+
+
 def get_eir_masters() -> dict:
 	"""Checklist taxonomy + active damage / repair code lists for the EIR grid."""
 	checklist = frappe.get_all(
@@ -41,6 +71,7 @@ def get_eir_masters() -> dict:
 		fields=["item_code", "printed_no", "area", "item_name", "sequence"],
 		order_by="sequence asc",
 	)
+	_attach_allowed_codes(checklist)
 	damage_codes = frappe.get_all(
 		"Inspection Damage Code",
 		filters={"is_active": 1},
@@ -271,20 +302,18 @@ def latest_eir_in(container: str | None) -> str | None:
 def provision_eir_out_for_order_muat(order_name: str) -> list:
 	"""Submit-time hook for an Order Muat: create one DRAFT EIR-Out per container, each
 	referencing the container's latest submitted EIR-In (the load-out baseline) and the
-	row's Cleaning Certificate.
+	row's container.
 
 	Mirrors :func:`provision_eirs_for_order_bongkar` (EIR-In): the surveyor never types a
 	container — the EIR-Out is born from the loading bon. The surveyor opens the draft from
-	the EIR-Out worklist, verifies exterior / seals / cleaning-cert vs the referenced
-	EIR-In, then submits. Idempotent per container (skips when an open EIR-Out draft already
-	exists); best-effort per row — one failure is logged and never blocks the bon submit.
+	the EIR-Out worklist, verifies exterior / seals vs the referenced EIR-In, then submits.
+	Idempotent per container (skips when an open EIR-Out draft already exists); best-effort
+	per row — one failure is logged and never blocks the bon submit.
 	"""
-	from container_depot.operations.cleaning import get_latest_valid_cleaning_cert
-
 	rows = frappe.get_all(
 		"Order Container Item",
 		filters={"parent": order_name, "parenttype": "Order Muat"},
-		fields=["container", "cleaning_certificate"],
+		fields=["container"],
 	)
 	created = []
 	for row in rows:
@@ -313,18 +342,6 @@ def provision_eir_out_for_order_muat(order_name: str) -> list:
 			doc.cargo = snap.get("cargo") or doc.cargo
 			# Baseline EIR-In for the comparison panel.
 			doc.reference_eir_in = latest_eir_in(container)
-			# Cleaning Certificate: the Order Muat row's cert (the load is gated on it), else
-			# the container's latest valid cert.
-			cert_name = row.get("cleaning_certificate")
-			if cert_name:
-				vu = frappe.db.get_value("Cleaning Certificate", cert_name, "valid_until")
-				doc.cleaning_cert = cert_name
-				doc.cleaning_cert_valid_until = vu
-			else:
-				cert = get_latest_valid_cleaning_cert(container)
-				if cert:
-					doc.cleaning_cert = cert["name"]
-					doc.cleaning_cert_valid_until = cert["valid_until"]
 			doc.insert(ignore_permissions=True)  # system automation on bon submit
 			created.append(doc.name)
 		except Exception:
@@ -334,17 +351,11 @@ def provision_eir_out_for_order_muat(order_name: str) -> list:
 
 def get_eir_out_reference(inspection) -> dict:
 	"""Comparison payload for an EIR-Out: the referenced EIR-In's summary (date, tank
-	status, remarks, damage findings + photos) and the cleaning certificate's current
-	validity. Best-effort — sections come back ``None`` when there is no baseline EIR-In.
+	status, remarks, damage findings + photos). Best-effort — sections come back ``None``
+	when there is no baseline EIR-In.
 	"""
 	doc = inspection if hasattr(inspection, "doctype") else frappe.get_doc("Inspection", inspection)
-	out = {"reference_eir_in": doc.get("reference_eir_in"), "eir_in": None, "cleaning_cert": None}
-
-	cert_name = doc.get("cleaning_cert")
-	if cert_name:
-		vu = frappe.db.get_value("Cleaning Certificate", cert_name, "valid_until")
-		valid = (not vu) or getdate(vu) >= getdate(today())
-		out["cleaning_cert"] = {"name": cert_name, "valid_until": str(vu) if vu else None, "valid": bool(valid)}
+	out = {"reference_eir_in": doc.get("reference_eir_in"), "eir_in": None}
 
 	ref = doc.get("reference_eir_in")
 	if ref:
@@ -945,23 +956,17 @@ def open_draft(container=None, container_no=None, inspection_type="EIR-In") -> d
 				doc.cargo = snap.get("cargo") or doc.cargo
 		except Exception:
 			frappe.log_error(title="EIR auto-voucher", message=frappe.get_traceback())
-		# EIR-Out: stamp the EIR-In baseline + cleaning certificate for the comparison.
+		# EIR-Out: stamp the EIR-In baseline for the comparison panel.
 		if inspection_type == "EIR-Out":
-			from container_depot.operations.cleaning import get_latest_valid_cleaning_cert
-
 			doc.reference_eir_in = latest_eir_in(name)
-			cert = get_latest_valid_cleaning_cert(name)
-			if cert:
-				doc.cleaning_cert = cert["name"]
-				doc.cleaning_cert_valid_until = cert["valid_until"]
 		doc.insert()  # NOT ignore_permissions — only EIR creators can open a draft.
 
 	return _draft_payload(doc, header)
 
 
 def open_eir_out(inspection: str) -> dict:
-	"""Open a draft EIR-Out for editing (worklist → form) with its EIR-In comparison + the
-	cleaning-certificate validity, plus the saved EIR-Out verification fields."""
+	"""Open a draft EIR-Out for editing (worklist → form) with its EIR-In comparison plus
+	the saved EIR-Out verification fields."""
 	payload = open_draft_by_name(inspection)
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.inspection_type != "EIR-Out":
@@ -971,10 +976,6 @@ def open_eir_out(inspection: str) -> dict:
 	payload["exterior_remark"] = doc.get("exterior_remark")
 	payload["seals_intact"] = int(bool(doc.get("seals_intact")))
 	payload["seal_remark"] = doc.get("seal_remark")
-	payload["cleaning_cert"] = doc.get("cleaning_cert")
-	payload["cleaning_cert_valid_until"] = (
-		str(doc.get("cleaning_cert_valid_until")) if doc.get("cleaning_cert_valid_until") else None
-	)
 	return payload
 
 

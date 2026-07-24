@@ -245,21 +245,6 @@ def seed():
 		})
 		doc.insert(ignore_permissions=True)
 
-	# 11. Seed Cleaning Certificates
-	print("Creating Cleaning Certificates...")
-	certs = [
-		{"container": cont_docs["OAKU9812734"].name, "cleaning_method": "Chemical", "remarks": "Approved after inspections"},
-		{"container": cont_docs["MSCU1122334"].name, "cleaning_method": "Steam Wash", "remarks": "Regular periodic cleanup"}
-	]
-	for c in certs:
-		doc = frappe.get_doc({
-			"doctype": "Cleaning Certificate",
-			"container": c["container"],
-			"cleaning_method": c["cleaning_method"],
-			"remarks": c["remarks"]
-		})
-		doc.insert(ignore_permissions=True)
-		doc.submit()
 
 	frappe.db.commit()
 	print("🎉 Seeding completed successfully! Check the ERPNext UI.")
@@ -296,16 +281,12 @@ def cleanup_data():
 	frappe.db.delete("Inspection", {"container_no": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]})
 	frappe.db.delete("Repair Order", {"container": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]})
 	
-	# Delete comments on Gate Entry and Cleaning Certificate
+	# Delete comments on Gate Entry
 	gate_entry_names = frappe.db.get_values("Gate Entry", {"container_no": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]}, "name")
 	if gate_entry_names:
 		frappe.db.delete("Comment", {"reference_doctype": "Gate Entry", "reference_name": ["in", gate_entry_names]})
-	cert_names = frappe.db.get_values("Cleaning Certificate", {"container": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]}, "name")
-	if cert_names:
-		frappe.db.delete("Comment", {"reference_doctype": "Cleaning Certificate", "reference_name": ["in", cert_names]})
 	
 	frappe.db.delete("Container Movement", {"container": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]})
-	frappe.db.delete("Cleaning Certificate", {"container": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]})
 	frappe.db.delete("Container", {"container_no": ["in", ["OAKU9812734", "MSCU1122334", "TEXU4455667", "GLOU8877665", "TRLU5566778"]]})
 	frappe.db.delete("Fuel Log", {"cost_per_liter": ["in", [1.25, 1.28, 1.24]]})
 	frappe.db.delete("Equipment Maintenance", {"equipment_name": ["in", ["Reachstacker RS-A1", "Reachstacker RS-B2", "Heavy Forklift FL-03"]]})

@@ -31,6 +31,75 @@ STORAGE_ITEM = "Storage per Day"
 # customer's rate card actually negotiates if cleaning is priced per wash type.
 CLEANING_ITEM = "Standard Cleaning"
 
+# --------------------------------------------------------------------------- #
+# Labour (manhour)
+#
+# Every line of a contract's Price List carries a **Manhour** next to its Rate
+# (``Tariff Rate.manhour_rate``, published onto ``Item Price.manhour_rate``): the labour
+# hours that service takes — e.g. Standard Clean 0.5, Lift On 1.5.
+#
+# The two are deliberately NEVER merged into one rate inside an order: each menu bills its
+# tariff and carries its manhour untouched. Billing is where labour is settled — every line
+# of the invoice shows the manhour it books, the hours are totalled ONCE in the header, and
+# that total is charged as a single amount:
+#
+#     Total = Total Price + (Total Manhour × Hour)
+#
+# Note the asymmetry, and that it is deliberate: a RATE is per unit, so the line multiplies
+# it by qty; a MANHOUR is not. It is the labour that line books, whatever the quantity, so
+# the hours are summed as they stand and only the SUM meets a multiplier — ``Hour``, which
+# seeds from :data:`DEFAULT_MANHOUR_HOUR` and stays editable per invoice.
+# --------------------------------------------------------------------------- #
+DEFAULT_MANHOUR_HOUR = 4.0
+
+
+def contract_price_list(customer):
+	"""Published Price List of the customer's Active Depot Contract (None when none)."""
+	if not customer:
+		return None
+	return (
+		frappe.db.get_value(
+			"Depot Contract",
+			{"customer": customer, "status": "Active"},
+			"generated_price_list",
+			order_by="valid_from desc",
+		)
+		or None
+	)
+
+
+def manhour_for(item, price_list):
+	"""Labour hours the contract books for one service (0 when it carries none)."""
+	from frappe.utils import flt
+
+	if not (item and price_list):
+		return 0.0
+	return flt(
+		frappe.db.get_value(
+			"Item Price",
+			{"item_code": item, "price_list": price_list, "selling": 1},
+			"manhour_rate",
+		)
+	)
+
+
+def invoice_manhours(customer, lines):
+	"""Manhour each invoice line books, from the customer's contract.
+
+	Returns ``{index: hours_per_unit}`` for the lines the contract books labour for, so the
+	caller can stamp each line and let the header total them. Empty when the customer has
+	no active contract or nothing billed carries a manhour.
+	"""
+	price_list = contract_price_list(customer)
+	if not price_list:
+		return {}
+	out = {}
+	for i, ln in enumerate(lines):
+		hours = manhour_for(ln.get("item_code"), price_list)
+		if hours:
+			out[i] = hours
+	return out
+
 
 def resolve_tariff_rate(contract, item):
 	"""Return the negotiated rate for ``item`` on ``contract`` (0 if none).

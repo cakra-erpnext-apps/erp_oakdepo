@@ -80,7 +80,7 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 		return existing
 	co = frappe.new_doc("Cleaning Order")
 	co.container = insp.container
-	co.inspection = inspection  # EIR -> Cleaning Order -> Certificate
+	co.inspection = inspection  # EIR -> Cleaning Order
 	co.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
 	# Land in Admin Ops' queue first (Service Setup); Admin Ops picks the cleaning method(s)
 	# and forwards it to the depot operator (-> Pending) from the Desk Cleaning Order.

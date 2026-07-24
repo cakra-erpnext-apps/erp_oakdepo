@@ -42,24 +42,6 @@
 				</div>
 			</section>
 
-			<!-- Cleaning Certificate card -->
-			<section class="oak-card flex items-center gap-3 p-4">
-				<span class="oak-icon-tile h-9 w-9 shrink-0" :class="certValid ? 'bg-leaf-50 text-leaf-600' : 'bg-red-50 text-red-500'">
-					<Icon name="shield" :size="18" />
-				</span>
-				<div class="min-w-0 flex-1">
-					<p class="oak-section-title">{{ labels.eirOutCert }}</p>
-					<p class="truncate text-sm text-gray-700">
-						<span v-if="cert?.name" class="font-mono">{{ cert.name }}</span>
-						<span v-else class="text-red-600">{{ labels.eirOutCertNone }}</span>
-						<span v-if="cert?.valid_until"> · s/d {{ cert.valid_until }}</span>
-					</p>
-				</div>
-				<span class="oak-chip shrink-0" :class="certValid ? 'bg-leaf-100 text-leaf-700' : 'bg-red-100 text-red-700'">
-					{{ certValid ? labels.eirOutCertValid : labels.eirOutCertExpired }}
-				</span>
-			</section>
-
 			<!-- Comparison vs last EIR-In -->
 			<section class="oak-card overflow-hidden">
 				<div class="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
@@ -257,8 +239,6 @@ const workStartedOn = ref("") // set once the operator presses Mulai; gates edit
 const reference = ref(null)
 const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
 const refEirIn = computed(() => reference.value?.eir_in || null)
-const cert = computed(() => reference.value?.cleaning_cert || null)
-const certValid = computed(() => Boolean(cert.value?.valid))
 
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
@@ -299,7 +279,6 @@ const holdReasons = computed(() => {
 	const out = []
 	if (exteriorCondition.value !== "Clean") out.push(labels.eirOutReasonExterior)
 	if (!sealsIntact.value) out.push(labels.eirOutReasonSeals)
-	if (!certValid.value) out.push(labels.eirOutReasonCert)
 	if (hasDamage.value) out.push(labels.eirOutReasonDamage)
 	return out
 })

@@ -6,7 +6,7 @@ Carries the three Phase-3 critical controllers:
    exceeds credit limit or any overdue Sales Invoice exists. Cash bookings
    require a *paid* linked Sales Invoice before submit.
 2. TANK OUT gating (``validate`` when direction == 'Tank Out'): every item must
-   reference a Container that is clean + ready, with a Cleaning Certificate
+   reference a Container that is clean + ready, with a finished Cleaning Order
    whose ``valid_until`` covers today.
 3. Booking Code issuance on submit (one per item). Codes do not expire.
 """

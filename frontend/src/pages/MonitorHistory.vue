@@ -68,7 +68,6 @@ const ICONS = {
 	"Gate In": "log-in",
 	"Inspection (EIR)": "clipboard",
 	Cleaning: "droplet",
-	"Cleaning Certificate": "award",
 	Repair: "tool",
 	"Periodic Test": "check-circle",
 	"Order Bongkar": "download",

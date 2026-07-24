@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, today
 
 from container_depot.ess.inventory import derive_status
 from container_depot.operations.gate import mark_gate_out
@@ -33,19 +32,12 @@ def _container(no, status):
 def _clean_eir_out(container):
 	"""Submit a clean EIR-Out so the container passes the gate-out readiness gate
 	(Fase G: gate-out requires a submitted EIR-Out with out_outcome = Ready To Load)."""
-	cert = frappe.get_doc({
-		"doctype": "Cleaning Certificate", "container": container,
-		"clean_date": today(), "valid_until": add_days(today(), 20),
-	}).insert(ignore_permissions=True, ignore_mandatory=True)
-	frappe.db.set_value("Cleaning Certificate", cert.name, "docstatus", 1, update_modified=False)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
 	doc.inspector = frappe.session.user
 	doc.exterior_condition = "Clean"
 	doc.seals_intact = 1
-	doc.cleaning_cert = cert.name
-	doc.cleaning_cert_valid_until = add_days(today(), 20)
 	doc.insert(ignore_permissions=True)
 	doc.submit()  # EIR-Out submit only stamps eir_out_date — container status is preserved.
 	return doc.name
@@ -57,7 +49,6 @@ class TestGateOut(FrappeTestCase):
 		frappe.db.delete("Container Movement", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
-		frappe.db.delete("Cleaning Certificate", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 
 	def test_gate_out_happy_path(self):

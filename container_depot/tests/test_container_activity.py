@@ -100,19 +100,6 @@ class TestContainerActivityWiring(FrappeTestCase):
 		self.assertEqual(acts[0]["reference_name"], insp.name)
 		self.assertEqual(acts[0]["to_status"], "In_Depot")
 
-	def test_cleaning_certificate_logs_activity(self):
-		c = _make_container("ACTCERT0001")
-		cert = frappe.get_doc({
-			"doctype": "Cleaning Certificate",
-			"container": c,
-			"cleaning_method": "PP Wash",
-		})
-		cert.insert(ignore_permissions=True)
-		cert.submit()
-		acts = _activities(c, "Cleaning Certificate")
-		self.assertEqual(len(acts), 1)
-		self.assertEqual(acts[0]["reference_name"], cert.name)
-
 	def test_periodic_test_logs_activity(self):
 		c = _make_container("ACTPTST0001")
 		pt = frappe.get_doc({

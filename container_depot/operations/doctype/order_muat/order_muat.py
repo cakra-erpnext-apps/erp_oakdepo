@@ -19,7 +19,7 @@ class OrderMuat(Document):
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank Out")
-		self._validate_cleaning_cert()
+		self._validate_cleaning_done()
 
 	def on_update(self):
 		_reconcile_codes(self)
@@ -49,35 +49,20 @@ class OrderMuat(Document):
 		# containers and keep the audit trail.
 		frappe.throw(_("An Order Muat cannot be deleted — use Void to cancel it instead."))
 
-	def _validate_cleaning_cert(self):
-		"""Each container row needs a submitted, in-date Cleaning Certificate that
-		matches that row's container (PRO-OPS-08 §8.2)."""
+	def _validate_cleaning_done(self):
+		"""Each container row needs a finished cleaning before it may be loaded out
+		(PRO-OPS-08 §8.2). The Cleaning Order itself is the proof — it carries the whole
+		cleanliness record (checklist, gas free, seals, surveyor signature), so a submitted
+		Completed order for that container is what the gate checks."""
 		for row in _order_rows(self):
-			if not row.get("cleaning_certificate"):
+			container = row.get("container")
+			if not container:
+				continue
+			if not frappe.db.exists(
+				"Cleaning Order", {"container": container, "status": "Completed", "docstatus": 1}
+			):
 				frappe.throw(
-					_("Row {0} ({1}): Cleaning Certificate is required for an Order Muat.").format(
-						row.idx, row.get("container_no") or ""
-					)
-				)
-			cert = frappe.db.get_value(
-				"Cleaning Certificate",
-				row.cleaning_certificate,
-				["container", "valid_until", "docstatus"],
-				as_dict=True,
-			)
-			if not cert:
-				frappe.throw(_("Cleaning Certificate {0} not found.").format(row.cleaning_certificate))
-			if cert.docstatus != 1:
-				frappe.throw(_("Cleaning Certificate {0} is not submitted.").format(row.cleaning_certificate))
-			if row.get("container") and cert.container and cert.container != row.container:
-				frappe.throw(
-					_("Cleaning Certificate {0} is for container {1}, not {2}.").format(
-						row.cleaning_certificate, cert.container, row.container
-					)
-				)
-			if cert.valid_until and getdate(cert.valid_until) < getdate(today()):
-				frappe.throw(
-					_("Cleaning Certificate {0} expired on {1}.").format(
-						row.cleaning_certificate, cert.valid_until
+					_("Row {0} ({1}): belum ada Cleaning Order yang selesai untuk container ini.").format(
+						row.idx, row.get("container_no") or container
 					)
 				)

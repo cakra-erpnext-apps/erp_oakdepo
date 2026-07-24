@@ -16,9 +16,9 @@ import frappe
 
 from container_depot.api import _require_authenticated_user
 
-# Only the Cleaning Certificate has a custom print format in this app; the rest
+# Only the Cleaning Order has a custom print format in this app; the rest
 # render with Frappe's Standard format (format omitted).
-CLEANING_CERT_FORMAT = "Cleaning Certificate Format"
+CLEANING_ORDER_FORMAT = "Cleaning Order Format"
 
 
 def _pdf_url(doctype, name, fmt=None):
@@ -77,23 +77,25 @@ def get_tank_documents(container):
 			}
 		)
 
+	# The finished Cleaning Order IS the cleanliness record (checklist, gas free, seals,
+	# surveyor signature) and the proof Order Muat gates load-out on.
 	for r in frappe.get_list(
-		"Cleaning Certificate",
-		filters={"container": container},
-		fields=["name", "certificate_no", "clean_date"],
+		"Cleaning Order",
+		filters={"container": container, "docstatus": 1},
+		fields=["name", "order_id", "date_of_issue", "cleaning_end", "status"],
 		order_by="creation desc",
 		limit_page_length=0,
 	):
 		documents.append(
 			{
-				"category": "Sertifikat Cuci",
-				"label": r.certificate_no or r.name,
-				"doctype": "Cleaning Certificate",
+				"category": "Laporan Cuci",
+				"label": r.order_id or r.name,
+				"doctype": "Cleaning Order",
 				"name": r.name,
-				"status": None,
-				"date": _date(r.clean_date),
-				"view_url": _view_url("Cleaning Certificate", r.name, CLEANING_CERT_FORMAT),
-				"pdf_url": _pdf_url("Cleaning Certificate", r.name, CLEANING_CERT_FORMAT),
+				"status": r.status,
+				"date": _date(r.date_of_issue or r.cleaning_end),
+				"view_url": _view_url("Cleaning Order", r.name, CLEANING_ORDER_FORMAT),
+				"pdf_url": _pdf_url("Cleaning Order", r.name, CLEANING_ORDER_FORMAT),
 			}
 		)
 
