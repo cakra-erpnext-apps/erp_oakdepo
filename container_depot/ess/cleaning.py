@@ -56,6 +56,7 @@ def cleaning_order_save(
 	reff_doc=None,
 	remarks=None,
 	signature=None,
+	qc_photos=None,
 	submit=False,
 ):
 	"""POST /api/v1/ess/cleaning-order-save — save the sign-off (submit=1 completes)."""
@@ -67,5 +68,6 @@ def cleaning_order_save(
 		reff_doc=reff_doc,
 		remarks=remarks,
 		signature=signature,
+		qc_photos=qc_photos,
 		submit=submit,
 	)

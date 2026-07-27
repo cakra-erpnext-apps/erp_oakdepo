@@ -1,9 +1,0 @@
-{
-  "doctype": "Report",
-  "name": "Gasket Inventory Status",
-  "ref_doctype": "Gasket Inventory",
-  "report_type": "Script Report",
-  "is_standard": "Yes",
-  "module": "Operations",
-  "disabled": 0
-}

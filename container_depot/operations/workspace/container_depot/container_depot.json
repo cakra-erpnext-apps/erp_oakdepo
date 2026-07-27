@@ -73,16 +73,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Container Leasing",
-   "link_count": 0,
-   "link_to": "Container Leasing",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Gate & Yard",
    "link_count": 0,
    "onboard": 0,
@@ -265,36 +255,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Equipment Maintenance",
-   "link_count": 0,
-   "link_to": "Equipment Maintenance",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Fuel Log",
-   "link_count": 0,
-   "link_to": "Fuel Log",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Gasket Inventory",
-   "link_count": 0,
-   "link_to": "Gasket Inventory",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Depot",
    "link_count": 0,
    "link_to": "Depot",
@@ -363,26 +323,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Self Service Terminal",
-   "link_count": 0,
-   "link_to": "Self Service Terminal",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "SST Activity Log",
-   "link_count": 0,
-   "link_to": "SST Activity Log",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Reports",
    "link_count": 0,
    "onboard": 0,
@@ -411,16 +351,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Gasket Inventory Status",
-   "link_count": 0,
-   "link_to": "Gasket Inventory Status",
-   "link_type": "Report",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Inventory KPI per Principal",
    "link_count": 0,
    "link_to": "Inventory KPI per Principal",
@@ -429,7 +359,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-23 14:30:00.000000",
+ "modified": "2026-07-27 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

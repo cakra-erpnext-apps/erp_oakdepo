@@ -59,3 +59,5 @@ container_depot.patches.v0_39.drop_cleaning_order_cleanliness_fields
 container_depot.patches.v0_39.drop_cleaning_order_service_manhour_hours
 container_depot.patches.v0_39.drop_cleaning_order_grand_total
 container_depot.patches.v0_39.drop_manhour_invoice_section
+container_depot.patches.v0_40.drop_gasket_inventory
+container_depot.patches.v0_41.drop_unused_doctypes

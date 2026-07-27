@@ -437,6 +437,10 @@ export const labels = {
 	cleaningSealManhole: "Segel Manhole",
 	cleaningSealAirline: "Segel Airline",
 	cleaningSealBottom: "Segel Bottom Outlet",
+	// QC photos
+	cleaningQcPhotos: "Foto QC", // QC photos
+	cleaningQcPhotoAdd: "Tambah Foto", // add photo
+	cleaningQcPhotoEmpty: "Belum ada foto QC", // empty state
 	cleaningSignature: "Tanda Tangan Surveyor", // surveyor signature
 	cleaningResign: "Tanda tangan ulang", // re-sign
 	cleaningUploading: "Mengunggah…", // uploading

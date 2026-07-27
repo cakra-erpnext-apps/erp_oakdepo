@@ -248,6 +248,8 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		# Recent cargo history + defaults.
 		"cargo_history": cargo_history(co.container),
 		"default_remarks": DEFAULT_REMARKS,
+		# QC photos already on the order (uploaded straight from the field phone).
+		"qc_photos": [{"photo": r.photo, "caption": r.caption} for r in co.qc_photos],
 	}
 
 
@@ -270,6 +272,7 @@ def save_cleaning_order(
 	reff_doc=None,
 	remarks=None,
 	signature=None,
+	qc_photos=None,
 	submit=False,
 ) -> dict:
 	"""Save the cleanliness detail onto a Cleaning Order and, when ``submit`` is true,
@@ -297,6 +300,16 @@ def save_cleaning_order(
 		co.set("cleaning_services", rows)
 	if cleaning_type is not None:
 		co.cleaning_type = cleaning_type
+	# QC photos — uploaded straight from the field phone (file_url already saved).
+	if qc_photos is not None:
+		photos = []
+		for p in _coerce_list(qc_photos):
+			url = (p.get("photo") if isinstance(p, dict) else p) or ""
+			url = url.strip()
+			if url:
+				caption = (p.get("caption") or "").strip() if isinstance(p, dict) else ""
+				photos.append({"photo": url, "caption": caption})
+		co.set("qc_photos", photos)
 	# Optional reference doc (usually pre-filled from the EIR; editable here).
 	if reff_doc is not None:
 		co.reff_doc = reff_doc

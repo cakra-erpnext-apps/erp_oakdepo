@@ -144,6 +144,31 @@
 				<p v-else class="text-sm text-gray-400">{{ labels.cleaningNoCargoHistory }}</p>
 			</section>
 
+			<!-- Foto QC -->
+			<section class="oak-card p-4 space-y-2">
+				<div class="flex items-center justify-between">
+					<p class="oak-section-title">{{ labels.cleaningQcPhotos }}</p>
+					<label class="oak-link cursor-pointer text-sm">
+						<Icon name="camera" :size="14" /> {{ labels.cleaningQcPhotoAdd }}
+						<input type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onQcPhotos" />
+					</label>
+				</div>
+				<p v-if="photoUploading" class="text-xs text-gray-400">{{ labels.cleaningUploading }}</p>
+				<p v-else-if="!qcPhotos.length" class="text-sm text-gray-400">{{ labels.cleaningQcPhotoEmpty }}</p>
+				<div v-if="qcPhotos.length" class="grid grid-cols-3 gap-2">
+					<div v-for="(p, i) in qcPhotos" :key="i" class="relative">
+						<img :src="p.photo" class="h-24 w-full rounded-lg border border-gray-200 object-cover" />
+						<button
+							type="button"
+							class="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white"
+							@click="removeQcPhoto(i)"
+						>
+							<Icon name="x" :size="12" />
+						</button>
+					</div>
+				</div>
+			</section>
+
 			<!-- Catatan -->
 			<section class="oak-card p-4 space-y-2">
 				<label class="oak-label">{{ labels.eirRemarks }}</label>
@@ -227,6 +252,9 @@ const suppressSave = ref(false) // mute auto-save while a draft is being loaded
 // The operator only signs off now: Catatan (remarks) + Tanda Tangan (signature). The cleaning
 // method(s) are chosen upstream by Admin Ops and shown read-only.
 const remarks = ref("")
+// QC photo list (uploaded file_urls).
+const qcPhotos = ref([])
+const photoUploading = ref(false)
 
 const printUrl = computed(() =>
 	submitted.value
@@ -271,6 +299,7 @@ const detailRes = createResource({
 		savedOk.value = false
 		order.value = data
 		remarks.value = data.remarks || data.default_remarks || ""
+		qcPhotos.value = (data.qc_photos || []).map((p) => ({ ...p }))
 		nextTick(() => {
 			suppressSave.value = false
 		})
@@ -364,8 +393,30 @@ function save(submit) {
 		cleaning_order: order.value.name,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
+		qc_photos: JSON.stringify(qcPhotos.value.filter((p) => p.photo)),
 		submit: submit ? 1 : 0,
 	})
+}
+
+// --- QC photo handlers ------------------------------------------------------
+function removeQcPhoto(i) {
+	qcPhotos.value.splice(i, 1)
+}
+async function onQcPhotos(e) {
+	const files = Array.from(e.target.files || [])
+	e.target.value = "" // allow re-picking the same file
+	if (!files.length) return
+	photoUploading.value = true
+	try {
+		for (const f of files) {
+			const url = await uploadFile(f)
+			qcPhotos.value.push({ photo: url, caption: "" })
+		}
+	} catch (err) {
+		toast.error(labels.error)
+	} finally {
+		photoUploading.value = false
+	}
 }
 
 function backToList() {
@@ -387,6 +438,7 @@ function resetForm() {
 	remarks.value = ""
 	signatureUrl.value = ""
 	signing.value = false
+	qcPhotos.value = []
 }
 
 // --- file upload + virtual signature pad ------------------------------------
@@ -495,6 +547,7 @@ function startResign() {
 	nextTick(sigCtxInit)
 }
 
-// Auto-save on every edit: Catatan (remarks) + Tanda Tangan (signature).
+// Auto-save on every edit: Catatan (remarks) + Tanda Tangan (signature) + QC/material.
 watch([remarks, signatureUrl], scheduleSave)
+watch(qcPhotos, scheduleSave, { deep: true })
 </script>

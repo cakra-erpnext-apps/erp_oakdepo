@@ -178,30 +178,6 @@ def run_tests():
 		assert container.status == "Available", "Container status should be Available"
 		print("✓ Repair Order Completion state verified.")
 
-		# 8. Test Fuel Log calculations (New DocType)
-		print("\n--- 8. Testing Fuel Log calculations ---")
-		# Create Equipment Maintenance record
-		eq = frappe.get_doc({
-			"doctype": "Equipment Maintenance",
-			"equipment_name": "Reachstacker #1",
-			"status": "Active"
-		})
-		eq.insert(ignore_permissions=True)
-		print(f"✓ Created Equipment Maintenance: {eq.name}")
-
-		fuel_log = frappe.get_doc({
-			"doctype": "Fuel Log",
-			"equipment": eq.name,
-			"fuel_date": frappe.utils.today(),
-			"liters": 45.5,
-			"cost_per_liter": 1.20,
-			"odometer_reading": 12500
-		})
-		fuel_log.insert(ignore_permissions=True)
-		print(f"✓ Created Fuel Log: {fuel_log.name}")
-		assert fuel_log.total_cost == 54.6, f"Fuel Log total cost calculation failed: expected 54.6, got {fuel_log.total_cost}"
-		print("✓ Fuel Log calculations verified successfully.")
-
 		# 9. Test Container Movement updates Container location & coordinates
 		print("\n--- 9. Testing Container Movement ---")
 		movement = frappe.get_doc({
@@ -223,37 +199,6 @@ def run_tests():
 		assert container.bay == "Bay B", f"Expected Bay B, got {container.bay}"
 		assert container.tier == 3, f"Expected 3, got {container.tier}"
 		print("✓ Container Movement updates verified successfully.")
-
-		# 11. Test Gasket Inventory stock level reorder point trigger
-		print("\n--- 11. Testing Gasket Inventory reorder point ---")
-		gasket = frappe.get_doc({
-			"doctype": "Gasket Inventory",
-			"gasket_name": "Test Gasket",
-			"gasket_type": "Viton",
-			"current_stock": 5,
-			"reorder_point": 10,
-			"cost_price": 12.50,
-			"unit_price": 20.00
-		})
-		gasket.insert(ignore_permissions=True)
-		print(f"✓ Created Gasket Inventory: {gasket.name}")
-		
-		# Verify that ToDo was created
-		todo_exists = frappe.db.exists("ToDo", {
-			"reference_type": "Gasket Inventory",
-			"reference_name": gasket.name,
-			"status": "Open"
-		})
-		assert todo_exists, "Low stock ToDo alert not created"
-		
-		# Verify that Item was created
-		item_code = "GASKET-TEST-GASKET"
-		assert frappe.db.exists("Item", item_code), f"Item {item_code} was not created"
-		
-		# Verify that Material Request was created
-		mr_item_exists = frappe.db.exists("Material Request Item", {"item_code": item_code})
-		assert mr_item_exists, f"Material Request for item {item_code} was not created"
-		print("✓ Gasket Inventory reorder point logic verified successfully.")
 
 		print("\n🎉 ALL TESTS PASSED SUCCESSFULLY! 🎉")
 
@@ -328,18 +273,5 @@ def cleanup_test_data():
 		frappe.db.delete("Container Booking", {"name": ["in", test_bookings]})
 	frappe.db.delete("Depot Contract", {"customer": "Test Principal"})
 
-	# Delete Fuel Log & Equipment
-	frappe.db.delete("Fuel Log", {"liters": 45.5, "cost_per_liter": 1.20})
-	frappe.db.delete("Equipment Maintenance", {"equipment_name": "Reachstacker #1"})
-	
-	# Delete Gasket Inventory and material request / item
-	frappe.db.delete("Gasket Inventory", {"gasket_name": "Test Gasket"})
-	frappe.db.delete("ToDo", {"reference_type": "Gasket Inventory"})
-	mr_names = frappe.db.get_values("Material Request Item", {"item_code": "GASKET-TEST-GASKET"}, "parent")
-	if mr_names:
-		frappe.db.delete("Material Request Item", {"parent": ["in", mr_names]})
-		frappe.db.delete("Material Request", {"name": ["in", mr_names]})
-	frappe.db.delete("Item", {"item_code": "GASKET-TEST-GASKET"})
-	
 	frappe.db.commit()
 	print("✓ Cleanup completed.")

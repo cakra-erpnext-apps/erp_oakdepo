@@ -195,12 +195,6 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
-	"Container Leasing": {
-		"Customer":          {"read": 1, "report": 1},
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "report": 1, "export": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
 	# ---- B2 additions (customer portal backbone) -----------------------
 	"Release DO": {
 		"Customer":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
@@ -208,12 +202,6 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
 		"Operator Kalmar":   {"read": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
-	"Survey Request": {
-		"Customer":          {"read": 1, "create": 1, "report": 1},
-		"Surveyor":          {"read": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
 	},
 	"Surveyor Company": {
 		"Surveyor":          {"read": 1, "report": 1},
@@ -506,11 +494,17 @@ CUSTOM_FIELDS = {
 			"fieldname": "oak_customer_type",
 			"label": "OAK Customer Type",
 			"fieldtype": "Select",
-			# Portal capability: Tank Owner books storage/cleaning/M&R/release;
-			# Transporter does gate lift on/off. "Both" covers dual-role clients.
-			"options": "\nTank Owner\nTransporter\nBoth",
+			# Party role (billing + portal capability):
+			#   Tank Owner  = Principal — owns the ISO tanks, billed periodically
+			#                 (storage/cleaning/repair/LOLO/periodic/steam wash).
+			#   Transporter = EMKL — physically lifts on/off, billed per gate in/out.
+			#   Both        = a client that is both Tank Owner and Transporter.
+			#   Agent       = supplies reference numbers (PO / STC PO / WO) and
+			#                 survey/pickup schedules; NOT a billed party.
+			"options": "\nTank Owner\nTransporter\nBoth\nAgent",
 			"insert_after": "customer_group",
 			"in_standard_filter": 1,
+			"description": "Party role — Tank Owner (Principal, billed periodically), Transporter (EMKL, billed per gate in/out), Both, or Agent (supplies PO/STC/WO reference numbers, not billed).",
 		}
 	],
 	# Depot-pricing fields (pricing spec §3.2). Repair services price as
