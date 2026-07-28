@@ -5,8 +5,10 @@ import hashlib
 
 class RepairOrder(Document):
 	def before_insert(self):
-		"""Generate unique repair order ID"""
+		"""Generate unique repair order ID + stamp the creation time (list column)."""
 		self.repair_order_id = self.generate_repair_order_id()
+		if not self.order_created:
+			self.order_created = datetime.datetime.now()
 
 	def generate_repair_order_id(self):
 		"""Generate unique repair order ID"""

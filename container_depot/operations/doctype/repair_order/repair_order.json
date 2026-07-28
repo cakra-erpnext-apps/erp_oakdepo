@@ -17,6 +17,7 @@
     "column_break_1",
     "principal",
     "depot",
+    "order_created",
     "technician",
     "start_date",
     "completion_date",
@@ -56,8 +57,7 @@
       "fieldtype": "Link",
       "label": "Container",
       "options": "Container",
-      "reqd": 1,
-      "in_list_view": 1
+      "reqd": 1
     },
     {
       "fetch_from": "container.container_no",
@@ -106,15 +106,24 @@
     {
       "fieldname": "principal",
       "fieldtype": "Data",
+      "in_list_view": 1,
       "label": "Principal (Owner)",
       "read_only": 1
     },
     {
       "fieldname": "depot",
       "fieldtype": "Link",
+      "in_list_view": 1,
       "in_standard_filter": 1,
       "label": "Depot",
       "options": "Depot"
+    },
+    {
+      "fieldname": "order_created",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Order Created",
+      "read_only": 1
     },
     {
       "fieldname": "technician",
@@ -252,7 +261,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-07-23 12:00:00",
+  "modified": "2026-07-28 11:00:00.000000",
   "module": "Operations",
   "name": "Repair Order",
   "naming_rule": "Expression (BY ASSIGNMENT)",

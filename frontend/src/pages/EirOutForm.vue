@@ -129,6 +129,12 @@
 						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos, idx)">
 							<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
 						</button>
+						<span
+							v-if="bulkMeta[url]"
+							class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
+						>
+							<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
+						</span>
 						<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="removeBulkPhoto(idx)">
 							<Icon name="x" :size="12" />
 						</button>
@@ -259,6 +265,9 @@ const damageCodes = ref([])
 const repairCodes = ref([])
 
 const bulkPhotos = ref([])
+// foto cepat URL → the checklist item Admin sorted it into ("" = unsorted). Keeps sorting
+// through a save so a sorted photo stays in Foto Cepat without losing its item_code.
+const bulkMeta = ref({})
 const bulkUploading = ref(false)
 const bulkErr = ref("")
 
@@ -362,13 +371,20 @@ function applyDraftToRows(data) {
 	if (!data || !rows.value.length) return
 	const lineMap = {}
 	;(data.lines || []).forEach((l) => { lineMap[l.item_code] = l })
+	// A photo on an item WITH a damage finding is a damage-card photo; everything else
+	// (unsorted OR admin-sorted foto cepat) stays in Foto Cepat with its item_code preserved
+	// in bulkMeta so a save never un-sorts it. See EirInForm for the full rationale.
 	const photoMap = {}
 	const bulk = []
+	const meta = {}
 	;(data.photos || []).forEach((p) => {
-		if (!p.item_code) { bulk.push(p.photo); return }
-		;(photoMap[p.item_code] = photoMap[p.item_code] || []).push(p.photo)
+		const code = p.item_code
+		if (code && lineMap[code]) { ;(photoMap[code] = photoMap[code] || []).push(p.photo); return }
+		bulk.push(p.photo)
+		meta[p.photo] = code || ""
 	})
 	bulkPhotos.value = bulk
+	bulkMeta.value = meta
 	rows.value.forEach((r) => {
 		const l = lineMap[r.item_code]
 		r.damage_code = (l && l.damage_code) || ACCEPTABLE_DAMAGE
@@ -376,7 +392,7 @@ function applyDraftToRows(data) {
 		r.remarks = (l && l.remarks) || ""
 		r.photos = photoMap[r.item_code] ? [...photoMap[r.item_code]] : []
 		r.photoErr = ""
-		r.added = rowHasFinding(r) || r.photos.length > 0
+		r.added = rowHasFinding(r)
 	})
 }
 
@@ -390,7 +406,8 @@ function buildLines() {
 }
 function buildPhotos() {
 	const perItem = rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
-	const bulk = bulkPhotos.value.map((url) => ({ item_code: "", photo: url }))
+	// Preserve each foto cepat's sorted item_code so a save never un-sorts Admin's work.
+	const bulk = bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
 	return [...perItem, ...bulk]
 }
 
@@ -416,7 +433,11 @@ async function onBulkPhotoPick(event) {
 	bulkErr.value = ""
 	bulkUploading.value = true
 	try {
-		for (const f of files) bulkPhotos.value.push(await uploadFile(f))
+		for (const f of files) {
+			const url = await uploadFile(f)
+			bulkPhotos.value.push(url)
+			bulkMeta.value[url] = "" // freshly taken → not sorted yet
+		}
 	} catch (e) {
 		bulkErr.value = labels.photoError
 	} finally {
@@ -424,7 +445,8 @@ async function onBulkPhotoPick(event) {
 	}
 }
 function removeBulkPhoto(idx) {
-	bulkPhotos.value.splice(idx, 1)
+	const [url] = bulkPhotos.value.splice(idx, 1)
+	if (url) delete bulkMeta.value[url]
 }
 
 // ---- signature pad ----
@@ -515,8 +537,16 @@ const saveRes = createResource({
 	url: "container_depot.ess.inspections.eir_save_draft",
 	method: "POST",
 	onSuccess(data) {
-		if (data.docstatus === 1) {
-			toast.success(isClean.value ? labels.eirOutDoneReady : labels.eirOutDoneHold, { title: data.inspection })
+		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
+		if (data.docstatus === 1 || data.pending_review) {
+			toast.success(
+				data.pending_review
+					? labels.eirSentForReview
+					: isClean.value
+						? labels.eirOutDoneReady
+						: labels.eirOutDoneHold,
+				{ title: data.inspection },
+			)
 			emit("submitted", data.inspection)
 			emit("back")
 		} else {

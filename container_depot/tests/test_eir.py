@@ -314,9 +314,10 @@ class TestEirDraft(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			eir.save_draft(inspection=res["name"], lines=[{"item_code": "02", "damage_code": "12"}])
 
-	def test_save_draft_submit_finalizes(self):
-		# The Submit button saves then finalizes: the draft is submitted and its
-		# on_submit moves the container; a later fetch starts a fresh draft.
+	def test_save_draft_submit_sends_for_review(self):
+		# Field "Submit" no longer finalizes: it moves the EIR to Pending Review (still a
+		# draft, no container move yet). Admin Ops then submits on the Desk, which fires
+		# on_submit (container move + follow-ups) and a later fetch starts a fresh draft.
 		c = _make_container("EIRD1000005", status="In_Depot")
 		d = eir.open_draft(container_no="EIRD1000005")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
@@ -325,12 +326,52 @@ class TestEirDraft(FrappeTestCase):
 			lines=[{"item_code": "01", "damage_code": "11", "remarks": "dent"}],
 			submit=True,
 		)
-		self.assertEqual(res["docstatus"], 1)
+		self.assertEqual(res["docstatus"], 0)
+		self.assertEqual(res["status"], "Pending Review")
+		self.assertTrue(res["pending_review"])
+		# The container has NOT moved yet — review is still pending.
+		self.assertFalse(frappe.db.get_value("Container", c, "eir_in_date"))
+		# Reviewers get a "menunggu review" ping (targeted at Admin Ops, not the crew).
+		self.assertTrue(frappe.db.exists("Notification Log", {
+			"document_type": "Inspection", "document_name": d["inspection"], "type": "Alert",
+		}))
+		# It surfaces in the "Diajukan Review" list (branch-scoped, like the worklist).
+		review = eir.list_review_eirs()
+		self.assertIn(d["inspection"], [r["name"] for r in review["items"]])
+
+		# Admin Ops reviews + submits on the Desk → this is what finalizes it.
+		frappe.get_doc("Inspection", d["inspection"]).submit()
+		self.assertEqual(frappe.db.get_value("Inspection", d["inspection"], "docstatus"), 1)
+		self.assertEqual(frappe.db.get_value("Inspection", d["inspection"], "status"), "Submitted")
 		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
 		self.assertEqual(cont.status, "In_Depot")
 		self.assertTrue(cont.eir_in_date)
 		d2 = eir.open_draft(container_no="EIRD1000005")
 		self.assertNotEqual(d2["inspection"], d["inspection"])
+
+	def test_withdraw_review_returns_to_editable_draft(self):
+		# Operator pulls a Pending-Review EIR back to Draft themselves (no Admin Ops), fixes
+		# it, and re-sends. It must leave the review list, re-enter the worklist, and stay 0.
+		c = _make_container("EIRD1000015", status="In_Depot")
+		d = eir.open_draft(container_no="EIRD1000015")
+		eir.start_eir(d["inspection"])
+		eir.save_draft(
+			inspection=d["inspection"], inspection_type="EIR-In", tank_status="Empty Dirty",
+			lines=[{"item_code": "01", "damage_code": "11"}], submit=True,
+		)
+		self.assertEqual(frappe.db.get_value("Inspection", d["inspection"], "status"), "Pending Review")
+
+		out = eir.withdraw_review(d["inspection"])
+		self.assertEqual(out["status"], "Draft")
+		self.assertEqual(out["docstatus"], 0)
+		# Gone from the review list, back on the worklist, still not finalized.
+		self.assertNotIn(d["inspection"], [r["name"] for r in eir.list_review_eirs()["items"]])
+		self.assertIn(d["inspection"], [r["name"] for r in eir.list_pending_eirs()["items"]])
+		self.assertFalse(frappe.db.get_value("Container", c, "eir_in_date"))
+
+		# Only valid while Pending Review — a second withdraw now throws.
+		with self.assertRaises(frappe.ValidationError):
+			eir.withdraw_review(d["inspection"])
 
 	def test_save_draft_persists_inspector_signature(self):
 		# The EIR-creator's virtual signature round-trips through save_draft/open_draft.
@@ -522,6 +563,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
 					   tank_status="Empty Dirty", cargo="Acetic Acid",
 					   lines=[{"item_code": "01", "damage_code": "11"}], submit=True)
+		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
 		self.assertEqual(frappe.db.get_value("Container", c, "last_cargo"), "Acetic Acid")
 
 	def test_eir_in_submit_writes_eir_in_date(self):
@@ -530,6 +572,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
 					   tank_status="Empty Dirty", lines=[], submit=True)
+		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
 		self.assertIsNotNone(frappe.db.get_value("Container", c, "eir_in_date"))
 
 	def test_eir_out_submit_writes_eir_out_date(self):
@@ -539,6 +582,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",
 					   tank_status="Empty Clean", lines=[], submit=True)
+		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
 		self.assertIsNotNone(frappe.db.get_value("Container", c, "eir_out_date"))
 
 	def test_prefill_returns_container_ex_vessel(self):

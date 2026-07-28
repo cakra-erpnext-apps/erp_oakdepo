@@ -9,6 +9,24 @@
 
 frappe.ui.form.on('Inspection', {
 	refresh(frm) {
+		// Field operator submitted from the PWA → awaiting Admin Ops review. Prompt the
+		// reviewer to check + Submit (the native Submit finalizes it).
+		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
+			frm.dashboard.add_comment(
+				__('Menunggu review Adm Ops — periksa lalu tekan Submit untuk finalisasi.'),
+				'blue',
+				true,
+			);
+		}
+		// Surface a pending revision request (raised from the PWA) with its reason so
+		// Admin Ops sees why the operator wants this EIR reopened.
+		if (frm.doc.docstatus === 1 && frm.doc.revision_requested) {
+			frm.dashboard.add_comment(
+				__('Revisi diminta') + (frm.doc.revision_note ? ': ' + frm.doc.revision_note : ''),
+				'orange',
+				true,
+			);
+		}
 		// "Cancel" (Desk-only): return a submitted EIR to Draft so it can be edited again
 		// in the PWA / Inspection menu.
 		if (frm.doc.docstatus === 1) {

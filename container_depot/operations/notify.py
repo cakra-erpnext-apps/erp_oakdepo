@@ -21,6 +21,12 @@ from container_depot.operations.user_branch import _SKIP_USERS, get_user_branche
 # the granular Phase-6 roles target users who only hold one function.
 PWA_ROLE = "Depot PWA"
 EIR_ROLES = {PWA_ROLE, "Surveyor", "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
+# EIR review gate: when a field operator "submits" from the PWA the EIR only reaches
+# Pending Review — Admin Ops must check/classify and do the real Desk Submit. This is a
+# *call to review*, so it targets the reviewers ONLY — NOT the blanket PWA role or the
+# field crew (they already did their part; blasting them would be the notification going
+# to the wrong role).
+EIR_REVIEW_ROLES = {"Admin Ops", "Ops Supervisor", "Management"}
 GATE_ROLES = {PWA_ROLE, "Security", "Admin Ops", "Ops Supervisor", "Management"}
 # Bookings are commercial/admin work; the Cashier is included so a Cash booking's
 # payment is collected promptly.
@@ -196,6 +202,24 @@ def notify_eir_submitted(inspection, container):
 		subject=subject,
 		branch=_depot_branch(container.get("depot")),
 		roles=EIR_ROLES,
+	)
+
+
+def notify_eir_pending_review(inspection):
+	"""Fire when a field operator sends an EIR for review (Pending Review, still a draft).
+
+	Tells Admin Ops (+ ops oversight) a tank inspection is waiting for their check and
+	final Desk Submit. Reviewers only — the field crew already finished their part."""
+	code = inspection.get("inspection_id") or inspection.name
+	who = frappe.session.user
+	cno = inspection.container_no or inspection.container
+	subject = f"EIR {code} • {cno} • {inspection.inspection_type} — menunggu review Admin Ops (oleh {who})"
+	notify(
+		doctype="Inspection",
+		name=inspection.name,
+		subject=subject,
+		branch=_depot_branch(inspection.get("depot")),
+		roles=EIR_REVIEW_ROLES,
 	)
 
 

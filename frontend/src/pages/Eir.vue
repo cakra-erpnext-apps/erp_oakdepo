@@ -169,6 +169,35 @@
 				</p>
 			</section>
 
+			<!-- Sent for review (Pending Review) — field operator submitted, awaiting Admin
+			     Ops's Desk Submit. Read-only detail, same as the completed list. Hidden when
+			     empty so the landing stays clean for accounts that don't send-for-review. -->
+			<section v-if="reviewRes.loading || reviewItems.length" class="oak-section space-y-3">
+				<div class="flex items-center gap-2">
+					<Icon name="clock" :size="16" class="text-sky-500" />
+					<p class="oak-section-title">{{ labels.eirReviewList }}</p>
+					<span v-if="reviewItems.length" class="oak-chip bg-sky-100 text-sky-700">{{ reviewItems.length }}</span>
+				</div>
+				<ul v-if="reviewRes.loading && !reviewItems.length" class="space-y-2">
+					<li v-for="n in 2" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
+				</ul>
+				<p v-else-if="!reviewItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.eirReviewEmpty }}</p>
+				<ul v-else class="divide-y divide-gray-100">
+					<li v-for="r in reviewItems" :key="r.name">
+						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
+								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
+							</div>
+							<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.eirStatusPendingReview }}</span>
+							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
+						</button>
+					</li>
+				</ul>
+			</section>
+
 			<!-- Completed (submitted) EIRs — In & Out -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center justify-between gap-2">
@@ -191,6 +220,7 @@
 								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
 								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
 							</div>
+							<span v-if="r.revision_requested" class="oak-chip shrink-0 bg-orange-100 text-orange-800">{{ labels.eirStatusRevision }}</span>
 							<span class="oak-chip shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'">
 								{{ r.inspection_type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
 							</span>
@@ -341,6 +371,17 @@ const doneRes = createResource({
 	onSuccess: (data) => (doneItems.value = data.items || []),
 })
 
+// "Diajukan Review" — the caller's own EIRs sent for review (Pending Review, still
+// docstatus 0), awaiting Admin Ops's Desk Submit. Read-only, opened like a completed one.
+const reviewItems = ref([])
+const reviewRes = createResource({
+	url: "container_depot.ess.inspections.eir_pending_review",
+	method: "GET",
+	makeParams: () => ({ page_length: 20 }),
+	auto: true,
+	onSuccess: (data) => (reviewItems.value = data.items || []),
+})
+
 function goItem(r) {
 	router.push({ query: { e: r.name, t: r._type === "EIR-Out" ? "out" : "in" } })
 }
@@ -416,11 +457,13 @@ function onBack() {
 		goItem(next) // auto-advance to the next EIR in this account's queue
 		reloadPending()
 		doneRes.reload()
+		reviewRes.reload()
 		return
 	}
 	if (route.query.e) router.push({ query: {} })
 	reloadPending()
 	doneRes.reload()
+	reviewRes.reload()
 }
 function onSubmitted(name) {
 	// Capture the next EIR to jump to BEFORE the lists refresh (the just-submitted one is

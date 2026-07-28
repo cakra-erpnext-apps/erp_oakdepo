@@ -145,28 +145,44 @@
 			</section>
 
 			<!-- Foto QC -->
-			<section class="oak-card p-4 space-y-2">
-				<div class="flex items-center justify-between">
-					<p class="oak-section-title">{{ labels.cleaningQcPhotos }}</p>
-					<label class="oak-link cursor-pointer text-sm">
-						<Icon name="camera" :size="14" /> {{ labels.cleaningQcPhotoAdd }}
-						<input type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onQcPhotos" />
-					</label>
-				</div>
-				<p v-if="photoUploading" class="text-xs text-gray-400">{{ labels.cleaningUploading }}</p>
-				<p v-else-if="!qcPhotos.length" class="text-sm text-gray-400">{{ labels.cleaningQcPhotoEmpty }}</p>
-				<div v-if="qcPhotos.length" class="grid grid-cols-3 gap-2">
-					<div v-for="(p, i) in qcPhotos" :key="i" class="relative">
-						<img :src="p.photo" class="h-24 w-full rounded-lg border border-gray-200 object-cover" />
+			<section class="oak-card p-4 space-y-3">
+				<p class="oak-section-title">{{ labels.cleaningQcPhotos }}</p>
+
+				<!-- Thumbnails (3-up, square tap-friendly tiles) + inline "add" tile -->
+				<div class="grid grid-cols-3 gap-2">
+					<div v-for="(p, i) in qcPhotos" :key="i" class="relative aspect-square">
+						<img :src="p.photo" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 						<button
 							type="button"
-							class="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white"
+							class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
+							:aria-label="labels.remove || 'Hapus'"
 							@click="removeQcPhoto(i)"
 						>
-							<Icon name="x" :size="12" />
+							<Icon name="x" :size="16" />
 						</button>
 					</div>
+
+					<!-- Add tile — a full-size tap target that opens the camera on mobile -->
+					<label
+						class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+					>
+						<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
+						<template v-else>
+							<Icon name="camera" :size="22" />
+							<span class="text-xs font-medium">{{ labels.cleaningQcPhotoAdd }}</span>
+						</template>
+						<input
+							type="file"
+							accept="image/*"
+							capture="environment"
+							multiple
+							class="hidden"
+							:disabled="photoUploading"
+							@change="onQcPhotos"
+						/>
+					</label>
 				</div>
+				<p v-if="!qcPhotos.length && !photoUploading" class="text-xs text-gray-400">{{ labels.cleaningQcPhotoEmpty }}</p>
 			</section>
 
 			<!-- Catatan -->
@@ -298,7 +314,7 @@ const detailRes = createResource({
 		suppressSave.value = true
 		savedOk.value = false
 		order.value = data
-		remarks.value = data.remarks || data.default_remarks || ""
+		remarks.value = data.remarks || ""
 		qcPhotos.value = (data.qc_photos || []).map((p) => ({ ...p }))
 		nextTick(() => {
 			suppressSave.value = false

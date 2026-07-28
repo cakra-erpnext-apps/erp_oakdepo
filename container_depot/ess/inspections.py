@@ -52,6 +52,28 @@ def eir_history(search=None, start=0, page_length=10, docstatus=None):
 
 
 @frappe.whitelist(methods=["GET"])
+def eir_pending_review(search=None, start=0, page_length=20):
+	"""GET /api/v1/ess/eir-pending-review — EIRs awaiting Admin Ops review (the landing's
+	"Diajukan Review" list).
+
+	Sent from the field ("Kirim untuk Review") but NOT finalized: docstatus 0 / status
+	"Pending Review" until Admin Ops submits on the Desk. Branch-scoped like the worklist so
+	any operator in the branch sees them (and can pull one back). See ``eir.list_review_eirs``.
+	"""
+	_require_authenticated_user()
+	return eir.list_review_eirs(search=search, start=start, page_length=page_length)
+
+
+@frappe.whitelist(methods=["POST"])
+def eir_withdraw_review(inspection=None):
+	"""POST /api/v1/ess/eir-withdraw-review — pull a "Pending Review" EIR back to Draft so the
+	operator can fix it before Admin Ops finalizes. Mutating, hence POST. See
+	``eir.withdraw_review``."""
+	_require_authenticated_user()
+	return eir.withdraw_review(inspection=inspection)
+
+
+@frappe.whitelist(methods=["GET"])
 def eir_pending(search=None, start=0, page_length=20):
 	"""GET /api/v1/ess/eir-pending — open (draft) EIRs in the user's branch (worklist).
 

@@ -71,7 +71,21 @@
 				>
 					<Icon name="rotate-ccw" :size="16" /> {{ labels.eirReqRevision }}
 				</button>
+				<!-- Awaiting review → the operator can pull it back to Draft and fix it (no
+				     Admin Ops needed). Jumps straight into the editable form on success. -->
+				<button
+					v-if="data.docstatus === 0 && data.status === 'Pending Review'"
+					type="button"
+					class="oak-btn oak-btn-primary inline-flex px-3 py-2"
+					:disabled="withdrawRes.loading"
+					@click="withdrawReview(data)"
+				>
+					<Icon name="edit-3" :size="16" /> {{ withdrawRes.loading ? "…" : labels.eirWithdrawReview }}
+				</button>
 			</div>
+			<p v-if="data.docstatus === 0 && data.status === 'Pending Review'" class="px-1 text-xs text-gray-400">
+				{{ labels.eirWithdrawReviewHint }}
+			</p>
 
 			<!-- Revision request: reason (optional) + send; notifies Admin Ops server-side. -->
 			<section v-if="revisionFor === data.name" class="oak-card space-y-2 p-4">
@@ -94,13 +108,33 @@
 
 <script setup>
 import { ref } from "vue"
+import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 
+const router = useRouter()
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
+
+// Withdraw a "Pending Review" EIR back to an editable Draft, then open the form so the
+// operator can fix it and re-send for review.
+const withdrawRes = createResource({
+	url: "container_depot.ess.inspections.eir_withdraw_review",
+	method: "POST",
+	onSuccess(data) {
+		toast.success(labels.eirWithdrawReviewDone)
+		const t = data?.inspection_type === "EIR-Out" ? "out" : "in"
+		router.push({ path: "/eir", query: { e: data?.inspection, t } })
+	},
+	onError(err) {
+		toast.error(err?.messages?.[0] || err?.message || labels.error)
+	},
+})
+function withdrawReview(data) {
+	withdrawRes.submit({ inspection: data.name })
+}
 
 // Revision request: which EIR's reason box is open, its text, and the POST resource.
 const revisionFor = ref("")
@@ -125,14 +159,20 @@ function sendRevision(name) {
 	revisionRes.submit({ inspection: name, reason: revisionReason.value || undefined })
 }
 
+// Single status vocabulary, identical to the Desk list (inspection_list.js) so the two
+// surfaces never read differently: Batal / Revisi Diminta / Selesai / Menunggu Review / Draf.
 function statusText(r) {
-	if (r.docstatus === 1) return labels.eirStatusSubmitted
 	if (r.docstatus === 2) return labels.eirStatusCancelled
+	if (r.docstatus === 1 && r.revision_requested) return labels.eirStatusRevision
+	if (r.docstatus === 1) return labels.eirStatusSubmitted
+	if (r.status === "Pending Review") return labels.eirStatusPendingReview
 	return labels.eirStatusDraft
 }
 function statusClass(r) {
-	if (r.docstatus === 1) return "bg-leaf-100 text-leaf-800"
 	if (r.docstatus === 2) return "bg-gray-200 text-gray-600"
+	if (r.docstatus === 1 && r.revision_requested) return "bg-orange-100 text-orange-800"
+	if (r.docstatus === 1) return "bg-leaf-100 text-leaf-800"
+	if (r.status === "Pending Review") return "bg-sky-100 text-sky-800"
 	return "bg-amber-100 text-amber-800"
 }
 function cells(d) {

@@ -1093,11 +1093,20 @@ def save_draft(
 		doc.seal_remark = seal_remark or None
 
 	if submit:
-		# Stamp the end + elapsed work time (Mulai → Submit) before finalizing.
+		# Field operator "submits" from the PWA → this does NOT finalize the EIR. It moves
+		# to Pending Review (still a draft) for Admin Ops to check/classify, then Admin Ops
+		# does the real Submit (docstatus 1) on the Desk — which is what fires on_submit
+		# (container move + follow-up Cleaning/M&R orders + notify).
 		doc.work_ended_on = now_datetime()
 		if doc.work_started_on:
 			doc.work_duration = max(0, int(time_diff_in_seconds(doc.work_ended_on, doc.work_started_on)))
-		doc.submit()  # on_submit moves the Container; we never set status here.
+		doc.status = "Pending Review"
+		doc.save()  # NOT ignore_permissions — stays docstatus 0.
+		# Ping the reviewers (Admin Ops + oversight) — this is the only signal they get
+		# that an EIR is waiting; on_submit's crew notification only fires later, when
+		# Admin Ops does the real Desk Submit.
+		from container_depot.operations.notify import notify_eir_pending_review
+		notify_eir_pending_review(doc)
 	else:
 		doc.save()  # NOT ignore_permissions.
 
@@ -1105,6 +1114,8 @@ def save_draft(
 		"success": True,
 		"inspection": doc.name,
 		"docstatus": doc.docstatus,
+		"status": doc.status,
+		"pending_review": bool(submit),
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
 		"photo_rows": len(photo_rows),
@@ -1184,14 +1195,15 @@ def assign_photo_section(inspection: str, row: str, item_code: str) -> dict:
 	}
 
 
-def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None) -> dict:
+def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None, status=None) -> dict:
 	"""The caller's own EIR inspections — newest first, searchable + paginated.
 
 	Hard-scoped to ``owner == user`` (and EIR-In / EIR-Out) so a user only ever sees the
 	EIRs they created. ``frappe.get_all`` is used deliberately (it ignores row-level
 	permissions) — the owner filter is the security boundary. Search matches the container
 	number or the EIR id; ``start`` / ``page_length`` paginate. Optional ``docstatus``
-	(0 = drafts, 1 = submitted) narrows the list for the checklist landing's quick lists.
+	(0 = drafts, 1 = submitted) narrows the list for the checklist landing's quick lists;
+	optional ``status`` (e.g. "Pending Review") narrows to a single workflow state.
 	"""
 	user = user or frappe.session.user
 	start = max(0, cint(start))
@@ -1200,6 +1212,8 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 	filters = {"owner": user, "inspection_type": ["in", ["EIR-In", "EIR-Out"]]}
 	if docstatus is not None and str(docstatus) != "":
 		filters["docstatus"] = cint(docstatus)
+	if status and str(status).strip():
+		filters["status"] = str(status).strip()
 	or_filters = None
 	if search and str(search).strip():
 		s = f"%{str(search).strip()}%"
@@ -1214,7 +1228,7 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 		or_filters=or_filters,
 		fields=[
 			"name", "inspection_id", "container", "container_no", "inspection_type",
-			"status", "tank_status", "docstatus", "eir_date", "creation",
+			"status", "tank_status", "docstatus", "revision_requested", "eir_date", "creation",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1237,7 +1251,8 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 	page_length = min(max(1, cint(page_length or 20)), 50)
 
 	# EIR-In only — EIR-Out drafts have their own worklist (``list_pending_eir_out``).
-	filters = {"docstatus": 0, "inspection_type": "EIR-In"}
+	# Exclude "Pending Review": those are done from the field, awaiting Admin Ops on Desk.
+	filters = {"docstatus": 0, "inspection_type": "EIR-In", "status": ["!=", "Pending Review"]}
 	allowed = get_user_depots()
 	if allowed is not None:
 		if not allowed:
@@ -1279,6 +1294,92 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		limit_page_length=page_length,
 	)
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
+
+
+def list_review_eirs(search=None, start=0, page_length=20) -> dict:
+	"""EIRs (In + Out) awaiting Admin Ops review — the PWA "Diajukan Review" list.
+
+	These were "Kirim untuk Review" from the field: docstatus 0, status "Pending Review",
+	not yet finalized. Branch-scoped by depot (empty user-branch = all) exactly like the
+	worklist — NOT owner-scoped: auto-provisioned EIRs are owned by whoever submitted the
+	bon, not the operator, so any operator in the branch can see (and pull back) them.
+	Newest first; searchable by container no / EIR id.
+	"""
+	start = max(0, cint(start))
+	page_length = min(max(1, cint(page_length or 20)), 50)
+
+	filters = {
+		"docstatus": 0,
+		"status": "Pending Review",
+		"inspection_type": ["in", ["EIR-In", "EIR-Out"]],
+	}
+	allowed = get_user_depots()
+	if allowed is not None:
+		if not allowed:
+			return {"items": [], "total": 0, "start": start, "page_length": page_length}
+		filters["depot"] = ["in", allowed]
+
+	term = str(search).strip() if search is not None else ""
+	if term.lower() in ("undefined", "null", "none"):
+		term = ""
+	or_filters = [["container_no", "like", f"%{term}%"], ["inspection_id", "like", f"%{term}%"]] if term else None
+
+	total = len(frappe.get_all(
+		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
+	))
+	items = frappe.get_all(
+		"Inspection",
+		filters=filters,
+		or_filters=or_filters,
+		fields=[
+			"name", "inspection_id", "container", "container_no", "inspection_type",
+			"status", "tank_status", "docstatus", "eir_date", "creation",
+		],
+		order_by="creation desc",
+		limit_start=start,
+		limit_page_length=page_length,
+	)
+	return {"items": items, "total": total, "start": start, "page_length": page_length}
+
+
+def withdraw_review(inspection: str) -> dict:
+	"""Operator pulls a "Pending Review" EIR back to Draft to fix it — before Admin Ops
+	finalizes. No Admin Ops needed; the EIR becomes editable again and re-enters the
+	worklist, then goes back through "Kirim untuk Review".
+
+	Branch-scoped (not owner) to mirror the worklist: the auto-provisioned EIR is owned by
+	the bon submitter, so any operator in the branch may withdraw it. Only valid while the
+	EIR is actually awaiting review (docstatus 0 + Pending Review)."""
+	if not inspection:
+		frappe.throw(_("inspection is required."))
+	doc = frappe.get_doc("Inspection", inspection)
+	if doc.inspection_type not in ("EIR-In", "EIR-Out"):
+		frappe.throw(_("{0} is not an EIR.").format(inspection))
+	_guard_container_branch(doc.container)
+	if doc.docstatus != 0 or doc.status != "Pending Review":
+		frappe.throw(_("Hanya EIR yang berstatus 'Menunggu Review' yang bisa ditarik untuk diperbaiki."))
+
+	# Back to an editable draft. Clear the review-submit stamps so the next "Kirim untuk
+	# Review" re-times the work; work_started_on stays so the form stays "started" (no need
+	# to press Mulai again to edit).
+	doc.status = "Draft"
+	doc.work_ended_on = None
+	doc.work_duration = 0
+	doc.save()  # NOT ignore_permissions — the operator holds Inspection write.
+
+	# Audit trail on the timeline (best-effort — must not fail the withdraw).
+	try:
+		doc.add_comment("Comment", _("EIR ditarik dari review untuk diperbaiki oleh {0}").format(frappe.session.user))
+	except Exception:
+		frappe.log_error(title="EIR withdraw comment", message=frappe.get_traceback())
+
+	return {
+		"success": True,
+		"inspection": doc.name,
+		"docstatus": doc.docstatus,
+		"status": doc.status,
+		"inspection_type": doc.inspection_type,
+	}
 
 
 def list_unsorted_eirs(search=None, start=0, page_length=20) -> dict:
@@ -1334,7 +1435,8 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 	start = max(0, cint(start))
 	page_length = min(max(1, cint(page_length or 20)), 50)
 
-	filters = {"docstatus": 0, "inspection_type": "EIR-Out"}
+	# Exclude "Pending Review" — field-done EIR-Out awaiting Admin Ops submit on Desk.
+	filters = {"docstatus": 0, "inspection_type": "EIR-Out", "status": ["!=", "Pending Review"]}
 	allowed = get_user_depots()
 	if allowed is not None:
 		if not allowed:
@@ -1429,6 +1531,8 @@ def view_eir(inspection: str) -> dict:
 		"tank_status": doc.tank_status,
 		"status": doc.status,
 		"docstatus": doc.docstatus,
+		"revision_requested": 1 if doc.get("revision_requested") else 0,
+		"revision_note": doc.get("revision_note"),
 		"eir_date": str(doc.eir_date) if doc.eir_date else None,
 		"depot": doc.depot,
 		"reff_doc": doc.get("reff_doc"),
@@ -1481,6 +1585,13 @@ def request_revision(inspection: str, reason: str | None = None) -> dict:
 	)
 	if reason:
 		subject += f" — {reason}"
+	# Mark the EIR so the Desk list shows a "Revisi Diminta" indicator + the reason
+	# (cleared on revert_to_draft). Raw set_value — the doc is submitted; both fields are
+	# allow_on_submit.
+	frappe.db.set_value(
+		"Inspection", doc.name, {"revision_requested": 1, "revision_note": note},
+	)
+
 	sent = _notify.notify(
 		doctype="Inspection",
 		name=doc.name,
@@ -1523,8 +1634,12 @@ def revert_to_draft(name: str) -> dict:
 
 	_restore_container_on_revert(doc)
 
-	# Flip back to an editable draft (same record — editable in the PWA + Desk).
-	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": "Draft"})
+	# Flip back to an editable draft (same record — editable in the PWA + Desk). Clear any
+	# pending revision request now that it has been actioned.
+	frappe.db.set_value(
+		"Inspection", doc.name,
+		{"docstatus": 0, "status": "Draft", "revision_requested": 0, "revision_note": None},
+	)
 
 	# Append an inverse activity for the audit trail (the on_submit one stays — the log
 	# is append-only). Never let a logging failure block the revert.

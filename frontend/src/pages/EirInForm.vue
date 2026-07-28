@@ -128,6 +128,13 @@
 						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos, idx)">
 							<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
 						</button>
+						<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
+						<span
+							v-if="bulkMeta[url]"
+							class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
+						>
+							<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
+						</span>
 						<button
 							type="button"
 							class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
@@ -167,37 +174,14 @@
 				:title="labels.checklist"
 			/>
 
-			<!-- Step 4b — follow-up orders (opt-out): create Cleaning Order and/or M&R on submit. -->
-			<section v-if="showCleaningToggle || showRepairToggle" class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="clipboard" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.eirFollowupTitle }}</p>
-				</div>
-				<label v-if="showCleaningToggle" class="flex items-start gap-3 rounded-xl border border-gray-200 p-3">
-					<input v-model="createCleaning" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0 rounded accent-leaf-600" />
-					<span class="min-w-0 flex-1">
-						<span class="block font-semibold text-gray-800">{{ labels.eirCreateCleaning }}</span>
-						<span class="block text-xs text-gray-400">{{ labels.eirCreateCleaningHint }}</span>
-					</span>
-				</label>
-				<label v-if="showRepairToggle" class="flex items-start gap-3 rounded-xl border border-gray-200 p-3">
-					<input v-model="createRepair" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0 rounded accent-leaf-600" />
-					<span class="min-w-0 flex-1">
-						<span class="block font-semibold text-gray-800">{{ labels.eirCreateRepair }}</span>
-						<span class="block text-xs text-gray-400">{{ labels.eirCreateRepairHint }}</span>
-					</span>
-				</label>
-			</section>
+			<!-- Follow-up orders (Cleaning / M&R) are created automatically on submit
+			     when applicable — the opt-out toggles are intentionally not shown. -->
 
 			<!-- Step 5 — sign-off -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
 					<Icon name="edit-3" :size="16" class="text-gray-400" />
 					<p class="oak-section-title">{{ labels.signOff }}</p>
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.reffDoc }}</label>
-					<input v-model.trim="reffDoc" type="text" class="oak-input" :placeholder="labels.reffDocHint" />
 				</div>
 				<div>
 					<label class="oak-label">{{ labels.eirRemarks }}</label>
@@ -262,7 +246,7 @@
 					@click="confirmSubmit"
 				>
 					<Icon v-if="!saveRes.loading" name="check-circle" :size="18" />
-					{{ saveRes.loading ? "…" : labels.submitEir }}
+					{{ saveRes.loading ? "…" : labels.eirSendReview }}
 				</button>
 			</section>
 			</template>
@@ -316,6 +300,11 @@ const damageCodes = ref([])
 const repairCodes = ref([])
 
 const bulkPhotos = ref([])
+// A "foto cepat" keeps its Foto Cepat spot even after Admin sorts it into a checklist item
+// on the Sortir screen — sorting is just categorisation, the photo still belongs here. This
+// maps each bulk photo URL → the checklist item it was sorted into ("" = not yet sorted), so
+// buildPhotos re-sends that assignment and a save never un-sorts it.
+const bulkMeta = ref({})
 const bulkUploading = ref(false)
 const bulkErr = ref("")
 
@@ -410,8 +399,12 @@ const saveRes = createResource({
 	method: "POST",
 	onSuccess(data) {
 		result.value = data
-		if (data.docstatus === 1) {
-			toast.success(labels.eirSubmitted, { title: data.inspection_id || data.inspection })
+		// Field submit now moves the EIR to Pending Review (docstatus stays 0) — Admin Ops
+		// finalises it on the Desk. Treat that as "done" from the operator's side.
+		if (data.docstatus === 1 || data.pending_review) {
+			toast.success(data.pending_review ? labels.eirSentForReview : labels.eirSubmitted, {
+				title: data.inspection_id || data.inspection,
+			})
 			emit("submitted", data.inspection)
 			emit("back")
 		} else {
@@ -447,16 +440,27 @@ function applyDraftToRows(data) {
 	;(data.lines || []).forEach((l) => {
 		lineMap[l.item_code] = l
 	})
+	// Split incoming photos into two buckets:
+	//  • damage-card photos — a photo on an item that HAS a damage finding is evidence for
+	//    that finding, so it lives on the damage card.
+	//  • Foto Cepat — everything else: unsorted quick photos AND ones Admin already sorted
+	//    into a checklist item (no finding). A sorted foto cepat still belongs in Foto Cepat;
+	//    its assigned item_code is remembered in bulkMeta so a save never un-sorts it, and it
+	//    is never shown as a damage card (which would mislabel it / risk accidental deletion).
 	const photoMap = {}
 	const bulk = []
+	const meta = {}
 	;(data.photos || []).forEach((p) => {
-		if (!p.item_code) {
+		const code = p.item_code
+		if (code && lineMap[code]) {
+			;(photoMap[code] = photoMap[code] || []).push(p.photo)
+		} else {
 			bulk.push(p.photo)
-			return
+			meta[p.photo] = code || ""
 		}
-		;(photoMap[p.item_code] = photoMap[p.item_code] || []).push(p.photo)
 	})
 	bulkPhotos.value = bulk
+	bulkMeta.value = meta
 	rows.value.forEach((r) => {
 		const l = lineMap[r.item_code]
 		r.damage_code = (l && l.damage_code) || ACCEPTABLE_DAMAGE
@@ -464,8 +468,7 @@ function applyDraftToRows(data) {
 		r.remarks = (l && l.remarks) || ""
 		r.photos = photoMap[r.item_code] ? [...photoMap[r.item_code]] : []
 		r.photoErr = ""
-		// A saved row (has a finding or photos) is shown as an added card; the rest stay hidden.
-		r.added = rowHasFinding(r) || r.photos.length > 0
+		r.added = rowHasFinding(r)
 	})
 }
 
@@ -482,7 +485,8 @@ function buildLines() {
 
 function buildPhotos() {
 	const perItem = rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
-	const bulk = bulkPhotos.value.map((url) => ({ item_code: "", photo: url }))
+	// Keep each foto cepat's sorted item_code (bulkMeta) so a save preserves Admin's sorting.
+	const bulk = bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
 	return [...perItem, ...bulk]
 }
 
@@ -511,6 +515,7 @@ async function onBulkPhotoPick(event) {
 		for (const f of files) {
 			const url = await uploadFile(f)
 			bulkPhotos.value.push(url)
+			bulkMeta.value[url] = "" // freshly taken → not sorted into a checklist item yet
 		}
 	} catch (e) {
 		bulkErr.value = labels.photoError
@@ -520,7 +525,8 @@ async function onBulkPhotoPick(event) {
 }
 
 function removeBulkPhoto(idx) {
-	bulkPhotos.value.splice(idx, 1)
+	const [url] = bulkPhotos.value.splice(idx, 1)
+	if (url) delete bulkMeta.value[url]
 }
 
 // --- Virtual signature pad (EIR creator) -------------------------------------

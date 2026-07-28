@@ -61,3 +61,6 @@ container_depot.patches.v0_39.drop_cleaning_order_grand_total
 container_depot.patches.v0_39.drop_manhour_invoice_section
 container_depot.patches.v0_40.drop_gasket_inventory
 container_depot.patches.v0_41.drop_unused_doctypes
+container_depot.patches.v0_42.backfill_inspection_status
+container_depot.patches.v0_43.backfill_inspection_container_principal
+container_depot.patches.v0_44.backfill_list_columns

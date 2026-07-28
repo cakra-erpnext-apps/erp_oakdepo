@@ -269,6 +269,8 @@ export const labels = {
 	savingDraft: "Menyimpan…", // Saving…
 	draftSaved: "Tersimpan", // Saved
 	eirSubmitted: "EIR berhasil disubmit", // EIR submitted
+	eirSendReview: "Kirim untuk Review", // field submit -> Pending Review (Admin Ops finalises)
+	eirSentForReview: "EIR terkirim untuk review Adm Ops", // sent-for-review toast
 	newEir: "EIR container lain", // Start another container
 	// EIR history (the user's own EIRs)
 	eirHistory: "Riwayat", // History (short link on the checklist)
@@ -353,15 +355,24 @@ export const labels = {
 	eirReqRevisionReason: "Alasan revisi (opsional)", // Revision reason
 	eirReqRevisionSend: "Kirim Permintaan", // Send request
 	eirReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops", // Sent toast
+	// Withdraw a Pending-Review EIR back to Draft (operator fixes it themselves)
+	eirWithdrawReview: "Tarik & Perbaiki", // Withdraw from review + edit
+	eirWithdrawReviewHint: "Tarik EIR ini dari antrean review agar bisa diperbaiki, lalu kirim ulang.",
+	eirWithdrawReviewDone: "EIR ditarik — silakan perbaiki lalu kirim ulang", // Done toast
 
 	prev: "Sebelumnya", // Previous
 	next: "Berikutnya", // Next
 	eirStatusDraft: "Draf", // Draft
-	eirStatusSubmitted: "Submit", // Submitted
+	eirStatusSubmitted: "Selesai", // Submitted (finalised by Admin Ops)
 	eirStatusCancelled: "Batal", // Cancelled
+	eirStatusPendingReview: "Menunggu Review", // Pending Review (sent for Admin Ops review)
+	eirStatusRevision: "Revisi Diminta", // Submitted EIR with a pending revision request
 	// Quick lists on the checklist landing (latest drafts / completed)
 	eirDraftList: "EIR Draf", // Draft EIRs
 	eirCompleteList: "EIR Selesai", // Completed EIRs
+	eirReviewList: "Diajukan Review", // Sent for Admin Ops review (Pending Review)
+	eirReviewEmpty: "Tidak ada EIR menunggu review.", // No EIRs awaiting review
+	eirReviewCount: "menunggu review", // review count suffix
 	eirListMore: "Lihat semua", // See all (-> history)
 	eirDraftEmpty: "Belum ada draf EIR.", // No drafts yet
 	eirCompleteEmpty: "Belum ada EIR selesai.", // No completed EIRs yet

@@ -35,9 +35,20 @@ class Inspection(Document):
 		# so the list filter "Ada Foto Belum Disortir" stays accurate.
 		self.has_unsorted_photos = 1 if any(not p.checklist_item for p in self.item_photos) else 0
 
+	def on_cancel(self):
+		"""Keep the ``status`` field in step with the docstatus so Desk + PWA never disagree.
+
+		Cancelling (Void) leaves docstatus 2 but the status Select would otherwise still read
+		"Submitted" — the record then looks live in the Desk form while the badge says
+		cancelled. (``revert_to_draft`` writes docstatus/status raw, so it never fires this.)"""
+		self.db_set("status", "Cancelled", update_modified=False)
+
 	def on_submit(self):
 		"""Update container status + last cargo when inspection is submitted"""
 		from container_depot.operations.container_activity import log_container_activity
+
+		# Admin Ops has reviewed + submitted — clear the Pending Review flag on the status.
+		self.db_set("status", "Submitted", update_modified=False)
 
 		container = frappe.get_doc("Container", self.container)
 		from_status = container.status

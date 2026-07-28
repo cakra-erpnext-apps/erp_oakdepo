@@ -315,11 +315,17 @@ class SmokeRun:
 			if draft and draft.get("inspection"):
 				insp_in = draft["inspection"]
 				self.track("Inspection", insp_in)
-				self.step("EIR-In · submit (dirty+damage, auto cleaning+M&R) (ESS)",
+				self.step("EIR-In · field submit → Pending Review (ESS)",
 					lambda: ess_eir.eir_save_draft(
 						inspection=insp_in, inspection_type="EIR-In", tank_status="Empty Dirty",
 						referred_voucher=self.order_bongkar, create_cleaning_order=1, create_repair_order=1,
 						lines=self._damage_line(), submit=1))
+				self.assert_true("EIR-In · status → Pending Review (belum final)",
+					frappe.db.get_value("Inspection", insp_in, "status") == "Pending Review")
+				# Admin Ops reviews + submits on the Desk — this finalizes (container move +
+				# auto Cleaning/M&R).
+				self.step("EIR-In · Admin Ops review + submit (Desk)",
+					lambda: frappe.get_doc("Inspection", insp_in).submit())
 				self.assert_true("EIR-In · container → In_Depot",
 					frappe.db.get_value("Container", self.container, "status") == "In_Depot")
 				self.step("EIR-In · eir_history (ESS)", lambda: ess_eir.eir_history(search=self.container))
@@ -534,9 +540,11 @@ class SmokeRun:
 			self.track("Inspection", hold_draft)
 			self.step("EIR-Out · open draft (compare to EIR-In + cert) (ESS)",
 				lambda: ess_eir.eir_out_open(hold_draft))
-			self.step("EIR-Out · submit DIRTY → Hold (ESS)",
+			self.step("EIR-Out · field submit DIRTY → Pending Review (ESS)",
 				lambda: ess_eir.eir_save_draft(inspection=hold_draft, inspection_type="EIR-Out",
 					referred_voucher=self.order_muat, exterior_condition="Dirty", seals_intact=0, submit=1))
+			self.step("EIR-Out · Admin Ops review + submit (Desk)",
+				lambda: frappe.get_doc("Inspection", hold_draft).submit())
 			self.assert_true("EIR-Out · outcome Hold + Order Muat Hold",
 				frappe.db.get_value("Inspection", hold_draft, "out_outcome") == "Hold Pending Clearance"
 				and frappe.db.get_value("Order Muat", self.order_muat, "order_status") == "Hold")
@@ -547,9 +555,11 @@ class SmokeRun:
 		ready_name = ready.get("inspection") if isinstance(ready, dict) else None
 		if ready_name:
 			self.track("Inspection", ready_name)
-			self.step("EIR-Out · submit CLEAN → Ready To Load (ESS)",
+			self.step("EIR-Out · field submit CLEAN → Pending Review (ESS)",
 				lambda: ess_eir.eir_save_draft(inspection=ready_name, inspection_type="EIR-Out",
 					referred_voucher=self.order_muat, exterior_condition="Clean", seals_intact=1, submit=1))
+			self.step("EIR-Out · Admin Ops review + submit (Desk)",
+				lambda: frappe.get_doc("Inspection", ready_name).submit())
 			self.assert_true("EIR-Out · outcome Ready To Load",
 				frappe.db.get_value("Inspection", ready_name, "out_outcome") == "Ready To Load")
 

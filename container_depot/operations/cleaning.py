@@ -19,9 +19,6 @@ from frappe.utils import cint, getdate, now_datetime, today
 
 from container_depot.operations.user_branch import assert_in_user_branch, get_user_branches
 
-# Default boiler-plate the OAK cleanliness statement prints unless the team overrides it.
-DEFAULT_REMARKS = "TANK ALREADY STEAM 100°C\nTANK ALREADY PASSED LEAK TEST 1 BAR"
-
 # Tank-spec fields read from the Container master for the form header + print.
 _CONTAINER_FIELDS = [
 	"name", "container_no", "container_type", "manufacture_date", "last_test_date",
@@ -37,8 +34,8 @@ def _guard_container_branch(container_name) -> None:
 
 
 def get_cleaning_masters() -> dict:
-	"""Default sign-off remarks for the PWA cleaning form."""
-	return {"default_remarks": DEFAULT_REMARKS}
+	"""Master defaults for the PWA cleaning form (none for now — remarks start blank)."""
+	return {}
 
 
 def _latest_eir(container: str) -> str | None:
@@ -232,7 +229,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		],
 		"cleaning_items": _cleaning_item_options(co.container),
 		"reff_doc": co.reff_doc,
-		"remarks": co.remarks or DEFAULT_REMARKS,
+		"remarks": co.remarks or "",
 		"signed_by": co.signed_by or user,
 		"date_of_issue": co.date_of_issue or today(),
 		"place_of_issue": co.place_of_issue or _default_place_of_issue(user, c.depot),
@@ -245,9 +242,8 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"capacity": c.capacity,
 		"client": c.principal,
 		"previous_cargo": c.last_cargo,
-		# Recent cargo history + defaults.
+		# Recent cargo history.
 		"cargo_history": cargo_history(co.container),
-		"default_remarks": DEFAULT_REMARKS,
 		# QC photos already on the order (uploaded straight from the field phone).
 		"qc_photos": [{"photo": r.photo, "caption": r.caption} for r in co.qc_photos],
 	}
@@ -313,7 +309,7 @@ def save_cleaning_order(
 	# Optional reference doc (usually pre-filled from the EIR; editable here).
 	if reff_doc is not None:
 		co.reff_doc = reff_doc
-	co.remarks = remarks if remarks is not None else (co.remarks or DEFAULT_REMARKS)
+	co.remarks = remarks if remarks is not None else co.remarks
 	if signature:
 		co.surveyor_signature = signature
 	if not co.signed_by:

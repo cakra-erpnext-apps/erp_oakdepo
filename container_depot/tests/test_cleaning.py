@@ -47,9 +47,12 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		return co.name
 
 	# --- masters / detail -----------------------------------------------------
-	def test_masters_carry_default_remarks(self):
-		masters = cleaning.get_cleaning_masters()
-		self.assertTrue(masters["default_remarks"])
+	def test_detail_remarks_start_blank(self):
+		# No boiler-plate template is pre-filled into Catatan/remarks on a fresh order.
+		c = self._container("CLNREM00001")
+		co = self._order(c)
+		d = cleaning.get_cleaning_order_detail(co)
+		self.assertEqual(d["remarks"], "")
 
 	def test_detail_returns_tank_spec(self):
 		c = self._container("CLNDET00001", container_type="ISO Tank", tare_weight=3800, capacity=26000)
