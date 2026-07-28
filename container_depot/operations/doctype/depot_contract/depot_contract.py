@@ -6,20 +6,27 @@ from frappe.utils import cint, flt, getdate, today
 # Status workflow — the only transitions the action buttons (set_status) allow.
 # Draft is editable; Active and the terminal states are locked. A draft is
 # submitted straight to Active (the old Negotiation step was dropped), and an
-# Active contract ends either Void ("Invalid") or Expired.
+# Active contract ends either Void ("Invalid"), Expired, or Amended — the last
+# one written by its own amendment when that amendment is submitted.
 ALLOWED_TRANSITIONS = {
 	"Draft": ("Active", "Void"),
-	"Active": ("Expired", "Void"),
+	"Active": ("Expired", "Void", "Amended"),
 	"Expired": (),
 	"Void": (),
+	"Amended": (),
 }
 EDITABLE_STATUSES = ("Draft",)
+# A contract that never left Draft is a mistake and may be thrown away; anything
+# that reached a real status is a record and is kept (Duplicate / Delete are off
+# in the form — the way to change a running contract is Amend).
+DELETABLE_STATUSES = ("Draft",)
 
 
 class DepotContract(Document):
 	# --- lifecycle ------------------------------------------------------
 	def validate(self):
 		self._validate_status_transition()
+		self._validate_amendment()
 		self._validate_date_window()
 		self._validate_payment_type()
 		self._validate_currency_vs_base_list()
@@ -43,7 +50,19 @@ class DepotContract(Document):
 		self._auto_expire_on_rollover()
 		# Publish / retire the customer Price List based on the status transition.
 		self._sync_published_price_list()
+		# An amendment going Active retires the contract it replaces.
+		self._supersede_amended_contract()
 		self._notify_status_change()
+
+	def on_trash(self):
+		"""Contracts are not deleted, they are Voided / Amended — only a never-used
+		Draft may be thrown away."""
+		if self.status not in DELETABLE_STATUSES:
+			frappe.throw(
+				_("A {0} contract cannot be deleted. Use Invalid to cancel it, or Amend to replace it.").format(
+					_(self.status)
+				)
+			)
 
 	def _notify_status_change(self):
 		"""A contract is not submittable, so its status move IS its lifecycle: Active
@@ -55,9 +74,27 @@ class DepotContract(Document):
 		if self.status == "Active":
 			from container_depot.operations.notify import notify_contract_activated
 			notify_contract_activated(self)
-		elif self.status == "Void":
+		elif self.status in ("Void", "Amended"):
 			from container_depot.operations.notify import revoke
 			revoke(self.doctype, self.name)
+
+	def _supersede_amended_contract(self):
+		"""An amendment only becomes the valid contract once it is submitted (Draft ->
+		Active). At that moment the contract it amends is retired to Amended, so the
+		customer is never left with two live contracts."""
+		before = self.get_doc_before_save()
+		if self.status != "Active" or (before and before.status == "Active"):
+			return
+		if not self.amends_contract:
+			return
+		old = frappe.get_doc("Depot Contract", self.amends_contract)
+		if old.status != "Active":
+			return
+		old.status = "Amended"
+		old.save(ignore_permissions=True)
+		frappe.msgprint(
+			_("Contract {0} has been superseded by this amendment.").format(old.name), alert=True
+		)
 
 	def _auto_expire_on_rollover(self):
 		if self.status == "Active" and self.valid_to and getdate(self.valid_to) < getdate(today()):
@@ -74,6 +111,41 @@ class DepotContract(Document):
 		if self.status not in ALLOWED_TRANSITIONS.get(before.status, ()):
 			frappe.throw(
 				_("Cannot change contract status from {0} to {1}.").format(before.status, self.status)
+			)
+
+	def _validate_amendment(self):
+		"""An amendment is a copy of a real contract for the same customer. It stays a
+		Draft until submitted, so the source keeps running in the meantime."""
+		if not self.amends_contract:
+			return
+		if self.amends_contract == self.name:
+			frappe.throw(_("A contract cannot amend itself."))
+		src = frappe.db.get_value(
+			"Depot Contract", self.amends_contract, ["customer", "status"], as_dict=True
+		)
+		if not src:
+			return
+		if self.customer != src.customer:
+			frappe.throw(
+				_("An amendment must keep the Customer of {0} ({1}).").format(
+					self.amends_contract, src.customer
+				)
+			)
+		# Source-state rules only apply while the amendment is still pending; once it
+		# is submitted the source is (by design) Amended.
+		if self.status != "Draft":
+			return
+		if src.status == "Draft":
+			frappe.throw(
+				_("{0} is still a Draft — edit that contract directly instead of amending it.").format(
+					self.amends_contract
+				)
+			)
+		if src.status == "Amended":
+			frappe.throw(
+				_("{0} has already been amended. Amend its replacement instead.").format(
+					self.amends_contract
+				)
 			)
 
 	def _validate_date_window(self):
@@ -121,7 +193,7 @@ class DepotContract(Document):
 
 		* Active   -> (re)publish the list from the lines + disable the customer's
 		  previous contract-published list.
-		* terminal (Expired / Rejected / Void) after having been Active -> disable
+		* terminal (Expired / Void / Amended) after having been Active -> disable
 		  this contract's own published list.
 		"""
 		before = self.get_doc_before_save()
@@ -130,7 +202,7 @@ class DepotContract(Document):
 		if self.status == "Active":
 			self._publish_price_list()
 			self._disable_other_generated_lists()
-		elif prev_status == "Active" and self.status in ("Expired", "Void"):
+		elif prev_status == "Active" and self.status in ("Expired", "Void", "Amended"):
 			self._disable_own_generated_list()
 
 	def _resolve_currency(self):

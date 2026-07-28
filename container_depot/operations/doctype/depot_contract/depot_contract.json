@@ -1,5 +1,6 @@
 {
   "actions": [],
+  "allow_copy": 1,
   "allow_import": 1,
   "autoname": "DCNT-.YYYY.-.#####",
   "doctype": "DocType",
@@ -8,6 +9,7 @@
     "header_section",
     "customer",
     "status",
+    "amends_contract",
     "column_break_1",
     "payment_type",
     "payment_terms",
@@ -53,9 +55,19 @@
       "in_list_view": 1,
       "in_standard_filter": 1,
       "label": "Status",
-      "options": "Draft\nActive\nExpired\nVoid",
+      "no_copy": 1,
+      "options": "Draft\nActive\nExpired\nVoid\nAmended",
       "read_only": 1,
       "reqd": 1
+    },
+    {
+      "description": "The running contract this one replaces. Set by the Amend button; the source contract is superseded when this one goes Active.",
+      "fieldname": "amends_contract",
+      "fieldtype": "Link",
+      "label": "Amendment Of",
+      "no_copy": 1,
+      "options": "Depot Contract",
+      "read_only": 1
     },
     {
       "fieldname": "column_break_1",
@@ -85,7 +97,8 @@
       "mandatory_depends_on": "eval:['TOP','Both'].includes(doc.payment_type)",
       "fieldname": "credit_limit",
       "fieldtype": "Currency",
-      "label": "Credit Limit"
+      "label": "Credit Limit",
+      "options": "currency"
     },
     {
       "fieldname": "validity_section",
@@ -136,6 +149,7 @@
       "fieldname": "generated_price_list",
       "fieldtype": "Link",
       "label": "Published Price List",
+      "no_copy": 1,
       "options": "Price List",
       "read_only": 1
     },
@@ -180,16 +194,18 @@
       "fieldname": "esign_status",
       "fieldtype": "Select",
       "label": "e-Sign Status",
+      "no_copy": 1,
       "options": "Not Required\nPending\nSent\nSigned\nRejected"
     },
     {
       "fieldname": "signed_pdf",
       "fieldtype": "Attach",
-      "label": "Signed PDF"
+      "label": "Signed PDF",
+      "no_copy": 1
     }
   ],
   "links": [],
-  "modified": "2026-07-21 13:00:00",
+  "modified": "2026-07-28 11:00:00",
   "module": "Operations",
   "name": "Depot Contract",
   "search_fields": "customer, status",

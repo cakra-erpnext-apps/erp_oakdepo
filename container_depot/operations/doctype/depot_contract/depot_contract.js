@@ -11,6 +11,12 @@
 // Status is driven by workflow buttons (set_status), not picked from a dropdown:
 // Draft -> Submit -> Active, then Invalid / Expired.
 //
+// A contract that left Draft is never edited, duplicated or deleted — it is
+// Amended: "Amend" copies it into a new Draft (amends_contract -> the source),
+// and submitting that draft to Active retires the source to "Amended". Duplicate
+// is off at the doctype level (allow_copy), Delete is dropped from the menu for
+// anything past Draft (the server refuses it too, see on_trash).
+//
 // Bulk line entry lives on the grid itself ("Import Excel", next to Add Row), not
 // in a toolbar group. The server methods the old toolbar group used
 // (import_tariff_lines, base_price_list_lines_for_menu) are still whitelisted and
@@ -32,6 +38,23 @@ function container_depot_transition(frm, target) {
 	});
 }
 
+function container_depot_amend(frm) {
+	// Same mechanics as Duplicate (client-side copy, no_copy fields reset), plus the
+	// link back to the source. Nothing is written until the user saves, and the source
+	// keeps running until the amendment is submitted.
+	frappe.confirm(
+		__(
+			"Amend {0}? A new Draft copy opens; {0} stays valid until you submit the amendment.",
+			[frm.doc.name]
+		),
+		() => {
+			const doc = frappe.model.copy_doc(frm.doc);
+			doc.amends_contract = frm.doc.name;
+			frappe.set_route("Form", doc.doctype, doc.name);
+		}
+	);
+}
+
 frappe.ui.form.on("Depot Contract", {
 	onload(frm) {
 		frm.trigger("_set_tariff_item_query");
@@ -51,6 +74,19 @@ frappe.ui.form.on("Depot Contract", {
 		frm.trigger("_set_status_actions");
 		frm.trigger("_set_grid_import_button");
 		frm.trigger("_apply_edit_lock");
+		frm.trigger("_hide_delete_menu_item");
+	},
+	_hide_delete_menu_item(frm) {
+		// Only a never-submitted Draft may be thrown away (on_trash enforces the same
+		// rule server-side); for everything else drop the menu entry so the user is
+		// pointed at Invalid / Amend instead. Runs after the toolbar is built.
+		if (frm.is_new() || frm.doc.status === "Draft") return;
+		const menu = frm.page && frm.page.menu;
+		if (!menu) return;
+		menu.find(".menu-item-label")
+			.filter((i, el) => $(el).text().trim() === __("Delete"))
+			.closest("li")
+			.remove();
 	},
 	_set_grid_import_button(frm) {
 		// "Import Excel" sits in the grid footer next to Add Row (grid.add_custom_button
@@ -142,6 +178,12 @@ frappe.ui.form.on("Depot Contract", {
 			const btn = frm.add_custom_button(__(label), () => container_depot_transition(frm, target));
 			if (type === "primary") btn.removeClass("btn-default").addClass("btn-primary");
 		});
+		// Amend replaces Duplicate for a contract that is past Draft — it is also the
+		// only way to change the terms of a running (Active) contract.
+		if (frm.doc.status !== "Draft") {
+			const amend = frm.add_custom_button(__("Amend"), () => container_depot_amend(frm));
+			if (frm.doc.status === "Active") amend.removeClass("btn-default").addClass("btn-primary");
+		}
 	},
 	_apply_edit_lock(frm) {
 		// Editable only in Draft; Active and terminal states are locked.
@@ -151,6 +193,8 @@ frappe.ui.form.on("Depot Contract", {
 			"credit_limit", "valid_from", "valid_to", "tariff_lines", "generate_lines",
 			"company_docs", "esign_status", "signed_pdf",
 		].forEach((f) => frm.set_df_property(f, "read_only", locked ? 1 : 0));
+		// An amendment stays with the customer of the contract it replaces (server-enforced).
+		if (frm.doc.amends_contract) frm.set_df_property("customer", "read_only", 1);
 		if (frm.fields_dict.tariff_lines) {
 			frm.fields_dict.tariff_lines.grid.cannot_add_rows = locked;
 			frm.fields_dict.tariff_lines.grid.cannot_delete_rows = locked;

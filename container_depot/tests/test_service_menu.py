@@ -59,8 +59,9 @@ class TestDepotServiceMenu(FrappeTestCase):
 			frappe.db.rollback()
 
 	def tearDown(self):
-		for name in self._contracts:
-			self._safe(lambda name=name: frappe.db.exists("Depot Contract", name) and frappe.delete_doc("Depot Contract", name, force=True, ignore_permissions=True))
+		# Raw delete: Depot Contract.on_trash refuses to delete anything past Draft
+		# (contracts are Voided / Amended, never removed), and this fixture makes Void ones.
+		self._safe(lambda: self._contracts and frappe.db.delete("Depot Contract", {"name": ("in", self._contracts)}))
 		self._safe(lambda: frappe.db.delete("Item Price", {"price_list": _PL}))
 		self._safe(lambda: frappe.db.exists("Price List", _PL) and frappe.delete_doc("Price List", _PL, force=True, ignore_permissions=True))
 		self._safe(lambda: frappe.db.exists("Depot Service Menu", _MENU) and frappe.delete_doc("Depot Service Menu", _MENU, force=True, ignore_permissions=True))

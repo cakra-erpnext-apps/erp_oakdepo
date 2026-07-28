@@ -303,6 +303,92 @@ class TestDepotContract(FrappeTestCase):
 		set_status(c.name, "Expired")
 		self.assertEqual(frappe.db.get_value("Depot Contract", c.name, "status"), "Expired")
 
+	# --- amendment (the Duplicate / edit replacement) ---------------------
+	def _active_contract(self, **overrides):
+		c = _make_contract(
+			status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}], **overrides
+		)
+		c.insert(ignore_permissions=True)
+		return c
+
+	def test_amendment_draft_leaves_source_running(self):
+		src = self._active_contract()
+		amd = _make_contract(
+			status="Draft",
+			amends_contract=src.name,
+			tariff_lines=[{"item": "Lift Off", "rate": 275000}],
+		)
+		amd.insert(ignore_permissions=True)
+		# Nothing changes until the amendment is submitted.
+		self.assertEqual(frappe.db.get_value("Depot Contract", src.name, "status"), "Active")
+		self.assertEqual(frappe.db.get_value("Price List", src.generated_price_list, "enabled"), 1)
+
+	def test_submitting_amendment_supersedes_source(self):
+		from container_depot.operations.doctype.depot_contract.depot_contract import set_status
+
+		src = self._active_contract()
+		amd = _make_contract(
+			status="Draft",
+			amends_contract=src.name,
+			tariff_lines=[{"item": "Lift Off", "rate": 275000}],
+		)
+		amd.insert(ignore_permissions=True)
+		set_status(amd.name, "Active")
+
+		self.assertEqual(frappe.db.get_value("Depot Contract", src.name, "status"), "Amended")
+		self.assertEqual(frappe.db.get_value("Price List", src.generated_price_list, "enabled"), 0)
+		# The amendment is now the customer's live contract and rate.
+		hit = get_active_contract(ensure_test_customer(CUSTOMER_NAME))
+		self.assertEqual(hit.name, amd.name)
+		amd.reload()
+		self.assertEqual(frappe.db.get_value("Price List", amd.generated_price_list, "enabled"), 1)
+
+	def test_amendment_must_keep_customer(self):
+		src = self._active_contract()
+		other = "Depot Contract Amend Other Co"
+		try:
+			amd = _make_contract(
+				status="Draft",
+				customer=ensure_test_customer(other),
+				amends_contract=src.name,
+				tariff_lines=[{"item": "Lift Off", "rate": 275000}],
+			)
+			with self.assertRaises(frappe.ValidationError):
+				amd.insert(ignore_permissions=True)
+		finally:
+			frappe.db.delete("Depot Contract", {"customer": other})
+			frappe.db.delete("Customer", {"name": other})
+			frappe.db.commit()
+
+	def test_already_amended_contract_cannot_be_amended_again(self):
+		from container_depot.operations.doctype.depot_contract.depot_contract import set_status
+
+		src = self._active_contract()
+		first = _make_contract(
+			status="Draft", amends_contract=src.name,
+			tariff_lines=[{"item": "Lift Off", "rate": 275000}],
+		)
+		first.insert(ignore_permissions=True)
+		set_status(first.name, "Active")
+		# src is Amended now — the next amendment must start from `first`.
+		second = _make_contract(
+			status="Draft", amends_contract=src.name,
+			tariff_lines=[{"item": "Lift Off", "rate": 280000}],
+		)
+		with self.assertRaises(frappe.ValidationError):
+			second.insert(ignore_permissions=True)
+
+	# --- delete guard (Duplicate/Delete are off in the form) --------------
+	def test_draft_is_deletable_but_active_is_not(self):
+		draft = _make_contract(status="Draft")
+		draft.insert(ignore_permissions=True)
+		frappe.delete_doc("Depot Contract", draft.name, ignore_permissions=True)
+		self.assertFalse(frappe.db.exists("Depot Contract", draft.name))
+
+		live = self._active_contract()
+		with self.assertRaises(frappe.ValidationError):
+			frappe.delete_doc("Depot Contract", live.name, ignore_permissions=True)
+
 
 class TestContainerPrincipalLink(FrappeTestCase):
 	"""Quick sanity: Container.principal must accept a Customer name."""
