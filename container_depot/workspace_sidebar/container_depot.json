@@ -3,7 +3,7 @@
  "creation": "2026-05-28 16:30:00.000000",
  "docstatus": 0,
  "doctype": "Workspace Sidebar",
- "header_icon": "ship",
+ "header_icon": "stock",
  "idx": 0,
  "items": [
   {
@@ -185,6 +185,18 @@
    "keep_closed": 0,
    "label": "Gate & Yard",
    "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Gate Out Plan",
+   "link_to": "Gate Out Plan",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-calendar"
   },
   {
    "child": 1,
@@ -652,7 +664,7 @@
    "icon": "es-line-chart"
   }
  ],
- "modified": "2026-07-28 15:00:00.000000",
+ "modified": "2026-07-29 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

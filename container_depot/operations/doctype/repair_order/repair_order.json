@@ -17,6 +17,7 @@
     "principal",
     "depot",
     "order_created",
+    "target_lift_on",
     "technician",
     "start_date",
     "completion_date",
@@ -122,6 +123,16 @@
       "fieldtype": "Datetime",
       "in_list_view": 1,
       "label": "Order Created",
+      "read_only": 1
+    },
+    {
+      "description": "Rencana lift-on (gate out) dari Gate Out Plan — untuk memprioritaskan pengerjaan. Otomatis dari container.",
+      "fetch_from": "container.target_lift_on",
+      "fieldname": "target_lift_on",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Target Lift-On",
+      "no_copy": 1,
       "read_only": 1
     },
     {

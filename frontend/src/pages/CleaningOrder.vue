@@ -64,6 +64,7 @@
 							<span v-if="o.last_cargo"> · {{ o.last_cargo }}</span>
 						</p>
 						<p class="truncate text-[11px] text-gray-400">{{ labels.createdOn }} {{ fmtDate(o.order_created) }}</p>
+						<p v-if="o.target_lift_on" class="truncate text-[11px] font-semibold" :class="liftClass(o.target_lift_on)">Lift-on {{ fmtDate(o.target_lift_on) }} · {{ hMinus(o.target_lift_on) }}</p>
 					</div>
 				</button>
 				<button
@@ -253,7 +254,36 @@ import Icon from "@/components/Icon.vue"
 const route = useRoute()
 const router = useRouter()
 
-const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
+const fmtDate = (v) =>
+	v
+		? new Date(String(v).slice(0, 10) + "T00:00:00").toLocaleDateString("id-ID", {
+				day: "numeric",
+				month: "short",
+				year: "numeric",
+		  })
+		: "—"
+
+// Gate Out Plan target lift-on → countdown badge (H-minus) with urgency colour.
+const liftDays = (v) => {
+	if (!v) return null
+	const target = new Date(String(v).slice(0, 10) + "T00:00:00")
+	const today = new Date(new Date().toDateString())
+	return Math.round((target - today) / 86400000)
+}
+const hMinus = (v) => {
+	const d = liftDays(v)
+	if (d === null) return ""
+	if (d < 0) return `Lewat ${-d} hr`
+	if (d === 0) return "Hari-H"
+	return `H-${d}`
+}
+const liftClass = (v) => {
+	const d = liftDays(v)
+	if (d === null) return ""
+	if (d <= 1) return "text-red-600"
+	if (d <= 3) return "text-amber-600"
+	return "text-brand-600"
+}
 
 const search = ref("")
 const orders = ref([])

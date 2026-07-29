@@ -61,6 +61,7 @@
 						<p class="truncate font-bold text-gray-900">{{ o.container_no || o.container }}</p>
 						<p class="truncate text-xs text-gray-500">{{ o.repair_order_id }} · {{ o.principal || "—" }}</p>
 						<p class="truncate text-[11px] text-gray-400">{{ labels.createdOn }} {{ fmtDate(o.creation) }}</p>
+						<p v-if="o.target_lift_on" class="truncate text-[11px] font-semibold" :class="liftClass(o.target_lift_on)">Lift-on {{ fmtDate(o.target_lift_on) }} · {{ hMinus(o.target_lift_on) }}</p>
 					</div>
 				</button>
 				<span class="oak-chip shrink-0" :class="statusChipClass(o.status)">{{ repairStatusLabel(o.status) }}</span>
@@ -150,6 +151,8 @@
 								<p class="text-xs text-gray-500">
 									{{ labels.mrQty }} {{ u.quantity }}<span v-if="u.on_hand != null"> · {{ labels.mrOnHand }} {{ u.on_hand }}</span>
 								</p>
+								<!-- Each part names its own gudang and is issued from there on completion. -->
+								<p v-if="u.warehouse" class="text-xs text-gray-500">{{ labels.mrWarehouse }}: {{ u.warehouse }}</p>
 								<p v-if="u.remark" class="text-xs text-gray-400">{{ u.remark }}</p>
 							</div>
 							<span class="oak-chip shrink-0" :class="decChipClass(u.decision)">{{ repairStatusLabel(u.decision) }}</span>
@@ -160,19 +163,6 @@
 							</button>
 						</div>
 					</div>
-				</section>
-
-				<!-- Source warehouse (parts are issued from here on completion) -->
-				<section class="oak-card p-4 space-y-1">
-					<label class="oak-label">{{ labels.mrWarehouse }}</label>
-					<SearchSelect
-						v-model="warehouse"
-						:options="order.warehouses"
-						:option-value="(w) => w.name"
-						:option-label="(w) => (w.branch ? `${w.warehouse_name} · ${w.branch}` : w.warehouse_name)"
-						:placeholder="labels.mrWarehousePick"
-						:search-placeholder="labels.selectSearch"
-					/>
 				</section>
 
 				<!-- Remarks (read-only) -->
@@ -200,18 +190,45 @@ import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
-import SearchSelect from "@/components/SearchSelect.vue"
 
 const route = useRoute()
 const router = useRouter()
 
-const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
+const fmtDate = (v) =>
+	v
+		? new Date(String(v).slice(0, 10) + "T00:00:00").toLocaleDateString("id-ID", {
+				day: "numeric",
+				month: "short",
+				year: "numeric",
+		  })
+		: "—"
+
+// Gate Out Plan target lift-on → countdown badge (H-minus) with urgency colour.
+const liftDays = (v) => {
+	if (!v) return null
+	const target = new Date(String(v).slice(0, 10) + "T00:00:00")
+	const today = new Date(new Date().toDateString())
+	return Math.round((target - today) / 86400000)
+}
+const hMinus = (v) => {
+	const d = liftDays(v)
+	if (d === null) return ""
+	if (d < 0) return `Lewat ${-d} hr`
+	if (d === 0) return "Hari-H"
+	return `H-${d}`
+}
+const liftClass = (v) => {
+	const d = liftDays(v)
+	if (d === null) return ""
+	if (d <= 1) return "text-red-600"
+	if (d <= 3) return "text-amber-600"
+	return "text-brand-600"
+}
 
 const search = ref("")
 const orders = ref([])
 const order = ref(null)
 const completed = ref(null)
-const warehouse = ref("")
 const used = ref([])
 
 // --- status-driven view flags (execution phase only) -----------------------
@@ -261,7 +278,6 @@ const detailRes = createResource({
 	method: "GET",
 	onSuccess(data) {
 		order.value = data
-		warehouse.value = data.warehouse || ""
 		used.value = (data.used_items || []).map((u) =>
 			reactive({ ...u, decision: u.decision || "Pending", photos: [...(u.photos || [])] })
 		)
@@ -327,16 +343,16 @@ async function confirmComplete() {
 	if (ok) complete()
 }
 
-// Used items aren't editable here, so only the source warehouse is sent with the submit flag.
+// Used items aren't editable here — each one already names the gudang it is issued from — so
+// completing is just the submit flag.
 function complete() {
 	if (!order.value) return
-	saveRes.fetch({ repair_order: order.value.name, warehouse: warehouse.value || undefined, submit: 1 })
+	saveRes.fetch({ repair_order: order.value.name, submit: 1 })
 }
 
 function backToList() {
 	completed.value = null
 	used.value = []
-	warehouse.value = ""
 	if (route.query.o) router.push({ query: {} })
 	else order.value = null
 	reloadOrders()

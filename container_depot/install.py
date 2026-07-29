@@ -244,6 +244,18 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Ops Supervisor":    {"read": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1},
 	},
+	# ---- Gate Out Plan (customer lift-on notice → prep priority; no pricing) ----
+	# Internal ops planning doc, non-submittable. Admin Ops / Commercial transcribe it
+	# from the customer's email; Ops Supervisor & Operator Kalmar (who lift the tank out)
+	# read it; Management views. NOT customer-facing yet (customer channel is future).
+	"Gate Out Plan": {
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
+		"Commercial":        {"read": 1, "create": 1, "write": 1, "report": 1},
+		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
+		"Operator Kalmar":   {"read": 1, "report": 1},
+		"Management":        {"read": 1, "report": 1, "export": 1},
+		"IT Support":        {"read": 1, "report": 1},
+	},
 }
 
 # Depot PWA role gets the DocPerms the PWA exercises under the caller's session.

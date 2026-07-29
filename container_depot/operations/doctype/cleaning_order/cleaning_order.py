@@ -83,8 +83,17 @@ class CleaningOrder(Document):
 		"""
 		score = 0
 
-		# Factor 1: Release date urgency (if known)
-		# This would need integration with release orders
+		# Factor 1: Release date urgency — nearer the customer's target lift-on (stamped by the
+		# Gate Out Plan), higher priority. Read live off the container so the score never lags a
+		# stamp that landed after this order was last saved. H-0 / overdue gets the big boost.
+		from frappe.utils import getdate, nowdate
+
+		target = self.target_lift_on or (
+			frappe.db.get_value("Container", self.container, "target_lift_on") if self.container else None
+		)
+		if target:
+			days = (getdate(target) - getdate(nowdate())).days
+			score += 200 if days <= 0 else max(0.0, 100.0 - days * 10)
 
 		# Factor 2: Time in queue (older = higher priority)
 		if self.order_created:

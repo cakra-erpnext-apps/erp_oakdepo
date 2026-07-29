@@ -19,7 +19,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, now_datetime
+from frappe.utils import cint, flt, getdate, now_datetime
 
 from container_depot.operations.eir_followups import MR_OPEN_STATUSES
 from container_depot.operations.service_menu import filter_items_by_menu, is_real_menu
@@ -252,10 +252,16 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "creation"],
-		order_by="creation asc", limit_start=cint(start), limit_page_length=cint(page_length),
+			"principal", "depot", "total_cost", "target_lift_on", "creation"],
+		order_by="creation asc", limit_page_length=0,
 	)
-	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
+	# Priority: nearest customer target lift-on first; unstamped keep their creation order below.
+	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
+	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
+	total = len(items)
+	pl = cint(page_length)
+	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
+	return {"items": items, "total": total}
 
 
 # Execution phase — the PWA M&R menu is the field/cleaning division's console: it only shows
@@ -293,10 +299,16 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "creation"],
-		order_by="creation asc", limit_start=cint(start), limit_page_length=cint(page_length),
+			"principal", "depot", "total_cost", "target_lift_on", "creation"],
+		order_by="creation asc", limit_page_length=0,
 	)
-	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
+	# Priority: nearest customer target lift-on first; unstamped keep their creation order below.
+	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
+	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
+	total = len(items)
+	pl = cint(page_length)
+	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
+	return {"items": items, "total": total}
 
 
 def list_mr_history(start=0, page_length=10, search=None) -> dict:

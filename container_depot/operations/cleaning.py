@@ -92,11 +92,16 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "order_id", "container", "container_no", "status",
-			"cleaning_type", "last_cargo", "depot", "order_created"],
+			"cleaning_type", "last_cargo", "depot", "target_lift_on", "order_created"],
 		order_by="order_created asc",
-		limit_start=cint(start),
-		limit_page_length=cint(page_length),
+		limit_page_length=0,
 	)
+	# Priority: nearest customer target lift-on first; unstamped keep their queue order below.
+	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
+	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
+	total = len(items)
+	pl = cint(page_length)
+	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
 	# Number of chosen cleaning services per order (NOT the price — hidden from the depot PWA).
 	names = [i.name for i in items]
 	if names:
@@ -105,7 +110,7 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		counts = Counter(frappe.get_all("Cleaning Order Service", filters={"parent": ["in", names]}, pluck="parent"))
 		for i in items:
 			i["service_count"] = counts.get(i.name, 0)
-	return {"items": items, "total": frappe.db.count("Cleaning Order", filters)}
+	return {"items": items, "total": total}
 
 
 def list_cleaning_history(start=0, page_length=10, search=None) -> dict:

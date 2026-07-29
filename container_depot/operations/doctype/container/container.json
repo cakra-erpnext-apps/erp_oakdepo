@@ -24,6 +24,8 @@
   "inspection_info",
   "eir_in_date",
   "eir_out_date",
+  "target_lift_on",
+  "gate_out_plan",
   "last_order_bongkar",
   "storage_billed_until",
   "column_break_2",
@@ -171,6 +173,23 @@
    "label": "EIR-Out Date"
   },
   {
+   "description": "Rencana lift-on (gate out) dari Gate Out Plan aktif. Mendorong prioritas urutan kerja cleaning / M&R. Diisi otomatis oleh Gate Out Plan — bukan isian manual.",
+   "fieldname": "target_lift_on",
+   "fieldtype": "Date",
+   "in_standard_filter": 1,
+   "label": "Target Lift-On",
+   "read_only": 1
+  },
+  {
+   "description": "Gate Out Plan yang menandai target lift-on ini (jejak).",
+   "fieldname": "gate_out_plan",
+   "fieldtype": "Link",
+   "label": "Gate Out Plan",
+   "no_copy": 1,
+   "options": "Gate Out Plan",
+   "read_only": 1
+  },
+  {
    "description": "Latest Order Bongkar (unloading voucher) this container was placed on — stamped automatically when the bon is submitted.",
    "fieldname": "last_order_bongkar",
    "fieldtype": "Link",
@@ -310,7 +329,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-21 14:00:00",
+ "modified": "2026-07-29 09:00:00.000000",
  "module": "Operations",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

@@ -27,6 +27,9 @@ ORDER_MAP = {
 	"M&R": ("Repair Order", None),
 	"Survey": ("Survey Order", "paid_to"),
 	"Cleaning": ("Cleaning Order", None),
+	# Lift-on (gate-out) prep priority — the customer emails which tanks they'll pick up.
+	# The sender resolves to the tank owner (principal); no pricing, no invoice.
+	"Gate Out": ("Gate Out Plan", "principal"),
 }
 
 # Where the email body lands. Survey Order has no `remarks` — it uses `notes`.
@@ -35,6 +38,7 @@ _NOTE_FIELD = {
 	"Repair Order": "remarks",
 	"Cleaning Order": "remarks",
 	"Survey Order": "notes",
+	"Gate Out Plan": "notes",
 }
 
 # The link back to the source email. Deliberately NOT `reff_doc`: that field is the
@@ -44,6 +48,19 @@ _NOTE_FIELD = {
 _EMAIL_REF_FIELD = "reff_email"
 
 _SNIPPET_LEN = 600
+
+# How each order is summarised back on the email that spawned it: (state field, the one
+# field that identifies it at a glance). The state field is NOT shared — Container Booking
+# is submittable and calls it ``booking_status``. Keyed by doctype, and every doctype in
+# ORDER_MAP must appear here: a new order type has to say how it is summarised, rather than
+# quietly going missing from the email's list.
+_ORDER_SUMMARY = {
+	"Container Booking": ("booking_status", "customer"),
+	"Repair Order": ("status", "container_no"),
+	"Survey Order": ("status", "paid_to"),
+	"Cleaning Order": ("status", "container_no"),
+	"Gate Out Plan": ("status", "principal"),
+}
 
 
 def _resolve_customer(email: str | None) -> str | None:
@@ -121,6 +138,35 @@ def get_order_prefill(communication: str, order_type: str) -> dict:
 			values[customer_field] = customer
 
 	return {"doctype": doctype, "values": values}
+
+
+@frappe.whitelist()
+def linked_orders(communication: str) -> list[dict]:
+	"""Orders created from this email — everything whose ``reff_email`` points at it.
+
+	The link is written once by ``get_order_prefill`` and is read-only afterwards, but it
+	was only ever visible from the order side: standing on the email you could not tell
+	whether it had already been turned into work, or into how many orders. This answers that
+	from the Communication form (see ``public/js/communication.js``).
+
+	Ordered by order type, then newest first. Read permission is checked per doctype and the
+	rows go through ``get_list``, so a user is never shown an order they could not open.
+	"""
+	frappe.has_permission("Communication", "read", doc=communication, throw=True)
+
+	out = []
+	for doctype, _customer_field in ORDER_MAP.values():
+		if not frappe.has_permission(doctype, "read"):
+			continue
+		state_field, subtitle_field = _ORDER_SUMMARY[doctype]
+		rows = frappe.get_list(
+			doctype,
+			filters={_EMAIL_REF_FIELD: communication},
+			fields=["name", f"{state_field} as state", f"{subtitle_field} as subtitle"],
+			order_by="creation desc",
+		)
+		out.extend({"doctype": doctype, **r} for r in rows)
+	return out
 
 
 @frappe.whitelist()

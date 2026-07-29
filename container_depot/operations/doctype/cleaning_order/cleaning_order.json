@@ -18,6 +18,7 @@
   "reff_doc",
   "reff_email",
   "priority_score",
+  "target_lift_on",
   "depot",
   "section_break_2",
   "last_cargo",
@@ -145,6 +146,16 @@
    "fieldname": "priority_score",
    "fieldtype": "Float",
    "label": "Priority Score",
+   "read_only": 1
+  },
+  {
+   "description": "Rencana lift-on (gate out) dari Gate Out Plan — untuk memprioritaskan pengerjaan. Otomatis dari container.",
+   "fetch_from": "container.target_lift_on",
+   "fieldname": "target_lift_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Target Lift-On",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -339,7 +350,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-28 11:00:00.000000",
+ "modified": "2026-07-29 10:30:00.000000",
  "module": "Operations",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

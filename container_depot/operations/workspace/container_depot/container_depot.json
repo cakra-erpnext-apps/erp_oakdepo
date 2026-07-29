@@ -81,6 +81,16 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Gate Out Plan",
+   "link_count": 0,
+   "link_to": "Gate Out Plan",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Gate Entry",
    "link_count": 0,
    "link_to": "Gate Entry",
@@ -437,7 +447,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-28 15:00:00.000000",
+ "modified": "2026-07-29 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",
