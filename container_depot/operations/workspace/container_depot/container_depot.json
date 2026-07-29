@@ -1,7 +1,7 @@
 {
  "app": "container_depot",
  "charts": [],
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardMail\",\"type\":\"card\",\"data\":{\"card_name\":\"Correspondence\",\"col\":4}},{\"id\":\"cardInvoicing\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"cardBooking\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"cardTxn\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Yard\",\"col\":4}},{\"id\":\"cardStock\",\"type\":\"card\",\"data\":{\"card_name\":\"Sparepart & Stock\",\"col\":4}},{\"id\":\"cardMail\",\"type\":\"card\",\"data\":{\"card_name\":\"Correspondence\",\"col\":4}},{\"id\":\"cardInvoicing\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing\",\"col\":4}},{\"id\":\"cardMaster\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"cardSST\",\"type\":\"card\",\"data\":{\"card_name\":\"SST & Audit\",\"col\":4}},{\"id\":\"cardReports\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
  "creation": "2026-07-02 08:32:46.648541",
  "custom_blocks": [],
  "docstatus": 0,
@@ -161,6 +161,84 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Sparepart & Stock",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Barang Masuk",
+   "link_count": 0,
+   "link_to": "Purchase Receipt",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Barang Keluar / Transfer",
+   "link_count": 0,
+   "link_to": "Stock Entry",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Revisi Stok (Opname)",
+   "link_count": 0,
+   "link_to": "Stock Reconciliation",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Stock Balance",
+   "link_count": 0,
+   "link_to": "Stock Balance",
+   "link_type": "Report",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Stock Ledger",
+   "link_count": 0,
+   "link_to": "Stock Ledger",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Item (Sparepart)",
+   "link_count": 0,
+   "link_to": "Item",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Warehouse",
+   "link_count": 0,
+   "link_to": "Warehouse",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Correspondence",
    "link_count": 0,
    "onboard": 0,
@@ -186,7 +264,7 @@
   },
   {
    "hidden": 0,
-   "is_query_report": 0,
+   "is_query_report": 1,
    "label": "Order Billing Status",
    "link_count": 0,
    "link_to": "Order Billing Status",
@@ -330,7 +408,7 @@
   },
   {
    "hidden": 0,
-   "is_query_report": 0,
+   "is_query_report": 1,
    "label": "Daily Operations Report",
    "link_count": 0,
    "link_to": "Daily Operations Report",
@@ -340,7 +418,7 @@
   },
   {
    "hidden": 0,
-   "is_query_report": 0,
+   "is_query_report": 1,
    "label": "Container Status Report",
    "link_count": 0,
    "link_to": "Container Status Report",
@@ -350,7 +428,7 @@
   },
   {
    "hidden": 0,
-   "is_query_report": 0,
+   "is_query_report": 1,
    "label": "Inventory KPI per Principal",
    "link_count": 0,
    "link_to": "Inventory KPI per Principal",
@@ -359,7 +437,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-27 15:00:00.000000",
+ "modified": "2026-07-28 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

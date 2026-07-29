@@ -133,6 +133,30 @@
    "icon": "es-line-reports"
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "OAK Monthly Invoice",
+   "link_to": "OAK Monthly Invoice",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-article"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Payment Entry",
+   "link_to": "Payment Entry",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-payments"
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "mail",
@@ -247,6 +271,123 @@
    "icon": "es-line-map-pin"
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Periodic Test",
+   "link_to": "Periodic Test",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-details"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "stock",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Sparepart & Stock",
+   "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Barang Masuk",
+   "link_to": "Purchase Receipt",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-download"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Supplier",
+   "link_to": "Supplier",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-customer"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Barang Keluar / Transfer",
+   "link_to": "Stock Entry",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-move"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Revisi Stok (Opname)",
+   "link_to": "Stock Reconciliation",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-details"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Stock Balance",
+   "link_to": "Stock Balance",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-chart"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Stock Ledger",
+   "link_to": "Stock Ledger",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-bullet-list"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Item (Sparepart)",
+   "link_to": "Item",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-tag"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Warehouse",
+   "link_to": "Warehouse",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-storage"
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "tag",
@@ -326,6 +467,18 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "es-line-filter"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Item Group",
+   "link_to": "Item Group",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-folder-alt"
   },
   {
    "child": 1,
@@ -485,9 +638,21 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "es-line-chart"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Inventory KPI per Principal",
+   "link_to": "Inventory KPI per Principal",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-chart"
   }
  ],
- "modified": "2026-07-27 15:00:00.000000",
+ "modified": "2026-07-28 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

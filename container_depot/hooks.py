@@ -251,6 +251,8 @@ update_website_context = "container_depot.branding.update_website_context"
 doctype_js = {
 	"Sales Invoice": "public/js/sales_invoice.js",
 	"Communication": "public/js/communication.js",
+	# "Barang Masuk" — restrict the item picker to stockable items (see the file).
+	"Purchase Receipt": "public/js/purchase_receipt.js",
 }
 # Communication list — on-demand "Tarik Email" (pull) button, scoped to the user's accounts.
 doctype_list_js = {"Communication": "public/js/communication_list.js"}
