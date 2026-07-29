@@ -167,16 +167,9 @@ def mr_history(start=0, page_length=10, search=None):
 
 @frappe.whitelist(methods=["GET"])
 def mr_order_detail(repair_order=None):
-	"""GET /api/v1/ess/mr-order-detail — one M&R's damages (EIR copy) + used items + warehouses."""
+	"""GET /api/v1/ess/mr-order-detail — one M&R's damages (EIR copy) + used items."""
 	_require_authenticated_user()
 	return mr.get_mr_order_detail(repair_order)
-
-
-@frappe.whitelist(methods=["GET"])
-def mr_warehouses(repair_order=None, container=None):
-	"""GET /api/v1/ess/mr-warehouses — branch-filtered source-warehouse options."""
-	_require_authenticated_user()
-	return mr.list_warehouses(repair_order=repair_order, container=container)
 
 
 @frappe.whitelist(methods=["GET"])
@@ -258,10 +251,12 @@ def mr_start(repair_order=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def mr_order_save(repair_order=None, used_items=None, technician=None, warehouse=None, reff_doc=None, remarks=None, submit=False):
-	"""POST /api/v1/ess/mr-order-save — save used items + fields (submit=1 completes + issues stock)."""
+def mr_order_save(repair_order=None, used_items=None, technician=None, reff_doc=None, remarks=None, submit=False):
+	"""POST /api/v1/ess/mr-order-save — save used items + fields (submit=1 completes + issues stock).
+
+	Each used item carries its own gudang; there is no order-level source warehouse to send."""
 	_require_authenticated_user()
 	return mr.save_mr_order(
 		repair_order=repair_order, used_items=used_items,
-		technician=technician, warehouse=warehouse, reff_doc=reff_doc, remarks=remarks, submit=submit,
+		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit,
 	)

@@ -361,7 +361,6 @@ class SmokeRun:
 			self.track("Repair Order", ro)
 			self.step("M&R · order_detail (damages from EIR) (ESS)", lambda: ess_mr.mr_order_detail(ro))
 			self.step("M&R · items picker (Maintenance filter) (ESS)", lambda: ess_mr.mr_items(repair_order=ro))
-			self.step("M&R · warehouses (ESS)", lambda: ess_mr.mr_warehouses(repair_order=ro))
 			self.step("M&R · save used item (ESS)",
 				lambda: ess_mr.mr_order_save(repair_order=ro,
 					used_items=[{"item": self.mr_item, "quantity": 1}]))

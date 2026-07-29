@@ -12,7 +12,6 @@
     "inspection",
     "reff_doc",
     "reff_email",
-    "warehouse",
     "status",
     "column_break_1",
     "principal",
@@ -130,13 +129,6 @@
       "fieldtype": "Link",
       "label": "Technician",
       "options": "Employee"
-    },
-    {
-      "description": "Source warehouse the repair parts are issued from when the M&R is completed.",
-      "fieldname": "warehouse",
-      "fieldtype": "Link",
-      "label": "Source Warehouse (Parts)",
-      "options": "Warehouse"
     },
     {
       "fieldname": "start_date",
@@ -261,7 +253,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-07-28 18:00:00.000000",
+  "modified": "2026-07-29 10:30:00.000000",
   "module": "Operations",
   "name": "Repair Order",
   "naming_rule": "Expression (BY ASSIGNMENT)",

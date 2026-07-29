@@ -477,9 +477,7 @@ export const labels = {
 	mrTankDetails: "Data Tank",
 	mrRefEir: "Referensi EIR",
 	// Source warehouse (top of form)
-	mrWarehouse: "Gudang Sumber Part", // source warehouse
-	mrWarehousePick: "Pilih gudang…",
-	mrWarehouseChanged: "Gudang diganti — part yang dipilih dikosongkan",
+	mrWarehouse: "Gudang", // the gudang a used-item row is issued from (read-only here)
 	// Section 1 — EIR damage entries (read-only copy, with photos)
 	mrDamagesTitle: "Temuan Kerusakan (EIR)",
 	mrNoDamages: "Tidak ada temuan kerusakan dari EIR.",

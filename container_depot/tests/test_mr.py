@@ -128,8 +128,13 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 	def _to_in_progress(self, ro, used_items, warehouse=None):
 		"""Drive a Draft M&R through the owner-approval gate into In Progress: save the
 		estimate -> workshop submits to Admin Ops -> Admin Ops publishes to the customer
-		-> owner Approves -> start."""
-		mr.save_mr_order(repair_order=ro, used_items=used_items, warehouse=warehouse, submit=False)
+		-> owner Approves -> start.
+
+		There is no order-level source warehouse any more, so ``warehouse`` is stamped onto
+		every row that does not name its own (the controller clears it again on services)."""
+		if warehouse:
+			used_items = [{**u, "warehouse": u.get("warehouse") or warehouse} for u in used_items]
+		mr.save_mr_order(repair_order=ro, used_items=used_items, submit=False)
 		mr.submit_for_approval(ro)
 		mr.publish_to_owner(ro)  # Admin-Ops gate — the owner can't decide before this
 		mr.record_decision(ro, "Approved")
@@ -165,9 +170,8 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		# Section 1: the EIR damage entry was copied into the read-only Damages snapshot.
 		self.assertGreaterEqual(len(d["damages"]), 1)
 		self.assertEqual(d["damages"][0]["damage_code"], "12")
-		# Section 2 starts empty (the team adds services/parts); warehouses are offered.
+		# Section 2 starts empty — the team adds the services/parts (each with its gudang).
 		self.assertEqual(d["used_items"], [])
-		self.assertIn("warehouses", d)
 
 	# --- lifecycle ------------------------------------------------------------
 	def test_start_marks_in_progress(self):
@@ -248,8 +252,8 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		self.assertNotIn(_SERVICE, empty)
 
 	def test_no_warehouse_hides_nothing(self):
-		"""With no source warehouse (a brand-new M&R) stock is unknowable, so parts are left
-		in the list rather than all being hidden."""
+		"""With no gudang picked yet (a fresh row) stock is unknowable, so parts are left in
+		the list rather than all being hidden."""
 		self._ensure_item()
 		self.assertEqual(mr._out_of_stock_items(None), set())
 
@@ -265,19 +269,22 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 
 		with self.assertRaises(frappe.ValidationError):
 			mr.save_mr_order(
-				repair_order=ro, used_items=[{"item": _ITEM, "quantity": 2}],
-				warehouse=warehouse, submit=False,
+				repair_order=ro, used_items=[{"item": _ITEM, "quantity": 2, "warehouse": warehouse}],
+				submit=False,
 			)
 		with self.assertRaises(frappe.ValidationError):
 			mr.save_mr_order(
 				repair_order=ro,
-				used_items=[{"item": _ITEM, "quantity": 1}, {"item": _ITEM, "quantity": 1}],
-				warehouse=warehouse, submit=False,
+				used_items=[
+					{"item": _ITEM, "quantity": 1, "warehouse": warehouse},
+					{"item": _ITEM, "quantity": 1, "warehouse": warehouse},
+				],
+				submit=False,
 			)
 		# Exactly what is on hand goes through.
 		res = mr.save_mr_order(
-			repair_order=ro, used_items=[{"item": _ITEM, "quantity": 1}],
-			warehouse=warehouse, submit=False,
+			repair_order=ro, used_items=[{"item": _ITEM, "quantity": 1, "warehouse": warehouse}],
+			submit=False,
 		)
 		self.assertTrue(res["success"])
 
@@ -287,7 +294,71 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		self._ensure_item()
 		warehouse = self._ensure_warehouse()
 		ro = frappe._dict(
-			used_items=[frappe._dict(item=_ITEM, quantity=99, decision="Rejected")],
-			warehouse=warehouse, container=None,
+			used_items=[frappe._dict(item=_ITEM, quantity=99, decision="Rejected", warehouse=warehouse)],
+			container=None,
 		)
 		mr.assert_stock_available(ro)  # no stock at all, but nothing will be issued
+
+	def test_stock_is_checked_and_issued_per_row_warehouse(self):
+		"""Each row names its own gudang: the same part is checked against — and issued out
+		of — the warehouse on that row, not one warehouse for the whole order."""
+		self._ensure_item()
+		wh_a = self._ensure_warehouse()
+		wh_b = frappe.get_doc({
+			"doctype": "Warehouse", "warehouse_name": "MR Test Store B",
+			"company": self.company, "is_group": 0,
+		}).insert(ignore_permissions=True).name
+		self.addCleanup(
+			lambda: frappe.db.exists("Warehouse", wh_b)
+			and frappe.delete_doc("Warehouse", wh_b, force=True, ignore_permissions=True)
+		)
+		self._receive_stock(wh_a, 5)  # stock lives in A only
+
+		c, _ = self._eir_with_damage("MRROWWH0001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+
+		# Pointing the row at B (empty) is refused even though A has plenty.
+		with self.assertRaises(frappe.ValidationError):
+			mr.save_mr_order(
+				repair_order=ro,
+				used_items=[{"item": _ITEM, "quantity": 1, "warehouse": wh_b}],
+				submit=False,
+			)
+		# Pointing it at A goes through, and the row keeps its own gudang.
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[{"item": _ITEM, "quantity": 2, "warehouse": wh_a}],
+			submit=False,
+		)
+		row = frappe.get_doc("Repair Order", ro).used_items[0]
+		self.assertEqual(row.warehouse, wh_a)
+		self.assertEqual(row.line_type, "Part")
+		self.assertEqual(row.on_hand, "5")   # text, so a service can be blank instead of 0
+
+		# Completion issues out of the ROW's own warehouse.
+		mr.submit_for_approval(ro)
+		mr.publish_to_owner(ro)
+		mr.record_decision(ro, "Approved")
+		mr.start_repair(ro)
+		res = mr.save_mr_order(repair_order=ro, submit=True)
+		se = frappe.get_doc("Stock Entry", res["stock_entry"])
+		self.assertEqual(se.items[0].s_warehouse, wh_a)
+		self.assertEqual(flt(mr._on_hand(_ITEM, wh_a)), 3.0)  # 5 - 2
+
+	def test_service_row_has_no_warehouse_and_blank_stock(self):
+		"""A service cannot run out, so it carries no gudang and its Stok stays EMPTY —
+		a 0 there would read as "habis" on a row that can never be."""
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRSVCWH0001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[{"item": _SERVICE, "quantity": 1, "warehouse": self._ensure_warehouse()}],
+			submit=False,
+		)
+		row = frappe.get_doc("Repair Order", ro).used_items[0]
+		self.assertEqual(row.line_type, "Jasa")
+		self.assertIsNone(row.warehouse)
+		self.assertIn(row.on_hand, (None, ""))

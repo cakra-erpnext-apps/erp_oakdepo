@@ -21,7 +21,7 @@ class RepairOrder(Document):
 		self._validate_stock_available()
 
 	def _validate_stock_available(self):
-		"""A part may only sit on an M&R when the source warehouse actually holds it.
+		"""A part may only sit on an M&R when its own gudang actually holds it.
 
 		Placed in validate() so it covers every path — the Desk grid, the PWA, and
 		``mr.save_mr_order`` alike. Closed orders are skipped: Completed has *already*
@@ -57,18 +57,23 @@ class RepairOrder(Document):
 		self.update_container_status()
 
 	def stamp_on_hand(self):
-		"""Fill each part row's ``on_hand`` from the source warehouse so the grid shows what
-		is still usable without opening the item picker. Services are left empty — they
-		cannot run out, and a 0 there would read as "habis". Stamped on every save; the Desk
-		form additionally refreshes it live (see repair_order.js)."""
-		from container_depot.operations.mr import on_hand_map, source_warehouse
+		"""Fill each part row's Stok from **its own gudang**, so the grid shows what is still
+		usable without opening the item picker.
 
-		rows = self.get("used_items") or []
-		if not rows:
-			return
-		stock = on_hand_map([r.item for r in rows], source_warehouse(self))
-		for row in rows:
-			row.on_hand = stock.get(row.item)
+		Written as text, not a number: a service must show BLANK, and a Float renders None as
+		0,000 — which reads as "habis" on the very rows that can never run out. Stamped on
+		every save; the Desk form also refreshes it live (see repair_order.js).
+		"""
+		from frappe.utils import flt
+
+		from container_depot.operations.mr import _on_hand, row_warehouse
+
+		for row in self.get("used_items") or []:
+			if not (row.item and row.is_stock_item):
+				row.on_hand = None
+				continue
+			wh = row_warehouse(self, row)
+			row.on_hand = f"{flt(_on_hand(row.item, wh)):g}" if wh else None
 
 	def on_update(self):
 		# This order's new status is now persisted — flip the container In_Depot <->
@@ -147,10 +152,23 @@ class RepairOrder(Document):
 		numeric_total = 0.0
 		by_currency = {}
 
+		from container_depot.operations.mr import default_warehouse
+
 		for row in self.get("used_items") or []:
 			row.is_stock_item = (
 				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
 			)
+			# Jenis is an INPUT while the row is empty (it narrows the item picker), but once
+			# an item is chosen the Item master is the truth — otherwise a row could claim to
+			# be Jasa while holding a stock part, and skip the stock guard entirely.
+			if row.item:
+				row.line_type = "Part" if row.is_stock_item else "Jasa"
+			if row.line_type == "Jasa":
+				row.warehouse = None  # a service is not taken out of a gudang
+			elif row.item and not row.warehouse:
+				# Show the gudang actually used instead of leaving the column blank while the
+				# stock silently comes from the branch default.
+				row.warehouse = default_warehouse(self)
 			breakdown = item_rate_breakdown(row.item, price_list) if row.item else {}
 			# Currency always follows the item's own Item Price (fixes the old default-to-IDR).
 			if row.item:
@@ -233,7 +251,7 @@ def used_item_query(doctype, txt, searchfield, start, page_len, filters):
 	a service (nothing to run out of) or the on-hand qty for a part, so the picker answers
 	"can I still use this, and how many?" before the row is even added. Frappe joins the
 	columns after the first into the option's description (desk/search.py
-	``build_for_autosuggest``). Parts the source warehouse cannot supply are already absent
+	``build_for_autosuggest``). Parts the row's own gudang cannot supply are already absent
 	(``mr._out_of_stock_items``), so a shown qty is always usable.
 	"""
 	from frappe.utils import flt as _flt
@@ -245,6 +263,7 @@ def used_item_query(doctype, txt, searchfield, start, page_len, filters):
 		search=txt,
 		repair_order=filters.get("repair_order"),
 		warehouse=filters.get("warehouse"),
+		line_type=filters.get("line_type"),
 		start=start,
 		page_length=page_len,
 	)
@@ -264,20 +283,52 @@ def used_item_query(doctype, txt, searchfield, start, page_len, filters):
 
 
 @frappe.whitelist()
-def used_items_on_hand(items, warehouse=None, repair_order=None):
-	"""Live stock for the Used-Items grid's Stok column — ``{item_code: qty}``.
+def used_item_warehouse_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Gudang picker for a Used-Items row.
 
-	The Desk form calls this on refresh and whenever the source warehouse changes, so the
-	column tracks the warehouse currently selected instead of whatever was true at the last
-	save. ``warehouse`` comes off the live form; without one we fall back to the order's
-	own (or its branch default), the same resolution the picker and the stock guard use.
+	The row IS the choice of source warehouse now, so the branch scoping that used to sit on
+	the order's single Source Warehouse belongs here: real, enabled warehouses of the company,
+	limited to the container's branch and to the warehouses the caller's own branch allows
+	(``mr.list_warehouses``). The branch is shown as the option's description.
+	"""
+	from frappe.utils import cint as _cint
+
+	from container_depot.operations import mr
+
+	rows = mr.list_warehouses(repair_order=(filters or {}).get("repair_order"))["warehouses"]
+	needle = (txt or "").strip().lower()
+	if needle and needle != "undefined":
+		rows = [r for r in rows if needle in (r.name or "").lower() or needle in (r.warehouse_name or "").lower()]
+	start, page_len = _cint(start), _cint(page_len)
+	return [[r.name, r.branch or ""] for r in rows[start : start + page_len]]
+
+
+@frappe.whitelist()
+def used_items_on_hand(pairs, repair_order=None):
+	"""Live stock for the Used-Items grid's Stok column, keyed ``"item::warehouse"``.
+
+	Keyed by the pair because each row names its own gudang — the same part can legitimately
+	show a different number on two rows. ``pairs`` is ``[{item, warehouse}]`` off the live
+	form; a pair with no gudang yet falls back to the container's branch default, the same
+	resolution the picker and the stock guard use. Services are never asked for.
 	"""
 	import json as _json
 
-	from container_depot.operations.mr import on_hand_map, source_warehouse
+	from container_depot.operations.mr import _on_hand, default_warehouse
 
-	if isinstance(items, str):
-		items = _json.loads(items or "[]")
-	if not warehouse and repair_order and frappe.db.exists("Repair Order", repair_order):
-		warehouse = source_warehouse(frappe.get_doc("Repair Order", repair_order))
-	return on_hand_map(items, warehouse)
+	if isinstance(pairs, str):
+		pairs = _json.loads(pairs or "[]")
+	fallback = None
+	if repair_order and frappe.db.exists("Repair Order", repair_order):
+		fallback = default_warehouse(frappe.get_doc("Repair Order", repair_order))
+
+	out = {}
+	for p in pairs or []:
+		item = p.get("item")
+		if not item or not frappe.db.get_value("Item", item, "is_stock_item"):
+			continue
+		wh = p.get("warehouse") or fallback
+		if not wh:
+			continue
+		out[f"{item}::{p.get('warehouse') or ''}"] = _on_hand(item, wh)
+	return out

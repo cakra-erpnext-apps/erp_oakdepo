@@ -188,7 +188,6 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/mr-execution", "to_route": "container_depot.ess.repairs.mr_execution"},
 	{"from_route": "/api/v1/ess/mr-bypass-approval", "to_route": "container_depot.ess.repairs.mr_bypass_approval"},
 	{"from_route": "/api/v1/ess/mr-order-detail", "to_route": "container_depot.ess.repairs.mr_order_detail"},
-	{"from_route": "/api/v1/ess/mr-warehouses", "to_route": "container_depot.ess.repairs.mr_warehouses"},
 	{"from_route": "/api/v1/ess/mr-items", "to_route": "container_depot.ess.repairs.mr_items"},
 	{"from_route": "/api/v1/ess/mr-item-pricing", "to_route": "container_depot.ess.repairs.mr_item_pricing"},
 	{"from_route": "/api/v1/ess/mr-submit-approval", "to_route": "container_depot.ess.repairs.mr_submit_approval"},
@@ -248,11 +247,16 @@ update_website_context = "container_depot.branding.update_website_context"
 # "Batalkan & Kembalikan Order" button on generated (consolidated) invoices.
 # Communication — "Buat Order" buttons that seed a booking/M&R/survey/cleaning draft
 # from an incoming email (see operations/mail_to_order.py).
+# lock_item_picker — the service Item pickers only pick; no ad-hoc Item creation.
 doctype_js = {
-	"Sales Invoice": "public/js/sales_invoice.js",
+	"Sales Invoice": ["public/js/sales_invoice.js", "public/js/lock_item_picker.js"],
 	"Communication": "public/js/communication.js",
 	# "Barang Masuk" — restrict the item picker to stockable items (see the file).
 	"Purchase Receipt": "public/js/purchase_receipt.js",
+	"Container Booking": "public/js/lock_item_picker.js",
+	"Cleaning Order": "public/js/lock_item_picker.js",
+	"Repair Order": "public/js/lock_item_picker.js",
+	"Survey Order": "public/js/lock_item_picker.js",
 }
 # Communication list — on-demand "Tarik Email" (pull) button, scoped to the user's accounts.
 doctype_list_js = {"Communication": "public/js/communication_list.js"}

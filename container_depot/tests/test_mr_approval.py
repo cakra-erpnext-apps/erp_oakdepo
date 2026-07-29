@@ -23,6 +23,7 @@ _PL = "MRA Test PL"
 _PART = "MRA-PART"     # stock item, priced 100
 _SERVICE = "MRA-LABOR"  # non-stock service, priced 50
 _WH_NAME = "MRA Test Store"
+_WELD = "MRA-REPAIR"   # service priced with a manhour rate (costing test)
 
 
 class TestMRApproval(FrappeTestCase):
@@ -66,7 +67,7 @@ class TestMRApproval(FrappeTestCase):
 		self._safe(lambda: frappe.db.delete("Item Price", {"price_list": _PL}))
 		self._safe(lambda: frappe.db.exists("Price List", _PL) and frappe.delete_doc("Price List", _PL, force=True, ignore_permissions=True))
 		wh = self._wh_name()
-		for dt, name in (("Item", _PART), ("Item", _SERVICE), ("Warehouse", wh), ("Customer", _CUST)):
+		for dt, name in (("Item", _PART), ("Item", _SERVICE), ("Item", _WELD), ("Warehouse", wh), ("Customer", _CUST)):
 			if name:
 				self._safe(lambda dt=dt, name=name: frappe.db.exists(dt, name) and frappe.delete_doc(dt, name, force=True, ignore_permissions=True))
 		frappe.db.set_single_value("Stock Settings", "allow_negative_stock", self._neg_stock or 0)
@@ -133,7 +134,7 @@ class TestMRApproval(FrappeTestCase):
 
 	def _stocked(self, qty):
 		"""Warehouse holding ``qty`` of _PART — a part may only be put on an M&R when the
-		source warehouse has it (mr.assert_stock_available)."""
+		gudang on its row has it (mr.assert_stock_available)."""
 		wh = self._ensure_warehouse()
 		self._receive_stock(wh, qty)
 		return wh
@@ -155,14 +156,17 @@ class TestMRApproval(FrappeTestCase):
 		publish step is the Admin-Ops gate added later; these tests are about what the
 		OWNER does, so the helper drives straight through it to Pending Approval.
 
-		A part may only sit on an M&R when the source warehouse holds it
+		A part may only sit on an M&R when the gudang named ON ITS ROW holds it
 		(``mr.assert_stock_available``), so any fixture that uses ``_PART`` gets stock
-		seeded behind it — these tests are about approval, not about running out."""
+		seeded behind it and the warehouse stamped onto its rows — these tests are about
+		approval, not about running out."""
 		wanted = sum(flt(u.get("quantity") or 0) for u in used_items if u.get("item") == _PART)
 		if wanted and warehouse is None:
 			warehouse = self._ensure_warehouse()
 			self._receive_stock(warehouse, wanted)
-		mr.save_mr_order(repair_order=ro, used_items=used_items, warehouse=warehouse, submit=False)
+		if warehouse:
+			used_items = [{**u, "warehouse": u.get("warehouse") or warehouse} for u in used_items]
+		mr.save_mr_order(repair_order=ro, used_items=used_items, submit=False)
 		mr.submit_for_approval(ro)
 		mr.publish_to_owner(ro)
 
@@ -229,7 +233,11 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(doc.revision_no, 1)
 		self.assertEqual(doc.owner_note, "please adjust")
 		# Editable again — change the estimate and re-submit; decisions reset to Pending.
-		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 2}], warehouse=self._stocked(2), submit=False)
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[{"item": _PART, "quantity": 2, "warehouse": self._stocked(2)}],
+			submit=False,
+		)
 		mr.submit_for_approval(ro)
 		# A revised estimate goes back through the Admin-Ops gate before the customer
 		# sees it again, exactly like a first-time one.
@@ -245,8 +253,10 @@ class TestMRApproval(FrappeTestCase):
 		_, ro = self._draft_ro("MRABYP00001")
 		mr.save_mr_order(
 			repair_order=ro,
-			used_items=[{"item": _PART, "quantity": 1}, {"item": _SERVICE, "quantity": 1}],
-			warehouse=self._stocked(1),
+			used_items=[
+				{"item": _PART, "quantity": 1, "warehouse": self._stocked(1)},
+				{"item": _SERVICE, "quantity": 1},
+			],
 			submit=False,
 		)
 		mr.bypass_approval(ro, note="urgent")
@@ -269,7 +279,11 @@ class TestMRApproval(FrappeTestCase):
 		# Human-error recovery: an Approved M&R rewinds to an editable Draft, wiping the
 		# approval round, and can be re-approved after the fix.
 		_, ro = self._draft_ro("MRARE000001")
-		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 1}], warehouse=self._stocked(1), submit=False)
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[{"item": _PART, "quantity": 1, "warehouse": self._stocked(1)}],
+			submit=False,
+		)
 		mr.bypass_approval(ro)  # -> Approved
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Approved")
 		mr.reopen_to_draft(ro, note="kurang input")
@@ -333,7 +347,7 @@ class TestMRApproval(FrappeTestCase):
 		"""Total Cost = qty × item_rate. Labour is NOT costed on the M&R — the invoice
 		charges it from the billed item's own manhour_rate (consolidated_billing._mr_lines
 		bills item by item), so counting it here too would double-charge the owner."""
-		svc = "MRA-REPAIR"
+		svc = _WELD
 		if not frappe.db.exists("Item", svc):
 			frappe.get_doc({
 				"doctype": "Item", "item_code": svc, "item_name": "MRA Weld",
@@ -346,8 +360,6 @@ class TestMRApproval(FrappeTestCase):
 				"doctype": "Item Price", "item_code": svc, "price_list": _PL,
 				"selling": 1, "price_list_rate": 0, "manhour_rate": 5.0,
 			}).insert(ignore_permissions=True)
-		self.addCleanup(lambda: frappe.db.exists("Item", svc) and frappe.delete_doc("Item", svc, force=True, ignore_permissions=True))
-
 		_, ro = self._draft_ro("MRAMHR00001")
 		# Build the line the Desk way (edit the child rows, then doc.save()).
 		doc = frappe.get_doc("Repair Order", ro)
@@ -397,8 +409,8 @@ class TestMRApproval(FrappeTestCase):
 
 		_, ro = self._draft_ro("MRAMUL00001")
 		doc = frappe.get_doc("Repair Order", ro)
-		doc.warehouse = self._stocked(1)  # the part has to exist before it can go on the order
-		doc.append("used_items", {"item": _PART, "quantity": 1})     # 100 USD
+		# The part has to exist in the row's own gudang before it can go on the order.
+		doc.append("used_items", {"item": _PART, "quantity": 1, "warehouse": self._stocked(1)})  # 100 USD
 		doc.append("used_items", {"item": _SERVICE, "quantity": 2})  # 50 × 2 = 100 EUR
 		doc.save(ignore_permissions=True)
 

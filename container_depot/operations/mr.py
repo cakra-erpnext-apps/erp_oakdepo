@@ -9,8 +9,8 @@ Concept (two sections in the PWA):
      photos) when the Draft M&R is auto-created. Pure information: what the EIR found.
   2. **Used Items** — the services / parts actually used, picked from the **owner's Item
      Price** list (service or part). Only the qty is shown (price is hidden but still
-     computed for billing); each used item carries multiple evidence photos. Stock parts
-     among them are issued from the source warehouse (Material Issue) on completion.
+     computed for billing); each used item carries multiple evidence photos. A part row
+     names the gudang it comes from and is issued out of it (Material Issue) on completion.
 """
 
 from __future__ import annotations
@@ -163,7 +163,8 @@ def _photos_list(value) -> list:
 
 # --- warehouse list (branch-filtered) ----------------------------------------
 def list_warehouses(repair_order=None, container=None) -> dict:
-	"""Source-warehouse options for the M&R, filtered to the container's branch."""
+	"""Gudang options for a Used-Items row, filtered to the container's branch (and to the
+	warehouses the caller's branch allows). Backs the Desk row picker."""
 	if repair_order and not container:
 		container = frappe.db.get_value("Repair Order", repair_order, "container")
 	depot = frappe.db.get_value("Container", container, "depot") if container else None
@@ -173,23 +174,22 @@ def list_warehouses(repair_order=None, container=None) -> dict:
 
 
 # --- item picker (priced by owner; service or part) --------------------------
-def mr_item_search(search=None, repair_order=None, start=0, page_length=20, warehouse=None) -> dict:
+def mr_item_search(search=None, repair_order=None, start=0, page_length=20, warehouse=None, line_type=None) -> dict:
 	"""Item picker for the Used-Items section — services AND parts that have a selling
-	Item Price in the owner's price list. Stock items carry their on-hand qty (at the
-	M&R's source warehouse). When the owner has no price list, falls back to all items.
+	Item Price in the owner's price list. Stock items carry their on-hand qty (at the gudang
+	the row draws from). When the owner has no price list, falls back to all items.
 
-	``warehouse`` overrides the M&R's stored source warehouse. The caller passes the one
-	currently picked on the *unsaved* form, so the stock shown belongs to the warehouse the
-	user is actually looking at — reading it back from the database would show the previous
-	warehouse's stock until the form is saved.
+	``warehouse`` is the gudang picked on the *row*, read off the live form: the stock shown
+	belongs to the warehouse the user is actually looking at, not the one last saved. Only
+	when the row has none does the container's branch default stand in.
 	"""
 	pl = None
 	warehouse = _clean(warehouse) or None
 	if repair_order:
-		ro = frappe.db.get_value("Repair Order", repair_order, ["principal", "container", "warehouse"], as_dict=True) or frappe._dict()
+		ro = frappe.db.get_value("Repair Order", repair_order, ["principal", "container"], as_dict=True) or frappe._dict()
 		principal = ro.principal or (frappe.db.get_value("Container", ro.container, "principal") if ro.container else None)
 		pl = _owner_price_list(principal)
-		warehouse = warehouse or ro.warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
+		warehouse = warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
 
 	priced = (
 		frappe.get_all("Item Price", filters={"price_list": pl, "selling": 1}, pluck="item_code", distinct=True)
@@ -197,6 +197,12 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 		else None
 	)
 	filters = {"disabled": 0}
+	# The row's Jenis narrows the catalogue before anything else: pick "Jasa" and no part can
+	# turn up, pick "Part" and no service can. Blank keeps both (the PWA / API callers).
+	if line_type == "Jasa":
+		filters["is_stock_item"] = 0
+	elif line_type == "Part":
+		filters["is_stock_item"] = 1
 	# Scope to the Maintenance menu (group-derived) when it's configured, intersecting
 	# with the owner-priced set; otherwise keep the owner-priced filter (or none).
 	names = priced
@@ -316,13 +322,11 @@ def list_mr_history(start=0, page_length=10, search=None) -> dict:
 # --- detail ------------------------------------------------------------------
 def get_mr_order_detail(repair_order) -> dict:
 	"""Everything the PWA form needs: the copied EIR Damages (Section 1, read-only, with
-	resolved code descriptions + photos) and the Used Items (Section 2: item, qty, photos),
-	the tank spec and the branch-filtered source-warehouse options."""
+	resolved code descriptions + photos), the Used Items (Section 2: item, qty, gudang,
+	photos) and the tank spec."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
 	c = frappe.db.get_value("Container", ro.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
-	company = _resolve_company()
-	warehouse = ro.warehouse or _default_warehouse(company, c.depot)
 
 	dmg_desc = {d.name: d.description for d in frappe.get_all("Inspection Damage Code", fields=["name", "description"])}
 	rep_desc = {r.name: r.description for r in frappe.get_all("Inspection Repair Code", fields=["name", "description"])}
@@ -337,6 +341,8 @@ def get_mr_order_detail(repair_order) -> dict:
 	used_items = [{
 		"item": r.item, "item_name": r.item_name, "is_stock_item": r.is_stock_item,
 		"quantity": r.quantity, "remark": r.remark,
+		# The gudang this line is issued from — chosen per row on the Desk form.
+		"warehouse": r.warehouse,
 		# Owner-approval: prices + per-line decision are exposed (the owner approves by cost).
 		"decision": r.decision or "Pending",
 		"owner_remark": r.owner_remark,
@@ -345,10 +351,11 @@ def get_mr_order_detail(repair_order) -> dict:
 		"item_rate": r.item_rate, "item_amount": r.item_amount,
 		"amount": r.amount, "currency": r.currency,
 		"photos": _photos_list(r.photos),
-		"on_hand": _on_hand(r.item, warehouse) if r.item and r.is_stock_item else None,
+		# Stock at THIS row's gudang. Never a company-wide total: that would promise stock the
+		# line cannot actually issue.
+		"on_hand": _on_hand(r.item, r.warehouse) if r.item and r.is_stock_item and r.warehouse else None,
 	} for r in ro.used_items]
 
-	wh = list_warehouses(container=ro.container)
 	return {
 		"name": ro.name,
 		"repair_order_id": ro.repair_order_id,
@@ -358,9 +365,6 @@ def get_mr_order_detail(repair_order) -> dict:
 		"container_no": ro.container_no or c.container_no,
 		"inspection": ro.inspection,
 		"technician": ro.technician,
-		"warehouse": warehouse,
-		"warehouses": wh["warehouses"],
-		"branch": wh["branch"],
 		"reff_doc": ro.reff_doc,
 		"remarks": ro.remarks,
 		"stock_entry": ro.stock_entry,
@@ -653,18 +657,43 @@ def _apply_used_items(ro, used_items) -> None:
 		rows.append({
 			"item": item,
 			"quantity": flt(u.get("quantity")) or 1,
+			# The gudang this line issues from; blank falls back to the container's branch
+			# default in ``row_warehouse``, and the controller stamps it back onto the row.
+			"warehouse": _clean(u.get("warehouse")),
 			"remark": _clean(u.get("remark")),
 			"photos": json.dumps([p for p in photos if p]) if photos else None,
 		})
 	ro.set("used_items", rows)
 
 
+def _assert_warehouses_in_user_branch(ro) -> None:
+	"""No row may issue from a gudang outside the caller's branch.
+
+	The branch check used to sit on the order's single Source Warehouse; now that every row
+	picks its own, it has to be made per row or the scoping is simply gone.
+	"""
+	for wh in {r.warehouse for r in ro.used_items or [] if r.get("warehouse")}:
+		assert_in_user_branch(branch=frappe.db.get_value("Warehouse", wh, "branch"))
+
+
+def row_warehouse(ro, row) -> str | None:
+	"""The warehouse one Used-Items row issues from: its own, else the branch default.
+
+	Each row names its own gudang, so a single M&R can pull the gasket from Stores and the
+	rail from the workshop. The fallback matters only inside ``validate`` — it runs before
+	``before_save`` stamps the resolved gudang onto the row, and without it the stock guard
+	would skip a row that is about to get a warehouse anyway.
+	"""
+	return row.get("warehouse") or default_warehouse(ro)
+
+
 def _requested_stock_qty(ro) -> dict:
-	"""Stockable quantity this M&R will actually issue, summed **per item**.
+	"""Stockable quantity this M&R will issue, summed **per (item, warehouse)**.
 
 	Mirrors :func:`_issue_parts_stock` line for line — an owner-rejected line is never
-	issued, so it is never counted against stock either. Summing per item (not per row) is
-	the point: two rows of one seal kit are a single demand of two.
+	issued, so it is never counted against stock either. Summing per pair (not per row) is
+	the point: two rows of one seal kit from the same gudang are a single demand of two,
+	while the same part taken from two gudang are two independent demands.
 	"""
 	want = {}
 	for r in ro.used_items or []:
@@ -674,16 +703,18 @@ def _requested_stock_qty(ro) -> dict:
 			continue
 		if not frappe.db.get_value("Item", r.item, "is_stock_item"):
 			continue
-		want[r.item] = want.get(r.item, 0.0) + flt(r.quantity)
+		key = (r.item, row_warehouse(ro, r))
+		want[key] = want.get(key, 0.0) + flt(r.quantity)
 	return want
 
 
-def source_warehouse(ro) -> str | None:
-	"""The warehouse an M&R issues its parts from: the one picked on the order, else the
-	branch default. Single source of truth for the item picker, the stock guard and the
-	grid's Stok column, so all three always talk about the same warehouse."""
-	if ro.get("warehouse"):
-		return ro.warehouse
+def default_warehouse(ro) -> str | None:
+	"""The gudang a Part row starts from when the user has not picked one: the branch default
+	for the container's depot.
+
+	Only a seed and a fallback — the row owns the choice, and the controller stamps whatever
+	this resolves to back onto the row, so the grid always shows the gudang actually used.
+	Shared by the item picker, the stock guard and the Stok column so all three agree."""
 	return _default_warehouse(
 		_resolve_company(),
 		frappe.db.get_value("Container", ro.container, "depot") if ro.get("container") else None,
@@ -706,11 +737,12 @@ def on_hand_map(items, warehouse) -> dict:
 
 
 def assert_stock_available(ro):
-	"""Refuse an M&R whose source warehouse cannot cover its parts — stock must exist
-	before the part can be put on the order.
+	"""Refuse an M&R whose gudang cannot cover its parts — stock must exist before the part
+	can be put on the order.
 
-	Every shortfall goes into ONE message so a mis-entered estimate is fixed in a single
-	pass instead of one error per save. No-op when no source warehouse resolves yet: the
+	Checked per (item, gudang), because each row names its own warehouse. Every shortfall
+	goes into ONE message, naming the gudang, so a mis-entered estimate is fixed in a single
+	pass instead of one error per save. Rows with no gudang resolved yet are skipped: the
 	stock is unknowable then, and ``_issue_parts_stock`` refuses to run without one anyway.
 
 	Note this is about the message, not about data safety — ``allow_negative_stock`` is off
@@ -718,28 +750,25 @@ def assert_stock_available(ro):
 	catching the shortfall while the estimate is being typed, naming the part and the
 	numbers, instead of a raw Stock Entry error after the user presses Selesai.
 	"""
-	want = _requested_stock_qty(ro)
-	if not want:
-		return
-	warehouse = source_warehouse(ro)
-	if not warehouse:
-		return
 	short = []
-	for item_code, qty in want.items():
+	for (item_code, warehouse), qty in _requested_stock_qty(ro).items():
+		if not warehouse:
+			continue  # no gudang resolved yet — stock is unknowable, see the docstring
 		have = _on_hand(item_code, warehouse)
 		if flt(qty) > flt(have):
 			label = frappe.db.get_value("Item", item_code, "item_name") or item_code
-			short.append(_("{0} — diminta {1}, tersedia {2}").format(label, flt(qty), flt(have)))
+			short.append(
+				_("{0} di {1} — diminta {2}, tersedia {3}").format(label, warehouse, flt(qty), flt(have))
+			)
 	if short:
 		frappe.throw(
-			_("Stok tidak cukup di {0}:<br>{1}").format(warehouse, "<br>".join(short)),
-			title=_("Stok Tidak Cukup"),
+			_("Stok tidak cukup:<br>{0}").format("<br>".join(short)), title=_("Stok Tidak Cukup")
 		)
 
 
 def _issue_parts_stock(ro) -> str | None:
-	"""Issue the M&R's stockable Used Items out of the source warehouse as a Material
-	Issue. Returns the Stock Entry name, or ``None`` when nothing is stockable. Raises
+	"""Issue the M&R's stockable Used Items as a Material Issue — **each line out of its own
+	gudang**. Returns the Stock Entry name, or ``None`` when nothing is stockable. Raises
 	(rolling back the request) if stock is insufficient."""
 	lines = []
 	for r in ro.used_items:
@@ -750,25 +779,31 @@ def _issue_parts_stock(ro) -> str | None:
 		item = frappe.db.get_value("Item", r.item, ["is_stock_item", "stock_uom"], as_dict=True)
 		if not item or not item.is_stock_item:
 			continue
-		lines.append((r.item, flt(r.quantity), item.stock_uom))
+		wh = row_warehouse(ro, r)
+		if not wh:
+			frappe.throw(
+				_("Baris {0} ({1}) belum punya Gudang. Pilih gudangnya dulu.").format(r.idx, r.item)
+			)
+		lines.append((r.item, flt(r.quantity), item.stock_uom, wh))
 	if not lines:
 		return None
 
 	company = _resolve_company()
 	if not company:
 		frappe.throw(_("Tidak ada Company default untuk mengeluarkan part dari stok."))
-	warehouse = ro.warehouse or _default_warehouse(company, frappe.db.get_value("Container", ro.container, "depot"))
-	if not warehouse:
-		frappe.throw(_("Tidak ada warehouse sumber untuk mengeluarkan part. Pilih 'Gudang Sumber Part' dulu."))
 
 	se = frappe.new_doc("Stock Entry")
 	se.stock_entry_type = "Material Issue"
 	se.company = company
-	se.from_warehouse = warehouse
+	# Header from_warehouse only when every line agrees; otherwise the per-row s_warehouse
+	# below carries it, which is what lets one M&R draw from several gudang.
+	warehouses = {wh for *_, wh in lines}
+	if len(warehouses) == 1:
+		se.from_warehouse = next(iter(warehouses))
 	se.remarks = f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container}"
-	for item_code, qty, uom in lines:
+	for item_code, qty, uom, wh in lines:
 		se.append("items", {
-			"item_code": item_code, "qty": qty, "s_warehouse": warehouse,
+			"item_code": item_code, "qty": qty, "s_warehouse": wh,
 			"uom": uom, "stock_uom": uom, "conversion_factor": 1,
 		})
 	se.insert(ignore_permissions=True)
@@ -780,12 +815,11 @@ def save_mr_order(
 	repair_order=None,
 	used_items=None,
 	technician=None,
-	warehouse=None,
 	reff_doc=None,
 	remarks=None,
 	submit=False,
 ) -> dict:
-	"""Save the M&R's Used Items (+ source warehouse / remarks) and, when ``submit`` is
+	"""Save the M&R's Used Items (each with its own gudang) and, when ``submit`` is
 	true, complete it — which issues the stockable **approved** parts and returns the tank
 	to the ready pool. Used items may only be edited while Draft / Revision Requested;
 	completion is only allowed from In Progress (approval is mandatory). The copied
@@ -803,13 +837,9 @@ def save_mr_order(
 	if used_items is not None and ro.status not in MR_EDITABLE_STATUSES:
 		frappe.throw(_("Item hanya bisa diubah saat Draft / Revision Requested."))
 
-	if warehouse is not None:
-		warehouse = _clean(warehouse)
-		if warehouse:
-			assert_in_user_branch(branch=frappe.db.get_value("Warehouse", warehouse, "branch"))
-		ro.warehouse = warehouse
 	if used_items is not None:
 		_apply_used_items(ro, used_items)
+		_assert_warehouses_in_user_branch(ro)
 	if technician is not None:
 		ro.technician = _clean(technician)
 	# Optional reference doc (usually pre-filled from the EIR; editable here).

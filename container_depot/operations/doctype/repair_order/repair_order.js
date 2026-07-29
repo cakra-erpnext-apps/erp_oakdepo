@@ -84,31 +84,45 @@ frappe.ui.form.on('Repair Order', {
 	_set_queries(frm) {
 		// The Used-Items picker offers ONLY what the PWA M&R picker does: Depot Service Menu
 		// "Maintenance" ∩ the container owner's contract price list (see used_item_query).
-		// `warehouse` is read off the live form, not the saved doc: the stock shown next to
-		// each part must belong to the warehouse currently picked, even before Save.
-		frm.set_query('item', 'used_items', () => ({
-			query: 'container_depot.operations.doctype.repair_order.repair_order.used_item_query',
-			filters: { repair_order: frm.doc.name || '', warehouse: frm.doc.warehouse || '' },
+		// The picker is narrowed by the ROW: Jenis decides service vs part, and a part is
+		// offered only if that row's gudang actually holds it. Both are read off the live
+		// row, not the saved doc, so the list is right before Save.
+		frm.set_query('item', 'used_items', (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn] || {};
+			return {
+				query: 'container_depot.operations.doctype.repair_order.repair_order.used_item_query',
+				filters: {
+					repair_order: frm.doc.name || '',
+					warehouse: row.warehouse || '',
+					line_type: row.line_type || '',
+				},
+			};
+		});
+		// Real, enabled warehouses of the company, scoped to the container's branch.
+		frm.set_query('warehouse', 'used_items', () => ({
+			query: 'container_depot.operations.doctype.repair_order.repair_order.used_item_warehouse_query',
+			filters: { repair_order: frm.doc.name || '' },
 		}));
-	},
-	warehouse(frm) {
-		// Stock is per warehouse — switching it changes every part's Stok column.
-		frm.trigger('_refresh_on_hand');
 	},
 	_refresh_on_hand(frm) {
 		// The Stok column is stamped server-side on save; this keeps it current while the
-		// form sits open (another M&R may have consumed the same part meanwhile).
-		const items = [...new Set((frm.doc.used_items || []).map((r) => r.item).filter(Boolean))];
-		if (!items.length) return;
+		// form sits open (another M&R may have consumed the same part meanwhile). Asked per
+		// (item, gudang) because each row may draw from a different warehouse.
+		const pairs = (frm.doc.used_items || [])
+			.filter((r) => r.item && r.line_type !== 'Jasa')
+			.map((r) => ({ item: r.item, warehouse: r.warehouse || '' }));
+		if (!pairs.length) return;
 		frappe.call({
 			method: 'container_depot.operations.doctype.repair_order.repair_order.used_items_on_hand',
-			args: { items: JSON.stringify(items), warehouse: frm.doc.warehouse || '', repair_order: frm.doc.name || '' },
+			args: { pairs: JSON.stringify(pairs), repair_order: frm.doc.name || '' },
 			callback(r) {
 				const stock = r.message || {};
 				// Assigned directly, NOT via set_value: reading live stock must never mark the
 				// form dirty, or every visit would look like an unsaved edit.
 				(frm.doc.used_items || []).forEach((row) => {
-					row.on_hand = stock[row.item] != null ? stock[row.item] : null;
+					const wh = row.warehouse || '';
+					const hit = row.item && row.line_type !== 'Jasa' ? stock[`${row.item}::${wh}`] : null;
+					row.on_hand = hit != null ? String(hit) : null;
 				});
 				frm.refresh_field('used_items');
 			},
@@ -254,9 +268,23 @@ frappe.ui.form.on('Repair Order', {
 // Only manhour / manhour_rate / quantity / item_rate are editable; the amounts are derived
 // here for a live preview and recomputed identically by the server on save.
 frappe.ui.form.on('Repair Used Item', {
+	line_type(frm, cdt, cdn) {
+		// Jenis narrows the picker, so an item chosen under the old Jenis is no longer valid.
+		const row = frappe.get_doc(cdt, cdn);
+		if (row.item) frappe.model.set_value(cdt, cdn, 'item', null);
+		if (row.line_type === 'Jasa') frappe.model.set_value(cdt, cdn, 'warehouse', null);
+	},
+	warehouse(frm, cdt, cdn) {
+		// Stock is per gudang: a part valid in one warehouse may not exist in another, and
+		// the Stok figure has to follow the row's own warehouse.
+		const row = frappe.get_doc(cdt, cdn);
+		if (row.item) frappe.model.set_value(cdt, cdn, 'item', null);
+		frm.trigger('_refresh_on_hand');
+	},
 	item(frm, cdt, cdn) {
 		const row = frappe.get_doc(cdt, cdn);
 		if (!row.item || frm.is_new()) return;
+		frm.trigger('_refresh_on_hand');
 		// Default the cost inputs from the owner's Item Price for the picked item.
 		frappe.call({
 			method: 'container_depot.ess.repairs.mr_item_pricing',
@@ -265,14 +293,10 @@ frappe.ui.form.on('Repair Used Item', {
 				const b = r.message || {};
 				// Currency follows the item's own Item Price (lines may differ).
 				frappe.model.set_value(cdt, cdn, 'currency', b.currency || '');
-				frappe.model.set_value(cdt, cdn, 'manhour', flt(b.manhour));
-				frappe.model.set_value(cdt, cdn, 'manhour_rate', flt(b.manhour_rate));
 				frappe.model.set_value(cdt, cdn, 'item_rate', flt(b.item_rate));
 			},
 		});
 	},
-	manhour: price_used_row,
-	manhour_rate: price_used_row,
 	quantity: price_used_row,
 	item_rate: price_used_row,
 	decision: recompute_used_total,
