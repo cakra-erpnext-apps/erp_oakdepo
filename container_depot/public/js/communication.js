@@ -25,8 +25,11 @@ function open_prefilled(doctype, values) {
 
 // --- Orders made from this email -------------------------------------------------
 // The `reff_email` link was only readable from the order side, so the email itself could
-// not say whether it had already been turned into work. This lists them, newest first,
-// with the state each one is in.
+// not say whether it had already been turned into work. This lists them at the top of the
+// email — newest first, with the state each one is in — and each row routes to the order.
+//
+// Shown even when there is nothing yet: "belum ada order" is the answer an operator opens
+// the email to get, and a card that only exists sometimes is a card nobody looks for.
 //
 // Rendered as a dashboard section with the standard `custom` class: the form's refresh
 // wipes those before running this handler, so re-adding here can never stack up.
@@ -34,30 +37,40 @@ const LINKED_SECTION = "custom oak-email-orders";
 
 function order_row(o) {
 	const esc = frappe.utils.escape_html;
-	const route = `/app/${frappe.router.slug(o.doctype)}/${encodeURIComponent(o.name)}`;
 	const subtitle = [__(o.doctype), o.subtitle].filter(Boolean).map(esc).join(" · ");
+	// get_form_link builds the desk's own route, so the link survives wherever the desk is
+	// mounted — and being a real <a>, it can also be opened in a new tab.
+	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
 	return `
-		<div class="flex items-center justify-between py-2 border-bottom">
+		<div class="flex justify-between align-center py-2 border-bottom">
 			<div class="ellipsis">
-				<a href="${route}" class="bold">${esc(o.name)}</a>
+				<div class="bold">${link}</div>
 				<div class="text-muted small ellipsis">${subtitle}</div>
 			</div>
-			${o.state ? `<span class="indicator-pill no-indicator-dot whitespace-nowrap">${esc(__(o.state))}</span>` : ""}
+			${o.state ? `<span class="indicator-pill blue no-indicator-dot">${esc(__(o.state))}</span>` : ""}
 		</div>`;
 }
 
+function empty_row() {
+	return `<div class="text-muted py-2">${__("Belum ada order dari email ini. Pakai tombol Buat Order di atas.")}</div>`;
+}
+
 function show_linked_orders(frm) {
+	const shown_for = frm.doc.name;
 	frappe.call({
 		method: "container_depot.operations.mail_to_order.linked_orders",
 		args: { communication: frm.doc.name },
 	}).then((r) => {
+		// Stale guard: the reply can land after the form has moved to another email, and the
+		// section belongs to the one it was asked for.
+		if (frm.doc.name !== shown_for) return;
 		const orders = r.message || [];
-		// Stale guard: an async reply that lands after the user has routed away, or after a
-		// second refresh already drew the section.
-		if (frm.doc.name !== frappe.get_route()[2]) return;
 		frm.dashboard.parent.find(".oak-email-orders").remove();
-		if (!orders.length) return;
-		frm.dashboard.add_section(orders.map(order_row).join(""), __("Order dari Email Ini"), LINKED_SECTION);
+		frm.dashboard.add_section(
+			orders.length ? orders.map(order_row).join("") : empty_row(),
+			__("Order dari Email Ini"),
+			LINKED_SECTION
+		);
 	});
 }
 
