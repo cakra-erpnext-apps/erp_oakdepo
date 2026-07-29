@@ -43,14 +43,18 @@ MR_TRANSITIONS = {
 	# there, Admin Ops arranges it, and only ``publish_to_owner`` moves it to Pending
 	# Approval — the first status the customer web can see. Pending Approval -> Service
 	# Setup is the withdraw ("tarik ulang"), which re-opens editing for a re-submit.
+	# "Draft" appears on every in-flight status because a human can always mis-enter or miss
+	# an item — ``reopen_to_draft`` (Adm Ops) rewinds a Service Setup / Pending Approval /
+	# Approved / In Progress M&R back to an editable Draft to fix it, then it goes through
+	# approval again. Completed is deliberately excluded (parts already issued → Cancel instead).
 	"Draft": ["Service Setup", "Approved", "Cancelled"],
-	"Revision Requested": ["Service Setup", "Approved", "Cancelled"],  # editable like Draft
+	"Revision Requested": ["Service Setup", "Approved", "Draft", "Cancelled"],  # editable like Draft
 	"Service Setup": ["Pending Approval", "Draft", "Approved", "Cancelled"],
-	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Service Setup", "Cancelled"],
-	"Approved": ["In Progress", "Cancelled"],
-	"In Progress": ["Completed", "Cancelled"],
+	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Service Setup", "Draft", "Cancelled"],
+	"Approved": ["In Progress", "Draft", "Cancelled"],
+	"In Progress": ["Completed", "Draft", "Cancelled"],
 	"Completed": [],
-	"Rejected": [],
+	"Rejected": ["Draft"],
 	"Cancelled": [],
 }
 # Statuses where the depot may still edit the estimate (used items). Service Setup is
@@ -123,6 +127,29 @@ def _on_hand(item_code, warehouse=None) -> float:
 	return flt(total[0][0]) if total else 0.0
 
 
+def _out_of_stock_items(warehouse) -> set:
+	"""Stock items the source warehouse cannot supply (no Bin row, or qty <= 0).
+
+	Service items are never in here — a service has nothing to run out of, so it stays
+	offerable forever. Returns an empty set when no warehouse is resolved yet (a brand-new
+	M&R): we cannot know the stock then, and hiding every part would be worse than showing
+	one that later fails at completion.
+	"""
+	if not warehouse:
+		return set()
+	stock_items = set(frappe.get_all("Item", filters={"is_stock_item": 1, "disabled": 0}, pluck="name"))
+	if not stock_items:
+		return set()
+	available = set(
+		frappe.get_all(
+			"Bin",
+			filters={"warehouse": warehouse, "item_code": ["in", list(stock_items)], "actual_qty": [">", 0]},
+			pluck="item_code",
+		)
+	)
+	return stock_items - available
+
+
 def _photos_list(value) -> list:
 	"""Parse a Used Item ``photos`` JSON string into a list of file URLs."""
 	if not value:
@@ -146,16 +173,23 @@ def list_warehouses(repair_order=None, container=None) -> dict:
 
 
 # --- item picker (priced by owner; service or part) --------------------------
-def mr_item_search(search=None, repair_order=None, start=0, page_length=20) -> dict:
+def mr_item_search(search=None, repair_order=None, start=0, page_length=20, warehouse=None) -> dict:
 	"""Item picker for the Used-Items section — services AND parts that have a selling
 	Item Price in the owner's price list. Stock items carry their on-hand qty (at the
-	M&R's source warehouse). When the owner has no price list, falls back to all items."""
-	pl = warehouse = None
+	M&R's source warehouse). When the owner has no price list, falls back to all items.
+
+	``warehouse`` overrides the M&R's stored source warehouse. The caller passes the one
+	currently picked on the *unsaved* form, so the stock shown belongs to the warehouse the
+	user is actually looking at — reading it back from the database would show the previous
+	warehouse's stock until the form is saved.
+	"""
+	pl = None
+	warehouse = _clean(warehouse) or None
 	if repair_order:
 		ro = frappe.db.get_value("Repair Order", repair_order, ["principal", "container", "warehouse"], as_dict=True) or frappe._dict()
 		principal = ro.principal or (frappe.db.get_value("Container", ro.container, "principal") if ro.container else None)
 		pl = _owner_price_list(principal)
-		warehouse = ro.warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
+		warehouse = warehouse or ro.warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
 
 	priced = (
 		frappe.get_all("Item Price", filters={"price_list": pl, "selling": 1}, pluck="item_code", distinct=True)
@@ -169,6 +203,14 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20) -> d
 	if is_real_menu(MR_MENU):
 		base = priced if priced is not None else frappe.get_all("Item", filters={"disabled": 0}, pluck="name")
 		names = filter_items_by_menu(base, MR_MENU)
+	# A part that the source warehouse does not hold cannot be used, so it is dropped from
+	# the picker; services are untouched. Filtered BEFORE the query so pagination stays
+	# honest (a page of 20 never comes back short).
+	empty = _out_of_stock_items(warehouse)
+	if empty:
+		if names is None:
+			names = frappe.get_all("Item", filters={"disabled": 0}, pluck="name")
+		names = [n for n in names if n not in empty]
 	if names is not None:
 		filters["name"] = ["in", names or [""]]
 	or_filters = None
@@ -183,8 +225,10 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20) -> d
 	)
 	for it in items:
 		it["rate"] = resolve_price(it["item_code"], pl)  # computed, hidden in the PWA
-		it["on_hand"] = _on_hand(it["item_code"], warehouse) if it.get("is_stock_item") else None
-	return {"items": items, "price_list": pl}
+		# Only ever report stock for a known warehouse. Without one, _on_hand would total
+		# every warehouse in the company — a number no single M&R can actually issue.
+		it["on_hand"] = _on_hand(it["item_code"], warehouse) if (it.get("is_stock_item") and warehouse) else None
+	return {"items": items, "price_list": pl, "warehouse": warehouse}
 
 
 # --- worklist ----------------------------------------------------------------
@@ -220,7 +264,13 @@ def item_pricing(repair_order, item) -> dict:
 	from container_depot.pricing_model import item_rate_breakdown
 
 	price_list = frappe.get_doc("Repair Order", repair_order).owner_price_list()
-	return item_rate_breakdown(item, price_list)
+	breakdown = item_rate_breakdown(item, price_list)
+	# An item with no Item Price still bills in the owner's currency (the contract currency,
+	# e.g. USD) — not the site default — so the grid never falls back to IDR. Mirrors the
+	# fallback in RepairOrder.calculate_totals.
+	if not breakdown.get("currency") and price_list:
+		breakdown["currency"] = frappe.db.get_value("Price List", price_list, "currency")
+	return breakdown
 
 
 def list_mr_execution(start=0, page_length=20, search=None) -> dict:
@@ -413,6 +463,45 @@ def withdraw_from_owner(repair_order, note=None):
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 
+def reopen_to_draft(repair_order, note=None):
+	"""Rewind an in-flight M&R back to an editable **Draft** so a human can fix a wrong /
+	missing input, then run it through approval again.
+
+	Allowed from Service Setup, Pending Approval, Approved, In Progress and Rejected — every
+	stage before the parts are actually issued. NOT from Completed (the stock issue already
+	happened; use Cancel + a fresh order) nor Cancelled. Wipes the approval round entirely
+	(per-line decisions, requested_on / decided_on / decided_by) so the re-quote starts clean;
+	the used items are kept — editing them is the whole point. Adm Ops action (role gate in the
+	ESS wrapper); branch-guarded here."""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	REOPENABLE = ("Service Setup", "Pending Approval", "Approved", "In Progress", "Rejected", "Revision Requested")
+	if ro.status not in REOPENABLE:
+		frappe.throw(
+			_("M&R {0} tidak bisa dikembalikan ke Draft (part sudah dikeluarkan / order sudah ditutup).").format(ro.status)
+		)
+	for r in ro.used_items or []:
+		r.decision = "Pending"
+		r.owner_remark = None
+	prev = ro.status
+	ro.status = "Draft"
+	ro.requested_on = None
+	ro.decided_on = None
+	ro.decided_by = None
+	if note:
+		ro.owner_note = _clean(note)
+	ro.save()
+	# Audit trail on the timeline — best-effort, must not block the reopen.
+	try:
+		msg = _("M&R dikembalikan ke Draft dari {0} oleh {1}").format(prev, frappe.session.user)
+		if note:
+			msg += ": " + _clean(note)
+		ro.add_comment("Comment", msg)
+	except Exception:
+		frappe.log_error(title="M&R reopen_to_draft comment", message=frappe.get_traceback())
+	return {"success": True, "name": ro.name, "status": ro.status}
+
+
 def bypass_approval(repair_order, note=None):
 	"""Admin-Ops BYPASS: approve the estimate directly (Draft / Revision Requested ->
 	Approved) without sending it to the owner. Same preconditions as ``submit_for_approval``
@@ -570,6 +659,84 @@ def _apply_used_items(ro, used_items) -> None:
 	ro.set("used_items", rows)
 
 
+def _requested_stock_qty(ro) -> dict:
+	"""Stockable quantity this M&R will actually issue, summed **per item**.
+
+	Mirrors :func:`_issue_parts_stock` line for line — an owner-rejected line is never
+	issued, so it is never counted against stock either. Summing per item (not per row) is
+	the point: two rows of one seal kit are a single demand of two.
+	"""
+	want = {}
+	for r in ro.used_items or []:
+		if (r.get("decision") or "Pending") == "Rejected":
+			continue
+		if not r.item or flt(r.quantity) <= 0:
+			continue
+		if not frappe.db.get_value("Item", r.item, "is_stock_item"):
+			continue
+		want[r.item] = want.get(r.item, 0.0) + flt(r.quantity)
+	return want
+
+
+def source_warehouse(ro) -> str | None:
+	"""The warehouse an M&R issues its parts from: the one picked on the order, else the
+	branch default. Single source of truth for the item picker, the stock guard and the
+	grid's Stok column, so all three always talk about the same warehouse."""
+	if ro.get("warehouse"):
+		return ro.warehouse
+	return _default_warehouse(
+		_resolve_company(),
+		frappe.db.get_value("Container", ro.container, "depot") if ro.get("container") else None,
+	)
+
+
+def on_hand_map(items, warehouse) -> dict:
+	"""``{item_code: qty}`` at ``warehouse`` for the stockable members of ``items``.
+
+	Services are simply absent from the result — they have no stock to report, and an
+	explicit 0 would read as "habis" in the grid.
+	"""
+	items = [i for i in (items or []) if i]
+	if not (items and warehouse):
+		return {}
+	stockable = frappe.get_all(
+		"Item", filters={"name": ["in", items], "is_stock_item": 1}, pluck="name"
+	)
+	return {code: _on_hand(code, warehouse) for code in stockable}
+
+
+def assert_stock_available(ro):
+	"""Refuse an M&R whose source warehouse cannot cover its parts — stock must exist
+	before the part can be put on the order.
+
+	Every shortfall goes into ONE message so a mis-entered estimate is fixed in a single
+	pass instead of one error per save. No-op when no source warehouse resolves yet: the
+	stock is unknowable then, and ``_issue_parts_stock`` refuses to run without one anyway.
+
+	Note this is about the message, not about data safety — ``allow_negative_stock`` is off
+	and a failed Material Issue already rolls the whole completion back. What it buys is
+	catching the shortfall while the estimate is being typed, naming the part and the
+	numbers, instead of a raw Stock Entry error after the user presses Selesai.
+	"""
+	want = _requested_stock_qty(ro)
+	if not want:
+		return
+	warehouse = source_warehouse(ro)
+	if not warehouse:
+		return
+	short = []
+	for item_code, qty in want.items():
+		have = _on_hand(item_code, warehouse)
+		if flt(qty) > flt(have):
+			label = frappe.db.get_value("Item", item_code, "item_name") or item_code
+			short.append(_("{0} — diminta {1}, tersedia {2}").format(label, flt(qty), flt(have)))
+	if short:
+		frappe.throw(
+			_("Stok tidak cukup di {0}:<br>{1}").format(warehouse, "<br>".join(short)),
+			title=_("Stok Tidak Cukup"),
+		)
+
+
 def _issue_parts_stock(ro) -> str | None:
 	"""Issue the M&R's stockable Used Items out of the source warehouse as a Material
 	Issue. Returns the Stock Entry name, or ``None`` when nothing is stockable. Raises
@@ -652,6 +819,9 @@ def save_mr_order(
 		ro.remarks = remarks
 
 	if submitting:
+		# Re-checked here (not just on save): stock can drop between the estimate and the
+		# completion when another M&R issues the same part first.
+		assert_stock_available(ro)
 		stock_entry = _issue_parts_stock(ro)
 		if stock_entry:
 			ro.stock_entry = stock_entry

@@ -28,6 +28,19 @@ from container_depot.tests.test_container_booking import (
 )
 
 
+def _ensure_service_item():
+	"""A non-stock service item for the M&R fixture — non-stock so the Repair Order's
+	stock guard (``mr.assert_stock_available``) has nothing to check."""
+	code = "CB-TEST-MR-SERVICE"
+	if not frappe.db.exists("Item", code):
+		frappe.get_doc({
+			"doctype": "Item", "item_code": code, "item_name": "CB Test M&R Service",
+			"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups",
+			"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+		}).insert(ignore_permissions=True)
+	return code
+
+
 def _cleanup_surveys(customer):
 	"""Raw-delete every Survey Order for the customer (+ its charges), regardless of
 	docstatus, and drop any leftover draft Sales Invoices."""
@@ -243,8 +256,13 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 		})
 		cont.flags.ignore_mandatory = True
 		cont.insert(ignore_permissions=True)
+		# An M&R is billed item by item (so the invoice can charge labour off each
+		# item_code), so the fixture needs a real used-item line — a bare total_cost no
+		# longer produces anything to bill.
+		service = _ensure_service_item()
 		ro = frappe.get_doc({
 			"doctype": "Repair Order", "container": cno, "status": "Draft", "billing_status": "Unbilled",
+			"used_items": [{"item": service, "quantity": 1, "item_rate": 100000}],
 		})
 		ro.flags.ignore_mandatory = True
 		ro.insert(ignore_permissions=True)
@@ -272,8 +290,14 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 			)
 			self.assertEqual(frappe.db.get_value("Repair Order", ro.name, "billing_status"), "Unbilled")
 		finally:
+			frappe.db.delete("Repair Used Item", {"parent": ro.name, "parenttype": "Repair Order"})
 			frappe.db.delete("Repair Order", {"name": ro.name})
 			frappe.db.delete("Container", cno)
+			# The fixture item is created here, so it is removed here — the row above must go
+			# first or the Item delete trips its link check.
+			if frappe.db.exists("Item", service):
+				frappe.delete_doc("Item", service, force=True, ignore_permissions=True)
+			frappe.db.commit()
 
 
 class TestConsolidatedBillingPostpaidSplit(FrappeTestCase):

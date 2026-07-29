@@ -232,6 +232,16 @@ def mr_decision(repair_order=None, decision=None, line_decisions=None, note=None
 
 
 @frappe.whitelist(methods=["POST"])
+def mr_reopen_draft(repair_order=None, note=None):
+	"""POST /api/v1/ess/mr-reopen-draft — Admin Ops rewinds an in-flight M&R back to an
+	editable Draft (fix a wrong / missing input), from Service Setup / Pending Approval /
+	Approved / In Progress / Rejected. Role-guarded to Admin Ops."""
+	_require_admin_ops()
+	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
+	return mr.reopen_to_draft(repair_order, note=note)
+
+
+@frappe.whitelist(methods=["POST"])
 def mr_bypass_approval(repair_order=None, note=None):
 	"""POST /api/v1/ess/mr-bypass-approval — Admin-Ops direct approval (skip the owner):
 	Draft / Revision Requested -> Approved. Role-guarded to Admin Ops."""

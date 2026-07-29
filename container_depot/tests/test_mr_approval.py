@@ -131,6 +131,13 @@ class TestMRApproval(FrappeTestCase):
 		self._stock_entries.append(se.name)
 		return se.name
 
+	def _stocked(self, qty):
+		"""Warehouse holding ``qty`` of _PART — a part may only be put on an M&R when the
+		source warehouse has it (mr.assert_stock_available)."""
+		wh = self._ensure_warehouse()
+		self._receive_stock(wh, qty)
+		return wh
+
 	def _draft_ro(self, cno):
 		c = _make_container(cno, principal=_CUST)
 		self._containers.append(c)
@@ -146,7 +153,15 @@ class TestMRApproval(FrappeTestCase):
 	def _submit(self, ro, used_items, warehouse=None):
 		"""Estimate -> workshop submit (Admin Ops) -> published to the customer. The
 		publish step is the Admin-Ops gate added later; these tests are about what the
-		OWNER does, so the helper drives straight through it to Pending Approval."""
+		OWNER does, so the helper drives straight through it to Pending Approval.
+
+		A part may only sit on an M&R when the source warehouse holds it
+		(``mr.assert_stock_available``), so any fixture that uses ``_PART`` gets stock
+		seeded behind it — these tests are about approval, not about running out."""
+		wanted = sum(flt(u.get("quantity") or 0) for u in used_items if u.get("item") == _PART)
+		if wanted and warehouse is None:
+			warehouse = self._ensure_warehouse()
+			self._receive_stock(warehouse, wanted)
 		mr.save_mr_order(repair_order=ro, used_items=used_items, warehouse=warehouse, submit=False)
 		mr.submit_for_approval(ro)
 		mr.publish_to_owner(ro)
@@ -214,7 +229,7 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(doc.revision_no, 1)
 		self.assertEqual(doc.owner_note, "please adjust")
 		# Editable again — change the estimate and re-submit; decisions reset to Pending.
-		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 2}], submit=False)
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 2}], warehouse=self._stocked(2), submit=False)
 		mr.submit_for_approval(ro)
 		# A revised estimate goes back through the Admin-Ops gate before the customer
 		# sees it again, exactly like a first-time one.
@@ -231,6 +246,7 @@ class TestMRApproval(FrappeTestCase):
 		mr.save_mr_order(
 			repair_order=ro,
 			used_items=[{"item": _PART, "quantity": 1}, {"item": _SERVICE, "quantity": 1}],
+			warehouse=self._stocked(1),
 			submit=False,
 		)
 		mr.bypass_approval(ro, note="urgent")
@@ -248,6 +264,34 @@ class TestMRApproval(FrappeTestCase):
 		_, ro = self._draft_ro("MRABYP00002")
 		with self.assertRaises(frappe.ValidationError):
 			mr.bypass_approval(ro)
+
+	def test_reopen_to_draft_rewinds_and_resets_approval(self):
+		# Human-error recovery: an Approved M&R rewinds to an editable Draft, wiping the
+		# approval round, and can be re-approved after the fix.
+		_, ro = self._draft_ro("MRARE000001")
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 1}], warehouse=self._stocked(1), submit=False)
+		mr.bypass_approval(ro)  # -> Approved
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Approved")
+		mr.reopen_to_draft(ro, note="kurang input")
+		doc = frappe.get_doc("Repair Order", ro)
+		self.assertEqual(doc.status, "Draft")
+		self.assertIsNone(doc.decided_on)
+		self.assertIsNone(doc.requested_on)
+		self.assertTrue(all(r.decision == "Pending" for r in doc.used_items))
+		self.assertGreaterEqual(len(doc.used_items), 1)  # items kept for editing
+		mr.bypass_approval(ro)  # editable again → re-approve
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Approved")
+
+	def test_reopen_blocked_after_completed(self):
+		# Completed already issued parts — reopen refuses (Cancel + fresh order instead).
+		_, ro = self._draft_ro("MRARE000002")
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		mr.bypass_approval(ro)
+		mr.start_repair(ro)
+		mr.save_mr_order(repair_order=ro, submit=True)  # -> Completed
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Completed")
+		with self.assertRaises(frappe.ValidationError):
+			mr.reopen_to_draft(ro)
 
 	def test_state_machine_allows_draft_to_approved_bypass(self):
 		# The direct edge is legal in the state machine (Admin-Ops-guarded in the ESS layer),
@@ -284,9 +328,11 @@ class TestMRApproval(FrappeTestCase):
 		self.assertIn(ro_prog, names)   # In Progress
 		self.assertNotIn(ro_draft, names)  # Draft is estimate-phase (ERP only)
 
-	# --- labour + item costing, adjustable inputs -----------------------------
-	def test_manhour_line_costs_and_is_adjustable(self):
-		# Total Cost = (manhour × manhour_rate) + (qty × item_rate).
+	# --- item costing, adjustable inputs --------------------------------------
+	def test_line_costs_the_item_only_and_is_adjustable(self):
+		"""Total Cost = qty × item_rate. Labour is NOT costed on the M&R — the invoice
+		charges it from the billed item's own manhour_rate (consolidated_billing._mr_lines
+		bills item by item), so counting it here too would double-charge the owner."""
 		svc = "MRA-REPAIR"
 		if not frappe.db.exists("Item", svc):
 			frappe.get_doc({
@@ -308,24 +354,37 @@ class TestMRApproval(FrappeTestCase):
 		doc.append("used_items", {"item": svc, "quantity": 2})
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
-		self.assertEqual(flt(row.manhour), 2.0)          # seeded from the Item
-		self.assertEqual(flt(row.manhour_rate), 5.0)     # seeded from the Item Price
 		self.assertEqual(flt(row.item_rate), 10.0)       # seeded from Item.material_cost
-		self.assertEqual(flt(row.manhour_amount), 10.0)  # 2 × 5 (labour, NOT × qty)
 		self.assertEqual(flt(row.item_amount), 20.0)     # 2 × 10
-		self.assertEqual(flt(row.amount), 30.0)          # 10 + 20
-		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 30.0)
+		self.assertEqual(flt(row.amount), 20.0)          # labour excluded
+		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 20.0)
 
-		# The inputs are adjustable; the three amounts are always re-derived from them.
+		# The rate is adjustable; the amounts are always re-derived from it.
 		doc = frappe.get_doc("Repair Order", ro)
-		doc.used_items[0].manhour_rate = 8.0
 		doc.used_items[0].item_rate = 15.0
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
-		self.assertEqual(flt(row.manhour_amount), 16.0)  # 2 × 8
 		self.assertEqual(flt(row.item_amount), 30.0)     # 2 × 15
-		self.assertEqual(flt(row.amount), 46.0)          # 16 + 30
-		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 46.0)
+		self.assertEqual(flt(row.amount), 30.0)
+		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 30.0)
+
+	def test_mr_is_billed_item_by_item_so_the_invoice_can_charge_labour(self):
+		"""The M&R sweep must emit one line PER USED ITEM carrying its item_code — that is
+		the only way invoicing.create_draft_sales_invoice can look up the contract manhour.
+		A lump "M&R RO-xxx" line would book zero hours."""
+		from container_depot.consolidated_billing import _mr_lines
+
+		_, ro = self._draft_ro("MRABILL0001")
+		self._submit(ro, [{"item": _PART, "quantity": 2}, {"item": _SERVICE, "quantity": 1}])
+		mr.record_decision(ro, "Approved")
+		mr.start_repair(ro)
+		mr.save_mr_order(repair_order=ro, submit=True)
+		frappe.db.set_value("Repair Order", ro, "billing_status", "Unbilled", update_modified=False)
+
+		units = _mr_lines(_CUST, "2000-01-01 00:00:00", f"{frappe.utils.today()} 23:59:59")
+		lines = [ln for u in units for ln in u["lines"]]
+		self.assertEqual({ln["item_code"] for ln in lines}, {_PART, _SERVICE})
+		self.assertTrue(all(ln.get("item_code") for ln in lines), "every line must carry item_code")
 
 	# --- multi-currency totals ------------------------------------------------
 	def test_multi_currency_totals_grouped_by_item_price(self):
@@ -338,6 +397,7 @@ class TestMRApproval(FrappeTestCase):
 
 		_, ro = self._draft_ro("MRAMUL00001")
 		doc = frappe.get_doc("Repair Order", ro)
+		doc.warehouse = self._stocked(1)  # the part has to exist before it can go on the order
 		doc.append("used_items", {"item": _PART, "quantity": 1})     # 100 USD
 		doc.append("used_items", {"item": _SERVICE, "quantity": 2})  # 50 × 2 = 100 EUR
 		doc.save(ignore_permissions=True)

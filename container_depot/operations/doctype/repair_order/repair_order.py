@@ -18,6 +18,21 @@ class RepairOrder(Document):
 
 	def validate(self):
 		self._validate_status_transition()
+		self._validate_stock_available()
+
+	def _validate_stock_available(self):
+		"""A part may only sit on an M&R when the source warehouse actually holds it.
+
+		Placed in validate() so it covers every path — the Desk grid, the PWA, and
+		``mr.save_mr_order`` alike. Closed orders are skipped: Completed has *already*
+		issued its parts (on-hand is now lower by exactly that amount, so re-checking would
+		always fail), and Cancelled / Rejected must stay closable whatever the stock says.
+		"""
+		if self.status in ("Completed", "Cancelled", "Rejected"):
+			return
+		from container_depot.operations.mr import assert_stock_available
+
+		assert_stock_available(self)
 
 	def _validate_status_transition(self):
 		"""Enforce the owner-approval status machine (MR_TRANSITIONS). The transition
@@ -38,7 +53,22 @@ class RepairOrder(Document):
 		"""Auto-fetch principal, calculate costs, and update container status"""
 		self.fetch_principal_from_container()
 		self.calculate_totals()
+		self.stamp_on_hand()
 		self.update_container_status()
+
+	def stamp_on_hand(self):
+		"""Fill each part row's ``on_hand`` from the source warehouse so the grid shows what
+		is still usable without opening the item picker. Services are left empty — they
+		cannot run out, and a 0 there would read as "habis". Stamped on every save; the Desk
+		form additionally refreshes it live (see repair_order.js)."""
+		from container_depot.operations.mr import on_hand_map, source_warehouse
+
+		rows = self.get("used_items") or []
+		if not rows:
+			return
+		stock = on_hand_map([r.item for r in rows], source_warehouse(self))
+		for row in rows:
+			row.on_hand = stock.get(row.item)
 
 	def on_update(self):
 		# This order's new status is now persisted — flip the container In_Depot <->
@@ -80,15 +110,21 @@ class RepairOrder(Document):
 		return price_list_for_customer(principal) if principal else None
 
 	def calculate_totals(self):
-		"""Cost each Service & Parts line as labour + item:
+		"""Cost each Service & Parts line from the item alone:
 
-		    Amount Cost Manhour = manhour × manhour_rate
 		    Amount Item Rate    = quantity × item_rate
-		    Total Cost (amount) = Amount Cost Manhour + Amount Item Rate
+		    Total Cost (amount) = Amount Item Rate
 
-		``manhour``, ``manhour_rate``, ``quantity`` and ``item_rate`` are the ADJUSTABLE inputs
-		(seeded from the owner's Item Price when a line is first added); the three amounts are
-		always derived here, so they stay read-only in the UI.
+		**Labour is not costed here.** It is charged on the invoice, which stamps every billed
+		line with the manhour its contract books for that item and totals them once in the
+		header (``invoicing.apply_manhour_charge``). That only works because an M&R is billed
+		item by item — see ``consolidated_billing._mr_lines``. The ``manhour`` /
+		``manhour_rate`` / ``manhour_amount`` fields are kept on the row (hidden) so historical
+		orders keep their figures, but nothing recomputes or totals them.
+
+		``quantity`` and ``item_rate`` are the ADJUSTABLE inputs (seeded from the owner's Item
+		Price when a line is first added); the amounts are always derived here, so they stay
+		read-only in the UI.
 
 		Each line's currency follows its own Item Price, so a Repair Order can MIX currencies.
 		Totals are therefore grouped by currency into the ``totals`` table (one row per
@@ -99,7 +135,15 @@ class RepairOrder(Document):
 		from container_depot.pricing_model import item_rate_breakdown
 
 		price_list = self.owner_price_list()
-		default_currency = frappe.db.get_default("currency")
+		# Fallback currency for a line whose item has no Item Price = the OWNER'S price-list
+		# currency (i.e. the contract currency, e.g. USD for Bertschi), NOT the site default
+		# (IDR). Otherwise an item missing from the price list silently drags the line — and
+		# the empty grid — back to IDR even though the whole M&R is priced in the owner's
+		# currency. Falls back to the site default only when the owner has no price list.
+		default_currency = (
+			(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
+			or frappe.db.get_default("currency")
+		)
 		numeric_total = 0.0
 		by_currency = {}
 
@@ -111,16 +155,13 @@ class RepairOrder(Document):
 			# Currency always follows the item's own Item Price (fixes the old default-to-IDR).
 			if row.item:
 				row.currency = breakdown.get("currency") or row.currency or default_currency
-			# Seed the adjustable inputs from the owner's Item Price the first time a line is
+			# Seed the adjustable rate from the owner's Item Price the first time a line is
 			# added (a fresh line carries only item + qty); manual edits are kept afterwards.
-			if row.item and not (flt(row.manhour) or flt(row.manhour_rate) or flt(row.item_rate)):
-				row.manhour = breakdown.get("manhour") or 0.0
-				row.manhour_rate = breakdown.get("manhour_rate") or 0.0
+			if row.item and not flt(row.item_rate):
 				row.item_rate = breakdown.get("item_rate") or 0.0
-			# Derived amounts (read-only in the UI).
-			row.manhour_amount = flt(row.manhour) * flt(row.manhour_rate)
+			# Derived amounts (read-only in the UI). Labour is the invoice's job.
 			row.item_amount = flt(row.quantity or 0.0) * flt(row.item_rate)
-			row.amount = row.manhour_amount + row.item_amount
+			row.amount = row.item_amount
 			# Owner-rejected lines aren't repaired or billed — exclude from every total.
 			if (row.get("decision") or "Pending") != "Rejected":
 				numeric_total += row.amount
@@ -175,3 +216,68 @@ class RepairOrder(Document):
 				performed_by=self.get("technician"),
 				summary=f"Repair {self.status}" + (f" (cost {self.total_cost})" if self.get("total_cost") else ""),
 			)
+
+
+@frappe.whitelist()
+def used_item_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Link-field query for the Repair Order "Used Items" item picker.
+
+	Restricts the catalogue to exactly what the PWA M&R picker shows: members of the Depot
+	Service Menu "Maintenance" that ALSO have a selling Item Price in the container owner's
+	price list (the owner's contract rate card). So Desk and the PWA never offer different
+	items, and Admin Ops can't pick a service the owner isn't priced/contracted for.
+	Delegates to ``operations.mr.mr_item_search`` (same menu ∩ price-list logic); it falls
+	back safely to all items only when the owner has no price list / the menu is unset.
+
+	Each option carries a third column telling the two kinds apart at a glance — "Jasa" for
+	a service (nothing to run out of) or the on-hand qty for a part, so the picker answers
+	"can I still use this, and how many?" before the row is even added. Frappe joins the
+	columns after the first into the option's description (desk/search.py
+	``build_for_autosuggest``). Parts the source warehouse cannot supply are already absent
+	(``mr._out_of_stock_items``), so a shown qty is always usable.
+	"""
+	from frappe.utils import flt as _flt
+
+	from container_depot.operations import mr
+
+	filters = filters or {}
+	res = mr.mr_item_search(
+		search=txt,
+		repair_order=filters.get("repair_order"),
+		warehouse=filters.get("warehouse"),
+		start=start,
+		page_length=page_len,
+	)
+	known_warehouse = bool(res.get("warehouse"))
+	out = []
+	for i in res.get("items", []):
+		if not i.get("is_stock_item"):
+			hint = frappe._("Jasa")
+		elif known_warehouse:
+			hint = frappe._("Stok {0} {1}").format(f"{_flt(i.get('on_hand')):g}", i.get("stock_uom") or "").strip()
+		else:
+			# No source warehouse resolved: say so rather than show a company-wide total
+			# that this M&R could not actually issue.
+			hint = frappe._("Pilih Gudang Sumber Part dulu")
+		out.append([i["item_code"], i.get("item_name"), hint])
+	return out
+
+
+@frappe.whitelist()
+def used_items_on_hand(items, warehouse=None, repair_order=None):
+	"""Live stock for the Used-Items grid's Stok column — ``{item_code: qty}``.
+
+	The Desk form calls this on refresh and whenever the source warehouse changes, so the
+	column tracks the warehouse currently selected instead of whatever was true at the last
+	save. ``warehouse`` comes off the live form; without one we fall back to the order's
+	own (or its branch default), the same resolution the picker and the stock guard use.
+	"""
+	import json as _json
+
+	from container_depot.operations.mr import on_hand_map, source_warehouse
+
+	if isinstance(items, str):
+		items = _json.loads(items or "[]")
+	if not warehouse and repair_order and frappe.db.exists("Repair Order", repair_order):
+		warehouse = source_warehouse(frappe.get_doc("Repair Order", repair_order))
+	return on_hand_map(items, warehouse)

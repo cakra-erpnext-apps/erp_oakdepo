@@ -53,6 +53,15 @@ def _is_postpaid(customer):
 # Category builders — each returns a list of OAK Monthly Invoice Item dicts.
 # --------------------------------------------------------------------------- #
 def _mr_items(customer, from_date, to_date):
+	"""M&R charges for the monthly scheduler — billed as ONE lump line per order.
+
+	M&R is a TOP arrangement in practice, so an M&R is always swept by
+	``consolidated_billing._mr_lines`` instead, which bills it item by item precisely so the
+	Sales Invoice can charge labour off each ``item_code``. This monthly path only fires for
+	a pure-Cash customer, and an OAK Monthly Invoice has no manhour machinery at all — so a
+	charge landing here carries **parts only, no labour**. Kept as a safety net; if Cash M&R
+	ever becomes real, this is the function that has to learn about labour.
+	"""
 	lo, hi = _bounds(from_date, to_date)
 	rows = frappe.get_all(
 		"Repair Order",

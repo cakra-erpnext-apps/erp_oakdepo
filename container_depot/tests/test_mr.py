@@ -227,3 +227,67 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		self.assertEqual(res["status"], "Completed")
 		self.assertIsNone(res["stock_entry"])
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+
+	def test_out_of_stock_parts_are_dropped_from_the_picker(self):
+		"""``_out_of_stock_items`` is what keeps a part out of the M&R picker: a service is
+		never in it (nothing to run out of), a part is only absent once the source warehouse
+		actually holds it."""
+		self._ensure_service_item()
+		self._ensure_item()
+		warehouse = self._ensure_warehouse()
+
+		# Nothing on hand yet — the part cannot be supplied, the service is unaffected.
+		empty = mr._out_of_stock_items(warehouse)
+		self.assertIn(_ITEM, empty)
+		self.assertNotIn(_SERVICE, empty)
+
+		# Receive stock and the part becomes offerable again.
+		self._receive_stock(warehouse, 5)
+		empty = mr._out_of_stock_items(warehouse)
+		self.assertNotIn(_ITEM, empty)
+		self.assertNotIn(_SERVICE, empty)
+
+	def test_no_warehouse_hides_nothing(self):
+		"""With no source warehouse (a brand-new M&R) stock is unknowable, so parts are left
+		in the list rather than all being hidden."""
+		self._ensure_item()
+		self.assertEqual(mr._out_of_stock_items(None), set())
+
+	def test_part_cannot_exceed_stock_on_hand(self):
+		"""Stock must exist before a part can be put on the M&R — and the demand is summed
+		per item, so two rows of one part are a single demand of two."""
+		self._ensure_item()
+		warehouse = self._ensure_warehouse()
+		self._receive_stock(warehouse, 1)
+		c, _ = self._eir_with_damage("MRSHORT001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+
+		with self.assertRaises(frappe.ValidationError):
+			mr.save_mr_order(
+				repair_order=ro, used_items=[{"item": _ITEM, "quantity": 2}],
+				warehouse=warehouse, submit=False,
+			)
+		with self.assertRaises(frappe.ValidationError):
+			mr.save_mr_order(
+				repair_order=ro,
+				used_items=[{"item": _ITEM, "quantity": 1}, {"item": _ITEM, "quantity": 1}],
+				warehouse=warehouse, submit=False,
+			)
+		# Exactly what is on hand goes through.
+		res = mr.save_mr_order(
+			repair_order=ro, used_items=[{"item": _ITEM, "quantity": 1}],
+			warehouse=warehouse, submit=False,
+		)
+		self.assertTrue(res["success"])
+
+	def test_owner_rejected_line_is_not_checked_against_stock(self):
+		"""A rejected line is never issued, so it must not be counted against stock either
+		— otherwise a rejection would deadlock the completion."""
+		self._ensure_item()
+		warehouse = self._ensure_warehouse()
+		ro = frappe._dict(
+			used_items=[frappe._dict(item=_ITEM, quantity=99, decision="Rejected")],
+			warehouse=warehouse, container=None,
+		)
+		mr.assert_stock_available(ro)  # no stock at all, but nothing will be issued

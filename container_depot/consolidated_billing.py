@@ -140,8 +140,18 @@ def _cleaning_lines(customer, lo, hi):
 
 
 def _mr_lines(customer, lo, hi):
-	"""Completed, Unbilled Repair Orders (stored cost). Repair Order has no currency
-	field, so its charge is billed in the owner's contract currency."""
+	"""Completed, Unbilled Repair Orders — **one invoice line per used item**.
+
+	Billing item by item (rather than one lump "M&R RO-xxx" line) is what lets the invoice
+	charge labour: :func:`invoicing.create_draft_sales_invoice` stamps each line with the
+	manhour the customer's contract books for that ``item_code``, and ``apply_manhour_charge``
+	totals them once in the header. A lump line carries no item_code and would book zero
+	hours — which is exactly why the M&R itself no longer costs labour (see
+	``RepairOrder.calculate_totals``).
+
+	Owner-rejected lines are excluded, the same rule the M&R's own total uses. A line whose
+	part is free (rate 0) is still billed: it may carry nothing but labour.
+	"""
 	rows = frappe.get_all(
 		"Repair Order",
 		filters={
@@ -150,16 +160,37 @@ def _mr_lines(customer, lo, hi):
 			"billing_status": "Unbilled",
 			"completion_date": ["between", [lo, hi]],
 		},
-		fields=["name", "total_cost"],
+		fields=["name"],
 	)
-	ccy = _fallback_currency(customer)
+	fallback_ccy = _fallback_currency(customer)
 	units = []
 	for r in rows:
-		if not r.total_cost or r.total_cost <= 0:
+		used = frappe.get_all(
+			"Repair Used Item",
+			filters={"parent": r.name, "parenttype": "Repair Order"},
+			fields=["item", "item_name", "quantity", "item_rate", "currency", "decision"],
+			order_by="idx asc",
+		)
+		lines, currencies = [], set()
+		for u in used:
+			if not u.item or (u.decision or "Pending") == "Rejected":
+				continue
+			lines.append({
+				"item_code": u.item,
+				"description": f"M&R {r.name} · {u.item_name or u.item}",
+				"qty": flt(u.quantity) or 1,
+				"rate": flt(u.item_rate),
+			})
+			if u.currency:
+				currencies.add(u.currency)
+		if not lines:
 			continue
 		units.append({
-			"currency": ccy,
-			"lines": [{"description": f"M&R {r.name}", "qty": 1, "rate": r.total_cost}],
+			# An order can only be linked to ONE invoice (``_mark_billed`` writes a single
+			# sales_invoice), so a mixed-currency M&R is billed whole in the customer's
+			# currency rather than split across two invoices it could not both point at.
+			"currency": currencies.pop() if len(currencies) == 1 else fallback_ccy,
+			"lines": lines,
 			"sources": [{"dt": "Repair Order", "name": r.name}],
 		})
 	return units

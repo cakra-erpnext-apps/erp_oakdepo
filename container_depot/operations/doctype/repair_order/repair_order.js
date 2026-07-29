@@ -76,9 +76,47 @@ function mr_decision_with_note(frm, decision, title) {
 
 frappe.ui.form.on('Repair Order', {
 	setup(frm) {
-		// Set queries or pre-filters if needed
+		frm.trigger('_set_queries');
+	},
+	onload(frm) {
+		frm.trigger('_set_queries');
+	},
+	_set_queries(frm) {
+		// The Used-Items picker offers ONLY what the PWA M&R picker does: Depot Service Menu
+		// "Maintenance" ∩ the container owner's contract price list (see used_item_query).
+		// `warehouse` is read off the live form, not the saved doc: the stock shown next to
+		// each part must belong to the warehouse currently picked, even before Save.
+		frm.set_query('item', 'used_items', () => ({
+			query: 'container_depot.operations.doctype.repair_order.repair_order.used_item_query',
+			filters: { repair_order: frm.doc.name || '', warehouse: frm.doc.warehouse || '' },
+		}));
+	},
+	warehouse(frm) {
+		// Stock is per warehouse — switching it changes every part's Stok column.
+		frm.trigger('_refresh_on_hand');
+	},
+	_refresh_on_hand(frm) {
+		// The Stok column is stamped server-side on save; this keeps it current while the
+		// form sits open (another M&R may have consumed the same part meanwhile).
+		const items = [...new Set((frm.doc.used_items || []).map((r) => r.item).filter(Boolean))];
+		if (!items.length) return;
+		frappe.call({
+			method: 'container_depot.operations.doctype.repair_order.repair_order.used_items_on_hand',
+			args: { items: JSON.stringify(items), warehouse: frm.doc.warehouse || '', repair_order: frm.doc.name || '' },
+			callback(r) {
+				const stock = r.message || {};
+				// Assigned directly, NOT via set_value: reading live stock must never mark the
+				// form dirty, or every visit would look like an unsaved edit.
+				(frm.doc.used_items || []).forEach((row) => {
+					row.on_hand = stock[row.item] != null ? stock[row.item] : null;
+				});
+				frm.refresh_field('used_items');
+			},
+		});
 	},
 	refresh(frm) {
+		frm.trigger('_set_queries');
+		frm.trigger('_refresh_on_hand');
 		// Status intro banner.
 		const intros = {
 			Draft: [__('Draft. Add the used items (estimate), then Submit for Approval.'), 'blue'],
@@ -150,6 +188,25 @@ frappe.ui.form.on('Repair Order', {
 			frm.add_custom_button(__('Complete'), () =>
 				mr_call(frm, 'container_depot.ess.repairs.mr_order_save', { submit: 1 }, __('Selesaikan M&R dan keluarkan part yang disetujui dari stok?'))
 			).addClass('btn-primary');
+		}
+		// Human-error recovery: rewind to an editable Draft to fix a wrong / missing input,
+		// then run approval again. Adm Ops only; not from Draft (already editable) or after
+		// Completed (parts issued → Cancel instead).
+		if (is_admin_ops() && ['Service Setup', 'Pending Approval', 'Approved', 'In Progress', 'Rejected'].includes(s)) {
+			frm.add_custom_button(__('Kembalikan ke Draft'), () =>
+				frappe.prompt(
+					[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
+					(v) =>
+						mr_call(
+							frm,
+							'container_depot.ess.repairs.mr_reopen_draft',
+							{ note: v.note },
+							__('Kembalikan M&R ini ke Draft? Keputusan approval direset dan estimasi bisa diperbaiki, lalu diajukan ulang.')
+						),
+					__('Kembalikan ke Draft'),
+					__('Kembalikan')
+				)
+			);
 		}
 		if (['Draft', 'Service Setup', 'Revision Requested', 'Pending Approval', 'Approved', 'In Progress'].includes(s)) {
 			frm.add_custom_button(__('Cancel M&R'), () =>
