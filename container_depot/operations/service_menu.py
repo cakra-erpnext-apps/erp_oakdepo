@@ -18,6 +18,47 @@ from __future__ import annotations
 import frappe
 from frappe.utils.nestedset import get_descendants_of
 
+# --- the default menus --------------------------------------------------------
+# One menu per flow whose item picker is scoped by a price list: Booking (lift), Cleaning,
+# Maintenance (M&R), Survey and Periodic Test. A flow missing from here has its filter buried
+# in code, where no operator can see or change it — which is how Survey Order and Periodic
+# Test Order ended up offering the whole catalogue.
+#
+# The menus ship with NO Item Groups on purpose. Production has no Item Prices registered
+# yet, so any mapping guessed here would be fiction — and the old seeder proved the failure
+# mode: it named the placeholder groups from patches.v0_11.seed_item_groups, those groups
+# were later replaced by the customer's real rate-card groups, and every fresh install
+# silently got a Cleaning and a Maintenance menu pointing at nothing.
+#
+# An empty menu does not filter (``is_real_menu`` -> False), so each picker stays open until
+# an operator maps the groups in Desk. Dev sites get a realistic mapping from
+# ``seed_dev.MENUS`` instead of a migration.
+DEFAULT_MENUS = ("Booking", "Cleaning", "Maintenance", "Survey", "Periodic Test")
+
+DEFAULT_SEQUENCE = {"Booking": 1, "Cleaning": 2, "Maintenance": 3, "Survey": 4, "Periodic Test": 5}
+
+
+def seed_default_menus() -> int:
+	"""Ensure the default menus exist (empty, active). Returns the number created.
+
+	Creates only what is missing and never touches an existing menu — not its groups, not its
+	sequence, not its active flag. Mapping groups is the operator's job (or the dev seeder's);
+	a migration that re-asserted them would undo the pruning an operator had just done.
+	"""
+	created = 0
+	for menu_name in DEFAULT_MENUS:
+		if frappe.db.exists("Depot Service Menu", menu_name):
+			continue
+		doc = frappe.new_doc("Depot Service Menu")
+		doc.menu_name = menu_name
+		doc.is_active = 1
+		doc.sequence = DEFAULT_SEQUENCE.get(menu_name, 0)
+		doc.insert(ignore_permissions=True)
+		created += 1
+	if created:
+		frappe.db.commit()
+	return created
+
 
 def _active_menu(menu_name):
 	"""Return the active Depot Service Menu doc, or None when missing / inactive."""

@@ -11,9 +11,14 @@ deleted, a submitted one is cancelled (blocked if it already has a payment).
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 from container_depot import invoicing, pricing_model
+
+# The Depot Service Menu that declares which items a survey charge may use. Every picker
+# scoped by a price list declares its catalogue through a menu, so the filter is something an
+# operator can see and change (see operations/service_menu.DEFAULT_MENU_GROUPS).
+SURVEY_MENU = "Survey"
 
 
 class SurveyOrder(Document):
@@ -231,20 +236,49 @@ def get_item_price(item, price_list):
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def item_price_query(doctype, txt, searchfield, start, page_len, filters):
-    """Link-field query: items that have a selling Item Price in the given price list."""
+    """Link-field query for a survey charge's Item: members of the "Survey" service menu
+    that have a selling Item Price in the order's price list.
+
+    The MENU is what constrains the catalogue — the same rule M&R and Cleaning follow — so
+    which charges may be billed is visible and editable in Desk instead of being buried in
+    this query. Two deliberate fallbacks, both of which loosen rather than hide:
+
+    * no price list yet (Paid To unset): the menu still applies, only the pricing
+      requirement is dropped, so the picker is never silently unfiltered;
+    * menu missing / inactive / empty: fall back to the priced catalogue rather than
+      returning nothing, so a half-configured site can still raise a survey.
+    """
+    from container_depot.operations.service_menu import filter_items_by_menu, is_real_menu
+
     price_list = (filters or {}).get("price_list")
-    if not price_list:
+    if price_list:
+        candidate = frappe.get_all(
+            "Item Price",
+            filters={"price_list": price_list, "selling": 1},
+            pluck="item_code",
+            distinct=True,
+        )
+    else:
+        candidate = frappe.get_all(
+            "Item", filters={"disabled": 0, "is_sales_item": 1}, pluck="name"
+        )
+    if is_real_menu(SURVEY_MENU):
+        candidate = filter_items_by_menu(candidate, SURVEY_MENU)
+    if not candidate:
         return []
-    like = f"%{txt}%"
-    return frappe.db.sql(
-        """
-        select distinct ip.item_code, i.item_name
-        from `tabItem Price` ip
-        join `tabItem` i on i.name = ip.item_code
-        where ip.price_list = %(pl)s and ip.selling = 1
-          and (ip.item_code like %(txt)s or i.item_name like %(txt)s)
-        order by ip.item_code
-        limit %(start)s, %(page_len)s
-        """,
-        {"pl": price_list, "txt": like, "start": start, "page_len": page_len},
+
+    or_filters = None
+    txt = (txt or "").strip()
+    if txt and txt.lower() != "undefined":
+        or_filters = {"item_code": ["like", f"%{txt}%"], "item_name": ["like", f"%{txt}%"]}
+    # Narrowed BEFORE the limit, so a page of results never comes back short.
+    return frappe.get_all(
+        "Item",
+        filters={"name": ["in", candidate], "disabled": 0},
+        or_filters=or_filters,
+        fields=["name", "item_name"],
+        order_by="item_name asc",
+        limit_start=cint(start),
+        limit_page_length=cint(page_len),
+        as_list=True,
     )

@@ -16,8 +16,11 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from container_depot import seed_dev
 from container_depot.operations import mr, service_menu
 from container_depot.operations.doctype.depot_contract import depot_contract
+from container_depot.operations.doctype.periodic_test_order import periodic_test_order
+from container_depot.operations.doctype.survey_order import survey_order
 
 _PREFIX = "ZZ-MENU-TEST"
 _MENU = "ZZ Menu Test"
@@ -25,25 +28,36 @@ _GROUP = "ZZ Menu Test Group"
 _CHILD_GROUP = "ZZ Menu Test Child"
 _PL = "ZZ Menu Test PL"
 _CUST = "ZZ Menu Test Customer"
-# Real seeded groups the M&R "Maintenance" menu maps / excludes.
-_MR_GROUP = "Repair & Spare Parts"
-_CLEAN_GROUP = "Cleaning Cost"
+# The groups the M&R "Maintenance" menu maps / excludes are resolved from the LIVE menu in
+# setUp, never hardcoded: the Item Group taxonomy has been replaced once already (the seeded
+# placeholders gave way to the customer's rate-card groups) and the hardcoded names silently
+# took this whole module red. Reading them off the menu makes the fixture taxonomy-agnostic.
 
 
 class TestDepotServiceMenu(FrappeTestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 		self._contracts = []
+		# A group the Maintenance menu contains, and one it does not — whatever this site calls
+		# them. Skips rather than fails when the menus were never seeded.
+		self._mr_group = frappe.db.get_value(
+			"Depot Service Menu Group", {"parent": mr.MR_MENU}, "item_group"
+		)
+		self._out_group = frappe.db.get_value(
+			"Depot Service Menu Group", {"parent": "Cleaning"}, "item_group"
+		)
+		if not (self._mr_group and self._out_group):
+			self.skipTest("Depot Service Menus not seeded in this site")
 		# Item groups: a leaf G with a child GC (for the descendant test).
 		self._ensure_group(_GROUP, parent="All Item Groups", is_group=1)
 		self._ensure_group(_CHILD_GROUP, parent=_GROUP, is_group=0)
 		# Items.
 		self._ensure_item(f"{_PREFIX}-A", _GROUP)
 		self._ensure_item(f"{_PREFIX}-B", _GROUP)
-		self._ensure_item(f"{_PREFIX}-C", _CLEAN_GROUP)   # outsider, pulled in via extras
+		self._ensure_item(f"{_PREFIX}-C", self._out_group)   # outsider, pulled in via extras
 		self._ensure_item(f"{_PREFIX}-E", _CHILD_GROUP)   # in via descendant group
-		self._ensure_item(f"{_PREFIX}-MR", _MR_GROUP)     # in the real Maintenance menu
-		self._ensure_item(f"{_PREFIX}-CLEAN", _CLEAN_GROUP)  # excluded from Maintenance
+		self._ensure_item(f"{_PREFIX}-MR", self._mr_group)   # in the real Maintenance menu
+		self._ensure_item(f"{_PREFIX}-CLEAN", self._out_group)  # excluded from Maintenance
 		# The test menu: group G (+ descendants) plus C pinned as an extra.
 		self._ensure_menu()
 		# Selling price list + Item Prices for the import test.
@@ -65,7 +79,8 @@ class TestDepotServiceMenu(FrappeTestCase):
 		self._safe(lambda: frappe.db.delete("Item Price", {"price_list": _PL}))
 		self._safe(lambda: frappe.db.exists("Price List", _PL) and frappe.delete_doc("Price List", _PL, force=True, ignore_permissions=True))
 		self._safe(lambda: frappe.db.exists("Depot Service Menu", _MENU) and frappe.delete_doc("Depot Service Menu", _MENU, force=True, ignore_permissions=True))
-		for code in (f"{_PREFIX}-A", f"{_PREFIX}-B", f"{_PREFIX}-C", f"{_PREFIX}-E", f"{_PREFIX}-MR", f"{_PREFIX}-CLEAN"):
+		for code in (f"{_PREFIX}-A", f"{_PREFIX}-B", f"{_PREFIX}-C", f"{_PREFIX}-E", f"{_PREFIX}-MR",
+		             f"{_PREFIX}-CLEAN", f"{_PREFIX}-SVY", f"{_PREFIX}-PT"):
 			self._safe(lambda code=code: frappe.db.exists("Item", code) and frappe.delete_doc("Item", code, force=True, ignore_permissions=True))
 		for g in (_CHILD_GROUP, _GROUP):
 			self._safe(lambda g=g: frappe.db.exists("Item Group", g) and frappe.delete_doc("Item Group", g, force=True, ignore_permissions=True))
@@ -146,7 +161,7 @@ class TestDepotServiceMenu(FrappeTestCase):
 		self.assertEqual(got, {f"{_PREFIX}-A", f"{_PREFIX}-B", f"{_PREFIX}-E"})
 
 	def test_extra_items_pull_outsider_in(self):
-		# C is in the Cleaning group, not G — included only because it's pinned as extra.
+		# C is in the outsider group, not G — included only because it's pinned as extra.
 		got = set(service_menu.filter_items_by_menu([f"{_PREFIX}-C", f"{_PREFIX}-CLEAN"], _MENU))
 		self.assertEqual(got, {f"{_PREFIX}-C"})
 
@@ -175,14 +190,88 @@ class TestDepotServiceMenu(FrappeTestCase):
 
 	# --- M&R picker honours the seeded Maintenance menu -----------------------
 	def test_mr_item_search_scoped_to_maintenance(self):
-		# The seeded "Maintenance" menu maps "Repair & Spare Parts". With no
-		# repair_order the picker scans all items, then the menu filter applies.
+		# With no repair_order the picker scans all items, then the menu filter applies.
 		if not service_menu.is_real_menu(mr.MR_MENU):
 			self.skipTest("Maintenance menu not seeded in this site")
 		codes = {it["item_code"] for it in mr.mr_item_search(search=_PREFIX)["items"]}
-		self.assertIn(f"{_PREFIX}-MR", codes)        # Repair & Spare Parts → in
-		self.assertNotIn(f"{_PREFIX}-CLEAN", codes)  # Cleaning Cost → out
+		self.assertIn(f"{_PREFIX}-MR", codes)        # a Maintenance group → in
+		self.assertNotIn(f"{_PREFIX}-CLEAN", codes)  # a Cleaning group → out
 		self.assertNotIn(f"{_PREFIX}-A", codes)      # test group → out
+
+
+	# --- every price-list picker declares its catalogue through a menu ---------
+	def test_a_menu_exists_for_every_price_list_picker(self):
+		"""One menu per flow whose item picker is scoped by a price list. A flow missing from
+		here means its filter lives in code, where no operator can see or change it — which is
+		how Survey Order and Periodic Test Order ended up offering the whole catalogue."""
+		expected = {"Booking", "Cleaning", "Maintenance", "Survey", "Periodic Test"}
+		self.assertEqual(set(service_menu.DEFAULT_MENUS), expected)
+		# The dev seeder must cover exactly the same flows, or dev and production drift.
+		self.assertEqual({name for name, _seq, _groups in seed_dev.MENUS}, expected)
+
+	def test_production_ships_the_menus_without_a_group_mapping(self):
+		"""Production seeds the menus EMPTY: there are no Item Prices yet, so a mapping here
+		would be fiction — and the previous seeder proved it, pointing every fresh install at
+		placeholder groups that had since been renamed. Re-seeding an existing site is a no-op:
+		it must never re-assert groups an operator pruned."""
+		before = {
+			m: set(frappe.get_all("Depot Service Menu Group", filters={"parent": m}, pluck="item_group"))
+			for m in service_menu.DEFAULT_MENUS
+		}
+		self.assertEqual(service_menu.seed_default_menus(), 0)
+		after = {
+			m: set(frappe.get_all("Depot Service Menu Group", filters={"parent": m}, pluck="item_group"))
+			for m in service_menu.DEFAULT_MENUS
+		}
+		self.assertEqual(before, after)
+
+	def test_dev_menu_mapping_matches_the_real_taxonomy(self):
+		"""Every Item Group the DEV seeder maps must actually exist.
+
+		This is the test the old seeder needed: it named the placeholder groups from
+		patches.v0_11, those were replaced by the customer's rate-card groups, and nothing
+		noticed — fresh installs quietly got menus that filtered nothing."""
+		unknown = {
+			(name, g)
+			for name, _seq, groups in seed_dev.MENUS
+			for g in groups
+			if not frappe.db.exists("Item Group", g)
+		}
+		self.assertEqual(unknown, set(), f"dev seeder maps Item Groups that don't exist: {unknown}")
+		# A booking prices the lift and nothing else.
+		booking = next(groups for name, _seq, groups in seed_dev.MENUS if name == "Booking")
+		self.assertEqual(booking, ["LOLO"])
+
+	def test_survey_picker_is_scoped_to_the_survey_menu(self):
+		"""A survey charge offers only what the "Survey" menu declares. The no-price-list case
+		is the one that used to escape the filter entirely (it returned every sellable item)."""
+		group = frappe.db.get_value("Depot Service Menu Group", {"parent": "Survey"}, "item_group")
+		self._ensure_item(f"{_PREFIX}-SVY", group)
+		codes = {
+			r[0]
+			for r in survey_order.item_price_query(
+				doctype="Item", txt=_PREFIX, searchfield="name", start=0, page_len=20, filters={}
+			)
+		}
+		self.assertIn(f"{_PREFIX}-SVY", codes)
+		self.assertNotIn(f"{_PREFIX}-A", codes)      # test group — outside the menu
+		self.assertNotIn(f"{_PREFIX}-MR", codes)     # a Maintenance item is not a survey charge
+
+	def test_periodic_test_picker_is_scoped_to_its_menu(self):
+		"""Same contract for Periodic Test Order, which had no query on the field at all."""
+		group = frappe.db.get_value(
+			"Depot Service Menu Group", {"parent": "Periodic Test"}, "item_group"
+		)
+		self._ensure_item(f"{_PREFIX}-PT", group)
+		codes = {
+			r[0]
+			for r in periodic_test_order.used_item_query(
+				doctype="Item", txt=_PREFIX, searchfield="name", start=0, page_len=20, filters={}
+			)
+		}
+		self.assertIn(f"{_PREFIX}-PT", codes)
+		self.assertNotIn(f"{_PREFIX}-SVY", codes)    # a survey fee is not a periodic test
+		self.assertNotIn(f"{_PREFIX}-A", codes)
 
 	# --- contract paste-import ------------------------------------------------
 	def test_import_paste_with_defaults_and_unknown(self):

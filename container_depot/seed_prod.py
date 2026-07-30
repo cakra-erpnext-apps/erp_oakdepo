@@ -16,13 +16,19 @@ Seeded (in order)
   Cargo, EIR Damage/Repair
   codes, EIR checklist
 * UOM / Item Group / Item — full OAK service + M&R parts + packages catalogue
-* Depot Service Menu      — Booking / Cleaning / Maintenance
+* Depot Service Menu      — Booking / Cleaning / Maintenance / Survey / Periodic Test,
+  created EMPTY             created without item groups (see below)
 * Customer                — principal masters (Stolt, Bertschi)
 
 Most of the above also lands automatically on ``bench migrate`` (the seed
 patches in patches.txt). This seeder additionally provisions the org-level
 masters those patches don't: Branch, Depot, the Item catalogue, the Service
 Menus, and the principal Customers.
+
+The Service Menus are created WITHOUT item groups, for the same reason prices are not
+seeded: a menu is the visible filter over a rate card, and until the rate card exists any
+mapping would be fiction. An empty menu does not filter, so no picker is blocked. Map the
+groups in Desk (or run the dev seeder on a dev site for a realistic dummy mapping).
 
 Prices are intentionally NOT seeded — Item Price / tariff is commercial data;
 load it per principal via the depot contract import (paste from Excel),
@@ -38,6 +44,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot import seed_dev as _dev
+from container_depot.operations import service_menu as _service_menu
 
 
 def run():
@@ -69,9 +76,16 @@ def run():
         _dev._ensure_item(group, uom, name)
     print(f"[seed_prod] Item: {len(_dev.ITEMS)}")
 
-    for name, sequence, groups in _dev.MENUS:
-        _dev._ensure_menu(name, sequence, groups)
-    print(f"[seed_prod] Depot Service Menu: {len(_dev.MENUS)}")
+    # Menus only — NO group mapping. Production has no Item Price registered yet, so any
+    # mapping seeded here would be a guess; an empty menu simply doesn't filter, leaving each
+    # picker open until an operator maps the groups in Desk against the real rate card. This is
+    # the one dataset production deliberately does NOT take from seed_dev (whose mapping is
+    # dummy data for exercising the pickers).
+    created = _service_menu.seed_default_menus()
+    print(
+        f"[seed_prod] Depot Service Menu: {len(_service_menu.DEFAULT_MENUS)} "
+        f"({created} created, no item groups — map them per the rate card)"
+    )
 
     for name in _dev.CUSTOMERS:
         _dev._ensure_customer(name)

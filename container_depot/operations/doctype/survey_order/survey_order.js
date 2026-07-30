@@ -2,16 +2,13 @@
 // One charge row per container; currency & total live on the header.
 frappe.ui.form.on("Survey Order", {
 	setup(frm) {
-		// Item picker on the charge grid follows the header price list (re-read each open).
-		frm.set_query("item", "charges", () => {
-			if (!frm.doc.price_list) {
-				return { filters: { is_sales_item: 1 } }; // no price list → any sellable item
-			}
-			return {
-				query: "container_depot.operations.doctype.survey_order.survey_order.item_price_query",
-				filters: { price_list: frm.doc.price_list },
-			};
-		});
+		// Item picker on the charge grid: the "Survey" Depot Service Menu ∩ the header price
+		// list (re-read each open). Always the server query — the old client-side fallback for
+		// "no price list yet" offered every sellable item and so escaped the menu entirely.
+		frm.set_query("item", "charges", () => ({
+			query: "container_depot.operations.doctype.survey_order.survey_order.item_price_query",
+			filters: { price_list: frm.doc.price_list || "" },
+		}));
 	},
 
 	refresh(frm) {

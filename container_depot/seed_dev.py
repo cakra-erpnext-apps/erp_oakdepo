@@ -16,7 +16,9 @@ What it seeds
                            patches.v0_39 (Inspection Checklist Item, 138 rows)
 * Item Group + Item      — from reference/seed/{Item_Group,Item}.csv (embedded below);
                            item_code == item_name (the descriptive name is the identity)
-* Depot Service Menu     — Booking / Cleaning / Maintenance (group filters)
+* Depot Service Menu     — Booking / Cleaning / Maintenance / Survey / Periodic Test,
+                           WITH dummy group filters (production seeds them empty — see
+                           operations/service_menu.DEFAULT_MENUS)
 * Customer               — Stolt, Bertschi
 
 Items are created as non-stock sales items (``is_stock_item=0``) so the seeder needs
@@ -71,6 +73,10 @@ MENUS = [
         "Frame & Metal Work",
         "Others (Bertschi)",
     ]),
+    # Third-party / class survey charges billed on a Survey Order.
+    ("Survey", 4, ["Survey Fee"]),
+    # Periodic (2.5yr / 5yr) test + the pressure / leak tests billed with it.
+    ("Periodic Test", 5, ["Testing Charges"]),
 ]
 
 CUSTOMERS = ["Stolt", "Bertschi"]
@@ -293,15 +299,31 @@ def _ensure_item(group, uom, name):
 
 
 def _ensure_menu(name, sequence, groups):
-    if frappe.db.exists("Depot Service Menu", name):
+    """Create the menu, or fill in group rows it is missing.
+
+    Add-only rather than skip-if-exists: ``patches.v0_34`` already creates these menus EMPTY
+    (production has no Item Prices to map yet), so skipping an existing menu would leave a dev
+    site with five menus that filter nothing. Groups are only ever added, so pruning one in
+    Desk survives a re-run.
+    """
+    valid = [g for g in groups if frappe.db.exists("Item Group", g)]
+    if not frappe.db.exists("Depot Service Menu", name):
+        doc = frappe.get_doc({
+            "doctype": "Depot Service Menu", "menu_name": name,
+            "is_active": 1, "sequence": sequence,
+        })
+        for g in valid:
+            doc.append("item_groups", {"item_group": g})
+        doc.insert(ignore_permissions=True)
         return
-    doc = frappe.get_doc({
-        "doctype": "Depot Service Menu", "menu_name": name,
-        "is_active": 1, "sequence": sequence,
-    })
-    for g in groups:
+    doc = frappe.get_doc("Depot Service Menu", name)
+    have = {row.item_group for row in (doc.get("item_groups") or [])}
+    missing = [g for g in valid if g not in have]
+    if not missing:
+        return
+    for g in missing:
         doc.append("item_groups", {"item_group": g})
-    doc.insert(ignore_permissions=True)
+    doc.save(ignore_permissions=True)
 
 
 def _default_customer_group():

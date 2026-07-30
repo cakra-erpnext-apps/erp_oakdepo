@@ -141,3 +141,66 @@ class PeriodicTestOrder(Document):
 			vals["last_test_date"] = getdate(self.periodic_date)
 		if vals:
 			frappe.db.set_value("Container", self.container, vals, update_modified=False)
+
+
+# The Depot Service Menu that declares which items a periodic test may bill. Scoping lives in
+# the menu — not in this query — so an operator can change what the picker offers without a
+# code change (see operations/service_menu.DEFAULT_MENU_GROUPS).
+PT_MENU = "Periodic Test"
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def used_item_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Link query for a Periodic Test Order Used-Items row.
+
+	Offers the "Periodic Test" service menu ∩ the owner's price list — the same contract the
+	M&R picker honours, so a periodic test can never bill an item the owner has no rate for,
+	and the two menus stay the single place where the catalogue is decided. Before this the
+	field had no query at all: the whole Item catalogue was on offer, unpriced items included.
+
+	Both narrowings fall back OPEN rather than empty, so a half-configured site is still
+	workable: no owner price list -> every sellable item; menu missing / inactive / empty ->
+	no group filter.
+	"""
+	from frappe.utils import cint as _cint
+
+	from container_depot.operations.service_menu import filter_items_by_menu, is_real_menu
+
+	filters = filters or {}
+	price_list = None
+	order = filters.get("periodic_test_order")
+	if order and frappe.db.exists("Periodic Test Order", order):
+		price_list = frappe.get_doc("Periodic Test Order", order).owner_price_list()
+
+	if price_list:
+		candidate = frappe.get_all(
+			"Item Price",
+			filters={"price_list": price_list, "selling": 1},
+			pluck="item_code",
+			distinct=True,
+		)
+	else:
+		candidate = frappe.get_all(
+			"Item", filters={"disabled": 0, "is_sales_item": 1}, pluck="name"
+		)
+	if is_real_menu(PT_MENU):
+		candidate = filter_items_by_menu(candidate, PT_MENU)
+	if not candidate:
+		return []
+
+	or_filters = None
+	txt = (txt or "").strip()
+	if txt and txt.lower() != "undefined":
+		or_filters = {"item_code": ["like", f"%{txt}%"], "item_name": ["like", f"%{txt}%"]}
+	# Narrowed BEFORE the limit so a page of 20 never comes back short.
+	return frappe.get_all(
+		"Item",
+		filters={"name": ["in", candidate], "disabled": 0},
+		or_filters=or_filters,
+		fields=["name", "item_name"],
+		order_by="item_name asc",
+		limit_start=_cint(start),
+		limit_page_length=_cint(page_len),
+		as_list=True,
+	)

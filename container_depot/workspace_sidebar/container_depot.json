@@ -196,7 +196,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-calendar"
+   "icon": "es-line-calender"
   },
   {
    "child": 1,
@@ -280,7 +280,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-map-pin"
+   "icon": "es-line-pin"
   },
   {
    "child": 1,
@@ -292,7 +292,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-shield"
+   "icon": "es-line-certificates"
   },
   {
    "child": 0,
@@ -502,7 +502,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-globe"
+   "icon": "es-line-group"
   },
   {
    "child": 1,
@@ -664,7 +664,7 @@
    "icon": "es-line-chart"
   }
  ],
- "modified": "2026-07-30 10:00:00.000000",
+ "modified": "2026-07-30 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",
