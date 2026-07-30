@@ -147,21 +147,18 @@ def _order_ref(drv):
 
 
 def _pt_due_set(names):
-	"""Container names with a due/overdue open Periodic Test, using the same
-	horizon as the daily ``remind_periodic_test_due`` job so counts reconcile."""
+	"""Container names whose next periodic test (``Container.next_pt_due``) falls within the
+	reminder horizon — same horizon + source as ``remind_periodic_test_due`` so counts
+	reconcile. The Container master is the single source of truth for the next due-date."""
 	if not names:
 		return set()
 	horizon = add_to_date(getdate(today()), days=PT_REMINDER_DAYS)
 	rows = frappe.get_all(
-		"Periodic Test",
-		filters={
-			"container": ["in", names],
-			"status": ["not in", ["Completed", "Cancelled"]],
-			"docstatus": ["<", 2],
-		},
-		fields=["container", "due_date"],
+		"Container",
+		filters={"name": ["in", names], "next_pt_due": ["is", "set"]},
+		fields=["name", "next_pt_due"],
 	)
-	return {r.container for r in rows if r.due_date and getdate(r.due_date) <= horizon}
+	return {r.name for r in rows if r.next_pt_due and getdate(r.next_pt_due) <= horizon}
 
 
 @frappe.whitelist(methods=["GET"])

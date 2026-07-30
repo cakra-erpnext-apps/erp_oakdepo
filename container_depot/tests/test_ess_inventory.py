@@ -41,7 +41,7 @@ TANKS = {
 
 def _teardown():
 	names = list(TANKS.keys())
-	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection", "Periodic Test"]:
+	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection", "Periodic Test Order"]:
 		frappe.db.delete(dt, {"container": ["in", names]})
 	frappe.db.delete("Container", {"name": ["in", names]})
 	if frappe.db.exists("Depot", ESS_DEPOT):
@@ -97,15 +97,9 @@ def _build():
 			"inspector": "Administrator",
 		}
 	).insert(ignore_permissions=True)
-	frappe.get_doc(
-		{
-			"doctype": "Periodic Test",
-			"container": "ESST1000001",
-			"status": "Scheduled",
-			"test_type": "2,5Y",
-			"due_date": today(),
-		}
-	).insert(ignore_permissions=True)
+	# ESST1000001: periodic test due today. The next-due watermark lives on the Container
+	# (the single source of truth), advanced by a completed Periodic Test Order.
+	frappe.db.set_value("Container", "ESST1000001", "next_pt_due", today(), update_modified=False)
 	frappe.db.commit()
 
 

@@ -161,11 +161,11 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Periodic Test",
+   "label": "Periodic Test Order",
    "link_count": 0,
-   "link_to": "Periodic Test",
+   "link_to": "Periodic Test Order",
    "link_type": "DocType",
-   "onboard": 1,
+   "onboard": 0,
    "type": "Link"
   },
   {
@@ -447,7 +447,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-07-29 09:00:00.000000",
+ "modified": "2026-07-30 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

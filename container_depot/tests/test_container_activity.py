@@ -101,18 +101,21 @@ class TestContainerActivityWiring(FrappeTestCase):
 		self.assertEqual(acts[0]["to_status"], "In_Depot")
 
 	def test_periodic_test_logs_activity(self):
+		# A completed Periodic Test Order logs the "Periodic Test" milestone on the container.
 		c = _make_container("ACTPTST0001")
-		pt = frappe.get_doc({
-			"doctype": "Periodic Test",
+		pto = frappe.get_doc({
+			"doctype": "Periodic Test Order",
 			"container": c,
 			"test_type": "2,5Y",
 			"periodic_date": today(),
-		})
-		pt.insert(ignore_permissions=True)
-		pt.submit()
+			"status": "Draft",
+		}).insert(ignore_permissions=True)
+		for s in ("Approved", "In Progress", "Completed"):
+			pto.status = s
+			pto.save(ignore_permissions=True)
 		acts = _activities(c, "Periodic Test")
 		self.assertEqual(len(acts), 1)
-		self.assertEqual(acts[0]["reference_name"], pt.name)
+		self.assertEqual(acts[0]["reference_name"], pto.name)
 
 
 class TestContainerActivityReportAndBackfill(FrappeTestCase):

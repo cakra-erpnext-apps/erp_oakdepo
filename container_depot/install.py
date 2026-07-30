@@ -187,14 +187,6 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
 		"Ops Supervisor":    {"read": 1, "report": 1},
 	},
-	"Periodic Test": {
-		"Customer":          {"read": 1, "report": 1},
-		"Surveyor":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Commercial":        {"read": 1, "report": 1, "export": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
 	# ---- B2 additions (customer portal backbone) -----------------------
 	"Release DO": {
 		"Customer":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
@@ -255,6 +247,17 @@ ROLE_DOCTYPE_PERMISSIONS = {
 		"Operator Kalmar":   {"read": 1, "report": 1},
 		"Management":        {"read": 1, "report": 1, "export": 1},
 		"IT Support":        {"read": 1, "report": 1},
+	},
+	# ---- Periodic Test Order (M&R-style work/billing for the tank periodic test) ----
+	# Same tier as Repair Order. Surveyor performs the test; Admin Ops arranges/approves;
+	# Customer (owner) approves from Desk (status edit); Commercial/Management view.
+	"Periodic Test Order": {
+		"Customer":          {"read": 1, "write": 1, "report": 1},
+		"Surveyor":          {"read": 1, "create": 1, "write": 1, "report": 1},
+		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
+		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
+		"Commercial":        {"read": 1, "report": 1, "export": 1},
+		"Management":        {"read": 1, "report": 1, "export": 1},
 	},
 }
 

@@ -537,6 +537,31 @@ export const labels = {
 	mrExecEmpty: "Tidak ada M&R siap dikerjakan.",
 	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
 	mrExecStartGate: "Mulai perbaikan dulu untuk melihat detail pekerjaan.", // start-first gate
+	// --- Periodic Test (Uji Periodik 2,5Y / 5Y) — M&R-style execution console ---
+	navPt: "Uji Periodik", // Home tile + history label
+	ptTitleFull: "Uji Periodik (Periodic Test)",
+	ptDesc: "Uji tekanan berkala tank (2,5Y / 5Y)", // Home tile subtitle
+	ptSearch: "Cari no. container / PTO…",
+	ptBack: "Kembali",
+	ptExecOrdersHint: "Uji periodik siap dikerjakan", // worklist hint
+	ptExecEmpty: "Tidak ada uji periodik siap dikerjakan.",
+	ptExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
+	ptExecStartGate: "Mulai uji dulu untuk melihat detail pekerjaan.", // start-first gate
+	ptExecInProgress: "Sedang dikerjakan.",
+	ptStartFull: "Mulai Uji", // start (in form)
+	ptStarted: "Uji dimulai", // started toast
+	ptComplete: "Selesaikan", // complete (issues stock + advances due date)
+	ptCompleted: "Uji periodik selesai — jatuh tempo berikutnya diperbarui", // completed toast
+	ptPartsTitle: "Jasa & Part Disetujui",
+	ptTestInfoTitle: "Detail Uji",
+	ptTestType: "Jenis Uji",
+	ptPeriodicDate: "Tanggal Uji",
+	ptPeriodicDateHint: "Tanggal uji dilakukan — jadi dasar jatuh tempo berikutnya.",
+	ptNextDue: "Jatuh Tempo Berikutnya",
+	ptLastTest: "Uji Terakhir",
+	ptHistoryTitle: "Riwayat Uji Periodik",
+	ptHistorySearch: "Cari no. container / PTO…",
+	ptHistoryCount: "uji periodik",
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle

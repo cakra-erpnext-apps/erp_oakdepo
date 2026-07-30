@@ -53,6 +53,16 @@ const routes = [
 		component: () => import("@/pages/MrHistory.vue"),
 	},
 	{
+		path: "/periodic-test",
+		name: "PeriodicTest",
+		component: () => import("@/pages/PeriodicTest.vue"),
+	},
+	{
+		path: "/periodic-test/history",
+		name: "PeriodicTestHistory",
+		component: () => import("@/pages/PeriodicTestHistory.vue"),
+	},
+	{
 		path: "/monitor",
 		name: "MonitorContainer",
 		component: () => import("@/pages/MonitorContainer.vue"),

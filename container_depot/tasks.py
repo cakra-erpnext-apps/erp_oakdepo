@@ -142,30 +142,23 @@ def mark_stale_sst_heartbeats() -> int:
 
 
 def remind_periodic_test_due() -> int:
-	"""Flag periodic tests due within the reminder horizon (PRD v0.2 §4).
+	"""Flag containers whose next periodic test is due within the reminder horizon.
 
-	Runs daily. Side-effects:
-	- Flips lapsed open tests to ``Overdue``.
-	- Opens one ToDo per due/overdue test, addressed to Commercial + Ops
-	  Supervisor role holders.
-
-	Returns the count of tests in the due/overdue window.
+	Runs daily. The next-due watermark lives on the **Container** (``Container.next_pt_due``,
+	advanced when a Periodic Test Order completes — the single source of truth). Opens one
+	ToDo per due/overdue container, addressed to Commercial + Ops Supervisor role holders.
+	Returns the count of containers in the due/overdue window.
 	"""
 	horizon = add_to_date(getdate(today()), days=PT_REMINDER_DAYS)
 	rows = frappe.get_all(
-		"Periodic Test",
-		filters={
-			"status": ("not in", ["Completed", "Cancelled"]),
-			"docstatus": ("<", 2),
-			"due_date": ("is", "set"),
-		},
-		fields=["name", "container_no", "due_date", "test_type"],
+		"Container",
+		filters={"next_pt_due": ("is", "set")},
+		fields=["name", "container_no", "next_pt_due"],
 	)
-	due = [r for r in rows if r.due_date and getdate(r.due_date) <= horizon]
+	due = [r for r in rows if r.next_pt_due and getdate(r.next_pt_due) <= horizon]
 	if not due:
 		return 0
 
-	today_d = getdate(today())
 	recipients = frappe.get_all(
 		"Has Role",
 		filters={"role": ("in", ["Commercial", "Ops Supervisor"]), "parenttype": "User"},
@@ -175,13 +168,11 @@ def remind_periodic_test_due() -> int:
 	recipients = sorted(set(recipients))
 
 	for r in due:
-		if getdate(r.due_date) < today_d:
-			frappe.db.set_value("Periodic Test", r.name, "status", "Overdue", update_modified=False)
 		for user in recipients:
 			already = frappe.db.exists(
 				"ToDo",
 				{
-					"reference_type": "Periodic Test",
+					"reference_type": "Container",
 					"reference_name": r.name,
 					"allocated_to": user,
 					"status": "Open",
@@ -191,8 +182,8 @@ def remind_periodic_test_due() -> int:
 				continue
 			frappe.get_doc({
 				"doctype": "ToDo",
-				"description": f"Periodic Test {r.test_type} for {r.container_no or r.name} is due on {r.due_date}.",
-				"reference_type": "Periodic Test",
+				"description": f"Uji periodik untuk {r.container_no or r.name} jatuh tempo {r.next_pt_due}.",
+				"reference_type": "Container",
 				"reference_name": r.name,
 				"allocated_to": user,
 				"priority": "High",

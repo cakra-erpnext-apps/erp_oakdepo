@@ -287,12 +287,12 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Periodic Test",
-   "link_to": "Periodic Test",
+   "label": "Periodic Test Order",
+   "link_to": "Periodic Test Order",
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-details"
+   "icon": "es-line-shield"
   },
   {
    "child": 0,
@@ -664,7 +664,7 @@
    "icon": "es-line-chart"
   }
  ],
- "modified": "2026-07-29 11:00:00.000000",
+ "modified": "2026-07-30 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

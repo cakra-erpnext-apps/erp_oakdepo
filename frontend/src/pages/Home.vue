@@ -291,6 +291,7 @@ const tiles = {
 	eir: { to: "/eir", icon: "clipboard", title: labels.eir, desc: labels.eirDesc, tile: "bg-leaf-50 text-leaf-600" },
 	cleaning: { to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
 	mr: { to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
+	periodicTest: { to: "/periodic-test", icon: "activity", title: labels.ptTitleFull, desc: labels.ptDesc, tile: "bg-amber-50 text-amber-600" },
 	monitor: { to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
 	surveyPos: { to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
 	posFix: { to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
@@ -298,7 +299,7 @@ const tiles = {
 const menuGroups = [
 	{ title: labels.grpGate, items: [tiles.gate] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
-	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr] },
+	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr, tiles.periodicTest] },
 	{ title: labels.grpYard, items: [tiles.monitor] },
 	{ title: labels.grpSurvey, items: [tiles.surveyPos, tiles.posFix] },
 ]
@@ -309,6 +310,7 @@ const history = [
 	{ to: "/eir/history", icon: "clipboard", title: labels.eirHistoryTitle },
 	{ to: "/cleaning/history", icon: "droplet", title: labels.cleaningHistoryTitle },
 	{ to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
+	{ to: "/periodic-test/history", icon: "activity", title: labels.ptHistoryTitle },
 	{ to: "/survey-position/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
 	{ to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
 ]
