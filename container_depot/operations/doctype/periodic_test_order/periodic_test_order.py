@@ -30,6 +30,11 @@ class PeriodicTestOrder(Document):
 
 	def on_update(self):
 		self._on_status_change()
+		# Flip the container In_Depot <-> Available: an open Periodic Test is unfinished work
+		# that must be done before the tank may leave (same gate as Cleaning / M&R).
+		from container_depot.operations.container_status import recompute_availability
+
+		recompute_availability(self.container)
 
 	# --- helpers -------------------------------------------------------------
 	def _fetch_principal(self):

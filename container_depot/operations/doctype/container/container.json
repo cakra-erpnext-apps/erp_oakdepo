@@ -117,7 +117,7 @@
    "read_only": 1
   },
   {
-   "description": "Shipper for the current release cycle (filled at Release DO).",
+   "description": "Shipper for the current release cycle.",
    "fieldname": "shipper",
    "fieldtype": "Link",
    "label": "Shipper",
@@ -329,7 +329,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-29 09:00:00.000000",
+ "modified": "2026-07-30 11:00:00.000000",
  "module": "Operations",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

@@ -156,3 +156,16 @@ class TestPeriodicTestOrder(FrappeTestCase):
 		periodic.save_pt_order(periodic_test_order=doc.name, submit=1)
 		names = {r["name"] for r in periodic.list_pt_history()["items"]}
 		self.assertIn(doc.name, names)
+
+	# --- gate-out gate (same as Cleaning / M&R) --------------------------------
+	def test_open_order_blocks_gate_out_until_finished(self):
+		"""An unfinished Periodic Test Order keeps the tank In_Depot (not Available), so a
+		Tank Out booking / gate-out is blocked until the test is done."""
+		c = self._container("PTO0011")
+		frappe.db.set_value("Container", c, "status", "Available")
+		# opening a periodic test = unfinished work -> tank drops to In_Depot
+		doc = self._order(c, test_type="2,5Y", periodic_date=today())
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
+		# finishing it releases the tank back to Available
+		self._advance(doc, "Approved", "In Progress", "Completed")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")

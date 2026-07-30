@@ -465,7 +465,7 @@ class SmokeRun:
 				frappe.db.get_value("Repair Order", ro, "status") == "Rejected")
 
 	# =======================================================================
-	# TANK OUT — Tank-Out booking → Release DO → Order Muat → EIR-Out → gate-out
+	# TANK OUT — Tank-Out booking → Order Muat → EIR-Out → gate-out
 	# =======================================================================
 	def tank_out(self):
 		from container_depot.ess import gate as ess_gate
@@ -502,21 +502,10 @@ class SmokeRun:
 		if out_code:
 			self.track("Booking Code", out_code)
 
-		# --- 13) Release DO → Available ---------------------
-		def _mk_release():
-			r = frappe.get_doc({
-				"doctype": "Release DO", "tank_owner": self.customer, "depot": self.depot,
-				"status": "Issued", "containers": [{"container": self.container, "container_no": self.container}],
-			}).insert(ignore_permissions=True)
-			self.track("Release DO", r.name)
-			r.flags.ignore_permissions = True
-			r.submit()
-			return r
-		self.step("Release DO · submit → Available", _mk_release)
-		self.assert_true("Release DO · container Available",
-			frappe.db.get_value("Container", self.container, "status") == "Available")
+		# The golden container is already Available (Tank In finished + cleaned); the tank
+		# leaves via EIR-Out "Ready To Load" + mark_gate_out below. (Release DO removed.)
 
-		# --- 14) Gate-out BLOCKED without a clean EIR-Out -----------------
+		# --- 13) Gate-out BLOCKED without a clean EIR-Out -----------------
 		self.step("Gate Out · blocked before clean EIR-Out (ESS)",
 			lambda: ess_gate.gate_out(container=self.container), expect_error=True)
 
@@ -659,12 +648,6 @@ def _teardown(prefix=CPREFIX, cust_prefix=CUST_PREFIX):
 	insp = names("Inspection", {"container": ["in", conts or [""]]}) if conts else []
 	clean = names("Cleaning Order", {"container": ["in", conts or [""]]}) if conts else []
 	ro = names("Repair Order", {"container": ["in", conts or [""]]}) if conts else []
-	# Release DO: by tank_owner OR by its child containers (survives a deleted customer).
-	rdo = list(set(
-		(names("Release DO", {"tank_owner": ["in", custs or [""]]}) if custs else [])
-		+ names("Release DO", {"tank_owner": ["like", f"{cust_prefix}%"]})
-		+ frappe.get_all("Release DO Item", filters={"container": ["like", f"{prefix}%"]}, pluck="parent")
-	))
 	# Sales Invoice: by customer OR our tagged remarks.
 	si = list(set(
 		(names("Sales Invoice", {"customer": ["in", custs or [""]]}) if custs else [])
@@ -683,12 +666,12 @@ def _teardown(prefix=CPREFIX, cust_prefix=CUST_PREFIX):
 	pricelists = names("Price List", {"customer": ["in", custs or [""]]}) if custs else []
 
 	# Notifications that point at any of our docs.
-	all_doc_names = set(conts + bookings + orders_b + orders_m + gate + insp + clean + cert + ro + rdo + si)
+	all_doc_names = set(conts + bookings + orders_b + orders_m + gate + insp + clean + cert + ro + si)
 	notif = names("Notification Log", {"document_name": ["in", list(all_doc_names) or [""]]}) if all_doc_names else []
 
 	_log(f"teardown scope: {len(conts)} containers, {len(bookings)} bookings, {len(orders_b)+len(orders_m)} orders, "
 		f"{len(gate)} gate, {len(insp)} EIR, {len(clean)} cleaning, {len(cert)} cert, {len(ro)} M&R, "
-		f"{len(rdo)} release, {len(si)} SI, {len(pe)} PE, {len(se)} SE, {len(custs)} customers")
+		f"{len(si)} SI, {len(pe)} PE, {len(se)} SE, {len(custs)} customers")
 
 	# Defensive: drop any ledger rows our vouchers posted. The current flow posts NONE
 	# (Cash SIs are settled without a Payment Entry; M&R uses non-stock items), but this
@@ -707,7 +690,7 @@ def _teardown(prefix=CPREFIX, cust_prefix=CUST_PREFIX):
 	for dt, rows in [
 		("Payment Entry", pe), ("Sales Invoice", si), ("Stock Entry", se),
 		("Gate Entry", gate), ("Inspection", insp),
-		("Cleaning Order", clean), ("Repair Order", ro), ("Release DO", rdo),
+		("Cleaning Order", clean), ("Repair Order", ro),
 		("Order Muat", orders_m), ("Order Bongkar", orders_b),
 		("Booking Code", codes), ("Container Booking", bookings),
 		("Container Activity", act), ("Container Movement", mov),

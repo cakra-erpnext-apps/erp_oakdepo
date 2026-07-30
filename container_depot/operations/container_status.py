@@ -5,7 +5,7 @@ is being done to the tank (that lives on the related orders), only *where* it is
 
 * ``Booked``    — reserved by a Tank In booking, not yet physically at the gate.
 * ``In_Depot``  — physically present with open work: a draft EIR-In, or an open
-  Cleaning / Repair (M&R) order.
+  Cleaning / Repair (M&R) / Periodic Test order.
 * ``Available`` — physically present and every related order is finished → ready
   to leave (the only state a Tank Out booking may submit from).
 * ``Gate_Out``  — has left the depot.
@@ -30,15 +30,19 @@ PRESENT = (IN_DEPOT, AVAILABLE)
 # Order states that still count as "open" (i.e. keep the container In_Depot).
 _DONE_CLEANING = ("Completed", "Cancelled")
 _DONE_REPAIR = ("Completed", "Cancelled", "Rejected")
+# Periodic Test Order shares the M&R owner-approval machine — same terminal set.
+_DONE_PERIODIC = ("Completed", "Cancelled", "Rejected")
 
 
 def container_has_open_orders(container: str) -> bool:
-    """True if the container still has an unfinished inbound-processing order.
+    """True if the container still has an unfinished processing order.
 
-    Open = a draft EIR-In (never submitted), a Cleaning Order that is not yet
-    Completed/Cancelled, or a Repair (M&R) Order that is not yet Completed/
-    Cancelled/Rejected. EIR-Out is deliberately excluded — it belongs to the
-    outbound flow and must not drag a ready tank back to In_Depot.
+    Open = a draft EIR-In (never submitted), a Cleaning Order not yet Completed/
+    Cancelled, a Repair (M&R) Order not yet Completed/Cancelled/Rejected, or a
+    Periodic Test Order not yet Completed/Cancelled/Rejected. Any of these is work
+    that must finish before the tank may leave, so it keeps the tank In_Depot (and
+    thus blocks a Tank Out booking + the gate-out). EIR-Out is deliberately excluded
+    — it belongs to the outbound flow and must not drag a ready tank back to In_Depot.
     """
     if not container:
         return False
@@ -54,6 +58,11 @@ def container_has_open_orders(container: str) -> bool:
     if frappe.db.exists(
         "Repair Order",
         {"container": container, "status": ["not in", _DONE_REPAIR], "docstatus": ["<", 2]},
+    ):
+        return True
+    if frappe.db.exists(
+        "Periodic Test Order",
+        {"container": container, "status": ["not in", _DONE_PERIODIC], "docstatus": ["<", 2]},
     ):
         return True
     return False
