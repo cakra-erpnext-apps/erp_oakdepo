@@ -19,6 +19,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
 from container_depot.operations import cleaning
+from container_depot.operations.doctype.gate_out_plan import gate_out_plan
 from container_depot.operations.mail_to_order import get_order_prefill
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_container
@@ -130,18 +131,26 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertEqual(str(self._target(a).target_lift_on), str(d))
 		self.assertIsNone(self._target(b).target_lift_on)
 
-	def test_does_not_clobber_another_plans_stamp(self):
-		c = self._container("GOPSHARE001")
+	# --- one active plan per container ---------------------------------------
+	def test_container_blocked_in_second_open_plan(self):
+		c = self._container("GOPUNIQ001")
+		self._plan([(c, add_days(today(), 3))])  # plan 1 (Open) claims the tank
+		with self.assertRaises(frappe.ValidationError):
+			self._plan([(c, add_days(today(), 5))])  # plan 2 (Open) may not reuse it
+
+	def test_duplicate_container_in_same_plan_blocked(self):
+		c = self._container("GOPUNIQ002")
+		d = add_days(today(), 4)
+		with self.assertRaises(frappe.ValidationError):
+			self._plan([(c, d), (c, d)])  # same tank listed twice in one plan
+
+	def test_closing_a_plan_frees_the_container(self):
+		c = self._container("GOPUNIQ003")
 		p1 = self._plan([(c, add_days(today(), 3))])
-		# A second plan lists the same container (last write wins → points to p2).
-		p2 = self._plan([(c, add_days(today(), 2))])
+		p1.status = "Fulfilled"
+		p1.save(ignore_permissions=True)  # released — no longer an active claim
+		p2 = self._plan([(c, add_days(today(), 6))])  # now allowed to claim it
 		self.assertEqual(self._target(c).gate_out_plan, p2.name)
-		# Closing p1 must NOT clear the stamp that p2 now owns.
-		p1.status = "Cancelled"
-		p1.save(ignore_permissions=True)
-		got = self._target(c)
-		self.assertEqual(got.gate_out_plan, p2.name)
-		self.assertIsNotNone(got.target_lift_on)
 
 	# --- readiness ------------------------------------------------------------
 	def test_readiness_ready_when_no_open_work(self):
@@ -162,6 +171,68 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertIn("Cleaning", row.readiness)
 		self.assertIn("M&R", row.readiness)
 		self.assertEqual(plan.readiness_summary, "0/1 siap")
+
+	# --- readiness stays current ----------------------------------------------
+	def test_finishing_the_work_updates_the_plan_without_touching_it(self):
+		"""The whole point of the monitoring: Kesiapan is stored, so it has to be pushed by the
+		ORDERS. Finishing the last blocker must flip the plan to Siap with nobody re-saving it
+		— that staleness is what made a plan read "Belum: Cleaning" long after cleaning was done."""
+		c = self._container("GOPLIVE001")
+		co = self._cleaning(c)
+		ro = self._repair(c)
+		plan = self._plan([(c, add_days(today(), 5))])
+		self.assertEqual(plan.readiness_summary, "0/1 siap")
+
+		# One blocker done -> the other is still named, and nothing re-saved the plan.
+		frappe.get_doc("Cleaning Order", co).db_set("status", "Completed", update_modified=False)
+		gate_out_plan.refresh_plans_for_order(frappe.get_doc("Cleaning Order", co))
+		self.assertEqual(self._readiness(plan.name), ("0/1 siap", "Belum: M&R", 0))
+
+		# Last blocker done -> Siap, still without opening the plan.
+		mr_doc = frappe.get_doc("Repair Order", ro)
+		mr_doc.status = "Cancelled"
+		mr_doc.save(ignore_permissions=True)  # the real path: doc_events fires the refresh
+		self.assertEqual(self._readiness(plan.name), ("1/1 siap", "Siap", 1))
+
+	def test_closed_plan_is_left_alone(self):
+		"""A Fulfilled plan is a record of how it closed, so later work must not rewrite its
+		numbers — otherwise history changes every time a tank is cleaned again."""
+		c = self._container("GOPCLOSED1")
+		co = self._cleaning(c)
+		plan = self._plan([(c, add_days(today(), 5))])
+		plan.status = "Fulfilled"
+		plan.save(ignore_permissions=True)
+		before = self._readiness(plan.name)
+
+		doc = frappe.get_doc("Cleaning Order", co)
+		doc.status = "Completed"
+		doc.save(ignore_permissions=True)
+		self.assertEqual(self._readiness(plan.name), before)
+
+	def test_related_orders_names_the_blockers_per_container(self):
+		"""The detail list has to name WHICH order holds a tank up, and agree with the column:
+		exactly the orders whose ``blocks`` is true are the ones behind "Belum"."""
+		c = self._container("GOPREL0001")
+		co = self._cleaning(c, status="Completed")
+		ro = self._repair(c)
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		tanks = gate_out_plan.related_orders(plan.name)
+		self.assertEqual(len(tanks), 1)
+		by_name = {o["name"]: o for o in tanks[0]["orders"]}
+		self.assertFalse(by_name[co]["blocks"])   # finished cleaning is history
+		self.assertTrue(by_name[ro]["blocks"])    # the open M&R is the blocker
+		self.assertEqual(by_name[ro]["kind"], "M&R")
+		# ...and that is precisely what the stored column says.
+		self.assertEqual(self._readiness(plan.name)[1], "Belum: M&R")
+
+	def _readiness(self, plan):
+		"""(readiness_summary, row readiness, row is_ready) read fresh from the DB."""
+		summary = frappe.db.get_value("Gate Out Plan", plan, "readiness_summary")
+		row = frappe.get_all(
+			"Gate Out Plan Item", filters={"parent": plan}, fields=["readiness", "is_ready"]
+		)[0]
+		return summary, row.readiness, row.is_ready
 
 	def test_next_lift_on_is_earliest(self):
 		a = self._container("GOPNEXT001A")

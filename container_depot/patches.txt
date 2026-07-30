@@ -65,3 +65,4 @@ container_depot.patches.v0_42.backfill_inspection_status
 container_depot.patches.v0_43.backfill_inspection_container_principal
 container_depot.patches.v0_44.backfill_list_columns
 container_depot.patches.v0_45.backfill_used_item_line_type
+container_depot.patches.v0_46.refresh_gate_out_plan_readiness

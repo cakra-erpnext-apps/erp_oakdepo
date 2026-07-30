@@ -6,6 +6,8 @@
   "doctype": "DocType",
   "engine": "InnoDB",
   "field_order": [
+    "orders_section",
+    "related_orders_html",
     "header_section",
     "principal",
     "depot",
@@ -156,6 +158,17 @@
       "read_only": 1
     },
     {
+      "description": "Order cleaning / M&R tiap container beserta statusnya sekarang. Dibaca langsung saat form dibuka \u2014 tidak disimpan, jadi tidak bisa basi.",
+      "fieldname": "orders_section",
+      "fieldtype": "Section Break",
+      "label": "Order Terkait"
+    },
+    {
+      "fieldname": "related_orders_html",
+      "fieldtype": "HTML",
+      "label": "Order Terkait"
+    },
+    {
       "fieldname": "notes_section",
       "fieldtype": "Section Break",
       "label": "Catatan"
@@ -168,7 +181,7 @@
   ],
   "is_submittable": 0,
   "links": [],
-  "modified": "2026-07-29 09:00:00.000000",
+  "modified": "2026-07-30 12:00:00.000000",
   "module": "Operations",
   "name": "Gate Out Plan",
   "permissions": [],

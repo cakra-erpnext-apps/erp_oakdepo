@@ -128,6 +128,22 @@ for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Survey Order", "Gat
 	_append_event(_dt, "on_trash", _REVOKE)
 del _dt
 
+# A Gate Out Plan's Kesiapan (X/Y siap) is STORED so the list view can sort and filter on it,
+# which means it ages the moment one of the planned tank's orders finishes — the one time the
+# plan is actually being watched. Every write to a Cleaning / M&R order therefore recomputes
+# the Open plans that list its container.
+#
+# ``after_delete``, not ``on_trash``: on_trash runs while the row is still there, so the
+# recompute would still count the order it is about to lose. Repair Order is not submittable,
+# so only its save/delete events can fire; Cleaning Order is, and its status moves after
+# submit (sign-off -> Completed, cancel) come through the submit-side events.
+_GOP_REFRESH = "container_depot.operations.doctype.gate_out_plan.gate_out_plan.refresh_plans_for_order"
+for _ev in ("on_update", "after_delete"):
+	_append_event("Repair Order", _ev, _GOP_REFRESH)
+for _ev in ("on_update", "on_submit", "on_update_after_submit", "on_cancel", "after_delete"):
+	_append_event("Cleaning Order", _ev, _GOP_REFRESH)
+del _ev
+
 # Scheduled Jobs
 # --------------
 
