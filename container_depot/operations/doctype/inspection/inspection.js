@@ -17,6 +17,11 @@ frappe.ui.form.on('Inspection', {
 		install_photo_thumbnails(frm);
 	},
 
+	// Fired by grid_row.show_form when a row's "Editing Row #N" panel is rendered.
+	form_render(frm, cdt, cdn) {
+		render_photo_preview(frm, cdt, cdn);
+	},
+
 	refresh(frm) {
 		set_direction_banner(frm);
 		set_signature_preview(frm);
@@ -245,7 +250,16 @@ function bind_photo_lightbox(frm) {
 		el.addEventListener(
 			'click',
 			(e) => {
-				const cell = e.target.closest && e.target.closest('.grid-static-col');
+				if (!e.target.closest) return;
+				// The large preview inside an opened row: nothing to protect it from, it
+				// just zooms.
+				const large = e.target.closest('.oak-photo-large img');
+				if (large) {
+					e.preventDefault();
+					show_photo(large.getAttribute('data-oak-photo'));
+					return;
+				}
+				const cell = e.target.closest('.grid-static-col');
 				if (!cell) return;
 				const img = cell.querySelector('img.oak-grid-photo');
 				if (!img) return; // empty cell — let Frappe open the upload control
@@ -256,6 +270,37 @@ function bind_photo_lightbox(frm) {
 			true,
 		);
 	});
+}
+
+// The photo, full width, inside the opened row panel.
+//
+// The Attach control alone gives you a filename and a hover popover — fine for an
+// attachment, useless for an inspection record where the picture IS the evidence. The
+// grid thumbnail answers "which tank"; this answers "is that dent actually there".
+//
+// Rendered into a plain HTML docfield rather than injected next to the control, so it
+// survives whatever the Attach control does to its own markup between framework versions.
+function render_photo_preview(frm, cdt, cdn) {
+	const spec = PHOTO_TABLES.find(([, doctype]) => doctype === cdt);
+	if (!spec) return;
+	const [table_fieldname, , photo_fieldname] = spec;
+
+	const grid = frm.fields_dict[table_fieldname] && frm.fields_dict[table_fieldname].grid;
+	const grid_row = grid && grid.grid_rows_by_docname && grid.grid_rows_by_docname[cdn];
+	const field = grid_row && grid_row.grid_form && grid_row.grid_form.fields_dict.photo_preview;
+	if (!field) return;
+
+	const url = ((locals[cdt] || {})[cdn] || {})[photo_fieldname];
+	if (!url) {
+		// A row with no photo yet — say so, rather than leaving a silent gap where a
+		// picture should be.
+		field.$wrapper.html(`<div class="oak-photo-none">${__('Belum ada foto')}</div>`);
+		return;
+	}
+	const src = frappe.utils.escape_html(url);
+	field.$wrapper.html(
+		`<div class="oak-photo-large"><img src="${src}" data-oak-photo="${src}" alt=""></div>`,
+	);
 }
 
 function show_photo(src) {

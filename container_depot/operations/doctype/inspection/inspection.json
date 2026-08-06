@@ -609,7 +609,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-06 14:00:00.000000",
+ "modified": "2026-08-06 15:00:00.000000",
  "module": "Operations",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

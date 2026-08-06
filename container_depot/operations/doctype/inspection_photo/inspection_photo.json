@@ -8,6 +8,7 @@
  "field_order": [
   "photo_view",
   "photo_url",
+  "photo_preview",
   "column_break_1",
   "timestamp",
   "uploaded_by"
@@ -31,6 +32,12 @@
    "columns": 3
   },
   {
+   "fieldname": "photo_preview",
+   "fieldtype": "HTML",
+   "label": "Preview",
+   "allow_on_submit": 1
+  },
+  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
   },
@@ -52,7 +59,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-06 13:00:00.000000",
+ "modified": "2026-08-06 15:00:00.000000",
  "module": "Operations",
  "name": "Inspection Photo"
 }

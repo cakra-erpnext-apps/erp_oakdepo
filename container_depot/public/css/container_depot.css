@@ -58,6 +58,38 @@ img.oak-grid-photo:hover {
 	border-color: var(--primary);
 }
 
+/*
+ * The photo at working size inside an opened grid row ("Editing Row #N").
+ *
+ * Filled by render_photo_preview in inspection.js. This is where an inspector actually
+ * judges the evidence — the grid thumbnail only answers "which tank", so this one is
+ * sized to answer "is that dent really there". Capped by viewport height so a portrait
+ * photo cannot push the row's own fields off the screen.
+ */
+.oak-photo-large {
+	margin-top: var(--margin-sm);
+}
+
+.oak-photo-large img {
+	width: 100%;
+	max-height: 60vh;
+	object-fit: contain;
+	border-radius: var(--border-radius-md);
+	border: 1px solid var(--border-color);
+	background: var(--control-bg);
+	cursor: zoom-in;
+}
+
+/* A row whose photo has not been uploaded yet — say so instead of leaving a silent gap. */
+.oak-photo-none {
+	margin-top: var(--margin-sm);
+	padding: var(--padding-lg);
+	text-align: center;
+	color: var(--text-muted);
+	border: 1px dashed var(--border-color);
+	border-radius: var(--border-radius-md);
+}
+
 /* Full-size view opened by clicking a thumbnail. */
 .oak-photo-full {
 	text-align: center;
