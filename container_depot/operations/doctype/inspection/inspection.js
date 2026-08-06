@@ -8,6 +8,15 @@
 // container_depot/operations/eir.py:create_eir — keep the two in sync.
 
 frappe.ui.form.on('Inspection', {
+	// The photo formatters MUST be installed here, not in refresh. form.js renders the
+	// fields and only then fires the refresh trigger (frappe.run_serially in render_form:
+	// refresh_fields() comes before script_manager.trigger("refresh")), so a formatter
+	// installed in refresh arrives after the grid has already painted its columns as
+	// plain URLs — and nothing re-renders it afterwards. setup runs once, before any of it.
+	setup(frm) {
+		install_photo_thumbnails(frm);
+	},
+
 	refresh(frm) {
 		set_direction_banner(frm);
 		set_signature_preview(frm);
@@ -174,11 +183,17 @@ function revert_to_draft(frm) {
 // Reviewing an EIR is a scanning job — twenty photos, is this the right tank, is the
 // damage really there — so the picture belongs in the row itself.
 //
-// frappe.meta.set_formatter is the supported hook for this: frappe.format prefers
-// df.formatter over the fieldtype's default, and grid rows read their docfields from the
-// same per-docname copy set_formatter writes to. Note the Attach Image formatter does NOT
-// call _apply_custom_formatter, so the frappe.meta.docfield_map route documented in
-// formatters.js would silently do nothing here.
+// frappe.format prefers df.formatter over the fieldtype's default, so a formatter on the
+// docfield is the hook. Two details decide WHERE it has to go:
+//
+//   * The Attach Image formatter never calls _apply_custom_formatter, so the
+//     frappe.meta.docfield_map route documented in formatters.js does nothing on its own.
+//   * Grid rows read their docfields from a PER-DOCNAME copy (grid.js:
+//     frappe.meta.get_docfields(child_doctype, frm.docname)), built by copy_dict — which
+//     is a shallow copy, so a function set on the standard docfield survives into it.
+//
+// So: write the standard docfield (every copy made later inherits it) AND the copy this
+// form may already hold. Called from setup, before the first render.
 //
 // (table fieldname on Inspection, child doctype, image fieldname)
 const PHOTO_TABLES = [
@@ -186,15 +201,21 @@ const PHOTO_TABLES = [
 	['item_photos', 'Inspection Item Photo', 'photo'],
 ];
 
+function photo_thumbnail(value) {
+	if (!value) return '';
+	const src = frappe.utils.escape_html(value);
+	// data-oak-photo carries the URL for the lightbox below; the <img> src is the same
+	// file, so no second request and no extra thumbnail to generate.
+	return `<img class="oak-grid-photo" src="${src}" data-oak-photo="${src}" loading="lazy" alt="">`;
+}
+
 function install_photo_thumbnails(frm) {
 	PHOTO_TABLES.forEach(([, doctype, fieldname]) => {
-		frappe.meta.set_formatter(doctype, fieldname, frm.docname, (value) => {
-			if (!value) return '';
-			const src = frappe.utils.escape_html(value);
-			// data-oak-photo carries the URL for the lightbox below; the <img> src is the
-			// same file, so no second request and no extra thumbnail to generate.
-			return `<img class="oak-grid-photo" src="${src}" data-oak-photo="${src}" loading="lazy" alt="">`;
-		});
+		const std = (frappe.meta.docfield_map[doctype] || {})[fieldname];
+		if (std) std.formatter = photo_thumbnail;
+		if (!frm.docname) return;
+		const df = frappe.meta.get_docfield(doctype, fieldname, frm.docname);
+		if (df) df.formatter = photo_thumbnail;
 	});
 }
 
