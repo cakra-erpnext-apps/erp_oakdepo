@@ -15,6 +15,21 @@ app_license = "MIT"
 # `bench install-app` fail fast on a frappe-only site instead of erroring later.
 required_apps = ["erpnext"]
 
+# App switcher / login landing (/apps)
+# ------------------------------------
+# Frappe's `/apps` chooser only lists apps declaring this hook, and `get_default_path`
+# sends a user there after login whenever more than one non-desk app is visible. Without
+# it the Depot PWA is reachable only by typing /depot.
+add_to_apps_screen = [
+	{
+		"name": app_name,
+		"logo": "/assets/container_depot/images/oak-emblem.png",
+		"title": "Depot OAK",
+		"route": "/depot",
+		"has_permission": "container_depot.www.depot.check_app_permission",
+	}
+]
+
 # Installation
 # ------------
 

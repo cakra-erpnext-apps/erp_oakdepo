@@ -25,6 +25,15 @@ def _require_pwa_access():
 		)
 
 
+def check_app_permission():
+	"""Whether to show "Depot OAK" on the `/apps` chooser (``add_to_apps_screen`` hook).
+
+	Same gate as :func:`_require_pwa_access` — keep the two in step when the role model
+	comes back, so the switcher never offers a tile that then bounces the user.
+	"""
+	return frappe.session.user != "Guest"
+
+
 def get_context(context):
 	# Reuse the Frappe session cookie. Unauthenticated -> standard login -> /depot.
 	if frappe.session.user == "Guest":
