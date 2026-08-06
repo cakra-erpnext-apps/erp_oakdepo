@@ -50,6 +50,8 @@ frappe.ui.form.on('Inspection', {
 		if (!frm.is_new() && (frm.doc.item_photos || []).length) {
 			frm.add_custom_button(__('Filter Foto per Section'), () => filter_photos_by_section(frm));
 		}
+		install_photo_thumbnails(frm);
+		bind_photo_lightbox(frm);
 	},
 
 	// Switching type re-skins the form (banner + which sections apply).
@@ -165,6 +167,81 @@ function revert_to_draft(frm) {
 	);
 }
 
+// --- Photo thumbnails in the EIR grids ---
+// Frappe renders an Attach Image column as its bare URL inside an <a> (formatters.js:
+// AttachImage -> format_attachment_url), so a table of photos reads as a wall of
+// /files/... paths and the only way to SEE one is to hover the link for its popover.
+// Reviewing an EIR is a scanning job — twenty photos, is this the right tank, is the
+// damage really there — so the picture belongs in the row itself.
+//
+// frappe.meta.set_formatter is the supported hook for this: frappe.format prefers
+// df.formatter over the fieldtype's default, and grid rows read their docfields from the
+// same per-docname copy set_formatter writes to. Note the Attach Image formatter does NOT
+// call _apply_custom_formatter, so the frappe.meta.docfield_map route documented in
+// formatters.js would silently do nothing here.
+//
+// (table fieldname on Inspection, child doctype, image fieldname)
+const PHOTO_TABLES = [
+	['exterior_photos', 'Inspection Photo', 'photo_url'],
+	['item_photos', 'Inspection Item Photo', 'photo'],
+];
+
+function install_photo_thumbnails(frm) {
+	PHOTO_TABLES.forEach(([, doctype, fieldname]) => {
+		frappe.meta.set_formatter(doctype, fieldname, frm.docname, (value) => {
+			if (!value) return '';
+			const src = frappe.utils.escape_html(value);
+			// data-oak-photo carries the URL for the lightbox below; the <img> src is the
+			// same file, so no second request and no extra thumbnail to generate.
+			return `<img class="oak-grid-photo" src="${src}" data-oak-photo="${src}" loading="lazy" alt="">`;
+		});
+	});
+}
+
+// Click a thumbnail -> full size. Delegated off the form wrapper so it keeps working as
+// the grid re-renders rows (paging, filtering, adding). The handler is namespaced and
+// re-bound on every refresh, hence the .off() first — otherwise each refresh would stack
+// another listener and one click would open several dialogs.
+function bind_photo_lightbox(frm) {
+	frm.$wrapper
+		.off('click.oakPhoto')
+		.on('click.oakPhoto', 'img.oak-grid-photo', function (e) {
+			e.preventDefault();
+			e.stopPropagation(); // don't also open the row editor
+			show_photo(this.getAttribute('data-oak-photo'));
+		});
+}
+
+function show_photo(src) {
+	if (!src) return;
+	const d = new frappe.ui.Dialog({ title: __('Foto'), size: 'large' });
+	d.$body.html(
+		`<div class="oak-photo-full"><img src="${frappe.utils.escape_html(src)}" alt=""></div>`,
+	);
+	d.set_secondary_action_label(__('Buka di tab baru'));
+	d.set_secondary_action(() => window.open(src, '_blank'));
+	d.show();
+}
+
+// --- A photo row without a photo is not a row ---
+// Both image fields are reqd, so an emptied row could never be saved anyway — Frappe would
+// just refuse the save with "Photo is required" and leave the user to work out which of
+// forty rows it meant. The record only exists to carry the image, so removing the image
+// removes the row. The server enforces the same rule in Inspection.validate for every
+// other path in (PWA, API, data import).
+function drop_row_without_photo(frm, table_fieldname, photo_fieldname, cdt, cdn) {
+	const row = (locals[cdt] || {})[cdn];
+	if (!row || row[photo_fieldname]) return; // still has its photo — nothing to do
+	const grid = frm.fields_dict[table_fieldname] && frm.fields_dict[table_fieldname].grid;
+	const grid_row = grid && grid.grid_rows_by_docname && grid.grid_rows_by_docname[cdn];
+	if (!grid_row) return;
+	grid_row.remove();
+	frappe.show_alert({
+		message: __('Baris foto dihapus — foto tidak bisa dikosongkan.'),
+		indicator: 'orange',
+	});
+}
+
 // --- Bulk photo sorting (Desk) ---
 // Prompt for a section and show only the matching item_photos rows. "(Belum disortir)"
 // isolates the bulk "foto cepat" that still need a checklist_item assigned; "(Semua)"
@@ -194,7 +271,17 @@ function apply_photo_filter(frm, area) {
 
 // When the admin assigns a section to a bulk photo in the grid, fill Area/Item at once
 // (fetch_from also does this, but set it explicitly so the filter above sees it live).
+frappe.ui.form.on('Inspection Photo', {
+	photo_url(frm, cdt, cdn) {
+		drop_row_without_photo(frm, 'exterior_photos', 'photo_url', cdt, cdn);
+	},
+});
+
 frappe.ui.form.on('Inspection Item Photo', {
+	photo(frm, cdt, cdn) {
+		drop_row_without_photo(frm, 'item_photos', 'photo', cdt, cdn);
+	},
+
 	checklist_item(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.checklist_item) return;

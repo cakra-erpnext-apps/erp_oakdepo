@@ -18,3 +18,67 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
 	margin-left: auto;
 	margin-right: auto;
 }
+
+/*
+ * EIR photo grids — show the photo, not its file path.
+ *
+ * The <img> is injected by the column formatter in
+ * operations/doctype/inspection/inspection.js; everything here is the room it needs.
+ * Frappe pins .grid-static-col to 43px and clips its .static-area with `ellipsis`
+ * (apps/frappe/frappe/public/scss/common/grid.scss), so without this the thumbnail is
+ * sliced to a sliver. Scoped to the two photo tables by their field names so no other
+ * grid in any app grows a taller row, and to .grid-body so the heading and filter rows
+ * keep their own (shorter) height — they share the .grid-static-col class.
+ */
+[data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col,
+[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col {
+	height: 64px;
+}
+
+[data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col .static-area,
+[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col .static-area {
+	/* `ellipsis` sets overflow:hidden + nowrap, which would crop the image. */
+	overflow: visible;
+	display: flex;
+	align-items: center;
+	height: 100%;
+}
+
+img.oak-grid-photo {
+	height: 48px;
+	width: 64px;
+	object-fit: cover; /* uniform tiles: a portrait and a landscape photo line up */
+	border-radius: 4px;
+	border: 1px solid var(--border-color);
+	cursor: zoom-in;
+	background: var(--control-bg);
+}
+
+img.oak-grid-photo:hover {
+	border-color: var(--primary);
+}
+
+/* Full-size view opened by clicking a thumbnail. */
+.oak-photo-full {
+	text-align: center;
+}
+
+.oak-photo-full img {
+	max-width: 100%;
+	max-height: 70vh;
+	object-fit: contain;
+}
+
+/*
+ * No "Clear" on an EIR photo.
+ *
+ * These images ARE the record — an Inspection Photo row with no photo documents nothing,
+ * and both fields are reqd, so clearing one only produces a row that cannot be saved.
+ * Removing the button leaves one honest way to get rid of a photo: delete the row. If the
+ * value is emptied anyway (older browser state, paste, API) the row is dropped — see
+ * drop_row_without_photo in inspection.js and Inspection.validate on the server.
+ */
+[data-fieldname="exterior_photos"] a[data-action="clear_attachment"],
+[data-fieldname="item_photos"] a[data-action="clear_attachment"] {
+	display: none;
+}

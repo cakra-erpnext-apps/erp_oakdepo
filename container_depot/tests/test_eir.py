@@ -704,3 +704,64 @@ class TestEirRevert(FrappeTestCase):
 		draft = eir.create_eir(inspection_type="EIR-In", container=c, submit=False)
 		with self.assertRaises(frappe.ValidationError):
 			eir.revert_to_draft(draft["name"])
+
+
+class TestEirPhotoRows(FrappeTestCase):
+	"""A photo row exists to carry an image. Empty it and the row goes.
+
+	Enforced on the server because the Desk grid is only one of the ways in — the PWA, the
+	REST API and a data import all reach the same child tables. See
+	Inspection.drop_empty_photo_rows.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self.container = _make_container("EIRPH000001")
+
+	def tearDown(self):
+		frappe.db.delete("Inspection", {"container": self.container})
+		frappe.db.delete("Container", {"name": self.container})
+		frappe.db.commit()
+		super().tearDown()
+
+	def _draft(self):
+		res = eir.create_eir(inspection_type="EIR-In", container=self.container, submit=False)
+		return frappe.get_doc("Inspection", res["name"])
+
+	def test_clearing_an_item_photo_drops_its_row(self):
+		doc = self._draft()
+		doc.append("item_photos", {"photo": "/files/keep.jpg"})
+		doc.append("item_photos", {"photo": ""})
+		doc.save(ignore_permissions=True)
+
+		doc.reload()
+		self.assertEqual([r.photo for r in doc.item_photos], ["/files/keep.jpg"])
+
+	def test_clearing_an_exterior_photo_drops_its_row(self):
+		doc = self._draft()
+		doc.append("exterior_photos", {"photo_view": "Front", "photo_url": "/files/front.jpg"})
+		doc.append("exterior_photos", {"photo_view": "Back", "photo_url": "   "})
+		doc.save(ignore_permissions=True)
+
+		doc.reload()
+		self.assertEqual([r.photo_view for r in doc.exterior_photos], ["Front"])
+
+	def test_row_with_a_photo_survives_and_idx_is_renumbered(self):
+		doc = self._draft()
+		for url in ("/files/a.jpg", "", "/files/b.jpg", ""):
+			doc.append("item_photos", {"photo": url})
+		doc.save(ignore_permissions=True)
+
+		doc.reload()
+		self.assertEqual([r.photo for r in doc.item_photos], ["/files/a.jpg", "/files/b.jpg"])
+		# Gaps in idx make the grid render rows out of order.
+		self.assertEqual([r.idx for r in doc.item_photos], [1, 2])
+
+	def test_save_is_not_blocked_by_the_reqd_photo_field(self):
+		# Without the drop, the reqd flag on `photo` would fail the save outright and leave
+		# the user hunting for which row it meant.
+		doc = self._draft()
+		doc.append("item_photos", {"photo": ""})
+		doc.save(ignore_permissions=True)  # must not raise
+		doc.reload()
+		self.assertEqual(len(doc.item_photos), 0)

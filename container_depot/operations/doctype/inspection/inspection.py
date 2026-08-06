@@ -22,6 +22,7 @@ class Inspection(Document):
 
 	def validate(self):
 		"""Validate inspection data"""
+		self.drop_empty_photo_rows()
 		# Recommend the 4 exterior views for EIR-In — but only once the surveyor has
 		# started uploading them (1-3 present). Don't nag empty drafts (the PWA EIR uses
 		# per-item photos and auto-creates an empty draft on fetch).
@@ -34,6 +35,31 @@ class Inspection(Document):
 		# Recomputed on every save — including when the admin assigns the last one → 0 —
 		# so the list filter "Ada Foto Belum Disortir" stays accurate.
 		self.has_unsorted_photos = 1 if any(not p.checklist_item for p in self.item_photos) else 0
+
+	# Photo tables on this doctype, as (child table fieldname, image fieldname).
+	PHOTO_TABLES = (("exterior_photos", "photo_url"), ("item_photos", "photo"))
+
+	def drop_empty_photo_rows(self):
+		"""A photo row without a photo is not a row — remove it instead of refusing the save.
+
+		Both image fields are ``reqd``, so an emptied row can never be saved anyway. Left
+		alone, Frappe answers with "Photo is required" and leaves the user to find which of
+		forty rows it meant; these records exist only to carry an image, so the honest
+		response to a missing one is to drop the row.
+
+		Runs here rather than only in the Desk client because every other way in — the PWA,
+		the REST API, a data import — reaches the same tables. Ordering is safe: Frappe runs
+		``validate`` (via run_before_save_methods) before ``_validate_mandatory``, so these
+		rows are gone before the reqd check sees them.
+		"""
+		for table_fieldname, photo_fieldname in self.PHOTO_TABLES:
+			rows = self.get(table_fieldname) or []
+			kept = [r for r in rows if (r.get(photo_fieldname) or "").strip()]
+			if len(kept) == len(rows):
+				continue
+			for idx, row in enumerate(kept, start=1):
+				row.idx = idx
+			self.set(table_fieldname, kept)
 
 	def on_cancel(self):
 		"""Keep the ``status`` field in step with the docstatus so Desk + PWA never disagree.
