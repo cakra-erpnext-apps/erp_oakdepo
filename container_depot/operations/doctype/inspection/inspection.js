@@ -17,11 +17,6 @@ frappe.ui.form.on('Inspection', {
 		install_photo_thumbnails(frm);
 	},
 
-	// Fired by grid_row.show_form when a row's "Editing Row #N" panel is rendered.
-	form_render(frm, cdt, cdn) {
-		render_photo_preview(frm, cdt, cdn);
-	},
-
 	refresh(frm) {
 		set_direction_banner(frm);
 		set_signature_preview(frm);
@@ -362,13 +357,25 @@ function apply_photo_filter(frm, area) {
 
 // When the admin assigns a section to a bulk photo in the grid, fill Area/Item at once
 // (fetch_from also does this, but set it explicitly so the filter above sees it live).
+// `form_render` belongs on the CHILD doctype, not on Inspection. grid_row.show_form calls
+// script_manager.trigger("form_render", child_doctype, row_name), and get_handlers looks
+// the event up under THAT doctype (frappe.ui.form.handlers[doctype][event_name]) — a
+// handler registered on the parent is never reached.
 frappe.ui.form.on('Inspection Photo', {
+	form_render(frm, cdt, cdn) {
+		render_photo_preview(frm, cdt, cdn);
+	},
+
 	photo_url(frm, cdt, cdn) {
 		drop_row_without_photo(frm, 'exterior_photos', 'photo_url', cdt, cdn);
 	},
 });
 
 frappe.ui.form.on('Inspection Item Photo', {
+	form_render(frm, cdt, cdn) {
+		render_photo_preview(frm, cdt, cdn);
+	},
+
 	photo(frm, cdt, cdn) {
 		drop_row_without_photo(frm, 'item_photos', 'photo', cdt, cdn);
 	},
