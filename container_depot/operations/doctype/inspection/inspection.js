@@ -219,18 +219,43 @@ function install_photo_thumbnails(frm) {
 	});
 }
 
-// Click a thumbnail -> full size. Delegated off the form wrapper so it keeps working as
-// the grid re-renders rows (paging, filtering, adding). The handler is namespaced and
-// re-bound on every refresh, hence the .off() first — otherwise each refresh would stack
-// another listener and one click would open several dialogs.
+// Click a filled photo cell -> view it full size. Never edit it.
+//
+// This has to run in the CAPTURE phase. Frappe binds click-to-edit directly on the cell
+// (grid_row.js: $col.on("click", ... toggle_editable_row())), and a delegated jQuery
+// handler on the form wrapper is an ANCESTOR — so it fires after the cell's own handler,
+// by which point the row is already in edit mode, the thumbnail is hidden and an Attach
+// control with the raw URL has taken its place. That is the "photo disappears after I
+// click it" bug: nothing was lost, the cell had simply swapped itself for an editor.
+// Capturing on the grid wrapper gets there first, and stopPropagation there keeps the
+// event from ever reaching the cell.
+//
+// Only a cell that ALREADY has a photo is intercepted. An empty one still opens the
+// normal upload control, so adding a photo works exactly as before — it is only the
+// permanent, already-uploaded image that is view-only.
 function bind_photo_lightbox(frm) {
-	frm.$wrapper
-		.off('click.oakPhoto')
-		.on('click.oakPhoto', 'img.oak-grid-photo', function (e) {
-			e.preventDefault();
-			e.stopPropagation(); // don't also open the row editor
-			show_photo(this.getAttribute('data-oak-photo'));
-		});
+	PHOTO_TABLES.forEach(([table_fieldname]) => {
+		const grid = frm.fields_dict[table_fieldname] && frm.fields_dict[table_fieldname].grid;
+		const el = grid && grid.wrapper && grid.wrapper.get(0);
+		// The wrapper is built once and rows re-render inside it, so one listener holds for
+		// the life of the grid. The flag stops refreshes from stacking duplicates, which
+		// would open one dialog per refresh.
+		if (!el || el._oakPhotoBound) return;
+		el._oakPhotoBound = true;
+		el.addEventListener(
+			'click',
+			(e) => {
+				const cell = e.target.closest && e.target.closest('.grid-static-col');
+				if (!cell) return;
+				const img = cell.querySelector('img.oak-grid-photo');
+				if (!img) return; // empty cell — let Frappe open the upload control
+				e.stopPropagation();
+				e.preventDefault();
+				show_photo(img.getAttribute('data-oak-photo'));
+			},
+			true,
+		);
+	});
 }
 
 function show_photo(src) {
