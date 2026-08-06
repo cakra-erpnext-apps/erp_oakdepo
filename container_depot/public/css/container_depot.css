@@ -125,25 +125,24 @@ img.oak-grid-photo:hover {
 }
 
 /*
- * ...and no raw file path either.
+ * ...and no raw file path, and no hover popover.
  *
- * The Attach control renders its value as <a class="attached-file-link">/private/files/
- * whatever.jpg</a>. That path was only ever useful next to a Clear button — something to
- * check before removing the file. With Clear gone it is a long, unreadable string that
- * pushes the real content out of the row, and the picture itself is already one hover (or
- * one click on the list thumbnail) away.
+ * The Attach control renders its value as an icon plus
+ * <a class="attached-file-link">/private/files/whatever.jpg</a>, and ControlAttachImage
+ * hangs a hover popover off that anchor showing a 150px thumbnail
+ * (apps/frappe/frappe/public/js/frappe/form/controls/attach_image.js).
  *
- * Swap the text rather than hiding the anchor: the link still opens the file, and Frappe's
- * own hover popover still previews it. Done in CSS because it is purely how the value
- * reads — no control to patch, nothing to keep in step with a framework upgrade.
+ * Both are dead weight here. The path was only ever useful next to a Clear button —
+ * something to check before deleting a file — and Clear is gone. The popover duplicates
+ * what is already on screen: a thumbnail in the list column and the full-size preview
+ * right below this control. Worse, an earlier attempt to merely shorten the link text
+ * collapsed the anchor's box, which left the popover mispositioned and stuck open.
+ *
+ * Hiding the whole value block removes the hover target, so the popover can never fire —
+ * no control to patch and nothing to keep in step with a framework upgrade. Opening the
+ * file in a tab lives on in the full-size dialog (show_photo).
  */
-[data-fieldname="exterior_photos"] .attached-file-link,
-[data-fieldname="item_photos"] .attached-file-link {
-	font-size: 0; /* hides the path text; ::after below supplies the real label */
-}
-
-[data-fieldname="exterior_photos"] .attached-file-link::after,
-[data-fieldname="item_photos"] .attached-file-link::after {
-	content: "Lihat foto";
-	font-size: var(--text-md);
+[data-fieldname="exterior_photos"] .attached-file > .ellipsis,
+[data-fieldname="item_photos"] .attached-file > .ellipsis {
+	display: none;
 }

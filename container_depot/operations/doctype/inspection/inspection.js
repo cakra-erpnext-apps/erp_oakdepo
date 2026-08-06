@@ -282,8 +282,28 @@ function render_photo_preview(frm, cdt, cdn) {
 
 	const grid = frm.fields_dict[table_fieldname] && frm.fields_dict[table_fieldname].grid;
 	const grid_row = grid && grid.grid_rows_by_docname && grid.grid_rows_by_docname[cdn];
-	const field = grid_row && grid_row.grid_form && grid_row.grid_form.fields_dict.photo_preview;
+	const grid_form = grid_row && grid_row.grid_form;
+	const field = grid_form && grid_form.fields_dict.photo_preview;
 	if (!field) return;
+
+	// Kill ControlAttachImage's hover popover. The CSS hides its anchor, so it can no
+	// longer be triggered, but an instance created before that (or one left open by the
+	// mispositioned-anchor bug) has to be disposed or it hangs around over the form.
+	const control = grid_form.fields_dict[photo_fieldname];
+	const $link = control && control.$value && control.$value.find('.attached-file-link');
+	if ($link && $link.length && $link.popover) {
+		try {
+			$link.popover('dispose');
+		} catch (e) {
+			// Older bootstrap builds name it 'destroy'; either way a failure here is
+			// cosmetic and must not stop the preview below from rendering.
+			try {
+				$link.popover('destroy');
+			} catch (e2) {
+				/* no popover attached — nothing to do */
+			}
+		}
+	}
 
 	const url = ((locals[cdt] || {})[cdn] || {})[photo_fieldname];
 	if (!url) {
