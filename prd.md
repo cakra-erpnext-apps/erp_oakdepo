@@ -113,16 +113,47 @@ Rationale for single repo: same reason Frappe HR ships its Vue app inside the `h
 
 ## 4. Users, Roles & Permissions (mapped to SOP PRO-OPS-009)
 
-| Role | SOP responsibility | ESS capability |
-|---|---|---|
-| Teknisi EIR & Foto | Foto + tulis EIR saat tank in/out | Create/submit Inspection (EIR-In/Out), photos, damage log, draft estimate |
-| Operator Kalmar | Cocokkan no. tank vs bon, susun per status | Pending lifts, confirm container vs booking, update yard location |
-| Ops Supervisor | Approve cuci exterior, awasi alur | Dashboard, approve cleaning/repair, view all status |
-| Staff Adm Ops | Terbitkan Bon Bongkar / Bon Muat | Issue/lookup Order Bongkar & Order Muat, link booking code |
-| Security (gate) | Arahkan supir, tanda tangan bon | Validate QR/booking, confirm gate in/out, capture truck & driver |
-| Depot Manager | Oversight | Read-only KPIs, all depots, periodic-test due, exceptions |
+Role model rebuilt 2026-08-06 (the Phase-6 names below were retired 2026-08-05). Full
+seeding + assignment procedure in `STRUCTURE.md § Role model`.
 
-**Permission model:** depot-scoped via User Permission on `Depot`. No client-side permission logic — the server filters every list and document.
+### Field roles — PWA only (`desk_access = 0`, `is_depot_field_role = 1`)
+
+| Role | Was | SOP responsibility | PWA menus |
+|---|---|---|---|
+| Team EIR | Teknisi EIR & Foto | Foto + tulis EIR saat tank in/out | EIR · Monitor |
+| Team Kalmar | Operator Kalmar | Cocokkan no. tank vs bon, ACC "udah turun" | Siap Keluar · Position Fix · Monitor |
+| Team Cleaning | — | Kerjakan Cleaning Order + QC | Cleaning · Monitor |
+| Team Repair | — | Kerjakan M&R + uji periodik | M&R · Uji Periodik · Monitor |
+| Team Survey | Surveyor | Rekam posisi tank (Lift On) | Survey Posisi · Monitor |
+| Security (gate) | Security | Arahkan supir, tanda tangan bon | Gate · Siap Keluar · Monitor |
+| SPV Lapangan | Ops Supervisor | Awasi seluruh alur lapangan | semua sembilan |
+
+### Office roles — Desk only (`desk_access = 1`, no PWA menu)
+
+| Role | Was | Cakupan |
+|---|---|---|
+| Admin Ops | Staff Adm Ops | Seluruh transaksi Operations (rwcs + cancel/amend), master data (rw), audit (r) |
+| Cashier | Cashier | Sales Invoice / Payment Entry (via `Accounts User`), Order Billing Status |
+| Finance | — | Cakupan Cashier + OAK Monthly Invoice + Depot Finance Settings |
+| Commercial | Commercial | Depot Contract, Depot Service Menu, tarif & harga |
+| Warehouse | — | Sparepart & stock (via `Stock User` / `Purchase User`) |
+| Management | Depot Manager | **Read-only** pada seluruh DocType container_depot |
+
+**Permission model:** three layers, all server-side.
+
+1. **DocPerm** decides what a role may do — seeded from the matrix in `install.py`.
+2. **`ess/guard.py::require_menu`** gates every PWA endpoint on the DocPerm behind its
+   menu. This is the security boundary; the tile filter and route guard are cosmetic.
+3. **User Permission on `Branch`/`Depot`** scopes which records the user sees.
+
+The PWA menu is derived from DocPerms (`ess/context.py::_MENU` maps menu → doctype +
+ptype), never from a role list — so adding a field role is a UI action, not a deploy.
+Office staff may open `/depot`; they simply get an empty menu, which is what replaced the
+old `Depot PWA` role.
+
+**Notifications** are routed per event by `Depot Notification Rule` (a doctype, editable
+without a deploy). A recipient must match BOTH the event's roles and the document's
+branch. Master switch + non-broadcast fallback live in `Depot Notification Settings`.
 
 ---
 
@@ -232,7 +263,7 @@ Scan/enter booking-code QR, confirm container vs booking, capture truck & driver
 | Risk / question | Mitigation / decision needed |
 |---|---|
 | `Container.status` Select has a **duplicated `In_Workshop`** value and 15 overlapping states | Audit & normalise options; define the canonical state machine before F1 |
-| `permissions` arrays are **empty** in several DocType JSONs | Define + apply Role Permissions for all ESS roles before exposing PWA |
+| ~~`permissions` arrays are **empty** in several DocType JSONs~~ | **Resolved 2026-08-06** — `install.py::setup_permissions` seeds the full matrix as Custom DocPerm on every migrate |
 | Offline photo volume on poor connectivity | Client-side compression + chunked batch upload; cap queue with backpressure |
 | Principal nuances (NCS demurrage, Bertschi storage) | Confirm operational vs billing fields; keep billing in Desk |
 | Which roles/users exist in production? | Confirm role list + depot scoping before Phase 0 sign-off |

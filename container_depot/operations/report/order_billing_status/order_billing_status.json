@@ -11,10 +11,6 @@
  "ref_doctype": "Container Booking",
  "report_name": "Order Billing Status",
  "report_type": "Script Report",
- "roles": [
-  {
-   "role": "System Manager"
-  }
- ],
- "modified": "2026-08-05 23:45:00.000000"
+ "roles": [],
+ "modified": "2026-08-06 12:00:00.000000"
 }

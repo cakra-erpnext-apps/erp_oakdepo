@@ -1,9 +1,9 @@
-"""Depot event notifications — recipients are branch scoped, and an EIR / order submit
-drops a Notification Log into the right users' feed (PWA + Desk bell).
+"""Depot event notifications — the BRANCH half of recipient scoping.
 
-Role scoping was removed on 2026-08-05 with the custom role model (see
-container_depot/purge_roles.py); branch is the only filter left until the new roles are
-designed, so the "excludes users without the role" case is gone rather than rewritten."""
+A recipient must clear two filters: branch and role. This module isolates branch, so its
+three users all hold the same role (Admin Ops, which is on both events used below) and
+only their branch differs. The role half — routing per event, disabled rules, the master
+switch, the no-broadcast fallback — is covered in tests/test_notifications.py."""
 
 from __future__ import annotations
 
@@ -29,7 +29,11 @@ def _user(email, branch=None):
 			"email": email,
 			"first_name": email.split("@")[0],
 			"send_welcome_email": 0,
+			"user_type": "System User",
 		}).insert(ignore_permissions=True)
+	# Same role for all three, so branch is the only variable these tests change. Admin Ops
+	# is a recipient of both `booking_created` and `eir_submitted`.
+	frappe.get_doc("User", email).add_roles("Admin Ops")
 	# Branch scope via a native Branch User Permission (empty = all branches).
 	if branch and not frappe.db.exists(
 		"User Permission", {"user": email, "allow": "Branch", "for_value": branch}

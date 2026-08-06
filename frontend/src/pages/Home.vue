@@ -17,6 +17,18 @@
 			</div>
 		</section>
 
+		<!-- No menu at all: office staff, or a field account whose roles are not assigned
+		     yet. /depot stays open to any logged-in user by design, so say why it is empty
+		     rather than showing a blank page that looks broken. -->
+		<section v-if="menu.isEmpty" class="oak-card p-6 text-center">
+			<span class="oak-icon-tile mx-auto h-12 w-12 bg-gray-100 text-gray-400">
+				<Icon name="lock" :size="24" />
+			</span>
+			<p class="mt-3 font-bold text-gray-900">{{ labels.menuEmptyTitle }}</p>
+			<p class="mt-1 text-sm text-gray-500">{{ labels.menuEmptyBody }}</p>
+		</section>
+
+		<template v-else>
 		<!-- Ringkasan Operasional — collapsible KPI dashboard (tap header to expand) -->
 		<button
 			type="button"
@@ -33,7 +45,9 @@
 				<p v-else class="mt-0.5 truncate text-xs text-gray-500">
 					<template v-if="dashRes.loading && !dash">{{ labels.dashSummaryLoading }}</template>
 					<template v-else-if="dash">
-						<span class="font-bold text-gray-700">{{ dash.total }}</span> {{ labels.dashSummaryUnit }}
+						<template v-if="dash.total !== undefined">
+							<span class="font-bold text-gray-700">{{ dash.total }}</span> {{ labels.dashSummaryUnit }}
+						</template>
 						<template v-if="summaryPending"> · {{ summaryPending }} {{ labels.dashSummaryTask }}</template>
 						<template v-if="summaryAlerts"> · <span class="font-bold text-amber-600">⚠ {{ summaryAlerts }} {{ labels.dashSummaryAlert }}</span></template>
 					</template>
@@ -60,8 +74,8 @@
 
 		<!-- KPI sections (only when data is available; degrade silently on error) -->
 		<template v-else-if="dash">
-			<!-- Container per status -->
-			<section class="space-y-2">
+			<!-- Container per status — `counts` only ships to accounts with the Monitor menu -->
+			<section v-if="dash.counts" class="space-y-2">
 				<div class="flex items-center justify-between px-1">
 					<p class="oak-eyebrow flex items-center gap-1.5">
 						<Icon name="package" :size="14" /> {{ labels.dashStatusTitle }}
@@ -85,25 +99,37 @@
 						<span class="mt-1.5 block text-3xl font-extrabold leading-none" :class="s.num">{{ s.count }}</span>
 					</router-link>
 				</div>
-				<router-link
-					v-if="dash.periodic_test_due > 0"
-					:to="{ path: '/monitor', query: { status: '' } }"
-					class="oak-card oak-press flex items-center gap-2 p-3"
-				>
-					<span class="oak-icon-tile h-8 w-8 bg-amber-50 text-amber-600"><Icon name="alert-triangle" :size="16" /></span>
-					<p class="flex-1 text-sm font-medium text-gray-700">
-						<span class="font-bold text-amber-700">{{ dash.periodic_test_due }}</span> {{ labels.dashPtDue }}
-					</p>
-					<Icon name="chevron-right" :size="16" class="text-gray-300" />
-				</router-link>
 			</section>
 
+			<!-- Periodic-test due — its own block, not part of the status grid: Team Repair
+			     gets this card without the Monitor menu that carries the grid. -->
+			<router-link
+				v-if="dash.periodic_test_due > 0"
+				to="/periodic-test"
+				class="oak-card oak-press flex items-center gap-2 p-3"
+			>
+				<span class="oak-icon-tile h-8 w-8 bg-amber-50 text-amber-600"><Icon name="alert-triangle" :size="16" /></span>
+				<p class="flex-1 text-sm font-medium text-gray-700">
+					<span class="font-bold text-amber-700">{{ dash.periodic_test_due }}</span> {{ labels.dashPtDue }}
+				</p>
+				<Icon name="chevron-right" :size="16" class="text-gray-300" />
+			</router-link>
+
+			<!-- Tank dengan job aktif — supervisors only (server sends it to accounts
+			     holding every menu). Gap Analysis §4.8.4. -->
+			<div v-if="dash.active_jobs !== undefined" class="oak-card flex items-center gap-2 p-3">
+				<span class="oak-icon-tile h-8 w-8 bg-blue-50 text-blue-600"><Icon name="tool" :size="16" /></span>
+				<p class="flex-1 text-sm font-medium text-gray-700">
+					<span class="font-bold text-blue-700">{{ dash.active_jobs }}</span> {{ labels.dashActiveJobs }}
+				</p>
+			</div>
+
 			<!-- Aktivitas hari ini -->
-			<section class="space-y-2">
+			<section v-if="todayCards.length" class="space-y-2">
 				<p class="oak-eyebrow flex items-center gap-1.5 px-1">
 					<Icon name="activity" :size="14" /> {{ labels.dashTodayTitle }}
 				</p>
-				<div class="grid grid-cols-3 gap-2">
+				<div class="grid gap-2" :class="todayCards.length === 1 ? 'grid-cols-1' : todayCards.length === 2 ? 'grid-cols-2' : 'grid-cols-3'">
 					<div
 						v-for="t in todayCards"
 						:key="t.label"
@@ -172,8 +198,8 @@
 			</div>
 		</section>
 
-		<!-- Riwayat (history) — one entry per main menu -->
-		<div>
+		<!-- Riwayat (history) — one entry per main menu the account may open -->
+		<div v-if="history.length">
 			<p class="oak-eyebrow mb-2 flex items-center gap-1.5 px-1">
 				<Icon name="clock" :size="14" /> {{ labels.historySection }}
 			</p>
@@ -192,6 +218,7 @@
 				</router-link>
 			</div>
 		</div>
+		</template>
 	</div>
 </template>
 
@@ -200,6 +227,7 @@ import { computed, onMounted, ref, watch } from "vue"
 import { session } from "@/data/session"
 import { userResource } from "@/data/user"
 import { dashboardResource } from "@/data/dashboard"
+import { fetchMenu, menu } from "@/data/menu"
 import { labels, statusLabels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import emblem from "@/assets/oak-emblem.png"
@@ -209,6 +237,9 @@ const dashRes = dashboardResource
 onMounted(() => {
 	// Confirm the logged-in user server-side (PRD Phase 0 deliverable).
 	if (session.isLoggedIn && !userResource.data) userResource.reload()
+	// Which menus this account may open. Cached after the first call, so the router
+	// guard and this page share one request.
+	fetchMenu()
 	// Refresh the dashboard KPIs each visit (component remounts on navigation).
 	dashRes.reload()
 })
@@ -229,7 +260,14 @@ watch(dashOpen, (v) => localStorage.setItem(DASH_OPEN_KEY, v ? "1" : "0"))
 // (periodic test due, M&R approvals, near-full yard).
 const summaryPending = computed(() => {
 	const p = dash.value?.pending || {}
-	return (p.eir_in || 0) + (p.eir_out || 0) + (p.cleaning || 0) + (p.mr_open || 0)
+	return (
+		(p.eir_in || 0) +
+		(p.eir_out || 0) +
+		(p.cleaning || 0) +
+		(p.mr_open || 0) +
+		(p.position_survey || 0) +
+		(p.position_fix || 0)
+	)
 })
 const summaryAlerts = computed(() => {
 	const p = dash.value?.pending || {}
@@ -258,13 +296,17 @@ const statusCards = computed(() => {
 })
 
 // --- KPI: today's activity ---
+// The server only sends the keys this account's menu covers (§6), so a missing key
+// means "not your card" — different from a zero, which means "your card, nothing yet".
 const todayCards = computed(() => {
 	const t = dash.value?.today || {}
 	return [
-		{ icon: "log-in", tile: "bg-brand-50 text-brand-600", label: labels.dashTodayIn, count: t.gate_in ?? 0 },
-		{ icon: "log-out", tile: "bg-gray-100 text-gray-500", label: labels.dashTodayOut, count: t.gate_out ?? 0 },
-		{ icon: "clipboard", tile: "bg-leaf-50 text-leaf-600", label: labels.dashTodayEir, count: t.eir ?? 0 },
+		{ key: "gate_in", icon: "log-in", tile: "bg-brand-50 text-brand-600", label: labels.dashTodayIn },
+		{ key: "gate_out", icon: "log-out", tile: "bg-gray-100 text-gray-500", label: labels.dashTodayOut },
+		{ key: "clipboard", icon: "clipboard", tile: "bg-leaf-50 text-leaf-600", label: labels.dashTodayEir, field: "eir" },
 	]
+		.map((c) => ({ ...c, count: t[c.field || c.key] }))
+		.filter((c) => c.count !== undefined)
 })
 
 // --- KPI: pending tasks (hide zero-count rows; tap → the worklist) ---
@@ -282,23 +324,27 @@ const pendingCards = computed(() => {
 			count: p.mr_open ?? 0,
 			sub: p.mr_approval ? `${p.mr_approval} ${labels.dashPendingApproval}` : "",
 		},
+		{ to: "/survey-position", icon: "map-pin", tile: "bg-amber-50 text-amber-600", title: labels.dashPosSurvey, count: p.position_survey ?? 0 },
+		{ to: "/position-fix", icon: "check-circle", tile: "bg-leaf-50 text-leaf-600", title: labels.dashPosFix, count: p.position_fix ?? 0 },
 	]
 	return rows.filter((r) => r.count > 0)
 })
 
 // --- Menu tiles, grouped by workflow phase ---
+// `key` matches the server's menu key (container_depot.ess.context._MENU). No role name
+// appears here or anywhere else in the frontend — the server decides, this only renders.
 const tiles = {
-	gate: { to: "/gate", icon: "log-in", title: labels.gate, desc: labels.gateDesc, tile: "bg-brand-50 text-brand-600", wide: true },
-	eir: { to: "/eir", icon: "clipboard", title: labels.eir, desc: labels.eirDesc, tile: "bg-leaf-50 text-leaf-600" },
-	cleaning: { to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
-	mr: { to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
-	periodicTest: { to: "/periodic-test", icon: "activity", title: labels.ptTitleFull, desc: labels.ptDesc, tile: "bg-amber-50 text-amber-600" },
-	readyOut: { to: "/ready-out", icon: "log-out", title: labels.readyOutTitle, desc: labels.readyOutDesc, tile: "bg-amber-50 text-amber-600", wide: true },
-	monitor: { to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
-	surveyPos: { to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
-	posFix: { to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
+	gate: { key: "gate", to: "/gate", icon: "log-in", title: labels.gate, desc: labels.gateDesc, tile: "bg-brand-50 text-brand-600", wide: true },
+	eir: { key: "eir", to: "/eir", icon: "clipboard", title: labels.eir, desc: labels.eirDesc, tile: "bg-leaf-50 text-leaf-600" },
+	cleaning: { key: "cleaning", to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
+	mr: { key: "mr", to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
+	periodicTest: { key: "periodicTest", to: "/periodic-test", icon: "activity", title: labels.ptTitleFull, desc: labels.ptDesc, tile: "bg-amber-50 text-amber-600" },
+	readyOut: { key: "readyOut", to: "/ready-out", icon: "log-out", title: labels.readyOutTitle, desc: labels.readyOutDesc, tile: "bg-amber-50 text-amber-600", wide: true },
+	monitor: { key: "monitor", to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
+	surveyPos: { key: "surveyPos", to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
+	posFix: { key: "posFix", to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
 }
-const menuGroups = [
+const allMenuGroups = [
 	{ title: labels.grpGate, items: [tiles.gate, tiles.readyOut] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
 	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr, tiles.periodicTest] },
@@ -306,14 +352,24 @@ const menuGroups = [
 	{ title: labels.grpSurvey, items: [tiles.surveyPos, tiles.posFix] },
 ]
 
-// "Riwayat" — a history menu per main menu (list + tap-to-detail).
-const history = [
-	{ to: "/gate/history", icon: "log-in", title: labels.gateHistoryTitle },
-	{ to: "/eir/history", icon: "clipboard", title: labels.eirHistoryTitle },
-	{ to: "/cleaning/history", icon: "droplet", title: labels.cleaningHistoryTitle },
-	{ to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
-	{ to: "/periodic-test/history", icon: "activity", title: labels.ptHistoryTitle },
-	{ to: "/survey-position/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
-	{ to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
+// Drop tiles the account may not open, then drop groups left with nothing in them — a
+// heading over an empty grid reads as a loading bug.
+const menuGroups = computed(() =>
+	allMenuGroups
+		.map((g) => ({ ...g, items: g.items.filter((m) => menu.has(m.key)) }))
+		.filter((g) => g.items.length)
+)
+
+// "Riwayat" — a history menu per main menu (list + tap-to-detail). Each rides on the
+// same key as its main menu, so a role that cannot open M&R cannot browse M&R history.
+const allHistory = [
+	{ key: "gate", to: "/gate/history", icon: "log-in", title: labels.gateHistoryTitle },
+	{ key: "eir", to: "/eir/history", icon: "clipboard", title: labels.eirHistoryTitle },
+	{ key: "cleaning", to: "/cleaning/history", icon: "droplet", title: labels.cleaningHistoryTitle },
+	{ key: "mr", to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
+	{ key: "periodicTest", to: "/periodic-test/history", icon: "activity", title: labels.ptHistoryTitle },
+	{ key: "surveyPos", to: "/survey-position/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
+	{ key: "monitor", to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
 ]
+const history = computed(() => allHistory.filter((h) => menu.has(h.key)))
 </script>

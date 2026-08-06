@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import frappe
 
-from container_depot.api import _require_authenticated_user
+from container_depot.ess.guard import require_menu
 from container_depot.operations import mr
 
 # Allowed Repair Order status transitions — single source of truth in operations/mr.py
@@ -38,7 +38,7 @@ def get_tank_repairs(container):
 
 	GET /api/method/container_depot.ess.repairs.get_tank_repairs
 	"""
-	_require_authenticated_user()
+	require_menu("mr")
 	frappe.has_permission("Container", doc=container, ptype="read", throw=True)
 
 	repairs = []
@@ -94,7 +94,7 @@ def set_repair_status(repair_order, status):
 
 	POST /api/method/container_depot.ess.repairs.set_repair_status
 	"""
-	_require_authenticated_user()
+	require_menu("mr")
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 
 	doc = frappe.get_doc("Repair Order", repair_order)
@@ -139,7 +139,7 @@ BYPASS_ROLES = {"System Manager"}
 
 
 def _require_admin_ops() -> None:
-	_require_authenticated_user()
+	require_menu("mr")
 	if set(frappe.get_roles(frappe.session.user)).isdisjoint(BYPASS_ROLES):
 		frappe.throw(
 			frappe._("Anda tidak berwenang menyetujui langsung (bypass owner)."),
@@ -150,35 +150,35 @@ def _require_admin_ops() -> None:
 @frappe.whitelist(methods=["GET"])
 def mr_orders(start=0, page_length=20, search=None):
 	"""GET /api/v1/ess/mr-orders — open M&R worklist (depot-scoped)."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.list_open_mr_orders(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def mr_execution(start=0, page_length=20, search=None):
 	"""GET /api/v1/ess/mr-execution — the PWA execution worklist: Approved / In Progress only."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.list_mr_execution(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def mr_history(start=0, page_length=10, search=None):
 	"""GET /api/v1/ess/mr-history — finished (Completed/Rejected/Cancelled) M&R orders."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.list_mr_history(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def mr_order_detail(repair_order=None):
 	"""GET /api/v1/ess/mr-order-detail — one M&R's damages (EIR copy) + used items."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.get_mr_order_detail(repair_order)
 
 
 @frappe.whitelist(methods=["GET"])
 def mr_items(search=None, repair_order=None, start=0, page_length=20):
 	"""GET /api/v1/ess/mr-items — Item picker (service or part) priced in the owner's list."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.mr_item_search(search=search, repair_order=repair_order, start=start, page_length=page_length)
 
 
@@ -186,7 +186,7 @@ def mr_items(search=None, repair_order=None, start=0, page_length=20):
 def mr_item_pricing(repair_order=None, item=None):
 	"""Cost breakdown for one item (defaults a Desk line). Whitelisted for GET (PWA) and POST
 	(the Desk grid calls it via frappe.call, which defaults to POST)."""
-	_require_authenticated_user()
+	require_menu("mr")
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="read", throw=True)
 	return mr.item_pricing(repair_order, item)
 
@@ -194,7 +194,7 @@ def mr_item_pricing(repair_order=None, item=None):
 @frappe.whitelist(methods=["POST"])
 def mr_submit_approval(repair_order=None):
 	"""POST /api/v1/ess/mr-submit-approval — submit the estimate to the owner (Pending Approval)."""
-	_require_authenticated_user()
+	require_menu("mr")
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.submit_for_approval(repair_order)
 
@@ -222,7 +222,7 @@ def mr_withdraw_from_owner(repair_order=None, note=None):
 def mr_decision(repair_order=None, decision=None, line_decisions=None, note=None):
 	"""POST /api/v1/ess/mr-decision — record the owner's decision (Approved / Rejected /
 	Revision Requested), with optional per-line decisions (partial approval)."""
-	_require_authenticated_user()
+	require_menu("mr")
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.record_decision(repair_order, decision, line_decisions=line_decisions, note=note)
 
@@ -249,7 +249,7 @@ def mr_bypass_approval(repair_order=None, note=None):
 @frappe.whitelist(methods=["POST"])
 def mr_start(repair_order=None):
 	"""POST /api/v1/ess/mr-start — start the Approved M&R (In Progress)."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.start_repair(repair_order)
 
 
@@ -258,7 +258,7 @@ def mr_order_save(repair_order=None, used_items=None, technician=None, reff_doc=
 	"""POST /api/v1/ess/mr-order-save — save used items + fields (submit=1 completes + issues stock).
 
 	Each used item carries its own gudang; there is no order-level source warehouse to send."""
-	_require_authenticated_user()
+	require_menu("mr")
 	return mr.save_mr_order(
 		repair_order=repair_order, used_items=used_items,
 		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit,

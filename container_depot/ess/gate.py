@@ -8,21 +8,21 @@ from __future__ import annotations
 
 import frappe
 
-from container_depot.api import _require_authenticated_user
+from container_depot.ess.guard import require_menu
 from container_depot.operations import gate
 
 
 @frappe.whitelist(methods=["GET"])
 def gate_history(start=0, page_length=10, search=None):
 	"""GET /api/v1/ess/gate-history — Gate Entry (in/out voucher) history, depot-scoped."""
-	_require_authenticated_user()
+	require_menu("gate")
 	return gate.list_gate_history(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def gate_detail(name=None):
 	"""GET /api/v1/ess/gate-detail — one Gate Entry's full vehicle/order/EIR detail."""
-	_require_authenticated_user()
+	require_menu("gate")
 	return gate.get_gate_detail(name)
 
 
@@ -33,7 +33,7 @@ def gate_ready(search=None, start=0, page_length=20):
 
 	Derived from the EIRs themselves (no stored queue), branch-scoped in
 	``gate.list_ready_to_load``."""
-	_require_authenticated_user()
+	require_menu("readyOut")
 	return gate.list_ready_to_load(search=search, start=start, page_length=page_length)
 
 
@@ -43,5 +43,5 @@ def gate_out(container=None, gate_entry=None):
 
 	The depot-branch guard (a container outside the caller's branch is rejected) lives in
 	``gate.mark_gate_out`` via ``assert_in_user_branch`` — same scope used across ess.*."""
-	_require_authenticated_user()
+	require_menu("readyOut")
 	return gate.mark_gate_out(container=container, gate_entry=gate_entry)

@@ -11,42 +11,40 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from container_depot.api import _require_authenticated_user
+from container_depot.ess.guard import require_menu
 from container_depot.operations import position_survey
 
-# The "Position Fix" approval used to be restricted to yard operators (Operator Kalmar,
-# Admin Ops, Ops Supervisor). Those roles were removed on 2026-08-05 pending a role
-# redesign, so approval is open to any authenticated PWA user for now — reattach the role
-# set here when the new model lands. Reads were already open to everyone.
-def _require_position_kalmar() -> None:
-	_require_authenticated_user()
+# The "Position Fix" approval (2026-08-06) is gated by the `posFix` menu, i.e. by submit
+# permission on Container Position Survey — Team Kalmar and SPV Lapangan have it, Team
+# Survey does not. Recording a survey is the `surveyPos` menu (write permission) and runs
+# the other way round. One doctype, two menus, split on ptype; see ess.context._MENU.
 
 
 @frappe.whitelist(methods=["GET"])
 def position_pending(start=0, page_length=20, search=None):
 	"""GET /api/v1/ess/position-pending — Surveyor worklist (Pending Survey), depot-scoped."""
-	_require_authenticated_user()
+	require_menu("surveyPos")
 	return position_survey.list_pending_surveys(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def position_surveyed(start=0, page_length=20, search=None):
 	"""GET /api/v1/ess/position-surveyed — Operator Kalmar approval worklist (Surveyed)."""
-	_require_authenticated_user()
+	require_menu("posFix")
 	return position_survey.list_surveyed(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def position_history(start=0, page_length=10, search=None):
 	"""GET /api/v1/ess/position-history — finished surveys (Confirmed / Cancelled), depot-scoped."""
-	_require_authenticated_user()
+	require_menu("surveyPos")
 	return position_survey.list_survey_history(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def position_detail(name=None):
 	"""GET /api/v1/ess/position-detail — one survey's header + location note + photos."""
-	_require_authenticated_user()
+	require_menu("surveyPos")
 	return position_survey.get_survey_detail(name)
 
 
@@ -54,7 +52,7 @@ def position_detail(name=None):
 def position_record(name=None, location_note=None, photos=None, notes=None):
 	"""POST /api/v1/ess/position-record — Surveyor records the container's location note +
 	photos (→ Surveyed). DocPerm (Surveyor) is enforced (no bypass)."""
-	_require_authenticated_user()
+	require_menu("surveyPos")
 	return position_survey.record_survey_position(
 		name, location_note=location_note, photos=photos, notes=notes
 	)
@@ -62,7 +60,7 @@ def position_record(name=None, location_note=None, photos=None, notes=None):
 
 @frappe.whitelist(methods=["POST"])
 def position_approve(name=None, note=None):
-	"""POST /api/v1/ess/position-approve — Operator Kalmar approves ("udah turun") →
-	Confirmed (submitted). Role-guarded."""
-	_require_position_kalmar()
+	"""POST /api/v1/ess/position-approve — Team Kalmar approves ("udah turun") →
+	Confirmed (submitted)."""
+	require_menu("posFix")
 	return position_survey.approve_position(name, note=note)

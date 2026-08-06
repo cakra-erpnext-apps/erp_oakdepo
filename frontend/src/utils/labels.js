@@ -31,6 +31,13 @@ export const labels = {
 	dashPendingTitle: "Tugas Tertunda", // Pending tasks
 	dashPendingApproval: "approval", // "{n} approval" sub-badge on M&R
 	dashNoPending: "Tidak ada tugas tertunda 🎉", // empty pending state
+	dashActiveJobs: "tank dengan job aktif", // supervisor card: tanks with work running
+	dashPosSurvey: "Survey Posisi", // pending survey-position queue
+	dashPosFix: "Position Fix", // pending "udah turun" approval queue
+	// Shown when the server grants this account no PWA menu at all (office staff, or a
+	// field user whose roles have not been assigned yet).
+	menuEmptyTitle: "Belum ada menu untuk akun ini",
+	menuEmptyBody: "Akun Anda belum diberi role lapangan. Hubungi Admin Ops untuk mendapatkan akses.",
 	dashYardTitle: "Okupansi Yard", // Yard occupancy
 	dashYardEmpty: "Belum ada zona yard aktif", // empty yard state
 	dashMenuTitle: "Menu", // menu section heading

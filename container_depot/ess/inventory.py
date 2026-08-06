@@ -21,6 +21,7 @@ import frappe
 from frappe.utils import add_to_date, cint, getdate, today
 
 from container_depot.api import _require_authenticated_user
+from container_depot.ess.guard import require_menu
 from container_depot.operations import container_activity
 from container_depot.operations.user_branch import get_user_depots
 from container_depot.tasks import PT_REMINDER_DAYS
@@ -167,7 +168,7 @@ def get_inventory_summary(depot=None):
 
 	GET /api/v1/ess/inventory-summary
 	"""
-	_require_authenticated_user()
+	require_menu("monitor")
 
 	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
 	scoped = _apply_user_depot_scope(filters, depot)
@@ -213,7 +214,7 @@ def get_tank_list(
 
 	GET /api/v1/ess/tank-list
 	"""
-	_require_authenticated_user()
+	require_menu("monitor")
 
 	start = cint(start)
 	page_length = cint(page_length) or 50
@@ -300,7 +301,7 @@ def list_container_principals():
 
 	GET /api/v1/ess/container-principals
 	"""
-	_require_authenticated_user()
+	require_menu("monitor")
 	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY], "principal": ["is", "set"]}
 	scoped = _apply_user_depot_scope(filters, None)
 	if scoped is None:
@@ -321,7 +322,7 @@ def list_user_depots():
 	GET /api/v1/ess/user-depots. Returns [{code, name}]; empty when the user has no depot
 	access. An unrestricted user (get_user_depots -> None) gets every active depot.
 	"""
-	_require_authenticated_user()
+	require_menu("monitor")
 	allowed = get_user_depots()
 	filters = {"is_active": 1}
 	if allowed is not None:
@@ -340,7 +341,7 @@ def get_tank_detail(container):
 
 	GET /api/v1/ess/tank-detail
 	"""
-	_require_authenticated_user()
+	require_menu("monitor")
 	# Enforces both DocPerm read and any User Permission (depot) on this record.
 	frappe.has_permission("Container", doc=container, ptype="read", throw=True)
 
@@ -375,76 +376,153 @@ def get_tank_detail(container):
 	}
 
 
+def _count_active_job_containers(allowed) -> int:
+	"""Distinct containers with work still open on them — Gap Analysis §4.8.4.
+
+	The supervisor card people actually asked for. "±800 tanks in the yard" tells a
+	supervisor nothing; "31 tanks with a job running" is the number they chase. Open
+	means the same thing it means everywhere else in the app — see
+	``container_status.container_open_orders``, which this deliberately mirrors: a draft
+	EIR-In, or a Cleaning / M&R / Periodic Test order not yet finished. EIR-Out is
+	excluded there and excluded here.
+	"""
+	from container_depot.operations.container_status import (
+		_DONE_CLEANING,
+		_DONE_PERIODIC,
+		_DONE_REPAIR,
+	)
+
+	scope = {} if allowed is None else {"depot": ["in", allowed or [""]]}
+	containers = set(
+		frappe.get_all(
+			"Inspection",
+			filters={**scope, "inspection_type": "EIR-In", "docstatus": 0},
+			pluck="container",
+		)
+	)
+	for doctype, done in (
+		("Cleaning Order", _DONE_CLEANING),
+		("Repair Order", _DONE_REPAIR),
+		("Periodic Test Order", _DONE_PERIODIC),
+	):
+		containers |= set(
+			frappe.get_all(
+				doctype,
+				filters={**scope, "status": ["not in", done], "docstatus": ["<", 2]},
+				pluck="container",
+			)
+		)
+	containers.discard(None)
+	return len(containers)
+
+
 @frappe.whitelist(methods=["GET"])
 def get_dashboard_summary(depot=None):
 	"""Aggregated home-dashboard payload, depot/branch-scoped — one GET so the PWA
 	home screen loads every KPI in a single round-trip.
 
-	Pure aggregation: it reuses the existing, validated read functions
-	(:func:`get_inventory_summary`, the EIR / Cleaning / M&R worklist totals) —
-	the only extra queries are today's activity counts and the M&R "Pending
-	Approval" count. Sections:
+	Scoped to the caller's menu (§6): a section is present only when the caller may open
+	the page behind it, so Team Cleaning gets the cleaning queue and not the gate counts.
+	The mapping is DERIVED from ``allowed_menu()`` rather than from a second role table —
+	one place decides who sees what, and the dashboard cannot drift away from the menu.
 
-	* ``counts`` / ``periodic_test_due`` / ``total`` — container per status bucket
-	* ``today`` — Gate In / Gate Out / EIR submitted today (Container Activity)
-	* ``pending`` — open EIR-In / EIR-Out / Cleaning / M&R (+ M&R awaiting approval)
+	Sections, each gated on its menu key:
+
+	* ``counts`` / ``total`` — container per status bucket (``monitor``)
+	* ``periodic_test_due`` — tanks past their next test date (``periodicTest``)
+	* ``today`` — Gate In / Out (``gate``), EIR submitted today (``eir``)
+	* ``pending`` — per-worklist open counts, one key per menu
+	* ``active_jobs`` — tanks with a job running; supervisors only (all nine menus)
+
+	A caller with no field role gets ``{"success": True, "menu": []}`` and nothing else —
+	the PWA is open to them, it is simply empty.
 
 	GET /api/v1/ess/dashboard-summary
 	"""
-	_require_authenticated_user()
+	from container_depot.ess.context import MENU_KEYS, allowed_menu
 
-	from container_depot.operations import cleaning, eir, gate, mr
+	_require_authenticated_user()
+	menu = set(allowed_menu())
+	if not menu:
+		return {"success": True, "menu": []}
+
+	from container_depot.operations import cleaning, eir, gate, mr, position_survey
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
+	out = {"success": True, "menu": sorted(menu)}
 
-	# 1) Container-per-status buckets (+ periodic-test-due) — reuse the summary.
-	summary = get_inventory_summary(depot)
+	# 1) Container-per-status buckets (+ periodic-test-due) — reuse the summary. One
+	# query serves both cards, so compute it when either menu is present.
+	if {"monitor", "periodicTest"} & menu:
+		summary = get_inventory_summary(depot)
+		if "monitor" in menu:
+			out["counts"] = summary["counts"]
+			out["total"] = summary["total"]
+		if "periodicTest" in menu:
+			out["periodic_test_due"] = summary["periodic_test_due"]
 
 	# 2) Today's activity from the Container Activity log (depot-scoped).
 	act_filters = {"activity_time": [">=", today()]}
 	if allowed is not None:
 		act_filters["depot"] = ["in", allowed or [""]]
-	today_activity = {
-		"gate_in": frappe.db.count("Container Activity", {**act_filters, "activity_type": "Gate In"}),
-		"gate_out": frappe.db.count("Container Activity", {**act_filters, "activity_type": "Gate Out"}),
-		"eir": frappe.db.count("Container Activity", {**act_filters, "activity_type": "Inspection (EIR)"}),
-	}
+	today_activity = {}
+	if "gate" in menu:
+		today_activity["gate_in"] = frappe.db.count(
+			"Container Activity", {**act_filters, "activity_type": "Gate In"}
+		)
+		today_activity["gate_out"] = frappe.db.count(
+			"Container Activity", {**act_filters, "activity_type": "Gate Out"}
+		)
+	if "eir" in menu:
+		today_activity["eir"] = frappe.db.count(
+			"Container Activity", {**act_filters, "activity_type": "Inspection (EIR)"}
+		)
+	if today_activity:
+		out["today"] = today_activity
 
 	# 3) Pending work — totals from the same worklists the PWA pages use (each is
 	# branch-scoped internally; page_length=1 keeps the row fetch minimal — `total`
 	# is the full count regardless).
-	mr_appr_filters = {"status": "Pending Approval"}
-	if allowed is not None:
-		mr_appr_filters["depot"] = ["in", allowed or [""]]
-	pending = {
-		"eir_in": eir.list_pending_eirs(page_length=1)["total"],
-		"eir_out": eir.list_pending_eir_out(page_length=1)["total"],
-		"cleaning": cleaning.list_open_cleaning_orders(page_length=1)["total"],
-		"mr_open": mr.list_open_mr_orders(page_length=1)["total"],
-		"mr_approval": frappe.db.count("Repair Order", mr_appr_filters),
+	pending = {}
+	if "eir" in menu:
+		pending["eir_in"] = eir.list_pending_eirs(page_length=1)["total"]
+		pending["eir_out"] = eir.list_pending_eir_out(page_length=1)["total"]
+	if "cleaning" in menu:
+		pending["cleaning"] = cleaning.list_open_cleaning_orders(page_length=1)["total"]
+	if "mr" in menu:
+		mr_appr_filters = {"status": "Pending Approval"}
+		if allowed is not None:
+			mr_appr_filters["depot"] = ["in", allowed or [""]]
+		pending["mr_open"] = mr.list_open_mr_orders(page_length=1)["total"]
+		pending["mr_approval"] = frappe.db.count("Repair Order", mr_appr_filters)
+	if "readyOut" in menu:
 		# Tanks past their EIR-Out but still standing in the yard — the ACC queue.
-		"ready_out": gate.list_ready_to_load(page_length=1)["total"],
-	}
+		pending["ready_out"] = gate.list_ready_to_load(page_length=1)["total"]
+	if "surveyPos" in menu:
+		pending["position_survey"] = position_survey.list_pending_surveys(page_length=1)["total"]
+	if "posFix" in menu:
+		pending["position_fix"] = position_survey.list_surveyed(page_length=1)["total"]
+	if pending:
+		out["pending"] = pending
 
-	return {
-		"success": True,
-		"counts": summary["counts"],
-		"periodic_test_due": summary["periodic_test_due"],
-		"total": summary["total"],
-		"today": today_activity,
-		"pending": pending,
-	}
+	# 4) Supervisor-only. "All nine menus" is what SPV Lapangan means, so deriving it from
+	# the menu keeps the role name out of the code — a second supervisor role added from
+	# the UI gets this card too, with no deploy.
+	if menu == set(MENU_KEYS):
+		out["active_jobs"] = _count_active_job_containers(allowed)
+
+	return out
 
 
 @frappe.whitelist(methods=["GET"])
 def activity_history(start=0, page_length=10, search=None):
 	"""GET /api/v1/ess/activity-history — Container Activity timeline (Monitor "Riwayat")."""
-	_require_authenticated_user()
+	require_menu("monitor")
 	return container_activity.list_activity_history(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def activity_detail(name=None):
 	"""GET /api/v1/ess/activity-detail — one Container Activity record's full detail."""
-	_require_authenticated_user()
+	require_menu("monitor")
 	return container_activity.get_activity_detail(name)

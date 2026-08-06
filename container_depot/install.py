@@ -2,22 +2,22 @@ import os
 
 import frappe
 
-# Roles the app grants blanket DocPerms on every Operations doctype. The custom
-# role model (Depot PWA, Container Depot, Admin Ops, Surveyor, Cashier, …) was
-# removed on 2026-08-05 pending a redesign — see docs in the purge script
-# (container_depot/purge_roles.py) for the full list of what was dropped. Until the
-# new model lands, access is Frappe's own: System Manager (and Administrator, which
-# bypasses permissions entirely).
+# Roles that get a blanket DocPerm on EVERY Operations doctype, including ones added
+# after this line was written. The per-role matrix lives further down (FIELD_ROLE_MATRIX
+# / OFFICE_ROLE_MATRIX); this is only the catch-all beneath it.
 #
 # This list must never be empty: most Operations doctypes ship with an empty
-# "permissions" array in their JSON, so their ONLY grant is the one written here.
+# "permissions" array in their JSON, so a new doctype's ONLY grant is the one here until
+# somebody adds it to the matrix.
 ROLES_TO_GRANT = ["System Manager"]
 
 
 def after_install():
 	"""Run after install hook for container_depot app"""
-	setup_permissions()
+	# Custom fields FIRST: the role seeder inside setup_permissions() writes
+	# Role.is_depot_field_role, which does not exist as a column until this runs.
 	setup_custom_fields()
+	setup_permissions()
 	setup_property_setters()
 	ensure_selling_settings()
 	ensure_payment_terms_templates()
@@ -28,27 +28,29 @@ def after_install():
 	from container_depot import finance
 	finance.ensure_defaults()
 	setup_workspace()
-	setup_document_notifications()
+	setup_notification_rules()
 	sync_branding()
 
 
 def after_migrate():
 	"""Idempotent post-migrate hook: keep DocPerms in sync as doctypes are added."""
+	# create_custom_fields is idempotent (upserts by dt+fieldname). It runs FIRST because
+	# the role seeder inside setup_permissions() writes Role.is_depot_field_role, and that
+	# column only exists once this has run.
+	setup_custom_fields()
 	# setup_permissions() is idempotent (existence-check on Custom DocPerm) so
 	# running it on every migrate just picks up new DocTypes as they're added.
 	setup_permissions()
-	# create_custom_fields is idempotent (upserts by dt+fieldname).
-	setup_custom_fields()
 	# Doctype-level UX tweaks on standard doctypes (Property Setters, idempotent):
 	# Item links show the item name, Item Price 'New' uses the full form.
 	setup_property_setters()
 	# Container Inventory monitoring dashboard (Number Cards + Charts). Idempotent
 	# upsert by name; safe to re-run every migrate.
 	setup_inventory_dashboard()
-	# Built-in ERPNext Notifications for key doc events (orders, contract, booking,
-	# EIR). System Notification channel → Desk + PWA bell. Idempotent — skipped once
-	# present. Recipients are editable per role in Desk → Notification.
-	setup_document_notifications()
+	# Notification routing table — one Depot Notification Rule per depot event, plus the
+	# Depot Notification Settings single. Add-only: an existing event_key is never
+	# rewritten, so admin routing tweaks survive every migrate.
+	setup_notification_rules()
 	# Keep the depot-pricing invariant: Bertschi Product Bundles must bill at the
 	# bundle parent's flat Item Price, not a recomputed sum of component prices.
 	ensure_selling_settings()
@@ -72,40 +74,23 @@ def after_migrate():
 
 
 def setup_document_notifications():
-	"""Built-in Frappe Notifications for key document events. Channel = System
-	Notification → shows in the in-app bell (Desk + the Depot OAK PWA bell) for the
-	recipient role. Idempotent: skipped once a matching Notification exists.
-	Best-effort — a quirk in the Notification schema never breaks a migrate.
+	"""No-op since 2026-08-06. Kept so ``after_install`` / ``after_migrate`` keep working.
 
-	Recipient is a placeholder role (System Manager). Edit each Notification's
-	``receiver_by_role`` in Desk → Notification to route per role.
+	This used to seed five built-in Frappe Notifications (Order Bongkar, Order Muat,
+	Depot Contract, Container Booking, Inspection). Every one of them duplicated an event
+	``operations.notify`` already raises, so submitting one Order Muat produced THREE bell
+	rows for the same thing — the notify event, the built-in rule, and the EIR-Out follow
+	up. Three rows for one fact trains people to swipe the bell away without reading it.
+
+	Routing now lives in ``Depot Notification Rule`` (see ``setup_notification_rules``),
+	which is editable per event without a deploy and cannot double-fire. The five stale
+	Notifications are removed from existing sites by
+	``patches.v0_51.drop_duplicate_notifications``.
+
+	Admins may still create their own ad-hoc Notification records in Desk; nothing here
+	touches those.
 	"""
-	# (document_type, subject, event). Depot Contract is not submittable → "New".
-	specs = [
-		("Order Bongkar", "Bon Bongkar {{ doc.name }} diterbitkan", "Submit"),
-		("Order Muat", "Bon Muat {{ doc.name }} diterbitkan", "Submit"),
-		("Depot Contract", "Kontrak Depo {{ doc.name }} dibuat", "New"),
-		("Container Booking", "Booking {{ doc.name }} dikonfirmasi", "Submit"),
-		("Inspection", "EIR {{ doc.name }} disubmit", "Submit"),
-	]
-	for doctype, subject, event in specs:
-		if frappe.db.exists(
-			"Notification", {"document_type": doctype, "event": event, "is_standard": 0}
-		):
-			continue
-		try:
-			n = frappe.new_doc("Notification")
-			n.subject = subject
-			n.document_type = doctype
-			n.event = event
-			n.channel = "System Notification"
-			n.enabled = 1
-			n.is_standard = 0
-			n.message = subject
-			n.append("recipients", {"receiver_by_role": "System Manager"})
-			n.insert(ignore_permissions=True)
-		except Exception:
-			frappe.log_error(frappe.get_traceback(), "setup_document_notifications")
+	return
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +455,24 @@ CUSTOM_FIELDS = {
 			"insert_after": "company",
 			"in_standard_filter": 1,
 			"description": "Depot branch this warehouse belongs to. Kosong = tampil untuk semua branch. Dipakai untuk memfilter gudang sumber part di M&R.",
+		}
+	],
+	# Marks a Role as a depot FIELD role — the ones whose users work in the yard through
+	# the /depot PWA. Deliberately a checkbox on Role rather than a Python constant: a
+	# list in code means every new field role needs a deploy, whereas the whole point of
+	# the redesign is that adding a role is an admin action. What the role may actually
+	# SEE is never encoded here — that comes from its DocPerms (ess.context._MENU).
+	"Role": [
+		{
+			"fieldname": "is_depot_field_role",
+			"label": "Depot Field Role (PWA)",
+			"fieldtype": "Check",
+			"insert_after": "desk_access",
+			"in_standard_filter": 1,
+			"description": (
+				"Centang untuk role tim lapangan. Role bercentang boleh membuka /depot; "
+				"isi menunya ditentukan DocPerm lewat Permission Manager."
+			),
 		}
 	],
 }
@@ -878,39 +881,376 @@ def sync_workspace_sidebar():
 		frappe.log_error(frappe.get_traceback(), "container_depot sidebar sync failed")
 
 
-def setup_permissions():
-	"""Give every role in ROLES_TO_GRANT unrestricted DocPerms on every Operations doctype.
+# ---------------------------------------------------------------------------
+# Role model (rebuilt 2026-08-06, replaces the Phase-6 model purged 2026-08-05)
+# ---------------------------------------------------------------------------
+# Two families. FIELD roles work the yard through the /depot PWA and have
+# desk_access = 0 — their users are bounced out of /app on purpose. OFFICE roles
+# work in the Desk and never appear in the PWA menu.
+#
+# The checkbox `Role.is_depot_field_role` (see CUSTOM_FIELDS) is what ess.context
+# reads, NOT this list: an admin can add a 14th field role from the UI and it works
+# without a deploy. This list only seeds the ones the app ships with.
 
-	Add-only and idempotent (existence-checked per doctype+role), so running it on every
-	migrate just picks up new doctypes. The per-role matrix that used to sit on top of this
-	was removed with the custom roles — reinstate it here when the new role model is designed.
-	"""
-	doctypes = [d.name for d in frappe.get_all("DocType", filters={"module": "Operations"})]
-	for dt in doctypes:
-		meta = frappe.get_meta(dt)
-		for role_name in ROLES_TO_GRANT:
-			if frappe.db.exists("Custom DocPerm", {"parent": dt, "role": role_name}):
+FIELD_ROLES = [
+	"Security",
+	"Team EIR",
+	"Team Kalmar",
+	"Team Cleaning",
+	"Team Repair",
+	"Team Survey",
+	"SPV Lapangan",
+]
+
+OFFICE_ROLES = [
+	"Admin Ops",
+	"Cashier",
+	"Finance",
+	"Commercial",
+	"Warehouse",
+	"Management",
+]
+
+# Standard ERPNext roles to assign ALONGSIDE the office role when creating a user.
+# Deliberately not automated: granting these means writing Custom DocPerm rows on
+# standard doctypes (Sales Invoice, Item, Purchase Order…), and the first Custom
+# DocPerm on a doctype makes Frappe ignore that doctype's shipped permissions
+# entirely — it would silently strip ERPNext's own accounting/stock roles. So the
+# custom roles below carry Operations-module perms only, and the standard access is
+# granted the standard way: give the user both roles. Surfaced in STRUCTURE.md.
+COMPANION_ROLES = {
+	"Cashier": ["Accounts User"],
+	"Finance": ["Accounts Manager"],
+	"Commercial": ["Sales Manager", "Item Manager"],
+	"Warehouse": ["Stock User", "Purchase User"],
+}
+
+# Operations doctypes that record what happened rather than drive it. Read-only for
+# everyone: these are written by hooks, never by hand.
+AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log"}
+
+# Operations doctypes owned by finance/commercial, kept OUT of Admin Ops' blanket
+# grant (§8.2: "TANPA Sales Invoice, Payment Entry, Depot Contract…").
+FINANCE_DOCTYPES = {"Depot Contract", "OAK Monthly Invoice", "Depot Finance Settings"}
+
+# Reference/config records. Admin Ops may correct them but not spawn new ones.
+MASTER_DOCTYPES = {
+	"Booking Code",
+	"Cargo",
+	"Cleaning Checklist Item",
+	"Customer Portal User",
+	"Depot",
+	"Depot Service Menu",
+	"Inspection Checklist Item",
+	"Inspection Damage Code",
+	"Inspection Repair Code",
+	"Self Service Terminal",
+	"Shipping Line",
+	"Surveyor Company",
+}
+
+# Compact permission grammar, one letter per flag. `r` carries report+export with it
+# because a role that may read a doctype has no reason to be barred from listing it.
+_PERM_LETTERS = {
+	"r": ("read", "report", "export"),
+	"w": ("write",),
+	"c": ("create",),
+	"s": ("submit",),
+	"x": ("cancel",),
+	"a": ("amend",),
+	"d": ("delete",),
+}
+
+# §8.1 — field-role matrix, transcribed column-for-column from the handoff table.
+# "" = no DocPerm at all for that role on that doctype.
+#
+# Note the `Container Position Survey` row: Team Survey gets rwc (record the survey),
+# Team Kalmar gets rws (approve "udah turun"). That write/submit split on ONE doctype
+# is exactly what separates the `surveyPos` and `posFix` menus — see ess.context._MENU.
+_FIELD_ROLE_ORDER = FIELD_ROLES
+FIELD_ROLE_MATRIX = [
+	#  DocType                       Security  TeamEIR  Kalmar  Cleaning  Repair  Survey  SPV
+	("Container",                   ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
+	("Gate Entry",                  ("rwcs",  "r",     "rw",   "",       "",     "",     "rwcs")),
+	("Order Bongkar",               ("rwc",   "r",     "r",    "",       "",     "",     "rwc")),
+	("Order Muat",                  ("r",     "r",     "r",    "",       "",     "",     "rw")),
+	("Booking Code",                ("r",     "",      "",     "",       "",     "",     "r")),
+	("Inspection",                  ("",      "rwcs",  "r",    "r",      "r",    "r",    "rwcs")),
+	("Cleaning Order",              ("",      "r",     "r",    "rwcs",   "",     "",     "rwcs")),
+	("Repair Order",                ("",      "r",     "r",    "",       "rwc",  "",     "rwc")),
+	("Periodic Test Order",         ("",      "",      "",     "",       "rwc",  "",     "rwc")),
+	("Container Position Survey",   ("",      "",      "rws",  "",       "",     "rwc",  "rwcs")),
+	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
+	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
+]
+
+# §8.2 — office roles, Operations-module doctypes only (see COMPANION_ROLES for the
+# rest). Admin Ops and Management are computed in :func:`_office_role_perms` because
+# they are defined as "everything except…" rather than as a list.
+OFFICE_ROLE_MATRIX = {
+	"Cashier": {
+		"Container Booking": "r",
+		"Gate Entry": "r",
+		"Container": "r",
+		"Order Muat": "r",
+		"Order Bongkar": "r",
+	},
+	"Finance": {
+		"Container Booking": "r",
+		"Gate Entry": "r",
+		"Container": "r",
+		"Order Muat": "r",
+		"Order Bongkar": "r",
+		"OAK Monthly Invoice": "rwcsxa",
+		"Depot Finance Settings": "rw",
+		"Depot Contract": "r",
+	},
+	"Commercial": {
+		"Depot Contract": "rwcsxa",
+		"Depot Service Menu": "rwc",
+		"Container": "r",
+		"Container Booking": "r",
+	},
+	"Warehouse": {
+		# Purchase Order / Receipt / Stock Entry / Supplier live outside this module —
+		# granted via COMPANION_ROLES (Q-01 answered 2026-08-06: Warehouse owns them).
+		"Repair Order": "r",
+		"Container": "r",
+	},
+}
+
+# Report access is NOT seeded. A Report with an empty `roles` table falls back to the
+# permission on its ref_doctype (Report.is_permitted), so Order Billing Status is already
+# reachable by exactly the roles that may read Container Booking — Cashier, Finance,
+# Commercial, Admin Ops, Management — and unreachable by the field roles, which have no
+# Container Booking perm at all. Listing roles on the report as well would be a second
+# place to keep in sync, and saving a standard Report rewrites its JSON on disk.
+
+
+def _perm_dict(letters: str, is_submittable: bool) -> dict:
+	"""Expand the compact grammar into a Custom DocPerm payload."""
+	perms = {}
+	for letter in letters:
+		for flag in _PERM_LETTERS[letter]:
+			perms[flag] = 1
+	if not is_submittable:
+		# Frappe rejects submit/cancel/amend on a non-submittable doctype.
+		for flag in ("submit", "cancel", "amend"):
+			perms.pop(flag, None)
+	return perms
+
+
+def _operations_doctypes() -> list[str]:
+	"""Non-child Operations doctypes. Child tables inherit their parent's perms."""
+	return frappe.get_all(
+		"DocType",
+		filters={"module": "Operations", "istable": 0},
+		pluck="name",
+		order_by="name",
+	)
+
+
+def _office_role_perms(role: str, doctypes: list[str]) -> dict:
+	"""DocType -> permission letters for an office role."""
+	if role == "Management":
+		# Read-only across the whole app. No write/create/submit/cancel/delete, ever —
+		# a manager who can edit an EIR is how audit trails rot.
+		return {dt: "r" for dt in doctypes}
+	if role == "Admin Ops":
+		out = {}
+		for dt in doctypes:
+			if dt in FINANCE_DOCTYPES:
 				continue
-			frappe.get_doc({
-				"doctype": "Custom DocPerm",
-				"parent": dt,
-				"parenttype": "DocType",
-				"parentfield": "permissions",
-				"role": role_name,
-				"permlevel": 0,
-				"read": 1,
-				"write": 1,
-				"create": 1,
-				"delete": 1,
-				"submit": 1 if meta.is_submittable else 0,
-				"cancel": 1 if meta.is_submittable else 0,
-				"amend": 1 if meta.is_submittable else 0,
-				"export": 1,
-				"import": 1,
-				"share": 1,
-				"report": 1,
-			}).insert(ignore_permissions=True)
+			elif dt in AUDIT_DOCTYPES:
+				out[dt] = "r"
+			elif dt in MASTER_DOCTYPES:
+				out[dt] = "rw"
+			else:
+				# Operational transactions: full lifecycle including cancel/amend. Admin Ops
+				# is the backstop for a mis-submitted bon — field roles get submit only
+				# (see FIELD_ROLE_MATRIX), so undoing one escalates here by design.
+				out[dt] = "rwcsxa"
+		return out
+	return OFFICE_ROLE_MATRIX.get(role, {})
 
+
+def ensure_roles_exist():
+	"""Create the 13 app roles and keep their two flags in sync. Idempotent.
+
+	The flags are re-asserted on every migrate because they are app-owned: a field role
+	that loses `is_depot_field_role` silently empties its users' PWA, with no error to
+	trace it back from. Roles an ADMIN creates are never touched — this only knows about
+	the names below.
+	"""
+	for name in FIELD_ROLES + OFFICE_ROLES:
+		is_field = name in FIELD_ROLES
+		flags = {"desk_access": 0 if is_field else 1, "is_depot_field_role": 1 if is_field else 0}
+		if not frappe.db.exists("Role", name):
+			frappe.get_doc({"doctype": "Role", "role_name": name, **flags}).insert(
+				ignore_permissions=True
+			)
+			continue
+		current = frappe.db.get_value("Role", name, list(flags), as_dict=True)
+		drift = {k: v for k, v in flags.items() if (current.get(k) or 0) != v}
+		if drift:
+			frappe.db.set_value("Role", name, drift)
+
+	frappe.db.commit()
+
+
+def _ensure_docperm(doctype: str, role: str, letters: str, is_submittable: bool) -> None:
+	"""Add-only: an existing (doctype, role) row is left exactly as the admin tuned it."""
+	if not letters or frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role}):
+		return
+	frappe.get_doc({
+		"doctype": "Custom DocPerm",
+		"parent": doctype,
+		"parenttype": "DocType",
+		"parentfield": "permissions",
+		"role": role,
+		"permlevel": 0,
+		**_perm_dict(letters, is_submittable),
+	}).insert(ignore_permissions=True)
+
+
+def setup_permissions():
+	"""Seed the role permission matrix (§8) on every Operations doctype. Idempotent.
+
+	Add-only and existence-checked per (doctype, role), so running it on every migrate
+	just picks up doctypes added since the last one. Once a row exists it belongs to the
+	admin — Permission Manager edits survive migrates.
+
+	Custom DocPerm is written ONLY for module=Operations doctypes. The first Custom
+	DocPerm on any doctype makes Frappe ignore that doctype's shipped permissions
+	wholesale, so touching a standard ERPNext doctype here would quietly disable its
+	own roles. Office access to Sales Invoice / Item / Purchase Order is granted by
+	assigning the matching standard role instead — see COMPANION_ROLES.
+	"""
+	ensure_roles_exist()
+
+	doctypes = _operations_doctypes()
+	submittable = {dt: frappe.get_meta(dt).is_submittable for dt in doctypes}
+
+	# ROLES_TO_GRANT (System Manager) keeps its blanket grant so a doctype added later is
+	# never unreachable — most Operations JSONs ship with an empty "permissions" array.
+	for dt in doctypes:
+		for role_name in ROLES_TO_GRANT:
+			_ensure_docperm(dt, role_name, "rwcsxad", submittable[dt])
+
+	# §8.1 field roles.
+	for dt, letters_per_role in FIELD_ROLE_MATRIX:
+		if dt not in submittable:
+			continue  # doctype retired since this table was written; skip, don't crash
+		for role_name, letters in zip(_FIELD_ROLE_ORDER, letters_per_role):
+			_ensure_docperm(dt, role_name, letters, submittable[dt])
+
+	# §8.2 office roles.
+	for role_name in OFFICE_ROLES:
+		for dt, letters in _office_role_perms(role_name, doctypes).items():
+			_ensure_docperm(dt, role_name, letters, submittable[dt])
+
+	frappe.db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Notification routing (§7.2)
+# ---------------------------------------------------------------------------
+# Starting points only. Once seeded, these rows belong to the admin: the seeder never
+# overwrites an existing event_key, so tuning survives every migrate. That is the whole
+# reason routing is a doctype instead of a dict — see the module docstring in
+# operations/notify.py for why the menu went the other way.
+#
+# `Management` appears on three strategic events only (repair approval, contracts). A
+# manager who gets a bell for every tank arriving stops reading the bell, and then misses
+# the approval that mattered. Resist adding them to operational events.
+#
+# (event_key, label, description, [roles])
+NOTIFICATION_RULES = [
+	("eir_submitted", "EIR disubmit", "Sebuah EIR (In/Out) disubmit — tank selesai diperiksa.",
+		["Team EIR", "Team Cleaning", "Team Repair", "SPV Lapangan", "Admin Ops"]),
+	("eir_pending_review", "EIR menunggu review", "Operator lapangan mengirim EIR untuk direview Admin Ops.",
+		["Admin Ops", "SPV Lapangan"]),
+	("cleaning_order_created", "Cleaning Order dibuat", "Cleaning Order otomatis dibuat dari EIR Empty-Dirty.",
+		["Team Cleaning", "SPV Lapangan", "Admin Ops"]),
+	("repair_order_created", "M&R dibuat", "Repair Order draft otomatis dibuat dari EIR yang menemukan kerusakan.",
+		["Team Repair", "SPV Lapangan", "Admin Ops"]),
+	("repair_order_service_setup", "M&R perlu ditata Admin Ops", "Bengkel menyerahkan estimasi; belum tampil ke customer sampai Admin Ops menata.",
+		["Admin Ops"]),
+	("repair_order_pending_approval", "M&R menunggu approval owner", "Estimasi M&R dikirim ke owner tank.",
+		["Admin Ops", "Management"]),
+	("repair_order_decided", "Owner memutuskan M&R", "Owner menyetujui / menolak / minta revisi estimasi M&R.",
+		["Team Repair", "SPV Lapangan", "Admin Ops"]),
+	("order_gate_in", "Bon Bongkar terbit", "Order Bongkar disubmit — bon gate-in siap diprint.",
+		["Security", "SPV Lapangan", "Admin Ops"]),
+	("order_gate_out", "Bon Muat terbit", "Order Muat disubmit — bon gate-out siap diprint.",
+		["Security", "Team Kalmar", "SPV Lapangan", "Admin Ops"]),
+	("order_muat_survey", "EIR-Out jatuh tempo", "Order Muat disubmit — EIR-Out wajib sebelum tank boleh dimuat.",
+		["Team Survey", "Team EIR", "SPV Lapangan", "Admin Ops"]),
+	("ready_to_load", "Tank siap dimuat", "EIR-Out disubmit bersih — tank boleh diangkat.",
+		["Team Kalmar", "Security", "SPV Lapangan"]),
+	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
+		["SPV Lapangan", "Admin Ops"]),
+	("gate_out", "Isotank keluar depo", "Gate-out / load-complete selesai untuk sebuah tank.",
+		["Security", "Team Kalmar", "Admin Ops", "Cashier"]),
+	("booking_created", "Booking baru", "Container Booking dibuat (masih draft).",
+		["Admin Ops", "Cashier", "Commercial"]),
+	("booking_submitted", "Booking dikonfirmasi", "Container Booking disubmit / dikonfirmasi.",
+		["Admin Ops", "Cashier", "Security"]),
+	("contract_created", "Kontrak depo dibuat", "Depot Contract dibuat — belum bisa dipakai sampai diaktifkan.",
+		["Commercial", "Management"]),
+	("contract_activated", "Kontrak depo aktif", "Depot Contract berstatus Active — tarifnya sudah live.",
+		["Commercial", "Management", "Admin Ops"]),
+	("invoice_submitted", "Invoice terbit", "Sales Invoice disubmit — ada tagihan untuk ditagih/dicatat.",
+		["Cashier", "Finance"]),
+	("survey_order_submitted", "Survey Order disubmit", "Survey pihak ketiga disubmit — ada biaya untuk ditagih.",
+		["Team Survey", "Admin Ops", "Cashier"]),
+]
+
+# Recipients when an event fires with no rule at all (a new event_key shipped without a
+# seed entry). Never "everyone" — a silent broadcast is the exact regression this replaces.
+NOTIFICATION_FALLBACK_ROLES = ["Admin Ops", "SPV Lapangan"]
+
+
+def setup_notification_rules():
+	"""Seed the notification routing table. Idempotent and NEVER overwrites.
+
+	An existing ``event_key`` is left exactly as the admin tuned it — that is the point of
+	the doctype. Only rows that do not exist yet are inserted, so a migrate can add a new
+	event without undoing months of routing adjustments.
+	"""
+	from container_depot.operations import notify
+
+	if not frappe.db.exists("DocType", "Depot Notification Rule"):
+		return  # first migrate of this release; the next one seeds it
+
+	for event_key, label, description, roles in NOTIFICATION_RULES:
+		if frappe.db.exists("Depot Notification Rule", event_key):
+			continue
+		doc = frappe.new_doc("Depot Notification Rule")
+		doc.event_key = event_key
+		doc.label = label
+		doc.description = description
+		doc.enabled = 1
+		doc.channel = "Bell"
+		for role in roles:
+			if frappe.db.exists("Role", role):
+				doc.append("roles", {"role": role})
+		if not doc.roles:
+			# validate() refuses an enabled rule with no recipients, and rightly so. Seed
+			# it disabled rather than skipping it, so the row exists to be configured.
+			doc.enabled = 0
+		doc.insert(ignore_permissions=True)
+
+	settings = frappe.get_single("Depot Notification Settings")
+	if not settings.fallback_roles:
+		for role in NOTIFICATION_FALLBACK_ROLES:
+			if frappe.db.exists("Role", role):
+				settings.append("fallback_roles", {"role": role})
+		if settings.get("notifications_enabled") is None:
+			settings.notifications_enabled = 1
+		settings.save(ignore_permissions=True)
+
+	notify.clear_rule_cache()
 	frappe.db.commit()
 
 

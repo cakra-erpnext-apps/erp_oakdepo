@@ -10,21 +10,21 @@ from __future__ import annotations
 
 import frappe
 
-from container_depot.api import _require_authenticated_user
+from container_depot.ess.guard import require_menu
 from container_depot.operations import eir
 
 
 @frappe.whitelist(methods=["GET"])
 def eir_masters():
 	"""GET /api/v1/ess/eir-masters — checklist + damage/repair code lists."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.get_eir_masters()
 
 
 @frappe.whitelist(methods=["GET"])
 def eir_prefill(container=None, container_no=None, booking_code=None, order_bongkar=None):
 	"""GET /api/v1/ess/eir-prefill?container_no=… (booking_code / order_bongkar optional)."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.prefill(
 		container=container,
 		container_no=container_no,
@@ -41,7 +41,7 @@ def eir_history(search=None, start=0, page_length=10, docstatus=None):
 	Optional ``docstatus`` (0 = drafts, 1 = submitted) narrows the list — used by the
 	checklist landing's "latest drafts / completed" quick lists.
 	"""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.list_my_eirs(
 		user=frappe.session.user,
 		search=search,
@@ -60,7 +60,7 @@ def eir_pending_review(search=None, start=0, page_length=20):
 	"Pending Review" until Admin Ops submits on the Desk. Branch-scoped like the worklist so
 	any operator in the branch sees them (and can pull one back). See ``eir.list_review_eirs``.
 	"""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.list_review_eirs(search=search, start=start, page_length=page_length)
 
 
@@ -69,7 +69,7 @@ def eir_withdraw_review(inspection=None):
 	"""POST /api/v1/ess/eir-withdraw-review — pull a "Pending Review" EIR back to Draft so the
 	operator can fix it before Admin Ops finalizes. Mutating, hence POST. See
 	``eir.withdraw_review``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.withdraw_review(inspection=inspection)
 
 
@@ -81,7 +81,7 @@ def eir_pending(search=None, start=0, page_length=20):
 	from this list — the operator no longer types a container to create one. Branch-scoped,
 	searchable (container no / EIR id / voucher), paginated. See ``eir.list_pending_eirs``.
 	"""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.list_pending_eirs(search=search, start=start, page_length=page_length)
 
 
@@ -91,7 +91,7 @@ def eir_open(inspection=None):
 
 	The worklist picks a pending EIR and this loads its header + saved checklist state.
 	"""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.open_draft_by_name(inspection=inspection)
 
 
@@ -101,7 +101,7 @@ def eir_start(inspection=None):
 
 	The PWA locks the checklist until this is called so Mulai → Submit measures how long
 	the inspection took. Mutating, hence POST. See ``eir.start_eir``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.start_eir(inspection=inspection)
 
 
@@ -112,7 +112,7 @@ def eir_out_pending(search=None, start=0, page_length=20):
 	EIR-Out drafts are auto-created per container when an Order Muat is submitted
 	(``provision_eir_out_for_order_muat``); the surveyor works from this list. See
 	``eir.list_pending_eir_out``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.list_pending_eir_out(search=search, start=start, page_length=page_length)
 
 
@@ -120,7 +120,7 @@ def eir_out_pending(search=None, start=0, page_length=20):
 def eir_out_open(inspection=None):
 	"""GET /api/v1/ess/eir-out-open — open a draft EIR-Out (form) with its EIR-In comparison
 	+ cleaning-certificate validity + saved verification fields. See ``eir.open_eir_out``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.open_eir_out(inspection=inspection)
 
 
@@ -128,7 +128,7 @@ def eir_out_open(inspection=None):
 def eir_view(inspection=None):
 	"""GET /api/v1/ess/eir-view — read-only view of any EIR (draft OR submitted), for the
 	Riwayat detail. Returns a compact header + recorded damages (+ supports PDF print)."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.view_eir(inspection=inspection)
 
 
@@ -137,7 +137,7 @@ def eir_request_revision(inspection=None, reason=None):
 	"""POST /api/v1/ess/eir-request-revision — ask Admin Ops to reopen a submitted EIR.
 
 	Mutating (notifies + drops an audit comment), hence POST. Does not edit the EIR."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.request_revision(inspection=inspection, reason=reason)
 
 
@@ -149,7 +149,7 @@ def eir_voucher(voucher=None, inspection_type="EIR-In", container=None):
 	driver phone / shipper). The voucher must be submitted and carry ``container``.
 	See ``operations.eir.fetch_voucher``.
 	"""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.fetch_voucher(voucher=voucher, inspection_type=inspection_type, container=container)
 
 
@@ -159,7 +159,7 @@ def eir_open_draft(container=None, container_no=None, inspection_type="EIR-In"):
 
 	Mutating (creates the draft on first fetch), hence POST.
 	"""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.open_draft(container=container, container_no=container_no, inspection_type=inspection_type)
 
 
@@ -186,7 +186,7 @@ def eir_save_draft(
 	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR.
 
 	``seals`` is EIR-Out only: the seal numbers fitted at load-out."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.save_draft(
 		seals=seals,
 		inspection=inspection,
@@ -232,7 +232,7 @@ def eir_create(
 	submit=False,
 ):
 	"""POST /api/v1/ess/eir-create — build (and optionally submit) an EIR Inspection."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.create_eir(
 		inspection_type=inspection_type,
 		container=container,
@@ -261,7 +261,7 @@ def eir_create(
 def eir_unsorted(search=None, start=0, page_length=20):
 	"""GET /api/v1/ess/eir-unsorted — worklist of EIRs that still have bulk photos without a
 	section (admin photo-sorting). Branch-scoped. See ``eir.list_unsorted_eirs``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.list_unsorted_eirs(search=search, start=start, page_length=page_length)
 
 
@@ -269,7 +269,7 @@ def eir_unsorted(search=None, start=0, page_length=20):
 def eir_unsorted_photos(inspection=None):
 	"""GET /api/v1/ess/eir-unsorted-photos — foto cepat (bulk) yang belum diberi section
 	pada sebuah EIR, untuk layar sortir admin. See ``eir.unsorted_photos``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.unsorted_photos(inspection=inspection)
 
 
@@ -278,5 +278,5 @@ def eir_assign_photo_section(inspection=None, row=None, item_code=None):
 	"""POST /api/v1/ess/eir-assign-photo-section — assign one bulk photo to a checklist
 	section (the admin "sortir" action). Works on a submitted EIR (allow_on_submit).
 	DocPerm-enforced (no bypass). See ``eir.assign_photo_section``."""
-	_require_authenticated_user()
+	require_menu("eir")
 	return eir.assign_photo_section(inspection=inspection, row=row, item_code=item_code)

@@ -40,6 +40,76 @@ Repo name and Frappe app name may differ. Do not rename `container_depot` packag
 9. Secrets stay in `.env.prod` or server secret store; never commit secrets.
 10. Deploy through git then stack update. No live container edits as permanent fix.
 
+## Role model
+
+Rebuilt 2026-08-06, replacing the Phase-6 model purged on 2026-08-05. Seeded by
+`container_depot/install.py::ensure_roles_exist` on every migrate (idempotent).
+
+**Field roles** — `desk_access = 0`, `is_depot_field_role = 1`. Their users work the yard
+through the `/depot` PWA and are bounced out of `/app` on purpose.
+
+| Role | PWA menus |
+|---|---|
+| Security | Gate · Siap Keluar · Monitor |
+| Team EIR | EIR · Monitor |
+| Team Kalmar | Siap Keluar · Position Fix · Monitor |
+| Team Cleaning | Cleaning · Monitor |
+| Team Repair | M&R · Uji Periodik · Monitor |
+| Team Survey | Survey Posisi · Monitor |
+| SPV Lapangan | all nine |
+
+Monitor is the read-only yard browser and follows Container read, which every field role
+holds because every worklist shows container data.
+
+**Office roles** — `desk_access = 1`, no PWA menu: Admin Ops, Cashier, Finance,
+Commercial, Warehouse, Management (read-only everywhere).
+
+### Assigning a user
+
+1. Create the User as **System User**.
+2. Add exactly one field role, or one office role.
+3. For office roles, ALSO add the standard ERPNext companion role — the custom roles
+   carry Operations-module permissions only:
+
+   | Office role | Add alongside |
+   |---|---|
+   | Cashier | `Accounts User` |
+   | Finance | `Accounts Manager` |
+   | Commercial | `Sales Manager`, `Item Manager` |
+   | Warehouse | `Stock User`, `Purchase User` |
+
+   This is deliberate. The first Custom DocPerm written on a doctype makes Frappe ignore
+   that doctype's shipped permissions entirely, so seeding perms on Sales Invoice or
+   Purchase Order would silently disable ERPNext's own accounting and stock roles.
+
+4. Optionally scope the user to a Branch (User → Branch). Empty = all branches.
+
+Nobody holds a role until an admin assigns one, so a new account opens `/depot` and sees
+an empty state until step 2 is done.
+
+### Adding a NEW field role — no deploy needed
+
+Create the Role in Desk, tick **Depot Field Role (PWA)**, set `desk_access = 0`, then grant
+its DocPerms in Permission Manager. The menu follows from the permissions
+(`container_depot/ess/context.py::_MENU` maps menu → doctype + ptype, never menu → role).
+
+### Where access is actually enforced
+
+`container_depot/ess/guard.py::require_menu` on every ESS endpoint. The Home.vue tile
+filter and the router guard are cosmetic — a caller with curl sees neither.
+
+## Notifications
+
+Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable
+in Desk with no deploy. `Depot Notification Settings` holds the master switch and the
+fallback roles used when an event has no rule — never "everyone".
+
+A recipient must clear both filters: branch scope AND one of the event's roles.
+
+This is deliberately the opposite call from the PWA menu, which stays hardcoded — a new
+menu always needs a new Vue page, so a config doctype would save nothing there. Do not
+"make them consistent".
+
 ## Split-stack rule
 
 OakDepo runs in its own stack, separate from Cakra/Oakglobal stack.
