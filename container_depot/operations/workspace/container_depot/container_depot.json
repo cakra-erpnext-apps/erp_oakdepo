@@ -575,6 +575,44 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Notifikasi & Akses",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Depot Notification Rule",
+   "link_count": 0,
+   "link_to": "Depot Notification Rule",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Depot Notification Settings",
+   "link_count": 0,
+   "link_to": "Depot Notification Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Role",
+   "link_count": 0,
+   "link_to": "Role",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Reports",
    "link_count": 0,
    "onboard": 0,
@@ -611,7 +649,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-05 23:30:00.000000",
+ "modified": "2026-08-06 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Operations",
  "name": "Container Depot",

@@ -47,6 +47,42 @@ Before production changes:
 docker compose --env-file .env.prod -f compose.prod.yaml exec backend bench --site "$SITE_NAME" backup
 ```
 
+## Deploying the role model (2026-08-06 release)
+
+This release seeds 13 roles, rewrites the permission matrix, and **deletes five
+Notification records** that duplicated the app's own events. Back up first — the step
+above is not optional here.
+
+```bash
+# 1. Pull + rebuild the PWA bundle (menu gating lives in the built assets)
+git pull
+docker compose --env-file .env.prod -f compose.prod.yaml exec backend \
+  bash -lc 'cd apps/container_depot/frontend && yarn build'
+
+# 2. Migrate. Seeds the roles, the permission matrix, and 19 notification rules;
+#    patch v0_51 removes the duplicate Notifications. Idempotent — safe to re-run.
+docker compose --env-file .env.prod -f compose.prod.yaml exec backend \
+  bench --site "$SITE_NAME" migrate
+
+# 3. Verify
+docker compose --env-file .env.prod -f compose.prod.yaml exec backend \
+  bench --site "$SITE_NAME" execute frappe.client.get_list \
+  --kwargs "{'doctype':'Role','filters':{'is_depot_field_role':1},'fields':['name','desk_access']}"
+```
+
+**Then assign roles — nothing happens until you do.** No existing user holds any of the
+new roles, so every non-System-Manager account opens `/depot` to an empty state until an
+admin assigns one. Procedure (which role, which companion ERPNext role, branch scoping) is
+in `STRUCTURE.md § Role model → Assigning a user`.
+
+Post-deploy admin screens live under **Container Depot → Notifikasi & Akses**:
+
+| Screen | Use |
+|---|---|
+| Depot Notification Rule | Change who receives an event. Takes effect immediately, no deploy. |
+| Depot Notification Settings | Master switch (turn all depot notifications off during maintenance) + fallback roles. |
+| Role | Tick *Depot Field Role (PWA)* to let a new role into `/depot`. |
+
 ## Rules
 
 See `STRUCTURE.md`.
