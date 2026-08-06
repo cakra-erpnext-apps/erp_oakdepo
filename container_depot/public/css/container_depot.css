@@ -82,3 +82,27 @@ img.oak-grid-photo:hover {
 [data-fieldname="item_photos"] a[data-action="clear_attachment"] {
 	display: none;
 }
+
+/*
+ * ...and no raw file path either.
+ *
+ * The Attach control renders its value as <a class="attached-file-link">/private/files/
+ * whatever.jpg</a>. That path was only ever useful next to a Clear button — something to
+ * check before removing the file. With Clear gone it is a long, unreadable string that
+ * pushes the real content out of the row, and the picture itself is already one hover (or
+ * one click on the list thumbnail) away.
+ *
+ * Swap the text rather than hiding the anchor: the link still opens the file, and Frappe's
+ * own hover popover still previews it. Done in CSS because it is purely how the value
+ * reads — no control to patch, nothing to keep in step with a framework upgrade.
+ */
+[data-fieldname="exterior_photos"] .attached-file-link,
+[data-fieldname="item_photos"] .attached-file-link {
+	font-size: 0; /* hides the path text; ::after below supplies the real label */
+}
+
+[data-fieldname="exterior_photos"] .attached-file-link::after,
+[data-fieldname="item_photos"] .attached-file-link::after {
+	content: "Lihat foto";
+	font-size: var(--text-md);
+}
