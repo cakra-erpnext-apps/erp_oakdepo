@@ -4,8 +4,11 @@ API Endpoints for Hermes/OpenClaw Agent + SST integration.
 Hardening rules (Phase 1 — PRO-OPS-08):
 
 - State-changing endpoints require an authenticated user. SST / agent traffic
-  must authenticate as a user holding the ``Container Depot SST Service`` role
-  using Frappe token auth (``Authorization: token <api_key>:<api_secret>``).
+  authenticates with Frappe token auth (``Authorization: token <api_key>:<api_secret>``)
+  as the user linked as a Self Service Terminal's ``api_user`` — that link IS the gate
+  (see ``_resolve_sst_for_session``). It used to additionally carry the
+  ``Container Depot SST Service`` role, deleted 2026-08-05 with the rest of the custom
+  role model; the terminal link never depended on it.
 - Read-only endpoints that may stay guest are rate-limited.
 - All Booking Code / container lookups are parameterized via ``frappe.db`` helpers.
 - ``handle_webhook`` requires an ``X-Signature: sha256=<hex>`` HMAC over the
@@ -23,8 +26,10 @@ import re
 import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
-from frappe.utils import now_datetime
+from frappe.utils import cint, now_datetime
 
+from container_depot import finance
+from container_depot.operations.container_status import container_open_orders
 from container_depot.operations.user_branch import assert_in_user_branch, get_user_branches
 
 # ---------------------------------------------------------------------------
@@ -750,9 +755,8 @@ def _log_sst_activity(sst, action, *, booking_code=None, payload=None, result="O
 def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=None, transporter=None, ex_vessel=None, destination=None):
 	"""Validate a scanned Booking Code and issue the matching Order.
 
-	The calling user must hold the ``Container Depot SST Service`` role and be
-	linked as the ``api_user`` of a Self Service Terminal. Returns the new
-	Order's name plus the QR payload to reprint if needed.
+	The calling user must be linked as the ``api_user`` of a Self Service Terminal.
+	Returns the new Order's name plus the QR payload to reprint if needed.
 	"""
 	_require_authenticated_user()
 	sst = _resolve_sst_for_session()
@@ -919,7 +923,7 @@ def _booking_gate_detail(booking) -> dict:
 		booking,
 		[
 			"name", "branch", "depot", "booking_status", "docstatus", "direction", "customer", "principal",
-			"lift_item", "payment_type", "payment_status", "sales_invoice", "do_reference", "remarks",
+			"lift_type", "payment_type", "payment_status", "sales_invoice", "do_reference", "remarks",
 		],
 		as_dict=True,
 	)
@@ -927,7 +931,13 @@ def _booking_gate_detail(booking) -> dict:
 	# with a reason the operator can act on: pay at the cashier (Cash unpaid) or contact
 	# admin (paid/TOP but the booking isn't confirmed yet).
 	booking_submitted = b.docstatus == 1
-	payment_blocked = (b.payment_type == "Cash") and ((b.payment_status or "Unpaid") != "Paid")
+	# With finance off there is no invoice to pay, so payment can never be the reason the
+	# gate is shut — only "not confirmed yet" remains.
+	payment_blocked = (
+		finance.is_enabled()
+		and (b.payment_type == "Cash")
+		and ((b.payment_status or "Unpaid") != "Paid")
+	)
 	if booking_submitted:
 		block_reason = None
 	elif payment_blocked:
@@ -957,6 +967,10 @@ def _booking_gate_detail(booking) -> dict:
 			"direction": c.direction,
 			"order": _find_order_for_code(c.name),
 			"line": line,
+			# Work still holding this tank — the reason a gate-out would be refused, per
+			# container rather than for the booking as a whole. OPEN orders only: a finished
+			# one is history and would just be noise at the gate.
+			"open_orders": container_open_orders(c.container) if c.container else [],
 		})
 	return {
 		"booking": b.name,
@@ -968,7 +982,18 @@ def _booking_gate_detail(booking) -> dict:
 		"customer_name": frappe.db.get_value("Customer", b.customer, "customer_name") if b.customer else None,
 		"principal": b.principal,
 		"principal_name": frappe.db.get_value("Customer", b.principal, "customer_name") if b.principal else None,
-		"lift_item": b.lift_item,
+		# A booking now carries a table of charges instead of one Lift Service. The gate
+		# only ever displayed this as a label, so it gets the charge names joined (falling
+		# back to the direction's lift type when the booking bills nothing) — the PWA key
+		# stays `lift_item` so the built Gate Entry screen keeps rendering.
+		"lift_item": ", ".join(
+			frappe.get_all(
+				"Container Booking Charge",
+				filters={"parent": b.name, "parenttype": "Container Booking"},
+				pluck="item_name",
+				order_by="idx asc",
+			)
+		) or b.lift_type,
 		"payment_type": b.payment_type,
 		"payment_status": b.payment_status,
 		"sales_invoice": b.sales_invoice,
@@ -977,6 +1002,9 @@ def _booking_gate_detail(booking) -> dict:
 		"booking_submitted": booking_submitted,
 		"payment_blocked": payment_blocked,
 		"block_reason": block_reason,
+		# With finance off there is no invoice and no payment state worth showing — the
+		# gate panel drops those rows rather than displaying a meaningless "Unpaid".
+		"finance_enabled": finance.is_enabled(),
 		"containers": containers,
 	}
 
@@ -987,6 +1015,38 @@ def gate_cargo_options():
 	Desk dialog's Cargo Link so the operator chooses from the master, not free text."""
 	_require_authenticated_user()
 	return {"cargos": frappe.get_all("Cargo", filters={"is_active": 1}, pluck="name", order_by="name asc")}
+
+
+@frappe.whitelist(methods=["GET"])
+def gate_shipper_options():
+	"""Customers offerable as a bon's Shipper / Angkutan / EMKL.
+
+	``shipper`` is a Link to Customer on both Order Bongkar and Order Muat, so the gate
+	must pick from the master: a hand-typed name that is not a Customer is rejected at
+	insert time, after the operator has filled in the whole form.
+
+	Transporters (``is_transporter`` — the EMKL flag) are returned first and tagged so the
+	picker can group them. The remaining customers follow rather than being filtered away:
+	a booking line's shipper defaults to the booking's own Customer, which is usually a
+	tank owner and not flagged, and a depot that has ticked nobody would otherwise meet an
+	empty picker at the gate."""
+	_require_authenticated_user()
+	rows = frappe.get_all(
+		"Customer",
+		filters={"disabled": 0},
+		fields=["name", "customer_name", "is_transporter"],
+		order_by="customer_name asc",
+	)
+	return {
+		"shippers": [
+			{
+				"name": r.name,
+				"customer_name": r.customer_name or r.name,
+				"is_transporter": cint(r.is_transporter),
+			}
+			for r in sorted(rows, key=lambda r: (0 if cint(r.is_transporter) else 1, r.customer_name or r.name))
+		]
+	}
 
 
 def _find_active_bookings_for_container(raw) -> list[dict]:
@@ -1076,15 +1136,20 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None):
 	``make_order`` (Tank In: ``truck_plate``/``driver``/``driver_phone``/``ro``/
 	``condition``/``cargo``/``tanggal_bongkar_actual``/``shipper``/``ex_vessel``/
 	``remarks``; Tank Out: ``truck_plate``/``driver_name``/``driver_phone``/``ro``/
-	``angkutan``/``destination``/``tanggal_muat``/``shipper``/``remarks``). For Tank
-	Out, Order Muat itself refuses any container without a finished Cleaning Order."""
+	``destination``/``tanggal_muat``/``shipper``/``remarks``). ``shipper`` is the one
+	hauler field — angkutan / EMKL are the same party under other names. For Tank Out,
+	Order Muat itself refuses any container that still has unfinished work on it."""
 	_require_authenticated_user()
 	b = frappe.db.get_value(
 		"Container Booking", booking, ["payment_type", "payment_status", "direction", "docstatus"], as_dict=True
 	)
 	if not b:
 		frappe.throw(_("Booking {0} not found.").format(booking))
-	if (b.payment_type == "Cash") and ((b.payment_status or "Unpaid") != "Paid"):
+	if (
+		finance.is_enabled()
+		and (b.payment_type == "Cash")
+		and ((b.payment_status or "Unpaid") != "Paid")
+	):
 		frappe.throw(_("Booking Cash belum dibayar — bayar ke kasir dulu sebelum generate bon."))
 	if b.docstatus != 1:
 		frappe.throw(_("Booking belum disubmit / dikonfirmasi — hubungi admin sebelum generate bon."))

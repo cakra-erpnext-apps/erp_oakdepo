@@ -237,21 +237,27 @@ class SmokeRun:
 
 		# --- 1) Booking (Cash) + Cash-unpaid gate block ---------------------
 		def _mk_in_booking():
+			from container_depot.operations.doctype.container_booking import container_booking as booking_ctl
 			b = frappe.get_doc({
 				"doctype": "Container Booking", "direction": "Tank In",
 				"customer": self.customer, "contract": self.contract,
-				"payment_type": "Cash", "booking_status": "Pending Payment",
+				"payment_type": "Cash",
 				"do_reference": f"DO-{self.tag}",
+				# Charges are what Generate Invoice bills; the gate-block step needs that SI.
+				"charges": [{"item": self.lift_item}],
 				"items": [{"container_no": self.container, "condition": "EMPTY DIRTY"}],
 			}).insert(ignore_permissions=True)
 			self.in_booking = b.name
 			self.track("Container Booking", b.name)
-			# booking resolved/created the pre-arrival container + a draft Cash SI
 			frappe.db.exists("Container", self.container) and self.track("Container", self.container)
+			# Draft generates nothing — the operator's explicit step raises the invoice and
+			# moves the booking to Pending Payment.
+			booking_ctl.generate_invoice(b.name)
+			b.reload()
 			if b.sales_invoice:
 				self.track("Sales Invoice", b.sales_invoice)
 			return b
-		b = self.step("Booking · create Cash Tank In (draft + auto SI)", _mk_in_booking)
+		b = self.step("Booking · create Cash Tank In (draft) + Generate Invoice", _mk_in_booking)
 		if b:
 			d = self.step("Booking · gate blocked while Cash unpaid",
 				lambda: api._booking_gate_detail(self.in_booking))
@@ -415,14 +421,18 @@ class SmokeRun:
 		# void a throwaway bon (own booking/container so the golden flow is untouched)
 		tw_cno = self._cno(9)
 		def _mk_throwaway_and_void():
+			from container_depot.operations.doctype.container_booking import container_booking as booking_ctl
 			b = frappe.get_doc({
 				"doctype": "Container Booking", "direction": "Tank In",
 				"customer": self.customer, "contract": self.contract, "payment_type": "Cash",
-				"booking_status": "Pending Payment", "do_reference": f"DO-{self.tag}-TW",
+				"do_reference": f"DO-{self.tag}-TW",
+				"charges": [{"item": self.lift_item}],
 				"items": [{"container_no": tw_cno, "condition": "EMPTY CLEAN"}],
 			}).insert(ignore_permissions=True)
 			self.track("Container Booking", b.name)
 			frappe.db.exists("Container", tw_cno) and self.track("Container", tw_cno)
+			booking_ctl.generate_invoice(b.name)
+			b.reload()
 			if b.sales_invoice:
 				self.track("Sales Invoice", b.sales_invoice)
 				self._pay_cash_invoice(b.sales_invoice)
@@ -485,6 +495,7 @@ class SmokeRun:
 				"customer": self.customer, "contract": self.contract, "principal": self.customer,
 				"payment_type": "TOP", "booking_status": "Confirmed",
 				"do_reference": f"DO-{self.tag}-OUT",
+				"charges": [{"item": self.lift_item}],
 				"items": [{"container_no": self.container, "container": self.container, "condition": "EMPTY CLEAN"}],
 			}).insert(ignore_permissions=True)
 			self.out_booking = b.name
@@ -521,16 +532,16 @@ class SmokeRun:
 				return name
 			self.step("Order Muat · make_order + submit (cleaning-gated)", _mk_muat)
 
-		# --- 16) EIR-Out HOLD (dirty / seal broken) ----------------------
+		# --- 16) EIR-Out HOLD (a finding on the checklist) ---------------
 		hold_draft = frappe.db.get_value("Inspection",
 			{"container": self.container, "inspection_type": "EIR-Out", "docstatus": 0}, "name")
 		if hold_draft:
 			self.track("Inspection", hold_draft)
 			self.step("EIR-Out · open draft (compare to EIR-In + cert) (ESS)",
 				lambda: ess_eir.eir_out_open(hold_draft))
-			self.step("EIR-Out · field submit DIRTY → Pending Review (ESS)",
+			self.step("EIR-Out · field submit WITH FINDING → Pending Review (ESS)",
 				lambda: ess_eir.eir_save_draft(inspection=hold_draft, inspection_type="EIR-Out",
-					referred_voucher=self.order_muat, exterior_condition="Dirty", seals_intact=0, submit=1))
+					referred_voucher=self.order_muat, lines=self._damage_line(), submit=1))
 			self.step("EIR-Out · Admin Ops review + submit (Desk)",
 				lambda: frappe.get_doc("Inspection", hold_draft).submit())
 			self.assert_true("EIR-Out · outcome Hold + Order Muat Hold",
@@ -545,7 +556,7 @@ class SmokeRun:
 			self.track("Inspection", ready_name)
 			self.step("EIR-Out · field submit CLEAN → Pending Review (ESS)",
 				lambda: ess_eir.eir_save_draft(inspection=ready_name, inspection_type="EIR-Out",
-					referred_voucher=self.order_muat, exterior_condition="Clean", seals_intact=1, submit=1))
+					referred_voucher=self.order_muat, submit=1))
 			self.step("EIR-Out · Admin Ops review + submit (Desk)",
 				lambda: frappe.get_doc("Inspection", ready_name).submit())
 			self.assert_true("EIR-Out · outcome Ready To Load",

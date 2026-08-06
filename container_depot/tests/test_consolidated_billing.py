@@ -21,6 +21,7 @@ from frappe.utils import flt, today
 
 from container_depot import invoicing
 from container_depot.consolidated_billing import bill_customer
+from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_container_booking import (
 	_cleanup_customer_world,
@@ -76,6 +77,7 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
+		require_finance(cls)
 		cls.item = invoicing.ensure_service_item()
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
 		_cleanup_surveys(cls.customer)
@@ -309,6 +311,7 @@ class TestConsolidatedBillingPostpaidSplit(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
+		require_finance(cls)
 		cls.item = invoicing.ensure_service_item()
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
 		_cleanup_surveys(cls.customer)

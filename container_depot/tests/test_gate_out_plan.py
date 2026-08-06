@@ -35,6 +35,7 @@ class TestGateOutPlan(FrappeTestCase):
 		self._plans = []
 		self._orders = []       # Cleaning Order names
 		self._repairs = []      # Repair Order names
+		self._eirs = []         # Inspection (EIR) names
 		self._comms = []
 
 	def tearDown(self):
@@ -45,11 +46,14 @@ class TestGateOutPlan(FrappeTestCase):
 			frappe.db.delete("Cleaning Order", {"name": o})
 		for r in self._repairs:
 			frappe.db.delete("Repair Order", {"name": r})
+		for e in self._eirs:
+			frappe.db.delete("Inspection", {"name": e})
 		for cm in self._comms:
 			frappe.db.delete("Communication", {"name": cm})
 		for c in self._containers:
 			frappe.db.delete("Cleaning Order", {"container": c})
 			frappe.db.delete("Repair Order", {"container": c})
+			frappe.db.delete("Inspection", {"container": c})
 			frappe.db.delete("Container Activity", {"container": c})
 			frappe.db.delete("Container", {"name": c})
 		frappe.db.commit()
@@ -90,6 +94,19 @@ class TestGateOutPlan(FrappeTestCase):
 		}).insert(ignore_permissions=True)
 		self._repairs.append(ro.name)
 		return ro.name
+
+	def _eir(self, container, inspection_type, status="Submitted"):
+		insp = frappe.get_doc({
+			"doctype": "Inspection",
+			"inspection_type": inspection_type,
+			"container": container,
+			"depot": _DEPOT,
+			"eir_date": today(),
+			"inspector": "Administrator",
+			"status": status,
+		}).insert(ignore_permissions=True)
+		self._eirs.append(insp.name)
+		return insp.name
 
 	def _target(self, container):
 		return frappe.db.get_value("Container", container, ["target_lift_on", "gate_out_plan"], as_dict=True)
@@ -226,6 +243,25 @@ class TestGateOutPlan(FrappeTestCase):
 		# ...and that is precisely what the stored column says.
 		self.assertEqual(self._readiness(plan.name)[1], "Belum: M&R")
 
+	def test_related_orders_lists_the_eirs_without_blocking(self):
+		"""The tank's EIR-In / EIR-Out belong in the list as condition history, but never as
+		blockers: an EIR-Out is written AT the gate on the way out, so counting EIRs as
+		prerequisites would leave every tank reading "Belum" right up to the moment it leaves."""
+		c = self._container("GOPEIR0001")
+		ein = self._eir(c, "EIR-In")
+		eout = self._eir(c, "EIR-Out", status="Draft")
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		by_name = {o["name"]: o for o in gate_out_plan.related_orders(plan.name)[0]["orders"]}
+		self.assertEqual(by_name[ein]["kind"], "EIR-In")
+		self.assertEqual(by_name[eout]["kind"], "EIR-Out")
+		self.assertFalse(by_name[ein]["blocks"])
+		self.assertFalse(by_name[eout]["blocks"])
+		self.assertTrue(by_name[ein]["done"])       # submitted = a finished record
+		self.assertFalse(by_name[eout]["done"])     # a draft is neither blocking nor finished
+		# No open cleaning / M&R, so listing EIRs must leave the tank Siap.
+		self.assertEqual(self._readiness(plan.name), ("1/1 siap", "Siap", 1))
+
 	def _readiness(self, plan):
 		"""(readiness_summary, row readiness, row is_ready) read fresh from the DB."""
 		summary = frappe.db.get_value("Gate Out Plan", plan, "readiness_summary")
@@ -271,6 +307,78 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertIn(co_near, names)
 		self.assertIn(co_far, names)
 		self.assertLess(names.index(co_near), names.index(co_far))
+
+	# --- % Keluar / auto-close ------------------------------------------------
+	def _gate_out(self, container):
+		"""Send a listed tank out the way the gate does (clean EIR-Out + mark_gate_out)."""
+		from container_depot.operations.gate import mark_gate_out
+
+		frappe.db.set_value("Container", container, "status", "Available", update_modified=False)
+		eir = frappe.new_doc("Inspection")
+		eir.inspection_type = "EIR-Out"
+		eir.container = container
+		eir.inspector = frappe.session.user
+		eir.insert(ignore_permissions=True)
+		eir.submit()
+		res = mark_gate_out(container=container)
+		frappe.db.delete("Inspection", {"container": container})
+		return res
+
+	def _plan_row(self, plan):
+		return frappe.db.get_value("Gate Out Plan", plan, ["status", "per_fulfilled"], as_dict=True)
+
+	def test_per_fulfilled_starts_at_zero(self):
+		c = self._container("GOPPCT00001")
+		plan = self._plan([(c, add_days(today(), 3))])
+		self.assertEqual(plan.per_fulfilled, 0)
+
+	def test_partial_gate_out_moves_the_percentage_without_closing(self):
+		a = self._container("GOPPCT00002")
+		b = self._container("GOPPCT00003")
+		plan = self._plan([(a, add_days(today(), 3)), (b, add_days(today(), 3))])
+		res = self._gate_out(a)
+
+		self.assertEqual(res["plans_fulfilled"], [])
+		row = self._plan_row(plan.name)
+		self.assertEqual(row.per_fulfilled, 50)
+		self.assertEqual(row.status, "Open")
+		# Still Open, so the tank that has NOT left keeps its priority stamp.
+		self.assertIsNotNone(self._target(b).target_lift_on)
+
+	def test_last_tank_out_fulfils_the_plan_and_releases_the_stamps(self):
+		a = self._container("GOPPCT00004")
+		b = self._container("GOPPCT00005")
+		plan = self._plan([(a, add_days(today(), 3)), (b, add_days(today(), 3))])
+		self._gate_out(a)
+		res = self._gate_out(b)
+
+		self.assertEqual(res["plans_fulfilled"], [plan.name])
+		row = self._plan_row(plan.name)
+		self.assertEqual(row.per_fulfilled, 100)
+		self.assertEqual(row.status, "Fulfilled")
+		for c in (a, b):
+			got = self._target(c)
+			self.assertIsNone(got.target_lift_on)
+			self.assertIsNone(got.gate_out_plan)
+
+	def test_fulfilled_plan_frees_the_tank_for_the_next_notice(self):
+		"""The reason auto-close matters: an Open plan blocks the tank's next lift-on notice."""
+		c = self._container("GOPPCT00006")
+		self._plan([(c, add_days(today(), 3))])
+		self._gate_out(c)
+		# Tank comes back in and the customer announces the next lift-on.
+		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
+		nxt = self._plan([(c, add_days(today(), 20))])  # would throw while the old plan is Open
+		self.assertEqual(nxt.status, "Open")
+
+	def test_rows_carry_a_gated_out_flag(self):
+		c = self._container("GOPPCT00007")
+		plan = self._plan([(c, add_days(today(), 3))])
+		self.assertEqual(plan.containers[0].gated_out, 0)
+		self._gate_out(c)
+		self.assertEqual(
+			frappe.db.get_value("Gate Out Plan Item", plan.containers[0].name, "gated_out"), 1
+		)
 
 	# --- email bridge ---------------------------------------------------------
 	def test_email_prefill_maps_to_gate_out_plan(self):

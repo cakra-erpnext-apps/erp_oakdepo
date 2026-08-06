@@ -13,6 +13,11 @@ const routes = [
 		component: () => import("@/pages/GateEntry.vue"),
 	},
 	{
+		path: "/ready-out",
+		name: "ReadyToLoad",
+		component: () => import("@/pages/ReadyToLoad.vue"),
+	},
+	{
 		path: "/eir",
 		name: "Eir",
 		component: () => import("@/pages/Eir.vue"),

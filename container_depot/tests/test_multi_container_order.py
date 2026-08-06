@@ -19,9 +19,12 @@ from container_depot.api import (
 )
 from container_depot.operations.order_generation import make_order
 from container_depot.operations.doctype.booking_code.booking_code import generate_code
+from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 
 MC_CUSTOMER = "MultiContainer Test Customer"
+# The hauler on a bon is a Customer link, so the test hauler must be a real one.
+_MC_SHIPPER = MC_CUSTOMER
 
 
 def _make_contract(customer):
@@ -202,6 +205,13 @@ class TestMakeOrderMuat(FrappeTestCase):
 		return co.name
 
 	@staticmethod
+	def _open_cleaning(container):
+		"""An UNFINISHED cleaning — the thing that actually holds a tank in the depot."""
+		return frappe.get_doc({
+			"doctype": "Cleaning Order", "container": container, "status": "Service Setup",
+		}).insert(ignore_permissions=True).name
+
+	@staticmethod
 	def _drop_cleaning(container):
 		frappe.db.delete("Cleaning Order", {"container": container})
 
@@ -209,16 +219,21 @@ class TestMakeOrderMuat(FrappeTestCase):
 	def tearDownClass(cls):
 		super().tearDownClass()
 
-	def test_muat_requires_finished_cleaning_per_row(self):
+	def test_muat_allowed_when_no_order_was_ever_raised(self):
+		"""A tank with nothing open may be loaded out, even with no cleaning on record.
+
+		The gate is the ABSENCE of unfinished work. Demanding a Completed Cleaning Order
+		instead made a tank that arrived clean unloadable forever: there was no order to
+		finish, and no way to produce one.
+		"""
 		for c in self.CONTAINERS:
 			self._drop_cleaning(c)
 		booking, codes = _booking_with_codes(
 			code_direction="Tank Out", count=2, prefix="MCMT0", containers=self.CONTAINERS
 		)
-		# Neither container has a finished Cleaning Order -> rejected.
-		with self.assertRaises(frappe.ValidationError):
-			make_order(booking, codes)
-		self.assertEqual(_states(codes), ["Active", "Active"])
+		name = make_order(booking, codes)  # must NOT raise
+		self.assertEqual(len(frappe.get_doc("Order Muat", name).containers), 2)
+		self.assertEqual(_states(codes), ["Used", "Used"])
 
 	def test_muat_with_finished_cleaning(self):
 		for c in self.CONTAINERS:
@@ -233,17 +248,56 @@ class TestMakeOrderMuat(FrappeTestCase):
 		for c in self.CONTAINERS:
 			self._drop_cleaning(c)
 
-	def test_muat_rejects_when_one_container_uncleaned(self):
+	def test_muat_carries_the_pickup_detail_it_is_asked_for(self):
+		"""A Tank Out bon must land the PICK-UP fields — hauler, destination, Tgl. Muat and
+		the driver. Order Muat's field is ``driver_name``; a payload built for Tank In sends
+		``driver`` (plus ex_vessel / tanggal_bongkar), so the bon came out blank where it
+		mattered even though the right doctype was created.
+
+		The hauler is ONE field (``shipper``). It used to be two — a free-text ``angkutan``
+		beside the Customer link — so the same company could be typed into one and looked up
+		in the other. The old key is still accepted, but only when it names a real Customer.
+		"""
 		for c in self.CONTAINERS:
 			self._drop_cleaning(c)
-		self._finish_cleaning(self.CONTAINERS[0])  # only the first is clean
+		booking, codes = _booking_with_codes(
+			code_direction="Tank Out", count=1, prefix="MCMD0", containers=self.CONTAINERS[:1]
+		)
+		name = make_order(booking, codes, vehicle_data={
+			"shipper": _MC_SHIPPER,
+			"destination": "Gresik",
+			"tanggal_muat": frappe.utils.today(),
+			"truck_plate": "L 1234 XY",
+			"driver_name": "Budi",
+			"driver_phone": "0812",
+			"ro": "RO-1",
+			# One note for the whole bon (what the PWA gate sends) must reach every row.
+			"remarks": "catatan gate",
+		})
+		doc = frappe.get_doc("Order Muat", name)
+		self.assertEqual(doc.shipper, _MC_SHIPPER)
+		self.assertFalse(doc.meta.get_field("angkutan"), "angkutan is merged into shipper")
+		self.assertEqual(doc.destination, "Gresik")
+		self.assertEqual(str(doc.tanggal_muat), frappe.utils.today())
+		self.assertEqual(doc.driver_name, "Budi")
+		self.assertEqual(doc.truck_plate, "L 1234 XY")
+		self.assertEqual([r.remarks for r in doc.containers], ["catatan gate"])
+
+	def test_muat_rejects_when_one_container_still_has_open_work(self):
+		"""One unfinished order on one row refuses the whole bon, and names it."""
+		for c in self.CONTAINERS:
+			self._drop_cleaning(c)
+		self._finish_cleaning(self.CONTAINERS[0])         # first is done
+		co = self._open_cleaning(self.CONTAINERS[1])      # second is still being cleaned
 		booking, codes = _booking_with_codes(
 			code_direction="Tank Out", count=2, prefix="MCMW0", containers=self.CONTAINERS
 		)
-		with self.assertRaises(frappe.ValidationError):
+		with self.assertRaises(frappe.ValidationError) as ctx:
 			make_order(booking, codes)
+		self.assertIn(co, str(ctx.exception), "the blocking order must be named")
 		self.assertEqual(_states(codes), ["Active", "Active"])
-		self._drop_cleaning(self.CONTAINERS[0])
+		for c in self.CONTAINERS:
+			self._drop_cleaning(c)
 
 
 class TestGenerateOrderFromBookingAPI(FrappeTestCase):
@@ -409,6 +463,11 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 
 class TestGate(FrappeTestCase):
 	"""Gate PWA backend: gate_lookup (resolve + detail) and gate_generate_order."""
+
+	def setUp(self):
+		# The gate reports a payment block, so these assertions only mean anything on a
+		# site that invoices at all.
+		require_finance(self)
 
 	def test_lookup_by_booking_code_returns_detail(self):
 		from container_depot.api import gate_lookup

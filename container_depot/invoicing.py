@@ -9,9 +9,10 @@ linked back.
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_days, flt, today
+from frappe import _
+from frappe.utils import add_days, cint, flt, today
 
-from container_depot import pricing
+from container_depot import finance, pricing
 
 SERVICE_ITEM = "OAK Depot Service"
 PPN_TEMPLATE = "OAK PPN 11%"
@@ -121,8 +122,13 @@ def create_draft_sales_invoice(
 	rate card — the price-list currency (USD / IDR) is used as-is with conversion_rate 1
 	(no exchange-rate conversion), so a USD price list yields a USD invoice. ``branch``
 	is stamped on the app's Sales Invoice custom field. Returns None if the site is not
-	invoice-ready (no company / no customer).
+	invoice-ready (no company / no customer) — or if finance is switched off.
 	"""
+	# The one door every invoice in this app comes through, so this is where "run the depot
+	# without invoicing" is enforced (see container_depot.finance). None is the answer
+	# callers already handle for a site that cannot invoice.
+	if not finance.is_enabled():
+		return None
 	company = get_default_company()
 	if not company or not customer:
 		return None
@@ -226,12 +232,27 @@ def apply_manhour_charge(doc, method=None):
 	"""
 	hours = sum(flt(row.get("manhour")) for row in (doc.items or []))
 	doc.total_manhour = hours
-	if hours and not flt(doc.get("manhour_hour")):
-		# Existing invoices predate the field's default, so seed it rather than bill 0.
+	if hours and doc.is_new() and not flt(doc.get("manhour_hour")):
+		# Seed the multiplier ONCE, as the invoice is raised. Doing it on every save would
+		# make ``Hour = 0`` — the way to say "no labour on this one" — impossible to keep:
+		# it would be overwritten back to the default before the charge is computed.
 		doc.manhour_hour = pricing.DEFAULT_MANHOUR_HOUR
+	repaired = False
+	deleted_idx = _deleted_charge_row_idx(doc) if hours and flt(doc.get("manhour_hour")) else 0
+	if deleted_idx:
+		doc.manhour_hour = 0
+		# The user took the row out by hand, so the rows below it are still numbered — and
+		# still pointing — as if it were there. Close the gap ourselves rather than trust
+		# the form to have done it: a percentage left referring to the vanished row bills 0.
+		repaired = _close_row_gaps(doc, list(doc.taxes or []), [deleted_idx])
+		frappe.msgprint(
+			_("Biaya Manhour dihapus — Hour diset 0. Isi Hour lagi untuk menagihkannya kembali."),
+			indicator="orange",
+			alert=True,
+		)
 	amount = flt(hours) * flt(doc.get("manhour_hour"))
 	doc.manhour_amount = amount
-	if _sync_manhour_charge_row(doc, amount):
+	if _sync_manhour_charge_row(doc, amount) or repaired:
 		# This hook runs AFTER the controller has already totalled the document, so a charge
 		# row added here would otherwise only reach the grand total on the NEXT save (the
 		# invoice would bill last save's labour). Re-run the totals so it lands now.
@@ -256,11 +277,10 @@ def _sync_manhour_charge_row(doc, amount) -> bool:
 	if not amount:
 		if not existing:
 			return False
-		doc.set("taxes", [t for t in doc.taxes if t not in existing])
-		_renumber(doc)
+		_drop_charge_rows(doc, existing)
 		return True
-	account = _manhour_charge_account(doc.company)
-	if not account:
+	posting = _item_posting(doc)
+	if not posting.get("account"):
 		# Nothing to post the charge to — leave the totals visible in the header rather
 		# than raise on an invoice the user is trying to save.
 		return False
@@ -269,8 +289,14 @@ def _sync_manhour_charge_row(doc, amount) -> bool:
 	before = (flt(row.tax_amount), row.account_head, row.idx)
 	row.charge_type = "Actual"
 	row.description = MANHOUR_CHARGE
-	row.account_head = account
 	row.tax_amount = amount
+	# Labour is revenue from the same services the lines bill, so it posts exactly where
+	# they do — account AND cost center are taken from the item rows rather than resolved
+	# separately. (The cost center matters: ERPNext refuses a GL entry against a
+	# Profit-and-Loss account without one, which is why a charge row missing it saved fine
+	# and only blew up at submit.)
+	row.account_head = posting["account"]
+	row.cost_center = posting.get("cost_center")
 	# A charge, not a tax: it must not be included in the printed item rates.
 	row.included_in_print_rate = 0
 
@@ -284,25 +310,72 @@ def _sync_manhour_charge_row(doc, amount) -> bool:
 	return before != (flt(row.tax_amount), row.account_head, row.idx) or bool(existing[1:])
 
 
+def _drop_charge_rows(doc, doomed) -> bool:
+	"""Take the labour rows out, then close the gap they leave behind."""
+	gaps = sorted(cint(t.idx) for t in doomed)
+	return _close_row_gaps(doc, [t for t in doc.taxes if t not in doomed], gaps)
+
+
+def _close_row_gaps(doc, rest, gaps) -> bool:
+	"""Undo, on ``rest``, what inserting a charge row at each of ``gaps`` did.
+
+	Inserting the labour charge repoints a percentage from "On Net Total" to "On Previous
+	Row Total" so tax lands on the labour as well. Taking it away has to put that back, and
+	shift any other reference past the gap: a ``row_id`` is an *index*, so dropping row 1
+	leaves every reference below it pointing one row too far. ERPNext does not fail loudly
+	on that — it bills the percentage as **0** — so leaving it alone silently drops the tax.
+
+	Returns True when anything moved, i.e. the totals need recomputing.
+	"""
+	before = [(t.name, t.idx, t.charge_type, t.row_id) for t in rest]
+	for tax in rest:
+		if tax.charge_type not in ("On Previous Row Total", "On Previous Row Amount"):
+			continue
+		ref = cint(tax.row_id)
+		if ref in gaps:
+			# It was stacked on the labour charge; with that gone it charges on the net
+			# total again — exactly what it did before the charge row was inserted.
+			tax.charge_type = "On Net Total"
+			tax.row_id = None
+		elif ref:
+			tax.row_id = ref - len([g for g in gaps if g < ref])
+	doc.set("taxes", rest)
+	_renumber(doc)
+	return before != [(t.name, t.idx, t.charge_type, t.row_id) for t in rest]
+
+
+def _deleted_charge_row_idx(doc) -> int:
+	"""The idx the labour row held when this save drops one the invoice already had (else 0).
+
+	The row is derived from the lines, so rebuilding it is the default — which means a user
+	who deletes it in the grid would watch it come straight back. Reading the deletion as
+	intent ("don't bill labour on this invoice") is what makes Delete do something; the
+	caller answers it by zeroing Hour, which the user undoes by typing an Hour again.
+	"""
+	if doc.is_new():
+		return 0
+	if any((t.description or "").strip() == MANHOUR_CHARGE for t in (doc.taxes or [])):
+		return 0
+	return cint(frappe.db.get_value("Sales Taxes and Charges", {
+		"parent": doc.name,
+		"parenttype": "Sales Invoice",
+		"description": MANHOUR_CHARGE,
+	}, "idx"))
+
+
 def _renumber(doc):
 	for i, tax in enumerate(doc.taxes or [], start=1):
 		tax.idx = i
 
 
-@frappe.whitelist()
-def manhour_charge_account(company=None):
-	"""The account the labour charge posts to (whitelisted for the Sales Invoice form).
+def _item_posting(doc) -> dict:
+	"""Where the invoice's item lines post: their income account and cost center.
 
-	The form needs it to create the charge row itself, so the Grand Total moves the moment
-	Hour or a line's manhour is edited instead of only catching up on save.
+	The labour charge rides along with them — it is the same revenue, just charged once as
+	a flat amount instead of per unit, so giving it its own account resolution only risked
+	the two drifting apart. Reads the first line that actually carries an account.
 	"""
-	return _manhour_charge_account(company or get_default_company())
-
-
-def _manhour_charge_account(company):
-	"""Account the labour charge posts to — the company's income account."""
-	if not company:
-		return None
-	return frappe.db.get_value("Company", company, "default_income_account") or frappe.db.get_value(
-		"Account", {"company": company, "root_type": "Income", "is_group": 0}, "name"
-	)
+	for item in doc.items or []:
+		if item.get("income_account"):
+			return {"account": item.income_account, "cost_center": item.get("cost_center")}
+	return {}

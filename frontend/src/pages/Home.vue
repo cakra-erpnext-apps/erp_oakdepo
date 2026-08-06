@@ -271,6 +271,7 @@ const todayCards = computed(() => {
 const pendingCards = computed(() => {
 	const p = dash.value?.pending || {}
 	const rows = [
+		{ to: "/ready-out", icon: "log-out", tile: "bg-amber-50 text-amber-600", title: labels.readyOutTitle, count: p.ready_out ?? 0, sub: labels.readyOutSubtitle },
 		{ to: "/eir", icon: "clipboard", tile: "bg-leaf-50 text-leaf-600", title: labels.eir, count: (p.eir_in ?? 0) + (p.eir_out ?? 0) },
 		{ to: "/cleaning", icon: "droplet", tile: "bg-brand-50 text-brand-600", title: labels.cleaningTitle, count: p.cleaning ?? 0 },
 		{
@@ -292,12 +293,13 @@ const tiles = {
 	cleaning: { to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
 	mr: { to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
 	periodicTest: { to: "/periodic-test", icon: "activity", title: labels.ptTitleFull, desc: labels.ptDesc, tile: "bg-amber-50 text-amber-600" },
+	readyOut: { to: "/ready-out", icon: "log-out", title: labels.readyOutTitle, desc: labels.readyOutDesc, tile: "bg-amber-50 text-amber-600", wide: true },
 	monitor: { to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
 	surveyPos: { to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
 	posFix: { to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
 }
 const menuGroups = [
-	{ title: labels.grpGate, items: [tiles.gate] },
+	{ title: labels.grpGate, items: [tiles.gate, tiles.readyOut] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
 	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr, tiles.periodicTest] },
 	{ title: labels.grpYard, items: [tiles.monitor] },

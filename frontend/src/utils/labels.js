@@ -91,7 +91,7 @@ export const labels = {
 	gateLookup: "Cari", // Look up
 	branch: "Cabang", // Branch
 	bookingStatus: "Status Booking", // Booking status
-	customer: "Customer (Shipper/Angkutan)", // Customer
+	customer: "Customer", // the booking's party — the hauler is its own `shipper` field now
 	liftService: "Lift Service",
 	paymentType: "Tipe Bayar", // Payment type
 	paymentStatus: "Status Bayar", // Payment status
@@ -106,6 +106,18 @@ export const labels = {
 	gateGenerated: "Bon berhasil dibuat", // bon created
 	gateNoContainers: "Tidak ada container.", // no containers
 	gateBon: "Bon", // bon (short)
+	// Gate — what the operator is actually doing right now: letting a tank in or out
+	gateSectionBooking: "Data Booking", // booking identity block
+	gateSectionPayment: "Pembayaran", // payment block (hidden when finance is off)
+	gateSectionNote: "Catatan", // DO / remarks block
+	gateReadyOut: "Siap keluar", // no open work — free to leave
+	gateHeldBy: "Belum selesai", // container still held by open orders
+	gateHeldHint: "Container ini tidak bisa keluar sebelum order di bawah selesai.",
+	gateAlreadyOut: "Sudah keluar", // code already consumed by a bon
+	// Gate — Shipper picker (Customer master, EMKL first)
+	gateShipperEmkl: "EMKL / Transporter", // group header: customers flagged is_transporter
+	gateShipperOther: "Customer", // group header: everyone else
+	gateShipperEmpty: "Customer tidak ditemukan",
 	// Gate — vehicle / driver form before generating a bon (mirrors the Desk dialog)
 	gateVehicleTitle: "Data Kendaraan & Sopir", // Vehicle & driver data
 	gateVehicleHint: "Auto-isi dari container pertama — lengkapi bila perlu.",
@@ -113,7 +125,7 @@ export const labels = {
 	gateRequiredMissing: "Lengkapi field wajib", // required field(s) still empty
 	vCondition: "Kondisi", // Condition
 	vRo: "R/O",
-	vAngkutan: "Angkutan", // Transporter
+	vShipper: "Shipper / Angkutan / EMKL", // one hauler field, three names in daily use
 	vDestination: "Tujuan", // Destination
 	vDateBongkar: "Tanggal Bongkar",
 	vDateMuat: "Tanggal Muat",
@@ -206,7 +218,7 @@ export const labels = {
 	truckNo: "No. Truk", // Truck no
 	emkl: "EMKL",
 	driverPhone: "Nomor Driver", // Driver phone (from voucher)
-	shipper: "EMKL", // EMKL (formerly "Shipper" — from voucher)
+	shipper: "EMKL", // read-only display (EIR detail) — kept short for the 2-col grid
 	referredVoucher: "Voucher Referensi", // Referred voucher (bon)
 	voucherHintIn: "EIR-In: data diambil dari Order Bongkar.",
 	voucherHintOut: "EIR-Out: data diambil dari Order Muat.",
@@ -231,6 +243,25 @@ export const labels = {
 	gateOutConfirmTitle: "Gate-Out / Muat Selesai?",
 	gateOutConfirmMessage: "Konfirmasi isotank keluar depo (muat selesai)? Tindakan ini tidak bisa dibatalkan.",
 	gateOutDone: "Isotank keluar depo — gate-out selesai",
+	// SIAP KELUAR — antrean pengingat antara EIR-Out bersih dan tank benar-benar keluar.
+	readyOutTitle: "Siap Keluar",
+	readyOutDesc: "ACC tank yang sudah lolos EIR-Out untuk keluar depo",
+	readyOutSubtitle: "Menunggu ACC keluar",
+	readyOutSearch: "Cari container / bon muat / truk…",
+	readyOutEmpty: "Tidak ada tank yang menunggu ACC keluar",
+	readyOutCount: "tank menunggu",
+	readyOutHint: "Tank di bawah sudah lolos EIR-Out. Tekan ACC Keluar hanya setelah tank benar-benar naik truk dan meninggalkan depo.",
+	readyOutSince: "Siap sejak",
+	readyOutWaitingMin: "menit",
+	readyOutWaitingHour: "jam",
+	readyOutWaitingDay: "hari",
+	readyOutBon: "Bon Muat",
+	readyOutNoBon: "Tanpa Bon Muat",
+	readyOutDest: "Tujuan",
+	readyOutAcc: "ACC Keluar",
+	readyOutAccTitle: "ACC keluar depo?",
+	readyOutAccMessage: "Tank sudah naik truk dan meninggalkan depo? Setelah di-ACC, container tercatat Gate-Out dan tidak bisa dibatalkan.",
+	readyOutOrderDone: "Bon muat selesai",
 	// EIR Out (Fase G — surveyor load-out inspection vs last EIR-In)
 	eirOutTitle: "EIR Out",
 	eirOutSubtitle: "Survey keluar — banding EIR-In terakhir",
@@ -243,28 +274,20 @@ export const labels = {
 	eirOutPrevClean: "EIR-In: tidak ada temuan",
 	eirOutPrevPhotos: "Foto EIR-In",
 	eirOutNoBaseline: "Tidak ada EIR-In sebelumnya untuk dibandingkan",
-	eirOutAssess: "Penilaian Keluar",
-	eirOutExterior: "Kondisi Eksterior",
-	eirOutExteriorNote: "Catatan eksterior…",
-	eirOutClean: "Bersih",
-	eirOutDirty: "Kotor",
-	eirOutNeedsWash: "Perlu Cuci",
-	eirOutSeals: "Segel lengkap & utuh",
-	eirOutSealNote: "Catatan segel (no. segel, dll)…",
-	eirOutCurrent: "Kondisi Saat Ini / Temuan Baru",
 	eirOutWillReady: "Akan jadi READY TO LOAD",
-	eirOutWillHold: "Akan jadi HOLD (perlu clearance)",
-	eirOutReasonExterior: "eksterior belum bersih",
-	eirOutReasonSeals: "segel tidak lengkap/utuh",
-	eirOutReasonDamage: "ada temuan kerusakan",
-	eirOutSubmitReady: "Submit — READY TO LOAD",
-	eirOutSubmitHold: "Submit — HOLD ke Supervisor",
-	eirOutConfirmReadyTitle: "Submit EIR-Out (Ready To Load)?",
-	eirOutConfirmReadyMsg: "Konfirmasi tank bersih dan segel utuh. Operator Kalmar akan dapat notifikasi READY TO LOAD.",
-	eirOutConfirmHoldTitle: "Submit EIR-Out (HOLD)?",
-	eirOutConfirmHoldMsg: "Ada temuan — tank akan HOLD dan Ops Supervisor diberi tahu untuk clearance. Lanjut submit?",
-	eirOutDoneReady: "EIR-Out selesai — READY TO LOAD",
-	eirOutDoneHold: "EIR-Out selesai — HOLD (menunggu clearance)",
+	// Seal numbers fitted at load-out — the one thing EIR-Out records beyond photos
+	eirOutSealsTitle: "No. Seal",
+	eirOutSealsHint: "Catat setiap segel yang terpasang. Tambah baris sebanyak segelnya.",
+	eirOutSealNoPlaceholder: "Nomor segel",
+	eirOutSealRemarkPlaceholder: "Keterangan (posisi segel, dll) — opsional",
+	eirOutSealAdd: "Tambah Seal",
+	// Field submit is a HAND-OFF, not a finalisation: it parks the EIR-Out on Pending
+	// Review for Adm Ops. Ready To Load — and the Kalmar notification — only happen
+	// when Adm Ops submits it on the Desk, so the wording must not promise them now.
+	eirOutConfirmReadyTitle: "Kirim EIR-Out untuk review?",
+	eirOutConfirmReadyMsg: "EIR-Out dikirim ke Adm Ops — setelah mereka submit, Order Muat jadi READY TO LOAD dan Operator Kalmar diberi tahu.",
+	eirOutSealsRecorded: "Seal tercatat",
+	eirOutNoSealWarn: "⚠ Belum ada nomor seal yang dicatat.",
 	eirOutBackToList: "Kembali ke daftar",
 	savingDraft: "Menyimpan…", // Saving…
 	draftSaved: "Tersimpan", // Saved
@@ -344,7 +367,7 @@ export const labels = {
 	eirVoucher: "Voucher",
 	eirTruck: "No. Truk",
 	eirDriver: "Sopir",
-	eirEmkl: "EMKL",
+	eirEmkl: "Shipper / EMKL", // one hauling party — the EIR's own emkl field was merged into shipper
 	eirDamages: "Kerusakan",
 	eirNoDamage: "Tidak ada kerusakan dicatat.",
 	eirDamageCode: "D",
@@ -710,6 +733,41 @@ export const directionLabels = {
 
 export function directionLabel(s) {
 	return directionLabels[s] || s || "—"
+}
+
+// The same booking direction, in the gate operator's own words. The document says
+// "Tank In / Tank Out"; the sign over their head says GATE IN / GATE OUT. Tailwind
+// classes are spelled out in full because the scanner cannot see interpolated names.
+export const gateDirections = {
+	"Tank In": {
+		label: "GATE IN",
+		desc: "Container masuk depo",
+		icon: "log-in",
+		chip: "bg-leaf-100 text-leaf-800",
+		tile: "bg-leaf-50 text-leaf-600",
+		bar: "bg-leaf-500",
+	},
+	"Tank Out": {
+		label: "GATE OUT",
+		desc: "Container keluar depo",
+		icon: "log-out",
+		chip: "bg-amber-100 text-amber-800",
+		tile: "bg-amber-50 text-amber-600",
+		bar: "bg-amber-500",
+	},
+}
+
+export function gateDirection(s) {
+	return (
+		gateDirections[s] || {
+			label: directionLabel(s),
+			desc: "",
+			icon: "package",
+			chip: "bg-gray-100 text-gray-700",
+			tile: "bg-gray-100 text-gray-500",
+			bar: "bg-gray-300",
+		}
+	)
 }
 
 // Format a number as Indonesian Rupiah.

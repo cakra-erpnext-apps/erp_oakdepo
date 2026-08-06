@@ -31,7 +31,13 @@ from container_depot.operations.doctype.survey_order.survey_order import (
 	_survey_invoice_status,
 )
 
-ORDER_TYPES = ("Container Booking", "Cleaning Order", "Repair Order", "Survey Order")
+ORDER_TYPES = (
+	"Container Booking",
+	"Cleaning Order",
+	"Repair Order",
+	"Periodic Test Order",
+	"Survey Order",
+)
 
 
 def execute(filters=None):
@@ -50,6 +56,8 @@ def execute(filters=None):
 		rows += _cleaning_rows(filters, ctx)
 	if not order_type or order_type == "Repair Order":
 		rows += _repair_rows(filters, ctx)
+	if not order_type or order_type == "Periodic Test Order":
+		rows += _periodic_rows(filters, ctx)
 	if not order_type or order_type == "Survey Order":
 		rows += _survey_rows(filters, ctx)
 
@@ -194,39 +202,50 @@ def _cleaning_rows(filters, ctx):
 	return out
 
 
-def _repair_rows(filters, ctx):
+def _work_order_rows(filters, ctx, doctype, party_field):
+	"""Rows for a completed work order (M&R / Periodic Test) — the two are billed
+	identically (consolidated_billing._work_order_lines) and read identically here; the
+	Order Type filter is the only thing that tells them apart."""
 	f = {"status": "Completed"}
 	if filters.get("customer"):
-		f["principal"] = filters["customer"]
+		f[party_field] = filters["customer"]
 	_apply_date(f, "completion_date", filters)
 	recs = frappe.get_all(
-		"Repair Order",
+		doctype,
 		filters=f,
-		fields=["name", "principal", "completion_date", "total_cost", "billing_status", "sales_invoice"],
+		fields=["name", party_field, "completion_date", "total_cost", "billing_status", "sales_invoice"],
 		ignore_permissions=True,
 	)
-	# Repair now carries a sales_invoice back-link (set on Generate), so its live invoice
-	# status reads from the SI like the others; else fall back to billing_status. Currency
-	# has no field on Repair — it comes from the owner's active Depot Contract.
-	def _repair_status(r):
+	# Both carry a sales_invoice back-link (set on Generate), so the live invoice status
+	# reads from the SI like the others; else fall back to billing_status. Neither stores a
+	# currency — it comes from the owner's active Depot Contract.
+	def _status(r):
 		if r.sales_invoice:
 			return _si_status(r.sales_invoice)
 		return "Not Invoiced" if r.billing_status == "Unbilled" else "Billed"
 
 	return [
 		{
-			"order_type": "Repair Order",
+			"order_type": doctype,
 			"order": r.name,
-			"customer": r.principal,
+			"customer": r.get(party_field),
 			"date": getdate(r.completion_date),
-			"payment_type": "TOP" if _postpaid(r.principal, ctx) else "Cash",
-			"currency": _contract_currency(r.principal, ctx),
+			"payment_type": "TOP" if _postpaid(r.get(party_field), ctx) else "Cash",
+			"currency": _contract_currency(r.get(party_field), ctx),
 			"amount": flt(r.total_cost),
-			"invoice_status": _repair_status(r),
+			"invoice_status": _status(r),
 			"sales_invoice": r.sales_invoice,
 		}
 		for r in recs
 	]
+
+
+def _repair_rows(filters, ctx):
+	return _work_order_rows(filters, ctx, "Repair Order", "principal")
+
+
+def _periodic_rows(filters, ctx):
+	return _work_order_rows(filters, ctx, "Periodic Test Order", "billed_to")
 
 
 def _survey_rows(filters, ctx):

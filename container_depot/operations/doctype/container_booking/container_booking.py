@@ -1,14 +1,26 @@
 """Container Booking — the booking spine for PRO-OPS-08 Tank In / Tank Out.
 
-Carries the three Phase-3 critical controllers:
+``direction`` is the operator's pick and the axis everything turns on: Tank In = Lift Off
+(tank dropped at the depot), Tank Out = Lift On (tank taken from it). It decides the
+BKG-IN / BKG-OUT number, which status gate the containers face, and whether a bon becomes
+an Order Bongkar or an Order Muat.
+
+Carries the critical controllers:
 
 1. TOP credit-block (``before_submit``): TOP customers blocked when outstanding
    exceeds credit limit or any overdue Sales Invoice exists. Cash bookings
-   require a *paid* linked Sales Invoice before submit.
+   require a *paid* linked Sales Invoice before submit — unless the booking bills
+   nothing, in which case there is no invoice and nothing to gate on.
 2. TANK OUT gating (``validate`` when direction == 'Tank Out'): every item must
    reference a Container that is clean + ready, with a finished Cleaning Order
    whose ``valid_until`` covers today.
 3. Booking Code issuance on submit (one per item). Codes do not expire.
+4. Staged billing. A booking starts at ``Draft`` and generates NOTHING, so the operator
+   can get it right first. **Generate Invoice** raises the draft Sales Invoice and moves
+   it to ``Pending Payment``, where the billing facts are frozen. **Rollback ke Draft**
+   is the way back while the invoice is still unpaid; once the Cashier submits it, only
+   cancelling the invoice (or the booking) reopens anything. See :func:`generate_invoice`
+   / :func:`rollback_to_draft` / ``_guard_locked_charges``.
 """
 
 from __future__ import annotations
@@ -17,9 +29,9 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
-from frappe.utils import cint, getdate, now_datetime, today
+from frappe.utils import cint, flt, getdate, now_datetime, today
 
-from container_depot import invoicing, pricing, pricing_model
+from container_depot import finance, invoicing, pricing_model
 from container_depot.operations.doctype.booking_code.booking_code import (
 	generate_code,
 )
@@ -54,34 +66,26 @@ def build_container_summary(container_nos) -> str:
 		out.append(n)
 	return ", ".join(out) + " (+{0})".format(len(nums) - len(out))
 
-# The Item Group that holds every Lift Service (Lift On / Lift Off and any sized
-# variants such as "Lift On 20F"). The booking's Lift Service picker is scoped to it,
-# so a new sized service only needs to be filed under this group to become selectable.
-LOLO_ITEM_GROUP = "LOLO"
+# Depot Service Menu that scopes the booking's charge picker — the same mechanism M&R /
+# Cleaning / Survey use, so *which* items a booking may bill is decided by an operator in
+# Desk instead of being buried in code. An empty / inactive menu does not filter: the
+# picker then offers everything priced in the customer's list.
+BOOKING_MENU = "Booking"
 
 
-def lift_direction_for(lift_item: str | None) -> str | None:
-	"""Map a Lift Service item to the booking's in/out ``direction`` from its name.
-
-	``lift_item`` is the ONE thing the operator picks; ``direction`` (Tank In / Tank Out)
-	and ``lift_type`` are derived from it — never entered separately. The read is by the
-	*Lift On* / *Lift Off* token in the name, tolerant of size / variant suffixes, so a
-	service named ``Lift On 20F`` (or ``20F Lift On``) still resolves to outbound:
-
-	* a name carrying *Lift On*  → ``Tank Out`` (tank lifted ON the truck / leaves depot)
-	* a name carrying *Lift Off* → ``Tank In``  (tank lifted OFF the truck / enters depot)
-	* empty / unrecognised / ambiguous → ``None`` (caller keeps the current direction).
-	"""
-	s = (lift_item or "").strip().lower()
-	if not s:
-		return None
-	has_on = "lift on" in s
-	has_off = "lift off" in s
-	if has_on and not has_off:
-		return "Tank Out"
-	if has_off and not has_on:
-		return "Tank In"
-	return None
+def _billing_signature(doc) -> tuple:
+	"""Everything about a booking that a raised Sales Invoice depends on: the party, the
+	currency and each charge line. Compared before / after an edit to decide whether a
+	raised invoice would be left stale (see ``ContainerBooking._guard_locked_charges``)."""
+	return (
+		doc.get("customer"),
+		doc.get("currency"),
+		tuple(
+			(r.item, flt(r.qty), flt(r.rate))
+			for r in (doc.get("charges") or [])
+			if r.item
+		),
+	)
 
 
 def status_tag_for_condition(condition: str | None) -> str:
@@ -95,9 +99,8 @@ def status_tag_for_condition(condition: str | None) -> str:
 class ContainerBooking(Document):
 	# ---- naming ---------------------------------------------------------
 	def autoname(self):
-		# Direction is derived from the picked Lift Service, so resolve it before the
-		# BKG-IN / BKG-OUT prefix is chosen (autoname runs before validate on insert).
-		self._sync_direction_from_lift()
+		# Direction is the operator's pick (doctype default Tank In) and is set_only_once,
+		# so the BKG-IN / BKG-OUT prefix chosen here can never drift from it later.
 		prefix = "BKG-IN-" if self.direction == "Tank In" else "BKG-OUT-"
 		self.name = make_autoname(prefix + ".YYYY.-.#####")
 
@@ -109,12 +112,15 @@ class ContainerBooking(Document):
 			return
 		self._ensure_depot()
 		self._ensure_branch_and_principal()
-		self._sync_direction_from_lift()
+		self._sync_lift_type()
 		self._resolve_pricing_context()
 		self._resolve_containers()
+		self._default_row_shipper()
 		self._validate_unique_containers()
 		self._sync_container_summary()
-		self._compute_lift_amount()
+		self._guard_locked_charges()
+		self._reset_charges_on_customer_change()
+		self._price_charges()
 		self._sync_payment_type_from_contract()
 		# Readiness is enforced at SUBMIT (see before_submit), not here — an outbound
 		# booking may be saved as a draft while its container's EIR/Cleaning/M&R finish.
@@ -126,15 +132,15 @@ class ContainerBooking(Document):
 		notify_booking_created(self)
 
 	def before_save(self):
-		self._ensure_cash_invoice()
+		# No invoice is created here. A booking stays at Draft carrying nothing until the
+		# operator presses Generate Invoice (see :func:`generate_invoice`), so a half-filled
+		# booking never reaches the Cashier's queue.
 		self._sync_payment_status_from_invoice()
 
 	def before_submit(self):
 		if self.booking_status == "Cancelled":
 			frappe.throw(_("This booking was cancelled and cannot be confirmed. Create a new one."))
-		self._require_contract()
 		self._enforce_payment_rules()
-		self._validate_do()
 		self._validate_no_open_booking()
 		# Presence-based in/out gates (draft allowed; only submit is blocked).
 		if self.direction == "Tank Out":
@@ -256,24 +262,18 @@ class ContainerBooking(Document):
 		)
 		return bool(rows)
 
-	def _sync_direction_from_lift(self):
-		"""The operator picks ONE thing — the Lift Service (``lift_item``). ``direction``
-		(Tank In / Tank Out) and ``lift_type`` are both *derived* from it, never entered
-		separately:
+	def _sync_lift_type(self):
+		"""``lift_type`` is the crane-side reading of ``direction``, nothing more:
 
-		* a Lift On service  → ``direction`` Tank Out, ``lift_type`` Lift On  (tank lifted
-		  ON to the truck / taken from the depot).
-		* a Lift Off service → ``direction`` Tank In,  ``lift_type`` Lift Off (tank lifted
-		  OFF the truck / dropped at the depot).
+		* Tank In  → Lift Off (tank lifted OFF the truck / dropped at the depot)
+		* Tank Out → Lift On  (tank lifted ON to the truck / taken from the depot)
 
-		``direction`` stays the internal in/out flag the whole pipeline keys off (naming,
-		Tank Out gating, Order Bongkar vs Order Muat, EIR, booking codes, survey). It is
-		hidden/read-only on the form. When the service is empty (draft) or unrecognised,
-		direction keeps its current value (doctype default Tank In) so a half-filled draft
-		never flips arbitrarily. Tolerant of sized service names (e.g. ``Lift On 20F``)."""
-		derived = lift_direction_for(self.lift_item)
-		if derived:
-			self.direction = derived
+		``direction`` is now the operator's pick — it used to be *derived* from a single
+		``lift_item``, which stopped working once a booking could carry several priced
+		services (or none). ``direction`` remains the in/out flag the whole pipeline keys
+		off: naming, Tank Out gating, Order Bongkar vs Order Muat, EIR, booking codes,
+		survey. ``lift_type`` is kept hidden + derived so existing reports and the
+		consolidated-billing description keep reading."""
 		self.lift_type = "Lift On" if self.direction == "Tank Out" else "Lift Off"
 
 	def _ensure_depot(self):
@@ -306,45 +306,91 @@ class ContainerBooking(Document):
 	def _resolve_pricing_context(self):
 		"""Pricing follows the customer's *active* Price List — the one published by their
 		active contract and mirrored onto ``Customer.default_price_list``. It is resolved
-		automatically (hidden, never picked by hand); its currency (USD / IDR) drives the
-		Lift Rate with no exchange-rate conversion. The operator only picks the Lift
-		Service, and its rate is read from that active list. The customer's active contract
-		is also resolved (hidden) for the allowed payment modes; the hard "must have a
-		contract / price list" rule is enforced at submit."""
+		automatically (hidden, never picked by hand); its currency (USD / IDR) drives every
+		charge line with no exchange-rate conversion. The customer's active contract is also
+		resolved (hidden) for the allowed payment modes.
+
+		Neither is *required*: a booking with no charge lines bills nothing, so a walk-in
+		with no contract is a legitimate booking rather than something to block."""
 		contract = get_active_contract(self.customer) if self.customer else None
 		self.contract = contract.name if contract else None
-		# The customer's active price list — auto-resolved, not shown or picked. Empty
-		# only for a walk-in with no default list (then the Lift Rate stays 0).
+		# The customer's active price list — auto-resolved, not shown or picked. Empty only
+		# for a walk-in with no default list (charge rates then stay whatever was typed).
 		self.price_list = pricing_model.price_list_for_customer(self.customer) if self.customer else None
-		# Programmatic submit (tests / API) without an explicit lift pick falls back to the
-		# standard Lift Off / Lift On item; the Desk form makes the operator pick it.
-		if self.docstatus == 1 and self.customer and not self.lift_item:
-			self.lift_item = pricing.LIFT_OFF_ITEM if self.direction == "Tank In" else pricing.LIFT_ON_ITEM
 		if self.price_list:
 			self.currency = frappe.db.get_value("Price List", self.price_list, "currency") or self.currency
-			self.lift_rate = (
-				pricing_model.resolve_price(self.lift_item, self.price_list) if self.lift_item else 0
-			) or 0
-		else:
-			self.lift_rate = 0
 
-	def _compute_lift_amount(self):
-		"""Qty = number of containers on the booking. The lift charge is billed *per
-		container*, so the booking's lift amount = Lift Rate × Qty — the same quantity
-		the Sales Invoice carries (see ``_booking_amount`` / ``_ensure_cash_invoice``)."""
-		self.lift_qty = len(self.items or [])
-		self.lift_amount = (self.lift_rate or 0) * (self.lift_qty or 0)
+	def _reset_charges_on_customer_change(self):
+		"""Drop every charge line when the customer changes.
 
-	def _require_contract(self):
-		"""Block confirmation until the customer has an agreed price list. The lift
-		charge and payment terms both come from the contract, so there is nothing to
-		bill against without one."""
-		if not self.contract:
-			frappe.throw(
-				_("{0} has no active contract / price list — create one for this customer first.").format(
-					self.customer or _("This customer")
-				)
-			)
+		Each customer has their own rate card, and a rate is *stored* on the line once
+		seeded — so carrying the old lines over would bill the previous customer's prices
+		under the new one's name. The Desk form clears them client-side; this covers the
+		API / import path too."""
+		before = self.get_doc_before_save()
+		if not before or before.customer == self.customer:
+			return
+		self.charges = []
+
+	def _price_charges(self):
+		"""Fill in and total the booking's charge lines.
+
+		A booking may carry any number of priced services — or none at all, in which case
+		nothing is billed and no invoice is created. This replaced the old single
+		``lift_item`` + ``lift_rate`` pair, which could only ever express one charge and
+		forced every booking to have one.
+
+		Per line: ``item_name`` and ``currency`` are refreshed from the master, ``qty``
+		defaults to the number of containers (the lift is billed per container) and ``rate``
+		is seeded from the customer's active Price List.
+
+		The seed fires only on a rate that was never SET — ``None``, not ``0``. That
+		distinction is what lets a line be free: a typed 0 is a real answer and stays,
+		while "no rate given" still picks up the list price. (Testing ``not rate`` instead
+		would bounce every deliberate 0 straight back to the list price.) A rate read back
+		from the database is always a number, so a saved line — negotiated, zeroed or
+		list-priced — is never re-seeded on a later save."""
+		total = 0.0
+		container_qty = len(self.items or []) or 1
+		for row in self.charges or []:
+			if not row.item:
+				continue
+			row.item_name = frappe.db.get_value("Item", row.item, "item_name") or row.item
+			row.currency = self.currency
+			if not flt(row.qty):
+				row.qty = container_qty
+			if row.get("rate") is None and self.price_list:
+				row.rate = pricing_model.resolve_price(row.item, self.price_list) or 0
+			row.amount = flt(row.qty) * flt(row.rate)
+			total += flt(row.amount)
+		self.charges_total = total
+
+	def _billable_lines(self) -> list[dict]:
+		"""The booking's charges as Sales Invoice line dicts — or ``[]`` when the booking
+		is worth nothing.
+
+		"Worth nothing" covers BOTH shapes: no charge rows at all, and rows that total
+		zero (a free service, or one the price list does not price). Neither is billed —
+		raising a zero-value invoice would just hand the Cashier something to collect that
+		nobody owes. The single source of truth for every invoicing path (create, draft
+		re-sync, submit-time auto-invoice, regenerate) and for the payment gate, so they
+		cannot disagree about whether this booking bills.
+
+		Individual zero-rate rows inside an otherwise paid booking ARE kept — a free line
+		belongs on the invoice next to the paid ones."""
+		if flt(self.charges_total) <= 0:
+			return []
+		lines = []
+		for row in self.charges or []:
+			if not row.item:
+				continue
+			lines.append({
+				"item_code": row.item,
+				"description": f"{row.item_name or row.item} · {self.name or _('Booking')} ({self.direction})",
+				"qty": flt(row.qty) or 1,
+				"rate": flt(row.rate),
+			})
+		return lines
 
 	# ---- container resolution (single-input model) ----------------------
 	def _validate_unique_containers(self):
@@ -418,6 +464,19 @@ class ContainerBooking(Document):
 			if self.direction == "Tank In" and item.container:
 				self._mark_pre_arrival(item.container)
 
+	def _default_row_shipper(self):
+		"""Each container line carries its own EMKL / angkutan (``shipper``) — one booking
+		may be split across several transporters, and the tank owner (Principal) is often
+		not the one who trucks it.
+
+		The booking's ``customer`` is only the DEFAULT: a blank row inherits it (here and
+		client-side on row add), an explicitly picked shipper is left alone. Nothing
+		financial reads this field — pricing, contract and the Sales Invoice still key off
+		``customer``."""
+		for item in self.items or []:
+			if not item.shipper:
+				item.shipper = self.customer
+
 	def _create_pre_arrival_container(self, container_no):
 		"""Create a Container master for a pre-announced (not-yet-arrived) tank.
 
@@ -457,96 +516,91 @@ class ContainerBooking(Document):
 			frappe.flags.in_status_automation = False
 
 	# ---- portal guards --------------------------------------------------
-	def _validate_do(self):
-		"""Every booking — drop-off (Lift Off / Tank In) and pick-up (Lift On /
-		Tank Out) — needs a Delivery Order *reference* before it can be confirmed.
-		Enforced at submit so a draft can still be saved while the paperwork is
-		gathered. The uploaded document (``do_document``) is optional — it can be
-		attached later."""
-		if not self.do_reference:
-			frappe.throw(_("A Delivery Order reference is required to confirm this booking."))
-
 	# ---- billing --------------------------------------------------------
-	def _resolve_service_rate(self, service):
-		"""Per-unit selling rate for a booking's lift ``service`` — read from the customer's
-		active Price List (resolved in ``_resolve_pricing_context``), then the customer's
-		contract tariff, then their default Price List (walk-in / draft). The first two
-		normally point at the same published list. Returns 0 when nothing prices it so the
-		Cashier can fill the rate in on the draft invoice."""
-		if self.price_list:
-			return pricing_model.resolve_price(service, self.price_list) or 0
-		if self.contract:
-			return pricing.resolve_tariff_rate(self.contract, service)
-		price_list = pricing_model.price_list_for_customer(self.customer)
-		return (pricing_model.resolve_price(service, price_list) if price_list else 0) or 0
+	def _build_draft_invoice(self):
+		"""Raise the booking's draft Sales Invoice from its charges and link it.
 
-	def _booking_amount(self):
-		service = self.lift_item or self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
-		rate = self._resolve_service_rate(service)
-		qty = len(self.items or []) or 1
-		return rate * qty, rate, service
+		Called ONLY from :func:`generate_invoice` — an invoice is never born on a plain
+		save. A booking starts at ``Draft`` carrying nothing, so the operator can get the
+		containers and the charges right before anything reaches the Cashier's queue.
+		Before this, the invoice appeared on the very first save and every later edit
+		rewrote it, so the amount the Cashier was looking at could move under them.
 
-	def _ensure_cash_invoice(self):
-		"""Cash booking (incl. walk-in without a contract): auto-create a *draft*
-		Sales Invoice on first save so the Cashier has something to mark Paid. The
-		paid invoice is the gate that releases the booking code on submit.
+		Returns the invoice name, or None when the site is not invoice-ready (no company)
+		— the caller reports that rather than leaving a half-moved booking."""
+		lines = self._billable_lines()
+		if not lines:
+			return None
+		return invoicing.create_draft_sales_invoice(
+			self.customer,
+			lines,
+			due_days=30,
+			remarks=f"Cash booking for {self.customer} ({self.direction}). Cashier to confirm payment.",
+			currency=self.currency,
+			selling_price_list=self.price_list,
+			branch=self.branch,
+		)
 
-		Idempotent (skips once ``sales_invoice`` is set). Best-effort: a site that
-		isn't invoice-ready (no company) simply gets no invoice and the booking
-		stays a draft. Priced from the contract tariff when present; for a walk-in
-		without a contract the default rate comes from the customer's Price List
-		(0 only when neither prices it, leaving it for the Cashier to fill in)."""
-		if self.sales_invoice or self.docstatus != 0:
+	def _guard_locked_charges(self):
+		"""Freeze the billing facts — charges, customer, currency — outside ``Draft``.
+
+		``Draft`` is the only state where a booking is still being figured out; it carries
+		no invoice, so anything may change. Once **Generate Invoice** has run there is a
+		document the Cashier can act on, and the booking must not drift away from it. The
+		way back is deliberate, not accidental:
+
+		* invoice still a draft  -> **Rollback ke Draft** (voids the invoice, reopens the
+		  booking) — see :func:`rollback_to_draft`.
+		* invoice already submitted / paid -> cancel the invoice (and its payments) or the
+		  whole booking; the numbers are in the ledger by then.
+
+		Everything that is not a billing fact — containers, DO reference, remarks, EMKL —
+		stays editable in every state, because none of it changes what was invoiced."""
+		if self.is_new() or self.docstatus != 0:
 			return
-		if self.booking_status == "Cancelled":
-			return  # a voided draft must not resurrect its rolled-back invoice
-		if (self.payment_type or "Cash") != "Cash":
+		if self.booking_status in ("Draft", "Cancelled"):
 			return
-		service = self.lift_item or self.lift_type or ("Lift Off" if self.direction == "Tank In" else "Lift On")
-		rate = self._resolve_service_rate(service)
-		qty = len(self.items or []) or 1
-		try:
-			si = invoicing.create_draft_sales_invoice(
-				self.customer,
-				[{
-					"item_code": service,
-					"description": f"Container Booking ({self.direction}) · {service} · {qty} ctr",
-					"qty": qty,
-					"rate": rate or 0,
-				}],
-				due_days=30,
-				remarks=f"Cash booking for {self.customer} ({self.direction}). Cashier to confirm payment.",
-				currency=self.currency,
-				selling_price_list=self.price_list,
-				branch=self.branch,
+		before = self.get_doc_before_save()
+		if not before or _billing_signature(before) == _billing_signature(self):
+			return
+		submitted = (
+			self.sales_invoice
+			and frappe.db.get_value("Sales Invoice", self.sales_invoice, "docstatus") == 1
+		)
+		if submitted:
+			frappe.throw(
+				_(
+					"Sales Invoice {0} sudah disubmit — charges / customer booking ini tidak bisa "
+					"diubah lagi. Batalkan invoice-nya dulu, atau batalkan booking ini dan buat "
+					"yang baru."
+				).format(self.sales_invoice),
+				title=_("Invoice Sudah Disubmit"),
 			)
-			if si:
-				self.sales_invoice = si
-		except Exception:
-			frappe.log_error(frappe.get_traceback(), f"cash booking draft invoice failed: {self.customer}")
+		frappe.throw(
+			_(
+				"Invoice untuk booking ini sudah dibuat. Tekan <b>Rollback ke Draft</b> dulu "
+				"kalau mau mengubah charges atau customer."
+			),
+			title=_("Booking Terkunci"),
+		)
 
 	def _auto_invoice(self):
 		"""Best-effort transactional invoice for a booking that has none yet.
 
 		Skipped for TOP (postpaid): those accrue Unpaid and are billed later via
 		``consolidated_billing.bill_customer``. Cash already carries its draft/paid
-		invoice."""
+		invoice, and a booking with no charges is never invoiced at all."""
 		if self.payment_type == "TOP":
 			return
-		if self.sales_invoice or not self.contract:
+		if self.sales_invoice:
 			return
-		total, rate, service = self._booking_amount()
-		if not total or total <= 0:
+		lines = self._billable_lines()
+		if not lines:
 			return
 		try:
 			si = invoicing.create_draft_sales_invoice(
 				self.customer,
-				[{
-					"item_code": service,
-					"description": f"Container Booking {self.name} · {service} · {len(self.items or [])} ctr",
-					"qty": len(self.items or []) or 1,
-					"rate": rate,
-				}],
+				lines,
 				due_days=30,
 				remarks=f"Auto-generated from Container Booking {self.name}",
 				currency=self.currency,
@@ -645,9 +699,13 @@ class ContainerBooking(Document):
 			self.payment_type = contract.payment_type
 
 	def _validate_out_ready(self):
-		"""TANK OUT submit gate: every container must be Available — i.e. present and with
-		every related order (EIR-In, Cleaning, M&R) finished. A draft may be saved earlier;
-		only the submit is blocked while work is outstanding."""
+		"""TANK OUT submit gate: every container must be present with no OPEN order left.
+
+		The rule is the absence of unfinished work, not the presence of finished work — a
+		tank that needed no cleaning has no cleaning to wait for. A draft may always be
+		saved (so the booking can be prepared while the yard finishes up); only the submit
+		is blocked, and it names the exact orders standing in the way.
+		"""
 		failures: list[str] = []
 		# Submit-only hard requirement: a Tank Out must reference a real, existing tank
 		# (unlike Tank In, it never auto-creates one).
@@ -664,15 +722,10 @@ class ContainerBooking(Document):
 		for m in _find_status_mismatches(
 			"Tank Out", [(i.container, i.container_no) for i in (self.items or [])]
 		):
-			failures.append(
-				_(
-					"Container {0} belum siap keluar (status {1}) — selesaikan EIR / Cleaning / "
-					"M&R dulu sebelum submit booking keluar."
-				).format(m["container_no"], m["status"])
-			)
+			failures.append(_describe_out_block(m))
 
 		if failures:
-			frappe.throw("<br>".join(failures))
+			frappe.throw("<br><br>".join(failures), title=_("Container Belum Siap Keluar"))
 
 	def _validate_no_open_booking(self):
 		"""SUBMIT gate: a container must not already be spoken for by another booking.
@@ -731,6 +784,16 @@ class ContainerBooking(Document):
 		``_enforce_top_credit`` is retained (unused) in case credit gating is
 		reinstated as a setting later.
 		"""
+		# With finance off no invoice is ever raised, so waiting for one to be paid would
+		# park every Cash booking in Pending Payment permanently — the depot could not
+		# confirm a single booking. The charges stay on the record either way.
+		if not finance.is_enabled():
+			return
+		# A booking that bills nothing has nothing to collect — the Cash gate would
+		# otherwise park a free booking in Pending Payment forever, waiting on an invoice
+		# that is deliberately never raised.
+		if not self._billable_lines():
+			return
 		# self.payment_type is the booking's effective mode (synced from the contract in
 		# validate; a Both contract leaves the operator's Cash/TOP choice intact).
 		payment_type = self.payment_type or "Cash"
@@ -741,7 +804,14 @@ class ContainerBooking(Document):
 
 	def _enforce_cash_paid_invoice(self):
 		if not self.sales_invoice:
-			self._hold_pending_payment(_("Cash booking requires a paid Sales Invoice before submit."))
+			# No invoice yet: the booking is still a Draft that was never taken through
+			# Generate Invoice. That is a missing step, not a payment being waited on, so
+			# say which button to press instead of parking it in Pending Payment (which now
+			# means "invoice raised") and leaving the operator to guess.
+			frappe.throw(
+				_("Booking Cash ini belum dibuatkan invoice — tekan <b>Generate Invoice</b> dulu."),
+				title=_("Invoice Belum Dibuat"),
+			)
 		status, docstatus = frappe.db.get_value(
 			"Sales Invoice", self.sales_invoice, ["status", "docstatus"]
 		) or (None, None)
@@ -862,45 +932,68 @@ class ContainerBooking(Document):
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
-def lift_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Lift services (Lift On / Lift Off) priced in the customer's *active* Price List —
-	the options for a booking's Lift Service field. The price list is resolved from the
-	customer (their contract-published / default list), never picked by hand."""
+def charge_item_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Options for a booking charge line: the Depot Service Menu "Booking" ∩ the items
+	priced in the customer's *active* Price List.
+
+	Same two-step narrowing the M&R / Periodic Test pickers use, so *which* services a
+	booking may bill is maintained by an operator in Desk rather than pinned to one Item
+	Group in code.
+
+	**No customer / no price list -> no options.** One booking must never mix rate cards, so
+	the picker stays empty until a customer is chosen (the form also clears the charge rows
+	when the customer changes). The menu narrowing does fall back open — a menu that is
+	missing, inactive or empty simply applies no group filter — so a half-configured site is
+	still workable.
+	"""
+	from container_depot.operations.service_menu import filter_items_by_menu, is_real_menu
+
 	customer = (filters or {}).get("customer")
 	price_list = pricing_model.price_list_for_customer(customer) if customer else None
 	if not price_list:
 		return []
-	like = f"%{txt or ''}%"
-	# Every Lift Service filed under the LOLO group and priced in the customer's active
-	# list — not a hard-coded ("Lift On", "Lift Off") pair — so sized variants like
-	# "Lift On 20F" become selectable by simply filing them under LOLO. Direction then
-	# derives from each item's name (see ``lift_direction_for``).
-	return frappe.db.sql(
-		"""
-		SELECT ip.item_code
-		FROM `tabItem Price` ip
-		JOIN `tabItem` it ON it.name = ip.item_code
-		WHERE ip.selling = 1 AND ip.price_list = %(pl)s
-		  AND it.item_group = %(grp)s AND it.disabled = 0
-		  AND ip.item_code LIKE %(like)s
-		ORDER BY ip.item_code
-		LIMIT {start}, {page_len}
-		""".format(start=cint(start), page_len=cint(page_len)),
-		{"pl": price_list, "grp": LOLO_ITEM_GROUP, "like": like},
+	candidate = frappe.get_all(
+		"Item Price",
+		filters={"price_list": price_list, "selling": 1},
+		pluck="item_code",
+		distinct=True,
+	)
+	if is_real_menu(BOOKING_MENU):
+		candidate = filter_items_by_menu(candidate, BOOKING_MENU)
+	if not candidate:
+		return []
+
+	or_filters = None
+	txt = (txt or "").strip()
+	if txt and txt.lower() != "undefined":
+		or_filters = {"item_code": ["like", f"%{txt}%"], "item_name": ["like", f"%{txt}%"]}
+	# Narrowed BEFORE the limit so a page of 20 never comes back short.
+	return frappe.get_all(
+		"Item",
+		filters={"name": ["in", candidate], "disabled": 0},
+		or_filters=or_filters,
+		fields=["name", "item_name"],
+		order_by="item_name asc",
+		limit_start=cint(start),
+		limit_page_length=cint(page_len),
+		as_list=True,
 	)
 
 
 @frappe.whitelist()
-def lift_rate_for(customer, item):
-	"""Selling rate + currency for a lift Item from the customer's *active* Price List, so
-	the form can format Lift Rate in the price-list currency (USD / IDR) before save. The
-	list is resolved from the customer — no exchange-rate conversion, nothing picked."""
+def charge_pricing(customer, item):
+	"""Rate + currency + name for one charge Item under the customer's *active* Price List.
+
+	The Desk form calls this the moment a Service is picked so the row's Tarif fills in
+	immediately instead of only after a save. It is a starting point only — the rate stays
+	editable and is never re-applied once filled (see ``_price_charges``). An item the list
+	does not price returns rate 0, which is a valid free line rather than an error."""
 	price_list = pricing_model.price_list_for_customer(customer) if customer else None
-	if not price_list or not item:
-		return {"rate": 0, "currency": None}
-	rate = pricing_model.resolve_price(item, price_list) or 0
-	currency = frappe.db.get_value("Price List", price_list, "currency")
-	return {"rate": rate, "currency": currency}
+	return {
+		"rate": (pricing_model.resolve_price(item, price_list) or 0) if (price_list and item) else 0,
+		"currency": frappe.db.get_value("Price List", price_list, "currency") if price_list else None,
+		"item_name": frappe.db.get_value("Item", item, "item_name") if item else None,
+	}
 
 
 @frappe.whitelist()
@@ -912,6 +1005,86 @@ def customer_payment_modes(customer):
 	if not contract:
 		return []
 	return ["Cash", "TOP"] if contract.payment_type == "Both" else [contract.payment_type]
+
+
+@frappe.whitelist()
+def generate_invoice(booking):
+	"""Draft -> Pending Payment: raise the booking's Sales Invoice, then lock the billing.
+
+	The deliberate step between "still figuring it out" and "the Cashier can collect this".
+	A booking generates nothing until this runs, so the operator can fix containers, rates
+	and the customer freely first; afterwards ``_guard_locked_charges`` freezes exactly
+	those facts so the amount the Cashier sees cannot move under them.
+
+	Refused unless the booking is an editable Draft that actually bills something. TOP is
+	postpaid and carries no per-booking invoice at all — it is swept later by consolidated
+	billing — so it is refused here too."""
+	frappe.has_permission("Container Booking", ptype="write", throw=True)
+	finance.require_enabled(_("Generate Invoice"))
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.docstatus != 0 or doc.booking_status != "Draft":
+		frappe.throw(_("Hanya booking berstatus Draft yang bisa dibuatkan invoice."))
+	if doc.sales_invoice:
+		frappe.throw(_("Booking ini sudah punya Sales Invoice {0}.").format(doc.sales_invoice))
+	if (doc.payment_type or "Cash") != "Cash":
+		frappe.throw(
+			_("Booking TOP tidak dibuatkan invoice per-booking — ditagih belakangan lewat consolidated billing.")
+		)
+	if not doc._billable_lines():
+		frappe.throw(_("Booking ini tidak menagihkan apa pun (Total Charges 0) — tidak ada yang di-invoice."))
+
+	si = doc._build_draft_invoice()
+	if not si:
+		frappe.throw(_("Sales Invoice gagal dibuat (apakah site sudah siap untuk invoicing?)."))
+	# db_set: the booking itself is unchanged, only its billing state moves. Re-running
+	# validate here would re-price charges that are about to be frozen.
+	doc.db_set("sales_invoice", si, update_modified=False)
+	doc.db_set("payment_status", "Unpaid", update_modified=False)
+	doc.db_set("booking_status", "Pending Payment", update_modified=False)
+	return {"sales_invoice": si, "booking_status": "Pending Payment"}
+
+
+@frappe.whitelist()
+def rollback_to_draft(booking):
+	"""Pending Payment -> Draft: void the booking's draft invoice and reopen it for editing.
+
+	The undo for :func:`generate_invoice`, and the ONLY way to change charges once an
+	invoice exists. Allowed strictly while nothing has settled:
+
+	* the Sales Invoice must still be a **draft** — a submitted one has hit the ledger, so
+	  it must be cancelled through the accounting side (which reverses its Payment Entries)
+	  before the booking can move;
+	* the booking must still be an unsubmitted draft.
+
+	The invoice is marked Cancelled in place (docstatus 2, no ledger impact) and unlinked,
+	so the next Generate Invoice raises a fresh one rather than resurrecting a stale
+	document. The cancelled invoice stays in the system for audit."""
+	frappe.has_permission("Container Booking", ptype="write", throw=True)
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.docstatus != 0:
+		frappe.throw(_("Hanya booking yang belum disubmit yang bisa dikembalikan ke Draft."))
+	if doc.booking_status in ("Draft", "Cancelled"):
+		frappe.throw(_("Booking ini sudah berstatus {0}.").format(doc.booking_status))
+
+	si = doc.sales_invoice
+	if si and frappe.db.exists("Sales Invoice", si):
+		row = frappe.db.get_value("Sales Invoice", si, ["docstatus", "status"], as_dict=True)
+		if row.docstatus == 1:
+			frappe.throw(
+				_(
+					"Sales Invoice {0} sudah disubmit ({1}) — batalkan invoice-nya dulu "
+					"(pembayarannya ikut dibalik) sebelum booking bisa kembali ke Draft."
+				).format(si, row.status),
+				title=_("Invoice Sudah Disubmit"),
+			)
+		if row.docstatus == 0:
+			frappe.db.set_value(
+				"Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
+			)
+	doc.db_set("sales_invoice", None, update_modified=False)
+	doc.db_set("payment_status", "Unpaid", update_modified=False)
+	doc.db_set("booking_status", "Draft", update_modified=False)
+	return {"booking_status": "Draft", "cancelled_invoice": si}
 
 
 @frappe.whitelist()
@@ -1024,19 +1197,32 @@ def sync_booking_on_invoice_submit(doc, method=None):
 
 def resync_booking_on_invoice_cancel(doc, method=None):
 	"""on_cancel: a booking's Sales Invoice was cancelled DIRECTLY (not via the booking's
-	own cancel — that path sets ``booking_status`` = Cancelled first, which we skip). Mark
-	the still-live booking Unpaid so it surfaces as needing a fresh invoice (Regenerate)."""
+	own cancel — that path sets ``booking_status`` = Cancelled first, which we skip).
+
+	The dead link is DROPPED, not kept. Frappe runs ``_validate_links`` before ``validate``
+	and refuses to save any document that links a cancelled one, so a live booking still
+	pointing at its cancelled invoice could not be saved at all — not even to fix a remark
+	(``CancelledLinkError``). Unlinking also lets the booking re-bill by itself: a draft
+	raises a fresh invoice on the next save, a submitted one via Regenerate Invoice.
+
+	A cancelled booking keeps its cancelled invoice linked for audit — that is
+	``_cancel_invoice_keep_link``'s job and it is deliberately skipped here."""
 	for name in frappe.get_all("Container Booking", filters={"sales_invoice": doc.name}, pluck="name"):
 		row = frappe.db.get_value(
 			"Container Booking", name, ["docstatus", "booking_status", "payment_status"], as_dict=True
 		)
 		if (
 			row
-			and row.docstatus == 1
+			and row.docstatus in (0, 1)
 			and row.booking_status != "Cancelled"
 			and row.payment_status != "Cancelled"
 		):
-			frappe.db.set_value("Container Booking", name, "payment_status", "Unpaid", update_modified=False)
+			frappe.db.set_value(
+				"Container Booking",
+				name,
+				{"sales_invoice": None, "payment_status": "Unpaid"},
+				update_modified=False,
+			)
 
 
 @frappe.whitelist()
@@ -1046,22 +1232,19 @@ def regenerate_invoice(booking):
 	the dead invoice (which would leave a -1 duplicate the booking never follows). Scoped to
 	Container Booking only."""
 	frappe.has_permission("Container Booking", ptype="write", throw=True)
+	finance.require_enabled(_("Regenerate Invoice"))
 	doc = frappe.get_doc("Container Booking", booking)
 	if doc.docstatus != 1 or doc.booking_status == "Cancelled":
 		frappe.throw(_("Only a confirmed booking can regenerate its invoice."))
 	cur = doc.sales_invoice
 	if cur and frappe.db.exists("Sales Invoice", cur) and frappe.db.get_value("Sales Invoice", cur, "docstatus") != 2:
 		frappe.throw(_("Booking still has a live Sales Invoice {0}. Cancel it first.").format(cur))
-	_total, rate, service = doc._booking_amount()
-	qty = len(doc.items or []) or 1
+	lines = doc._billable_lines()
+	if not lines:
+		frappe.throw(_("Booking ini tidak menagihkan apa pun (Total Charges 0) — tidak ada yang bisa di-invoice."))
 	si = invoicing.create_draft_sales_invoice(
 		doc.customer,
-		[{
-			"item_code": service,
-			"description": f"Container Booking {doc.name} · {service} · {qty} ctr (regenerated)",
-			"qty": qty,
-			"rate": rate or 0,
-		}],
+		lines,
 		due_days=30,
 		remarks=f"Regenerated for Container Booking {doc.name} after the previous invoice was cancelled.",
 		currency=doc.currency,
@@ -1187,6 +1370,28 @@ def open_booking_conflicts(booking=None, containers=None) -> list[dict]:
 	return _find_booking_conflicts(booking, pairs)
 
 
+def _describe_out_block(mismatch) -> str:
+	"""Why one container cannot leave, in the words the operator needs to act on.
+
+	Two different problems wear the same "not ready" label, and the fix for each is
+	different: work still open (go finish these orders) versus the tank not being in the
+	depot at all (nothing to finish — it is elsewhere). So they are said separately, and
+	the open ones are listed by name.
+	"""
+	open_orders = mismatch.get("open_orders") or []
+	if not open_orders:
+		return _(
+			"Container {0} tidak ada di depo (status {1}) — tidak bisa dibuat booking keluar."
+		).format(mismatch["container_no"], mismatch["status"])
+	items = "".join(
+		"<li>{0} <b>{1}</b> — {2}</li>".format(o["label"], o["name"], o.get("status") or "-")
+		for o in open_orders
+	)
+	return _("Container {0} masih punya order yang belum selesai:").format(
+		mismatch["container_no"]
+	) + f"<ul>{items}</ul>" + _("Selesaikan order di atas dulu sebelum submit booking keluar.")
+
+
 def _find_status_mismatches(direction, containers) -> list[dict]:
 	"""Containers whose CURRENT master status conflicts with the booking direction —
 	the single source of truth for the submit status gates AND the draft early warning,
@@ -1194,14 +1399,20 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 
 	* Lift Off / Tank In — the tank must NOT already be in the depot (status not in
 	  ``PRESENT``); one that is present cannot be brought in again.
-	* Lift On / Tank Out — the tank must be ``Available`` (present and every EIR /
-	  Cleaning / M&R finished); anything else is not ready to leave.
+	* Lift On / Tank Out — the tank must be present with NO open order left. Judged from
+	  the orders themselves (``container_open_orders``), not from the cached ``Available``
+	  status: the status is a derived convenience that only moves when an order's hook
+	  fires, so a tank that never needed work could sit at ``In_Depot`` with nothing to
+	  finish and be refused forever. Readiness is the absence of open work — never the
+	  presence of a completed cleaning.
 
 	Only containers that actually EXIST are judged: a Tank In may name a not-yet-created
 	tank (born ``Booked`` on save), which is fine and skipped. ``containers``: iterable of
-	``(container, container_no)`` pairs. Returns ``[{container_no, status, direction}]``.
+	``(container, container_no)`` pairs. Returns
+	``[{container_no, status, direction, open_orders}]``, where ``open_orders`` lists the
+	work still holding a Tank Out back (empty for a Tank In mismatch).
 	"""
-	from container_depot.operations.container_status import AVAILABLE, PRESENT
+	from container_depot.operations.container_status import PRESENT, container_open_orders
 
 	out = []
 	for container, container_no in containers:
@@ -1213,26 +1424,34 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 		status = frappe.db.get_value("Container", name, "status")
 		if not status:
 			continue
-		bad = (direction == "Tank In" and status in PRESENT) or (
-			direction == "Tank Out" and status != AVAILABLE
-		)
+		open_orders = []
+		if direction == "Tank In":
+			bad = status in PRESENT
+		else:
+			# Not here = cannot leave; here = may leave once nothing is open.
+			open_orders = container_open_orders(name) if status in PRESENT else []
+			bad = status not in PRESENT or bool(open_orders)
 		if bad:
-			out.append({"container_no": container_no or name, "status": status, "direction": direction})
+			out.append({
+				"container_no": container_no or name,
+				"status": status,
+				"direction": direction,
+				"open_orders": open_orders,
+			})
 	return out
 
 
 @frappe.whitelist()
-def status_direction_warnings(lift_item=None, direction=None, containers=None) -> list[dict]:
+def status_direction_warnings(direction=None, containers=None) -> list[dict]:
 	"""Draft-time early warning: containers whose status will be refused for the chosen
-	Lift service (see :func:`_find_status_mismatches`). Never throws — Submit is where it
-	is blocked.
+	Direction (see :func:`_find_status_mismatches`). Never throws — Submit is where it is
+	blocked.
 
-	The direction is derived from ``lift_item`` with the SAME rule the form uses
-	(``lift_direction_for``), so the warning is correct the instant the operator picks a
-	Lift service — before the save that would sync ``direction`` server-side. Falls back
-	to the passed ``direction`` (then Tank In) when no lift item is set yet.
+	``direction`` is now the operator's own pick, so the form passes it straight through
+	and the warning is correct the instant it changes — no derivation from a lift item any
+	more. Defaults to Tank In (the doctype default) when not given.
 	"""
-	resolved = lift_direction_for(lift_item) or direction or "Tank In"
+	resolved = direction or "Tank In"
 	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
 	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
 	return _find_status_mismatches(resolved, pairs)

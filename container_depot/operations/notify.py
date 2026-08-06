@@ -4,10 +4,10 @@ One feed for both surfaces: a Notification Log row is exactly what Frappe's Desk
 bell shows AND what the PWA bell reads (``ess.notifications.list_notifications``),
 so creating one here lights up both at once — no second channel to keep in sync.
 
-Recipients are resolved by *who can act on the event*: users holding one of the
-event's menu roles whose branch scope includes the document's branch (an
-unrestricted/HQ user sees everything; an empty-branch user counts as all). The
-acting user is skipped — they already got the in-app toast.
+Recipients are every enabled user whose branch scope includes the document's branch (an
+unrestricted/HQ user sees everything; an empty-branch user counts as all). The acting
+user is skipped — they already got the in-app toast. Role-based targeting is gone for
+now; see the note below.
 """
 
 from __future__ import annotations
@@ -16,56 +16,27 @@ import frappe
 
 from container_depot.operations.user_branch import _SKIP_USERS, get_user_branches
 
-# Roles that can use each PWA menu → who gets that menu's notifications. "Depot PWA"
-# is the blanket PWA-access role (it can open every menu), so it is always included;
-# the granular Phase-6 roles target users who only hold one function.
-PWA_ROLE = "Depot PWA"
-EIR_ROLES = {PWA_ROLE, "Surveyor", "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
-# EIR review gate: when a field operator "submits" from the PWA the EIR only reaches
-# Pending Review — Admin Ops must check/classify and do the real Desk Submit. This is a
-# *call to review*, so it targets the reviewers ONLY — NOT the blanket PWA role or the
-# field crew (they already did their part; blasting them would be the notification going
-# to the wrong role).
-EIR_REVIEW_ROLES = {"Admin Ops", "Ops Supervisor", "Management"}
-GATE_ROLES = {PWA_ROLE, "Security", "Admin Ops", "Ops Supervisor", "Management"}
-# Bookings are commercial/admin work; the Cashier is included so a Cash booking's
-# payment is collected promptly.
-BOOKING_ROLES = {PWA_ROLE, "Commercial", "Admin Ops", "Ops Supervisor", "Management", "Cashier"}
-# Cleaning work — the yard/cleaning crew (Operator Kalmar) plus ops oversight. "Depot
-# PWA" is the blanket PWA role real cleaning users actually hold, so it is included.
-CLEANING_ROLES = {PWA_ROLE, "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
-# M&R (Maintenance & Repair) — the workshop/surveyor crew who pick parts and repair,
-# plus ops oversight.
-MR_ROLES = {PWA_ROLE, "Surveyor", "Operator Kalmar", "Admin Ops", "Ops Supervisor", "Management"}
-# Contracts are commercial paperwork — no yard crew. Every booking prices off one, so
-# admin/ops need to know when one lands or goes live.
-CONTRACT_ROLES = {PWA_ROLE, "Commercial", "Admin Ops", "Ops Supervisor", "Management"}
-# Money: the Cashier collects, Commercial owns the customer, admin/management watch.
-BILLING_ROLES = {PWA_ROLE, "Cashier", "Commercial", "Admin Ops", "Management"}
-# Third-party survey charges — the Surveyor raises them, the Cashier collects on Cash.
-SURVEY_ROLES = {PWA_ROLE, "Surveyor", "Cashier", "Admin Ops", "Ops Supervisor", "Management"}
+# NOTE (2026-08-05): recipients used to be resolved per event by role — "Depot PWA"
+# plus the granular Phase-6 roles (Surveyor, Security, Admin Ops, Operator Kalmar, Ops
+# Supervisor, Commercial, Management, Cashier). Those roles were deleted pending a role
+# redesign, so an event now goes to EVERY enabled user whose branch scope covers the
+# document. Branch is therefore the only filter left. When the new roles exist, restore
+# the per-event role sets here and re-add the ``roles`` filter to :func:`_recipients` —
+# every call site below already carries the event's meaning in its own function name.
 
-def _recipients(branch, roles):
-	"""Enabled users holding any of ``roles`` whose branch scope includes ``branch``.
+
+def _recipients(branch):
+	"""Enabled users whose branch scope includes ``branch``.
 
 	``branch`` None means "don't branch-filter" (global event). A user whose branch
 	scope is unrestricted (``get_user_branches`` → None) always qualifies.
 	"""
-	if not roles:
-		return []
-	users = frappe.get_all(
-		"Has Role",
-		filters={"role": ["in", list(roles)], "parenttype": "User"},
-		pluck="parent",
-		distinct=True,
-	)
+	users = frappe.get_all("User", filters={"enabled": 1}, pluck="name")
 	out, seen = [], set()
 	for u in users:
 		if u in seen or u in _SKIP_USERS:
 			continue
 		seen.add(u)
-		if not frappe.db.get_value("User", u, "enabled"):
-			continue
 		allowed = get_user_branches(u)  # None = all branches
 		if branch and allowed is not None and branch not in allowed:
 			continue
@@ -73,7 +44,7 @@ def _recipients(branch, roles):
 	return out
 
 
-def notify(*, doctype, name, subject, branch=None, roles=None, notification_type="Alert"):
+def notify(*, doctype, name, subject, branch=None, notification_type="Alert"):
 	"""Create a Notification Log for every in-scope recipient. Returns the count.
 
 	Best-effort: never let a notification failure abort the submit that triggered it.
@@ -81,7 +52,7 @@ def notify(*, doctype, name, subject, branch=None, roles=None, notification_type
 	try:
 		actor = frappe.session.user
 		created = 0
-		for u in _recipients(branch, roles):
+		for u in _recipients(branch):
 			if u == actor:
 				continue  # the actor already saw the toast
 			frappe.get_doc({
@@ -201,7 +172,6 @@ def notify_eir_submitted(inspection, container):
 		name=inspection.name,
 		subject=subject,
 		branch=_depot_branch(container.get("depot")),
-		roles=EIR_ROLES,
 	)
 
 
@@ -219,7 +189,6 @@ def notify_eir_pending_review(inspection):
 		name=inspection.name,
 		subject=subject,
 		branch=_depot_branch(inspection.get("depot")),
-		roles=EIR_REVIEW_ROLES,
 	)
 
 
@@ -238,7 +207,6 @@ def notify_cleaning_order_created(cleaning_order):
 		name=co.name,
 		subject=subject,
 		branch=_depot_branch(co.depot),
-		roles=CLEANING_ROLES,
 	)
 
 
@@ -257,7 +225,6 @@ def notify_repair_order_created(repair_order):
 		name=ro.name,
 		subject=subject,
 		branch=_depot_branch(ro.depot),
-		roles=MR_ROLES,
 	)
 
 
@@ -280,7 +247,6 @@ def notify_repair_order_service_setup(repair_order):
 		name=ro.name,
 		subject=subject,
 		branch=_depot_branch(ro.depot),
-		roles=MR_ROLES,
 	)
 
 
@@ -302,7 +268,6 @@ def notify_repair_order_pending_approval(repair_order):
 		name=ro.name,
 		subject=subject,
 		branch=_depot_branch(ro.depot),
-		roles=MR_ROLES,
 	)
 
 
@@ -321,7 +286,6 @@ def notify_repair_order_decided(repair_order):
 		name=ro.name,
 		subject=subject,
 		branch=_depot_branch(ro.depot),
-		roles=MR_ROLES,
 	)
 
 
@@ -342,7 +306,6 @@ def notify_order_gate(order, direction):
 		name=order.name,
 		subject=subject,
 		branch=order.get("branch"),
-		roles=GATE_ROLES,
 	)
 
 
@@ -360,7 +323,6 @@ def notify_order_muat_survey(order):
 		name=order.name,
 		subject=subject,
 		branch=order.get("branch"),
-		roles={PWA_ROLE, "Surveyor", "Ops Supervisor", "Admin Ops"},
 	)
 
 
@@ -376,7 +338,6 @@ def notify_ready_to_load(container_no, order_muat=None, *, depot=None):
 		name=order_muat or container_no,
 		subject=subject,
 		branch=_depot_branch(depot) if depot else None,
-		roles={PWA_ROLE, "Operator Kalmar", "Admin Ops", "Ops Supervisor"},
 	)
 
 
@@ -392,7 +353,6 @@ def notify_eir_out_hold(container_no, order_muat=None, reason=None, *, depot=Non
 		name=order_muat or container_no,
 		subject=subject,
 		branch=_depot_branch(depot) if depot else None,
-		roles={PWA_ROLE, "Ops Supervisor", "Admin Ops"},
 	)
 
 
@@ -408,7 +368,6 @@ def notify_gate_out(container_no, *, gate_entry=None, depot=None, when=None):
 		name=gate_entry,
 		subject=subject,
 		branch=_depot_branch(depot) if depot else None,
-		roles=GATE_ROLES,
 	)
 
 
@@ -424,7 +383,6 @@ def notify_booking_created(booking):
 		name=booking.name,
 		subject=subject,
 		branch=booking.get("branch"),
-		roles=BOOKING_ROLES,
 	)
 
 
@@ -437,7 +395,6 @@ def notify_booking_submitted(booking):
 		name=booking.name,
 		subject=subject,
 		branch=booking.get("branch"),
-		roles=BOOKING_ROLES,
 	)
 
 
@@ -460,7 +417,7 @@ def notify_contract_created(contract):
 	)
 	# Contracts carry no branch or depot: they are per-customer commercial paperwork
 	# that applies depot-wide, so this is a global event.
-	notify(doctype="Depot Contract", name=contract.name, subject=subject, roles=CONTRACT_ROLES)
+	notify(doctype="Depot Contract", name=contract.name, subject=subject)
 
 
 def notify_contract_activated(contract):
@@ -470,7 +427,7 @@ def notify_contract_activated(contract):
 		f"Kontrak aktif {contract.name} • {_customer_name(contract.get('customer'))} • "
 		f"berlaku s/d {contract.get('valid_to') or '-'}"
 	)
-	notify(doctype="Depot Contract", name=contract.name, subject=subject, roles=CONTRACT_ROLES)
+	notify(doctype="Depot Contract", name=contract.name, subject=subject)
 
 
 def notify_invoice_submitted(invoice, method=None):
@@ -489,7 +446,6 @@ def notify_invoice_submitted(invoice, method=None):
 		name=invoice.name,
 		subject=subject,
 		branch=invoice.get("branch"),
-		roles=BILLING_ROLES,
 	)
 
 
@@ -502,4 +458,4 @@ def notify_survey_order_submitted(order):
 	subject = f"Survey Order {order.name} • {_customer_name(order.get('paid_to'))} • {money} • {pay}{tail}"
 	# Survey Order carries no branch/depot of its own; its charge rows may each name a
 	# different container, so there is no single branch to scope to.
-	notify(doctype="Survey Order", name=order.name, subject=subject, roles=SURVEY_ROLES)
+	notify(doctype="Survey Order", name=order.name, subject=subject)

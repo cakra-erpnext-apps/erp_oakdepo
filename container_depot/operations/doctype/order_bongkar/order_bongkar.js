@@ -26,6 +26,7 @@ frappe.ui.form.on('Order Bongkar', {
 			filters: { booking: frm.doc.booking },
 		}));
 		const grid = frm.fields_dict.containers.grid;
+		_bon_grid_columns(grid);
 		_lock_actions(frm);
 		_strip_row_buttons(frm);
 		_enforce_max_rows(frm);
@@ -48,6 +49,36 @@ frappe.ui.form.on('Order Bongkar', {
 		});
 	}
 });
+
+// The bon borrows the booking's child table (Container Booking Item), but the two forms
+// want different columns from it, and a grid only has 10 units to spend. On the BOOKING the
+// row is an identity — which tank, whose EMKL, what cargo — and the vehicle is unknown yet;
+// on the BON the vehicle IS the document (this truck, this driver, this R/O). The stored
+// layout serves the booking, so the bon re-spends the budget here rather than both forms
+// fighting over one compromise that reads badly on each.
+const BON_GRID = {
+	container: 2,
+	condition: 1,
+	truck_plate: 2,
+	driver: 2,
+	driver_phone: 1,
+	ro: 1,
+	tanggal_bongkar: 1,
+};
+
+function _bon_grid_columns(grid) {
+	const shown = Object.keys(BON_GRID);
+	(grid.docfields || []).forEach((df) => {
+		const wanted = shown.includes(df.fieldname);
+		// Guarded: update_docfield_property throws for a field the grid doesn't carry.
+		try {
+			grid.update_docfield_property(df.fieldname, 'in_list_view', wanted ? 1 : 0);
+			if (wanted) grid.update_docfield_property(df.fieldname, 'columns', BON_GRID[df.fieldname]);
+		} catch (e) {
+			/* field not in this grid — nothing to lay out */
+		}
+	});
+}
 
 function _lock_actions(frm) {
 	// A bon is never deleted, duplicated, or used as a template for a New one —

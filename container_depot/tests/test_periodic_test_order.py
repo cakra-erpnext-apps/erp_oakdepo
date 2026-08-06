@@ -169,3 +169,77 @@ class TestPeriodicTestOrder(FrappeTestCase):
 		# finishing it releases the tank back to Available
 		self._advance(doc, "Approved", "In Progress", "Completed")
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+
+	# --- billing (identical to M&R) -------------------------------------------
+	def _completed_order(self, cno, used):
+		doc = self._order(self._container(cno), test_type="2,5Y", periodic_date=today(), used=used)
+		self._advance(doc, "Approved", "In Progress", "Completed")
+		doc.reload()
+		return doc
+
+	def _sweep(self):
+		from container_depot.consolidated_billing import _periodic_lines
+
+		return _periodic_lines(self._principal, "2000-01-01 00:00:00", f"{today()} 23:59:59")
+
+	def test_completed_order_is_swept_item_by_item(self):
+		"""One invoice line PER USED ITEM, each carrying its item_code — the same rule as
+		M&R, and the only way the invoice can look up each item's contract manhour. A lump
+		"Periodic Test PTO-xxx" line would book zero hours."""
+		doc = self._completed_order(
+			"PTOBILL0001",
+			[{"item": "Lift Off", "quantity": 2}, {"item": "Lift On", "quantity": 1}],
+		)
+		lines = [ln for u in self._sweep() for ln in u["lines"]]
+		self.assertEqual({ln["item_code"] for ln in lines}, {"Lift Off", "Lift On"})
+		self.assertTrue(all(ln.get("item_code") for ln in lines), "every line must carry item_code")
+		self.assertTrue(all(ln["description"].startswith("Periodic Test ") for ln in lines))
+		self.assertEqual([u["sources"][0]["dt"] for u in self._sweep()], ["Periodic Test Order"])
+		self.assertEqual(self._sweep()[0]["sources"][0]["name"], doc.name)
+
+	def test_rejected_lines_are_not_billed(self):
+		"""Same rule the order's own total uses — an owner-rejected line is not charged."""
+		self._completed_order(
+			"PTOBILL0002",
+			[
+				{"item": "Lift Off", "quantity": 1, "decision": "Rejected"},
+				{"item": "Lift On", "quantity": 1},
+			],
+		)
+		lines = [ln for u in self._sweep() for ln in u["lines"]]
+		self.assertEqual({ln["item_code"] for ln in lines}, {"Lift On"})
+
+	def test_an_already_billed_order_is_not_swept_again(self):
+		from container_depot.consolidated_billing import _mark_billed, _unmark_billed
+
+		doc = self._completed_order("PTOBILL0003", [{"item": "Lift Off", "quantity": 1}])
+		self.assertTrue(self._sweep(), "unbilled work must be swept")
+
+		_mark_billed("Periodic Test Order", doc.name, "SOME-SI")
+		doc.reload()
+		self.assertEqual(doc.billing_status, "Client Billed")
+		self.assertEqual(doc.sales_invoice, "SOME-SI")
+		self.assertEqual(self._sweep(), [], "a billed order must never be swept twice")
+
+		# Rollback puts it back in the queue, exactly as it does for M&R.
+		_unmark_billed("Periodic Test Order", doc.name)
+		doc.reload()
+		self.assertEqual(doc.billing_status, "Unbilled")
+		self.assertIsNone(doc.sales_invoice)
+		self.assertTrue(self._sweep())
+
+	def test_report_lists_it_under_its_own_order_type(self):
+		"""The billing treatment is shared with M&R; the Order Type filter is what tells
+		them apart."""
+		from container_depot.operations.report.order_billing_status.order_billing_status import (
+			ORDER_TYPES,
+			execute,
+		)
+
+		doc = self._completed_order("PTOBILL0004", [{"item": "Lift Off", "quantity": 1}])
+		self.assertIn("Periodic Test Order", ORDER_TYPES)
+		_, rows = execute({"customer": self._principal, "order_type": "Periodic Test Order"})
+		mine = [r for r in rows if r["order"] == doc.name]
+		self.assertEqual(len(mine), 1)
+		self.assertEqual(mine[0]["order_type"], "Periodic Test Order")
+		self.assertEqual(mine[0]["invoice_status"], "Not Invoiced")

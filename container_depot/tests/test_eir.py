@@ -165,7 +165,7 @@ class TestEirCreate(FrappeTestCase):
 		c = _make_container("EIRC1000002", status="In_Depot")
 		res = eir.create_eir(
 			inspection_type="EIR-In", container=c, tank_status="Empty Dirty",
-			truck_no="B-1234-XY", emkl="PT EMKL", remarks="ok",
+			truck_no="B-1234-XY", remarks="ok",
 			lines=[{"item_code": "11", "damage_code": "12", "remarks": "broken"}],
 			submit=True,
 		)
@@ -173,7 +173,7 @@ class TestEirCreate(FrappeTestCase):
 		self.assertEqual(doc.docstatus, 1)
 		self.assertEqual(doc.has_damage, 1)
 		self.assertEqual(doc.truck_no, "B-1234-XY")
-		self.assertEqual(doc.emkl, "PT EMKL")
+		self.assertFalse(doc.meta.get_field("emkl"), "emkl is merged into shipper")
 		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
 		self.assertEqual(cont.status, "In_Depot")
 		self.assertTrue(cont.eir_in_date)
@@ -272,7 +272,7 @@ class TestEirDraft(FrappeTestCase):
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		res = eir.save_draft(
 			inspection=d["inspection"], inspection_type="EIR-In",
-			tank_status="Empty Dirty", vessel="MV X", truck_no="B-9", emkl="PT Y",
+			tank_status="Empty Dirty", vessel="MV X", truck_no="B-9",
 			lines=[
 				{"item_code": "01", "damage_code": "11", "remarks": "dent"},
 				{"item_code": "02"},  # empty -> skipped

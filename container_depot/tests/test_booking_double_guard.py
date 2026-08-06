@@ -93,7 +93,6 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			"direction": direction,
 			"customer": self.customer,
 			"contract": self.contract,
-			"booking_status": "Pending Confirmation",
 			"do_reference": "DO-DBG",
 			"do_document": "/files/do.pdf",
 			"items": [{"container_no": container_no}],
@@ -190,24 +189,24 @@ class TestBookingDoubleGuard(FrappeTestCase):
 
 	# --- draft-time status↔direction warning (status_direction_warnings) -
 	def test_status_warning_lift_on_needs_available(self):
-		"""Lift On -> Tank Out: a tank that is not Available is flagged (it is not ready
-		to leave). Uses the same helper as the _validate_out_ready submit gate."""
+		"""Tank Out (Lift On): a tank that is not Available is flagged (it is not ready to
+		leave). Uses the same helper as the _validate_out_ready submit gate."""
 		from container_depot.operations.doctype.container_booking.container_booking import (
 			status_direction_warnings,
 		)
 
 		self._available_container(C_OUT)
 		rows = [{"container_no": C_OUT}]
-		self.assertEqual(status_direction_warnings("Lift On", None, rows), [])  # Available -> silent
+		self.assertEqual(status_direction_warnings("Tank Out", rows), [])  # Available -> silent
 
 		frappe.db.set_value("Container", C_OUT, "status", "Booked", update_modified=False)
-		warn = status_direction_warnings("Lift On", None, rows)
+		warn = status_direction_warnings("Tank Out", rows)
 		self.assertEqual(len(warn), 1)
 		self.assertEqual(warn[0]["direction"], "Tank Out")
 		self.assertEqual(warn[0]["status"], "Booked")
 
 	def test_status_warning_lift_off_rejects_present(self):
-		"""Lift Off -> Tank In: a tank already in the depot is flagged; a Booked (not yet
+		"""Tank In (Lift Off): a tank already in the depot is flagged; a Booked (not yet
 		arrived) one is fine. Same helper as the _validate_in_not_present submit gate."""
 		from container_depot.operations.doctype.container_booking.container_booking import (
 			status_direction_warnings,
@@ -216,10 +215,10 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		self._available_container(C_OUT)
 		frappe.db.set_value("Container", C_OUT, "status", "Booked", update_modified=False)
 		rows = [{"container_no": C_OUT}]
-		self.assertEqual(status_direction_warnings("Lift Off", None, rows), [])  # Booked -> silent
+		self.assertEqual(status_direction_warnings("Tank In", rows), [])  # Booked -> silent
 
 		frappe.db.set_value("Container", C_OUT, "status", "In_Depot", update_modified=False)
-		warn = status_direction_warnings("Lift Off", None, rows)
+		warn = status_direction_warnings("Tank In", rows)
 		self.assertEqual(len(warn), 1)
 		self.assertEqual(warn[0]["direction"], "Tank In")
 
@@ -229,4 +228,4 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			status_direction_warnings,
 		)
 
-		self.assertEqual(status_direction_warnings("Lift Off", None, [{"container_no": "NOSUCH0000000"}]), [])
+		self.assertEqual(status_direction_warnings("Tank In", [{"container_no": "NOSUCH0000000"}]), [])

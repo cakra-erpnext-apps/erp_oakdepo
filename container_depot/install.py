@@ -2,293 +2,20 @@ import os
 
 import frappe
 
-# Legacy blanket-grant role list. Kept for backwards compatibility on existing
-# sites — the real per-role matrix below now supersedes it. Anything still in
-# this list also gets unrestricted DocPerms on every Operations doctype.
-ROLES_TO_GRANT = ["System Manager", "Container Depot"]
-
-# Narrow service role used by SST / agent traffic. Created (idempotently) on
-# install and on every migrate, but kept out of ROLES_TO_GRANT so it does not
-# accidentally pick up the blanket DocPerm grant.
-SST_SERVICE_ROLE = "Container Depot SST Service"
-
-# PWA access role. Gates the /depot page (www/depot.py) and carries the DocPerms
-# the PWA exercises under the caller's session. Created with desk_access=0 (website
-# /PWA only). The admin assigns it to users; it is not auto-granted to anyone.
-PWA_ROLE = "Depot PWA"
-
-# Real per-role matrix introduced in Phase 6. Roles listed here are created on
-# install + every migrate; the permission matrix in ROLE_DOCTYPE_PERMISSIONS
-# below decides who can see / change what.
-PHASE6_ROLES = [
-	"Customer",                       # ERPNext built-in; we scope via User Permission.
-	"Depot Driver (SST)",
-	"Security",
-	"Admin Ops",
-	"Surveyor",
-	"Operator Kalmar",
-	"Ops Supervisor",
-	"Commercial",
-	"Management",
-	"IT Support",
-	# Cash counter. Confirms walk-in payment by marking the booking's Sales
-	# Invoice Paid (which releases the booking code on submit). The payment side
-	# itself (Payment Entry / Sales Invoice) uses ERPNext's built-in "Accounts
-	# User" role — we deliberately do NOT add Custom DocPerms to those core
-	# doctypes, since any custom perm row would override ERPNext's standard
-	# accounting permissions. Assign cashier logins both "Cashier" and
-	# "Accounts User".
-	"Cashier",
-]
-
-# Permission matrix: doctype -> {role: perm_dict}. perm_dict keys match the
-# Custom DocPerm fields (read/write/create/delete/submit/cancel/amend/export
-# /report/share). Missing keys default to 0. permlevel defaults to 0.
+# Roles the app grants blanket DocPerms on every Operations doctype. The custom
+# role model (Depot PWA, Container Depot, Admin Ops, Surveyor, Cashier, …) was
+# removed on 2026-08-05 pending a redesign — see docs in the purge script
+# (container_depot/purge_roles.py) for the full list of what was dropped. Until the
+# new model lands, access is Frappe's own: System Manager (and Administrator, which
+# bypasses permissions entirely).
 #
-# Design notes:
-# - System Manager always gets full perms; not enumerated here.
-# - Customer perms are written but only become visible-per-row via the
-#   User Permission link to Customer (auto-created by ensure_customer_user_permission).
-# - Append-only logs (SST Activity Log, Container Movement) deny delete to
-#   everyone except System Manager.
-ROLE_DOCTYPE_PERMISSIONS = {
-	"Container Booking": {
-		"Customer":          {"read": 1, "create": 1, "submit": 0, "report": 1, "export": 1},
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "amend": 1, "report": 1, "export": 1, "share": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		# Cashier confirms cash payment then submits to release the booking code.
-		"Cashier":           {"read": 1, "write": 1, "submit": 1, "report": 1},
-		"Security":          {"read": 1, "report": 1},
-		"Surveyor":          {"read": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
-	"Booking Code": {
-		"Customer":          {"read": 1, "report": 1},
-		"Security":          {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "write": 1, "create": 1, "report": 1},
-		"Commercial":        {"read": 1, "write": 1, "create": 1, "report": 1},
-		# Cashier reads/prints the QR voucher for the driver at the counter.
-		"Cashier":           {"read": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1},
-	},
-	"Order Bongkar": {
-		"Customer":          {"read": 1, "report": 1},
-		"Security":          {"read": 1, "write": 1, "create": 1, "submit": 1, "report": 1},
-		"Surveyor":          {"read": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "report": 1},
-	},
-	"Order Muat": {
-		"Customer":          {"read": 1, "report": 1},
-		"Security":          {"read": 1, "write": 1, "create": 1, "submit": 1, "report": 1},
-		"Surveyor":          {"read": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "write": 1, "create": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "report": 1},
-	},
-	"Depot Contract": {
-		"Customer":          {"read": 1, "report": 1},
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "amend": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
-	# Depot Service Menu — a dynamic, group-based filter over the Item catalog
-	# (Booking / Cleaning / Maintenance). Commercial / Admin Ops maintain it; the
-	# M&R picker reads it (also granted to the PWA role via _PWA_DOCTYPE_PERMS).
-	"Depot Service Menu": {
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
-	"Container": {
-		"Customer":          {"read": 1, "report": 1},
-		"Security":          {"read": 1, "report": 1},
-		"Surveyor":          {"read": 1, "write": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "write": 1, "create": 1, "delete": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-	},
-	"Gate Entry": {
-		"Customer":          {"read": 1, "report": 1},
-		"Security":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-	},
-	"Inspection": {
-		"Customer":          {"read": 1, "report": 1},
-		"Surveyor":          {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "report": 1},
-	},
-	"Repair Order": {
-		# Tank Owner (Customer) approves/rejects M&R from Desk: status edit only.
-		"Customer":          {"read": 1, "write": 1, "report": 1},
-		"Surveyor":          {"read": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
-	"Cleaning Checklist Item": {
-		"Surveyor":          {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-	},
-	# Cleaning Order — the cleaning team's worklist (auto-created from Empty-Dirty EIRs).
-	# The team fills the cleanliness checklist and submits it (= Completed), which is the
-	# proof Order Muat requires before load-out. Editable + submittable from the PWA.
-	"Cleaning Order": {
-		"Surveyor":          {"read": 1, "write": 1, "submit": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "write": 1, "submit": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "submit": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
-	"SST Activity Log": {
-		"IT Support":        {"read": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		# create-only for the SST service role lives in the doctype JSON itself.
-	},
-	"Container Movement": {
-		"Operator Kalmar":   {"read": 1, "create": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
-	"Self Service Terminal": {
-		"IT Support":        {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-	},
-	# ---- v0.2 additions ------------------------------------------------
-	"Depot": {
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Commercial":        {"read": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
-	"Inspection Damage Code": {
-		"Surveyor":          {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-	},
-	"Inspection Repair Code": {
-		"Surveyor":          {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-	},
-	"Inspection Checklist Item": {
-		"Surveyor":          {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-	},
-	# ---- B2 additions (customer portal backbone) -----------------------
-	"Surveyor Company": {
-		"Surveyor":          {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Commercial":        {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1},
-	},
-	"Customer Portal User": {
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
-		"Commercial":        {"read": 1, "report": 1},
-		"IT Support":        {"read": 1, "create": 1, "write": 1, "report": 1},
-	},
-	"Shipping Line": {
-		"Customer":          {"read": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Commercial":        {"read": 1, "report": 1},
-	},
-	# ---- B4 additions (monthly billing) --------------------------------
-	"OAK Monthly Invoice": {
-		"Customer":          {"read": 1, "report": 1, "export": 1},
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1, "export": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
-	# ---- Survey Order (third-party survey charges billed to Paid To) ----
-	# Same tier as OAK Monthly Invoice (customer billing doc, submittable):
-	# Commercial/Admin Ops act; Customer (Paid To) & Management view-only.
-	"Survey Order": {
-		"Customer":          {"read": 1, "report": 1, "export": 1},
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1, "export": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
-	# ---- Container Position Survey (Lift On yard-position mapping task) ----
-	# Surveyor records the found yard position; Operator Kalmar approves ("udah turun").
-	"Container Position Survey": {
-		"Surveyor":          {"read": 1, "write": 1, "submit": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "write": 1, "submit": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1},
-	},
-	# ---- Gate Out Plan (customer lift-on notice → prep priority; no pricing) ----
-	# Internal ops planning doc, non-submittable. Admin Ops / Commercial transcribe it
-	# from the customer's email; Ops Supervisor & Operator Kalmar (who lift the tank out)
-	# read it; Management views. NOT customer-facing yet (customer channel is future).
-	"Gate Out Plan": {
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "delete": 1, "report": 1},
-		"Commercial":        {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		"Operator Kalmar":   {"read": 1, "report": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-		"IT Support":        {"read": 1, "report": 1},
-	},
-	# ---- Periodic Test Order (M&R-style work/billing for the tank periodic test) ----
-	# Same tier as Repair Order. Surveyor performs the test; Admin Ops arranges/approves;
-	# Customer (owner) approves from Desk (status edit); Commercial/Management view.
-	"Periodic Test Order": {
-		"Customer":          {"read": 1, "write": 1, "report": 1},
-		"Surveyor":          {"read": 1, "create": 1, "write": 1, "report": 1},
-		"Admin Ops":         {"read": 1, "create": 1, "write": 1, "submit": 1, "cancel": 1, "report": 1},
-		"Ops Supervisor":    {"read": 1, "write": 1, "report": 1},
-		"Commercial":        {"read": 1, "report": 1, "export": 1},
-		"Management":        {"read": 1, "report": 1, "export": 1},
-	},
-}
-
-# Depot PWA role gets the DocPerms the PWA exercises under the caller's session.
-# EIR creation/submit runs WITHOUT ignore_permissions (operations/eir.py), so the
-# role must carry Inspection create/submit or the PWA 403s. Gate lookup uses
-# frappe.db/ignore_permissions, so the order/booking reads are courtesy. Injected
-# into the matrix so setup_permissions() grants it like any other role.
-_PWA_DOCTYPE_PERMS = {
-	"Inspection":        {"read": 1, "create": 1, "write": 1, "submit": 1, "report": 1},
-	# The PWA Cleaning menu edits + submits Cleaning Orders WITHOUT ignore_permissions
-	# (operations/cleaning.py), so the PWA role must carry write + submit.
-	"Cleaning Checklist Item": {"read": 1, "report": 1},
-	"Cleaning Order":          {"read": 1, "write": 1, "submit": 1, "report": 1},
-	# The PWA M&R menu edits Repair Orders WITHOUT ignore_permissions (operations/mr.py),
-	# so the PWA role must carry read + write (+ create for manual M&R). The Material
-	# Issue Stock Entry it raises on completion is created with ignore_permissions.
-	"Repair Order":            {"read": 1, "write": 1, "create": 1, "report": 1},
-	"Container":         {"read": 1, "report": 1},
-	# The M&R item picker filters by the "Maintenance" Depot Service Menu under the
-	# caller's session (operations/service_menu.py), so the PWA role must read it.
-	"Depot Service Menu": {"read": 1, "report": 1},
-	"Cargo":             {"read": 1, "report": 1},
-	"Order Bongkar":     {"read": 1, "report": 1},
-	"Order Muat":        {"read": 1, "report": 1},
-	"Container Booking": {"read": 1, "report": 1},
-	"Booking Code":      {"read": 1, "report": 1},
-	# The PWA position-survey menu records + submits Container Position Survey WITHOUT
-	# ignore_permissions (operations/position_survey.py), so the PWA role needs write + submit.
-	"Container Position Survey": {"read": 1, "write": 1, "create": 1, "submit": 1, "report": 1},
-}
-for _pwa_dt, _pwa_perms in _PWA_DOCTYPE_PERMS.items():
-	ROLE_DOCTYPE_PERMISSIONS.setdefault(_pwa_dt, {})[PWA_ROLE] = _pwa_perms
+# This list must never be empty: most Operations doctypes ship with an empty
+# "permissions" array in their JSON, so their ONLY grant is the one written here.
+ROLES_TO_GRANT = ["System Manager"]
 
 
 def after_install():
 	"""Run after install hook for container_depot app"""
-	ensure_roles_exist()
 	setup_permissions()
 	setup_custom_fields()
 	setup_property_setters()
@@ -296,14 +23,17 @@ def after_install():
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
+	# Store the finance master switch's default (on) the first time only, so a site that
+	# has turned invoicing off is never switched back on by a later migrate.
+	from container_depot import finance
+	finance.ensure_defaults()
 	setup_workspace()
 	setup_document_notifications()
 	sync_branding()
 
 
 def after_migrate():
-	"""Idempotent post-migrate hook: ensure roles + DocPerms stay in sync."""
-	ensure_roles_exist()
+	"""Idempotent post-migrate hook: keep DocPerms in sync as doctypes are added."""
 	# setup_permissions() is idempotent (existence-check on Custom DocPerm) so
 	# running it on every migrate just picks up new DocTypes as they're added.
 	setup_permissions()
@@ -329,6 +59,10 @@ def after_migrate():
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
+	# Store the finance master switch's default (on) the first time only, so a site that
+	# has turned invoicing off is never switched back on by a later migrate.
+	from container_depot import finance
+	finance.ensure_defaults()
 	# Workspace Sidebar JSON isn't picked up by Frappe's standard module-sync,
 	# so we re-import the file every migrate. Idempotent (force=True replaces
 	# the existing rows in-place).
@@ -497,23 +231,42 @@ def _sync_default_letter_head(logo_pdf: str) -> None:
 # Custom fields this app adds to standard ERPNext doctypes. Keyed by target
 # doctype; applied idempotently via Frappe's create_custom_fields helper.
 CUSTOM_FIELDS = {
+	# Party roles — independent checkboxes, NOT one exclusive type. A single customer
+	# routinely wears more than one hat (an EMKL that also owns tanks, an agent that also
+	# trucks), which the old ``oak_customer_type`` Select could only express with a "Both"
+	# value that never scaled past two roles. Retired in patch v0_49.
 	"Customer": [
 		{
-			"fieldname": "oak_customer_type",
-			"label": "OAK Customer Type",
-			"fieldtype": "Select",
-			# Party role (billing + portal capability):
-			#   Tank Owner  = Principal — owns the ISO tanks, billed periodically
-			#                 (storage/cleaning/repair/LOLO/periodic/steam wash).
-			#   Transporter = EMKL — physically lifts on/off, billed per gate in/out.
-			#   Both        = a client that is both Tank Owner and Transporter.
-			#   Agent       = supplies reference numbers (PO / STC PO / WO) and
-			#                 survey/pickup schedules; NOT a billed party.
-			"options": "\nTank Owner\nTransporter\nBoth\nAgent",
+			"fieldname": "oak_roles_section",
+			"label": "OAK Party Roles",
+			"fieldtype": "Section Break",
 			"insert_after": "customer_group",
+			"collapsible": 0,
+		},
+		{
+			"fieldname": "is_tank_owner",
+			"label": "Tank Owner (Principal)",
+			"fieldtype": "Check",
+			"insert_after": "oak_roles_section",
 			"in_standard_filter": 1,
-			"description": "Party role — Tank Owner (Principal, billed periodically), Transporter (EMKL, billed per gate in/out), Both, or Agent (supplies PO/STC/WO reference numbers, not billed).",
-		}
+			"description": "Owns the ISO tanks — billed periodically (storage / cleaning / repair / LOLO / periodic test / steam wash).",
+		},
+		{
+			"fieldname": "is_transporter",
+			"label": "Transporter (EMKL)",
+			"fieldtype": "Check",
+			"insert_after": "is_tank_owner",
+			"in_standard_filter": 1,
+			"description": "Physically lifts the tanks on / off — billed per gate in / out.",
+		},
+		{
+			"fieldname": "is_agent",
+			"label": "Agent",
+			"fieldtype": "Check",
+			"insert_after": "is_transporter",
+			"in_standard_filter": 1,
+			"description": "Supplies reference numbers (PO / STC PO / WO) and survey / pickup schedules. Not a billed party.",
+		},
 	],
 	# Depot-pricing fields (pricing spec §3.2). Repair services price as
 	# manhour × Item Price manhour_rate + material_cost; packages are flagged so
@@ -677,6 +430,20 @@ CUSTOM_FIELDS = {
 			"read_only": 1,
 			"no_copy": 1,
 			"description": "Consolidated invoice this repair was billed into (set on Generate, cleared on rollback).",
+		}
+	],
+	# The periodic test is billed exactly like M&R (consolidated_billing._work_order_lines),
+	# so it needs the same back-link for _mark_billed / _unmark_billed to write.
+	"Periodic Test Order": [
+		{
+			"fieldname": "sales_invoice",
+			"label": "Sales Invoice",
+			"fieldtype": "Link",
+			"options": "Sales Invoice",
+			"insert_after": "billing_status",
+			"read_only": 1,
+			"no_copy": 1,
+			"description": "Consolidated invoice this periodic test was billed into (set on Generate, cleared on rollback).",
 		}
 	],
 	# Optional multi-branch tag on the User — pick zero, one, or many depot Branches to
@@ -1111,41 +878,12 @@ def sync_workspace_sidebar():
 		frappe.log_error(frappe.get_traceback(), "container_depot sidebar sync failed")
 
 
-def ensure_roles_exist():
-	"""Create app-specific roles referenced by setup_permissions if missing."""
-	for role_name in ROLES_TO_GRANT + PHASE6_ROLES:
-		if not frappe.db.exists("Role", role_name):
-			frappe.get_doc({
-				"doctype": "Role",
-				"role_name": role_name,
-				"desk_access": 0 if role_name == "Customer" else 1,
-			}).insert(ignore_permissions=True)
-	# SST Service role: API-only (no desk access). Created here so the
-	# Frappe token-auth path can reject anonymous traffic against the SST API.
-	if not frappe.db.exists("Role", SST_SERVICE_ROLE):
-		frappe.get_doc({
-			"doctype": "Role",
-			"role_name": SST_SERVICE_ROLE,
-			"desk_access": 0,
-		}).insert(ignore_permissions=True)
-	# Depot PWA access role: website/PWA only (no desk access). The admin assigns it
-	# to users; it gates the /depot page and carries the PWA's DocPerms.
-	if not frappe.db.exists("Role", PWA_ROLE):
-		frappe.get_doc({
-			"doctype": "Role",
-			"role_name": PWA_ROLE,
-			"desk_access": 0,
-		}).insert(ignore_permissions=True)
-	frappe.db.commit()
-
-
 def setup_permissions():
-	"""Sync DocPerms.
+	"""Give every role in ROLES_TO_GRANT unrestricted DocPerms on every Operations doctype.
 
-	1. Legacy: every role in ROLES_TO_GRANT keeps unrestricted DocPerms on
-	   every Operations doctype (back-compat for existing sites).
-	2. Phase-6 matrix: ROLE_DOCTYPE_PERMISSIONS adds narrow per-role grants
-	   on top, so the real role list is in effect for new doctypes.
+	Add-only and idempotent (existence-checked per doctype+role), so running it on every
+	migrate just picks up new doctypes. The per-role matrix that used to sit on top of this
+	was removed with the custom roles — reinstate it here when the new role model is designed.
 	"""
 	doctypes = [d.name for d in frappe.get_all("DocType", filters={"module": "Operations"})]
 	for dt in doctypes:
@@ -1172,30 +910,6 @@ def setup_permissions():
 				"share": 1,
 				"report": 1,
 			}).insert(ignore_permissions=True)
-
-	# Phase-6 narrow matrix.
-	for dt, role_map in ROLE_DOCTYPE_PERMISSIONS.items():
-		if not frappe.db.exists("DocType", dt):
-			continue
-		meta = frappe.get_meta(dt)
-		for role, perms in role_map.items():
-			if frappe.db.exists("Custom DocPerm", {"parent": dt, "role": role}):
-				continue
-			row = {
-				"doctype": "Custom DocPerm",
-				"parent": dt,
-				"parenttype": "DocType",
-				"parentfield": "permissions",
-				"role": role,
-				"permlevel": 0,
-			}
-			row.update(perms)
-			# submit/cancel/amend only make sense on submittable doctypes.
-			if not meta.is_submittable:
-				row.pop("submit", None)
-				row.pop("cancel", None)
-				row.pop("amend", None)
-			frappe.get_doc(row).insert(ignore_permissions=True)
 
 	frappe.db.commit()
 

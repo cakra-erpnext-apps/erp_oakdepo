@@ -86,37 +86,6 @@
 				</div>
 			</section>
 
-			<!-- Exterior + seals assessment -->
-			<section class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="eye" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.eirOutAssess }}</p>
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.eirOutExterior }}</label>
-					<div class="grid grid-cols-3 gap-2">
-						<button
-							v-for="opt in exteriorOptions"
-							:key="opt.value"
-							type="button"
-							class="rounded-xl border px-2 py-2 text-sm font-semibold transition"
-							:class="exteriorCondition === opt.value ? opt.active : 'border-gray-200 bg-white text-gray-600'"
-							@click="exteriorCondition = opt.value"
-						>
-							{{ opt.label }}
-						</button>
-					</div>
-					<input v-model.trim="exteriorRemark" type="text" :placeholder="labels.eirOutExteriorNote" class="oak-input mt-2 px-2.5 py-2" />
-				</div>
-				<label class="flex items-start gap-3 rounded-xl border border-gray-200 p-3">
-					<input v-model="sealsIntact" type="checkbox" class="mt-0.5 h-5 w-5 shrink-0 rounded accent-leaf-600" />
-					<span class="min-w-0 flex-1">
-						<span class="block font-semibold text-gray-800">{{ labels.eirOutSeals }}</span>
-						<input v-model.trim="sealRemark" type="text" :placeholder="labels.eirOutSealNote" class="oak-input mt-1.5 px-2.5 py-2" @click.stop />
-					</span>
-				</label>
-			</section>
-
 			<!-- Foto Cepat (bulk) -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
@@ -148,14 +117,43 @@
 				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
 			</section>
 
-			<!-- Current condition / new findings — search a section/part, add only the damaged ones -->
-			<ChecklistDamage
-				:rows="rows"
-				:damage-codes="damageCodes"
-				:repair-codes="repairCodes"
-				:upload="uploadFile"
-				:title="labels.eirOutCurrent"
-			/>
+			<!-- Seal numbers — one row per seal, added as the surveyor fits them -->
+			<section class="oak-section space-y-3">
+				<div class="flex items-center gap-2">
+					<Icon name="lock" :size="16" class="text-gray-400" />
+					<p class="oak-section-title">{{ labels.eirOutSealsTitle }}</p>
+					<span class="oak-chip bg-gray-100 text-gray-600">{{ seals.length }}</span>
+				</div>
+				<p class="text-xs text-gray-400">{{ labels.eirOutSealsHint }}</p>
+				<div v-for="(s, i) in seals" :key="i" class="flex items-start gap-2">
+					<span class="mt-2.5 w-5 shrink-0 text-center text-xs font-bold text-gray-400">{{ i + 1 }}</span>
+					<div class="min-w-0 flex-1 space-y-1.5">
+						<input
+							v-model.trim="s.seal_no"
+							type="text"
+							autocapitalize="characters"
+							:placeholder="labels.eirOutSealNoPlaceholder"
+							class="oak-input uppercase"
+						/>
+						<input
+							v-model.trim="s.remarks"
+							type="text"
+							:placeholder="labels.eirOutSealRemarkPlaceholder"
+							class="oak-input px-2.5 py-2 text-sm"
+						/>
+					</div>
+					<button
+						type="button"
+						class="mt-1 rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-500"
+						@click="removeSeal(i)"
+					>
+						<Icon name="trash-2" :size="16" />
+					</button>
+				</div>
+				<button type="button" class="oak-btn oak-btn-secondary w-full" @click="addSeal">
+					<Icon name="plus" :size="18" /> {{ labels.eirOutSealAdd }}
+				</button>
+			</section>
 
 			<!-- Sign-off -->
 			<section class="oak-section space-y-3">
@@ -196,12 +194,10 @@
 
 			<!-- Readiness preview + submit -->
 			<section class="space-y-2">
-				<div class="rounded-xl border p-3 text-sm" :class="isClean ? 'border-leaf-200 bg-leaf-50' : 'border-amber-200 bg-amber-50'">
-					<p class="flex items-center gap-1.5 font-semibold" :class="isClean ? 'text-leaf-700' : 'text-amber-700'">
-						<Icon :name="isClean ? 'check-circle' : 'alert-triangle'" :size="16" />
-						{{ isClean ? labels.eirOutWillReady : labels.eirOutWillHold }}
+				<div class="rounded-xl border border-leaf-200 bg-leaf-50 p-3 text-sm">
+					<p class="flex items-center gap-1.5 font-semibold text-leaf-700">
+						<Icon name="check-circle" :size="16" /> {{ labels.eirOutWillReady }}
 					</p>
-					<p v-if="!isClean && holdReasons.length" class="mt-0.5 pl-6 text-xs text-amber-700">{{ holdReasons.join(", ") }}</p>
 				</div>
 				<p class="flex items-center gap-1.5 text-xs">
 					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
@@ -209,9 +205,11 @@
 					<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600"><Icon name="check" :size="13" /> {{ labels.draftSaved }}</span>
 					<span v-else class="text-gray-400">{{ labels.eirAutosaveHint }}</span>
 				</p>
-				<button class="oak-btn w-full py-3" :class="isClean ? 'oak-btn-primary' : 'bg-amber-500 text-white hover:bg-amber-600'" :disabled="saveRes.loading" @click="confirmSubmit">
-					<Icon v-if="!saveRes.loading" name="check-circle" :size="18" />
-					{{ saveRes.loading ? "…" : (isClean ? labels.eirOutSubmitReady : labels.eirOutSubmitHold) }}
+				<!-- One action, whatever the outcome: this hands the EIR-Out to Adm Ops. The
+				     colour and the preview box above already say what it will become. -->
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmSubmit">
+					<Icon v-if="!saveRes.loading" name="send" :size="18" />
+					{{ saveRes.loading ? "…" : labels.eirSendReview }}
 				</button>
 			</section>
 			</template>
@@ -228,15 +226,15 @@ import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
-import ChecklistDamage from "@/components/ChecklistDamage.vue"
 
 // Form-only EIR-Out view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
+//
+// There is no damage checklist here: a tank only reaches load-out once its work is
+// finished, so the surveyor records what the tank leaves WITH — photos and seal
+// numbers — not what is wrong with it. Findings belong to EIR-In.
 const props = defineProps({ inspection: { type: String, required: true } })
 const emit = defineEmits(["back", "submitted"])
-
-const ACCEPTABLE_DAMAGE = "v"
-const NO_ACTION_REPAIR = "X"
 
 // ---- form state ----
 const header = ref(null)
@@ -252,17 +250,11 @@ const remarks = ref("")
 const referredVoucher = ref("")
 const cargo = ref("")
 const bookingCode = ref("")
-const exteriorCondition = ref("")
-const exteriorRemark = ref("")
-const sealsIntact = ref(false)
-const sealRemark = ref("")
 const savedOk = ref(false)
 const suppressSave = ref(false)
 let saveTimer = null
 
-const rows = ref([])
-const damageCodes = ref([])
-const repairCodes = ref([])
+const seals = ref([])
 
 const bulkPhotos = ref([])
 // foto cepat URL → the checklist item Admin sorted it into ("" = unsorted). Keeps sorting
@@ -271,27 +263,14 @@ const bulkMeta = ref({})
 const bulkUploading = ref(false)
 const bulkErr = ref("")
 
-const exteriorOptions = [
-	{ value: "Clean", label: labels.eirOutClean, active: "border-leaf-500 bg-leaf-500 text-white" },
-	{ value: "Dirty", label: labels.eirOutDirty, active: "border-amber-500 bg-amber-500 text-white" },
-	{ value: "Needs Wash", label: labels.eirOutNeedsWash, active: "border-red-500 bg-red-500 text-white" },
-]
-
-function rowHasFinding(r) {
-	const dmg = r.damage_code && r.damage_code !== ACCEPTABLE_DAMAGE
-	const rep = r.repair_code && r.repair_code !== NO_ACTION_REPAIR
-	return Boolean(dmg || rep || (r.remarks && r.remarks.trim()))
+function addSeal() {
+	seals.value.push(reactive({ seal_no: "", remarks: "" }))
 }
-const hasDamage = computed(() => rows.value.some(rowHasFinding))
-
-const holdReasons = computed(() => {
-	const out = []
-	if (exteriorCondition.value !== "Clean") out.push(labels.eirOutReasonExterior)
-	if (!sealsIntact.value) out.push(labels.eirOutReasonSeals)
-	if (hasDamage.value) out.push(labels.eirOutReasonDamage)
-	return out
-})
-const isClean = computed(() => holdReasons.value.length === 0)
+function removeSeal(i) {
+	seals.value.splice(i, 1)
+}
+// Blank rows are the operator tapping "Tambah" and changing their mind — never saved.
+const filledSeals = computed(() => seals.value.filter((s) => (s.seal_no || "").trim()))
 
 const headerCells = computed(() => {
 	const h = header.value || {}
@@ -303,21 +282,6 @@ const headerCells = computed(() => {
 		{ label: labels.capacity, value: h.capacity },
 		{ label: labels.lastCargo, value: h.last_cargo },
 	]
-})
-
-// ---- masters (checklist + codes), loaded once ----
-const mastersRes = createResource({
-	url: "container_depot.ess.inspections.eir_masters",
-	method: "GET",
-	auto: true,
-	onSuccess(data) {
-		damageCodes.value = data.damage_codes || []
-		repairCodes.value = data.repair_codes || []
-		rows.value = (data.checklist || []).map((i) =>
-			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "", added: false })
-		)
-		if (header.value) applyDraftToRows(header.value)
-	},
 })
 
 // ---- open a draft EIR-Out ----
@@ -336,14 +300,11 @@ const openRes = createResource({
 		referredVoucher.value = data.referred_voucher || ""
 		cargo.value = data.cargo || data.last_cargo || ""
 		bookingCode.value = data.booking_code || ""
-		exteriorCondition.value = data.exterior_condition || ""
-		exteriorRemark.value = data.exterior_remark || ""
-		sealsIntact.value = data.seals_intact === 1
-		sealRemark.value = data.seal_remark || ""
 		signatureUrl.value = data.inspector_signature || ""
 		signing.value = false
 		savedOk.value = false
-		applyDraftToRows(data)
+		seals.value = (data.seals || []).map((s) => reactive({ seal_no: s.seal_no || "", remarks: s.remarks || "" }))
+		applyDraftPhotos(data)
 		nextTick(() => { suppressSave.value = false })
 	},
 	onError(err) {
@@ -367,48 +328,28 @@ function startWork() {
 	if (inspection.value) startRes.submit({ inspection: inspection.value })
 }
 
-function applyDraftToRows(data) {
-	if (!data || !rows.value.length) return
-	const lineMap = {}
-	;(data.lines || []).forEach((l) => { lineMap[l.item_code] = l })
-	// A photo on an item WITH a damage finding is a damage-card photo; everything else
-	// (unsorted OR admin-sorted foto cepat) stays in Foto Cepat with its item_code preserved
-	// in bulkMeta so a save never un-sorts it. See EirInForm for the full rationale.
-	const photoMap = {}
+// With no checklist on this form every photo is a "foto cepat". Each one's sorted
+// item_code is still carried in bulkMeta so a save never un-sorts what Admin filed.
+function applyDraftPhotos(data) {
+	if (!data) return
 	const bulk = []
 	const meta = {}
 	;(data.photos || []).forEach((p) => {
-		const code = p.item_code
-		if (code && lineMap[code]) { ;(photoMap[code] = photoMap[code] || []).push(p.photo); return }
 		bulk.push(p.photo)
-		meta[p.photo] = code || ""
+		meta[p.photo] = p.item_code || ""
 	})
 	bulkPhotos.value = bulk
 	bulkMeta.value = meta
-	rows.value.forEach((r) => {
-		const l = lineMap[r.item_code]
-		r.damage_code = (l && l.damage_code) || ACCEPTABLE_DAMAGE
-		r.repair_code = (l && l.repair_code) || NO_ACTION_REPAIR
-		r.remarks = (l && l.remarks) || ""
-		r.photos = photoMap[r.item_code] ? [...photoMap[r.item_code]] : []
-		r.photoErr = ""
-		r.added = rowHasFinding(r)
-	})
 }
 
-function buildLines() {
-	return rows.value.filter(rowHasFinding).map((r) => ({
-		item_code: r.item_code,
-		damage_code: r.damage_code || undefined,
-		repair_code: r.repair_code || undefined,
-		remarks: (r.remarks || "").trim() || undefined,
-	}))
-}
 function buildPhotos() {
-	const perItem = rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
-	// Preserve each foto cepat's sorted item_code so a save never un-sorts Admin's work.
-	const bulk = bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
-	return [...perItem, ...bulk]
+	return bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
+}
+function buildSeals() {
+	return filledSeals.value.map((s) => ({
+		seal_no: s.seal_no.trim(),
+		remarks: (s.remarks || "").trim() || undefined,
+	}))
 }
 
 // ---- file upload ----
@@ -540,11 +481,7 @@ const saveRes = createResource({
 		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
 		if (data.docstatus === 1 || data.pending_review) {
 			toast.success(
-				data.pending_review
-					? labels.eirSentForReview
-					: isClean.value
-						? labels.eirOutDoneReady
-						: labels.eirOutDoneHold,
+				data.pending_review ? labels.eirSentForReview : labels.eirSubmitted,
 				{ title: data.inspection },
 			)
 			emit("submitted", data.inspection)
@@ -571,12 +508,8 @@ function doSave(submit = false) {
 		cargo: cargo.value || undefined,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
-		exterior_condition: exteriorCondition.value || undefined,
-		exterior_remark: exteriorRemark.value || undefined,
-		seals_intact: sealsIntact.value ? 1 : 0,
-		seal_remark: sealRemark.value || undefined,
-		lines: JSON.stringify(buildLines()),
 		photos: JSON.stringify(buildPhotos()),
+		seals: JSON.stringify(buildSeals()),
 		submit: submit ? 1 : 0,
 	})
 }
@@ -585,16 +518,22 @@ function scheduleSave() {
 	if (saveTimer) clearTimeout(saveTimer)
 	saveTimer = setTimeout(() => doSave(false), 1200)
 }
-watch([exteriorCondition, exteriorRemark, sealsIntact, sealRemark, remarks, cargo, rows, bulkPhotos], () => {
+watch([remarks, cargo, seals, bulkPhotos], () => {
 	if (suppressSave.value || !inspection.value) return
 	scheduleSave()
 }, { deep: true })
 
 async function confirmSubmit() {
+	// Surface the seal count here rather than blocking submit on it: a tank can legitimately
+	// leave unsealed, but forgetting to record a seal that IS fitted must not pass quietly.
+	const n = filledSeals.value.length
 	const ok = await confirm({
-		title: isClean.value ? labels.eirOutConfirmReadyTitle : labels.eirOutConfirmHoldTitle,
-		message: isClean.value ? labels.eirOutConfirmReadyMsg : (labels.eirOutConfirmHoldMsg + (holdReasons.value.length ? ("\n\n• " + holdReasons.value.join("\n• ")) : "")),
-		confirmLabel: isClean.value ? labels.eirOutSubmitReady : labels.eirOutSubmitHold,
+		title: labels.eirOutConfirmReadyTitle,
+		message:
+			labels.eirOutConfirmReadyMsg +
+			"\n\n" +
+			(n ? `${labels.eirOutSealsRecorded}: ${n}` : labels.eirOutNoSealWarn),
+		confirmLabel: labels.eirSendReview,
 		cancelLabel: labels.confirmCancel,
 	})
 	if (ok) doSave(true)

@@ -6,7 +6,7 @@ Price row (item + price list), one Item prices differently per principal.
 
 Labour is **not** part of that rate. Each Price List line carries a Manhour beside its Rate,
 and the two travel separately through every order; billing totals the hours once and charges
-them on their own invoice line (see ``pricing.manhour_line``).
+them once in the invoice header (see ``invoicing.apply_manhour_charge``).
 
 This module is deliberately standalone: it does NOT touch the live Tariff-Rate
 billing path (pricing.py / invoicing.py / monthly_invoicing.py). Wiring billing
@@ -36,7 +36,7 @@ def effective_item_rate(item_code: str, price_list: str) -> float:
 	Labour is deliberately NOT folded in here. Each Price List line carries its Manhour
 	beside its Rate, and the two stay apart all the way through the order: billing totals
 	the hours once and charges them on their own invoice line
-	(:func:`container_depot.pricing.manhour_line`). Merging them into a single rate would
+	(:func:`container_depot.invoicing.apply_manhour_charge`). Merging them into one rate would
 	bury labour inside every menu's price and then charge it twice at invoicing.
 	"""
 	if not item_code:

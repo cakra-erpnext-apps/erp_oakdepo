@@ -25,7 +25,12 @@ after_migrate = "container_depot.install.after_migrate"
 # ----
 # Trim the desk app-switcher so a user never sees apps they can't actually use
 # (Frappe lists every installed app regardless of workspace access). See boot.py.
-extend_bootinfo = ["container_depot.boot.prune_app_switcher"]
+extend_bootinfo = [
+	"container_depot.boot.prune_app_switcher",
+	# Tell the desk client whether this site does invoicing at all, so a form never
+	# offers a billing button the server is about to refuse (container_depot.finance).
+	"container_depot.boot.expose_finance_switch",
+]
 
 # Warm the domain-restricted caches before boot so the Workspace Sidebar never
 # reads them as None (a Frappe core crash for users with no allowed workspaces).
@@ -213,6 +218,7 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/mr-withdraw-from-owner", "to_route": "container_depot.ess.repairs.mr_withdraw_from_owner"},
 	{"from_route": "/api/v1/ess/mr-start", "to_route": "container_depot.ess.repairs.mr_start"},
 	{"from_route": "/api/v1/ess/mr-order-save", "to_route": "container_depot.ess.repairs.mr_order_save"},
+	{"from_route": "/api/v1/ess/gate-ready", "to_route": "container_depot.ess.gate.gate_ready"},
 	{"from_route": "/api/v1/ess/gate-out", "to_route": "container_depot.ess.gate.gate_out"},
 	# SPA deep links: serve the /depot shell for any sub-route so a hard refresh on
 	# e.g. /depot/eir doesn't 404 — the Vue router then renders the route client-side.

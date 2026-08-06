@@ -9,6 +9,8 @@
 
 frappe.ui.form.on('Inspection', {
 	refresh(frm) {
+		set_direction_banner(frm);
+		set_signature_preview(frm);
 		// Field operator submitted from the PWA → awaiting Admin Ops review. Prompt the
 		// reviewer to check + Submit (the native Submit finalizes it).
 		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
@@ -50,6 +52,15 @@ frappe.ui.form.on('Inspection', {
 		}
 	},
 
+	// Switching type re-skins the form (banner + which sections apply).
+	inspection_type(frm) {
+		set_direction_banner(frm);
+	},
+
+	inspector_signature(frm) {
+		set_signature_preview(frm);
+	},
+
 	// Ticking "Has Damage" opens a single-row entry dialog with VALID Link fields.
 	// Legacy bug (fixed here): this used a Select of component names (Gasket/Valve/…)
 	// written straight into `damage_type`, which is now a Link -> Inspection Damage Code — so
@@ -66,6 +77,72 @@ frappe.ui.form.on('Inspection', {
 		if (frm.doc.container) prefill_from_container(frm);
 	},
 });
+
+// An EIR-In and an EIR-Out are two different jobs sharing one doctype, and until you read
+// the Tipe field they look identical. Stamp the direction across the top of the form in
+// the same colours the list and the gate PWA use — green In (masuk), orange Out (keluar) —
+// and say what each is FOR, because that is what actually differs: In records what
+// ARRIVED (condition + findings), Out records what LEAVES (photos + seals).
+//
+// This renders into its own HTML field rather than frm.dashboard.set_headline: the
+// headline is a single shared slot (set_headline and add_comment both call
+// layout.show_message), so it would silently erase the "Menunggu review" / "Revisi
+// diminta" notices below.
+function set_direction_banner(frm) {
+	const field = frm.get_field('direction_banner');
+	if (!field) return;
+	const out = frm.doc.inspection_type === 'EIR-Out';
+	const inn = frm.doc.inspection_type === 'EIR-In';
+	if (!out && !inn) {
+		field.$wrapper.empty();
+		return;
+	}
+	const colour = out ? 'orange' : 'green';
+	const title = out ? __('EIR OUT — Survey Keluar') : __('EIR IN — Survey Masuk');
+	const blurb = out
+		? __('Sebelum tank dimuat keluar: foto kondisi dan nomor seal yang terpasang. Tidak ada checklist kerusakan di sini.')
+		: __('Saat tank tiba di depo: kondisi tank, checklist kerusakan, dan tindak lanjut (Cleaning / M&R).');
+	field.$wrapper.html(
+		`<div class="eir-direction-banner" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;margin-bottom:8px;
+			border-radius:var(--border-radius-md);background:var(--bg-${colour});border-left:4px solid var(--${colour}-500)">
+			<div>
+				<div><b>${title}</b></div>
+				<div class="text-muted small" style="margin-top:2px">${blurb}</div>
+			</div>
+		</div>`,
+	);
+}
+
+// Frappe's Attach Image control renders as a file LINK and only reveals the picture in a
+// hover popover, so a signed EIR showed "/private/files/eir-signature….png" where the
+// signature should be. A signature exists to be looked at — draw it inline, with who
+// signed and when, because ink without a name attached says nothing.
+function set_signature_preview(frm) {
+	const field = frm.get_field('signature_preview');
+	if (!field) return;
+	const url = frm.doc.inspector_signature;
+	if (!url) {
+		field.$wrapper.html(
+			`<div class="text-muted small">${__('Belum ditandatangani.')}</div>`,
+		);
+		return;
+	}
+	const who = frm.doc.inspector || '';
+	const when = frm.doc.work_ended_on || frm.doc.eir_date || '';
+	const caption = [who, when ? frappe.datetime.str_to_user(when) : '']
+		.filter(Boolean)
+		.map((t) => frappe.utils.escape_html(String(t)))
+		.join(' · ');
+	field.$wrapper.html(
+		`<div style="padding:8px 10px;border:1px solid var(--border-color);border-radius:var(--border-radius-md);background:#fff">
+			<img src="${encodeURI(url)}" alt="${__('Tanda tangan')}"
+				style="display:block;max-height:120px;max-width:100%;object-fit:contain"
+				onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+			<div class="text-muted small" style="display:none">${__('Berkas tanda tangan tidak bisa dibuka.')}</div>
+			${caption ? `<div class="text-muted small" style="margin-top:6px">${caption}</div>` : ''}
+		</div>`,
+	);
+}
 
 // "Kembalikan ke Draft" — revert a submitted EIR to an editable draft. The server guards
 // that no other draft exists for the same container before flipping docstatus back to 0

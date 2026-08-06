@@ -13,7 +13,7 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import cint, flt
 
-from container_depot import invoicing, pricing_model
+from container_depot import finance, invoicing, pricing_model
 
 # The Depot Service Menu that declares which items a survey charge may use. Every picker
 # scoped by a price list declares its catalogue through a menu, so the filter is something an
@@ -52,10 +52,16 @@ class SurveyOrder(Document):
             frappe.throw("Total harus lebih dari 0.")
 
     def on_submit(self):
-        if self.payment_type == "Cash":
+        if self.payment_type == "Cash" and finance.is_enabled():
             # Cash: raise a DRAFT Sales Invoice now (review/add tax, then submit & collect).
             self._create_invoice()
             self.db_set("status", "Payment Pending")
+        elif self.payment_type == "Cash":
+            # Finance off: no invoice will ever arrive, so "Payment Pending" would be a
+            # queue nobody can clear. The charges stay on the order and it is simply
+            # Submitted — the same place a TOP order sits while it waits to be billed.
+            self.db_set("status", "Submitted")
+            self.db_set("invoice_status", "Not Invoiced")
         else:
             # TOP: no invoice yet — billed later via the per-customer invoice run.
             self.db_set("status", "Submitted")

@@ -7,6 +7,7 @@
  "field_order": [
   "tab_eir",
   "inspection_info",
+  "direction_banner",
   "inspection_type",
   "eir_date",
   "status",
@@ -23,6 +24,11 @@
   "vessel",
   "ex_vessel",
   "tank_template_section",
+  "tank_status",
+  "column_break_tank2",
+  "cargo",
+  "last_cargo",
+  "tank_spec_section",
   "serial_no",
   "manufacture_date",
   "last_test_date",
@@ -30,10 +36,6 @@
   "capacity",
   "tare_weight",
   "max_gross_weight",
-  "last_cargo",
-  "cargo",
-  "column_break_tank2",
-  "tank_status",
   "exterior_photos",
   "inspection_photos_section",
   "item_photos",
@@ -52,17 +54,13 @@
   "truck_no",
   "driver",
   "driver_phone",
-  "emkl",
   "signoff_section",
   "remarks",
   "column_break_signoff2",
   "inspector_signature",
+  "signature_preview",
   "eir_out_section",
-  "exterior_condition",
-  "exterior_remark",
-  "column_break_eirout",
-  "seals_intact",
-  "seal_remark",
+  "out_seals",
   "out_outcome",
   "reference_eir_in",
   "tab_mr",
@@ -96,13 +94,22 @@
    "label": "Identitas"
   },
   {
+   "fieldname": "direction_banner",
+   "fieldtype": "HTML",
+   "label": "Direction Banner"
+  },
+  {
+   "columns": 2,
    "fieldname": "inspection_type",
    "fieldtype": "Select",
-   "label": "Inspection Type",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tipe EIR",
    "options": "EIR-In\nEIR-Out",
    "reqd": 1
   },
   {
+   "columns": 2,
    "default": "Today",
    "fieldname": "eir_date",
    "fieldtype": "Date",
@@ -145,6 +152,9 @@
    "reqd": 1
   },
   {
+   "columns": 3,
+   "depends_on": "eval:doc.container_no && doc.container_no != doc.container",
+   "description": "Cermin dari Container. Hanya tampil bila berbeda (data lama).",
    "fieldname": "container_no",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -152,6 +162,7 @@
    "read_only": 1
   },
   {
+   "columns": 2,
    "fetch_from": "container.principal",
    "fieldname": "container_principal",
    "fieldtype": "Link",
@@ -168,6 +179,7 @@
    "label": "Reff Doc"
   },
   {
+   "columns": 1,
    "fieldname": "depot",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -187,11 +199,13 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.inspection_type=='EIR-In' || doc.gate_in_timestamp",
    "fieldname": "gate_in_timestamp",
    "fieldtype": "Datetime",
    "label": "Gate-In Timestamp"
   },
   {
+   "depends_on": "eval:doc.inspection_type=='EIR-Out' || doc.gate_out_timestamp",
    "fieldname": "gate_out_timestamp",
    "fieldtype": "Datetime",
    "label": "Gate-Out Timestamp"
@@ -210,9 +224,17 @@
    "read_only": 1
   },
   {
+   "description": "Yang dicatat EIR ini tentang isi & kondisi tank.",
    "fieldname": "tank_template_section",
    "fieldtype": "Section Break",
    "label": "Kondisi Tank"
+  },
+  {
+   "collapsible": 1,
+   "description": "Dibaca dari master Container — kosong berarti belum diisi di master, bukan nol.",
+   "fieldname": "tank_spec_section",
+   "fieldtype": "Section Break",
+   "label": "Spesifikasi Tank"
   },
   {
    "fetch_from": "container.serial_no",
@@ -240,6 +262,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "depends_on": "eval:doc.capacity",
    "fetch_from": "container.capacity",
    "fieldname": "capacity",
    "fieldtype": "Float",
@@ -247,6 +270,7 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.tare_weight",
    "fetch_from": "container.tare_weight",
    "fieldname": "tare_weight",
    "fieldtype": "Float",
@@ -254,6 +278,7 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.max_gross_weight",
    "fetch_from": "container.max_gross_weight",
    "fieldname": "max_gross_weight",
    "fieldtype": "Float",
@@ -269,10 +294,12 @@
    "read_only": 1
   },
   {
-   "description": "Cargo recorded on this EIR; written back to the Container's Last Cargo when the EIR is submitted (drafts do not change the master).",
+   "depends_on": "eval:doc.tank_status != 'Empty Clean'",
+   "description": "Muatan tank ini. Wajib saat Laden; tidak berlaku saat Empty Clean. Ditulis ke Last Cargo container saat EIR disubmit (draft tidak mengubah master).",
    "fieldname": "cargo",
    "fieldtype": "Link",
    "label": "Cargo",
+   "mandatory_depends_on": "eval:doc.tank_status == 'Laden'",
    "options": "Cargo"
   },
   {
@@ -318,6 +345,8 @@
    "read_only": 1
   },
   {
+   "depends_on": "eval:doc.inspection_type=='EIR-In' || doc.has_damage || (doc.damage_log && doc.damage_log.length)",
+   "description": "Temuan saat tank masuk. EIR-Out tidak memakai checklist — lihat No. Seal di bawah.",
    "fieldname": "damage_section",
    "fieldtype": "Section Break",
    "label": "Checklist Kerusakan"
@@ -335,6 +364,7 @@
    "options": "Inspection Damage Entry"
   },
   {
+   "depends_on": "eval:doc.inspection_type=='EIR-In'",
    "fieldname": "followup_section",
    "fieldtype": "Section Break",
    "label": "Tindak Lanjut (Order Otomatis)"
@@ -374,9 +404,10 @@
    "read_only": 1
   },
   {
+   "description": "Pihak pengangkut / EMKL, diambil dari bon yang dirujuk.",
    "fieldname": "shipper",
    "fieldtype": "Link",
-   "label": "Shipper",
+   "label": "Shipper / EMKL",
    "options": "Customer",
    "read_only": 1
   },
@@ -403,11 +434,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "emkl",
-   "fieldtype": "Data",
-   "label": "EMKL / Forwarder"
-  },
-  {
    "fieldname": "signoff_section",
    "fieldtype": "Section Break",
    "label": "Tanda Tangan & Catatan"
@@ -428,45 +454,28 @@
    "label": "Inspector Signature"
   },
   {
+   "fieldname": "signature_preview",
+   "fieldtype": "HTML",
+   "label": "Signature Preview"
+  },
+  {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "description": "Verifikasi pra-muat (EIR-Out): kebersihan eksterior dan kelengkapan segel vs EIR-In terakhir.",
+   "description": "Bukti tank saat keluar: nomor seal yang terpasang, dan status siap-muat yang dikirim ke Order Muat + Operator Kalmar saat EIR ini disubmit.",
    "fieldname": "eir_out_section",
    "fieldtype": "Section Break",
-   "label": "EIR-Out \u2014 Verifikasi Keluar"
+   "label": "EIR-Out \u2014 Hasil Keluar"
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "fieldname": "exterior_condition",
-   "fieldtype": "Select",
-   "label": "Kondisi Eksterior",
-   "options": "\nClean\nDirty\nNeeds Wash"
+   "description": "Nomor segel yang terpasang saat tank keluar — boleh lebih dari satu.",
+   "fieldname": "out_seals",
+   "fieldtype": "Table",
+   "label": "No. Seal",
+   "options": "Inspection Seal"
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "fieldname": "exterior_remark",
-   "fieldtype": "Small Text",
-   "label": "Catatan Eksterior"
-  },
-  {
-   "fieldname": "column_break_eirout",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "fieldname": "seals_intact",
-   "fieldtype": "Check",
-   "label": "Segel Lengkap & Utuh"
-  },
-  {
-   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "fieldname": "seal_remark",
-   "fieldtype": "Data",
-   "label": "Catatan Segel"
-  },
-  {
-   "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "description": "Hasil EIR-Out: Ready To Load (bersih) atau Hold Pending Clearance (ada temuan). Diset saat submit.",
+   "description": "Diisi otomatis saat submit. Ready To Load = Order Muat siap dimuat & Operator Kalmar diberi tahu; Hold Pending Clearance = ditahan sampai temuan diselesaikan. Gate-out hanya melepas tank yang Ready To Load.",
    "fieldname": "out_outcome",
    "fieldtype": "Select",
    "label": "EIR-Out Outcome",
@@ -600,7 +609,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-28 11:00:00.000000",
+ "modified": "2026-08-05 17:00:00.000000",
  "module": "Operations",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

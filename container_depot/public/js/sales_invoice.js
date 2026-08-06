@@ -49,17 +49,13 @@ frappe.ui.form.on("Sales Invoice", {
 // The row is created/updated here as you type so the Grand Total moves immediately; the
 // server writes the same numbers authoritatively on save (invoicing.apply_manhour_charge).
 const MANHOUR_CHARGE = "Manhour";
-let manhour_account = null;
 
-async function charge_account(frm) {
-	if (manhour_account === null) {
-		const r = await frappe.call({
-			method: "container_depot.invoicing.manhour_charge_account",
-			args: { company: frm.doc.company },
-		});
-		manhour_account = (r && r.message) || "";
-	}
-	return manhour_account;
+// Labour posts exactly where the item lines do — same revenue, just charged once as a flat
+// amount instead of per unit. Reading it off the lines (rather than resolving an account of
+// its own) means the two can never drift apart, and costs no server round-trip.
+function item_posting(frm) {
+	const item = (frm.doc.items || []).find((i) => i.income_account);
+	return item ? { account: item.income_account, cost_center: item.cost_center } : null;
 }
 
 async function recalc_manhour(frm) {
@@ -75,19 +71,30 @@ async function recalc_manhour(frm) {
 	let row = (frm.doc.taxes || []).find((t) => (t.description || "").trim() === MANHOUR_CHARGE);
 	if (!amount) {
 		if (row) {
+			// Put back what inserting the row changed, or the percentage below it would be
+			// left charging "On Previous Row Total" against a row that no longer exists.
+			for (const t of frm.doc.taxes || []) {
+				if (t.charge_type === "On Previous Row Total" && cint(t.row_id) === cint(row.idx)) {
+					t.charge_type = "On Net Total";
+					t.row_id = null;
+				}
+			}
 			frm.get_field("taxes").grid.grid_rows_by_docname[row.name].remove();
 			frm.refresh_field("taxes");
 		}
 		return;
 	}
 	if (!row) {
-		const account = await charge_account(frm);
-		if (!account) return; // no income account configured — the server will report it
+		const posting = item_posting(frm);
+		if (!posting) return; // no income account on the lines yet — the server will report it
 		row = frm.add_child("taxes", {
 			charge_type: "Actual",
 			description: MANHOUR_CHARGE,
-			account_head: account,
+			account_head: posting.account,
 			tax_amount: 0,
+			// ERPNext will not book a Profit-and-Loss account without a Cost Center, so the
+			// row carries the lines' one too.
+			cost_center: posting.cost_center,
 		});
 		// Move it to the front and repoint any Net-Total percentage at it, exactly as the
 		// server does — otherwise the previewed total would differ from the saved one.
@@ -107,11 +114,28 @@ async function recalc_manhour(frm) {
 	}
 }
 
+// Deleting the labour row in the grid is how a user says "don't bill labour on this
+// invoice". The row is derived, so on its own the deletion would not survive the next
+// recalc — zero the multiplier instead, which is what the server does too (see
+// invoicing._charge_row_deleted) and what typing an Hour again undoes.
+function honour_manhour_row_delete(frm) {
+	if (!flt(frm.doc.manhour_hour)) return; // already off — nothing to honour
+	if (!(frm.doc.items || []).some((i) => flt(i.manhour))) return; // no labour to bill
+	if ((frm.doc.taxes || []).some((t) => (t.description || "").trim() === MANHOUR_CHARGE)) return;
+	frm.set_value("manhour_hour", 0); // -> recalc_manhour: amount 0, so the row stays out
+	frappe.show_alert({
+		message: __("Biaya Manhour dihapus — Hour diset 0. Isi Hour lagi untuk menagihkannya kembali."),
+		indicator: "orange",
+	});
+}
+
 frappe.ui.form.on("Sales Invoice", {
-	company(frm) {
-		manhour_account = null; // re-resolve against the new company
-	},
+	// No `company` handler any more: the charge row reads its account off the item lines
+	// every time, so there is no cached per-company account left to invalidate.
 	manhour_hour: recalc_manhour,
+	// Single-row delete and the grid's multi-select delete fire different events.
+	taxes_remove: honour_manhour_row_delete,
+	taxes_delete: honour_manhour_row_delete,
 });
 
 frappe.ui.form.on("Sales Invoice Item", {

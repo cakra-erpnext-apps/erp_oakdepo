@@ -21,6 +21,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, flt, today
 
 from container_depot import invoicing, pricing, pricing_model
+from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_container_booking import _cleanup_customer_world
 
@@ -36,6 +37,7 @@ class TestManhourBilling(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
+		require_finance(cls)
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
 		cls.nocon = ensure_test_customer(cls.NOCON)
 		_cleanup_customer_world(cls.customer)
@@ -87,6 +89,19 @@ class TestManhourBilling(FrappeTestCase):
 	def _charge_rows(self, inv):
 		"""The labour charge rows (there must never be more than one)."""
 		return [t for t in (inv.taxes or []) if (t.description or "").strip() == invoicing.MANHOUR_CHARGE]
+
+	def _delete_charge_row(self, inv):
+		"""Do what the grid's Delete does: drop the row and save."""
+		inv.set("taxes", [t for t in inv.taxes if t not in self._charge_rows(inv)])
+		inv.save(ignore_permissions=True)
+		inv.reload()
+		return inv
+
+	def _tax_template(self):
+		company = invoicing.get_default_company()
+		return frappe.db.get_value(
+			"Sales Taxes and Charges Template", {"company": company, "is_default": 0}, "name"
+		) or frappe.db.get_value("Sales Taxes and Charges Template", {}, "name")
 
 	# --- the contract carries hours beside the rate ---------------------------
 	def test_contract_publishes_manhour_next_to_rate(self):
@@ -183,6 +198,68 @@ class TestManhourBilling(FrappeTestCase):
 		self.assertEqual(len(self._charge_rows(inv)), 1)
 		self.assertAlmostEqual(flt(inv.grand_total), expected)
 
+	# --- the charge can be taken off an invoice -------------------------------
+	def test_deleting_the_charge_row_sticks(self):
+		"""Delete must delete. The row is derived, so it would otherwise be rebuilt on the
+		next save and the user would watch their deletion undo itself."""
+		inv = self._invoice([{"item_code": "Lift Off", "qty": 1, "rate": 250000}])
+		price = flt(inv.total)
+		self._delete_charge_row(inv)
+		self.assertEqual(self._charge_rows(inv), [])
+		# Answered by zeroing the multiplier — the hours themselves are still on record.
+		self.assertEqual(flt(inv.manhour_hour), 0)
+		self.assertAlmostEqual(flt(inv.total_manhour), LIFT_OFF_HOURS)
+		self.assertEqual(flt(inv.manhour_amount), 0)
+		self.assertAlmostEqual(flt(inv.grand_total), price)
+
+		# And it stays gone: re-saving must not seed Hour back to the default.
+		for _ in range(2):
+			inv.save(ignore_permissions=True)
+			inv.reload()
+		self.assertEqual(self._charge_rows(inv), [])
+		self.assertAlmostEqual(flt(inv.grand_total), price)
+
+	def test_labour_returns_when_hour_is_typed_again(self):
+		"""Zeroing Hour is not a one-way door — it is how the charge is switched back on."""
+		inv = self._delete_charge_row(
+			self._invoice([{"item_code": "Lift Off", "qty": 1, "rate": 250000}])
+		)
+		inv.manhour_hour = 10
+		inv.save(ignore_permissions=True)
+		inv.reload()
+		self.assertEqual(len(self._charge_rows(inv)), 1)
+		self.assertAlmostEqual(flt(inv.manhour_amount), LIFT_OFF_HOURS * 10)
+
+	def test_hour_set_to_zero_is_honoured(self):
+		"""Hour 0 means "bill no labour here" and must survive the save."""
+		inv = self._invoice([{"item_code": "Lift Off", "qty": 1, "rate": 250000}])
+		inv.manhour_hour = 0
+		inv.save(ignore_permissions=True)
+		inv.reload()
+		self.assertEqual(flt(inv.manhour_hour), 0)
+		self.assertEqual(self._charge_rows(inv), [])
+		self.assertAlmostEqual(flt(inv.grand_total), flt(inv.total))
+
+	def test_deleting_the_charge_leaves_the_percentage_charging_on_net_total(self):
+		"""Removing the labour row must put the tax below it back where it was.
+
+		The charge is inserted first and the percentage repointed at it. If that reference
+		is left dangling when the row goes, ERPNext does not complain — it bills the
+		percentage as **0**, so the invoice would silently lose its whole PPN.
+		"""
+		tmpl = self._tax_template()
+		if not tmpl:
+			self.skipTest("site has no Sales Taxes and Charges Template to exercise")
+		rate = flt(frappe.db.get_value("Sales Taxes and Charges", {"parent": tmpl}, "rate"))
+		inv = self._delete_charge_row(
+			self._invoice([{"item_code": "Lift Off", "qty": 1, "rate": 250000}], taxes_and_charges=tmpl)
+		)
+		percent = [t for t in inv.taxes if flt(t.rate)]
+		self.assertTrue(percent, "the percentage row must survive — only labour was deleted")
+		self.assertEqual(percent[0].charge_type, "On Net Total")
+		self.assertEqual(percent[0].idx, 1, "the gap left by the labour row must be closed")
+		self.assertAlmostEqual(flt(inv.total_taxes_and_charges), flt(inv.total) * rate / 100, places=2)
+
 	# --- tax lands on the labour too ------------------------------------------
 	def test_tax_is_charged_on_price_plus_labour(self):
 		"""PPN must see services AND labour: Total Price + Biaya Manhour -> tax -> Grand Total.
@@ -190,9 +267,7 @@ class TestManhourBilling(FrappeTestCase):
 		The labour charge is a tax-table row, so a percentage left on "On Net Total" would
 		tax the items only and undercharge the customer. It is repointed at the labour row.
 		"""
-		tmpl = frappe.db.get_value(
-			"Sales Taxes and Charges Template", {"company": invoicing.get_default_company(), "is_default": 0}, "name"
-		) or frappe.db.get_value("Sales Taxes and Charges Template", {}, "name")
+		tmpl = self._tax_template()
 		if not tmpl:
 			self.skipTest("site has no Sales Taxes and Charges Template to exercise")
 		rate = flt(frappe.db.get_value("Sales Taxes and Charges", {"parent": tmpl}, "rate"))

@@ -170,7 +170,6 @@ def eir_save_draft(
 	tank_status=None,
 	vessel=None,
 	truck_no=None,
-	emkl=None,
 	remarks=None,
 	signature=None,
 	referred_voucher=None,
@@ -181,24 +180,20 @@ def eir_save_draft(
 	create_repair_order=None,
 	lines=None,
 	photos=None,
-	exterior_condition=None,
-	exterior_remark=None,
-	seals_intact=None,
-	seal_remark=None,
+	seals=None,
 	submit=False,
 ):
 	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR.
 
-	The EIR-Out form sends the extra verification fields (exterior / seals); they are
-	ignored for EIR-In."""
+	``seals`` is EIR-Out only: the seal numbers fitted at load-out."""
 	_require_authenticated_user()
 	return eir.save_draft(
+		seals=seals,
 		inspection=inspection,
 		inspection_type=inspection_type,
 		tank_status=tank_status,
 		vessel=vessel,
 		truck_no=truck_no,
-		emkl=emkl,
 		remarks=remarks,
 		signature=signature,
 		referred_voucher=referred_voucher,
@@ -209,10 +204,6 @@ def eir_save_draft(
 		create_repair_order=create_repair_order,
 		lines=lines,
 		photos=photos,
-		exterior_condition=exterior_condition,
-		exterior_remark=exterior_remark,
-		seals_intact=seals_intact,
-		seal_remark=seal_remark,
 		submit=submit,
 	)
 
@@ -227,7 +218,6 @@ def eir_create(
 	order_doctype=None,
 	vessel=None,
 	truck_no=None,
-	emkl=None,
 	remarks=None,
 	depot=None,
 	signature=None,
@@ -252,7 +242,6 @@ def eir_create(
 		order_doctype=order_doctype,
 		vessel=vessel,
 		truck_no=truck_no,
-		emkl=emkl,
 		remarks=remarks,
 		depot=depot,
 		signature=signature,

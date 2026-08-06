@@ -393,7 +393,7 @@ def get_dashboard_summary(depot=None):
 	"""
 	_require_authenticated_user()
 
-	from container_depot.operations import cleaning, eir, mr
+	from container_depot.operations import cleaning, eir, gate, mr
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
 
@@ -422,6 +422,8 @@ def get_dashboard_summary(depot=None):
 		"cleaning": cleaning.list_open_cleaning_orders(page_length=1)["total"],
 		"mr_open": mr.list_open_mr_orders(page_length=1)["total"],
 		"mr_approval": frappe.db.count("Repair Order", mr_appr_filters),
+		# Tanks past their EIR-Out but still standing in the yard — the ACC queue.
+		"ready_out": gate.list_ready_to_load(page_length=1)["total"],
 	}
 
 	return {

@@ -1,11 +1,24 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
 		<div class="flex items-center justify-between gap-2">
-			<div class="flex items-center gap-2">
-				<span class="oak-icon-tile h-9 w-9 bg-brand-50 text-brand-600"><Icon name="log-in" :size="20" /></span>
-				<div>
-					<h1 class="text-lg font-extrabold leading-tight tracking-tight">{{ labels.gate }}</h1>
-					<p class="text-xs text-gray-500">{{ labels.gateDesc }}</p>
+			<div class="flex min-w-0 items-center gap-2">
+				<!-- The tile follows the loaded booking: a log-in badge over a gate-OUT screen
+				     is the kind of small lie that gets a tank waved through the wrong way. -->
+				<span class="oak-icon-tile h-9 w-9" :class="valid ? dirMeta.tile : 'bg-brand-50 text-brand-600'">
+					<Icon :name="valid ? dirMeta.icon : 'truck'" :size="20" />
+				</span>
+				<div class="min-w-0">
+					<h1 class="flex items-center gap-2 text-lg font-extrabold leading-tight tracking-tight">
+						{{ labels.gate }}
+						<span
+							v-if="valid"
+							class="oak-chip shrink-0 text-[10px] font-extrabold tracking-wide"
+							:class="dirMeta.chip"
+						>
+							{{ dirMeta.label }}
+						</span>
+					</h1>
+					<p class="truncate text-xs text-gray-500">{{ valid ? dirMeta.desc : labels.gateDesc }}</p>
 				</div>
 			</div>
 			<router-link to="/gate/history" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
@@ -66,9 +79,18 @@
 						@click="pickChoice(c.booking)"
 					>
 						<span class="min-w-0">
-							<span class="block truncate text-sm font-bold text-gray-900">{{ c.booking }}</span>
+							<span class="mb-0.5 flex items-center gap-1.5">
+								<span
+									class="oak-chip shrink-0 text-[10px] font-extrabold tracking-wide"
+									:class="gateDirection(c.direction).chip"
+								>
+									<Icon :name="gateDirection(c.direction).icon" :size="11" />
+									{{ gateDirection(c.direction).label }}
+								</span>
+								<span class="truncate text-sm font-bold text-gray-900">{{ c.booking }}</span>
+							</span>
 							<span class="block truncate text-xs text-gray-500">
-								{{ c.container_no }} · {{ c.customer_name || c.customer }} · {{ directionLabel(c.direction) }}
+								{{ c.container_no }} · {{ c.customer_name || c.customer }}
 							</span>
 						</span>
 						<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-400" />
@@ -78,20 +100,36 @@
 		</section>
 
 		<template v-if="valid">
-			<!-- Booking detail panel -->
+			<!-- Booking detail panel. The direction leads: an operator at the gate needs to
+			     know which way this tank is moving before anything else on the screen. -->
 			<section class="oak-card animate-slide-up overflow-hidden">
+				<div class="h-1.5 w-full" :class="dirMeta.bar"></div>
 				<div class="flex items-center gap-3 border-b border-gray-100 bg-gray-50/70 px-4 py-3">
-					<span class="oak-icon-tile h-9 w-9 bg-brand-50 text-brand-600"><Icon name="file-text" :size="18" /></span>
-					<div class="min-w-0">
+					<span class="oak-icon-tile h-10 w-10 shrink-0" :class="dirMeta.tile">
+						<Icon :name="dirMeta.icon" :size="20" />
+					</span>
+					<div class="min-w-0 flex-1">
 						<p class="truncate text-sm font-bold text-gray-900">{{ detail.booking }}</p>
-						<p class="text-xs text-gray-500">{{ directionLabel(detail.direction) }}</p>
+						<p class="truncate text-xs text-gray-500">{{ dirMeta.desc }}</p>
 					</div>
+					<span class="oak-chip shrink-0 text-xs font-extrabold tracking-wide" :class="dirMeta.chip">
+						{{ dirMeta.label }}
+					</span>
 				</div>
-				<dl class="divide-y divide-gray-100 text-sm">
-					<div v-for="row in panelRows" :key="row.k" class="flex justify-between gap-3 px-4 py-2">
-						<dt class="shrink-0 text-gray-500">{{ row.k }}</dt>
-						<dd class="text-right font-semibold text-gray-800">{{ row.v }}</dd>
-					</div>
+				<dl class="text-sm">
+					<template v-for="g in panelGroups" :key="g.title">
+						<dt class="bg-gray-50/60 px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+							{{ g.title }}
+						</dt>
+						<dd
+							v-for="row in g.rows"
+							:key="row.k"
+							class="flex justify-between gap-3 border-t border-gray-100 px-4 py-2"
+						>
+							<span class="shrink-0 text-gray-500">{{ row.k }}</span>
+							<span class="text-right font-semibold text-gray-800">{{ row.v }}</span>
+						</dd>
+					</template>
 				</dl>
 			</section>
 
@@ -122,29 +160,58 @@
 					{{ labels.gateNoContainers }}
 				</p>
 				<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
-					<li v-for="c in detail.containers" :key="c.booking_code" class="flex items-center gap-3 px-4 py-3">
-						<input
-							v-if="selectable(c) && !detail.block_reason"
-							type="checkbox"
-							class="h-5 w-5 shrink-0 accent-brand-600"
-							:checked="selected.includes(c.booking_code)"
-							:disabled="!selected.includes(c.booking_code) && selected.length >= 2"
-							@change="toggle(c)"
-						/>
-						<span v-else class="oak-icon-tile h-8 w-8 shrink-0 bg-gray-100 text-gray-400">
-							<Icon name="package" :size="16" />
-						</span>
-						<div class="min-w-0 flex-1">
-							<p class="truncate font-semibold text-gray-900">{{ c.container_no || c.container }}</p>
-							<p class="text-xs text-gray-500">{{ c.code_state }}</p>
+					<li v-for="c in detail.containers" :key="c.booking_code" class="px-4 py-3">
+						<div class="flex items-center gap-3">
+							<input
+								v-if="selectable(c) && !detail.block_reason"
+								type="checkbox"
+								class="h-5 w-5 shrink-0 accent-brand-600"
+								:checked="selected.includes(c.booking_code)"
+								:disabled="!selected.includes(c.booking_code) && selected.length >= 2"
+								@change="toggle(c)"
+							/>
+							<span v-else class="oak-icon-tile h-8 w-8 shrink-0 bg-gray-100 text-gray-400">
+								<Icon name="package" :size="16" />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-semibold text-gray-900">{{ c.container_no || c.container }}</p>
+								<p class="text-xs text-gray-500">{{ c.code_state }}</p>
+							</div>
+							<!-- Gate-out readiness. Only meaningful on the way out: on the way IN the
+							     tank isn't in the yard yet, so open work is not this gate's business. -->
+							<span
+								v-if="isOut && !c.order && holds(c).length"
+								class="oak-chip shrink-0 bg-red-100 text-red-800"
+							>
+								<Icon name="alert-triangle" :size="12" /> {{ labels.gateHeldBy }}
+							</span>
+							<span
+								v-else-if="isOut && !c.order"
+								class="oak-chip shrink-0 bg-leaf-100 text-leaf-800"
+							>
+								<Icon name="check-circle" :size="12" /> {{ labels.gateReadyOut }}
+							</span>
+							<span
+								v-if="c.order"
+								class="oak-chip shrink-0"
+								:class="c.order.docstatus === 1 ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'"
+							>
+								<Icon name="file-text" :size="12" /> {{ c.order.name }}
+							</span>
 						</div>
-						<span
-							v-if="c.order"
-							class="oak-chip shrink-0"
-							:class="c.order.docstatus === 1 ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'"
-						>
-							<Icon name="file-text" :size="12" /> {{ c.order.name }}
-						</span>
+						<!-- Naming the blockers beats a bare "not ready": the operator can go and
+						     close them, or tell the driver exactly what is outstanding. -->
+						<div v-if="isOut && !c.order && holds(c).length" class="mt-2 rounded-xl bg-red-50 px-3 py-2">
+							<p class="text-xs text-red-700">{{ labels.gateHeldHint }}</p>
+							<ul class="mt-1 space-y-0.5">
+								<li v-for="o in holds(c)" :key="o.name" class="flex items-center gap-1.5 text-xs text-red-800">
+									<Icon name="alert-circle" :size="12" class="shrink-0" />
+									<span class="font-semibold">{{ o.label }}</span>
+									<span class="truncate">{{ o.name }}</span>
+									<span class="oak-chip bg-white/70 text-[10px] text-red-700">{{ o.status }}</span>
+								</li>
+							</ul>
+						</div>
 					</li>
 				</ul>
 
@@ -208,6 +275,10 @@
 								v-if="f.type === 'select'"
 								v-model="vehicle[f.key]"
 								:options="f.options"
+								:option-value="f.optionValue || null"
+								:option-label="f.optionLabel || null"
+								:group-by="f.groupBy || null"
+								:empty-label="f.emptyLabel"
 								:placeholder="labels.selectPlaceholder"
 								:search-placeholder="labels.selectSearch"
 							/>
@@ -255,7 +326,7 @@
 import { computed, nextTick, onBeforeUnmount, ref } from "vue"
 import { createResource } from "frappe-ui"
 import { Html5Qrcode } from "html5-qrcode"
-import { labels, directionLabel } from "@/utils/labels"
+import { labels, gateDirection } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
@@ -298,6 +369,19 @@ const cargoRes = createResource({
 })
 const cargoOptions = computed(() => cargoRes.data?.cargos || [])
 
+// Shipper / Angkutan / EMKL picker. `shipper` is a Link to Customer on both bon
+// doctypes, so a typed name that isn't in the master is refused at insert — the gate
+// picks from the master instead. EMKL-flagged customers are grouped first.
+const shipperRes = createResource({
+	url: "container_depot.api.gate_shipper_options",
+	method: "GET",
+	auto: true,
+})
+const shipperOptions = computed(() => shipperRes.data?.shippers || [])
+const shipperValue = (o) => o.name
+const shipperLabel = (o) => (o.customer_name && o.customer_name !== o.name ? `${o.customer_name} (${o.name})` : o.name)
+const shipperGroup = (o) => (o.is_transporter ? labels.gateShipperEmkl : labels.gateShipperOther)
+
 // A real booking detail (has containers) vs. a multi-booking picker response.
 const valid = computed(() => detail.value && detail.value.valid && !!detail.value.booking)
 const choices = computed(() =>
@@ -312,6 +396,17 @@ function pickChoice(booking) {
 
 // Vehicle/driver form fields — mirrors the Desk "Generate" dialog, adapted to the
 // booking direction. Keys are the exact make_order vehicle_data keys.
+const shipperField = computed(() => ({
+	key: "shipper",
+	label: labels.vShipper,
+	type: "select",
+	options: shipperOptions.value,
+	optionValue: shipperValue,
+	optionLabel: shipperLabel,
+	groupBy: shipperGroup,
+	emptyLabel: labels.gateShipperEmpty,
+}))
+
 const vehicleFields = computed(() => {
 	if (!detail.value) return []
 	if (detail.value.direction === "Tank In")
@@ -323,7 +418,7 @@ const vehicleFields = computed(() => {
 			{ key: "condition", label: labels.vCondition, type: "select", options: ["EMPTY CLEAN", "EMPTY DIRTY", "LADEN"], required: true },
 			{ key: "cargo", label: labels.cargo, type: "datalist", options: cargoOptions.value },
 			{ key: "tanggal_bongkar_actual", label: labels.vDateBongkar, inputType: "date" },
-			{ key: "shipper", label: labels.shipper, inputType: "text" },
+			shipperField.value,
 			{ key: "ex_vessel", label: labels.exVessel, inputType: "text" },
 			{ key: "remarks", label: labels.eirRemarks, type: "textarea" },
 		]
@@ -332,10 +427,9 @@ const vehicleFields = computed(() => {
 		{ key: "driver_name", label: labels.driverName, inputType: "text", required: true },
 		{ key: "driver_phone", label: labels.driverPhone, inputType: "tel", required: true },
 		{ key: "ro", label: labels.vRo, inputType: "text" },
-		{ key: "angkutan", label: labels.vAngkutan, inputType: "text" },
 		{ key: "destination", label: labels.vDestination, inputType: "text" },
 		{ key: "tanggal_muat", label: labels.vDateMuat, inputType: "date" },
-		{ key: "shipper", label: labels.shipper, inputType: "text" },
+		shipperField.value,
 		{ key: "remarks", label: labels.eirRemarks, type: "textarea" },
 	]
 })
@@ -350,22 +444,49 @@ const selectedLabels = computed(() =>
 				.join(", "),
 )
 
-const panelRows = computed(() => {
+// Direction drives the whole panel's colour + wording — GATE IN vs GATE OUT.
+const dirMeta = computed(() => gateDirection(detail.value && detail.value.direction))
+const isOut = computed(() => !!detail.value && detail.value.direction === "Tank Out")
+
+// Grouped so the panel reads as three answers — whose booking, what it costs, what to
+// watch out for — instead of eleven undifferentiated rows. Payment disappears entirely
+// when finance is off: there is no invoice, so "Unpaid" would be a lie.
+const panelGroups = computed(() => {
 	if (!valid.value) return []
 	const d = detail.value
-	return [
-		{ k: labels.branch, v: d.branch },
-		{ k: labels.depot, v: d.depot },
-		{ k: labels.bookingStatus, v: d.booking_status },
-		{ k: labels.direction, v: directionLabel(d.direction) },
-		{ k: labels.customer, v: d.customer_name || d.customer },
-		{ k: labels.principal, v: d.principal_name || d.principal },
-		{ k: labels.liftService, v: d.lift_item },
-		{ k: labels.paymentType, v: d.payment_type },
-		{ k: labels.paymentStatus, v: d.payment_status },
-		{ k: labels.doReference, v: d.do_reference },
-		{ k: labels.eirRemarks, v: d.remarks },
-	].filter((r) => r.v != null && r.v !== "")
+	const groups = [
+		{
+			title: labels.gateSectionBooking,
+			rows: [
+				{ k: labels.bookingStatus, v: d.booking_status },
+				{ k: labels.customer, v: d.customer_name || d.customer },
+				{ k: labels.principal, v: d.principal_name || d.principal },
+				{ k: labels.branch, v: d.branch },
+				{ k: labels.depot, v: d.depot },
+			],
+		},
+		{
+			title: labels.gateSectionPayment,
+			rows:
+				d.finance_enabled === false
+					? []
+					: [
+							{ k: labels.liftService, v: d.lift_item },
+							{ k: labels.paymentType, v: d.payment_type },
+							{ k: labels.paymentStatus, v: d.payment_status },
+						],
+		},
+		{
+			title: labels.gateSectionNote,
+			rows: [
+				{ k: labels.doReference, v: d.do_reference },
+				{ k: labels.eirRemarks, v: d.remarks },
+			],
+		},
+	]
+	return groups
+		.map((g) => ({ ...g, rows: g.rows.filter((r) => r.v != null && r.v !== "") }))
+		.filter((g) => g.rows.length)
 })
 
 const lookupError = computed(
@@ -375,10 +496,18 @@ const generateError = computed(
 	() => generateRes.error?.messages?.[0] || generateRes.error?.message || null,
 )
 
-// A container is selectable for a new bon when its code is still pending (Active)
-// and it isn't already on a bon.
+// Unfinished work still holding this tank — only a gate-OUT concern. On the way in the
+// tank isn't in the yard yet, so anything open belongs to a previous stay.
+function holds(c) {
+	return isOut.value ? c.open_orders || [] : []
+}
+
+// A container is selectable for a new bon when its code is still pending (Active), it
+// isn't already on a bon, and nothing is holding it. Order Muat refuses a held tank
+// server-side anyway — blocking it here means the operator learns that before filling
+// in the whole vehicle form, not after.
 function selectable(c) {
-	return c.code_state === "Active" && !c.order
+	return c.code_state === "Active" && !c.order && !holds(c).length
 }
 
 function toggle(c) {
@@ -407,7 +536,6 @@ function openGenerate() {
 		ro: line.ro || "",
 		condition: line.condition || "",
 		cargo: line.cargo || "",
-		angkutan: "",
 		destination: "",
 		ex_vessel: "",
 		shipper: detail.value.customer || "",

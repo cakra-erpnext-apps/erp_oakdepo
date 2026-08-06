@@ -122,7 +122,7 @@
  ],
  "in_create": 0,
  "links": [],
- "modified": "2026-07-23 15:00:00.000000",
+ "modified": "2026-08-05 23:45:00.000000",
  "module": "Operations",
  "name": "Container Activity",
  "permissions": [
@@ -132,10 +132,6 @@
    "read": 1,
    "role": "System Manager",
    "write": 1
-  },
-  {
-   "read": 1,
-   "role": "Container Depot"
   }
  ],
  "sort_field": "activity_time",

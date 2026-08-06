@@ -12,7 +12,14 @@ frappe.query_reports["Order Billing Status"] = {
 			fieldname: "order_type",
 			label: __("Order Type"),
 			fieldtype: "Select",
-			options: ["", "Container Booking", "Cleaning Order", "Repair Order", "Survey Order"].join("\n"),
+			options: [
+				"",
+				"Container Booking",
+				"Cleaning Order",
+				"Repair Order",
+				"Periodic Test Order",
+				"Survey Order",
+			].join("\n"),
 		},
 		{
 			fieldname: "payment_type",

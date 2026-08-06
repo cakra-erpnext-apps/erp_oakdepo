@@ -13,6 +13,7 @@ frappe.ui.form.on("Gate Out Plan", {
 
 	refresh(frm) {
 		render_related_orders(frm);
+		set_fulfilment_progress(frm);
 
 		// Optional bridge for a customer who actually proceeds to pick up: hand OAK a
 		// pre-filled Container Booking (Tank Out / Lift On) carrying the plan's containers.
@@ -28,9 +29,30 @@ frappe.ui.form.on("Gate Out Plan", {
 	},
 });
 
-// --- Order Terkait ---------------------------------------------------------------
+// --- % Keluar --------------------------------------------------------------------
+// The same progress bar ERPNext puts on a Purchase Receipt for "% Amount Billed": how much
+// of this notice has physically left. Percent alone reads as a number; the bar makes a
+// half-collected plan obvious at a glance. Filled in by the server as each tank gates out.
+function set_fulfilment_progress(frm) {
+	const rows = (frm.doc.containers || []).filter((r) => r.container);
+	if (frm.is_new() || !rows.length) return;
+	const per = Math.min(100, Math.max(0, flt(frm.doc.per_fulfilled, 2)));
+	const gone = rows.filter((r) => r.gated_out).length;
+	// reset() first: refresh runs on every save, and the progress area otherwise stacks.
+	frm.dashboard.reset();
+	frm.dashboard.add_progress(__("Keluar Depo"), [
+		{
+			title: __("{0} dari {1} tank sudah keluar", [gone, rows.length]),
+			width: `${per}%`,
+			progress_class: per >= 100 ? "progress-bar-success" : "progress-bar-warning",
+		},
+	]);
+}
+
+// --- Order & EIR Terkait ---------------------------------------------------------
 // The Kesiapan column says a tank is held up but not by WHAT. This names the cleaning / M&R
-// orders per container, marks the ones still blocking, and links each to its form.
+// orders per container, marks the ones still blocking, and links each to its form. The tank's
+// EIR-In / EIR-Out sit in the same list as condition history — never as blockers.
 //
 // Read on every refresh rather than stored on the doc: the stored Kesiapan is kept current by
 // hooks, but this list is the evidence behind it and must never be able to disagree with the
@@ -69,7 +91,7 @@ function related_orders_html(tanks) {
 				.join(" · ");
 			const orders = t.orders.length
 				? t.orders.map(order_line).join("")
-				: `<div class="text-muted small py-1">${__("Tidak ada order cleaning / M&R.")}</div>`;
+				: `<div class="text-muted small py-1">${__("Tidak ada order cleaning / M&R atau EIR.")}</div>`;
 			return `
 				<div class="mb-4">
 					<div class="bold mb-1">${head}</div>
@@ -83,10 +105,10 @@ function order_line(o) {
 	const esc = frappe.utils.escape_html;
 	// get_form_link emits this desk's own route, so the link holds wherever the desk is mounted.
 	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
-	// Only a blocking order is coloured — a finished one is history, not a warning.
-	const pill = o.blocks
-		? `<span class="indicator-pill orange no-indicator-dot">${esc(o.status)}</span>`
-		: `<span class="indicator-pill green no-indicator-dot">${esc(o.status)}</span>`;
+	// Orange = still holding the lift-on back. Green = finished. Grey = neither: an EIR that
+	// is only a draft, or a cancelled document — history, not a warning and not a clearance.
+	const tone = o.blocks ? "orange" : o.done ? "green" : "gray";
+	const pill = `<span class="indicator-pill ${tone} no-indicator-dot">${esc(o.status)}</span>`;
 	return `
 		<div class="flex justify-between align-center py-1 border-bottom">
 			<div class="ellipsis">${link} <span class="text-muted small">${esc(o.kind)}</span></div>

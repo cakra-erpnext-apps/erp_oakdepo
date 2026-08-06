@@ -28,11 +28,11 @@
       <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('order_status') or '-' }}</td>
     </tr>
     <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Shipper</td><td style="border:none; padding:2px 6px;">: {{ doc.get('shipper') or '-' }}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">Shipper / Angkutan</td><td style="border:none; padding:2px 6px;">: {{ doc.get('shipper') or '-' }}</td>
       <td style="border:none; padding:2px 6px; color:#666;">Destination</td><td style="border:none; padding:2px 6px;">: {{ doc.get('destination') or '-' }}</td>
     </tr>
     <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">No. Pol / Angkutan</td><td style="border:none; padding:2px 6px;">: {{ doc.get('truck_plate') or '-' }}{% if doc.get('angkutan') %} &middot; {{ doc.angkutan }}{% endif %}</td>
+      <td style="border:none; padding:2px 6px; color:#666;">No. Pol</td><td style="border:none; padding:2px 6px;">: {{ doc.get('truck_plate') or '-' }}</td>
       <td style="border:none; padding:2px 6px; color:#666;">Supir</td><td style="border:none; padding:2px 6px;">: {{ doc.get('driver_name') or '-' }}{% if doc.get('driver_phone') %} ({{ doc.driver_phone }}){% endif %}</td>
     </tr>
     <tr>

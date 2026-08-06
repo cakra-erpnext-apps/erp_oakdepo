@@ -175,16 +175,16 @@ class Inspection(Document):
 	def _apply_eir_out_outcome(self):
 		"""Score an EIR-Out's readiness and signal it on the referenced Order Muat.
 
-		Clean = exterior Clean + seals intact + no new damage. A clean
-		EIR-Out flips the Order Muat to ``Ready To Load`` and notifies Operator Kalmar; any
-		finding flips it to ``Hold`` and notifies the Ops Supervisor. The container status is
-		NOT touched here (it stays on the OUT path; gate-out is the final move) — readiness
-		lives on the Order Muat, and gate-out enforces a clean EIR-Out (see operations/gate)."""
+		Clean = no new damage on the checklist. A clean EIR-Out flips the Order Muat to
+		``Ready To Load`` and notifies Operator Kalmar; a finding flips it to ``Hold`` and
+		notifies the Ops Supervisor. The container status is NOT touched here (it stays on
+		the OUT path; gate-out is the final move) — readiness lives on the Order Muat, and
+		gate-out enforces a clean EIR-Out (see operations/gate).
+
+		The separate exterior-cleanliness and seal-integrity checks (PRO-OPS-08 §G.2/G.3)
+		were dropped at the depot's request; the checklist findings are the only input now.
+		"""
 		reasons = []
-		if (self.get("exterior_condition") or "") != "Clean":
-			reasons.append(f"eksterior {self.get('exterior_condition') or 'belum dinilai'}")
-		if not self.get("seals_intact"):
-			reasons.append("segel tidak lengkap/utuh")
 		if self.has_damage:
 			reasons.append("ada temuan kerusakan")
 

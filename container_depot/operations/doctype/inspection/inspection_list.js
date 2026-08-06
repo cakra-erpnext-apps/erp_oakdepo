@@ -7,6 +7,19 @@
 frappe.listview_settings['Inspection'] = {
 	add_fields: ['revision_requested', 'docstatus', 'status'],
 
+	// Direction as a colour, not a word to read: green In / orange Out, matching the gate
+	// PWA's GATE IN / GATE OUT so one habit covers both screens. The stored value stays
+	// "EIR-In"/"EIR-Out" — the "EIR-" half is noise in a column headed "Tipe EIR".
+	formatters: {
+		inspection_type(value) {
+			const pill = (colour, text) =>
+				`<span class="indicator-pill no-indicator-dot ${colour}">${__(text)}</span>`;
+			if (value === 'EIR-In') return pill('green', 'In');
+			if (value === 'EIR-Out') return pill('orange', 'Out');
+			return frappe.utils.escape_html(value || '');
+		},
+	},
+
 	// Frappe's get_indicator (model/indicator.js) short-circuits to a default "Draft"/
 	// "Cancelled" pill for submittable docs at docstatus 0/2 BEFORE it ever calls our
 	// get_indicator — unless these flags are set. Without them a Pending-Review EIR (still

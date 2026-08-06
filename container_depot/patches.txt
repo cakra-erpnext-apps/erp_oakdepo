@@ -69,3 +69,8 @@ container_depot.patches.v0_46.refresh_gate_out_plan_readiness
 container_depot.patches.v0_47.drop_periodic_test
 container_depot.patches.v0_48.seed_survey_and_periodic_menus
 container_depot.patches.v0_48.drop_release_do
+container_depot.patches.v0_49.backfill_booking_item_shipper
+container_depot.patches.v0_49.customer_type_to_role_flags
+container_depot.patches.v0_49.booking_lift_to_charges
+container_depot.patches.v0_49.backfill_manhour_cost_center
+container_depot.patches.v0_50.drop_container_seal_fields

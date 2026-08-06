@@ -17,10 +17,14 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import getdate
+from frappe.utils import flt, getdate
 
 # Only an Open plan drives priority; closing it releases the container stamps.
 ACTIVE_STATUS = "Open"
+FULFILLED_STATUS = "Fulfilled"
+
+# Container status meaning the tank has left — what "fulfilled" is measured against.
+GATE_OUT_STATUS = "Gate_Out"
 
 # A Cleaning / Repair order in one of these no longer blocks gate-out (work is finished).
 _CLEANING_DONE = ("Completed", "Cancelled")
@@ -34,28 +38,38 @@ class GateOutPlan(Document):
 		self._roll_up()
 
 	def _fill_rows(self):
-		"""Per row: mirror the container number and compute gate-out readiness."""
+		"""Per row: mirror the container number, compute gate-out readiness, and flag the
+		tanks that have already left."""
 		for row in self.containers or []:
 			if not row.container:
 				row.container_no = row.readiness = None
-				row.is_ready = 0
+				row.is_ready = row.gated_out = 0
 				continue
-			row.container_no = frappe.db.get_value("Container", row.container, "container_no")
+			cn, status = frappe.db.get_value(
+				"Container", row.container, ["container_no", "status"]
+			) or (None, None)
+			row.container_no = cn
+			row.gated_out = 1 if status == GATE_OUT_STATUS else 0
 			pending = _pending_work(row.container)
 			row.is_ready = 0 if pending else 1
 			row.readiness = _readiness_label(pending)
 
 	def _roll_up(self):
-		"""Header summaries for the list view: containers, X/Y ready, nearest lift-on date."""
+		"""Header summaries for the list view: containers, X/Y ready, % keluar, nearest date."""
 		rows = [r for r in (self.containers or []) if r.container]
 		self.container_summary = ", ".join(r.container_no or r.container for r in rows) or None
 		if rows:
 			ready = sum(1 for r in rows if r.is_ready)
 			self.readiness_summary = f"{ready}/{len(rows)} siap"
+			self.per_fulfilled = flt(sum(1 for r in rows if r.gated_out) * 100.0 / len(rows), 2)
 		else:
 			self.readiness_summary = None
+			self.per_fulfilled = 0
 		dates = [getdate(r.target_lift_on) for r in rows if r.target_lift_on]
 		self.next_lift_on = min(dates) if dates else None
+		# NOT closed here on purpose: closing belongs to the gate-out event
+		# (:func:`refresh_plan_fulfilment`). Doing it on save would slam a brand-new plan shut
+		# the moment someone lists a tank that happens to have left on an earlier visit.
 
 	def _assert_containers_unique(self):
 		"""A container may be claimed by only ONE active (Open) plan — and only once within
@@ -148,13 +162,44 @@ def _tank_orders(container: str) -> list:
 			order_by="creation desc",
 		):
 			cancelled = r.docstatus == 2
+			blocks = not cancelled and r.status not in done
 			out.append({
 				"kind": kind,
 				"doctype": doctype,
 				"name": r.name,
 				"status": _("Cancelled") if cancelled else r.status,
-				"blocks": not cancelled and r.status not in done,
+				"blocks": blocks,
+				"done": not blocks,
 			})
+	return out
+
+
+def _tank_eirs(container: str) -> list:
+	"""The tank's EIR-In / EIR-Out inspections, newest first — same shape as an order line.
+
+	Never ``blocks``: an EIR is a record of a moment, not work to be finished. EIR-Out in
+	particular is written AT the gate on the way out, so it can only ever exist after the
+	lift-on this plan is preparing for — treating it as a prerequisite would make every tank
+	permanently "not ready". They are here as the condition history behind a lift-on: what the
+	tank looked like coming in, and (once it has left) what went out.
+	"""
+	out = []
+	for r in frappe.get_all(
+		"Inspection",
+		filters={"container": container},
+		fields=["name", "inspection_type", "status", "docstatus", "eir_date"],
+		order_by="creation desc",
+	):
+		cancelled = r.docstatus == 2
+		out.append({
+			"kind": r.inspection_type or "EIR",
+			"doctype": "Inspection",
+			"name": r.name,
+			"status": _("Cancelled") if cancelled else r.status,
+			"blocks": False,
+			# Only a submitted EIR is a finished record; a draft one is still being written.
+			"done": not cancelled and r.status == "Submitted",
+		})
 	return out
 
 
@@ -279,17 +324,82 @@ def refresh_plan_readiness(plan: str) -> None:
 	)
 
 
+# --- closing the plan when its tanks actually leave ---------------------------
+def refresh_plans_for_container(container: str) -> list:
+	"""Recompute ``% Keluar`` on every Open plan listing this tank; returns those it closed.
+
+	Called from ``gate.mark_gate_out`` right after the tank moves to ``Gate_Out`` — the only
+	moment a plan's fulfilment can change.
+	"""
+	if not container:
+		return []
+	return [p for p in _open_plans_for(container) if refresh_plan_fulfilment(p)]
+
+
+def refresh_plan_fulfilment(plan: str) -> bool:
+	"""Rewrite one plan's ``% Keluar`` from the live Container statuses, closing it at 100%.
+
+	Modelled on Purchase Receipt's ``% Amount Billed``: a stored percentage that says how much
+	of the document is done, so a partly-collected plan reads as progress rather than as an
+	open/closed flag. Reaching 100% flips the plan to Fulfilled, which is what releases each
+	tank's ``target_lift_on`` stamp and frees it for the customer's next lift-on notice.
+
+	Deliberately ``db.set_value`` and never ``doc.save()`` — for the same reason as
+	:func:`refresh_plan_readiness`: this runs from inside an unrelated document's save (the
+	gate-out), where re-running the plan's validation could throw on a state that has nothing
+	to do with the tank leaving. Returns whether this call closed the plan.
+	"""
+	rows = frappe.get_all(
+		"Gate Out Plan Item",
+		filters={"parent": plan, "parenttype": "Gate Out Plan"},
+		fields=["name", "container"],
+	)
+	listed = [r for r in rows if r.container]
+	if not listed:
+		frappe.db.set_value("Gate Out Plan", plan, "per_fulfilled", 0, update_modified=False)
+		return False
+
+	gone = set(
+		frappe.get_all(
+			"Container",
+			filters={"name": ["in", [r.container for r in listed]], "status": GATE_OUT_STATUS},
+			pluck="name",
+		)
+	)
+	for r in listed:
+		frappe.db.set_value(
+			"Gate Out Plan Item", r.name,
+			"gated_out", 1 if r.container in gone else 0,
+			update_modified=False,
+		)
+
+	per = flt(len(gone) * 100.0 / len(listed), 2)
+	updates = {"per_fulfilled": per}
+	close = per >= 100 and frappe.db.get_value("Gate Out Plan", plan, "status") == ACTIVE_STATUS
+	if close:
+		updates["status"] = FULFILLED_STATUS
+	frappe.db.set_value("Gate Out Plan", plan, updates, update_modified=False)
+	if close:
+		# What on_update would have done: a closed plan owns no tank any more.
+		for cn in _containers_pointing_to(plan):
+			_clear_target(cn, plan)
+	return close
+
+
 @frappe.whitelist()
 def related_orders(gate_out_plan: str) -> list:
-	"""Per listed tank, the Cleaning / M&R orders behind its Kesiapan.
+	"""Per listed tank, the Cleaning / M&R orders behind its Kesiapan, plus its EIRs.
 
 	The "Belum: Cleaning, M&R" column says a tank is held up but not by WHAT — this names the
 	orders so an operator can open the one that is blocking a lift-on instead of hunting for
-	it. Read live, never stored: the answer must not be able to age.
+	it. The EIRs ride along as context (see :func:`_tank_eirs`) — they never change Kesiapan.
+	Read live, never stored: the answer must not be able to age.
 	"""
 	frappe.has_permission("Gate Out Plan", "read", doc=gate_out_plan, throw=True)
 	readable = {
-		dt for dt in ("Cleaning Order", "Repair Order") if frappe.has_permission(dt, "read")
+		dt
+		for dt in ("Cleaning Order", "Repair Order", "Inspection")
+		if frappe.has_permission(dt, "read")
 	}
 	out = []
 	for r in frappe.get_all(
@@ -304,6 +414,10 @@ def related_orders(gate_out_plan: str) -> list:
 			"container": r.container,
 			"container_no": r.container_no or r.container,
 			"target_lift_on": str(r.target_lift_on) if r.target_lift_on else None,
-			"orders": [o for o in _tank_orders(r.container) if o["doctype"] in readable],
+			"orders": [
+				o
+				for o in _tank_orders(r.container) + _tank_eirs(r.container)
+				if o["doctype"] in readable
+			],
 		})
 	return out

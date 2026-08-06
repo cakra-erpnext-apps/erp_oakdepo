@@ -14,15 +14,12 @@ from frappe import _
 from container_depot.api import _require_authenticated_user
 from container_depot.operations import position_survey
 
-# The "Position Fix" approval is restricted to yard operators (Operator Kalmar et al.).
-# Reads stay open to any authenticated PWA user.
-KALMAR_ROLES = {"Operator Kalmar", "Admin Ops", "Ops Supervisor", "System Manager"}
-
-
+# The "Position Fix" approval used to be restricted to yard operators (Operator Kalmar,
+# Admin Ops, Ops Supervisor). Those roles were removed on 2026-08-05 pending a role
+# redesign, so approval is open to any authenticated PWA user for now — reattach the role
+# set here when the new model lands. Reads were already open to everyone.
 def _require_position_kalmar() -> None:
 	_require_authenticated_user()
-	if set(frappe.get_roles(frappe.session.user)).isdisjoint(KALMAR_ROLES):
-		frappe.throw(_("Anda tidak berwenang meng-approve posisi container."), frappe.PermissionError)
 
 
 @frappe.whitelist(methods=["GET"])

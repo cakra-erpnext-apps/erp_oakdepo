@@ -55,7 +55,7 @@ class TestContainerActivityHelper(FrappeTestCase):
 		# Simulate an edit cycle: on_update compares against the pre-save snapshot.
 		doc._doc_before_save = frappe.get_doc("Container Activity", name)
 		doc.summary = "tampered"
-		with mock.patch("frappe.get_roles", return_value=["Container Depot"]):
+		with mock.patch("frappe.get_roles", return_value=["All"]):
 			with self.assertRaises(frappe.ValidationError):
 				doc.on_update()
 			with self.assertRaises(frappe.ValidationError):

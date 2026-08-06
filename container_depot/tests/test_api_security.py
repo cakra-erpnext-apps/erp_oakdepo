@@ -258,16 +258,6 @@ class TestApiSecurity(FrappeTestCase):
 			else:
 				frappe.local.conf["container_depot_webhook_secret"] = original_secret
 
-	# ------------------------------------------------------------------
-	# Service role created by install/migrate
-	# ------------------------------------------------------------------
-
-	def test_sst_service_role_exists(self):
-		self.assertTrue(
-			frappe.db.exists("Role", "Container Depot SST Service"),
-			"SST service role must be created by install/after_migrate",
-		)
-
 
 if __name__ == "__main__":
 	unittest.main()

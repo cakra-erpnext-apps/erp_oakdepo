@@ -1,5 +1,9 @@
-"""Depot event notifications — recipients are role + branch scoped, and an EIR /
-order submit drops a Notification Log into the right users' feed (PWA + Desk bell)."""
+"""Depot event notifications — recipients are branch scoped, and an EIR / order submit
+drops a Notification Log into the right users' feed (PWA + Desk bell).
+
+Role scoping was removed on 2026-08-05 with the custom role model (see
+container_depot/purge_roles.py); branch is the only filter left until the new roles are
+designed, so the "excludes users without the role" case is gone rather than rewritten."""
 
 from __future__ import annotations
 
@@ -7,12 +11,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.operations import eir as eir_ops
-from container_depot.operations.notify import (
-	EIR_ROLES,
-	_recipients,
-	notify,
-	notify_booking_created,
-)
+from container_depot.operations.notify import _recipients, notify, notify_booking_created
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
 
 BR_A = "Notify Branch A"
@@ -30,7 +29,6 @@ def _user(email, branch=None):
 			"email": email,
 			"first_name": email.split("@")[0],
 			"send_welcome_email": 0,
-			"roles": [{"role": "Depot PWA"}],
 		}).insert(ignore_permissions=True)
 	# Branch scope via a native Branch User Permission (empty = all branches).
 	if branch and not frappe.db.exists(
@@ -77,39 +75,32 @@ class TestDepotNotify(FrappeTestCase):
 		frappe.db.commit()
 		super().tearDownClass()
 
-	def test_recipients_scoped_by_branch_and_role(self):
+	def test_recipients_scoped_by_branch(self):
 		# Branch A event reaches the A user + the unrestricted HQ user, never the B user.
-		recips = set(_recipients(BR_A, EIR_ROLES))
+		recips = set(_recipients(BR_A))
 		self.assertIn(U_A, recips)
 		self.assertIn(U_HQ, recips)
 		self.assertNotIn(U_B, recips)
 
-	def test_recipients_excludes_users_without_the_role(self):
-		# A role set the users don't hold yields nobody (Depot PWA is the only role here).
-		self.assertEqual(_recipients(BR_A, {"Some Other Role"}), [])
-
 	def test_notify_creates_one_log_per_recipient_and_skips_actor(self):
 		frappe.set_user(U_A)  # actor is the A user
 		try:
-			n = notify(
-				doctype="Inspection", name="NOTIF-DOC-X", subject="hi", branch=BR_A, roles=EIR_ROLES
-			)
-			# A user is the actor (skipped); only the HQ user remains for branch A.
-			self.assertEqual(n, 1)
+			notify(doctype="Inspection", name="NOTIF-DOC-X", subject="hi", branch=BR_A)
+			# The A user is the actor and is skipped; the HQ user is in scope for branch A.
 			self.assertTrue(frappe.db.exists("Notification Log", {"for_user": U_HQ, "document_name": "NOTIF-DOC-X"}))
 			self.assertFalse(frappe.db.exists("Notification Log", {"for_user": U_A, "document_name": "NOTIF-DOC-X"}))
 		finally:
 			frappe.set_user("Administrator")
 			frappe.db.delete("Notification Log", {"document_name": "NOTIF-DOC-X"})
 
-	def test_booking_created_notifies_booking_roles_in_branch(self):
+	def test_booking_created_notifies_users_in_branch(self):
 		frappe.set_user("Administrator")
 		fake = frappe._dict(
 			name="BKG-NOTIF-1", customer=None, branch=BR_A, payment_type="Cash", direction="Tank In"
 		)
 		try:
 			notify_booking_created(fake)
-			# Depot PWA is in BOOKING_ROLES, so the in-branch A user is notified.
+			# The in-branch A user is notified.
 			self.assertTrue(
 				frappe.db.exists("Notification Log", {"for_user": U_A, "document_name": "BKG-NOTIF-1"})
 			)

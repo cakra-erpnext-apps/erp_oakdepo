@@ -86,13 +86,24 @@ def notify_customers() -> int:
 	return created
 
 
+def _role_holders(roles: list) -> list:
+	"""Enabled users holding any of ``roles`` — the addressees of a scheduled ToDo."""
+	return frappe.get_all(
+		"Has Role",
+		filters={"role": ("in", roles), "parenttype": "User"},
+		fields=["parent"],
+		pluck="parent",
+	)
+
+
 def mark_stale_sst_heartbeats() -> int:
 	"""Flag SST terminals that have not heartbeated within the threshold.
 
 	Runs every 5 minutes. Side-effects:
 	- Sets ``printer_status='Stale'`` (if currently OK/Warning).
-	- Opens one ToDo per stale terminal, addressed to anyone holding the
-	  Ops Supervisor role.
+	- Opens one ToDo per stale terminal, addressed to anyone holding System Manager
+	  (this used to be the Ops Supervisor role, deleted 2026-08-05 with the custom role
+	  model — retarget it when the new roles are designed).
 
 	Returns the count of newly-stale terminals.
 	"""
@@ -105,12 +116,7 @@ def mark_stale_sst_heartbeats() -> int:
 	if not rows:
 		return 0
 
-	supervisors = frappe.get_all(
-		"Has Role",
-		filters={"role": "Ops Supervisor", "parenttype": "User"},
-		fields=["parent"],
-		pluck="parent",
-	)
+	supervisors = _role_holders(["System Manager"])
 	for row in rows:
 		frappe.db.set_value(
 			"Self Service Terminal", row.name, "printer_status", "Stale", update_modified=False
@@ -146,7 +152,9 @@ def remind_periodic_test_due() -> int:
 
 	Runs daily. The next-due watermark lives on the **Container** (``Container.next_pt_due``,
 	advanced when a Periodic Test Order completes — the single source of truth). Opens one
-	ToDo per due/overdue container, addressed to Commercial + Ops Supervisor role holders.
+	ToDo per due/overdue container, addressed to System Manager holders (it used to be
+	Commercial + Ops Supervisor, deleted 2026-08-05 with the custom role model — retarget
+	it when the new roles are designed).
 	Returns the count of containers in the due/overdue window.
 	"""
 	horizon = add_to_date(getdate(today()), days=PT_REMINDER_DAYS)
@@ -159,13 +167,7 @@ def remind_periodic_test_due() -> int:
 	if not due:
 		return 0
 
-	recipients = frappe.get_all(
-		"Has Role",
-		filters={"role": ("in", ["Commercial", "Ops Supervisor"]), "parenttype": "User"},
-		fields=["parent"],
-		pluck="parent",
-	)
-	recipients = sorted(set(recipients))
+	recipients = sorted(set(_role_holders(["System Manager"])))
 
 	for r in due:
 		for user in recipients:

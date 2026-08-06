@@ -35,12 +35,7 @@
   "repair_status",
   "certification_status",
   "seals_section",
-  "seal_manhole",
-  "seal_airline",
-  "seal_bottom_outlet",
-  "column_break_seal",
-  "seal_top_discharge",
-  "seal_vapour_valve",
+  "seal_history_html",
   "tank_spec_section",
   "serial_no",
   "manufacture_date",
@@ -71,7 +66,8 @@
    "fieldtype": "Select",
    "label": "Container Type",
    "options": "ISO Tank\n20ft Dry\n40ft HC\n20ft Reefer\n40ft Reefer\nOpen Top\nFlat Rack",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "size",
@@ -91,7 +87,6 @@
    "description": "Monitoring stage derived from Status (auto-maintained). Pre-Arrival and Departed are excluded from in-depo stock.",
    "fieldname": "inventory_stage",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Inventory Stage",
    "options": "\nPre-Arrival\nIn Depot\nReady\nDeparted",
@@ -106,7 +101,9 @@
    "fieldtype": "Link",
    "label": "Principal (Owner)",
    "options": "Customer",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "description": "Set when this Container master was auto-created as a pre-arrival reservation for an Container Booking (Tank In, container not yet in the system). On that booking's cancellation, the phantom is deleted if it never gated in; pre-existing containers are only reverted to Available.",
@@ -128,7 +125,8 @@
    "fieldtype": "Link",
    "in_standard_filter": 1,
    "label": "Depot",
-   "options": "Depot"
+   "options": "Depot",
+   "in_list_view": 1
   },
   {
    "fieldname": "current_location",
@@ -193,7 +191,6 @@
    "description": "Latest Order Bongkar (unloading voucher) this container was placed on — stamped automatically when the bon is submitted.",
    "fieldname": "last_order_bongkar",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Order Bongkar",
    "options": "Order Bongkar",
    "read_only": 1
@@ -241,39 +238,15 @@
   },
   {
    "collapsible": 1,
-   "description": "Seal numbers recorded at survey / release (ISO tank 5-point).",
+   "description": "Riwayat nomor seal tiap kali tank keluar depo — dibaca langsung dari EIR-Out, tidak disimpan di master (jadi tidak bisa basi). Nomor seal diinput di EIR-Out saat tank dilepas.",
    "fieldname": "seals_section",
    "fieldtype": "Section Break",
    "label": "Seals"
   },
   {
-   "fieldname": "seal_manhole",
-   "fieldtype": "Data",
-   "label": "Manhole Seal"
-  },
-  {
-   "fieldname": "seal_airline",
-   "fieldtype": "Data",
-   "label": "Airline Seal"
-  },
-  {
-   "fieldname": "seal_bottom_outlet",
-   "fieldtype": "Data",
-   "label": "Bottom Outlet Seal"
-  },
-  {
-   "fieldname": "column_break_seal",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "seal_top_discharge",
-   "fieldtype": "Data",
-   "label": "Top Discharge Seal"
-  },
-  {
-   "fieldname": "seal_vapour_valve",
-   "fieldtype": "Data",
-   "label": "Vapour Valve Seal"
+   "fieldname": "seal_history_html",
+   "fieldtype": "HTML",
+   "label": "Riwayat Seal"
   },
   {
    "collapsible": 1,
@@ -329,7 +302,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-30 11:00:00.000000",
+ "modified": "2026-08-05 22:30:00.000000",
  "module": "Operations",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

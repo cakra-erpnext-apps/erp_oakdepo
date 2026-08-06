@@ -12,14 +12,13 @@ from frappe.boot import load_translations
 
 no_cache = 1
 
-# Only users carrying the "Depot PWA" role (assigned by the admin) — or System
-# Manager — may open the PWA. Everyone else is rejected at the page controller.
-PWA_ROLE = "Depot PWA"
-
-
+# NOTE (2026-08-05): the page used to require the "Depot PWA" role. That role was
+# removed with the rest of the custom role model, pending a redesign, so the only gate
+# left here is the session itself — any logged-in user may open the PWA. Reattach the
+# role check at :func:`_require_pwa_access` once the new roles exist; the individual
+# API endpoints keep enforcing their own DocPerms either way.
 def _require_pwa_access():
-	roles = set(frappe.get_roles())
-	if "System Manager" not in roles and PWA_ROLE not in roles:
+	if frappe.session.user == "Guest":
 		frappe.throw(
 			frappe._("Anda tidak punya akses Depot OAK. Hubungi admin."),
 			frappe.PermissionError,

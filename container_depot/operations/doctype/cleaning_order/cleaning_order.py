@@ -131,10 +131,22 @@ class CleaningOrder(Document):
 		if not self.date_of_issue:
 			self.date_of_issue = frappe.utils.today()
 
+	def on_update(self):
+		"""Keep the container's presence status in step from the moment the order exists.
+
+		A DRAFT cleaning is already work in progress, so the tank is not free to leave. The
+		status only moved at submit before — unlike M&R and Periodic Test, which recompute
+		on every save — so a container could read ``Available`` while an open cleaning sat
+		on it. Only the cheap recompute runs here; the cleaning_status / certification
+		mirroring stays on the submit path where it belongs.
+		"""
+		from container_depot.operations.container_status import recompute_availability
+
+		recompute_availability(self.container)
+
 	def on_submit(self):
 		"""Update container status when cleaning order is submitted. For a normal clean
-		this completes the tank (-> Available, parked in the Cleaning Bay). A submitted
-		Completed order IS the TANK OUT proof — Order Muat checks for it directly."""
+		this completes the tank (-> Available, parked in the Cleaning Bay)."""
 		self._propagate_to_container(log_always=True)
 
 	def on_update_after_submit(self):

@@ -12,11 +12,9 @@
  "report_name": "Order Billing Status",
  "report_type": "Script Report",
  "roles": [
-  {"role": "System Manager"},
-  {"role": "Container Depot"},
-  {"role": "Commercial"},
-  {"role": "Admin Ops"},
-  {"role": "Cashier"},
-  {"role": "Management"}
- ]
+  {
+   "role": "System Manager"
+  }
+ ],
+ "modified": "2026-08-05 23:45:00.000000"
 }

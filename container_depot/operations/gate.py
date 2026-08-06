@@ -12,11 +12,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
+from container_depot.operations.container_status import PRESENT, container_open_orders
 from container_depot.operations.user_branch import assert_in_user_branch, get_user_depots
-
-# A tank may gate out only when it is Available (present + every related order done).
-# Anything still In_Depot (open cleaning / repair / EIR) is not ready.
-_GATE_OUT_SOURCES = ("Available",)
 
 _LIST_FIELDS = [
 	"name", "gate_entry_id", "container_no", "status", "booking_code", "depot",
@@ -162,17 +159,26 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 			"already": True,
 		}
 
-	# Readiness — digital equivalent of "Kalmar matches tank vs Bon Muat".
-	if doc.status not in _GATE_OUT_SOURCES:
+	# Readiness — digital equivalent of "Kalmar matches tank vs Bon Muat". Two distinct
+	# refusals: the tank is not physically here, or work on it is still open. The second is
+	# read from the orders themselves rather than the cached status, and names them — an
+	# operator at the gate can then say what is missing instead of just "not ready".
+	if doc.status not in PRESENT:
 		frappe.throw(
-			_("Container {0} is not ready for gate-out (status {1}). Complete EIR-Out / cleaning / repair first.").format(
+			_("Container {0} tidak ada di depo (status {1}) — tidak bisa gate-out.").format(
 				doc.name, doc.status
 			)
 		)
+	open_orders = container_open_orders(doc.name)
+	if open_orders:
+		listed = ", ".join(f"{o['label']} {o['name']} ({o.get('status') or '-'})" for o in open_orders)
+		frappe.throw(
+			_("Container {0} masih punya order yang belum selesai — {1}.").format(doc.name, listed)
+		)
 
 	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is submitted
-	# clean (out_outcome = Ready To Load). The finished-cleaning requirement is already
-	# enforced when the Order Muat is created (order_muat._validate_cleaning_done).
+	# clean (out_outcome = Ready To Load). Unfinished work is already refused above
+	# (order_muat._validate_no_open_work applies the same rule when the bon is made).
 	if not frappe.db.exists(
 		"Inspection",
 		{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},
@@ -227,6 +233,20 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 			performed_by=performed_by,
 		)
 
+		# The bon is the reason the tank left — close it once its LAST tank is out, so a
+		# finished load stops counting as work-in-progress (the daily operations report
+		# filters `order_status NOT IN ('Completed', 'Hold')`).
+		order_completed = _complete_order_muat_if_done(order_muat)
+
+		# Same idea one level up: the customer's lift-on notice (Gate Out Plan) advances its
+		# "% Keluar" and closes at 100%, releasing this tank's target_lift_on stamp so the
+		# customer's NEXT notice can list it again.
+		from container_depot.operations.doctype.gate_out_plan.gate_out_plan import (
+			refresh_plans_for_container,
+		)
+
+		plans_fulfilled = refresh_plans_for_container(doc.name)
+
 		from container_depot.operations.notify import notify_gate_out
 
 		notify_gate_out(doc.container_no, gate_entry=gate_entry_name, depot=doc.depot, when=ts)
@@ -239,4 +259,157 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 		"status": "Gate_Out",
 		"gate_entry": gate_entry_name,
 		"gate_out_timestamp": str(ts),
+		"order_muat": order_muat,
+		"order_completed": order_completed,
+		"plans_fulfilled": plans_fulfilled,
 	}
+
+
+def _complete_order_muat_if_done(order_muat) -> bool:
+	"""Mark the bon ``Completed`` once every container on it has left the depot.
+
+	Called from inside :func:`mark_gate_out`'s savepoint. A bon may carry several tanks and
+	they leave one truck at a time, so completion is only correct when the LAST one is out —
+	otherwise the still-waiting tanks would lose the bon that lists them. Returns whether the
+	bon was closed by this call (False when it does not exist, is not submitted, was already
+	Completed/Hold, or still has tanks in the depot).
+	"""
+	if not order_muat:
+		return False
+	row = frappe.db.get_value(
+		"Order Muat", order_muat, ["docstatus", "order_status"], as_dict=True
+	)
+	if not row or row.docstatus != 1 or row.order_status in ("Completed", "Hold"):
+		return False
+	containers = frappe.get_all(
+		"Order Container Item",
+		filters={"parent": order_muat, "parenttype": "Order Muat"},
+		pluck="container",
+	)
+	containers = [c for c in containers if c]
+	if not containers:
+		return False
+	still_here = frappe.db.count(
+		"Container", {"name": ["in", containers], "status": ["!=", "Gate_Out"]}
+	)
+	if still_here:
+		return False
+	frappe.db.set_value("Order Muat", order_muat, "order_status", "Completed", update_modified=False)
+	return True
+
+
+# ---------------------------------------------------------------------------
+# SIAP KELUAR — the post-EIR-Out reminder worklist (ACC → gate-out).
+# ---------------------------------------------------------------------------
+def _last_gate_out_at(containers) -> dict:
+	"""``{container: datetime}`` of each tank's most recent "Gate Out" activity."""
+	out = {}
+	if not containers:
+		return out
+	for row in frappe.get_all(
+		"Container Activity",
+		filters={"container": ["in", containers], "activity_type": "Gate Out"},
+		fields=["container", "activity_time"],
+		order_by="activity_time asc",
+	):
+		if row.activity_time:
+			out[row.container] = row.activity_time  # ascending → last write wins
+	return out
+
+
+def list_ready_to_load(search=None, start=0, page_length=20) -> dict:
+	"""Tanks whose EIR-Out is submitted clean but that are still standing in the depot.
+
+	This is the reminder queue between the surveyor's EIR-Out and the physical exit: the
+	list is *derived*, never stored, so it cannot drift out of sync — a tank appears the
+	moment its EIR-Out is submitted ``Ready To Load`` and disappears the moment
+	:func:`mark_gate_out` moves it to ``Gate_Out``. Oldest wait first (it is a reminder,
+	not a feed). Branch-scoped like the rest of ess.*.
+
+	Two traps this filters out: a tank that already left (status ``Gate_Out``), and a
+	*stale* clean EIR-Out from an earlier visit — a tank that went out and came back in
+	would otherwise resurface here, so any EIR-Out older than the tank's last recorded
+	gate-out is dropped.
+	"""
+	depots = get_user_depots()
+	filters = {"inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"}
+	if depots is not None:
+		filters["depot"] = ["in", depots or [""]]
+	rows = frappe.get_all(
+		"Inspection",
+		filters=filters,
+		fields=[
+			"name", "inspection_id", "container", "container_no", "depot", "eir_date",
+			"referred_voucher", "truck_no", "driver", "shipper", "modified",
+		],
+		order_by="modified desc",
+		limit_page_length=0,
+	)
+	# One row per tank — the newest EIR-Out wins (a revised bon can leave two).
+	latest = {}
+	for r in rows:
+		if r.container and r.container not in latest:
+			latest[r.container] = r
+
+	present = {
+		c.name: c
+		for c in frappe.get_all(
+			"Container",
+			filters={"name": ["in", list(latest)] or [""], "status": ["in", list(PRESENT)]},
+			fields=["name", "container_no", "principal", "depot", "status"],
+		)
+	} if latest else {}
+	gated_out_at = _last_gate_out_at(list(present))
+
+	items = []
+	for container, r in latest.items():
+		c = present.get(container)
+		if not c:
+			continue
+		last_out = gated_out_at.get(container)
+		if last_out and r.modified and last_out > r.modified:
+			continue  # stale: the tank already left after this EIR-Out, and came back
+		bon = (
+			frappe.db.get_value(
+				"Order Muat",
+				r.referred_voucher,
+				["name", "order_status", "truck_plate", "driver_name", "driver_phone",
+				 "destination", "tanggal_muat", "shipper"],
+				as_dict=True,
+			)
+			if r.referred_voucher
+			else None
+		)
+		items.append({
+			"inspection": r.name,
+			"inspection_id": r.inspection_id,
+			"container": container,
+			"container_no": r.container_no or c.container_no,
+			"principal": c.principal,
+			"depot": r.depot or c.depot,
+			"eir_date": str(r.eir_date) if r.eir_date else None,
+			"ready_since": str(r.modified) if r.modified else None,
+			"order_muat": bon.name if bon else None,
+			"order_status": bon.order_status if bon else None,
+			"destination": bon.destination if bon else None,
+			"tanggal_muat": str(bon.tanggal_muat) if bon and bon.tanggal_muat else None,
+			"truck_no": (bon.truck_plate if bon else None) or r.truck_no,
+			"driver": (bon.driver_name if bon else None) or r.driver,
+			"driver_phone": bon.driver_phone if bon else None,
+			"shipper": r.shipper or (bon.shipper if bon else None),
+		})
+
+	search = (search or "").strip()
+	if search and search.lower() != "undefined":
+		needle = search.lower()
+		items = [
+			i for i in items
+			if needle in " ".join(
+				str(i.get(k) or "") for k in ("container_no", "order_muat", "truck_no", "driver", "inspection_id")
+			).lower()
+		]
+	items.sort(key=lambda i: i.get("ready_since") or "")  # longest wait first
+	total = len(items)
+	start = cint(start)
+	page_length = cint(page_length) or 20
+	return {"items": items[start : start + page_length], "total": total}

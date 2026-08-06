@@ -28,6 +28,18 @@ def prune_app_switcher(bootinfo):
 	bootinfo.app_data = [app for app in app_data if app.get("workspaces")]
 
 
+def expose_finance_switch(bootinfo):
+	"""Publish the finance master switch to the desk client.
+
+	Forms need it to decide whether to offer a billing button at all. Reading it from
+	boot rather than per-form keeps it to one query per session, and means a form can
+	never disagree with the server guard it is mirroring (container_depot.finance).
+	"""
+	from container_depot import finance
+
+	bootinfo.depot_finance_enabled = 1 if finance.is_enabled() else 0
+
+
 def warm_domain_restricted_caches():
 	"""Prevent a Frappe desk-boot crash on the Workspace Sidebar.
 

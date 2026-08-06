@@ -1,15 +1,13 @@
-"""Tests for document notifications, the Depot PWA role/perms, and the in-PWA
-notification bell endpoints."""
+"""Tests for document notifications and the in-PWA notification bell endpoints.
+
+The Depot PWA role/perm tests were dropped on 2026-08-05 with the custom role model
+(see container_depot/purge_roles.py) — there is no app-specific role to assert on until
+the new model is designed."""
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.install import (
-	PWA_ROLE,
-	ROLE_DOCTYPE_PERMISSIONS,
-	ensure_roles_exist,
-	setup_document_notifications,
-)
+from container_depot.install import setup_document_notifications
 
 
 class TestDocumentNotifications(FrappeTestCase):
@@ -33,19 +31,6 @@ class TestDocumentNotifications(FrappeTestCase):
 		before = frappe.db.count("Notification", {"is_standard": 0})
 		setup_document_notifications()
 		self.assertEqual(frappe.db.count("Notification", {"is_standard": 0}), before)
-
-
-class TestPwaRoleAndPerms(FrappeTestCase):
-	def test_pwa_role_created(self):
-		ensure_roles_exist()
-		self.assertTrue(frappe.db.exists("Role", PWA_ROLE))
-
-	def test_pwa_matrix_grants_pwa_menu_perms(self):
-		# The injection loop must have put Depot PWA into the permission matrix.
-		self.assertEqual(ROLE_DOCTYPE_PERMISSIONS["Inspection"][PWA_ROLE].get("create"), 1)
-		self.assertEqual(ROLE_DOCTYPE_PERMISSIONS["Inspection"][PWA_ROLE].get("submit"), 1)
-		self.assertEqual(ROLE_DOCTYPE_PERMISSIONS["Container"][PWA_ROLE].get("read"), 1)
-		self.assertEqual(ROLE_DOCTYPE_PERMISSIONS["Order Bongkar"][PWA_ROLE].get("read"), 1)
 
 
 class TestPwaNotificationEndpoints(FrappeTestCase):

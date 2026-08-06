@@ -184,7 +184,7 @@ function cells(d) {
 		{ label: labels.eirVoucher, value: d.referred_voucher },
 		{ label: labels.eirTruck, value: d.truck_no },
 		{ label: labels.eirDriver, value: d.driver },
-		{ label: labels.eirEmkl, value: d.emkl },
+		{ label: labels.eirEmkl, value: d.shipper },
 	]
 }
 function printUrl(d) {

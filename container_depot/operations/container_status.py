@@ -34,8 +34,8 @@ _DONE_REPAIR = ("Completed", "Cancelled", "Rejected")
 _DONE_PERIODIC = ("Completed", "Cancelled", "Rejected")
 
 
-def container_has_open_orders(container: str) -> bool:
-    """True if the container still has an unfinished processing order.
+def container_open_orders(container: str) -> list[dict]:
+    """Every unfinished order still holding the container, newest first.
 
     Open = a draft EIR-In (never submitted), a Cleaning Order not yet Completed/
     Cancelled, a Repair (M&R) Order not yet Completed/Cancelled/Rejected, or a
@@ -43,29 +43,47 @@ def container_has_open_orders(container: str) -> bool:
     that must finish before the tank may leave, so it keeps the tank In_Depot (and
     thus blocks a Tank Out booking + the gate-out). EIR-Out is deliberately excluded
     — it belongs to the outbound flow and must not drag a ready tank back to In_Depot.
+
+    This is the single source of truth for "is the tank ready to leave", and it answers
+    with the actual work rather than a yes/no: an operator told *which* order is holding
+    the tank can go and finish it, where "not ready" only tells them to go hunting.
+
+    Note what is NOT here: an order that was never raised. A tank that needed no cleaning
+    has no cleaning to finish, so nothing holds it — readiness is the ABSENCE of open work,
+    never the presence of a completed record.
+
+    Returns ``[{doctype, name, label, status}]`` — empty when the tank is free to go.
     """
     if not container:
-        return False
-    if frappe.db.exists(
-        "Inspection", {"container": container, "inspection_type": "EIR-In", "docstatus": 0}
+        return []
+    out = []
+    for row in frappe.get_all(
+        "Inspection",
+        filters={"container": container, "inspection_type": "EIR-In", "docstatus": 0},
+        fields=["name", "modified"],
+        order_by="modified desc",
     ):
-        return True
-    if frappe.db.exists(
-        "Cleaning Order",
-        {"container": container, "status": ["not in", _DONE_CLEANING], "docstatus": ["<", 2]},
+        out.append({"doctype": "Inspection", "name": row.name, "label": "EIR-In", "status": "Draft"})
+    for doctype, done, label in (
+        ("Cleaning Order", _DONE_CLEANING, "Cleaning"),
+        ("Repair Order", _DONE_REPAIR, "M&R"),
+        ("Periodic Test Order", _DONE_PERIODIC, "Periodic Test"),
     ):
-        return True
-    if frappe.db.exists(
-        "Repair Order",
-        {"container": container, "status": ["not in", _DONE_REPAIR], "docstatus": ["<", 2]},
-    ):
-        return True
-    if frappe.db.exists(
-        "Periodic Test Order",
-        {"container": container, "status": ["not in", _DONE_PERIODIC], "docstatus": ["<", 2]},
-    ):
-        return True
-    return False
+        for row in frappe.get_all(
+            doctype,
+            filters={"container": container, "status": ["not in", done], "docstatus": ["<", 2]},
+            fields=["name", "status"],
+            order_by="modified desc",
+        ):
+            out.append(
+                {"doctype": doctype, "name": row.name, "label": label, "status": row.status}
+            )
+    return out
+
+
+def container_has_open_orders(container: str) -> bool:
+    """True if the container still has an unfinished processing order."""
+    return bool(container_open_orders(container))
 
 
 def _set_status(container: str, status: str) -> None:
@@ -84,9 +102,17 @@ def _set_status(container: str, status: str) -> None:
 
 
 def mark_in_depot(container: str) -> None:
-    """Gate-in: the tank is now physically present (work still pending)."""
-    if container:
-        _set_status(container, IN_DEPOT)
+    """Gate-in: the tank is now physically present.
+
+    Present is not the same as busy. Parking every arrival on ``In_Depot`` and waiting for
+    an order to flip it left a tank that needed NO work stranded there forever — nothing
+    ever recomputed it, so a clean tank could never leave. So the arrival settles on the
+    computed state: In_Depot when something is already open, Available when nothing is.
+    An EIR/cleaning raised a moment later flips it back through its own hook.
+    """
+    if not container:
+        return
+    _set_status(container, IN_DEPOT if container_has_open_orders(container) else AVAILABLE)
 
 
 def mark_gate_out(container: str) -> None:

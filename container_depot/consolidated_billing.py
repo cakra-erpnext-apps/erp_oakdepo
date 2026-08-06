@@ -1,7 +1,7 @@
 """On-demand consolidated billing for postpaid (TOP) customers.
 
 A TOP customer's charges — TOP bookings, TOP survey orders, and their cleaning,
-M&R and storage — accrue *unbilled*. The depot triggers :func:`bill_customer`
+M&R, periodic tests and storage — accrue *unbilled*. The depot triggers :func:`bill_customer`
 (the **Generate Invoice** button on the *Order Billing Status* report: pick a
 customer + optional window) to sweep everything unbilled into draft Sales
 Invoices (PPN applied) and mark each source billed so re-runs never double-charge.
@@ -23,7 +23,7 @@ order and rollback + re-generate.
 
 Only **TOP** charges are swept. Bookings and Survey Orders carry a per-order
 ``payment_type`` — Cash ones settle at the transaction and are skipped here.
-Cleaning / M&R / Storage have no per-order payment type; they accrue at the
+Cleaning / M&R / Periodic Test / Storage have no per-order payment type; they accrue at the
 container-owner level and are only swept when the customer is postpaid
 (``_is_postpaid``), otherwise the monthly scheduler bills them and sweeping here
 too would double-charge.
@@ -42,7 +42,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, flt, getdate, today
 
-from container_depot import invoicing
+from container_depot import finance, invoicing
 from container_depot.monthly_invoicing import _active_contract, _days_in_depot, _is_postpaid
 from container_depot.pricing import CLEANING_ITEM, STORAGE_ITEM, resolve_tariff_rate
 
@@ -66,10 +66,14 @@ def _fallback_currency(customer):
 
 
 def _booking_lines(customer, lo, hi):
-	"""Unbilled (no ``sales_invoice``) submitted **TOP** bookings → lift-charge units.
+	"""Unbilled (no ``sales_invoice``) submitted **TOP** bookings → one unit per booking,
+	carrying every charge line the booking priced.
 
 	Cash bookings settle at the booking (they carry their own paid invoice), so only
-	``payment_type = TOP`` bookings accrue for consolidated billing."""
+	``payment_type = TOP`` bookings accrue for consolidated billing. A booking with no
+	charges bills nothing and is skipped — that is a deliberate free booking, not a gap to
+	fill from the tariff. (Before charges existed this re-derived a single lift rate from
+	the contract tariff, which could disagree with what the booking itself showed.)"""
 	rows = frappe.get_all(
 		"Container Booking",
 		filters={
@@ -79,19 +83,32 @@ def _booking_lines(customer, lo, hi):
 			"sales_invoice": ["is", "not set"],
 			"creation": ["between", [lo, hi]],
 		},
-		fields=["name", "contract", "lift_type", "direction", "currency"],
+		fields=["name", "currency"],
 	)
 	fallback = _fallback_currency(customer)
 	units = []
 	for r in rows:
-		item = r.lift_type or ("Lift Off" if r.direction == "Tank In" else "Lift On")
-		rate = resolve_tariff_rate(r.contract, item)
-		if not rate or rate <= 0:
+		charges = frappe.get_all(
+			"Container Booking Charge",
+			filters={"parent": r.name, "parenttype": "Container Booking"},
+			fields=["item", "item_name", "qty", "rate"],
+			order_by="idx asc",
+		)
+		lines = [
+			{
+				"item_code": c.item,
+				"description": f"Booking {r.name} · {c.item_name or c.item}",
+				"qty": c.qty or 1,
+				"rate": c.rate,
+			}
+			for c in charges
+			if c.rate and c.rate > 0
+		]
+		if not lines:
 			continue
-		qty = frappe.db.count("Container Booking Item", {"parent": r.name}) or 1
 		units.append({
 			"currency": r.currency or fallback,
-			"lines": [{"description": f"Booking {r.name} · {item} · {qty} ctr", "qty": qty, "rate": rate}],
+			"lines": lines,
 			"sources": [{"dt": "Container Booking", "name": r.name}],
 		})
 	return units
@@ -139,24 +156,52 @@ def _cleaning_lines(customer, lo, hi):
 	return units
 
 
-def _mr_lines(customer, lo, hi):
-	"""Completed, Unbilled Repair Orders — **one invoice line per used item**.
+# Work orders: a completed job carrying a table of used items, billed one invoice line per
+# item. M&R and the Periodic Test are the same thing to accounting — the tank is worked on,
+# parts and services are consumed, the owner is charged — and differ only in which work it
+# was. So they are billed by one function and told apart by a label and a party field.
+_WORK_ORDERS = (
+	{
+		"doctype": "Repair Order",
+		"child": "Repair Used Item",
+		# M&R records the tank's owner and always bills them.
+		"party_field": "principal",
+		"label": "M&R",
+	},
+	{
+		"doctype": "Periodic Test Order",
+		"child": "Periodic Used Item",
+		# The periodic test carries an explicit ``billed_to`` (defaulted to the owner in
+		# validate, but overridable), so the bill follows it rather than the owner.
+		"party_field": "billed_to",
+		"label": "Periodic Test",
+	},
+)
+
+
+# Both carry billing_status + a sales_invoice back-link, so _mark_billed / _unmark_billed
+# treat them as one kind rather than naming each doctype.
+_WORK_ORDER_DOCTYPES = frozenset(spec["doctype"] for spec in _WORK_ORDERS)
+
+
+def _work_order_lines(customer, lo, hi, spec):
+	"""Completed, Unbilled work orders of one kind — **one invoice line per used item**.
 
 	Billing item by item (rather than one lump "M&R RO-xxx" line) is what lets the invoice
 	charge labour: :func:`invoicing.create_draft_sales_invoice` stamps each line with the
 	manhour the customer's contract books for that ``item_code``, and ``apply_manhour_charge``
 	totals them once in the header. A lump line carries no item_code and would book zero
-	hours — which is exactly why the M&R itself no longer costs labour (see
+	hours — which is exactly why the order itself no longer costs labour (see
 	``RepairOrder.calculate_totals``).
 
-	Owner-rejected lines are excluded, the same rule the M&R's own total uses. A line whose
+	Owner-rejected lines are excluded, the same rule the order's own total uses. A line whose
 	part is free (rate 0) is still billed: it may carry nothing but labour.
 	"""
 	rows = frappe.get_all(
-		"Repair Order",
+		spec["doctype"],
 		filters={
 			"status": "Completed",
-			"principal": customer,
+			spec["party_field"]: customer,
 			"billing_status": "Unbilled",
 			"completion_date": ["between", [lo, hi]],
 		},
@@ -166,8 +211,8 @@ def _mr_lines(customer, lo, hi):
 	units = []
 	for r in rows:
 		used = frappe.get_all(
-			"Repair Used Item",
-			filters={"parent": r.name, "parenttype": "Repair Order"},
+			spec["child"],
+			filters={"parent": r.name, "parenttype": spec["doctype"]},
 			fields=["item", "item_name", "quantity", "item_rate", "currency", "decision"],
 			order_by="idx asc",
 		)
@@ -177,7 +222,7 @@ def _mr_lines(customer, lo, hi):
 				continue
 			lines.append({
 				"item_code": u.item,
-				"description": f"M&R {r.name} · {u.item_name or u.item}",
+				"description": f"{spec['label']} {r.name} · {u.item_name or u.item}",
 				"qty": flt(u.quantity) or 1,
 				"rate": flt(u.item_rate),
 			})
@@ -187,13 +232,23 @@ def _mr_lines(customer, lo, hi):
 			continue
 		units.append({
 			# An order can only be linked to ONE invoice (``_mark_billed`` writes a single
-			# sales_invoice), so a mixed-currency M&R is billed whole in the customer's
+			# sales_invoice), so a mixed-currency order is billed whole in the customer's
 			# currency rather than split across two invoices it could not both point at.
 			"currency": currencies.pop() if len(currencies) == 1 else fallback_ccy,
 			"lines": lines,
-			"sources": [{"dt": "Repair Order", "name": r.name}],
+			"sources": [{"dt": spec["doctype"], "name": r.name}],
 		})
 	return units
+
+
+def _mr_lines(customer, lo, hi):
+	"""Completed, Unbilled Repair Orders (see :func:`_work_order_lines`)."""
+	return _work_order_lines(customer, lo, hi, _WORK_ORDERS[0])
+
+
+def _periodic_lines(customer, lo, hi):
+	"""Completed, Unbilled Periodic Test Orders (see :func:`_work_order_lines`)."""
+	return _work_order_lines(customer, lo, hi, _WORK_ORDERS[1])
 
 
 def _survey_lines(customer, lo, hi):
@@ -266,7 +321,7 @@ def _mark_billed(dt, name, si):
 	"""Mark one swept order billed against its currency's Sales Invoice."""
 	if dt == "Container Booking":
 		frappe.db.set_value(dt, name, {"sales_invoice": si, "payment_status": "Invoiced"}, update_modified=False)
-	elif dt == "Repair Order":
+	elif dt in _WORK_ORDER_DOCTYPES:
 		frappe.db.set_value(dt, name, {"billing_status": "Client Billed", "sales_invoice": si}, update_modified=False)
 	elif dt == "Survey Order":
 		# Link the (draft) SI; the Sales Invoice → Survey Order bridge (hooks.doc_events)
@@ -283,7 +338,7 @@ def _unmark_billed(dt, name):
 		return
 	if dt == "Container Booking":
 		frappe.db.set_value(dt, name, {"sales_invoice": None, "payment_status": "Unpaid"}, update_modified=False)
-	elif dt == "Repair Order":
+	elif dt in _WORK_ORDER_DOCTYPES:
 		frappe.db.set_value(dt, name, {"billing_status": "Unbilled", "sales_invoice": None}, update_modified=False)
 	elif dt == "Survey Order":
 		frappe.db.set_value(dt, name, {"sales_invoice": None, "invoice_status": "Not Invoiced"}, update_modified=False)
@@ -293,7 +348,7 @@ def _unmark_billed(dt, name):
 
 @frappe.whitelist()
 def bill_customer(customer, from_date=None, to_date=None):
-	"""Sweep a customer's unbilled TOP bookings + surveys + cleaning + M&R + storage
+	"""Sweep a customer's unbilled TOP bookings + surveys + cleaning + M&R + periodic tests + storage
 	in ``[from_date, to_date]`` into draft Sales Invoices — **one per currency** (PPN
 	applied), each billed in its own currency, each stamped with a rollback manifest.
 
@@ -303,14 +358,22 @@ def bill_customer(customer, from_date=None, to_date=None):
 	"""
 	if not customer:
 		frappe.throw(_("Customer is required."))
+	finance.require_enabled(_("Generate Invoice"))
 	# Guarded entry point: creating receivables is limited to billing roles. Called
 	# from the Order Billing Status report's "Generate Invoice" button (whitelisted).
 	# Administrator / test runs bypass via frappe.only_for.
-	frappe.only_for(
-		["System Manager", "Container Depot", "Commercial", "Admin Ops", "Management", "Cashier"]
-	)
+	# The billing roles (Commercial / Admin Ops / Management / Cashier / Container Depot)
+	# were removed on 2026-08-05 pending a role redesign — until then only System Manager
+	# may raise invoices. Widen this list again with the new roles.
+	frappe.only_for(["System Manager"])
 	from_d = getdate(from_date) if from_date else getdate("2000-01-01")
 	to_d = getdate(to_date) if to_date else getdate(today())
+	# Never bill behind the date the depot started charging. Without this, a site that ran
+	# operations-only for months and then switched finance on would sweep the whole backlog
+	# into one invoice on the first click.
+	floor = finance.start_date()
+	if floor and from_d < floor:
+		from_d = floor
 	lo, hi = f"{from_d} 00:00:00", f"{to_d} 23:59:59"
 
 	units = []
@@ -322,7 +385,7 @@ def bill_customer(customer, from_date=None, to_date=None):
 	# Only sweep them for postpaid (TOP / Both) customers — a pure-Cash customer's are
 	# billed by the monthly scheduler, so sweeping here too would double-charge.
 	if _is_postpaid(customer):
-		for builder in (_cleaning_lines, _mr_lines):
+		for builder in (_cleaning_lines, _mr_lines, _periodic_lines):
 			units += builder(customer, lo, hi)
 		units += _storage_lines(customer, from_d, to_d)
 

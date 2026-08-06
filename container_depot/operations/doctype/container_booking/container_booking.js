@@ -1,10 +1,20 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
-// Tank In / Lift Off booking. Branch scopes the depot; Customer drives the payment
-// modes and resolves the active Price List server-side (its currency — USD / IDR —
-// drives the Lift Rate, no exchange rate); the operator only picks the Lift Service.
-// Principal (Tank Owner) scopes the container picker on each line.
+// Container booking. Direction is the operator's pick — Tank In = Lift Off (tank dropped
+// at the depot), Tank Out = Lift On (tank taken from it) — and drives the gates, the bon
+// type and the BKG-IN/BKG-OUT number. Branch scopes the depot; Customer drives the payment
+// modes and resolves the active Price List server-side (its currency — USD / IDR — formats
+// every charge, no exchange rate). Charges are a free table: any number of services from
+// the "Booking" Depot Service Menu, or none at all. Principal (Tank Owner) scopes the
+// container picker on each line.
+// Whether this site raises invoices at all (Depot Finance Settings, published at boot).
+// With finance off the depot runs operationally — charges are still priced and stored, but
+// nothing is billed — so the billing buttons are hidden rather than left to fail server-side.
+function _finance_on() {
+	return frappe.boot.depot_finance_enabled !== 0;
+}
+
 frappe.ui.form.on('Container Booking', {
 	onload(frm) {
 		frm.trigger('_set_queries');
@@ -14,6 +24,30 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_flag_open_conflicts');
+		frm.trigger('_apply_billing_lock');
+		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
+		// operator can get the booking right before it reaches the Cashier's queue.
+		if (
+			!frm.is_new() &&
+			_finance_on() &&
+			frm.doc.docstatus === 0 &&
+			frm.doc.booking_status === 'Draft' &&
+			frm.doc.charges_total > 0 &&
+			frm.doc.payment_type === 'Cash'
+		) {
+			frm.add_custom_button(__('Generate Invoice'), () => _confirm_generate_invoice(frm)).addClass(
+				'btn-primary'
+			);
+		}
+		// Pending Payment -> Draft. The way back while nothing has settled: voids the draft
+		// invoice and reopens the charges. Refused server-side once the invoice is submitted.
+		if (
+			!frm.is_new() &&
+			frm.doc.docstatus === 0 &&
+			['Pending Payment', 'Pending Confirmation'].includes(frm.doc.booking_status)
+		) {
+			frm.add_custom_button(__('Rollback ke Draft'), () => _confirm_rollback(frm));
+		}
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
 		if (!frm.is_new() && frm.doc.booking_status === 'Confirmed') {
@@ -24,30 +58,44 @@ frappe.ui.form.on('Container Booking', {
 		if (!frm.is_new() && frm.doc.docstatus === 1) {
 			frm.add_custom_button(__('Revert to Draft'), () => _confirm_revert(frm));
 		}
-		// If the linked Sales Invoice was cancelled, the booking is stuck unbilled —
-		// offer to generate a fresh draft invoice for THIS booking and re-link it
-		// (no need to amend the dead invoice, which the booking wouldn't follow).
+		// A confirmed booking that bills something but has no live invoice is stuck
+		// unbilled — its invoice was cancelled (which unlinks it, see
+		// resync_booking_on_invoice_cancel). Offer a fresh draft invoice rather than
+		// amending the dead one, which the booking would not follow.
 		if (
 			!frm.is_new() &&
+			_finance_on() &&
 			frm.doc.docstatus === 1 &&
 			frm.doc.booking_status !== 'Cancelled' &&
-			frm.doc.sales_invoice
+			!frm.doc.sales_invoice &&
+			frm.doc.charges_total > 0
 		) {
-			frappe.db.get_value('Sales Invoice', frm.doc.sales_invoice, 'docstatus', (r) => {
-				if (r && cint(r.docstatus) === 2) {
-					frm.add_custom_button(__('Regenerate Invoice'), () => _confirm_regenerate(frm)).addClass(
-						'btn-primary'
-					);
-				}
-			});
+			frm.add_custom_button(__('Regenerate Invoice'), () => _confirm_regenerate(frm)).addClass(
+				'btn-primary'
+			);
+		}
+	},
+	// Mirror the server lock in the UI: outside Draft the billing facts are frozen, so
+	// showing them as editable would only let the operator type into a field whose save
+	// is about to be refused. Everything else on the booking stays editable.
+	_apply_billing_lock(frm) {
+		const locked = frm.doc.docstatus === 0 && !['Draft', 'Cancelled'].includes(frm.doc.booking_status);
+		frm.set_df_property('charges', 'read_only', locked ? 1 : 0);
+		frm.set_df_property('customer', 'read_only', locked ? 1 : 0);
+		if (locked) {
+			frm.dashboard.add_comment(
+				__('Charges terkunci karena invoice sudah dibuat. Tekan Rollback ke Draft untuk mengubahnya.'),
+				'blue',
+				true
+			);
 		}
 	},
 	_flag_open_conflicts(frm) {
 		// Draft-time heads-up in a single intro banner for the two things a draft can't
 		// surface until Submit (codes / status gates only run there):
 		//   1. the container is already held by another active booking, and
-		//   2. its status won't pass the chosen Lift service's gate (Lift Off wants a tank
-		//      NOT in the depot; Lift On wants one that is Available).
+		//   2. its status won't pass the chosen Direction's gate (Tank In / Lift Off wants a
+		//      tank NOT in the depot; Tank Out / Lift On wants one that is Available).
 		// Both call the SAME server helpers that back the actual submit blocks, so the
 		// warning can never disagree with what Submit will do. Non-blocking.
 		if (frm.doc.docstatus !== 0) {
@@ -65,11 +113,7 @@ frappe.ui.form.on('Container Booking', {
 		const base = 'container_depot.operations.doctype.container_booking.container_booking';
 		Promise.all([
 			frappe.xcall(`${base}.open_booking_conflicts`, { booking: frm.doc.name, containers: payload }),
-			// lift_item drives the direction the same way the server does, so the status
-			// warning is right the instant a Lift service is picked — before the save that
-			// would sync frm.doc.direction.
 			frappe.xcall(`${base}.status_direction_warnings`, {
-				lift_item: frm.doc.lift_item || null,
 				direction: frm.doc.direction || null,
 				containers: payload,
 			}),
@@ -82,8 +126,19 @@ frappe.ui.form.on('Container Booking', {
 				(mismatches || []).forEach((m) => {
 					if (m.direction === 'Tank In') {
 						lines.push(__('Container {0} is already in the depot (status {1}) — a Tank In (Lift Off) will be refused.', [m.container_no, m.status]));
+					} else if ((m.open_orders || []).length) {
+						// Name the work holding the tank. "Not ready" alone sends the operator
+						// hunting; the order number is what they can actually go and finish.
+						const orders = m.open_orders
+							.map((o) => `${o.label} <b>${frappe.utils.escape_html(o.name)}</b> (${frappe.utils.escape_html(o.status || '-')})`)
+							.join(', ');
+						lines.push(
+							__('Container {0} masih punya order belum selesai: {1}', [m.container_no, orders])
+						);
 					} else {
-						lines.push(__('Container {0} is not ready to leave (status {1}) — a Tank Out (Lift On) needs it Available.', [m.container_no, m.status]));
+						lines.push(
+							__('Container {0} tidak ada di depo (status {1}) — booking keluar akan ditolak.', [m.container_no, m.status])
+						);
 					}
 				});
 				if (!lines.length) {
@@ -146,12 +201,14 @@ frappe.ui.form.on('Container Booking', {
 								const row = frm.add_child('items');
 								row.container_no = ln.container_no;
 								row.condition = ln.condition;
+								// add_child doesn't fire items_add — default the EMKL here too.
+								row.shipper = frm.doc.customer;
 								if (ln.container) row.container = ln.container;
 								existing.add(ln.container_no);
 								added++;
 							});
 							frm.refresh_field('items');
-							frm.trigger('_recompute_lift_amount');
+							frm.trigger('_sync_charge_qty');
 							frm.trigger('_flag_open_conflicts');
 							d.hide();
 							let msg = __('Added {0} row(s).', [added]);
@@ -204,10 +261,19 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_set_queries');
 	},
 	customer(frm) {
-		// New customer -> reset the lift pick + rate; the active price list / currency is
-		// re-resolved server-side on save. Re-derive the allowed payment modes.
-		frm.set_value('lift_item', null);
-		frm.set_value('lift_rate', 0);
+		// A new customer means a different rate card. Charges are cleared rather than
+		// re-priced so one booking can never end up mixing two price lists — the operator
+		// picks the services again from the new customer's list.
+		const had = (frm.doc.charges || []).length;
+		if (had) {
+			frm.clear_table('charges');
+			frm.refresh_field('charges');
+			frappe.show_alert({
+				message: __('Charges direset karena Customer diganti — pilih ulang service-nya.'),
+				indicator: 'orange',
+			});
+		}
+		frm.set_value('charges_total', 0);
 		frm.set_value('currency', null);
 		frm.trigger('_set_queries');
 		frm.trigger('_apply_payment_modes');
@@ -219,17 +285,18 @@ frappe.ui.form.on('Container Booking', {
 		});
 		frm.trigger('_set_queries');
 	},
-	lift_item(frm) {
-		frm.trigger('_fetch_lift_rate');
-		// Direction is derived from the Lift service, so the status warning changes with it.
+	direction(frm) {
+		// Direction decides which status gate the containers face, so the draft warning
+		// changes with it.
 		frm.trigger('_flag_open_conflicts');
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));
 		frm.set_query('container', 'items', () => ({ filters: { principal: frm.doc.principal || '' } }));
-		// Lift services are scoped to the customer's active price list (resolved server-side).
-		frm.set_query('lift_item', () => ({
-			query: 'container_depot.operations.doctype.container_booking.container_booking.lift_item_query',
+		// Charge services: the "Booking" Depot Service Menu ∩ the customer's active price
+		// list (both resolved server-side).
+		frm.set_query('item', 'charges', () => ({
+			query: 'container_depot.operations.doctype.container_booking.container_booking.charge_item_query',
 			filters: { customer: frm.doc.customer },
 		}));
 	},
@@ -255,37 +322,96 @@ frappe.ui.form.on('Container Booking', {
 			},
 		});
 	},
-	_fetch_lift_rate(frm) {
-		if (!frm.doc.customer || !frm.doc.lift_item) { frm.set_value('lift_rate', 0); return; }
-		frappe.call({
-			method: 'container_depot.operations.doctype.container_booking.container_booking.lift_rate_for',
-			args: { customer: frm.doc.customer, item: frm.doc.lift_item },
-			callback(r) {
-				const d = r.message || {};
-				// Set currency first so Lift Rate formats in the price-list currency (USD/IDR).
-				if (d.currency) frm.set_value('currency', d.currency);
-				frm.set_value('lift_rate', d.rate || 0);
-				frm.trigger('_recompute_lift_amount');
-			},
+	// Charges total = Σ amount. Shown live so the operator sees it move as rows and
+	// containers change, without waiting for a save.
+	_recompute_charges(frm) {
+		let total = 0;
+		(frm.doc.charges || []).forEach((row) => {
+			const amount = (row.qty || 0) * (row.rate || 0);
+			if (amount !== row.amount) frappe.model.set_value(row.doctype, row.name, 'amount', amount);
+			total += amount;
+		});
+		frm.set_value('charges_total', total);
+	},
+	// A charge line's qty defaults to the container count (the lift is billed per
+	// container), so adding/removing containers keeps untouched rows in step. A row whose
+	// qty the operator already set to something else is left alone.
+	_sync_charge_qty(frm) {
+		const count = (frm.doc.items || []).length;
+		if (!count) return;
+		(frm.doc.charges || []).forEach((row) => {
+			if (!row._qty_touched) frappe.model.set_value(row.doctype, row.name, 'qty', count);
 		});
 	},
-	// Qty = number of containers on the booking; the lift charge is billed per
-	// container, so Lift Amount = Lift Rate × Qty (mirrors the Sales Invoice). Shown
-	// live so the operator sees the total update as containers are added/removed.
-	_recompute_lift_amount(frm) {
-		const qty = (frm.doc.items || []).length;
-		frm.set_value('lift_qty', qty);
-		frm.set_value('lift_amount', (frm.doc.lift_rate || 0) * qty);
-	},
-	// Grid row add / remove events fire on the PARENT form — recompute Qty / Lift
-	// Amount as container lines are added or removed.
-	items_add(frm) {
-		frm.trigger('_recompute_lift_amount');
+	// Grid row add / remove events fire on the PARENT form.
+	items_add(frm, cdt, cdn) {
+		// EMKL / Shipper defaults to the booking's Customer so the common case (one
+		// transporter for the whole booking) costs no typing; the operator overrides the
+		// row when a booking is split across several EMKL. Any row left blank is filled
+		// server-side on save (see _default_row_shipper).
+		if (frm.doc.customer) frappe.model.set_value(cdt, cdn, 'shipper', frm.doc.customer);
+		frm.trigger('_sync_charge_qty');
 	},
 	items_remove(frm) {
-		frm.trigger('_recompute_lift_amount');
+		frm.trigger('_sync_charge_qty');
 		// A removed row may have cleared the last conflict — re-check.
 		frm.trigger('_flag_open_conflicts');
+	},
+	charges_add(frm, cdt, cdn) {
+		// The picker is scoped to the customer's price list, so a charge without a customer
+		// has nothing to choose from — say so instead of leaving an empty dropdown.
+		if (!frm.doc.customer) {
+			frappe.show_alert({
+				message: __('Pilih Customer dulu — service difilter ke price list customer.'),
+				indicator: 'orange',
+			});
+		}
+		// New charge line starts at the container count — the dominant case is a per-container
+		// lift charge. Overwrite it by hand for a one-off fee.
+		const count = (frm.doc.items || []).length;
+		if (count) frappe.model.set_value(cdt, cdn, 'qty', count);
+	},
+	charges_remove(frm) {
+		frm.trigger('_recompute_charges');
+	},
+});
+
+// Live pricing for a charge line: the rate seeds from the customer's active price list
+// the moment a Service is picked, so the operator sees the money before saving. Seeded
+// once — an edited rate is never re-applied (same rule the server enforces).
+function _fetch_charge_rate(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (!frm.doc.customer || !row.item) return;
+	frappe.call({
+		method: 'container_depot.operations.doctype.container_booking.container_booking.charge_pricing',
+		args: { customer: frm.doc.customer, item: row.item },
+		callback(r) {
+			const d = r.message || {};
+			// Currency first so the rate formats in the price-list currency (USD / IDR).
+			if (d.currency) {
+				frm.set_value('currency', d.currency);
+				frappe.model.set_value(cdt, cdn, 'currency', d.currency);
+			}
+			frappe.model.set_value(cdt, cdn, 'item_name', d.item_name || row.item);
+			frappe.model.set_value(cdt, cdn, 'rate', d.rate || 0);
+		},
+	});
+}
+
+frappe.ui.form.on('Container Booking Charge', {
+	item(frm, cdt, cdn) {
+		// A different service means a different price — pull the new one in rather than
+		// keep the old, which would silently bill the previous service's rate. Whatever
+		// lands here is editable afterwards, 0 included.
+		_fetch_charge_rate(frm, cdt, cdn);
+	},
+	qty(frm, cdt, cdn) {
+		// Mark the row as hand-set so adding containers stops overwriting its qty.
+		locals[cdt][cdn]._qty_touched = true;
+		frm.trigger('_recompute_charges');
+	},
+	rate(frm) {
+		frm.trigger('_recompute_charges');
 	},
 });
 
@@ -293,7 +419,6 @@ frappe.ui.form.on('Container Booking', {
 frappe.ui.form.on('Container Booking Item', {
 	container(frm, cdt, cdn) {
 		_reject_duplicate_container(frm, cdt, cdn, 'container');
-		frm.trigger('_recompute_lift_amount');
 		frm.trigger('_flag_open_conflicts');
 	},
 	container_no(frm, cdt, cdn) {
@@ -335,6 +460,52 @@ function _confirm_void(frm) {
 				freeze: true,
 				freeze_message: __('Cancelling …'),
 				callback: () => frm.reload_doc(),
+			});
+		}
+	);
+}
+
+function _confirm_generate_invoice(frm) {
+	frappe.confirm(
+		__(
+			'Buat Sales Invoice untuk booking ini sebesar {0}?<br><br>Setelah ini charges dan customer terkunci — gunakan Rollback ke Draft kalau masih perlu diubah.',
+			[format_currency(frm.doc.charges_total, frm.doc.currency)]
+		),
+		() => {
+			frappe.call({
+				method: 'container_depot.operations.doctype.container_booking.container_booking.generate_invoice',
+				args: { booking: frm.doc.name },
+				freeze: true,
+				freeze_message: __('Membuat invoice …'),
+				callback(r) {
+					frm.reload_doc();
+					if (r.message) {
+						frappe.show_alert({
+							message: __('Draft invoice {0} dibuat.', [r.message.sales_invoice]),
+							indicator: 'green',
+						});
+					}
+				},
+			});
+		}
+	);
+}
+
+function _confirm_rollback(frm) {
+	frappe.confirm(
+		__(
+			'Kembalikan booking ini ke Draft? Sales Invoice draft-nya akan dibatalkan dan charges bisa diedit lagi.'
+		),
+		() => {
+			frappe.call({
+				method: 'container_depot.operations.doctype.container_booking.container_booking.rollback_to_draft',
+				args: { booking: frm.doc.name },
+				freeze: true,
+				freeze_message: __('Mengembalikan ke Draft …'),
+				callback() {
+					frm.reload_doc();
+					frappe.show_alert({ message: __('Booking kembali ke Draft.'), indicator: 'orange' });
+				},
 			});
 		}
 	);
@@ -386,6 +557,9 @@ const MAX_CONTAINERS_PER_ORDER = 2;
 const BONGKAR_DETAIL_FIELDS = [
 	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'tanggal_bongkar', 'remarks',
 ];
+// A Tank Out voucher inherits only the vehicle trio + R/O from the line. Condition, cargo
+// and Tgl. Bongkar describe what was DROPPED OFF — they say nothing about a pick-up.
+const MUAT_DETAIL_FIELDS = ['truck_plate', 'driver', 'driver_phone', 'ro', 'remarks'];
 
 function open_generate_dialog(frm) {
 	frappe.call({
@@ -403,8 +577,18 @@ function open_generate_dialog(frm) {
 			pending.forEach(p => { by_value[p.container_no || p.booking_code] = p; });
 			let last_first = null;
 
+			// The server picks the bon type from the Booking Code's direction (Tank In →
+			// Order Bongkar, Tank Out → Order Muat). This dialog used to ask Tank In's
+			// questions either way: it announced "Order Bongkar" on an outbound booking and
+			// sent drop-off keys (ex_vessel / tanggal_bongkar / `driver`), so the Order Muat
+			// it produced came out with no angkutan, no destination, no Tgl. Muat and — since
+			// Muat reads `driver_name` — no driver either. Each direction now asks for what
+			// its own bon actually carries.
+			const out = frm.doc.direction === 'Tank Out';
+			const detail_fields = out ? MUAT_DETAIL_FIELDS : BONGKAR_DETAIL_FIELDS;
+
 			const d = new frappe.ui.Dialog({
-				title: __('Generate Order Bongkar'),
+				title: out ? __('Generate Order Muat') : __('Generate Order Bongkar'),
 				size: 'large',
 				fields: [
 					{
@@ -427,29 +611,39 @@ function open_generate_dialog(frm) {
 							const first = picked[0];
 							if (first && first !== last_first) {
 								last_first = first;
-								_fill_bongkar_detail(d, by_value[first]);
+								_fill_line_detail(d, by_value[first], detail_fields, out);
 							}
 						},
 					},
 					{ fieldtype: 'Section Break', label: __('Detail (auto-isi dari container pertama)') },
-					// Required set mirrors the PWA gate's Tank In form (GateEntry.vue
-					// vehicleFields): truck/driver/phone/condition identify the truck on the
-					// bon, so a voucher without them is not usable at the gate. The two paths
-					// generate the same document and must not disagree on what is mandatory.
-					{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
-					{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
-					// Estimation carried from the booking line (auto-filled, written back to the row) — hidden here.
-					{ fieldname: 'tanggal_bongkar', fieldtype: 'Date', label: __('Estimation Tanggal Bongkar'), hidden: 1 },
-					// Actual unload date for the bon; defaults to the estimation above.
-					{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
+					// Required set mirrors the PWA gate form (GateEntry.vue vehicleFields):
+					// truck/driver/phone identify the truck on the bon, so a voucher without
+					// them is not usable at the gate. The two paths generate the same document
+					// and must not disagree on what is mandatory.
+					...(out
+						? [
+							{ fieldname: 'destination', fieldtype: 'Data', label: __('Destination') },
+							{ fieldname: 'tanggal_muat', fieldtype: 'Date', label: __('Tgl. Muat'), default: frappe.datetime.get_today() },
+						]
+						: [
+							{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
+							{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
+							// Estimation carried from the booking line (auto-filled, written back to the row) — hidden here.
+							{ fieldname: 'tanggal_bongkar', fieldtype: 'Date', label: __('Estimation Tanggal Bongkar'), hidden: 1 },
+							// Actual unload date for the bon; defaults to the estimation above.
+							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
+						]),
 					{ fieldtype: 'Column Break' },
 					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('Truck Number'), reqd: 1 },
-					{ fieldname: 'driver', fieldtype: 'Data', label: __('Name Driver'), reqd: 1 },
-					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('No. Driver'), reqd: 1 },
-					{ fieldname: 'ro', fieldtype: 'Data', label: __('R/O') },
+					{ fieldname: 'driver', fieldtype: 'Data', label: __('Driver'), reqd: 1 },
+					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('No. HP Driver'), reqd: 1 },
+					{ fieldname: 'ro', fieldtype: 'Data', label: __('RO') },
 					{ fieldtype: 'Section Break', label: __('Order') },
-					{ fieldname: 'shipper', fieldtype: 'Link', label: __('Shipper'), options: 'Customer', default: frm.doc.customer },
-					{ fieldname: 'ex_vessel', fieldtype: 'Data', label: __('Ex Vessel') },
+					// One party under three names — the hauler. Tank Out used to ask for it twice
+					// (a free-text "Angkutan" beside this link), so the same company could land
+					// in two places with nothing tying them together.
+					{ fieldname: 'shipper', fieldtype: 'Link', label: __('Shipper / Angkutan / EMKL'), options: 'Customer', default: frm.doc.customer },
+					...(out ? [] : [{ fieldname: 'ex_vessel', fieldtype: 'Data', label: __('Ex Vessel') }]),
 					{ fieldname: 'remarks', fieldtype: 'Small Text', label: __('Remarks') },
 				],
 				primary_action_label: __('Generate'),
@@ -461,12 +655,31 @@ function open_generate_dialog(frm) {
 					}
 					// Translate the picked container numbers back to their Booking Codes.
 					const codes = picked.map(v => (by_value[v] || {}).booking_code).filter(Boolean);
-					const vehicle_data = {
-						shipper: values.shipper,
-						ex_vessel: values.ex_vessel,
-						tanggal_bongkar_actual: values.tanggal_bongkar_actual,
-					};
-					BONGKAR_DETAIL_FIELDS.forEach((f) => { vehicle_data[f] = values[f]; });
+					let vehicle_data;
+					if (out) {
+						vehicle_data = {
+							shipper: values.shipper,
+							destination: values.destination,
+							tanggal_muat: values.tanggal_muat,
+							truck_plate: values.truck_plate,
+							// Order Muat's field is driver_name; the dialog asks it as `driver`
+							// so the booking line's own `driver` can auto-fill it.
+							driver_name: values.driver,
+							driver_phone: values.driver_phone,
+							ro: values.ro,
+							// Muat stores a remark PER container row, keyed by booking code.
+							remarks: values.remarks
+								? Object.fromEntries(codes.map((c) => [c, values.remarks]))
+								: null,
+						};
+					} else {
+						vehicle_data = {
+							shipper: values.shipper,
+							ex_vessel: values.ex_vessel,
+							tanggal_bongkar_actual: values.tanggal_bongkar_actual,
+						};
+						BONGKAR_DETAIL_FIELDS.forEach((f) => { vehicle_data[f] = values[f]; });
+					}
 					submit_generation(frm, d, codes, vehicle_data);
 				},
 			});
@@ -475,14 +688,15 @@ function open_generate_dialog(frm) {
 	});
 }
 
-function _fill_bongkar_detail(d, p) {
+function _fill_line_detail(d, p, fields, out) {
 	// Copy the booking line's detail into the voucher's shared fields.
 	if (!p) return;
-	BONGKAR_DETAIL_FIELDS.forEach((f) => {
+	fields.forEach((f) => {
 		if (p[f] != null && p[f] !== '') d.set_value(f, p[f]);
 	});
-	// Default the actual unload date from the line's estimation Tgl. Bongkar.
-	if (p.tanggal_bongkar) d.set_value('tanggal_bongkar_actual', p.tanggal_bongkar);
+	// Tank In only: default the actual unload date from the line's estimation Tgl. Bongkar.
+	// A pick-up has no such estimate on the line — Tgl. Muat defaults to today instead.
+	if (!out && p.tanggal_bongkar) d.set_value('tanggal_bongkar_actual', p.tanggal_bongkar);
 }
 
 function submit_generation(frm, dialog, codes, vehicle_data) {

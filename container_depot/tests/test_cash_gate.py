@@ -18,8 +18,10 @@ from container_depot.operations.doctype.container_booking.container_booking impo
 	revert_booking_to_draft,
 	sync_bookings_for_invoice,
 )
+from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_container_booking import (
+	_bill,
 	_cleanup_customer_world,
 	_make_active_contract,
 )
@@ -51,6 +53,7 @@ def _ensure_test_depot() -> str:
 
 class TestCashAutoApproveAndGate(FrappeTestCase):
 	def setUp(self):
+		require_finance(self)
 		frappe.set_user("Administrator")
 		_ensure_test_depot()
 		self.customer = ensure_test_customer("CashGate Customer")
@@ -62,15 +65,21 @@ class TestCashAutoApproveAndGate(FrappeTestCase):
 		frappe.db.rollback()
 
 	def _draft_cash_booking(self):
-		return frappe.get_doc({
+		"""A Cash booking already taken through Generate Invoice — i.e. sitting at Pending
+		Payment with a draft invoice, which is where the Cashier picks it up."""
+		b = frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",
 			"customer": self.customer,
 			"contract": self.contract,
-			"booking_status": "Pending Payment",
 			"do_reference": "DO-CASHGATE",
+			# A charge is what makes this a Cash booking with something to collect — a
+			# booking that bills nothing raises no invoice and is never payment-blocked.
+			"charges": [{"item": "Lift Off"}],
 			"items": [{"container_no": "CASHGATE001"}],
 		}).insert(ignore_permissions=True)
+		_bill(b)
+		return b
 
 	def _pay(self, si):
 		frappe.db.set_value("Sales Invoice", si, {"docstatus": 1, "status": "Paid", "outstanding_amount": 0})

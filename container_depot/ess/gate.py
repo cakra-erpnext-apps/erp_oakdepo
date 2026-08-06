@@ -26,6 +26,17 @@ def gate_detail(name=None):
 	return gate.get_gate_detail(name)
 
 
+@frappe.whitelist(methods=["GET"])
+def gate_ready(search=None, start=0, page_length=20):
+	"""GET /api/v1/ess/gate-ready — "Siap Keluar" worklist: tanks with a clean submitted
+	EIR-Out that are still in the depot, waiting for the ACC that releases them.
+
+	Derived from the EIRs themselves (no stored queue), branch-scoped in
+	``gate.list_ready_to_load``."""
+	_require_authenticated_user()
+	return gate.list_ready_to_load(search=search, start=start, page_length=page_length)
+
+
 @frappe.whitelist(methods=["POST"])
 def gate_out(container=None, gate_entry=None):
 	"""POST /api/v1/ess/gate-out — complete gate-out / load-complete for a tank.

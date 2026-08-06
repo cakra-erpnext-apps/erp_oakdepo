@@ -728,6 +728,30 @@ def _build_photo_rows(photos, items):
 	return rows
 
 
+def _build_seal_rows(seals):
+	"""Map the EIR-Out seal payload to Inspection Seal rows.
+
+	Accepts either bare strings (``["ABC123", "DEF456"]``) or dicts
+	(``[{"seal_no": "ABC123", "remarks": "top hatch"}]``) — the PWA sends the second,
+	an integration might reasonably send the first. Blank numbers are dropped rather
+	than saved as empty rows, and duplicates within one EIR are collapsed: the same
+	physical seal cannot be fitted twice, so a repeat is a double-tap, not a fact.
+	"""
+	rows = []
+	seen = set()
+	for seal in seals:
+		if isinstance(seal, str):
+			seal = {"seal_no": seal}
+		if not isinstance(seal, dict):
+			continue
+		seal_no = (seal.get("seal_no") or "").strip()
+		if not seal_no or seal_no.upper() in seen:
+			continue
+		seen.add(seal_no.upper())
+		rows.append({"seal_no": seal_no, "remarks": (seal.get("remarks") or "").strip() or None})
+	return rows
+
+
 def create_eir(
 	inspection_type: str,
 	container: str,
@@ -737,7 +761,6 @@ def create_eir(
 	order_doctype: str | None = None,
 	vessel: str | None = None,
 	truck_no: str | None = None,
-	emkl: str | None = None,
 	remarks: str | None = None,
 	depot: str | None = None,
 	signature: str | None = None,
@@ -749,10 +772,6 @@ def create_eir(
 	create_repair_order=None,
 	lines=None,
 	photos=None,
-	exterior_condition=None,
-	exterior_remark=None,
-	seals_intact=None,
-	seal_remark=None,
 	submit=False,
 ) -> dict:
 	"""Build an Inspection (EIR) from a checklist payload.
@@ -789,7 +808,6 @@ def create_eir(
 	doc.tank_status = tank_status
 	doc.vessel = vessel
 	doc.truck_no = truck_no
-	doc.emkl = emkl
 	doc.remarks = remarks
 	doc.depot = depot
 	doc.inspector = frappe.session.user
@@ -808,15 +826,6 @@ def create_eir(
 	if order_ref:
 		doc.order_doctype = order_doctype or "Order Bongkar"
 		doc.order_ref = order_ref
-	# EIR-Out verification fields (only meaningful for EIR-Out; harmless otherwise).
-	if exterior_condition is not None:
-		doc.exterior_condition = exterior_condition or None
-	if exterior_remark is not None:
-		doc.exterior_remark = exterior_remark or None
-	if seals_intact is not None:
-		doc.seals_intact = 1 if _as_bool(seals_intact) else 0
-	if seal_remark is not None:
-		doc.seal_remark = seal_remark or None
 	doc.set("damage_log", damage_rows)
 	doc.set("item_photos", photo_rows)
 
@@ -887,7 +896,6 @@ def _draft_payload(doc, header: dict) -> dict:
 	header["driver"] = doc.driver
 	header["driver_phone"] = doc.driver_phone
 	header["shipper"] = doc.shipper
-	header["emkl"] = doc.emkl
 	header["doc_remarks"] = doc.remarks
 	header["inspector_signature"] = doc.inspector_signature
 	# Work-timing gate: the PWA locks the form until the operator presses "Mulai"
@@ -965,17 +973,15 @@ def open_draft(container=None, container_no=None, inspection_type="EIR-In") -> d
 
 
 def open_eir_out(inspection: str) -> dict:
-	"""Open a draft EIR-Out for editing (worklist → form) with its EIR-In comparison plus
-	the saved EIR-Out verification fields."""
+	"""Open a draft EIR-Out for editing (worklist → form) with its EIR-In comparison."""
 	payload = open_draft_by_name(inspection)
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.inspection_type != "EIR-Out":
 		frappe.throw(_("{0} is not an EIR-Out.").format(inspection))
 	payload["reference"] = get_eir_out_reference(doc)
-	payload["exterior_condition"] = doc.get("exterior_condition")
-	payload["exterior_remark"] = doc.get("exterior_remark")
-	payload["seals_intact"] = int(bool(doc.get("seals_intact")))
-	payload["seal_remark"] = doc.get("seal_remark")
+	payload["seals"] = [
+		{"seal_no": s.seal_no, "remarks": s.remarks} for s in (doc.get("out_seals") or [])
+	]
 	return payload
 
 
@@ -1010,7 +1016,6 @@ def save_draft(
 	tank_status: str | None = None,
 	vessel: str | None = None,
 	truck_no: str | None = None,
-	emkl: str | None = None,
 	remarks: str | None = None,
 	signature: str | None = None,
 	referred_voucher: str | None = None,
@@ -1021,10 +1026,7 @@ def save_draft(
 	create_repair_order=None,
 	lines=None,
 	photos=None,
-	exterior_condition=None,
-	exterior_remark=None,
-	seals_intact=None,
-	seal_remark=None,
+	seals=None,
 	submit=False,
 ) -> dict:
 	"""Update an existing draft EIR — the PWA auto-save (and finalize) action.
@@ -1054,7 +1056,6 @@ def save_draft(
 		doc.inspection_type = inspection_type
 	doc.tank_status = tank_status
 	doc.vessel = vessel  # legacy free-text; ex_vessel now comes from the Container master
-	doc.emkl = emkl
 	doc.remarks = remarks
 	doc.eir_date = eir_date
 	doc.cargo = cargo  # written to Container.last_cargo only on submit (drafts never touch the master)
@@ -1082,15 +1083,10 @@ def save_draft(
 	doc.has_damage = 1 if has_damage else 0
 	doc.set("damage_log", damage_rows)
 	doc.set("item_photos", photo_rows)
-	# EIR-Out verification fields (only sent by the EIR-Out form; omitted = left untouched).
-	if exterior_condition is not None:
-		doc.exterior_condition = exterior_condition or None
-	if exterior_remark is not None:
-		doc.exterior_remark = exterior_remark or None
-	if seals_intact is not None:
-		doc.seals_intact = 1 if _as_bool(seals_intact) else 0
-	if seal_remark is not None:
-		doc.seal_remark = seal_remark or None
+	# EIR-Out seal numbers. Only replaced when the caller sends the key at all, so an
+	# EIR-In save (which never carries seals) cannot wipe a Desk-entered list.
+	if seals is not None:
+		doc.set("out_seals", _build_seal_rows(_coerce_lines(seals)))
 
 	if submit:
 		# Field operator "submits" from the PWA → this does NOT finalize the EIR. It moves
@@ -1540,7 +1536,6 @@ def view_eir(inspection: str) -> dict:
 		"truck_no": doc.get("truck_no"),
 		"driver": doc.get("driver"),
 		"driver_phone": doc.get("driver_phone"),
-		"emkl": doc.get("emkl"),
 		"shipper": doc.get("shipper"),
 		"remarks": doc.get("remarks"),
 		"damages": damages,
@@ -1597,7 +1592,6 @@ def request_revision(inspection: str, reason: str | None = None) -> dict:
 		name=doc.name,
 		subject=subject,
 		branch=_notify._depot_branch(doc.depot) if doc.get("depot") else None,
-		roles={_notify.PWA_ROLE, "Admin Ops", "Ops Supervisor"},
 		notification_type="Alert",
 	)
 	return {"success": True, "notified": sent, "inspection": doc.name}

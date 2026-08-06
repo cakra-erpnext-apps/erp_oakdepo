@@ -34,11 +34,12 @@ function mr_approve(frm) {
 	});
 }
 
-// The Admin-Ops-only actions (publish / withdraw / bypass). System Manager counts too so
-// an admin is never locked out of their own instance. The server re-checks the role — this
-// only decides whether the button is worth showing.
+// The depot-side actions (publish / withdraw / bypass). These were gated on "Admin Ops"
+// until that role was deleted on 2026-08-05 with the custom role model, so System Manager
+// is the only holder left — matching the server guard in ess/repairs.py. The server
+// re-checks either way; this only decides whether the button is worth showing.
 function is_admin_ops() {
-	return frappe.user.has_role('Admin Ops') || frappe.user.has_role('System Manager');
+	return frappe.user.has_role('System Manager');
 }
 
 // Admin-Ops bypass: approve directly without sending it to the owner. Offered wherever the

@@ -131,15 +131,18 @@ def set_repair_status(repair_order, status):
 
 # The PWA M&R menu is the field/cleaning division's EXECUTION console: it may only start /
 # complete already-approved work. Estimate-building, the offer to the owner and the owner's
-# decision live in Desk (ERP). The bypass is Admin-Ops only.
-BYPASS_ROLES = {"Admin Ops", "System Manager"}
+# decision live in Desk (ERP). The owner-approval bypass used to be Admin-Ops only; that
+# role was deleted on 2026-08-05 pending a role redesign, so the bypass is System Manager
+# only until the new model names a replacement — deliberately the narrow side, since this
+# skips the tank owner's approval of what they will be charged for.
+BYPASS_ROLES = {"System Manager"}
 
 
 def _require_admin_ops() -> None:
 	_require_authenticated_user()
 	if set(frappe.get_roles(frappe.session.user)).isdisjoint(BYPASS_ROLES):
 		frappe.throw(
-			frappe._("Hanya Admin Ops yang boleh menyetujui langsung (bypass owner)."),
+			frappe._("Anda tidak berwenang menyetujui langsung (bypass owner)."),
 			frappe.PermissionError,
 		)
 

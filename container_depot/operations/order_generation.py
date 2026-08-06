@@ -46,6 +46,11 @@ def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 			as_dict=True,
 		) or frappe._dict()
 		detail = {f: (vehicle_data.get(f) or item.get(f)) for f in BONGKAR_ROW_DETAIL}
+		# Per-row EMKL: the booking line's own shipper wins, the bon dialog's Shipper is
+		# only the fallback. Reversed from the fields above because that dialog value is a
+		# single header input — letting it win would flatten a booking deliberately split
+		# across several transporters back onto one.
+		detail["shipper"] = item.get("shipper") or vehicle_data.get("shipper")
 		container = (
 			r.container
 			or item.get("container")
@@ -141,7 +146,7 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		order.order_status = "Issued"
 		order.sst = sst
 		order.gate_in_time = now_datetime()
-		order.shipper = vehicle_data.get("shipper") or customer
+		order.shipper = _resolve_shipper(vehicle_data, customer)
 
 		if direction == "Tank In":
 			order.principal = frappe.db.get_value("Container Booking", booking, "principal")
@@ -152,8 +157,13 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 			)
 			_build_bongkar_rows(order, booking, codes, by_name, vehicle_data)
 		else:
+			# A remark may arrive per container (``{code: text}``, the Desk dialog) or as one
+			# note for the whole bon (a plain string, which the PWA gate sends). The string
+			# form used to be dropped silently — the operator typed a note at the gate and it
+			# reached nothing.
 			remarks = vehicle_data.get("remarks") or {}
-			order.angkutan = vehicle_data.get("angkutan") or vehicle_data.get("transporter")
+			if isinstance(remarks, str):
+				remarks = {c: remarks for c in codes}
 			order.truck_plate = vehicle_data.get("truck_plate")
 			order.driver_name = vehicle_data.get("driver_name")
 			order.driver_phone = vehicle_data.get("driver_phone")
@@ -187,6 +197,26 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		raise
 
 	return order.name
+
+
+def _resolve_shipper(vehicle_data, fallback):
+	"""The hauling party for a bon — one field under three names.
+
+	The yard calls it *angkutan*, the customer calls it *EMKL*, the document says *shipper*.
+	Order Muat used to carry ``angkutan`` as free text ALONGSIDE the ``shipper`` link, so the
+	same company could be typed into one and looked up in the other with nothing tying them
+	together. There is now only ``shipper``, and the old key is still accepted so an older
+	caller (or a cached PWA build) does not silently lose what the operator typed — but only
+	when it names a real Customer, since the field is a Link.
+	"""
+	direct = vehicle_data.get("shipper")
+	if direct:
+		return direct
+	for alias in ("angkutan", "transporter"):
+		value = vehicle_data.get(alias)
+		if value and frappe.db.exists("Customer", value):
+			return value
+	return fallback
 
 
 def _order_child_doctype(doc):
