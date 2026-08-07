@@ -51,6 +51,11 @@ extend_bootinfo = [
 # reads them as None (a Frappe core crash for users with no allowed workspaces).
 before_request = ["container_depot.boot.warm_domain_restricted_caches"]
 
+# What "open" means for the depot's work orders, on the Connections badges and the Desk
+# open-document counts. Overrides ERPNext's blanket "open = draft" for submittable
+# doctypes, which is wrong here — see container_depot/notifications.py.
+notification_config = "container_depot.notifications.get_notification_config"
+
 # Document Events
 # ---------------
 

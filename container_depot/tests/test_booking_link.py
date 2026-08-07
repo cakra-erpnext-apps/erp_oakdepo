@@ -210,6 +210,40 @@ class TestBookingLink(FrappeTestCase):
 		self.assertNotIn(standalone.name, [o["name"] for o in group["orders"]])
 		self.assertGreaterEqual(group["unlinked"], 1)
 
+	# --- what the Connections badge counts as "open" ------------------------
+	def test_open_count_follows_status_not_docstatus(self):
+		"""The second number on a Connections link means "not finished yet".
+
+		ERPNext hands every submittable doctype a blanket ``{"docstatus": 0}`` open filter,
+		which got Cleaning Order wrong (its life is in ``status``; submitting is a separate
+		act) and skipped Repair Order and Periodic Test Order entirely because they are not
+		submittable — a booking with repairs in progress showed no badge at all.
+		"""
+		from frappe.desk.notifications import get_filters_for
+
+		frappe.cache.hdel("notification_config", frappe.session.user)
+		for doctype in ("Cleaning Order", "Repair Order", "Periodic Test Order"):
+			with self.subTest(doctype=doctype):
+				f = get_filters_for(doctype)
+				self.assertIn("status", f, f"{doctype} must count open work by status")
+				self.assertNotIn("docstatus", f)
+
+	def test_a_finished_order_is_not_counted_open_while_unsubmitted(self):
+		"""The concrete case the inherited docstatus rule got wrong."""
+		from frappe.desk.notifications import get_open_count
+
+		eir = self._eir(voucher=self.bon)
+		done = self._order("Cleaning Order", inspection=eir)
+		frappe.db.set_value(
+			"Cleaning Order", done.name, {"status": "Completed", "docstatus": 0}, update_modified=False
+		)
+		frappe.cache.hdel("notification_config", frappe.session.user)
+
+		counts = get_open_count("Container Booking", self.booking)["count"]["external_links_found"]
+		cleaning = next(c for c in counts if c["doctype"] == "Cleaning Order")
+		self.assertGreaterEqual(cleaning["count"], 1, "it is still linked...")
+		self.assertEqual(cleaning["open_count"], 0, "...but nobody has to finish it")
+
 	# --- backfill -----------------------------------------------------------
 	def test_backfill_recovers_rows_written_before_the_field_existed(self):
 		from container_depot.patches.v0_53.backfill_container_booking import execute
