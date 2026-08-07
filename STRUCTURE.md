@@ -98,6 +98,27 @@ its DocPerms in Permission Manager. The menu follows from the permissions
 `container_depot/ess/guard.py::require_menu` on every ESS endpoint. The Home.vue tile
 filter and the router guard are cosmetic — a caller with curl sees neither.
 
+### Moving between the Desk and the PWA
+
+Both directions are shortcuts only; neither grants anything.
+
+| From | To | Where |
+|---|---|---|
+| Desk | `/depot` | Sidebar item **Depot PWA (Lapangan)** + a Shortcut card on the Container Depot workspace. Both are plain `link_type: URL` rows in the shipped JSON. |
+| PWA | `/desk` | **Buka Desk** in the Home hero, and as a button on the empty state. Rendered only when `get_menu` answers `desk_access: true`. |
+
+`desk_access` comes from `ess/context.py::has_desk_access`, which reads `User.user_type`.
+Do not "improve" it into a scan of the user's roles for `desk_access = 1`: `frappe.get_roles`
+appends the automatic **Desk User** role to every System User, so that scan answers yes for
+everyone. `User.set_system_user` already keeps `user_type` in step with the roles.
+
+Note the side effect of the sidebar item: a URL row is always permitted
+(`desk_views.py::is_item_allowed`), and a sidebar renders whenever one non-Section-Break
+item survives — so the Container Depot sidebar is now visible to every Desk user, including
+one with no depot DocPerms at all (they will see only that one entry). Drop the item from
+`workspace_sidebar/container_depot.json` if that is not wanted; the workspace Shortcut has
+no such effect.
+
 ## Notifications
 
 Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable

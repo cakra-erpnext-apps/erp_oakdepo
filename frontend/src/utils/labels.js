@@ -38,6 +38,10 @@ export const labels = {
 	// field user whose roles have not been assigned yet).
 	menuEmptyTitle: "Belum ada menu untuk akun ini",
 	menuEmptyBody: "Akun Anda belum diberi role lapangan. Hubungi Admin Ops untuk mendapatkan akses.",
+	// Shortcut back to the Desk (ERPNext). Only rendered for accounts that actually have
+	// Desk access — see menu.deskAccess.
+	openDesk: "Buka Desk",
+	openDeskHint: "Kelola booking, tarif, dan laporan di ERPNext.",
 	dashYardTitle: "Okupansi Yard", // Yard occupancy
 	dashYardEmpty: "Belum ada zona yard aktif", // empty yard state
 	dashMenuTitle: "Menu", // menu section heading

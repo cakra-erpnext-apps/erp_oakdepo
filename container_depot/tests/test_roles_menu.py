@@ -10,7 +10,12 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.ess.context import MENU_KEYS, allowed_menu, has_field_role
+from container_depot.ess.context import (
+	MENU_KEYS,
+	allowed_menu,
+	has_desk_access,
+	has_field_role,
+)
 
 # One user per role under test. Kept apart from real accounts by the domain.
 USERS = {
@@ -93,6 +98,27 @@ class TestRoleMenu(FrappeTestCase):
 		try:
 			self.assertFalse(has_field_role())
 			self.assertEqual(allowed_menu(), [])
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_desk_shortcut_follows_desk_access(self):
+		"""The PWA's "Buka Desk" link is offered to office staff and withheld from the field.
+
+		Exactly inverts the field-role split: office roles carry desk_access = 1, field roles
+		desk_access = 0 (install.ensure_roles_exist). Cashier lands on the empty PWA and
+		needs the way out; Team Cleaning would only be sent to a wall.
+		"""
+		frappe.set_user(USERS["Cashier"])
+		try:
+			self.assertTrue(has_desk_access())
+			self.assertEqual(allowed_menu(), [], "office staff: Desk yes, PWA menu no")
+		finally:
+			frappe.set_user("Administrator")
+
+		frappe.set_user(USERS["Team Cleaning"])
+		try:
+			self.assertFalse(has_desk_access())
+			self.assertTrue(allowed_menu(), "field staff: PWA menu yes, Desk no")
 		finally:
 			frappe.set_user("Administrator")
 

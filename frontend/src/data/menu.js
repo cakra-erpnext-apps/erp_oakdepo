@@ -11,6 +11,7 @@ import { computed, reactive } from "vue"
 
 const state = reactive({
 	keys: null, // null = not fetched yet; [] = fetched, nothing allowed
+	deskAccess: false, // may this user open /desk? drives the "Buka Desk" shortcut
 	loading: false,
 	error: null,
 })
@@ -27,6 +28,7 @@ export function fetchMenu() {
 		.then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
 		.then((body) => {
 			state.keys = body?.message?.menu || []
+			state.deskAccess = !!body?.message?.desk_access
 			state.error = null
 			return state.keys
 		})
@@ -34,7 +36,9 @@ export function fetchMenu() {
 			// Fail closed on the UI side: an unreadable menu shows the empty state rather
 			// than every tile. The tiles would 403 on tap anyway; a wrong menu is worse
 			// than an empty one because it looks like the app is broken, not restricted.
+			// desk_access stays false for the same reason — /desk would just bounce them.
 			state.keys = []
+			state.deskAccess = false
 			state.error = e
 			return state.keys
 		})
@@ -51,5 +55,6 @@ export const menu = reactive({
 	loading: computed(() => state.loading),
 	error: computed(() => state.error),
 	isEmpty: computed(() => state.keys !== null && state.keys.length === 0),
+	deskAccess: computed(() => state.deskAccess),
 	has: (key) => (state.keys || []).includes(key),
 })

@@ -66,6 +66,27 @@ def has_field_role(user: str = None) -> bool:
 	return bool(_field_roles() & set(frappe.get_roles(user or frappe.session.user)))
 
 
+def has_desk_access(user: str = None) -> bool:
+	"""True when this user may open the Desk — i.e. Frappe considers them a System User.
+
+	Reads ``user_type``, which is the same gate the Desk itself applies, rather than
+	scanning the user's roles for ``desk_access``. Scanning roles looks more direct but is
+	circular: :func:`frappe.get_roles` appends the automatic "Desk User" role (desk_access
+	= 1) to every System User, so the scan would answer "yes" for everyone it was asked
+	about. ``User.set_system_user`` already derives ``user_type`` from the roles on every
+	save, so this stays in step on its own — a depot field role carries desk_access = 0,
+	which is exactly what demotes its users to Website User.
+
+	Drives the "Buka Desk" shortcut in the PWA. Cosmetic: offering the link to someone
+	without Desk access would only send them to a wall, and withholding it from someone who
+	has access costs them a bookmark.
+	"""
+	user = user or frappe.session.user
+	if user == "Guest":
+		return False
+	return frappe.permissions.is_system_user(user)
+
+
 def allowed_menu(user: str = None) -> list:
 	"""Menu keys this user may open. Empty for anyone without a field role."""
 	if not has_field_role(user):
@@ -91,11 +112,17 @@ def get_user_context():
 
 @frappe.whitelist(methods=["GET"])
 def get_menu():
-	"""GET /api/v1/ess/menu — the menu keys the caller may see.
+	"""GET /api/v1/ess/menu — the menu keys the caller may see, plus their Desk access.
 
 	Cosmetic only. This drives which tiles Home.vue renders and which routes the router
 	lets through; nothing here stops a caller from hitting an endpoint directly. That is
 	what :func:`container_depot.ess.guard.require_menu` is for.
+
+	``desk_access`` rides along rather than getting its own endpoint: the PWA already
+	fetches this once per app load, and the one screen that most needs the Desk link is
+	the empty state — an office user who followed the app switcher into /depot and has
+	nothing here. Making them find their way back by URL is the kind of dead end that
+	turns into a support call.
 	"""
 	_require_authenticated_user()
-	return {"success": True, "menu": allowed_menu()}
+	return {"success": True, "menu": allowed_menu(), "desk_access": has_desk_access()}

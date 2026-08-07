@@ -14,6 +14,15 @@
 					{{ displayUser }}
 				</p>
 				<p class="mt-0.5 text-sm text-gray-500">{{ labels.homeHint }}</p>
+				<!-- Way back to ERPNext for accounts that hold both (supervisors, Admin Ops).
+				     A plain <a>, not a router-link: /desk is a different app entirely. -->
+				<a
+					v-if="menu.deskAccess"
+					href="/desk"
+					class="oak-link mt-2 inline-flex items-center gap-1 text-sm"
+				>
+					<Icon name="external-link" :size="14" />{{ labels.openDesk }}
+				</a>
 			</div>
 		</section>
 
@@ -26,6 +35,15 @@
 			</span>
 			<p class="mt-3 font-bold text-gray-900">{{ labels.menuEmptyTitle }}</p>
 			<p class="mt-1 text-sm text-gray-500">{{ labels.menuEmptyBody }}</p>
+			<!-- The dead end this card would otherwise be: office staff arrive here from the
+			     app switcher, find nothing, and have no way onward but retyping a URL. -->
+			<template v-if="menu.deskAccess">
+				<a href="/desk" class="oak-btn oak-btn-primary mt-4">
+					<Icon name="external-link" :size="16" />
+					{{ labels.openDesk }}
+				</a>
+				<p class="mt-2 text-xs text-gray-400">{{ labels.openDeskHint }}</p>
+			</template>
 		</section>
 
 		<template v-else>
