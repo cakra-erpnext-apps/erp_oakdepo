@@ -181,6 +181,39 @@ class TestTankInFlow(FrappeTestCase):
 		si = frappe.get_doc("Sales Invoice", _bill(b))
 		self.assertEqual(len(si.items), 2)
 
+	def test_billing_report_reads_the_booking_amount(self):
+		"""Order Billing Status must show a submitted booking at its ``charges_total``.
+
+		Run UNFILTERED on purpose. The report unions five doctypes and each builder names
+		its own column list, so a filtered run only proves the one branch it selects — which
+		is how the report kept asking for ``lift_amount`` for a whole release after patch
+		v0_49 dropped that column, failing with a bare OperationalError for every user.
+		Executing with no ``order_type`` is the cheap guard that touches all five.
+		"""
+		from container_depot.operations.report.order_billing_status.order_billing_status import (
+			execute,
+		)
+
+		# The report only reads submitted bookings, and a submitted Tank In holds its
+		# container until a bon is issued — so this one gets a container of its own rather
+		# than blocking the shared TANK0000050 for the rest of the class. TOP, because a
+		# Cash booking cannot be submitted until its invoice is paid.
+		b = self._booking(
+			self.customer,
+			items=[{"container_no": "TANK0000054", "condition": "EMPTY CLEAN"}],
+			charges=[{"item": "Lift Off"}],
+			payment_type="TOP",
+		)
+		b.insert(ignore_permissions=True)
+		b.submit()
+
+		_, rows = execute({})
+		mine = [r for r in rows if r["order"] == b.name]
+		self.assertEqual(len(mine), 1)
+		self.assertEqual(mine[0]["order_type"], "Container Booking")
+		self.assertEqual(mine[0]["amount"], 250000)
+		self.assertEqual(mine[0]["currency"], "IDR")
+
 	def test_hand_set_rate_is_never_reseeded(self):
 		# A negotiated one-off price must survive every re-save — the price list only ever
 		# seeds an empty rate.

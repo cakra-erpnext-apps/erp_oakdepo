@@ -154,7 +154,9 @@ def _booking_rows(filters, ctx):
 	recs = frappe.get_all(
 		"Container Booking",
 		filters=f,
-		fields=["name", "customer", "creation", "payment_type", "lift_amount", "currency", "sales_invoice"],
+		# ``charges_total`` is the sum of the booking's ``charges`` table — it replaced the
+		# single ``lift_amount`` column, which patch v0_49 (booking_lift_to_charges) dropped.
+		fields=["name", "customer", "creation", "payment_type", "charges_total", "currency", "sales_invoice"],
 		ignore_permissions=True,
 	)
 	return [
@@ -165,7 +167,7 @@ def _booking_rows(filters, ctx):
 			"date": getdate(r.creation),
 			"payment_type": r.payment_type,
 			"currency": r.currency or ctx["default"],
-			"amount": flt(r.lift_amount),
+			"amount": flt(r.charges_total),
 			"invoice_status": _si_status(r.sales_invoice),
 			"sales_invoice": r.sales_invoice,
 		}
