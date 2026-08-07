@@ -649,7 +649,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-07 09:00:00.000000",
+ "modified": "2026-08-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
@@ -665,8 +665,8 @@
    "color": "Grey",
    "doc_view": "List",
    "label": "Depot PWA (Lapangan)",
-   "type": "URL",
-   "url": "/depot"
+   "type": "Page",
+   "link_to": "depot-pwa"
   }
  ],
  "title": "Container Depot",

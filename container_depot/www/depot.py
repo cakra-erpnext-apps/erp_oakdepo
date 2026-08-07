@@ -12,11 +12,11 @@ from frappe.boot import load_translations
 
 no_cache = 1
 
-# NOTE (2026-08-05): the page used to require the "Depot PWA" role. That role was
-# removed with the rest of the custom role model, pending a redesign, so the only gate
-# left here is the session itself — any logged-in user may open the PWA. Reattach the
-# role check at :func:`_require_pwa_access` once the new roles exist; the individual
-# API endpoints keep enforcing their own DocPerms either way.
+# DECIDED (handoff §5.5, 2026-08-06): /depot stays open to every logged-in user, and this
+# gate stays a session check. Do NOT add a role check here. What empties the page for
+# someone without a field role is `ess.context.get_menu` returning [] — the PWA then shows
+# its "no menu for this account" card, which reads as "you lack access" rather than as an
+# error, and each API endpoint enforces its own DocPerm regardless (ess/guard.py).
 def _require_pwa_access():
 	if frappe.session.user == "Guest":
 		frappe.throw(
@@ -28,10 +28,17 @@ def _require_pwa_access():
 def check_app_permission():
 	"""Whether to show "Depot OAK" on the `/apps` chooser (``add_to_apps_screen`` hook).
 
-	Same gate as :func:`_require_pwa_access` — keep the two in step when the role model
-	comes back, so the switcher never offers a tile that then bounces the user.
+	Stricter than :func:`_require_pwa_access` on purpose, and that asymmetry is the point:
+	the page must stay openable (a bookmark, a link in a chat, the Desk shortcut) while the
+	*advertisement* for it should only reach people it is useful to. Offering the tile to
+	an office account promises an app that turns out to be empty.
+
+	Keyed on the field-role flag, so it tracks the same checkbox as the PWA menu with no
+	deploy and no migrate — tick `Role.is_depot_field_role` and the tile appears.
 	"""
-	return frappe.session.user != "Guest"
+	from container_depot.ess.context import has_field_role
+
+	return frappe.session.user != "Guest" and has_field_role()
 
 
 def get_context(context):

@@ -29,6 +29,7 @@ def after_install():
 	finance.ensure_defaults()
 	setup_workspace()
 	setup_notification_rules()
+	sync_desktop_icons()
 	sync_branding()
 
 
@@ -69,6 +70,11 @@ def after_migrate():
 	# so we re-import the file every migrate. Idempotent (force=True replaces
 	# the existing rows in-place).
 	sync_workspace_sidebar()
+	# Close the /desk home-screen holes where an app icon ignores Allow Modules.
+	sync_desktop_icons()
+	# Keep the Desk "Depot PWA" shortcut visible only to roles flagged as depot field
+	# roles. Runs after the sidebar re-import, which is what re-creates the entry.
+	setup_pwa_page_roles()
 	# Push env-driven logo into site-wide settings so ALL apps pick it up.
 	sync_branding()
 
@@ -856,6 +862,46 @@ def ensure_multi_currency_billing():
 		frappe.log_error(frappe.get_traceback(), "container_depot multi-currency setting failed")
 
 
+PWA_PAGE = "depot-pwa"
+
+
+def setup_pwa_page_roles():
+	"""Point the Desk "Depot PWA (Lapangan)" shortcut at whoever currently holds a field role.
+
+	The page itself does nothing but redirect to /depot; its ``roles`` table is the whole
+	point. Frappe filters sidebar entries and workspace shortcuts of type ``Page`` against
+	it, so this is what keeps the shortcut off the screens of office staff who would only
+	land on an empty PWA — the same rule the PWA menu itself applies
+	(``ess/context.py::allowed_menu``), enforced one layer earlier.
+
+	A full sync, not add-only: the flag is the source of truth, so unticking
+	``Role.is_depot_field_role`` must take the shortcut away as surely as ticking it grants
+	one. That does mean roles hand-added to this page are dropped — it is app-owned
+	(``standard: Yes``); tick the flag on the role instead.
+
+	Unlike the PWA menu, this needs a ``bench migrate`` to pick up a newly ticked role.
+	Frappe reads page permissions from the stored ``roles`` table and there is no hook to
+	compute them per request; the PWA menu stays instant, only the Desk shortcut lags.
+	"""
+	if not frappe.db.exists("Page", PWA_PAGE):
+		return  # not imported yet (first migrate of a fresh install) — next run catches it
+	try:
+		wanted = set(frappe.get_all("Role", filters={"is_depot_field_role": 1}, pluck="name"))
+	except Exception:
+		# Custom field not migrated yet. Leave the shipped role list alone rather than
+		# clearing it — an empty `roles` table means "everyone", the wrong way to fail.
+		frappe.log_error(title="depot-pwa page roles unreadable", message=frappe.get_traceback())
+		return
+	page = frappe.get_doc("Page", PWA_PAGE)
+	if {r.role for r in page.roles} == wanted:
+		return
+	page.set("roles", [])
+	for role in sorted(wanted):
+		page.append("roles", {"role": role})
+	page.save(ignore_permissions=True)
+	frappe.db.commit()
+
+
 def sync_workspace_sidebar():
 	"""Force-resync the Container Depot Workspace Sidebar from JSON.
 
@@ -879,6 +925,93 @@ def sync_workspace_sidebar():
 	except Exception:
 		# Never break a migrate over a sidebar; just log and continue.
 		frappe.log_error(frappe.get_traceback(), "container_depot sidebar sync failed")
+
+	drop_legacy_inventory_sidebar()
+
+
+# Container Inventory used to own a second left rail of its own: an auto-generated,
+# non-standard ``Workspace Sidebar`` (plus a matching Desktop Icon) that Frappe creates
+# when a public Workspace is pinned to the desktop. Opening /desk/container-inventory
+# therefore swapped the whole navigation out for six report links and nothing else — no
+# way back to bookings, gate, or M&R without going Home first.
+#
+# Those six links now live in the "Container Inventory" section of the Container Depot
+# sidebar. With the standalone rail gone, ``sidebar.set_workspace_sidebar`` finds no
+# ``workspace_sidebar_item["container inventory"]`` entry and falls through to
+# ``get_workspace_sidebars()``, which matches the section's Workspace link and keeps the
+# Container Depot rail on screen.
+#
+# Idempotent, and runs every migrate rather than as a one-shot patch: frappe recreates the
+# Desktop Icon half on a fresh install (``create_desktop_icons_from_workspace``).
+LEGACY_INVENTORY_SIDEBAR = "Container Inventory"
+
+
+def drop_legacy_inventory_sidebar():
+	"""Remove the standalone Container Inventory rail; it is a section now."""
+	for doctype in ("Workspace Sidebar", "Desktop Icon"):
+		try:
+			if not frappe.db.exists(doctype, LEGACY_INVENTORY_SIDEBAR):
+				continue
+			# Never touch a fixture shipped by an app — only the auto-generated copy.
+			if frappe.db.get_value(doctype, LEGACY_INVENTORY_SIDEBAR, "standard"):
+				continue
+			frappe.delete_doc(doctype, LEGACY_INVENTORY_SIDEBAR, force=True, ignore_permissions=True)
+			frappe.db.commit()
+		except Exception:
+			frappe.log_error(
+				frappe.get_traceback(), f"container_depot legacy {doctype} cleanup failed"
+			)
+
+
+# ---------------------------------------------------------------------------
+# Desktop Icons: plug the two holes in the /desk home screen's permission filter
+# ---------------------------------------------------------------------------
+# `DesktopIcon.is_permitted()` only honours the User's "Allow Modules" list for
+# icons of type Link that carry a `link_to` (it resolves the module through
+# Workspace.link_to). Two icons on this site slip past that:
+#
+#   Framework — icon_type "App". App icons are gated by the owning app's
+#     `add_to_apps_screen.has_permission` hook, and frappe 16.18 ships that hook
+#     WITHOUT a has_permission key, so check_app_permission() falls through to
+#     `return True` for every System User. Upstream added the System Manager gate
+#     in a later 16.x; until the image is rebuilt we enforce it with a role.
+#   Raven — icon_type "App" too. raven's own gate only asks whether a `Raven User`
+#     record exists, and Raven auto-creates one for every user, so it is never a
+#     gate at all. The `Raven User` role IS deliberate, so gate on that instead.
+#
+# The roles table is checked before the icon_type dispatch, so it works on App
+# icons as well. Add-only: an icon that already has roles is left alone, so an
+# admin can widen or narrow either one from the UI without a deploy undoing it.
+FOREIGN_ICON_ROLES = {
+	"Framework": ["System Manager"],
+	"Raven": ["Raven User", "Raven Admin"],
+}
+
+
+def sync_desktop_icons():
+	"""Role-gate the foreign app icons that ignore the user's Allow Modules list."""
+	for icon, roles in FOREIGN_ICON_ROLES.items():
+		try:
+			_ensure_icon_roles(icon, roles)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"container_depot desktop icon sync failed: {icon}")
+
+
+def _ensure_icon_roles(icon: str, roles: list[str]) -> None:
+	if not frappe.db.exists("Desktop Icon", icon):
+		return
+	if frappe.db.exists("Has Role", {"parenttype": "Desktop Icon", "parent": icon}):
+		# Already curated (by us on an earlier migrate, or by an admin) — don't touch.
+		return
+
+	roles = [r for r in roles if frappe.db.exists("Role", r)]
+	if not roles:
+		return
+
+	doc = frappe.get_doc("Desktop Icon", icon)
+	for role in roles:
+		doc.append("roles", {"role": role})
+	doc.save(ignore_permissions=True)
 
 
 # ---------------------------------------------------------------------------
