@@ -49,6 +49,7 @@
   "voucher_section",
   "referred_voucher",
   "voucher_doctype",
+  "container_booking",
   "shipper",
   "column_break_voucher",
   "truck_no",
@@ -231,7 +232,7 @@
   },
   {
    "collapsible": 1,
-   "description": "Dibaca dari master Container — kosong berarti belum diisi di master, bukan nol.",
+   "description": "Dibaca dari master Container \u2014 kosong berarti belum diisi di master, bukan nol.",
    "fieldname": "tank_spec_section",
    "fieldtype": "Section Break",
    "label": "Spesifikasi Tank"
@@ -346,7 +347,7 @@
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-In' || doc.has_damage || (doc.damage_log && doc.damage_log.length)",
-   "description": "Temuan saat tank masuk. EIR-Out tidak memakai checklist — lihat No. Seal di bawah.",
+   "description": "Temuan saat tank masuk. EIR-Out tidak memakai checklist \u2014 lihat No. Seal di bawah.",
    "fieldname": "damage_section",
    "fieldtype": "Section Break",
    "label": "Checklist Kerusakan"
@@ -401,6 +402,15 @@
    "hidden": 1,
    "label": "Voucher DocType",
    "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "container_booking",
+   "fieldtype": "Link",
+   "options": "Container Booking",
+   "label": "Container Booking",
+   "description": "Booking induk kunjungan tank ini. Terisi otomatis dari EIR referensinya; kosong = order berdiri sendiri.",
+   "search_index": 1,
    "read_only": 1
   },
   {
@@ -467,7 +477,7 @@
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "description": "Nomor segel yang terpasang saat tank keluar — boleh lebih dari satu.",
+   "description": "Nomor segel yang terpasang saat tank keluar \u2014 boleh lebih dari satu.",
    "fieldname": "out_seals",
    "fieldtype": "Table",
    "label": "No. Seal",
@@ -609,7 +619,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-08-07 12:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

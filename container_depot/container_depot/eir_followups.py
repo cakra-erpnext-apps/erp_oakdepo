@@ -178,6 +178,16 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True):
 		# Make sure the open M&R points back at an EIR (the draft may pre-date this one).
 		if not frappe.db.get_value("Repair Order", existing, "inspection"):
 			frappe.db.set_value("Repair Order", existing, "inspection", inspection, update_modified=False)
+			# db_set skips the controller, so the booking link that before_save would have
+			# derived has to be written here too — otherwise adopting an existing M&R
+			# leaves it attributed to no visit while a freshly created one is attributed.
+			from container_depot.container_depot.booking_link import booking_of_inspection
+
+			booking = booking_of_inspection(inspection)
+			if booking and not frappe.db.get_value("Repair Order", existing, "container_booking"):
+				frappe.db.set_value(
+					"Repair Order", existing, "container_booking", booking, update_modified=False
+				)
 		# Backfill the reference doc from the EIR if the open order doesn't have one yet.
 		if insp.reff_doc and not frappe.db.get_value("Repair Order", existing, "reff_doc"):
 			frappe.db.set_value("Repair Order", existing, "reff_doc", insp.reff_doc, update_modified=False)

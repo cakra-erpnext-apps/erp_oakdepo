@@ -3,6 +3,8 @@ from frappe.model.document import Document
 import datetime
 import hashlib
 
+from container_depot.container_depot.booking_link import apply_booking_link
+
 class RepairOrder(Document):
 	def before_insert(self):
 		"""Generate unique repair order ID + stamp the creation time (list column)."""
@@ -51,6 +53,9 @@ class RepairOrder(Document):
 
 	def before_save(self):
 		"""Auto-fetch principal, calculate costs, and update container status"""
+		# File this M&R under the booking its EIR was raised on. Blank when there is no
+		# EIR — an ad-hoc repair belongs to no visit in particular.
+		apply_booking_link(self)
 		self.fetch_principal_from_container()
 		self.calculate_totals()
 		self.stamp_on_hand()

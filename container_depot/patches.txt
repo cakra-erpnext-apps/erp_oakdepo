@@ -76,3 +76,4 @@ container_depot.patches.v0_49.booking_lift_to_charges
 container_depot.patches.v0_49.backfill_manhour_cost_center
 container_depot.patches.v0_50.drop_container_seal_fields
 container_depot.patches.v0_51.drop_duplicate_notifications
+container_depot.patches.v0_53.backfill_container_booking

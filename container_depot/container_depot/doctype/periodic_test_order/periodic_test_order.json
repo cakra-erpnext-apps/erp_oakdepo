@@ -9,6 +9,8 @@
     "header_info",
     "container",
     "container_no",
+    "inspection",
+    "container_booking",
     "reff_doc",
     "status",
     "column_break_1",
@@ -62,6 +64,21 @@
       "in_list_view": 1,
       "label": "Container No",
       "read_only": 1
+    },
+    {
+      "fieldname": "inspection",
+      "fieldtype": "Link",
+      "options": "Inspection",
+      "label": "Reference EIR",
+      "description": "EIR yang mendasari uji periodik ini, kalau ada. Uji terjadwal biasanya tidak punya."
+    },
+    {
+      "fieldname": "container_booking",
+      "fieldtype": "Link",
+      "options": "Container Booking",
+      "label": "Container Booking",
+      "description": "Booking induk kunjungan tank ini. Terisi otomatis dari EIR referensinya; kosong = order berdiri sendiri.",
+      "search_index": 1
     },
     {
       "description": "Nomor dokumen referensi (opsional).",
@@ -236,7 +253,7 @@
       "label": "Cost & Billing"
     },
     {
-      "description": "Total per currency — bisa campur mata uang (tiap Item Price bawa currency-nya).",
+      "description": "Total per currency \u2014 bisa campur mata uang (tiap Item Price bawa currency-nya).",
       "fieldname": "totals",
       "fieldtype": "Table",
       "label": "Total per Currency",
@@ -274,7 +291,7 @@
   ],
   "is_submittable": 0,
   "links": [],
-  "modified": "2026-08-07 10:00:00.000000",
+  "modified": "2026-08-07 12:00:00.000000",
   "module": "Container Depot",
   "name": "Periodic Test Order",
   "search_fields": "container_no, principal, status, test_type",

@@ -136,6 +136,31 @@ Consequence of the split worth knowing: field roles ship with `desk_access = 0` 
 roles without a field role, so **an account sees at most one of the two shortcuts** unless
 an admin deliberately grants both.
 
+## Booking attribution
+
+Which Container Booking did this work belong to? Answered by `container_booking` on
+Inspection, Cleaning Order, Repair Order and Periodic Test Order — derived in
+`container_depot/booking_link.py`, surfaced on the booking's **Connections** tab
+(`container_booking_dashboard.py`).
+
+The chain: `Container Booking → Order Bongkar (.booking) → Inspection (.referred_voucher)
+→ Cleaning Order / Repair Order (.inspection)`. The EIR resolves it once and the orders
+below copy it, so a bon re-pointed after a cancel carries its orders with it.
+
+**One rule, and it is the whole design: only an EIR reference confers parentage.** An order
+raised on its own — walk-in cleaning, ad-hoc repair, scheduled periodic test — stays blank.
+There is deliberately **no** fall-back to the container's most recent booking: a single tank
+appears on as many as 52 bookings, so a guess files real work under a visit that never
+happened. Blank means "raised outside a booking", which is true and searchable.
+
+The field is editable so an operator can attribute what the automation could not, but a
+hand-set booking must actually list the container (`assert_booking_covers_container`) — a
+booking that never carried this tank is a typo, not an intention. A value already present
+is never re-derived; clearing it lets the EIR fill it again.
+
+`patches/v0_53/backfill_container_booking.py` recovers pre-existing rows by walking the same
+chain, and leaves unresolvable ones blank rather than guessing.
+
 ## Notifications
 
 Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable

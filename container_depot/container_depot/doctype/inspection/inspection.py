@@ -23,6 +23,7 @@ class Inspection(Document):
 	def validate(self):
 		"""Validate inspection data"""
 		self.drop_empty_photo_rows()
+		self.stamp_container_booking()
 		# Recommend the 4 exterior views for EIR-In — but only once the surveyor has
 		# started uploading them (1-3 present). Don't nag empty drafts (the PWA EIR uses
 		# per-item photos and auto-creates an empty draft on fetch).
@@ -35,6 +36,23 @@ class Inspection(Document):
 		# Recomputed on every save — including when the admin assigns the last one → 0 —
 		# so the list filter "Ada Foto Belum Disortir" stays accurate.
 		self.has_unsorted_photos = 1 if any(not p.checklist_item for p in self.item_photos) else 0
+
+	def stamp_container_booking(self):
+		"""Record which Container Booking this EIR belongs to, resolved through its bon.
+
+		The EIR is the root of the attribution chain — the Cleaning Order and M&R it spawns
+		copy this value rather than re-walking the vouchers, so a bon that is later
+		re-pointed (``eir.release_eirs_for_cancelled_order``) carries its orders with it on
+		the next save.
+
+		Recomputed on every save rather than only on insert, because ``referred_voucher``
+		is assigned after the fact on two paths: the surveyor picking a bon in the PWA, and
+		a cancelled bon being replaced. Read-only in the form, so there is no operator edit
+		to preserve here — unlike the orders downstream.
+		"""
+		from container_depot.container_depot.booking_link import booking_of_voucher
+
+		self.container_booking = booking_of_voucher(self.voucher_doctype, self.referred_voucher)
 
 	# Photo tables on this doctype, as (child table fieldname, image fieldname).
 	PHOTO_TABLES = (("exterior_photos", "photo_url"), ("item_photos", "photo"))

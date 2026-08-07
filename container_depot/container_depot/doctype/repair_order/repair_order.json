@@ -10,6 +10,7 @@
     "container",
     "container_no",
     "inspection",
+    "container_booking",
     "reff_doc",
     "reff_email",
     "status",
@@ -74,6 +75,14 @@
       "options": "Inspection"
     },
     {
+      "fieldname": "container_booking",
+      "fieldtype": "Link",
+      "options": "Container Booking",
+      "label": "Container Booking",
+      "description": "Booking induk kunjungan tank ini. Terisi otomatis dari EIR referensinya; kosong = order berdiri sendiri.",
+      "search_index": 1
+    },
+    {
       "description": "Nomor dokumen referensi (opsional). Terisi otomatis dari EIR, bisa diubah manual.",
       "fieldname": "reff_doc",
       "fieldtype": "Data",
@@ -81,7 +90,7 @@
     },
     {
       "depends_on": "eval:doc.reff_email",
-      "description": "Email sumber order ini. Terisi otomatis saat order dibuat dari Communication — bukan isian manual.",
+      "description": "Email sumber order ini. Terisi otomatis saat order dibuat dari Communication \u2014 bukan isian manual.",
       "fieldname": "reff_email",
       "fieldtype": "Link",
       "label": "Ref Email",
@@ -126,7 +135,7 @@
       "read_only": 1
     },
     {
-      "description": "Rencana lift-on (gate out) dari Gate Out Plan — untuk memprioritaskan pengerjaan. Otomatis dari container.",
+      "description": "Rencana lift-on (gate out) dari Gate Out Plan \u2014 untuk memprioritaskan pengerjaan. Otomatis dari container.",
       "fetch_from": "container.target_lift_on",
       "fieldname": "target_lift_on",
       "fieldtype": "Date",
@@ -227,7 +236,7 @@
       "label": "Cost & Billing"
     },
     {
-      "description": "Total per currency — a Repair Order can mix currencies (each Item Price carries its own).",
+      "description": "Total per currency \u2014 a Repair Order can mix currencies (each Item Price carries its own).",
       "fieldname": "totals",
       "fieldtype": "Table",
       "label": "Total per Currency",
@@ -264,7 +273,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-08-07 10:00:00.000000",
+  "modified": "2026-08-07 12:00:00.000000",
   "module": "Container Depot",
   "name": "Repair Order",
   "naming_rule": "Expression (BY ASSIGNMENT)",

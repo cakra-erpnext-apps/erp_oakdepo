@@ -12,6 +12,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_to_date, flt, getdate, now_datetime
 
+from container_depot.container_depot.booking_link import apply_booking_link
 from container_depot.container_depot.periodic import PT_INTERVAL_MONTHS, PT_TRANSITIONS
 
 
@@ -21,6 +22,10 @@ class PeriodicTestOrder(Document):
 			self.order_created = now_datetime()
 
 	def validate(self):
+		# Usually blank: a periodic test is scheduled off Container.next_pt_due, not raised
+		# from an EIR, so it genuinely belongs to no booking. The reference exists for the
+		# case where a surveyor's finding is what triggered the test.
+		apply_booking_link(self)
 		self._fetch_principal()
 		self._compute_due_date()
 		self._validate_status_transition()

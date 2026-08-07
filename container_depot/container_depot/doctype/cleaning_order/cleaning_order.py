@@ -4,6 +4,8 @@ from frappe.model.document import Document
 import datetime
 import hashlib
 
+from container_depot.container_depot.booking_link import apply_booking_link
+
 class CleaningOrder(Document):
 	def before_insert(self):
 		"""Generate cleaning order ID"""
@@ -24,6 +26,10 @@ class CleaningOrder(Document):
 			self.container_no = container.container_no
 			self.last_cargo = container.last_cargo
 			self.zone = container.yard_zone
+		# File this order under the booking its EIR was raised on, so Container Booking can
+		# list the work its visit produced. Blank when there is no EIR — a walk-in cleaning
+		# has no parent booking to belong to.
+		apply_booking_link(self)
 		self._resolve_cleaning_services()
 
 	def _resolve_cleaning_services(self):
