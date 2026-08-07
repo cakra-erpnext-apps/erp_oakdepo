@@ -60,20 +60,20 @@ doc_events = {
 		"on_update": "container_depot.portal.sync_portal_user_permission",
 	},
 	# Mirror a User's selected depot Branches into User Permissions so data is
-	# scoped per branch (empty = all branches). See operations/user_branch.py.
+	# scoped per branch (empty = all branches). See container_depot/user_branch.py.
 	"User": {
-		"on_update": "container_depot.operations.user_branch.sync_user_branch_permissions",
+		"on_update": "container_depot.container_depot.user_branch.sync_user_branch_permissions",
 	},
 	# Keep an Container Booking's payment_status in step with its Sales Invoice when
 	# a payment is recorded / reversed. Scoped to bookings only.
 	"Payment Entry": {
 		"on_submit": [
-			"container_depot.operations.doctype.container_booking.container_booking.on_payment_entry_change",
-			"container_depot.operations.doctype.survey_order.survey_order.on_payment_entry_change",
+			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
+			"container_depot.container_depot.doctype.survey_order.survey_order.on_payment_entry_change",
 		],
 		"on_cancel": [
-			"container_depot.operations.doctype.container_booking.container_booking.on_payment_entry_change",
-			"container_depot.operations.doctype.survey_order.survey_order.on_payment_entry_change",
+			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
+			"container_depot.container_depot.doctype.survey_order.survey_order.on_payment_entry_change",
 		],
 	},
 	# Keep a Container Booking pinned to a VALID Sales Invoice. EVERY handler below is a
@@ -92,19 +92,19 @@ doc_events = {
 			"container_depot.invoicing.apply_manhour_charge",
 		],
 		"after_insert": [
-			"container_depot.operations.doctype.container_booking.container_booking.relink_amended_invoice",
-			"container_depot.operations.doctype.survey_order.survey_order.relink_amended_invoice",
+			"container_depot.container_depot.doctype.container_booking.container_booking.relink_amended_invoice",
+			"container_depot.container_depot.doctype.survey_order.survey_order.relink_amended_invoice",
 		],
 		"on_submit": [
-			"container_depot.operations.doctype.container_booking.container_booking.sync_booking_on_invoice_submit",
-			"container_depot.operations.doctype.survey_order.survey_order.sync_survey_on_invoice_submit",
+			"container_depot.container_depot.doctype.container_booking.container_booking.sync_booking_on_invoice_submit",
+			"container_depot.container_depot.doctype.survey_order.survey_order.sync_survey_on_invoice_submit",
 			# Tell the Cashier / Commercial there is a bill (and, unless it is already
 			# settled, money to collect).
-			"container_depot.operations.notify.notify_invoice_submitted",
+			"container_depot.container_depot.notify.notify_invoice_submitted",
 		],
 		"on_cancel": [
-			"container_depot.operations.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
-			"container_depot.operations.doctype.survey_order.survey_order.sync_survey_on_invoice_cancel",
+			"container_depot.container_depot.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
+			"container_depot.container_depot.doctype.survey_order.survey_order.sync_survey_on_invoice_cancel",
 			# Roll a generated invoice's orders back to un-invoiced (no-op otherwise).
 			"container_depot.consolidated_billing.rollback_billed_sources",
 		],
@@ -129,9 +129,9 @@ doc_events = {
 #
 # Depot Contract and Repair Order are not submittable, so ``on_cancel`` never reaches
 # them; their controllers revoke on the status move to Void / Cancelled instead.
-from container_depot.operations.notify import REVOCABLE_DOCTYPES as _REVOCABLE_DOCTYPES
+from container_depot.container_depot.notify import REVOCABLE_DOCTYPES as _REVOCABLE_DOCTYPES
 
-_REVOKE = "container_depot.operations.notify.revoke_on_cancel"
+_REVOKE = "container_depot.container_depot.notify.revoke_on_cancel"
 
 
 def _append_event(doctype, event, handler):
@@ -157,7 +157,7 @@ del _dt
 # recompute would still count the order it is about to lose. Repair Order is not submittable,
 # so only its save/delete events can fire; Cleaning Order is, and its status moves after
 # submit (sign-off -> Completed, cancel) come through the submit-side events.
-_GOP_REFRESH = "container_depot.operations.doctype.gate_out_plan.gate_out_plan.refresh_plans_for_order"
+_GOP_REFRESH = "container_depot.container_depot.doctype.gate_out_plan.gate_out_plan.refresh_plans_for_order"
 for _ev in ("on_update", "after_delete"):
 	_append_event("Repair Order", _ev, _GOP_REFRESH)
 for _ev in ("on_update", "on_submit", "on_update_after_submit", "on_cancel", "after_delete"):
@@ -283,7 +283,7 @@ update_website_context = "container_depot.branding.update_website_context"
 # Client script for standard ERPNext Sales Invoice — surfaces a visible
 # "Batalkan & Kembalikan Order" button on generated (consolidated) invoices.
 # Communication — "Buat Order" buttons that seed a booking/M&R/survey/cleaning draft
-# from an incoming email (see operations/mail_to_order.py).
+# from an incoming email (see container_depot/mail_to_order.py).
 # lock_item_picker — the service Item pickers only pick; no ad-hoc Item creation.
 doctype_js = {
 	"Sales Invoice": ["public/js/sales_invoice.js", "public/js/lock_item_picker.js"],

@@ -29,8 +29,8 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 
 from container_depot import finance
-from container_depot.operations.container_status import container_open_orders
-from container_depot.operations.user_branch import assert_in_user_branch, get_user_branches
+from container_depot.container_depot.container_status import container_open_orders
+from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
 # ---------------------------------------------------------------------------
 # Helpers — auth, input validation, signature
@@ -789,7 +789,7 @@ def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=No
 		# Cleaning is gated on the Cleaning Order itself (Order Muat validates it).
 		vehicle_data["destination"] = destination
 
-	from container_depot.operations.order_generation import make_order
+	from container_depot.container_depot.order_generation import make_order
 
 	order_name = make_order(bc.booking, [bc.name], vehicle_data=vehicle_data, sst=sst, submit=True)
 	order_doctype = "Order Bongkar" if bc.direction == "Tank In" else "Order Muat"
@@ -845,7 +845,7 @@ def generate_order_from_booking(booking, selected_codes, vehicle_data=None):
 	drift apart.
 	"""
 	_require_authenticated_user()
-	from container_depot.operations.order_generation import make_order
+	from container_depot.container_depot.order_generation import make_order
 
 	vd = vehicle_data
 	if isinstance(vd, str) and vd:
@@ -1154,7 +1154,7 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None):
 	if b.docstatus != 1:
 		frappe.throw(_("Booking belum disubmit / dikonfirmasi — hubungi admin sebelum generate bon."))
 
-	from container_depot.operations.order_generation import _as_code_list, make_order
+	from container_depot.container_depot.order_generation import _as_code_list, make_order
 
 	vd = vehicle_data
 	if isinstance(vd, str):

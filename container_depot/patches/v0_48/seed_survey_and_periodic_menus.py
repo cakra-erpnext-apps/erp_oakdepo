@@ -15,6 +15,6 @@ from __future__ import annotations
 
 
 def execute():
-	from container_depot.operations.service_menu import seed_default_menus
+	from container_depot.container_depot.service_menu import seed_default_menus
 
 	print(f"[container_depot] seed_survey_and_periodic_menus: {seed_default_menus()} menu(s) created/updated.")

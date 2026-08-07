@@ -198,10 +198,10 @@ def remind_periodic_test_due() -> int:
 def sweep_stale_notifications() -> int:
 	"""Daily: clear feed entries whose source document is cancelled or deleted.
 
-	Thin wrapper so the logic stays in operations.notify (shared with the one-off
+	Thin wrapper so the logic stays in container_depot.notify (shared with the one-off
 	patch). doc_events only fire through the ORM, so raw deletes would otherwise leave
 	dead links in everyone's bell forever.
 	"""
-	from container_depot.operations.notify import sweep_stale_notifications as _run
+	from container_depot.container_depot.notify import sweep_stale_notifications as _run
 
 	return _run()

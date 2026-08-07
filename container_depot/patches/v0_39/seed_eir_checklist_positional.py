@@ -1,7 +1,7 @@
 """Switch the EIR checklist to the positional (Front/Rear/Top/…) taxonomy and record the
 defect / repair codes valid per component.
 
-Source: ``reference/Book1.xlsx`` → ``container_depot.operations.eir_checklist_data``.
+Source: ``reference/Book1.xlsx`` → ``container_depot.container_depot.eir_checklist_data``.
 
 What it does (idempotent):
   1. Adds the 7 damage codes the workbook needs that the original 01-29 set lacked.
@@ -13,13 +13,13 @@ What it does (idempotent):
 
 import frappe
 
-from container_depot.operations.eir_checklist_data import CHECKLIST, NEW_DAMAGE_CODES
+from container_depot.container_depot.eir_checklist_data import CHECKLIST, NEW_DAMAGE_CODES
 
 
 def execute():
-	frappe.reload_doc("operations", "doctype", "inspection_checklist_damage_option")
-	frappe.reload_doc("operations", "doctype", "inspection_checklist_repair_option")
-	frappe.reload_doc("operations", "doctype", "inspection_checklist_item")
+	frappe.reload_doc("container_depot", "doctype", "inspection_checklist_damage_option")
+	frappe.reload_doc("container_depot", "doctype", "inspection_checklist_repair_option")
+	frappe.reload_doc("container_depot", "doctype", "inspection_checklist_item")
 
 	_ensure_damage_codes()
 	kept = _upsert_checklist()

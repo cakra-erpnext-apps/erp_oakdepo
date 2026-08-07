@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Inventory KPI per Principal",
+  "ref_doctype": "Container",
+  "report_type": "Script Report",
+  "is_standard": "Yes",
+  "module": "Container Depot",
+  "disabled": 0
+}

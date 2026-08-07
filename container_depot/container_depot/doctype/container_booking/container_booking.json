@@ -1,0 +1,294 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "header_section",
+  "branch",
+  "booking_status",
+  "direction",
+  "lift_type",
+  "column_break_1",
+  "depot",
+  "reff_doc",
+  "reff_email",
+  "parties_section",
+  "customer",
+  "column_break_parties",
+  "principal",
+  "pricing_section",
+  "charges",
+  "charges_total",
+  "price_list",
+  "currency",
+  "contract",
+  "payment_section",
+  "payment_type",
+  "payment_status",
+  "sales_invoice",
+  "block_reason",
+  "do_section",
+  "do_reference",
+  "do_document",
+  "notes_section",
+  "sales_name",
+  "remarks",
+  "items_section",
+  "items",
+  "container_summary"
+ ],
+ "fields": [
+  {
+   "fieldname": "header_section",
+   "fieldtype": "Section Break",
+   "label": "Booking"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Branch",
+   "options": "Branch",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "description": "Draft = masih bisa diedit, belum ada invoice. Pending Payment = invoice sudah terbit, booking terkunci. Diatur otomatis oleh alur booking.",
+   "fieldname": "booking_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Booking Status",
+   "options": "Draft\nPending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "Tank In",
+   "description": "Tank In = Lift Off (masuk depo). Tank Out = Lift On (keluar depo). Tidak bisa diubah setelah disimpan.",
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Direction",
+   "options": "Tank In\nTank Out",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
+   "description": "Otomatis: Tank In = Lift Off, Tank Out = Lift On.",
+   "fieldname": "lift_type",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Lift Type",
+   "options": "\nLift On\nLift Off",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Depot tujuan. Difilter ke Branch terpilih.",
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot",
+   "reqd": 1
+  },
+  {
+   "description": "No. dokumen referensi (opsional).",
+   "fieldname": "reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc"
+  },
+  {
+   "depends_on": "eval:doc.reff_email",
+   "description": "Terisi otomatis bila order dibuat dari email.",
+   "fieldname": "reff_email",
+   "fieldtype": "Link",
+   "label": "Ref Email",
+   "no_copy": 1,
+   "options": "Communication",
+   "read_only": 1
+  },
+  {
+   "fieldname": "parties_section",
+   "fieldtype": "Section Break",
+   "label": "Parties"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Customer (Bill To)",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_parties",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Pemilik tank. Memfilter pilihan container di tiap baris.",
+   "fieldname": "principal",
+   "fieldtype": "Link",
+   "label": "Principal / Tank Owner",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "description": "Boleh beberapa baris, boleh kosong (tanpa biaya = tanpa invoice).",
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "Charges"
+  },
+  {
+   "fieldname": "charges",
+   "fieldtype": "Table",
+   "label": "Charges",
+   "options": "Container Booking Charge"
+  },
+  {
+   "description": "Total semua baris charge.",
+   "fieldname": "charges_total",
+   "fieldtype": "Currency",
+   "label": "Total Charges",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Otomatis dari kontrak aktif customer.",
+   "fieldname": "price_list",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Price List",
+   "options": "Price List",
+   "read_only": 1
+  },
+  {
+   "description": "Mata uang price list customer.",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "description": "Otomatis dari kontrak aktif customer.",
+   "fieldname": "contract",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Contract",
+   "options": "Depot Contract",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.charges_total > 0 || doc.sales_invoice",
+   "description": "Muncul hanya bila ada yang ditagihkan.",
+   "fieldname": "payment_section",
+   "fieldtype": "Section Break",
+   "label": "Payment"
+  },
+  {
+   "default": "Cash",
+   "description": "Cash harus lunas sebelum disetujui; TOP ditagih belakangan.",
+   "fieldname": "payment_type",
+   "fieldtype": "Select",
+   "label": "Payment Type",
+   "options": "Cash\nTOP",
+   "reqd": 1
+  },
+  {
+   "default": "Unpaid",
+   "depends_on": "eval:doc.payment_type=='Cash' || doc.booking_status=='Cancelled'",
+   "description": "Status Sales Invoice untuk booking Cash.",
+   "fieldname": "payment_status",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Payment Status",
+   "options": "Unpaid\nInvoiced\nPaid\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "options": "Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.block_reason",
+   "fieldname": "block_reason",
+   "fieldtype": "Small Text",
+   "label": "Block Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "do_section",
+   "fieldtype": "Section Break",
+   "label": "Delivery Order"
+  },
+  {
+   "description": "Opsional.",
+   "fieldname": "do_reference",
+   "fieldtype": "Data",
+   "label": "DO Reference"
+  },
+  {
+   "description": "Scan / PDF Delivery Order (opsional).",
+   "fieldname": "do_document",
+   "fieldtype": "Attach",
+   "label": "DO Document"
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "sales_name",
+   "fieldtype": "Data",
+   "label": "Sales Name"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Containers"
+  },
+  {
+   "description": "Minimal satu container.",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Containers",
+   "options": "Container Booking Item",
+   "reqd": 1
+  },
+  {
+   "description": "Terisi otomatis untuk tampilan list.",
+   "fieldname": "container_summary",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Containers",
+   "read_only": 1
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-08-07 10:00:00.000000",
+ "module": "Container Depot",
+ "name": "Container Booking",
+ "search_fields": "customer, branch, booking_status, container_summary",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "customer"
+}

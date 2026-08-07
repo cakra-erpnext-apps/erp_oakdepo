@@ -1,0 +1,275 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "autoname": "RO-.YYYY.-.#####",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "repair_info",
+    "repair_order_id",
+    "container",
+    "container_no",
+    "inspection",
+    "reff_doc",
+    "reff_email",
+    "status",
+    "column_break_1",
+    "principal",
+    "depot",
+    "order_created",
+    "target_lift_on",
+    "technician",
+    "start_date",
+    "completion_date",
+    "approval_section",
+    "requested_on",
+    "owner_note",
+    "revision_no",
+    "approval_col",
+    "decided_on",
+    "decided_by",
+    "damages_section",
+    "damages",
+    "used_section",
+    "used_items",
+    "cost_section",
+    "totals",
+    "total_cost",
+    "billing_status",
+    "remarks",
+    "stock_entry"
+  ],
+  "fields": [
+    {
+      "fieldname": "repair_info",
+      "fieldtype": "Section Break",
+      "label": "Repair Order Information"
+    },
+    {
+      "bold": 1,
+      "fieldname": "repair_order_id",
+      "fieldtype": "Data",
+      "label": "Repair Order ID",
+      "read_only": 1
+    },
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "label": "Container",
+      "options": "Container",
+      "reqd": 1
+    },
+    {
+      "fetch_from": "container.container_no",
+      "fieldname": "container_no",
+      "fieldtype": "Data",
+      "label": "Container No",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "inspection",
+      "fieldtype": "Link",
+      "label": "Inspection Reference",
+      "options": "Inspection"
+    },
+    {
+      "description": "Nomor dokumen referensi (opsional). Terisi otomatis dari EIR, bisa diubah manual.",
+      "fieldname": "reff_doc",
+      "fieldtype": "Data",
+      "label": "Reff Doc"
+    },
+    {
+      "depends_on": "eval:doc.reff_email",
+      "description": "Email sumber order ini. Terisi otomatis saat order dibuat dari Communication — bukan isian manual.",
+      "fieldname": "reff_email",
+      "fieldtype": "Link",
+      "label": "Ref Email",
+      "no_copy": 1,
+      "options": "Communication",
+      "read_only": 1
+    },
+    {
+      "default": "Draft",
+      "description": "Service Setup = Admin Ops masih menata estimasi; belum terlihat customer. Pending Approval = sudah ditampilkan ke customer web, menunggu keputusan owner.",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Draft\nService Setup\nPending Approval\nApproved\nRejected\nRevision Requested\nIn Progress\nCompleted\nCancelled",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "principal",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Principal (Owner)",
+      "read_only": 1
+    },
+    {
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Depot",
+      "options": "Depot"
+    },
+    {
+      "fieldname": "order_created",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Order Created",
+      "read_only": 1
+    },
+    {
+      "description": "Rencana lift-on (gate out) dari Gate Out Plan — untuk memprioritaskan pengerjaan. Otomatis dari container.",
+      "fetch_from": "container.target_lift_on",
+      "fieldname": "target_lift_on",
+      "fieldtype": "Date",
+      "in_list_view": 1,
+      "label": "Target Lift-On",
+      "no_copy": 1,
+      "read_only": 1
+    },
+    {
+      "fieldname": "technician",
+      "fieldtype": "Link",
+      "label": "Technician",
+      "options": "Employee"
+    },
+    {
+      "fieldname": "start_date",
+      "fieldtype": "Datetime",
+      "label": "Start Date"
+    },
+    {
+      "fieldname": "completion_date",
+      "fieldtype": "Datetime",
+      "label": "Completion Date"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "approval_section",
+      "fieldtype": "Section Break",
+      "label": "Owner Approval"
+    },
+    {
+      "description": "When the estimate was submitted to the container owner for approval.",
+      "fieldname": "requested_on",
+      "fieldtype": "Datetime",
+      "label": "Requested On",
+      "read_only": 1
+    },
+    {
+      "description": "Owner's note on the decision (e.g. reason for revision / rejection).",
+      "fieldname": "owner_note",
+      "fieldtype": "Small Text",
+      "label": "Owner Note",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "description": "How many times the owner asked for a revision.",
+      "fieldname": "revision_no",
+      "fieldtype": "Int",
+      "label": "Revision No",
+      "read_only": 1
+    },
+    {
+      "fieldname": "approval_col",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "decided_on",
+      "fieldtype": "Datetime",
+      "label": "Decided On",
+      "read_only": 1
+    },
+    {
+      "description": "Who recorded the owner's decision (depot staff now; the owner user once self-service is live).",
+      "fieldname": "decided_by",
+      "fieldtype": "Data",
+      "label": "Decided By",
+      "read_only": 1
+    },
+    {
+      "fieldname": "damages_section",
+      "fieldtype": "Section Break",
+      "label": "EIR Damage Entries (copied)"
+    },
+    {
+      "description": "Read-only snapshot of the EIR damage findings (with photos) that triggered this M&R.",
+      "fieldname": "damages",
+      "fieldtype": "Table",
+      "label": "Damages",
+      "options": "Repair Damage Entry",
+      "read_only": 1
+    },
+    {
+      "fieldname": "used_section",
+      "fieldtype": "Section Break",
+      "label": "Service & Parts Used"
+    },
+    {
+      "description": "Services / parts used (priced per principal via Item Price). Stock parts are issued from the source warehouse on completion.",
+      "fieldname": "used_items",
+      "fieldtype": "Table",
+      "label": "Used Items",
+      "options": "Repair Used Item"
+    },
+    {
+      "fieldname": "cost_section",
+      "fieldtype": "Section Break",
+      "label": "Cost & Billing"
+    },
+    {
+      "description": "Total per currency — a Repair Order can mix currencies (each Item Price carries its own).",
+      "fieldname": "totals",
+      "fieldtype": "Table",
+      "label": "Total per Currency",
+      "options": "Repair Cost Total",
+      "read_only": 1
+    },
+    {
+      "description": "Plain numeric sum of all line amounts (currency-agnostic; see Total per Currency for the real breakdown).",
+      "fieldname": "total_cost",
+      "fieldtype": "Int",
+      "label": "Total Cost (numeric)",
+      "read_only": 1
+    },
+    {
+      "default": "Unbilled",
+      "fieldname": "billing_status",
+      "fieldtype": "Select",
+      "label": "Billing Status",
+      "options": "Unbilled\nClient Billed\nPrincipal Billed\nCompleted",
+      "reqd": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks"
+    },
+    {
+      "description": "The Material Issue Stock Entry that consumed the repair parts (created when this M&R is completed).",
+      "fieldname": "stock_entry",
+      "fieldtype": "Link",
+      "label": "Parts Issue (Stock Entry)",
+      "options": "Stock Entry",
+      "read_only": 1
+    }
+  ],
+  "links": [],
+  "modified": "2026-08-07 10:00:00.000000",
+  "module": "Container Depot",
+  "name": "Repair Order",
+  "naming_rule": "Expression (BY ASSIGNMENT)",
+  "search_fields": "repair_order_id, container, status",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "title_field": "repair_order_id"
+}

@@ -12,7 +12,7 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import eir
+from container_depot.container_depot import eir
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_container, _make_order_bongkar
 

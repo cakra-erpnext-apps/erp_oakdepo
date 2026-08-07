@@ -99,7 +99,7 @@ def execute():
 
 		for vc in v.expected_containers or []:
 			# Booking Code
-			from container_depot.operations.doctype.booking_code.booking_code import (
+			from container_depot.container_depot.doctype.booking_code.booking_code import (
 				generate_code,
 			)
 			code = frappe.get_doc({

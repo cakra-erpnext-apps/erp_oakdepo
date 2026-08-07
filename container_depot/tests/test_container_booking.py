@@ -68,7 +68,7 @@ def _bill(booking):
 
 	An invoice is no longer born on save, so every test that needs one goes through the
 	same door the operator does."""
-	from container_depot.operations.doctype.container_booking.container_booking import (
+	from container_depot.container_depot.doctype.container_booking.container_booking import (
 		generate_invoice,
 	)
 
@@ -116,7 +116,7 @@ class TestTankInFlow(FrappeTestCase):
 		return frappe.get_doc(doc)
 
 	def test_customer_payment_modes_follow_contract(self):
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			customer_payment_modes,
 		)
 
@@ -126,7 +126,7 @@ class TestTankInFlow(FrappeTestCase):
 	def test_charge_pricing_reads_active_list(self):
 		# Rate + currency come from the customer's active (contract-published) price list —
 		# the operator never picks a list, only the service on each charge line.
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			charge_pricing,
 		)
 
@@ -138,7 +138,7 @@ class TestTankInFlow(FrappeTestCase):
 	def test_currency_follows_price_list(self):
 		# The actual bug: a USD price list must format charge rates in USD, not the system
 		# default. No exchange-rate conversion — the price-list currency is used as-is.
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			charge_pricing,
 		)
 
@@ -190,7 +190,7 @@ class TestTankInFlow(FrappeTestCase):
 		v0_49 dropped that column, failing with a bare OperationalError for every user.
 		Executing with no ``order_type`` is the cheap guard that touches all five.
 		"""
-		from container_depot.operations.report.order_billing_status.order_billing_status import (
+		from container_depot.container_depot.report.order_billing_status.order_billing_status import (
 			execute,
 		)
 
@@ -296,7 +296,7 @@ class TestTankInFlow(FrappeTestCase):
 	def test_rollback_voids_the_invoice_and_reopens_the_booking(self):
 		# The way back while nothing has settled: the draft invoice is cancelled, unlinked,
 		# and the charges are editable again.
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			rollback_to_draft,
 		)
 
@@ -321,7 +321,7 @@ class TestTankInFlow(FrappeTestCase):
 	def test_rollback_refused_once_invoice_submitted(self):
 		# A submitted invoice is in the ledger — it must be cancelled through accounting
 		# (which reverses its payments) before the booking can move.
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			rollback_to_draft,
 		)
 
@@ -338,7 +338,7 @@ class TestTankInFlow(FrappeTestCase):
 		self.assertEqual(b.sales_invoice, si)
 
 	def test_generate_invoice_refused_for_top_and_for_zero_total(self):
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			generate_invoice,
 		)
 
@@ -386,7 +386,7 @@ class TestTankInFlow(FrappeTestCase):
 		# DROPPED, not kept: Frappe validates links before validate() and refuses to save
 		# any document pointing at a cancelled one, so a kept link would leave the booking
 		# permanently unsaveable (CancelledLinkError).
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			resync_booking_on_invoice_cancel,
 		)
 
@@ -454,7 +454,7 @@ class TestTankInFlow(FrappeTestCase):
 		# Cancel on a draft voids it without deleting: the document reads Cancelled
 		# (docstatus 2), payment status flips to Cancelled, and the auto-created invoice
 		# is cancelled but KEPT linked & visible on the booking.
-		from container_depot.operations.doctype.container_booking.container_booking import void_draft
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
 
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
 		b.insert(ignore_permissions=True)
@@ -480,7 +480,7 @@ class TestTankInFlow(FrappeTestCase):
 	def test_status_tag_derived_from_condition(self):
 		# The Clean/Dirty gate tag is derived from a line's condition at booking-code
 		# issuance (a pure function); it is no longer stored on the line.
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			status_tag_for_condition,
 		)
 
@@ -587,7 +587,7 @@ class TestCashPaidInvoice(FrappeTestCase):
 	def test_paid_cash_booking_auto_submits(self):
 		# Cash is pay-first: once the invoice is Paid, the booking is auto-submitted
 		# (confirmed) on the Cashier's behalf — no manual confirmation step.
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			sync_bookings_for_invoice,
 		)
 
@@ -962,7 +962,7 @@ class TestTankOutGating(FrappeTestCase):
 		disagree about what is holding the tank."""
 		co = self._open_cleaning()
 		try:
-			from container_depot.operations.doctype.container_booking.container_booking import (
+			from container_depot.container_depot.doctype.container_booking.container_booking import (
 				status_direction_warnings,
 			)
 

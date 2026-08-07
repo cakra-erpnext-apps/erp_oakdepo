@@ -44,7 +44,7 @@ def _log(msg):
 
 
 def _eir_masters():
-	from container_depot.operations import eir
+	from container_depot.container_depot import eir
 	return eir.get_eir_masters()
 
 
@@ -209,7 +209,7 @@ class SmokeRun:
 		booking. We settle at the DB level rather than posting a Payment Entry so the
 		smoke leaves NO GL on the shared instance — the same shortcut the FrappeTestCase
 		suite (``test_cash_gate``) uses. The booking auto-submit path is fully exercised."""
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			sync_bookings_for_invoice,
 		)
 		frappe.db.set_value(
@@ -231,13 +231,13 @@ class SmokeRun:
 		from container_depot.ess import inventory as ess_inv
 		from container_depot.ess import notifications as ess_notif
 		from container_depot.ess import repairs as ess_mr
-		from container_depot.operations import order_generation, service_menu
+		from container_depot.container_depot import order_generation, service_menu
 
 		self.container = self._cno(1)
 
 		# --- 1) Booking (Cash) + Cash-unpaid gate block ---------------------
 		def _mk_in_booking():
-			from container_depot.operations.doctype.container_booking import container_booking as booking_ctl
+			from container_depot.container_depot.doctype.container_booking import container_booking as booking_ctl
 			b = frappe.get_doc({
 				"doctype": "Container Booking", "direction": "Tank In",
 				"customer": self.customer, "contract": self.contract,
@@ -408,7 +408,7 @@ class SmokeRun:
 
 	def _exercise_order_void_and_revert(self):
 		"""Order options: revert the golden bon to draft & re-submit, and void a throwaway bon."""
-		from container_depot.operations import order_generation
+		from container_depot.container_depot import order_generation
 		# revert + re-submit the golden Order Bongkar
 		if self.order_bongkar:
 			def _revert_resubmit():
@@ -421,7 +421,7 @@ class SmokeRun:
 		# void a throwaway bon (own booking/container so the golden flow is untouched)
 		tw_cno = self._cno(9)
 		def _mk_throwaway_and_void():
-			from container_depot.operations.doctype.container_booking import container_booking as booking_ctl
+			from container_depot.container_depot.doctype.container_booking import container_booking as booking_ctl
 			b = frappe.get_doc({
 				"doctype": "Container Booking", "direction": "Tank In",
 				"customer": self.customer, "contract": self.contract, "payment_type": "Cash",
@@ -450,7 +450,7 @@ class SmokeRun:
 	def _exercise_mr_reject(self):
 		"""M&R Reject option on a dedicated damaged container (terminal, so isolated)."""
 		from container_depot.ess import repairs as ess_mr
-		from container_depot.operations import eir as eir_ops
+		from container_depot.container_depot import eir as eir_ops
 		cno = self._cno(2)
 		def _seed_damaged_container():
 			frappe.get_doc({
@@ -480,7 +480,7 @@ class SmokeRun:
 	def tank_out(self):
 		from container_depot.ess import gate as ess_gate
 		from container_depot.ess import inspections as ess_eir
-		from container_depot.operations import order_generation
+		from container_depot.container_depot import order_generation
 
 		if not (self.container and frappe.db.get_value("Container", self.container, "status") == "Available"
 				and self.cleaning_done):

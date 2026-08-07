@@ -1,4 +1,5 @@
 [pre_model_sync]
+container_depot.patches.v0_52.rename_operations_module
 container_depot.patches.v0_14.rename_isotank_to_container
 container_depot.patches.v0_16.clear_service_tariff_rows
 container_depot.patches.v0_17.drop_tariff_rate_qty

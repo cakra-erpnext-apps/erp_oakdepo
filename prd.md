@@ -36,7 +36,7 @@ Build an **Employee Self-Service (ESS) Progressive Web App** as a mobile front-e
 ## 2. Current System (already in `container_depot`) — REUSE, DON'T REBUILD
 
 ### 2.1 Relevant DocTypes (confirmed present)
-Path: `container_depot/operations/doctype/`
+Path: `container_depot/container_depot/doctype/`
 
 | DocType | Purpose | ESS relevance |
 |---|---|---|
@@ -89,7 +89,7 @@ Desk (/app/...)            ESS PWA (/depot)
 ### 3.2 Where code lives (SINGLE REPO — do not split)
 ```
 container_depot/
-  container_depot/operations/doctype/   # existing DocTypes (DO NOT change schema)
+  container_depot/container_depot/doctype/   # existing DocTypes (DO NOT change schema)
   container_depot/api.py                # existing + new ESS read endpoints
   container_depot/ess/                  # NEW: thin whitelisted ESS methods (optional)
   container_depot/www/depot.html        # NEW: mounts the Vue app at /depot

@@ -2,7 +2,7 @@
 
 One booking (single direction) can spawn several Order Bongkar / Order Muat,
 each carrying up to 3 of its still-pending containers, via the shared atomic
-core ``operations.order_generation.make_order``.
+core ``container_depot.order_generation.make_order``.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from container_depot.api import (
 	generate_order_from_booking,
 	get_booking_pending_containers,
 )
-from container_depot.operations.order_generation import make_order
-from container_depot.operations.doctype.booking_code.booking_code import generate_code
+from container_depot.container_depot.order_generation import make_order
+from container_depot.container_depot.doctype.booking_code.booking_code import generate_code
 from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 
@@ -384,7 +384,7 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 
 	def test_pending_query_scoped_to_booking(self):
 		# The manual picker only surfaces containers with an Active code on THIS booking.
-		from container_depot.operations.doctype.order_bongkar.order_bongkar import (
+		from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
 			pending_container_query,
 		)
 		c1 = frappe.get_doc({
@@ -408,7 +408,7 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 	def test_void_draft_releases_codes(self):
 		# Voiding a DRAFT bon frees its codes (Used -> Active) and marks it Cancelled
 		# (soft delete — record kept), so the containers can go on a fresh voucher.
-		from container_depot.operations.order_generation import void_order
+		from container_depot.container_depot.order_generation import void_order
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCCD0")
 		name = make_order(booking, codes)
 		self.assertEqual(_states(codes), ["Used"])
@@ -418,7 +418,7 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 
 	def test_void_submitted_releases_codes(self):
 		# A submitted bon can still be voided; on_cancel releases its codes.
-		from container_depot.operations.order_generation import void_order
+		from container_depot.container_depot.order_generation import void_order
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCCS0")
 		name = make_order(booking, codes)
 		frappe.get_doc("Order Bongkar", name).submit()
@@ -429,7 +429,7 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 
 	def test_revert_submitted_order_to_draft(self):
 		# Cancel = return a submitted bon to an editable Draft; containers stay reserved.
-		from container_depot.operations.order_generation import revert_order_to_draft
+		from container_depot.container_depot.order_generation import revert_order_to_draft
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCRV0")
 		name = make_order(booking, codes)
 		frappe.get_doc("Order Bongkar", name).submit()
@@ -440,7 +440,7 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		self.assertEqual(_states(codes), ["Used"])
 
 	def test_revert_rejects_non_submitted(self):
-		from container_depot.operations.order_generation import revert_order_to_draft
+		from container_depot.container_depot.order_generation import revert_order_to_draft
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCRN0")
 		name = make_order(booking, codes)  # draft
 		with self.assertRaises(frappe.ValidationError):

@@ -2,11 +2,11 @@ import os
 
 import frappe
 
-# Roles that get a blanket DocPerm on EVERY Operations doctype, including ones added
+# Roles that get a blanket DocPerm on EVERY Container Depot doctype, including ones added
 # after this line was written. The per-role matrix lives further down (FIELD_ROLE_MATRIX
 # / OFFICE_ROLE_MATRIX); this is only the catch-all beneath it.
 #
-# This list must never be empty: most Operations doctypes ship with an empty
+# This list must never be empty: most Container Depot doctypes ship with an empty
 # "permissions" array in their JSON, so a new doctype's ONLY grant is the one here until
 # somebody adds it to the matrix.
 ROLES_TO_GRANT = ["System Manager"]
@@ -78,7 +78,7 @@ def setup_document_notifications():
 
 	This used to seed five built-in Frappe Notifications (Order Bongkar, Order Muat,
 	Depot Contract, Container Booking, Inspection). Every one of them duplicated an event
-	``operations.notify`` already raises, so submitting one Order Muat produced THREE bell
+	``container_depot.notify`` already raises, so submitting one Order Muat produced THREE bell
 	rows for the same thing — the notify event, the built-in rule, and the EIR-Out follow
 	up. Three rows for one fact trains people to swipe the bell away without reading it.
 
@@ -916,7 +916,7 @@ OFFICE_ROLES = [
 # standard doctypes (Sales Invoice, Item, Purchase Order…), and the first Custom
 # DocPerm on a doctype makes Frappe ignore that doctype's shipped permissions
 # entirely — it would silently strip ERPNext's own accounting/stock roles. So the
-# custom roles below carry Operations-module perms only, and the standard access is
+# custom roles below carry Container Depot module perms only, and the standard access is
 # granted the standard way: give the user both roles. Surfaced in STRUCTURE.md.
 COMPANION_ROLES = {
 	"Cashier": ["Accounts User"],
@@ -925,11 +925,11 @@ COMPANION_ROLES = {
 	"Warehouse": ["Stock User", "Purchase User"],
 }
 
-# Operations doctypes that record what happened rather than drive it. Read-only for
+# Container Depot doctypes that record what happened rather than drive it. Read-only for
 # everyone: these are written by hooks, never by hand.
 AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log"}
 
-# Operations doctypes owned by finance/commercial, kept OUT of Admin Ops' blanket
+# Container Depot doctypes owned by finance/commercial, kept OUT of Admin Ops' blanket
 # grant (§8.2: "TANPA Sales Invoice, Payment Entry, Depot Contract…").
 FINANCE_DOCTYPES = {"Depot Contract", "OAK Monthly Invoice", "Depot Finance Settings"}
 
@@ -984,7 +984,7 @@ FIELD_ROLE_MATRIX = [
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 ]
 
-# §8.2 — office roles, Operations-module doctypes only (see COMPANION_ROLES for the
+# §8.2 — office roles, Container Depot module doctypes only (see COMPANION_ROLES for the
 # rest). Admin Ops and Management are computed in :func:`_office_role_perms` because
 # they are defined as "everything except…" rather than as a list.
 OFFICE_ROLE_MATRIX = {
@@ -1040,11 +1040,11 @@ def _perm_dict(letters: str, is_submittable: bool) -> dict:
 	return perms
 
 
-def _operations_doctypes() -> list[str]:
-	"""Non-child Operations doctypes. Child tables inherit their parent's perms."""
+def _depot_doctypes() -> list[str]:
+	"""Non-child Container Depot doctypes. Child tables inherit their parent's perms."""
 	return frappe.get_all(
 		"DocType",
-		filters={"module": "Operations", "istable": 0},
+		filters={"module": "Container Depot", "istable": 0},
 		pluck="name",
 		order_by="name",
 	)
@@ -1114,13 +1114,13 @@ def _ensure_docperm(doctype: str, role: str, letters: str, is_submittable: bool)
 
 
 def setup_permissions():
-	"""Seed the role permission matrix (§8) on every Operations doctype. Idempotent.
+	"""Seed the role permission matrix (§8) on every Container Depot doctype. Idempotent.
 
 	Add-only and existence-checked per (doctype, role), so running it on every migrate
 	just picks up doctypes added since the last one. Once a row exists it belongs to the
 	admin — Permission Manager edits survive migrates.
 
-	Custom DocPerm is written ONLY for module=Operations doctypes. The first Custom
+	Custom DocPerm is written ONLY for module=Container Depot doctypes. The first Custom
 	DocPerm on any doctype makes Frappe ignore that doctype's shipped permissions
 	wholesale, so touching a standard ERPNext doctype here would quietly disable its
 	own roles. Office access to Sales Invoice / Item / Purchase Order is granted by
@@ -1128,11 +1128,11 @@ def setup_permissions():
 	"""
 	ensure_roles_exist()
 
-	doctypes = _operations_doctypes()
+	doctypes = _depot_doctypes()
 	submittable = {dt: frappe.get_meta(dt).is_submittable for dt in doctypes}
 
 	# ROLES_TO_GRANT (System Manager) keeps its blanket grant so a doctype added later is
-	# never unreachable — most Operations JSONs ship with an empty "permissions" array.
+	# never unreachable — most Container Depot JSONs ship with an empty "permissions" array.
 	for dt in doctypes:
 		for role_name in ROLES_TO_GRANT:
 			_ensure_docperm(dt, role_name, "rwcsxad", submittable[dt])
@@ -1158,7 +1158,7 @@ def setup_permissions():
 # Starting points only. Once seeded, these rows belong to the admin: the seeder never
 # overwrites an existing event_key, so tuning survives every migrate. That is the whole
 # reason routing is a doctype instead of a dict — see the module docstring in
-# operations/notify.py for why the menu went the other way.
+# container_depot/notify.py for why the menu went the other way.
 #
 # `Management` appears on three strategic events only (repair approval, contracts). A
 # manager who gets a bell for every tank arriving stops reading the bell, and then misses
@@ -1218,7 +1218,7 @@ def setup_notification_rules():
 	the doctype. Only rows that do not exist yet are inserted, so a migrate can add a new
 	event without undoing months of routing adjustments.
 	"""
-	from container_depot.operations import notify
+	from container_depot.container_depot import notify
 
 	if not frappe.db.exists("DocType", "Depot Notification Rule"):
 		return  # first migrate of this release; the next one seeds it

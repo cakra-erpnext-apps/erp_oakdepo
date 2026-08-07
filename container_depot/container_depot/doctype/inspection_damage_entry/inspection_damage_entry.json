@@ -1,0 +1,142 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "damage_info",
+    "checklist_item",
+    "area",
+    "component",
+    "damage_type",
+    "repair_code",
+    "damage_description",
+    "column_break_1",
+    "severity",
+    "location",
+    "part_face",
+    "coordinate_x",
+    "coordinate_y",
+    "before_photo",
+    "section_break_2",
+    "after_photo",
+    "estimated_repair_hours",
+    "repair_status"
+  ],
+  "fields": [
+    {
+      "fieldname": "damage_info",
+      "fieldtype": "Section Break",
+      "label": "Damage Information"
+    },
+    {
+      "description": "EIR checklist item (Area/Item taxonomy) this row belongs to.",
+      "fieldname": "checklist_item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Checklist Item",
+      "options": "Inspection Checklist Item"
+    },
+    {
+      "fetch_from": "checklist_item.area",
+      "fieldname": "area",
+      "fieldtype": "Data",
+      "label": "Area",
+      "read_only": 1
+    },
+    {
+      "description": "Component / item inspected (e.g. Manlid, Foot Valve, Frame). Free text per the EIR template AREA/ITEM list.",
+      "fieldname": "component",
+      "fieldtype": "Data",
+      "label": "Component / Item"
+    },
+    {
+      "description": "OAK damage condition code (01-29, v) from the EIR template.",
+      "fieldname": "damage_type",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Damage Code",
+      "options": "Inspection Damage Code"
+    },
+    {
+      "description": "OAK repair-action code (30-54, X) from the EIR template.",
+      "fieldname": "repair_code",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Repair Code",
+      "options": "Inspection Repair Code"
+    },
+    {
+      "fieldname": "damage_description",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "label": "Description",
+      "reqd": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "severity",
+      "fieldtype": "Select",
+      "label": "Severity",
+      "options": "Minor\nModerate\nMajor\nCritical",
+      "reqd": 1
+    },
+    {
+      "fieldname": "location",
+      "fieldtype": "Data",
+      "label": "Location on Container"
+    },
+    {
+      "fieldname": "part_face",
+      "fieldtype": "Select",
+      "label": "Container Face / Part",
+      "options": "Front\nBack\nLeft\nRight\nTop\nBottom\nInside"
+    },
+    {
+      "fieldname": "coordinate_x",
+      "fieldtype": "Float",
+      "label": "Coordinate X (%)"
+    },
+    {
+      "fieldname": "coordinate_y",
+      "fieldtype": "Float",
+      "label": "Coordinate Y (%)"
+    },
+    {
+      "fieldname": "before_photo",
+      "fieldtype": "Attach Image",
+      "label": "Before Photo"
+    },
+    {
+      "fieldname": "section_break_2",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "after_photo",
+      "fieldtype": "Attach Image",
+      "label": "After Photo (Post-Repair)"
+    },
+    {
+      "fieldname": "estimated_repair_hours",
+      "fieldtype": "Float",
+      "label": "Estimated Repair Hours"
+    },
+    {
+      "fieldname": "repair_status",
+      "fieldtype": "Select",
+      "label": "Repair Status",
+      "options": "Pending\nIn_Progress\nCompleted"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-08-07 10:00:00.000000",
+  "module": "Container Depot",
+  "name": "Inspection Damage Entry"
+}

@@ -1,9 +1,0 @@
-{
-  "doctype": "Report",
-  "name": "Daily Operations Report",
-  "ref_doctype": "Container Booking",
-  "report_type": "Script Report",
-  "is_standard": "Yes",
-  "module": "Operations",
-  "disabled": 0
-}

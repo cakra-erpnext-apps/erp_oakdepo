@@ -1,0 +1,58 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_finance",
+  "finance_note",
+  "column_break_start",
+  "finance_start_date"
+ ],
+ "fields": [
+  {
+   "bold": 1,
+   "default": "1",
+   "fieldname": "enable_finance",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Aktifkan Finance (Invoicing)",
+   "description": "Matikan untuk menjalankan depo tanpa invoice: harga & biaya tetap dicatat, tapi tidak ada Sales Invoice dibuat dan pembayaran tidak memblokir gate."
+  },
+  {
+   "depends_on": "eval:!doc.enable_finance",
+   "fieldname": "finance_note",
+   "fieldtype": "HTML",
+   "label": "Catatan",
+   "options": "<div class=\"alert alert-warning\">Finance <b>OFF</b>. Operasional jalan penuh; order tetap mencatat harga dan tetap ditandai <i>Unbilled</i>, jadi bisa ditagih mundur saat finance dinyalakan lagi. Invoice yang sudah terlanjur ada tidak disentuh.</div>"
+  },
+  {
+   "fieldname": "column_break_start",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "finance_start_date",
+   "fieldtype": "Date",
+   "label": "Tagih Mulai Tanggal",
+   "description": "Batas bawah penagihan. Pekerjaan sebelum tanggal ini tidak ikut tersapu saat Generate Invoice. Kosongkan untuk menagih semua riwayat."
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-08-07 10:00:00.000000",
+ "module": "Container Depot",
+ "name": "Depot Finance Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

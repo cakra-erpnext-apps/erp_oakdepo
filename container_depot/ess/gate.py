@@ -1,7 +1,7 @@
-"""ESS PWA Gate Entry endpoints — thin ``@frappe.whitelist`` wrappers over operations.gate.
+"""ESS PWA Gate Entry endpoints — thin ``@frappe.whitelist`` wrappers over container_depot.gate.
 
 Per the integration rule (mirrors ``ess/inspections.py``): endpoints here only add auth +
-whitelisting; all listing/detail logic lives in ``container_depot.operations.gate``.
+whitelisting; all listing/detail logic lives in ``container_depot.container_depot.gate``.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
-from container_depot.operations import gate
+from container_depot.container_depot import gate
 
 
 @frappe.whitelist(methods=["GET"])

@@ -159,7 +159,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 	def test_warning_names_the_clashing_booking(self):
 		"""The draft banner uses the same query as the submit block, so it can only warn
 		about what Submit would actually refuse."""
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			open_booking_conflicts,
 		)
 
@@ -173,7 +173,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 	def test_warning_excludes_the_booking_itself(self):
 		"""A booking must not warn about its own codes, or every saved booking would flag
 		itself."""
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			open_booking_conflicts,
 		)
 
@@ -181,7 +181,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		self.assertEqual(open_booking_conflicts(first.name, [{"container_no": C_IN}]), [])
 
 	def test_warning_is_silent_without_a_conflict(self):
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			open_booking_conflicts,
 		)
 
@@ -191,7 +191,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 	def test_status_warning_lift_on_needs_available(self):
 		"""Tank Out (Lift On): a tank that is not Available is flagged (it is not ready to
 		leave). Uses the same helper as the _validate_out_ready submit gate."""
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			status_direction_warnings,
 		)
 
@@ -208,7 +208,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 	def test_status_warning_lift_off_rejects_present(self):
 		"""Tank In (Lift Off): a tank already in the depot is flagged; a Booked (not yet
 		arrived) one is fine. Same helper as the _validate_in_not_present submit gate."""
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			status_direction_warnings,
 		)
 
@@ -224,7 +224,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 
 	def test_status_warning_silent_for_a_nonexistent_container(self):
 		"""A Tank In may name a not-yet-created tank; with no master to judge, no warning."""
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			status_direction_warnings,
 		)
 

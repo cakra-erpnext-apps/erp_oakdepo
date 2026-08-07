@@ -69,7 +69,7 @@ Commercial, Warehouse, Management (read-only everywhere).
 1. Create the User as **System User**.
 2. Add exactly one field role, or one office role.
 3. For office roles, ALSO add the standard ERPNext companion role — the custom roles
-   carry Operations-module permissions only:
+   carry Container Depot module permissions only:
 
    | Office role | Add alongside |
    |---|---|
@@ -102,22 +102,39 @@ filter and the router guard are cosmetic — a caller with curl sees neither.
 
 Both directions are shortcuts only; neither grants anything.
 
-| From | To | Where |
-|---|---|---|
-| Desk | `/depot` | Sidebar item **Depot PWA (Lapangan)** + a Shortcut card on the Container Depot workspace. Both are plain `link_type: URL` rows in the shipped JSON. |
-| PWA | `/desk` | **Buka Desk** in the Home hero, and as a button on the empty state. Rendered only when `get_menu` answers `desk_access: true`. |
+Each direction is gated by the Role flag that matches it, and by nothing else.
 
-`desk_access` comes from `ess/context.py::has_desk_access`, which reads `User.user_type`.
-Do not "improve" it into a scan of the user's roles for `desk_access = 1`: `frappe.get_roles`
-appends the automatic **Desk User** role to every System User, so that scan answers yes for
-everyone. `User.set_system_user` already keeps `user_type` in step with the roles.
+| From | To | Shown when | Surfaces |
+|---|---|---|---|
+| Desk | `/depot` | **Depot Field Role (PWA)** ticked | Sidebar item, workspace Shortcut card, `/apps` tile |
+| PWA | `/desk` | **Desk Access** (`user_type` = System User) | "Buka Desk" in the Home hero + on the empty state |
 
-Note the side effect of the sidebar item: a URL row is always permitted
-(`desk_views.py::is_item_allowed`), and a sidebar renders whenever one non-Section-Break
-item survives — so the Container Depot sidebar is now visible to every Desk user, including
-one with no depot DocPerms at all (they will see only that one entry). Drop the item from
-`workspace_sidebar/container_depot.json` if that is not wanted; the workspace Shortcut has
-no such effect.
+**Desk → PWA.** All three surfaces point at the Desk Page `depot-pwa`
+(`container_depot/page/depot_pwa/`), which does nothing but redirect. The Page exists purely to
+own a `roles` table: Frappe filters sidebar entries and shortcuts of type `Page` against it,
+whereas a `link_type: URL` row is waved through unconditionally
+(`desk_views.py::is_item_allowed` returns True for "url") and would show the shortcut to
+every Desk user — including office staff who land on an empty PWA. The `/apps` tile is
+gated separately by `www/depot.py::check_app_permission`.
+
+`install.setup_pwa_page_roles()` keeps the Page's roles equal to the roles carrying
+`is_depot_field_role`. It is a **full sync**, so unticking the flag removes the shortcut;
+roles hand-added to the Page are dropped (it is `standard: Yes` — tick the flag instead).
+Ticking a new field role needs one `bench migrate` before the Desk shortcut appears; the
+PWA menu itself is still instant, and so is the `/apps` tile.
+
+`/depot` itself stays open to any logged-in user — see handoff §5.5 and the note in
+`www/depot.py`. The shortcut is an advertisement, not the gate.
+
+**PWA → Desk.** `desk_access` comes from `ess/context.py::has_desk_access`, which reads
+`User.user_type`. Do not "improve" it into a scan of the user's roles for `desk_access = 1`:
+`frappe.get_roles` appends the automatic **Desk User** role to every System User, so that
+scan answers yes for everyone. `User.set_system_user` already keeps `user_type` in step
+with the roles.
+
+Consequence of the split worth knowing: field roles ship with `desk_access = 0` and office
+roles without a field role, so **an account sees at most one of the two shortcuts** unless
+an admin deliberately grants both.
 
 ## Notifications
 

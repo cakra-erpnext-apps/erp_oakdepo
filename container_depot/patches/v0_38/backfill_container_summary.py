@@ -8,7 +8,7 @@ the same rows yields the same string.
 
 import frappe
 
-from container_depot.operations.doctype.container_booking.container_booking import (
+from container_depot.container_depot.doctype.container_booking.container_booking import (
 	build_container_summary,
 )
 

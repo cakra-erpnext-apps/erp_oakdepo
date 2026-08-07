@@ -14,7 +14,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.api import _booking_gate_detail
-from container_depot.operations.doctype.container_booking.container_booking import (
+from container_depot.container_depot.doctype.container_booking.container_booking import (
 	revert_booking_to_draft,
 	sync_bookings_for_invoice,
 )

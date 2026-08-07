@@ -19,8 +19,8 @@ TABLE = "tabRepair Used Item"
 
 
 def execute():
-	frappe.reload_doc("operations", "doctype", "repair_used_item")
-	frappe.reload_doc("operations", "doctype", "repair_order")
+	frappe.reload_doc("container_depot", "doctype", "repair_used_item")
+	frappe.reload_doc("container_depot", "doctype", "repair_order")
 
 	if not frappe.db.has_column("Repair Used Item", "item_rate"):
 		return  # doctype not synced yet — nothing to carry over

@@ -10,7 +10,7 @@ import frappe
 from frappe import _
 
 from container_depot.api import _require_authenticated_user
-from container_depot.operations.user_branch import get_user_branches
+from container_depot.container_depot.user_branch import get_user_branches
 
 # How to find a notification source document's branch. ``("field", x)`` reads the
 # branch field directly; ``("depot", x)`` reads a depot field then Depot.branch.

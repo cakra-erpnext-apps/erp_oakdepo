@@ -22,8 +22,8 @@ from frappe.utils import add_to_date, cint, getdate, today
 
 from container_depot.api import _require_authenticated_user
 from container_depot.ess.guard import require_menu
-from container_depot.operations import container_activity
-from container_depot.operations.user_branch import get_user_depots
+from container_depot.container_depot import container_activity
+from container_depot.container_depot.user_branch import get_user_depots
 from container_depot.tasks import PT_REMINDER_DAYS
 
 # Canonical Monitor status buckets — order-state centric so a field observer sees the
@@ -386,7 +386,7 @@ def _count_active_job_containers(allowed) -> int:
 	EIR-In, or a Cleaning / M&R / Periodic Test order not yet finished. EIR-Out is
 	excluded there and excluded here.
 	"""
-	from container_depot.operations.container_status import (
+	from container_depot.container_depot.container_status import (
 		_DONE_CLEANING,
 		_DONE_PERIODIC,
 		_DONE_REPAIR,
@@ -446,7 +446,7 @@ def get_dashboard_summary(depot=None):
 	if not menu:
 		return {"success": True, "menu": []}
 
-	from container_depot.operations import cleaning, eir, gate, mr, position_survey
+	from container_depot.container_depot import cleaning, eir, gate, mr, position_survey
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
 	out = {"success": True, "menu": sorted(menu)}

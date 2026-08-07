@@ -6,7 +6,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
-from container_depot.operations.report.container_inventory.container_inventory import execute
+from container_depot.container_depot.report.container_inventory.container_inventory import execute
 from container_depot.tests.test_api import ensure_test_customer
 
 

@@ -1,0 +1,82 @@
+{
+  "actions": [],
+  "creation": "2026-08-06 09:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "notifications_enabled",
+    "notifications_note",
+    "column_break_head",
+    "default_channel",
+    "section_fallback",
+    "fallback_roles"
+  ],
+  "fields": [
+    {
+      "bold": 1,
+      "default": "1",
+      "fieldname": "notifications_enabled",
+      "fieldtype": "Check",
+      "label": "Aktifkan Notifikasi Depo",
+      "description": "Master switch. Matikan saat migrasi/maintenance — tidak ada Notification Log baru yang dibuat sampai dinyalakan lagi."
+    },
+    {
+      "depends_on": "eval:!doc.notifications_enabled",
+      "fieldname": "notifications_note",
+      "fieldtype": "HTML",
+      "label": "Catatan",
+      "options": "<div class=\"alert alert-warning\">Notifikasi depo <b>OFF</b>. Operasional jalan penuh, tapi tidak ada notifikasi baru yang dikirim ke bell Desk maupun PWA. Notifikasi lama tidak disentuh.</div>"
+    },
+    {
+      "fieldname": "column_break_head",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Bell",
+      "fieldname": "default_channel",
+      "fieldtype": "Select",
+      "label": "Kanal Default",
+      "options": "Bell\nBell + Email",
+      "description": "Dipakai rule yang kanalnya kosong."
+    },
+    {
+      "fieldname": "section_fallback",
+      "fieldtype": "Section Break",
+      "label": "Fallback"
+    },
+    {
+      "fieldname": "fallback_roles",
+      "fieldtype": "Table MultiSelect",
+      "label": "Role Fallback",
+      "options": "Depot Notification Role",
+      "description": "Penerima saat sebuah event tidak punya rule (mis. event baru belum di-seed). SENGAJA bukan 'semua user' — broadcast diam-diam adalah kondisi yang justru sedang diperbaiki."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "issingle": 1,
+  "links": [],
+  "modified": "2026-08-07 10:00:00.000000",
+  "module": "Container Depot",
+  "name": "Depot Notification Settings",
+  "permissions": [
+    {
+      "create": 1,
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "email": 1,
+      "print": 1,
+      "read": 1,
+      "role": "Admin Ops",
+      "share": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "track_changes": 1
+}

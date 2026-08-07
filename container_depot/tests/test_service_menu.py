@@ -1,9 +1,9 @@
 """Depot Service Menu — a dynamic, group-based filter over the Item catalog.
 
-Covers the resolver (operations.service_menu): group membership incl. descendants,
+Covers the resolver (container_depot.service_menu): group membership incl. descendants,
 the per-item extras escape-hatch, the safe fallback when a menu is missing/empty, and
-that the M&R picker (operations.mr.mr_item_search) honours the seeded "Maintenance"
-menu. Also covers the contract paste-import (operations.doctype.depot_contract:
+that the M&R picker (container_depot.mr.mr_item_search) honours the seeded "Maintenance"
+menu. Also covers the contract paste-import (container_depot.doctype.depot_contract:
 import_tariff_lines) — parsing, base-price-list defaults, unknown items, replace, and
 the editable-status guard.
 
@@ -17,10 +17,10 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot import seed_dev
-from container_depot.operations import mr, service_menu
-from container_depot.operations.doctype.depot_contract import depot_contract
-from container_depot.operations.doctype.periodic_test_order import periodic_test_order
-from container_depot.operations.doctype.survey_order import survey_order
+from container_depot.container_depot import mr, service_menu
+from container_depot.container_depot.doctype.depot_contract import depot_contract
+from container_depot.container_depot.doctype.periodic_test_order import periodic_test_order
+from container_depot.container_depot.doctype.survey_order import survey_order
 
 _PREFIX = "ZZ-MENU-TEST"
 _MENU = "ZZ Menu Test"

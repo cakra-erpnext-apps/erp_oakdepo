@@ -1,4 +1,4 @@
-"""Cleaning Order flow (operations.cleaning): the order carries the chosen services
+"""Cleaning Order flow (container_depot.cleaning): the order carries the chosen services
 (tariff + manhour), the remarks and the surveyor's signature.
 
 Flow: order (Pending) -> start_cleaning (In_Progress) -> save_cleaning_order(submit) ->
@@ -14,7 +14,7 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import cleaning
+from container_depot.container_depot import cleaning
 from container_depot.tests.test_eir import _make_container
 
 

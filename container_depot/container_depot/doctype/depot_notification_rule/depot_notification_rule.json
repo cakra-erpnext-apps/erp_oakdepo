@@ -1,0 +1,109 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "field:event_key",
+  "creation": "2026-08-06 09:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "event_key",
+    "label",
+    "enabled",
+    "column_break_head",
+    "channel",
+    "description",
+    "section_recipients",
+    "roles"
+  ],
+  "fields": [
+    {
+      "fieldname": "event_key",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Event Key",
+      "read_only_depends_on": "eval:!doc.__islocal",
+      "reqd": 1,
+      "unique": 1,
+      "description": "Kode event di container_depot.container_depot.notify. Tidak bisa diubah setelah disimpan."
+    },
+    {
+      "bold": 1,
+      "fieldname": "label",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Nama Event",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "enabled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Aktif",
+      "description": "Matikan untuk menghentikan event ini tanpa menghapus barisnya."
+    },
+    {
+      "fieldname": "column_break_head",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Bell",
+      "fieldname": "channel",
+      "fieldtype": "Select",
+      "label": "Kanal",
+      "options": "Bell\nBell + Email",
+      "description": "Kanal pengiriman. Email menyusul — saat ini semua kanal mengirim ke bell."
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "label": "Kapan Muncul",
+      "description": "Penjelasan kapan event ini terpicu, supaya admin tidak perlu menebak."
+    },
+    {
+      "fieldname": "section_recipients",
+      "fieldtype": "Section Break",
+      "label": "Penerima"
+    },
+    {
+      "fieldname": "roles",
+      "fieldtype": "Table MultiSelect",
+      "label": "Role Penerima",
+      "options": "Depot Notification Role",
+      "description": "Notifikasi dikirim ke user aktif yang punya salah satu role ini DAN branch-nya cocok. Rule aktif wajib punya minimal satu role."
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-08-07 10:00:00.000000",
+  "module": "Container Depot",
+  "name": "Depot Notification Rule",
+  "naming_rule": "By fieldname",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    },
+    {
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Admin Ops"
+    }
+  ],
+  "sort_field": "event_key",
+  "sort_order": "ASC",
+  "track_changes": 1
+}

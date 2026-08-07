@@ -2,7 +2,7 @@
 
 Per the integration rule (mirrors ``ess/inspections.py``): endpoints here only add
 authentication + whitelisting + GET/POST gating; every bit of resolution/build logic
-lives in ``container_depot.operations.cleaning``.
+lives in ``container_depot.container_depot.cleaning``.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
-from container_depot.operations import cleaning
+from container_depot.container_depot import cleaning
 
 
 @frappe.whitelist(methods=["GET"])

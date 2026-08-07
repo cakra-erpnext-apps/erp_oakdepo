@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Container Status Report",
+  "ref_doctype": "Container",
+  "report_type": "Script Report",
+  "is_standard": "Yes",
+  "module": "Container Depot",
+  "disabled": 0
+}

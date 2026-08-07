@@ -10,7 +10,7 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations.doctype.container_booking.container_booking import void_draft
+from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
 from container_depot.state_machine import (
 	INVENTORY_STAGES,
 	STAGE_BY_STATUS,

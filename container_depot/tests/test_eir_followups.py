@@ -1,4 +1,4 @@
-"""EIR follow-up logic (operations.eir_followups): detect + create a Cleaning Order
+"""EIR follow-up logic (container_depot.eir_followups): detect + create a Cleaning Order
 (Empty Dirty) or a Repair Order / M&R (real damage findings) from a submitted EIR.
 
 The logic is NOT wired into on_submit — these tests call it directly. All created
@@ -9,7 +9,7 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import eir, eir_followups
+from container_depot.container_depot import eir, eir_followups
 from container_depot.tests.test_eir import _make_container
 
 

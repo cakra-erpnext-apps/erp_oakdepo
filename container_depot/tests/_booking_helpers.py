@@ -10,7 +10,7 @@ from __future__ import annotations
 import frappe
 from frappe.utils import add_days, add_to_date, now_datetime, today
 
-from container_depot.operations.doctype.booking_code.booking_code import generate_code
+from container_depot.container_depot.doctype.booking_code.booking_code import generate_code
 
 
 def make_contract(customer: str) -> str:

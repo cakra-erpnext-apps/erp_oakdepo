@@ -1,0 +1,189 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-06-18 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "line_type",
+  "item",
+  "warehouse",
+  "item_name",
+  "is_stock_item",
+  "decision",
+  "manhour",
+  "manhour_rate",
+  "manhour_amount",
+  "column_break_1",
+  "currency",
+  "quantity",
+  "on_hand",
+  "item_rate",
+  "item_amount",
+  "amount",
+  "owner_remark",
+  "remark",
+  "photos"
+ ],
+ "fields": [
+  {
+   "description": "Jasa = pekerjaan/servis (tidak ada stok). Part = barang fisik yang dikeluarkan dari gudang.",
+   "fieldname": "line_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Jenis",
+   "options": "Jasa\nPart",
+   "reqd": 1
+  },
+  {
+   "description": "Service or spare part \u2014 must have an Item Price in the owner's price list.",
+   "fieldname": "item",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item (Service / Part)",
+   "options": "Item"
+  },
+  {
+   "depends_on": "eval:doc.line_type=='Part'",
+   "description": "Gudang asal part ini. Tiap baris boleh beda gudang.",
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Gudang",
+   "mandatory_depends_on": "eval:doc.line_type=='Part'",
+   "options": "Warehouse"
+  },
+  {
+   "fetch_from": "item.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Auto: a stock item is issued from the source warehouse on completion.",
+   "fieldname": "is_stock_item",
+   "fieldtype": "Check",
+   "label": "Stock Item",
+   "read_only": 1
+  },
+  {
+   "default": "Pending",
+   "description": "Owner's per-line decision. Only Approved lines are repaired, issued from stock, and billed.",
+   "fieldname": "decision",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Owner Decision",
+   "options": "Pending\nApproved\nRejected"
+  },
+  {
+   "default": "0",
+   "description": "Tidak dipakai lagi \u2014 labour ditagih di invoice (lihat RepairOrder.calculate_totals). Disimpan untuk order lama.",
+   "fieldname": "manhour",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "label": "Manhour"
+  },
+  {
+   "description": "Tidak dipakai lagi \u2014 labour ditagih di invoice (lihat RepairOrder.calculate_totals). Disimpan untuk order lama.",
+   "fieldname": "manhour_rate",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Rate / Manhour",
+   "options": "currency"
+  },
+  {
+   "description": "Tidak dipakai lagi \u2014 labour ditagih di invoice (lihat RepairOrder.calculate_totals). Disimpan untuk order lama.",
+   "fieldname": "manhour_amount",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Amount Cost Manhour",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Owner price-list currency for this line (drives the currency of every amount).",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Currency",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "quantity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty"
+  },
+  {
+   "description": "Sisa stok di gudang baris ini. Kosong untuk Jasa.",
+   "fieldname": "on_hand",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Stok",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Per-unit item price from the owner's Item Price (adjustable).",
+   "fieldname": "item_rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Item Rate",
+   "options": "currency"
+  },
+  {
+   "description": "Auto: Qty \u00d7 Item Rate.",
+   "fieldname": "item_amount",
+   "fieldtype": "Currency",
+   "label": "Amount Item Rate",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Auto: Amount Cost Manhour + Amount Item Rate.",
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "description": "Owner's note on this line (e.g. why it was rejected).",
+   "fieldname": "owner_remark",
+   "fieldtype": "Small Text",
+   "label": "Owner Remark"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "description": "JSON array of evidence photo file URLs (multiple per used item).",
+   "fieldname": "photos",
+   "fieldtype": "Long Text",
+   "label": "Evidence Photos (JSON)"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-07 10:00:00.000000",
+ "module": "Container Depot",
+ "name": "Repair Used Item",
+ "owner": "Administrator",
+ "sort_field": "creation",
+ "sort_order": "DESC"
+}

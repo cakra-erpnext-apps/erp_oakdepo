@@ -1,0 +1,13 @@
+{
+ "add_total_row": 0,
+ "disabled": 0,
+ "doctype": "Report",
+ "is_standard": "Yes",
+ "json": null,
+ "module": "Container Depot",
+ "name": "Depot Service Item Group",
+ "query": "SELECT g.name AS \"Item Group:Link/Item Group:240\", g.parent_item_group AS \"Parent Group:Link/Item Group:220\", g.is_group AS \"Is Group:Check:90\" FROM `tabItem Group` g WHERE g.name IN ('Depot Services','Standard Depot Handling Charge','Testing Charges','Survey Fee','Exterior Cleaning Fee','Cleaning Cost','Interior Shell - Special Requirement','Repair & Spare Parts','Depot Packages') ORDER BY g.lft",
+ "ref_doctype": "Container",
+ "report_name": "Depot Service Item Group",
+ "report_type": "Query Report"
+}

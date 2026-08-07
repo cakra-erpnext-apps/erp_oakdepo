@@ -18,9 +18,9 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
-from container_depot.operations import cleaning
-from container_depot.operations.doctype.gate_out_plan import gate_out_plan
-from container_depot.operations.mail_to_order import get_order_prefill
+from container_depot.container_depot import cleaning
+from container_depot.container_depot.doctype.gate_out_plan import gate_out_plan
+from container_depot.container_depot.mail_to_order import get_order_prefill
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_container
 
@@ -311,7 +311,7 @@ class TestGateOutPlan(FrappeTestCase):
 	# --- % Keluar / auto-close ------------------------------------------------
 	def _gate_out(self, container):
 		"""Send a listed tank out the way the gate does (clean EIR-Out + mark_gate_out)."""
-		from container_depot.operations.gate import mark_gate_out
+		from container_depot.container_depot.gate import mark_gate_out
 
 		frappe.db.set_value("Container", container, "status", "Available", update_modified=False)
 		eir = frappe.new_doc("Inspection")

@@ -12,7 +12,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_to_date, getdate, today
 
-from container_depot.operations import periodic
+from container_depot.container_depot import periodic
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_container
 
@@ -231,7 +231,7 @@ class TestPeriodicTestOrder(FrappeTestCase):
 	def test_report_lists_it_under_its_own_order_type(self):
 		"""The billing treatment is shared with M&R; the Order Type filter is what tells
 		them apart."""
-		from container_depot.operations.report.order_billing_status.order_billing_status import (
+		from container_depot.container_depot.report.order_billing_status.order_billing_status import (
 			ORDER_TYPES,
 			execute,
 		)

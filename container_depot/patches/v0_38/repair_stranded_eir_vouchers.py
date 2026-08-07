@@ -14,7 +14,7 @@ just the dangling link.
 
 import frappe
 
-from container_depot.operations.eir import release_eirs_for_cancelled_order
+from container_depot.container_depot.eir import release_eirs_for_cancelled_order
 
 # (inspection_type, the bon doctype its referred_voucher points at)
 _PAIRS = (("EIR-In", "Order Bongkar"), ("EIR-Out", "Order Muat"))

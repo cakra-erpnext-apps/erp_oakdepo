@@ -16,7 +16,7 @@ def execute():
 	if not frappe.db.table_exists("Gate Out Plan"):
 		return
 
-	from container_depot.operations.doctype.gate_out_plan.gate_out_plan import (
+	from container_depot.container_depot.doctype.gate_out_plan.gate_out_plan import (
 		ACTIVE_STATUS,
 		refresh_plan_readiness,
 	)

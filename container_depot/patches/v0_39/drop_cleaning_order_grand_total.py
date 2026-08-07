@@ -14,8 +14,8 @@ _COLUMN = "grand_total"
 
 
 def execute():
-	frappe.reload_doc("operations", "doctype", "cleaning_order_service")
-	frappe.reload_doc("operations", "doctype", "cleaning_order")
+	frappe.reload_doc("container_depot", "doctype", "cleaning_order_service")
+	frappe.reload_doc("container_depot", "doctype", "cleaning_order")
 	existing = {c.get("name") for c in frappe.db.get_table_columns_description(_TABLE)}
 	if _COLUMN in existing:
 		frappe.db.sql_ddl(f"ALTER TABLE `{_TABLE}` DROP COLUMN `{_COLUMN}`")

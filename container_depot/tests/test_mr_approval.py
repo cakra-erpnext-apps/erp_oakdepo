@@ -1,4 +1,4 @@
-"""M&R owner-approval workflow (operations.mr + the Repair Order controller).
+"""M&R owner-approval workflow (container_depot.mr + the Repair Order controller).
 
 The estimate must be submitted to the container owner and approved before any work
 starts (approval is mandatory). The owner may approve, reject, or request a revision,
@@ -15,7 +15,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt
 
-from container_depot.operations import eir, mr
+from container_depot.container_depot import eir, mr
 from container_depot.tests.test_eir import _make_container
 
 _CUST = "MRA Test Owner"

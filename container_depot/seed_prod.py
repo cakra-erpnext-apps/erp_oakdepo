@@ -32,7 +32,7 @@ groups in Desk (or run the dev seeder on a dev site for a realistic dummy mappin
 
 Prices are intentionally NOT seeded — Item Price / tariff is commercial data;
 load it per principal via the depot contract import (paste from Excel),
-``container_depot.operations.doctype.depot_contract.depot_contract.import_tariff_lines``,
+``container_depot.container_depot.doctype.depot_contract.depot_contract.import_tariff_lines``,
 or the v0_11 price patches.
 
 The dataset itself is defined once in :mod:`container_depot.seed_dev`; if you add
@@ -44,7 +44,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot import seed_dev as _dev
-from container_depot.operations import service_menu as _service_menu
+from container_depot.container_depot import service_menu as _service_menu
 
 
 def run():

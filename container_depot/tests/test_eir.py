@@ -1,11 +1,11 @@
-"""Tests for the web-EIR backend (operations.eir core + checklist flow)."""
+"""Tests for the web-EIR backend (container_depot.eir core + checklist flow)."""
 
 from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import eir
+from container_depot.container_depot import eir
 from container_depot.tests._booking_helpers import make_booking_code
 from container_depot.tests.test_api import ensure_test_customer
 
@@ -336,7 +336,7 @@ class TestEirDraft(FrappeTestCase):
 		# as Administrator, who holds no depot role, so assert on the routing decision
 		# rather than on a Notification Log row that has nobody to land on here.
 		# End-to-end recipient coverage lives in tests/test_notifications.py.
-		from container_depot.operations.notify import _event_roles
+		from container_depot.container_depot.notify import _event_roles
 
 		self.assertEqual(set(_event_roles("eir_pending_review")), {"Admin Ops", "SPV Lapangan"})
 		# It surfaces in the "Diajukan Review" list (branch-scoped, like the worklist).
@@ -602,7 +602,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		self.assertEqual(data["eir_in_date"], "2026-06-12")
 
 	def test_order_bongkar_stamps_container_ex_vessel(self):
-		from container_depot.operations.doctype.order_bongkar.order_bongkar import (
+		from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
 			_update_container_ex_vessel,
 		)
 		c = _make_container("EIRV3000002")

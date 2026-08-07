@@ -1,0 +1,93 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "allow_rename": 1,
+  "autoname": "field:menu_name",
+  "description": "A named filter over Item Groups (Booking / Cleaning / Maintenance / …). Items already carry an Item Group; a menu just collects the groups (and optional extra items) that belong to it, so pickers and the contract can filter by menu. Dynamic — add a new menu anytime.",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "menu_name",
+    "is_active",
+    "sequence",
+    "column_break_1",
+    "description",
+    "groups_section",
+    "item_groups",
+    "extra_items_section",
+    "extra_items"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Service Menu"
+    },
+    {
+      "bold": 1,
+      "fieldname": "menu_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Menu Name",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "is_active",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Active"
+    },
+    {
+      "fieldname": "sequence",
+      "fieldtype": "Int",
+      "label": "Sequence"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "description",
+      "fieldtype": "Small Text",
+      "in_list_view": 1,
+      "label": "Description"
+    },
+    {
+      "fieldname": "groups_section",
+      "fieldtype": "Section Break",
+      "label": "Item Groups"
+    },
+    {
+      "description": "Items whose Item Group (or a descendant of it) is listed here belong to this menu.",
+      "fieldname": "item_groups",
+      "fieldtype": "Table",
+      "label": "Item Groups",
+      "options": "Depot Service Menu Group"
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "extra_items_section",
+      "fieldtype": "Section Break",
+      "label": "Extra Items (optional)"
+    },
+    {
+      "description": "Optional escape-hatch — individual Items to include in this menu beyond the group mapping (e.g. a cross-menu item).",
+      "fieldname": "extra_items",
+      "fieldtype": "Table",
+      "label": "Extra Items",
+      "options": "Depot Service Menu Item"
+    }
+  ],
+  "links": [],
+  "modified": "2026-08-07 10:00:00.000000",
+  "module": "Container Depot",
+  "name": "Depot Service Menu",
+  "search_fields": "menu_name, description",
+  "sort_field": "sequence",
+  "sort_order": "ASC",
+  "title_field": "menu_name"
+}

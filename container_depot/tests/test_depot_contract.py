@@ -6,7 +6,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
-from container_depot.operations.doctype.depot_contract.depot_contract import (
+from container_depot.container_depot.doctype.depot_contract.depot_contract import (
 	get_active_contract,
 )
 from container_depot.tests.test_api import ensure_test_customer
@@ -244,7 +244,7 @@ class TestDepotContract(FrappeTestCase):
 		self.assertEqual(c.tariff_lines[0].currency, "USD")
 
 	def test_base_price_list_lines_returns_priced_items(self):
-		from container_depot.operations.doctype.depot_contract.depot_contract import base_price_list_lines
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import base_price_list_lines
 
 		lines = base_price_list_lines("OAK 2026")
 		self.assertTrue(any(d["item"] == "Lift Off" and d["rate"] == 36.0 for d in lines))
@@ -253,7 +253,7 @@ class TestDepotContract(FrappeTestCase):
 	def test_base_price_list_query_allows_cribbing_from_any_list(self):
 		# The base picker may seed from another customer's list (relaxed filter), but
 		# still hides empty / buying-only lists (nothing to copy from those).
-		from container_depot.operations.doctype.depot_contract.depot_contract import base_price_list_query
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import base_price_list_query
 
 		cust = ensure_test_customer(CUSTOMER_NAME)
 		crib = "DCT Crib Source"
@@ -291,7 +291,7 @@ class TestDepotContract(FrappeTestCase):
 			c.save(ignore_permissions=True)
 
 	def test_set_status_walks_the_flow_and_publishes(self):
-		from container_depot.operations.doctype.depot_contract.depot_contract import set_status
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
 
 		c = _make_contract(status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
@@ -324,7 +324,7 @@ class TestDepotContract(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Price List", src.generated_price_list, "enabled"), 1)
 
 	def test_submitting_amendment_supersedes_source(self):
-		from container_depot.operations.doctype.depot_contract.depot_contract import set_status
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
 
 		src = self._active_contract()
 		amd = _make_contract(
@@ -361,7 +361,7 @@ class TestDepotContract(FrappeTestCase):
 			frappe.db.commit()
 
 	def test_already_amended_contract_cannot_be_amended_again(self):
-		from container_depot.operations.doctype.depot_contract.depot_contract import set_status
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
 
 		src = self._active_contract()
 		first = _make_contract(

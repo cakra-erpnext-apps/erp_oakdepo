@@ -1,8 +1,8 @@
-"""ESS PWA EIR endpoints — thin ``@frappe.whitelist`` wrappers over operations.eir.
+"""ESS PWA EIR endpoints — thin ``@frappe.whitelist`` wrappers over container_depot.eir.
 
 Per the integration rule: endpoints here only add authentication + whitelisting +
 GET/POST gating; every bit of EIR resolution/build logic lives in
-``container_depot.operations.eir`` so the same code backs the PWA and any Desk /
+``container_depot.container_depot.eir`` so the same code backs the PWA and any Desk /
 automation caller. Mirrors the shape of ``ess/inventory.py``.
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
-from container_depot.operations import eir
+from container_depot.container_depot import eir
 
 
 @frappe.whitelist(methods=["GET"])
@@ -147,7 +147,7 @@ def eir_voucher(voucher=None, inspection_type="EIR-In", container=None):
 
 	EIR-In resolves an Order Bongkar (shipper), EIR-Out an Order Muat (truck / driver /
 	driver phone / shipper). The voucher must be submitted and carry ``container``.
-	See ``operations.eir.fetch_voucher``.
+	See ``container_depot.eir.fetch_voucher``.
 	"""
 	require_menu("eir")
 	return eir.fetch_voucher(voucher=voucher, inspection_type=inspection_type, container=container)

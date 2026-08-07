@@ -8,7 +8,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime, today
 
-from container_depot.operations.container_activity import log_container_activity
+from container_depot.container_depot.container_activity import log_container_activity
 from container_depot.tests._booking_helpers import make_booking_code
 from container_depot.tests.test_api import ensure_test_customer
 
@@ -120,7 +120,7 @@ class TestContainerActivityWiring(FrappeTestCase):
 
 class TestContainerActivityReportAndBackfill(FrappeTestCase):
 	def test_report_filters(self):
-		from container_depot.operations.report.container_activity.container_activity import execute
+		from container_depot.container_depot.report.container_activity.container_activity import execute
 
 		c = _make_container("ACTRPT00001")
 		log_container_activity(c, "Gate In")
@@ -162,7 +162,7 @@ class TestContainerActivityBookingToOrderBongkar(FrappeTestCase):
 	one Container Activity row, linked back to the document that produced it."""
 
 	def test_booking_to_order_bongkar_records_activity(self):
-		from container_depot.operations.order_generation import make_order
+		from container_depot.container_depot.order_generation import make_order
 
 		cust = ensure_test_customer("Activity Flow Cust")
 		# A TOP (postpaid) contract lets the booking submit without the Cash

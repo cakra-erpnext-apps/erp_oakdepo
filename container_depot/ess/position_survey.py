@@ -1,8 +1,8 @@
 """ESS PWA endpoints for the Container Position Survey (Lift On) workflow — thin
-``@frappe.whitelist`` wrappers over ``operations.position_survey``.
+``@frappe.whitelist`` wrappers over ``container_depot.position_survey``.
 
 Per the integration rule: endpoints here only add authentication + whitelisting + GET/POST
-gating; all logic lives in ``container_depot.operations.position_survey`` so the same code
+gating; all logic lives in ``container_depot.container_depot.position_survey`` so the same code
 backs the PWA and any Desk / automation caller. Mirrors ``ess/cleaning.py``.
 """
 
@@ -12,7 +12,7 @@ import frappe
 from frappe import _
 
 from container_depot.ess.guard import require_menu
-from container_depot.operations import position_survey
+from container_depot.container_depot import position_survey
 
 # The "Position Fix" approval (2026-08-06) is gated by the `posFix` menu, i.e. by submit
 # permission on Container Position Survey — Team Kalmar and SPV Lapangan have it, Team

@@ -1,7 +1,7 @@
 """Container status — presence-based, no ordering.
 
 The raw ``Container.status`` Select is now one of four presence states (see
-:mod:`container_depot.operations.container_status`):
+:mod:`container_depot.container_depot.container_status`):
 
     Booked → In_Depot ↔ Available → Gate_Out
 

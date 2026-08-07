@@ -12,7 +12,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.ess.inventory import derive_status
-from container_depot.operations.gate import list_ready_to_load, mark_gate_out
+from container_depot.container_depot.gate import list_ready_to_load, mark_gate_out
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
 

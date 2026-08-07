@@ -14,7 +14,7 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import mr
+from container_depot.container_depot import mr
 from container_depot.tests.test_api import ensure_test_customer
 
 CUSTOMER = "MR Gate Test Co"

@@ -13,7 +13,7 @@ import io
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations.doctype.container_booking import container_booking as cb
+from container_depot.container_depot.doctype.container_booking import container_booking as cb
 from container_depot.tests.test_api import ensure_test_customer
 
 CUSTOMER = "Cont Import Co"

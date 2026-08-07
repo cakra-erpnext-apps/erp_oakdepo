@@ -24,7 +24,7 @@ _COLUMNS = [
 
 
 def execute():
-	frappe.reload_doc("operations", "doctype", "container")
+	frappe.reload_doc("container_depot", "doctype", "container")
 	existing = [
 		c
 		for c in _COLUMNS

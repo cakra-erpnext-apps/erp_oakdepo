@@ -105,7 +105,7 @@ class TestFinanceSwitch(FrappeTestCase):
 	def test_billing_actions_say_why_they_did_nothing(self):
 		"""Buttons pressed *to bill something* must explain, not fail quietly."""
 		from container_depot.consolidated_billing import bill_customer
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			generate_invoice,
 		)
 
@@ -157,7 +157,7 @@ class TestFinanceSwitch(FrappeTestCase):
 
 	# --- existing invoices are safe -------------------------------------------
 	def test_switching_off_leaves_a_live_invoice_alone(self):
-		from container_depot.operations.doctype.container_booking.container_booking import (
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			generate_invoice,
 			rollback_to_draft,
 		)

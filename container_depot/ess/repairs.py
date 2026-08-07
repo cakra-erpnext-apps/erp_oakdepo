@@ -15,9 +15,9 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
-from container_depot.operations import mr
+from container_depot.container_depot import mr
 
-# Allowed Repair Order status transitions — single source of truth in operations/mr.py
+# Allowed Repair Order status transitions — single source of truth in container_depot/mr.py
 # (the owner-approval state machine, shared by the controller, PWA, and Desk).
 REPAIR_TRANSITIONS = mr.MR_TRANSITIONS
 
@@ -125,7 +125,7 @@ def set_repair_status(repair_order, status):
 
 
 # --- PWA M&R menu (Maintenance & Repair) -------------------------------------
-# Thin wrappers over operations.mr — the M&R worklist the team works in the PWA
+# Thin wrappers over container_depot.mr — the M&R worklist the team works in the PWA
 # (auto-created from EIRs with damage). All resolution/build logic lives in mr.py.
 
 

@@ -1,10 +1,10 @@
 """ESS PWA Periodic Test menu — the M&R-style execution console for a container's periodic
 pressure test (2,5Y / 5Y).
 
-Thin whitelist wrappers over ``operations.periodic`` — the PWA execution worklist (start ->
+Thin whitelist wrappers over ``container_depot.periodic`` — the PWA execution worklist (start ->
 done) + history. Like the M&R menu, this is an EXECUTION console: it only surfaces work the
 owner (or an Admin-Ops bypass in Desk) has already approved. Estimate-building and the owner
-decision live in Desk. All resolution/build logic lives in ``operations/periodic.py``; the
+decision live in Desk. All resolution/build logic lives in ``container_depot/periodic.py``; the
 endpoint layer only adds auth + whitelisting.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
-from container_depot.operations import periodic
+from container_depot.container_depot import periodic
 
 
 @frappe.whitelist(methods=["GET"])

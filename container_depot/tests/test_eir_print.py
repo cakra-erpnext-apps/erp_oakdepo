@@ -1,4 +1,4 @@
-"""Render guard for the EIR print format (operations/print_format/eir).
+"""Render guard for the EIR print format (container_depot/print_format/eir).
 
 The template is pure Jinja with master-driven legends + a 50-row grid joined to
 damage_log; this test catches template breakage and confirms the derived ISO 6346

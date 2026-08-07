@@ -11,7 +11,7 @@ with what the server enforces.
 WHY THE FIELD-ROLE CHECK IS NOT HERE
 ------------------------------------
 The handoff's sketch also required ``_has_field_role()``. That would break the Desk:
-``operations/doctype/repair_order/repair_order.js`` and ``inspection/inspection.js`` call
+``container_depot/doctype/repair_order/repair_order.js`` and ``inspection/inspection.js`` call
 eight of these very endpoints (mr_decision, mr_publish_to_owner, set_repair_status,
 eir_prefill, …), and the office roles that use them — Admin Ops above all — hold no field
 role by definition. The owner-approval workflow runs from both surfaces.

@@ -18,7 +18,7 @@ What it seeds
                            item_code == item_name (the descriptive name is the identity)
 * Depot Service Menu     — Booking / Cleaning / Maintenance / Survey / Periodic Test,
                            WITH dummy group filters (production seeds them empty — see
-                           operations/service_menu.DEFAULT_MENUS)
+                           container_depot/service_menu.DEFAULT_MENUS)
 * Customer               — Stolt, Bertschi
 
 Items are created as non-stock sales items (``is_stock_item=0``) so the seeder needs

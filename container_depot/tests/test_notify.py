@@ -10,8 +10,8 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import eir as eir_ops
-from container_depot.operations.notify import _recipients, notify, notify_booking_created
+from container_depot.container_depot import eir as eir_ops
+from container_depot.container_depot.notify import _recipients, notify, notify_booking_created
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
 
 BR_A = "Notify Branch A"

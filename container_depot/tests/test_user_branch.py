@@ -8,7 +8,7 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations.order_generation import make_order
+from container_depot.container_depot.order_generation import make_order
 from container_depot.tests.test_multi_container_order import _booking_with_codes
 
 

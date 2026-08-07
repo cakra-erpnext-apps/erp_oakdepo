@@ -5,7 +5,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.api import _require_authenticated_user
-from container_depot.operations.user_branch import get_user_branches
+from container_depot.container_depot.user_branch import get_user_branches
 
 # The PWA menu, as (key, route, deciding doctype, ptype).
 #

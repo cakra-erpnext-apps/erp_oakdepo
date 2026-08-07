@@ -1,0 +1,87 @@
+{
+  "actions": [],
+  "allow_import": 1,
+  "allow_rename": 1,
+  "autoname": "field:depot_code",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "depot_code",
+    "depot_name",
+    "branch",
+    "is_active",
+    "column_break_1",
+    "city",
+    "address"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Depot"
+    },
+    {
+      "bold": 1,
+      "fieldname": "depot_code",
+      "fieldtype": "Data",
+      "label": "Depot Code",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fieldname": "depot_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Depot Name",
+      "reqd": 1
+    },
+    {
+      "description": "Branch this depot belongs to. Many depots map to one branch.",
+      "fieldname": "branch",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Branch",
+      "options": "Branch",
+      "reqd": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "is_active",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Active"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "city",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "City"
+    },
+    {
+      "fieldname": "address",
+      "fieldtype": "Small Text",
+      "label": "Address"
+    }
+  ],
+  "links": [
+    {
+      "group": "Storage",
+      "link_doctype": "Yard Zone",
+      "link_fieldname": "depot"
+    }
+  ],
+  "modified": "2026-08-07 10:00:00.000000",
+  "module": "Container Depot",
+  "name": "Depot",
+  "search_fields": "depot_code, depot_name, city",
+  "sort_field": "depot_code",
+  "sort_order": "ASC",
+  "title_field": "depot_name"
+}

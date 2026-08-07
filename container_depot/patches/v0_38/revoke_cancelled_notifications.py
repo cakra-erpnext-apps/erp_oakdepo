@@ -9,7 +9,7 @@ deletes).
 Same sweep as that daily job, so the rule lives in exactly one place.
 """
 
-from container_depot.operations.notify import sweep_stale_notifications
+from container_depot.container_depot.notify import sweep_stale_notifications
 
 
 def execute():

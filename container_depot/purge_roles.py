@@ -70,7 +70,7 @@ def run(dry_run: bool = False) -> dict:
 
 	if not dry_run:
 		frappe.db.commit()
-		# The blanket System Manager grant is what keeps the Operations doctypes reachable
+		# The blanket System Manager grant is what keeps the Container Depot doctypes reachable
 		# once the custom roles are gone — most of them ship with an empty "permissions"
 		# array, so without this nobody but Administrator could open them.
 		from container_depot.install import setup_permissions

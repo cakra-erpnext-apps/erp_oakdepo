@@ -24,7 +24,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime, today
 
-from container_depot.operations.doctype.container_booking.container_booking import void_draft
+from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
 from container_depot.tests.test_api import ensure_test_customer
 
 CUSTOMER = "Notif Revoke Co"

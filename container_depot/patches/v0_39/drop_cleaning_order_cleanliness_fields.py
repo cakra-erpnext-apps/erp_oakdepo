@@ -20,8 +20,8 @@ _ORPHANED_CHILD = "Cleaning Order Checklist Item"
 
 
 def execute():
-	frappe.reload_doc("operations", "doctype", "cleaning_order_service")
-	frappe.reload_doc("operations", "doctype", "cleaning_order")
+	frappe.reload_doc("container_depot", "doctype", "cleaning_order_service")
+	frappe.reload_doc("container_depot", "doctype", "cleaning_order")
 	_drop_columns()
 	_drop_orphaned_child()
 

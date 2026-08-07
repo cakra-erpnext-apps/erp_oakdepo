@@ -11,7 +11,7 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.operations import position_survey as ps
+from container_depot.container_depot import position_survey as ps
 from container_depot.tests.test_eir import _make_container
 
 DEPOT = "OAK1"

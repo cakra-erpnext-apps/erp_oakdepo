@@ -1,6 +1,6 @@
 """Drop the legacy 'Periodic Test' doctype.
 
-The periodic-test flow was consolidated into two places (see operations/periodic.py):
+The periodic-test flow was consolidated into two places (see container_depot/periodic.py):
   * Container.next_pt_due  — the scheduling state / single source of truth (reminder cron
     + dashboard KPI read it here now);
   * Periodic Test Order    — the M&R-style work / billing / history record.

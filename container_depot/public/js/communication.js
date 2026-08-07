@@ -4,7 +4,7 @@
 // booking / repair / survey / cleaning request. Here we add a "Buat Order" group on the
 // Communication form: each button opens a fresh, pre-filled order form (customer resolved
 // from the sender, the email copied into remarks, subject as external reference — see
-// operations/mail_to_order.py). We never save on the user's behalf; they complete the
+// container_depot/mail_to_order.py). We never save on the user's behalf; they complete the
 // mandatory fields (container / items) and save, so the email stays the paper trail.
 
 const ORDER_TYPES = [
@@ -58,7 +58,7 @@ function empty_row() {
 function show_linked_orders(frm) {
 	const shown_for = frm.doc.name;
 	frappe.call({
-		method: "container_depot.operations.mail_to_order.linked_orders",
+		method: "container_depot.container_depot.mail_to_order.linked_orders",
 		args: { communication: frm.doc.name },
 	}).then((r) => {
 		// Stale guard: the reply can land after the form has moved to another email, and the
@@ -91,7 +91,7 @@ frappe.ui.form.on("Communication", {
 				t.label,
 				() => {
 					frappe.call({
-						method: "container_depot.operations.mail_to_order.get_order_prefill",
+						method: "container_depot.container_depot.mail_to_order.get_order_prefill",
 						args: { communication: frm.doc.name, order_type: t.key },
 						freeze: true,
 						freeze_message: __("Menyiapkan order…"),

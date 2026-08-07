@@ -1,0 +1,127 @@
+{
+ "app": "container_depot",
+ "charts": [
+  {
+   "chart_name": "Tanks by Stage",
+   "label": "Tanks by Stage"
+  },
+  {
+   "chart_name": "Tanks by Principal",
+   "label": "Tanks by Principal"
+  },
+  {
+   "chart_name": "Tank IN (Last Month)",
+   "label": "Tank IN (Last Month)"
+  },
+  {
+   "chart_name": "Tank OUT (Last Month)",
+   "label": "Tank OUT (Last Month)"
+  },
+  {
+   "chart_name": "Activity by Type (Last Month)",
+   "label": "Activity by Type (Last Month)"
+  }
+ ],
+ "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Container Inventory \\u2014 Live Monitoring</b></span>\", \"col\": 12}}, {\"id\": \"hdr_rpt\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Reports & Lists</b></span>\", \"col\": 12}}, {\"id\": \"sc_ci\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Inventory\", \"col\": 3}}, {\"id\": \"sc_ca\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Activity\", \"col\": 3}}, {\"id\": \"sc_kpi\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Inventory KPI per Principal\", \"col\": 3}}, {\"id\": \"sc_status\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Status Report\", \"col\": 3}}, {\"id\": \"sc_daily\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Daily Operations Report\", \"col\": 3}}, {\"id\": \"sc_container\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container\", \"col\": 3}}, {\"id\": \"hdr_kpi\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Snapshot</b></span>\", \"col\": 12}}, {\"id\": \"nc_Stock In Depo\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Stock In Depo\", \"col\": 3}}, {\"id\": \"nc_Dirty Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Dirty Tank\", \"col\": 3}}, {\"id\": \"nc_Clean Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Clean Tank\", \"col\": 3}}, {\"id\": \"nc_Tanks In Cleaning\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Cleaning\", \"col\": 3}}, {\"id\": \"nc_Tanks In Survey or Repair\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Survey or Repair\", \"col\": 3}}, {\"id\": \"nc_Tanks Ready for Release\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks Ready for Release\", \"col\": 3}}, {\"id\": \"nc_Tank In Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank In Today\", \"col\": 3}}, {\"id\": \"nc_Tank Out Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank Out Today\", \"col\": 3}}, {\"id\": \"hdr2\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Stock & Flow</b></span>\", \"col\": 12}}, {\"id\": \"ch_Tanks by Stage\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Stage\", \"col\": 6}}, {\"id\": \"ch_Tanks by Principal\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Principal\", \"col\": 6}}, {\"id\": \"ch_Tank IN (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank IN (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Tank OUT (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank OUT (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Activity by Type (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Activity by Type (Last Month)\", \"col\": 6}}]",
+ "creation": "2026-06-20 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "hide_custom": 0,
+ "icon": "stock",
+ "is_hidden": 0,
+ "label": "Container Inventory",
+ "links": [],
+ "module": "Container Depot",
+ "name": "Container Inventory",
+ "number_cards": [
+  {
+   "label": "Stock In Depo",
+   "number_card_name": "Stock In Depo"
+  },
+  {
+   "label": "Dirty Tank",
+   "number_card_name": "Dirty Tank"
+  },
+  {
+   "label": "Clean Tank",
+   "number_card_name": "Clean Tank"
+  },
+  {
+   "label": "Tanks In Cleaning",
+   "number_card_name": "Tanks In Cleaning"
+  },
+  {
+   "label": "Tanks In Survey or Repair",
+   "number_card_name": "Tanks In Survey or Repair"
+  },
+  {
+   "label": "Tanks Ready for Release",
+   "number_card_name": "Tanks Ready for Release"
+  },
+  {
+   "label": "Tank In Today",
+   "number_card_name": "Tank In Today"
+  },
+  {
+   "label": "Tank Out Today",
+   "number_card_name": "Tank Out Today"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "sequence_id": 1,
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doctype": "Workspace Shortcut",
+   "label": "Container Inventory",
+   "link_to": "Container Inventory",
+   "report_ref_doctype": "Container",
+   "type": "Report"
+  },
+  {
+   "color": "Green",
+   "doctype": "Workspace Shortcut",
+   "label": "Container Activity",
+   "link_to": "Container Activity",
+   "report_ref_doctype": "Container Activity",
+   "type": "Report"
+  },
+  {
+   "color": "Cyan",
+   "doctype": "Workspace Shortcut",
+   "label": "Inventory KPI per Principal",
+   "link_to": "Inventory KPI per Principal",
+   "report_ref_doctype": "Container",
+   "type": "Report"
+  },
+  {
+   "color": "Purple",
+   "doctype": "Workspace Shortcut",
+   "label": "Container Status Report",
+   "link_to": "Container Status Report",
+   "report_ref_doctype": "Container",
+   "type": "Report"
+  },
+  {
+   "color": "Yellow",
+   "doctype": "Workspace Shortcut",
+   "label": "Daily Operations Report",
+   "link_to": "Daily Operations Report",
+   "report_ref_doctype": "Container Booking",
+   "type": "Report"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "doctype": "Workspace Shortcut",
+   "label": "Container",
+   "link_to": "Container",
+   "stats_filter": "[]",
+   "type": "DocType"
+  }
+ ],
+ "title": "Container Inventory",
+ "type": "Workspace"
+}

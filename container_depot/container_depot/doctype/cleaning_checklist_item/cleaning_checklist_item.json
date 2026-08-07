@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:item_code",
+ "creation": "2026-06-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "sequence",
+  "column_break_1",
+  "section",
+  "item_name",
+  "is_active"
+ ],
+ "fields": [
+  {
+   "description": "Canonical identity: zero-padded sequence 01-12.",
+   "fieldname": "item_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "sequence",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sequence",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Statement grouping: Exterior / Interior / Valves & Fittings.",
+   "fieldname": "section",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Section",
+   "reqd": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item Name",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-07 10:00:00.000000",
+ "module": "Container Depot",
+ "name": "Cleaning Checklist Item",
+ "naming_rule": "By fieldname",
+ "permissions": [],
+ "search_fields": "section,item_name",
+ "sort_field": "sequence",
+ "sort_order": "ASC",
+ "title_field": "item_name"
+}

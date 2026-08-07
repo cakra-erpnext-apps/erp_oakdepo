@@ -1,4 +1,4 @@
-"""M&R (Maintenance & Repair) flow (operations.mr): an EIR with damage auto-creates an
+"""M&R (Maintenance & Repair) flow (container_depot.mr): an EIR with damage auto-creates an
 editable Draft Repair Order; the team picks inventory parts and completes it, which
 issues those parts from stock (a Material Issue Stock Entry) and returns the tank to the
 ready pool.
@@ -13,7 +13,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt
 
-from container_depot.operations import eir, eir_followups, mr
+from container_depot.container_depot import eir, eir_followups, mr
 from container_depot.tests.test_eir import _make_container
 
 _ITEM = "MR-TEST-SEALKIT"

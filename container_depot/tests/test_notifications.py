@@ -12,8 +12,8 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.install import NOTIFICATION_RULES, setup_notification_rules
-from container_depot.operations import notify as notify_mod
-from container_depot.operations.notify import notify
+from container_depot.container_depot import notify as notify_mod
+from container_depot.container_depot.notify import notify
 
 FIELD_USER = "notif-field@example.com"      # Team Cleaning
 FINANCE_USER = "notif-finance@example.com"  # Finance

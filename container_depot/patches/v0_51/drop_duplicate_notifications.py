@@ -1,7 +1,7 @@
 """Delete the five built-in Notifications that duplicated our own depot events.
 
 ``install.setup_document_notifications`` used to seed one Frappe ``Notification`` per key
-document event. Each of those events is ALSO raised by ``operations.notify``, so every
+document event. Each of those events is ALSO raised by ``container_depot.notify``, so every
 submit produced two bell rows for the same fact — three for an Order Muat, which raises
 both the bon notification and the EIR-Out follow-up. People stop reading a bell that
 repeats itself.
