@@ -29,7 +29,7 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
-from frappe.utils import cint, flt, getdate, now_datetime, today
+from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, today
 
 from container_depot import finance, invoicing, pricing_model
 from container_depot.container_depot.doctype.booking_code.booking_code import (
@@ -1557,3 +1557,98 @@ def parse_container_xlsx(file_url: str) -> dict:
 			"container": frappe.db.get_value("Container", {"container_no": cno}),
 		})
 	return {"rows": rows, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Work-per-container panel on the booking form
+# ---------------------------------------------------------------------------
+# What the depot actually asks a booking: "what happened to these tanks?" The Connections
+# tab answers it as four flat lists, which is the wrong shape once a booking carries more
+# than one container — you cannot tell which EIR belongs to which tank without opening it.
+# This groups the same data the way the operator thinks about it: per container, in time
+# order.
+#
+# (doctype, date field, extra field shown after the doctype label)
+_WORK_SOURCES = (
+	("Inspection", "eir_date", "inspection_type"),
+	("Cleaning Order", "order_created", None),
+	("Repair Order", "order_created", None),
+	("Periodic Test Order", "order_created", None),
+)
+
+
+@frappe.whitelist()
+def orders_by_container(booking: str):
+	"""Work raised under ``booking``, grouped by the container it was done on.
+
+	Returns one entry per container ROW of the booking — including containers with no work
+	at all, because "nothing happened to this tank yet" is an answer the operator needs
+	just as much as a list.
+
+	``unlinked`` counts orders on that container that belong to no booking at all. They are
+	counted, never merged in: attributing them is a human decision (see
+	``container_depot.booking_link``), and quietly folding them into this booking would be
+	exactly the guess the whole design refuses to make. The count is what tells an operator
+	there is something here worth attributing.
+	"""
+	frappe.has_permission("Container Booking", "read", doc=booking, throw=True)
+
+	rows = frappe.get_all(
+		"Container Booking Item",
+		filters={"parent": booking, "parenttype": "Container Booking"},
+		fields=["container", "container_no"],
+		order_by="idx asc",
+	)
+
+	out = []
+	for row in rows:
+		if not row.container:
+			# A booking may name a tank that has no Container master yet (pre-arrival).
+			out.append({
+				"container": None, "container_no": row.container_no, "orders": [], "unlinked": 0,
+			})
+			continue
+		out.append({
+			"container": row.container,
+			"container_no": row.container_no,
+			"orders": _work_for(booking, row.container),
+			"unlinked": _unlinked_count(row.container),
+		})
+	return out
+
+
+def _work_for(booking: str, container: str) -> list:
+	orders = []
+	for doctype, date_field, extra_field in _WORK_SOURCES:
+		fields = ["name", "status", date_field]
+		if extra_field:
+			fields.append(extra_field)
+		for doc in frappe.get_all(
+			doctype,
+			filters={"container_booking": booking, "container": container},
+			fields=fields,
+			order_by=f"{date_field} asc",
+		):
+			orders.append({
+				"doctype": doctype,
+				"name": doc.name,
+				"label": doc.get(extra_field) if extra_field else doctype,
+				"status": doc.status,
+				"date": doc.get(date_field),
+			})
+	# One timeline per tank rather than four per-doctype lists — an EIR followed by the
+	# cleaning it triggered reads as a sequence, which is how the work actually happened.
+	#
+	# Coerce before comparing: Inspection dates a Date and the work orders a Datetime, and
+	# Python refuses to order the two against each other. Undated rows sort last rather
+	# than blowing up the panel.
+	orders.sort(key=lambda o: (o["date"] is None, get_datetime(o["date"]) if o["date"] else None))
+	return orders
+
+
+def _unlinked_count(container: str) -> int:
+	"""Orders on this container attributed to no booking — candidates, not members."""
+	return sum(
+		frappe.db.count(doctype, {"container": container, "container_booking": ("is", "not set")})
+		for doctype, _date, _extra in _WORK_SOURCES
+	)

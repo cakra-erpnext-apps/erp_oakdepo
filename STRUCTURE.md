@@ -161,6 +161,25 @@ is never re-derived; clearing it lets the EIR fill it again.
 `patches/v0_53/backfill_container_booking.py` recovers pre-existing rows by walking the same
 chain, and leaves unresolvable ones blank rather than guessing.
 
+### Where it shows up
+
+| Surface | Shape |
+|---|---|
+| Container Booking → **Pekerjaan per Container** section | One block per container ROW, its work in one timeline (EIR → cleaning → repair), plus a count of that tank's unattributed orders |
+| Container Booking → **Connections** tab | The same records as four flat per-doctype lists |
+
+The section is the one to reach for on a multi-container booking: Connections cannot say
+which EIR belongs to which tank. Served by `container_booking.orders_by_container`, rendered
+by `_render_work_per_container` in `container_booking.js`.
+
+Containers with no work still get a block ("nothing has happened yet" is an answer), and
+unattributed orders are **counted, never listed as members** — surfacing them as candidates
+is useful, folding them in would be the guess the rule above refuses to make.
+
+Note when adding a doctype to `_WORK_SOURCES`: the date fields are not all one type
+(Inspection dates a Date, the work orders a Datetime), so the timeline sort coerces through
+`get_datetime` — comparing them raw raises TypeError and takes the whole panel down.
+
 ## Notifications
 
 Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable

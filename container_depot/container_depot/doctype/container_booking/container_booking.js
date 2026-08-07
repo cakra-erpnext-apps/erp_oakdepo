@@ -25,6 +25,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_flag_open_conflicts');
 		frm.trigger('_apply_billing_lock');
+		frm.trigger('_render_work_per_container');
 		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
 		// operator can get the booking right before it reaches the Cashier's queue.
 		if (
@@ -89,6 +90,25 @@ frappe.ui.form.on('Container Booking', {
 				true
 			);
 		}
+	},
+	_render_work_per_container(frm) {
+		// "What happened to these tanks?" — the question a booking is opened to answer once
+		// the tanks are in the yard. The Connections tab has the same records but as four
+		// flat lists, which stops being readable the moment a booking carries more than one
+		// container: you cannot tell which EIR belongs to which tank without opening it.
+		const wrapper = frm.get_field('orders_by_container_html')?.$wrapper;
+		if (!wrapper) return;
+		if (frm.is_new()) {
+			wrapper.empty();
+			return;
+		}
+		frappe.call({
+			method: 'container_depot.container_depot.doctype.container_booking.container_booking.orders_by_container',
+			args: { booking: frm.doc.name },
+			callback(r) {
+				wrapper.html(_work_html(r.message || []));
+			}
+		});
 	},
 	_flag_open_conflicts(frm) {
 		// Draft-time heads-up in a single intro banner for the two things a draft can't
@@ -720,4 +740,67 @@ function submit_generation(frm, dialog, codes, vehicle_data) {
 			}
 		}
 	});
+}
+
+// --- Work per container ----------------------------------------------------
+// Colour follows meaning, not doctype: a finished job is green wherever it came from, an
+// open one amber, a dead one grey. The four work doctypes each spell "done" differently,
+// so map the words rather than asking every caller to remember which is which.
+const _WORK_DONE = ['Completed', 'Submitted', 'Approved', 'Passed', 'Closed'];
+const _WORK_DEAD = ['Cancelled', 'Rejected', 'Void'];
+
+function _work_indicator(status) {
+	if (_WORK_DEAD.includes(status)) return 'gray';
+	if (_WORK_DONE.includes(status)) return 'green';
+	return 'orange';
+}
+
+function _work_html(groups) {
+	if (!groups.length) {
+		return `<div class="text-muted">${__('Booking ini belum punya baris container.')}</div>`;
+	}
+	return groups.map(_work_group_html).join('');
+}
+
+function _work_group_html(g) {
+	const esc = frappe.utils.escape_html;
+	const title = g.container
+		? frappe.utils.get_form_link('Container', g.container, true, esc(g.container_no))
+		: `${esc(g.container_no)} <span class="text-muted">${__('(belum ada master)')}</span>`;
+
+	let body;
+	if (g.orders.length) {
+		body = `<div class="mt-2">${g.orders.map(_work_row_html).join('')}</div>`;
+	} else {
+		// Say nothing-happened out loud. A silently empty block reads as a broken panel.
+		body = `<div class="text-muted mt-2">${__('Belum ada pekerjaan yang tercatat di booking ini.')}</div>`;
+	}
+
+	// Orders on this tank that belong to no booking at all. Counted, never listed as if
+	// they were this booking's: attributing them is a human decision (booking_link.py),
+	// and folding them in would be exactly the guess the design refuses to make.
+	let hint = '';
+	if (g.unlinked) {
+		hint = `<div class="text-muted small mt-1">
+			${__('{0} order lain pada tank ini belum ter-link ke booking mana pun.', [g.unlinked])}
+		</div>`;
+	}
+
+	return `<div class="mb-4">
+		<div><b>${title}</b></div>
+		${body}
+		${hint}
+	</div>`;
+}
+
+function _work_row_html(o) {
+	const esc = frappe.utils.escape_html;
+	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
+	const when = o.date ? frappe.datetime.str_to_user(o.date) : '';
+	return `<div class="d-flex align-items-center" style="gap: .5rem; padding: 2px 0;">
+		<span class="indicator-pill ${_work_indicator(o.status)}">${esc(o.status || '—')}</span>
+		<span style="min-width: 9rem;">${link}</span>
+		<span class="text-muted">${esc(__(o.label || o.doctype))}</span>
+		<span class="text-muted small ml-auto">${esc(when)}</span>
+	</div>`;
 }

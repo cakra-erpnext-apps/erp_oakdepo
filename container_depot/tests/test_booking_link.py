@@ -76,14 +76,19 @@ class TestBookingLink(FrappeTestCase):
 		cls.booking = _booking(cls.customer, [(cls.container, CONTAINER_NO)])
 		# A second booking that does NOT list the container — the typo case.
 		cls.foreign_booking = _booking(cls.customer, [(cls.other, OTHER_CONTAINER_NO)])
+		# A two-container booking, for the per-container panel.
+		cls.multi = _booking(
+			cls.customer, [(cls.container, CONTAINER_NO), (cls.other, OTHER_CONTAINER_NO)]
+		)
 		cls.bon = _bon(cls.customer, cls.booking, cls.container, CONTAINER_NO)
 
 	@classmethod
 	def tearDownClass(cls):
 		for doctype in ("Cleaning Order", "Repair Order", "Periodic Test Order", "Inspection"):
 			frappe.db.delete(doctype, {"container": ("in", [cls.container, cls.other])})
-		frappe.db.delete("Order Bongkar", {"booking": ("in", [cls.booking, cls.foreign_booking])})
-		for booking in (cls.booking, cls.foreign_booking):
+		bookings = (cls.booking, cls.foreign_booking, cls.multi)
+		frappe.db.delete("Order Bongkar", {"booking": ("in", list(bookings))})
+		for booking in bookings:
 			frappe.db.delete("Container Booking Item", {"parent": booking})
 			frappe.db.delete("Container Booking", {"name": booking})
 		frappe.db.delete("Container", {"name": ("in", [cls.container, cls.other])})
@@ -157,6 +162,53 @@ class TestBookingLink(FrappeTestCase):
 		order.save(ignore_permissions=True)
 		# Cleared, then re-derived from the EIR — clearing is not an edit to preserve.
 		self.assertEqual(order.container_booking, self.booking)
+
+	# --- the per-container panel on the booking form ------------------------
+	def _panel(self, booking: str) -> dict:
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			orders_by_container,
+		)
+
+		return {g["container_no"]: g for g in orders_by_container(booking)}
+
+	def test_panel_groups_the_work_under_the_container_it_was_done_on(self):
+		"""The reason this panel exists: on a multi-container booking the Connections tab
+		cannot say which EIR belongs to which tank."""
+		eir = self._eir(voucher=self.bon)
+		frappe.db.set_value("Inspection", eir, "container_booking", self.multi, update_modified=False)
+		order = self._order("Cleaning Order", inspection=eir, container_booking=self.multi)
+
+		panel = self._panel(self.multi)
+		self.assertEqual(set(panel), {CONTAINER_NO, OTHER_CONTAINER_NO})
+		mine = [o["name"] for o in panel[CONTAINER_NO]["orders"]]
+		self.assertIn(eir, mine)
+		self.assertIn(order.name, mine)
+		self.assertEqual(panel[OTHER_CONTAINER_NO]["orders"], [], "the other tank saw no work")
+
+	def test_panel_keeps_a_container_that_has_no_work_yet(self):
+		""""Nothing has happened to this tank" is an answer, so the row must not vanish."""
+		self.assertIn(OTHER_CONTAINER_NO, self._panel(self.multi))
+
+	def test_panel_orders_a_tank_timeline_across_date_and_datetime_fields(self):
+		"""Inspection dates a Date, the work orders a Datetime. Sorting them together used
+		to raise TypeError and take the whole panel down with it."""
+		eir = self._eir(voucher=self.bon)
+		self._order("Cleaning Order", inspection=eir)
+		self._order("Repair Order", inspection=eir)
+
+		orders = self._panel(self.booking)[CONTAINER_NO]["orders"]
+		self.assertGreaterEqual(len(orders), 3)
+		dated = [o["date"] for o in orders if o["date"]]
+		self.assertEqual(dated, sorted(dated, key=lambda d: str(d)[:10]))
+
+	def test_panel_counts_unattributed_work_without_claiming_it(self):
+		"""A standalone order is surfaced as a candidate to attribute, never folded in."""
+		standalone = self._order("Cleaning Order")
+		self.assertFalse(standalone.container_booking)
+
+		group = self._panel(self.multi)[CONTAINER_NO]
+		self.assertNotIn(standalone.name, [o["name"] for o in group["orders"]])
+		self.assertGreaterEqual(group["unlinked"], 1)
 
 	# --- backfill -----------------------------------------------------------
 	def test_backfill_recovers_rows_written_before_the_field_existed(self):
