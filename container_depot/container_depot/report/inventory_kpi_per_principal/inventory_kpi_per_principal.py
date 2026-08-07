@@ -7,7 +7,7 @@ KPIs, optionally scoped to a single depot via the ``depot`` filter:
 - Dirty / Clean   — by Container.cleaning_status
 - Total IN / OUT  — submitted Container Booking items by direction
 - Total Cleaned   — submitted, Completed Cleaning Orders
-- Total PT2.5 / PT5 — Periodic Tests by type
+- Total PT2.5 / PT5 — Periodic Test Orders by type, cancelled ones excluded
 - PP Wash / Methanol / Steam — Cleaning Orders by chosen service / legacy type
 
 All activity counts are attributed to the principal that owns the container the
@@ -160,14 +160,21 @@ def _cleaned_counts(depot, method):
 
 
 def _pt_counts(depot, test_type):
+	"""Periodic tests per principal.
+
+	Reads ``Periodic Test Order``, which replaced the standalone ``Periodic Test``
+	doctype (dropped by patch v0_47). That one was submittable and the old query
+	filtered on ``docstatus < 2``; Periodic Test Order is not submittable and carries
+	its state in ``status``, so "not cancelled" is the equivalent cut.
+	"""
 	params = [test_type]
 	clause = _depot_clause("c", depot, params)
 	rows = frappe.db.sql(
 		f"""
 		SELECT c.principal AS principal, COUNT(*) AS c
-		FROM `tabPeriodic Test` pt
+		FROM `tabPeriodic Test Order` pt
 		JOIN `tabContainer` c ON pt.container = c.name
-		WHERE pt.test_type = %s AND pt.docstatus < 2
+		WHERE pt.test_type = %s AND pt.status != 'Cancelled'
 		  AND c.principal IS NOT NULL AND c.principal != ''{clause}
 		GROUP BY c.principal
 		""",
