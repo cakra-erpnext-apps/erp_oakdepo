@@ -245,6 +245,43 @@ class TestPwaNotificationEndpoints(FrappeTestCase):
 		notifications.mark_read(log.name)
 		self.assertEqual(frappe.db.get_value("Notification Log", log.name, "read"), 1)
 
+	def test_list_is_always_bounded(self):
+		"""However many notifications exist, and whatever the caller asks for, the bell
+		gets a bounded page and a bounded badge.
+
+		Notification Log is never pruned — it is not registered with Log Settings and has
+		no ``clear_old_logs`` — so "it is small today" is not a reason to leave a read
+		unbounded. A caller can also pass any ``limit`` it likes; the clamp is the server's
+		job, not the PWA's.
+		"""
+		from container_depot.ess import notifications
+
+		user = frappe.session.user
+		made = [
+			frappe.get_doc({
+				"doctype": "Notification Log",
+				"subject": f"Bulk notif {i}",
+				"for_user": user,
+				"type": "Alert",
+				"read": 0,
+			}).insert(ignore_permissions=True).name
+			for i in range(notifications._MAX_LIMIT + 15)
+		]
+		try:
+			self.assertLessEqual(
+				len(notifications.list_notifications(limit=9999)["items"]),
+				notifications._MAX_LIMIT,
+				"an absurd limit must be clamped, not honoured",
+			)
+			self.assertLessEqual(len(notifications.list_notifications()["items"]), notifications._DEFAULT_LIMIT)
+			# The badge never reports more than the cap, so it never needs a full scan.
+			self.assertLessEqual(
+				notifications.list_notifications()["unread"], notifications._UNREAD_CAP + 1
+			)
+		finally:
+			for name in made:
+				frappe.delete_doc("Notification Log", name, ignore_permissions=True, force=True)
+
 	def test_mark_all_read(self):
 		from container_depot.ess import notifications
 

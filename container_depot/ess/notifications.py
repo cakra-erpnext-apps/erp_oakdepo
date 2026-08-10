@@ -12,6 +12,25 @@ from frappe import _
 from container_depot.api import _require_authenticated_user
 from container_depot.container_depot.user_branch import get_user_branches
 
+# The bell is a glance at what just happened, not an archive. Notification Log is never
+# pruned (it is not registered with Log Settings and implements no `clear_old_logs`), so
+# every one of these numbers has to be a hard ceiling — on a yard running a year, an
+# unbounded read here is the query that makes the PWA feel broken.
+_DEFAULT_LIMIT = 20
+_MAX_LIMIT = 50
+
+# Past this the badge is decoration: the PWA already renders anything over 9 as "9+".
+# Counting to a real total would mean scanning every unread row to render two characters.
+_UNREAD_CAP = 99
+
+# Branch scoping cannot be pushed into SQL — the branch lives on the *source document*,
+# not on the log — so those rows are filtered in Python and the scan must be bounded too.
+# Consequence, and it is deliberate: a user sitting on more than this many unread logs may
+# see a badge lower than the truth. A wrong number above "9+" is invisible; a five-second
+# bell is not.
+_UNREAD_SCAN = 500
+
+
 # How to find a notification source document's branch. ``("field", x)`` reads the
 # branch field directly; ``("depot", x)`` reads a depot field then Depot.branch.
 _BRANCH_SOURCE = {
@@ -49,6 +68,34 @@ def _sees_all_notifications(user=None):
 	return user == "Administrator" or "System Manager" in frappe.get_roles(user)
 
 
+def _unread_count(filters, allowed=None):
+	"""Unread total for the badge, capped at ``_UNREAD_CAP`` and never a full-table scan.
+
+	``allowed`` is a set of branches to filter by, or None to count as-is.
+	"""
+	if allowed is None:
+		# LIMIT beats COUNT(*) here: `read` carries no index, so a real count walks the
+		# whole table to produce a number the UI throws away.
+		return len(
+			frappe.get_all("Notification Log", filters=filters, fields=["name"], limit=_UNREAD_CAP + 1)
+		)
+
+	rows = frappe.get_all(
+		"Notification Log",
+		filters=filters,
+		fields=["name", "document_type", "document_name"],
+		order_by="creation desc",
+		limit=_UNREAD_SCAN,
+	)
+	count = 0
+	for row in rows:
+		if _in_allowed_branch(row, allowed):
+			count += 1
+			if count > _UNREAD_CAP:
+				break
+	return count
+
+
 @frappe.whitelist(methods=["GET"])
 def list_notifications(limit=20):
 	"""GET /api/method/…list_notifications — the caller's notifications (newest
@@ -59,10 +106,13 @@ def list_notifications(limit=20):
 	Branch restriction (HQ/admin) see everything.
 
 	Administrator / System Manager see ALL users' notifications (depot-wide oversight),
-	not just their own per-user feed."""
+	not just their own per-user feed.
+
+	Never returns everything. ``limit`` is clamped to ``_MAX_LIMIT`` however large a caller
+	asks, and the unread badge is capped rather than counted — see the constants above."""
 	_require_authenticated_user()
 	user = frappe.session.user
-	limit = min(max(int(limit or 20), 1), 50)
+	limit = min(max(int(limit or _DEFAULT_LIMIT), 1), _MAX_LIMIT)
 
 	if _sees_all_notifications(user):
 		items = frappe.get_all(
@@ -71,7 +121,9 @@ def list_notifications(limit=20):
 			order_by="creation desc",
 			limit=limit,
 		)
-		return {"items": items, "unread": frappe.db.count("Notification Log", {"read": 0})}
+		# The widest read in the app: every user's log, unfiltered. Capping the badge
+		# matters most here.
+		return {"items": items, "unread": _unread_count({"read": 0})}
 
 	items = frappe.get_all(
 		"Notification Log",
@@ -83,18 +135,13 @@ def list_notifications(limit=20):
 
 	allowed = get_user_branches(user)
 	if allowed is None:  # all branches -> no filtering
-		unread = frappe.db.count("Notification Log", {"for_user": user, "read": 0})
+		unread = _unread_count({"for_user": user, "read": 0})
 		return {"items": items, "unread": unread}
 
 	allowed = set(allowed)
 	items = [it for it in items if _in_allowed_branch(it, allowed)]
 	# Recompute unread off the branch-filtered set so the badge matches the feed.
-	unread_logs = frappe.get_all(
-		"Notification Log",
-		filters={"for_user": user, "read": 0},
-		fields=["name", "document_type", "document_name"],
-	)
-	unread = sum(1 for it in unread_logs if _in_allowed_branch(it, allowed))
+	unread = _unread_count({"for_user": user, "read": 0}, allowed)
 	return {"items": items, "unread": unread}
 
 
