@@ -61,8 +61,13 @@ through the `/depot` PWA and are bounced out of `/app` on purpose.
 Monitor is the read-only yard browser and follows Container read, which every field role
 holds because every worklist shows container data.
 
-**Office roles** — `desk_access = 1`, no PWA menu: Admin Ops, Cashier, Finance,
-Commercial, Warehouse, Management (read-only everywhere).
+**Office roles** — `desk_access = 1`, no PWA menu: Cashier, Finance, Commercial,
+Warehouse, Management (read-only everywhere).
+
+**Admin Ops** is both (`install.py::PWA_OFFICE_ROLES`): `desk_access = 1` *and*
+`is_depot_field_role = 1`, so it works the Desk and the PWA. It sees **all nine** tiles,
+because the menu is derived from DocPerm and Admin Ops holds perms on every depot
+doctype — narrowing that would mean cutting its Desk access too.
 
 ### Assigning a user
 

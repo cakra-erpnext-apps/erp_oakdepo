@@ -61,7 +61,8 @@ def has_field_role(user: str = None) -> bool:
 	"""True when the user holds at least one Role marked as a depot field role.
 
 	This is what keeps office staff out of the PWA without a separate "Depot PWA" role:
-	they may open /depot, they just get an empty menu.
+	they may open /depot, they just get an empty menu. Admin Ops is deliberately flagged
+	too (``install.PWA_OFFICE_ROLES``) — it keeps its Desk access and gains the PWA.
 	"""
 	return bool(_field_roles() & set(frappe.get_roles(user or frappe.session.user)))
 

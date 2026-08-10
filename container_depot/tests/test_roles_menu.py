@@ -24,6 +24,7 @@ USERS = {
 	"Team Kalmar": "rm-kalmar@example.com",
 	"SPV Lapangan": "rm-spv@example.com",
 	"Cashier": "rm-cashier@example.com",
+	"Admin Ops": "rm-adminops@example.com",
 }
 AD_HOC_ROLE = "RM Test Field Role"
 AD_HOC_USER = "rm-adhoc@example.com"
@@ -111,6 +112,31 @@ class TestRoleMenu(FrappeTestCase):
 			self.assertEqual(allowed_menu(), [])
 		finally:
 			frappe.set_user("Administrator")
+
+	def test_admin_ops_works_both_surfaces(self):
+		"""Admin Ops is the one office role that is also a PWA role.
+
+		The two flags are independent, and this pins that: `is_depot_field_role` opens
+		/depot without `desk_access` being sacrificed. Losing either half is a silent
+		regression — an Admin Ops with an empty PWA looks like a permission bug, and one
+		locked out of /app looks like a broken login.
+
+		The menu is all nine tiles rather than a curated subset because Admin Ops holds
+		DocPerm on every depot doctype (§8.2) and the menu is derived from DocPerm. If that
+		is ever unwanted, the fix is the DocPerms, not a menu allow-list.
+		"""
+		frappe.set_user(USERS["Admin Ops"])
+		try:
+			self.assertTrue(has_field_role())
+			self.assertTrue(has_desk_access(), "Admin Ops must keep the Desk")
+			self.assertEqual(set(allowed_menu()), set(MENU_KEYS))
+		finally:
+			frappe.set_user("Administrator")
+
+		flags = frappe.db.get_value(
+			"Role", "Admin Ops", ["is_depot_field_role", "desk_access"], as_dict=True
+		)
+		self.assertEqual((flags.is_depot_field_role, flags.desk_access), (1, 1))
 
 	def test_desk_shortcut_follows_desk_access(self):
 		"""The PWA's "Buka Desk" link is offered to office staff and withheld from the field.

@@ -13,8 +13,10 @@ WHY THE FIELD-ROLE CHECK IS NOT HERE
 The handoff's sketch also required ``_has_field_role()``. That would break the Desk:
 ``container_depot/doctype/repair_order/repair_order.js`` and ``inspection/inspection.js`` call
 eight of these very endpoints (mr_decision, mr_publish_to_owner, set_repair_status,
-eir_prefill, …), and the office roles that use them — Admin Ops above all — hold no field
-role by definition. The owner-approval workflow runs from both surfaces.
+eir_prefill, …), and most office roles that use them hold no field role at all. The
+owner-approval workflow runs from both surfaces. (Admin Ops is the exception since it
+joined ``install.PWA_OFFICE_ROLES``, but Cashier and Finance are not, and one Desk button
+refusing to work for them is exactly the breakage this avoids.)
 
 Nothing is lost by dropping it. The field-role flag decides what the PWA *shows*
 (``get_menu`` still requires it, so an office user's /depot is empty); DocPerm decides

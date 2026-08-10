@@ -1,18 +1,27 @@
 {
  "content": null,
- "creation": "2026-08-07 10:00:00.000000",
+ "creation": "2026-08-07 10:00:00",
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-08-10 10:03:32.483246",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "depot-pwa",
  "owner": "Administrator",
- "page_name": "Depot PWA",
+ "page_name": "depot-pwa",
  "roles": [
   {
+   "role": "Admin Ops"
+  },
+  {
+   "role": "SPV Lapangan"
+  },
+  {
    "role": "Security"
+  },
+  {
+   "role": "Team Cleaning"
   },
   {
    "role": "Team EIR"
@@ -21,16 +30,10 @@
    "role": "Team Kalmar"
   },
   {
-   "role": "Team Cleaning"
-  },
-  {
    "role": "Team Repair"
   },
   {
    "role": "Team Survey"
-  },
-  {
-   "role": "SPV Lapangan"
   }
  ],
  "script": null,

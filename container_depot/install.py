@@ -1019,7 +1019,7 @@ def _ensure_icon_roles(icon: str, roles: list[str]) -> None:
 # ---------------------------------------------------------------------------
 # Two families. FIELD roles work the yard through the /depot PWA and have
 # desk_access = 0 — their users are bounced out of /app on purpose. OFFICE roles
-# work in the Desk and never appear in the PWA menu.
+# work in the Desk; they get an empty PWA unless listed in PWA_OFFICE_ROLES below.
 #
 # The checkbox `Role.is_depot_field_role` (see CUSTOM_FIELDS) is what ess.context
 # reads, NOT this list: an admin can add a 14th field role from the UI and it works
@@ -1043,6 +1043,17 @@ OFFICE_ROLES = [
 	"Warehouse",
 	"Management",
 ]
+
+# Office roles that work the PWA as well as the Desk. The two flags are independent —
+# `is_depot_field_role` opens /depot, `desk_access` keeps /app — so this is not the same
+# as moving the role into FIELD_ROLES, which would lock it out of the Desk.
+#
+# Admin Ops is here because it is the ops backstop: it already holds DocPerm on every
+# depot doctype, so it lands in the yard to unstick a job the field roles cannot finish
+# (a mis-submitted bon, a gate entry nobody may amend). Sending that person to a desktop
+# to do it was the wrong default. The consequence is worth stating plainly: because the
+# PWA menu is DocPerm-driven, Admin Ops sees ALL nine tiles, not a subset.
+PWA_OFFICE_ROLES = {"Admin Ops"}
 
 # Standard ERPNext roles to assign ALONGSIDE the office role when creating a user.
 # Deliberately not automated: granting these means writing Custom DocPerm rows on
@@ -1217,7 +1228,10 @@ def ensure_roles_exist():
 	"""
 	for name in FIELD_ROLES + OFFICE_ROLES:
 		is_field = name in FIELD_ROLES
-		flags = {"desk_access": 0 if is_field else 1, "is_depot_field_role": 1 if is_field else 0}
+		flags = {
+			"desk_access": 0 if is_field else 1,
+			"is_depot_field_role": 1 if (is_field or name in PWA_OFFICE_ROLES) else 0,
+		}
 		if not frappe.db.exists("Role", name):
 			frappe.get_doc({"doctype": "Role", "role_name": name, **flags}).insert(
 				ignore_permissions=True
