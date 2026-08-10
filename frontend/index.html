@@ -25,9 +25,92 @@
 			rel="apple-touch-icon"
 			href="/assets/container_depot/ess/icons/icon-192.png"
 		/>
+
+		<!--
+			Boot splash, styled INLINE on purpose.
+
+			Everything else in the app is Tailwind, but Tailwind arrives as a stylesheet the
+			browser must fetch and parse — and this markup has to paint before that, on the
+			frame the HTML lands. A splash that waits for the CSS is a splash that shows up
+			after the thing it was covering for.
+
+			It covers a real gap: Vue does not mount until `router.isReady()` resolves, and the
+			first route through a menu-gated path also awaits `fetchMenu()`. On a depot handset
+			over 3G that is several seconds — and it used to be several seconds of blank grey,
+			which reads as "the app is broken", not "the app is starting".
+
+			Replaced automatically: Vue clears #app when it mounts over it. No teardown code,
+			nothing to keep in step.
+		-->
+		<style>
+			#oak-splash {
+				position: fixed;
+				inset: 0;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 18px;
+				background: #f9fafb;
+				font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+			}
+			#oak-splash img {
+				width: 68px;
+				height: 68px;
+			}
+			#oak-splash .oak-splash-word {
+				font-size: 19px;
+				font-weight: 800;
+				letter-spacing: -0.02em;
+				color: #111827;
+			}
+			#oak-splash .oak-splash-word span {
+				color: #ea6614;
+			}
+			/* An indeterminate bar, not a percentage: we genuinely do not know how long the
+			   bundle and the menu call will take, and a fake percentage that stalls at 90%
+			   is worse than no number at all. */
+			#oak-splash .oak-splash-bar {
+				position: relative;
+				width: 132px;
+				height: 3px;
+				overflow: hidden;
+				border-radius: 999px;
+				background: #ffe7d4;
+			}
+			#oak-splash .oak-splash-bar::after {
+				content: "";
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				width: 42%;
+				border-radius: 999px;
+				background: #f97828;
+				animation: oak-splash-slide 1.1s ease-in-out infinite;
+			}
+			@keyframes oak-splash-slide {
+				0% { left: -42%; }
+				100% { left: 100%; }
+			}
+			/* Respect the OS setting: the bar is decoration, and motion sickness is real. */
+			@media (prefers-reduced-motion: reduce) {
+				#oak-splash .oak-splash-bar::after {
+					animation: none;
+					left: 0;
+					width: 100%;
+					opacity: 0.55;
+				}
+			}
+		</style>
 	</head>
 	<body class="antialiased bg-gray-50">
-		<div id="app"></div>
+		<div id="app">
+			<div id="oak-splash">
+				<img src="/assets/container_depot/ess/icons/icon-192.png" alt="" />
+				<p class="oak-splash-word">Depot <span>OAK</span></p>
+				<div class="oak-splash-bar"></div>
+			</div>
+		</div>
 		<div id="modals"></div>
 		<div id="popovers"></div>
 

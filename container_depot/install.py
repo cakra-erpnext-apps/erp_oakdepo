@@ -982,6 +982,23 @@ def drop_legacy_inventory_sidebar():
 # The roles table is checked before the icon_type dispatch, so it works on App
 # icons as well. Add-only: an icon that already has roles is left alone, so an
 # admin can widen or narrow either one from the UI without a deploy undoing it.
+#
+# THIS APP SHIPS TWO ICONS, and the same quirk is why (desktop_icon/*.json):
+#   Container Depot — icon_type "Link" -> the Desk workspace. Correctly hidden by
+#     Allow Modules, which is what we want for the Desk side.
+#   Depot OAK       — icon_type "App", link "/depot". Deliberately NOT a Link icon:
+#     the PWA is a separate surface that has nothing to do with Desk module access,
+#     so an operator whose Allow Modules omits Container Depot must still reach it.
+#     An App icon skips the module check entirely and gates on
+#     `www.depot.check_app_permission` (= holds a field role) instead — the same
+#     rule as the /apps tile, and it tracks the flag with no migrate.
+#     Its `roles` table stays empty on purpose; adding roles here would shadow that
+#     hook with a static list that a newly flagged role would not appear in.
+#
+# Note frappe would never have created the Depot OAK icon on its own:
+# `create_desktop_icons_from_installed_apps` labels App icons with `app_title`
+# ("Container Depot"), and Desktop Icon is autonamed `field:label` — it would
+# collide with the workspace icon above and die. Hence the explicit fixture.
 FOREIGN_ICON_ROLES = {
 	"Framework": ["System Manager"],
 	"Raven": ["Raven User", "Raven Admin"],

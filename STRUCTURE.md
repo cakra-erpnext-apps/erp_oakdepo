@@ -111,10 +111,18 @@ Each direction is gated by the Role flag that matches it, and by nothing else.
 
 | From | To | Shown when | Surfaces |
 |---|---|---|---|
-| Desk | `/depot` | **Depot Field Role (PWA)** ticked | Sidebar item, workspace Shortcut card, `/apps` tile |
+| Desk | `/depot` | **Depot Field Role (PWA)** ticked | `/desk` home tile, sidebar item, workspace Shortcut card, `/apps` tile |
 | PWA | `/desk` | **Desk Access** (`user_type` = System User) | "Buka Desk" in the Home hero + on the empty state |
 
-**Desk → PWA.** All three surfaces point at the Desk Page `depot-pwa`
+**Desk → PWA.** The `/desk` **home tile** is the one that does not go through the Page: it is
+a Desktop Icon of `icon_type: App` (`desktop_icon/depot_oak.json`) pointing straight at
+`/depot`. That type is deliberate — `DesktopIcon.is_permitted` honours the user's **Allow
+Modules** list only for `Link` icons, so a Link tile would vanish for an operator whose Allow
+Modules omits Container Depot, even though the PWA has nothing to do with Desk module access.
+App icons dispatch to `www/depot.py::check_app_permission` instead, the same gate as `/apps`.
+Leave its `roles` table empty: filling it shadows the hook with a static list.
+
+The other three surfaces point at the Desk Page `depot-pwa`
 (`container_depot/page/depot_pwa/`), which does nothing but redirect. The Page exists purely to
 own a `roles` table: Frappe filters sidebar entries and shortcuts of type `Page` against it,
 whereas a `link_type: URL` row is waved through unconditionally
@@ -137,9 +145,9 @@ PWA menu itself is still instant, and so is the `/apps` tile.
 scan answers yes for everyone. `User.set_system_user` already keeps `user_type` in step
 with the roles.
 
-Consequence of the split worth knowing: field roles ship with `desk_access = 0` and office
-roles without a field role, so **an account sees at most one of the two shortcuts** unless
-an admin deliberately grants both.
+Consequence of the split worth knowing: field roles ship with `desk_access = 0` and the
+office roles carry no field role, so **most accounts see at most one of the two shortcuts**.
+Admin Ops is the shipped exception (see above) and sees both.
 
 ## Booking attribution
 
@@ -265,6 +273,41 @@ tank, branch scope) only run when the queue drains, so an invalid release surfac
 row in the queue panel rather than as a refusal at the barrier. Accepted deliberately: holding
 a truck at the gate because a handset cannot reach the server jams every truck behind it, and
 the discrepancy is at least visible.
+
+## Loading states (PWA)
+
+Every screen that waits on the network says so, and says it in the shape of what is coming.
+`.oak-skeleton` (`main.css`) is the primitive; `components/SkeletonList.vue` and
+`components/SkeletonDetail.vue` are the two shared placeholders. Screens with a distinctive
+layout (Home, Monitor, the worklists in Eir.vue, HistoryPage) keep their own inline skeletons
+— a placeholder is only useful if it matches its content, so a generic box would be a
+downgrade there.
+
+**The rule that matters is which nothing you are replacing.**
+
+A placeholder that REPLACES a screen shows immediately (`SkeletonDetail`, default `delay: 0`).
+The detail views render behind `v-if="order"`, so before this a tap left the worklist sitting
+there unchanged — read as a dead button, and on a slow handset that means tapping again.
+Delaying there would only trade that for a blank page.
+
+A placeholder that appears BELOW content still on screen holds back ~180 ms
+(`utils/deferredShow.js`): `SkeletonList`, and `SkeletonDetail` at the gate lookup, which
+passes `:delay="180"` explicitly. Under ~100 ms a response reads as instant, and a skeleton
+painting and vanishing inside that window makes a fast app look like it is struggling.
+
+**Detail fetches track `detailPending` / `detailFailed` explicitly**, not
+`route.query.o && !order`. The derived form flickers: completing an order nulls `order` while
+the query is still set, so the screen would flash a placeholder on its way back to the
+worklist. A failed detail with no cached copy shows an in-page card with Kembali / Coba lagi
+rather than a toast — a toast disappears and leaves the operator staring at a worklist
+wondering why their tap did nothing.
+
+**Boot splash** lives inline in `frontend/index.html`, styled with an inline `<style>` and no
+Tailwind on purpose: it has to paint on the frame the HTML lands, and Tailwind arrives as a
+stylesheet the browser must still fetch. It covers a real gap — Vue does not mount until
+`router.isReady()`, and the first menu-gated route also awaits `fetchMenu()`. Vue clears
+`#app` when it mounts over it, so there is no teardown code to keep in step. Keep the markup
+free of `{{ }}`: the built file is copied to `www/depot.html` and rendered by Jinja.
 
 ## Notifications
 

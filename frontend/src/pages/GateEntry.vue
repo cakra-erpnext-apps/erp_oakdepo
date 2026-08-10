@@ -114,6 +114,10 @@
 			</ul>
 		</section>
 
+		<!-- The booking panel is what the operator is waiting on with a truck at the barrier,
+		     so it says it is coming rather than leaving the screen unchanged after a scan. -->
+		<SkeletonDetail v-if="lookupRes.loading" :cells="4" :sections="2" :delay="180" />
+
 		<template v-if="valid">
 			<!-- Booking detail panel. The direction leads: an operator at the gate needs to
 			     know which way this tank is moving before anything else on the screen. -->
@@ -345,6 +349,7 @@ import { labels, gateDirection } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { outbox } from "@/data/outbox"
 import { uid } from "@/utils/idb"
 

@@ -15,6 +15,12 @@
 
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
+		<!-- Until the EIR loads there was nothing here at all: a back button, an empty title,
+		     and a blank page. This is the heaviest form in the app and the one most often
+		     opened on a bad link, so it is the last place that should look broken while it
+		     works. -->
+		<SkeletonDetail v-if="!header && !fetchError" :cells="6" :sections="3" />
+
 		<template v-if="header">
 			<!-- Work-timing gate: the checklist stays locked until the operator presses Mulai,
 			     so Mulai → Submit measures how long the inspection actually took. -->
@@ -230,6 +236,7 @@ import { compressPhoto } from "@/utils/photo"
 import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
 import { enqueue, hydratePreviews, isLocalRef, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 import Icon from "@/components/Icon.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
 
 // Form-only EIR-Out view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.

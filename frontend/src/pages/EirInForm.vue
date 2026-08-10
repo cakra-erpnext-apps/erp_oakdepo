@@ -15,6 +15,12 @@
 
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
+		<!-- Until the EIR loads there was nothing here at all: a back button, an empty title,
+		     and a blank page. This is the heaviest form in the app and the one most often
+		     opened on a bad link, so it is the last place that should look broken while it
+		     works. -->
+		<SkeletonDetail v-if="!header && !fetchError" :cells="6" :sections="3" />
+
 		<template v-if="header">
 			<!-- Work-timing gate: the checklist stays locked until the operator presses Mulai,
 			     so Mulai → Submit measures how long the inspection actually took. -->
@@ -264,6 +270,7 @@ import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
 import { compressPhoto } from "@/utils/photo"

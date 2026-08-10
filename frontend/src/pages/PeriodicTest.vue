@@ -32,8 +32,24 @@
 			</p>
 		</section>
 
+		<!-- OPENING AN ORDER — placeholder while its detail is fetched. Without this the
+		     worklist just sat there unchanged after a tap, which reads as a dead button. -->
+		<SkeletonDetail v-if="detailPending" :cells="6" :sections="3" />
+
+		<!-- The detail could not be fetched and there is no cached copy to fall back on. -->
+		<section v-else-if="detailFailed" class="oak-card space-y-3 p-6 text-center">
+			<span class="oak-icon-tile mx-auto h-12 w-12 bg-red-50 text-red-500">
+				<Icon name="alert-triangle" :size="24" />
+			</span>
+			<p class="text-sm text-gray-600">{{ detailError }}</p>
+			<div class="flex gap-2">
+				<button class="oak-btn oak-btn-secondary flex-1" @click="backToList">{{ labels.ptBack }}</button>
+				<button class="oak-btn oak-btn-primary flex-1" @click="retryDetail">{{ labels.retry }}</button>
+			</div>
+		</section>
+
 		<!-- WORKLIST (Approved / In Progress only) -->
-		<section v-if="!order && !completed" class="space-y-3">
+		<section v-else-if="!order && !completed" class="space-y-3">
 			<div class="flex gap-2">
 				<input
 					v-model="search"
@@ -46,9 +62,7 @@
 				</button>
 			</div>
 
-			<div v-if="ordersRes.loading" class="oak-card p-6 text-center text-gray-400">
-				<Icon name="loader" :size="20" class="animate-spin" />
-			</div>
+			<SkeletonList v-if="ordersRes.loading && !orders.length" />
 			<div v-else-if="!orders.length" class="oak-card p-6 text-center text-gray-400">
 				{{ labels.ptExecEmpty }}
 			</div>
@@ -182,6 +196,8 @@ import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import SkeletonList from "@/components/SkeletonList.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
 import { enqueue, isQueued, outbox } from "@/data/outbox"
 
@@ -255,18 +271,43 @@ const headerCells = computed(() => {
 	]
 })
 
+// Whether a detail fetch is in flight, tracked explicitly rather than derived from
+// `route.query.o && !order`. The derived version flickers: completing an order nulls `order`
+// while the query is still set, and the screen would flash a skeleton on its way back to the
+// worklist.
+const detailPending = ref(false)
+const detailFailed = ref(false)
+const detailError = ref("")
+
 const detailRes = cachedResource({
 	url: "container_depot.ess.periodic.pt_order_detail",
 	method: "GET",
 	onSuccess(data) {
+		detailPending.value = false
+		detailFailed.value = false
 		order.value = data
 		used.value = (data.used_items || []).map((u) =>
 			reactive({ ...u, decision: u.decision || "Pending", photos: [...(u.photos || [])] })
 		)
 		periodicDate.value = data.periodic_date || todayStr()
 	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
+	// The error stays on the page here rather than in a toast: a toast disappears, and the
+	// operator would be left staring at a worklist wondering why their tap did nothing.
+	onError(err) {
+		detailPending.value = false
+		detailFailed.value = true
+		detailError.value = err?.messages?.[0] || err?.message || labels.error
+	},
 })
+
+function fetchDetail(name) {
+	detailPending.value = true
+	detailFailed.value = false
+	detailRes.fetch({ periodic_test_order: name })
+}
+function retryDetail() {
+	if (route.query.o) fetchDetail(route.query.o)
+}
 
 // The open order lives in the URL (?o=<name>) so a refresh restores the detail view.
 function openOrder(o) {
@@ -279,10 +320,12 @@ watch(
 		if (o) {
 			if (order.value?.name !== o) {
 				completed.value = null
-				detailRes.fetch({ periodic_test_order: o })
+				fetchDetail(o)
 			}
 		} else {
 			order.value = null
+			detailPending.value = false
+			detailFailed.value = false
 		}
 	},
 	{ immediate: true }

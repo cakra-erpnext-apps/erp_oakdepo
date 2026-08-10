@@ -212,6 +212,55 @@ class TestRoleMenu(FrappeTestCase):
 			"office staff are never pointed at a PWA that would be empty for them",
 		)
 
+	def test_desk_home_icon_survives_a_blocked_module(self):
+		"""The /desk home tile for the PWA must not depend on Container Depot module access.
+
+		Allow Modules governs the Desk. The PWA is a different surface, so an operator whose
+		Allow Modules omits Container Depot — a perfectly reasonable setup for someone who
+		only works the yard — must still find their way to /depot from the Desk home.
+
+		That is the whole reason the shipped icon is ``icon_type: App`` rather than a Link to
+		the workspace: ``DesktopIcon.is_permitted`` resolves a module (and honours the block)
+		only for Link icons, and dispatches App icons to the owning app's
+		``add_to_apps_screen.has_permission`` hook instead. The two icons under the same block
+		are asserted together because the contrast IS the behaviour.
+		"""
+		# A Link icon also disappears when its sidebar is empty, so hand is_permitted a
+		# populated one — otherwise a False below would prove nothing about the block.
+		bootinfo = frappe._dict({
+			"workspace_sidebar_item": {"container depot": {"items": [{"type": "Link"}]}}
+		})
+
+		def _icons_for(email, blocked):
+			user = frappe.get_doc("User", email)
+			user.set("block_modules", [{"module": m} for m in blocked])
+			user.save(ignore_permissions=True)
+			frappe.clear_cache(user=email)
+			frappe.set_user(email)
+			try:
+				return {
+					name: bool(frappe.get_doc("Desktop Icon", name).is_permitted(bootinfo))
+					for name in ("Depot OAK", "Container Depot")
+				}
+			finally:
+				frappe.set_user("Administrator")
+
+		field_user = DESK_USERS["Team Cleaning"]
+		self.assertEqual(
+			_icons_for(field_user, []),
+			{"Depot OAK": True, "Container Depot": True},
+			"baseline: nothing blocked, both tiles show",
+		)
+		self.assertEqual(
+			_icons_for(field_user, ["Container Depot"]),
+			{"Depot OAK": True, "Container Depot": False},
+			"blocking the module hides the workspace tile and only that one",
+		)
+		self.assertFalse(
+			_icons_for(DESK_USERS["Cashier"], [])["Depot OAK"],
+			"office staff still get no PWA tile — the hook gate is unchanged",
+		)
+
 	def test_survey_vs_posfix_split(self):
 		# One doctype, two menus, split on write vs submit.
 		survey = self._menu_as(USERS["Team Survey"])
