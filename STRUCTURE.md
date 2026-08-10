@@ -180,6 +180,36 @@ Note when adding a doctype to `_WORK_SOURCES`: the date fields are not all one t
 (Inspection dates a Date, the work orders a Datetime), so the timeline sort coerces through
 `get_datetime` — comparing them raw raises TypeError and takes the whole panel down.
 
+## Offline (PWA)
+
+The yard has dead spots. Two separate problems, two mechanisms — do not merge them:
+
+| Problem | Mechanism | Lifetime |
+|---|---|---|
+| The tab died / battery went flat | `data/drafts.js` — form state to IndexedDB on every keystroke | disposable, pruned at 14 days |
+| There is no signal | `data/outbox.js` — the finished submission, queued | never dropped by a timer |
+
+**Photos are not uploaded when picked.** They are shrunk (`utils/photo.js`, 1600 px / q0.82,
+roughly 15x) and parked in IndexedDB, and the form carries a `local:<uuid>` reference that
+behaves like a file_url. Render one with `photoSrc()`; never bind a raw ref to `:src`. The
+outbox uploads the blob, substitutes the real URL into the payload, and only then saves the
+document — one atomic row, so uploads can never succeed while the save never does.
+
+IndexedDB, not localStorage, and this is not a preference: localStorage caps at ~5 MB,
+holds strings only (base64, +33%) and is synchronous. One 12 MP photo exceeds the whole
+budget.
+
+**Every queued write carries a `request_id`** (`ess/idempotency.py`). This is the load-bearing
+part. The dangerous case is not being offline — nothing happened — it is LAG: the request
+lands, the work is done, the response is lost coming back, and a naive retry raises a second
+EIR. Any new endpoint the outbox may replay must be wrapped in `guarded(request_id, ...)`.
+
+Server autosave still runs when there is a link, so the Desk sees live progress, but
+`local:` references are stripped from it — writing one into an Inspection Photo row would be
+a broken image for ever. They travel with the final queued submit instead.
+
+Wired into EIR-In and EIR-Out today. Cleaning Order and Survey Position still upload eagerly.
+
 ## Notifications
 
 Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable

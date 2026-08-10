@@ -76,8 +76,8 @@
 			</div>
 			<div class="mt-2 flex flex-wrap items-center gap-2">
 				<div v-for="(url, idx) in r.photos" :key="url" class="relative">
-					<button type="button" class="oak-press block" @click="openLightbox(r.photos, idx)">
-						<img :src="url" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
+					<button type="button" class="oak-press block" @click="openLightbox(r.photos.map(photoSrc), idx)">
+						<img :src="photoSrc(url)" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
 					</button>
 					<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="r.photos.splice(idx, 1)">
 						<Icon name="x" :size="12" />
@@ -108,6 +108,7 @@
 import { computed, ref } from "vue"
 import { labels } from "@/utils/labels"
 import { openLightbox } from "@/utils/lightbox"
+import { photoSrc } from "@/data/outbox"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 

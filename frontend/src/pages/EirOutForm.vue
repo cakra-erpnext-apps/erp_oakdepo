@@ -63,8 +63,8 @@
 								<p class="text-sm font-semibold text-gray-800">{{ d.component || d.item_name }}</p>
 								<p class="text-xs text-gray-600">{{ d.damage_description }}<span v-if="d.damage_type"> · {{ d.damage_type }}</span></p>
 								<div v-if="d.photos && d.photos.length" class="mt-1.5 flex flex-wrap gap-1.5">
-									<button v-for="(ph, pi) in d.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(d.photos, pi)">
-										<img :src="ph" class="h-12 w-12 rounded border border-gray-200 object-cover" />
+									<button v-for="(ph, pi) in d.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(d.photos.map(photoSrc), pi)">
+										<img :src="photoSrc(ph)" class="h-12 w-12 rounded border border-gray-200 object-cover" />
 									</button>
 								</div>
 							</div>
@@ -76,8 +76,8 @@
 						<div v-if="refEirIn.photos && refEirIn.photos.length" class="mt-3">
 							<p class="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">{{ labels.eirOutPrevPhotos }}</p>
 							<div class="flex flex-wrap gap-1.5">
-								<button v-for="(ph, pi) in refEirIn.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(refEirIn.photos, pi)">
-									<img :src="ph" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
+								<button v-for="(ph, pi) in refEirIn.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(refEirIn.photos.map(photoSrc), pi)">
+									<img :src="photoSrc(ph)" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
 								</button>
 							</div>
 						</div>
@@ -95,8 +95,8 @@
 				<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
 				<div class="flex flex-wrap items-center gap-2">
 					<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
-						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos, idx)">
-							<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+							<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
 						</button>
 						<span
 							v-if="bulkMeta[url]"
@@ -175,7 +175,7 @@
 					<p class="oak-section-title">{{ labels.signature }}</p>
 				</div>
 				<div v-if="signatureUrl && !signing">
-					<img :src="signatureUrl" class="h-28 w-full rounded-xl border border-gray-200 bg-white object-contain" />
+					<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-white object-contain" />
 					<button type="button" class="oak-link mt-1.5 inline-flex items-center gap-1 text-sm" @click="startResign">
 						<Icon name="rotate-ccw" :size="14" /> {{ labels.signAgain }}
 					</button>
@@ -225,6 +225,9 @@ import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
+import { compressPhoto } from "@/utils/photo"
+import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
+import { enqueue, hydratePreviews, isLocalRef, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 import Icon from "@/components/Icon.vue"
 
 // Form-only EIR-Out view. The combined worklist lives in Eir.vue, which opens this with
@@ -305,7 +308,9 @@ const openRes = createResource({
 		savedOk.value = false
 		seals.value = (data.seals || []).map((s) => reactive({ seal_no: s.seal_no || "", remarks: s.remarks || "" }))
 		applyDraftPhotos(data)
-		nextTick(() => { suppressSave.value = false })
+		restoreLocalDraft().finally(() => {
+			nextTick(() => { suppressSave.value = false })
+		})
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
@@ -353,19 +358,9 @@ function buildSeals() {
 }
 
 // ---- file upload ----
+/** Shrink and park the photo locally; the outbox uploads it. See EirInForm for why. */
 async function uploadFile(file) {
-	const fd = new FormData()
-	fd.append("file", file, file.name)
-	fd.append("is_private", 1)
-	fd.append("folder", "Home")
-	const res = await fetch("/api/method/upload_file", {
-		method: "POST",
-		headers: { "X-Frappe-CSRF-Token": window.csrf_token || "" },
-		body: fd,
-	})
-	if (!res.ok) throw new Error("upload failed")
-	const data = await res.json()
-	return data.message.file_url
+	return stashPhoto(await compressPhoto(file))
 }
 async function onBulkPhotoPick(event) {
 	const files = Array.from(event.target.files || [])
@@ -478,6 +473,8 @@ const saveRes = createResource({
 	url: "container_depot.ess.inspections.eir_save_draft",
 	method: "POST",
 	onSuccess(data) {
+		// Server has it — the local draft has nothing left to protect (see EirInForm).
+		if (!hasStashedPhotos()) clearDraft(draftKey.value)
 		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
 		if (data.docstatus === 1 || data.pending_review) {
 			toast.success(
@@ -496,10 +493,13 @@ const saveRes = createResource({
 })
 const saveError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] || saveRes.error.message : null))
 
-function doSave(submit = false) {
-	if (!inspection.value) return
-	if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-	saveRes.submit({
+// Offline handling mirrors EirInForm exactly — see the long note there. Local draft for a
+// dead tab, outbox for a dead signal, photos stripped from the server autosave until they
+// have actually been uploaded.
+const draftKey = computed(() => `eir-out:${inspection.value || props.inspection}`)
+
+function eirPayload(submit) {
+	return {
 		inspection: inspection.value,
 		inspection_type: "EIR-Out",
 		eir_date: tanggal.value || undefined,
@@ -508,10 +508,75 @@ function doSave(submit = false) {
 		cargo: cargo.value || undefined,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
-		photos: JSON.stringify(buildPhotos()),
-		seals: JSON.stringify(buildSeals()),
+		photos: buildPhotos(),
+		seals: buildSeals(),
 		submit: submit ? 1 : 0,
+	}
+}
+
+function localSnapshot() {
+	return {
+		saved_at: Date.now(),
+		tanggal: tanggal.value,
+		tankStatus: tankStatus.value,
+		cargo: cargo.value,
+		remarks: remarks.value,
+		signatureUrl: signatureUrl.value,
+		bulkPhotos: [...bulkPhotos.value],
+		seals: seals.value.map((r) => ({ seal_no: r.seal_no, remarks: r.remarks })),
+	}
+}
+
+async function restoreLocalDraft() {
+	const saved = await loadDraft(draftKey.value)
+	if (!saved) return
+	tanggal.value = saved.tanggal || tanggal.value
+	tankStatus.value = saved.tankStatus || tankStatus.value
+	cargo.value = saved.cargo || cargo.value
+	remarks.value = saved.remarks ?? remarks.value
+	signatureUrl.value = saved.signatureUrl || signatureUrl.value
+	bulkPhotos.value = saved.bulkPhotos || []
+	;(saved.seals || []).forEach((sv, i) => seals.value[i] && Object.assign(seals.value[i], sv))
+	await hydratePreviews([...bulkPhotos.value, signatureUrl.value])
+	toast.info(labels.draftRestored)
+}
+
+const hasStashedPhotos = () =>
+	buildPhotos().some((p) => isLocalRef(p.photo)) || isLocalRef(signatureUrl.value)
+
+function doSave(submit = false) {
+	if (!inspection.value) return
+	if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+	saveDraft(draftKey.value, localSnapshot())
+	if (submit) {
+		queueSubmit()
+		return
+	}
+	const payload = eirPayload(false)
+	saveRes.submit({
+		...payload,
+		signature: isLocalRef(payload.signature) ? undefined : payload.signature,
+		photos: JSON.stringify(payload.photos.filter((p) => !isLocalRef(p.photo))),
+		seals: JSON.stringify(payload.seals),
 	})
+}
+
+async function queueSubmit() {
+	try {
+		await enqueue({
+			kind: "eir-out-submit",
+			url: "container_depot.ess.inspections.eir_save_draft",
+			payload: eirPayload(true),
+		})
+		await clearDraft(draftKey.value)
+		toast.success(outbox.online ? labels.eirSentForReview : labels.queuedOffline, {
+			title: eirCode.value || inspection.value,
+		})
+		emit("submitted", inspection.value)
+		emit("back")
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	}
 }
 function scheduleSave() {
 	savedOk.value = false

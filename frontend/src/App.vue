@@ -11,6 +11,7 @@
 					</span>
 				</router-link>
 				<div v-if="session.isLoggedIn" class="flex items-center gap-1">
+					<OutboxBadge />
 					<NotificationBell />
 					<button
 						class="oak-btn oak-btn-ghost -mr-1.5 h-9 gap-1.5 px-2.5 text-xs text-gray-500"
@@ -44,6 +45,7 @@ import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import BottomNav from "@/components/BottomNav.vue"
 import NotificationBell from "@/components/NotificationBell.vue"
+import OutboxBadge from "@/components/OutboxBadge.vue"
 import ToastHost from "@/components/ToastHost.vue"
 import LightboxHost from "@/components/LightboxHost.vue"
 import ConfirmHost from "@/components/ConfirmHost.vue"

@@ -1,6 +1,8 @@
 import { createApp } from "vue"
 import App from "./App.vue"
 import router from "./router"
+import { startOutbox } from "@/data/outbox"
+import { pruneDrafts } from "@/data/drafts"
 
 import {
 	Button,
@@ -48,5 +50,10 @@ router.isReady().then(async () => {
 		}
 	}
 	registerServiceWorker()
+	// Start the offline queue before the first screen paints: a handset that was closed
+	// mid-shift with work still queued should be sending it while the operator is still
+	// looking at the home screen, not waiting for them to reopen the form.
+	startOutbox()
+	pruneDrafts()
 	app.mount("#app")
 })

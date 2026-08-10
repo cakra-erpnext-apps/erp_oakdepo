@@ -10,7 +10,32 @@ export const labels = {
 	navGate: "Gate",
 	navEir: "EIR",
 	navMonitor: "Monitor", // Monitor Container tab
+	navProfile: "Profil", // Profile tab
 	navHistory: "Riwayat", // History tab (reachable from Home tile + EIR checklist)
+	// --- Profil (account + access overview) ---
+	profileTitle: "Profil",
+	profileBranchTitle: "Cakupan Branch",
+	profileBranchAll: "Semua branch — tidak dibatasi",
+	profileRolesTitle: "Peran",
+	profileRolesEmpty: "Belum ada peran depot",
+	profileAccessTitle: "Menu yang bisa dibuka",
+	profileAccessEmpty: "Belum ada menu yang bisa dibuka",
+	profileAccessHint: "Ditentukan dari izin akun Anda. Hubungi admin bila ada yang kurang.",
+	// --- Ubah password (Profil) ---
+	pwTitle: "Ubah Password",
+	pwHint: "Ganti kata sandi akun Anda",
+	pwOld: "Password Lama",
+	pwNew: "Password Baru",
+	pwConfirm: "Ulangi Password Baru",
+	pwShow: "Tampilkan password",
+	pwSubmit: "Simpan Password",
+	pwSaving: "Menyimpan…",
+	pwIncomplete: "Lengkapi semua kolom.",
+	pwMismatch: "Password baru dan ulangannya tidak sama.",
+	pwSame: "Password baru tidak boleh sama dengan yang lama.",
+	pwSuccess: "Password berhasil diubah.",
+	pwFailed: "Password gagal diubah.",
+	pwWrongOld: "Password lama salah.",
 	greeting: "Halo", // "Halo, {name}"
 	homeHint: "Pilih menu untuk mulai bekerja", // Pick a menu to start
 	// --- Dashboard (home KPI sections + menu groups) ---
@@ -42,6 +67,19 @@ export const labels = {
 	// Desk access — see menu.deskAccess.
 	openDesk: "Buka Desk",
 	openDeskHint: "Kelola booking, tarif, dan laporan di ERPNext.",
+	// --- Offline / antrean kirim (data/outbox.js) ---
+	draftRestored: "Draf lokal dipulihkan — isian terakhir Anda belum sempat terkirim.",
+	queuedOffline: "Tersimpan di HP. Otomatis terkirim saat internet tersambung.",
+	queueTitle: "Menunggu Terkirim",
+	queueSending: "Mengirim…",
+	queueOffline: "Tidak ada internet",
+	queueFailedOne: "gagal",
+	queueRetry: "Coba lagi",
+	queueDiscard: "Buang",
+	queueDiscardConfirm: "Data ini belum pernah terkirim ke server. Kalau dibuang, isinya hilang permanen.",
+	queueSessionExpired: "Sesi berakhir. Login lagi supaya antrean bisa terkirim.",
+	queueEmpty: "Semua sudah terkirim",
+	queuePhotoPending: "menunggu kirim",
 	dashYardTitle: "Okupansi Yard", // Yard occupancy
 	dashYardEmpty: "Belum ada zona yard aktif", // empty yard state
 	dashMenuTitle: "Menu", // menu section heading

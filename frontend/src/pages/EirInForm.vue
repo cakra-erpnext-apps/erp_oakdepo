@@ -125,8 +125,8 @@
 				<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
 				<div class="flex flex-wrap items-center gap-2">
 					<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
-						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos, idx)">
-							<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+							<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
 						</button>
 						<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
 						<span
@@ -200,7 +200,7 @@
 					{{ labels.signedBy }}: <span class="font-semibold text-gray-800">{{ session.user }}</span>
 				</p>
 				<div v-if="signatureUrl && !signing">
-					<img :src="signatureUrl" class="h-28 w-full rounded-xl border border-gray-200 bg-white object-contain" />
+					<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-white object-contain" />
 					<button type="button" class="oak-link mt-1.5 inline-flex items-center gap-1 text-sm" @click="startResign">
 						<Icon name="rotate-ccw" :size="14" /> {{ labels.signAgain }}
 					</button>
@@ -265,6 +265,9 @@ import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
+import { compressPhoto } from "@/utils/photo"
+import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
+import { enqueue, hydratePreviews, isLocalRef, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -388,8 +391,10 @@ const openRes = createResource({
 		signatureUrl.value = data.inspector_signature || ""
 		signing.value = false
 		applyDraftToRows(data)
-		nextTick(() => {
-			suppressSave.value = false
+		restoreLocalDraft().finally(() => {
+			nextTick(() => {
+				suppressSave.value = false
+			})
 		})
 	},
 })
@@ -398,6 +403,10 @@ const saveRes = createResource({
 	url: "container_depot.ess.inspections.eir_save_draft",
 	method: "POST",
 	onSuccess(data) {
+		// The server now holds everything except photos still waiting in the outbox, so the
+		// local draft has nothing left to protect. Dropping it here is what keeps
+		// restoreLocalDraft from ever putting stale text back over fresher server data.
+		if (!hasStashedPhotos()) clearDraft(draftKey.value)
 		result.value = data
 		// Field submit now moves the EIR to Pending Review (docstatus stays 0) — Admin Ops
 		// finalises it on the Desk. Treat that as "done" from the operator's side.
@@ -490,19 +499,17 @@ function buildPhotos() {
 	return [...perItem, ...bulk]
 }
 
+/**
+ * Take a picked photo and hand back a reference the form can hold onto.
+ *
+ * This used to upload immediately, which made the yard's dead spots brutal: the surveyor
+ * photographed a dent, the POST failed, and the evidence was gone on the spot — long before
+ * anyone reached the Kirim button. Now the file is shrunk and parked in IndexedDB, and the
+ * `local:` reference it returns travels through the form exactly like a file_url. The
+ * outbox swaps it for the real one when there is a network (see data/outbox.js).
+ */
 async function uploadFile(file) {
-	const fd = new FormData()
-	fd.append("file", file, file.name)
-	fd.append("is_private", 1)
-	fd.append("folder", "Home")
-	const res = await fetch("/api/method/upload_file", {
-		method: "POST",
-		headers: { "X-Frappe-CSRF-Token": window.csrf_token || "" },
-		body: fd,
-	})
-	if (!res.ok) throw new Error("upload failed")
-	const data = await res.json()
-	return data.message.file_url
+	return stashPhoto(await compressPhoto(file))
 }
 
 async function onBulkPhotoPick(event) {
@@ -620,13 +627,21 @@ function startResign() {
 	nextTick(sigCtxInit)
 }
 
-function doSave(submit = false) {
-	if (!inspection.value) return
-	if (saveTimer) {
-		clearTimeout(saveTimer)
-		saveTimer = null
-	}
-	saveRes.submit({
+// --- Offline safety net -------------------------------------------------------
+// Two different problems, two different mechanisms, and conflating them is the usual way
+// this goes wrong:
+//
+//   the LOCAL DRAFT answers "the tab died"   — IndexedDB, every keystroke, disposable
+//   the OUTBOX answers    "there is no signal" — IndexedDB, on Kirim, never dropped
+//
+// The periodic autosave still goes straight to the server when it can: that keeps Admin Ops
+// seeing live progress on the Desk. It just cannot carry photos that have not been uploaded
+// yet, so those are stripped and travel with the final submit instead.
+
+const draftKey = computed(() => `eir-in:${inspection.value || props.inspection}`)
+
+function eirPayload(submit) {
+	return {
 		inspection: inspection.value,
 		inspection_type: eirType,
 		eir_date: tanggal.value || undefined,
@@ -638,10 +653,112 @@ function doSave(submit = false) {
 		signature: signatureUrl.value || undefined,
 		create_cleaning_order: createCleaning.value ? 1 : 0,
 		create_repair_order: createRepair.value ? 1 : 0,
-		lines: JSON.stringify(buildLines()),
-		photos: JSON.stringify(buildPhotos()),
+		// Sent as arrays, not JSON strings: the outbox has to be able to walk the payload to
+		// find the `local:` photo references and swap them for real file_urls.
+		lines: buildLines(),
+		photos: buildPhotos(),
 		submit: submit ? 1 : 0,
+	}
+}
+
+/** Everything the operator has typed, in a shape restoreLocalDraft can put back. */
+function localSnapshot() {
+	return {
+		saved_at: Date.now(),
+		tanggal: tanggal.value,
+		tankStatus: tankStatus.value,
+		cargo: cargo.value,
+		remarks: remarks.value,
+		reffDoc: reffDoc.value,
+		signatureUrl: signatureUrl.value,
+		createCleaning: createCleaning.value,
+		createRepair: createRepair.value,
+		bulkPhotos: [...bulkPhotos.value],
+		bulkMeta: { ...bulkMeta.value },
+		rows: rows.value.map((r) => ({
+			item_code: r.item_code,
+			damage_code: r.damage_code,
+			repair_code: r.repair_code,
+			remarks: r.remarks,
+			photos: [...(r.photos || [])],
+			added: r.added,
+		})),
+	}
+}
+
+async function restoreLocalDraft() {
+	const saved = await loadDraft(draftKey.value)
+	if (!saved) return
+	tanggal.value = saved.tanggal || tanggal.value
+	tankStatus.value = saved.tankStatus || tankStatus.value
+	cargo.value = saved.cargo || cargo.value
+	remarks.value = saved.remarks ?? remarks.value
+	reffDoc.value = saved.reffDoc ?? reffDoc.value
+	signatureUrl.value = saved.signatureUrl || signatureUrl.value
+	createCleaning.value = saved.createCleaning
+	createRepair.value = saved.createRepair
+	bulkPhotos.value = saved.bulkPhotos || []
+	bulkMeta.value = saved.bulkMeta || {}
+	;(saved.rows || []).forEach((sr) => {
+		const row = rows.value.find((r) => r.item_code === sr.item_code)
+		if (!row) return
+		Object.assign(row, { damage_code: sr.damage_code, repair_code: sr.repair_code, remarks: sr.remarks, photos: sr.photos || [], added: sr.added })
 	})
+	// Object URLs die with the document that created them, so a restored draft has to
+	// re-open one per stashed photo or the thumbnails come back blank.
+	await hydratePreviews([...bulkPhotos.value, ...rows.value.flatMap((r) => r.photos || []), signatureUrl.value])
+	toast.info(labels.draftRestored)
+}
+
+const hasStashedPhotos = () =>
+	buildPhotos().some((p) => isLocalRef(p.photo)) || isLocalRef(signatureUrl.value)
+
+function doSave(submit = false) {
+	if (!inspection.value) return
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+		saveTimer = null
+	}
+	saveDraft(draftKey.value, localSnapshot())
+	if (submit) {
+		queueSubmit()
+		return
+	}
+	// Draft autosave to the server. Strip anything still sitting in the outbox — a
+	// `local:` string written into Inspection Photo would be a broken image for ever.
+	const payload = eirPayload(false)
+	saveRes.submit({
+		...payload,
+		signature: isLocalRef(payload.signature) ? undefined : payload.signature,
+		lines: JSON.stringify(payload.lines),
+		photos: JSON.stringify(payload.photos.filter((p) => !isLocalRef(p.photo))),
+	})
+}
+
+/**
+ * Hand the finished EIR to the outbox rather than posting it.
+ *
+ * Same path online and off, deliberately. A "send now if we can, queue if we cannot" fork
+ * gives two code paths of which one is barely ever exercised — and it is the one that runs
+ * on the worst day. Queued-then-flushed is a few milliseconds slower with signal and is the
+ * only path that has been tested.
+ */
+async function queueSubmit() {
+	try {
+		await enqueue({
+			kind: "eir-in-submit",
+			url: "container_depot.ess.inspections.eir_save_draft",
+			payload: eirPayload(true),
+		})
+		await clearDraft(draftKey.value)
+		toast.success(outbox.online ? labels.eirSentForReview : labels.queuedOffline, {
+			title: eirCode.value || inspection.value,
+		})
+		emit("submitted", inspection.value)
+		emit("back")
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	}
 }
 
 async function confirmSubmit() {

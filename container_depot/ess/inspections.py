@@ -11,6 +11,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
+from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import eir
 
 
@@ -182,12 +183,17 @@ def eir_save_draft(
 	photos=None,
 	seals=None,
 	submit=False,
+	request_id=None,
 ):
 	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR.
 
-	``seals`` is EIR-Out only: the seal numbers fitted at load-out."""
+	``seals`` is EIR-Out only: the seal numbers fitted at load-out.
+
+	``request_id`` makes a retry safe. The offline outbox replays anything it could not
+	confirm, and a submit whose response was lost in transit would otherwise finalise the
+	EIR a second time — see ``ess/idempotency.py``."""
 	require_menu("eir")
-	return eir.save_draft(
+	return guarded(request_id, lambda: eir.save_draft(
 		seals=seals,
 		inspection=inspection,
 		inspection_type=inspection_type,
@@ -205,7 +211,7 @@ def eir_save_draft(
 		lines=lines,
 		photos=photos,
 		submit=submit,
-	)
+	))
 
 
 @frappe.whitelist(methods=["POST"])
@@ -230,10 +236,14 @@ def eir_create(
 	lines=None,
 	photos=None,
 	submit=False,
+	request_id=None,
 ):
-	"""POST /api/v1/ess/eir-create — build (and optionally submit) an EIR Inspection."""
+	"""POST /api/v1/ess/eir-create — build (and optionally submit) an EIR Inspection.
+
+	``request_id`` is what stops a replayed create from raising a second EIR for the same
+	tank; see ``ess/idempotency.py``."""
 	require_menu("eir")
-	return eir.create_eir(
+	return guarded(request_id, lambda: eir.create_eir(
 		inspection_type=inspection_type,
 		container=container,
 		tank_status=tank_status,
@@ -254,7 +264,7 @@ def eir_create(
 		lines=lines,
 		photos=photos,
 		submit=submit,
-	)
+	))
 
 
 @frappe.whitelist(methods=["GET"])
