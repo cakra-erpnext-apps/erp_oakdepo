@@ -19,12 +19,15 @@ frappe.ui.form.on("Sales Invoice", {
 			"blue"
 		);
 
-		if (frm.doc.docstatus === 0) {
+		// These stand in for Frappe's own Delete and Cancel, which are permission-gated —
+		// so these are too, on the same rights. savetrash()/savecancel() would be refused
+		// server-side anyway; the point is not to offer a red button that cannot work.
+		if (frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, "delete")) {
 			// Draft → discard (delete). on_trash rolls the orders back and unblocks the delete.
 			frm.add_custom_button(__("Batalkan & Kembalikan Order"), () => frm.savetrash())
 				.removeClass("btn-default")
 				.addClass("btn-danger");
-		} else if (frm.doc.docstatus === 1) {
+		} else if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, "cancel")) {
 			// Submitted → cancel. on_cancel rolls the orders back.
 			frm.add_custom_button(__("Cancel & Kembalikan Order"), () => frm.savecancel())
 				.removeClass("btn-default")

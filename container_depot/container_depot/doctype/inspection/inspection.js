@@ -40,7 +40,9 @@ frappe.ui.form.on('Inspection', {
 		}
 		// "Cancel" (Desk-only): return a submitted EIR to Draft so it can be edited again
 		// in the PWA / Inspection menu.
-		if (frm.doc.docstatus === 1) {
+		// eir.revert_to_draft enforces doc.check_permission("cancel") — un-submitting is
+		// cancelling, and §8.1 keeps that away from the field roles.
+		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			frm.add_custom_button(__('Kembalikan ke Draft'), () => revert_to_draft(frm));
 		}
 		// Surface an inconsistency without blocking: damage flagged but no rows.

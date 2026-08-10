@@ -12,7 +12,9 @@ frappe.ui.form.on("Survey Order", {
 	},
 
 	refresh(frm) {
-		if (frm.doc.sales_invoice) {
+		// Only offer the jump to someone who can open the invoice — the field roles hold
+		// no Sales Invoice perm, so for them the link is a trip to a permission wall.
+		if (frm.doc.sales_invoice && frappe.perm.has_perm("Sales Invoice", 0, "read")) {
 			frm.add_custom_button(__("Sales Invoice"), () =>
 				frappe.set_route("Form", "Sales Invoice", frm.doc.sales_invoice), __("View"));
 		}

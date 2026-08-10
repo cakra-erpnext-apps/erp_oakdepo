@@ -38,6 +38,8 @@ frappe.ui.form.on('Cleaning Order', {
 		// Admin Ops step: while the order is in "Service Setup" they pick the cleaning
 		// method(s); the button forwards it to the depot operator worklist (-> Pending).
 		if (frm.is_new() || frm.doc.docstatus !== 0 || frm.doc.status !== 'Service Setup') return;
+		// It ends in frm.save(), so `write` is what the server will ask for.
+		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
 		frm.add_custom_button(__('Teruskan ke Operator'), () => {
 			if (!(frm.doc.cleaning_services || []).length) {
 				frappe.msgprint(__('Pilih minimal satu metode cleaning (Service) dulu.'));

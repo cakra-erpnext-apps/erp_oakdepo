@@ -28,8 +28,14 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_render_work_per_container');
 		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
 		// operator can get the booking right before it reaches the Cashier's queue.
+		// Each button below mirrors the permission its endpoint enforces, so nobody is
+		// offered an action that will bounce. `write` for the invoice actions
+		// (has_permission(..., "write") in container_booking.py), `cancel` for the revert
+		// (doc.check_permission("cancel")), and create-on-the-order for Generate Bon.
+		const may_write = frappe.perm.has_perm(frm.doctype, 0, 'write');
 		if (
 			!frm.is_new() &&
+			may_write &&
 			_finance_on() &&
 			frm.doc.docstatus === 0 &&
 			frm.doc.booking_status === 'Draft' &&
@@ -44,6 +50,7 @@ frappe.ui.form.on('Container Booking', {
 		// invoice and reopens the charges. Refused server-side once the invoice is submitted.
 		if (
 			!frm.is_new() &&
+			may_write &&
 			frm.doc.docstatus === 0 &&
 			['Pending Payment', 'Pending Confirmation'].includes(frm.doc.booking_status)
 		) {
@@ -51,12 +58,17 @@ frappe.ui.form.on('Container Booking', {
 		}
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
-		if (!frm.is_new() && frm.doc.booking_status === 'Confirmed') {
+		const order_dt = frm.doc.direction === 'Tank In' ? 'Order Bongkar' : 'Order Muat';
+		if (
+			!frm.is_new() &&
+			frm.doc.booking_status === 'Confirmed' &&
+			frappe.perm.has_perm(order_dt, 0, 'create')
+		) {
 			frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
 		}
 		// A submitted (Confirmed) booking can be reopened for a data correction WITHOUT
 		// reversing its payment — handy for a paid Cash booking that auto-confirmed.
-		if (!frm.is_new() && frm.doc.docstatus === 1) {
+		if (!frm.is_new() && frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			frm.add_custom_button(__('Revert to Draft'), () => _confirm_revert(frm));
 		}
 		// A confirmed booking that bills something but has no live invoice is stuck
@@ -65,6 +77,7 @@ frappe.ui.form.on('Container Booking', {
 		// amending the dead one, which the booking would not follow.
 		if (
 			!frm.is_new() &&
+			may_write &&
 			_finance_on() &&
 			frm.doc.docstatus === 1 &&
 			frm.doc.booking_status !== 'Cancelled' &&
@@ -178,8 +191,10 @@ frappe.ui.form.on('Container Booking', {
 		// on a brand-new, unsaved booking too. Mirrors Depot Contract's tariff import.
 		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
 		if (!grid) return;
-		// Editable only while the booking is an unsaved / draft record.
+		// Editable only while the booking is an unsaved / draft record, and only for
+		// someone who could save the rows it adds.
 		if (!(frm.is_new() || frm.doc.docstatus === 0)) return;
+		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
 		grid.add_custom_button(__('Import Excel'), () => {
 			const d = new frappe.ui.Dialog({
 				title: __('Import Containers from Excel'),

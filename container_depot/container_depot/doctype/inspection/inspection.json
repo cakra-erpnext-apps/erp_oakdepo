@@ -619,7 +619,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-07 12:00:00.000000",
+ "modified": "2026-08-10 15:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

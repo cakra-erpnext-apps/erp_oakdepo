@@ -96,7 +96,7 @@ frappe.ui.form.on("Depot Contract", {
 		const grid = frm.fields_dict.tariff_lines && frm.fields_dict.tariff_lines.grid;
 		if (!grid) return;
 		const editable = frm.is_new() || ["Draft"].includes(frm.doc.status);
-		if (!editable) return;
+		if (!editable || !frappe.perm.has_perm(frm.doctype, 0, "write")) return;
 		grid.add_custom_button(__("Import Excel"), () => {
 			const d = new frappe.ui.Dialog({
 				title: __("Import Price List from Excel"),
@@ -174,13 +174,18 @@ frappe.ui.form.on("Depot Contract", {
 			Draft: [["Submit", "Active", "primary"], ["Cancel", "Void"]],
 			Active: [["Invalid", "Void"], ["Expired", "Expired"]],
 		};
-		(ACTIONS[frm.doc.status] || []).forEach(([label, target, type]) => {
+		// set_status() reaches the server as a plain doc.save(), so `write` is the
+		// permission it will be measured against. Amend opens a Draft copy the user then
+		// has to save, so it needs `create`. Read-only holders (Management, Admin Ops)
+		// were being shown all of them.
+		const may_write = frappe.perm.has_perm(frm.doctype, 0, "write");
+		(may_write ? ACTIONS[frm.doc.status] || [] : []).forEach(([label, target, type]) => {
 			const btn = frm.add_custom_button(__(label), () => container_depot_transition(frm, target));
 			if (type === "primary") btn.removeClass("btn-default").addClass("btn-primary");
 		});
 		// Amend replaces Duplicate for a contract that is past Draft — it is also the
 		// only way to change the terms of a running (Active) contract.
-		if (frm.doc.status !== "Draft") {
+		if (frm.doc.status !== "Draft" && frappe.perm.has_perm(frm.doctype, 0, "create")) {
 			const amend = frm.add_custom_button(__("Amend"), () => container_depot_amend(frm));
 			if (frm.doc.status === "Active") amend.removeClass("btn-default").addClass("btn-primary");
 		}

@@ -194,10 +194,58 @@ def validate_qr(qr_data):
 # ---------------------------------------------------------------------------
 
 
+def _require_device_or_perm(doctype: str, ptype: str = "create") -> None:
+	"""Gate a device-facing endpoint: a real DocPerm, or a registered SST terminal.
+
+	These endpoints were written "authenticated only" for the Self Service Terminals,
+	which is why they insert with ``ignore_permissions``. That made them reachable by ANY
+	logged-in account — a Cashier could register a gate arrival, a Finance user could file
+	an EIR — because ``@frappe.whitelist`` asks nothing beyond a session.
+
+	Both callers are legitimate, so both are allowed and nothing else is:
+
+	* a person holding the DocPerm the operation needs (Security creates Gate Entry,
+	  Team EIR creates Inspection — §8.1);
+	* a terminal, identified the same way ``sst_heartbeat`` already identifies one — its
+	  ``api_user`` is the calling session. That keeps the unattended devices working
+	  without giving their service account a Desk role.
+
+	The internal ``ignore_permissions`` inserts stay: once past this gate the caller is
+	entitled to the operation, and its side effects (a pre-arrival Container, an SST
+	Activity Log) are ours to write, not theirs to be permissioned for.
+	"""
+	_require_authenticated_user()
+	if frappe.has_permission(doctype, ptype):
+		return
+	if _resolve_sst_for_session():
+		return
+	frappe.throw(
+		_("Anda tidak punya akses untuk membuat {0}.").format(_(doctype)),
+		frappe.PermissionError,
+	)
+
+
+def _require_order_create(booking) -> None:
+	"""Gate the three endpoints that issue a bon (``make_order``) — SST, DMS, Gate PWA.
+
+	``make_order`` inserts and submits with ``ignore_permissions=True`` because it owns a
+	row-locked transaction across Booking Code and the order, so the permission has to be
+	asked here. All three callers used to ask only for a session, which meant any logged-in
+	account could issue a SUBMITTED bon against someone else's booking.
+
+	Keyed on the direction, because that decides which doctype gets created and the two are
+	granted separately: Security holds Order Bongkar create but only read on Order Muat.
+	"""
+	direction = frappe.db.get_value("Container Booking", booking, "direction")
+	_require_device_or_perm("Order Bongkar" if direction == "Tank In" else "Order Muat")
+
+
 @frappe.whitelist(methods=["POST"])
 def register_gate_entry(booking_code, container_no, security_guard=None, truck_plate=None, driver_name=None):
-	"""Log a container arrival at the gate against a Booking Code. Authenticated
-	only.
+	"""Log a container arrival at the gate against a Booking Code.
+
+	Requires Gate Entry **create** — or a registered SST terminal. See
+	:func:`_require_device_or_perm`; it used to require only a session.
 
 	The Booking Code must be ``Active`` or ``Used`` — an Active code already
 	encodes payment status, so no separate payment check is needed. The Gate
@@ -205,7 +253,7 @@ def register_gate_entry(booking_code, container_no, security_guard=None, truck_p
 
 	POST /api/v1/gate/entry
 	"""
-	_require_authenticated_user()
+	_require_device_or_perm("Gate Entry")
 	code = _parse_booking_code_payload(booking_code)
 	container_no = _normalize_container_no(container_no)
 
@@ -325,11 +373,14 @@ def get_pending_lifts(booking_code=None, container_no=None):
 
 @frappe.whitelist(methods=["POST"])
 def upload_inspection_evidence(container_no, photos, inspection_type="EIR-In", inspector=None):
-	"""Receive inspection photos and save to storage. Authenticated only.
+	"""Receive inspection photos and save to storage.
+
+	Requires Inspection **create** — or a registered SST terminal. See
+	:func:`_require_device_or_perm`; it used to require only a session.
 
 	POST /api/v1/inspection/upload-evidence
 	"""
-	_require_authenticated_user()
+	_require_device_or_perm("Inspection")
 	container_no = _normalize_container_no(container_no)
 
 	if isinstance(photos, str):
@@ -774,6 +825,8 @@ def sst_issue_order(qr_data, truck_plate=None, driver_name=None, driver_phone=No
 		_log_sst_activity(sst, "Validate", booking_code=bc.name, payload={"state": bc.state}, result="Error")
 		frappe.throw(_("Booking Code {0} state is {1}.").format(bc.name, bc.state))
 
+	_require_order_create(bc.booking)
+
 	# Build vehicle data and delegate to the shared atomic core (handles the
 	# row-lock, order creation, and flipping the code to Used). SST scans exactly
 	# one code; the core accepts 1..3 so both entry points share one code path.
@@ -844,7 +897,7 @@ def generate_order_from_booking(booking, selected_codes, vehicle_data=None):
 	Thin wrapper over the shared atomic core so the SST and DMS paths can never
 	drift apart.
 	"""
-	_require_authenticated_user()
+	_require_order_create(booking)
 	from container_depot.container_depot.order_generation import make_order
 
 	vd = vehicle_data
@@ -1148,7 +1201,7 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None, request_id=N
 	Order Muat itself refuses any container that still has unfinished work on it."""
 	from container_depot.ess.idempotency import replayed, remember
 
-	_require_authenticated_user()
+	_require_order_create(booking)
 	previous = replayed(request_id)
 	if previous is not None:
 		return previous
@@ -1212,8 +1265,11 @@ def upload_inspection_offline_batch(items):
 
 	Each item: ``{client_uuid, container_no, inspection_type, inspector, photos}``.
 	Deduped by ``client_uuid``. Items with bad shape are skipped, not 400'd.
+
+	Requires Inspection **create** — or a registered SST terminal, which is the caller
+	this exists for. See :func:`_require_device_or_perm`.
 	"""
-	_require_authenticated_user()
+	_require_device_or_perm("Inspection")
 	if isinstance(items, str):
 		try:
 			items = json.loads(items)

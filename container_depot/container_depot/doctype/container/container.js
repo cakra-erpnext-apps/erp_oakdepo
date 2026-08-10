@@ -4,22 +4,14 @@
 frappe.ui.form.on('Container', {
 	refresh(frm) {
 		render_seal_history(frm);
-		if (!frm.is_new()) {
-			// Add custom buttons for common actions
-			frm.add_custom_button(__('Gate-In'), () => {
-				frappe.call({
-					method: 'container_depot.container_depot.doctype.container.container.create_gate_entry',
-					args: {
-						container_no: frm.doc.container_no
-					},
-					callback: (r) => {
-						if (!r.exc) {
-							frappe.msgprint('Gate Entry created');
-						}
-					}
-				});
-			});
-
+		// A "Gate-In" button used to sit here calling
+		// `container.create_gate_entry`. That method has never existed anywhere in the
+		// app — the only whitelist in container.py is `seal_history` — so the button
+		// failed for everyone who pressed it, whatever their role. Removed rather than
+		// written: a gate-in is raised from the Gate PWA against a Booking Code, which is
+		// what supplies the code, the truck and the driver. Conjuring one from a Container
+		// form would have none of that.
+		if (!frm.is_new() && frappe.perm.has_perm('Inspection', 0, 'create')) {
 			frm.add_custom_button(__('Inspection'), () => {
 				frappe.new_doc('Inspection', {
 					container: frm.doc.name

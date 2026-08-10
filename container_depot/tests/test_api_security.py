@@ -143,6 +143,122 @@ class TestApiSecurity(FrappeTestCase):
 		self._as_guest(call)
 
 	# ------------------------------------------------------------------
+	# Auth: a session is not a permission
+	# ------------------------------------------------------------------
+
+	def _probe_user(self, email, roles):
+		if frappe.db.exists("User", email):
+			frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+		doc = frappe.get_doc({
+			"doctype": "User",
+			"email": email,
+			"first_name": email.split("@")[0],
+			"send_welcome_email": 0,
+			"user_type": "System User",
+		}).insert(ignore_permissions=True)
+		if roles:
+			doc.add_roles(*roles)
+		# No commit — that would break FrappeTestCase's per-test rollback and leak the
+		# fixture into every sibling test. Clearing the per-user cache is enough.
+		frappe.clear_cache(user=email)
+		return email
+
+	def test_device_endpoints_refuse_a_merely_logged_in_user(self):
+		"""These were "authenticated only", which is not a permission.
+
+		``register_gate_entry`` and the inspection uploads insert with
+		``ignore_permissions=True`` because they exist for the unattended terminals — so a
+		bare ``@frappe.whitelist`` left them open to every account with a session. A Finance
+		user, whose DocPerm on both doctypes is read-only, could record a container arriving
+		at the gate or file an EIR.
+
+		Input validation runs before the writes, so the guard has to come first — it is
+		asserted with a payload that would otherwise die on validation, proving the refusal
+		is the permission and not the input.
+		"""
+		user = self._probe_user("sec-readonly@example.com", ["Finance"])
+		original = frappe.session.user
+		frappe.set_user(user)
+		try:
+			self.assertFalse(frappe.has_permission("Gate Entry", "create"))
+			with self.assertRaises(frappe.PermissionError):
+				cdapi.register_gate_entry(booking_code="not-a-code", container_no="BAD%CHAR")
+			with self.assertRaises(frappe.PermissionError):
+				cdapi.upload_inspection_evidence(container_no="BAD%CHAR", photos="not-json")
+			with self.assertRaises(frappe.PermissionError):
+				cdapi.upload_inspection_offline_batch(items="not-json")
+		finally:
+			frappe.set_user(original)
+
+	def test_device_endpoints_still_work_for_a_terminal(self):
+		"""The SST path must survive the gate above — it is the reason these exist.
+
+		A terminal's service account holds no depot role at all; what identifies it is the
+		``Self Service Terminal.api_user`` link, the same signal ``sst_heartbeat`` uses.
+		Without this the hardening would have silently bricked the unattended kiosks.
+		"""
+		user = self._probe_user("sec-terminal@example.com", [])
+		sst = frappe.get_doc({
+			"doctype": "Self Service Terminal",
+			"terminal_id": "SEC-PROBE-01",
+			"api_user": user,
+		}).insert(ignore_permissions=True)
+
+		original = frappe.session.user
+		frappe.set_user(user)
+		try:
+			self.assertFalse(frappe.has_permission("Gate Entry", "create"))
+			self.assertEqual(cdapi._resolve_sst_for_session(), sst.name)
+			# Past the gate, so it dies on the bad input instead of on permissions.
+			with self.assertRaises(frappe.ValidationError):
+				cdapi.register_gate_entry(booking_code="not-a-code", container_no="BAD%CHAR")
+		finally:
+			frappe.set_user(original)
+
+	def test_bon_issuing_endpoints_need_create_on_the_order(self):
+		"""All three ``make_order`` doors asked only for a session.
+
+		``make_order`` inserts AND submits with ``ignore_permissions=True`` (it owns a
+		row-locked transaction), so nothing downstream would have caught the caller: any
+		logged-in account could issue a submitted bon against any booking.
+		"""
+		# _active_code returns the Booking Code DOC (see _booking_helpers), not its name.
+		bc = self._active_code()
+		code, booking = bc.name, bc.booking
+		user = self._probe_user("sec-nobon@example.com", ["Finance"])
+
+		original = frappe.session.user
+		frappe.set_user(user)
+		try:
+			self.assertFalse(frappe.has_permission("Order Muat", "create"))
+			with self.assertRaises(frappe.PermissionError):
+				cdapi.generate_order_from_booking(booking=booking, selected_codes=[code])
+			with self.assertRaises(frappe.PermissionError):
+				cdapi.gate_generate_order(booking=booking, selected_codes=[code])
+			with self.assertRaises(frappe.PermissionError):
+				cdapi.sst_issue_order(qr_data=code)
+		finally:
+			frappe.set_user(original)
+
+		# Nothing was issued by the refused calls.
+		self.assertFalse(frappe.db.exists("Order Muat", {"booking": booking}))
+		self.assertEqual(frappe.db.get_value("Booking Code", code, "state"), "Active")
+
+	def test_accurate_export_needs_invoice_read(self):
+		"""The export is a month of invoice lines in one file; it was open to any session."""
+		from container_depot import accurate
+
+		user = self._probe_user("sec-noinvoice@example.com", ["Team Cleaning"])
+		original = frappe.session.user
+		frappe.set_user(user)
+		try:
+			self.assertFalse(frappe.has_permission("Sales Invoice", "read"))
+			with self.assertRaises(frappe.PermissionError):
+				accurate.export_accurate()
+		finally:
+			frappe.set_user(original)
+
+	# ------------------------------------------------------------------
 	# Auth: register_gate_entry input validation runs BEFORE DB writes
 	# ------------------------------------------------------------------
 

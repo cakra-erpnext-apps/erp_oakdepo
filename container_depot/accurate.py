@@ -133,8 +133,14 @@ def export_accurate(period=None, from_date=None, to_date=None, branch=None, invo
 
 	Filters to submitted Sales Invoices in the period (default: prior month), or
 	pass an explicit ``invoices`` name/list. Codes stay as placeholders until
-	``CODE_MAP`` / ``TAX_CODE`` are filled."""
+	``CODE_MAP`` / ``TAX_CODE`` are filled.
+
+	Needs Sales Invoice **read**: the file it returns is a month of invoice lines —
+	customers, amounts, tax — in one download. As a bare ``@frappe.whitelist`` any
+	logged-in account could fetch it, which is a bigger leak than opening the list view."""
 	from frappe.utils.xlsxutils import make_xlsx
+
+	frappe.has_permission("Sales Invoice", "read", throw=True)
 
 	columns, rows = build_rows(period, from_date, to_date, branch, invoices)
 	matrix = [columns] + [[r.get(c, "") for c in columns] for r in rows]

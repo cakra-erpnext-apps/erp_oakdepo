@@ -151,6 +151,11 @@ frappe.ui.form.on('Repair Order', {
 	},
 	_mr_buttons(frm) {
 		if (frm.is_new()) return;
+		// Every button below ends in an ess/repairs endpoint, and each of those asks for
+		// Repair Order write (on top of require_menu("mr")). Read-only holders — Management,
+		// Warehouse, Team EIR — were shown the whole workflow and got a refusal on click.
+		// The Admin-Ops-only ones keep their own extra is_admin_ops() check.
+		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
 		const s = frm.doc.status;
 		if (s === 'Draft' || s === 'Revision Requested') {
 			frm.add_custom_button(__('Submit for Approval'), () =>
