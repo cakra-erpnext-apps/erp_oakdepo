@@ -1097,6 +1097,12 @@ def void_draft(booking):
 	+ payment status to Cancelled, and marks the document itself Cancelled (docstatus 2)
 	so it reads 'Cancelled', not 'Draft'. Submit stays the only approve."""
 	doc = frappe.get_doc("Container Booking", booking)
+	# Same gate the native Cancel would apply — this method exists only because a DRAFT
+	# cannot go through submit→cancel, not because the permission stops mattering. Nothing
+	# below would catch a caller without it: `get_doc` checks nothing and the writes go out
+	# through db_set/db.sql. A read-only Finance account could void a booking, cancel its
+	# invoice and release its reservations.
+	doc.check_permission("cancel")
 	if doc.docstatus != 0:
 		frappe.throw(_("Only a draft booking can be cancelled here."))
 	doc._cancel_invoice_keep_link()

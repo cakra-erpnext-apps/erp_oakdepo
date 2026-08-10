@@ -471,6 +471,50 @@ class TestTankInFlow(FrappeTestCase):
 			"the draft invoice is cancelled (kept), not deleted",
 		)
 
+	def test_void_draft_requires_the_cancel_permission(self):
+		"""A read-only account must not be able to void a booking.
+
+		``void_draft`` exists only because a DRAFT cannot go through submit→cancel — not
+		because the permission stops applying. It used to check nothing at all: `get_doc`
+		does not, and the writes go out through `db_set`/`db.sql`, so a Finance user (read
+		on Container Booking, no cancel) could void a booking, cancel its Sales Invoice and
+		release its pre-arrival reservations over the API.
+		"""
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+
+		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
+		b.insert(ignore_permissions=True)
+
+		email = "cb-readonly@example.com"
+		if frappe.db.exists("User", email):
+			frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+		user = frappe.get_doc({
+			"doctype": "User",
+			"email": email,
+			"first_name": "CB ReadOnly",
+			"send_welcome_email": 0,
+			"user_type": "System User",
+		}).insert(ignore_permissions=True)
+		user.add_roles("Finance")
+		# No commit: that would defeat FrappeTestCase's per-test rollback and leak
+		# every fixture above into sibling tests. The role cache is per-user, so
+		# clearing it is enough for has_permission to see the new roles.
+		frappe.clear_cache(user=email)
+
+		try:
+			frappe.set_user(email)
+			self.assertTrue(frappe.has_permission("Container Booking", "read"))
+			self.assertFalse(frappe.has_permission("Container Booking", "cancel"))
+			with self.assertRaises(frappe.PermissionError):
+				void_draft(b.name)
+		finally:
+			frappe.set_user("Administrator")
+			frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+
+		b.reload()
+		self.assertEqual(b.docstatus, 0, "the refused call must leave the draft alone")
+		self.assertNotEqual(b.booking_status, "Cancelled")
+
 	def test_empty_items_rejected_on_draft(self):
 		# At least one container row is required even to save a draft.
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}], items=[])

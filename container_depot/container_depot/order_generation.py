@@ -239,6 +239,14 @@ def void_order(name, doctype="Order Bongkar"):
 	from container_depot.container_depot.doctype.order_bongkar.order_bongkar import _release_codes
 
 	doc = frappe.get_doc(doctype, name)
+	# Voiding IS cancelling — it lands the bon on docstatus 2 — so it needs the cancel
+	# permission, exactly like the native Cancel it replaces. Without this line the
+	# whitelist alone was the gate: `frappe.get_doc` checks nothing, and the draft branch
+	# below writes docstatus through db.sql, which bypasses the ORM check as well. A
+	# read-only Finance account could void a bon. §8.1 withholds cancel from the field
+	# roles on purpose (undoing a mis-submitted bon escalates to Admin Ops) and that
+	# intent only means something if it is enforced here.
+	doc.check_permission("cancel")
 	if doc.docstatus == 2:
 		frappe.throw(_("Order {0} is already voided.").format(doc.name))
 	if doc.docstatus == 1:

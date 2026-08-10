@@ -26,10 +26,17 @@ function _lock_actions(frm) {
 	});
 	// Submitted bon → Cancel returns it to an editable Draft; Void soft-deletes it
 	// (release codes, mark Cancelled, record kept). Draft bon → only Void.
-	if (!frm.is_new() && frm.doc.docstatus === 1) {
+	//
+	// Both key on the CANCEL permission, which §8.1 withholds from every field role: a bon
+	// is undone by Admin Ops, not by the operator who raised it. Frappe hides its native
+	// Cancel on exactly this check, so a custom button standing in for it must too —
+	// otherwise a read-only account is offered a destructive action. Enforced server-side
+	// in order_generation.void_order / revert_order_to_draft; this is the screen half.
+	const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
+	if (!frm.is_new() && may_cancel && frm.doc.docstatus === 1) {
 		frm.add_custom_button(__('Cancel'), () => _confirm_revert(frm));
 		frm.add_custom_button(__('Void'), () => _confirm_void(frm)).addClass('btn-danger');
-	} else if (!frm.is_new() && frm.doc.docstatus === 0) {
+	} else if (!frm.is_new() && may_cancel && frm.doc.docstatus === 0) {
 		frm.add_custom_button(__('Void'), () => _confirm_void(frm)).addClass('btn-danger');
 	}
 }

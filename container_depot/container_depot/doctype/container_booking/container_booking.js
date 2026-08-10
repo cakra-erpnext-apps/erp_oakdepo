@@ -271,7 +271,12 @@ frappe.ui.form.on('Container Booking', {
 		// Saved draft → the only undo is Cancel = void: cancel the draft's invoice (kept
 		// linked) + release reservations and mark it Cancelled. Submit (Approve) stays
 		// the primary action.
-		if (!frm.is_new() && frm.doc.docstatus === 0) {
+		//
+		// Gated on the CANCEL permission, not on read: Frappe hides its own Cancel that way
+		// and a custom button that replaces it has to follow, or a read-only role (Finance,
+		// Management) is shown a destructive action it has no right to. The server enforces
+		// the same check in void_draft — this only keeps the screen honest.
+		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			frm.add_custom_button(__('Cancel'), () => _confirm_void(frm)).addClass('btn-danger');
 		}
 	},

@@ -446,6 +446,55 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			revert_order_to_draft(name, "Order Bongkar")
 
+	def test_void_requires_the_cancel_permission(self):
+		"""Voiding is cancelling, so it needs the cancel permission — on both surfaces.
+
+		It used to need neither. ``void_order`` is a plain ``@frappe.whitelist``, and nothing
+		inside it checked: ``frappe.get_doc`` does not, and the draft branch writes docstatus
+		with ``db.sql``, which skips the ORM check too. A Finance account holding read-only
+		DocPerm on Order Bongkar could void a bon over the API, and the Desk button was shown
+		to it as well.
+
+		§8.1 gives the field roles submit but withholds cancel on purpose — undoing a
+		mis-submitted bon escalates to Admin Ops — and that only means something if the
+		endpoint enforces it.
+		"""
+		from container_depot.container_depot.order_generation import void_order
+
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCPRM0")
+		name = make_order(booking, codes)
+
+		email = "mc-readonly@example.com"
+		if frappe.db.exists("User", email):
+			frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+		user = frappe.get_doc({
+			"doctype": "User",
+			"email": email,
+			"first_name": "MC ReadOnly",
+			"send_welcome_email": 0,
+			"user_type": "System User",
+		}).insert(ignore_permissions=True)
+		user.add_roles("Finance")
+		# No commit: that would defeat FrappeTestCase's per-test rollback and leak
+		# every fixture above into sibling tests. The role cache is per-user, so
+		# clearing it is enough for has_permission to see the new roles.
+		frappe.clear_cache(user=email)
+
+		try:
+			frappe.set_user(email)
+			self.assertFalse(frappe.has_permission("Order Bongkar", "cancel"))
+			with self.assertRaises(frappe.PermissionError):
+				void_order(name, "Order Bongkar")
+		finally:
+			frappe.set_user("Administrator")
+			frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+
+		# Still untouched, and Admin Ops (which does hold cancel) can still void it.
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 0)
+		self.assertEqual(_states(codes), ["Used"])
+		void_order(name, "Order Bongkar")
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
+
 	def test_order_bongkar_cannot_be_deleted(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCDL0")
 		name = make_order(booking, codes)
