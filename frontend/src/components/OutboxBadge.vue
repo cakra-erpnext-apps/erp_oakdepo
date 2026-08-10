@@ -27,7 +27,7 @@
 			<ul v-if="outbox.rows.length" class="mt-2 space-y-2">
 				<li v-for="row in outbox.rows" :key="row.id" class="rounded-lg bg-gray-50 p-2">
 					<div class="flex items-center justify-between gap-2">
-						<span class="truncate text-xs font-semibold text-gray-700">{{ row.kind }}</span>
+						<span class="truncate text-xs font-semibold text-gray-700">{{ row.title || row.kind }}</span>
 						<span
 							class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold"
 							:class="row.state === 'failed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'"

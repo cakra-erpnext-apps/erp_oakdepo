@@ -80,9 +80,8 @@
 					<p class="font-mono text-xs text-gray-400">{{ order.name }}</p>
 					<p class="text-sm text-gray-500">{{ labels.ptExecStartGate }}</p>
 				</div>
-				<button class="oak-btn oak-btn-primary w-full py-3 text-base" :disabled="startRes.loading" @click="startCurrent">
-					<Icon v-if="startRes.loading" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.ptStartFull }}</span>
+				<button class="oak-btn oak-btn-primary w-full py-3 text-base" @click="startCurrent">
+					{{ labels.ptStartFull }}
 				</button>
 			</section>
 
@@ -166,8 +165,8 @@
 				</section>
 
 				<!-- Complete -->
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmComplete">
-					<Icon v-if="saveRes.loading" name="loader" :size="18" class="animate-spin" />
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="completing" @click="confirmComplete">
+					<Icon v-if="completing" name="loader" :size="18" class="animate-spin" />
 					<span v-else>{{ labels.ptComplete }}</span>
 				</button>
 			</template>
@@ -178,12 +177,13 @@
 <script setup>
 import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { createResource } from "frappe-ui"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { enqueue, isQueued, outbox } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -203,10 +203,14 @@ const todayStr = () => {
 }
 
 const search = ref("")
-const orders = ref([])
+const allOrders = ref([]) // what the server (or the offline cache) last said
 const order = ref(null)
 const completed = ref(null)
 const used = ref([])
+
+// An order whose completion is queued is done as far as the technician is concerned; the
+// server just has not heard yet. Leaving it listed invites them to redo the whole test.
+const orders = computed(() => allOrders.value.filter((o) => !isQueued(o.name)))
 // The date the test was actually performed — drives the next due-date on completion.
 const periodicDate = ref(todayStr())
 
@@ -227,11 +231,11 @@ function statusChipClass(s) {
 	return "bg-gray-100 text-gray-600"
 }
 
-const ordersRes = createResource({
+const ordersRes = cachedResource({
 	url: "container_depot.ess.periodic.pt_execution",
 	method: "GET",
 	auto: true,
-	onSuccess: (data) => (orders.value = data.items || []),
+	onSuccess: (data) => (allOrders.value = data.items || []),
 })
 
 function reloadOrders() {
@@ -251,7 +255,7 @@ const headerCells = computed(() => {
 	]
 })
 
-const detailRes = createResource({
+const detailRes = cachedResource({
 	url: "container_depot.ess.periodic.pt_order_detail",
 	method: "GET",
 	onSuccess(data) {
@@ -285,34 +289,34 @@ watch(
 )
 
 // --- start (Approved -> In Progress) ----------------------------------------
-const startRes = createResource({
-	url: "container_depot.ess.periodic.pt_start",
-	method: "POST",
-	onSuccess: () => toast.success(labels.ptStarted),
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
-
-function startCurrent() {
+//
+// Queued, and the status flipped locally rather than re-fetched. The response carried nothing
+// the screen needed except the new status, and waiting for it is what made "Mulai" impossible
+// in a dead spot — which locked the technician out of the rest of the form.
+//
+// No `ref` on this row: starting is not finishing, so the order must stay in the worklist.
+async function startCurrent() {
 	if (!order.value) return
-	startRes
-		.fetch({ periodic_test_order: order.value.name })
-		.then(() => detailRes.fetch({ periodic_test_order: order.value.name }))
+	try {
+		await enqueue({
+			kind: "pt-start",
+			title: `${labels.navPt} · Mulai`,
+			url: "container_depot.ess.periodic.pt_start",
+			payload: { periodic_test_order: order.value.name },
+		})
+		order.value = { ...order.value, status: "In Progress" }
+		toast.success(labels.ptStarted)
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	}
 }
 
 // --- complete (In Progress -> Completed; issues parts + advances the due date) ---
-const saveRes = createResource({
-	url: "container_depot.ess.periodic.pt_order_save",
-	method: "POST",
-	onSuccess(data) {
-		if (data.status === "Completed") {
-			order.value = null
-			if (route.query.o) router.replace({ query: {} })
-			toast.success(labels.ptCompleted, { title: data.name })
-			reloadOrders()
-		}
-	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
+//
+// Through the outbox, online and off. Completing pushes the container's next test due-date
+// forward, which is precisely why it carries a request_id: replaying it would advance the
+// date a second interval into the future (see ess/idempotency.py).
+const completing = ref(false)
 
 async function confirmComplete() {
 	const ok = await confirm({
@@ -324,9 +328,31 @@ async function confirmComplete() {
 	if (ok) complete()
 }
 
-function complete() {
-	if (!order.value) return
-	saveRes.fetch({ periodic_test_order: order.value.name, periodic_date: periodicDate.value || undefined, submit: 1 })
+async function complete() {
+	if (!order.value || completing.value) return
+	completing.value = true
+	const o = order.value
+	try {
+		await enqueue({
+			kind: "pt-complete",
+			title: `${labels.navPt} · ${o.container_no || o.container}`,
+			ref: o.name,
+			url: "container_depot.ess.periodic.pt_order_save",
+			payload: {
+				periodic_test_order: o.name,
+				periodic_date: periodicDate.value || undefined,
+				submit: 1,
+			},
+		})
+		toast.success(outbox.online ? labels.ptCompleted : labels.queuedOffline, { title: o.name })
+		order.value = null
+		if (route.query.o) router.replace({ query: {} })
+		reloadOrders()
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	} finally {
+		completing.value = false
+	}
 }
 
 function backToList() {

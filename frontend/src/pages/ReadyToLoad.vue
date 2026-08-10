@@ -64,7 +64,7 @@
 				</div>
 				<button
 					class="oak-btn oak-btn-primary w-full rounded-none py-3"
-					:disabled="gateOutRes.loading"
+					:disabled="accing"
 					@click="confirmAcc(c)"
 				>
 					<Icon name="log-out" :size="16" /> {{ labels.readyOutAcc }}
@@ -89,29 +89,35 @@
 
 <script setup>
 import { computed, onMounted, ref } from "vue"
-import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { enqueue, isQueued, outbox } from "@/data/outbox"
 
 const PAGE = 20
 const search = ref("")
-const items = ref([])
+const loaded = ref([]) // what the server (or the offline cache) last said
 const total = ref(0)
 const start = ref(0)
+
+// A tank whose ACC is queued has left, or is leaving. It stays in the server's answer until
+// the queue drains, so filter it out here — a released tank sitting in the "waiting" list is
+// how the same truck gets released twice.
+const items = computed(() => loaded.value.filter((c) => !isQueued(c.container)))
 
 const branch = computed(() => branchLabel())
 
 // The queue is derived server-side from the EIRs themselves (no stored list), so a plain
 // re-fetch after an ACC is enough to make the released tank disappear.
-const readyRes = createResource({
+const readyRes = cachedResource({
 	url: "container_depot.ess.gate.gate_ready",
 	method: "GET",
 	makeParams: () => ({ search: search.value || "", start: start.value, page_length: PAGE }),
 	onSuccess(data) {
-		items.value = start.value === 0 ? data.items || [] : items.value.concat(data.items || [])
+		loaded.value = start.value === 0 ? data.items || [] : loaded.value.concat(data.items || [])
 		total.value = data.total || 0
 		start.value += (data.items || []).length
 	},
@@ -120,12 +126,12 @@ const readyRes = createResource({
 function reload(reset) {
 	if (reset) {
 		start.value = 0
-		items.value = []
+		loaded.value = []
 	}
 	readyRes.reload()
 }
 function loadMore() {
-	if (readyRes.loading || items.value.length >= total.value) return
+	if (readyRes.loading || loaded.value.length >= total.value) return
 	readyRes.reload()
 }
 let searchTimer = null
@@ -163,26 +169,44 @@ function waitClass(c) {
 	return "bg-leaf-100 text-leaf-800"
 }
 
-// ACC — the same endpoint (and therefore the same guards) as the Desk report's button.
-const gateOutRes = createResource({
-	url: "container_depot.ess.gate.gate_out",
-	method: "POST",
-	onSuccess(data) {
-		toast.success(data?.order_completed ? labels.readyOutOrderDone : labels.gateOutDone, {
-			title: data?.container,
-		})
-		reload(true)
-	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
+// ACC — the same endpoint (and therefore the same server-side guards) as the Desk report's
+// button, but queued rather than posted.
+//
+// This is the deliberate call on this screen. The gate is where the signal is worst and where
+// waiting is most expensive: a truck held at the barrier because the handset cannot reach the
+// server blocks every truck behind it. So the tank is released now and the record catches up.
+//
+// The honest cost: the server's guards (open work still holding the tank, branch scope) only
+// run when the queue drains, so a release that turns out to be invalid surfaces as a failed
+// row in the queue panel afterwards rather than as a refusal at the barrier. That is a
+// discrepancy someone has to reconcile — but it is visible, and it is rarer than the jam.
+const accing = ref(false)
 async function confirmAcc(c) {
+	if (accing.value) return
 	const ok = await confirm({
 		title: labels.readyOutAccTitle,
 		message: `${c.container_no || c.container} — ${labels.readyOutAccMessage}`,
 		confirmLabel: labels.readyOutAcc,
 		cancelLabel: labels.confirmCancel,
 	})
-	if (ok) gateOutRes.fetch({ container: c.container })
+	if (!ok) return
+	accing.value = true
+	try {
+		await enqueue({
+			kind: "gate-out",
+			title: `${labels.readyOutTitle} · ${c.container_no || c.container}`,
+			ref: c.container,
+			url: "container_depot.ess.gate.gate_out",
+			payload: { container: c.container },
+		})
+		toast.success(outbox.online ? labels.gateOutDone : labels.queuedOffline, {
+			title: c.container_no || c.container,
+		})
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	} finally {
+		accing.value = false
+	}
 }
 
 onMounted(() => {

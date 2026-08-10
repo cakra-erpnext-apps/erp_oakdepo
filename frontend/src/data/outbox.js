@@ -19,6 +19,8 @@
 
 import { computed, reactive } from "vue"
 
+import { labels } from "@/utils/labels"
+import { toast } from "@/utils/toast"
 import {
 	STORE_BLOBS,
 	STORE_OUTBOX,
@@ -54,7 +56,34 @@ export const outbox = reactive({
 	online: computed(() => state.online),
 	sessionExpired: computed(() => state.sessionExpired),
 	lastError: computed(() => state.lastError),
+	// The documents this queue is already carrying an action for. Worklists filter on it so a
+	// tank the operator just signed off does not sit there looking untouched — which is how
+	// the same job gets done twice.
+	refs: computed(() => new Set(state.rows.map((r) => r.ref).filter(Boolean))),
 })
+
+/** Is there already queued work against this document? */
+export const isQueued = (ref) => !!ref && outbox.refs.has(ref)
+
+// `online` means "we have no evidence the link is down", and every part of the app that
+// touches the network reports what it saw. It has to work this way: `navigator.onLine` only
+// knows whether the device is attached to a network, which on depot wifi is regularly true
+// while nothing can actually be reached — and a screen quietly serving cached data while the
+// header insists everything is fine is the exact lie this whole feature exists to avoid.
+
+/** A request found nothing at the other end. Called by the read cache as well as the queue. */
+export function noteLinkDown() {
+	state.online = false
+}
+
+/** Something got through. Any success clears the flag, whoever observed it. */
+export function noteLinkUp() {
+	if (!state.online && navigator.onLine !== false) {
+		state.online = true
+		state.sessionExpired = false
+		flush()
+	}
+}
 
 // --- blobs ------------------------------------------------------------------
 
@@ -100,8 +129,14 @@ export async function hydratePreviews(refs) {
  *
  * `payload` may contain `local:<id>` placeholders anywhere; they are replaced with real
  * file_urls at flush time.
+ *
+ * `ref` names the document being acted on (a Cleaning Order, a container). It is only used to
+ * keep worklists honest — see `outbox.refs` — and never reaches the server.
+ *
+ * `title` is what the queue panel shows the operator. "Cleaning · TANK0000123" is something
+ * they can act on; an endpoint path is not.
  */
-export async function enqueue({ kind, url, payload }) {
+export async function enqueue({ kind, url, payload, ref = null, title = null }) {
 	await load()
 	if (state.rows.length >= MAX_ROWS) {
 		throw new Error(`Antrean penuh (${MAX_ROWS} item). Sambungkan internet dulu untuk mengirimnya.`)
@@ -109,6 +144,8 @@ export async function enqueue({ kind, url, payload }) {
 	const row = {
 		id: uid(),
 		kind,
+		title,
+		ref,
 		url,
 		payload,
 		refs: collectLocalRefs(payload),
@@ -134,9 +171,14 @@ async function load() {
 	}
 }
 
-/** Send everything queued, oldest first. Safe to call at any time; re-entrant calls no-op. */
-export async function flush() {
-	if (state.sending || !state.online) return
+/**
+ * Send everything queued, oldest first. Safe to call at any time; re-entrant calls no-op.
+ *
+ * `force` ignores the `online` flag — that flag is a hint, and something has to actually try
+ * the network for it ever to be cleared. The retry timer is the one caller that forces.
+ */
+export async function flush({ force = false } = {}) {
+	if (state.sending || (!state.online && !force)) return
 	await load()
 	const due = state.rows.filter((r) => r.state !== "failed")
 	if (!due.length) return
@@ -172,6 +214,7 @@ async function sendRow(row) {
 		await idbDelete(STORE_OUTBOX, row.id)
 		state.rows = state.rows.filter((r) => r.id !== row.id)
 		state.lastError = null
+		state.online = true // proof, not a guess: something just got through
 		return true
 	} catch (e) {
 		return await handleFailure(row, e)
@@ -205,6 +248,12 @@ async function handleFailure(row, e) {
 	const poison = e?.name === "Rejected" || row.attempts >= MAX_ATTEMPTS
 	row.state = poison ? "failed" : "pending"
 	await idbPut(STORE_OUTBOX, { ...row })
+	if (poison) {
+		// Interrupt them. The operator has already walked away believing this was sent, and
+		// the whole design leans on a rejection being noticed — a badge quietly changing
+		// colour in the header is not noticing.
+		toast.error(row.error, { title: row.title || labels.queueFailedTitle })
+	}
 	// Parked rows step aside so the queue behind them still moves; anything else means the
 	// link is unhealthy, so stop and let the retry timer try the whole queue again later.
 	return poison
@@ -338,9 +387,12 @@ export function startOutbox() {
 	// A timer as well as the events: `online` fires when the OS reattaches to a network,
 	// which on a depot yard is not the same thing as the network working. The retry is what
 	// actually gets the queue out.
+	//
+	// It forces rather than clearing `online` first. Optimistically flipping the flag true
+	// every 30s made the header blink "connected" on a link that had been dead for an hour;
+	// forcing a real send and letting the outcome set the flag says only what is true.
 	setInterval(() => {
-		if (navigator.onLine !== false) state.online = true
-		flush()
+		if (navigator.onLine !== false) flush({ force: true })
 	}, RETRY_MS)
 }
 

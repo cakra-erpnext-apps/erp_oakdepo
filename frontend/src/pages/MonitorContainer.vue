@@ -136,7 +136,7 @@
 				<button
 					v-if="c.raw_status === 'Available'"
 					class="oak-btn oak-btn-primary mr-3 shrink-0 px-3 py-1.5 text-xs"
-					:disabled="gateOutRes.loading"
+					:disabled="gatingOut"
 					@click.stop="confirmGateOut(c)"
 				>
 					<Icon name="log-out" :size="14" /> {{ labels.gateOutAction }}
@@ -165,7 +165,8 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { createResource } from "frappe-ui"
+import { cachedResource } from "@/data/cache"
+import { enqueue, isQueued, outbox } from "@/data/outbox"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
 import { toast } from "@/utils/toast"
@@ -181,7 +182,11 @@ const statusFilter = ref("") // default to "Semua" — the field observer sees e
 const principalFilter = ref("")
 const depotFilter = ref("")
 const todayOnly = ref(false)
-const items = ref([])
+const loaded = ref([]) // what the server (or the offline cache) last said
+
+// Monitor is read-only apart from TANK OUT. A tank whose gate-out is queued has already
+// left, so drop it here rather than leaving it in the live-inventory buckets.
+const items = computed(() => loaded.value.filter((c) => !isQueued(c.name)))
 const total = ref(0)
 const start = ref(0)
 const sentinel = ref(null)
@@ -198,21 +203,21 @@ const statusChips = [
 	{ key: "gate_out", label: statusLabels.gate_out },
 ]
 
-const principalsRes = createResource({
+const principalsRes = cachedResource({
 	url: "container_depot.ess.inventory.list_container_principals",
 	method: "GET",
 	auto: true,
 })
 const principals = computed(() => principalsRes.data?.principals || [])
 
-const depotsRes = createResource({
+const depotsRes = cachedResource({
 	url: "container_depot.ess.inventory.list_user_depots",
 	method: "GET",
 	auto: true,
 })
 const depots = computed(() => depotsRes.data?.depots || [])
 
-const tankRes = createResource({
+const tankRes = cachedResource({
 	url: "container_depot.ess.inventory.get_tank_list",
 	method: "GET",
 	makeParams: () => ({
@@ -225,7 +230,7 @@ const tankRes = createResource({
 		page_length: PAGE,
 	}),
 	onSuccess(data) {
-		items.value = start.value === 0 ? data.items || [] : items.value.concat(data.items || [])
+		loaded.value = start.value === 0 ? data.items || [] : loaded.value.concat(data.items || [])
 		total.value = data.total || 0
 		start.value += (data.items || []).length
 	},
@@ -234,12 +239,12 @@ const tankRes = createResource({
 function reload(reset) {
 	if (reset) {
 		start.value = 0
-		items.value = []
+		loaded.value = []
 	}
 	tankRes.reload()
 }
 function loadMore() {
-	if (tankRes.loading || items.value.length >= total.value) return
+	if (tankRes.loading || loaded.value.length >= total.value) return
 	tankRes.reload()
 }
 function setStatus(key) {
@@ -269,23 +274,36 @@ function orderTint(status) {
 
 // TANK OUT — confirm + complete gate-out for a pickup-pending tank, then refresh so it
 // drops out of the live-inventory buckets.
-const gateOutRes = createResource({
-	url: "container_depot.ess.gate.gate_out",
-	method: "POST",
-	onSuccess(data) {
-		toast.success(labels.gateOutDone, { title: data?.container })
-		reload(true)
-	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
+// Queued rather than posted, for the same reason as the Siap Keluar screen: this is pressed
+// at the barrier, and holding a truck because the handset cannot reach the server jams every
+// truck behind it. Carries a request_id so a lost response cannot become a second gate move.
+const gatingOut = ref(false)
 async function confirmGateOut(c) {
+	if (gatingOut.value) return
 	const ok = await confirm({
 		title: labels.gateOutConfirmTitle,
 		message: labels.gateOutConfirmMessage,
 		confirmLabel: labels.gateOutAction,
 		cancelLabel: labels.confirmCancel,
 	})
-	if (ok) gateOutRes.fetch({ container: c.name })
+	if (!ok) return
+	gatingOut.value = true
+	try {
+		await enqueue({
+			kind: "gate-out",
+			title: `${labels.gateOutAction} · ${c.container_no || c.name}`,
+			ref: c.name,
+			url: "container_depot.ess.gate.gate_out",
+			payload: { container: c.name },
+		})
+		toast.success(outbox.online ? labels.gateOutDone : labels.queuedOffline, {
+			title: c.container_no || c.name,
+		})
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	} finally {
+		gatingOut.value = false
+	}
 }
 
 // Infinite-scroll: auto-load the next page when the sentinel scrolls into view.

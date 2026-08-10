@@ -9,6 +9,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
+from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import gate
 
 
@@ -38,10 +39,14 @@ def gate_ready(search=None, start=0, page_length=20):
 
 
 @frappe.whitelist(methods=["POST"])
-def gate_out(container=None, gate_entry=None):
+def gate_out(container=None, gate_entry=None, request_id=None):
 	"""POST /api/v1/ess/gate-out — complete gate-out / load-complete for a tank.
 
 	The depot-branch guard (a container outside the caller's branch is rejected) lives in
-	``gate.mark_gate_out`` via ``assert_in_user_branch`` — same scope used across ess.*."""
+	``gate.mark_gate_out`` via ``assert_in_user_branch`` — same scope used across ess.*.
+
+	``request_id`` makes a replay safe: this is the write the offline queue is most likely to
+	repeat (the ACC is pressed at the gate, where signal is worst), and a second gate move on
+	the same tank would corrupt its yard state. See ``ess/idempotency.py``."""
 	require_menu("readyOut")
-	return gate.mark_gate_out(container=container, gate_entry=gate_entry)
+	return guarded(request_id, lambda: gate.mark_gate_out(container=container, gate_entry=gate_entry))

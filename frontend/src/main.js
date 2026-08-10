@@ -3,6 +3,7 @@ import App from "./App.vue"
 import router from "./router"
 import { startOutbox } from "@/data/outbox"
 import { pruneDrafts } from "@/data/drafts"
+import { pruneReads } from "@/data/cache"
 
 import {
 	Button,
@@ -55,5 +56,8 @@ router.isReady().then(async () => {
 	// looking at the home screen, not waiting for them to reopen the form.
 	startOutbox()
 	pruneDrafts()
+	// Also drops anything cached under a previous login — depot handsets change hands
+	// between shifts and one operator's branch-scoped worklist is not the next one's.
+	pruneReads()
 	app.mount("#app")
 })

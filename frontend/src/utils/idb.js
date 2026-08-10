@@ -1,4 +1,4 @@
-// Minimal promise wrapper over IndexedDB — three stores, no dependency.
+// Minimal promise wrapper over IndexedDB — four stores, no dependency.
 //
 // IndexedDB rather than localStorage, and the difference is not a preference: localStorage
 // caps at ~5 MB per origin, stores strings only (a photo has to be base64'd, +33%), and is
@@ -11,13 +11,19 @@
 //   outbox  — queued work, one row per document save (see data/outbox.js).
 //   drafts  — what the operator has typed, saved as they type. This one is not about the
 //             network at all: it is what survives a killed tab or a flat battery.
+//   reads   — the last good answer to each worklist / detail GET. Without it the offline
+//             queue is unreachable: an operator who cannot load the worklist never gets to
+//             the form whose submit the queue would have carried.
 
 const DB_NAME = "oak-depot"
-const DB_VERSION = 1
+// v2 added `reads`. Bump this, never rename a store in place: onupgradeneeded is the only
+// place a store can be created, so an added store with an unchanged version never appears.
+const DB_VERSION = 2
 
 export const STORE_BLOBS = "blobs"
 export const STORE_OUTBOX = "outbox"
 export const STORE_DRAFTS = "drafts"
+export const STORE_READS = "reads"
 
 let dbPromise = null
 
@@ -34,6 +40,7 @@ function open() {
 			if (!db.objectStoreNames.contains(STORE_BLOBS)) db.createObjectStore(STORE_BLOBS, { keyPath: "id" })
 			if (!db.objectStoreNames.contains(STORE_OUTBOX)) db.createObjectStore(STORE_OUTBOX, { keyPath: "id" })
 			if (!db.objectStoreNames.contains(STORE_DRAFTS)) db.createObjectStore(STORE_DRAFTS, { keyPath: "key" })
+			if (!db.objectStoreNames.contains(STORE_READS)) db.createObjectStore(STORE_READS, { keyPath: "key" })
 		}
 		req.onsuccess = () => resolve(req.result)
 		req.onerror = () => reject(req.error)

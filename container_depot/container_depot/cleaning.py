@@ -235,6 +235,10 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"cleaning_items": _cleaning_item_options(co.container),
 		"reff_doc": co.reff_doc,
 		"remarks": co.remarks or "",
+		# The signature is autosaved like any other field, so reopening the order has to bring
+		# it back — otherwise a form restored from an autosave (or from the offline cache)
+		# looks unsigned and the operator signs a second time.
+		"signature": co.surveyor_signature or "",
 		"signed_by": co.signed_by or user,
 		"date_of_issue": co.date_of_issue or today(),
 		"place_of_issue": co.place_of_issue or _default_place_of_issue(user, c.depot),

@@ -88,9 +88,9 @@
 				<label class="oak-label">{{ labels.posFixNote }}</label>
 				<textarea v-model.trim="note" rows="2" class="oak-input" :placeholder="labels.posFixNoteHint"></textarea>
 				<p v-if="approveError" class="text-xs text-red-600">{{ approveError }}</p>
-				<button class="oak-btn oak-btn-accent w-full py-3" :disabled="approveRes.loading" @click="confirmApprove">
-					<Icon v-if="!approveRes.loading" name="check-circle" :size="18" />
-					{{ approveRes.loading ? "…" : labels.posFixApprove }}
+				<button class="oak-btn oak-btn-accent w-full py-3" :disabled="approving" @click="confirmApprove">
+					<Icon v-if="!approving" name="check-circle" :size="18" />
+					{{ approving ? "…" : labels.posFixApprove }}
 				</button>
 			</section>
 		</template>
@@ -99,29 +99,33 @@
 
 <script setup>
 import { computed, ref } from "vue"
-import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { enqueue, isQueued, outbox } from "@/data/outbox"
 
 const mode = ref("list") // list | detail
 
 // ---- worklist ----
-const items = ref([])
+const allItems = ref([]) // what the server (or the offline cache) last said
 const total = ref(0)
 const search = ref("")
-const listRes = createResource({
+const listRes = cachedResource({
 	url: "container_depot.ess.position_survey.position_surveyed",
 	method: "GET",
 	makeParams: () => ({ search: search.value || "", page_length: 50 }),
 	auto: true,
 	onSuccess(data) {
-		items.value = data.items || []
+		allItems.value = data.items || []
 		total.value = data.total || 0
 	},
 })
+
+// An approval already queued is done; the server just has not heard yet.
+const items = computed(() => allItems.value.filter((r) => !isQueued(r.name)))
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
@@ -131,7 +135,7 @@ function onSearchInput() {
 // ---- detail ----
 const detail = ref(null)
 const note = ref("")
-const detailRes = createResource({
+const detailRes = cachedResource({
 	url: "container_depot.ess.position_survey.position_detail",
 	method: "GET",
 	onSuccess(data) {
@@ -148,32 +152,47 @@ function openItem(r) {
 }
 
 // ---- approve ----
-const approveRes = createResource({
-	url: "container_depot.ess.position_survey.position_approve",
-	method: "POST",
-	onSuccess(data) {
-		toast.success(labels.posFixApproved, { title: data.name })
-		backToList()
-	},
-	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
-	},
-})
-const approveError = computed(() => (approveRes.error ? approveRes.error.messages?.[0] || approveRes.error.message : null))
+//
+// Queued, online and off. The Kalmar operator is standing at the stack when they confirm the
+// tank is down, which is the worst place in the yard for signal — and the confirmation is
+// worth no less for arriving a few minutes late.
+const approving = ref(false)
+const approveError = ref(null)
 
 async function confirmApprove() {
+	if (approving.value) return
 	const ok = await confirm({
 		title: labels.posFixConfirmTitle,
 		message: labels.posFixConfirmMsg,
 		confirmLabel: labels.posFixApprove,
 		cancelLabel: labels.confirmCancel,
 	})
-	if (ok) approveRes.submit({ name: detail.value.name, note: note.value || undefined })
+	if (!ok) return
+	approving.value = true
+	approveError.value = null
+	const d = detail.value
+	try {
+		await enqueue({
+			kind: "position-approve",
+			title: `${labels.posFixTitle} · ${d.container_no || d.container}`,
+			ref: d.name,
+			url: "container_depot.ess.position_survey.position_approve",
+			payload: { name: d.name, note: note.value || undefined },
+		})
+		toast.success(outbox.online ? labels.posFixApproved : labels.queuedOffline, { title: d.name })
+		backToList()
+	} catch (e) {
+		approveError.value = e?.message || labels.error
+		toast.error(approveError.value)
+	} finally {
+		approving.value = false
+	}
 }
 
 function backToList() {
 	mode.value = "list"
 	detail.value = null
+	approveError.value = null
 	listRes.reload()
 }
 </script>

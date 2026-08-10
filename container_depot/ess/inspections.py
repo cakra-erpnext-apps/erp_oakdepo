@@ -66,12 +66,12 @@ def eir_pending_review(search=None, start=0, page_length=20):
 
 
 @frappe.whitelist(methods=["POST"])
-def eir_withdraw_review(inspection=None):
+def eir_withdraw_review(inspection=None, request_id=None):
 	"""POST /api/v1/ess/eir-withdraw-review — pull a "Pending Review" EIR back to Draft so the
 	operator can fix it before Admin Ops finalizes. Mutating, hence POST. See
 	``eir.withdraw_review``."""
 	require_menu("eir")
-	return eir.withdraw_review(inspection=inspection)
+	return guarded(request_id, lambda: eir.withdraw_review(inspection=inspection))
 
 
 @frappe.whitelist(methods=["GET"])
@@ -97,13 +97,13 @@ def eir_open(inspection=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def eir_start(inspection=None):
+def eir_start(inspection=None, request_id=None):
 	"""POST /api/v1/ess/eir-start — begin work on a draft EIR (stamps work_started_on).
 
 	The PWA locks the checklist until this is called so Mulai → Submit measures how long
 	the inspection took. Mutating, hence POST. See ``eir.start_eir``."""
 	require_menu("eir")
-	return eir.start_eir(inspection=inspection)
+	return guarded(request_id, lambda: eir.start_eir(inspection=inspection))
 
 
 @frappe.whitelist(methods=["GET"])
@@ -134,12 +134,14 @@ def eir_view(inspection=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def eir_request_revision(inspection=None, reason=None):
+def eir_request_revision(inspection=None, reason=None, request_id=None):
 	"""POST /api/v1/ess/eir-request-revision — ask Admin Ops to reopen a submitted EIR.
 
-	Mutating (notifies + drops an audit comment), hence POST. Does not edit the EIR."""
+	Mutating (notifies + drops an audit comment), hence POST. Does not edit the EIR.
+
+	``request_id`` stops a replay sending Admin Ops the same request twice."""
 	require_menu("eir")
-	return eir.request_revision(inspection=inspection, reason=reason)
+	return guarded(request_id, lambda: eir.request_revision(inspection=inspection, reason=reason))
 
 
 @frappe.whitelist(methods=["GET"])
@@ -284,9 +286,11 @@ def eir_unsorted_photos(inspection=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def eir_assign_photo_section(inspection=None, row=None, item_code=None):
+def eir_assign_photo_section(inspection=None, row=None, item_code=None, request_id=None):
 	"""POST /api/v1/ess/eir-assign-photo-section — assign one bulk photo to a checklist
 	section (the admin "sortir" action). Works on a submitted EIR (allow_on_submit).
 	DocPerm-enforced (no bypass). See ``eir.assign_photo_section``."""
 	require_menu("eir")
-	return eir.assign_photo_section(inspection=inspection, row=row, item_code=item_code)
+	return guarded(request_id, lambda: eir.assign_photo_section(
+		inspection=inspection, row=row, item_code=item_code
+	))

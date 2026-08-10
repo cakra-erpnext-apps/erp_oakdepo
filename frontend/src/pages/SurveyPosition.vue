@@ -82,8 +82,8 @@
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
 					<div v-for="(url, idx) in photos" :key="url" class="relative">
-						<button type="button" class="oak-press block" @click="openLightbox(photos, idx)">
-							<img :src="url" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+						<button type="button" class="oak-press block" @click="openLightbox(photos.map(photoSrc), idx)">
+							<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
 						</button>
 						<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="photos.splice(idx, 1)">
 							<Icon name="x" :size="12" />
@@ -107,9 +107,9 @@
 			<!-- Save -->
 			<section class="space-y-2">
 				<p v-if="saveError" class="text-xs text-red-600">{{ saveError }}</p>
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="recordRes.loading || !form.location_note" @click="save">
-					<Icon v-if="!recordRes.loading" name="check-circle" :size="18" />
-					{{ recordRes.loading ? "…" : labels.surveyPosSave }}
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saving || !form.location_note" @click="save">
+					<Icon v-if="!saving" name="check-circle" :size="18" />
+					{{ saving ? "…" : labels.surveyPosSave }}
 				</button>
 			</section>
 		</template>
@@ -117,29 +117,36 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from "vue"
-import { createResource } from "frappe-ui"
+import { computed, reactive, ref, watch } from "vue"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { compressPhoto } from "@/utils/photo"
+import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
+import { enqueue, hydratePreviews, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 
 const mode = ref("list") // list | detail
 
 // ---- worklist ----
-const items = ref([])
+const allItems = ref([]) // what the server (or the offline cache) last said
 const total = ref(0)
 const search = ref("")
-const listRes = createResource({
+const listRes = cachedResource({
 	url: "container_depot.ess.position_survey.position_pending",
 	method: "GET",
 	makeParams: () => ({ search: search.value || "", page_length: 50 }),
 	auto: true,
 	onSuccess(data) {
-		items.value = data.items || []
+		allItems.value = data.items || []
 		total.value = data.total || 0
 	},
 })
+
+// A survey already queued is done as far as the surveyor is concerned; the server just has
+// not heard yet. Leaving it listed invites them to walk out and photograph the tank twice.
+const items = computed(() => allItems.value.filter((r) => !isQueued(r.name)))
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
@@ -153,7 +160,7 @@ const photos = ref([])
 const uploading = ref(false)
 const photoErr = ref("")
 
-const detailRes = createResource({
+const detailRes = cachedResource({
 	url: "container_depot.ess.position_survey.position_detail",
 	method: "GET",
 	onSuccess(data) {
@@ -162,6 +169,7 @@ const detailRes = createResource({
 		form.notes = data.survey_notes || ""
 		photos.value = data.photos || []
 		mode.value = "detail"
+		restoreLocalDraft()
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
@@ -171,20 +179,15 @@ function openItem(r) {
 	detailRes.submit({ name: r.name })
 }
 
-// ---- photo upload (reuses the PWA upload_file pattern) ----
+/**
+ * Park a picked photo locally rather than uploading it now.
+ *
+ * A survey is taken at the far end of the yard, which is exactly where the signal is worst.
+ * Uploading on pick meant the photo of where the tank actually stands was lost the moment
+ * the POST failed. Now it is shrunk, kept in IndexedDB, and travels with the queued save.
+ */
 async function uploadFile(file) {
-	const fd = new FormData()
-	fd.append("file", file, file.name)
-	fd.append("is_private", 1)
-	fd.append("folder", "Home")
-	const res = await fetch("/api/method/upload_file", {
-		method: "POST",
-		headers: { "X-Frappe-CSRF-Token": window.csrf_token || "" },
-		body: fd,
-	})
-	if (!res.ok) throw new Error("upload failed")
-	const data = await res.json()
-	return data.message.file_url
+	return stashPhoto(await compressPhoto(file))
 }
 async function onPhotoPick(event) {
 	const files = Array.from(event.target.files || [])
@@ -202,32 +205,70 @@ async function onPhotoPick(event) {
 }
 
 // ---- save ----
-const recordRes = createResource({
-	url: "container_depot.ess.position_survey.position_record",
-	method: "POST",
-	onSuccess(data) {
-		toast.success(labels.surveyPosSaved, { title: data.name })
-		backToList()
-	},
-	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
-	},
-})
-const saveError = computed(() => (recordRes.error ? recordRes.error.messages?.[0] || recordRes.error.message : null))
+//
+// Always through the outbox, online and off. A "post now if we can, queue if we cannot" fork
+// leaves the offline branch barely exercised, and that is the branch that runs on the day the
+// yard has no signal.
+const saving = ref(false)
+const saveError = ref(null)
+const draftKey = computed(() => `survey-pos:${detail.value?.name || ""}`)
 
-function save() {
-	if (!detail.value || !form.location_note) return
-	recordRes.submit({
-		name: detail.value.name,
-		location_note: form.location_note,
-		photos: JSON.stringify(photos.value),
-		notes: form.notes || undefined,
-	})
+function localSnapshot() {
+	return { saved_at: Date.now(), location_note: form.location_note, notes: form.notes, photos: [...photos.value] }
+}
+
+async function restoreLocalDraft() {
+	const saved = await loadDraft(draftKey.value)
+	if (!saved) return
+	form.location_note = saved.location_note || form.location_note
+	form.notes = saved.notes || form.notes
+	if (saved.photos?.length) photos.value = saved.photos
+	// Object URLs die with the document that made them, so a restored draft has to re-open
+	// one per stashed photo or the thumbnails come back blank.
+	await hydratePreviews(photos.value)
+	toast.info(labels.draftRestored)
+}
+
+async function save() {
+	if (!detail.value || !form.location_note || saving.value) return
+	saving.value = true
+	saveError.value = null
+	const d = detail.value
+	try {
+		await enqueue({
+			kind: "survey-position",
+			title: `${labels.surveyPosTitle} · ${d.container_no || d.container}`,
+			ref: d.name,
+			url: "container_depot.ess.position_survey.position_record",
+			payload: {
+				name: d.name,
+				location_note: form.location_note,
+				// An array, not a JSON string: the outbox has to walk the payload to find the
+				// `local:` photo references and swap them for real file_urls.
+				photos: [...photos.value],
+				notes: form.notes || undefined,
+			},
+		})
+		await clearDraft(draftKey.value)
+		toast.success(outbox.online ? labels.surveyPosSaved : labels.queuedOffline, { title: d.name })
+		backToList()
+	} catch (e) {
+		saveError.value = e?.message || labels.error
+		toast.error(saveError.value)
+	} finally {
+		saving.value = false
+	}
 }
 
 function backToList() {
 	mode.value = "list"
 	detail.value = null
+	saveError.value = null
 	listRes.reload()
 }
+
+// Autosave what has been typed so far: a killed tab must not cost the surveyor the walk.
+watch([() => form.location_note, () => form.notes, photos], () => {
+	if (detail.value) saveDraft(draftKey.value, localSnapshot())
+}, { deep: true })
 </script>

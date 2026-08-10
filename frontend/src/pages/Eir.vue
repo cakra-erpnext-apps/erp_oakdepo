@@ -236,9 +236,10 @@
 <script setup>
 import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { isQueued } from "@/data/outbox"
 import EirInForm from "@/pages/EirInForm.vue"
 import EirOutForm from "@/pages/EirOutForm.vue"
 
@@ -266,7 +267,7 @@ const inItems = ref([])
 const outItems = ref([])
 
 // Pending EIR-In (auto-created per container when an Order Bongkar is submitted).
-const inRes = createResource({
+const inRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_pending",
 	method: "GET",
 	makeParams: () => ({ search: search.value || undefined, page_length: 50 }),
@@ -274,7 +275,7 @@ const inRes = createResource({
 	onSuccess: (data) => (inItems.value = (data.items || []).map((x) => ({ ...x, _type: "EIR-In" }))),
 })
 // Pending EIR-Out (auto-created per container when an Order Muat is submitted).
-const outRes = createResource({
+const outRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_out_pending",
 	method: "GET",
 	makeParams: () => ({ search: search.value || undefined, page_length: 50 }),
@@ -319,7 +320,10 @@ const fetchError = computed(() => {
 // Merge both queues. In-progress first — resuming an inspection someone already opened
 // matters more than picking up a fresh one — then newest by creation.
 const pendingItems = computed(() => {
-	const all = [...inItems.value, ...outItems.value]
+	// An EIR whose submit is queued has left this queue, whatever the server still says. The
+	// list is only refreshed when there is a link, so without this the surveyor sees the tank
+	// they just finished sitting there untouched and inspects it again.
+	const all = [...inItems.value, ...outItems.value].filter((r) => !isQueued(r.name))
 	all.sort((a, b) => {
 		const started = Number(!!b.work_started_on) - Number(!!a.work_started_on)
 		return started || String(b.creation || "").localeCompare(String(a.creation || ""))
@@ -363,7 +367,7 @@ function reloadPending() {
 // newest first (no date filter). Tapping one opens its read-only detail (+ revision).
 const LANDING_LIMIT = 5
 const doneItems = ref([])
-const doneRes = createResource({
+const doneRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_history",
 	method: "GET",
 	makeParams: () => ({ docstatus: 1, page_length: LANDING_LIMIT }),
@@ -374,7 +378,7 @@ const doneRes = createResource({
 // "Diajukan Review" — the caller's own EIRs sent for review (Pending Review, still
 // docstatus 0), awaiting Admin Ops's Desk Submit. Read-only, opened like a completed one.
 const reviewItems = ref([])
-const reviewRes = createResource({
+const reviewRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_pending_review",
 	method: "GET",
 	makeParams: () => ({ page_length: 20 }),

@@ -26,6 +26,21 @@
 			</router-link>
 		</div>
 
+		<!-- The one screen in the app that genuinely cannot work offline, so it says so up
+		     front instead of letting the operator scan and fail. Explained rather than just
+		     flagged: "no internet" invites a retry, "the booking's payment status has to be
+		     checked live" tells them to go and find signal. -->
+		<section
+			v-if="!outbox.online"
+			class="oak-card flex items-start gap-3 border-amber-200 bg-amber-50 p-4"
+		>
+			<Icon name="cloud-off" :size="20" class="mt-0.5 shrink-0 text-amber-600" />
+			<div>
+				<p class="font-bold text-amber-900">{{ labels.gateNeedsOnline }}</p>
+				<p class="mt-0.5 text-xs leading-relaxed text-amber-800">{{ labels.gateNeedsOnlineHint }}</p>
+			</div>
+		</section>
+
 		<!-- Scan/type a Booking Code (OAK-…) or an Order code (ORD-…) -->
 		<section class="oak-section space-y-3">
 			<div>
@@ -330,6 +345,8 @@ import { labels, gateDirection } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
+import { outbox } from "@/data/outbox"
+import { uid } from "@/utils/idb"
 
 const code = ref("")
 const scanInput = ref(null)
@@ -338,6 +355,7 @@ const selected = ref([])
 const genResult = ref(null)
 const showVehicleForm = ref(false)
 const vehicle = ref({})
+const requestId = ref(null)
 const scanning = ref(false)
 const scanErr = ref("")
 let qrScanner = null
@@ -544,6 +562,11 @@ function openGenerate() {
 		remarks: "",
 	}
 	genResult.value = null
+	// One id per intended bon, minted when the form opens rather than when Generate is
+	// pressed. That is the whole point: on a slow link the operator presses Generate, sees
+	// nothing happen, and presses it again — and the second press has to be recognised as the
+	// same bon. An id minted per click would issue two. See ess/idempotency.py.
+	requestId.value = uid()
 	showVehicleForm.value = true
 }
 
@@ -570,6 +593,7 @@ function doGenerate() {
 			booking: detail.value.booking,
 			selected_codes: JSON.stringify(selected.value),
 			vehicle_data: JSON.stringify(vd),
+			request_id: requestId.value,
 		})
 		.then((data) => {
 			genResult.value = data

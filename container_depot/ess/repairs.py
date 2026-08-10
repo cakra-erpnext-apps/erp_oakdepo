@@ -15,6 +15,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
+from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import mr
 
 # Allowed Repair Order status transitions — single source of truth in container_depot/mr.py
@@ -247,19 +248,26 @@ def mr_bypass_approval(repair_order=None, note=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def mr_start(repair_order=None):
+def mr_start(repair_order=None, request_id=None):
 	"""POST /api/v1/ess/mr-start — start the Approved M&R (In Progress)."""
 	require_menu("mr")
-	return mr.start_repair(repair_order)
+	return guarded(request_id, lambda: mr.start_repair(repair_order))
 
 
 @frappe.whitelist(methods=["POST"])
-def mr_order_save(repair_order=None, used_items=None, technician=None, reff_doc=None, remarks=None, submit=False):
+def mr_order_save(
+	repair_order=None, used_items=None, technician=None, reff_doc=None, remarks=None,
+	submit=False, request_id=None,
+):
 	"""POST /api/v1/ess/mr-order-save — save used items + fields (submit=1 completes + issues stock).
 
-	Each used item carries its own gudang; there is no order-level source warehouse to send."""
+	Each used item carries its own gudang; there is no order-level source warehouse to send.
+
+	``request_id`` makes a replay safe. Completing issues parts from stock, so a lost response
+	followed by a naive retry would take the same parts out of the warehouse twice — see
+	``ess/idempotency.py``."""
 	require_menu("mr")
-	return mr.save_mr_order(
+	return guarded(request_id, lambda: mr.save_mr_order(
 		repair_order=repair_order, used_items=used_items,
 		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit,
-	)
+	))

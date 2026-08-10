@@ -70,7 +70,6 @@
 				<button
 					v-if="o.status !== 'In_Progress'"
 					class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
-					:disabled="startRes.loading"
 					@click.stop="startOrder(o)"
 				>
 					{{ labels.cleaningStart }}
@@ -89,13 +88,8 @@
 					<p class="font-mono text-xs text-gray-400">{{ order.order_id }}</p>
 					<p class="text-sm text-gray-500">{{ labels.cleaningStartGate }}</p>
 				</div>
-				<button
-					class="oak-btn oak-btn-primary w-full py-3 text-base"
-					:disabled="startRes.loading"
-					@click="startCurrent"
-				>
-					<Icon v-if="startRes.loading" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.cleaningStartFull }}</span>
+				<button class="oak-btn oak-btn-primary w-full py-3 text-base" @click="startCurrent">
+					{{ labels.cleaningStartFull }}
 				</button>
 			</section>
 
@@ -152,7 +146,7 @@
 				<!-- Thumbnails (3-up, square tap-friendly tiles) + inline "add" tile -->
 				<div class="grid grid-cols-3 gap-2">
 					<div v-for="(p, i) in qcPhotos" :key="i" class="relative aspect-square">
-						<img :src="p.photo" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
+						<img :src="photoSrc(p.photo)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 						<button
 							type="button"
 							class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
@@ -201,7 +195,7 @@
 					</button>
 				</div>
 				<div v-if="signatureUrl && !signing">
-					<img :src="signatureUrl" class="h-28 w-full rounded-xl border border-gray-200 bg-white object-contain" />
+					<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-white object-contain" />
 				</div>
 				<div v-else>
 					<canvas
@@ -250,6 +244,10 @@ import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { compressPhoto } from "@/utils/photo"
+import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
+import { enqueue, hydratePreviews, isLocalRef, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -286,7 +284,7 @@ const liftClass = (v) => {
 }
 
 const search = ref("")
-const orders = ref([])
+const allOrders = ref([]) // what the server (or the offline cache) last said
 const order = ref(null)
 const submitted = ref(null)
 
@@ -310,12 +308,17 @@ const printUrl = computed(() =>
 		: "#"
 )
 
-const ordersRes = createResource({
+const ordersRes = cachedResource({
 	url: "container_depot.ess.cleaning.cleaning_orders",
 	method: "GET",
 	auto: true,
-	onSuccess: (data) => (orders.value = data.items || []),
+	onSuccess: (data) => (allOrders.value = data.items || []),
 })
+
+// An order whose sign-off is already queued is finished as far as the operator is concerned.
+// Leaving it in the list — which it will be, because the server has not heard about it yet —
+// invites them to do the whole job a second time.
+const orders = computed(() => allOrders.value.filter((o) => !isQueued(o.name)))
 
 function reloadOrders() {
 	const s = search.value.trim()
@@ -336,7 +339,7 @@ const headerCells = computed(() => {
 	]
 })
 
-const detailRes = createResource({
+const detailRes = cachedResource({
 	url: "container_depot.ess.cleaning.cleaning_order_detail",
 	method: "GET",
 	onSuccess(data) {
@@ -345,9 +348,12 @@ const detailRes = createResource({
 		savedOk.value = false
 		order.value = data
 		remarks.value = data.remarks || ""
+		signatureUrl.value = data.signature || ""
 		qcPhotos.value = (data.qc_photos || []).map((p) => ({ ...p }))
-		nextTick(() => {
-			suppressSave.value = false
+		restoreLocalDraft().finally(() => {
+			nextTick(() => {
+				suppressSave.value = false
+			})
 		})
 	},
 	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
@@ -374,40 +380,56 @@ watch(
 	{ immediate: true }
 )
 
-// Mulai Cleaning (worklist or in-form)
-const startRes = createResource({
-	url: "container_depot.ess.cleaning.cleaning_start",
-	method: "POST",
-	onSuccess() {
+// Mulai Cleaning (worklist or in-form).
+//
+// Queued like everything else, and the status flipped locally rather than re-fetched. The
+// response carried nothing the form needed except the new status, so there is no reason to
+// wait for it — and waiting is what made "Mulai" impossible in a dead spot, which locked the
+// operator out of the whole form.
+//
+// No `ref` on this row: starting is not finishing, and the order must stay in the worklist.
+async function queueStart(name) {
+	try {
+		await enqueue({
+			kind: "cleaning-start",
+			title: `${labels.cleaningTitle} · Mulai`,
+			url: "container_depot.ess.cleaning.cleaning_start",
+			payload: { cleaning_order: name },
+		})
 		toast.success(labels.cleaningStarted)
-	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
-
-function startOrder(o) {
-	startRes.fetch({ cleaning_order: o.name }).then(reloadOrders)
+		return true
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+		return false
+	}
 }
-function startCurrent() {
+
+async function startOrder(o) {
+	if (await queueStart(o.name)) o.status = "In_Progress"
+}
+async function startCurrent() {
 	if (!order.value) return
-	startRes.fetch({ cleaning_order: order.value.name }).then(() => detailRes.fetch({ cleaning_order: order.value.name }))
+	if (await queueStart(order.value.name)) order.value = { ...order.value, status: "In_Progress" }
 }
 
+// Server-side autosave only. The finalise goes through the outbox (see queueComplete), so
+// this resource never sees submit=1 and never has to deal with the finalized branch.
 const saveRes = createResource({
 	url: "container_depot.ess.cleaning.cleaning_order_save",
 	method: "POST",
-	onSuccess(data) {
-		if (data.docstatus === 1) {
-			// Finalized → drop back to the worklist with a toast (print stays in Riwayat).
-			submitted.value = null
-			order.value = null
-			if (route.query.o) router.replace({ query: {} })
-			toast.success(labels.cleaningSubmitted, { title: data.order_id || data.name })
-			reloadOrders()
-		} else {
-			savedOk.value = true // auto-save / manual save succeeded (no toast)
-		}
+	onSuccess() {
+		// The server holds everything except photos still waiting in the queue, so the local
+		// draft has nothing left to protect. Dropping it here is what stops a restore from
+		// putting stale text back over fresher server data.
+		if (!hasStashedPhotos()) clearDraft(draftKey.value)
+		savedOk.value = true
 	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
+	// An autosave that could not reach the server is not worth a red toast — the operator is
+	// mid-form, the local draft has the data, and the finalise will carry it. Anything the
+	// server actively refused, they do need to see.
+	onError(err) {
+		if (err?.response) toast.error(err?.messages?.[0] || err?.message || labels.error)
+	},
 })
 
 // Debounced auto-save on every edit (mirrors EIR): only while an unfinished order is open.
@@ -429,19 +451,100 @@ async function confirmComplete() {
 	if (ok) save(true)
 }
 
+// --- offline ----------------------------------------------------------------
+//
+// Two different problems, kept apart (same split as the EIR form):
+//   the DRAFT  answers "the tab died"      — IndexedDB, on every edit, disposable
+//   the OUTBOX answers "there is no signal" — IndexedDB, on Selesaikan, never dropped
+
+const draftKey = computed(() => `cleaning:${order.value?.name || route.query.o || ""}`)
+
+function payload(submit) {
+	return {
+		cleaning_order: order.value.name,
+		remarks: remarks.value || undefined,
+		signature: signatureUrl.value || undefined,
+		// An array, not a JSON string: the outbox has to walk the payload to find the
+		// `local:` photo references and swap them for real file_urls.
+		qc_photos: qcPhotos.value.filter((p) => p.photo),
+		submit: submit ? 1 : 0,
+	}
+}
+
+const hasStashedPhotos = () =>
+	qcPhotos.value.some((p) => isLocalRef(p.photo)) || isLocalRef(signatureUrl.value)
+
+function localSnapshot() {
+	return {
+		saved_at: Date.now(),
+		remarks: remarks.value,
+		signatureUrl: signatureUrl.value,
+		qcPhotos: qcPhotos.value.map((p) => ({ ...p })),
+	}
+}
+
+async function restoreLocalDraft() {
+	const saved = await loadDraft(draftKey.value)
+	if (!saved) return
+	remarks.value = saved.remarks ?? remarks.value
+	signatureUrl.value = saved.signatureUrl || signatureUrl.value
+	if (saved.qcPhotos?.length) qcPhotos.value = saved.qcPhotos.map((p) => ({ ...p }))
+	// Object URLs die with the document that made them, so a restored draft has to re-open
+	// one per stashed photo or the thumbnails come back blank.
+	await hydratePreviews([...qcPhotos.value.map((p) => p.photo), signatureUrl.value])
+	toast.info(labels.draftRestored)
+}
+
 function save(submit) {
 	if (!order.value) return
 	if (saveTimer) {
 		clearTimeout(saveTimer)
 		saveTimer = null
 	}
+	saveDraft(draftKey.value, localSnapshot())
+	if (submit) {
+		queueComplete()
+		return
+	}
+	const p = payload(false)
+	// Strip anything still sitting in the outbox: a `local:` string written into a QC photo
+	// row would be a broken image for ever. Those travel with the finalise instead.
 	saveRes.fetch({
-		cleaning_order: order.value.name,
-		remarks: remarks.value || undefined,
-		signature: signatureUrl.value || undefined,
-		qc_photos: JSON.stringify(qcPhotos.value.filter((p) => p.photo)),
-		submit: submit ? 1 : 0,
+		...p,
+		signature: isLocalRef(p.signature) ? undefined : p.signature,
+		qc_photos: JSON.stringify(p.qc_photos.filter((x) => !isLocalRef(x.photo))),
 	})
+}
+
+/**
+ * Hand the finished sign-off to the outbox rather than posting it.
+ *
+ * Same path online and off, deliberately: a "send now if we can, queue if we cannot" fork
+ * leaves the offline branch barely exercised, and that is the branch that runs on the worst
+ * day.
+ */
+async function queueComplete() {
+	const o = order.value
+	try {
+		await enqueue({
+			kind: "cleaning-complete",
+			title: `${labels.cleaningTitle} · ${o.container_no || o.container}`,
+			ref: o.name,
+			url: "container_depot.ess.cleaning.cleaning_order_save",
+			payload: payload(true),
+		})
+		await clearDraft(draftKey.value)
+		toast.success(outbox.online ? labels.cleaningSubmitted : labels.queuedOffline, {
+			title: o.order_id || o.name,
+		})
+		submitted.value = null
+		resetForm()
+		order.value = null
+		if (route.query.o) router.replace({ query: {} })
+		reloadOrders()
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	}
 }
 
 // --- QC photo handlers ------------------------------------------------------
@@ -488,19 +591,18 @@ function resetForm() {
 }
 
 // --- file upload + virtual signature pad ------------------------------------
+
+/**
+ * Park a picked photo locally and hand back a reference the form can hold onto.
+ *
+ * This used to upload immediately, which made the yard's dead spots brutal: the operator
+ * photographed a cleaned tank, the POST failed, and the evidence was gone on the spot — long
+ * before anyone reached Selesaikan. Now the file is shrunk and parked in IndexedDB, and the
+ * `local:` reference travels through the form exactly like a file_url. The outbox swaps it
+ * for the real one when there is a network (see data/outbox.js).
+ */
 async function uploadFile(file) {
-	const fd = new FormData()
-	fd.append("file", file, file.name)
-	fd.append("is_private", 1)
-	fd.append("folder", "Home")
-	const res = await fetch("/api/method/upload_file", {
-		method: "POST",
-		headers: { "X-Frappe-CSRF-Token": window.csrf_token || "" },
-		body: fd,
-	})
-	if (!res.ok) throw new Error("upload failed")
-	const data = await res.json()
-	return data.message.file_url
+	return stashPhoto(await compressPhoto(file))
 }
 
 const sigCanvas = ref(null)

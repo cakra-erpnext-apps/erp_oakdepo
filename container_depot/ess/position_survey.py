@@ -12,6 +12,7 @@ import frappe
 from frappe import _
 
 from container_depot.ess.guard import require_menu
+from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import position_survey
 
 # The "Position Fix" approval (2026-08-06) is gated by the `posFix` menu, i.e. by submit
@@ -49,18 +50,23 @@ def position_detail(name=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def position_record(name=None, location_note=None, photos=None, notes=None):
+def position_record(name=None, location_note=None, photos=None, notes=None, request_id=None):
 	"""POST /api/v1/ess/position-record — Surveyor records the container's location note +
-	photos (→ Surveyed). DocPerm (Surveyor) is enforced (no bypass)."""
+	photos (→ Surveyed). DocPerm (Surveyor) is enforced (no bypass).
+
+	``request_id`` makes a replay safe — see ``ess/idempotency.py``."""
 	require_menu("surveyPos")
-	return position_survey.record_survey_position(
+	return guarded(request_id, lambda: position_survey.record_survey_position(
 		name, location_note=location_note, photos=photos, notes=notes
-	)
+	))
 
 
 @frappe.whitelist(methods=["POST"])
-def position_approve(name=None, note=None):
+def position_approve(name=None, note=None, request_id=None):
 	"""POST /api/v1/ess/position-approve — Team Kalmar approves ("udah turun") →
-	Confirmed (submitted)."""
+	Confirmed (submitted).
+
+	``request_id`` makes a replay safe: this submits the survey, and a lost response would
+	otherwise send a second submit at an already-submitted doc. See ``ess/idempotency.py``."""
 	require_menu("posFix")
-	return position_survey.approve_position(name, note=note)
+	return guarded(request_id, lambda: position_survey.approve_position(name, note=note))

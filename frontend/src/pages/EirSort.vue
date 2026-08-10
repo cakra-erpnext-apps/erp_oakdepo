@@ -94,12 +94,13 @@
 
 <script setup>
 import { computed, ref } from "vue"
-import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
+import { cachedResource } from "@/data/cache"
+import { enqueue, outbox } from "@/data/outbox"
 
 const mode = ref("list") // list | detail
 
@@ -107,7 +108,7 @@ const mode = ref("list") // list | detail
 const items = ref([])
 const total = ref(0)
 const search = ref("")
-const listRes = createResource({
+const listRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_unsorted",
 	method: "GET",
 	makeParams: () => ({ search: search.value || "", page_length: 50 }),
@@ -125,7 +126,7 @@ function onSearchInput() {
 
 // ---- section options (flat checklist, ordered by sequence → grouped by area), loaded once ----
 const checklistItems = ref([])
-createResource({
+cachedResource({
 	url: "container_depot.ess.inspections.eir_masters",
 	method: "GET",
 	auto: true,
@@ -137,7 +138,7 @@ createResource({
 // ---- detail: one EIR's unsorted photos ----
 const current = ref(null)
 const photos = ref([])
-const photosRes = createResource({
+const photosRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_unsorted_photos",
 	method: "GET",
 	onSuccess(data) {
@@ -154,21 +155,26 @@ function openEir(r) {
 	photosRes.submit({ inspection: r.name })
 }
 
-const assignRes = createResource({
-	url: "container_depot.ess.inspections.eir_assign_photo_section",
-	method: "POST",
-})
-
+// Queued like every other write in the app. Sorting addresses a photo by its stable child-row
+// name and an item code, so a queued assignment means the same thing whenever it lands.
+//
+// No `ref` here: a row is one photo, not the whole EIR, and the EIR must stay in the worklist
+// while its other photos are still unsorted. The photo is dropped from the local list on
+// queueing instead, which is what stops it being sorted twice.
 async function assign(p) {
 	if (!p.chosen || p.pending) return
 	p.pending = true
 	try {
-		await assignRes.submit({ inspection: current.value.inspection, row: p.row, item_code: p.chosen })
-		// Drop the freshly-sorted photo from the list.
+		await enqueue({
+			kind: "eir-sort",
+			title: `${labels.eirSortTitle} · ${current.value.container_no || current.value.inspection}`,
+			url: "container_depot.ess.inspections.eir_assign_photo_section",
+			payload: { inspection: current.value.inspection, row: p.row, item_code: p.chosen },
+		})
 		photos.value = photos.value.filter((x) => x.row !== p.row)
-		toast.success(labels.eirSortAssigned)
+		toast.success(outbox.online ? labels.eirSortAssigned : labels.queuedOffline)
 	} catch (err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		toast.error(err?.message || labels.error)
 		p.chosen = ""
 	} finally {
 		p.pending = false

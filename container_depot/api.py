@@ -1127,9 +1127,16 @@ def gate_lookup(code):
 
 
 @frappe.whitelist(methods=["POST"])
-def gate_generate_order(booking, selected_codes, vehicle_data=None):
+def gate_generate_order(booking, selected_codes, vehicle_data=None, request_id=None):
 	"""Gate PWA: issue a submitted bon for up to 2 of a booking's containers. Refuses
 	when a Cash booking isn't Paid (pay at the cashier first).
+
+	``request_id`` is the one piece of offline plumbing this endpoint has, and it is the
+	piece that matters. The gate screen cannot work offline at all — it needs a live lookup
+	to read the booking's payment and block status, and a bon issued against a stale "Paid"
+	is a financial error. What it CAN suffer is lag: the bon is issued, the response is lost,
+	and the operator presses Generate again on a screen that still looks unfinished. Without
+	the guard that is two submitted bons for one truck. See ``ess/idempotency.py``.
 
 	``vehicle_data`` (JSON string or dict) carries the truck/driver/voucher detail
 	entered in the gate form — the same shape the Desk "Generate" dialog sends to
@@ -1139,7 +1146,12 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None):
 	``destination``/``tanggal_muat``/``shipper``/``remarks``). ``shipper`` is the one
 	hauler field — angkutan / EMKL are the same party under other names. For Tank Out,
 	Order Muat itself refuses any container that still has unfinished work on it."""
+	from container_depot.ess.idempotency import replayed, remember
+
 	_require_authenticated_user()
+	previous = replayed(request_id)
+	if previous is not None:
+		return previous
 	b = frappe.db.get_value(
 		"Container Booking", booking, ["payment_type", "payment_status", "direction", "docstatus"], as_dict=True
 	)
@@ -1168,11 +1180,13 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None):
 			vd["remarks"] = {code: vd["remarks"] for code in _as_code_list(selected_codes)}
 
 	order_name = make_order(booking, selected_codes, vehicle_data=vd, submit=True)
-	return {
+	result = {
 		"success": True,
 		"order_name": order_name,
 		"order_doctype": "Order Bongkar" if b.direction == "Tank In" else "Order Muat",
 	}
+	remember(request_id, result)
+	return result
 
 
 @frappe.whitelist(methods=["POST"])

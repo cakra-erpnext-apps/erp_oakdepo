@@ -10,6 +10,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
+from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import cleaning
 
 
@@ -42,10 +43,10 @@ def cleaning_order_detail(cleaning_order=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def cleaning_start(cleaning_order=None):
+def cleaning_start(cleaning_order=None, request_id=None):
 	"""POST /api/v1/ess/cleaning-start — mark a Cleaning Order In_Progress (Mulai)."""
 	require_menu("cleaning")
-	return cleaning.start_cleaning(cleaning_order)
+	return guarded(request_id, lambda: cleaning.start_cleaning(cleaning_order))
 
 
 @frappe.whitelist(methods=["POST"])
@@ -58,10 +59,14 @@ def cleaning_order_save(
 	signature=None,
 	qc_photos=None,
 	submit=False,
+	request_id=None,
 ):
-	"""POST /api/v1/ess/cleaning-order-save — save the sign-off (submit=1 completes)."""
+	"""POST /api/v1/ess/cleaning-order-save — save the sign-off (submit=1 completes).
+
+	``request_id`` makes a replay safe: a submit whose response was lost in transit would
+	otherwise complete the order a second time. See ``ess/idempotency.py``."""
 	require_menu("cleaning")
-	return cleaning.save_cleaning_order(
+	return guarded(request_id, lambda: cleaning.save_cleaning_order(
 		cleaning_order=cleaning_order,
 		cleaning_type=cleaning_type,
 		cleaning_items=cleaning_items,
@@ -70,4 +75,4 @@ def cleaning_order_save(
 		signature=signature,
 		qc_photos=qc_photos,
 		submit=submit,
-	)
+	))

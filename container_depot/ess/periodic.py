@@ -13,6 +13,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.ess.guard import require_menu
+from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import periodic
 
 
@@ -45,18 +46,25 @@ def pt_order_detail(periodic_test_order=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def pt_start(periodic_test_order=None):
+def pt_start(periodic_test_order=None, request_id=None):
 	"""POST — start the Approved Periodic Test (In Progress)."""
 	require_menu("periodicTest")
-	return periodic.start_test(periodic_test_order)
+	return guarded(request_id, lambda: periodic.start_test(periodic_test_order))
 
 
 @frappe.whitelist(methods=["POST"])
-def pt_order_save(periodic_test_order=None, periodic_date=None, technician=None, reff_doc=None, remarks=None, submit=False):
+def pt_order_save(
+	periodic_test_order=None, periodic_date=None, technician=None, reff_doc=None,
+	remarks=None, submit=False, request_id=None,
+):
 	"""POST — save the test outcome fields; ``submit=1`` completes it (issues approved parts +
-	pushes the next due-date onto the Container)."""
+	pushes the next due-date onto the Container).
+
+	``request_id`` makes a replay safe: completing advances the container's next test due-date,
+	so running it twice would push the date a second interval into the future. See
+	``ess/idempotency.py``."""
 	require_menu("periodicTest")
-	return periodic.save_pt_order(
+	return guarded(request_id, lambda: periodic.save_pt_order(
 		periodic_test_order=periodic_test_order, periodic_date=periodic_date,
 		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit,
-	)
+	))

@@ -112,7 +112,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue"
 import { useRoute } from "vue-router"
-import { createResource } from "frappe-ui"
+import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 
@@ -152,7 +152,7 @@ function cleanParams(obj) {
 	return out
 }
 
-const listRes = createResource({
+const listRes = cachedResource({
 	url: props.listUrl,
 	method: "GET",
 	makeParams: () =>
@@ -169,7 +169,7 @@ const listRes = createResource({
 	},
 })
 
-const detailRes = createResource({
+const detailRes = cachedResource({
 	url: props.detailUrl,
 	method: "GET",
 	onSuccess(data) {

@@ -182,12 +182,29 @@ Note when adding a doctype to `_WORK_SOURCES`: the date fields are not all one t
 
 ## Offline (PWA)
 
-The yard has dead spots. Two separate problems, two mechanisms — do not merge them:
+The yard has dead spots. Three separate problems, three mechanisms — do not merge them:
 
 | Problem | Mechanism | Lifetime |
 |---|---|---|
 | The tab died / battery went flat | `data/drafts.js` — form state to IndexedDB on every keystroke | disposable, pruned at 14 days |
-| There is no signal | `data/outbox.js` — the finished submission, queued | never dropped by a timer |
+| There is no signal (writing) | `data/outbox.js` — the finished submission, queued | never dropped by a timer |
+| There is no signal (reading) | `data/cache.js` — the last good answer to each GET | convenience, pruned at 7 days / 300 entries |
+
+The read cache is not an optimisation, it is the other half of the feature. Every screen
+starts with a worklist fetched from the server; with no cached answer the operator sees an
+empty list, never reaches the form, and so never reaches the queue. Without it the queue only
+ever helps someone whose signal died *while a form was already open*.
+
+Two rules `cachedResource` will not bend. **Only a request that got no answer is served from
+cache** — a server that replied "you may not do that" is a real answer and must reach the
+operator (`looksOffline` tests for a missing `.response`, plus 5xx). And **entries are scoped
+to the logged-in user** and dropped on a change of login, because depot handsets get passed
+between shifts and one operator's branch-scoped worklist is not the next one's.
+
+`data/menu.js` caches by hand for the same reason: an empty menu means no tiles and a router
+guard that refuses every route. Safe because the menu is presentation only — `ess/guard.py`
+re-checks every endpoint, so a stale entry can show a tile that refuses on tap but can never
+grant anything.
 
 **Photos are not uploaded when picked.** They are shrunk (`utils/photo.js`, 1600 px / q0.82,
 roughly 15x) and parked in IndexedDB, and the form carries a `local:<uuid>` reference that
@@ -202,13 +219,47 @@ budget.
 **Every queued write carries a `request_id`** (`ess/idempotency.py`). This is the load-bearing
 part. The dangerous case is not being offline — nothing happened — it is LAG: the request
 lands, the work is done, the response is lost coming back, and a naive retry raises a second
-EIR. Any new endpoint the outbox may replay must be wrapped in `guarded(request_id, ...)`.
+EIR, issues the same parts from stock twice, or advances a test due-date by a second interval.
+Any new endpoint the outbox may replay must be wrapped in `guarded(request_id, ...)` **and
+added to `REPLAYED_ENDPOINTS` in `tests/test_idempotency.py`** — that list is held to both
+rules (takes the kwarg, and actually honours it), so a signature that accepts `request_id`
+without wrapping the call fails there rather than in the yard.
 
 Server autosave still runs when there is a link, so the Desk sees live progress, but
 `local:` references are stripped from it — writing one into an Inspection Photo row would be
 a broken image for ever. They travel with the final queued submit instead.
 
-Wired into EIR-In and EIR-Out today. Cleaning Order and Survey Position still upload eagerly.
+### What each menu does offline
+
+| Menu | Offline |
+|---|---|
+| EIR In / Out | full — worklist, form, photos, Mulai, submit |
+| Cleaning | full — worklist, form, QC photos, signature, Mulai, Selesaikan |
+| M&R · Uji Periodik | full — worklist, detail, Mulai, Selesaikan |
+| Survey Posisi · Position Fix | full — worklist, detail, photos, save / approve |
+| Siap Keluar | full — queue readable, ACC queued |
+| Monitor · Riwayat | readable from cache |
+| Sortir Foto | readable from cache, assignment queued |
+| **Gate** | **no** — see below |
+
+**Gate is deliberately online-only.** Issuing a bon needs a live read of the booking's payment
+and block status, and a bon issued against a stale "Paid" is a financial error. So the screen
+says so up front (`labels.gateNeedsOnline`) instead of letting the operator scan and fail. It
+still carries a `request_id`, minted when the vehicle form opens rather than per click — on a
+slow link the operator presses Generate, sees nothing, and presses again, and that second
+press must be recognised as the same bon.
+
+**A queued action leaves its worklist immediately.** `enqueue({ref})` names the document and
+`outbox.refs` exposes the set; each worklist filters on `isQueued`. Without it the server's
+answer — which has not heard about the queued work — puts the finished job straight back in
+front of the operator, and it gets done twice. `ref` goes on terminal actions only: a queued
+"Mulai" must leave the order in the list.
+
+**Gate-out is queued, and that is a real trade.** The server's guards (open work holding the
+tank, branch scope) only run when the queue drains, so an invalid release surfaces as a failed
+row in the queue panel rather than as a refusal at the barrier. Accepted deliberately: holding
+a truck at the gate because a handset cannot reach the server jams every truck behind it, and
+the discrepancy is at least visible.
 
 ## Notifications
 

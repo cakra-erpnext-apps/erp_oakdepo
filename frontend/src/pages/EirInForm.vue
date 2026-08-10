@@ -24,9 +24,9 @@
 					<p class="text-base font-extrabold text-gray-900">{{ labels.eirStartTitle }}</p>
 					<p class="mt-1 text-sm text-gray-500">{{ labels.eirStartHint }}</p>
 				</div>
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="startRes.loading" @click="startWork">
-					<Icon v-if="!startRes.loading" name="play" :size="18" />
-					{{ startRes.loading ? "…" : labels.eirStartBtn }}
+				<button class="oak-btn oak-btn-primary w-full py-3" @click="startWork">
+					<Icon name="play" :size="18" />
+					{{ labels.eirStartBtn }}
 				</button>
 			</section>
 
@@ -257,6 +257,7 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
+import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
@@ -333,7 +334,7 @@ const missingFields = computed(() => {
 	return out
 })
 
-const mastersRes = createResource({
+const mastersRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_masters",
 	method: "GET",
 	auto: true,
@@ -365,7 +366,7 @@ const headerCells = computed(() => {
 	]
 })
 
-const openRes = createResource({
+const openRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_open",
 	method: "GET",
 	onSuccess(data) {
@@ -429,18 +430,25 @@ const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] |
 const saveError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] || saveRes.error.message : null))
 
 // Mulai: stamp work_started_on server-side, then unlock the checklist.
-const startRes = createResource({
-	url: "container_depot.ess.inspections.eir_start",
-	method: "POST",
-	onSuccess(data) {
-		workStartedOn.value = data.work_started_on || new Date().toISOString().slice(0, 19).replace("T", " ")
-	},
-	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
-	},
-})
-function startWork() {
-	if (inspection.value) startRes.submit({ inspection: inspection.value })
+// Mulai goes through the outbox and stamps the start time locally rather than waiting for
+// the server to hand one back. The response carried nothing else the form needed, and waiting
+// for it is what made Mulai impossible in a dead spot — which locked the surveyor out of the
+// entire checklist, the one screen the offline queue exists to protect.
+//
+// No `ref` on this row: starting is not finishing, so the EIR stays in the worklist.
+async function startWork() {
+	if (!inspection.value) return
+	try {
+		await enqueue({
+			kind: "eir-start",
+			title: `EIR · Mulai`,
+			url: "container_depot.ess.inspections.eir_start",
+			payload: { inspection: inspection.value },
+		})
+		workStartedOn.value = new Date().toISOString().slice(0, 19).replace("T", " ")
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	}
 }
 
 function applyDraftToRows(data) {
@@ -747,6 +755,10 @@ async function queueSubmit() {
 	try {
 		await enqueue({
 			kind: "eir-in-submit",
+			title: `EIR-In · ${header.value?.container_no || eirCode.value}`,
+			// Names the EIR so the worklist can drop it the moment it is queued — see
+			// Eir.vue's pendingItems.
+			ref: inspection.value,
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})

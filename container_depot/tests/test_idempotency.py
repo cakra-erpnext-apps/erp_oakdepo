@@ -10,6 +10,10 @@ Without the guard that produces a second EIR, a second cleaning order, a second 
 
 from __future__ import annotations
 
+import importlib
+import inspect
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -88,20 +92,121 @@ class TestIdempotency(FrappeTestCase):
 		self.assertEqual(replayed(request_id)["inspection"], "EIR-TEST-0001")
 
 
-class TestEirEndpointIdempotency(FrappeTestCase):
-	"""The guard where it actually matters: the endpoint the outbox replays."""
+# Every PWA write the offline outbox can replay, with the implementation each one delegates
+# to. Add a row here when a new queued endpoint appears — the tests below hold the whole list
+# to the same two rules, so a new endpoint that forgets the guard fails immediately rather
+# than waiting for a duplicate to show up in the depot.
+#
+# Format: (ess module path, endpoint name, implementation module path, implementation name).
+REPLAYED_ENDPOINTS = [
+	("container_depot.ess.inspections", "eir_start", "container_depot.container_depot.eir", "start_eir"),
+	("container_depot.ess.inspections", "eir_save_draft", "container_depot.container_depot.eir", "save_draft"),
+	("container_depot.ess.inspections", "eir_create", "container_depot.container_depot.eir", "create_eir"),
+	("container_depot.ess.inspections", "eir_withdraw_review", "container_depot.container_depot.eir", "withdraw_review"),
+	("container_depot.ess.inspections", "eir_request_revision", "container_depot.container_depot.eir", "request_revision"),
+	("container_depot.ess.inspections", "eir_assign_photo_section", "container_depot.container_depot.eir", "assign_photo_section"),
+	("container_depot.ess.cleaning", "cleaning_start", "container_depot.container_depot.cleaning", "start_cleaning"),
+	("container_depot.ess.cleaning", "cleaning_order_save", "container_depot.container_depot.cleaning", "save_cleaning_order"),
+	("container_depot.ess.repairs", "mr_start", "container_depot.container_depot.mr", "start_repair"),
+	("container_depot.ess.repairs", "mr_order_save", "container_depot.container_depot.mr", "save_mr_order"),
+	("container_depot.ess.periodic", "pt_start", "container_depot.container_depot.periodic", "start_test"),
+	("container_depot.ess.periodic", "pt_order_save", "container_depot.container_depot.periodic", "save_pt_order"),
+	(
+		"container_depot.ess.position_survey", "position_record",
+		"container_depot.container_depot.position_survey", "record_survey_position",
+	),
+	(
+		"container_depot.ess.position_survey", "position_approve",
+		"container_depot.container_depot.position_survey", "approve_position",
+	),
+	("container_depot.ess.gate", "gate_out", "container_depot.container_depot.gate", "mark_gate_out"),
+]
 
-	def test_eir_save_draft_accepts_and_honours_a_request_id(self):
-		import inspect
 
-		from container_depot.ess import inspections
+class TestEndpointIdempotency(FrappeTestCase):
+	"""The guard where it actually matters: every endpoint the outbox replays."""
 
-		for endpoint in (inspections.eir_save_draft, inspections.eir_create):
-			with self.subTest(endpoint=endpoint.__name__):
-				params = inspect.signature(endpoint).parameters
+	def setUp(self):
+		super().setUp()
+		# Administrator clears require_menu on every menu, so these tests exercise the guard
+		# rather than the permission layer (which has its own tests).
+		frappe.set_user("Administrator")
+
+	def _endpoint(self, module_path, name):
+		return getattr(importlib.import_module(module_path), name)
+
+	def test_every_replayed_endpoint_takes_an_optional_request_id(self):
+		for module_path, name, _impl_mod, _impl in REPLAYED_ENDPOINTS:
+			with self.subTest(endpoint=name):
+				params = inspect.signature(self._endpoint(module_path, name)).parameters
 				self.assertIn(
-					"request_id",
-					params,
-					f"{endpoint.__name__} is replayed by the offline outbox and must be guarded",
+					"request_id", params,
+					f"{name} is replayed by the offline outbox and must be guarded",
 				)
-				self.assertIsNone(params["request_id"].default, "the guard must be opt-in, never required")
+				self.assertIsNone(
+					params["request_id"].default,
+					"the guard must be opt-in, never required — Desk and automation callers pass no id",
+				)
+
+	def test_every_replayed_endpoint_actually_runs_the_work_once(self):
+		"""Accepting a ``request_id`` is not the same as honouring it.
+
+		The mistake this catches is the easy one: adding the keyword to the signature and
+		forgetting to wrap the call in ``guarded``. The endpoint would look correct, pass the
+		signature test above, and still raise a second EIR in the yard.
+
+		The implementation is replaced with a counter, so this needs no fixtures and asserts
+		the only thing that matters — the work behind the endpoint ran exactly once.
+		"""
+		for module_path, name, impl_module_path, impl_name in REPLAYED_ENDPOINTS:
+			with self.subTest(endpoint=name):
+				endpoint = self._endpoint(module_path, name)
+				impl_module = importlib.import_module(impl_module_path)
+				request_id = frappe.generate_hash(length=12)
+				calls = []
+
+				def _fake(*args, **kwargs):
+					calls.append(1)
+					return {"ok": True, "n": len(calls)}
+
+				with patch.object(impl_module, impl_name, _fake):
+					first = endpoint(request_id=request_id)
+					second = endpoint(request_id=request_id)
+
+				self.assertEqual(len(calls), 1, f"{name} ran its work twice for one request_id")
+				self.assertEqual(first, second, f"{name} did not answer the replay with the first result")
+
+	def test_without_a_request_id_the_work_runs_every_time(self):
+		"""The guard must never become an accidental cache for ordinary un-queued callers."""
+		endpoint = self._endpoint("container_depot.ess.cleaning", "cleaning_start")
+		impl_module = importlib.import_module("container_depot.container_depot.cleaning")
+		calls = []
+
+		with patch.object(impl_module, "start_cleaning", lambda *a, **k: calls.append(1)):
+			endpoint(cleaning_order="CO-0001")
+			endpoint(cleaning_order="CO-0001")
+
+		self.assertEqual(len(calls), 2)
+
+
+class TestGateGenerateOrderIdempotency(FrappeTestCase):
+	"""The gate bon is guarded inline rather than through ``guarded`` — same contract.
+
+	It is the one write the PWA cannot queue (issuing a bon needs a live read of the booking's
+	payment and block status), which makes lag the *only* protection it needs and the only one
+	it has.
+	"""
+
+	def test_a_replay_answers_from_the_first_result_without_touching_the_booking(self):
+		from container_depot.api import gate_generate_order
+
+		frappe.set_user("Administrator")
+		request_id = frappe.generate_hash(length=12)
+		remember(request_id, {"success": True, "order_name": "ORD-TEST-0001"})
+
+		# A booking that does not exist: reaching the work at all would throw. Getting the
+		# stored answer back proves the guard sits in FRONT of the work, not after it.
+		result = gate_generate_order(
+			booking="OAK-DOES-NOT-EXIST", selected_codes="[]", request_id=request_id
+		)
+		self.assertEqual(result["order_name"], "ORD-TEST-0001")

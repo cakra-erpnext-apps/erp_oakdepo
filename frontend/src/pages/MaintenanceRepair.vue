@@ -79,9 +79,8 @@
 					<p class="font-mono text-xs text-gray-400">{{ order.repair_order_id }}</p>
 					<p class="text-sm text-gray-500">{{ labels.mrExecStartGate }}</p>
 				</div>
-				<button class="oak-btn oak-btn-primary w-full py-3 text-base" :disabled="startRes.loading" @click="startCurrent">
-					<Icon v-if="startRes.loading" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.mrStartFull }}</span>
+				<button class="oak-btn oak-btn-primary w-full py-3 text-base" @click="startCurrent">
+					{{ labels.mrStartFull }}
 				</button>
 			</section>
 
@@ -172,8 +171,8 @@
 				</section>
 
 				<!-- Complete -->
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmComplete">
-					<Icon v-if="saveRes.loading" name="loader" :size="18" class="animate-spin" />
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="completing" @click="confirmComplete">
+					<Icon v-if="completing" name="loader" :size="18" class="animate-spin" />
 					<span v-else>{{ labels.mrComplete }}</span>
 				</button>
 			</template>
@@ -184,12 +183,13 @@
 <script setup>
 import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { createResource } from "frappe-ui"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import { cachedResource } from "@/data/cache"
+import { enqueue, isQueued, outbox } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -226,10 +226,14 @@ const liftClass = (v) => {
 }
 
 const search = ref("")
-const orders = ref([])
+const allOrders = ref([]) // what the server (or the offline cache) last said
 const order = ref(null)
 const completed = ref(null)
 const used = ref([])
+
+// An order whose completion is queued is done as far as the technician is concerned; the
+// server just has not heard yet. Leaving it listed invites them to redo the whole job.
+const orders = computed(() => allOrders.value.filter((o) => !isQueued(o.name)))
 
 // --- status-driven view flags (execution phase only) -----------------------
 const isApproved = computed(() => order.value?.status === "Approved")
@@ -249,11 +253,11 @@ function statusChipClass(s) {
 	return "bg-gray-100 text-gray-600"
 }
 
-const ordersRes = createResource({
+const ordersRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_execution",
 	method: "GET",
 	auto: true,
-	onSuccess: (data) => (orders.value = data.items || []),
+	onSuccess: (data) => (allOrders.value = data.items || []),
 })
 
 function reloadOrders() {
@@ -273,7 +277,7 @@ const headerCells = computed(() => {
 	]
 })
 
-const detailRes = createResource({
+const detailRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_order_detail",
 	method: "GET",
 	onSuccess(data) {
@@ -306,32 +310,34 @@ watch(
 )
 
 // --- start (Approved -> In Progress) ----------------------------------------
-const startRes = createResource({
-	url: "container_depot.ess.repairs.mr_start",
-	method: "POST",
-	onSuccess: () => toast.success(labels.mrStarted),
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
-
-function startCurrent() {
+//
+// Queued, and the status flipped locally rather than re-fetched. The response carried nothing
+// the screen needed except the new status, and waiting for it is what made "Mulai" impossible
+// in a dead spot — which locked the technician out of the rest of the form.
+//
+// No `ref` on this row: starting is not finishing, so the order must stay in the worklist.
+async function startCurrent() {
 	if (!order.value) return
-	startRes.fetch({ repair_order: order.value.name }).then(() => detailRes.fetch({ repair_order: order.value.name }))
+	try {
+		await enqueue({
+			kind: "mr-start",
+			title: `${labels.mrTitle} · Mulai`,
+			url: "container_depot.ess.repairs.mr_start",
+			payload: { repair_order: order.value.name },
+		})
+		order.value = { ...order.value, status: "In Progress" }
+		toast.success(labels.mrStarted)
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	}
 }
 
 // --- complete (In Progress -> Completed, issues approved parts from stock) ---
-const saveRes = createResource({
-	url: "container_depot.ess.repairs.mr_order_save",
-	method: "POST",
-	onSuccess(data) {
-		if (data.status === "Completed") {
-			order.value = null
-			if (route.query.o) router.replace({ query: {} })
-			toast.success(labels.mrCompleted, { title: data.repair_order_id || data.name })
-			reloadOrders()
-		}
-	},
-	onError: (err) => toast.error(err?.messages?.[0] || err?.message || labels.error),
-})
+//
+// Through the outbox, online and off. Completing issues parts from the warehouse, which is
+// exactly why it carries a request_id: a lost response plus a naive retry would take the same
+// parts out of stock twice (see ess/idempotency.py).
+const completing = ref(false)
 
 async function confirmComplete() {
 	const ok = await confirm({
@@ -345,9 +351,29 @@ async function confirmComplete() {
 
 // Used items aren't editable here — each one already names the gudang it is issued from — so
 // completing is just the submit flag.
-function complete() {
-	if (!order.value) return
-	saveRes.fetch({ repair_order: order.value.name, submit: 1 })
+async function complete() {
+	if (!order.value || completing.value) return
+	completing.value = true
+	const o = order.value
+	try {
+		await enqueue({
+			kind: "mr-complete",
+			title: `${labels.mrTitle} · ${o.container_no || o.container}`,
+			ref: o.name,
+			url: "container_depot.ess.repairs.mr_order_save",
+			payload: { repair_order: o.name, submit: 1 },
+		})
+		toast.success(outbox.online ? labels.mrCompleted : labels.queuedOffline, {
+			title: o.repair_order_id || o.name,
+		})
+		order.value = null
+		if (route.query.o) router.replace({ query: {} })
+		reloadOrders()
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+	} finally {
+		completing.value = false
+	}
 }
 
 function backToList() {

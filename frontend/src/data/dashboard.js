@@ -1,9 +1,9 @@
-import { createResource } from "frappe-ui"
+import { cachedResource } from "@/data/cache"
 
 // Aggregated home-dashboard KPI payload — status buckets, today's activity,
 // and pending work counts — in one GET. Branch-scoped server-side
 // (see container_depot.ess.inventory.get_dashboard_summary).
-export const dashboardResource = createResource({
+export const dashboardResource = cachedResource({
 	url: "container_depot.ess.inventory.get_dashboard_summary",
 	method: "GET",
 	auto: false,

@@ -1,7 +1,7 @@
-import { createResource } from "frappe-ui"
+import { cachedResource } from "@/data/cache"
 
 // Active user's branch scope (for headers / labels). Cached for the session.
-export const userContext = createResource({
+export const userContext = cachedResource({
 	url: "container_depot.ess.context.get_user_context",
 	method: "GET",
 	cache: "user_context",

@@ -74,12 +74,22 @@ export const labels = {
 	queueSending: "Mengirim…",
 	queueOffline: "Tidak ada internet",
 	queueFailedOne: "gagal",
+	queueFailedTitle: "Gagal terkirim",
 	queueRetry: "Coba lagi",
 	queueDiscard: "Buang",
 	queueDiscardConfirm: "Data ini belum pernah terkirim ke server. Kalau dibuang, isinya hilang permanen.",
 	queueSessionExpired: "Sesi berakhir. Login lagi supaya antrean bisa terkirim.",
 	queueEmpty: "Semua sudah terkirim",
 	queuePhotoPending: "menunggu kirim",
+	// Shown once, app-wide, while the link is down. Says what the operator is looking at
+	// (older data) and what still works (everything they fill in) — a bare "offline" leaves
+	// them guessing whether it is safe to keep working, and the answer is yes.
+	offlineBanner: "Mode offline — data yang tampil dari koneksi terakhir. Isian tetap tersimpan dan terkirim otomatis nanti.",
+	// The gate is the one screen that genuinely cannot work offline — it has to read the
+	// booking's live payment/block status before a bon may be issued.
+	gateNeedsOnline: "Gate butuh internet",
+	gateNeedsOnlineHint:
+		"Status bayar dan blokir booking harus dicek langsung ke server sebelum bon dibuat, jadi layar ini tidak bisa dipakai offline. Sambungkan internet dulu.",
 	dashYardTitle: "Okupansi Yard", // Yard occupancy
 	dashYardEmpty: "Belum ada zona yard aktif", // empty yard state
 	dashMenuTitle: "Menu", // menu section heading
