@@ -263,6 +263,52 @@ class TestRoleMenu(FrappeTestCase):
 			"office staff still get no PWA tile — the hook gate is unchanged",
 		)
 
+	def test_parking_a_role_hides_it_without_unassigning_anyone(self):
+		"""The mechanism behind patch v0_54, pinned because the obvious alternative is a trap.
+
+		``Role.disabled`` looks equivalent and is not: ``Role.validate`` sends it to
+		``remove_roles()``, which DELETES every Has Role row for that role, and unticking the
+		box does not restore them. Tagging ``restrict_to_domain`` with a domain that is not
+		active hides the role from the User form's picker and leaves assignments alone.
+
+		Tested on a throwaway role rather than on the parked list itself: an admin un-parking
+		one of those is a legitimate act, not a regression.
+		"""
+		from frappe.core.doctype.user.user import get_all_roles
+
+		from container_depot.install import PARKED_DOMAIN, _ensure_parked_domain
+
+		_ensure_parked_domain()
+		if not frappe.db.exists("Role", AD_HOC_ROLE):
+			frappe.get_doc({
+				"doctype": "Role",
+				"role_name": AD_HOC_ROLE,
+				"desk_access": 1,
+			}).insert(ignore_permissions=True)
+		_user(AD_HOC_USER, [AD_HOC_ROLE])
+		frappe.db.commit()
+
+		self.assertIn(AD_HOC_ROLE, get_all_roles())
+		self.assertEqual(frappe.db.count("Has Role", {"role": AD_HOC_ROLE}), 1)
+
+		frappe.db.set_value("Role", AD_HOC_ROLE, "restrict_to_domain", PARKED_DOMAIN)
+		self.assertNotIn(AD_HOC_ROLE, get_all_roles(), "parked role must leave the picker")
+		self.assertEqual(
+			frappe.db.count("Has Role", {"role": AD_HOC_ROLE}),
+			1,
+			"parking must NOT unassign anyone — that is the whole reason we avoid `disabled`",
+		)
+		self.assertIn(AD_HOC_ROLE, frappe.get_roles(AD_HOC_USER))
+
+		frappe.db.set_value("Role", AD_HOC_ROLE, "restrict_to_domain", None)
+		self.assertIn(AD_HOC_ROLE, get_all_roles(), "un-parking is one field, no re-assignment")
+
+	def test_parked_domain_is_never_activated(self):
+		"""Activating the `Unused` domain would put all ~48 parked roles back on screen."""
+		from container_depot.install import PARKED_DOMAIN
+
+		self.assertNotIn(PARKED_DOMAIN, frappe.get_active_domains())
+
 	def test_survey_vs_posfix_split(self):
 		# One doctype, two menus, split on write vs submit.
 		survey = self._menu_as(USERS["Team Survey"])

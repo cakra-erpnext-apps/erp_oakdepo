@@ -69,6 +69,29 @@ Warehouse, Management (read-only everywhere).
 because the menu is derived from DocPerm and Admin Ops holds perms on every depot
 doctype — narrowing that would mean cutting its Desk access too.
 
+### Why the role picker is short
+
+Nine apps are installed and each contributes roles to the same flat checkbox list on the
+User form — 71 entries, six of them ever assigned. `install.PARKED_ROLES` tags 48 of them
+with the **`Unused`** domain, which is never activated; `get_all_roles` drops any role whose
+`restrict_to_domain` is not an active domain, so the picker shows **23**.
+
+**Never use `Role.disabled` for this.** `Role.validate` routes it to `remove_roles()`, which
+`db.delete`s every `Has Role` row for that role — ticking the box unassigns everyone holding
+it, and unticking does not bring them back. The domain tag has the same on-screen effect and
+touches no assignment.
+
+To bring one back: clear its **Restrict To Domain** and save, or
+`bench --site <site> execute container_depot.install.unpark_roles` for all of them.
+
+Two things that will bite:
+
+- **Never activate the `Unused` domain** — all 48 reappear at once. A test guards it.
+- The five roles in `FIXTURE_OWNED_ROLES` (Gameplan ×3, TP ×2) are shipped as their app's
+  fixtures, and `sync_fixtures()` runs *after* the patch queue. They are re-parked in
+  `after_migrate`, so un-parking one by hand will not survive a migrate — remove it from
+  that list instead.
+
 ### Assigning a user
 
 1. Create the User as **System User**.

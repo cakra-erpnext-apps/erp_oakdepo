@@ -75,6 +75,10 @@ def after_migrate():
 	# Keep the Desk "Depot PWA" shortcut visible only to roles flagged as depot field
 	# roles. Runs after the sidebar re-import, which is what re-creates the entry.
 	setup_pwa_page_roles()
+	# Gameplan and Telephony ship their roles as fixtures, and sync_fixtures() runs after
+	# the patch queue — so patch v0_54 parks them and the same migrate hands them straight
+	# back. after_migrate is the only hook that lands after fixtures. See PARKED_ROLES.
+	reassert_parked_fixture_roles()
 	# Push env-driven logo into site-wide settings so ALL apps pick it up.
 	sync_branding()
 
@@ -1239,6 +1243,111 @@ def _office_role_perms(role: str, doctypes: list[str]) -> dict:
 				out[dt] = "rwcsxa"
 		return out
 	return OFFICE_ROLE_MATRIX.get(role, {})
+
+
+# ---------------------------------------------------------------------------
+# Role picker hygiene — hide roles this depot will never assign
+# ---------------------------------------------------------------------------
+# Nine apps are installed and every one contributes roles to the same flat,
+# alphabetical checkbox list on the User form: 71 entries, six of them held by an
+# actual person. Picking "Team Cleaning" out of that is how the wrong box gets ticked.
+#
+# WHY A DOMAIN TAG AND NOT `Role.disabled`
+# ----------------------------------------
+# `disabled` is the obvious lever and it is a trap. `Role.validate` routes it to
+# `remove_roles()`, which runs `frappe.db.delete("Has Role", {"role": ...})` — ticking
+# the box STRIPS the role from everyone holding it, and unticking does not give it back.
+# There is no record of who had it, so the mistake cannot be undone by hand.
+#
+# `get_all_roles` (the picker) also drops any role whose `restrict_to_domain` is not an
+# active domain, and nothing on that path touches `Has Role`. Same effect on screen,
+# fully reversible. Both were verified before choosing.
+#
+# TO BRING ONE BACK: Role list -> clear **Restrict To Domain** -> Save. Or all at once:
+#     bench --site <site> execute container_depot.install.unpark_roles
+PARKED_DOMAIN = "Unused"
+
+# Grouped by origin so the next person can judge a line instead of trusting the list.
+# Anything held by a real depot account, carrying a DocPerm on a Container Depot doctype,
+# or named in COMPANION_ROLES is deliberately absent.
+PARKED_ROLES = [
+	# Gameplan
+	"Gameplan Admin", "Gameplan Guest", "Gameplan Member",
+	# Helpdesk
+	"Agent", "Agent Manager", "Helpdesk Contact",
+	"Knowledge Base Contributor", "Knowledge Base Editor", "Support Team",
+	# Telephony
+	"TP Agent", "TP Manager",
+	# HR / Payroll
+	"Employee", "Employee Self Service", "Expense Approver",
+	"HR Manager", "HR User", "Interviewer", "Leave Approver",
+	# Manufacturing / Quality
+	"Manufacturing Manager", "Manufacturing User", "Quality Manager",
+	# ERPNext modules this depot does not run
+	"Academics User", "Analytics", "Auditor", "Delivery Manager", "Delivery User",
+	"Fleet Manager", "Fulfillment User", "Maintenance Manager", "Maintenance User",
+	"Marketing Manager", "Newsletter Manager", "Projects Manager", "Projects User",
+	"Supplier",
+	# Master/Manager tiers of companion roles we do grant (COMPANION_ROLES hands out the
+	# plain User tier). Un-park the manager tier if a lead genuinely needs it.
+	"Purchase Manager", "Purchase Master Manager", "Sales Master Manager",
+	"Sales User", "Stock Manager",
+	# Desk power-user tooling — nobody here writes Server Scripts or edits Workspaces.
+	"Dashboard Manager", "Inbox User", "Prepared Report User", "Report Manager",
+	"Script Manager", "Translator", "Website Manager", "Workspace Manager",
+]
+
+# These five are shipped by their app as FIXTURES (gameplan: `role_name like "Gameplan %"`,
+# telephony: `like "TP%"`), and `sync_fixtures()` runs AFTER the patch queue — so a one-time
+# patch parks them and the same migrate un-parks them again. They are the one group that has
+# to be re-asserted on every migrate, which means un-parking one by hand will not survive:
+# delete it from this list instead.
+FIXTURE_OWNED_ROLES = ["Gameplan Admin", "Gameplan Guest", "Gameplan Member", "TP Agent", "TP Manager"]
+
+
+def _ensure_parked_domain():
+	if not frappe.db.exists("Domain", PARKED_DOMAIN):
+		frappe.get_doc({"doctype": "Domain", "domain": PARKED_DOMAIN}).insert(ignore_permissions=True)
+
+
+def park_roles(names=None):
+	"""Tag roles with the inactive `Unused` domain so they leave the User form picker.
+
+	Never overwrites a role that already carries some other domain — that is an admin's
+	choice. Returns the names actually parked.
+	"""
+	_ensure_parked_domain()
+	parked = []
+	for role in names if names is not None else PARKED_ROLES:
+		if not frappe.db.exists("Role", role):
+			continue  # a site without that app
+		if frappe.db.get_value("Role", role, "restrict_to_domain"):
+			continue
+		# db.set_value, not doc.save(): saving a Role runs validate(), and validate() is
+		# exactly where the Has Role wipe lives. Writing the column cannot trip it.
+		frappe.db.set_value("Role", role, "restrict_to_domain", PARKED_DOMAIN, update_modified=False)
+		parked.append(role)
+	if parked:
+		frappe.clear_cache()
+	return parked
+
+
+def reassert_parked_fixture_roles():
+	"""after_migrate: re-park the five roles their own app's fixtures just un-parked."""
+	try:
+		park_roles(FIXTURE_OWNED_ROLES)
+	except Exception:
+		frappe.log_error(title="container_depot role parking failed", message=frappe.get_traceback())
+
+
+def unpark_roles():
+	"""Undo: put every parked role back in the picker. Assignments were never touched."""
+	names = frappe.get_all("Role", filters={"restrict_to_domain": PARKED_DOMAIN}, pluck="name")
+	for role in names:
+		frappe.db.set_value("Role", role, "restrict_to_domain", None, update_modified=False)
+	frappe.clear_cache()
+	print(f"Un-parked {len(names)} roles")
+	return names
 
 
 def ensure_roles_exist():
