@@ -269,7 +269,10 @@ jinja = {
 # Small desk-form polish (e.g. aligning Section Break descriptions with their
 # centered section head/body — a Frappe rendering quirk). See public/css.
 app_include_css = "/assets/container_depot/css/container_depot.css"
-# app_include_js = "/assets/container_depot/js/container_depot.js"
+# notification_click — ask whether the recipient may open a notification's document before
+# following the link, so a Desk bell tap gives a plain reason instead of Frappe's
+# "Insufficient Permission" page. Fails open; see the file.
+app_include_js = ["/assets/container_depot/js/notification_click.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/container_depot/css/container_depot.css"

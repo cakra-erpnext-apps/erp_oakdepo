@@ -337,6 +337,53 @@ stylesheet the browser must still fetch. It covers a real gap — Vue does not m
 `#app` when it mounts over it, so there is no teardown code to keep in step. Keep the markup
 free of `{{ }}`: the built file is copied to `www/depot.html` and rendered by Jinja.
 
+## Notification click-through
+
+Every notification leads somewhere, on all three surfaces — PWA bell, Desk bell, Web Push
+banner — and one resolver answers for all of them
+(`container_depot/ess/notification_routes.py`). Three tables would drift, and the drift would
+only surface when an operator landed on the wrong screen.
+
+**The event decides the destination, not the doctype.** `Order Muat` is the subject of four
+events belonging to three different screens: a bon was generated (Gate), a survey was
+requested (Survey Posisi), a tank is ready to leave or is held (Siap Keluar). So `notify()`
+stamps the event onto the Notification Log (`depot_event`, a Custom Field) and the resolver
+keys off it. Rows written before that field existed fall back to a doctype map, which is
+right often enough to be useful and never claims more than it knows.
+
+The trap this module is prone to, and the reason
+`tests/test_notification_routes.py::test_no_resolver_reads_a_doctype_it_was_not_given` exists:
+a resolver that looks up a *different* doctype than the notification carries finds nothing,
+every time, and returns None — a dead notification that reads as perfectly good code. That
+test watches which doctype each resolver actually queries, so it needs no fixtures and cannot
+be satisfied by a plausible-looking route.
+
+**Two verdicts, computed separately.** The PWA needs the menu gate — a notification must
+never be a side door into a menu the operator's role does not carry, and `can_open_menu` uses
+the same `_MENU` table as the tile filter and the router guard. The Desk does not: an office
+account with no field role has every right to open the document on the Desk, so running it
+through the PWA menu check would block a link that has always worked. Hence `allowed` /
+`reason` for the PWA and `desk_allowed` / `desk_message` for the Desk. A refused document
+returns no `desk_route` either — no "you may not open this, here is where it lives".
+
+Finished work routes to Riwayat (`?open=`), open work to its form (`?o=`): a worklist only
+lists open work, so sending someone to `/cleaning?o=X` for an order completed yesterday lands
+them on a form that refuses to save.
+
+The list endpoint tags rows with `openable` using a **role-level** check only — the bell polls
+every minute and twenty document reads per poll is not a trade worth making for a chevron. The
+authoritative check, which does load the document, runs once on the tap (`open_target`).
+
+**Desk** is a click interceptor (`public/js/notification_click.js`, `app_include_js`) that
+asks before following the link, so a recipient who cannot read the document gets a plain
+reason instead of Frappe's "Insufficient Permission" page. It hangs off core markup
+(`a.notification-item[data-name]`) and therefore **fails open**: if the selector stops matching
+or the call fails, the click proceeds into Frappe's own permission handling exactly as before.
+It is a courtesy on top of a server-side check, never the check itself.
+
+Adding a notification event means: a row in `_BY_EVENT`, and a row in `EVENT_DOCTYPES` in the
+test — which is held against `notify.py` by source scan, so an unrouted event fails the suite.
+
 ## Notifications
 
 Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable

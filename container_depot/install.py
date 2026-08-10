@@ -467,6 +467,27 @@ CUSTOM_FIELDS = {
 			"description": "Depot branch this warehouse belongs to. Kosong = tampil untuk semua branch. Dipakai untuk memfilter gudang sumber part di M&R.",
 		}
 	],
+	# Which depot event produced this notification. Stamped by ``notify()`` and read by
+	# ``ess/notification_routes.py`` to decide where a tap on the bell goes.
+	#
+	# It has to be stored, and the doctype is not a substitute: `Order Muat` is the subject
+	# of four events belonging to three different screens (bon generated → Gate, survey
+	# requested → Survey Posisi, ready to leave / held → Siap Keluar). Routing on the doctype
+	# alone would send most of them to the wrong menu.
+	#
+	# Hidden and read-only: it is machinery, not something an admin sets.
+	"Notification Log": [
+		{
+			"fieldname": "depot_event",
+			"label": "Depot Event",
+			"fieldtype": "Data",
+			"insert_after": "document_name",
+			"hidden": 1,
+			"read_only": 1,
+			"no_copy": 1,
+			"description": "Event key from container_depot notify() — drives notification click-through.",
+		}
+	],
 	# Marks a Role as a depot FIELD role — the ones whose users work in the yard through
 	# the /depot PWA. Deliberately a checkbox on Role rather than a Python constant: a
 	# list in code means every new field role needs a deploy, whereas the whole point of

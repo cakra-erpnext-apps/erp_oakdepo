@@ -147,6 +147,9 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 				"type": notification_type,
 				"document_type": doctype,
 				"document_name": name,
+				# Stamped so a tap on the bell can be routed exactly rather than guessed from
+				# the doctype — see ess/notification_routes.py for why that is not enough.
+				"depot_event": event_key,
 				"subject": subject,
 			}).insert(ignore_permissions=True)
 			created += 1
@@ -154,14 +157,14 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 		# Same recipients, second surface: the bell needs someone to be looking, push
 		# reaches the phone in a pocket. Recipients are resolved once, here — push must
 		# never re-decide who gets told, or a routing change lands on one surface only.
-		_push(reached, subject, doctype, name)
+		_push(reached, subject, doctype, name, event_key)
 		return created
 	except Exception:
 		frappe.log_error(title="Depot notify failed", message=frappe.get_traceback())
 		return 0
 
 
-def _push(users, subject, doctype=None, name=None):
+def _push(users, subject, doctype=None, name=None, event_key=None):
 	"""Hand the recipient list to Web Push. Never lets a push problem reach the caller.
 
 	Wrapped and imported lazily because push is optional: a site with no VAPID keys (or
@@ -171,14 +174,23 @@ def _push(users, subject, doctype=None, name=None):
 	The tag is the document, so a second event about the SAME order replaces its earlier
 	banner instead of stacking a near-duplicate — while two different orders still queue
 	up separately, the way any other app behaves.
+
+	The banner opens the screen the notification is about, not the home page. One payload
+	goes to every recipient, so the URL is the same for all of them — which is fine, because
+	the route says nothing about permission: the PWA router guard and the ESS endpoint both
+	re-check on arrival, and a recipient who may not open it lands on Beranda.
 	"""
 	if not users:
 		return
 	try:
 		from container_depot.ess import push
+		from container_depot.ess.notification_routes import route_for
 
 		tag = f"{doctype}:{name}" if doctype and name else "depot"
-		push.push_to_users(users, title="Depot OAK", body=subject, url="/depot", tag=tag)
+		# The PWA runs on history mode with base `/depot`, so its routes are served under it.
+		route = route_for(doctype, name, event_key)
+		url = f"/depot{route}" if route else "/depot"
+		push.push_to_users(users, title="Depot OAK", body=subject, url=url, tag=tag)
 	except Exception:
 		frappe.log_error(title="Depot push dispatch failed", message=frappe.get_traceback())
 

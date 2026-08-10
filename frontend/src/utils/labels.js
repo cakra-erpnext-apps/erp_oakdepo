@@ -137,6 +137,9 @@ export const labels = {
 	notifMarkAll: "Tandai semua dibaca", // Mark all read
 	notifSound: "Suara notifikasi", // Notification sound toggle
 	notifSoundOn: "Suara notifikasi aktif", // sound turned on
+	// Shown when a notification is tapped but the server refuses the destination. Generic
+	// fallback only — the server sends a reason, and the reason is what the operator needs.
+	notifNoAccess: "Anda tidak punya akses ke data ini.",
 	search: "Cari nomor tank…", // Search tank number
 	filter: "Filter",
 	principal: "Prinsipal", // Principal

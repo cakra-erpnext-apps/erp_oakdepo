@@ -11,6 +11,9 @@ from frappe import _
 
 from container_depot.api import _require_authenticated_user
 from container_depot.container_depot.user_branch import get_user_branches
+from container_depot.ess import notification_routes
+
+_LOG_FIELDS = ["name", "subject", "document_type", "document_name", "depot_event", "read", "type", "creation"]
 
 # The bell is a glance at what just happened, not an archive. Notification Log is never
 # pruned (it is not registered with Log Settings and implements no `clear_old_logs`), so
@@ -117,18 +120,18 @@ def list_notifications(limit=20):
 	if _sees_all_notifications(user):
 		items = frappe.get_all(
 			"Notification Log",
-			fields=["name", "subject", "document_type", "document_name", "read", "type", "creation"],
+			fields=_LOG_FIELDS,
 			order_by="creation desc",
 			limit=limit,
 		)
 		# The widest read in the app: every user's log, unfiltered. Capping the badge
 		# matters most here.
-		return {"items": items, "unread": _unread_count({"read": 0})}
+		return {"items": _with_openable(items, user), "unread": _unread_count({"read": 0})}
 
 	items = frappe.get_all(
 		"Notification Log",
 		filters={"for_user": user},
-		fields=["name", "subject", "document_type", "document_name", "read", "type", "creation"],
+		fields=_LOG_FIELDS,
 		order_by="creation desc",
 		limit=limit,
 	)
@@ -136,13 +139,56 @@ def list_notifications(limit=20):
 	allowed = get_user_branches(user)
 	if allowed is None:  # all branches -> no filtering
 		unread = _unread_count({"for_user": user, "read": 0})
-		return {"items": items, "unread": unread}
+		return {"items": _with_openable(items, user), "unread": unread}
 
 	allowed = set(allowed)
 	items = [it for it in items if _in_allowed_branch(it, allowed)]
 	# Recompute unread off the branch-filtered set so the badge matches the feed.
 	unread = _unread_count({"for_user": user, "read": 0}, allowed)
-	return {"items": items, "unread": unread}
+	return {"items": _with_openable(items, user), "unread": unread}
+
+
+def _with_openable(items, user):
+	"""Tag each row with whether it leads anywhere, so the bell can show it as tappable.
+
+	Role-level only. The list is polled every minute; loading twenty documents per poll to
+	decide how to style a row is not a trade worth making. The authoritative check — which
+	does load the document — runs once, when the operator actually taps (``open_target``).
+	"""
+	for it in items:
+		it["openable"] = notification_routes.looks_openable(
+			it.get("document_type"), it.get("document_name"), it.get("depot_event"), user
+		)
+	return items
+
+
+@frappe.whitelist(methods=["POST"])
+def open_target(name=None):
+	"""POST — where should tapping this notification take the caller?
+
+	Mutating (it marks the notification read on the way through), hence POST. The route is
+	resolved server-side rather than mapped in the PWA because the answer depends on the
+	document's current state and on the caller's permissions — neither of which the handset
+	can be trusted to know, and the second of which it must not be trusted to decide.
+
+	A refusal is a normal answer, not an error: it comes back with a reason the bell can show.
+	"""
+	_require_authenticated_user()
+	log = frappe.db.get_value(
+		"Notification Log", name, ["for_user", "document_type", "document_name", "depot_event"], as_dict=True
+	)
+	if not log:
+		frappe.throw(_("Notifikasi tidak ditemukan."), frappe.DoesNotExistError)
+	if not _sees_all_notifications() and log.for_user != frappe.session.user:
+		frappe.throw(_("Not your notification."), frappe.PermissionError)
+
+	# Tapping is reading. Doing it here rather than in a second round-trip means an operator
+	# on a bad link cannot end up with a notification that navigated but stayed bold.
+	frappe.db.set_value("Notification Log", name, "read", 1, update_modified=False)
+
+	result = notification_routes.resolve(log.document_type, log.document_name, log.depot_event)
+	result["name"] = name
+	return result
 
 
 @frappe.whitelist(methods=["POST"])

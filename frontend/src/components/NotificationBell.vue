@@ -38,9 +38,9 @@
 						<li
 							v-for="n in items"
 							:key="n.name"
-							class="flex cursor-pointer gap-3 px-4 py-3 transition hover:bg-gray-50"
-							:class="n.read ? '' : 'bg-brand-50/50'"
-							@click="markOne(n)"
+							class="flex gap-3 px-4 py-3 transition"
+							:class="[n.read ? '' : 'bg-brand-50/50', n.openable ? 'cursor-pointer hover:bg-gray-50' : '']"
+							@click="openOne(n)"
 						>
 							<span
 								class="mt-1.5 h-2 w-2 shrink-0 rounded-full"
@@ -50,6 +50,9 @@
 								<p class="break-words text-sm text-gray-800" v-html="n.subject"></p>
 								<p class="mt-0.5 text-xs text-gray-400">{{ fromNow(n.creation) }}</p>
 							</div>
+							<!-- The chevron is the affordance: a row that leads somewhere shows one, a
+							     row that does not stays plain instead of pretending to be tappable. -->
+							<Icon v-if="n.openable" name="chevron-right" :size="16" class="mt-0.5 shrink-0 self-start text-gray-300" />
 						</li>
 					</ul>
 				</div>
@@ -79,6 +82,7 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from "vue"
+import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import dayjs from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
@@ -90,6 +94,7 @@ import { toast, toastSoundOn, setToastSound } from "@/utils/toast"
 dayjs.extend(relativeTime)
 dayjs.locale("id")
 
+const router = useRouter()
 const open = ref(false)
 const soundOn = ref(toastSoundOn())
 function toggleSound() {
@@ -111,6 +116,7 @@ const listRes = createResource({
 })
 const markReadRes = createResource({ url: "container_depot.ess.notifications.mark_read", method: "POST" })
 const markAllRes = createResource({ url: "container_depot.ess.notifications.mark_all_read", method: "POST" })
+const openRes = createResource({ url: "container_depot.ess.notifications.open_target", method: "POST" })
 
 function load() {
 	listRes.submit({ limit: 20 })
@@ -127,6 +133,34 @@ function markOne(n) {
 		n.read = 1
 		unread.value = Math.max(0, unread.value - 1)
 		markReadRes.submit({ name: n.name })
+	}
+}
+
+/**
+ * Tap a notification: mark it read and go where it points.
+ *
+ * The destination is resolved SERVER-side, not mapped here, for two reasons. It depends on
+ * the document's current state — a cleaning order finished yesterday belongs in Riwayat, not
+ * in a form that will refuse to save — and it depends on the caller's permissions, which is
+ * not a decision a handset gets to make. The same resolver answers for the Desk bell and the
+ * push banner, so the three surfaces cannot drift apart.
+ *
+ * A refusal is a normal answer here, not an error: the server says why, and we say it too.
+ * Silently doing nothing would read as a broken tap.
+ */
+async function openOne(n) {
+	markOne(n)
+	if (!n.openable) return
+	try {
+		const res = await openRes.submit({ name: n.name })
+		if (res?.allowed && res.route) {
+			open.value = false
+			router.push(res.route)
+			return
+		}
+		toast.info(res?.message || labels.notifNoAccess)
+	} catch (e) {
+		toast.error(e?.messages?.[0] || e?.message || labels.error)
 	}
 }
 
