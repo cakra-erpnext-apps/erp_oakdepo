@@ -984,9 +984,9 @@ def drop_legacy_inventory_sidebar():
 # admin can widen or narrow either one from the UI without a deploy undoing it.
 #
 # THIS APP SHIPS TWO ICONS, and the same quirk is why (desktop_icon/*.json):
-#   Container Depot — icon_type "Link" -> the Desk workspace. Correctly hidden by
+#   Container Depot     — icon_type "Link" -> the Desk workspace. Correctly hidden by
 #     Allow Modules, which is what we want for the Desk side.
-#   Depot OAK       — icon_type "App", link "/depot". Deliberately NOT a Link icon:
+#   Depot OAK (Mobile)  — icon_type "App", link "/depot". Deliberately NOT a Link icon:
 #     the PWA is a separate surface that has nothing to do with Desk module access,
 #     so an operator whose Allow Modules omits Container Depot must still reach it.
 #     An App icon skips the module check entirely and gates on
@@ -995,10 +995,16 @@ def drop_legacy_inventory_sidebar():
 #     Its `roles` table stays empty on purpose; adding roles here would shadow that
 #     hook with a static list that a newly flagged role would not appear in.
 #
-# Note frappe would never have created the Depot OAK icon on its own:
+# Note frappe would never have created the mobile icon on its own:
 # `create_desktop_icons_from_installed_apps` labels App icons with `app_title`
 # ("Container Depot"), and Desktop Icon is autonamed `field:label` — it would
 # collide with the workspace icon above and die. Hence the explicit fixture.
+#
+# That fixture's filename is load-bearing and must stay `frappe.scrub(label)` —
+# parentheses and all, hence `depot_oak_(mobile).json`. Every migrate,
+# `model.sync.remove_orphan_entities` looks for exactly that path and DELETES any
+# standard Desktop Icon it cannot find a file for. Rename the label without
+# renaming the file and the tile silently disappears on the next deploy.
 FOREIGN_ICON_ROLES = {
 	"Framework": ["System Manager"],
 	"Raven": ["Raven User", "Raven Admin"],

@@ -37,6 +37,8 @@ DESK_USERS = {
 	"Cashier": "rm-desk-cashier@example.com",
 }
 PWA_PAGE = "depot-pwa"
+# The /desk home tile. Named for the label because Desktop Icon is autonamed field:label.
+PWA_ICON = "Depot OAK (Mobile)"
 
 
 def _user(email: str, roles: list) -> None:
@@ -240,7 +242,7 @@ class TestRoleMenu(FrappeTestCase):
 			try:
 				return {
 					name: bool(frappe.get_doc("Desktop Icon", name).is_permitted(bootinfo))
-					for name in ("Depot OAK", "Container Depot")
+					for name in (PWA_ICON, "Container Depot")
 				}
 			finally:
 				frappe.set_user("Administrator")
@@ -248,16 +250,16 @@ class TestRoleMenu(FrappeTestCase):
 		field_user = DESK_USERS["Team Cleaning"]
 		self.assertEqual(
 			_icons_for(field_user, []),
-			{"Depot OAK": True, "Container Depot": True},
+			{PWA_ICON: True, "Container Depot": True},
 			"baseline: nothing blocked, both tiles show",
 		)
 		self.assertEqual(
 			_icons_for(field_user, ["Container Depot"]),
-			{"Depot OAK": True, "Container Depot": False},
+			{PWA_ICON: True, "Container Depot": False},
 			"blocking the module hides the workspace tile and only that one",
 		)
 		self.assertFalse(
-			_icons_for(DESK_USERS["Cashier"], [])["Depot OAK"],
+			_icons_for(DESK_USERS["Cashier"], [])[PWA_ICON],
 			"office staff still get no PWA tile — the hook gate is unchanged",
 		)
 

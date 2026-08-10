@@ -114,13 +114,18 @@ Each direction is gated by the Role flag that matches it, and by nothing else.
 | Desk | `/depot` | **Depot Field Role (PWA)** ticked | `/desk` home tile, sidebar item, workspace Shortcut card, `/apps` tile |
 | PWA | `/desk` | **Desk Access** (`user_type` = System User) | "Buka Desk" in the Home hero + on the empty state |
 
-**Desk → PWA.** The `/desk` **home tile** is the one that does not go through the Page: it is
-a Desktop Icon of `icon_type: App` (`desktop_icon/depot_oak.json`) pointing straight at
-`/depot`. That type is deliberate — `DesktopIcon.is_permitted` honours the user's **Allow
+**Desk → PWA.** The `/desk` **home tile** — labelled **Depot OAK (Mobile)** so it is not
+mistaken for the Container Depot workspace — is the one that does not go through the Page:
+it is a Desktop Icon of `icon_type: App` (`desktop_icon/depot_oak_(mobile).json`) pointing
+straight at `/depot`. That type is deliberate — `DesktopIcon.is_permitted` honours the user's **Allow
 Modules** list only for `Link` icons, so a Link tile would vanish for an operator whose Allow
 Modules omits Container Depot, even though the PWA has nothing to do with Desk module access.
 App icons dispatch to `www/depot.py::check_app_permission` instead, the same gate as `/apps`.
 Leave its `roles` table empty: filling it shadows the hook with a static list.
+
+The fixture's **filename must stay `frappe.scrub(label)`**, parentheses included. Every
+migrate `model.sync.remove_orphan_entities` deletes any standard Desktop Icon whose scrubbed
+file is missing, so relabelling without renaming the file makes the tile vanish on deploy.
 
 The other three surfaces point at the Desk Page `depot-pwa`
 (`container_depot/page/depot_pwa/`), which does nothing but redirect. The Page exists purely to
