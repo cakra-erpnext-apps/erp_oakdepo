@@ -12,6 +12,14 @@ const routes = [
 		component: () => import("@/pages/Home.vue"),
 	},
 	{
+		// No menuKey, same as Home: the profile is about the account itself, so it must
+		// stay reachable by someone whose menu is empty — that is exactly who needs to
+		// read why.
+		path: "/profile",
+		name: "Profile",
+		component: () => import("@/pages/Profile.vue"),
+	},
+	{
 		path: "/gate",
 		name: "GateEntry",
 		meta: { menuKey: "gate" },
