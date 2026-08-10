@@ -1,0 +1,123 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-08-10 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "enabled",
+  "column_break_head",
+  "last_used",
+  "failure_count",
+  "endpoint_section",
+  "endpoint_hash",
+  "endpoint",
+  "keys_section",
+  "p256dh",
+  "auth",
+  "device_section",
+  "user_agent"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_used",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Last Used",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Consecutive delivery failures. The row is dropped once the push service reports the endpoint is gone.",
+   "fieldname": "failure_count",
+   "fieldtype": "Int",
+   "label": "Failure Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "endpoint_section",
+   "fieldtype": "Section Break",
+   "label": "Endpoint"
+  },
+  {
+   "description": "SHA-256 of the endpoint. Carries the uniqueness constraint because endpoints run past the 140-char limit of an indexed Data column.",
+   "fieldname": "endpoint_hash",
+   "fieldtype": "Data",
+   "label": "Endpoint Hash",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "endpoint",
+   "fieldtype": "Small Text",
+   "label": "Endpoint",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "keys_section",
+   "fieldtype": "Section Break",
+   "label": "Keys"
+  },
+  {
+   "fieldname": "p256dh",
+   "fieldtype": "Small Text",
+   "label": "p256dh",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "auth",
+   "fieldtype": "Data",
+   "label": "auth",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "device_section",
+   "fieldtype": "Section Break",
+   "label": "Device"
+  },
+  {
+   "fieldname": "user_agent",
+   "fieldtype": "Small Text",
+   "label": "User Agent",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-10 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Container Depot",
+ "name": "Depot Push Subscription",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

@@ -136,6 +136,7 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 				return 0  # event disabled, or notifications switched off entirely
 		actor = frappe.session.user
 		created = 0
+		reached = []
 		for u in _recipients(branch, roles):
 			if u == actor:
 				continue  # the actor already saw the toast
@@ -149,10 +150,37 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 				"subject": subject,
 			}).insert(ignore_permissions=True)
 			created += 1
+			reached.append(u)
+		# Same recipients, second surface: the bell needs someone to be looking, push
+		# reaches the phone in a pocket. Recipients are resolved once, here — push must
+		# never re-decide who gets told, or a routing change lands on one surface only.
+		_push(reached, subject, doctype, name)
 		return created
 	except Exception:
 		frappe.log_error(title="Depot notify failed", message=frappe.get_traceback())
 		return 0
+
+
+def _push(users, subject, doctype=None, name=None):
+	"""Hand the recipient list to Web Push. Never lets a push problem reach the caller.
+
+	Wrapped and imported lazily because push is optional: a site with no VAPID keys (or
+	without ``pywebpush`` installed) must keep writing bell notifications exactly as
+	before, not lose them to an ImportError raised mid-submit.
+
+	The tag is the document, so a second event about the SAME order replaces its earlier
+	banner instead of stacking a near-duplicate — while two different orders still queue
+	up separately, the way any other app behaves.
+	"""
+	if not users:
+		return
+	try:
+		from container_depot.ess import push
+
+		tag = f"{doctype}:{name}" if doctype and name else "depot"
+		push.push_to_users(users, title="Depot OAK", body=subject, url="/depot", tag=tag)
+	except Exception:
+		frappe.log_error(title="Depot push dispatch failed", message=frappe.get_traceback())
 
 
 # Doctypes whose feed entries are revoked when the document is voided. There is now a

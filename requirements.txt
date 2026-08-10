@@ -1,1 +1,6 @@
 qrcode[pil]>=7.0
+# Web Push (VAPID) for the depot PWA — see container_depot/ess/push.py.
+# Hard-pinned: pywebpush 2.4 requires cryptography>=47, while frappe 16.18 pins
+# cryptography~=46.0.3. Installing an unpinned pywebpush silently upgrades cryptography
+# out from under frappe. Bump this only once frappe's own pin moves past 47.
+pywebpush==2.0.3

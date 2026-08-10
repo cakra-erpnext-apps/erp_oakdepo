@@ -28,6 +28,8 @@ export const labels = {
 	pwNew: "Password Baru",
 	pwConfirm: "Ulangi Password Baru",
 	pwShow: "Tampilkan password",
+	pwHide: "Sembunyikan password",
+	pwRequirements: "Password belum memenuhi syarat",
 	pwSubmit: "Simpan Password",
 	pwSaving: "Menyimpan…",
 	pwIncomplete: "Lengkapi semua kolom.",
@@ -36,6 +38,37 @@ export const labels = {
 	pwSuccess: "Password berhasil diubah.",
 	pwFailed: "Password gagal diubah.",
 	pwWrongOld: "Password lama salah.",
+	// --- Notifikasi HP (Web Push) ---
+	pushTitle: "Notifikasi HP",
+	pushHint: "Bunyi di HP walau aplikasi sedang ditutup",
+	pushActive: "Aktif di perangkat ini",
+	pushInactive: "Belum aktif di perangkat ini",
+	pushEnable: "Aktifkan",
+	pushDisable: "Matikan",
+	pushWorking: "Memproses…",
+	pushEnabled: "Notifikasi HP diaktifkan.",
+	pushDisabled: "Notifikasi HP dimatikan di perangkat ini.",
+	pushUnsupported: "Browser ini tidak mendukung notifikasi.",
+	pushDenied: "Notifikasi diblokir. Izinkan dulu lewat setelan situs di browser/HP Anda.",
+	pushServerOff: "Notifikasi HP belum disiapkan di server. Hubungi admin.",
+	pushFailed: "Gagal mengaktifkan notifikasi.",
+	pushIosHint: "Di iPhone, notifikasi hanya jalan setelah aplikasi ditambahkan ke Layar Utama.",
+	// --- Wajib install (InstallGate) ---
+	installTitle: "Install Depot OAK dulu",
+	installBody:
+		"Aplikasi ini dipakai dari layar utama HP, bukan dari browser. Setelah di-install, notifikasi pekerjaan bisa masuk walau aplikasi ditutup.",
+	installBtn: "Install Sekarang",
+	installIosTitle: "Cara install di iPhone",
+	installIosStep1: "Ketuk tombol Bagikan di bawah layar Safari.",
+	installIosStep2: 'Pilih "Tambah ke Layar Utama".',
+	installIosStep3: 'Ketuk "Tambah", lalu buka Depot OAK dari layar utama.',
+	installIosSafari:
+		"Buka halaman ini di Safari dulu — Chrome di iPhone tidak bisa memasang aplikasi.",
+	installAndroidTitle: "Cara install di Android",
+	installAndroidStep1: "Ketuk menu ⋮ di pojok kanan atas browser.",
+	installAndroidStep2: 'Pilih "Install aplikasi" atau "Tambahkan ke layar utama".',
+	installSkip: "Lanjutkan di browser",
+	installSkipHint: "Notifikasi tidak akan masuk saat aplikasi ditutup.",
 	greeting: "Halo", // "Halo, {name}"
 	homeHint: "Pilih menu untuk mulai bekerja", // Pick a menu to start
 	// --- Dashboard (home KPI sections + menu groups) ---
@@ -859,3 +892,60 @@ export const storageSopRules = [
 	"Stacking: maksimal 5 tumpuk ke atas; normal 5 baris, boleh sampai 6 baris saat depo penuh.",
 	"Susun isotank hanya setelah Teknisi Foto & EIR selesai.",
 ]
+
+// Frappe's password-strength feedback (frappe/utils/password_strength.py, plus a few
+// that come straight from the zxcvbn package) arrives in English. Its strings go
+// through `_()`, so the proper fix is a Frappe translation — but that only applies when
+// the user's `language` is set to `id`, and switching the site default would turn the
+// whole Desk Indonesian too. The PWA is Indonesian-only by design while the Desk stays
+// English, so it translates its own copy here, same as every other string in this file.
+//
+// Keys are the exact English source strings. Anything unmatched falls through unchanged
+// rather than being swallowed: a message in the wrong language still beats no reason.
+export const passwordFeedback = {
+	"A word by itself is easy to guess.": "Satu kata saja mudah ditebak.",
+	"Add numbers or special characters.": "Tambahkan angka atau karakter spesial.",
+	"All-uppercase is almost as easy to guess as all-lowercase.":
+		"Huruf kapital semua hampir sama mudahnya ditebak dengan huruf kecil semua.",
+	"Avoid dates and years that are associated with you.":
+		"Hindari tanggal dan tahun yang berkaitan dengan Anda.",
+	"Avoid recent years.": "Hindari tahun-tahun terakhir.",
+	"Avoid sequences like abc or 6543 as they are easy to guess":
+		"Hindari urutan seperti abc atau 6543 karena mudah ditebak.",
+	"Avoid years that are associated with you.": "Hindari tahun yang berkaitan dengan Anda.",
+	"Better add a few more letters or another word":
+		"Tambahkan beberapa huruf lagi atau satu kata lain.",
+	"Capitalization doesn't help very much.": "Huruf kapital tidak banyak membantu.",
+	"Common names and surnames are easy to guess.": "Nama depan dan nama keluarga umum mudah ditebak.",
+	"Common words are easy to guess.": "Kata yang umum mudah ditebak.",
+	"Dates are often easy to guess.": "Tanggal biasanya mudah ditebak.",
+	"Let's avoid repeated words and characters": "Hindari kata dan karakter yang berulang.",
+	"Make use of longer keyboard patterns": "Gunakan pola keyboard yang lebih panjang.",
+	"Names and surnames by themselves are easy to guess.": "Nama orang saja mudah ditebak.",
+	"No need for symbols, digits, or uppercase letters.":
+		"Tidak harus pakai simbol, angka, atau huruf kapital.",
+	"Predictable substitutions like '@' instead of 'a' don't help very much.":
+		"Penggantian yang mudah ditebak seperti '@' untuk 'a' tidak banyak membantu.",
+	"Recent years are easy to guess.": "Tahun-tahun terakhir mudah ditebak.",
+	"Reversed words aren't much harder to guess.": "Kata yang dibalik tidak jauh lebih sulit ditebak.",
+	"Short keyboard patterns are easy to guess": "Pola keyboard yang pendek mudah ditebak.",
+	"Straight rows of keys are easy to guess": "Deretan tombol yang lurus mudah ditebak.",
+	"This is a top-10 common password.": "Ini termasuk 10 password paling umum.",
+	"This is a top-100 common password.": "Ini termasuk 100 password paling umum.",
+	"This is a very common password.": "Ini password yang sangat umum dipakai.",
+	"This is similar to a commonly used password.": "Ini mirip dengan password yang umum dipakai.",
+	"Try to avoid repeated words and characters": "Hindari kata dan karakter yang berulang.",
+	"Try to use a longer keyboard pattern with more turns":
+		"Gunakan pola keyboard yang lebih panjang dan berbelok-belok.",
+	"Use a few uncommon words together.": "Gabungkan beberapa kata yang tidak umum.",
+	"Use a few words, avoid common phrases.": "Pakai beberapa kata, hindari frasa yang umum.",
+	// Not from the strength checker, but the same endpoint answers with it on a wrong
+	// old password and it reaches the same error line.
+	"Incorrect password": "Password lama salah.",
+	"Incorrect User or Password": "Password lama salah.",
+}
+
+export function passwordFeedbackLabel(text) {
+	const t = String(text || "").trim()
+	return passwordFeedback[t] || passwordFeedback[t.replace(/\.$/, "")] || t
+}
