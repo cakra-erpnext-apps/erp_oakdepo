@@ -186,6 +186,44 @@ Consequence of the split worth knowing: field roles ship with `desk_access = 0` 
 office roles carry no field role, so **most accounts see at most one of the two shortcuts**.
 Admin Ops is the shipped exception (see above) and sees both.
 
+## The gate log (Gate Entry / "Riwayat Gate")
+
+**One Gate Entry per depot visit, not one per gate event.** The record carries both
+`gate_in_timestamp` and `gate_out_timestamp`; a tank that arrives and later leaves owns one
+row, not two. `gate.open_gate_entry_for()` is the invariant in code: at most one record per
+tank whose `status` is neither `Gate_Out_Completed` nor `Cancelled`.
+
+| Event | Writer | Effect |
+|---|---|---|
+| Arrival (Tank In bon submitted) | `Order Bongkar._record_gate_in` | Opens the record — `Gate_In_Completed` |
+| Arrival (SST / Hermes terminal) | `api.register_gate_entry` | Inserts **and submits** its own |
+| Departure | `gate.mark_gate_out` | Stamps the open record — `Gate_Out_Completed` + `eir_reference` |
+| Bon cancelled | `Order Bongkar._release_gate_in` | Marks it `Cancelled`; never deletes |
+
+**Fixed 2026-08-11: the arrival half was never written.** Until then `mark_gate_out` was the
+only writer on the depot flow (`register_gate_entry` is reachable only by the terminals), so
+every row in Riwayat Gate read as a departure and the reuse branch in
+`_resolve_or_create_gate_entry` had never once fired. The arrival *was* recorded — on the bon
+and on the Container Movement — just not where the gate log looks.
+
+Records written on the depot flow stay **drafts** on purpose. `GateEntry.on_submit` forces the
+container to `In_Depot` and refuses a tank already present, and both writers set the container
+first — submitting would throw every time. `gate_entry_list.js` therefore sets
+`has_indicator_for_draft` and reads `status`, because `frappe.get_indicator` labels any
+docstatus-0 submittable doc "Draft" before it ever looks at the document's own status.
+
+**Nobody may create one by hand.** `install.NO_MANUAL_CREATE` (Gate Entry + the audit
+ledgers) strips create / submit / cancel / amend / delete from every role, including the
+System Manager blanket grant; `v0_55.lock_gate_audit_doctypes` clears the flags on sites that
+already had the rows. `write` deliberately survives — the PWA's "Siap Keluar" tile is gated on
+write over Gate Entry (`ess.context._MENU`). Administrator bypasses permissions entirely, so
+the three list scripts also clear the list view's primary action.
+
+In the Desk this makes Gate Entry an audit surface, and it is filed as one: **Riwayat Gate**
+lives under **Audit** beside Container Movement and Container Activity. The doing-things
+screens it used to sit with — **Gate Out Plan** and **Siap Keluar (ACC Gate Out)** — moved to
+**Bookings**, and the "Gate & Movement" section no longer exists (sidebar and workspace both).
+
 ## Booking attribution
 
 Which Container Booking did this work belong to? Answered by `container_booking` on

@@ -11,9 +11,21 @@
 //
 // `has_indicator_for_draft` tells that check to stand down so the real status shows. The
 // doctype carries no Document States rows, so the colours are mapped here.
+//
+// WHY onload CLEARS THE ADD BUTTON: Riwayat Gate is an audit log. Every row is written by a
+// hook — the arrival by `Order Bongkar._record_gate_in`, the departure by `gate.mark_gate_out`,
+// the SST lane by `api.register_gate_entry` — and `install.NO_MANUAL_CREATE` strips the create
+// permission for every role to match. Administrator bypasses permissions entirely, though, so
+// the button survives there; this removes it. `can_create = false` is set as well because
+// `toggle_actions_menu_button` re-runs `set_primary_action` whenever a row checkbox is cleared.
 frappe.listview_settings['Gate Entry'] = {
 	add_fields: ['status', 'gate_out_timestamp'],
 	has_indicator_for_draft: true,
+
+	onload(listview) {
+		listview.can_create = false;
+		listview.page.clear_primary_action();
+	},
 
 	get_indicator(doc) {
 		const map = {

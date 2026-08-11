@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint
+from frappe.utils import cint, now_datetime
 
 from container_depot.container_depot.doctype.container_booking.container_booking import (
 	build_container_summary,
@@ -26,6 +26,8 @@ class OrderBongkar(Document):
 		_log_order_activity(self, "Order Bongkar")
 		_update_container_ex_vessel(self)
 		_ensure_order_qr(self)
+		# Open the gate log for this visit (the IN half of Riwayat Gate).
+		_record_gate_in(self)
 		# Auto-create the per-container draft EIRs + stamp each container's latest voucher.
 		_provision_eirs(self)
 		from container_depot.container_depot.notify import notify_order_gate
@@ -34,6 +36,7 @@ class OrderBongkar(Document):
 	def on_cancel(self):
 		_release_codes(self)
 		_release_eirs(self, "EIR-In")
+		_release_gate_in(self)
 
 	def on_trash(self):
 		# A bon is never deleted — Cancel it (draft or submitted) to release its
@@ -136,6 +139,90 @@ def _update_container_ex_vessel(order: Document):
 			frappe.db.set_value("Container", row.container, "ex_vessel", ex_vessel)
 
 
+def _booking_depot(order: Document):
+	"""The depot this bon serves. A Tank In bon has no depot field of its own — the
+	booking is the only place it is recorded."""
+	return (
+		frappe.db.get_value("Container Booking", order.booking, "depot")
+		if order.get("booking")
+		else None
+	)
+
+
+def _record_gate_in(order: Document):
+	"""Open a Gate Entry per container on Tank In submit — the arrival half of the gate log.
+
+	WHY THIS EXISTS: a Gate Entry is designed to span a tank's whole depot visit (it carries
+	BOTH ``gate_in_timestamp`` and ``gate_out_timestamp``), but for a long time nothing on the
+	depot flow ever wrote the IN half. ``mark_gate_out`` was the only creator, so every record
+	in "Riwayat Gate" read as a departure and the reuse branch in
+	``gate._resolve_or_create_gate_entry`` never once fired. The arrival WAS recorded — on the
+	bon and on the Container Movement — just not where the gate log looks. This closes that.
+
+	Three deliberate choices:
+
+	* **Draft, not submitted.** ``GateEntry.on_submit`` forces the container to ``In_Depot``
+	  and refuses a tank that is already present — and ``_sync_container_arrival`` has just
+	  put it there. Submitting here would throw on every bon. ``mark_gate_out`` leaves its
+	  records drafts for the same reason; the list view is taught to read ``status`` instead
+	  of docstatus (see ``gate_entry_list.js``).
+	* **Idempotent per visit.** A bon reverted to draft and re-submitted, or a second bon on
+	  a tank that never left, must not open a second record — the open one is reused, which
+	  is also what lets ``mark_gate_out`` stamp the SAME row on the way out.
+	* **Best-effort.** Same contract as ``_provision_eirs``: this is an audit record, and a
+	  hiccup writing it must never block a truck at the gate.
+	"""
+	from container_depot.container_depot.gate import open_gate_entry_for
+
+	depot = _booking_depot(order)
+	when = order.get("gate_in_time") or now_datetime()
+	for row in _order_rows(order):
+		container_no = row.get("container_no") or frappe.db.get_value(
+			"Container", row.get("container"), "container_no"
+		)
+		if not container_no:
+			continue
+		try:
+			if open_gate_entry_for(container_no):
+				continue
+			doc = frappe.new_doc("Gate Entry")
+			doc.container = row.get("container")
+			doc.container_no = container_no
+			doc.booking_code = row.get("booking_code")
+			doc.depot = depot
+			doc.order_doctype = "Order Bongkar"
+			doc.order_ref = order.name
+			doc.security_guard = order.owner
+			doc.gate_in_timestamp = when
+			doc.status = "Gate_In_Completed"
+			doc.inspection_status = "Pending"
+			doc.insert(ignore_permissions=True)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"gate-in log for {order.name}/{container_no}")
+
+
+def _release_gate_in(order: Document):
+	"""Void the gate-in records this bon opened when the bon itself is cancelled.
+
+	Only records still covering an open visit are touched: a tank that has already gated out
+	owns a completed record, and un-writing history is not what cancelling a bon means. The
+	record is kept (status ``Cancelled``) rather than deleted — Riwayat Gate is an audit log.
+	"""
+	from container_depot.container_depot.gate import GATE_ENTRY_CLOSED
+
+	for name in frappe.get_all(
+		"Gate Entry",
+		filters={
+			"order_doctype": "Order Bongkar",
+			"order_ref": order.name,
+			"status": ["not in", GATE_ENTRY_CLOSED],
+			"docstatus": ["<", 2],
+		},
+		pluck="name",
+	):
+		frappe.db.set_value("Gate Entry", name, "status", "Cancelled")
+
+
 # Statuses a tank may sit in *before* it has physically arrived. Only these advance
 # to Gate_In on a Tank In bon, so a tank already in process is never regressed.
 _ARRIVAL_SOURCE_STATUS = {None, "", "Booked", "Available", "Gate_Out"}
@@ -155,11 +242,7 @@ def _sync_container_arrival(order: Document):
 	The transitions used (Booked / Available / Gate_Out -> Gate_In) are all valid in
 	the state machine, so no automation bypass is needed.
 	"""
-	depot = (
-		frappe.db.get_value("Container Booking", order.booking, "depot")
-		if order.get("booking")
-		else None
-	)
+	depot = _booking_depot(order)
 	for row in _order_rows(order):
 		if not row.get("container"):
 			continue

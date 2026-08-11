@@ -21,18 +21,6 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "es-line-mobile",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Depot PWA (Lapangan)",
-   "link_type": "Page",
-   "show_arrow": 0,
-   "type": "Link",
-   "link_to": "depot-pwa"
-  },
-  {
-   "child": 0,
-   "collapsible": 1,
    "icon": "chart-column",
    "indent": 0,
    "keep_closed": 0,
@@ -169,27 +157,6 @@
    "icon": "es-line-upload"
   },
   {
-   "child": 0,
-   "collapsible": 1,
-   "icon": "truck",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Gate & Movement",
-   "type": "Section Break"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Siap Keluar (ACC Gate Out)",
-   "link_to": "Container Siap Keluar",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-log-out"
-  },
-  {
    "child": 1,
    "collapsible": 1,
    "indent": 0,
@@ -206,12 +173,12 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Riwayat Gate",
-   "link_to": "Gate Entry",
-   "link_type": "DocType",
+   "label": "Siap Keluar (ACC Gate Out)",
+   "link_to": "Container Siap Keluar",
+   "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-location"
+   "icon": "es-line-log-out"
   },
   {
    "child": 0,
@@ -758,6 +725,18 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "Riwayat Gate",
+   "link_to": "Gate Entry",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-location"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Container Movement",
    "link_to": "Container Movement",
    "link_type": "DocType",
@@ -823,7 +802,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-10 16:00:00.000000",
+ "modified": "2026-08-11 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

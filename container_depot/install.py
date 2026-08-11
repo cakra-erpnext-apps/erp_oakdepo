@@ -891,22 +891,27 @@ PWA_PAGE = "depot-pwa"
 
 
 def setup_pwa_page_roles():
-	"""Point the Desk "Depot PWA (Lapangan)" shortcut at whoever currently holds a field role.
+	"""Keep the "Depot PWA (Lapangan)" Page open to whoever currently holds a field role.
 
 	The page itself does nothing but redirect to /depot; its ``roles`` table is the whole
-	point. Frappe filters sidebar entries and workspace shortcuts of type ``Page`` against
-	it, so this is what keeps the shortcut off the screens of office staff who would only
-	land on an empty PWA — the same rule the PWA menu itself applies
-	(``ess/context.py::allowed_menu``), enforced one layer earlier.
+	point. It used to gate two Desk menu entries — a sidebar row and a workspace Shortcut
+	card — both removed 2026-08-11 because the /desk **home tile** (Desktop Icon "Depot OAK
+	(Mobile)", the Raven-style App icon) already puts the PWA one click from the landing
+	screen, and three doors to one app is two too many.
+
+	So the roles table now guards the page itself: its /app/depot-pwa URL and its awesomebar
+	entry, both of which Frappe filters against ``roles``. That still matters — office staff
+	who follow an old bookmark would otherwise land on an empty PWA. Restoring either menu
+	entry needs nothing here; the gate travels with the Page.
 
 	A full sync, not add-only: the flag is the source of truth, so unticking
-	``Role.is_depot_field_role`` must take the shortcut away as surely as ticking it grants
-	one. That does mean roles hand-added to this page are dropped — it is app-owned
+	``Role.is_depot_field_role`` must close the page as surely as ticking it opens one. That
+	does mean roles hand-added to this page are dropped — it is app-owned
 	(``standard: Yes``); tick the flag on the role instead.
 
 	Unlike the PWA menu, this needs a ``bench migrate`` to pick up a newly ticked role.
 	Frappe reads page permissions from the stored ``roles`` table and there is no hook to
-	compute them per request; the PWA menu stays instant, only the Desk shortcut lags.
+	compute them per request; the PWA menu stays instant, only this lags.
 	"""
 	if not frappe.db.exists("Page", PWA_PAGE):
 		return  # not imported yet (first migrate of a fresh install) — next run catches it
@@ -1121,6 +1126,21 @@ COMPANION_ROLES = {
 # everyone: these are written by hooks, never by hand.
 AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log"}
 
+# Doctypes nobody may CREATE from the Desk — the audit ledgers above plus Gate Entry.
+#
+# Gate Entry is the odd one out and worth explaining: it is a real submittable transaction,
+# but every row is written by a hook or an integration — the arrival by
+# ``Order Bongkar._record_gate_in``, the departure by ``gate.mark_gate_out``, the SST lane by
+# ``api.register_gate_entry`` — and all three insert with ``ignore_permissions``. A gate log
+# typed in by hand is a gate log that disagrees with the yard, so the "+ Add" button on
+# "Riwayat Gate" was an invitation to corrupt it, not a feature.
+#
+# ``write`` survives: the PWA's "Siap Keluar" tile is gated on write over Gate Entry
+# (``ess.context._MENU``), and an admin correcting a mistyped truck plate on an audit row is
+# fine. create / submit / cancel / amend / delete do not, for EVERY role — including the
+# System Manager blanket grant, which is otherwise how the button came back.
+NO_MANUAL_CREATE = AUDIT_DOCTYPES | {"Gate Entry"}
+
 # Container Depot doctypes owned by finance/commercial, kept OUT of Admin Ops' blanket
 # grant (§8.2: "TANPA Sales Invoice, Payment Entry, Depot Contract…").
 FINANCE_DOCTYPES = {"Depot Contract", "OAK Monthly Invoice", "Depot Finance Settings"}
@@ -1163,7 +1183,10 @@ _FIELD_ROLE_ORDER = FIELD_ROLES
 FIELD_ROLE_MATRIX = [
 	#  DocType                       Security  TeamEIR  Kalmar  Cleaning  Repair  Survey  SPV
 	("Container",                   ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
-	("Gate Entry",                  ("rwcs",  "r",     "rw",   "",       "",     "",     "rwcs")),
+	# Gate Entry reads "rwcs" in the handoff table. It is seeded rw: NO_MANUAL_CREATE strips
+	# create/submit app-wide because every gate record is written by a hook. Security and SPV
+	# keep write — that is the perm the PWA's "Siap Keluar" tile is gated on.
+	("Gate Entry",                  ("rw",    "r",     "rw",   "",       "",     "",     "rw")),
 	("Order Bongkar",               ("rwc",   "r",     "r",    "",       "",     "",     "rwc")),
 	("Order Muat",                  ("r",     "r",     "r",    "",       "",     "",     "rw")),
 	("Booking Code",                ("r",     "",      "",     "",       "",     "",     "r")),
@@ -1400,6 +1423,10 @@ def ensure_roles_exist():
 
 def _ensure_docperm(doctype: str, role: str, letters: str, is_submittable: bool) -> None:
 	"""Add-only: an existing (doctype, role) row is left exactly as the admin tuned it."""
+	if doctype in NO_MANUAL_CREATE:
+		# Enforced here rather than in each matrix so a doctype added to the set later is
+		# covered without hunting down every table that mentions it.
+		letters = "".join(c for c in letters if c in "rw")
 	if not letters or frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role}):
 		return
 	frappe.get_doc({

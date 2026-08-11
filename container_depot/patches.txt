@@ -79,3 +79,4 @@ container_depot.patches.v0_51.drop_duplicate_notifications
 container_depot.patches.v0_53.backfill_container_booking
 container_depot.patches.v0_54.park_unused_roles
 container_depot.patches.v0_55.backfill_order_container_summary
+container_depot.patches.v0_55.lock_gate_audit_doctypes

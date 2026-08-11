@@ -72,6 +72,33 @@ def get_gate_detail(name) -> dict:
 	}
 
 
+# Gate Entry statuses that mean the visit a record covers is finished. Anything else is an
+# OPEN visit, and there is at most one of those per tank — that invariant is what lets the
+# arrival (``Order Bongkar._record_gate_in``) and the departure (:func:`mark_gate_out`)
+# write to the same row instead of each filing its own.
+GATE_ENTRY_CLOSED = ["Gate_Out_Completed", "Cancelled"]
+
+
+def open_gate_entry_for(container_no):
+	"""Name of the Gate Entry covering this tank's current visit, or None.
+
+	Cancelled bons leave their record on status ``Cancelled`` rather than deleting it, so the
+	status filter — not the absence of a row — is what marks a visit as over.
+	"""
+	if not container_no:
+		return None
+	found = frappe.get_all(
+		"Gate Entry",
+		filters={
+			"container_no": container_no,
+			"status": ["not in", GATE_ENTRY_CLOSED],
+			"docstatus": ["<", 2],
+		},
+		fields=["name"], order_by="creation desc", limit=1,
+	)
+	return found[0].name if found else None
+
+
 # ---------------------------------------------------------------------------
 # TANK OUT — complete gate-out / load-complete (PRO-OPS-009 §5.2 step 5).
 # ---------------------------------------------------------------------------
@@ -98,14 +125,20 @@ def _resolve_or_create_gate_entry(container_no, order_muat, depot, performed_by)
 	"""The Gate Entry to stamp on gate-out. A Gate Entry spans a tank's whole depot visit
 	(it carries BOTH ``gate_in_timestamp`` and ``gate_out_timestamp``), so reuse the latest
 	one not yet gated out; if none exists (no recorded gate-in), build a fresh one. Returns
-	an unsaved ``new_doc`` (``.name`` is falsy) when created, else the loaded existing doc."""
-	found = frappe.get_all(
-		"Gate Entry",
-		filters={"container_no": container_no, "status": ["not in", ["Gate_Out_Completed", "Cancelled"]]},
-		fields=["name"], order_by="creation desc", limit=1,
-	)
+	an unsaved ``new_doc`` (``.name`` is falsy) when created, else the loaded existing doc.
+
+	The reuse branch is the normal path since ``Order Bongkar._record_gate_in`` started
+	opening a record at arrival. The create branch remains for the tanks that predate it and
+	for a gate-out on a tank whose arrival was never bonned.
+
+	``order_doctype``/``order_ref`` on a reused record are deliberately LEFT ALONE: the
+	doctype has one order link and the arrival voucher is the only thing that would be lost
+	by overwriting it — the departure bon is already reachable from the container, from the
+	"Gate Out" Container Activity, and from this function's own return value.
+	"""
+	found = open_gate_entry_for(container_no)
 	if found:
-		return frappe.get_doc("Gate Entry", found[0].name)
+		return frappe.get_doc("Gate Entry", found)
 	doc = frappe.new_doc("Gate Entry")
 	doc.container_no = container_no
 	doc.depot = depot
@@ -179,10 +212,16 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is submitted
 	# clean (out_outcome = Ready To Load). Unfinished work is already refused above
 	# (order_muat._validate_no_open_work applies the same rule when the bon is made).
-	if not frappe.db.exists(
+	# Kept as the resolved name, not a bare exists(): it is the EIR that released this tank,
+	# so it is also what belongs in the Gate Entry's `eir_reference` below (a field nothing
+	# used to write).
+	eir_out = frappe.db.get_value(
 		"Inspection",
 		{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},
-	):
+		"name",
+		order_by="modified desc",
+	)
+	if not eir_out:
 		frappe.throw(
 			_("Container {0} belum punya EIR-Out bersih (Ready To Load). Surveyor harus submit EIR-Out dulu.").format(
 				doc.name
@@ -213,13 +252,21 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 		if not ge_doc.name:
 			ge_doc.gate_out_timestamp = ts
 			ge_doc.status = "Gate_Out_Completed"
+			ge_doc.eir_reference = eir_out
+			ge_doc.inspection_status = "Completed"
 			if not ge_doc.gate_in_timestamp:
 				ge_doc.gate_in_timestamp = ts
 			ge_doc.insert(ignore_permissions=True)
 		else:
 			frappe.db.set_value(
 				"Gate Entry", ge_doc.name,
-				{"gate_out_timestamp": ts, "status": "Gate_Out_Completed"}, update_modified=True,
+				{
+					"gate_out_timestamp": ts,
+					"status": "Gate_Out_Completed",
+					"eir_reference": eir_out,
+					"inspection_status": "Completed",
+				},
+				update_modified=True,
 			)
 		gate_entry_name = ge_doc.name
 
