@@ -164,6 +164,29 @@ class TestMakeOrderCore(FrappeTestCase):
 		order.cancel()
 		self.assertEqual(_states(codes), ["Active", "Active"])
 
+	def test_container_summary_fills_the_bon_list_column(self):
+		"""A Desk list column cannot render a child table, so the row numbers are
+		denormalised onto ``container_summary``. Empty here means the Order Bongkar list
+		shows a booking and a status but never which tank the bon is actually for.
+		"""
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="MCSUM0")
+		order = frappe.get_doc("Order Bongkar", make_order(booking, codes))
+		self.assertEqual(order.container_summary, "MCSUM0X0001, MCSUM0X0002")
+
+	def test_container_summary_follows_a_revision(self):
+		"""Recomputed on every save, not stamped once at creation — a bon whose containers
+		were swapped after issue would otherwise advertise a tank it no longer carries.
+		"""
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCSMR0")
+		order = frappe.get_doc("Order Bongkar", make_order(booking, [codes[0]]))
+		self.assertEqual(order.container_summary, "MCSMR0X0001")
+		order.append("containers", {"booking_code": codes[1]})
+		order.save()
+		self.assertEqual(order.container_summary, "MCSMR0X0001, MCSMR0X0002")
+		order.containers = [r for r in order.containers if r.booking_code != codes[0]]
+		order.save()
+		self.assertEqual(order.container_summary, "MCSMR0X0002")
+
 	def test_revise_add_and_remove(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCRV0")
 		order = frappe.get_doc("Order Bongkar", make_order(booking, [codes[0]]))
@@ -234,6 +257,19 @@ class TestMakeOrderMuat(FrappeTestCase):
 		name = make_order(booking, codes)  # must NOT raise
 		self.assertEqual(len(frappe.get_doc("Order Muat", name).containers), 2)
 		self.assertEqual(_states(codes), ["Used", "Used"])
+
+	def test_container_summary_fills_the_bon_list_column(self):
+		"""Same denormalisation as Order Bongkar, and worth asserting separately: the two
+		bons use DIFFERENT container child tables (Order Container Item vs Container Booking
+		Item), so one can fill and the other stay blank.
+		"""
+		for c in self.CONTAINERS:
+			self._drop_cleaning(c)
+		booking, codes = _booking_with_codes(
+			code_direction="Tank Out", count=2, prefix="MCSMM", containers=self.CONTAINERS
+		)
+		order = frappe.get_doc("Order Muat", make_order(booking, codes))
+		self.assertEqual(order.container_summary, "MCSMMXX0001, MCSMMXX0002")
 
 	def test_muat_with_finished_cleaning(self):
 		for c in self.CONTAINERS:

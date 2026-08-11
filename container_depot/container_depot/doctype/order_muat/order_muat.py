@@ -11,6 +11,7 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 	_release_codes,
 	_release_eirs,
 	_sync_booking,
+	_sync_container_summary,
 	_validate_booking_code,
 )
 
@@ -19,6 +20,7 @@ class OrderMuat(Document):
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank Out")
+		_sync_container_summary(self)
 		self._validate_no_open_work()
 
 	def on_update(self):

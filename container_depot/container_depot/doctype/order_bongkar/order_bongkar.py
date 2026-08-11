@@ -3,6 +3,10 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint
 
+from container_depot.container_depot.doctype.container_booking.container_booking import (
+	build_container_summary,
+)
+
 # A single bon/voucher may carry at most this many containers.
 MAX_CONTAINERS_PER_ORDER = 2
 
@@ -11,6 +15,7 @@ class OrderBongkar(Document):
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank In")
+		_sync_container_summary(self)
 
 	def on_update(self):
 		_reconcile_codes(self)
@@ -64,6 +69,24 @@ def _release_eirs(order: Document, inspection_type: str):
 def _order_rows(doc: Document):
 	"""Authoritative container rows for an order (the ``containers`` child table)."""
 	return doc.get("containers") or []
+
+
+def _sync_container_summary(doc: Document):
+	"""Denormalise the row container numbers onto a single Data field, because a Desk list
+	column cannot render a child table — without this the two bon lists show a booking and a
+	status but never say which tank the bon is for, which is the one thing the operator is
+	scanning the list to find.
+
+	Must run AFTER ``_validate_booking_code``: that is what copies ``container_no`` down from
+	each row's Booking Code, so reading the rows any earlier sees blanks on a manual add.
+
+	Shared with Container Booking's builder so all three lists format identically. A bon caps
+	at ``MAX_CONTAINERS_PER_ORDER`` containers and so never reaches its truncation, but
+	borrowing the function is still cheaper than a second way of joining the same numbers.
+	"""
+	doc.container_summary = build_container_summary(
+		[r.container_no for r in _order_rows(doc) if r.container_no]
+	)
 
 
 def _log_order_activity(order: Document, activity_type: str):
