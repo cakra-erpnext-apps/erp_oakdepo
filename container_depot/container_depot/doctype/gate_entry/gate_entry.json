@@ -44,6 +44,7 @@
       "default": "Active",
       "fieldname": "status",
       "fieldtype": "Select",
+      "in_standard_filter": 1,
       "label": "Status",
       "options": "Active\nGate_In_Completed\nEIR_Completed\nGate_Out_Completed\nCancelled",
       "reqd": 1
@@ -62,6 +63,7 @@
     {
       "fieldname": "depot",
       "fieldtype": "Link",
+      "in_list_view": 1,
       "in_standard_filter": 1,
       "label": "Depot",
       "options": "Depot"
@@ -87,6 +89,7 @@
     {
       "fieldname": "container_no",
       "fieldtype": "Data",
+      "in_list_view": 1,
       "label": "Container Number",
       "reqd": 1
     },
@@ -128,6 +131,7 @@
     {
       "fieldname": "gate_out_timestamp",
       "fieldtype": "Datetime",
+      "in_list_view": 1,
       "label": "Gate-Out Timestamp"
     },
     {
@@ -150,11 +154,10 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-08-07 10:00:00.000000",
+  "modified": "2026-08-10 17:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Entry",
   "search_fields": "gate_entry_id, container_no, booking_code, status",
   "sort_field": "creation",
-  "sort_order": "DESC",
-  "title_field": "gate_entry_id"
+  "sort_order": "DESC"
 }
