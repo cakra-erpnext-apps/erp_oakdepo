@@ -49,7 +49,13 @@ extend_bootinfo = [
 
 # Warm the domain-restricted caches before boot so the Workspace Sidebar never
 # reads them as None (a Frappe core crash for users with no allowed workspaces).
-before_request = ["container_depot.boot.warm_domain_restricted_caches"]
+before_request = [
+	"container_depot.boot.warm_domain_restricted_caches",
+	# A field account is a Website User, and /desk answers those with "Not Permitted".
+	# Send them to the PWA instead. Must be a request hook: PathResolver hardcodes /desk
+	# ahead of website_redirects and page_renderer. See desk_landing.py.
+	"container_depot.desk_landing.redirect_field_users_off_the_desk",
+]
 
 # What "open" means for the depot's work orders, on the Connections badges and the Desk
 # open-document counts. Overrides ERPNext's blanket "open = draft" for submittable
@@ -67,7 +73,12 @@ doc_events = {
 	# Mirror a User's selected depot Branches into User Permissions so data is
 	# scoped per branch (empty = all branches). See container_depot/user_branch.py.
 	"User": {
-		"on_update": "container_depot.container_depot.user_branch.sync_user_branch_permissions",
+		"on_update": [
+			"container_depot.container_depot.user_branch.sync_user_branch_permissions",
+			# Assigning the Role Profile is what demotes the account to Website User;
+			# that is the moment its landing page is decided. See desk_landing.py.
+			"container_depot.desk_landing.remember_landing_app",
+		],
 	},
 	# Keep an Container Booking's payment_status in step with its Sales Invoice when
 	# a payment is recorded / reversed. Scoped to bookings only.

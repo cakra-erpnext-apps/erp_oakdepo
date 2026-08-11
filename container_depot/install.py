@@ -86,6 +86,12 @@ def after_migrate():
 	# the patch queue — so patch v0_54 parks them and the same migrate hands them straight
 	# back. after_migrate is the only hook that lands after fixtures. See PARKED_ROLES.
 	reassert_parked_fixture_roles()
+	# Point existing yard accounts at the app their Role Profile names. New ones are stamped
+	# on save by the User on_update hook; this catches everyone assigned a profile before that
+	# hook existed. Runs AFTER setup_role_profiles, which is what seeds the profile's
+	# home_page. Only fills a blank default_app — see desk_landing.py.
+	from container_depot.desk_landing import backfill_landing_app
+	backfill_landing_app()
 	# Push env-driven logo into site-wide settings so ALL apps pick it up.
 	sync_branding()
 
@@ -510,6 +516,45 @@ CUSTOM_FIELDS = {
 			"description": (
 				"Centang untuk role tim lapangan. Role bercentang boleh membuka /depot; "
 				"isi menunya ditentukan DocPerm lewat Permission Manager."
+			),
+		}
+	],
+	# Where a job lands after logging in. It sits on the PROFILE, not on the Role, so a Role
+	# stays a permission object and nothing else.
+	#
+	# Frappe's own `Role.home_page` is the field this replaces, and it is a trap:
+	# `website/utils.py::get_home_page` walks EVERY role a user holds and takes the first
+	# home page it finds, so setting it on one field role also redirects Administrator (who
+	# holds every role) and any supervisor who happens to hold that role too. A user has one
+	# job and one profile, so the profile is the honest place for it.
+	"Role Profile": [
+		{
+			"fieldname": "home_page",
+			"label": "Home Page (default)",
+			"fieldtype": "Data",
+			"insert_after": "role_profile",
+			"description": (
+				"Halaman awal <b>bawaan</b> untuk pemegang profil ini, mis. <code>/depot</code>. "
+				"Disalin ke User saat kolom Home Page user masih kosong; nilai di User yang dipakai. "
+				"Kosongkan untuk memakai Desk."
+			),
+		}
+	],
+	# The value actually used. The profile above is the default it is seeded FROM — one is the
+	# template, the other is the setting, and keeping them apart is what lets one person be
+	# moved without redefining the job (or a job be redefined without chasing every account).
+	"User": [
+		{
+			"fieldname": "home_page",
+			"label": "Home Page",
+			"fieldtype": "Data",
+			"insert_after": "default_app",
+			"description": (
+				"Halaman awal setelah login, mis. <code>/depot</code>. Kosong = ikut bawaan Role "
+				"Profile. Diisi sekali saat user disimpan, lalu tidak pernah ditimpa. "
+				"<b>Catatan:</b> path yang lebih dalam (mis. <code>/depot/monitor</code>) dipakai "
+				"saat user membuka Desk, tapi login tetap mendarat di akar app (<code>/depot</code>) "
+				"— batas dari Frappe, bukan setelan ini."
 			),
 		}
 	],
@@ -1507,14 +1552,20 @@ def setup_role_profiles():
 		if not frappe.db.exists("Role Profile", name):
 			doc = frappe.new_doc("Role Profile")
 			doc.role_profile = name
+			doc.home_page = _profile_home_page(name)
 			for role in wanted:
 				doc.append("roles", {"role": role})
 			doc.insert(ignore_permissions=True)
 			continue
 		doc = frappe.get_doc("Role Profile", name)
 		missing = [r for r in wanted if r not in {row.role for row in doc.roles}]
-		if not missing:
+		# Fill a BLANK home page only. An admin who pointed a profile somewhere else keeps
+		# it, exactly as the roles table is add-only above.
+		home_page = None if doc.get("home_page") else _profile_home_page(name)
+		if not missing and not home_page:
 			continue
+		if home_page:
+			doc.home_page = home_page
 		for role in missing:
 			doc.append("roles", {"role": role})
 		# save(), not db_insert on the child rows: on_update re-saves every user holding
@@ -1522,6 +1573,17 @@ def setup_role_profiles():
 		doc.save(ignore_permissions=True)
 
 	frappe.db.commit()
+
+
+def _profile_home_page(name: str) -> str | None:
+	"""Landing page for a shipped profile: the PWA for the yard, the Desk for the office.
+
+	Admin Ops is deliberately absent even though it carries the field-role flag. It is the
+	ops backstop and works both surfaces; it keeps ``desk_access`` and so keeps the Desk as
+	its home. Sending it to /depot would take the Desk away from the one account that most
+	needs it — the same asymmetry ``desk_landing`` enforces at request time.
+	"""
+	return "/depot" if name in FIELD_ROLES else None
 
 
 def _ensure_docperm(doctype: str, role: str, letters: str, is_submittable: bool) -> None:

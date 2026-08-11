@@ -200,6 +200,80 @@ instant, and so is the `/apps` tile (gated separately by
 `/depot` itself stays open to any logged-in user — see handoff §5.5 and the note in
 `www/depot.py`. The shortcut is an advertisement, not the gate.
 
+### Where a field account lands at login — `desk_landing.py`
+
+A field role carries `desk_access = 0`, so `User.set_system_user` makes the account a
+**Website User**, and `frappe/www/desk.py` answers every Website User with **Not Permitted**.
+Operators were meeting that as their first screen. Two independent mechanisms put them there,
+and **`Role.home_page` fixes neither** — do not reach for it:
+
+| Route in | What decides | Why `Role.home_page` misses |
+|---|---|---|
+| Login response | `auth.py` → `get_default_path()` | It answers first; `get_home_page()` — the only reader of `Role.home_page` — is never called |
+| The browser | `login.js` prefers `localStorage.last_visited` | Purely client-side. No server setting is consulted at all |
+
+Worse, `Role.home_page` **leaks**: `get_home_page()` walks *every* role the user holds and
+takes the first home page it finds, so setting it on Security also redirects Administrator —
+who holds every role — and any supervisor holding that role beside a Desk job. Patch `v0_56`
+clears it off the app's roles, and `test_the_app_roles_carry_no_home_page` keeps it clear.
+
+#### The setting: a default on the profile, the value on the user
+
+Two custom fields (`install.CUSTOM_FIELDS`), and the split is the whole design:
+
+| Field | Means | Change it to… |
+|---|---|---|
+| `Role Profile.home_page` | the default for the **job** | move everyone still inheriting |
+| `User.home_page` | the value in force for this **person** | move one person only |
+
+`desk_landing.home_page_for()` reads the user's, then falls back to the profile's.
+`remember_landing_app` copies the profile's value onto the user on save — **only when the
+user's is blank**, never overwriting. So:
+
+- re-pointing a **profile** moves everyone who has no value of their own, and only them;
+- re-assigning a **person** to a different job does *not* move their landing page — theirs is
+  already set. **Clear `User.home_page` to make them inherit again.**
+
+`setup_role_profiles` seeds `/depot` on the seven field profiles and leaves the office ones
+blank (blank = the Desk). **Admin Ops is deliberately blank** even though it carries the
+field-role flag: it is the ops backstop, keeps `desk_access`, and works both surfaces. Only a
+blank value is ever filled, so a repointed profile survives every migrate.
+
+**Known limit — login lands on an app root.** `get_default_path` steers on `User.default_app`,
+an app *name*, which it resolves to that app's *root* route; Frappe offers no lever for an
+arbitrary path. `/depot` is honoured everywhere. A deeper value like `/depot/monitor` governs
+the Desk redirect (which writes its own `Location`) but **login still lands on `/depot`**.
+`test_login_can_only_land_on_an_app_root` pins it. Closing it would mean the PWA reading a
+start route of its own.
+
+Two guards read the resolved value:
+
+1. **`remember_landing_app`** (User `on_update`) stamps `User.default_app`, which
+   `get_default_path` checks *before* its app-count guesswork — the login landing stops being
+   a function of how many apps happen to be visible. It translates the profile's *path* into
+   an *app name* via `add_to_apps_screen`, which is the only currency `get_default_path`
+   accepts; a path belonging to no app simply has no `default_app` to express it.
+   `install.backfill_landing_app()` catches accounts that predate the hook.
+2. **`redirect_field_users_off_the_desk`** (`before_request`) turns any `/desk` or `/app` hit
+   by a field-role Website User into a **302** to the profile's home page. This is the only
+   guard that covers `last_visited`, bookmarks, and a shared handset.
+
+Both fall back to `/depot` for a yard account holding no profile — roles may still be assigned
+by hand.
+
+Two things that will bite:
+
+- It must be a **`before_request`** hook. `PathResolver.resolve` short-circuits `/desk` to a
+  hardcoded `TemplatePage` *before* `website_redirects` and the `page_renderer` hook, so
+  neither can see the request.
+- The redirect is forced to **302**. `werkzeug`'s `RequestRedirect` defaults to 308, which
+  browsers cache permanently — an operator later granted Desk access would keep being bounced
+  into the PWA by their own machine, with nothing left on the server to fix.
+
+The `user_type` check is load-bearing, not a shortcut: **Admin Ops holds the field-role flag
+*and* `desk_access = 1`. A guard keyed on the flag alone throws the ops backstop out of the
+Desk.** `test_admin_ops_keeps_the_desk` pins it.
+
 **PWA → Desk.** `desk_access` comes from `ess/context.py::has_desk_access`, which reads
 `User.user_type`. Do not "improve" it into a scan of the user's roles for `desk_access = 1`:
 `frappe.get_roles` appends the automatic **Desk User** role to every System User, so that
