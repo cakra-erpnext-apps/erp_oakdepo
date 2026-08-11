@@ -26,6 +26,9 @@ def after_install():
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
+	# PPN template. An ensure_* rather than the old one-time patch, which ran before the
+	# setup wizard existed on a fresh site and left every invoice untaxed. See the docstring.
+	ensure_ppn_template()
 	# Store the finance master switch's default (on) the first time only, so a site that
 	# has turned invoicing off is never switched back on by a later migrate.
 	from container_depot import finance
@@ -69,6 +72,9 @@ def after_migrate():
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
+	# PPN template. An ensure_* rather than the old one-time patch, which ran before the
+	# setup wizard existed on a fresh site and left every invoice untaxed. See the docstring.
+	ensure_ppn_template()
 	# Store the finance master switch's default (on) the first time only, so a site that
 	# has turned invoicing off is never switched back on by a later migrate.
 	from container_depot import finance
@@ -353,6 +359,23 @@ CUSTOM_FIELDS = {
 			"in_standard_filter": 1,
 			"description": "Depot branch this invoice was raised for (carried from the Container Booking).",
 		},
+		# --- Tagihan Depot (consolidated billing) -----------------------------------
+		# No filters live here any more. The operator presses Ambil Tagihan and gets EVERY
+		# unbilled order the customer has, then ticks the ones to bill in the dialog — the
+		# section checkboxes and date window they replaced were a second place to say the
+		# same thing, and the form was drowning in them.
+		{
+			"fieldname": "depot_bill_group",
+			"label": "Nomor Tagihan",
+			"fieldtype": "Data",
+			"insert_after": "branch",
+			"read_only": 1,
+			"no_copy": 1,
+			# ERPNext invoices are single-currency, so a run that picks up both IDR and USD
+			# charges becomes two documents. This ties them together: the print format renders
+			# every member of a group as ONE pdf, a page per currency, under this number.
+			"description": "Invoice lain dengan nomor ini adalah bagian dari tagihan yang sama (mata uang berbeda).",
+		},
 		{
 			# Internal rollback manifest for consolidated ("generate") invoices — a JSON
 			# list of the depot orders swept into this invoice. Drives roll-back of those
@@ -362,7 +385,7 @@ CUSTOM_FIELDS = {
 			"fieldname": "depot_billed_sources",
 			"label": "Depot Billed Sources",
 			"fieldtype": "Long Text",
-			"insert_after": "branch",
+			"insert_after": "depot_bill_group",
 			"hidden": 1,
 			"read_only": 1,
 			"no_copy": 1,
@@ -566,7 +589,35 @@ def setup_custom_fields():
 	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 	create_custom_fields(CUSTOM_FIELDS, ignore_validate=True)
+	_drop_obsolete_custom_fields()
 	frappe.db.commit()
+
+
+# Custom fields this app used to create and no longer defines. ``create_custom_fields`` only
+# ever upserts, so a field dropped from CUSTOM_FIELDS lingers on every existing site — still
+# rendering on the form — until it is deleted explicitly.
+OBSOLETE_CUSTOM_FIELDS = [
+	# The Tagihan Depot filters (2026-08-11). Billing now shows every unbilled order and
+	# lets the operator tick what to bill, so the section checkboxes and the date window
+	# were a second, redundant way to say the same thing.
+	("Sales Invoice", "depot_bill_section"),
+	("Sales Invoice", "depot_bill_col"),
+	("Sales Invoice", "depot_bill_from_date"),
+	("Sales Invoice", "depot_bill_to_date"),
+	("Sales Invoice", "depot_bill_booking"),
+	("Sales Invoice", "depot_bill_survey"),
+	("Sales Invoice", "depot_bill_cleaning"),
+	("Sales Invoice", "depot_bill_mr"),
+	("Sales Invoice", "depot_bill_periodic"),
+	("Sales Invoice", "depot_bill_storage"),
+]
+
+
+def _drop_obsolete_custom_fields():
+	for dt, fieldname in OBSOLETE_CUSTOM_FIELDS:
+		name = frappe.db.get_value("Custom Field", {"dt": dt, "fieldname": fieldname}, "name")
+		if name:
+			frappe.delete_doc("Custom Field", name, force=True, ignore_permissions=True)
 
 
 # Doctype-level property tweaks on standard (ERPNext) doctypes. One Property Setter
@@ -580,18 +631,51 @@ PROPERTY_SETTERS = [
 	# modal has no `frm`, so manhour rate is hidden and the price-list→currency
 	# fetch_from never fires. The full form shows manhour and live-fetches currency.
 	("Item Price", None, "quick_entry", "0", "Check"),
-	# Hide Sales Invoice fields the depot never uses, decluttering the invoice form.
-	# Values are untouched (fields stay in the DB) — this is UI-only. Section break
-	# ``time_sheet_list`` hides the whole timesheet section; ``timesheets`` hidden too
-	# for good measure.
-	("Sales Invoice", "is_pos", "hidden", "1", "Check"),           # Include Payment (POS)
-	("Sales Invoice", "is_return", "hidden", "1", "Check"),        # Is Return (Credit Note)
-	("Sales Invoice", "is_debit_note", "hidden", "1", "Check"),    # Is Rate Adjustment Entry (Debit Note)
-	("Sales Invoice", "apply_tds", "hidden", "1", "Check"),        # Consider for Tax Withholding
-	("Sales Invoice", "scan_barcode", "hidden", "1", "Check"),     # Scan Barcode
-	("Sales Invoice", "update_stock", "hidden", "1", "Check"),     # Update Stock
-	("Sales Invoice", "time_sheet_list", "hidden", "1", "Check"),  # Time Sheet List (section)
-	("Sales Invoice", "timesheets", "hidden", "1", "Check"),       # Time Sheet List (table)
+] + [
+	# Declutter the Sales Invoice form. UI-only: the fields stay in the DB and every
+	# controller still reads them — nothing is deleted, only hidden.
+	#
+	# Deliberately NOT hidden, unlike erp_cakra's much longer list: total / net_total /
+	# grand_total / taxes / taxes_and_charges. erp_cakra can hide the native totals because
+	# it replaced them with its own Amounts fields (Discount / PPh / Tax / Materai /
+	# Adjustment). This app has no replacement, so hiding them would leave an invoice with
+	# no visible total and no way to see or change its tax.
+	("Sales Invoice", fn, "hidden", "1", "Check")
+	for fn in (
+		# --- header noise -------------------------------------------------------
+		"title",              # derived from the customer; just repeats it
+		"project",
+		"company_tax_id",
+		"customer_name",      # the Customer link already shows the name
+		# --- POS / credit-note machinery the depot never uses --------------------
+		"is_pos", "pos_profile", "is_consolidated", "is_created_using_pos",
+		"pos_closing_entry", "is_return", "return_against", "is_debit_note",
+		"update_outstanding_for_self", "update_billed_amount_in_sales_order",
+		"update_billed_amount_in_delivery_note", "has_subcontracted", "amended_from",
+		# --- price list: the rate card is decided by the contract, not here ------
+		"selling_price_list", "price_list_currency", "plc_conversion_rate",
+		"ignore_pricing_rule", "pricing_rule_details", "pricing_rules",
+		# --- items area ----------------------------------------------------------
+		"scan_barcode", "update_stock", "last_scanned_warehouse",
+		"set_warehouse", "set_target_warehouse",
+		"packed_items", "product_bundle_help",
+		"total_qty", "total_net_weight",
+		"time_sheet_list", "timesheets", "total_billing_hours", "total_billing_amount",
+		# --- tax clutter (§ "rapikan tampilan pajak") ----------------------------
+		# The tax TABLE and its template stay; what goes is everything around them:
+		# withholding, shipping/incoterm, the native discount block, and the verbose
+		# tax-breakdown HTML that restates the table underneath it.
+		"tax_category", "shipping_rule", "incoterm", "named_place",
+		"apply_tds", "tax_withholding_group", "ignore_tax_withholding_threshold",
+		"override_tax_withholding_entries", "tax_withholding_entries",
+		"other_charges_calculation",
+		"apply_discount_on", "additional_discount_percentage", "discount_amount",
+		"base_discount_amount", "is_cash_or_non_trade_discount", "coupon_code",
+		# --- base-currency mirrors: every one restates a figure already on screen -
+		"base_total", "base_net_total", "base_total_taxes_and_charges",
+		"base_grand_total", "base_in_words", "base_rounding_adjustment",
+		"base_rounded_total",
+	)
 ]
 
 
@@ -796,6 +880,79 @@ PAYMENT_TERMS = {
 		"description": "Jatuh tempo akhir bulan berikutnya (1 bulan setelah akhir bulan invoice).",
 	},
 }
+
+
+def ensure_ppn_template():
+	"""Ensure the PPN Sales Taxes and Charges Template exists for EVERY company.
+
+	Every depot invoice is raised with ``taxes_and_charges = invoicing.PPN_TEMPLATE``; when
+	the template is missing, ``_resolve_tax_template`` returns None and the invoice goes out
+	with **no tax row at all** — silently, since a missing template is not an error to
+	ERPNext. So this has to be an ``ensure_*`` that runs on every migrate, not the one-time
+	patch it used to be (``patches.v0_9.seed_ppn_template``).
+
+	That patch is exactly why this exists: on a fresh site it runs during install, BEFORE the
+	setup wizard has created the company and its chart of accounts, hits its "no company"
+	early return, and is then logged as done forever. The tax account it was waiting for
+	arrives minutes later and the patch never looks again. Re-running the condition on every
+	migrate is what makes the seed survive that ordering.
+	"""
+	try:
+		if not frappe.db.exists("DocType", "Sales Taxes and Charges Template"):
+			return
+		from container_depot.invoicing import PPN_TEMPLATE
+
+		for company in frappe.get_all("Company", pluck="name"):
+			existing = frappe.db.get_value(
+				"Sales Taxes and Charges Template", {"title": PPN_TEMPLATE, "company": company}, "name"
+			)
+			# An EXISTING template with no rows is as broken as a missing one, and worse: it
+			# resolves, so the invoice is stamped with a template that charges nothing and no
+			# error is raised anywhere. Guard on the rows, not on the parent.
+			if existing and frappe.db.count("Sales Taxes and Charges", {"parent": existing}):
+				continue
+			account = _output_vat_account(company)
+			if not account:
+				# Unusual chart of accounts — skip this company rather than fail the migrate.
+				# The next migrate tries again, which is the whole point of being an ensure_*.
+				continue
+			row = {
+				"charge_type": "On Net Total",
+				"account_head": account,
+				"rate": 11,
+				"description": "PPN 11%",
+			}
+			if existing:
+				doc = frappe.get_doc("Sales Taxes and Charges Template", existing)
+				doc.append("taxes", row)
+				doc.save(ignore_permissions=True)
+			else:
+				frappe.get_doc({
+					"doctype": "Sales Taxes and Charges Template",
+					"title": PPN_TEMPLATE,
+					"company": company,
+					"taxes": [row],
+				}).insert(ignore_permissions=True)
+		frappe.db.commit()
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "container_depot PPN template seed failed")
+
+
+def _output_vat_account(company):
+	"""The company's output-VAT account (PPN Keluaran), else any liability tax account."""
+	return (
+		frappe.db.get_value(
+			"Account",
+			{"company": company, "account_type": "Tax", "name": ["like", "%Keluaran%"]},
+			"name",
+		)
+		or frappe.db.get_value(
+			"Account",
+			{"company": company, "account_type": "Tax", "root_type": "Liability"},
+			"name",
+		)
+		or frappe.db.get_value("Account", {"company": company, "account_type": "Tax"}, "name")
+	)
 
 
 def ensure_payment_terms_templates():

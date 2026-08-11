@@ -295,13 +295,16 @@ def _storage_lines(customer, from_date, to_date):
 	"""Storage days not yet billed (since each container's ``storage_billed_until``
 	watermark) × the Storage-per-Day tariff (contract currency).
 
-	Returns a list of 0 or 1 unit; each storage source records the container's
-	previous watermark so rollback can restore it."""
+	**One unit per container**, like every other builder returns one unit per order. That is
+	what makes a single tank tickable on its own in the billing preview; lumping every
+	container into one unit would force the operator to take all the storage or none.
+	Each source records the container's previous watermark so rollback can restore it."""
 	rate = resolve_tariff_rate(_active_contract(customer), STORAGE_ITEM)
 	if not rate or rate <= 0:
 		return []
 	containers = frappe.get_all("Container", filters={"principal": customer}, pluck="name")
-	lines, sources = [], []
+	currency = _fallback_currency(customer)
+	units = []
 	for cname in containers:
 		prev = frappe.db.get_value("Container", cname, "storage_billed_until")
 		start = max(from_date, add_days(getdate(prev), 1)) if prev else from_date
@@ -310,11 +313,124 @@ def _storage_lines(customer, from_date, to_date):
 		days = _days_in_depot(cname, start, to_date)
 		if days <= 0:
 			continue
-		lines.append({"description": f"Storage {cname} ({days}d)", "qty": days, "rate": rate})
-		sources.append({"storage": cname, "prev": str(prev) if prev else None})
-	if not lines:
+		units.append({
+			"currency": currency,
+			# Carry the item, like every other builder does. Without it the line fell through
+			# to the generic depot service item, so storage revenue was indistinguishable from
+			# cleaning or M&R in any per-item sales report — and the contract's manhour for it
+			# was never stamped on the line.
+			"lines": [{
+				"item_code": STORAGE_ITEM,
+				"description": f"Storage {cname} ({days}d)",
+				"qty": days,
+				"rate": rate,
+			}],
+			"sources": [{"storage": cname, "prev": str(prev) if prev else None}],
+		})
+	return units
+
+
+# --------------------------------------------------------------------------- #
+# Categories — the "sections" a user bills by.
+#
+# Each is one builder above. The operator picks any combination (Cleaning + M&R, or
+# Storage alone, …) and a window; everything downstream — preview, fill, the report's
+# selection — works off this registry rather than a hard-coded sweep.
+# --------------------------------------------------------------------------- #
+CATEGORIES = ("Booking", "Survey", "Cleaning", "M&R", "Periodic Test", "Storage")
+
+# Bookings and Survey Orders carry their own ``payment_type``, so their TOP rows are
+# billable for anyone. The rest accrue at the container-owner level with no per-order
+# payment type, and are only swept for a postpaid customer — a pure-Cash customer's are
+# the monthly scheduler's to bill, and sweeping them here too would double-charge.
+_ACCRUAL_CATEGORIES = frozenset({"Cleaning", "M&R", "Periodic Test", "Storage"})
+
+# Storage is deliberately absent: alone among the categories it has no order document to
+# read, so it is built from plain dates rather than datetime bounds (see collect_units).
+_BUILDERS = {
+	"Booking": _booking_lines,
+	"Survey": _survey_lines,
+	"Cleaning": _cleaning_lines,
+	"M&R": _mr_lines,
+	"Periodic Test": _periodic_lines,
+}
+
+# Shared billing number across the per-currency invoices of one run (see _issue_group).
+GROUP_FIELD = "depot_bill_group"
+
+
+def _normalize_categories(categories):
+	"""Accept a list, a JSON string (from the client) or None (= all) → ordered tuple."""
+	if isinstance(categories, str):
+		categories = json.loads(categories)
+	if not categories:
+		return CATEGORIES
+	wanted = set(categories)
+	unknown = wanted - set(CATEGORIES)
+	if unknown:
+		frappe.throw(_("Section tidak dikenal: {0}").format(", ".join(sorted(unknown))))
+	# Keep CATEGORIES' order so invoice lines always come out in the same sequence.
+	return tuple(c for c in CATEGORIES if c in wanted)
+
+
+def _window(from_date, to_date):
+	"""Resolve the bill window, clamped to the date the depot started charging.
+
+	Without the floor a run with no ``from_date`` reaches back to 2000-01-01, so a site that
+	operated for months before switching finance on would sweep its whole backlog into one
+	invoice on the first click.
+
+	The floor may legitimately push ``from_d`` past ``to_d`` — that is a site whose billing
+	start date has not arrived yet, and it must bill *nothing* rather than raise. So only a
+	window the **user** typed backwards is an error; callers read an inverted window as an
+	empty one (see :func:`collect_units`).
+	"""
+	from_d = getdate(from_date) if from_date else getdate("2000-01-01")
+	to_d = getdate(to_date) if to_date else getdate(today())
+	if from_date and to_date and from_d > to_d:
+		frappe.throw(_("Tanggal awal ({0}) melewati tanggal akhir ({1}).").format(from_d, to_d))
+	floor = finance.start_date()
+	if floor and from_d < floor:
+		from_d = floor
+	return from_d, to_d
+
+
+def collect_units(customer, categories=None, from_date=None, to_date=None):
+	"""Every unbilled charge unit for ``customer`` in the window, per chosen category.
+
+	The one collector behind preview, fill and the report's selection — so what the operator
+	is shown and what the invoice ends up carrying can never drift apart. Each unit is tagged
+	with the category that produced it, which is what lets the preview group by section.
+
+	Takes RAW dates and resolves the window itself. Callers that have already resolved one
+	(preview / fill, which need the window for their own output) use :func:`_collect` instead —
+	re-windowing an already-floored pair would read the floor's own output as a user error.
+	"""
+	return _collect(customer, _normalize_categories(categories), *_window(from_date, to_date))
+
+
+def _collect(customer, cats, from_d, to_d):
+	"""Collect units for an ALREADY-resolved window and category tuple."""
+	if from_d > to_d:
+		# The billing start date is still ahead of the window: nothing has become billable
+		# yet. Not an error — the depot is simply operating before it charges.
 		return []
-	return [{"currency": _fallback_currency(customer), "lines": lines, "sources": sources}]
+	lo, hi = f"{from_d} 00:00:00", f"{to_d} 23:59:59"
+	postpaid = _is_postpaid(customer)
+
+	units = []
+	for cat in cats:
+		if cat in _ACCRUAL_CATEGORIES and not postpaid:
+			continue
+		got = (
+			_storage_lines(customer, from_d, to_d)
+			if cat == "Storage"
+			else _BUILDERS[cat](customer, lo, hi)
+		)
+		for u in got:
+			u["category"] = cat
+		units += got
+	return units
 
 
 def _mark_billed(dt, name, si):
@@ -346,63 +462,180 @@ def _unmark_billed(dt, name):
 		frappe.db.set_value(dt, name, "sales_invoice", None, update_modified=False)
 
 
-@frappe.whitelist()
-def bill_customer(customer, from_date=None, to_date=None):
-	"""Sweep a customer's unbilled TOP bookings + surveys + cleaning + M&R + periodic tests + storage
-	in ``[from_date, to_date]`` into draft Sales Invoices — **one per currency** (PPN
-	applied), each billed in its own currency, each stamped with a rollback manifest.
-
-	Returns the list of created Sales Invoice names (``[]`` when there is nothing to
-	bill). Idempotent: every swept source is marked billed and skipped on re-run, so a
-	re-generate after a rollback resyncs with the customer's current orders.
-	"""
-	if not customer:
-		frappe.throw(_("Customer is required."))
-	finance.require_enabled(_("Generate Invoice"))
-	# Guarded entry point: creating receivables is limited to billing roles. Called
-	# from the Order Billing Status report's "Generate Invoice" button (whitelisted).
-	# Administrator / test runs bypass via frappe.only_for.
-	# The billing roles (Commercial / Admin Ops / Management / Cashier / Container Depot)
-	# were removed on 2026-08-05 pending a role redesign — until then only System Manager
-	# may raise invoices. Widen this list again with the new roles.
+def _guard_billing(action):
+	"""Common gate for every entry point that turns depot work into a receivable."""
+	finance.require_enabled(action)
+	# Creating receivables is limited to billing roles. Administrator / test runs bypass via
+	# frappe.only_for. The billing roles (Commercial / Admin Ops / Management / Cashier /
+	# Container Depot) were removed on 2026-08-05 pending a role redesign — until then only
+	# System Manager may raise invoices. Widen this list again with the new roles.
 	frappe.only_for(["System Manager"])
-	from_d = getdate(from_date) if from_date else getdate("2000-01-01")
-	to_d = getdate(to_date) if to_date else getdate(today())
-	# Never bill behind the date the depot started charging. Without this, a site that ran
-	# operations-only for months and then switched finance on would sweep the whole backlog
-	# into one invoice on the first click.
-	floor = finance.start_date()
-	if floor and from_d < floor:
-		from_d = floor
-	lo, hi = f"{from_d} 00:00:00", f"{to_d} 23:59:59"
 
-	units = []
-	# Per-order TOP charges: bookings + survey orders carry their own payment_type, so
-	# these are swept for any customer (a Both/Cash customer can still book/survey TOP).
-	for builder in (_booking_lines, _survey_lines):
-		units += builder(customer, lo, hi)
-	# Contract-level accruals (cleaning / M&R / storage) have no per-order payment type.
-	# Only sweep them for postpaid (TOP / Both) customers — a pure-Cash customer's are
-	# billed by the monthly scheduler, so sweeping here too would double-charge.
-	if _is_postpaid(customer):
-		for builder in (_cleaning_lines, _mr_lines, _periodic_lines):
-			units += builder(customer, lo, hi)
-		units += _storage_lines(customer, from_d, to_d)
 
-	if not units:
-		return []
+def _unit_key(u):
+	"""Stable id for one collected unit — what the preview ticks and the fill filters on.
 
-	# Group charges by currency → one draft Sales Invoice per currency.
+	Every builder returns one unit per source, so a unit is always exactly one order (or, for
+	storage, one container). The key survives a re-collect because it is derived from the
+	source document, not from position in the list.
+	"""
+	src = u["sources"][0]
+	return f"Storage|{src['storage']}" if "storage" in src else f"{src['dt']}|{src['name']}"
+
+
+def _unit_label(u):
+	"""Human-readable name of what a unit charges for (an order number, or a container)."""
+	src = u["sources"][0]
+	return src["storage"] if "storage" in src else src["name"]
+
+
+def _normalize_keys(keys):
+	"""Accept a list, a JSON string (from the client) or None (= take everything)."""
+	if isinstance(keys, str):
+		keys = json.loads(keys)
+	return set(keys) if keys else None
+
+
+def _by_currency(units):
+	"""Group units into ``{currency: {"lines": [...], "sources": [...]}}``.
+
+	ERPNext invoices are single-currency — ``Sales Invoice Item`` has no currency of its
+	own and its rate is always read in the header's — so charges in different currencies
+	can never share one document. They become sibling invoices instead, tied together by
+	a shared billing number (see :func:`_issue_group`).
+	"""
 	groups = {}
 	for u in units:
 		g = groups.setdefault(u["currency"], {"lines": [], "sources": []})
 		g["lines"] += u["lines"]
 		g["sources"] += u["sources"]
+	return {ccy: g for ccy, g in groups.items() if g["lines"]}
+
+
+def _stamp_sources(si, sources, to_d):
+	"""Mark every swept source billed against ``si`` and record the rollback manifest."""
+	for src in sources:
+		if "storage" in src:
+			frappe.db.set_value(
+				"Container", src["storage"], "storage_billed_until", to_d, update_modified=False
+			)
+		else:
+			_mark_billed(src["dt"], src["name"], si)
+	frappe.db.set_value("Sales Invoice", si, MANIFEST_FIELD, json.dumps(sources), update_modified=False)
+
+
+def _issue_group(invoices):
+	"""Tie one run's per-currency invoices together under a single billing number.
+
+	The customer is handed ONE bill; that it is several documents underneath is an ERPNext
+	constraint, not something they should have to reconcile. The first invoice's name is the
+	number, and the print format renders every member of the group as one PDF with a page
+	per currency (see the OAK Invoice template).
+	"""
+	if not invoices:
+		return None
+	group = invoices[0]
+	for si in invoices:
+		frappe.db.set_value("Sales Invoice", si, GROUP_FIELD, group, update_modified=False)
+	return group
+
+
+@frappe.whitelist()
+def preview_bill(customer, categories=None, from_date=None, to_date=None):
+	"""What a bill run would pick up, WITHOUT creating anything — **one row per order**.
+
+	Returns ``{"window", "sections": [{"category", "rows": [...]}], "total_orders"}`` where
+	each row is ``{"key", "label", "detail", "currency", "amount"}``. The operator ticks the
+	rows they want and the keys come back to :func:`fill_invoice`, so a run can be narrowed
+	to individual orders rather than being all-or-nothing per section.
+
+	Read-only: safe to call on every filter change.
+	"""
+	if not customer:
+		frappe.throw(_("Customer wajib diisi."))
+	cats = _normalize_categories(categories)
+	from_d, to_d = _window(from_date, to_date)
+
+	sections = {}
+	for u in _collect(customer, cats, from_d, to_d):
+		sec = sections.setdefault(u["category"], {"category": u["category"], "rows": []})
+		sec["rows"].append({
+			"key": _unit_key(u),
+			"label": _unit_label(u),
+			# What the line(s) actually say, so a row is judgeable without opening the order.
+			"detail": "; ".join(ln.get("description") or "" for ln in u["lines"])[:180],
+			"currency": u["currency"],
+			"amount": sum(flt(ln.get("qty") or 1) * flt(ln.get("rate")) for ln in u["lines"]),
+		})
+
+	ordered = [sections[c] for c in CATEGORIES if c in sections]
+	return {
+		"customer": customer,
+		"window": {"from_date": str(from_d), "to_date": str(to_d)},
+		"sections": ordered,
+		"total_orders": sum(len(s["rows"]) for s in ordered),
+	}
+
+
+def _rollback_and_discard(doc):
+	"""Give back everything a generated draft took, then delete it.
+
+	Emptying the invoice in place is not an option: ERPNext refuses to save a Sales Invoice
+	with no items, so "clear the lines" can only mean "discard the document". That is also
+	the honest model — a generated invoice IS its sweep, and a sweep that has been rolled
+	back has nothing left to be.
+	"""
+	rollback_billed_sources(doc)
+	# Drop the manifest first, or on_trash would roll the same sources back a second time —
+	# by then they may already belong to the run that is replacing this one.
+	frappe.db.set_value("Sales Invoice", doc.name, MANIFEST_FIELD, None, update_modified=False)
+	frappe.delete_doc("Sales Invoice", doc.name, force=True, ignore_permissions=True)
+
+
+@frappe.whitelist()
+def fill_invoice(customer, categories=None, from_date=None, to_date=None, keys=None, sales_invoice=None):
+	"""Run a bill: collect the chosen sections and turn them into draft Sales Invoices.
+
+	``keys`` are the unit keys the operator ticked in the preview (see :func:`preview_bill`);
+	omit them to bill everything the filter matches. Selection is applied to a FRESH collect
+	rather than to whatever the preview returned, so an order that was billed or edited
+	between preview and confirm is re-read rather than trusted from the client.
+
+	``sales_invoice`` re-runs an existing generated draft **in place** — its previous sweep is
+	rolled back first, so re-running after changing the filters never double-charges and never
+	strands an order as billed against lines that are gone. Without it a fresh set is created.
+
+	Returns ``{"invoices": [...], "group": "..."}``: one invoice per currency, all sharing a
+	billing number. ``invoices`` is empty when the window holds nothing billable.
+	"""
+	if not customer:
+		frappe.throw(_("Customer wajib diisi."))
+	_guard_billing(_("Ambil Tagihan"))
+	cats = _normalize_categories(categories)
+	wanted = _normalize_keys(keys)
+	from_d, to_d = _window(from_date, to_date)
+
+	# Re-run: give back everything the previous run took before collecting again, or those
+	# orders would be invisible to the collector (they are marked billed) and silently dropped.
+	if sales_invoice:
+		target = frappe.get_doc("Sales Invoice", sales_invoice)
+		if target.docstatus != 0:
+			frappe.throw(_("Hanya draft yang bisa di-generate ulang — batalkan invoice-nya dulu."))
+		if target.customer != customer:
+			frappe.throw(
+				_("Invoice ini milik {0} — satu invoice hanya untuk satu customer.").format(target.customer)
+			)
+		_rollback_and_discard(target)
+
+	units = _collect(customer, cats, from_d, to_d)
+	if wanted is not None:
+		units = [u for u in units if _unit_key(u) in wanted]
+	groups = _by_currency(units)
+	if not groups:
+		return {"invoices": [], "group": None}
 
 	created = []
 	for ccy, g in groups.items():
-		if not g["lines"]:
-			continue
 		si = invoicing.create_draft_sales_invoice(
 			customer,
 			g["lines"],
@@ -414,15 +647,64 @@ def bill_customer(customer, from_date=None, to_date=None):
 		if not si:
 			continue
 		created.append(si)
-		for src in g["sources"]:
-			if "storage" in src:
-				frappe.db.set_value("Container", src["storage"], "storage_billed_until", to_d, update_modified=False)
-			else:
-				_mark_billed(src["dt"], src["name"], si)
-		# Stamp the rollback manifest so discard/cancel can restore these sources.
-		frappe.db.set_value("Sales Invoice", si, MANIFEST_FIELD, json.dumps(g["sources"]), update_modified=False)
+		_stamp_sources(si, g["sources"], to_d)
 
-	return created
+	return {"invoices": created, "group": _issue_group(created)}
+
+
+@frappe.whitelist()
+def fill_invoice_from_orders(customer, orders):
+	"""Bill an explicitly chosen set of orders — the Order Billing Status selection path.
+
+	``orders`` is a list of ``{"doctype", "name"}``. Unlike :func:`fill_invoice` this bills
+	exactly what was ticked rather than everything a filter matches, so the operator gets what
+	they saw on screen. Storage cannot arrive here: it has no order document to tick, and is
+	billed by section from the invoice form instead.
+	"""
+	if not customer:
+		frappe.throw(_("Customer wajib diisi."))
+	_guard_billing(_("Buat Invoice"))
+	if isinstance(orders, str):
+		orders = json.loads(orders)
+	if not orders:
+		frappe.throw(_("Tidak ada order yang dipilih."))
+
+	# Same key vocabulary the invoice-form preview uses, so both selection paths filter a
+	# fresh collect identically — a ticked order bills byte-for-byte like a filtered one.
+	wanted = {f"{o['doctype']}|{o['name']}" for o in orders}
+	units = [
+		u for u in collect_units(customer, None, "2000-01-01", today()) if _unit_key(u) in wanted
+	]
+	if not units:
+		frappe.throw(_("Order yang dipilih sudah ditagih atau tidak menagihkan apa pun."))
+
+	groups = _by_currency(units)
+	created = []
+	to_d = getdate(today())
+	for ccy, g in groups.items():
+		si = invoicing.create_draft_sales_invoice(
+			customer,
+			g["lines"],
+			due_days=30,
+			remarks=f"Consolidated billing for {customer} · {len(wanted)} order dipilih · {ccy}",
+			taxes_and_charges=invoicing.PPN_TEMPLATE,
+			currency=ccy,
+		)
+		if not si:
+			continue
+		created.append(si)
+		_stamp_sources(si, g["sources"], to_d)
+	return {"invoices": created, "group": _issue_group(created)}
+
+
+@frappe.whitelist()
+def bill_customer(customer, from_date=None, to_date=None):
+	"""Sweep every category for a customer into draft Sales Invoices — one per currency.
+
+	Kept as the all-categories shorthand over :func:`fill_invoice`. Returns the list of
+	created invoice names, as it always has.
+	"""
+	return fill_invoice(customer, None, from_date, to_date)["invoices"]
 
 
 # --------------------------------------------------------------------------- #
