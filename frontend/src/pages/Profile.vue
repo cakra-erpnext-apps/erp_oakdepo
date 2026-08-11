@@ -9,19 +9,61 @@
 				class="pointer-events-none absolute -right-6 -top-4 h-32 w-32 opacity-[0.06]"
 			/>
 			<div class="relative z-10 flex items-center gap-4 p-5">
-				<span
-					class="oak-icon-tile h-14 w-14 shrink-0 bg-brand-50 text-lg font-extrabold text-brand-700"
+				<!-- Tap the avatar to replace it. A separate "ganti foto" button would be one
+				     more thing on a screen people open to check their access; the picture is
+				     the affordance, with the camera badge saying so. -->
+				<button
+					type="button"
+					class="oak-press relative h-14 w-14 shrink-0 rounded-2xl"
+					:disabled="photoBusy"
+					:aria-label="labels.profilePhotoChange"
+					@click="photoInput?.click()"
 				>
-					{{ initials }}
-				</span>
+					<img
+						v-if="photoUrl"
+						:src="photoUrl"
+						alt=""
+						class="h-14 w-14 rounded-2xl object-cover"
+					/>
+					<span
+						v-else
+						class="oak-icon-tile h-14 w-14 bg-brand-50 text-lg font-extrabold text-brand-700"
+					>
+						{{ initials }}
+					</span>
+					<span
+						class="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-brand-500 text-white"
+					>
+						<Icon :name="photoBusy ? 'loader' : 'camera'" :size="12" :class="photoBusy ? 'animate-spin' : ''" />
+					</span>
+				</button>
+				<input
+					ref="photoInput"
+					type="file"
+					accept="image/jpeg,image/png,image/webp"
+					class="hidden"
+					@change="onPhotoPick"
+				/>
 				<div class="min-w-0 flex-1">
 					<p class="oak-eyebrow">{{ labels.loggedInAs }}</p>
 					<p class="mt-1 truncate text-xl font-extrabold tracking-tight text-gray-900">
 						{{ fullName }}
 					</p>
 					<p class="mt-0.5 truncate text-sm text-gray-500">{{ email }}</p>
+					<button
+						v-if="photoUrl"
+						type="button"
+						class="mt-1 text-xs font-semibold text-gray-400 hover:text-gray-600"
+						:disabled="photoBusy"
+						@click="removePhoto"
+					>
+						{{ labels.profilePhotoRemove }}
+					</button>
 				</div>
 			</div>
+			<p v-if="photoErr" class="relative z-10 px-5 pb-4 text-xs font-medium text-red-600">
+				{{ photoErr }}
+			</p>
 		</section>
 
 		<!-- Branch scope — the same "empty selection means all branches" convention the
@@ -62,27 +104,11 @@
 			</div>
 		</section>
 
-		<!-- Roles, depot ones first: an account carries Frappe's automatic All/Guest/Desk
-		     User too, and leading with those buries the one line that explains the access
-		     above. -->
-		<section class="space-y-2">
-			<p class="oak-eyebrow flex items-center gap-1.5 px-1">
-				<Icon name="shield" :size="14" /> {{ labels.profileRolesTitle }}
-			</p>
-			<div class="oak-card p-4">
-				<div v-if="roles.length" class="flex flex-wrap gap-1.5">
-					<span
-						v-for="r in roles"
-						:key="r.name"
-						class="oak-chip"
-						:class="r.builtin ? 'bg-gray-100 text-gray-500' : 'bg-amber-50 text-amber-700'"
-					>
-						{{ r.name }}
-					</span>
-				</div>
-				<p v-else class="text-sm text-gray-400">{{ labels.profileRolesEmpty }}</p>
-			</div>
-		</section>
+		<!-- The role list used to sit here. It was removed 2026-08-11: an account also carries
+		     Frappe's automatic All / Guest / Desk User, so the section spent most of its space
+		     on names that say nothing about depot access — and the section above it already
+		     answers the question an operator actually opens this screen with ("what can I
+		     open?"), in menu names rather than role names. -->
 
 		<!-- Notifikasi HP — the only place a browser may ask for permission is a real tap,
 		     so this cannot be turned on for the operator automatically. -->
@@ -198,6 +224,7 @@ import { fetchMenu, menu } from "@/data/menu"
 import { disablePush, enablePush, push, refreshPushState } from "@/data/push"
 import { isIos, isStandalone } from "@/utils/install"
 import { labels, passwordFeedbackLabel } from "@/utils/labels"
+import { compressPhoto } from "@/utils/photo"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import emblem from "@/assets/oak-emblem.png"
@@ -219,14 +246,59 @@ const initials = computed(() => {
 	return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase()
 })
 
-// Roles Frappe attaches to every session; they say nothing about depot access, so they
-// sort last and stay grey.
-const BUILTIN_ROLES = new Set(["All", "Guest", "Desk User"])
-const roles = computed(() =>
-	[...(ctx.value?.roles || [])]
-		.map((name) => ({ name, builtin: BUILTIN_ROLES.has(name) }))
-		.sort((a, b) => a.builtin - b.builtin || a.name.localeCompare(b.name))
-)
+// --- Foto profil ------------------------------------------------------------
+// The avatar is optional and the initials are the fallback, so nothing here blocks the rest
+// of the screen: a failed upload leaves the old picture on display and puts one line of red
+// under the card.
+const photoInput = ref(null)
+const photoBusy = ref(false)
+const photoErr = ref("")
+const photoUrl = computed(() => ctx.value?.user_image || "")
+
+async function postPhoto(path, body) {
+	const res = await fetch(`/api/method/container_depot.ess.profile.${path}`, {
+		method: "POST",
+		headers: { Accept: "application/json", "X-Frappe-CSRF-Token": window.csrf_token || "" },
+		...(body ? { body } : {}),
+	})
+	if (!res.ok) throw new Error(String(res.status))
+	// Re-read the context rather than patching it locally: user_image is what the rest of
+	// the app reads, and one source keeps a stale URL from surviving a failed write.
+	await userContext.reload()
+}
+
+async function onPhotoPick(event) {
+	const file = event.target.files?.[0]
+	event.target.value = "" // so picking the same file twice still fires
+	if (!file) return
+	photoErr.value = ""
+	photoBusy.value = true
+	try {
+		// Same shrink the EIR photos get. It never throws — a frame it cannot decode is
+		// passed through, and the server rejects it by format there instead.
+		const fd = new FormData()
+		fd.append("file", await compressPhoto(file), file.name)
+		await postPhoto("set_profile_photo", fd)
+		toast.success(labels.profilePhotoSaved)
+	} catch (e) {
+		photoErr.value = labels.profilePhotoFailed
+	} finally {
+		photoBusy.value = false
+	}
+}
+
+async function removePhoto() {
+	photoErr.value = ""
+	photoBusy.value = true
+	try {
+		await postPhoto("remove_profile_photo")
+		toast.success(labels.profilePhotoRemoved)
+	} catch (e) {
+		photoErr.value = labels.profilePhotoFailed
+	} finally {
+		photoBusy.value = false
+	}
+}
 
 // Menu key -> the same title its Home tile uses, so one menu is never named two ways.
 const MENU_LABELS = {

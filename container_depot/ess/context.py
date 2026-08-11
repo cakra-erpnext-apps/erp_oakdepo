@@ -97,14 +97,17 @@ def allowed_menu(user: str = None) -> list:
 
 @frappe.whitelist(methods=["GET"])
 def get_user_context():
-	"""GET /api/v1/ess/user-context — {user, full_name, roles, branches, all_branches}."""
+	"""GET /api/v1/ess/user-context — {user, full_name, user_image, roles, branches, all_branches}."""
 	_require_authenticated_user()
 	user = frappe.session.user
+	info = frappe.db.get_value("User", user, ["full_name", "user_image"], as_dict=True) or {}
 	branches = get_user_branches(user)
 	return {
 		"success": True,
 		"user": user,
-		"full_name": frappe.db.get_value("User", user, "full_name") or user,
+		"full_name": info.get("full_name") or user,
+		# The PWA falls back to initials when this is empty — see ess.profile for the writer.
+		"user_image": info.get("user_image") or None,
 		"roles": frappe.get_roles(user),
 		"branches": branches or [],
 		"all_branches": branches is None,
