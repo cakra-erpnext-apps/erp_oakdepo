@@ -206,7 +206,7 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Gate Entry",
+   "label": "Riwayat Gate",
    "link_to": "Gate Entry",
    "link_type": "DocType",
    "show_arrow": 0,
@@ -823,7 +823,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-07 12:00:00.000000",
+ "modified": "2026-08-10 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
