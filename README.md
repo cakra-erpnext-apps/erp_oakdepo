@@ -72,8 +72,10 @@ docker compose --env-file .env.prod -f compose.prod.yaml exec backend \
 
 **Then assign roles — nothing happens until you do.** No existing user holds any of the
 new roles, so every non-System-Manager account opens `/depot` to an empty state until an
-admin assigns one. Procedure (which role, which companion ERPNext role, branch scoping) is
-in `STRUCTURE.md § Role model → Assigning a user`.
+admin assigns one. Assignment is a single **Role Profile** per user — one profile per app
+role, and the office ones bundle their companion ERPNext role so it cannot be forgotten.
+Procedure (which profile, branch scoping, and what a profile does to a user's other roles)
+is in `STRUCTURE.md § Role model → Assigning a user`.
 
 Post-deploy admin screens live under **Container Depot → Notifikasi & Akses**:
 

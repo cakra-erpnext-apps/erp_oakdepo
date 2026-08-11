@@ -95,25 +95,49 @@ Two things that will bite:
 ### Assigning a user
 
 1. Create the User as **System User**.
-2. Add exactly one field role, or one office role.
-3. For office roles, ALSO add the standard ERPNext companion role — the custom roles
-   carry Container Depot module permissions only:
+2. Set **Role Profile** to the one job that person does. One pick — the profile carries the
+   depot role and, for office roles, the standard ERPNext companion role that goes with it:
 
-   | Office role | Add alongside |
+   | Role Profile | Grants |
    |---|---|
-   | Cashier | `Accounts User` |
-   | Finance | `Accounts Manager` |
-   | Commercial | `Sales Manager`, `Item Manager` |
-   | Warehouse | `Stock User`, `Purchase User` |
+   | Security / Team EIR / Team Kalmar / Team Cleaning / Team Repair / Team Survey / SPV Lapangan | the field role itself |
+   | Admin Ops · Management | the office role itself |
+   | Cashier | `Cashier` + `Accounts User` |
+   | Finance | `Finance` + `Accounts Manager` |
+   | Commercial | `Commercial` + `Sales Manager`, `Item Manager` |
+   | Warehouse | `Warehouse` + `Stock User`, `Purchase User` |
 
-   This is deliberate. The first Custom DocPerm written on a doctype makes Frappe ignore
-   that doctype's shipped permissions entirely, so seeding perms on Sales Invoice or
-   Purchase Order would silently disable ERPNext's own accounting and stock roles.
+   The companion roles are not optional extras and they are not seeded as DocPerms: the
+   custom roles carry Container Depot module permissions **only**. The first Custom DocPerm
+   written on a doctype makes Frappe ignore that doctype's shipped permissions entirely, so
+   granting perms on Sales Invoice or Purchase Order here would silently disable ERPNext's
+   own accounting and stock roles. Bundling them in the profile is how they stop being
+   forgotten.
 
-4. Optionally scope the user to a Branch (User → Branch). Empty = all branches.
+3. Optionally scope the user to a Branch (User → Branch). Empty = all branches.
 
 Nobody holds a role until an admin assigns one, so a new account opens `/depot` and sees
 an empty state until step 2 is done.
+
+#### What a Role Profile does to a user
+
+A profile is **authoritative, not additive**. `User.populate_role_profile_roles` sets the
+user's roles to the union of their assigned profiles and drops everything else — so a role
+that is in no profile the user holds disappears on their next save. Two rules follow:
+
+- A user who needs something outside the model (chat's `Raven User`, a second depot role)
+  needs it **added to a profile**, or must hold no profile at all and be assigned roles by
+  hand. Adding roles to a profile is supported: `install.setup_role_profiles` is **add-only**
+  and never prunes a profile back to the shipped list, so the addition survives every migrate.
+- Editing a profile re-saves every user holding it, in a background job.
+
+`setup_role_profiles` also deletes the six generic bundles ERPNext and HRMS ship
+(`Accounts`, `HR`, `Inventory`, `Manufacturing`, `Purchase`, `Sales`) — they hand out
+standard roles that map to no depot job, and a picker offering both "Sales" and
+"Commercial" is the same wrong-box problem the parked-roles list exists to solve. Both apps
+create them from `after_install` only, so they stay deleted. **A bundle a user still holds
+is kept and reported instead** — deleting it would strip that user's roles with nothing left
+on the account to reconstruct them from.
 
 ### Adding a NEW field role — no deploy needed
 

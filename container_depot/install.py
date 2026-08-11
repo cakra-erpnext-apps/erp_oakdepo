@@ -18,6 +18,9 @@ def after_install():
 	# Role.is_depot_field_role, which does not exist as a column until this runs.
 	setup_custom_fields()
 	setup_permissions()
+	# One Role Profile per app role, so assigning a user is one pick instead of three.
+	# Runs after setup_permissions() because it seeds the Roles the profiles point at.
+	setup_role_profiles()
 	setup_property_setters()
 	ensure_selling_settings()
 	ensure_payment_terms_templates()
@@ -42,6 +45,10 @@ def after_migrate():
 	# setup_permissions() is idempotent (existence-check on Custom DocPerm) so
 	# running it on every migrate just picks up new DocTypes as they're added.
 	setup_permissions()
+	# Role Profiles: one per app role (role + its COMPANION_ROLES). Add-only, so a profile
+	# an admin extended keeps the extra roles; only missing ones are written. Also retires
+	# the six stock ERPNext/HRMS bundles, skipping any a user still holds.
+	setup_role_profiles()
 	# Doctype-level UX tweaks on standard doctypes (Property Setters, idempotent):
 	# Item links show the item name, Item Price 'New' uses the full form.
 	setup_property_setters()
@@ -1122,6 +1129,43 @@ COMPANION_ROLES = {
 	"Warehouse": ["Stock User", "Purchase User"],
 }
 
+# ---------------------------------------------------------------------------
+# Role Profiles — the assignment UX for the model above
+# ---------------------------------------------------------------------------
+# One profile per app role, named after the role, carrying that role plus its
+# COMPANION_ROLES. Step 2+3 of "Assigning a user" (STRUCTURE.md) collapse into one pick:
+# choosing "Cashier" grants `Cashier` AND `Accounts User`, so the companion role can no
+# longer be forgotten. PARKED_ROLES already shrank the picker; this removes the picking.
+#
+# WHAT A PROFILE DOES TO A USER — read before editing one
+# -------------------------------------------------------
+# `User.populate_role_profile_roles` sets the user's roles to the UNION of their assigned
+# profiles and DROPS everything else (frappe/core/doctype/user/user.py). A profile is
+# therefore authoritative, not additive: a role that is not in any of the user's profiles
+# is removed on the next save. Two consequences:
+#
+#   * A user needing something outside the depot model (e.g. `Raven User` for chat, or a
+#     second depot role) must have it added TO a profile, or hold no profile at all.
+#     That is why this seeder is add-only below.
+#   * Editing a profile re-saves every user holding it, in a background job.
+#
+# The seeder is ADD-ONLY on the roles table: it creates a missing profile and adds a
+# missing app role to an existing one, but never removes a role an admin put there. Extra
+# roles on a profile are a supported customisation, not drift to be corrected.
+def _role_profile_roles(role: str) -> list[str]:
+	"""Roles a profile for `role` must carry: the role itself plus its companions."""
+	return [role, *COMPANION_ROLES.get(role, [])]
+
+
+# ERPNext (`erpnext.setup.install.create_default_role_profiles`) and HRMS ship these six
+# as generic module bundles. They are retired here: they hand out standard roles that do
+# not map to any depot job, and a picker with both "Sales" and "Commercial" in it is the
+# same wrong-box problem PARKED_ROLES was written to solve. Both apps create them from
+# `after_install` only, so deleting them does not start a fight with the next migrate.
+#
+# A profile still held by a user is left alone and reported — see `_delete_role_profile`.
+STOCK_ROLE_PROFILES = ["Accounts", "HR", "Inventory", "Manufacturing", "Purchase", "Sales"]
+
 # Container Depot doctypes that record what happened rather than drive it. Read-only for
 # everyone: these are written by hooks, never by hand.
 AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log"}
@@ -1417,6 +1461,65 @@ def ensure_roles_exist():
 		drift = {k: v for k, v in flags.items() if (current.get(k) or 0) != v}
 		if drift:
 			frappe.db.set_value("Role", name, drift)
+
+	frappe.db.commit()
+
+
+def _role_profile_holders(profile: str) -> list[str]:
+	"""Users holding `profile`, via the child table or the deprecated single field."""
+	holders = frappe.get_all(
+		"User Role Profile", filters={"role_profile": profile, "parenttype": "User"}, pluck="parent"
+	)
+	holders += frappe.get_all("User", filters={"role_profile_name": profile}, pluck="name")
+	return sorted(set(holders))
+
+
+def _delete_role_profile(profile: str) -> bool:
+	"""Drop a Role Profile, unless a user still holds it. True if it went."""
+	if not frappe.db.exists("Role Profile", profile):
+		return False
+	holders = _role_profile_holders(profile)
+	if holders:
+		# Deleting it would strip those users' roles on their next save, with nothing left
+		# on the account to say what they used to have. Leave it and say so.
+		print(
+			f"[container_depot] kept Role Profile {profile}: still held by {', '.join(holders)}"
+		)
+		return False
+	frappe.delete_doc("Role Profile", profile, ignore_permissions=True)
+	print(f"[container_depot] deleted Role Profile {profile}")
+	return True
+
+
+def setup_role_profiles():
+	"""Seed one Role Profile per app role and retire the stock ERPNext/HRMS bundles.
+
+	Idempotent, and ADD-ONLY on the roles table: a profile an admin has extended (an extra
+	depot role, `Raven User`, anything) keeps those rows. Only a missing profile, or a
+	missing app-owned role inside an existing one, is written — so this re-asserts the
+	model without undoing customisation. See STOCK_ROLE_PROFILES / _role_profile_roles.
+	"""
+	for profile in STOCK_ROLE_PROFILES:
+		_delete_role_profile(profile)
+
+	for name in FIELD_ROLES + OFFICE_ROLES:
+		wanted = [r for r in _role_profile_roles(name) if frappe.db.exists("Role", r)]
+		if not frappe.db.exists("Role Profile", name):
+			doc = frappe.new_doc("Role Profile")
+			doc.role_profile = name
+			for role in wanted:
+				doc.append("roles", {"role": role})
+			doc.insert(ignore_permissions=True)
+			continue
+		doc = frappe.get_doc("Role Profile", name)
+		missing = [r for r in wanted if r not in {row.role for row in doc.roles}]
+		if not missing:
+			continue
+		for role in missing:
+			doc.append("roles", {"role": role})
+		# save(), not db_insert on the child rows: on_update re-saves every user holding
+		# the profile, which is what actually pushes the new role onto their account.
+		doc.save(ignore_permissions=True)
 
 	frappe.db.commit()
 
