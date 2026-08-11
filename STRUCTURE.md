@@ -134,11 +134,12 @@ Each direction is gated by the Role flag that matches it, and by nothing else.
 
 | From | To | Shown when | Surfaces |
 |---|---|---|---|
-| Desk | `/depot` | **Depot Field Role (PWA)** ticked | `/desk` home tile, sidebar item, workspace Shortcut card, `/apps` tile |
+| Desk | `/depot` | **Depot Field Role (PWA)** ticked | `/desk` home tile, `/apps` tile |
 | PWA | `/desk` | **Desk Access** (`user_type` = System User) | "Buka Desk" in the Home hero + on the empty state |
 
 **Desk → PWA.** The `/desk` **home tile** — labelled **Depot OAK (Mobile)** so it is not
-mistaken for the Container Depot workspace — is the one that does not go through the Page:
+mistaken for the Container Depot workspace — is the primary door, and the one that does not
+go through the Page:
 it is a Desktop Icon of `icon_type: App` (`desktop_icon/depot_oak_(mobile).json`) pointing
 straight at `/depot`. That type is deliberate — `DesktopIcon.is_permitted` honours the user's **Allow
 Modules** list only for `Link` icons, so a Link tile would vanish for an operator whose Allow
@@ -150,19 +151,27 @@ The fixture's **filename must stay `frappe.scrub(label)`**, parentheses included
 migrate `model.sync.remove_orphan_entities` deletes any standard Desktop Icon whose scrubbed
 file is missing, so relabelling without renaming the file makes the tile vanish on deploy.
 
-The other three surfaces point at the Desk Page `depot-pwa`
-(`container_depot/page/depot_pwa/`), which does nothing but redirect. The Page exists purely to
-own a `roles` table: Frappe filters sidebar entries and shortcuts of type `Page` against it,
-whereas a `link_type: URL` row is waved through unconditionally
-(`desk_views.py::is_item_allowed` returns True for "url") and would show the shortcut to
-every Desk user — including office staff who land on an empty PWA. The `/apps` tile is
-gated separately by `www/depot.py::check_app_permission`.
+**Removed 2026-08-11: the sidebar row and the workspace Shortcut card.** The Container Depot
+sidebar and workspace no longer mention the PWA at all. The home tile already lands the
+operator one click from `/depot` — the same place Raven's tile sits — so three doors to one
+app was two too many. `test_container_depot_menus_do_not_advertise_the_pwa` pins their
+absence.
 
-`install.setup_pwa_page_roles()` keeps the Page's roles equal to the roles carrying
-`is_depot_field_role`. It is a **full sync**, so unticking the flag removes the shortcut;
-roles hand-added to the Page are dropped (it is `standard: Yes` — tick the flag instead).
-Ticking a new field role needs one `bench migrate` before the Desk shortcut appears; the
-PWA menu itself is still instant, and so is the `/apps` tile.
+If either is ever restored, restore it as a `link_type: Page` row pointing at `depot-pwa`,
+never a `link_type: URL`. Frappe's `desk_views.py::is_item_allowed` returns True for "url"
+unconditionally, so a URL row shows to every Desk user — including office staff who land on
+an empty PWA. A `Page` carries a `roles` table and IS filtered. That is the whole reason the
+Desk Page `depot-pwa` (`container_depot/page/depot_pwa/`) exists; it does nothing but
+redirect.
+
+With no menu leading there, the Page's `roles` table now guards the page itself — its
+`/app/depot-pwa` URL and its awesomebar entry — which is what an old bookmark hits.
+`install.setup_pwa_page_roles()` keeps those roles equal to the roles carrying
+`is_depot_field_role`. It is a **full sync**, so unticking the flag closes the page; roles
+hand-added to the Page are dropped (it is `standard: Yes` — tick the flag instead). Ticking a
+new field role needs one `bench migrate` before the page opens; the PWA menu itself is still
+instant, and so is the `/apps` tile (gated separately by
+`www/depot.py::check_app_permission`).
 
 `/depot` itself stays open to any logged-in user — see handoff §5.5 and the note in
 `www/depot.py`. The shortcut is an advertisement, not the gate.

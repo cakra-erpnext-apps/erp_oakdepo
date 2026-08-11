@@ -1,7 +1,7 @@
 {
  "app": "container_depot",
  "charts": [],
- "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"scPwa1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Depot PWA (Lapangan)\",\"col\":4}},{\"id\":\"card0\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"card1\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Movement\",\"col\":4}},{\"id\":\"card2\",\"type\":\"card\",\"data\":{\"card_name\":\"Pekerjaan Depo\",\"col\":4}},{\"id\":\"card3\",\"type\":\"card\",\"data\":{\"card_name\":\"Correspondence\",\"col\":4}},{\"id\":\"card4\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing & Pembayaran\",\"col\":4}},{\"id\":\"card5\",\"type\":\"card\",\"data\":{\"card_name\":\"Kontrak & Tarif\",\"col\":4}},{\"id\":\"card6\",\"type\":\"card\",\"data\":{\"card_name\":\"Sparepart & Stock\",\"col\":4}},{\"id\":\"card7\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"card8\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Inspeksi & Cleaning\",\"col\":4}},{\"id\":\"card9\",\"type\":\"card\",\"data\":{\"card_name\":\"Audit\",\"col\":4}},{\"id\":\"card10\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
+ "content": "[{\"id\":\"hdr1\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Container Depot Operations</b></span>\",\"col\":12}},{\"id\":\"card0\",\"type\":\"card\",\"data\":{\"card_name\":\"Bookings\",\"col\":4}},{\"id\":\"card1\",\"type\":\"card\",\"data\":{\"card_name\":\"Gate & Movement\",\"col\":4}},{\"id\":\"card2\",\"type\":\"card\",\"data\":{\"card_name\":\"Pekerjaan Depo\",\"col\":4}},{\"id\":\"card3\",\"type\":\"card\",\"data\":{\"card_name\":\"Correspondence\",\"col\":4}},{\"id\":\"card4\",\"type\":\"card\",\"data\":{\"card_name\":\"Invoicing & Pembayaran\",\"col\":4}},{\"id\":\"card5\",\"type\":\"card\",\"data\":{\"card_name\":\"Kontrak & Tarif\",\"col\":4}},{\"id\":\"card6\",\"type\":\"card\",\"data\":{\"card_name\":\"Sparepart & Stock\",\"col\":4}},{\"id\":\"card7\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Data\",\"col\":4}},{\"id\":\"card8\",\"type\":\"card\",\"data\":{\"card_name\":\"Master Inspeksi & Cleaning\",\"col\":4}},{\"id\":\"card9\",\"type\":\"card\",\"data\":{\"card_name\":\"Audit\",\"col\":4}},{\"id\":\"card10\",\"type\":\"card\",\"data\":{\"card_name\":\"Reports\",\"col\":4}}]",
  "creation": "2026-07-02 08:32:46.648541",
  "custom_blocks": [],
  "docstatus": 0,
@@ -649,7 +649,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-08-11 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
@@ -660,15 +660,7 @@
  "quick_lists": [],
  "roles": [],
  "sequence_id": 0.0,
- "shortcuts": [
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Depot PWA (Lapangan)",
-   "type": "Page",
-   "link_to": "depot-pwa"
-  }
- ],
+ "shortcuts": [],
  "title": "Container Depot",
  "type": "Workspace"
 }

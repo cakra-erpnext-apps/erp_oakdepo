@@ -161,20 +161,26 @@ class TestRoleMenu(FrappeTestCase):
 		finally:
 			frappe.set_user("Administrator")
 
-	def test_pwa_shortcut_hidden_from_desk_users_without_a_field_role(self):
-		"""The Desk-side shortcuts to /depot reach only accounts that hold a field role.
+	def test_container_depot_menus_do_not_advertise_the_pwa(self):
+		"""The Container Depot sidebar and workspace carry no /depot entry at all.
 
-		Covers all three surfaces at once, because they are one decision expressed three
-		times: the sidebar entry, the workspace Shortcut card, and the /apps tile. The first
-		two are filtered by the ``depot-pwa`` Page's roles table (seeded from
-		``Role.is_depot_field_role`` by install.setup_pwa_page_roles), the third by
-		``www.depot.check_app_permission``.
+		Removed 2026-08-11: the /desk **home tile** (Desktop Icon "Depot OAK (Mobile)", the
+		Raven-style App icon covered by the next test) already puts the PWA one click from
+		the landing screen, so the sidebar row and the workspace Shortcut card were two extra
+		doors to the same app.
 
-		This is what a plain ``link_type: URL`` row could not do — Frappe's
-		``is_item_allowed`` waves every URL item through, so the shortcut showed to every
-		Desk user including office staff with no PWA menu at all.
+		Asserted for a field-role user — the account that USED to see both. Anyone else seeing
+		them was already impossible, so proving their absence for the one user who qualified
+		proves it for everybody.
 
-		Both probes carry System Manager: without Desk access there is no sidebar to test.
+		The guard matters because of how the entries would come back. A ``link_type: URL``
+		row is the obvious way to re-add one and the wrong one: Frappe's ``is_item_allowed``
+		waves every URL item through unconditionally, so it would show to every Desk user
+		including office staff whose PWA is empty. That is why the removed entries pointed at
+		the ``depot-pwa`` Page — it owns a ``roles`` table and IS filtered. Re-add through the
+		Page or not at all.
+
+		The probe carries System Manager: without Desk access there is no sidebar to read.
 		"""
 		from frappe.boot import get_sidebar_items
 		from frappe.desk.desktop import Workspace
@@ -205,13 +211,32 @@ class TestRoleMenu(FrappeTestCase):
 
 		self.assertEqual(
 			_surfaces(DESK_USERS["Team Cleaning"]),
-			{"sidebar": True, "shortcut": True, "apps_tile": True},
-			"a field role that also reaches the Desk gets the shortcut everywhere",
+			{"sidebar": False, "shortcut": False, "apps_tile": True},
+			"the Desk menus are clean; the /apps tile is the surviving pointer",
 		)
-		self.assertEqual(
-			_surfaces(DESK_USERS["Cashier"]),
-			{"sidebar": False, "shortcut": False, "apps_tile": False},
+		self.assertFalse(
+			_surfaces(DESK_USERS["Cashier"])["apps_tile"],
 			"office staff are never pointed at a PWA that would be empty for them",
+		)
+
+	def test_pwa_page_stays_shut_to_office_staff(self):
+		"""``/app/depot-pwa`` itself is still role-gated, now that no menu leads to it.
+
+		With the sidebar row and the Shortcut card gone, the Page's ``roles`` table is no
+		longer decorating a menu — it is the only thing standing between an old bookmark and
+		an office user staring at an empty PWA. ``install.setup_pwa_page_roles`` keeps it
+		equal to the roles carrying ``is_depot_field_role``, so an empty table here would
+		read as "everyone" and silently open the page to the whole Desk.
+		"""
+		roles = set(frappe.get_all("Has Role", filters={"parenttype": "Page", "parent": PWA_PAGE}, pluck="role"))
+		self.assertTrue(roles, "an empty roles table means EVERYONE — the wrong way to fail")
+		flagged = set(frappe.get_all("Role", filters={"is_depot_field_role": 1}, pluck="name"))
+		# Subset, not equality: the sync runs on migrate, so a role flagged mid-suite (or
+		# mid-session by an admin) is legitimately not on the page yet. What must never
+		# happen is the reverse — a role on the page that does not carry the flag, which is
+		# how an office account would quietly acquire the door.
+		self.assertLessEqual(
+			roles, flagged, "every role on the page carries the flag; none was hand-added"
 		)
 
 	def test_desk_home_icon_survives_a_blocked_module(self):
