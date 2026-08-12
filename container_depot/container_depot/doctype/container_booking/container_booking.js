@@ -71,16 +71,27 @@ frappe.ui.form.on('Container Booking', {
 		if (!frm.is_new() && frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			frm.add_custom_button(__('Revert to Draft'), () => _confirm_revert(frm));
 		}
-		// A confirmed booking that bills something but has no live invoice is stuck
+		// A confirmed CASH booking that bills something but has no live invoice is stuck
 		// unbilled — its invoice was cancelled (which unlinks it, see
 		// resync_booking_on_invoice_cancel). Offer a fresh draft invoice rather than
 		// amending the dead one, which the booking would not follow.
+		//
+		// TOP is excluded, and the exclusion is load-bearing: "submitted, charges > 0, no
+		// sales_invoice" is the NORMAL resting state of a postpaid booking waiting for the
+		// monthly run, not a broken one — _auto_invoice skips TOP on purpose. Without this
+		// check the button showed on every unbilled TOP booking, and pressing it wrote a
+		// standalone invoice into `sales_invoice`, which is exactly the field
+		// consolidated_billing.bill_customer requires to be EMPTY. The charge would drop
+		// out of the customer's monthly statement silently. A TOP booking never needs this
+		// button: _unmark_billed already clears the link when a consolidated invoice is
+		// cancelled, and the next bill_customer picks the booking back up on its own.
 		if (
 			!frm.is_new() &&
 			may_write &&
 			_finance_on() &&
 			frm.doc.docstatus === 1 &&
 			frm.doc.booking_status !== 'Cancelled' &&
+			frm.doc.payment_type !== 'TOP' &&
 			!frm.doc.sales_invoice &&
 			frm.doc.charges_total > 0
 		) {

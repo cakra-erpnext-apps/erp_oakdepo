@@ -1242,6 +1242,19 @@ def regenerate_invoice(booking):
 	doc = frappe.get_doc("Container Booking", booking)
 	if doc.docstatus != 1 or doc.booking_status == "Cancelled":
 		frappe.throw(_("Only a confirmed booking can regenerate its invoice."))
+	if doc.payment_type == "TOP":
+		# Not cosmetic — this is the money guard. A per-booking invoice fills
+		# ``sales_invoice``, and consolidated_billing.bill_customer only picks up TOP
+		# bookings where that field is EMPTY, so the charge would vanish from the
+		# customer's monthly statement without anyone being told. TOP has no legitimate
+		# use for this endpoint: a cancelled consolidated invoice already unlinks its
+		# sources (_unmark_billed), which is what puts the booking back in the next run.
+		frappe.throw(
+			_(
+				"Booking TOP ditagih lewat invoice bulanan, bukan per booking. "
+				"Jalankan penagihan konsolidasi untuk {0} — booking ini otomatis ikut."
+			).format(doc.customer)
+		)
 	cur = doc.sales_invoice
 	if cur and frappe.db.exists("Sales Invoice", cur) and frappe.db.get_value("Sales Invoice", cur, "docstatus") != 2:
 		frappe.throw(_("Booking still has a live Sales Invoice {0}. Cancel it first.").format(cur))
