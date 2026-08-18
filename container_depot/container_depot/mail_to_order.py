@@ -1,19 +1,35 @@
 """Email → Order bridge.
 
-An incoming email (a ``Communication`` of medium Email, ``Received``) is the paper
-trail behind most depot work: a customer mails a booking request, a repair estimate
-reply, a survey ask, a cleaning request. This module lets an operator turn that email
-into a draft order (Container Booking / Repair Order / Survey Order / Cleaning Order)
-straight from the Communication form, and pull new mail on demand — the desk mirror of
-the Email Account "Pull Emails" button, but scoped to the accounts set on the user.
+An incoming email (a ``Communication`` of medium Email, ``Received``) is the paper trail
+behind the two things a customer books by mail: tanks coming in or going out ("mohon
+dibooking 5 tank berikut", "kami ambil tank ini minggu depan"). This module lets an
+operator turn that email into a **Container Booking** or a **Gate Out Plan** straight from
+the Communication form, and pull new mail on demand — the desk mirror of the Email Account
+"Pull Emails" button, but scoped to the accounts set on the user.
 
-Nothing here creates a record on its own: ``get_order_prefill`` only computes what to
-pre-fill; the operator opens a fresh, unsaved order form with those values and completes
-the mandatory bits (container / items) before saving. So the email stays the *reference*
-and no half-empty drafts leak into the DB.
+Only those two: Cleaning / M&R / Survey are work the depot decides on after inspecting a
+tank, not something a customer asks for by mail. They used to be offered here and are still
+*reported* by :func:`linked_orders`, so an email that spawned one of them back then still
+says so.
+
+One email almost always names *several* tanks, so everything here is container-list shaped:
+
+* :func:`scan_email_containers` reads the container numbers straight out of the mail body,
+  so the operator starts from a filled list instead of retyping from the message.
+* :func:`resolve_containers` says, per number, whether a Container master exists, what state
+  it is in, and whether the booking's own direction gate would refuse it.
+* :func:`parse_container_file` / :func:`download_container_template` do the same from an
+  .xlsx — and refuse any number the Container master does not already know.
+* :func:`get_order_prefill` seeds a fresh order form, **including its container child
+  table** (booking items / gate-out lines).
+
+Nothing here writes: the operator gets a fresh, unsaved form and saves it themselves, so no
+half-empty drafts leak into the DB.
 """
 
 from __future__ import annotations
+
+import re
 
 import frappe
 from frappe import _
@@ -24,26 +40,22 @@ from frappe.utils import strip_html_tags
 # doctype has no party field (repair / cleaning are container-centric).
 ORDER_MAP = {
 	"Booking": ("Container Booking", "customer"),
-	"M&R": ("Repair Order", None),
-	"Survey": ("Survey Order", "paid_to"),
-	"Cleaning": ("Cleaning Order", None),
 	# Lift-on (gate-out) prep priority — the customer emails which tanks they'll pick up.
 	# The sender resolves to the tank owner (principal); no pricing, no invoice.
 	"Gate Out": ("Gate Out Plan", "principal"),
 }
 
-# Where the email body lands. Survey Order has no `remarks` — it uses `notes`.
+# Where the email body lands. Gate Out Plan has no `remarks` — it uses `notes`.
 _NOTE_FIELD = {
 	"Container Booking": "remarks",
-	"Repair Order": "remarks",
-	"Cleaning Order": "remarks",
-	"Survey Order": "notes",
 	"Gate Out Plan": "notes",
 }
 
 # The link back to the source email. Deliberately NOT `reff_doc`: that field is the
 # vendor's own document number (it propagates booking → bon → EIR → Cleaning / M&R and
-# is hand-entered), so stuffing an email reference in there would corrupt that chain.
+# is hand-entered), so stuffing an email reference in there would corrupt that chain. The
+# dialog does offer `reff_doc` as its own input — but only ever carrying what the operator
+# read off the mail and typed, never an internal reference.
 # `reff_email` is read-only and only ever written here.
 _EMAIL_REF_FIELD = "reff_email"
 
@@ -51,8 +63,12 @@ _SNIPPET_LEN = 600
 
 # How each order is summarised back on the email that spawned it: (state field, the one
 # field that identifies it at a glance). The state field is NOT shared — Container Booking
-# is submittable and calls it ``booking_status``. Keyed by doctype, and every doctype in
-# ORDER_MAP must appear here: a new order type has to say how it is summarised, rather than
+# is submittable and calls it ``booking_status``.
+#
+# Deliberately WIDER than ORDER_MAP: this is the read side. Cleaning / M&R / Survey can no
+# longer be raised from an email, but ones raised back when they could are still linked to
+# theirs, and an email that already became work must not look untouched. Every doctype in
+# ORDER_MAP has to appear here too — a new order type says how it is summarised rather than
 # quietly going missing from the email's list.
 _ORDER_SUMMARY = {
 	"Container Booking": ("booking_status", "customer"),
@@ -61,6 +77,318 @@ _ORDER_SUMMARY = {
 	"Cleaning Order": ("status", "container_no"),
 	"Gate Out Plan": ("status", "principal"),
 }
+
+# Where each order keeps its containers. Both orders raised from here are table-shaped —
+# one order carries the whole email's list. Maps doctype -> the Table fieldname.
+_CONTAINER_TABLE = {
+	"Container Booking": "items",
+	"Gate Out Plan": "containers",
+}
+
+
+# ---------------------------------------------------------------------------
+# container numbers
+# ---------------------------------------------------------------------------
+
+# ISO-ish tank number: 4 letters + 6-7 digits, tolerating the space / dash people type
+# ("TEMU 1234567", "TEMU-1234567"). Used only to *suggest* numbers found in a mail body —
+# the Container master itself does not length-check (real depot data carries odd numbers),
+# so anything the operator types by hand is still accepted verbatim.
+_CONTAINER_RE = re.compile(r"\b([A-Z]{4})[\s\-]?(\d{6,7})\b")
+
+
+def _email_text(html: str | None) -> str:
+	"""Flatten mail HTML into searchable, readable text.
+
+	Every tag becomes a space first: container numbers arrive as one ``<li>`` (or one
+	``<td>``) per tank, and dropping the tags without leaving a separator glues
+	``…0001MTOU…`` into a single run that neither the operator nor the number regex can
+	read. Runs of blank space are collapsed back so the snippet quoted into the order's
+	remarks still looks like prose.
+	"""
+	text = re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ")
+	text = strip_html_tags(text)
+	text = re.sub(r"[ \t]{2,}", " ", text)
+	return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def _normalise(number: str | None) -> str:
+	return re.sub(r"[\s\-]+", "", (number or "")).strip().upper()
+
+
+def parse_container_input(raw) -> list[str]:
+	"""Turn whatever the operator pasted into a de-duplicated list of container numbers.
+
+	Accepts a JSON/py list or a free-text blob. The blob is split on line breaks, commas,
+	semicolons and tabs — *not* on plain spaces, because "TEMU 1234567" is one number, not
+	two. A line that contains recognisable container numbers yields those matches (so
+	"ABCU1234567 ABCU1234568" on one line still gives two); any other non-empty line is
+	taken verbatim as a single number, which is what lets non-ISO depot numbers through.
+	"""
+	if isinstance(raw, str):
+		raw = raw.strip()
+		if raw.startswith("["):
+			raw = frappe.parse_json(raw)
+	if isinstance(raw, (list, tuple)):
+		parts = [str(p) for p in raw]
+	else:
+		parts = re.split(r"[\n\r,;\t]+", str(raw or ""))
+
+	out: list[str] = []
+	for part in parts:
+		found = [m.group(1) + m.group(2) for m in _CONTAINER_RE.finditer(part.upper())]
+		candidates = found or ([part] if part.strip() else [])
+		for c in candidates:
+			c = _normalise(c)
+			if c and c not in out:
+				out.append(c)
+	return out
+
+
+# Values the dialog's container grid may carry per row (as opposed to once for the whole
+# order): the cargo this tank last held, which is per-tank by nature. Kept as a tuple so
+# the client can never post an arbitrary field into a child row.
+_ROW_FIELDS = ("cargo",)
+
+# Where such a row field is actually allowed to land. Only a booking line has a cargo of
+# its own; on every other order the column is context read off the Container master.
+_PER_ROW_FIELDS = {"Container Booking": ("cargo",)}
+
+
+def parse_container_rows(raw) -> list[dict]:
+	"""Normalise the container input into ``[{container_no, **row fields}]``.
+
+	The dialog sends its grid: a list of row objects carrying the picked ``container``, the
+	typed ``container_no`` and whatever per-row field applies. Older / scripted callers send
+	a pasted blob or a plain list of numbers, which :func:`parse_container_input` handles —
+	both end up in the same shape here so the rest of the module only knows one.
+	"""
+	if isinstance(raw, str) and raw.strip().startswith("["):
+		raw = frappe.parse_json(raw)
+	if not isinstance(raw, (list, tuple)) or not any(isinstance(r, dict) for r in raw):
+		return [{"container_no": n} for n in parse_container_input(raw)]
+
+	out, seen = [], set()
+	for item in raw:
+		if isinstance(item, dict):
+			number = _normalise(item.get("container_no") or item.get("container"))
+			extra = {f: item[f] for f in _ROW_FIELDS if item.get(f)}
+		else:
+			number = _normalise(item)
+			extra = {}
+		if not number or number in seen:
+			continue
+		seen.add(number)
+		out.append({"container_no": number, **extra})
+	return out
+
+
+def _resolve_rows(numbers: list[str]) -> list[dict]:
+	"""Look each container number up in the master, keeping the operator's order."""
+	rows = []
+	for number in numbers:
+		master = frappe.db.get_value(
+			"Container",
+			{"container_no": number},
+			["name", "status", "principal", "depot", "last_cargo"],
+			as_dict=True,
+		)
+		rows.append(
+			{
+				"container_no": number,
+				"container": master.name if master else None,
+				"status": master.status if master else None,
+				"principal": master.principal if master else None,
+				"depot": master.depot if master else None,
+				"last_cargo": master.last_cargo if master else None,
+				"known": bool(master),
+			}
+		)
+	return rows
+
+
+def _rows_for(containers) -> list[dict]:
+	"""Resolve the caller's container input against the master, keeping its per-row fields."""
+	rows = parse_container_rows(containers)
+	resolved = _resolve_rows([r["container_no"] for r in rows])
+	for row, info in zip(rows, resolved):
+		info.update({k: v for k, v in row.items() if k != "container_no"})
+	return resolved
+
+
+def _short_block(mismatch: dict) -> str:
+	"""One grid cell's worth of why this tank cannot go this direction."""
+	status = mismatch.get("status") or "-"
+	if mismatch.get("direction") == "Tank In":
+		return _("{0} · sudah ada di depo").format(status)
+	open_orders = mismatch.get("open_orders") or []
+	if open_orders:
+		return _("{0} · {1} order belum selesai").format(status, len(open_orders))
+	return _("{0} · tidak ada di depo").format(status)
+
+
+@frappe.whitelist()
+def resolve_containers(containers, order_type: str | None = None, direction: str | None = None) -> list[dict]:
+	"""Per container number: does a master exist, what state is it in, and may it go this
+	way at all?
+
+	Feeds the dialog's grid so the operator sees the problem *before* the order is built.
+	The two directions are not symmetric, and that asymmetry is the whole point:
+
+	* **Tank In** may name a tank with no master — it is announcing an arrival, and the
+	  booking mints the Container on save (``ContainerBooking._resolve_containers``). That
+	  is what ``will_create`` flags. What it may NOT name is a tank already in the depot.
+	* **Tank Out** must point at an existing master that is actually free to leave. An
+	  unknown number is refused outright here; a known one is judged by the booking's own
+	  gate, so the dialog and the submit can never disagree.
+
+	That gate is ``status_direction_warnings`` (→ ``_find_status_mismatches``), deliberately
+	not a plain ``status == "Available"`` test: readiness is the ABSENCE of open work, so a
+	tank sitting at ``In_Depot`` with nothing left to finish is free to go, while an
+	``Available`` one with a reopened order is not.
+	"""
+	rows = _resolve_rows(parse_container_input(containers))
+	is_booking = order_type == "Booking"
+	direction = direction or "Tank In"
+	for row in rows:
+		row["will_create"] = bool(is_booking and direction == "Tank In" and not row["known"])
+		row["blocked"] = None
+	if not is_booking:
+		return rows
+
+	if direction == "Tank Out":
+		for row in rows:
+			if not row["known"]:
+				row["blocked"] = _("belum ada di master — Tank Out wajib pilih dari master")
+
+	from container_depot.container_depot.doctype.container_booking.container_booking import (
+		status_direction_warnings,
+	)
+
+	mismatches = {
+		m["container_no"]: m
+		for m in status_direction_warnings(
+			direction=direction,
+			containers=[
+				{"container": r["container"], "container_no": r["container_no"]}
+				for r in rows
+				if r["known"]
+			],
+		)
+	}
+	for row in rows:
+		hit = mismatches.get(row["container_no"])
+		if hit:
+			row["blocked"] = _short_block(hit)
+	return rows
+
+
+@frappe.whitelist()
+def scan_email_containers(communication: str) -> list[dict]:
+	"""Container numbers mentioned in the email (subject + body), already resolved.
+
+	Retyping ten tank numbers out of a mail is exactly the step that produces typos, so
+	the dialog opens with this list already in the box. It is a suggestion: the operator
+	edits the list freely before anything is built.
+	"""
+	frappe.has_permission("Communication", "read", doc=communication, throw=True)
+	comm = frappe.get_doc("Communication", communication)
+	text = " ".join(filter(None, [comm.subject, _email_text(comm.content)])).upper()
+	numbers = []
+	for match in _CONTAINER_RE.finditer(text):
+		number = match.group(1) + match.group(2)
+		if number not in numbers:
+			numbers.append(number)
+	rows = _resolve_rows(numbers)
+	for row in rows:
+		row["will_create"] = not row["known"]
+	return rows
+
+
+_FILE_HEADERS = {"container", "container no", "kontainer", "no kontainer", "no container"}
+
+
+@frappe.whitelist(methods=["GET"])
+def download_container_template():
+	"""The .xlsx the dialog's importer reads back: ``Container`` , ``Last Cargo``.
+
+	Two columns, not the booking template's three — the dialog does not ask for a condition,
+	and a third column here would only be a column :func:`parse_container_file` ignores. The
+	Last Cargo cells are a dropdown onto the Cargo master (written to the second sheet), so
+	a filled-in template cannot carry a cargo spelling the import then has to reject.
+	"""
+	from container_depot.xlsx_utils import cargo_sheet, finish_sheet, new_sheet
+
+	headers = ["Container", "Last Cargo"]
+	output, wb, ws, fmts = new_sheet("Template", headers, [24, 28])
+	ws.write_row(1, 0, ["ABCD1234567", ""])
+	n_cargo = cargo_sheet(wb, fmts)
+	if n_cargo:
+		# Range, not an inline list: Excel caps an inline source at 255 characters, and the
+		# cargo master is far past that.
+		ws.data_validation(
+			1, 1, 1000, 1, {"validate": "list", "source": f"=Cargo!$A$2:$A${n_cargo + 1}"}
+		)
+	finish_sheet(output, wb, ws, "container_email_template.xlsx", 1, len(headers) - 1)
+
+
+@frappe.whitelist()
+def parse_container_file(file_url: str) -> dict:
+	"""Read an uploaded .xlsx into dialog grid rows: ``Container`` , ``Last Cargo``.
+
+	Deliberately its own parser rather than the booking grid's ``parse_container_xlsx``:
+	that one reads column B as the line's *condition* and drops any row whose value is not
+	one of the three conditions — which is exactly what a file listing cargo would hit. The
+	dialog asks for the two things an email actually states, so it reads those two.
+
+	A number with no Container master is **refused**, not imported: a spreadsheet is exactly
+	where a typo'd tank number comes from, and letting one through would either mint a
+	phantom master or ride along as a number nobody can act on. Those numbers come back in
+	``skipped`` so the operator is told which lines did not make it, and creating the master
+	is a deliberate step taken in Container (or "+ Create New" on the picker) — never a
+	side effect of reading a file.
+
+	Pure read, like everything else in the prefill path. An unknown cargo is milder: the
+	tank is real, so the row is kept with the cargo left blank and the spelling reported in
+	``errors``.
+	"""
+	from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+
+	if not file_url:
+		frappe.throw(_("Belum ada file yang dipilih."))
+
+	rows, skipped, errors, seen = [], [], [], set()
+	for cells in read_xlsx_file_from_attached_file(file_url=file_url) or []:
+		if not cells:
+			continue
+		number = _normalise(str(cells[0])) if cells[0] is not None else ""
+		if not number or number.lower() in _FILE_HEADERS:
+			continue
+		if number in seen:
+			continue
+		seen.add(number)
+		container = frappe.db.get_value("Container", {"container_no": number})
+		if not container:
+			skipped.append(number)
+			continue
+		raw_cargo = str(cells[1]).strip() if len(cells) > 1 and cells[1] is not None else ""
+		cargo = None
+		if raw_cargo:
+			cargo = frappe.db.get_value("Cargo", {"cargo_name": raw_cargo})
+			if not cargo:
+				errors.append(_("{0}: cargo tidak dikenal ({1})").format(number, raw_cargo))
+		rows.append({"container_no": number, "container": container, "cargo": cargo})
+	return {"rows": rows, "skipped": skipped, "errors": errors}
+
+
+def _unanimous(rows: list[dict], key: str) -> str | None:
+	"""The one value shared by every resolved container, or None when they disagree.
+
+	Used to seed depot / principal: five tanks of the same owner should not make the
+	operator pick that owner by hand, but a mixed list must not guess.
+	"""
+	values = {r.get(key) for r in rows if r.get(key)}
+	return values.pop() if len(values) == 1 else None
 
 
 def _resolve_customer(email: str | None) -> str | None:
@@ -92,7 +420,7 @@ def _resolve_customer(email: str | None) -> str | None:
 
 def _email_reference(comm) -> str:
 	"""Human-readable provenance line stuffed into the order's remarks/notes."""
-	body = strip_html_tags(comm.content or "").strip()
+	body = _email_text(comm.content).strip()
 	if len(body) > _SNIPPET_LEN:
 		body = body[:_SNIPPET_LEN].rstrip() + "…"
 	lines = [
@@ -106,13 +434,50 @@ def _email_reference(comm) -> str:
 	return "\n".join(lines)
 
 
-@frappe.whitelist()
-def get_order_prefill(communication: str, order_type: str) -> dict:
-	"""Return {doctype, values} to seed a new order form from an email.
+def _child_rows(doctype: str, rows: list[dict], options: dict) -> list[dict]:
+	"""Build the container child rows for a table-shaped order.
 
-	Read-only: creates nothing. The client opens a fresh order form pre-filled with
-	these values (customer resolved from sender, email content copied into remarks,
-	source email linked via the read-only `reff_email`).
+	A row carries the ``container`` link when the master exists and always carries
+	``container_no``; a Tank In booking turns a bare number into a pre-arrival master on
+	save. The per-doctype extras (condition, unload date, lift-on date, survey date) are
+	the row-level *mandatory* fields — asking for them once in the dialog beats filling
+	the same value into twenty grid rows by hand.
+	"""
+	defaults: dict[str, dict] = {
+		"Container Booking": {
+			# Condition is mandatory on a booking line but is not something an email states,
+			# so every row starts Empty Dirty and is corrected on the booking form itself —
+			# which is why the dialog does not ask for it.
+			"condition": "EMPTY DIRTY",
+			"tanggal_bongkar": options.get("tanggal_bongkar"),
+		},
+		"Gate Out Plan": {"target_lift_on": options.get("target_lift_on")},
+	}[doctype]
+
+	out = []
+	for row in rows:
+		child = {"container_no": row["container_no"]}
+		if row["container"]:
+			child["container"] = row["container"]
+		child.update({k: v for k, v in defaults.items() if v})
+		# What the grid carries per row (picked there, or read out of the imported file),
+		# and only onto a doctype whose lines actually have the field.
+		child.update({k: row[k] for k in _PER_ROW_FIELDS.get(doctype, ()) if row.get(k)})
+		out.append(child)
+	return out
+
+
+@frappe.whitelist()
+def get_order_prefill(communication: str, order_type: str, containers=None, options=None) -> dict:
+	"""Return {doctype, values, table} to seed a new order form from an email.
+
+	Read-only: creates nothing. The client opens a fresh order form pre-filled with these
+	values (customer resolved from sender, email content copied into remarks, source email
+	linked via the read-only `reff_email`) plus one container row per number the operator
+	listed, so a ten-tank email becomes a ten-line booking in one step.
+
+	``table`` is None only when no container was listed at all — opening a blank order form
+	from an email is allowed.
 	"""
 	target = ORDER_MAP.get(order_type)
 	if not target:
@@ -127,17 +492,49 @@ def get_order_prefill(communication: str, order_type: str) -> dict:
 		)
 
 	comm = frappe.get_doc("Communication", communication)
+	options = frappe.parse_json(options) if isinstance(options, str) else (options or {})
+	rows = _rows_for(containers)
 
-	values: dict[str, str] = {
+	values: dict = {
 		_NOTE_FIELD[doctype]: _email_reference(comm),
 		_EMAIL_REF_FIELD: comm.name,
 	}
 	if customer_field:
-		customer = _resolve_customer(comm.sender)
-		if customer:
-			values[customer_field] = customer
+		values[customer_field] = _resolve_customer(comm.sender) or _unanimous(rows, "principal")
+		if not values[customer_field]:
+			values.pop(customer_field)
 
-	return {"doctype": doctype, "values": values}
+	# The Tank Owner picked in the dialog (where it also scopes the container picker). An
+	# explicit pick beats both the sender lookup and the unanimous guess — and on a Tank In
+	# booking it is who the pre-arrival Container masters are born under. Only where the
+	# field is a real party Link: on an M&R `principal` is a Data mirror of the container's.
+	principal_df = frappe.get_meta(doctype).get_field("principal")
+	if options.get("principal") and principal_df and principal_df.fieldtype == "Link":
+		values["principal"] = options["principal"]
+
+	# The depot is the same for every tank in a normal email; a mixed list is left blank.
+	depot = _unanimous(rows, "depot")
+	if depot and frappe.get_meta(doctype).has_field("depot"):
+		values["depot"] = depot
+	if doctype == "Container Booking" and options.get("direction"):
+		values["direction"] = options["direction"]
+	# The customer's own document number for this job, as printed on the mail. This is the
+	# one place it may be written from here: `reff_doc` is hand-entered by design (it
+	# propagates booking → bon → EIR → Cleaning / M&R), and the operator is typing it — the
+	# email link itself still lives in the read-only `reff_email`.
+	if options.get("reff_doc") and frappe.get_meta(doctype).has_field("reff_doc"):
+		values["reff_doc"] = options["reff_doc"]
+
+	table = None
+	fieldname = _CONTAINER_TABLE.get(doctype)
+	if fieldname and rows:
+		table = {
+			"fieldname": fieldname,
+			"doctype": frappe.get_meta(doctype).get_field(fieldname).options,
+			"rows": _child_rows(doctype, rows, options),
+		}
+
+	return {"doctype": doctype, "values": values, "table": table}
 
 
 @frappe.whitelist()
@@ -149,16 +546,18 @@ def linked_orders(communication: str) -> list[dict]:
 	whether it had already been turned into work, or into how many orders. This answers that
 	from the Communication form (see ``public/js/communication.js``).
 
+	Covers every order type that ever had this bridge, not just the two it can raise today
+	(see ``_ORDER_SUMMARY``) — an email that became a Cleaning Order last year still says so.
+
 	Ordered by order type, then newest first. Read permission is checked per doctype and the
 	rows go through ``get_list``, so a user is never shown an order they could not open.
 	"""
 	frappe.has_permission("Communication", "read", doc=communication, throw=True)
 
 	out = []
-	for doctype, _customer_field in ORDER_MAP.values():
+	for doctype, (state_field, subtitle_field) in _ORDER_SUMMARY.items():
 		if not frappe.has_permission(doctype, "read"):
 			continue
-		state_field, subtitle_field = _ORDER_SUMMARY[doctype]
 		rows = frappe.get_list(
 			doctype,
 			filters={_EMAIL_REF_FIELD: communication},
