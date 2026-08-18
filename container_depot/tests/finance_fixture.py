@@ -28,7 +28,17 @@ def require_finance(case, enabled: bool = True):
 	mid-test would otherwise pin whatever the switch happened to be at that moment.
 	"""
 	before = frappe.db.get_single_value(finance.SETTINGS, "enable_finance", cache=False)
-	frappe.db.set_single_value(finance.SETTINGS, "enable_finance", 1 if enabled else 0)
+	want = 1 if enabled else 0
+	if cint(before) == want:
+		# Already how the test wants it: nothing to change, nothing to restore — and, more
+		# importantly, nothing to COMMIT. FrappeTestCase rolls the DB back once per CLASS,
+		# not per test (`addClassCleanup(_rollback_db)`), so a commit in setUp makes every
+		# row the previous tests wrote permanent. That is how TestGate was leaving six
+		# Container Bookings behind on every suite run.
+		finance.clear_cache()
+		return
+
+	frappe.db.set_single_value(finance.SETTINGS, "enable_finance", want)
 	frappe.db.commit()
 	finance.clear_cache()
 

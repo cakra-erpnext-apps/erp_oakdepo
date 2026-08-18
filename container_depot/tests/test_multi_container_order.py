@@ -88,7 +88,57 @@ def _states(codes):
 	return [frappe.db.get_value("Booking Code", c, "state") for c in codes]
 
 
+def purge_mc_data():
+	"""Remove every record this module created for ``MC_CUSTOMER``, and commit the removal.
+
+	FrappeTestCase does NOT roll back per test — the rollback is registered once per class
+	(``addClassCleanup(_rollback_db)``). So the moment anything commits mid-class (fixtures
+	do), every row written so far becomes permanent, and this module's bookings/codes/bons
+	pile up on the site one set per suite run. Call it from ``tearDownClass``.
+
+	The commit at the end is deliberate: class cleanups run AFTER ``tearDownClass``, so an
+	uncommitted delete would be undone by that rollback and the leaked rows would come back.
+	Raw deletes (not ``delete_doc``) because Container Booking / Order * refuse ordinary
+	deletion, and because the whole related set goes together so no dangling link is left.
+	"""
+	bookings = frappe.get_all("Container Booking", filters={"customer": MC_CUSTOMER}, pluck="name")
+	containers = frappe.get_all("Container", filters={"principal": MC_CUSTOMER}, pluck="name")
+	scope = [
+		("Inspection", {"container": ["in", containers]} if containers else None),
+		("Cleaning Order", {"container": ["in", containers]} if containers else None),
+		("Repair Order", {"container": ["in", containers]} if containers else None),
+		("Order Bongkar", {"booking": ["in", bookings]} if bookings else None),
+		("Order Muat", {"booking": ["in", bookings]} if bookings else None),
+		("Booking Code", {"booking": ["in", bookings]} if bookings else None),
+		("Container Booking", {"customer": MC_CUSTOMER}),
+		("Container", {"principal": MC_CUSTOMER}),
+		("Depot Contract", {"customer": MC_CUSTOMER}),
+	]
+	for doctype, filters in scope:
+		if filters is None:
+			continue
+		try:
+			names = frappe.get_all(doctype, filters=filters, pluck="name")
+			children = [df.options for df in frappe.get_meta(doctype).get_table_fields()]
+		except Exception:
+			continue
+		for name in names:
+			for child in children:
+				frappe.db.delete(child, {"parent": name, "parenttype": doctype})
+			frappe.db.delete(doctype, {"name": name})
+	for price_list in frappe.get_all("Price List", filters={"customer": MC_CUSTOMER}, pluck="name"):
+		frappe.db.delete("Item Price", {"price_list": price_list})
+		frappe.db.delete("Price List", {"name": price_list})
+	frappe.db.delete("Customer", {"customer_name": MC_CUSTOMER})
+	frappe.db.commit()
+
+
 class TestMakeOrderCore(FrappeTestCase):
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		purge_mc_data()
+
 	def test_multi_happy_path(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="MCBKR0")
 		name = make_order(booking, codes)
@@ -241,6 +291,7 @@ class TestMakeOrderMuat(FrappeTestCase):
 	@classmethod
 	def tearDownClass(cls):
 		super().tearDownClass()
+		purge_mc_data()
 
 	def test_muat_allowed_when_no_order_was_ever_raised(self):
 		"""A tank with nothing open may be loaded out, even with no cleaning on record.
@@ -337,6 +388,11 @@ class TestMakeOrderMuat(FrappeTestCase):
 
 
 class TestGenerateOrderFromBookingAPI(FrappeTestCase):
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		purge_mc_data()
+
 	def test_dms_wrapper_creates_bon(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="MCDMS0")
 		result = generate_order_from_booking(
@@ -548,6 +604,11 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 
 class TestGate(FrappeTestCase):
 	"""Gate PWA backend: gate_lookup (resolve + detail) and gate_generate_order."""
+
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		purge_mc_data()
 
 	def setUp(self):
 		# The gate reports a payment block, so these assertions only mean anything on a
