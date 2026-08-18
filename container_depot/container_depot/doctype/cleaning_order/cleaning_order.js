@@ -15,6 +15,8 @@
 // once, on their own line. Costing them here too would bill labour twice.
 frappe.ui.form.on('Cleaning Order', {
 	onload(frm) {
+		// Retired tanks (Active off) are out of the fleet and never offered.
+		frm.set_query('container', () => ({ filters: { is_active: 1 } }));
 		frm.trigger('_set_queries');
 	},
 	refresh(frm) {

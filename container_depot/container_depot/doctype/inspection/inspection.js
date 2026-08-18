@@ -14,6 +14,8 @@ frappe.ui.form.on('Inspection', {
 	// installed in refresh arrives after the grid has already painted its columns as
 	// plain URLs — and nothing re-renders it afterwards. setup runs once, before any of it.
 	setup(frm) {
+		// Retired tanks (Active off) are out of the fleet and never offered.
+		frm.set_query('container', () => ({ filters: { is_active: 1 } }));
 		install_photo_thumbnails(frm);
 	},
 

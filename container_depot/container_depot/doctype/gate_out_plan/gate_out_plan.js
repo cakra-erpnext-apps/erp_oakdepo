@@ -2,9 +2,10 @@
 frappe.ui.form.on("Gate Out Plan", {
 	setup(frm) {
 		// Filter the container picker to the plan's Principal (tank owner) + Depot, so ops
-		// can only list tanks that actually belong to this customer at this depot.
+		// can only list tanks that actually belong to this customer at this depot. Retired
+		// tanks (Active off) never appear — they are out of the fleet.
 		frm.set_query("container", "containers", () => {
-			const filters = {};
+			const filters = { is_active: 1 };
 			if (frm.doc.principal) filters.principal = frm.doc.principal;
 			if (frm.doc.depot) filters.depot = frm.doc.depot;
 			return { filters };
@@ -15,6 +16,7 @@ frappe.ui.form.on("Gate Out Plan", {
 		render_related_orders(frm);
 		set_fulfilment_progress(frm);
 		set_grid_import_button(frm);
+		mark_new_containers(frm);
 
 		// Where the plan ends: a Container Booking (Tank Out / Lift On) carrying these
 		// tanks. Top-level, not buried in a "Buat" menu — it is the one action a finished
@@ -182,6 +184,31 @@ function set_grid_import_button(frm) {
 	grid.add_custom_button(__("Import Excel"), () => import_dialog(frm));
 }
 
+// Tell apart, at a glance, the rows whose Container master this import just registered from
+// the ones that picked an existing tank. A badge appended to the Container No column rather
+// than a column of its own: the grid's ten column-widths are already spoken for, and the
+// badge belongs next to the number it qualifies anyway.
+function mark_new_containers(frm) {
+	const grid = frm.fields_dict.containers && frm.fields_dict.containers.grid;
+	const df = grid && grid.get_docfield("container_no");
+	if (!df || df.formatter) return;
+	// Append to what the stock formatter returns rather than replacing it. `value` arrives
+	// already HTML-escaped — the grid pre-escapes plain-text fieldtypes before formatting
+	// (grid_row.js `_escape_for_format`) — so it must not be escaped a second time.
+	const base = frappe.form.get_formatter(df.fieldtype);
+	df.formatter = (value, _df, _options, row) => {
+		const cell = base(value, _df, _options, row);
+		if (!row || !row.is_new_container) return cell;
+		return `${cell} <span class="indicator-pill green" title="${__(
+			"Master Container dibuat lewat import ini"
+		)}">${__("Baru")}</span>`;
+	};
+	// The grid's columns were already painted by the time a refresh script runs
+	// (frm.refresh_fields precedes it), so the freshly attached formatter needs one repaint
+	// to show. Guarded above, this happens once per form load.
+	grid.refresh();
+}
+
 function import_dialog(frm) {
 	const d = new frappe.ui.Dialog({
 		title: __("Import Container dari Excel"),
@@ -190,11 +217,20 @@ function import_dialog(frm) {
 				fieldname: "hint",
 				fieldtype: "HTML",
 				options: `<p class="text-muted small">${__(
-					"Kolom: Container, Target Lift-On (YYYY-MM-DD), Catatan (opsional). Baris header dilewati. Container yang belum ada di master Container dilewati dan dilaporkan — daftarkan dulu di master. Tank milik principal lain atau di depo lain juga ditolak."
+					"Kolom: Container, Target Lift-On (YYYY-MM-DD), Catatan (opsional). Baris header dilewati. Tank milik principal lain atau di depo lain ditolak."
 				)}</p>`,
 			},
 			{ fieldname: "file", fieldtype: "Attach", label: __("File Excel (.xlsx)"), reqd: 1 },
 			{ fieldname: "replace", fieldtype: "Check", label: __("Ganti baris yang sudah ada") },
+			{
+				fieldname: "create_missing",
+				fieldtype: "Check",
+				default: 1,
+				label: __("Buat master Container kalau belum terdaftar"),
+				description: __(
+					"Nomor yang belum ada di master didaftarkan langsung (Principal & Depo dari header, status Available) dan ditandai <b>Baru</b> di grid. Matikan kalau file-nya belum dipastikan bebas salah ketik — nomor asing akan dilewati saja."
+				),
+			},
 		],
 		primary_action_label: __("Import"),
 		primary_action(values) {
@@ -204,6 +240,7 @@ function import_dialog(frm) {
 					file_url: values.file,
 					principal: frm.doc.principal || null,
 					depot: frm.doc.depot || null,
+					create_missing: values.create_missing ? 1 : 0,
 				},
 				freeze: true,
 				freeze_message: __("Membaca file…"),
@@ -251,6 +288,7 @@ function apply_import(frm, res, replace) {
 		row.container_no = ln.container_no;
 		row.target_lift_on = ln.target_lift_on;
 		row.remark = ln.remark;
+		row.is_new_container = ln.is_new ? 1 : 0;
 		existing.add(ln.container);
 		added++;
 	});
@@ -261,6 +299,21 @@ function apply_import(frm, res, replace) {
 	// Two things can go partly wrong and each is named separately: numbers the master does
 	// not know (skipped outright), and rows imported with something missing.
 	const notes = [];
+	// Registering a master is the one thing here that changes data outside the plan, so it
+	// is reported first and by name — a typo'd number that just became a permanent record
+	// is fixable now, not in six months.
+	const created = res.created || [];
+	if (created.length) {
+		notes.push(
+			"<b>" +
+				__("Master Container baru dibuat ({0}):", [created.length]) +
+				"</b><br>" +
+				created.join(", ") +
+				'<br><span class="text-muted">' +
+				__("Ditandai <b>Baru</b> di grid. Lengkapi spesifikasi tank-nya di master Container.") +
+				"</span>"
+		);
+	}
 	const unknown = res.unknown || [];
 	if (unknown.length) {
 		notes.push(

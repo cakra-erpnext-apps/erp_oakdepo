@@ -19,7 +19,9 @@ import re
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import add_days, flt, getdate, today
+from frappe.utils import add_days, cint, flt, getdate, today
+
+from container_depot.container_depot.container_status import assert_rows_active
 
 # Only an Open plan drives priority; closing it releases the container stamps.
 ACTIVE_STATUS = "Open"
@@ -36,6 +38,9 @@ _MR_DONE = ("Completed", "Cancelled", "Rejected")
 class GateOutPlan(Document):
 	def validate(self):
 		self._fill_rows()
+		# A retired tank takes no new lift-on target. Rows already on the plan are
+		# untouched — see assert_rows_active.
+		assert_rows_active(self, "containers")
 		self._assert_rows_match_header()
 		self._assert_containers_unique()
 		self._roll_up()
@@ -474,8 +479,9 @@ def related_orders(gate_out_plan: str) -> list:
 # --- container list from Excel -----------------------------------------------
 # A lift-on notice routinely names twenty tanks, and they arrive as a spreadsheet attached
 # to the customer's mail. Mirrors Container Booking's grid importer (same dialog, same
-# refusal rules) — only the columns differ, because a plan asks for a target date per tank
-# where a booking asks for a condition.
+# refusal rules, same "register what the master is missing" option) — only the columns
+# differ, because a plan asks for a target date per tank where a booking asks for a
+# condition.
 _FILE_HEADERS = {"container", "container no", "kontainer", "no kontainer", "no container"}
 
 
@@ -490,16 +496,49 @@ def download_container_template():
 	finish_sheet(output, wb, ws, "gate_out_plan_template.xlsx", 1, len(headers) - 1)
 
 
+def _create_container(container_no: str, principal: str, depot: str | None) -> str:
+	"""Register a Container master for a tank the depot already holds but never recorded.
+
+	The plan's own Principal and Depot are stamped on it — anything else would fail
+	:meth:`GateOutPlan._assert_rows_match_header` on the very next save. Status
+	``Available``: the tank is physically here (that is why it is on a lift-on notice) and
+	no order has been raised against it yet, which is exactly what that status means (see
+	``container_status``). Type defaults to ISO Tank, the only thing this depot stores; the
+	rest of the spec is filled in on the master later.
+	"""
+	doc = frappe.get_doc({
+		"doctype": "Container",
+		"container_no": container_no,
+		"container_type": "ISO Tank",
+		"status": "Available",
+		"principal": principal,
+		"depot": depot,
+	})
+	doc.insert()
+	return doc.name
+
+
 @frappe.whitelist()
 def parse_container_xlsx(
-	file_url: str, principal: str | None = None, depot: str | None = None
+	file_url: str,
+	principal: str | None = None,
+	depot: str | None = None,
+	create_missing: int | str | None = None,
 ) -> dict:
 	"""Parse an uploaded .xlsx into plan rows: Container, Target Lift-On, Catatan.
 
-	Pure read — it resolves an existing Container master to its link but never creates one,
-	so it works on an unsaved plan. A number the master does not know is SKIPPED and listed
-	in ``unknown``: a spreadsheet is exactly where a typo'd tank number hides, and a plan
-	stamps its target onto a real Container or it does nothing at all.
+	Resolves each number to an existing Container master. A number the master does not
+	know is handled per ``create_missing``:
+
+	* off — SKIPPED and listed in ``unknown``. A spreadsheet is exactly where a typo'd
+	  tank number hides, and a plan stamps its target onto a real Container or it does
+	  nothing at all.
+	* on — the master is REGISTERED here and now (:func:`_create_container`), owned by the
+	  plan's Principal and sitting at its Depot, and the row comes back flagged
+	  ``is_new: 1``. The depot routinely holds tanks whose master entry lags behind the
+	  yard; refusing the whole notice over that is what the flag exists to avoid. Every
+	  one created is named back in ``created`` so a typo that just minted a master is
+	  visible immediately rather than discovered months later.
 
 	``principal`` / ``depot`` (the plan's own) are applied as the row picker applies them —
 	a tank of another owner, or sitting at another depot, is refused and named in
@@ -509,14 +548,22 @@ def parse_container_xlsx(
 	mandatory on the row, so the empty cell shows up on the grid itself where the operator
 	can fill it, which beats losing the container.
 
-	Returns ``{rows: [{container, container_no, target_lift_on, remark}], errors, unknown}``.
+	Returns ``{rows: [{container, container_no, target_lift_on, remark, is_new}], errors,
+	unknown, created}``.
 	"""
 	from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
 
 	if not file_url:
 		frappe.throw(_("Belum ada file yang dipilih."))
+	create_missing = cint(create_missing)
+	if create_missing:
+		# A Container master cannot exist without an owner, and guessing one is not on the
+		# table — the header carries it, so say so instead of failing row by row.
+		if not principal:
+			frappe.throw(_("Isi Principal di header dulu sebelum membuat master Container baru."))
+		frappe.has_permission("Container", "create", throw=True)
 
-	rows, unknown, errors, seen = [], [], [], set()
+	rows, unknown, errors, created, seen = [], [], [], [], set()
 	for cells in read_xlsx_file_from_attached_file(file_url=file_url) or []:
 		if not cells or cells[0] is None:
 			continue
@@ -528,11 +575,24 @@ def parse_container_xlsx(
 			continue
 		seen.add(cno)
 		container = frappe.db.get_value(
-			"Container", {"container_no": cno}, ["name", "principal", "depot"], as_dict=True
+			"Container", {"container_no": cno},
+			["name", "principal", "depot", "is_active"], as_dict=True,
 		)
-		if not container:
-			unknown.append(cno)
+		# A retired tank is out of the fleet: named and dropped rather than quietly given a
+		# lift-on target, and never re-registered under the same number.
+		if container and not container.is_active:
+			errors.append(_("{0}: container non-aktif — dilewati").format(cno))
 			continue
+		is_new = 0
+		if not container:
+			if not create_missing:
+				unknown.append(cno)
+				continue
+			container = frappe._dict(
+				name=_create_container(cno, principal, depot), principal=principal, depot=depot
+			)
+			created.append(cno)
+			is_new = 1
 		if principal and container.principal != principal:
 			errors.append(_("{0}: bukan tank milik {1}").format(cno, principal))
 			continue
@@ -554,8 +614,9 @@ def parse_container_xlsx(
 			"container_no": cno,
 			"target_lift_on": target,
 			"remark": remark,
+			"is_new": is_new,
 		})
-	return {"rows": rows, "errors": errors, "unknown": unknown}
+	return {"rows": rows, "errors": errors, "unknown": unknown, "created": created}
 
 
 # --- the plan's endpoint: a Tank Out booking ----------------------------------

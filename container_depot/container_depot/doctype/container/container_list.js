@@ -14,11 +14,17 @@
 //   Gate_Out   — has left.
 //
 // Clicking a badge filters the list to that status.
+//
+// A retired tank (Active off) overrides all of it: where it last stood stopped mattering
+// the moment it left the fleet, and the one thing to know about the row is that it is out
+// of service — otherwise a scrapped tank reads "Sudah Keluar", exactly like one that just
+// drove off this morning.
 frappe.listview_settings["Container"] = {
-	// Pull status explicitly so the indicator still works when the columns are customised.
-	add_fields: ["status"],
+	// Pull both explicitly so the indicator still works when the columns are customised.
+	add_fields: ["status", "is_active"],
 
 	get_indicator(doc) {
+		if (!doc.is_active) return [__("Non-Aktif"), "red", "is_active,=,0"];
 		const map = {
 			Booked: [__("Dipesan"), "blue", "status,=,Booked"],
 			// Deliberately not "In Depo": being here is not the point — the open work is.

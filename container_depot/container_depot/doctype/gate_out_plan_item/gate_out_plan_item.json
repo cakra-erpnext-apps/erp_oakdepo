@@ -9,6 +9,7 @@
   "field_order": [
     "container",
     "container_no",
+    "is_new_container",
     "gated_out",
     "target_lift_on",
     "readiness",
@@ -24,7 +25,7 @@
   ],
   "fields": [
     {
-      "columns": 3,
+      "columns": 2,
       "description": "Tank yang akan lift-on (gate out). Difilter ke Principal plan.",
       "fieldname": "container",
       "fieldtype": "Link",
@@ -37,8 +38,17 @@
       "columns": 2,
       "fieldname": "container_no",
       "fieldtype": "Data",
-      "in_list_view": 0,
+      "in_list_view": 1,
       "label": "Container No",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "description": "Master Container ini baru dibuat saat import (belum terdaftar sebelumnya).",
+      "fieldname": "is_new_container",
+      "fieldtype": "Check",
+      "label": "Container Baru",
+      "no_copy": 1,
       "read_only": 1
     },
     {
@@ -61,7 +71,7 @@
       "reqd": 1
     },
     {
-      "columns": 3,
+      "columns": 2,
       "description": "Otomatis: 'Siap', atau daftar pekerjaan yang belum selesai (Cleaning / M&R).",
       "fieldname": "readiness",
       "fieldtype": "Data",
@@ -124,7 +134,7 @@
   ],
   "istable": 1,
   "links": [],
-  "modified": "2026-08-18 18:00:00.000000",
+  "modified": "2026-08-18 20:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Out Plan Item",
   "permissions": [],

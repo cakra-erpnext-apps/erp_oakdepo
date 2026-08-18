@@ -1,5 +1,7 @@
 import frappe
 from frappe.model.document import Document
+
+from container_depot.container_depot.container_status import assert_container_active
 import datetime
 import hashlib
 
@@ -22,6 +24,11 @@ class Inspection(Document):
 
 	def validate(self):
 		"""Validate inspection data"""
+		# A retired tank takes no new work (container_status.assert_container_active);
+		# only checked when the link is set or moved, so a finished order stays editable
+		# after its tank leaves the fleet.
+		if self.container and self.has_value_changed("container"):
+			assert_container_active(self.container)
 		self.drop_empty_photo_rows()
 		self.stamp_container_booking()
 		# Recommend the 4 exterior views for EIR-In — but only once the surveyor has

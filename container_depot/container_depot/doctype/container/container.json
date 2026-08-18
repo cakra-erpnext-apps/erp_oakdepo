@@ -9,6 +9,7 @@
   "container_no",
   "container_type",
   "size",
+  "is_active",
   "status",
   "inventory_stage",
   "column_break_1",
@@ -74,6 +75,15 @@
    "fieldtype": "Select",
    "label": "Size",
    "options": "20'\n40'\n45'\nOther"
+  },
+  {
+   "default": "1",
+   "description": "Tank yang masih dipakai. Nonaktifkan kalau sudah dijual / scrap / keluar armada — riwayatnya tetap, tapi tank tidak muncul lagi di pilihan booking, plan, maupun import.",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Active"
   },
   {
    "default": "Gate_Out",
@@ -302,7 +312,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-10 15:00:00.000000",
+ "modified": "2026-08-18 21:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

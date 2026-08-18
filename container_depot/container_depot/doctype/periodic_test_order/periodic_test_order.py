@@ -10,6 +10,8 @@ Container Activity milestone.
 import frappe
 from frappe import _
 from frappe.model.document import Document
+
+from container_depot.container_depot.container_status import assert_container_active
 from frappe.utils import add_to_date, flt, getdate, now_datetime
 
 from container_depot.container_depot.booking_link import apply_booking_link
@@ -22,6 +24,11 @@ class PeriodicTestOrder(Document):
 			self.order_created = now_datetime()
 
 	def validate(self):
+		# A retired tank takes no new work (container_status.assert_container_active);
+		# only checked when the link is set or moved, so a finished order stays editable
+		# after its tank leaves the fleet.
+		if self.container and self.has_value_changed("container"):
+			assert_container_active(self.container)
 		# Usually blank: a periodic test is scheduled off Container.next_pt_due, not raised
 		# from an EIR, so it genuinely belongs to no booking. The reference exists for the
 		# case where a surveyor's finding is what triggered the test.

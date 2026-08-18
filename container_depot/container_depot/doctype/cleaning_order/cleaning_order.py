@@ -1,6 +1,8 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+
+from container_depot.container_depot.container_status import assert_container_active
 import datetime
 import hashlib
 
@@ -18,6 +20,13 @@ class CleaningOrder(Document):
 		timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 		unique = hashlib.md5(f"{timestamp}{frappe.generate_hash()[:10]}".encode()).hexdigest()[:8].upper()
 		return f"CO-{unique}"
+
+	def validate(self):
+		# A retired tank takes no new work (container_status.assert_container_active);
+		# only checked when the link is set or moved, so a finished order stays editable
+		# after its tank leaves the fleet.
+		if self.container and self.has_value_changed("container"):
+			assert_container_active(self.container)
 
 	def before_save(self):
 		"""Auto-populate container info + price the owner's chosen cleaning services."""

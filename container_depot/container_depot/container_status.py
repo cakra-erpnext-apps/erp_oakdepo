@@ -138,3 +138,50 @@ def recompute_availability(container: str) -> None:
 def is_present(container: str) -> bool:
     """True if the container is currently physically in a depot (In_Depot/Available)."""
     return frappe.db.get_value("Container", container, "status") in PRESENT
+
+
+def assert_container_active(container: str) -> None:
+    """Refuse to open work on a tank that has left the fleet (``is_active`` off).
+
+    The Desk pickers already filter retired tanks out, but a picker is a convenience, not a
+    rule: the PWA, the Excel importers, ``bench execute`` and every REST caller reach the
+    same doctypes without one. This is the rule.
+
+    Deliberately one-directional, and it pairs with ``Container._guard_deactivation``:
+    that one refuses to retire a tank while work is still open on it, this one refuses to
+    open work on a tank already retired. Between them a retired tank can neither acquire
+    new work nor strand old work.
+
+    Callers apply it only when the container is newly set or changed — never on every save.
+    A finished order that was raised long before its tank was retired has to stay saveable,
+    or correcting a typo in its history would be impossible.
+    """
+    if not container:
+        return
+    row = frappe.db.get_value(
+        "Container", container, ["container_no", "is_active"], as_dict=True
+    )
+    if not row or row.is_active:
+        return
+    frappe.throw(
+        frappe._("Container {0} sudah non-aktif (keluar dari armada) — tidak bisa dipakai untuk transaksi baru.").format(
+            row.container_no or container
+        ),
+        title=frappe._("Tank Non-Aktif"),
+    )
+
+
+def assert_rows_active(doc, table: str) -> None:
+    """Apply :func:`assert_container_active` to the container rows THIS save added or
+    repointed, on a doctype that carries its tanks in a child table.
+
+    The before/after comparison is the whole point: a booking or a plan saved months ago
+    must stay editable after one of its tanks retires — only a row being pointed at a tank
+    now is a row putting that tank to work now. A brand-new document has no "before", so
+    every row counts.
+    """
+    before = None if doc.is_new() else doc.get_doc_before_save()
+    was = {r.name: r.container for r in ((before.get(table) if before else None) or [])}
+    for row in doc.get(table) or []:
+        if row.container and was.get(row.name) != row.container:
+            assert_container_active(row.container)

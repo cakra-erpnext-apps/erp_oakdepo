@@ -6,6 +6,8 @@
 // contract rate for.
 frappe.ui.form.on("Periodic Test Order", {
 	setup(frm) {
+		// Retired tanks (Active off) are out of the fleet and never offered.
+		frm.set_query("container", () => ({ filters: { is_active: 1 } }));
 		frm.trigger("_set_queries");
 	},
 	onload(frm) {

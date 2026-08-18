@@ -83,6 +83,8 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_set_queries');
 	},
 	_set_queries(frm) {
+		// Retired tanks (Active off) are out of the fleet and never offered.
+		frm.set_query('container', () => ({ filters: { is_active: 1 } }));
 		// The Used-Items picker offers ONLY what the PWA M&R picker does: Depot Service Menu
 		// "Maintenance" ∩ the container owner's contract price list (see used_item_query).
 		// The picker is narrowed by the ROW: Jenis decides service vs part, and a part is

@@ -1,7 +1,9 @@
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 
+from container_depot.container_depot.container_status import PRESENT, container_open_orders
 from container_depot.state_machine import assert_transition, stage_for_status
 
 
@@ -16,6 +18,65 @@ class Container(Document):
 		if not self.is_new() and self.has_value_changed("status"):
 			previous = self.get_doc_before_save()
 			assert_transition(previous.status if previous else None, self.status)
+
+		self._guard_deactivation()
+
+	def _guard_deactivation(self):
+		"""Refuse to retire a tank the depot is still holding or still working on.
+
+		``is_active`` is the archive flag: a tank sold, scrapped or otherwise out of the
+		fleet stops appearing in the booking / plan / import pickers while every record it
+		ever carried stays exactly where it is. Deleting it is not the alternative — its
+		EIRs, orders and invoices all point here.
+
+		So it may only be switched off once the tank is genuinely finished: out of the yard
+		(not ``In_Depot`` / ``Available``), carrying no open work, and promised to nobody.
+		Retiring a tank that is physically sitting on the ground would take it out of every
+		picker while the depot still has to gate it out; retiring one with an open Cleaning
+		/ M&R / Periodic Test order would strand that order on a tank nobody can select
+		again; and retiring one a live Container Booking still names would let it be gated
+		in tomorrow on a booking made yesterday — the order gate cannot catch that, because
+		it only fires when a container is newly put on a document.
+
+		Only ever checked when the flag actually changes to off, so a retired tank stays
+		editable — correcting its spec afterwards must not re-run this. Switching it back
+		on is always allowed: that is how a mistake is undone.
+		"""
+		if self.is_active or self.is_new() or not self.has_value_changed("is_active"):
+			return
+		blockers = []
+		if self.status in PRESENT:
+			blockers.append(
+				_("masih ada di depo (status {0}) — gate-out dulu").format(self.status)
+			)
+		# Name the work rather than just refusing: "not allowed" sends the operator hunting,
+		# the order number is what they can actually go and finish.
+		for order in container_open_orders(self.name):
+			blockers.append(
+				_("{0} {1} ({2}) belum selesai").format(
+					order.get("label") or order.get("doctype"), order.get("name"), order.get("status") or "-"
+				)
+			)
+		# A booking is not "open work" — container_open_orders deliberately counts only the
+		# jobs done ON a tank — so it has to be asked for separately. Anything not cancelled
+		# counts, draft included: a draft booking is a tank someone is in the middle of
+		# promising to a customer.
+		for booking in frappe.get_all(
+			"Container Booking Item",
+			filters={"container": self.name, "docstatus": ["<", 2]},
+			fields=["parent"],
+			distinct=True,
+		):
+			blockers.append(
+				_("masih tercantum di Container Booking {0}").format(booking.parent)
+			)
+		if blockers:
+			frappe.throw(
+				_("Container {0} belum bisa dinonaktifkan:").format(self.container_no or self.name)
+				+ "<br>• "
+				+ "<br>• ".join(blockers),
+				title=_("Tank Masih Terpakai"),
+			)
 
 	def before_save(self):
 		"""Auto-format container number + keep the monitoring stage in step with the

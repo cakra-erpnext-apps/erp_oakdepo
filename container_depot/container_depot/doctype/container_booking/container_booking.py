@@ -39,6 +39,7 @@ from container_depot.container_depot.doctype.depot_contract.depot_contract impor
 	get_active_contract,
 )
 from container_depot.container_depot.container_activity import log_container_activity
+from container_depot.container_depot.container_status import GATE_OUT, assert_rows_active
 from container_depot.state_machine import stage_for_status
 
 
@@ -115,6 +116,9 @@ class ContainerBooking(Document):
 		self._sync_lift_type()
 		self._resolve_pricing_context()
 		self._resolve_containers()
+		# After resolution, so a row that arrived as a bare number is judged on the master it
+		# resolved to. Rows already on the booking are untouched — see assert_rows_active.
+		assert_rows_active(self, "items")
 		self._default_row_shipper()
 		self._validate_unique_containers()
 		self._sync_container_summary()
@@ -197,6 +201,7 @@ class ContainerBooking(Document):
 		self._ensure_branch_and_principal()
 		self._resolve_pricing_context()
 		self._resolve_containers()
+		assert_rows_active(self, "items")
 		self._default_row_shipper()
 		self._validate_unique_containers()
 		self._price_charges()
@@ -627,6 +632,10 @@ class ContainerBooking(Document):
 
 		For Tank In, a never-gated-in container is normalised to ``Booked`` so it
 		stays out of live inventory until it physically arrives.
+
+		Each row's ``is_new_container`` is (re)derived here from the Container's own
+		``created_by_booking``: after a bulk import the operator has to be able to tell at
+		a glance which lines minted a master and which picked an existing tank.
 		"""
 		for item in self.items or []:
 			if item.container_no:
@@ -643,6 +652,19 @@ class ContainerBooking(Document):
 					name = self._create_pre_arrival_container(item.container_no)
 				if name:
 					item.container = name
+			if item.container:
+				self._stamp_principal(item.container)
+				self._claim_imported_container(item)
+				# "Was this tank's master minted by this booking?" — read back off the
+				# Container rather than remembered from the branch above, so the flag stays
+				# true across re-saves and a revision that repoints the row to an existing
+				# tank drops it by itself.
+				item.is_new_container = (
+					1
+					if frappe.db.get_value("Container", item.container, "created_by_booking")
+					== self.name
+					else 0
+				)
 			if self.direction == "Tank In" and item.container:
 				self._mark_pre_arrival(item.container)
 
@@ -680,19 +702,85 @@ class ContainerBooking(Document):
 		doc.insert(ignore_permissions=True, ignore_links=True)
 		return doc.name
 
+	def _stamp_principal(self, container):
+		"""Fill a container's Principal (Tank Owner) from the booking when the master has
+		none.
+
+		A tank announced through a booking belongs to that booking's Principal. A
+		pre-arrival phantom is born with it (``_create_pre_arrival_container``), but a
+		container that reached the master by some other route — an early import, legacy
+		data — can sit there ownerless, and an ownerless tank drops out of every
+		principal-scoped list and Excel the depot works from.
+
+		Only ever fills a BLANK. A container already owned by someone else is never
+		reassigned by a booking: changing who owns a tank is a master-data decision, and
+		silently doing it here would rewrite ownership from a typo'd Principal field.
+		``db.set_value`` so this can never trip Container's own status automation.
+		"""
+		if not self.principal:
+			return
+		if frappe.db.get_value("Container", container, "principal"):
+			return
+		frappe.db.set_value("Container", container, "principal", self.principal)
+
+	def _claim_imported_container(self, item):
+		"""Adopt a Container master the grid's Excel import registered for this booking.
+
+		The importer has to create the master up front — the row's Container link is
+		mandatory, so the Desk refuses to save a row without one, and the tank would never
+		reach a booking at all — but at that point this booking has no name to stamp on it
+		(see :func:`parse_container_xlsx`). This is where that stamp lands, and with it the
+		phantom becomes cleanable: cancelling the booking DELETES a tank it created
+		(``_release_pre_arrival_containers``) rather than leaving a record of a tank that
+		never arrived.
+
+		Deliberately narrow, because the consequence of a wrong claim is a real tank being
+		deleted on cancel. The row's flag alone is not trusted — it comes from the client —
+		so the Container must also still look exactly like a just-registered master:
+		``Gate_Out`` (never in the yard), never gated in, and claimed by nobody. A tank
+		that is actually in the depot fails the first test, and one that really did leave
+		fails the second. Runs BEFORE ``_mark_pre_arrival`` for that reason: once that has
+		reserved the tank, a pre-existing tank this booking merely flipped is
+		indistinguishable from one it created.
+		"""
+		if not item.get("is_new_container"):
+			return
+		row = frappe.db.get_value(
+			"Container", item.container, ["status", "eir_in_date", "created_by_booking"], as_dict=True
+		)
+		if not row or row.created_by_booking or row.status != GATE_OUT or row.eir_in_date:
+			return
+		frappe.db.set_value(
+			"Container", item.container, "created_by_booking", self.name, update_modified=False
+		)
+
 	def _mark_pre_arrival(self, container):
 		"""Flip a never-gated-in container to ``Booked`` without tripping the status
 		guard. Containers that have already gated in (``eir_in_date`` set) are left
-		untouched, so this never pulls a live tank out of inventory."""
+		untouched, so this never pulls a live tank out of inventory.
+
+		``Gate_Out`` counts as never-arrived here, guarded by that same ``eir_in_date``:
+		a master registered by hand on the Container form, or by the grid's Excel import,
+		is born there and has never been through a gate. A tank that genuinely left keeps
+		its ``eir_in_date`` and is skipped — it comes back in through the gate, not through
+		a status flip.
+		"""
 		row = frappe.db.get_value("Container", container, ["status", "eir_in_date"], as_dict=True)
 		if not row or row.eir_in_date or row.status == "Booked":
 			return
-		if row.status not in (None, "", "Available"):
+		if row.status not in (None, "", "Available", GATE_OUT):
 			return
 		frappe.flags.in_status_automation = True
 		try:
 			c = frappe.get_doc("Container", container)
 			c.status = "Booked"
+			# This runs inside the booking's own validate, and the tank may already carry
+			# this booking in `created_by_booking` (stamped a moment ago by
+			# `_claim_imported_container`) — a row that is not in the DB until the insert
+			# right after. Skip link validation for the same reason
+			# `_create_pre_arrival_container` does; the only field this save changes is
+			# `status`.
+			c.flags.ignore_links = True
 			c.save(ignore_permissions=True)
 		finally:
 			frappe.flags.in_status_automation = False
@@ -1780,17 +1868,51 @@ def status_direction_warnings(direction=None, containers=None) -> list[dict]:
 CONTAINER_CONDITIONS = ("EMPTY CLEAN", "EMPTY DIRTY", "LADEN")
 
 
+def _write_cargo_sheet(wb, fmts):
+	"""Add a "Cargo" worksheet listing the active Cargo master, and return its row count.
+
+	Both downloads carry it: the operator picking a container also has to name what was
+	last in it, and typing that free-hand is how the wrong cleaning item gets quoted. The
+	template's Last Cargo dropdown points at this sheet's column A.
+	"""
+	cargos = frappe.get_all(
+		"Cargo",
+		filters={"is_active": 1},
+		fields=["name", "non_stolt_class", "stolt_class"],
+		order_by="name asc",
+	)
+	ws = wb.add_worksheet("Cargo")
+	for col, title in enumerate(["Cargo", "Non-Stolt Class", "Stolt Class"]):
+		ws.write(0, col, title, fmts["header"])
+	ws.set_column(0, 0, 36)
+	ws.set_column(1, 2, 20)
+	ws.freeze_panes(1, 0)
+	for i, c in enumerate(cargos, start=1):
+		ws.write_row(i, 0, [c.name, c.non_stolt_class, c.stolt_class])
+	ws.autofilter(0, 0, max(len(cargos), 1), 2)
+	return len(cargos)
+
+
 @frappe.whitelist(methods=["GET"])
 def download_container_template():
-	"""Blank import template for the booking's Containers grid: Container + Condition,
-	with one illustrative row and a dropdown constraining Condition to the valid set."""
+	"""Blank import template for the booking's Containers grid: Container, Condition and
+	Last Cargo, with one illustrative row and dropdowns constraining Condition to the
+	valid set and Last Cargo to the Cargo master (listed on the second sheet)."""
 	from container_depot.xlsx_utils import finish_sheet, new_sheet
 
-	headers = ["Container", "Condition"]
-	output, wb, ws, _fmts = new_sheet("Template", headers, [24, 18])
-	ws.write_row(1, 0, ["ABCD1234567", CONTAINER_CONDITIONS[0]])
+	headers = ["Container", "Condition", "Last Cargo"]
+	output, wb, ws, fmts = new_sheet("Template", headers, [24, 18, 28])
+	ws.write_row(1, 0, ["ABCD1234567", CONTAINER_CONDITIONS[0], ""])
 	# Dropdown on the Condition column so the file cannot carry a typo'd condition.
 	ws.data_validation(1, 1, 1000, 1, {"validate": "list", "source": list(CONTAINER_CONDITIONS)})
+	n_cargo = _write_cargo_sheet(wb, fmts)
+	if n_cargo:
+		# Range, not an inline list: Excel caps an inline source at 255 characters, and the
+		# cargo master is far past that.
+		ws.data_validation(
+			1, 2, 1000, 2,
+			{"validate": "list", "source": f"=Cargo!$A$2:$A${n_cargo + 1}"},
+		)
 	finish_sheet(output, wb, ws, "container_import_template.xlsx", 1, len(headers) - 1)
 
 
@@ -1798,23 +1920,27 @@ def download_container_template():
 def download_container_master(principal: str | None = None):
 	"""Reference list of existing containers under a bold Principal (owner) banner — the
 	numbers to put in the template's Container column. Optional ``principal`` scopes it to
-	one owner (the form passes its Principal). A Tank In booking may name a not-yet-arrived
-	container absent here; it is created on save."""
+	one owner (the form passes its Principal). Retired tanks (``is_active`` off) are left
+	out — this is a pick-list, and offering a tank that is out of the fleet only invites a
+	booking that will be refused. A Tank In booking may name a container absent here; the
+	import registers it."""
 	from container_depot.xlsx_utils import finish_sheet, new_sheet
 
-	filters = {"principal": principal} if principal else {}
+	filters = {"is_active": 1}
+	if principal:
+		filters["principal"] = principal
 	containers = frappe.get_all(
 		"Container",
 		filters=filters,
-		fields=["container_no", "container_type", "size", "status", "principal"],
+		fields=["container_no", "container_type", "size", "status", "last_cargo", "principal"],
 		order_by="principal asc, container_no asc",
 	)
 	grouped = {}
 	for c in containers:
 		grouped.setdefault(c.principal or _("(no owner)"), []).append(c)
 
-	headers = ["Container", "Type", "Size", "Status"]
-	output, wb, ws, fmts = new_sheet("Containers", headers, [24, 14, 10, 14])
+	headers = ["Container", "Type", "Size", "Status", "Last Cargo"]
+	output, wb, ws, fmts = new_sheet("Containers", headers, [24, 14, 10, 14, 28])
 	row = 1
 	for owner in sorted(grouped):
 		# Banner spans the full width so the section reads as one band.
@@ -1823,31 +1949,87 @@ def download_container_master(principal: str | None = None):
 			ws.write(row, col, "", fmts["group"])
 		row += 1
 		for c in grouped[owner]:
-			ws.write_row(row, 0, [c.container_no, c.container_type, c.size, c.status])
+			ws.write_row(row, 0, [c.container_no, c.container_type, c.size, c.status, c.last_cargo])
 			row += 1
+	# The Cargo master rides along on a second sheet: it is what the template's Last Cargo
+	# column has to be spelled from.
+	_write_cargo_sheet(wb, fmts)
 	finish_sheet(output, wb, ws, "container_master.xlsx", row - 1, len(headers) - 1)
 
 
+def _create_imported_container(container_no: str, principal: str) -> str:
+	"""Register a Container master for a number an inbound file introduced.
+
+	``status`` is left to the doctype's own default — ``Gate_Out``, i.e. stage *Departed*,
+	"the master exists but the tank is not in my yard" — so an imported tank is registered
+	on exactly the terms the Container form registers one by hand. It is NOT born
+	``Booked``: that status means *reserved by a Tank In booking*, and at import time the
+	booking is still unsaved and has no name to be reserved by. Saving the booking is what
+	makes both true — it claims the master (``_claim_imported_container``) and reserves it
+	(``_mark_pre_arrival``) — so an abandoned draft leaves a plain unregistered-tank
+	record rather than one that claims a booking nobody can find.
+	"""
+	doc = frappe.get_doc({
+		"doctype": "Container",
+		"container_no": container_no,
+		"container_type": "ISO Tank",
+		"principal": principal,
+	})
+	doc.insert()
+	return doc.name
+
+
 @frappe.whitelist()
-def parse_container_xlsx(file_url: str) -> dict:
+def parse_container_xlsx(
+	file_url: str, direction: str | None = None, principal: str | None = None
+) -> dict:
 	"""Parse an uploaded .xlsx into container rows for the booking grid's "Import Excel".
 
-	Columns by position: Container, Condition. A header row whose first cell is
+	Columns by position: Container, Condition, Last Cargo. A header row whose first cell is
 	container / kontainer is skipped. Pure read — it resolves an existing Container master
 	to its link when present (so the grid shows it at once) but never creates one, so it is
 	safe on an unsaved form; a Tank In booking's new tanks are born on save. Duplicate
 	container numbers within the file are collapsed. An unknown condition is reported in
 	``errors`` and the row skipped; a blank condition defaults to EMPTY CLEAN.
 
-	Returns ``{rows: [{container_no, condition, container}], errors: [...]}``.
+	Last Cargo is optional and matched case-insensitively against the Cargo master; a name
+	that matches nothing is reported in ``errors`` but does NOT drop the row — the cargo is
+	simply left blank for the operator to pick, which beats losing the container. When the
+	column is blank and the Container master already knows a last cargo, that one is used.
+
+	A container number the master does not know is handled by ``direction`` — the booking's
+	own, passed in by the form:
+
+	* **Tank In** — REGISTERED here and now (:func:`_create_imported_container`), owned by
+	  the booking's ``principal`` and left at the Container default ``Gate_Out`` (outside
+	  the depot), and the row comes back flagged ``is_new``. A tank arriving for the first
+	  time HAS no master yet; that is the normal case for an inbound notice, and refusing
+	  it would mean hand-registering twenty tanks before the file can be imported. It is
+	  created at import rather than left for save because the row's Container link is
+	  MANDATORY: the Desk's own client-side check refuses to save a grid row without one,
+	  so a row carrying just a number could never be saved, submitted, or gated. Every
+	  number created is named back in ``created`` so a typo that just minted a master is
+	  caught while it is still one click from deletion.
+	* **Tank Out** (and an unknown direction) — SKIPPED and listed in ``unknown``. A tank
+	  that was never in the depot cannot leave it, so an unrecognised number there is a
+	  typo, not a new tank.
+
+	Returns ``{rows: [{container_no, condition, container, cargo, is_new}], errors: [...],
+	unknown: [...], created: [...]}``.
 	"""
 	from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
 
 	if not file_url:
 		frappe.throw(_("No file provided."))
 	raw_rows = read_xlsx_file_from_attached_file(file_url=file_url) or []
+	if direction == "Tank In":
+		# A Container master cannot exist without an owner, and guessing one is not on the
+		# table — the form carries it, so say so once instead of failing row by row.
+		if not principal:
+			frappe.throw(_("Set the Principal (Tank Owner) before importing an inbound file."))
+		frappe.has_permission("Container", "create", throw=True)
 
-	rows, errors, seen = [], [], set()
+	rows, errors, unknown, created, seen = [], [], [], [], set()
 	for cells in raw_rows:
 		if not cells:
 			continue
@@ -1866,13 +2048,40 @@ def parse_container_xlsx(file_url: str) -> dict:
 		else:
 			errors.append(_("Row {0}: unknown condition {1}").format(cno, raw_cond))
 			continue
+		raw_cargo = str(cells[2]).strip() if len(cells) > 2 and cells[2] is not None else ""
+		container, last_cargo, active = frappe.db.get_value(
+			"Container", {"container_no": cno}, ["name", "last_cargo", "is_active"]
+		) or (None, None, None)
+		# A retired tank is out of the fleet: named and dropped rather than quietly booked,
+		# and never re-registered under the same number — the master is still there.
+		if container and not active:
+			seen.add(cno)
+			errors.append(_("Row {0}: container is not active — skipped").format(cno))
+			continue
+		is_new = 0
+		if not container:
+			if direction != "Tank In":
+				seen.add(cno)  # before the skip, so a repeat of it is not reported twice
+				unknown.append(cno)
+				continue
+			container = _create_imported_container(cno, principal)
+			created.append(cno)
+			is_new = 1
+		if raw_cargo:
+			cargo = frappe.db.get_value("Cargo", {"cargo_name": raw_cargo})
+			if not cargo:
+				errors.append(_("Row {0}: unknown cargo {1} — left blank").format(cno, raw_cargo))
+		else:
+			cargo = last_cargo
 		seen.add(cno)
 		rows.append({
 			"container_no": cno,
 			"condition": condition,
-			"container": frappe.db.get_value("Container", {"container_no": cno}),
+			"container": container,
+			"cargo": cargo,
+			"is_new": is_new,
 		})
-	return {"rows": rows, "errors": errors}
+	return {"rows": rows, "errors": errors, "unknown": unknown, "created": created}
 
 
 # ---------------------------------------------------------------------------

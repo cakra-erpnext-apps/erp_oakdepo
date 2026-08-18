@@ -4,6 +4,8 @@
 
 frappe.ui.form.on("Container Position Survey", {
 	refresh(frm) {
+		// Retired tanks (Active off) are out of the fleet and never offered.
+		frm.set_query("container", () => ({ filters: { is_active: 1 } }));
 		render_photo_gallery(frm);
 	},
 });

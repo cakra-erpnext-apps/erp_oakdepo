@@ -458,6 +458,59 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertEqual(res["unknown"], ["NOSUCH1234567"])
 		self.assertTrue(any(theirs in e or "GOPXLS00004" in e for e in res["errors"]))
 
+	def test_import_registers_missing_tanks_when_asked(self):
+		# The depot routinely holds tanks whose master entry lags the yard; with the option
+		# on, the notice is transcribed in one go and the new masters are named back.
+		known = self._container("GOPXLS00006")
+		url = self._xlsx([
+			["Container", "Target Lift-On"],
+			["GOPXLS00006", add_days(today(), 5)],
+			["gopxls-00007", add_days(today(), 5)],  # not in the master yet
+		])
+		res = gate_out_plan.parse_container_xlsx(
+			url, principal=self._principal, depot=_DEPOT, create_missing=1
+		)
+
+		self.assertEqual(res["unknown"], [])
+		self.assertEqual(res["created"], ["GOPXLS00007"])
+		self.assertEqual([r["is_new"] for r in res["rows"]], [0, 1])
+		self.assertEqual(res["rows"][0]["container"], known)
+
+		made = res["rows"][1]["container"]
+		self._containers.append(made)
+		self.assertEqual(
+			frappe.db.get_value("Container", made, ["container_no", "principal", "depot", "status"]),
+			("GOPXLS00007", self._principal, _DEPOT, "Available"),
+		)
+		# And the plan the rows land on saves — the created master matches the header, so
+		# _assert_rows_match_header has nothing to complain about — carrying the badge the
+		# importer set on each row through the save, exactly as the grid hands it over.
+		plan = frappe.get_doc({
+			"doctype": "Gate Out Plan",
+			"principal": self._principal,
+			"depot": _DEPOT,
+			"source": "Email",
+			"status": "Open",
+			"containers": [
+				{
+					"container": r["container"],
+					"target_lift_on": r["target_lift_on"],
+					"is_new_container": r["is_new"],
+				}
+				for r in res["rows"]
+			],
+		}).insert(ignore_permissions=True)
+		self._plans.append(plan.name)
+		plan.reload()
+		self.assertEqual([r.is_new_container for r in plan.containers], [0, 1])
+
+	def test_import_refuses_to_create_without_a_principal(self):
+		# A Container cannot exist without an owner and this must not guess one.
+		url = self._xlsx([["Container", "Target Lift-On"], ["GOPXLS00008", add_days(today(), 5)]])
+		with self.assertRaises(frappe.ValidationError):
+			gate_out_plan.parse_container_xlsx(url, principal=None, depot=_DEPOT, create_missing=1)
+		self.assertFalse(frappe.db.exists("Container", {"container_no": "GOPXLS00008"}))
+
 	def test_import_keeps_a_row_whose_date_is_missing(self):
 		# Target Lift-On is mandatory on the row, so a blank cell shows up on the grid where
 		# the operator can fill it — losing the container instead would be worse.

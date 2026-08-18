@@ -14,6 +14,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from container_depot.container_depot.container_status import assert_container_active
+
 # status graph — an edge (from -> to) that is not listed is rejected.
 _TRANSITIONS = {
 	"Pending Survey": {"Surveyed", "Cancelled"},
@@ -25,6 +27,11 @@ _TRANSITIONS = {
 
 class ContainerPositionSurvey(Document):
 	def validate(self):
+		# A retired tank takes no new work (container_status.assert_container_active);
+		# only checked when the link is set or moved, so a finished order stays editable
+		# after its tank leaves the fleet.
+		if self.container and self.has_value_changed("container"):
+			assert_container_active(self.container)
 		# Tolerant like the rest of the app: new docs, no-op saves, and unknown source
 		# states never block. Only a real, illegal transition is rejected.
 		if self.is_new():

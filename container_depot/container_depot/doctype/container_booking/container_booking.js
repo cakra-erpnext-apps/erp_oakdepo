@@ -23,6 +23,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_set_queries');
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
+		frm.trigger('_mark_new_containers');
 		frm.trigger('_flag_open_conflicts');
 		frm.trigger('_apply_billing_lock');
 		frm.trigger('_render_work_per_container');
@@ -264,6 +265,30 @@ frappe.ui.form.on('Container Booking', {
 				/* non-blocking — a failed warning must never get in the operator's way */
 			});
 	},
+	_mark_new_containers(frm) {
+		// Tell apart, at a glance, the rows whose Container master this import registered
+		// from the ones that picked an existing tank. A badge appended to the Container No
+		// column rather than a column of its own: the grid's ten column-widths are already
+		// spoken for, and the badge belongs next to the number it qualifies anyway.
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		const df = grid && grid.get_docfield('container_no');
+		if (!df || df.formatter) return;
+		// Append to what the stock formatter returns rather than replacing it. `value`
+		// arrives already HTML-escaped — the grid pre-escapes plain-text fieldtypes before
+		// formatting (grid_row.js `_escape_for_format`) — so don't escape it twice.
+		const base = frappe.form.get_formatter(df.fieldtype);
+		df.formatter = (value, _df, _options, row) => {
+			const cell = base(value, _df, _options, row);
+			if (!row || !row.is_new_container) return cell;
+			return `${cell} <span class="indicator-pill green" title="${__(
+				'Master Container dibuat oleh booking ini'
+			)}">${__('Baru')}</span>`;
+		};
+		// The grid's columns were already painted by the time a refresh script runs
+		// (frm.refresh_fields precedes it), so the freshly attached formatter needs one
+		// repaint to show. Guarded above, this happens once per form load.
+		grid.refresh();
+	},
 	_set_grid_import_button(frm) {
 		// "Import Excel" sits in the Containers grid footer next to Add Row
 		// (grid.add_custom_button dedups by label, so calling it on every refresh is
@@ -283,7 +308,7 @@ frappe.ui.form.on('Container Booking', {
 						fieldname: 'hint',
 						fieldtype: 'HTML',
 						options: `<p class="text-muted small">${__(
-							'Columns: Container, Condition (EMPTY CLEAN / EMPTY DIRTY / LADEN). A header row is skipped. A new Tank In container shows in the grid after Save.'
+							'Columns: Container, Condition (EMPTY CLEAN / EMPTY DIRTY / LADEN), Last Cargo (optional — must match the Cargo master; the downloads carry the list). A header row is skipped. On a Tank In, a number the Container master does not know is registered on the spot (owned by this booking\'s Principal, badged <b>Baru</b> in the grid); on a Tank Out it is skipped and reported.'
 						)}</p>`,
 					},
 					{ fieldname: 'file', fieldtype: 'Attach', label: __('Excel File (.xlsx)'), reqd: 1 },
@@ -293,7 +318,12 @@ frappe.ui.form.on('Container Booking', {
 				primary_action(values) {
 					frappe.call({
 						method: 'container_depot.container_depot.doctype.container_booking.container_booking.parse_container_xlsx',
-						args: { file_url: values.file },
+						args: {
+							file_url: values.file,
+							direction: frm.doc.direction || null,
+							// A Container cannot be created without an owner; the header carries it.
+							principal: frm.doc.principal || frm.doc.customer || null,
+						},
 						freeze: true,
 						freeze_message: __('Reading file…'),
 						callback(r) {
@@ -308,6 +338,10 @@ frappe.ui.form.on('Container Booking', {
 							});
 							let added = 0,
 								skipped = 0;
+							// Numbers this import registered a Container master for — collected
+							// from the rows actually added, not from the file, so a duplicate
+							// that never reached the grid is not announced as new.
+							const fresh = [];
 							rows.forEach((ln) => {
 								if (existing.has(ln.container_no) || (ln.container && existing.has(ln.container))) {
 									skipped++;
@@ -319,6 +353,12 @@ frappe.ui.form.on('Container Booking', {
 								// add_child doesn't fire items_add — default the EMKL here too.
 								row.shipper = frm.doc.customer;
 								if (ln.container) row.container = ln.container;
+								if (ln.cargo) row.cargo = ln.cargo;
+								// Set here, re-derived from the Container's own created_by_booking
+								// on save — so an operator who repoints the row at an existing
+								// tank does not keep a stale badge.
+								row.is_new_container = ln.is_new ? 1 : 0;
+								if (ln.is_new) fresh.push(ln.container_no);
 								existing.add(ln.container_no);
 								added++;
 							});
@@ -328,11 +368,46 @@ frappe.ui.form.on('Container Booking', {
 							d.hide();
 							let msg = __('Added {0} row(s).', [added]);
 							if (skipped) msg += ' ' + __('{0} already on the grid, skipped.', [skipped]);
+							// Three outcomes worth naming separately: numbers that will become new
+							// Container masters, numbers the master does not know and will not get
+							// (Tank Out — skipped outright), and rows dropped for a bad value.
+							const notes = [];
+							// Registering a Container master is the one thing an import does outside
+							// this booking, so the numbers it created are named first and by name —
+							// a typo caught here costs nothing, one found later is a phantom tank.
+							if (fresh.length) {
+								notes.push(
+									'<b>' +
+										__('Registered in the Container master ({0}):', [fresh.length]) +
+										'</b><br>' +
+										fresh.join(', ') +
+										'<br><span class="text-muted">' +
+										__(
+											'Badged <b>Baru</b> in the grid. Registered outside the depot (Gate_Out) like any new master — saving this booking reserves them (Booked). Drop the row and delete the container if the number is a typo.'
+										) +
+										'</span>'
+								);
+							}
+							const unknown = res.unknown || [];
+							if (unknown.length) {
+								notes.push(
+									'<b>' +
+										__('Not in Container master — skipped ({0}):', [unknown.length]) +
+										'</b><br>' +
+										unknown.join(', ') +
+										'<br><span class="text-muted">' +
+										__('Register these in the Container master first, then import again.') +
+										'</span>'
+								);
+							}
 							const warns = res.errors || [];
 							if (warns.length) {
+								notes.push('<b>' + __('Not imported:') + '</b><br>' + warns.join('<br>'));
+							}
+							if (notes.length) {
 								frappe.msgprint({
-									title: __('Import finished with warnings'),
-									message: msg + '<br><b>' + __('Not imported:') + '</b><br>' + warns.join('<br>'),
+									title: __('Import finished with notes'),
+									message: msg + '<br><br>' + notes.join('<br><br>'),
 									indicator: 'orange',
 								});
 							} else {
@@ -349,7 +424,9 @@ frappe.ui.form.on('Container Booking', {
 			d.add_custom_action(__('Download Template'), () => {
 				window.open(`${base}.download_container_template`);
 			});
-			d.add_custom_action(__('Download Master Container'), () => {
+			// Master Container carries the Cargo master on its second sheet, so the label
+			// says so — the cargo names are what the Last Cargo column must be spelled from.
+			d.add_custom_action(__('Download Master Container + Cargo'), () => {
 				const q = frm.doc.principal ? `?principal=${encodeURIComponent(frm.doc.principal)}` : '';
 				window.open(`${base}.download_container_master${q}`);
 			});
@@ -412,7 +489,10 @@ frappe.ui.form.on('Container Booking', {
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));
-		frm.set_query('container', 'items', () => ({ filters: { principal: frm.doc.principal || '' } }));
+		// Retired tanks (Active off) are out of the fleet and never offered.
+		frm.set_query('container', 'items', () => ({
+			filters: { principal: frm.doc.principal || '', is_active: 1 },
+		}));
 		// Charge services: the "Booking" Depot Service Menu ∩ the customer's active price
 		// list (both resolved server-side).
 		frm.set_query('item', 'charges', () => ({
