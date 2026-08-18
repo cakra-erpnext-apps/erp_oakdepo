@@ -290,7 +290,11 @@ app_include_css = "/assets/container_depot/css/container_depot.css"
 # notification_click — ask whether the recipient may open a notification's document before
 # following the link, so a Desk bell tap gives a plain reason instead of Frappe's
 # "Insufficient Permission" page. Fails open; see the file.
-app_include_js = ["/assets/container_depot/js/notification_click.js"]
+app_include_js = [
+	"/assets/container_depot/js/notification_click.js",
+	# Backport perbaikan Frappe untuk pill Table MultiSelect (lihat file-nya).
+	"/assets/container_depot/js/table_multiselect_fix.js",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/container_depot/css/container_depot.css"
@@ -320,6 +324,8 @@ doctype_js = {
 	"Cleaning Order": "public/js/lock_item_picker.js",
 	"Repair Order": "public/js/lock_item_picker.js",
 	"Survey Order": "public/js/lock_item_picker.js",
+	# Rapikan form User baru + guard handler Role Profiles bawaan (lihat file-nya).
+	"User": "public/js/user.js",
 }
 # Communication list — on-demand "Tarik Email" (pull) button, scoped to the user's accounts.
 doctype_list_js = {"Communication": "public/js/communication_list.js"}
