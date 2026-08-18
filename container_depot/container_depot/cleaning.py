@@ -17,6 +17,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, getdate, now_datetime, today
 
+from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
 # Tank-spec fields read from the Container master for the form header + print.
@@ -157,7 +158,7 @@ def start_cleaning(cleaning_order):
 	if not co:
 		frappe.throw(_("Cleaning Order {0} not found.").format(cleaning_order))
 	if co.docstatus == 1 or co.status == "Completed":
-		frappe.throw(_("Cleaning Order sudah selesai."))
+		frappe.throw(_("Cleaning Order sudah selesai."), exc=AlreadySettled)
 	_guard_container_branch(co.container)
 
 	if co.status != "In_Progress":
@@ -287,7 +288,7 @@ def save_cleaning_order(
 		frappe.throw(_("cleaning_order is required."))
 	co = frappe.get_doc("Cleaning Order", cleaning_order)
 	if co.docstatus == 1:
-		frappe.throw(_("Cleaning Order sudah selesai."))
+		frappe.throw(_("Cleaning Order sudah selesai."), exc=AlreadySettled)
 	_guard_container_branch(co.container)
 
 	# "Metode Cleaning" is now one OR MORE billable Service items (each priced from the

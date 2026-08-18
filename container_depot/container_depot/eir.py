@@ -18,6 +18,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, getdate, now_datetime, time_diff_in_seconds, today
 
+from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 # Damage code "v" = Acceptable — it is recorded as a condition but does not mean
@@ -995,7 +996,7 @@ def start_eir(inspection: str) -> dict:
 		frappe.throw(_("inspection is required."))
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
-		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection))
+		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
 	doc.check_permission("write")
 	if not doc.work_started_on:
@@ -1041,7 +1042,7 @@ def save_draft(
 	"""
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
-		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection))
+		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	# Work-timing gate: editing is only allowed after the operator has pressed "Mulai"
 	# (see ``start_eir``), so every saved EIR carries a real work-start timestamp.
 	if not doc.work_started_on:
@@ -1485,7 +1486,7 @@ def open_draft_by_name(inspection: str) -> dict:
 	if doc.inspection_type not in ("EIR-In", "EIR-Out"):
 		frappe.throw(_("{0} is not an EIR.").format(inspection))
 	if doc.docstatus != 0:
-		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection))
+		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
 	header = prefill(container=doc.container)
 	return _draft_payload(doc, header)

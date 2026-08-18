@@ -124,7 +124,7 @@ import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
 import { compressPhoto } from "@/utils/photo"
-import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
+import { loadDraft, saveDraft } from "@/data/drafts"
 import { enqueue, hydratePreviews, isQueued, onOutboxSent, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 import { useDetailView } from "@/utils/backstack"
 
@@ -217,9 +217,9 @@ async function onPhotoPick(event) {
 
 // ---- save ----
 //
-// Always through the outbox, online and off. A "post now if we can, queue if we cannot" fork
-// leaves the offline branch barely exercised, and that is the branch that runs on the day the
-// yard has no signal.
+// Through `enqueue`, which sends immediately when there is a link and queues when there is
+// not. Keeping that fork inside the outbox rather than here means the offline branch is the
+// same code every screen uses, not a branch only exercised on the day the yard has no signal.
 const saving = ref(false)
 const saveError = ref(null)
 const draftKey = computed(() => `survey-pos:${detail.value?.name || ""}`)
@@ -229,6 +229,10 @@ function localSnapshot() {
 }
 
 async function restoreLocalDraft() {
+	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
+	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
+	// same document twice under two request_ids.
+	if (isQueued(detail.value?.name)) return
 	const saved = await loadDraft(draftKey.value)
 	if (!saved) return
 	form.location_note = saved.location_note || form.location_note
@@ -250,6 +254,8 @@ async function save() {
 			kind: "survey-position",
 			title: `${labels.surveyPosTitle} · ${d.container_no || d.container}`,
 			ref: d.name,
+			// Cleared by the queue once the save has actually landed — see EirInForm.vue.
+			draft: draftKey.value,
 			url: "container_depot.ess.position_survey.position_record",
 			payload: {
 				name: d.name,
@@ -260,7 +266,6 @@ async function save() {
 				notes: form.notes || undefined,
 			},
 		})
-		await clearDraft(draftKey.value)
 		toast.success(outbox.online ? labels.surveyPosSaved : labels.queuedOffline, { title: d.name })
 		backToList()
 	} catch (e) {

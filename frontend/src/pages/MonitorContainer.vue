@@ -278,9 +278,10 @@ function orderTint(status) {
 
 // TANK OUT — confirm + complete gate-out for a pickup-pending tank, then refresh so it
 // drops out of the live-inventory buckets.
-// Queued rather than posted, for the same reason as the Siap Keluar screen: this is pressed
-// at the barrier, and holding a truck because the handset cannot reach the server jams every
-// truck behind it. Carries a request_id so a lost response cannot become a second gate move.
+// Through the outbox, for the same reason as the Siap Keluar screen: this is pressed at the
+// barrier, and with a link it is a single fast round trip that answers honestly, while a dead
+// spot queues it rather than holding the truck — and every truck behind it. Carries a
+// request_id so a lost response cannot become a second gate move.
 const gatingOut = ref(false)
 async function confirmGateOut(c) {
 	if (gatingOut.value) return

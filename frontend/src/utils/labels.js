@@ -136,6 +136,16 @@ export const labels = {
 	queueSessionExpired: "Sesi berakhir. Login lagi supaya antrean bisa terkirim.",
 	queueEmpty: "Semua sudah terkirim",
 	queuePhotoPending: "menunggu kirim",
+	// A row the server refused because the job was already finished on the Desk while this
+	// handset was out of signal. Not the operator's mistake, and not something a retry can
+	// fix — so it is worded as news, and the panel offers only "lihat isi" and "buang".
+	queueSettledOne: "sudah ditangani",
+	queueSettledTitle: "Sudah dikerjakan orang lain",
+	queueSettledHint: "Pekerjaan ini sudah diselesaikan di sistem selagi HP Anda offline, jadi kiriman ini tidak bisa masuk. Cek isinya di bawah — kalau ada yang belum tercatat, catat manual di ERPNext, lalu buang.",
+	queueSettledDiscardConfirm: "Pekerjaan ini sudah tercatat di sistem oleh orang lain. Isian yang tampil di sini akan hilang permanen kalau dibuang.",
+	queueShowPayload: "Lihat isi",
+	queueHidePayload: "Tutup isi",
+	queuePayloadPhotos: "foto",
 	// Shown once, app-wide, while the link is down. Says what the operator is looking at
 	// (older data) and what still works (everything they fill in) — a bare "offline" leaves
 	// them guessing whether it is safe to keep working, and the answer is yes.

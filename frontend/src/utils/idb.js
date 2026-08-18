@@ -15,6 +15,8 @@
 //             queue is unreachable: an operator who cannot load the worklist never gets to
 //             the form whose submit the queue would have carried.
 
+import { isRef, toRaw } from "vue"
+
 const DB_NAME = "oak-depot"
 // v2 added `reads`. Bump this, never rename a store in place: onupgradeneeded is the only
 // place a store can be created, so an added store with an unchanged version never appears.
@@ -70,9 +72,33 @@ function run(store, mode, fn) {
 	)
 }
 
+/**
+ * A structured-clone-safe copy of `value`.
+ *
+ * IndexedDB stores values by structured clone, and structured clone refuses a Proxy
+ * outright — "Proxy object could not be cloned". Vue hands out Proxies for everything
+ * reactive, so a single `ref([])` array reaching a payload (a form's QC photo rows, a
+ * queue row read back out of the reactive `state.rows`) killed the whole write, and with
+ * it the queued document it was carrying.
+ *
+ * Unwrapping here rather than at each call site is deliberate: the store boundary is the
+ * only place that catches every caller, including the ones written next year.
+ */
+export function plain(value) {
+	const v = isRef(value) ? value.value : toRaw(value)
+	if (v === null || typeof v !== "object") return v
+	// Blobs, Files and Dates clone natively and must pass through whole — a photo flattened
+	// into `{}` by a naive deep copy is evidence lost.
+	if (v instanceof Blob || v instanceof Date || v instanceof ArrayBuffer) return v
+	if (Array.isArray(v)) return v.map(plain)
+	const out = {}
+	for (const k of Object.keys(v)) out[k] = plain(v[k])
+	return out
+}
+
 export const idbGet = (store, key) => run(store, "readonly", (s) => s.get(key))
 export const idbGetAll = (store) => run(store, "readonly", (s) => s.getAll())
-export const idbPut = (store, value) => run(store, "readwrite", (s) => s.put(value))
+export const idbPut = (store, value) => run(store, "readwrite", (s) => s.put(plain(value)))
 export const idbDelete = (store, key) => run(store, "readwrite", (s) => s.delete(key))
 export const idbClear = (store) => run(store, "readwrite", (s) => s.clear())
 

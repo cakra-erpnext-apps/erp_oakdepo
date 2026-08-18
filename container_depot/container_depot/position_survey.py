@@ -21,6 +21,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
+from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 DOCTYPE = "Container Position Survey"
@@ -230,6 +231,11 @@ def approve_position(name, note=None) -> dict:
 	"""
 	doc = frappe.get_doc(DOCTYPE, name)
 	_guard_container_branch(doc.container)
+	# Already approved — usually a queued approval that left the handset after somebody else
+	# had confirmed the same tank. Said plainly, and marked so the queue can tell "this is
+	# done" from "this is not ready yet".
+	if doc.status == CONFIRMED:
+		frappe.throw(_("Survey {0} sudah dikonfirmasi.").format(name), exc=AlreadySettled)
 	if doc.status != SURVEYED:
 		frappe.throw(_("Survey {0} belum disurvei (status harus Surveyed).").format(name))
 

@@ -178,12 +178,14 @@ function waitClass(c) {
 //
 // This is the deliberate call on this screen. The gate is where the signal is worst and where
 // waiting is most expensive: a truck held at the barrier because the handset cannot reach the
-// server blocks every truck behind it. So the tank is released now and the record catches up.
+// server blocks every truck behind it. So with a link this waits for the server — one fast
+// round trip, and the server's guards (open work still holding the tank, branch scope) answer
+// at the barrier where they can still be acted on.
 //
-// The honest cost: the server's guards (open work still holding the tank, branch scope) only
-// run when the queue drains, so a release that turns out to be invalid surfaces as a failed
-// row in the queue panel afterwards rather than as a refusal at the barrier. That is a
-// discrepancy someone has to reconcile — but it is visible, and it is rarer than the jam.
+// Without a link the tank is released now and the record catches up. The honest cost is only
+// paid on that path: a release the server would have refused surfaces afterwards as a failed
+// row in the queue panel, a discrepancy someone has to reconcile — visible, and rarer than
+// the jam.
 const accing = ref(false)
 async function confirmAcc(c) {
 	if (accing.value) return

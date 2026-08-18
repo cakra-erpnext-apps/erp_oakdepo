@@ -246,8 +246,8 @@
 			</p>
 
 			<!-- Finalize — the order is already In_Progress inside this branch. -->
-			<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmComplete">
-				<Icon v-if="saveRes.loading" name="loader" :size="18" class="animate-spin" />
+			<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading || submitting" @click="confirmComplete">
+				<Icon v-if="saveRes.loading || submitting" name="loader" :size="18" class="animate-spin" />
 				<span v-else>{{ labels.cleaningComplete }}</span>
 			</button>
 			</template>
@@ -540,6 +540,10 @@ function localSnapshot() {
 }
 
 async function restoreLocalDraft() {
+	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
+	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
+	// same document twice under two request_ids.
+	if (isQueued(order.value?.name)) return
 	const saved = await loadDraft(draftKey.value)
 	if (!saved) return
 	remarks.value = saved.remarks ?? remarks.value
@@ -572,24 +576,34 @@ function save(submit) {
 	})
 }
 
+// Held while the send is in flight. With a link `enqueue` now waits for the server (and for
+// any QC photos to upload), so the button is live for a real second or two — long enough for
+// an impatient second tap to raise a second sign-off under a second request_id.
+const submitting = ref(false)
+
 /**
- * Hand the finished sign-off to the outbox rather than posting it.
+ * Hand the finished sign-off to `enqueue`.
  *
- * Same path online and off, deliberately: a "send now if we can, queue if we cannot" fork
- * leaves the offline branch barely exercised, and that is the branch that runs on the worst
- * day.
+ * Sent straight to the server when there is a link, queued only when the send fails. That
+ * fork lives in `enqueue`, in one place, so the offline branch is the same code every screen
+ * runs rather than a branch only exercised on the worst day.
  */
 async function queueComplete() {
 	const o = order.value
+	if (submitting.value) return
+	submitting.value = true
 	try {
 		await enqueue({
 			kind: "cleaning-complete",
 			title: `${labels.cleaningTitle} · ${o.container_no || o.container}`,
 			ref: o.name,
+			// Cleared by the queue once the save has actually landed — not here. If this row
+			// comes back refused (the order closed on the Desk meanwhile), the draft is what
+			// still holds the photos and the remarks.
+			draft: draftKey.value,
 			url: "container_depot.ess.cleaning.cleaning_order_save",
 			payload: payload(true),
 		})
-		await clearDraft(draftKey.value)
 		toast.success(outbox.online ? labels.cleaningSubmitted : labels.queuedOffline, {
 			title: o.order_id || o.name,
 		})
@@ -600,6 +614,8 @@ async function queueComplete() {
 		reloadOrders()
 	} catch (e) {
 		toast.error(e?.message || labels.error)
+	} finally {
+		submitting.value = false
 	}
 }
 

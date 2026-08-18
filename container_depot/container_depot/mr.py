@@ -21,6 +21,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime
 
+from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
 from container_depot.container_depot.service_menu import filter_items_by_menu, is_real_menu
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots, get_user_warehouses
@@ -840,7 +841,7 @@ def save_mr_order(
 		frappe.throw(_("repair_order is required."))
 	ro = frappe.get_doc("Repair Order", repair_order)
 	if ro.status in ("Completed", "Cancelled", "Rejected"):
-		frappe.throw(_("M&R sudah {0}.").format(ro.status))
+		frappe.throw(_("M&R sudah {0}.").format(ro.status), exc=AlreadySettled)
 	_guard_container_branch(ro.container)
 
 	submitting = _as_bool(submit)

@@ -1,5 +1,13 @@
 // The offline outbox: work the operator has finished, waiting for a network to leave on.
 //
+// ONLINE FIRST. With a link, a save goes straight to the server and the operator waits for
+// the real answer — that is a few hundred milliseconds, and it is what makes a rejection
+// ("that tank still has open work") arrive while they are still standing at the tank rather
+// than as a failed row in a panel an hour later. The queue only takes over when the send
+// actually fails on the network. It used to be the other way round — everything went into
+// IndexedDB and left on the flusher's schedule — and with signal that bought nothing but
+// latency, a worklist that reloaded twice per action, and errors that surfaced far too late.
+//
 // One row per document save. A row is an ATOMIC unit — its photos upload first, their real
 // file_urls are substituted into the payload, and only then does the document save go out.
 // Splitting photos and save into separate queue entries would let the uploads succeed while
@@ -19,6 +27,7 @@
 
 import { computed, reactive, watch } from "vue"
 
+import { clearDraft } from "@/data/drafts"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import {
@@ -40,6 +49,8 @@ const RETRY_MS = 30_000
 // how a queue loses work; refusing early with a message the operator can act on is not.
 const MAX_ROWS = 60
 
+let loaded = false
+
 const state = reactive({
 	rows: [],          // queued jobs, oldest first
 	sending: false,
@@ -52,15 +63,24 @@ const state = reactive({
 export const outbox = reactive({
 	pending: computed(() => state.rows.filter((r) => r.state !== "failed").length),
 	failed: computed(() => state.rows.filter((r) => r.state === "failed").length),
+	// Of those, the ones refused because the job was already done elsewhere. Counted apart
+	// because it changes what the badge should say: news to acknowledge, not a breakage.
+	settled: computed(() => state.rows.filter((r) => r.settled).length),
 	rows: computed(() => state.rows),
 	sending: computed(() => state.sending),
 	online: computed(() => state.online),
 	sessionExpired: computed(() => state.sessionExpired),
 	lastError: computed(() => state.lastError),
-	// The documents this queue is already carrying an action for. Worklists filter on it so a
-	// tank the operator just signed off does not sit there looking untouched — which is how
-	// the same job gets done twice.
-	refs: computed(() => new Set(state.rows.map((r) => r.ref).filter(Boolean))),
+	// The documents this queue is still going to act on. Worklists filter on it so a tank the
+	// operator just signed off does not sit there looking untouched — which is how the same
+	// job gets done twice.
+	//
+	// Parked (`failed`) rows are deliberately NOT in here. That work is not on its way
+	// anywhere, so hiding the job would leave the operator with an order missing from the
+	// worklist and no way to redo it — the queue panel would be the only trace. Let it come
+	// back into the list; the draft it was made from is still there (see `draft` below), so
+	// reopening the form brings the photos and the remarks back with it.
+	refs: computed(() => new Set(state.rows.filter((r) => r.state !== "failed").map((r) => r.ref).filter(Boolean))),
 })
 
 /** Is there already queued work against this document? */
@@ -153,17 +173,21 @@ export async function hydratePreviews(refs) {
  *
  * `title` is what the queue panel shows the operator. "Cleaning · TANK0000123" is something
  * they can act on; an endpoint path is not.
+ *
+ * `draft` names the autosaved draft this work came from. The queue clears it once the save
+ * has actually landed — never before. A draft dropped at queue time looked tidy right up to
+ * the day a row came back refused ("Cleaning Order sudah selesai", closed by someone else
+ * while the handset was in a dead spot): the operator's photos and remarks then existed
+ * nowhere a screen could reach them.
  */
-export async function enqueue({ kind, url, payload, ref = null, title = null }) {
+export async function enqueue({ kind, url, payload, ref = null, title = null, draft = null }) {
 	await load()
-	if (state.rows.length >= MAX_ROWS) {
-		throw new Error(`Antrean penuh (${MAX_ROWS} item). Sambungkan internet dulu untuk mengirimnya.`)
-	}
 	const row = {
 		id: uid(),
 		kind,
 		title,
 		ref,
+		draft,
 		url,
 		payload,
 		refs: collectLocalRefs(payload),
@@ -172,15 +196,71 @@ export async function enqueue({ kind, url, payload, ref = null, title = null }) 
 		error: null,
 		created_at: Date.now(),
 	}
+
+	// The fast path, and with signal the only one anybody sees: send it now, wait for the
+	// answer, store nothing. Queueing first would mean an IndexedDB write of the whole
+	// payload, a worklist that hides the row and then refetches it twice, and — worst of the
+	// three — a server refusal the operator does not learn about until later.
+	let attempted = false
+	if (canSendNow()) {
+		const uploadedRefs = []
+		attempted = true
+		state.sending = true
+		try {
+			await deliver(row, { persist: false, uploadedRefs })
+			await settleDraft(row)
+			state.online = true // proof, not a guess: something just got through
+			state.lastError = null
+			// The server's answer has changed; whatever list is on screen is now stale.
+			state.sent += 1
+			return row.id
+		} catch (e) {
+			// A refusal is the server talking, and it will say the same thing on every
+			// retry. Hand it to the form, which still has everything on screen and can put
+			// it right — queueing a doomed row instead is how these ended up being read an
+			// hour later in a panel.
+			if (e?.name === "Rejected") throw e
+			if (e?.name === "SessionExpired") state.sessionExpired = true
+			else state.online = false
+			// Anything else means the link went down mid-send. Fall through: the row keeps
+			// whatever progress `deliver` made (photos already uploaded are real URLs in the
+			// payload now, so their blobs are dead weight) and the queue carries the rest.
+			for (const r of uploadedRefs) await dropBlob(r)
+			state.lastError = e?.message || String(e)
+		} finally {
+			state.sending = false
+		}
+	}
+
+	if (state.rows.length >= MAX_ROWS) {
+		throw new Error(`Antrean penuh (${MAX_ROWS} item). Sambungkan internet dulu untuk mengirimnya.`)
+	}
 	await idbPut(STORE_OUTBOX, row)
 	state.rows.push(row)
 	requestPersistentStorage()
-	flush()
+	// Force the attempt unless one was just made and failed. `online` is a guess held by
+	// whatever last touched the network — a GET on another screen may have set it false
+	// minutes ago — and with the queue empty nothing else was going to test it. Letting the
+	// new row probe the link itself is the difference between going out now and waiting out
+	// the retry timer for something that was never actually down.
+	flush({ force: !attempted })
 	return row.id
 }
 
+/**
+ * May a new save skip the queue and go straight out?
+ *
+ * Only with no evidence the link is down, and only with an empty queue: a row that jumped
+ * ahead of work already waiting would land out of order, and a later document may depend on
+ * an earlier one. Parked (`failed`) rows are not waiting for anything, so they do not block.
+ */
+function canSendNow() {
+	return state.online && !state.sending && !state.rows.some((r) => r.state !== "failed")
+}
+
 async function load() {
-	if (state.rows.length) return
+	if (loaded) return
+	loaded = true
 	try {
 		const rows = await idbGetAll(STORE_OUTBOX)
 		state.rows = (rows || []).sort((a, b) => a.created_at - b.created_at)
@@ -198,37 +278,68 @@ async function load() {
 export async function flush({ force = false } = {}) {
 	if (state.sending || (!state.online && !force)) return
 	await load()
-	const due = state.rows.filter((r) => r.state !== "failed")
-	if (!due.length) return
+	if (!state.rows.some((r) => r.state !== "failed")) return
 
 	state.sending = true
 	try {
-		for (const row of due) {
-			// Strictly in order. A later EIR may reference a file the earlier one uploaded,
-			// and jumping the queue on a flaky link produces the confusing case where work
-			// lands out of sequence.
-			const ok = await sendRow(row)
-			if (!ok) break
+		// Strictly in order. A later EIR may reference a file the earlier one uploaded, and
+		// jumping the queue on a flaky link produces the confusing case where work lands out
+		// of sequence.
+		//
+		// The queue is re-read each turn rather than iterated as a snapshot: a row enqueued
+		// while this loop was running used to be invisible to it — and its own `flush()` call
+		// no-opped on `state.sending` — so it sat untouched until the 30s retry timer came
+		// round. On a good link that was a queue that looked broken for half a minute at a
+		// time. A sent row leaves the list and a parked one is `failed`, so this always
+		// advances.
+		for (;;) {
+			const row = state.rows.find((r) => r.state !== "failed")
+			if (!row) break
+			if (!(await sendRow(row))) break
 		}
 	} finally {
 		state.sending = false
 	}
 }
 
-async function sendRow(row) {
-	row.state = "sending"
-	try {
-		for (const ref of [...row.refs]) {
-			const fileUrl = await uploadStashed(ref)
-			row.payload = substitute(row.payload, ref, fileUrl)
-			row.refs = row.refs.filter((r) => r !== ref)
+/**
+ * Upload the row's stashed photos, substitute the real URLs into its payload, and post it.
+ *
+ * `persist` writes the row back to IndexedDB after every photo, which is what lets a
+ * connection that dies after two of three uploads resume instead of starting over. A row
+ * being sent straight from `enqueue` is not in IndexedDB at all and has nothing to resume —
+ * it skips the writes, and its uploaded refs are collected in `uploadedRefs` so the caller
+ * can clean up the blobs whichever way the send ends.
+ */
+async function deliver(row, { persist, uploadedRefs = [] }) {
+	for (const ref of [...row.refs]) {
+		const fileUrl = await uploadStashed(ref)
+		row.payload = substitute(row.payload, ref, fileUrl)
+		row.refs = row.refs.filter((r) => r !== ref)
+		uploadedRefs.push(ref)
+		if (persist) {
 			// Persist after EVERY photo: this is what makes a half-finished upload set
 			// survive the connection dropping.
 			await idbPut(STORE_OUTBOX, { ...row, state: "pending" })
-			await idbDelete(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
+			await dropBlob(ref)
 		}
+	}
+	await post(row.url, { ...row.payload, request_id: row.id })
+	// Only now, for a direct send: a blob dropped before the save landed would leave a
+	// rejected form holding a `local:` reference to a photo that no longer exists anywhere.
+	if (!persist) for (const ref of uploadedRefs) await dropBlob(ref)
+}
 
-		await post(row.url, { ...row.payload, request_id: row.id })
+const dropBlob = (ref) => idbDelete(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
+
+/** The save landed, so what the operator typed is on the server now and the draft can go. */
+const settleDraft = (row) => (row.draft ? clearDraft(row.draft) : Promise.resolve())
+
+async function sendRow(row) {
+	row.state = "sending"
+	try {
+		await deliver(row, { persist: true })
+		await settleDraft(row)
 		await idbDelete(STORE_OUTBOX, row.id)
 		state.rows = state.rows.filter((r) => r.id !== row.id)
 		state.lastError = null
@@ -244,6 +355,9 @@ async function sendRow(row) {
 async function handleFailure(row, e) {
 	row.attempts += 1
 	row.error = e?.message || String(e)
+	// "Already settled" is not a failure to retry, it is news: the job was finished on the
+	// Desk while this row was waiting for a signal. The panel presents it as such.
+	row.settled = !!e?.settled
 	state.lastError = row.error
 
 	if (e?.name === "SessionExpired") {
@@ -262,9 +376,9 @@ async function handleFailure(row, e) {
 		await idbPut(STORE_OUTBOX, { ...row })
 		return false
 	}
-	// A validation error will fail identically forever. Park it as `failed` so it stops
-	// blocking the rows behind it, and show it — a queue that silently retries a poison
-	// row for ever looks exactly like a queue that is working.
+	// A validation error will fail identically forever — a settled one most of all. Park it
+	// as `failed` so it stops blocking the rows behind it, and show it: a queue that
+	// silently retries a poison row for ever looks exactly like a queue that is working.
 	const poison = e?.name === "Rejected" || row.attempts >= MAX_ATTEMPTS
 	row.state = poison ? "failed" : "pending"
 	await idbPut(STORE_OUTBOX, { ...row })
@@ -272,7 +386,13 @@ async function handleFailure(row, e) {
 		// Interrupt them. The operator has already walked away believing this was sent, and
 		// the whole design leans on a rejection being noticed — a badge quietly changing
 		// colour in the header is not noticing.
-		toast.error(row.error, { title: row.title || labels.queueFailedTitle })
+		//
+		// A settled row is interrupted just as loudly but not dressed as a failure: nothing
+		// broke, somebody else finished the job first. The server's own sentence ("Cleaning
+		// Order sudah selesai.") is the clearest thing to show; the panel carries the rest.
+		const title = row.title || (row.settled ? labels.queueSettledTitle : labels.queueFailedTitle)
+		if (row.settled) toast.info(row.error, { title })
+		else toast.error(row.error, { title })
 	}
 	// Parked rows step aside so the queue behind them still moves; anything else means the
 	// link is unhealthy, so stop and let the retry timer try the whole queue again later.
@@ -282,7 +402,9 @@ async function handleFailure(row, e) {
 /** Put a failed row back in the queue — the operator's manual retry. */
 export async function retryRow(id) {
 	const row = state.rows.find((r) => r.id === id)
-	if (!row) return
+	// A settled row cannot be retried into existence; the panel does not offer the button,
+	// and this is the guard behind it.
+	if (!row || row.settled) return
 	row.state = "pending"
 	row.attempts = 0
 	row.error = null
@@ -294,7 +416,7 @@ export async function retryRow(id) {
 export async function discardRow(id) {
 	const row = state.rows.find((r) => r.id === id)
 	if (row) {
-		for (const ref of row.refs || []) await idbDelete(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
+		for (const ref of row.refs || []) await dropBlob(ref)
 	}
 	await idbDelete(STORE_OUTBOX, id)
 	state.rows = state.rows.filter((r) => r.id !== id)
@@ -302,7 +424,15 @@ export async function discardRow(id) {
 
 // --- transport --------------------------------------------------------------
 
+// Photos this session has already put on the server, `local:` ref -> file_url. A direct
+// send that the server then REFUSES leaves the form holding its original `local:` refs; the
+// operator fixes the complaint and presses send again, and without this every photo would go
+// up the wire a second time. On the yard's 3G that is the difference between a correction
+// taking seconds and taking another minute.
+const uploaded = new Map()
+
 async function uploadStashed(ref) {
+	if (uploaded.has(ref)) return uploaded.get(ref)
 	const id = ref.slice(LOCAL_PREFIX.length)
 	const stored = await idbGet(STORE_BLOBS, id)
 	if (!stored) {
@@ -317,6 +447,7 @@ async function uploadStashed(ref) {
 	fd.append("folder", "Home")
 	const res = await request("/api/method/upload_file", { method: "POST", body: fd })
 	const data = await res.json()
+	uploaded.set(ref, data.message.file_url)
 	return data.message.file_url
 }
 
@@ -344,15 +475,24 @@ async function request(url, opts) {
 	if (res.ok) return res
 	if (res.status === 401 || res.status === 403) throw named("SessionExpired", "Sesi berakhir, login lagi.")
 	if (res.status >= 500) throw named("Offline", `server ${res.status}`) // transient — keep retrying
-	throw named("Rejected", await readError(res))
+	const { message, type } = await readError(res)
+	const e = named("Rejected", message)
+	// The server names the exception class in `exc_type`. `AlreadySettled` (see
+	// container_depot/exceptions.py) means the document has moved past this request for
+	// good — the one refusal where retrying is not just useless but misleading.
+	e.settled = type === "AlreadySettled"
+	throw e
 }
 
 async function readError(res) {
 	try {
 		const body = await res.json()
-		return body._server_messages ? JSON.parse(body._server_messages).map(safeMsg).join(" ") : body.exception || res.statusText
+		const message = body._server_messages
+			? JSON.parse(body._server_messages).map(safeMsg).join(" ")
+			: body.exception || res.statusText
+		return { message, type: body.exc_type || null }
 	} catch {
-		return res.statusText || `HTTP ${res.status}`
+		return { message: res.statusText || `HTTP ${res.status}`, type: null }
 	}
 }
 

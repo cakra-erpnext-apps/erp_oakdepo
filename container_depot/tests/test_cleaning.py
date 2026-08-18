@@ -15,6 +15,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot import cleaning
+from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.tests.test_eir import _make_container
 
 
@@ -101,6 +102,24 @@ class TestCleaningOrderFlow(FrappeTestCase):
 			"Cleaning Order", {"container": c, "status": "Completed", "docstatus": 1}
 		))
 		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "remarks"), "bersih")
+
+	def test_finished_order_refuses_a_late_save_as_AlreadySettled(self):
+		# The offline queue's worst case: the surveyor signed off in a dead spot, and by the
+		# time the handset found signal somebody had already completed the same order on the
+		# Desk. The refusal has to be `AlreadySettled` and not a plain ValidationError —
+		# Frappe puts the class name in the response as `exc_type`, and that is what tells
+		# the PWA to park the row as "sudah ditangani" instead of retrying it for ever.
+		# See container_depot/exceptions.py and frontend/src/data/outbox.js.
+		c = self._container("CLNSETTLED1", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.start_cleaning(co)
+		cleaning.save_cleaning_order(cleaning_order=co, cleaning_type="Steam Wash", submit=True)
+
+		with self.assertRaises(AlreadySettled):
+			cleaning.save_cleaning_order(cleaning_order=co, remarks="dari HP yang offline")
+		# Still a ValidationError, so every existing caller and test keeps working.
+		with self.assertRaises(frappe.ValidationError):
+			cleaning.start_cleaning(co)
 
 	def test_save_draft_keeps_order_open(self):
 		c = self._container("CLNDRAFT001", status="In_Depot")

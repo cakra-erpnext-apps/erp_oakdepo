@@ -216,9 +216,9 @@
 				</p>
 				<!-- One action, whatever the outcome: this hands the EIR-Out to Adm Ops. The
 				     colour and the preview box above already say what it will become. -->
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading" @click="confirmSubmit">
-					<Icon v-if="!saveRes.loading" name="send" :size="18" />
-					{{ saveRes.loading ? "…" : labels.eirSendReview }}
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading || submitting" @click="confirmSubmit">
+					<Icon v-if="!saveRes.loading && !submitting" name="send" :size="18" />
+					{{ saveRes.loading || submitting ? "…" : labels.eirSendReview }}
 				</button>
 			</section>
 			</template>
@@ -237,7 +237,7 @@ import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import { compressPhoto } from "@/utils/photo"
 import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isLocalRef, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { enqueue, hydratePreviews, isLocalRef, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 
@@ -330,7 +330,8 @@ const openRes = cachedResource({
 const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] || openRes.error.message : null))
 
 // Mulai: stamp work_started_on server-side, then unlock the checklist.
-// Mulai goes through the outbox and stamps the start time locally rather than waiting for
+// Mulai stamps the start time locally rather than reading it back off the response — see the
+// same call in EirInForm.vue. Waiting for
 // the server to hand one back. The response carried nothing else the form needed, and waiting
 // for it is what made Mulai impossible in a dead spot — which locked the surveyor out of the
 // entire checklist, the one screen the offline queue exists to protect.
@@ -546,6 +547,10 @@ function localSnapshot() {
 }
 
 async function restoreLocalDraft() {
+	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
+	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
+	// same document twice under two request_ids.
+	if (isQueued(inspection.value)) return
 	const saved = await loadDraft(draftKey.value)
 	if (!saved) return
 	tanggal.value = saved.tanggal || tanggal.value
@@ -579,7 +584,13 @@ function doSave(submit = false) {
 	})
 }
 
+// Held while the send is in flight — same reason as EirInForm.vue: with a link `enqueue`
+// waits for the photos and the server, and a second tap would raise a second EIR.
+const submitting = ref(false)
+
 async function queueSubmit() {
+	if (submitting.value) return
+	submitting.value = true
 	try {
 		await enqueue({
 			kind: "eir-out-submit",
@@ -587,10 +598,11 @@ async function queueSubmit() {
 			// Names the EIR so the worklist can drop it the moment it is queued — see
 			// Eir.vue's pendingItems.
 			ref: inspection.value,
+			// Cleared by the queue once the save has actually landed — see EirInForm.vue.
+			draft: draftKey.value,
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		await clearDraft(draftKey.value)
 		toast.success(outbox.online ? labels.eirSentForReview : labels.queuedOffline, {
 			title: eirCode.value || inspection.value,
 		})
@@ -598,6 +610,8 @@ async function queueSubmit() {
 		emit("back")
 	} catch (e) {
 		toast.error(e?.message || labels.error)
+	} finally {
+		submitting.value = false
 	}
 }
 function scheduleSave() {

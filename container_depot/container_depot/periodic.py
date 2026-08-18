@@ -15,6 +15,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime, today
 
+from container_depot.container_depot.exceptions import AlreadySettled
+
 # Read helpers shared with M&R (doctype-agnostic): stock on-hand, photo-JSON parse, input
 # cleaners, and the tank-spec field list. Reused rather than re-defined so the two flows
 # stay byte-for-byte consistent (container_depot/mr.py is the origin).
@@ -254,7 +256,7 @@ def save_pt_order(periodic_test_order=None, periodic_date=None, technician=None,
 		frappe.throw(_("periodic_test_order is required."))
 	doc = frappe.get_doc("Periodic Test Order", periodic_test_order)
 	if doc.status in ("Completed", "Cancelled", "Rejected"):
-		frappe.throw(_("Periodic Test sudah {0}.").format(doc.status))
+		frappe.throw(_("Periodic Test sudah {0}.").format(doc.status), exc=AlreadySettled)
 	_guard(doc.container)
 
 	submitting = _as_bool(submit)

@@ -248,11 +248,11 @@
 				</p>
 				<button
 					class="oak-btn oak-btn-primary w-full py-3"
-					:disabled="saveRes.loading || missingFields.length > 0"
+					:disabled="saveRes.loading || submitting || missingFields.length > 0"
 					@click="confirmSubmit"
 				>
-					<Icon v-if="!saveRes.loading" name="check-circle" :size="18" />
-					{{ saveRes.loading ? "…" : labels.eirSendReview }}
+					<Icon v-if="!saveRes.loading && !submitting" name="check-circle" :size="18" />
+					{{ saveRes.loading || submitting ? "…" : labels.eirSendReview }}
 				</button>
 			</section>
 			</template>
@@ -275,7 +275,7 @@ import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
 import { compressPhoto } from "@/utils/photo"
 import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isLocalRef, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { enqueue, hydratePreviews, isLocalRef, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -437,10 +437,10 @@ const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] |
 const saveError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] || saveRes.error.message : null))
 
 // Mulai: stamp work_started_on server-side, then unlock the checklist.
-// Mulai goes through the outbox and stamps the start time locally rather than waiting for
-// the server to hand one back. The response carried nothing else the form needed, and waiting
-// for it is what made Mulai impossible in a dead spot — which locked the surveyor out of the
-// entire checklist, the one screen the offline queue exists to protect.
+// Mulai stamps the start time locally rather than reading it back off the response: the
+// response carried nothing else the form needed, and in a dead spot the call is queued, which
+// would otherwise lock the surveyor out of the entire checklist — the one screen the offline
+// queue exists to protect. `start_eir` is idempotent, so a queued Mulai keeps the first stamp.
 //
 // No `ref` on this row: starting is not finishing, so the EIR stays in the worklist.
 async function startWork() {
@@ -702,6 +702,10 @@ function localSnapshot() {
 }
 
 async function restoreLocalDraft() {
+	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
+	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
+	// same document twice under two request_ids.
+	if (isQueued(inspection.value)) return
 	const saved = await loadDraft(draftKey.value)
 	if (!saved) return
 	tanggal.value = saved.tanggal || tanggal.value
@@ -750,15 +754,22 @@ function doSave(submit = false) {
 	})
 }
 
+// Held while the send is in flight. With a link `enqueue` now waits for the server, and for
+// every stashed photo to upload first — on 3G that is long enough for an impatient second tap
+// to raise a second EIR under a second request_id.
+const submitting = ref(false)
+
 /**
- * Hand the finished EIR to the outbox rather than posting it.
+ * Hand the finished EIR to `enqueue`, which posts it now if there is a link and queues it
+ * if there is not.
  *
- * Same path online and off, deliberately. A "send now if we can, queue if we cannot" fork
- * gives two code paths of which one is barely ever exercised — and it is the one that runs
- * on the worst day. Queued-then-flushed is a few milliseconds slower with signal and is the
- * only path that has been tested.
+ * The fork lives in one place — data/outbox.js — rather than being written out per screen. A
+ * per-screen fork gives two code paths of which one is barely ever exercised, and it is the
+ * one that runs on the worst day.
  */
 async function queueSubmit() {
+	if (submitting.value) return
+	submitting.value = true
 	try {
 		await enqueue({
 			kind: "eir-in-submit",
@@ -766,10 +777,12 @@ async function queueSubmit() {
 			// Names the EIR so the worklist can drop it the moment it is queued — see
 			// Eir.vue's pendingItems.
 			ref: inspection.value,
+			// Cleared by the queue once the save has actually landed — not here, so a refused
+			// row leaves the checklist recoverable instead of gone.
+			draft: draftKey.value,
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		await clearDraft(draftKey.value)
 		toast.success(outbox.online ? labels.eirSentForReview : labels.queuedOffline, {
 			title: eirCode.value || inspection.value,
 		})
@@ -777,6 +790,8 @@ async function queueSubmit() {
 		emit("back")
 	} catch (e) {
 		toast.error(e?.message || labels.error)
+	} finally {
+		submitting.value = false
 	}
 }
 
