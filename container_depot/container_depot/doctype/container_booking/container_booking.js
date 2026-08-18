@@ -58,19 +58,30 @@ frappe.ui.form.on('Container Booking', {
 		}
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
+		//
+		// `frappe.model.can_create`, NOT `frappe.perm.has_perm`: the latter reads the
+		// permissions off `frappe.get_meta(doctype)`, and when that meta is not loaded
+		// client-side it falls back to `{read: …}` with every other right at 0 — so the
+		// answer is a silent `false`, not an error. Nothing on this form links to the bon
+		// doctypes (they reach it through the Connections tab, which loads later and
+		// asynchronously), so the meta is reliably absent at refresh() time and the button
+		// never rendered for anyone but Administrator, who short-circuits to all rights.
+		// `can_create` reads `frappe.boot.user.can_create`, which is computed server-side
+		// from the real permissions and is always present. Same reasoning wherever we ask
+		// about a doctype other than `frm.doctype` — see container.js / survey_order.js.
 		const order_dt = frm.doc.direction === 'Tank In' ? 'Order Bongkar' : 'Order Muat';
 		if (
 			!frm.is_new() &&
 			frm.doc.booking_status === 'Confirmed' &&
-			frappe.perm.has_perm(order_dt, 0, 'create')
+			frappe.model.can_create(order_dt)
 		) {
 			frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
 		}
 		// A submitted (Confirmed) booking can be reopened for a data correction WITHOUT
-		// reversing its payment — handy for a paid Cash booking that auto-confirmed.
-		if (!frm.is_new() && frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
-			frm.add_custom_button(__('Revert to Draft'), () => _confirm_revert(frm));
-		}
+		// reversing its payment — handy for a paid Cash booking that auto-confirmed. Both
+		// undos die the moment a bon exists; that decision needs a round trip, so it lives
+		// in its own trigger.
+		frm.trigger('_gate_undo_actions');
 		// A confirmed CASH booking that bills something but has no live invoice is stuck
 		// unbilled — its invoice was cancelled (which unlinks it, see
 		// resync_booking_on_invoice_cancel). Offer a fresh draft invoice rather than
@@ -99,6 +110,64 @@ frappe.ui.form.on('Container Booking', {
 				'btn-primary'
 			);
 		}
+	},
+	// A bon is the point of no return. Once one has been raised from this booking the two
+	// undos are gone — no Revert to Draft, no Cancel — because the bon is paper a driver
+	// was handed at the gate and it names this booking. Reopening the booking for edits, or
+	// voiding it, leaves that paper pointing at a record that no longer says what it said.
+	// Enforced server-side (`_block_if_bon_raised`, reached from `before_cancel`,
+	// `revert_booking_to_draft` and `void_draft`); this only keeps the screen honest.
+	//
+	// Asynchronous, and it has to be: nothing on this form links to a bon — they are
+	// reachable only through the Connections tab — so there is no way to answer "has one
+	// been raised?" without asking the server. The buttons are therefore ADDED in the
+	// callback rather than added-then-removed, which would flicker.
+	_gate_undo_actions(frm) {
+		if (frm.is_new() || frm.doc.docstatus !== 1) return;
+		const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
+		frappe.call({
+			method: 'container_depot.container_depot.doctype.container_booking.container_booking.revision_state',
+			args: { booking: frm.doc.name },
+			callback(r) {
+				const state = r.message || {};
+				const bons = state.bons || [];
+				const locked = state.locked_containers || [];
+				if (!bons.length) {
+					if (may_cancel) {
+						frm.add_custom_button(__('Revert to Draft'), () => _confirm_revert(frm));
+					}
+				} else if (may_cancel) {
+					// Frappe's own Cancel lives in the Menu, so it is stripped the same way
+					// _lock_actions strips Delete / Discard.
+					frm.page.menu
+						.find(`a[data-label="${encodeURIComponent(__('Cancel'))}"]`)
+						.parent()
+						.remove();
+				}
+				if (bons.length) {
+					frm.dashboard.add_comment(
+						__('Bon sudah terbit ({0}) — booking ini tidak bisa dikembalikan ke draft atau dibatalkan. Data lain masih bisa direvisi langsung di sini, tanpa mengubah status.', [
+							bons.join(', '),
+						]),
+						'orange',
+						true
+					);
+				}
+				// Name the frozen tanks up front. The server refuses the save with the
+				// container and the field it refused, but by then the operator has already
+				// typed — and on a booking with several containers it is not obvious which
+				// rows the bon took.
+				if (locked.length) {
+					frm.dashboard.add_comment(
+						__('Container yang sudah masuk bon tidak bisa diubah atau dihapus: {0}. Baris lain bebas direvisi.', [
+							locked.join(', '),
+						]),
+						'blue',
+						true
+					);
+				}
+			},
+		});
 	},
 	// Mirror the server lock in the UI: outside Draft the billing facts are frozen, so
 	// showing them as editable would only let the operator type into a field whose save
@@ -587,7 +656,7 @@ function _confirm_regenerate(frm) {
 
 function _confirm_revert(frm) {
 	frappe.confirm(
-		__('Reopen this confirmed booking as a draft to edit it? The payment (Sales Invoice + Payment Entries) and issued Booking Codes are kept — Submit again to re-confirm. Refused if a container is already in motion at the gate.'),
+		__('Reopen this confirmed booking as a draft to edit it? The payment (Sales Invoice + Payment Entries) and issued Booking Codes are kept — Submit again to re-confirm. Refused once a bon has been raised from this booking.'),
 		() => {
 			frappe.call({
 				method: 'container_depot.container_depot.doctype.container_booking.container_booking.revert_booking_to_draft',

@@ -21,7 +21,8 @@
    "in_list_view": 1,
    "label": "Service",
    "options": "Item",
-   "reqd": 1
+   "reqd": 1,
+   "allow_on_submit": 1
   },
   {
    "columns": 2,
@@ -30,7 +31,8 @@
    "fieldtype": "Data",
    "in_list_view": 0,
    "label": "Nama",
-   "read_only": 1
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "columns": 1,
@@ -41,7 +43,8 @@
    "in_list_view": 1,
    "label": "Qty",
    "precision": "2",
-   "reqd": 1
+   "reqd": 1,
+   "allow_on_submit": 1
   },
   {
    "columns": 2,
@@ -50,7 +53,8 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Tarif",
-   "options": "currency"
+   "options": "currency",
+   "allow_on_submit": 1
   },
   {
    "columns": 2,
@@ -59,7 +63,8 @@
    "in_list_view": 1,
    "label": "Amount",
    "options": "currency",
-   "read_only": 1
+   "read_only": 1,
+   "allow_on_submit": 1
   },
   {
    "description": "Mata uang price list customer.",
@@ -68,13 +73,14 @@
    "hidden": 1,
    "label": "Currency",
    "options": "Currency",
-   "read_only": 1
+   "read_only": 1,
+   "allow_on_submit": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-08-18 12:30:00.000000",
  "module": "Container Depot",
  "name": "Container Booking Charge",
  "permissions": [],

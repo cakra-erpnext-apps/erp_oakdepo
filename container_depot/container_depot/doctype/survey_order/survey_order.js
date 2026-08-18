@@ -14,7 +14,9 @@ frappe.ui.form.on("Survey Order", {
 	refresh(frm) {
 		// Only offer the jump to someone who can open the invoice — the field roles hold
 		// no Sales Invoice perm, so for them the link is a trip to a permission wall.
-		if (frm.doc.sales_invoice && frappe.perm.has_perm("Sales Invoice", 0, "read")) {
+		// can_read, not perm.has_perm — the Sales Invoice meta is not loaded on this form.
+		// See container_booking.js for why has_perm answers `false` in that case.
+		if (frm.doc.sales_invoice && frappe.model.can_read("Sales Invoice")) {
 			frm.add_custom_button(__("Sales Invoice"), () =>
 				frappe.set_route("Form", "Sales Invoice", frm.doc.sales_invoice), __("View"));
 		}

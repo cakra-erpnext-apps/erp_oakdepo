@@ -11,7 +11,9 @@ frappe.ui.form.on('Container', {
 		// written: a gate-in is raised from the Gate PWA against a Booking Code, which is
 		// what supplies the code, the truck and the driver. Conjuring one from a Container
 		// form would have none of that.
-		if (!frm.is_new() && frappe.perm.has_perm('Inspection', 0, 'create')) {
+		// can_create, not perm.has_perm: has_perm on a doctype whose meta the client has not
+		// loaded answers a silent `false` for every right but read. See container_booking.js.
+		if (!frm.is_new() && frappe.model.can_create('Inspection')) {
 			frm.add_custom_button(__('Inspection'), () => {
 				frappe.new_doc('Inspection', {
 					container: frm.doc.name

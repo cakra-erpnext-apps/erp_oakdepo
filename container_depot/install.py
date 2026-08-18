@@ -1447,7 +1447,17 @@ FIELD_ROLE_MATRIX = [
 	# keep write — that is the perm the PWA's "Siap Keluar" tile is gated on.
 	("Gate Entry",                  ("rw",    "r",     "rw",   "",       "",     "",     "rw")),
 	("Order Bongkar",               ("rwc",   "r",     "r",    "",       "",     "",     "rwc")),
-	("Order Muat",                  ("r",     "r",     "r",    "",       "",     "",     "rw")),
+	# SPV reads "rw" in the handoff table, which left NOBODY below Admin Ops able to issue a
+	# bon Muat: `_require_order_create` keys on create over the direction's doctype, so on a
+	# Tank Out booking the "Generate Bon / Order" button never rendered for the yard. Granting
+	# create mirrors Order Bongkar one line up. Security stays read-only — that half of the
+	# asymmetry is the deliberate one (see api._require_order_create's docstring).
+	("Order Muat",                  ("r",     "r",     "r",    "",       "",     "",     "rwc")),
+	# Not in the handoff table at all, and it has to be: the Generate Bon / Order button lives
+	# on the Container Booking FORM, so create on the order doctype is a dead grant without
+	# read on the booking it is issued from. Read only — a booking's charges, customer and
+	# payment terms belong to the office, never to the yard.
+	("Container Booking",           ("",      "",      "",     "",       "",     "",     "r")),
 	("Booking Code",                ("r",     "",      "",     "",       "",     "",     "r")),
 	("Inspection",                  ("",      "rwcs",  "r",    "r",      "r",    "r",    "rwcs")),
 	("Cleaning Order",              ("",      "r",     "r",    "rwcs",   "",     "",     "rwcs")),
