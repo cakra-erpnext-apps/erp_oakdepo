@@ -251,12 +251,6 @@
 				<p v-if="generateError" class="flex items-center gap-1.5 text-sm text-red-600">
 					<Icon name="alert-circle" :size="15" /> {{ generateError }}
 				</p>
-				<div
-					v-if="genResult && genResult.success"
-					class="flex items-center gap-2 rounded-xl border border-leaf-200 bg-leaf-50 px-3 py-2.5 text-sm font-semibold text-leaf-800"
-				>
-					<Icon name="check-circle" :size="18" /> {{ labels.gateGenerated }}: {{ genResult.order_name }}
-				</div>
 			</section>
 
 			<button class="oak-link inline-flex items-center gap-1 text-sm" @click="reset">
@@ -362,7 +356,6 @@ const code = ref("")
 const scanInput = ref(null)
 const detail = ref(null)
 const selected = ref([])
-const genResult = ref(null)
 const showVehicleForm = ref(false)
 const vehicle = ref({})
 const requestId = ref(null)
@@ -392,17 +385,12 @@ const lookupRes = createResource({
 	onSuccess(data) {
 		detail.value = data
 		selected.value = []
-		genResult.value = null
 	},
 })
 
 const generateRes = createResource({
 	url: "container_depot.api.gate_generate_order",
 	method: "POST",
-	onSuccess() {
-		// genResult set in doGenerate's then(); refresh the panel so the new bon shows.
-		if (detail.value && detail.value.booking) lookupRes.submit({ code: detail.value.booking })
-	},
 })
 
 // Active cargo master for the "Generate Bon" cargo picker (datalist suggestions).
@@ -587,7 +575,6 @@ function openGenerate() {
 		tanggal_muat: today,
 		remarks: "",
 	}
-	genResult.value = null
 	// One id per intended bon, minted when the form opens rather than when Generate is
 	// pressed. That is the whole point: on a slow link the operator presses Generate, sees
 	// nothing happen, and presses it again — and the second press has to be recognised as the
@@ -622,9 +609,14 @@ function doGenerate() {
 			request_id: requestId.value,
 		})
 		.then((data) => {
-			genResult.value = data
-			showVehicleForm.value = false
-			toast.success(data.order_name || data.order || "", { title: labels.gateGenerated })
+			// Next truck is already at the barrier: drop straight back to the scan box and
+			// let the toast — held a beat longer, since the panel it replaces is gone —
+			// carry the confirmation and the bon number.
+			reset()
+			toast.success(data.order_name || data.order || labels.gateGenerated, {
+				title: labels.gateGenerated,
+				duration: 5000,
+			})
 		})
 		.catch((err) => {
 			toast.error(err?.messages?.[0] || err?.message || labels.error)
@@ -679,7 +671,6 @@ function reset() {
 	code.value = ""
 	detail.value = null
 	selected.value = []
-	genResult.value = null
 	nextTick(() => scanInput.value && scanInput.value.focus())
 }
 </script>
