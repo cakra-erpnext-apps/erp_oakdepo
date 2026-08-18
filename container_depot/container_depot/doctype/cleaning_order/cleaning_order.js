@@ -20,6 +20,7 @@ frappe.ui.form.on('Cleaning Order', {
 	refresh(frm) {
 		frm.trigger('_set_queries');
 		frm.trigger('_forward_button');
+		frm.trigger('_bypass_button');
 	},
 	container(frm) {
 		// New container → its owner may price a different cleaning catalogue; drop the picks.
@@ -48,6 +49,40 @@ frappe.ui.form.on('Cleaning Order', {
 			frm.set_value('status', 'Pending');
 			frm.save().then(() => frappe.show_alert({ message: __('Diteruskan ke operator cuci.'), indicator: 'green' }));
 		}).addClass('btn-primary');
+	},
+	// Desk-only escape hatch: complete an order straight from the form, skipping the operator
+	// route (Service Setup -> Teruskan ke Operator -> Mulai -> sign-off in the PWA). It exists
+	// for the orders that route cannot finish — work already done off-system, or a tank that
+	// left before anyone opened the PWA.
+	//
+	// Nothing is bypassed SERVER-side, deliberately: this only stamps the `cleaning_start`
+	// that `before_submit` insists on and then saves with the Submit action, so the same
+	// controller runs (status -> Completed, cleaning_end / completed_by / signed_by /
+	// date_of_issue filled in, container mirrored) and Frappe still demands write + submit on
+	// Cleaning Order exactly as the normal path does. A user without both never sees it.
+	_bypass_button(frm) {
+		if (frm.is_new() || frm.doc.docstatus !== 0) return;
+		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
+		if (!frappe.perm.has_perm(frm.doctype, 0, 'submit')) return;
+		frm.add_custom_button(__('Selesaikan Langsung (Bypass Alur)'), () => {
+			frappe.confirm(
+				__('Selesaikan order ini tanpa alur operator? Order langsung di-submit (Completed), tanpa sign-off di PWA.'),
+				() => {
+					const patch = {};
+					// Both are what the operator route would have stamped on "Mulai".
+					if (!frm.doc.cleaning_start) patch.cleaning_start = frappe.datetime.now_datetime();
+					if (frm.doc.status !== 'In_Progress') patch.status = 'In_Progress';
+					frm.set_value(patch)
+						// save('Submit'), not savesubmit(): the confirmation above is the one the
+						// operator answered, and a second "Permanently Submit?" dialog on top of it
+						// is just noise.
+						.then(() => frm.save('Submit'))
+						.then(() =>
+							frappe.show_alert({ message: __('Cleaning order selesai (Completed).'), indicator: 'green' })
+						);
+				}
+			);
+		}).addClass('btn-danger');
 	},
 });
 
