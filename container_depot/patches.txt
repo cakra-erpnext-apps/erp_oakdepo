@@ -81,3 +81,4 @@ container_depot.patches.v0_54.park_unused_roles
 container_depot.patches.v0_55.backfill_order_container_summary
 container_depot.patches.v0_55.lock_gate_audit_doctypes
 container_depot.patches.v0_56.clear_role_home_page
+container_depot.patches.v0_56.backfill_gate_entry_vehicle

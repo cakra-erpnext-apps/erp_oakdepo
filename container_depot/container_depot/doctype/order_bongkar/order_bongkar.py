@@ -193,6 +193,13 @@ def _record_gate_in(order: Document):
 			doc.order_doctype = "Order Bongkar"
 			doc.order_ref = order.name
 			doc.security_guard = order.owner
+			# Truck + driver the guard typed at the gate. Tank In carries them per
+			# container (the bon's rows ARE Container Booking Item rows), and the field
+			# is `driver` there vs `driver_name` on Gate Entry. Without this the gate log
+			# has the columns but nothing ever fills them, so "Riwayat Gate" showed "—"
+			# for every arrival while the data sat one doctype away on the bon.
+			doc.truck_plate = row.get("truck_plate")
+			doc.driver_name = row.get("driver")
 			doc.gate_in_timestamp = when
 			doc.status = "Gate_In_Completed"
 			doc.inspection_status = "Pending"

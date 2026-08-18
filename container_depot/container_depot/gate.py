@@ -121,6 +121,21 @@ def _latest_order_muat(container, container_no):
 	return rows[0].name if rows else None
 
 
+def _muat_vehicle(order_muat) -> dict:
+	"""Truck + driver behind a departure, as Gate Entry fieldnames.
+
+	Tank Out carries the vehicle on the ``Order Muat`` HEADER (one truck per bon), unlike
+	Tank In which carries it per container row — see ``eir._voucher_detail`` for the same
+	split. Empty values are dropped so this never blanks a column that already has one.
+	"""
+	if not order_muat:
+		return {}
+	row = frappe.db.get_value(
+		"Order Muat", order_muat, ["truck_plate", "driver_name"], as_dict=True
+	) or {}
+	return {k: v for k, v in row.items() if v}
+
+
 def _resolve_or_create_gate_entry(container_no, order_muat, depot, performed_by):
 	"""The Gate Entry to stamp on gate-out. A Gate Entry spans a tank's whole depot visit
 	(it carries BOTH ``gate_in_timestamp`` and ``gate_out_timestamp``), so reuse the latest
@@ -153,6 +168,8 @@ def _resolve_or_create_gate_entry(container_no, order_muat, depot, performed_by)
 		)
 		if bc:
 			doc.booking_code = bc
+	for field, value in _muat_vehicle(order_muat).items():
+		setattr(doc, field, value)
 	return doc
 
 
@@ -258,16 +275,20 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 				ge_doc.gate_in_timestamp = ts
 			ge_doc.insert(ignore_permissions=True)
 		else:
-			frappe.db.set_value(
-				"Gate Entry", ge_doc.name,
-				{
-					"gate_out_timestamp": ts,
-					"status": "Gate_Out_Completed",
-					"eir_reference": eir_out,
-					"inspection_status": "Completed",
-				},
-				update_modified=True,
-			)
+			update = {
+				"gate_out_timestamp": ts,
+				"status": "Gate_Out_Completed",
+				"eir_reference": eir_out,
+				"inspection_status": "Completed",
+			}
+			# Vehicle on a REUSED record: fill only what the arrival left blank. Same
+			# precedent as order_doctype/order_ref above — the doctype has one slot, the
+			# visit it describes starts at the gate-in, and the departure truck is still
+			# reachable from the Order Muat this gate-out returns.
+			for field, value in _muat_vehicle(order_muat).items():
+				if not ge_doc.get(field):
+					update[field] = value
+			frappe.db.set_value("Gate Entry", ge_doc.name, update, update_modified=True)
 		gate_entry_name = ge_doc.name
 
 		from container_depot.container_depot.container_activity import log_container_activity

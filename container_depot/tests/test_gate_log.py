@@ -17,6 +17,7 @@ from container_depot.container_depot.doctype.booking_code.booking_code import ge
 from container_depot.container_depot.gate import mark_gate_out, open_gate_entry_for
 from container_depot.container_depot.order_generation import make_order
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
+from container_depot.tests.test_eir import _make_order_muat
 
 PREFIX = "GLOG"
 CUSTOMER = "Gate Log Test Customer"
@@ -61,8 +62,12 @@ def _container(no, status="Booked"):
 	return no
 
 
-def _tank_in_bon(container_no, *, submit=True):
-	"""A submitted Tank In bon for one container — the arrival, as the gate records it."""
+def _tank_in_bon(container_no, *, submit=True, vehicle=None):
+	"""A submitted Tank In bon for one container — the arrival, as the gate records it.
+
+	``vehicle``: the dict the PWA gate posts. Tank In names the driver ``driver`` (it goes
+	on the container row); Tank Out uses ``driver_name`` on the header. See
+	``order_generation.BONGKAR_ROW_DETAIL``."""
 	customer = ensure_test_customer(CUSTOMER)
 	booking = frappe.get_doc({
 		"doctype": "Container Booking",
@@ -88,7 +93,7 @@ def _tank_in_bon(container_no, *, submit=True):
 		"issued_at": now_datetime(),
 		"expires_at": add_to_date(now_datetime(), hours=24),
 	}).insert(ignore_permissions=True)
-	return make_order(booking.name, [code.name], submit=submit)
+	return make_order(booking.name, [code.name], vehicle_data=vehicle, submit=submit)
 
 
 def _drop_provisioned_eir_in(container):
@@ -126,7 +131,8 @@ class TestGateLog(FrappeTestCase):
 			"Gate Entry",
 			filters={"container_no": container_no},
 			fields=["name", "status", "gate_in_timestamp", "gate_out_timestamp", "depot",
-			        "order_doctype", "order_ref", "booking_code", "eir_reference"],
+			        "order_doctype", "order_ref", "booking_code", "eir_reference",
+			        "truck_plate", "driver_name"],
 			order_by="creation asc",
 		)
 
@@ -216,6 +222,32 @@ class TestGateLog(FrappeTestCase):
 		self.assertEqual(rows[0].status, "Cancelled")
 		self.assertIsNone(open_gate_entry_for(c))
 
+	def test_the_arrival_records_the_truck_and_driver(self):
+		"""Riwayat Gate reads truck + driver off the Gate Entry, and for a long time nothing
+		wrote them — every row showed "—" while the plate the guard typed sat on the bon.
+		Note the fieldname shift: Tank In carries the driver per container as ``driver``."""
+		c = _container(f"{PREFIX}000009")
+		_tank_in_bon(c, vehicle={"truck_plate": "L 1234 GL", "driver": "Pak Sopir"})
+
+		ge = self._gates(c)[0]
+		self.assertEqual(ge.truck_plate, "L 1234 GL")
+		self.assertEqual(ge.driver_name, "Pak Sopir")
+
+	def test_the_departure_does_not_overwrite_the_arrival_truck(self):
+		"""One slot, a whole visit: the record describes the arrival (its date, its bon), so
+		the truck stays the arrival's. The departure truck is on the Order Muat."""
+		c = _container(f"{PREFIX}000010")
+		_tank_in_bon(c, vehicle={"truck_plate": "L 1234 GL", "driver": "Pak Sopir"})
+		_drop_provisioned_eir_in(c)
+		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
+		_clean_eir_out(c)
+		mark_gate_out(container=c)
+
+		ge = self._gates(c)[0]
+		self.assertEqual(ge.status, "Gate_Out_Completed")
+		self.assertEqual(ge.truck_plate, "L 1234 GL")
+		self.assertEqual(ge.driver_name, "Pak Sopir")
+
 	def test_gate_out_without_an_arrival_still_files_one(self):
 		"""Tanks that predate this, and arrivals that were never bonned, must still leave a
 		trace — the create branch of ``_resolve_or_create_gate_entry`` stays."""
@@ -224,6 +256,22 @@ class TestGateLog(FrappeTestCase):
 		res = mark_gate_out(container=c)
 		self.assertTrue(res["gate_entry"])
 		self.assertEqual(self._gates(c)[0].status, "Gate_Out_Completed")
+
+	def test_a_bonned_departure_records_its_truck(self):
+		"""With no arrival to inherit from, the record takes the departure's vehicle — which
+		Tank Out carries on the Order Muat header rather than per container."""
+		c = _container(f"{PREFIX}000011", status="Available")
+		bon = _make_order_muat(
+			ensure_test_customer(CUSTOMER), c, truck="B 9001 XY", driver="Budi"
+		)
+		_clean_eir_out(c)
+		mark_gate_out(container=c)
+
+		ge = self._gates(c)[0]
+		self.assertEqual(ge.order_ref, bon)
+		self.assertEqual(ge.truck_plate, "B 9001 XY")
+		self.assertEqual(ge.driver_name, "Budi")
+		frappe.db.delete("Order Muat", {"name": bon})
 
 
 class TestGateLogIsNotHandWritten(FrappeTestCase):
