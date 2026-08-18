@@ -81,6 +81,47 @@ MENUS = [
 
 CUSTOMERS = ["Stolt", "Bertschi"]
 
+# --- Depot Contract dummy ----------------------------------------------------------
+# Tanpa satu kontrak Active, praktis tidak ada yang bisa dikerjakan di app: harga charge
+# booking, tarif cleaning, dan tarif M&R semuanya dibaca dari Price List yang diterbitkan
+# kontrak. Karena itu kontraknya ikut di-seed — kalau site di-reset, satu `seed_dev.run()`
+# mengembalikannya.
+#
+# Satu item per Item Group (22 grup), USD, tarif dan manhour sengaja dibuat bervariasi
+# supaya invoice tidak pernah kebetulan benar: manhour tiap baris ditotal di header invoice
+# lalu dikali "Hour", jadi baris ber-manhour 0 dan yang besar menghasilkan tagihan berbeda.
+CONTRACT_CUSTOMER = "Bertschi"
+CONTRACT_CURRENCY = "USD"
+
+# (item, rate, manhour) — satu wakil per Item Group, urut seperti ITEM_GROUPS.
+CONTRACT_TARIFFS = [
+    # LOLO dua-duanya wajib: Lift Off menagih booking Tank In, Lift On menagih Tank Out.
+    # Tanpa Lift On, booking Tank Out ber-charge 0 dan tidak bisa di-invoice sama sekali.
+    ("Lift Off", 35.00, 0.5),                                          # LOLO (Tank In)
+    ("Lift On", 37.50, 0.5),                                           # LOLO (Tank Out)
+    ("EIR (Equipment Inspection Report)", 7.50, 0.25),                 # Standard Depot Handling
+    ("1 Bar Leak Test", 20.00, 1.0),                                   # Testing Charges
+    ("Cleaning Certificate from Class Surveyor", 45.00, 0.0),          # Survey Fee
+    ("Exterior Cleaning (Detergent)", 18.00, 1.5),                     # Exterior Cleaning
+    ("Standard Clean", 10.00, 2.0),                                    # Interior Cleaning
+    ("SWR Manlid Seal (Sweet White Rubber 10x14mm)", 12.50, 0.5),      # Manlid Seal
+    ('Renew 3.0" Butterfly Valve Main/Teflon Seal (Fort Vale)', 26.00, 1.0),
+    ("Renew Highlift Footvalve Encapsulated O-Ring", 33.75, 1.5),
+    ('Renew 2.0" Spigot Outlet (Compatible)', 22.40, 1.0),
+    ('Renew 1.5" Ball Valve Teflon Seal Front+Rear (Fort Vale)', 15.60, 0.75),
+    ("Renew Relief Valve Vacuum Poppet", 48.00, 1.25),                 # Safety Relief Valve
+    ("PTFE Gasket (generic - package inclusion)", 4.25, 0.25),         # Gasket
+    ("Cladding Painting 100% (estimate by %)", 120.00, 6.0),           # Cladding & Insulation
+    ("Section Retainer Strap 30cm", 9.80, 0.5),                        # Retainer Strap
+    ("Renew Analog Thermometer (-20 to 140C)", 28.00, 0.75),           # Thermometer & Gauge
+    ('Document Holder (Compact) 3"', 6.40, 0.25),                      # Document Holder
+    ("Renew Emergency Cable Assembly", 17.25, 1.0),                    # Emergency Cable Assembly
+    ("Renew Swingbolt - Standard Type", 12.00, 0.5),                   # Swingbolt
+    ("Renew Corner Post", 65.00, 3.0),                                 # Frame & Metal Work
+    ('SS Steam Cap 3/4" or 1"', 8.90, 0.5),                            # Others
+    ("Empty Cleaned Tank Package (Stolt)", 150.00, 8.0),               # Service Packages
+]
+
 ITEM_GROUPS = [
     "LOLO",
     "Standard Depot Handling",
@@ -326,6 +367,66 @@ def _ensure_menu(name, sequence, groups):
     doc.save(ignore_permissions=True)
 
 
+def _ensure_contract():
+    """Satu Depot Contract Active untuk CONTRACT_CUSTOMER. Idempoten.
+
+    ``payment_type = "Both"`` supaya kedua jalur pembayaran bisa diuji dari kontrak yang
+    sama: Cash (invoice + Payment Entry per booking) dan TOP (postpaid, ditagih lewat
+    consolidated billing). Keduanya mensyaratkan payment terms + credit limit > 0.
+
+    Menyimpan kontrak berstatus Active otomatis menerbitkan Price List
+    "<Customer> - <nama kontrak>" berisi Item Price dari tariff_lines — itulah rate card
+    yang dibaca booking, cleaning dan M&R.
+    """
+    from frappe.utils import add_days, today
+
+    lines = [
+        {"item": item, "rate": rate, "manhour_rate": manhour, "currency": CONTRACT_CURRENCY}
+        for item, rate, manhour in CONTRACT_TARIFFS
+        if frappe.db.exists("Item", item)
+    ]
+
+    existing = frappe.db.get_value(
+        "Depot Contract", {"customer": CONTRACT_CUSTOMER, "status": "Active"}, "name"
+    )
+    if existing:
+        # Kontraknya sudah ada: jangan dibuat ulang, tapi tambal tarif yang belum ada.
+        # Kalau daftar di atas bertambah (mis. Lift On), satu `run()` cukup untuk
+        # menerbitkannya — menyimpan kontrak Active otomatis me-refresh Price List-nya.
+        doc = frappe.get_doc("Depot Contract", existing)
+        have = {row.item for row in doc.tariff_lines or []}
+        missing = [ln for ln in lines if ln["item"] not in have]
+        if missing:
+            for ln in missing:
+                doc.append("tariff_lines", ln)
+            doc.save(ignore_permissions=True)
+            print(f"[seed_dev] Depot Contract: {existing} (+{len(missing)} tarif baru: "
+                  f"{', '.join(ln['item'] for ln in missing)})")
+        else:
+            print(f"[seed_dev] Depot Contract: {existing} (sudah lengkap, dilewati)")
+        return existing
+
+    if not lines:
+        print("[seed_dev] Depot Contract: dilewati — itemnya belum ada")
+        return None
+
+    doc = frappe.get_doc({
+        "doctype": "Depot Contract",
+        "customer": CONTRACT_CUSTOMER,
+        "currency": CONTRACT_CURRENCY,
+        "status": "Active",
+        "payment_type": "Both",
+        "payment_terms": "NET 30",
+        "credit_limit": 1000000,
+        "valid_from": today(),
+        "valid_to": add_days(today(), 365),
+        "tariff_lines": lines,
+    }).insert(ignore_permissions=True)
+    print(f"[seed_dev] Depot Contract: {doc.name} ({len(lines)} tarif, {CONTRACT_CURRENCY}) "
+          f"→ Price List {doc.generated_price_list}")
+    return doc.name
+
+
 def _default_customer_group():
     for preferred in ("Commercial", "All Customer Groups"):
         if frappe.db.exists("Customer Group", preferred):
@@ -387,6 +488,9 @@ def run():
     for name in CUSTOMERS:
         _ensure_customer(name)
     print(f"[seed_dev] Customer: {len(CUSTOMERS)}")
+
+    # Terakhir: butuh Customer + Item sudah ada.
+    _ensure_contract()
 
     frappe.db.commit()
     print("=" * 64)
