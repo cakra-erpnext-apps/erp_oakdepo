@@ -13,6 +13,7 @@
   "depot",
   "reff_doc",
   "reff_email",
+  "gate_out_plan",
   "parties_section",
   "customer",
   "column_break_parties",
@@ -114,6 +115,16 @@
    "label": "Ref Email",
    "no_copy": 1,
    "options": "Communication",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.gate_out_plan",
+   "description": "Gate Out Plan (rencana lift-on customer) yang jadi asal booking ini. Terisi otomatis saat booking dibuat dari plan — bukan isian manual.",
+   "fieldname": "gate_out_plan",
+   "fieldtype": "Link",
+   "label": "Gate Out Plan",
+   "no_copy": 1,
+   "options": "Gate Out Plan",
    "read_only": 1
   },
   {
@@ -298,7 +309,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-11 20:00:00.000000",
+ "modified": "2026-08-18 15:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",
