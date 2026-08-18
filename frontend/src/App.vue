@@ -1,8 +1,8 @@
 <template>
-	<!-- Opened from a phone browser instead of the home screen: nothing else renders until
-	     it is installed. On iOS that is not a preference — Web Push is only delivered to an
-	     installed PWA, so a job notification would never arrive from Safari. -->
-	<InstallGate v-if="needsInstall" @skip="needsInstall = false" />
+	<!-- Opened from a phone browser instead of the home screen: nothing else renders, and
+	     there is no way past it. On iOS this is not a preference — Web Push is only
+	     delivered to an installed PWA, so a job notification would never arrive in Safari. -->
+	<InstallGate v-if="needsInstall" />
 
 	<div v-else class="flex min-h-screen flex-col bg-gray-50 text-gray-900">
 		<header
@@ -53,11 +53,10 @@
 </template>
 
 <script setup>
-import { ref } from "vue"
 import { session } from "@/data/session"
 import { labels } from "@/utils/labels"
 import { outbox } from "@/data/outbox"
-import { mustInstall } from "@/utils/install"
+import { clearBrowserVisits, mustInstall } from "@/utils/install"
 import Icon from "@/components/Icon.vue"
 import InstallGate from "@/components/InstallGate.vue"
 import BottomNav from "@/components/BottomNav.vue"
@@ -68,7 +67,11 @@ import LightboxHost from "@/components/LightboxHost.vue"
 import ConfirmHost from "@/components/ConfirmHost.vue"
 import emblem from "@/assets/oak-emblem.png"
 
-// Read once at boot rather than as a computed: an install completes by relaunching the
-// app standalone, so re-evaluating mid-session would only ever flip on the escape hatch.
-const needsInstall = ref(mustInstall())
+// Read once at boot, and never again: the only way out of this screen is relaunching
+// from the home screen, which is a fresh load anyway. Nothing in the session can clear it.
+const needsInstall = mustInstall()
+
+// Running standalone means the ask finally worked. Drop the browser-visit tally so a
+// reinstall later starts from a clean slate rather than resuming an old grudge.
+if (!needsInstall) clearBrowserVisits()
 </script>

@@ -60,7 +60,7 @@ export const labels = {
 	// --- Wajib install (InstallGate) ---
 	installTitle: "Install Depot OAK dulu",
 	installBody:
-		"Aplikasi ini dipakai dari layar utama HP, bukan dari browser. Setelah di-install, notifikasi pekerjaan bisa masuk walau aplikasi ditutup.",
+		"Di HP, Depot OAK hanya bisa dipakai dari layar utama — bukan dari browser. Ikuti langkah di bawah, lalu buka aplikasinya dari layar utama.",
 	installBtn: "Install Sekarang",
 	installIosTitle: "Cara install di iPhone",
 	installIosStep1: "Ketuk tombol Bagikan di bawah layar Safari.",
@@ -71,8 +71,26 @@ export const labels = {
 	installAndroidTitle: "Cara install di Android",
 	installAndroidStep1: "Ketuk menu ⋮ di pojok kanan atas browser.",
 	installAndroidStep2: 'Pilih "Install aplikasi" atau "Tambahkan ke layar utama".',
-	installSkip: "Lanjutkan di browser",
-	installSkipHint: "Notifikasi tidak akan masuk saat aplikasi ditutup.",
+	// Sudah ditekan Install dan diterima — tab ini tetap browser, jadi arahkan pindah.
+	installDoneTitle: "Depot OAK sudah terpasang",
+	installDoneBody:
+		"Tutup halaman ini, lalu buka Depot OAK dari layar utama HP. Login-nya dilakukan di dalam aplikasi.",
+	// Browser bawaan aplikasi lain (WhatsApp, Instagram, Facebook) — tidak bisa install.
+	installWebviewTitle: "Buka di browser dulu",
+	installWebviewBody:
+		"Halaman ini terbuka di dalam aplikasi lain, yang tidak bisa memasang Depot OAK. Ketuk menu ⋮ lalu \"Buka di Chrome\", atau salin link di bawah dan tempel di Chrome.",
+	installWebviewIosBody:
+		"Halaman ini terbuka di dalam aplikasi lain, yang tidak bisa memasang Depot OAK. Salin link di bawah, lalu tempel di Safari.",
+	installCopyLink: "Salin link",
+	installCopied: "Link disalin",
+	// Kunjungan browser ke-2 dan seterusnya — orangnya jelas belum berhasil install.
+	installRepeatTitle: "Anda membuka lewat browser lagi",
+	installRepeatBody:
+		"Ini kali ke-{n}. Selama Depot OAK belum dipasang di layar utama, notifikasi pekerjaan tidak akan masuk ke HP Anda — termasuk saat HP terkunci.",
+	installRepeatHelp: "Kesulitan memasang? Minta bantuan Admin Ops.",
+	installWhy: "Kenapa harus di-install?",
+	installWhyBody:
+		"Notifikasi pekerjaan hanya bisa masuk ke aplikasi yang terpasang. Kalau dibuka lewat browser, notifikasi tidak akan sampai saat HP terkunci.",
 	greeting: "Halo", // "Halo, {name}"
 	homeHint: "Pilih menu untuk mulai bekerja", // Pick a menu to start
 	// --- Dashboard (home KPI sections + menu groups) ---
