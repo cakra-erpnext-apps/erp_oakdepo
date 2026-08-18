@@ -325,6 +325,47 @@ def set_status(contract: str, target: str) -> str:
 	return doc.status
 
 
+def guard_manual_price_list(doc, method=None):
+	"""Refuse a hand-edited ``Customer.default_price_list``.
+
+	The rate card a customer is billed on is the contract's output, not a field to type in:
+	:meth:`DepotContract._publish_price_list` builds the Price List and mirrors its name
+	onto the Customer. Pointing a customer at some other list from the Customer form
+	re-rates every future booking, bon and invoice for that party while the contract
+	everybody reads still says otherwise — a divergence that only ever surfaces as a wrong
+	invoice.
+
+	The contract's own write goes through ``db.set_value``, which never runs a Customer
+	save, so this guard cannot fire on it: anything reaching here IS a manual document edit.
+	Only a *change* is refused — saving the Customer for any other reason is untouched, and
+	so is a brand-new Customer (the field is read-only on the form, so nothing types into it
+	there either).
+	"""
+	if doc.is_new() or not doc.has_value_changed("default_price_list"):
+		return
+
+	contract = frappe.db.get_value(
+		"Depot Contract",
+		{"customer": doc.name, "status": "Active"},
+		"name",
+		order_by="valid_from desc",
+	)
+	where = (
+		_("Ubah lewat Depot Contract {0} (amend contract-nya).").format(contract)
+		if contract
+		else _(
+			"Customer ini belum punya Depot Contract Active — buat contract-nya dulu, "
+			"price list-nya terbit otomatis."
+		)
+	)
+	frappe.throw(
+		_("Default Price List diatur otomatis dari Depot Contract, tidak bisa diubah manual.")
+		+ "<br><br>"
+		+ where,
+		title=_("Price List Dikunci Contract"),
+	)
+
+
 def get_active_contract(customer: str) -> dict | None:
 	"""Return the most recent Active contract for a customer (dict) or None."""
 	row = frappe.db.get_value(

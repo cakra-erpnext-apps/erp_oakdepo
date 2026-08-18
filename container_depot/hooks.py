@@ -66,6 +66,13 @@ notification_config = "container_depot.notifications.get_notification_config"
 # ---------------
 
 doc_events = {
+	# A customer's rate card belongs to their Depot Contract (it publishes the Price List
+	# and mirrors its name onto the Customer). The field is read-only on the form; this
+	# refuses the same edit arriving any other way. The contract writes with db.set_value,
+	# which never runs a Customer save, so it is never caught by its own rule.
+	"Customer": {
+		"validate": "container_depot.container_depot.doctype.depot_contract.depot_contract.guard_manual_price_list",
+	},
 	"Customer Portal User": {
 		"after_insert": "container_depot.portal.sync_portal_user_permission",
 		"on_update": "container_depot.portal.sync_portal_user_permission",

@@ -53,7 +53,8 @@ def after_migrate():
 	# the six stock ERPNext/HRMS bundles, skipping any a user still holds.
 	setup_role_profiles()
 	# Doctype-level UX tweaks on standard doctypes (Property Setters, idempotent):
-	# Item links show the item name, Item Price 'New' uses the full form.
+	# Item links show the item name, Item Price 'New' uses the full form, and a
+	# Customer's Default Price List is read-only (the Depot Contract owns it).
 	setup_property_setters()
 	# Container Inventory monitoring dashboard (Number Cards + Charts). Idempotent
 	# upsert by name; safe to re-run every migrate.
@@ -631,6 +632,18 @@ PROPERTY_SETTERS = [
 	# modal has no `frm`, so manhour rate is hidden and the price-list→currency
 	# fetch_from never fires. The full form shows manhour and live-fetches currency.
 	("Item Price", None, "quick_entry", "0", "Check"),
+	# A customer's rate card is the OUTPUT of their Depot Contract: going Active publishes
+	# a Price List named after the contract and mirrors it here
+	# (DepotContract._publish_price_list). Typing a different list on the Customer form
+	# silently re-rates every future booking, bon and invoice for that party while the
+	# contract everyone reads still says otherwise — so the field is read-only, and the
+	# description says where to change it instead. The server refuses it too
+	# (depot_contract.guard_manual_price_list); this is the half that stops the mistake
+	# being made rather than reported.
+	("Customer", "default_price_list", "read_only", "1", "Check"),
+	("Customer", "default_price_list", "description",
+	 "Diatur otomatis dari Depot Contract yang Active. Untuk mengubahnya, amend contract "
+	 "customer ini — bukan dari sini.", "Small Text"),
 ] + [
 	# Declutter the Sales Invoice form. UI-only: the fields stay in the DB and every
 	# controller still reads them — nothing is deleted, only hidden.

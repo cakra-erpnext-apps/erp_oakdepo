@@ -185,6 +185,28 @@ class TestDepotContract(FrappeTestCase):
 		)
 		self.assertEqual(rate, 250000)
 
+	def test_customer_price_list_cannot_be_edited_by_hand(self):
+		"""The rate card is the contract's output: the contract writes it (through
+		db.set_value, which never runs a Customer save), a person may not."""
+		c = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
+		c.insert(ignore_permissions=True)
+		customer = frappe.get_doc("Customer", ensure_test_customer(CUSTOMER_NAME))
+		# The contract's own write landed, unblocked.
+		self.assertEqual(customer.default_price_list, c.generated_price_list)
+
+		customer.default_price_list = "Standard Selling"
+		with self.assertRaises(frappe.ValidationError):
+			customer.save(ignore_permissions=True)
+
+		# Saving the customer for any other reason is untouched.
+		customer.reload()
+		customer.customer_details = "kontak baru"
+		customer.save(ignore_permissions=True)
+		self.assertEqual(
+			frappe.db.get_value("Customer", customer.name, "default_price_list"),
+			c.generated_price_list,
+		)
+
 	def test_reactivate_updates_price_in_place(self):
 		c = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
