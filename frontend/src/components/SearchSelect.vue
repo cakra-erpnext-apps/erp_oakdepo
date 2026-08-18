@@ -70,6 +70,7 @@
 // overflow container. Global listeners are attached only while open.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import Icon from "@/components/Icon.vue"
+import { useDismissOnBack } from "@/utils/backstack"
 
 const props = defineProps({
 	modelValue: { type: [String, Number], default: "" },
@@ -91,6 +92,9 @@ const trigger = ref(null)
 const panel = ref(null)
 const searchInput = ref(null)
 const open = ref(false)
+
+// An open dropdown is a layer: Back closes it rather than abandoning the form behind it.
+useDismissOnBack(open, () => close())
 const query = ref("")
 const highlight = ref(-1)
 // Start fixed + off-screen so the panel is NEVER laid out statically at the end of

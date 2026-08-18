@@ -8,6 +8,11 @@
 	html,
 	body {
 		height: 100%;
+		/* Kill the browser's pull-to-refresh. Every worklist here has its own refresh
+		   button, and the gesture is the same downward swipe an operator makes to scroll a
+		   list that is already at the top — except this one reloads the app, mid-form, on
+		   depot wifi. Nothing worth the trade. */
+		overscroll-behavior-y: contain;
 	}
 
 	body {

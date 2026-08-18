@@ -55,6 +55,11 @@
 					v-model="search"
 					class="oak-input uppercase"
 					:placeholder="labels.ptSearch"
+					autocapitalize="characters"
+					autocorrect="off"
+					autocomplete="off"
+					spellcheck="false"
+					enterkeyhint="search"
 					@keyup.enter="reloadOrders"
 				/>
 				<button class="oak-btn oak-btn-secondary shrink-0 px-3" @click="reloadOrders">
@@ -314,7 +319,12 @@ function retryDetail() {
 }
 
 // The open order lives in the URL (?o=<name>) so a refresh restores the detail view.
+// `pushedByTap` records whether *this* screen added that history entry: landing straight
+// on ?o=… from a notification link added nothing, and popping then would walk the operator
+// out of the app.
+let pushedByTap = false
 function openOrder(o) {
+	pushedByTap = true
 	router.push({ query: { o: o.name } })
 }
 
@@ -405,8 +415,15 @@ async function complete() {
 function backToList() {
 	completed.value = null
 	used.value = []
-	if (route.query.o) router.push({ query: {} })
-	else order.value = null
+	// A real Back, not another push: it drops the entry opening this order added (so the
+	// phone's own Back does not walk straight back into it) and lets the router restore the
+	// worklist to the row that was tapped.
+	if (route.query.o) {
+		if (pushedByTap) {
+			pushedByTap = false
+			router.back()
+		} else router.replace({ query: {} })
+	} else order.value = null
 	reloadOrders()
 }
 </script>

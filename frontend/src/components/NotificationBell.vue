@@ -90,12 +90,16 @@ import "dayjs/locale/id"
 import Icon from "@/components/Icon.vue"
 import { labels } from "@/utils/labels"
 import { toast, toastSoundOn, setToastSound } from "@/utils/toast"
+import { useDismissOnBack } from "@/utils/backstack"
 
 dayjs.extend(relativeTime)
 dayjs.locale("id")
 
 const router = useRouter()
 const open = ref(false)
+
+// An open panel is a layer: Back closes it rather than navigating away behind it.
+useDismissOnBack(open, () => (open.value = false))
 const soundOn = ref(toastSoundOn())
 function toggleSound() {
 	setToastSound(!soundOn.value)

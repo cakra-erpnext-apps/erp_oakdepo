@@ -139,6 +139,9 @@
 							type="text"
 							autocapitalize="characters"
 							:placeholder="labels.eirOutSealNoPlaceholder"
+							autocorrect="off"
+							autocomplete="off"
+							spellcheck="false"
 							class="oak-input uppercase"
 						/>
 						<input

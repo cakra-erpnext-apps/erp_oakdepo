@@ -32,10 +32,17 @@
 <script setup>
 import { onMounted, onUnmounted } from "vue"
 import { confirmState, resolveConfirm } from "@/utils/confirm"
+import { useDismissOnBack } from "@/utils/backstack"
 
 function cancel() {
 	resolveConfirm(false)
 }
+// Back is the phone's Escape: dismiss the sheet as a "no", never as "leave the screen".
+// The promise has to settle either way or whatever awaited the confirm hangs forever.
+useDismissOnBack(
+	() => confirmState.open,
+	() => cancel()
+)
 function ok() {
 	resolveConfirm(true)
 }

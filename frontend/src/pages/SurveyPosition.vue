@@ -18,7 +18,7 @@
 		<template v-if="mode === 'list'">
 			<div class="relative">
 				<Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-				<input v-model="search" type="search" :placeholder="labels.surveyPosSearch" class="oak-input pl-10 uppercase" @input="onSearchInput" />
+				<input v-model="search" type="search" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="search" :placeholder="labels.surveyPosSearch" class="oak-input pl-10 uppercase" @input="onSearchInput" />
 			</div>
 
 			<ul v-if="listRes.loading && !items.length" class="oak-card divide-y divide-gray-100 overflow-hidden">
@@ -126,8 +126,15 @@ import { cachedResource } from "@/data/cache"
 import { compressPhoto } from "@/utils/photo"
 import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
 import { enqueue, hydratePreviews, isQueued, onOutboxSent, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
+
+// Back closes the detail instead of leaving the page, and opening one starts at the top.
+useDetailView(
+	() => mode.value === "detail",
+	() => backToList()
+)
 
 // ---- worklist ----
 const allItems = ref([]) // what the server (or the offline cache) last said

@@ -51,6 +51,10 @@
 						v-model.trim="code"
 						type="text"
 						autocapitalize="characters"
+						autocorrect="off"
+						autocomplete="off"
+						spellcheck="false"
+						enterkeyhint="search"
 						:placeholder="labels.gateScanPlaceholder"
 						class="oak-input uppercase"
 						@keyup.enter="doLookup"
@@ -352,6 +356,7 @@ import SearchSelect from "@/components/SearchSelect.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { outbox } from "@/data/outbox"
 import { uid } from "@/utils/idb"
+import { useDismissOnBack } from "@/utils/backstack"
 
 const code = ref("")
 const scanInput = ref(null)
@@ -364,6 +369,22 @@ const requestId = ref(null)
 const scanning = ref(false)
 const scanErr = ref("")
 let qrScanner = null
+
+// Three layers stack up on this page, and Back has to peel them one at a time instead of
+// walking off the screen: the camera overlay, the vehicle sheet, then the looked-up booking
+// itself. Each hands Back the same function its own close button calls.
+useDismissOnBack(
+	() => scanning.value,
+	() => stopScan()
+)
+useDismissOnBack(
+	() => showVehicleForm.value,
+	() => closeVehicleForm()
+)
+useDismissOnBack(
+	() => !!detail.value,
+	() => reset()
+)
 
 const lookupRes = createResource({
 	url: "container_depot.api.gate_lookup",

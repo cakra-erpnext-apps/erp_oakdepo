@@ -106,8 +106,15 @@ import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
 import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
+import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
+
+// Back closes the detail instead of leaving the page, and opening one starts at the top.
+useDetailView(
+	() => mode.value === "detail",
+	() => backToList()
+)
 
 // ---- worklist ----
 const allItems = ref([]) // what the server (or the offline cache) last said

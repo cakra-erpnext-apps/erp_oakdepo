@@ -38,6 +38,11 @@
 					v-model="search"
 					type="search"
 					:placeholder="searchPlaceholder"
+					autocapitalize="characters"
+					autocorrect="off"
+					autocomplete="off"
+					spellcheck="false"
+					enterkeyhint="search"
 					class="oak-input pl-10 uppercase"
 					@input="onSearchInput"
 				/>

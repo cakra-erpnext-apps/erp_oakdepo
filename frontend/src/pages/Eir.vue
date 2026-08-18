@@ -240,6 +240,7 @@ import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
 import { isQueued, onOutboxSent } from "@/data/outbox"
+import { keepScrollForNextNavigation } from "@/router"
 import EirInForm from "@/pages/EirInForm.vue"
 import EirOutForm from "@/pages/EirOutForm.vue"
 
@@ -413,6 +414,7 @@ function goRel(delta) {
 	// the last), so you can keep cycling the batch without hitting a dead end.
 	const target = navQueue.value[(activeIndex.value + delta + len) % len]
 	if (!target) return
+	keepScrollForNextNavigation()
 	restoreScrollTo(window.scrollY)
 	goItem(target)
 }

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router"
 import { session, redirectToLogin } from "@/data/session"
+import { installBackGuard } from "@/utils/backstack"
 import { fetchMenu, menu } from "@/data/menu"
 
 // `meta.menuKey` ties a route to the same menu key the server grants in
@@ -123,11 +124,35 @@ const routes = [
 	},
 ]
 
+// Opt out of the scroll reset for one navigation. Eir's batch ◀ / ▶ swaps to the next EIR
+// on purpose without moving the page, and re-applies the old offset itself over the frames
+// that follow; resetting to the top first would just make the operator watch it jump twice.
+let keepScrollOnce = false
+export function keepScrollForNextNavigation() {
+	keepScrollOnce = true
+}
+
 const router = createRouter({
 	// Served under /depot (see www/depot.html). All in-app routes are relative.
 	history: createWebHistory("/depot"),
 	routes,
+	// Vue Router does nothing about scroll unless asked, and "nothing" on a phone means
+	// opening a record from row 20 of a worklist renders it with the page still scrolled
+	// down past where the shorter detail ends — a blank screen, for a tap that worked.
+	// Going Back is the opposite case: the operator wants the row they came from, so the
+	// saved offset wins whenever the browser has one.
+	scrollBehavior(to, from, savedPosition) {
+		if (keepScrollOnce) {
+			keepScrollOnce = false
+			return false
+		}
+		return savedPosition || { top: 0 }
+	},
 })
+
+// Before the guards below: a Back press has to be able to close whatever is on top of the
+// page before it is allowed to leave the page.
+installBackGuard(router)
 
 // Two guards, neither of which is a security boundary — the endpoints enforce
 // themselves (container_depot/ess/guard.py). These just keep the UI honest.

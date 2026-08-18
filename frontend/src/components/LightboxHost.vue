@@ -62,9 +62,17 @@
 <script setup>
 import { computed, onMounted, onUnmounted, watch } from "vue"
 import { lightbox, closeLightbox, nextImage, prevImage } from "@/utils/lightbox"
+import { useDismissOnBack } from "@/utils/backstack"
 import Icon from "@/components/Icon.vue"
 
 const current = computed(() => lightbox.images[lightbox.index] || "")
+
+// Escape closes the viewer on a desktop; on a phone that key does not exist and Back is the
+// only dismiss there is. Without this it closed the page underneath instead.
+useDismissOnBack(
+	() => lightbox.open,
+	() => closeLightbox()
+)
 
 function onKey(e) {
 	if (!lightbox.open) return

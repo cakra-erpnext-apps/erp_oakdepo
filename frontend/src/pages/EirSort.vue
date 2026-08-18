@@ -101,8 +101,15 @@ import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import { cachedResource } from "@/data/cache"
 import { enqueue, onOutboxSent, outbox } from "@/data/outbox"
+import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
+
+// Back closes the detail instead of leaving the page, and opening one starts at the top.
+useDetailView(
+	() => mode.value === "detail",
+	() => backToList()
+)
 
 // ---- worklist: EIRs that still carry unsorted bulk photos ----
 const items = ref([])
