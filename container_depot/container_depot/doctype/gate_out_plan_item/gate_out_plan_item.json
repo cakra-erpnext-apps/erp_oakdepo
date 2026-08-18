@@ -13,7 +13,14 @@
     "target_lift_on",
     "readiness",
     "is_ready",
-    "remark"
+    "remark",
+    "trucking_section",
+    "shipper",
+    "truck_plate",
+    "ro",
+    "column_break_trucking",
+    "driver",
+    "driver_phone"
   ],
   "fields": [
     {
@@ -76,11 +83,48 @@
       "fieldtype": "Small Text",
       "in_list_view": 1,
       "label": "Catatan"
+    },
+    {
+      "description": "Diisi kalau customer sudah menyebutkannya di email. Ikut terbawa ke Container Booking; kalau kosong, dilengkapi di gate.",
+      "fieldname": "trucking_section",
+      "fieldtype": "Section Break",
+      "label": "Angkutan (opsional)"
+    },
+    {
+      "description": "EMKL / angkutan pembawa container ini. Kosong = ikut Customer (Bill To) plan.",
+      "fieldname": "shipper",
+      "fieldtype": "Link",
+      "label": "EMKL / Shipper",
+      "options": "Customer"
+    },
+    {
+      "fieldname": "truck_plate",
+      "fieldtype": "Data",
+      "label": "Truck Number"
+    },
+    {
+      "fieldname": "ro",
+      "fieldtype": "Data",
+      "label": "RO"
+    },
+    {
+      "fieldname": "column_break_trucking",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "driver",
+      "fieldtype": "Data",
+      "label": "Driver"
+    },
+    {
+      "fieldname": "driver_phone",
+      "fieldtype": "Data",
+      "label": "No. HP Driver"
     }
   ],
   "istable": 1,
   "links": [],
-  "modified": "2026-08-07 10:00:00.000000",
+  "modified": "2026-08-18 18:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Out Plan Item",
   "permissions": [],

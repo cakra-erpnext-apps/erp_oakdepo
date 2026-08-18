@@ -14,10 +14,12 @@ each other's stamp.
 
 from __future__ import annotations
 
+import re
+
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, getdate
+from frappe.utils import add_days, flt, getdate, today
 
 # Only an Open plan drives priority; closing it releases the container stamps.
 ACTIVE_STATUS = "Open"
@@ -34,6 +36,7 @@ _MR_DONE = ("Completed", "Cancelled", "Rejected")
 class GateOutPlan(Document):
 	def validate(self):
 		self._fill_rows()
+		self._assert_rows_match_header()
 		self._assert_containers_unique()
 		self._roll_up()
 
@@ -70,6 +73,51 @@ class GateOutPlan(Document):
 		# NOT closed here on purpose: closing belongs to the gate-out event
 		# (:func:`refresh_plan_fulfilment`). Doing it on save would slam a brand-new plan shut
 		# the moment someone lists a tank that happens to have left on an earlier visit.
+
+	def _assert_rows_match_header(self):
+		"""Every tank still to be collected must belong to the header's Principal and sit at
+		its Depot.
+
+		The row picker already filters on both, so this is the server's own answer to what
+		the picker cannot see: an Excel import, an API caller, or a header edited *after* the
+		rows were listed. It matters because saving is what stamps ``target_lift_on`` — a
+		mismatched row would hand another owner's tank (or a tank at another depot) a
+		lift-on target nobody asked for, and float it up somebody else's cleaning worklist.
+
+		Rows already gated out are skipped: that tank has left and its row is history. Where
+		it belongs *now* — a resale, a re-entry at another depot — says nothing about the
+		lift-on it was collected under, and re-checking it would lock up a partly-collected
+		plan whose remaining tanks are still being worked.
+		"""
+		names = [r.container for r in (self.containers or []) if r.container and not r.gated_out]
+		if not names:
+			return
+		wrong = []
+		for c in frappe.get_all(
+			"Container",
+			filters={"name": ["in", names]},
+			fields=["name", "container_no", "principal", "depot"],
+		):
+			label = c.container_no or c.name
+			if self.principal and c.principal != self.principal:
+				wrong.append(
+					_("{0}: milik {1}, bukan {2}").format(
+						label, c.principal or _("(tanpa pemilik)"), self.principal
+					)
+				)
+			elif self.depot and c.depot != self.depot:
+				wrong.append(
+					_("{0}: ada di depo {1}, bukan {2}").format(
+						label, c.depot or _("(tanpa depo)"), self.depot
+					)
+				)
+		if wrong:
+			frappe.throw(
+				"<br>".join(wrong)
+				+ "<br><br>"
+				+ _("Ganti Principal / Depot di header, atau hapus baris container ini."),
+				title=_("Container Tidak Cocok dengan Header"),
+			)
 
 	def _assert_containers_unique(self):
 		"""A container may be claimed by only ONE active (Open) plan — and only once within
@@ -421,3 +469,176 @@ def related_orders(gate_out_plan: str) -> list:
 			],
 		})
 	return out
+
+
+# --- container list from Excel -----------------------------------------------
+# A lift-on notice routinely names twenty tanks, and they arrive as a spreadsheet attached
+# to the customer's mail. Mirrors Container Booking's grid importer (same dialog, same
+# refusal rules) — only the columns differ, because a plan asks for a target date per tank
+# where a booking asks for a condition.
+_FILE_HEADERS = {"container", "container no", "kontainer", "no kontainer", "no container"}
+
+
+@frappe.whitelist(methods=["GET"])
+def download_container_template():
+	"""Blank import template for the plan's Container grid: Container, Target Lift-On, Catatan."""
+	from container_depot.xlsx_utils import finish_sheet, new_sheet
+
+	headers = ["Container", "Target Lift-On (YYYY-MM-DD)", "Catatan"]
+	output, wb, ws, fmts = new_sheet("Template", headers, [24, 26, 34])
+	ws.write_row(1, 0, ["ABCD1234567", add_days(today(), 7), ""])
+	finish_sheet(output, wb, ws, "gate_out_plan_template.xlsx", 1, len(headers) - 1)
+
+
+@frappe.whitelist()
+def parse_container_xlsx(
+	file_url: str, principal: str | None = None, depot: str | None = None
+) -> dict:
+	"""Parse an uploaded .xlsx into plan rows: Container, Target Lift-On, Catatan.
+
+	Pure read — it resolves an existing Container master to its link but never creates one,
+	so it works on an unsaved plan. A number the master does not know is SKIPPED and listed
+	in ``unknown``: a spreadsheet is exactly where a typo'd tank number hides, and a plan
+	stamps its target onto a real Container or it does nothing at all.
+
+	``principal`` / ``depot`` (the plan's own) are applied as the row picker applies them —
+	a tank of another owner, or sitting at another depot, is refused and named in
+	``errors`` rather than silently landing on the grid.
+
+	A missing or unreadable date is reported but does NOT drop the row: Target Lift-On is
+	mandatory on the row, so the empty cell shows up on the grid itself where the operator
+	can fill it, which beats losing the container.
+
+	Returns ``{rows: [{container, container_no, target_lift_on, remark}], errors, unknown}``.
+	"""
+	from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+
+	if not file_url:
+		frappe.throw(_("Belum ada file yang dipilih."))
+
+	rows, unknown, errors, seen = [], [], [], set()
+	for cells in read_xlsx_file_from_attached_file(file_url=file_url) or []:
+		if not cells or cells[0] is None:
+			continue
+		raw = str(cells[0]).strip()
+		if not raw or raw.lower() in _FILE_HEADERS:
+			continue
+		cno = re.sub(r"[\s\-]+", "", raw).upper()
+		if cno in seen:
+			continue
+		seen.add(cno)
+		container = frappe.db.get_value(
+			"Container", {"container_no": cno}, ["name", "principal", "depot"], as_dict=True
+		)
+		if not container:
+			unknown.append(cno)
+			continue
+		if principal and container.principal != principal:
+			errors.append(_("{0}: bukan tank milik {1}").format(cno, principal))
+			continue
+		if depot and container.depot != depot:
+			errors.append(_("{0}: tidak berada di depo {1}").format(cno, depot))
+			continue
+		target = None
+		raw_date = cells[1] if len(cells) > 1 else None
+		if raw_date in (None, ""):
+			errors.append(_("{0}: Target Lift-On kosong — isi manual di baris").format(cno))
+		else:
+			try:
+				target = str(getdate(raw_date))
+			except Exception:
+				errors.append(_("{0}: tanggal tidak terbaca ({1})").format(cno, raw_date))
+		remark = str(cells[2]).strip() if len(cells) > 2 and cells[2] is not None else None
+		rows.append({
+			"container": container.name,
+			"container_no": cno,
+			"target_lift_on": target,
+			"remark": remark,
+		})
+	return {"rows": rows, "errors": errors, "unknown": unknown}
+
+
+# --- the plan's endpoint: a Tank Out booking ----------------------------------
+# Container condition on the booking line is read off the tank, never assumed: a tank whose
+# cleaning is still running leaves as EMPTY DIRTY (and the booking's own Tank Out gate will
+# refuse to submit it) — writing EMPTY CLEAN over it would state the opposite of what the
+# depot knows.
+_DIRTY_CLEANING = ("Pending", "In_Progress")
+
+
+@frappe.whitelist()
+def make_container_booking(source_name, target_doc=None):
+	"""Turn the plan into an unsaved Tank Out (Lift On) Container Booking.
+
+	The plan is only the notice — the booking is the priced, submittable document that
+	actually lets a tank out, so this hand-off is the plan's endpoint. Everything the plan
+	already knows rides along: owner, depot (and the branch behind it), the source email /
+	reference, the customer's Release DO, and per tank its target lift-on date as the
+	booking line's date.
+
+	**Customer (Bill To)** rides along too when the plan recorded one: the tank owner is not
+	always the party billed for the lift-on, so it is a field of its own on the plan rather
+	than assumed to be the Principal. Left blank on the plan it stays blank here — the
+	booking still asks for it before it can be saved.
+
+	The **charges** are deliberately NOT filled. The plan has no pricing and no opinion on
+	what the lift-on costs, so the services stay the operator's to pick on the booking form,
+	which is where the price list and payment mode live.
+
+	Tanks that have already gated out are dropped: a fulfilled row has nothing left to book.
+	Nothing is saved here; the operator lands on a fresh draft.
+	"""
+	from frappe.model.mapper import get_mapped_doc
+
+	def set_missing(source, target):
+		# set_only_once on the booking, so it is fixed here before the first save — and it
+		# is what drives the whole outbound pipeline (naming, gates, Order Muat, EIR).
+		target.direction = "Tank Out"
+		if not target.branch and source.depot:
+			target.branch = frappe.db.get_value("Depot", source.depot, "branch")
+		if not target.get("items"):
+			frappe.throw(
+				_("Semua container di plan ini sudah keluar — tidak ada yang perlu dibooking.")
+			)
+
+	def set_line(source_row, target_row, source_parent):
+		cleaning, cargo = frappe.db.get_value(
+			"Container", source_row.container, ["cleaning_status", "last_cargo"]
+		) or (None, None)
+		target_row.condition = "EMPTY DIRTY" if cleaning in _DIRTY_CLEANING else "EMPTY CLEAN"
+		target_row.cargo = cargo
+		# EMKL / truck / driver / RO carry over as typed (same fieldnames, mapped for free).
+		# A row that named no transporter falls back to the party being billed — the same
+		# default the booking applies on save (``_default_row_shipper``), just visible on
+		# the draft instead of appearing after the first save.
+		if not target_row.shipper:
+			target_row.shipper = source_parent.customer
+
+	return get_mapped_doc(
+		"Gate Out Plan",
+		source_name,
+		{
+			"Gate Out Plan": {
+				"doctype": "Container Booking",
+				"field_map": {
+					"name": "gate_out_plan",
+					# The customer's own Release DO is the paperwork behind the lift-on; the
+					# booking has a DO slot of its own, so it carries rather than re-asks.
+					"customer_do": "do_document",
+					"customer_do_no": "do_reference",
+					# no_copy on both sides, so map_fields skips it — named explicitly to keep
+					# the source email attached to the document the customer actually gets.
+					"reff_email": "reff_email",
+					"notes": "remarks",
+				},
+			},
+			"Gate Out Plan Item": {
+				"doctype": "Container Booking Item",
+				"field_map": {"target_lift_on": "tanggal_bongkar", "remark": "remarks"},
+				"condition": lambda row: row.container and not row.gated_out,
+				"postprocess": set_line,
+			},
+		},
+		target_doc,
+		set_missing,
+	)

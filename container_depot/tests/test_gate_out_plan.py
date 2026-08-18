@@ -14,6 +14,8 @@ rolls back, and tearDown also deletes explicitly to be safe.
 
 from __future__ import annotations
 
+import io
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
@@ -37,8 +39,14 @@ class TestGateOutPlan(FrappeTestCase):
 		self._repairs = []      # Repair Order names
 		self._eirs = []         # Inspection (EIR) names
 		self._comms = []
+		self._files = []        # uploaded .xlsx probes
+		self._customers = []    # extra Customers minted by a test
 
 	def tearDown(self):
+		# frappe.response is process-global; the template download test leaves it set.
+		frappe.response.clear()
+		for f in self._files:
+			frappe.delete_doc("File", f, force=True, ignore_permissions=True)
 		for p in self._plans:
 			frappe.db.delete("Gate Out Plan Item", {"parent": p})
 			frappe.db.delete("Gate Out Plan", {"name": p})
@@ -56,6 +64,8 @@ class TestGateOutPlan(FrappeTestCase):
 			frappe.db.delete("Inspection", {"container": c})
 			frappe.db.delete("Container Activity", {"container": c})
 			frappe.db.delete("Container", {"name": c})
+		for cust in self._customers:
+			frappe.db.delete("Customer", {"name": cust})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -393,3 +403,210 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertEqual(res["doctype"], "Gate Out Plan")
 		self.assertEqual(res["values"]["reff_email"], comm.name)
 		self.assertIn("notes", res["values"])
+
+	# --- Excel import ---------------------------------------------------------
+	def _xlsx(self, rows):
+		"""An .xlsx attachment holding ``rows`` — the shape the grid importer reads."""
+		import xlsxwriter
+
+		buf = io.BytesIO()
+		wb = xlsxwriter.Workbook(buf, {"in_memory": True})
+		ws = wb.add_worksheet()
+		for r, cells in enumerate(rows):
+			ws.write_row(r, 0, cells)
+		wb.close()
+		f = frappe.get_doc({
+			"doctype": "File",
+			"file_name": "gop-import-probe.xlsx",
+			"is_private": 1,
+			"content": buf.getvalue(),
+		}).insert(ignore_permissions=True)
+		self._files.append(f.name)
+		return f.file_url
+
+	def test_import_resolves_dates_and_dedupes(self):
+		c1 = self._container("GOPXLS00001")
+		c2 = self._container("GOPXLS00002")
+		when = add_days(today(), 6)
+		url = self._xlsx([
+			["Container", "Target Lift-On", "Catatan"],   # header, skipped
+			["gopxls00001", when, "buru-buru"],           # lower case -> normalised
+			["GOPXLS-00001", when, ""],                   # same tank, punctuated -> collapsed
+			["GOPXLS00002", when, ""],
+		])
+		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal, depot=_DEPOT)
+
+		self.assertEqual([r["container"] for r in res["rows"]], [c1, c2])
+		self.assertEqual(res["rows"][0]["target_lift_on"], str(when))
+		self.assertEqual(res["rows"][0]["remark"], "buru-buru")
+		self.assertEqual(res["unknown"], [])
+
+	def test_import_skips_unknown_and_foreign_tanks(self):
+		mine = self._container("GOPXLS00003")
+		other = ensure_test_customer("GOP Other Principal")
+		self._customers.append(other)
+		theirs = self._container("GOPXLS00004", principal=other)
+		url = self._xlsx([
+			["Container", "Target Lift-On"],
+			["GOPXLS00003", add_days(today(), 4)],
+			["GOPXLS00004", add_days(today(), 4)],   # another owner's tank
+			["NOSUCH1234567", add_days(today(), 4)], # not in the Container master
+		])
+		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal, depot=_DEPOT)
+
+		self.assertEqual([r["container"] for r in res["rows"]], [mine])
+		self.assertEqual(res["unknown"], ["NOSUCH1234567"])
+		self.assertTrue(any(theirs in e or "GOPXLS00004" in e for e in res["errors"]))
+
+	def test_import_keeps_a_row_whose_date_is_missing(self):
+		# Target Lift-On is mandatory on the row, so a blank cell shows up on the grid where
+		# the operator can fill it — losing the container instead would be worse.
+		c = self._container("GOPXLS00005")
+		url = self._xlsx([["Container", "Target Lift-On"], ["GOPXLS00005", ""]])
+		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal, depot=_DEPOT)
+
+		self.assertEqual([r["container"] for r in res["rows"]], [c])
+		self.assertIsNone(res["rows"][0]["target_lift_on"])
+		self.assertEqual(len(res["errors"]), 1)
+
+	def test_import_rejects_no_file(self):
+		with self.assertRaises(frappe.ValidationError):
+			gate_out_plan.parse_container_xlsx(None)
+
+	def test_template_is_a_download(self):
+		gate_out_plan.download_container_template()
+		self.assertEqual(frappe.response.get("type"), "download")
+		self.assertEqual(frappe.response.get("filename"), "gate_out_plan_template.xlsx")
+		self.assertEqual(frappe.response["filecontent"][:2], b"PK")  # xlsx = zip magic
+
+	# --- hand-off to Container Booking (Tank Out) -----------------------------
+	def test_make_booking_carries_the_plan(self):
+		c = self._container("GOPBKG00001")
+		when = add_days(today(), 5)
+		plan = self._plan([(c, when)], customer_do_no="RDO-99", reff_doc="MAIL-7", notes="ambil pagi")
+
+		booking = gate_out_plan.make_container_booking(plan.name)
+
+		self.assertEqual(booking.doctype, "Container Booking")
+		self.assertEqual(booking.direction, "Tank Out")
+		self.assertEqual(booking.principal, self._principal)
+		self.assertEqual(booking.depot, _DEPOT)
+		self.assertEqual(booking.gate_out_plan, plan.name)
+		self.assertEqual(booking.do_reference, "RDO-99")
+		self.assertEqual(booking.reff_doc, "MAIL-7")
+		self.assertTrue(booking.branch)  # from the depot, so the mandatory field is filled
+		self.assertEqual(len(booking.items), 1)
+		row = booking.items[0]
+		self.assertEqual(row.container, c)
+		# The plan's target date IS the booking line's date — not "today".
+		self.assertEqual(str(row.tanggal_bongkar), str(when))
+		self.assertEqual(row.condition, "EMPTY CLEAN")
+		# This plan named no payer, so the booking still has to ask for one.
+		self.assertFalse(booking.customer)
+		# Charges are never seeded — the plan has no pricing.
+		self.assertFalse(booking.charges)
+
+	def test_make_booking_carries_the_bill_to_customer(self):
+		"""The party billed for the lift-on is recorded on the plan, not assumed to be the
+		tank owner — and a line with no transporter of its own falls back to it."""
+		payer = ensure_test_customer("GOP Test Payer")
+		self._customers.append(payer)
+		c = self._container("GOPBKG00006")
+		plan = self._plan([(c, add_days(today(), 4))], customer=payer)
+
+		booking = gate_out_plan.make_container_booking(plan.name)
+
+		self.assertEqual(booking.customer, payer)
+		self.assertEqual(booking.principal, self._principal)
+		self.assertEqual(booking.items[0].shipper, payer)
+
+	def test_make_booking_carries_the_trucking_details(self):
+		"""EMKL / truck / driver / RO transcribed from the customer's mail ride along, and an
+		explicitly named transporter is NOT overwritten by the Bill To fallback."""
+		payer = ensure_test_customer("GOP Test Payer")
+		hauler = ensure_test_customer("GOP Test Hauler")
+		self._customers += [payer, hauler]
+		c = self._container("GOPBKG00007")
+		plan = self._plan([(c, add_days(today(), 4))], customer=payer)
+		plan.containers[0].update({
+			"shipper": hauler,
+			"truck_plate": "BK 1234 XX",
+			"driver": "Budi",
+			"driver_phone": "0811-2233",
+			"ro": "RO-9",
+		})
+		plan.save(ignore_permissions=True)
+
+		row = gate_out_plan.make_container_booking(plan.name).items[0]
+
+		self.assertEqual(row.shipper, hauler)
+		self.assertEqual(row.truck_plate, "BK 1234 XX")
+		self.assertEqual(row.driver, "Budi")
+		self.assertEqual(row.driver_phone, "0811-2233")
+		self.assertEqual(row.ro, "RO-9")
+
+	def test_make_booking_reads_the_condition_off_the_tank(self):
+		c = self._container("GOPBKG00002")
+		frappe.db.set_value("Container", c, "cleaning_status", "In_Progress", update_modified=False)
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		booking = gate_out_plan.make_container_booking(plan.name)
+		self.assertEqual(booking.items[0].condition, "EMPTY DIRTY")
+
+	def test_make_booking_drops_tanks_that_already_left(self):
+		gone = self._container("GOPBKG00003")
+		staying = self._container("GOPBKG00004")
+		plan = self._plan([(gone, add_days(today(), 2)), (staying, add_days(today(), 3))])
+		self._gate_out(gone)
+
+		booking = gate_out_plan.make_container_booking(plan.name)
+		self.assertEqual([r.container for r in booking.items], [staying])
+
+	def test_make_booking_refuses_a_fully_collected_plan(self):
+		c = self._container("GOPBKG00005")
+		plan = self._plan([(c, add_days(today(), 2))])
+		self._gate_out(c)
+		with self.assertRaises(frappe.ValidationError):
+			gate_out_plan.make_container_booking(plan.name)
+
+	# --- header vs rows -------------------------------------------------------
+	def test_container_of_another_principal_is_refused(self):
+		other = ensure_test_customer("GOP Other Principal")
+		self._customers.append(other)
+		theirs = self._container("GOPHDR00001", principal=other)
+		with self.assertRaises(frappe.ValidationError):
+			self._plan([(theirs, add_days(today(), 4))])
+		# Refused means refused: no stamp leaked onto somebody else's tank.
+		self.assertIsNone(self._target(theirs).target_lift_on)
+
+	def test_container_at_another_depot_is_refused(self):
+		elsewhere = self._container("GOPHDR00002", depot="OAK2")
+		with self.assertRaises(frappe.ValidationError):
+			self._plan([(elsewhere, add_days(today(), 4))])
+
+	def test_changing_the_principal_refuses_the_old_rows(self):
+		# What the Desk form prevents by clearing the table; the server says it too, because
+		# saving is what stamps the target onto the tank.
+		c = self._container("GOPHDR00003")
+		other = ensure_test_customer("GOP Other Principal")
+		self._customers.append(other)
+		plan = self._plan([(c, add_days(today(), 4))])
+		plan.principal = other
+		with self.assertRaises(frappe.ValidationError):
+			plan.save(ignore_permissions=True)
+
+	def test_a_tank_that_already_left_is_not_re_checked(self):
+		# A partly-collected plan must stay editable: where a departed tank belongs now says
+		# nothing about the lift-on it was collected under.
+		gone = self._container("GOPHDR00004")
+		staying = self._container("GOPHDR00005")
+		plan = self._plan([(gone, add_days(today(), 2)), (staying, add_days(today(), 3))])
+		self._gate_out(gone)
+		other = ensure_test_customer("GOP Other Principal")
+		self._customers.append(other)
+		frappe.db.set_value("Container", gone, "principal", other, update_modified=False)
+
+		plan.reload()
+		plan.notes = "sisa satu tank"
+		plan.save(ignore_permissions=True)  # must not throw
+		self.assertEqual(plan.notes, "sisa satu tank")
