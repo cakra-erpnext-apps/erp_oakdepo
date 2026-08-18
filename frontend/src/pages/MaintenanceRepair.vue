@@ -205,7 +205,7 @@ import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, outbox } from "@/data/outbox"
+import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -280,6 +280,10 @@ function reloadOrders() {
 	const s = search.value.trim()
 	ordersRes.fetch(s ? { search: s } : {})
 }
+
+// A worklist refetched before the queue drained still shows the finished job — refetch once
+// the save has actually landed. See onOutboxSent.
+onOutboxSent(reloadOrders)
 
 const headerCells = computed(() => {
 	const h = order.value || {}

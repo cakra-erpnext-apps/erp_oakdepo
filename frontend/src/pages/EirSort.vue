@@ -100,7 +100,7 @@ import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, outbox } from "@/data/outbox"
+import { enqueue, onOutboxSent, outbox } from "@/data/outbox"
 
 const mode = ref("list") // list | detail
 
@@ -123,6 +123,10 @@ function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
+
+// A list refetched before the queue drained still shows the EIR that was just sorted —
+// refetch once the save has actually landed. See onOutboxSent.
+onOutboxSent(() => listRes.reload())
 
 // ---- section options (flat checklist, ordered by sequence → grouped by area), loaded once ----
 const checklistItems = ref([])

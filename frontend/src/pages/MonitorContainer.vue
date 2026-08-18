@@ -166,7 +166,7 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, outbox } from "@/data/outbox"
+import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
 import { toast } from "@/utils/toast"
@@ -247,6 +247,10 @@ function loadMore() {
 	if (tankRes.loading || loaded.value.length >= total.value) return
 	tankRes.reload()
 }
+
+// A list refetched before the queue drained still shows the tank that was just moved out —
+// reload from the first page once the save has actually landed. See onOutboxSent.
+onOutboxSent(() => reload(true))
 function setStatus(key) {
 	statusFilter.value = key
 	reload(true)

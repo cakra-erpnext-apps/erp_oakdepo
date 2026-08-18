@@ -105,7 +105,7 @@ import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, outbox } from "@/data/outbox"
+import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 
 const mode = ref("list") // list | detail
 
@@ -131,6 +131,10 @@ function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
+
+// A list refetched before the queue drained still shows the approved survey — refetch once
+// the save has actually landed. See onOutboxSent.
+onOutboxSent(() => listRes.reload())
 
 // ---- detail ----
 const detail = ref(null)

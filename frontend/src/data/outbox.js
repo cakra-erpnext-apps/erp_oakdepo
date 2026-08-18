@@ -17,7 +17,7 @@
 // way back, and a naive retry raises a second EIR. The id is what makes the retry return the
 // first result instead.
 
-import { computed, reactive } from "vue"
+import { computed, reactive, watch } from "vue"
 
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
@@ -46,6 +46,7 @@ const state = reactive({
 	online: navigator.onLine !== false,
 	sessionExpired: false,
 	lastError: null,
+	sent: 0,           // rows that have actually landed on the server (see onOutboxSent)
 })
 
 export const outbox = reactive({
@@ -64,6 +65,23 @@ export const outbox = reactive({
 
 /** Is there already queued work against this document? */
 export const isQueued = (ref) => !!ref && outbox.refs.has(ref)
+
+/**
+ * Run `cb` every time a queued row actually lands on the server.
+ *
+ * Worklists need this. Finishing a job sends the operator back to the list, which refetches
+ * immediately — but the queue is still holding the save, so the server answers with the job
+ * still open. `outbox.refs` papers over that gap by hiding the row while it is queued; the
+ * moment the row drains, the filter stops hiding it and the job the operator just finished
+ * pops back into the list looking untouched. That is the same bug the filter exists to
+ * prevent, arriving a few seconds later.
+ *
+ * So the list is refetched when the queue drains, not when it is filled. Called from `setup`,
+ * the watcher stops with the component.
+ */
+export function onOutboxSent(cb) {
+	return watch(() => state.sent, cb)
+}
 
 // `online` means "we have no evidence the link is down", and every part of the app that
 // touches the network reports what it saw. It has to work this way: `navigator.onLine` only
@@ -215,6 +233,8 @@ async function sendRow(row) {
 		state.rows = state.rows.filter((r) => r.id !== row.id)
 		state.lastError = null
 		state.online = true // proof, not a guess: something just got through
+		// The server's answer has changed; whatever list is on screen is now stale.
+		state.sent += 1
 		return true
 	} catch (e) {
 		return await handleFailure(row, e)

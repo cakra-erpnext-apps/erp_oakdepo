@@ -95,7 +95,7 @@ import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, outbox } from "@/data/outbox"
+import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 
 const PAGE = 20
 const search = ref("")
@@ -134,6 +134,10 @@ function loadMore() {
 	if (readyRes.loading || loaded.value.length >= total.value) return
 	readyRes.reload()
 }
+
+// A list refetched before the queue drained still shows the tank that was just gated out —
+// reload from the first page once the save has actually landed. See onOutboxSent.
+onOutboxSent(() => reload(true))
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)

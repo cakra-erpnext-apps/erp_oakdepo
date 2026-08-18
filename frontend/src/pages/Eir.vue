@@ -239,7 +239,7 @@ import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
-import { isQueued } from "@/data/outbox"
+import { isQueued, onOutboxSent } from "@/data/outbox"
 import EirInForm from "@/pages/EirInForm.vue"
 import EirOutForm from "@/pages/EirOutForm.vue"
 
@@ -362,6 +362,15 @@ function reloadPending() {
 	inRes.reload()
 	outRes.reload()
 }
+
+// The lists refetched right after a submit race the queue and usually lose — refetch once
+// the EIR has actually landed, so it leaves "pending" and appears under "recently
+// submitted" instead of popping back into the worklist. See onOutboxSent.
+onOutboxSent(() => {
+	reloadPending()
+	doneRes.reload()
+	reviewRes.reload()
+})
 
 // Landing "recently submitted" — the caller's own latest completed EIRs (In & Out),
 // newest first (no date filter). Tapping one opens its read-only detail (+ revision).

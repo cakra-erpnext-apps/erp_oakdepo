@@ -125,7 +125,7 @@ import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
 import { compressPhoto } from "@/utils/photo"
 import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { enqueue, hydratePreviews, isQueued, onOutboxSent, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 
 const mode = ref("list") // list | detail
 
@@ -152,6 +152,10 @@ function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
+
+// A list refetched before the queue drained still shows the surveyed tank — refetch once the
+// save has actually landed. See onOutboxSent.
+onOutboxSent(() => listRes.reload())
 
 // ---- detail ----
 const detail = ref(null)

@@ -263,7 +263,7 @@ import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
 import { compressPhoto } from "@/utils/photo"
 import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isLocalRef, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { enqueue, hydratePreviews, isLocalRef, isQueued, onOutboxSent, outbox, photoSrc, stashPhoto } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -340,6 +340,10 @@ function reloadOrders() {
 	const s = search.value.trim()
 	ordersRes.fetch(s ? { search: s } : {})
 }
+
+// The reload fired right after Selesaikan races the queue and usually loses — refetch again
+// once the sign-off has actually landed, or the finished order reappears in the worklist.
+onOutboxSent(reloadOrders)
 
 const headerCells = computed(() => {
 	const h = order.value || {}
