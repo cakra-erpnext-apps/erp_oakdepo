@@ -77,6 +77,7 @@
    "description": "Defaults to the booking customer; can be overridden.",
    "fieldname": "shipper",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Shipper",
    "options": "Customer"
@@ -159,7 +160,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-19 23:00:00.000000",
+ "modified": "2026-08-19 23:30:00.000000",
  "module": "Container Depot",
  "name": "Order Bongkar",
  "search_fields": "booking, container_summary, shipper",
