@@ -30,6 +30,7 @@ frappe.ui.form.on('Order Bongkar', {
 		_lock_actions(frm);
 		_strip_row_buttons(frm);
 		_enforce_max_rows(frm);
+		_render_system_facts(frm);
 		grid.refresh();
 	},
 	booking(frm) {
@@ -65,6 +66,24 @@ const BON_GRID = {
 	ro: 1,
 	tanggal_bongkar: 1,
 };
+
+// Everything this bon fills in by itself lives in the sidebar, above Last Edited By —
+// same block Container Booking uses (container_depot/public/js/system_facts.js). The
+// fields stay on the doctype (hidden) for the list view, the filters and the server.
+function _render_system_facts(frm) {
+	const link = container_depot.doc_link;
+	const esc = frappe.utils.escape_html;
+	container_depot.render_system_facts(frm, [
+		[__('Booking'), link('Container Booking', frm.doc.booking)],
+		[__('Order Status'), frm.doc.order_status && esc(frm.doc.order_status)],
+		[__('Branch'), link('Branch', frm.doc.branch)],
+		[__('Principal'), link('Customer', frm.doc.principal)],
+		[__('Containers'), frm.doc.container_summary && esc(frm.doc.container_summary)],
+		[__('Gate-In Time'), frm.doc.gate_in_time && frappe.datetime.str_to_user(frm.doc.gate_in_time)],
+		[__('SST'), link('Self Service Terminal', frm.doc.sst)],
+		[__('Created Offline'), frm.doc.created_offline ? __('Ya') : null],
+	]);
+}
 
 function _bon_grid_columns(grid) {
 	const shown = Object.keys(BON_GRID);

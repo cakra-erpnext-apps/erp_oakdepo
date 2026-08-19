@@ -13,6 +13,7 @@
   "shipper",
   "destination",
   "tanggal_muat",
+  "containers_section",
   "containers",
   "container_summary",
   "truck_section",
@@ -41,7 +42,8 @@
    "label": "Booking",
    "options": "Container Booking",
    "read_only": 1,
-   "reqd": 1
+   "reqd": 1,
+   "hidden": 1
   },
   {
    "fieldname": "ro",
@@ -56,7 +58,8 @@
    "in_standard_filter": 1,
    "label": "Order Status",
    "options": "Issued\nEIR In Progress\nReady To Load\nCompleted\nHold",
-   "reqd": 1
+   "reqd": 1,
+   "hidden": 1
   },
   {
    "description": "Depot branch, carried from the booking. Drives per-branch User Permission filtering.",
@@ -66,7 +69,8 @@
    "in_standard_filter": 1,
    "label": "Branch",
    "options": "Branch",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "column_break_1",
@@ -91,6 +95,11 @@
    "label": "Tgl. Muat"
   },
   {
+   "fieldname": "containers_section",
+   "fieldtype": "Section Break",
+   "label": "Containers"
+  },
+  {
    "description": "Containers on this bon (max 3). Each row's container needs a finished Cleaning Order. Only still-pending containers of this booking may be added.",
    "fieldname": "containers",
    "fieldtype": "Table",
@@ -104,7 +113,8 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Container",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "truck_section",
@@ -146,18 +156,21 @@
    "fieldname": "sst",
    "fieldtype": "Link",
    "label": "SST",
-   "options": "Self Service Terminal"
+   "options": "Self Service Terminal",
+   "hidden": 1
   },
   {
    "default": "0",
    "fieldname": "created_offline",
    "fieldtype": "Check",
-   "label": "Created Offline"
+   "label": "Created Offline",
+   "hidden": 1
   },
   {
    "fieldname": "gate_in_time",
    "fieldtype": "Datetime",
-   "label": "Gate-In Time"
+   "label": "Gate-In Time",
+   "hidden": 1
   },
   {
    "description": "Scannable QR for this bon (payload OAK|<name>), generated on submit.",
@@ -169,7 +182,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-11 11:00:00.000000",
+ "modified": "2026-08-19 23:00:00.000000",
  "module": "Container Depot",
  "name": "Order Muat",
  "search_fields": "booking, container_summary, truck_plate, shipper, destination",

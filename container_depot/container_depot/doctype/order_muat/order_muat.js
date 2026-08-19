@@ -8,6 +8,7 @@ frappe.ui.form.on('Order Muat', {
 			filters: { booking: frm.doc.booking, state: 'Active' }
 		}));
 		_lock_actions(frm);
+		_render_system_facts(frm);
 	},
 	booking(frm) {
 		if (frm.doc.booking && !frm.doc.shipper) {
@@ -17,6 +18,23 @@ frappe.ui.form.on('Order Muat', {
 		}
 	}
 });
+
+// Everything this bon fills in by itself lives in the sidebar, above Last Edited By —
+// same block Container Booking / Order Bongkar use (public/js/system_facts.js). The fields
+// stay on the doctype (hidden) for the list view, the filters and the server.
+function _render_system_facts(frm) {
+	const link = container_depot.doc_link;
+	const esc = frappe.utils.escape_html;
+	container_depot.render_system_facts(frm, [
+		[__('Booking'), link('Container Booking', frm.doc.booking)],
+		[__('Order Status'), frm.doc.order_status && esc(frm.doc.order_status)],
+		[__('Branch'), link('Branch', frm.doc.branch)],
+		[__('Containers'), frm.doc.container_summary && esc(frm.doc.container_summary)],
+		[__('Gate-In Time'), frm.doc.gate_in_time && frappe.datetime.str_to_user(frm.doc.gate_in_time)],
+		[__('SST'), link('Self Service Terminal', frm.doc.sst)],
+		[__('Created Offline'), frm.doc.created_offline ? __('Ya') : null],
+	]);
+}
 
 function _lock_actions(frm) {
 	// A bon is never deleted, duplicated, or used as a template for a New one —
