@@ -13,8 +13,8 @@ WHY THE EVENT, NOT JUST THE DOCTYPE
 -----------------------------------
 The doctype alone is not enough to say where to go. ``Order Muat`` is the subject of four
 different events that belong on three different screens: a bon was generated (Gate), a survey
-was requested (Survey Posisi), a tank is ready to leave, or a tank is held (Siap Keluar).
-Routing on doctype would send three notifications out of four to the wrong menu.
+was requested (Survey Posisi), or a tank is held after its EIR-Out (EIR).
+Routing on doctype would send two notifications out of three to the wrong menu.
 
 So ``notify()`` stamps the event key onto the Notification Log (``depot_event``, a custom
 field) and this module keys off that. Rows written before that field existed fall back to the
@@ -79,6 +79,15 @@ def _eir(doctype, name):
 	return f"/eir?e={name}&t={'out' if st.inspection_type == 'EIR-Out' else 'in'}"
 
 
+def _eir_worklist(doctype, name):
+	"""The EIR screen, for events whose document is NOT an Inspection.
+
+	`eir_out_hold` fires on the **Order Muat** (or the Container) behind a held tank, so there
+	is no Inspection name to deep-link to — same shape as `_survey_worklist`.
+	"""
+	return "/eir/history"
+
+
 def _cleaning(doctype, name):
 	st = _state("Cleaning Order", name, ["docstatus", "status"])
 	if not st:
@@ -139,10 +148,6 @@ def _gate(doctype, name):
 	return "/gate"
 
 
-def _ready_out(doctype, name):
-	return "/ready-out"
-
-
 def _monitor(doctype, name):
 	return "/monitor"
 
@@ -165,8 +170,7 @@ _BY_EVENT = {
 	"order_gate_in": _gate,
 	"order_gate_out": _gate,
 	"order_muat_survey": _survey_worklist,
-	"ready_to_load": _ready_out,
-	"eir_out_hold": _ready_out,
+	"eir_out_hold": _eir_worklist,
 	"gate_out": _gate_history,
 	"booking_created": _none,
 	"booking_submitted": _none,

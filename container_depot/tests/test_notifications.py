@@ -60,6 +60,11 @@ class TestNotificationRouting(FrappeTestCase):
 		frappe.db.delete("Notification Log", {"document_name": DOC})
 		if frappe.db.exists("Depot Notification Rule", PROBE_EVENT):
 			frappe.delete_doc("Depot Notification Rule", PROBE_EVENT, ignore_permissions=True, force=True)
+		# Two tests rewrite the `invoice_submitted` roles and commit, so restore them here
+		# rather than at the tail of a test body: a run interrupted mid-test (or a second
+		# run racing this one) otherwise leaves the site routing invoices to Team Cleaning
+		# for good, and every later run of this class fails on data, not on code.
+		cls._restore_rule("invoice_submitted", ["Cashier", "Finance"])
 		# Leave the master switch and the seeded rules as we found them.
 		settings = frappe.get_single("Depot Notification Settings")
 		settings.notifications_enabled = 1
@@ -67,6 +72,17 @@ class TestNotificationRouting(FrappeTestCase):
 		notify_mod.clear_rule_cache()
 		frappe.db.commit()
 		super().tearDownClass()
+
+	@classmethod
+	def _restore_rule(cls, event_key: str, roles: list) -> None:
+		if not frappe.db.exists("Depot Notification Rule", event_key):
+			return
+		doc = frappe.get_doc("Depot Notification Rule", event_key)
+		doc.roles = []
+		for role in roles:
+			doc.append("roles", {"role": role})
+		doc.enabled = 1
+		doc.save(ignore_permissions=True)
 
 	def setUp(self):
 		frappe.set_user("Administrator")

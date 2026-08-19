@@ -1,7 +1,7 @@
 """Tests for the gate log — one Gate Entry spanning a tank's whole depot visit.
 
-For a long time only the OUT half was ever written: ``mark_gate_out`` was the sole creator,
-so "Riwayat Gate" listed nothing but departures and the reuse branch in
+For a long time only the OUT half was ever written: the gate-out was the sole creator, so
+"Riwayat Gate" listed nothing but departures and the reuse branch in
 ``gate._resolve_or_create_gate_entry`` had never fired. ``Order Bongkar._record_gate_in``
 opens the record at arrival; these tests pin that one record covers both events, and that the
 ways it could go wrong (a re-submitted bon, a cancelled bon, a second visit) each behave.
@@ -14,7 +14,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, add_to_date, now_datetime, today
 
 from container_depot.container_depot.doctype.booking_code.booking_code import generate_code
-from container_depot.container_depot.gate import mark_gate_out, open_gate_entry_for
+from container_depot.container_depot.gate import open_gate_entry_for
 from container_depot.container_depot.order_generation import make_order
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
@@ -103,6 +103,8 @@ def _drop_provisioned_eir_in(container):
 
 
 def _clean_eir_out(container):
+	"""Submit a clean EIR-Out — which IS the departure: ``Inspection.on_submit`` runs the
+	gate-out, so there is nothing else for these tests to press."""
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
@@ -171,10 +173,9 @@ class TestGateLog(FrappeTestCase):
 		_drop_provisioned_eir_in(c)
 		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
 		eir = _clean_eir_out(c)
-		res = mark_gate_out(container=c)
 
-		self.assertEqual(res["gate_entry"], opened, "gate-out filed a second record")
 		rows = self._gates(c)
+		self.assertEqual(rows[0].name, opened, "gate-out filed a second record")
 		self.assertEqual(len(rows), 1)
 		ge = rows[0]
 		self.assertEqual(ge.status, "Gate_Out_Completed")
@@ -192,7 +193,6 @@ class TestGateLog(FrappeTestCase):
 		_drop_provisioned_eir_in(c)
 		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
 		_clean_eir_out(c)
-		mark_gate_out(container=c)
 		self.assertIsNone(open_gate_entry_for(c))
 
 		_tank_in_bon(c)  # comes back
@@ -241,7 +241,6 @@ class TestGateLog(FrappeTestCase):
 		_drop_provisioned_eir_in(c)
 		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
 		_clean_eir_out(c)
-		mark_gate_out(container=c)
 
 		ge = self._gates(c)[0]
 		self.assertEqual(ge.status, "Gate_Out_Completed")
@@ -253,9 +252,9 @@ class TestGateLog(FrappeTestCase):
 		trace — the create branch of ``_resolve_or_create_gate_entry`` stays."""
 		c = _container(f"{PREFIX}000008", status="Available")
 		_clean_eir_out(c)
-		res = mark_gate_out(container=c)
-		self.assertTrue(res["gate_entry"])
-		self.assertEqual(self._gates(c)[0].status, "Gate_Out_Completed")
+		rows = self._gates(c)
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0].status, "Gate_Out_Completed")
 
 	def test_a_bonned_departure_records_its_truck(self):
 		"""With no arrival to inherit from, the record takes the departure's vehicle — which
@@ -265,7 +264,6 @@ class TestGateLog(FrappeTestCase):
 			ensure_test_customer(CUSTOMER), c, truck="B 9001 XY", driver="Budi"
 		)
 		_clean_eir_out(c)
-		mark_gate_out(container=c)
 
 		ge = self._gates(c)[0]
 		self.assertEqual(ge.order_ref, bon)
@@ -292,10 +290,9 @@ class TestGateLogIsNotHandWritten(FrappeTestCase):
 			+ ", ".join(f"{o.parent}/{o.role}" for o in offenders),
 		)
 
-	def test_the_pwa_ready_out_tile_keeps_its_write_perm(self):
-		"""The reason the lock strips create but NOT write: ``ess.context._MENU`` gates the
-		"Siap Keluar" tile on write over Gate Entry, so stripping it would empty the tile
-		for Security and Team Kalmar with nothing to trace it back from."""
+	def test_the_yard_roles_keep_their_write_perm(self):
+		"""The reason the lock strips create but NOT write: a mistyped truck plate on an
+		audit row has to stay correctable by the people standing at the gate."""
 		writers = frappe.get_all(
 			"Custom DocPerm", filters={"parent": "Gate Entry", "write": 1}, pluck="role"
 		)

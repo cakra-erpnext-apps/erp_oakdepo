@@ -171,6 +171,20 @@ class Inspection(Document):
 
 			recompute_availability(self.container)
 
+		# A clean EIR-Out submitted = the tank has LEFT the depot. This approval is the ONLY
+		# thing that declares a departure (the operator-pressed "ACC Keluar" queue is gone),
+		# so the gate-out runs from here: Container -> Gate_Out, the Gate Entry stamped and
+		# closed, the bon completed once its last tank is out, gate/ops notified. Left last
+		# on purpose — everything above describes the inspection, this is its consequence.
+		# It throws (rolling the submit back) when the tank is not actually free to go, which
+		# is the right refusal: the review must not sign a departure that cannot happen.
+		if self.inspection_type == "EIR-Out" and self.get("out_outcome") == "Ready To Load":
+			from container_depot.container_depot.gate import mark_gate_out
+
+			mark_gate_out(
+				container=self.container, eir_out=self.name, performed_by=self.get("inspector")
+			)
+
 	def _ensure_cleaning_order(self, container):
 		"""Create (idempotently) a Pending Cleaning Order for this dirty tank and notify
 		the cleaning team — only the first time, so re-submits don't spam."""
@@ -227,10 +241,11 @@ class Inspection(Document):
 		"""Score an EIR-Out's readiness and signal it on the referenced Order Muat.
 
 		Clean = no new damage on the checklist. A clean EIR-Out flips the Order Muat to
-		``Ready To Load`` and notifies Operator Kalmar; a finding flips it to ``Hold`` and
-		notifies the Ops Supervisor. The container status is NOT touched here (it stays on
-		the OUT path; gate-out is the final move) — readiness lives on the Order Muat, and
-		gate-out enforces a clean EIR-Out (see container_depot/gate).
+		``Ready To Load``; a finding flips it to ``Hold`` and notifies the Ops Supervisor.
+		The container status is NOT touched here — the gate-out at the end of ``on_submit``
+		is what moves it, and it reads the ``out_outcome`` written below to decide. No
+		"ready to load" ping is sent: on a clean EIR-Out the tank leaves in the same submit,
+		so the gate-out notification is the one that tells the truth.
 
 		The separate exterior-cleanliness and seal-integrity checks (PRO-OPS-08 §G.2/G.3)
 		were dropped at the depot's request; the checklist findings are the only input now.
@@ -244,12 +259,13 @@ class Inspection(Document):
 
 		# Resolve the Order Muat this EIR-Out was raised against (auto-voucher set it).
 		order_muat = self.referred_voucher if self.get("voucher_doctype") == "Order Muat" else None
-		from container_depot.container_depot.notify import notify_eir_out_hold, notify_ready_to_load
+		from container_depot.container_depot.notify import notify_eir_out_hold
 
 		if outcome == "Ready To Load":
+			# Intermediate state for a multi-tank bon: gate-out closes it to ``Completed``
+			# once the LAST tank on it is out.
 			if order_muat:
 				frappe.db.set_value("Order Muat", order_muat, "order_status", "Ready To Load", update_modified=False)
-			notify_ready_to_load(self.container_no, order_muat, depot=self.depot)
 		else:
 			if order_muat:
 				frappe.db.set_value("Order Muat", order_muat, "order_status", "Hold", update_modified=False)

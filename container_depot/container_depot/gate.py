@@ -1,9 +1,15 @@
-"""Gate Entry history for the PWA "Riwayat Gate" feed + the TANK OUT gate-out action.
+"""Gate Entry history for the PWA "Riwayat Gate" feed + the TANK OUT gate-out write.
 
 Mirrors ``container_depot.eir``: deliberately free of ``@frappe.whitelist`` so the ``ess.gate``
 endpoints add only auth + whitelisting. Lists Gate Entries (the gate-in / gate-out voucher
-records), returns one record's detail, and — the final SOP step PRO-OPS-009 §5.2 (5) —
-completes gate-out / load-complete for a tank (:func:`mark_gate_out`).
+records), returns one record's detail, and completes gate-out / load-complete for a tank
+(:func:`mark_gate_out`).
+
+There is no operator-pressed "ACC Keluar" any more: a tank is out the moment its EIR-Out is
+reviewed and submitted clean, so ``Inspection.on_submit`` is the ONLY caller of
+:func:`mark_gate_out` — the approval on the EIR *is* the departure. Undoing a departure is
+therefore undoing that EIR (``eir.revert_to_draft``, which calls
+:func:`reopen_gate_entry_for_eir`).
 """
 
 from __future__ import annotations
@@ -173,8 +179,12 @@ def _resolve_or_create_gate_entry(container_no, order_muat, depot, performed_by)
 	return doc
 
 
-def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict:
+def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by=None) -> dict:
 	"""Complete gate-out / load-complete for a tank — the final OUT step.
+
+	Called from ``Inspection.on_submit`` when a clean EIR-Out is submitted, which passes its
+	own name as ``eir_out``. There is no other caller: the reviewed EIR-Out is what declares
+	the tank gone.
 
 	Moves the Container to ``Gate_Out`` (through the guarded state machine, so a Container
 	Movement is auto-logged and ``inventory_stage`` becomes ``Departed``), stamps the Gate
@@ -226,13 +236,14 @@ def mark_gate_out(container=None, gate_entry=None, *, performed_by=None) -> dict
 			_("Container {0} masih punya order yang belum selesai — {1}.").format(doc.name, listed)
 		)
 
-	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is submitted
-	# clean (out_outcome = Ready To Load). Unfinished work is already refused above
+	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is reviewed and
+	# submitted clean (out_outcome = Ready To Load). Unfinished work is already refused above
 	# (order_muat._validate_no_open_work applies the same rule when the bon is made).
-	# Kept as the resolved name, not a bare exists(): it is the EIR that released this tank,
-	# so it is also what belongs in the Gate Entry's `eir_reference` below (a field nothing
-	# used to write).
-	eir_out = frappe.db.get_value(
+	# The caller (``Inspection.on_submit``) hands in the EIR it just submitted; the lookup is
+	# the fallback for a back-office/console call. Either way it stays the resolved name, not
+	# a bare exists(): it is the EIR that released this tank, so it is also what belongs in
+	# the Gate Entry's `eir_reference` below.
+	eir_out = eir_out or frappe.db.get_value(
 		"Inspection",
 		{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},
 		"name",
@@ -366,118 +377,35 @@ def _complete_order_muat_if_done(order_muat) -> bool:
 	return True
 
 
-# ---------------------------------------------------------------------------
-# SIAP KELUAR — the post-EIR-Out reminder worklist (ACC → gate-out).
-# ---------------------------------------------------------------------------
-def _last_gate_out_at(containers) -> dict:
-	"""``{container: datetime}`` of each tank's most recent "Gate Out" activity."""
-	out = {}
-	if not containers:
-		return out
-	for row in frappe.get_all(
-		"Container Activity",
-		filters={"container": ["in", containers], "activity_type": "Gate Out"},
-		fields=["container", "activity_time"],
-		order_by="activity_time asc",
-	):
-		if row.activity_time:
-			out[row.container] = row.activity_time  # ascending → last write wins
-	return out
+def reopen_gate_entry_for_eir(eir_out) -> str | None:
+	"""Undo the gate-out stamp an EIR-Out left on its Gate Entry — the inverse of the
+	stamping inside :func:`mark_gate_out`.
 
-
-def list_ready_to_load(search=None, start=0, page_length=20) -> dict:
-	"""Tanks whose EIR-Out is submitted clean but that are still standing in the depot.
-
-	This is the reminder queue between the surveyor's EIR-Out and the physical exit: the
-	list is *derived*, never stored, so it cannot drift out of sync — a tank appears the
-	moment its EIR-Out is submitted ``Ready To Load`` and disappears the moment
-	:func:`mark_gate_out` moves it to ``Gate_Out``. Oldest wait first (it is a reminder,
-	not a feed). Branch-scoped like the rest of ess.*.
-
-	Two traps this filters out: a tank that already left (status ``Gate_Out``), and a
-	*stale* clean EIR-Out from an earlier visit — a tank that went out and came back in
-	would otherwise resurface here, so any EIR-Out older than the tank's last recorded
-	gate-out is dropped.
+	Departure is now declared by submitting the EIR-Out, so *un*-submitting it
+	(``eir.revert_to_draft``) has to put the visit back on the books: without this the
+	record stays ``Gate_Out_Completed``, ``open_gate_entry_for`` stops finding it, and the
+	corrected EIR-Out would file a SECOND Gate Entry for one visit. Returns the reopened
+	record's name, or None when this EIR never stamped one.
 	"""
-	depots = get_user_depots()
-	filters = {"inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"}
-	if depots is not None:
-		filters["depot"] = ["in", depots or [""]]
-	rows = frappe.get_all(
-		"Inspection",
-		filters=filters,
-		fields=[
-			"name", "inspection_id", "container", "container_no", "depot", "eir_date",
-			"referred_voucher", "truck_no", "driver", "shipper", "modified",
-		],
-		order_by="modified desc",
-		limit_page_length=0,
+	if not eir_out:
+		return None
+	found = frappe.get_all(
+		"Gate Entry",
+		filters={"eir_reference": eir_out, "status": "Gate_Out_Completed"},
+		fields=["name", "gate_in_timestamp"], order_by="creation desc", limit=1,
 	)
-	# One row per tank — the newest EIR-Out wins (a revised bon can leave two).
-	latest = {}
-	for r in rows:
-		if r.container and r.container not in latest:
-			latest[r.container] = r
-
-	present = {
-		c.name: c
-		for c in frappe.get_all(
-			"Container",
-			filters={"name": ["in", list(latest)] or [""], "status": ["in", list(PRESENT)]},
-			fields=["name", "container_no", "principal", "depot", "status"],
-		)
-	} if latest else {}
-	gated_out_at = _last_gate_out_at(list(present))
-
-	items = []
-	for container, r in latest.items():
-		c = present.get(container)
-		if not c:
-			continue
-		last_out = gated_out_at.get(container)
-		if last_out and r.modified and last_out > r.modified:
-			continue  # stale: the tank already left after this EIR-Out, and came back
-		bon = (
-			frappe.db.get_value(
-				"Order Muat",
-				r.referred_voucher,
-				["name", "order_status", "truck_plate", "driver_name", "driver_phone",
-				 "destination", "tanggal_muat", "shipper"],
-				as_dict=True,
-			)
-			if r.referred_voucher
-			else None
-		)
-		items.append({
-			"inspection": r.name,
-			"inspection_id": r.inspection_id,
-			"container": container,
-			"container_no": r.container_no or c.container_no,
-			"principal": c.principal,
-			"depot": r.depot or c.depot,
-			"eir_date": str(r.eir_date) if r.eir_date else None,
-			"ready_since": str(r.modified) if r.modified else None,
-			"order_muat": bon.name if bon else None,
-			"order_status": bon.order_status if bon else None,
-			"destination": bon.destination if bon else None,
-			"tanggal_muat": str(bon.tanggal_muat) if bon and bon.tanggal_muat else None,
-			"truck_no": (bon.truck_plate if bon else None) or r.truck_no,
-			"driver": (bon.driver_name if bon else None) or r.driver,
-			"driver_phone": bon.driver_phone if bon else None,
-			"shipper": r.shipper or (bon.shipper if bon else None),
-		})
-
-	search = (search or "").strip()
-	if search and search.lower() != "undefined":
-		needle = search.lower()
-		items = [
-			i for i in items
-			if needle in " ".join(
-				str(i.get(k) or "") for k in ("container_no", "order_muat", "truck_no", "driver", "inspection_id")
-			).lower()
-		]
-	items.sort(key=lambda i: i.get("ready_since") or "")  # longest wait first
-	total = len(items)
-	start = cint(start)
-	page_length = cint(page_length) or 20
-	return {"items": items[start : start + page_length], "total": total}
+	if not found:
+		return None
+	row = found[0]
+	frappe.db.set_value(
+		"Gate Entry", row.name,
+		{
+			"gate_out_timestamp": None,
+			"eir_reference": None,
+			# Back to the state the arrival left it in: the tank is in the depot again.
+			"status": "Gate_In_Completed" if row.gate_in_timestamp else "Active",
+			"inspection_status": "In_Progress",
+		},
+		update_modified=True,
+	)
+	return row.name

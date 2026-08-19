@@ -470,7 +470,7 @@
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "description": "Bukti tank saat keluar: nomor seal yang terpasang, dan status siap-muat yang dikirim ke Order Muat + Operator Kalmar saat EIR ini disubmit.",
+   "description": "Bukti tank saat keluar: nomor seal yang terpasang, dan hasil EIR-Out yang menentukan apakah submit ini melepas tank keluar depo.",
    "fieldname": "eir_out_section",
    "fieldtype": "Section Break",
    "label": "EIR-Out \u2014 Hasil Keluar"
@@ -485,7 +485,7 @@
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
-   "description": "Diisi otomatis saat submit. Ready To Load = Order Muat siap dimuat & Operator Kalmar diberi tahu; Hold Pending Clearance = ditahan sampai temuan diselesaikan. Gate-out hanya melepas tank yang Ready To Load.",
+   "description": "Diisi otomatis saat submit. Ready To Load = tank langsung tercatat KELUAR DEPO (gate-out) pada submit yang sama; Hold Pending Clearance = ditahan di depo sampai temuan diselesaikan.",
    "fieldname": "out_outcome",
    "fieldtype": "Select",
    "label": "EIR-Out Outcome",
@@ -619,7 +619,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-19 09:00:00.000000",
+ "modified": "2026-08-19 10:45:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

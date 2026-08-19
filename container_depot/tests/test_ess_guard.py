@@ -59,26 +59,24 @@ class TestEssGuard(FrappeTestCase):
 		frappe.set_user("Administrator")
 		super().tearDown()
 
-	def test_cashier_cannot_call_gate_out(self):
-		# Cashier holds Gate Entry READ (billing context), never write. gate_out is the
-		# `readyOut` menu, which keys on write.
-		frappe.set_user(USERS["Cashier"])
-		with self.assertRaises(frappe.PermissionError):
-			ess_gate.gate_out(container="NOPE")
-
 	def test_team_cleaning_cannot_call_mr_start(self):
 		frappe.set_user(USERS["Team Cleaning"])
 		with self.assertRaises(frappe.PermissionError):
 			ess_repairs.mr_start(repair_order="NOPE")
 
-	def test_security_can_call_gate_out(self):
-		# Security has Gate Entry rwcs, so the guard lets them through. The call then
-		# fails on the bogus container — a business error, NOT a PermissionError, which
-		# is exactly what "the guard let me past" looks like.
+	def test_cashier_cannot_read_the_gate_log(self):
+		# Cashier holds Gate Entry READ (billing context) but no field role, so the PWA
+		# gate menu stays shut — the guard is the menu, not the DocPerm.
+		frappe.set_user(USERS["Cashier"])
+		with self.assertRaises(frappe.PermissionError):
+			ess_gate.gate_history()
+
+	def test_security_can_read_the_gate_log(self):
+		# Security holds the `gate` menu, so the guard lets them through and the call
+		# returns — which is what "the guard let me past" looks like.
 		frappe.set_user(USERS["Security"])
-		require_menu("readyOut")  # does not raise
-		with self.assertRaises(frappe.ValidationError):
-			ess_gate.gate_out(container="NOPE-NOT-A-CONTAINER")
+		require_menu("gate")  # does not raise
+		self.assertIn("items", ess_gate.gate_history())
 
 	def test_survey_cannot_approve_position(self):
 		# The write/submit split, enforced at the endpoint: Team Survey records surveys
@@ -97,7 +95,7 @@ class TestEssGuard(FrappeTestCase):
 	def test_guest_rejected_everywhere(self):
 		frappe.set_user("Guest")
 		try:
-			for menu_key in ("gate", "readyOut", "eir", "cleaning", "mr", "monitor"):
+			for menu_key in ("gate", "eir", "cleaning", "mr", "monitor"):
 				with self.assertRaises(frappe.PermissionError):
 					require_menu(menu_key)
 		finally:

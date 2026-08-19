@@ -121,12 +121,12 @@ seeding + assignment procedure in `STRUCTURE.md § Role model`.
 | Role | Was | SOP responsibility | PWA menus |
 |---|---|---|---|
 | Team EIR | Teknisi EIR & Foto | Foto + tulis EIR saat tank in/out | EIR · Monitor |
-| Team Kalmar | Operator Kalmar | Cocokkan no. tank vs bon, ACC "udah turun" | Siap Keluar · Position Fix · Monitor |
+| Team Kalmar | Operator Kalmar | Cocokkan no. tank vs bon, ACC "udah turun" | Position Fix · Monitor |
 | Team Cleaning | — | Kerjakan Cleaning Order + QC | Cleaning · Monitor |
 | Team Repair | — | Kerjakan M&R + uji periodik | M&R · Uji Periodik · Monitor |
 | Team Survey | Surveyor | Rekam posisi tank (Lift On) | Survey Posisi · Monitor |
-| Security (gate) | Security | Arahkan supir, tanda tangan bon | Gate · Siap Keluar · Monitor |
-| SPV Lapangan | Ops Supervisor | Awasi seluruh alur lapangan | semua sembilan |
+| Security (gate) | Security | Arahkan supir, tanda tangan bon | Gate · Monitor |
+| SPV Lapangan | Ops Supervisor | Awasi seluruh alur lapangan | semua menu |
 
 ### Office roles — Desk only (`desk_access = 1`, no PWA menu)
 
@@ -172,7 +172,7 @@ branch. Master switch + non-broadcast fallback live in `Depot Notification Setti
 2. Teknisi re-checks exterior + EIR-Out → **Inspection (EIR-Out)** *(Teknisi EIR)*
 3. If exterior dirty → notify Ops SPV → **Cleaning Order** raised; SPV approves *(Teknisi → Ops SPV)*
 4. Teknisi applies "ready for release" sticker → `Container.status = Available` *(Teknisi EIR)*
-5. Kalmar matches tank no. vs Bon Muat; signs → confirm + **Gate Entry** `Gate_Out_Completed` *(Operator Kalmar)*
+5. Adm Ops reviews the EIR-Out and submits it → tank tercatat keluar: `Container.status = Gate_Out` + **Gate Entry** `Gate_Out_Completed` *(Adm Ops)*. Approval EIR-Out ini satu-satunya yang menyatakan tank keluar — tidak ada langkah "ACC Siap Keluar" terpisah.
 
 ---
 

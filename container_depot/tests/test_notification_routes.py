@@ -45,8 +45,6 @@ EVENT_DOCTYPES = [
 	("order_gate_in", "Order Bongkar"),
 	("order_gate_out", "Order Muat"),
 	("order_muat_survey", "Order Muat"),
-	("ready_to_load", "Order Muat"),
-	("ready_to_load", "Container"),
 	("eir_out_hold", "Order Muat"),
 	("eir_out_hold", "Container"),
 	("gate_out", "Gate Entry"),
@@ -143,7 +141,6 @@ class TestNotificationRouteTable(FrappeTestCase):
 			"/position-fix",
 			"/gate",
 			"/gate/history?open=X",
-			"/ready-out",
 			"/monitor",
 		]
 		for route in shapes:

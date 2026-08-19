@@ -461,22 +461,6 @@ def notify_order_muat_survey(order):
 	)
 
 
-def notify_ready_to_load(container_no, order_muat=None, *, depot=None):
-	"""Fire when an EIR-Out is submitted clean — signals Operator Kalmar (+ ops) that the
-	tank is READY TO LOAD (Fase G.3)."""
-	if not container_no:
-		return
-	tail = f" • {order_muat}" if order_muat else ""
-	subject = f"READY TO LOAD • {container_no}{tail} — siap dimuat"
-	notify(
-		doctype="Order Muat" if order_muat else "Container",
-		name=order_muat or container_no,
-		subject=subject,
-		branch=_depot_branch(depot) if depot else None,
-		event_key="ready_to_load",
-	)
-
-
 def notify_eir_out_hold(container_no, order_muat=None, reason=None, *, depot=None):
 	"""Fire when an EIR-Out finds an issue — puts the tank on HOLD and asks the Ops
 	Supervisor (+ admin) to clear it (Fase G.4)."""

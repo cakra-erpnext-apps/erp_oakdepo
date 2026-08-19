@@ -133,15 +133,7 @@
 						</div>
 					</div>
 				</div>
-				<button
-					v-if="c.raw_status === 'Available'"
-					class="oak-btn oak-btn-primary mr-3 shrink-0 px-3 py-1.5 text-xs"
-					:disabled="gatingOut"
-					@click.stop="confirmGateOut(c)"
-				>
-					<Icon name="log-out" :size="14" /> {{ labels.gateOutAction }}
-				</button>
-				<Icon v-else-if="c.order" name="chevron-right" :size="16" class="mr-4 shrink-0 text-gray-300" />
+				<Icon v-if="c.order" name="chevron-right" :size="16" class="mr-4 shrink-0 text-gray-300" />
 				<span v-else class="mr-4 shrink-0"></span>
 			</li>
 		</ul>
@@ -164,13 +156,10 @@
 
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue"
-import { send } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
-import { toast } from "@/utils/toast"
-import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 
@@ -184,8 +173,8 @@ const depotFilter = ref("")
 const todayOnly = ref(false)
 const loaded = ref([]) // what the server (or the offline cache) last said
 
-// Monitor is read-only apart from TANK OUT. A tank whose gate-out is queued has already
-// left, so drop it here rather than leaving it in the live-inventory buckets.
+// Monitor is read-only: a tank leaves the depot when its EIR-Out is approved, never from
+// here, so nothing on this screen writes.
 const items = computed(() => loaded.value)
 const total = ref(0)
 const start = ref(0)
@@ -271,37 +260,6 @@ function openOrder(c) {
 // Text tint matching the status chip (leaf/amber/blue/gray) for the order descriptor.
 function orderTint(status) {
 	return { draft: "text-gray-600", pending: "text-amber-700", in_progress: "text-blue-700" }[status] || "text-gray-600"
-}
-
-// TANK OUT — confirm + complete gate-out for a pickup-pending tank, then refresh so it
-// drops out of the live-inventory buckets.
-// Sent straight away, for the same reason as the Siap Keluar screen: this is pressed at the
-// barrier, and with a link it is a single fast round trip that answers honestly, while a dead
-// spot queues it rather than holding the truck — and every truck behind it. Carries a
-// request_id so a lost response cannot become a second gate move.
-const gatingOut = ref(false)
-async function confirmGateOut(c) {
-	if (gatingOut.value) return
-	const ok = await confirm({
-		message: labels.gateOutConfirmMessage,
-		confirmLabel: labels.gateOutAction,
-		cancelLabel: labels.confirmCancel,
-	})
-	if (!ok) return
-	gatingOut.value = true
-	try {
-		await send({
-			url: "container_depot.ess.gate.gate_out",
-			payload: { container: c.name },
-		})
-		toast.success(labels.gateOutDone, {
-			title: c.container_no || c.name,
-		})
-	} catch (e) {
-		toast.error(e?.message || labels.error)
-	} finally {
-		gatingOut.value = false
-	}
 }
 
 // Infinite-scroll: auto-load the next page when the sentinel scrolls into view.

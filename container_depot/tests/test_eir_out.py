@@ -1,9 +1,9 @@
 """Tests for FASE G — EIR OUT Digital (surveyor load-out inspection vs last EIR-In).
 
 Covers: latest EIR-In baseline, auto-provision of EIR-Out drafts from an Order Muat
-(with its EIR-In reference), the comparison payload, the submit
-outcome (Ready To Load vs Hold + Order Muat status), the open-draft per-type separation,
-and the gate-out enforcement (no clean EIR-Out -> blocked).
+(with its EIR-In reference), the comparison payload, the submit outcome (Ready To Load vs
+Hold + Order Muat status) and the open-draft per-type separation. The departure that a clean
+submit triggers lives in ``test_gate_out.py``.
 
 FrappeTestCase rolls back per test; tearDown also deletes throwaway rows by prefix.
 """
@@ -16,7 +16,6 @@ from frappe.utils import add_days, today
 
 from container_depot.container_depot import eir
 from container_depot.container_depot.doctype.container import container
-from container_depot.container_depot.gate import mark_gate_out
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
 
@@ -199,7 +198,9 @@ class TestEirOut(FrappeTestCase):
 		_submit_eir_out(c)
 		self.assertEqual(container.seal_history(c), [])
 
-	def test_submit_clean_sets_ready_to_load(self):
+	def test_submit_clean_releases_the_tank(self):
+		"""A clean submit scores Ready To Load and, in the same submit, takes the tank out —
+		so a single-tank bon goes straight past Ready To Load to Completed."""
 		c = _container(f"{PREFIX}0000006")
 		_eir_in(c)
 		_finish_cleaning(c)
@@ -207,7 +208,8 @@ class TestEirOut(FrappeTestCase):
 
 		name = _submit_eir_out(c, order_muat=om)
 		self.assertEqual(frappe.db.get_value("Inspection", name, "out_outcome"), "Ready To Load")
-		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Ready To Load")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
+		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Completed")
 
 	def test_submit_with_a_finding_sets_hold(self):
 		"""A checklist finding is now the only thing that can hold a tank — the separate
@@ -230,19 +232,9 @@ class TestEirOut(FrappeTestCase):
 			frappe.db.get_value("Inspection", dout["inspection"], "inspection_type"), "EIR-Out"
 		)
 
-	def test_gate_out_blocked_without_clean_eir_out(self):
+	def test_a_held_tank_stays_in_the_depot(self):
+		"""The mirror of the clean submit: a finding leaves the tank exactly where it was."""
 		c = _container(f"{PREFIX}0000009", status="Available")
-		with self.assertRaises(frappe.ValidationError):
-			mark_gate_out(container=c)
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
-
-	def test_gate_out_allowed_with_clean_eir_out(self):
-		c = _container(f"{PREFIX}0000010", status="Available")
 		_finish_cleaning(c)
-		_submit_eir_out(c)
-		# Submit may have re-saved the container; force the pickup-ready status for the gate.
-		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
-
-		res = mark_gate_out(container=c)
-		self.assertEqual(res["status"], "Gate_Out")
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
+		_submit_eir_out(c, has_damage=True)
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")

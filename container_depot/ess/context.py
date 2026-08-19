@@ -25,7 +25,6 @@ from container_depot.container_depot.user_branch import get_user_branches
 #   SPV Lapangan rwcs -> both                   -> both menus
 _MENU = [
 	("gate",         "/gate",            "Order Bongkar",             "create"),
-	("readyOut",     "/ready-out",       "Gate Entry",                "write"),
 	("eir",          "/eir",             "Inspection",                "write"),
 	("cleaning",     "/cleaning",        "Cleaning Order",            "write"),
 	("mr",           "/mr",              "Repair Order",              "write"),

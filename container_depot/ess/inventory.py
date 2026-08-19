@@ -432,7 +432,7 @@ def get_dashboard_summary(depot=None):
 	* ``periodic_test_due`` — tanks past their next test date (``periodicTest``)
 	* ``today`` — Gate In / Out (``gate``), EIR submitted today (``eir``)
 	* ``pending`` — per-worklist open counts, one key per menu
-	* ``active_jobs`` — tanks with a job running; supervisors only (all nine menus)
+	* ``active_jobs`` — tanks with a job running; supervisors only (every menu)
 
 	A caller with no field role gets ``{"success": True, "menu": []}`` and nothing else —
 	the PWA is open to them, it is simply empty.
@@ -446,7 +446,7 @@ def get_dashboard_summary(depot=None):
 	if not menu:
 		return {"success": True, "menu": []}
 
-	from container_depot.container_depot import cleaning, eir, gate, mr, position_survey
+	from container_depot.container_depot import cleaning, eir, mr, position_survey
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
 	out = {"success": True, "menu": sorted(menu)}
@@ -495,9 +495,6 @@ def get_dashboard_summary(depot=None):
 			mr_appr_filters["depot"] = ["in", allowed or [""]]
 		pending["mr_open"] = mr.list_open_mr_orders(page_length=1)["total"]
 		pending["mr_approval"] = frappe.db.count("Repair Order", mr_appr_filters)
-	if "readyOut" in menu:
-		# Tanks past their EIR-Out but still standing in the yard — the ACC queue.
-		pending["ready_out"] = gate.list_ready_to_load(page_length=1)["total"]
 	if "surveyPos" in menu:
 		pending["position_survey"] = position_survey.list_pending_surveys(page_length=1)["total"]
 	if "posFix" in menu:
@@ -505,7 +502,7 @@ def get_dashboard_summary(depot=None):
 	if pending:
 		out["pending"] = pending
 
-	# 4) Supervisor-only. "All nine menus" is what SPV Lapangan means, so deriving it from
+	# 4) Supervisor-only. "Every menu" is what SPV Lapangan means, so deriving it from
 	# the menu keeps the role name out of the code — a second supervisor role added from
 	# the UI gets this card too, with no deploy.
 	if menu == set(MENU_KEYS):

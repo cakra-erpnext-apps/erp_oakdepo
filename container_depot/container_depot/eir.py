@@ -1615,6 +1615,10 @@ def revert_to_draft(name: str) -> dict:
 	``docstatus=0`` EIR for a container). The container status / last-cargo this EIR
 	applied on submit are undone from the pre-submit snapshot, then the SAME record is
 	flipped back to an editable draft (so it opens again in the PWA and in Desk).
+
+	For an EIR-Out this is also the only way to undo a DEPARTURE: submitting a clean EIR-Out
+	is what gates the tank out, so reverting it brings the tank back into the depot and
+	reopens its Gate Entry.
 	"""
 	doc = frappe.get_doc("Inspection", name)
 	doc.check_permission("cancel")
@@ -1635,6 +1639,15 @@ def revert_to_draft(name: str) -> dict:
 		).format(doc.container, ", ".join(others)))
 
 	_restore_container_on_revert(doc)
+
+	# An EIR-Out submit IS the departure (Inspection.on_submit -> gate.mark_gate_out), so
+	# undoing it has to un-stamp the Gate Entry too — otherwise the visit reads as finished
+	# while the tank is standing in the yard again, and the corrected EIR-Out would file a
+	# second record for the same visit.
+	if doc.inspection_type == "EIR-Out":
+		from container_depot.container_depot.gate import reopen_gate_entry_for_eir
+
+		reopen_gate_entry_for_eir(doc.name)
 
 	# Flip back to an editable draft (same record — editable in the PWA + Desk). Clear any
 	# pending revision request now that it has been actioned.

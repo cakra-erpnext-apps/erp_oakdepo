@@ -27,12 +27,6 @@ const routes = [
 		component: () => import("@/pages/GateEntry.vue"),
 	},
 	{
-		path: "/ready-out",
-		name: "ReadyToLoad",
-		meta: { menuKey: "readyOut" },
-		component: () => import("@/pages/ReadyToLoad.vue"),
-	},
-	{
 		path: "/eir",
 		name: "Eir",
 		meta: { menuKey: "eir" },

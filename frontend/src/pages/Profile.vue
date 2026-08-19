@@ -303,7 +303,6 @@ async function removePhoto() {
 // Menu key -> the same title its Home tile uses, so one menu is never named two ways.
 const MENU_LABELS = {
 	gate: labels.gate,
-	readyOut: labels.readyOutTitle,
 	eir: labels.eir,
 	cleaning: labels.cleaningTitle,
 	mr: labels.mrTitleFull,

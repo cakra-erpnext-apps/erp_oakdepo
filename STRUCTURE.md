@@ -50,13 +50,13 @@ through the `/depot` PWA and are bounced out of `/app` on purpose.
 
 | Role | PWA menus |
 |---|---|
-| Security | Gate · Siap Keluar · Monitor |
+| Security | Gate · Monitor |
 | Team EIR | EIR · Monitor |
-| Team Kalmar | Siap Keluar · Position Fix · Monitor |
+| Team Kalmar | Position Fix · Monitor |
 | Team Cleaning | Cleaning · Monitor |
 | Team Repair | M&R · Uji Periodik · Monitor |
 | Team Survey | Survey Posisi · Monitor |
-| SPV Lapangan | all nine |
+| SPV Lapangan | all of them |
 
 Monitor is the read-only yard browser and follows Container read, which every field role
 holds because every worklist shows container data.
@@ -65,7 +65,7 @@ holds because every worklist shows container data.
 Warehouse, Management (read-only everywhere).
 
 **Admin Ops** is both (`install.py::PWA_OFFICE_ROLES`): `desk_access = 1` *and*
-`is_depot_field_role = 1`, so it works the Desk and the PWA. It sees **all nine** tiles,
+`is_depot_field_role = 1`, so it works the Desk and the PWA. It sees **every** tile,
 because the menu is derived from DocPerm and Admin Ops holds perms on every depot
 doctype — narrowing that would mean cutting its Desk access too.
 
@@ -295,7 +295,7 @@ tank whose `status` is neither `Gate_Out_Completed` nor `Cancelled`.
 |---|---|---|
 | Arrival (Tank In bon submitted) | `Order Bongkar._record_gate_in` | Opens the record — `Gate_In_Completed` |
 | Arrival (SST / Hermes terminal) | `api.register_gate_entry` | Inserts **and submits** its own |
-| Departure | `gate.mark_gate_out` | Stamps the open record — `Gate_Out_Completed` + `eir_reference` |
+| Departure (clean EIR-Out submitted) | `Inspection.on_submit` → `gate.mark_gate_out` | Stamps the open record — `Gate_Out_Completed` + `eir_reference` |
 | Bon cancelled | `Order Bongkar._release_gate_in` | Marks it `Cancelled`; never deletes |
 
 **Fixed 2026-08-11: the arrival half was never written.** Until then `mark_gate_out` was the
@@ -313,14 +313,14 @@ docstatus-0 submittable doc "Draft" before it ever looks at the document's own s
 **Nobody may create one by hand.** `install.NO_MANUAL_CREATE` (Gate Entry + the audit
 ledgers) strips create / submit / cancel / amend / delete from every role, including the
 System Manager blanket grant; `v0_55.lock_gate_audit_doctypes` clears the flags on sites that
-already had the rows. `write` deliberately survives — the PWA's "Siap Keluar" tile is gated on
-write over Gate Entry (`ess.context._MENU`). Administrator bypasses permissions entirely, so
+already had the rows. `write` deliberately survives — a mistyped truck plate on an audit row
+has to stay correctable by the people at the gate. Administrator bypasses permissions entirely, so
 the three list scripts also clear the list view's primary action.
 
 In the Desk this makes Gate Entry an audit surface, and it is filed as one: **Riwayat Gate**
 lives under **Audit** beside Container Movement and Container Activity. The doing-things
-screens it used to sit with — **Gate Out Plan** and **Siap Keluar (ACC Gate Out)** — moved to
-**Bookings**, and the "Gate & Movement" section no longer exists (sidebar and workspace both).
+screen it used to sit with — **Gate Out Plan** — moved to **Bookings**, and the
+"Gate & Movement" section no longer exists (sidebar and workspace both).
 
 ## Booking attribution
 
@@ -423,7 +423,6 @@ a broken image for ever. They travel with the final queued submit instead.
 | Cleaning | full — worklist, form, QC photos, signature, Mulai, Selesaikan |
 | M&R · Uji Periodik | full — worklist, detail, Mulai, Selesaikan |
 | Survey Posisi · Position Fix | full — worklist, detail, photos, save / approve |
-| Siap Keluar | full — queue readable, ACC queued |
 | Monitor · Riwayat | readable from cache |
 | Sortir Foto | readable from cache, assignment queued |
 | **Gate** | **no** — see below |
@@ -440,12 +439,6 @@ press must be recognised as the same bon.
 answer — which has not heard about the queued work — puts the finished job straight back in
 front of the operator, and it gets done twice. `ref` goes on terminal actions only: a queued
 "Mulai" must leave the order in the list.
-
-**Gate-out is queued, and that is a real trade.** The server's guards (open work holding the
-tank, branch scope) only run when the queue drains, so an invalid release surfaces as a failed
-row in the queue panel rather than as a refusal at the barrier. Accepted deliberately: holding
-a truck at the gate because a handset cannot reach the server jams every truck behind it, and
-the discrepancy is at least visible.
 
 ## Loading states (PWA)
 
@@ -489,9 +482,9 @@ banner — and one resolver answers for all of them
 (`container_depot/ess/notification_routes.py`). Three tables would drift, and the drift would
 only surface when an operator landed on the wrong screen.
 
-**The event decides the destination, not the doctype.** `Order Muat` is the subject of four
-events belonging to three different screens: a bon was generated (Gate), a survey was
-requested (Survey Posisi), a tank is ready to leave or is held (Siap Keluar). So `notify()`
+**The event decides the destination, not the doctype.** `Order Muat` is the subject of
+several events belonging to different screens: a bon was generated (Gate), a survey was
+requested (Survey Posisi), a tank is held after its EIR-Out (EIR). So `notify()`
 stamps the event onto the Notification Log (`depot_event`, a Custom Field) and the resolver
 keys off it. Rows written before that field existed fall back to a doctype map, which is
 right often enough to be useful and never claims more than it knows.

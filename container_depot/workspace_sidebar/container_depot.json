@@ -190,18 +190,6 @@
    "icon": "es-line-calender"
   },
   {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Siap Keluar (ACC Gate Out)",
-   "link_to": "Container Siap Keluar",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-log-out"
-  },
-  {
    "child": 0,
    "collapsible": 1,
    "icon": "wrench",
@@ -790,7 +778,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-11 19:00:00.000000",
+ "modified": "2026-08-19 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

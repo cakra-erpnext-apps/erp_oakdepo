@@ -1,9 +1,11 @@
-"""Tests for TANK OUT — the gate-out / load-complete action (PRO-OPS-009 §5.2 step 5).
+"""Tests for TANK OUT — the departure, which is now the EIR-Out approval itself.
 
-Covers the happy path (Available -> Gate_Out with Movement + Activity +
-Gate Entry stamping + inventory bucket), idempotency, the readiness guard, and the
-Available source. Each test is self-contained; FrappeTestCase rolls back per test and
-tearDown deletes any throwaway rows defensively (mark_gate_out never commits).
+Submitting a clean EIR-Out is what declares a tank gone: ``Inspection.on_submit`` runs the
+gate-out (Container -> Gate_Out, Movement + Activity, Gate Entry stamped, bon closed once its
+last tank is out). There is no separate "ACC Keluar" step to test any more, so these cover the
+consequence of that submit, its refusals (open work, a finding on the checklist) and its undo
+(``eir.revert_to_draft``). Each test is self-contained; FrappeTestCase rolls back per test and
+tearDown deletes any throwaway rows defensively.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.ess.inventory import derive_status
-from container_depot.container_depot.gate import list_ready_to_load, mark_gate_out
+from container_depot.container_depot.eir import revert_to_draft
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
 
@@ -30,15 +32,19 @@ def _container(no, status):
 	return no
 
 
-def _clean_eir_out(container):
-	"""Submit a clean EIR-Out so the container passes the gate-out readiness gate
-	(Fase G: gate-out requires a submitted EIR-Out with out_outcome = Ready To Load)."""
+def _eir_out(container, *, damage=False):
+	"""Submit an EIR-Out for the tank — the approval that gates it out when it is clean.
+
+	``damage`` scores it ``Hold Pending Clearance`` instead, which must NOT release the tank.
+	"""
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
 	doc.inspector = frappe.session.user
+	if damage:
+		doc.has_damage = 1
 	doc.insert(ignore_permissions=True)
-	doc.submit()  # EIR-Out submit only stamps eir_out_date — container status is preserved.
+	doc.submit()
 	return doc.name
 
 
@@ -50,15 +56,9 @@ class TestGateOut(FrappeTestCase):
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 
-	def test_gate_out_happy_path(self):
+	def test_a_clean_eir_out_takes_the_tank_out(self):
 		c = _container(f"{PREFIX}9990001", "Available")
-		_clean_eir_out(c)
-		res = mark_gate_out(container=c)
-
-		self.assertEqual(res["status"], "Gate_Out")
-		self.assertEqual(res["container"], c)
-		self.assertTrue(res["gate_entry"])
-		self.assertTrue(res["gate_out_timestamp"])
+		eir = _eir_out(c)
 
 		doc = frappe.get_doc("Container", c)
 		self.assertEqual(doc.status, "Gate_Out")
@@ -74,39 +74,65 @@ class TestGateOut(FrappeTestCase):
 		self.assertTrue(
 			frappe.db.exists("Container Activity", {"container": c, "activity_type": "Gate Out", "to_status": "Gate_Out"})
 		)
-		# Gate Entry stamped.
+		# Gate Entry stamped, and it points back at the EIR that released the tank.
 		ge = frappe.db.get_value(
-			"Gate Entry", res["gate_entry"], ["status", "gate_out_timestamp"], as_dict=True
+			"Gate Entry", {"container_no": c},
+			["status", "gate_out_timestamp", "eir_reference"], as_dict=True,
 		)
 		self.assertEqual(ge.status, "Gate_Out_Completed")
 		self.assertTrue(ge.gate_out_timestamp)
+		self.assertEqual(ge.eir_reference, eir)
 
-	def test_gate_out_idempotent(self):
-		c = _container(f"{PREFIX}9990002", "Gate_Out")
-		res = mark_gate_out(container=c)
-		self.assertEqual(res["status"], "Gate_Out")
-		self.assertTrue(res.get("already"))
-		# No state change, no error.
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
+	def test_a_finding_holds_the_tank_in_the_depot(self):
+		c = _container(f"{PREFIX}9990002", "Available")
+		eir = _eir_out(c, damage=True)
 
-	def test_gate_out_not_ready(self):
+		self.assertEqual(frappe.db.get_value("Inspection", eir, "out_outcome"), "Hold Pending Clearance")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+		self.assertFalse(frappe.db.exists("Container Movement", {"container": c, "to_status": "Gate_Out"}))
+
+	def test_open_work_refuses_the_departure(self):
+		"""The review must not sign a departure the yard cannot honour — a draft EIR-In is
+		still open work, so submitting the EIR-Out throws instead of releasing the tank."""
 		c = _container(f"{PREFIX}9990003", "In_Depot")
+		draft = frappe.new_doc("Inspection")
+		draft.inspection_type = "EIR-In"
+		draft.container = c
+		draft.inspector = frappe.session.user
+		draft.insert(ignore_permissions=True)
+
 		with self.assertRaises(frappe.ValidationError):
-			mark_gate_out(container=c)
-		# Nothing changed.
+			_eir_out(c)
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 		self.assertFalse(frappe.db.exists("Container Movement", {"container": c, "to_status": "Gate_Out"}))
 
-	def test_gate_out_from_available(self):
+	def test_a_second_eir_out_on_a_departed_tank_is_a_no_op(self):
 		c = _container(f"{PREFIX}9990004", "Available")
-		_clean_eir_out(c)
-		res = mark_gate_out(container=c)
-		self.assertEqual(res["status"], "Gate_Out")
+		_eir_out(c)
+		_eir_out(c)  # must not raise, must not move anything
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 
+	def test_reverting_the_eir_out_brings_the_tank_back(self):
+		"""Undoing the approval is the only way to undo a departure — the tank returns to the
+		status it left from and its Gate Entry reopens, so the corrected EIR-Out reuses it."""
+		c = _container(f"{PREFIX}9990005", "Available")
+		eir = _eir_out(c)
+		ge = frappe.db.get_value("Gate Entry", {"container_no": c}, "name")
 
-class TestReadyToLoadQueue(FrappeTestCase):
-	"""The "Siap Keluar" reminder queue (PWA menu + Desk report) and the bon it closes."""
+		revert_to_draft(eir)
+
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+		self.assertEqual(frappe.db.get_value("Inspection", eir, "docstatus"), 0)
+		row = frappe.db.get_value(
+			"Gate Entry", ge, ["status", "gate_out_timestamp", "eir_reference"], as_dict=True
+		)
+		self.assertNotEqual(row.status, "Gate_Out_Completed")
+		self.assertFalse(row.gate_out_timestamp)
+		self.assertFalse(row.eir_reference)
+
+
+class TestBonCompletion(FrappeTestCase):
+	"""The bon a departure closes — a load is only finished when its LAST tank is out."""
 
 	def tearDown(self):
 		frappe.db.delete("Container Activity", {"container": ["like", f"{PREFIX}%"]})
@@ -116,44 +142,7 @@ class TestReadyToLoadQueue(FrappeTestCase):
 		frappe.db.delete("Order Container Item", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 
-	def _names(self):
-		return [i["container"] for i in list_ready_to_load(page_length=100)["items"]]
-
-	def test_clean_eir_out_puts_the_tank_in_the_queue(self):
-		c = _container(f"{PREFIX}9991001", "Available")
-		self.assertNotIn(c, self._names())
-		_clean_eir_out(c)
-		self.assertIn(c, self._names())
-
-	def test_gate_out_clears_the_tank_from_the_queue(self):
-		c = _container(f"{PREFIX}9991002", "Available")
-		_clean_eir_out(c)
-		mark_gate_out(container=c)
-		self.assertNotIn(c, self._names())
-
-	def test_queue_row_carries_the_bon_and_vehicle(self):
-		shipper = ensure_test_customer("Gate Out Test Principal")
-		c = _container(f"{PREFIX}9991003", "Available")
-		bon = _make_order_muat(shipper, c, truck="B-7788-QQ", driver="Sopir Uji")
-		eir = frappe.get_doc("Inspection", _clean_eir_out(c))
-		frappe.db.set_value("Inspection", eir.name, "referred_voucher", bon, update_modified=False)
-
-		row = next(i for i in list_ready_to_load(page_length=100)["items"] if i["container"] == c)
-		self.assertEqual(row["order_muat"], bon)
-		self.assertEqual(row["truck_no"], "B-7788-QQ")
-		self.assertEqual(row["driver"], "Sopir Uji")
-		self.assertTrue(row["ready_since"])
-
-	def test_stale_eir_out_from_an_earlier_visit_is_not_queued(self):
-		"""A tank that left and came back must not resurface on its OLD clean EIR-Out."""
-		c = _container(f"{PREFIX}9991004", "Available")
-		_clean_eir_out(c)
-		mark_gate_out(container=c)
-		# Comes back in: presence restored, but the EIR-Out predates the gate-out.
-		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
-		self.assertNotIn(c, self._names())
-
-	def test_gate_out_completes_the_bon_once_its_last_tank_is_out(self):
+	def test_the_bon_completes_once_its_last_tank_is_out(self):
 		shipper = ensure_test_customer("Gate Out Test Principal")
 		a = _container(f"{PREFIX}9991005", "Available")
 		b = _container(f"{PREFIX}9991006", "Available")
@@ -170,26 +159,21 @@ class TestReadyToLoadQueue(FrappeTestCase):
 			"Order Muat", bon.name,
 			{"docstatus": 1, "order_status": "Ready To Load"}, update_modified=False,
 		)
-		_clean_eir_out(a)
-		_clean_eir_out(b)
 
 		# First tank out — the bon still lists a tank standing in the yard.
-		res = mark_gate_out(container=a)
-		self.assertFalse(res["order_completed"])
+		_eir_out(a)
 		self.assertEqual(frappe.db.get_value("Order Muat", bon.name, "order_status"), "Ready To Load")
 
 		# Last tank out — the bon is done.
-		res = mark_gate_out(container=b)
-		self.assertTrue(res["order_completed"])
+		_eir_out(b)
 		self.assertEqual(frappe.db.get_value("Order Muat", bon.name, "order_status"), "Completed")
 		frappe.db.delete("Order Muat", {"name": bon.name})
 
-	def test_bon_on_hold_is_never_auto_completed(self):
+	def test_a_bon_on_hold_is_never_auto_completed(self):
 		shipper = ensure_test_customer("Gate Out Test Principal")
 		c = _container(f"{PREFIX}9991007", "Available")
 		bon = _make_order_muat(shipper, c)
 		frappe.db.set_value("Order Muat", bon, "order_status", "Hold", update_modified=False)
-		_clean_eir_out(c)
-		mark_gate_out(container=c)
+		_eir_out(c)
 		self.assertEqual(frappe.db.get_value("Order Muat", bon, "order_status"), "Hold")
 		frappe.db.delete("Order Muat", {"name": bon})

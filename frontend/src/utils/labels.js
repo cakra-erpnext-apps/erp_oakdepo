@@ -349,30 +349,6 @@ export const labels = {
 	confirmSubmitMessage: "Anda yakin untuk submit order ini? Tindakan ini tidak bisa dibatalkan.",
 	confirmSubmitYes: "Ya, Submit",
 	confirmCancel: "Batal",
-	// TANK OUT — gate-out / load-complete action (Monitor)
-	gateOutAction: "Gate-Out",
-	gateOutConfirmTitle: "Gate-Out / Muat Selesai?",
-	gateOutConfirmMessage: "Konfirmasi isotank keluar depo (muat selesai)? Tindakan ini tidak bisa dibatalkan.",
-	gateOutDone: "Isotank keluar depo — gate-out selesai",
-	// SIAP KELUAR — antrean pengingat antara EIR-Out bersih dan tank benar-benar keluar.
-	readyOutTitle: "Siap Keluar",
-	readyOutDesc: "ACC tank yang sudah lolos EIR-Out untuk keluar depo",
-	readyOutSubtitle: "Menunggu ACC keluar",
-	readyOutSearch: "Cari container / bon muat / truk…",
-	readyOutEmpty: "Tidak ada tank yang menunggu ACC keluar",
-	readyOutCount: "tank menunggu",
-	readyOutHint: "Tank di bawah sudah lolos EIR-Out. Tekan ACC Keluar hanya setelah tank benar-benar naik truk dan meninggalkan depo.",
-	readyOutSince: "Siap sejak",
-	readyOutWaitingMin: "menit",
-	readyOutWaitingHour: "jam",
-	readyOutWaitingDay: "hari",
-	readyOutBon: "Bon Muat",
-	readyOutNoBon: "Tanpa Bon Muat",
-	readyOutDest: "Tujuan",
-	readyOutAcc: "ACC Keluar",
-	readyOutAccTitle: "ACC keluar depo?",
-	readyOutAccMessage: "Tank sudah naik truk dan meninggalkan depo? Setelah di-ACC, container tercatat Gate-Out dan tidak bisa dibatalkan.",
-	readyOutOrderDone: "Bon muat selesai",
 	// EIR Out (Fase G — surveyor load-out inspection vs last EIR-In)
 	eirOutTitle: "EIR Out",
 	eirOutSubtitle: "Survey keluar — banding EIR-In terakhir",
@@ -385,7 +361,7 @@ export const labels = {
 	eirOutPrevClean: "EIR-In: tidak ada temuan",
 	eirOutPrevPhotos: "Foto EIR-In",
 	eirOutNoBaseline: "Tidak ada EIR-In sebelumnya untuk dibandingkan",
-	eirOutWillReady: "Akan jadi READY TO LOAD",
+	eirOutWillReady: "Setelah di-ACC Adm Ops, tank tercatat KELUAR DEPO",
 	// Seal numbers fitted at load-out — the one thing EIR-Out records beyond photos
 	eirOutSealsTitle: "No. Seal",
 	eirOutSealsHint: "Catat setiap segel yang terpasang. Tambah baris sebanyak segelnya.",
@@ -396,7 +372,7 @@ export const labels = {
 	// Review for Adm Ops. Ready To Load — and the Kalmar notification — only happen
 	// when Adm Ops submits it on the Desk, so the wording must not promise them now.
 	eirOutConfirmReadyTitle: "Kirim EIR-Out untuk review?",
-	eirOutConfirmReadyMsg: "EIR-Out dikirim ke Adm Ops — setelah mereka submit, Order Muat jadi READY TO LOAD dan Operator Kalmar diberi tahu.",
+	eirOutConfirmReadyMsg: "EIR-Out dikirim ke Adm Ops. Begitu mereka submit, tank langsung tercatat KELUAR DEPO (gate-out) — tidak ada ACC terpisah lagi.",
 	eirOutSealsRecorded: "Seal tercatat",
 	eirOutNoSealWarn: "⚠ Belum ada nomor seal yang dicatat.",
 	eirOutBackToList: "Kembali ke daftar",

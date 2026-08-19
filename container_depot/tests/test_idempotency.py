@@ -119,7 +119,6 @@ REPLAYED_ENDPOINTS = [
 		"container_depot.ess.position_survey", "position_approve",
 		"container_depot.container_depot.position_survey", "approve_position",
 	),
-	("container_depot.ess.gate", "gate_out", "container_depot.container_depot.gate", "mark_gate_out"),
 ]
 
 

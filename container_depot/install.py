@@ -508,8 +508,8 @@ CUSTOM_FIELDS = {
 	# ``ess/notification_routes.py`` to decide where a tap on the bell goes.
 	#
 	# It has to be stored, and the doctype is not a substitute: `Order Muat` is the subject
-	# of four events belonging to three different screens (bon generated → Gate, survey
-	# requested → Survey Posisi, ready to leave / held → Siap Keluar). Routing on the doctype
+	# of several events belonging to different screens (bon generated → Gate, survey
+	# requested → Survey Posisi, tank held after its EIR-Out → EIR). Routing on the doctype
 	# alone would send most of them to the wrong menu.
 	#
 	# Hidden and read-only: it is machinery, not something an admin sets.
@@ -1327,7 +1327,7 @@ OFFICE_ROLES = [
 # depot doctype, so it lands in the yard to unstick a job the field roles cannot finish
 # (a mis-submitted bon, a gate entry nobody may amend). Sending that person to a desktop
 # to do it was the wrong default. The consequence is worth stating plainly: because the
-# PWA menu is DocPerm-driven, Admin Ops sees ALL nine tiles, not a subset.
+# PWA menu is DocPerm-driven, Admin Ops sees EVERY tile, not a subset.
 PWA_OFFICE_ROLES = {"Admin Ops"}
 
 # Standard ERPNext roles to assign ALONGSIDE the office role when creating a user.
@@ -1394,10 +1394,9 @@ AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log"
 # typed in by hand is a gate log that disagrees with the yard, so the "+ Add" button on
 # "Riwayat Gate" was an invitation to corrupt it, not a feature.
 #
-# ``write`` survives: the PWA's "Siap Keluar" tile is gated on write over Gate Entry
-# (``ess.context._MENU``), and an admin correcting a mistyped truck plate on an audit row is
-# fine. create / submit / cancel / amend / delete do not, for EVERY role — including the
-# System Manager blanket grant, which is otherwise how the button came back.
+# ``write`` survives: an admin correcting a mistyped truck plate on an audit row is fine.
+# create / submit / cancel / amend / delete do not, for EVERY role — including the System
+# Manager blanket grant, which is otherwise how the button came back.
 NO_MANUAL_CREATE = AUDIT_DOCTYPES | {"Gate Entry"}
 
 # Container Depot doctypes owned by finance/commercial, kept OUT of Admin Ops' blanket
@@ -1443,8 +1442,8 @@ FIELD_ROLE_MATRIX = [
 	#  DocType                       Security  TeamEIR  Kalmar  Cleaning  Repair  Survey  SPV
 	("Container",                   ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	# Gate Entry reads "rwcs" in the handoff table. It is seeded rw: NO_MANUAL_CREATE strips
-	# create/submit app-wide because every gate record is written by a hook. Security and SPV
-	# keep write — that is the perm the PWA's "Siap Keluar" tile is gated on.
+	# create/submit app-wide because every gate record is written by a hook. Security, Kalmar
+	# and SPV keep write so a mistyped truck plate stays correctable.
 	("Gate Entry",                  ("rw",    "r",     "rw",   "",       "",     "",     "rw")),
 	("Order Bongkar",               ("rwc",   "r",     "r",    "",       "",     "",     "rwc")),
 	# SPV reads "rw" in the handoff table, which left NOBODY below Admin Ops able to issue a
@@ -1858,8 +1857,6 @@ NOTIFICATION_RULES = [
 		["Security", "Team Kalmar", "SPV Lapangan", "Admin Ops"]),
 	("order_muat_survey", "EIR-Out jatuh tempo", "Order Muat disubmit — EIR-Out wajib sebelum tank boleh dimuat.",
 		["Team Survey", "Team EIR", "SPV Lapangan", "Admin Ops"]),
-	("ready_to_load", "Tank siap dimuat", "EIR-Out disubmit bersih — tank boleh diangkat.",
-		["Team Kalmar", "Security", "SPV Lapangan"]),
 	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
 		["SPV Lapangan", "Admin Ops"]),
 	("gate_out", "Isotank keluar depo", "Gate-out / load-complete selesai untuk sebuah tank.",

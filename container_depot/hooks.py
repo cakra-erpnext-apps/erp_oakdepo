@@ -256,8 +256,6 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/mr-withdraw-from-owner", "to_route": "container_depot.ess.repairs.mr_withdraw_from_owner"},
 	{"from_route": "/api/v1/ess/mr-start", "to_route": "container_depot.ess.repairs.mr_start"},
 	{"from_route": "/api/v1/ess/mr-order-save", "to_route": "container_depot.ess.repairs.mr_order_save"},
-	{"from_route": "/api/v1/ess/gate-ready", "to_route": "container_depot.ess.gate.gate_ready"},
-	{"from_route": "/api/v1/ess/gate-out", "to_route": "container_depot.ess.gate.gate_out"},
 	# SPA deep links: serve the /depot shell for any sub-route so a hard refresh on
 	# e.g. /depot/eir doesn't 404 — the Vue router then renders the route client-side.
 	{"from_route": "/depot/<path:app_path>", "to_route": "depot"},

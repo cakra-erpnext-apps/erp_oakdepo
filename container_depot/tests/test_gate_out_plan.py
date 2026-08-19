@@ -320,9 +320,8 @@ class TestGateOutPlan(FrappeTestCase):
 
 	# --- % Keluar / auto-close ------------------------------------------------
 	def _gate_out(self, container):
-		"""Send a listed tank out the way the gate does (clean EIR-Out + mark_gate_out)."""
-		from container_depot.container_depot.gate import mark_gate_out
-
+		"""Send a listed tank out the way the depot does: submitting a clean EIR-Out IS the
+		departure (``Inspection.on_submit`` runs the gate-out)."""
 		frappe.db.set_value("Container", container, "status", "Available", update_modified=False)
 		eir = frappe.new_doc("Inspection")
 		eir.inspection_type = "EIR-Out"
@@ -330,9 +329,7 @@ class TestGateOutPlan(FrappeTestCase):
 		eir.inspector = frappe.session.user
 		eir.insert(ignore_permissions=True)
 		eir.submit()
-		res = mark_gate_out(container=container)
 		frappe.db.delete("Inspection", {"container": container})
-		return res
 
 	def _plan_row(self, plan):
 		return frappe.db.get_value("Gate Out Plan", plan, ["status", "per_fulfilled"], as_dict=True)
@@ -346,9 +343,8 @@ class TestGateOutPlan(FrappeTestCase):
 		a = self._container("GOPPCT00002")
 		b = self._container("GOPPCT00003")
 		plan = self._plan([(a, add_days(today(), 3)), (b, add_days(today(), 3))])
-		res = self._gate_out(a)
+		self._gate_out(a)
 
-		self.assertEqual(res["plans_fulfilled"], [])
 		row = self._plan_row(plan.name)
 		self.assertEqual(row.per_fulfilled, 50)
 		self.assertEqual(row.status, "Open")
@@ -360,9 +356,8 @@ class TestGateOutPlan(FrappeTestCase):
 		b = self._container("GOPPCT00005")
 		plan = self._plan([(a, add_days(today(), 3)), (b, add_days(today(), 3))])
 		self._gate_out(a)
-		res = self._gate_out(b)
+		self._gate_out(b)
 
-		self.assertEqual(res["plans_fulfilled"], [plan.name])
 		row = self._plan_row(plan.name)
 		self.assertEqual(row.per_fulfilled, 100)
 		self.assertEqual(row.status, "Fulfilled")
