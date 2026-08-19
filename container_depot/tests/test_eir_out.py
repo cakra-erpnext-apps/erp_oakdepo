@@ -64,7 +64,17 @@ def _submit_eir_out(container, *, has_damage=False, order_muat=None):
 	doc.container = container
 	doc.inspector = frappe.session.user
 	doc.depot = frappe.db.get_value("Container", container, "depot")
-	doc.has_damage = 1 if has_damage else 0
+	if has_damage:
+		# Has Damage is derived from the log (Inspection.sync_has_damage), so a tank that is
+		# meant to read as damaged needs the finding that says so — one row with a real
+		# defect code, which is what the PWA would have written.
+		masters = eir.get_eir_masters()
+		doc.append("damage_log", {
+			"component": "Frame",
+			"damage_type": next(d["code"] for d in masters["damage_codes"] if d["code"] != "v"),
+			"damage_description": "temuan saat load-out",
+			"severity": "Minor",
+		})
 	if order_muat:
 		doc.referred_voucher = order_muat
 		doc.voucher_doctype = "Order Muat"

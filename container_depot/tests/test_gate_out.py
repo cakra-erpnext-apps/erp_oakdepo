@@ -14,6 +14,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.ess.inventory import derive_status
+from container_depot.container_depot import eir
 from container_depot.container_depot.eir import revert_to_draft
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
@@ -42,7 +43,15 @@ def _eir_out(container, *, damage=False):
 	doc.container = container
 	doc.inspector = frappe.session.user
 	if damage:
-		doc.has_damage = 1
+		# Has Damage is derived from the log (Inspection.sync_has_damage) — the finding is
+		# what makes the tank damaged, not the flag.
+		masters = eir.get_eir_masters()
+		doc.append("damage_log", {
+			"component": "Frame",
+			"damage_type": next(d["code"] for d in masters["damage_codes"] if d["code"] != "v"),
+			"damage_description": "temuan saat load-out",
+			"severity": "Minor",
+		})
 	doc.insert(ignore_permissions=True)
 	doc.submit()
 	return doc.name

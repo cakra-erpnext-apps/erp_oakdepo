@@ -35,18 +35,74 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
 	height: 64px;
 }
 
-[data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col .static-area,
-[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col .static-area {
-	/* `ellipsis` sets overflow:hidden + nowrap, which would crop the image. */
-	overflow: visible;
+/*
+ * Only the PHOTO cell gets the flex/centering treatment. The neighbouring text cells keep
+ * Frappe's `ellipsis` (overflow:hidden), because an unclipped Checklist Item name is long
+ * enough to run straight over the Area column once the window is narrow — the cells have
+ * no background of their own to hide it behind.
+ */
+[data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
+[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
 	display: flex;
 	align-items: center;
 	height: 100%;
+	overflow: hidden;
+}
+
+/*
+ * Columns that shrink instead of spilling over each other on a small monitor.
+ *
+ * Bootstrap's .col-xs-N is `flex: 0 0 N/12%` — a percentage that CANNOT shrink — while the
+ * check and index columns ahead of it are fixed pixels. Below roughly 430px of grid width
+ * the sum is wider than the container, so the last cells ride over their neighbours (and
+ * over the thumbnail). Letting the cells shrink keeps the same proportions at every width.
+ */
+[data-fieldname="item_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+/*
+ * Five columns, no more: Centang, Nomor, Checklist Item, Area, Photo.
+ *
+ * Frappe appends one more column to every row — the row-edit pencil on a data row, the
+ * configure-columns gear on the heading, an empty spacer on the filter row (grid_row.js:
+ * add_open_form_button / add_column_configure_button / setup_columns). The pencil is a
+ * second door to a room that already opens on a plain row click (bind_photo_grid_clicks in
+ * inspection.js), and the gear only offers to put back the columns left out on purpose.
+ *
+ * The column goes from EVERY row type, so the three stay lined up, and the three remaining
+ * data cells grow into the freed width — otherwise the grid would end in a blank strip
+ * where the buttons used to be.
+ */
+/* :not([data-fieldname]) — a real data column always carries one, so the rule can never
+   swallow Photo if a future Frappe stops appending the button cell. */
+[data-fieldname="item_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]) {
+	display: none;
+}
+
+[data-fieldname="item_photos"] .grid-row > .row > .grid-static-col:not(.row-index) {
+	flex-grow: 1;
+	max-width: none;
+}
+
+/*
+ * Photo is the last column now, so it carries the grid's right edge: no cell border of its
+ * own (the container already draws one) and the heading's rounded corner.
+ */
+[data-fieldname="item_photos"] .grid-row > .row > .col:nth-last-child(2) {
+	border-right: none;
+}
+
+[data-fieldname="item_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2) {
+	border-top-right-radius: var(--border-radius-md);
 }
 
 img.oak-grid-photo {
 	height: 48px;
 	width: 64px;
+	/* A narrow column shrinks the tile; a fixed 64px would hang out over the next cell. */
+	max-width: 100%;
 	object-fit: cover; /* uniform tiles: a portrait and a landscape photo line up */
 	border-radius: 4px;
 	border: 1px solid var(--border-color);
@@ -224,4 +280,30 @@ img.oak-grid-photo:hover {
 [data-fieldname="exterior_photos"] .attached-file > .ellipsis,
 [data-fieldname="item_photos"] .attached-file > .ellipsis {
 	display: none;
+}
+
+/*
+ * Small screens: the picture still has to FIT, whole, next to its controls.
+ *
+ * The viewing boxes above are sized for a desk monitor (50–60vh with a 300px+ floor). On a
+ * laptop panel that floor is half the screen, so the photo pushes the checklist picker and
+ * the ‹ › arrows out of the dialog and the layout reads as overlapping. Keyed on viewport
+ * HEIGHT as well as width, because that is what actually runs out.
+ */
+@media (max-width: 991px), (max-height: 820px) {
+	.oak-photo-large img {
+		height: 38vh;
+		min-height: 160px;
+	}
+
+	.oak-carousel-stage img,
+	.oak-carousel-empty {
+		height: 45vh;
+		min-height: 180px;
+	}
+}
+
+/* A long section + item name wraps under the counter instead of running off the dialog. */
+.oak-carousel-caption {
+	flex-wrap: wrap;
 }

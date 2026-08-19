@@ -20,8 +20,8 @@ frappe.ui.form.on('Inspection', {
 	},
 
 	refresh(frm) {
-		set_direction_banner(frm);
 		set_signature_preview(frm);
+		render_system_facts(frm);
 		// Field operator submitted from the PWA → awaiting Admin Ops review. Prompt the
 		// reviewer to check + Submit (the native Submit finalizes it).
 		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
@@ -47,15 +47,6 @@ frappe.ui.form.on('Inspection', {
 		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			frm.add_custom_button(__('Kembalikan ke Draft'), () => revert_to_draft(frm));
 		}
-		// Surface an inconsistency without blocking: damage flagged but no rows.
-		if (!frm.is_new() && frm.doc.has_damage && (frm.doc.damage_log || []).length === 0) {
-			frappe.warn(
-				__('No Damage Log'),
-				__('Has Damage is checked but no damage entries recorded.'),
-				() => {},
-				__('Continue'),
-			);
-		}
 		// "Search by section" for sorting bulk ("foto cepat") photos: quick-filter the
 		// item_photos grid by Area — including a "Belum disortir" bucket for the photos the
 		// operator dumped without a section. Works on submitted EIRs (item_photos is
@@ -69,26 +60,19 @@ frappe.ui.form.on('Inspection', {
 		if (!frm.is_new() && photo_slides(frm).length) {
 			frm.add_custom_button(__('Lihat Semua Foto'), () => open_photo_carousel(frm, photo_slides(frm), 0));
 		}
+		// The guided damage-entry dialog used to open by ticking "Has Damage". That box is
+		// derived from the rows now (Inspection.sync_has_damage), so the dialog gets its own
+		// door — typing straight into the grid means remembering which of component / area /
+		// severity the server needs, which is exactly what the dialog fills in.
+		if (!frm.is_new() && frm.doc.docstatus === 0) {
+			frm.add_custom_button(__('Tambah Kerusakan'), () => add_damage_entry(frm));
+		}
 		install_photo_thumbnails(frm);
 		bind_photo_grid_clicks(frm);
 	},
 
-	// Switching type re-skins the form (banner + which sections apply).
-	inspection_type(frm) {
-		set_direction_banner(frm);
-	},
-
 	inspector_signature(frm) {
 		set_signature_preview(frm);
-	},
-
-	// Ticking "Has Damage" opens a single-row entry dialog with VALID Link fields.
-	// Legacy bug (fixed here): this used a Select of component names (Gasket/Valve/…)
-	// written straight into `damage_type`, which is now a Link -> Inspection Damage Code — so
-	// every value it produced was an invalid link. The dialog below uses the real
-	// taxonomy and defaults the reqd Inspection Damage Entry fields the same way the server does.
-	has_damage(frm) {
-		if (frm.doc.has_damage) add_damage_entry(frm);
 	},
 
 	// The EIR inspects a physical container, so picking the Container prefills the
@@ -99,45 +83,61 @@ frappe.ui.form.on('Inspection', {
 	},
 });
 
-// An EIR-In and an EIR-Out are two different jobs sharing one doctype, and until you read
-// the Tipe field they look identical. Stamp the direction across the top of the form in
-// the same colours the list and the gate PWA use — green In (masuk), orange Out (keluar) —
-// and say what each is FOR, because that is what actually differs: In records what
-// ARRIVED (condition + findings), Out records what LEAVES (photos + seals).
-//
-// This renders into its own HTML field rather than frm.dashboard.set_headline: the
-// headline is a single shared slot (set_headline and add_comment both call
-// layout.show_message), so it would silently erase the "Menunggu review" / "Revisi
-// diminta" notices below.
-function set_direction_banner(frm) {
-	const field = frm.get_field('direction_banner');
-	if (!field) return;
-	const out = frm.doc.inspection_type === 'EIR-Out';
-	const inn = frm.doc.inspection_type === 'EIR-In';
-	if (!out && !inn) {
-		field.$wrapper.empty();
-		return;
-	}
-	const colour = out ? 'orange' : 'green';
-	const title = out ? __('EIR OUT — Survey Keluar') : __('EIR IN — Survey Masuk');
-	const blurb = out
-		? __('Sebelum tank dimuat keluar: foto kondisi dan nomor seal yang terpasang. Tidak ada checklist kerusakan di sini.')
-		: __('Saat tank tiba di depo: kondisi tank, checklist kerusakan, dan tindak lanjut (Cleaning / M&R).');
-	field.$wrapper.html(
-		`<div class="eir-direction-banner" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;margin-bottom:8px;
-			border-radius:var(--border-radius-md);background:var(--bg-${colour});border-left:4px solid var(--${colour}-500)">
-			<div>
-				<div><b>${title}</b></div>
-				<div class="text-muted small" style="margin-top:2px">${blurb}</div>
-			</div>
-		</div>`,
-	);
-}
-
 // Frappe's Attach Image control renders as a file LINK and only reveals the picture in a
 // hover popover, so a signed EIR showed "/private/files/eir-signature….png" where the
 // signature should be. A signature exists to be looked at — draw it inline, with who
 // signed and when, because ink without a name attached says nothing.
+// Semua yang diisi sistem sendiri — kode EIR, status, dokumen asalnya, spesifikasi tank
+// yang disalin dari master Container — tinggal di SIDEBAR, di atas Last Edited By, bukan
+// di tab "Sistem" berisi puluhan field read-only yang terbaca seperti pekerjaan yang belum
+// dikerjakan. Blok yang sama dipakai Container Booking / Order Bongkar / Order Muat
+// (container_depot/public/js/system_facts.js), jadi ketiga form tampil identik.
+//
+// Field-nya tetap ada di doctype (hidden): list view, filter, print format dan server masih
+// membacanya — ini cuma soal di mana manusia melihatnya.
+function render_system_facts(frm) {
+	const link = container_depot.doc_link;
+	const esc = frappe.utils.escape_html;
+	const doc = frm.doc;
+	const join = (parts) => parts.filter(Boolean).join(' \u00b7 ');
+	// Tiga fakta truk jadi satu baris; sendiri-sendiri mereka memenuhi sidebar tanpa isi.
+	const truck = join([doc.truck_no, doc.driver, doc.driver_phone].filter(Boolean).map(esc));
+	const spec = join([
+		doc.capacity && __('{0} L', [format_number(doc.capacity)]),
+		doc.tare_weight && __('Tare {0} kg', [format_number(doc.tare_weight)]),
+		doc.max_gross_weight && __('MGW {0} kg', [format_number(doc.max_gross_weight)]),
+	]);
+	const tank_dates = join([
+		doc.manufacture_date && __('Dibuat {0}', [frappe.datetime.str_to_user(doc.manufacture_date)]),
+		doc.last_test_date && __('Tes {0}', [frappe.datetime.str_to_user(doc.last_test_date)]),
+	]);
+	const work = join([
+		doc.work_started_on && frappe.datetime.str_to_user(doc.work_started_on),
+		doc.work_ended_on && frappe.datetime.str_to_user(doc.work_ended_on),
+	]);
+	container_depot.render_system_facts(frm, [
+		[__('Kode EIR'), doc.inspection_id && esc(doc.inspection_id)],
+		[__('Status'), doc.status && esc(doc.status)],
+		[__('EIR-Out Outcome'), doc.out_outcome && esc(doc.out_outcome)],
+		// Cermin nomor container: hanya berarti kalau beda dari link Container (data lama).
+		[__('Container Number'), doc.container_no !== doc.container && esc(doc.container_no || '')],
+		[__('Owner (Principal)'), link('Customer', doc.container_principal)],
+		[__('Container Booking'), link('Container Booking', doc.container_booking)],
+		[__('Bon'), doc.order_doctype && link(doc.order_doctype, doc.order_ref)],
+		[__('Reference EIR-In'), link('Inspection', doc.reference_eir_in)],
+		[__('Shipper / EMKL'), link('Customer', doc.shipper)],
+		[__('Truk / Supir'), truck],
+		[__('Ex Vessel'), doc.ex_vessel && esc(doc.ex_vessel)],
+		[__('Last Cargo'), link('Cargo', doc.last_cargo)],
+		[__('Serial No'), doc.serial_no && esc(doc.serial_no)],
+		[__('Spesifikasi Tank'), spec],
+		[__('Tanggal Tank'), tank_dates],
+		[__('Waktu Pengerjaan'), work],
+		[__('Durasi Pengerjaan'), doc.work_duration && frappe.format(doc.work_duration, { fieldtype: 'Duration' })],
+		[__('Foto Belum Disortir'), doc.has_unsorted_photos ? __('Ada') : null],
+	]);
+}
+
 function set_signature_preview(frm) {
 	const field = frm.get_field('signature_preview');
 	if (!field) return;
@@ -581,8 +581,11 @@ function open_photo_carousel(frm, slides, start) {
 			d.set_value('photo', row.photo || '');
 			syncing = false;
 		}
+		// "Detail Foto" opens the file itself in its own tab: the stage above scales every
+		// photo to the same box, and a reviewer who wants to zoom into a weld or read a plate
+		// needs the original pixels, not the fitted copy.
 		const $open_tab = d.get_secondary_btn();
-		d.set_secondary_action_label(__('Buka di tab baru'));
+		d.set_secondary_action_label(__('Detail Foto'));
 		d.set_secondary_action(() => slide.src && window.open(slide.src, '_blank'));
 		$open_tab.toggleClass('hide', !slide.src);
 	}

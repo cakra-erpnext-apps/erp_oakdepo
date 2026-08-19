@@ -1,9 +1,9 @@
 import frappe
 from frappe.model.document import Document
+from frappe.model.naming import make_autoname
 
 from container_depot.container_depot.container_status import assert_container_active
 import datetime
-import hashlib
 
 class Inspection(Document):
 	def before_insert(self):
@@ -11,10 +11,14 @@ class Inspection(Document):
 		self.inspection_id = self.generate_inspection_id()
 
 	def generate_inspection_id(self):
-		"""Generate unique inspection ID"""
-		timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-		unique = hashlib.md5(f"{timestamp}{frappe.generate_hash()[:10]}".encode()).hexdigest()[:8].upper()
-		return f"EIR-{unique}"
+		"""Kode EIR berurutan per tipe: EIR-IN-2026-00001 / EIR-OUT-2026-00001.
+
+		Dulu kode ini potongan md5 acak (EIR-91194AC3) — tidak bisa dibaca, tidak bisa
+		diurutkan, dan tidak berarti apa-apa buat orang lapangan. Serinya sengaja terpisah
+		dari nama dokumen (EIR-.YYYY.-.#####) supaya nomor In dan Out jalan sendiri-sendiri.
+		"""
+		prefix = "EIR-OUT" if self.inspection_type == "EIR-Out" else "EIR-IN"
+		return make_autoname(f"{prefix}-.YYYY.-.#####")
 
 	def before_save(self):
 		"""Auto-populate container number"""
@@ -31,6 +35,8 @@ class Inspection(Document):
 			assert_container_active(self.container)
 		self.drop_empty_photo_rows()
 		self.stamp_container_booking()
+		self.sync_has_damage()
+		self.stamp_inspector()
 		# Recommend the 4 exterior views for EIR-In — but only once the surveyor has
 		# started uploading them (1-3 present). Don't nag empty drafts (the PWA EIR uses
 		# per-item photos and auto-creates an empty draft on fetch).
@@ -43,6 +49,40 @@ class Inspection(Document):
 		# Recomputed on every save — including when the admin assigns the last one → 0 —
 		# so the list filter "Ada Foto Belum Disortir" stays accurate.
 		self.has_unsorted_photos = 1 if any(not p.checklist_item for p in self.item_photos) else 0
+
+	def sync_has_damage(self):
+		"""Derive Has Damage from the log instead of trusting a second, editable copy of it.
+
+		The checkbox and the rows were two sources for one fact and drifted both ways: ticked
+		with an empty log (the form warned about it and left it), or rows added straight in
+		the grid with the box untouched. Downstream that decides real things — the M&R
+		follow-up on submit, and Hold Pending Clearance on an EIR-Out — so it has to read off
+		the evidence.
+
+		"Damage" here means what the PWA already means by it (``_build_damage_rows``): a row
+		carrying a REAL defect code. A row stored only for a repair action or a remark, or one
+		coded "v" (Acceptable), is a finding on a tank that is not damaged — matching
+		``test_acceptable_skipped_and_repair_only_not_damage``.
+		"""
+		from container_depot.container_depot.eir import ACCEPTABLE_DAMAGE_CODE
+
+		self.has_damage = 1 if any(
+			(r.damage_type or "") not in ("", ACCEPTABLE_DAMAGE_CODE) for r in (self.damage_log or [])
+		) else 0
+
+	def stamp_inspector(self):
+		"""Inspector = who WORKED the EIR, not who created the record.
+
+		``work_started_by`` is stamped when the operator presses "Mulai" in the PWA, and that
+		is the person answering for what the EIR says. The two differ routinely: Adm Ops opens
+		the draft from the worklist (owner), the surveyor on the yard starts and fills it.
+		Left as a free field it drifted to whoever typed last, so it is read-only on the form
+		and written here.
+
+		Falls back to what is already set, then to the creator, so the reqd field is never
+		empty by the time Frappe checks it (validate runs before _validate_mandatory).
+		"""
+		self.inspector = self.get("work_started_by") or self.inspector or self.owner or frappe.session.user
 
 	def stamp_container_booking(self):
 		"""Record which Container Booking this EIR belongs to, resolved through its bon.

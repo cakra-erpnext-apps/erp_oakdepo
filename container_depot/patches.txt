@@ -85,3 +85,5 @@ container_depot.patches.v0_56.backfill_gate_entry_vehicle
 container_depot.patches.v0_57.spv_order_muat_create
 container_depot.patches.v0_58.drop_ready_out
 container_depot.patches.v0_59.drop_stale_inventory_cards
+container_depot.patches.v0_60.backfill_inspection_title
+container_depot.patches.v0_61.renumber_inspection_id
