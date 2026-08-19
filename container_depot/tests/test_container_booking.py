@@ -516,10 +516,13 @@ class TestTankInFlow(FrappeTestCase):
 		self.assertNotEqual(b.booking_status, "Cancelled")
 
 	def test_empty_items_rejected_on_draft(self):
-		# At least one container row is required even to save a draft.
+		# At least one container row is required even to save a draft. Checked by the
+		# controller rather than by a `reqd` field: Frappe pre-fills a blank row in every
+		# mandatory table, and the Containers grid is meant to start empty like Charges.
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}], items=[])
-		with self.assertRaises(frappe.exceptions.MandatoryError):
+		with self.assertRaises(frappe.ValidationError) as ctx:
 			b.insert(ignore_permissions=True)
+		self.assertIn("minimal satu container", str(ctx.exception).lower())
 
 	def test_status_tag_derived_from_condition(self):
 		# The Clean/Dirty gate tag is derived from a line's condition at booking-code
@@ -1019,3 +1022,218 @@ class TestTankOutGating(FrappeTestCase):
 			self.assertEqual(warnings[0]["open_orders"][0]["label"], "Cleaning")
 		finally:
 			frappe.delete_doc("Cleaning Order", co.name, force=True, ignore_permissions=True)
+
+
+class TestTankOutDepotDerivation(FrappeTestCase):
+	"""Tank Out never asks for a Depot — the tank is already somewhere and its master says
+	where. The depot is derived from the rows, and the rows are checked against it: two
+	depots on one booking is refused, and so is a tank standing in another Branch."""
+
+	CUSTOMER = "Phase3 TankOutDepot Customer"
+	IN_BRANCH = "TankOut Branch A"
+	OUT_BRANCH = "TankOut Branch B"
+	HERE = "TSTU7000001"  # Available, depot in IN_BRANCH
+	ELSEWHERE = "TSTU7000002"  # Available, depot in OUT_BRANCH
+	GONE = "TSTU7000003"  # already left, depot in IN_BRANCH
+	UNSTAMPED = "TSTU7000004"  # present, but the master never got a depot (legacy data)
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.customer = ensure_test_customer(cls.CUSTOMER)
+		_cleanup_customer_world(cls.customer)
+		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
+		cls.depot_here = cls._depot("TOA", cls.IN_BRANCH)
+		cls.depot_there = cls._depot("TOB", cls.OUT_BRANCH)
+		cls._container(cls.HERE, "Available", cls.depot_here)
+		cls._container(cls.ELSEWHERE, "Available", cls.depot_there)
+		cls._container(cls.GONE, "Gate_Out", cls.depot_here)
+		cls._container(cls.UNSTAMPED, "Available", None)
+
+	@classmethod
+	def tearDownClass(cls):
+		_cleanup_customer_world(cls.customer)
+		for no in (cls.HERE, cls.ELSEWHERE, cls.GONE, cls.UNSTAMPED):
+			frappe.db.delete("Container Movement", {"container": no})
+			frappe.db.delete("Container", {"container_no": no})
+		for depot in (cls.depot_here, cls.depot_there):
+			frappe.db.delete("Depot", {"name": depot})
+		for branch in (cls.IN_BRANCH, cls.OUT_BRANCH):
+			frappe.db.delete("Branch", {"name": branch})
+		frappe.db.commit()
+		super().tearDownClass()
+
+	@classmethod
+	def _depot(cls, code: str, branch: str) -> str:
+		if not frappe.db.exists("Branch", branch):
+			frappe.get_doc({"doctype": "Branch", "branch": branch}).insert(ignore_permissions=True)
+		existing = frappe.db.get_value("Depot", {"depot_code": code})
+		if existing:
+			return existing
+		return frappe.get_doc({
+			"doctype": "Depot",
+			"depot_code": code,
+			"depot_name": f"TankOut Depot {code}",
+			"branch": branch,
+			"is_active": 1,
+		}).insert(ignore_permissions=True).name
+
+	@classmethod
+	def _container(cls, no: str, status: str, depot: str | None):
+		if frappe.db.exists("Container", no):
+			frappe.db.set_value("Container", no, {"status": status, "depot": depot}, update_modified=False)
+			return
+		frappe.get_doc({
+			"doctype": "Container",
+			"container_no": no,
+			"container_type": "ISO Tank",
+			"status": status,
+			"depot": depot,
+			"principal": cls.customer,
+		}).insert(ignore_permissions=True)
+
+	def _booking(self, containers, **kwargs):
+		doc = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank Out",
+			"customer": self.customer,
+			"principal": self.customer,
+			"contract": self.contract,
+			"branch": kwargs.pop("branch", self.IN_BRANCH),
+			"items": [{"container": c} for c in containers],
+		})
+		doc.update(kwargs)
+		return doc
+
+	def test_depot_derived_from_the_container(self):
+		"""No depot typed, and none needed — the tank's master answers."""
+		b = self._booking([self.HERE])
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.depot, self.depot_here)
+
+	def test_derived_depot_overrides_whatever_was_carried(self):
+		"""An outbound booking cannot happen at a depot the tank is not in, so a depot
+		coming in from an import / API is corrected rather than trusted."""
+		b = self._booking([self.HERE], depot=self.depot_there, branch=self.OUT_BRANCH)
+		b.branch = self.IN_BRANCH  # the container's own branch, so only the depot is wrong
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.depot, self.depot_here)
+
+	def test_two_depots_on_one_booking_is_refused(self):
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			self._booking([self.HERE, self.ELSEWHERE]).insert(ignore_permissions=True)
+		self.assertIn("depo yang berbeda", str(ctx.exception))
+
+	def test_container_outside_the_booking_branch_is_refused(self):
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			self._booking([self.ELSEWHERE]).insert(ignore_permissions=True)
+		self.assertIn("Branch", str(ctx.exception))
+
+	def test_picker_offers_only_tanks_present_in_this_branch(self):
+		"""The Desk container picker, narrowed server-side: a tank that already left or
+		sits in another branch's yard is never offered for a Tank Out."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			booking_container_query,
+		)
+
+		names = [
+			r[0]
+			for r in booking_container_query(
+				"Container", "", "name", 0, 20,
+				{"direction": "Tank Out", "principal": self.customer, "branch": self.IN_BRANCH},
+			)
+		]
+		self.assertIn(self.HERE, names)
+		self.assertNotIn(self.GONE, names)
+		self.assertNotIn(self.ELSEWHERE, names)
+
+	def test_tank_in_picker_stays_open(self):
+		"""Inbound tanks are by definition not in the depot — narrowing the picker the
+		same way would offer nothing."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			booking_container_query,
+		)
+
+		names = [
+			r[0]
+			for r in booking_container_query(
+				"Container", "", "name", 0, 20,
+				{"direction": "Tank In", "principal": self.customer, "branch": self.IN_BRANCH},
+			)
+		]
+		self.assertIn(self.GONE, names)
+
+	def test_excel_import_reports_the_same_three_refusals(self):
+		"""The file is the one way into the grid that skips the picker, so it is judged
+		after the fact — with the number and the reason on screen."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			_import_block,
+		)
+
+		def master(no):
+			return frappe.db.get_value(
+				"Container", no, ["name", "status", "depot", "principal"], as_dict=True
+			)
+
+		def block(no, direction="Tank Out", principal=None, depots=None):
+			return _import_block(
+				master(no), direction, principal or self.customer, depots or [self.depot_here]
+			)
+
+		self.assertIsNone(block(self.HERE))
+		self.assertIn("tidak ada di depo", block(self.GONE))
+		self.assertIn("di luar Branch", block(self.ELSEWHERE))
+		self.assertIn("principal lain", block(self.HERE, principal="Someone Else"))
+		# Ownership is the one test that also applies inbound — a tank the master says
+		# belongs to someone else is not this booking's to move, either way.
+		self.assertIn(
+			"principal lain", block(self.HERE, direction="Tank In", principal="Someone Else")
+		)
+		self.assertIsNone(block(self.GONE, direction="Tank In"))
+
+	def test_a_container_owned_by_someone_else_is_refused(self):
+		"""The Principal is who owns the tank — a row naming another owner's container is
+		refused on save, whichever door it came through (import, paste, API)."""
+		other = ensure_test_customer("Phase3 Other Principal")
+		frappe.db.set_value("Container", self.HERE, "principal", other, update_modified=False)
+		try:
+			with self.assertRaises(frappe.ValidationError) as ctx:
+				self._booking([self.HERE]).insert(ignore_permissions=True)
+			self.assertIn("bukan milik Principal", str(ctx.exception))
+		finally:
+			frappe.db.set_value("Container", self.HERE, "principal", self.customer, update_modified=False)
+
+	def test_a_container_with_no_owner_is_adopted_not_refused(self):
+		"""A blank owner is not a conflict — the booking stamps its own Principal on it."""
+		frappe.db.set_value("Container", self.HERE, "principal", None, update_modified=False)
+		try:
+			b = self._booking([self.HERE])
+			b.insert(ignore_permissions=True)  # must NOT raise
+			self.assertEqual(
+				frappe.db.get_value("Container", self.HERE, "principal"), self.customer
+			)
+		finally:
+			frappe.db.set_value("Container", self.HERE, "principal", self.customer, update_modified=False)
+
+	def test_container_without_a_depot_falls_back_inside_the_branch(self):
+		"""Legacy tanks were never stamped with a depot (the stamp is written at gate-in),
+		so the rows can answer nothing — the booking still saves, on a depot of its own
+		Branch, and is NOT refused for a mismatch it never claimed."""
+		b = self._booking([self.UNSTAMPED])
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.depot, self.depot_here)
+
+	def test_picker_still_offers_a_tank_with_no_depot(self):
+		"""Narrowing by branch must not hide tanks the depot really is holding."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			booking_container_query,
+		)
+
+		names = [
+			r[0]
+			for r in booking_container_query(
+				"Container", "", "name", 0, 20,
+				{"direction": "Tank Out", "principal": self.customer, "branch": self.IN_BRANCH},
+			)
+		]
+		self.assertIn(self.UNSTAMPED, names)

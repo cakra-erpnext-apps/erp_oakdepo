@@ -117,8 +117,10 @@ class ContainerBooking(Document):
 			# A voided draft (see ``void_draft``) is terminal — never re-price or
 			# re-reserve it, so a re-save can't resurrect its rolled-back invoice / tanks.
 			return
+		self._require_containers()
 		self._ensure_depot()
 		self._ensure_branch_and_principal()
+		self._validate_depot_in_branch()
 		self._sync_lift_type()
 		self._resolve_pricing_context()
 		self._resolve_containers()
@@ -126,6 +128,7 @@ class ContainerBooking(Document):
 		# resolved to. Rows already on the booking are untouched — see assert_rows_active.
 		assert_rows_active(self, "items")
 		self._default_row_shipper()
+		self._validate_row_principal()
 		self._validate_unique_containers()
 		self._sync_container_summary()
 		self._guard_locked_charges()
@@ -203,12 +206,15 @@ class ContainerBooking(Document):
 		self._guard_billing_on_revision()
 		# Same derivations validate() does for a draft, minus the ones keyed on fields a
 		# revision cannot reach (direction / lift_type are set_only_once or read-only).
+		self._require_containers()
 		self._ensure_depot()
 		self._ensure_branch_and_principal()
+		self._validate_depot_in_branch()
 		self._resolve_pricing_context()
 		self._resolve_containers()
 		assert_rows_active(self, "items")
 		self._default_row_shipper()
+		self._validate_row_principal()
 		self._validate_unique_containers()
 		self._price_charges()
 		self._sync_container_summary()
@@ -469,18 +475,116 @@ class ContainerBooking(Document):
 		consolidated-billing description keep reading."""
 		self.lift_type = "Lift On" if self.direction == "Tank Out" else "Lift Off"
 
+	def _require_containers(self):
+		"""A booking must carry at least one container line.
+
+		Enforced HERE rather than by marking the field ``reqd``, which is what it used to
+		be: Frappe opens every new document with a blank row in each mandatory table
+		(``create_mandatory_children``), so the grid greeted the operator with a half-
+		started line before they had picked anything. The Charges grid starts empty and
+		reads better for it, so Containers now does too — the rule is the same, it is just
+		checked at save instead of pre-filled on screen.
+		"""
+		if not (self.items or []):
+			frappe.throw(_("Isi minimal satu container."), title=_("Container Kosong"))
+
 	def _ensure_depot(self):
-		"""Depot is mandatory (multi-depot ops): the Desk form enforces it
-		client-side. Programmatic callers (tests / data patches / future portal)
-		that omit it fall back to the primary active depot so every booking still
-		carries one rather than failing the mandatory check."""
+		"""Which depot this booking happens at.
+
+		**Tank Out never asks.** The tank is already sitting somewhere, and the master
+		says where — so the depot is DERIVED from the rows (the form hides the field for
+		an outbound booking) and overwrites whatever was there. Anything else lets an
+		operator name a depot the tank is not in.
+
+		**Tank In** is the operator's pick (the tank has not arrived yet, so no master can
+		answer): mandatory on the Desk form. Programmatic callers (tests / data patches /
+		future portal) that omit it fall back to the primary active depot so every booking
+		still carries one rather than failing the mandatory check.
+		"""
+		self.flags.depot_from_containers = False
+		if self.direction == "Tank Out":
+			derived = self._depot_from_containers()
+			if derived:
+				self.depot = derived
+				self.flags.depot_from_containers = True
+				return
+			# No row names a depot yet (empty draft, or a legacy tank whose master was
+			# never stamped with one) — fall through to the same fallback Tank In uses.
 		if self.depot:
 			return
-		depot = frappe.db.get_value("Depot", {"is_active": 1}, "name") or frappe.db.get_value(
-			"Depot", {}, "name"
+		# Inside the booking's own Branch first: a fallback that lands in another branch
+		# would only have to be corrected by hand (and, on a Tank Out, would look like a
+		# derived answer it is not).
+		depot = (
+			(
+				frappe.db.get_value("Depot", {"is_active": 1, "branch": self.branch}, "name")
+				if self.branch
+				else None
+			)
+			or frappe.db.get_value("Depot", {"is_active": 1}, "name")
+			or frappe.db.get_value("Depot", {}, "name")
 		)
 		if depot:
 			self.depot = depot
+
+	def _depot_from_containers(self):
+		"""The one depot the booking's tanks are currently in, or None when no row names
+		one (blank draft, or a legacy master with an empty ``depot``).
+
+		``Container.depot`` is stamped at gate-in from the inbound booking's depot
+		(``order_bongkar._sync_container_arrival``), so a tank that came in through the
+		normal flow always knows where it is.
+
+		Rows spanning TWO depots are refused: one booking issues one set of booking codes
+		for one gate, so tanks from different depots cannot ride on it — they are two
+		bookings.
+		"""
+		depots: dict[str, list[str]] = {}
+		for item in self.items or []:
+			name = item.get("container") or (
+				frappe.db.get_value("Container", {"container_no": item.container_no.strip().upper()})
+				if item.container_no
+				else None
+			)
+			if not name:
+				continue
+			depot = frappe.db.get_value("Container", name, "depot")
+			if depot:
+				depots.setdefault(depot, []).append(item.container_no or name)
+		if len(depots) > 1:
+			frappe.throw(
+				_("Container-nya ada di depo yang berbeda — satu booking hanya untuk satu depo:")
+				+ "<br>"
+				+ "<br>".join(f"<b>{d}</b>: {', '.join(nos)}" for d, nos in depots.items()),
+				title=_("Beda Depo"),
+			)
+		return next(iter(depots), None)
+
+	def _validate_depot_in_branch(self):
+		"""Tank Out: the derived depot must sit in the booking's Branch.
+
+		The depot comes off the container, the branch is the operator's pick — when they
+		disagree the tank is simply not in the branch this booking belongs to (only
+		reachable through the Excel import / API; the Desk picker is branch-scoped). Said
+		plainly rather than silently rewriting Branch, which is what scopes the document
+		for every branch-restricted user.
+		"""
+		# Only a depot the CONTAINERS answered for is judged here. A fallback depot (no
+		# row names one yet) says nothing about where the tanks are, so holding the branch
+		# against it would refuse a legacy tank for a mismatch it never claimed.
+		if not self.flags.get("depot_from_containers"):
+			return
+		if self.direction != "Tank Out" or not (self.depot and self.branch):
+			return
+		depot_branch = frappe.db.get_value("Depot", self.depot, "branch")
+		if depot_branch and depot_branch != self.branch:
+			frappe.throw(
+				_(
+					"Container-nya ada di depo {0} (Branch {1}), bukan Branch {2} yang dipilih "
+					"— ganti Branch booking atau pilih container dari depo Branch ini."
+				).format(self.depot, depot_branch, self.branch),
+				title=_("Beda Branch"),
+			)
 
 	def _ensure_branch_and_principal(self):
 		"""Branch and Principal (Tank Owner) are mandatory and enforced on the Desk
@@ -586,6 +690,42 @@ class ContainerBooking(Document):
 		return lines
 
 	# ---- container resolution (single-input model) ----------------------
+	def _validate_row_principal(self):
+		"""Every container on the booking must belong to its Principal (Tank Owner).
+
+		The Principal is not decoration: it is who owns the tank, it scopes the Desk
+		picker, and it is stamped onto a master that has none. Nothing enforced it on the
+		rows themselves, so a file imported under the wrong owner — or a row pasted /
+		posted past the picker — booked another principal's tanks and submitted cleanly,
+		leaving the master data saying two different things about who owns them.
+
+		Only a container whose master already NAMES a different owner is refused. A blank
+		one is not a conflict: ``_stamp_principal`` has just filled it in with this
+		booking's Principal, which is how a tank that reached the master ownerless gets
+		adopted.
+
+		Runs after ``_resolve_containers`` so every row has a real Container to ask.
+		"""
+		if not self.principal:
+			return
+		wrong = []
+		for item in self.items or []:
+			if not item.container:
+				continue
+			owner = frappe.db.get_value("Container", item.container, "principal")
+			if owner and owner != self.principal:
+				wrong.append((item.container_no or item.container, owner))
+		if not wrong:
+			return
+		frappe.throw(
+			_("Container berikut bukan milik Principal <b>{0}</b>:").format(self.principal)
+			+ "<br>"
+			+ "<br>".join(f"<b>{no}</b> — milik {owner}" for no, owner in wrong)
+			+ "<br><br>"
+			+ _("Ganti Principal booking atau keluarkan baris itu."),
+			title=_("Beda Principal"),
+		)
+
 	def _validate_unique_containers(self):
 		"""One line per container. Booking the same tank twice would bill the lift
 		twice and issue two Booking Codes for it, so the gate would show a phantom
@@ -679,10 +819,11 @@ class ContainerBooking(Document):
 		may be split across several transporters, and the tank owner (Principal) is often
 		not the one who trucks it.
 
-		The booking's ``customer`` is only the DEFAULT: a blank row inherits it (here and
-		client-side on row add), an explicitly picked shipper is left alone. Nothing
-		financial reads this field — pricing, contract and the Sales Invoice still key off
-		``customer``."""
+		The booking's ``customer`` (Bill To) is only the DEFAULT: a blank row inherits it
+		here, and the form fills the rows the moment Bill To is set or changed. A row the
+		operator pointed at a different transporter is never touched — this only ever
+		fills a BLANK. Nothing financial reads the field: pricing, contract and the Sales
+		Invoice all key off ``customer``."""
 		for item in self.items or []:
 			if not item.shipper:
 				item.shipper = self.customer
@@ -1205,6 +1346,62 @@ class ContainerBooking(Document):
 
 
 # ---- Tank In booking link queries / pricing helpers (whitelisted) -----------
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def booking_container_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Options for a booking line's Container — the picker the operator actually works
+	from, narrowed by the DIRECTION so an unusable tank is never offered in the first
+	place.
+
+	Both directions: the tank must be in the fleet (``is_active``) and owned by the
+	booking's Principal (Tank Owner) when one is set.
+
+	**Tank Out** additionally offers only tanks that are physically here — status in
+	``PRESENT`` (In_Depot / Available) — and only those in a depot of the booking's
+	Branch. A tank that already left, or one sitting in another branch's yard, cannot be
+	lifted out of this depot; it used to be pickable and only bounced at submit, which is
+	the worst moment to find out. Open work (cleaning / repair / periodic test) is NOT
+	filtered here: those tanks are legitimately being prepared for this very booking, the
+	draft warning names the orders, and ``_validate_out_ready`` blocks the submit.
+
+	**Tank In** is left open: an inbound tank is by definition not in the depot, and a
+	number the master does not know yet is registered on save.
+	"""
+	from container_depot.container_depot.container_status import PRESENT
+
+	filters = filters or {}
+	direction = filters.get("direction") or "Tank In"
+	principal = filters.get("principal")
+	branch = filters.get("branch")
+
+	cond = {"is_active": 1}
+	if principal:
+		cond["principal"] = principal
+	# Container is named by its number (autoname field:container_no), so one LIKE on the
+	# name covers the search box — which leaves `or_filters` free for the depot group.
+	txt = (txt or "").strip()
+	if txt and txt.lower() != "undefined":
+		cond["name"] = ["like", f"%{txt}%"]
+	or_filters = None
+	if direction == "Tank Out":
+		cond["status"] = ["in", list(PRESENT)]
+		if branch:
+			depots = frappe.get_all("Depot", filters={"branch": branch}, pluck="name")
+			# A tank whose master carries no depot at all (legacy / imported data) is still
+			# offered — refusing it would hide real tanks the depot is holding.
+			or_filters = [["depot", "in", depots or [""]], ["depot", "is", "not set"]]
+	return frappe.get_all(
+		"Container",
+		filters=cond,
+		or_filters=or_filters,
+		fields=["name", "status", "depot"],
+		order_by="container_no asc",
+		limit_start=cint(start),
+		limit_page_length=cint(page_len),
+		as_list=True,
+	)
+
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
@@ -1993,9 +2190,49 @@ def _create_imported_container(container_no: str, principal: str) -> str:
 	return doc.name
 
 
+def _import_block(master, direction, principal, allowed_depots) -> str | None:
+	"""Why an imported row may not go on this booking, or None when it may.
+
+	The same tests the Desk picker applies as filters, said as a sentence — an import has
+	no picker to narrow, so the file is judged after the fact and the operator is told
+	which number failed and why.
+
+	**Ownership is checked in BOTH directions.** A tank the master says belongs to someone
+	else is not this booking's to move, inbound or outbound; the booking itself refuses it
+	on save (``_validate_row_principal``), and catching it here means the operator gets a
+	named, skipped row instead of a wall at save time. A blank owner passes — that tank is
+	adopted by this booking's Principal.
+
+	The rest is outbound-only: an inbound tank is by definition not in the depot yet, so
+	presence and branch say nothing about it. A blank ``depot`` on the master passes too:
+	legacy tanks were never stamped with one (the stamp is written at gate-in), and
+	dropping them would hide tanks the depot really is holding.
+	"""
+	from container_depot.container_depot.container_status import PRESENT
+
+	if principal and master.principal and master.principal != principal:
+		return _("{0}: milik principal lain ({1}) — dilewati").format(
+			master.name, master.principal
+		)
+	if direction != "Tank Out":
+		return None
+	if master.status not in PRESENT:
+		return _("{0}: tidak ada di depo (status {1}) — dilewati").format(
+			master.name, master.status or "-"
+		)
+	if allowed_depots and master.depot and master.depot not in allowed_depots:
+		return _("{0}: ada di depo {1}, di luar Branch booking — dilewati").format(
+			master.name, master.depot
+		)
+	return None
+
+
 @frappe.whitelist()
 def parse_container_xlsx(
-	file_url: str, direction: str | None = None, principal: str | None = None
+	file_url: str,
+	direction: str | None = None,
+	principal: str | None = None,
+	branch: str | None = None,
 ) -> dict:
 	"""Parse an uploaded .xlsx into container rows for the booking grid's "Import Excel".
 
@@ -2028,6 +2265,14 @@ def parse_container_xlsx(
 	  that was never in the depot cannot leave it, so an unrecognised number there is a
 	  typo, not a new tank.
 
+	A number the master DOES know is checked the same way the Desk picker narrows itself
+	(see :func:`booking_container_query` and :func:`_import_block`): it must be owned by
+	the booking's Principal — in BOTH directions — and, for a Tank Out, be physically
+	present (In_Depot / Available) in a depot of the booking's ``branch``. A file is the
+	one way into the grid that bypasses that picker, so without this a booking could be
+	filled with another principal's tanks, or with tanks that are already gone, and only
+	find out at submit — twenty rows later.
+
 	Returns ``{rows: [{container_no, condition, container, cargo, is_new}], errors: [...],
 	unknown: [...], created: [...]}``.
 	"""
@@ -2040,8 +2285,16 @@ def parse_container_xlsx(
 		# A Container master cannot exist without an owner, and guessing one is not on the
 		# table — the form carries it, so say so once instead of failing row by row.
 		if not principal:
-			frappe.throw(_("Set the Principal (Tank Owner) before importing an inbound file."))
+			frappe.throw(_("Isi Principal (Tank Owner) dulu sebelum import file Tank In."))
 		frappe.has_permission("Container", "create", throw=True)
+
+	# Depots of the booking's branch — the outbound scope check below. Empty when the form
+	# carries no branch yet, in which case the check simply does not apply.
+	out_depots = (
+		frappe.get_all("Depot", filters={"branch": branch}, pluck="name")
+		if branch and direction == "Tank Out"
+		else []
+	)
 
 	rows, errors, unknown, created, seen = [], [], [], [], set()
 	for cells in raw_rows:
@@ -2060,18 +2313,29 @@ def parse_container_xlsx(
 		elif raw_cond in CONTAINER_CONDITIONS:
 			condition = raw_cond
 		else:
-			errors.append(_("Row {0}: unknown condition {1}").format(cno, raw_cond))
+			errors.append(_("{0}: kondisi {1} tidak dikenal — dilewati").format(cno, raw_cond))
 			continue
 		raw_cargo = str(cells[2]).strip() if len(cells) > 2 and cells[2] is not None else ""
-		container, last_cargo, active = frappe.db.get_value(
-			"Container", {"container_no": cno}, ["name", "last_cargo", "is_active"]
-		) or (None, None, None)
+		master = frappe.db.get_value(
+			"Container",
+			{"container_no": cno},
+			["name", "last_cargo", "is_active", "status", "depot", "principal"],
+			as_dict=True,
+		)
+		container = master.name if master else None
+		last_cargo = master.last_cargo if master else None
 		# A retired tank is out of the fleet: named and dropped rather than quietly booked,
 		# and never re-registered under the same number — the master is still there.
-		if container and not active:
+		if container and not master.is_active:
 			seen.add(cno)
-			errors.append(_("Row {0}: container is not active — skipped").format(cno))
+			errors.append(_("{0}: container non-aktif — dilewati").format(cno))
 			continue
+		if container:
+			blocked = _import_block(master, direction, principal, out_depots)
+			if blocked:
+				seen.add(cno)
+				errors.append(blocked)
+				continue
 		is_new = 0
 		if not container:
 			if direction != "Tank In":
@@ -2084,7 +2348,7 @@ def parse_container_xlsx(
 		if raw_cargo:
 			cargo = frappe.db.get_value("Cargo", {"cargo_name": raw_cargo})
 			if not cargo:
-				errors.append(_("Row {0}: unknown cargo {1} — left blank").format(cno, raw_cargo))
+				errors.append(_("{0}: cargo {1} tidak dikenal — dikosongkan").format(cno, raw_cargo))
 		else:
 			cargo = last_cargo
 		seen.add(cno)

@@ -20,7 +20,10 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_set_queries');
 	},
 	refresh(frm) {
+		frm._prev_customer = frm.doc.customer;
 		frm.trigger('_set_queries');
+		frm.trigger('_depot_mode');
+		frm.trigger('_render_system_facts');
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_mark_new_containers');
@@ -314,17 +317,36 @@ frappe.ui.form.on('Container Booking', {
 		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
 		grid.add_custom_button(__('Import Excel'), () => {
 			const d = new frappe.ui.Dialog({
-				title: __('Import Containers from Excel'),
+				title: __('Import Container dari Excel'),
 				fields: [
 					{
 						fieldname: 'hint',
 						fieldtype: 'HTML',
 						options: `<p class="text-muted small">${__(
-							'Columns: Container, Condition (EMPTY CLEAN / EMPTY DIRTY / LADEN), Last Cargo (optional — must match the Cargo master; the downloads carry the list). A header row is skipped. On a Tank In, a number the Container master does not know is registered on the spot (owned by this booking\'s Principal, badged <b>Baru</b> in the grid); on a Tank Out it is skipped and reported.'
+							'Kolom: Container, Kondisi (EMPTY CLEAN / EMPTY DIRTY / LADEN), Last Cargo (opsional, harus ada di master Cargo). Baris judul dilewati.'
 						)}</p>`,
 					},
-					{ fieldname: 'file', fieldtype: 'Attach', label: __('Excel File (.xlsx)'), reqd: 1 },
-					{ fieldname: 'replace', fieldtype: 'Check', label: __('Replace existing rows') },
+					// Principal is shown (and editable) here because it decides what the import
+					// does: on a Tank In it OWNS every container master the file registers, and
+					// on a Tank Out it is what a row is refused for belonging to someone else.
+					// Editing it writes straight back to the form, so the two can never drift —
+					// and changing it clears the container links already on the grid, exactly as
+					// changing it on the form does.
+					{
+						fieldname: 'principal',
+						fieldtype: 'Link',
+						options: 'Customer',
+						label: __('Principal / Tank Owner'),
+						reqd: 1,
+						default: frm.doc.principal || frm.doc.customer || '',
+						description: __('Pemilik tank. Container baru didaftarkan atas nama ini.'),
+						onchange() {
+							const picked = this.get_value();
+							if (picked && picked !== frm.doc.principal) frm.set_value('principal', picked);
+						},
+					},
+					{ fieldname: 'file', fieldtype: 'Attach', label: __('File Excel (.xlsx)'), reqd: 1 },
+					{ fieldname: 'replace', fieldtype: 'Check', label: __('Ganti baris yang ada') },
 				],
 				primary_action_label: __('Import'),
 				primary_action(values) {
@@ -333,11 +355,15 @@ frappe.ui.form.on('Container Booking', {
 						args: {
 							file_url: values.file,
 							direction: frm.doc.direction || null,
-							// A Container cannot be created without an owner; the header carries it.
-							principal: frm.doc.principal || frm.doc.customer || null,
+							// A Container cannot be created without an owner; the dialog carries it
+							// (and has already written it back to the form).
+							principal: values.principal || frm.doc.principal || null,
+							// Scopes the Tank Out check: a tank standing in another branch's
+							// yard is reported instead of silently imported.
+							branch: frm.doc.branch || null,
 						},
 						freeze: true,
-						freeze_message: __('Reading file…'),
+						freeze_message: __('Membaca file…'),
 						callback(r) {
 							const res = r.message || {};
 							const rows = res.rows || [];
@@ -378,8 +404,8 @@ frappe.ui.form.on('Container Booking', {
 							frm.trigger('_sync_charge_qty');
 							frm.trigger('_flag_open_conflicts');
 							d.hide();
-							let msg = __('Added {0} row(s).', [added]);
-							if (skipped) msg += ' ' + __('{0} already on the grid, skipped.', [skipped]);
+							let msg = __('{0} baris ditambahkan.', [added]);
+							if (skipped) msg += ' ' + __('{0} sudah ada di grid, dilewati.', [skipped]);
 							// Three outcomes worth naming separately: numbers that will become new
 							// Container masters, numbers the master does not know and will not get
 							// (Tank Out — skipped outright), and rows dropped for a bad value.
@@ -390,13 +416,11 @@ frappe.ui.form.on('Container Booking', {
 							if (fresh.length) {
 								notes.push(
 									'<b>' +
-										__('Registered in the Container master ({0}):', [fresh.length]) +
+										__('Baru didaftarkan ({0}):', [fresh.length]) +
 										'</b><br>' +
 										fresh.join(', ') +
 										'<br><span class="text-muted">' +
-										__(
-											'Badged <b>Baru</b> in the grid. Registered outside the depot (Gate_Out) like any new master — saving this booking reserves them (Booked). Drop the row and delete the container if the number is a typo.'
-										) +
+										__('Cek ejaannya — hapus barisnya kalau salah ketik.') +
 										'</span>'
 								);
 							}
@@ -404,21 +428,21 @@ frappe.ui.form.on('Container Booking', {
 							if (unknown.length) {
 								notes.push(
 									'<b>' +
-										__('Not in Container master — skipped ({0}):', [unknown.length]) +
+										__('Tidak dikenal — dilewati ({0}):', [unknown.length]) +
 										'</b><br>' +
 										unknown.join(', ') +
 										'<br><span class="text-muted">' +
-										__('Register these in the Container master first, then import again.') +
+										__('Daftarkan di master Container dulu.') +
 										'</span>'
 								);
 							}
 							const warns = res.errors || [];
 							if (warns.length) {
-								notes.push('<b>' + __('Not imported:') + '</b><br>' + warns.join('<br>'));
+								notes.push('<b>' + __('Tidak diimport:') + '</b><br>' + warns.join('<br>'));
 							}
 							if (notes.length) {
 								frappe.msgprint({
-									title: __('Import finished with notes'),
+									title: __('Catatan import'),
 									message: msg + '<br><br>' + notes.join('<br><br>'),
 									indicator: 'orange',
 								});
@@ -439,7 +463,10 @@ frappe.ui.form.on('Container Booking', {
 			// Master Container carries the Cargo master on its second sheet, so the label
 			// says so — the cargo names are what the Last Cargo column must be spelled from.
 			d.add_custom_action(__('Download Master Container + Cargo'), () => {
-				const q = frm.doc.principal ? `?principal=${encodeURIComponent(frm.doc.principal)}` : '';
+				// The principal the operator is looking at right now, not the one the form
+				// carried when the dialog opened.
+				const owner = d.get_value('principal') || frm.doc.principal;
+				const q = owner ? `?principal=${encodeURIComponent(owner)}` : '';
 				window.open(`${base}.download_container_master${q}`);
 			});
 			d.show();
@@ -484,8 +511,24 @@ frappe.ui.form.on('Container Booking', {
 		}
 		frm.set_value('charges_total', 0);
 		frm.set_value('currency', null);
+		frm.trigger('_sync_row_shipper');
 		frm.trigger('_set_queries');
 		frm.trigger('_apply_payment_modes');
+	},
+	// EMKL / Shipper follows Bill To: every container line that is still blank, or still
+	// carrying the PREVIOUS Bill To, is refreshed to the new one. A row the operator
+	// pointed at a real transporter is left exactly as typed — that is the whole point of
+	// the field being per container. `_prev_customer` is stashed because a field trigger
+	// only ever sees the new value, and `doc_before_save` does not exist on a fresh draft.
+	_sync_row_shipper(frm) {
+		const prev = frm._prev_customer;
+		frm._prev_customer = frm.doc.customer;
+		if (!frm.doc.customer) return;
+		(frm.doc.items || []).forEach((row) => {
+			if (!row.shipper || (prev && row.shipper === prev)) {
+				frappe.model.set_value(row.doctype, row.name, 'shipper', frm.doc.customer);
+			}
+		});
 	},
 	principal(frm) {
 		// Container picker filters to this owner's tanks; clear lines that no longer fit.
@@ -496,14 +539,56 @@ frappe.ui.form.on('Container Booking', {
 	},
 	direction(frm) {
 		// Direction decides which status gate the containers face, so the draft warning
-		// changes with it.
+		// and the container picker both change with it.
+		// Tank Out never asks for a Depot — the tank is already somewhere and its master
+		// says where, so anything typed before the switch is dropped and the server
+		// derives it from the rows (_ensure_depot).
+		if (frm.doc.direction === 'Tank Out' && frm.doc.depot) frm.set_value('depot', null);
+		frm.trigger('_set_queries');
+		frm.trigger('_depot_mode');
 		frm.trigger('_flag_open_conflicts');
+	},
+	// Everything the system fills in by itself — status, totals, the invoice it raised, the
+	// documents it came from — lives in the SIDEBAR, next to Created By / Last Edited By,
+	// instead of taking a section on the form. None of it is an isian, and a form section
+	// full of read-only fields reads like work waiting to be done. The fields stay on the
+	// doctype (hidden) because the list view, the standard filters and the server all keep
+	// reading them; this is only where a human is shown them.
+	_render_system_facts(frm) {
+		// Shared block — same list, same look on Order Bongkar / Order Muat (system_facts.js).
+		const link = container_depot.doc_link;
+		const esc = frappe.utils.escape_html;
+		container_depot.render_system_facts(frm, [
+			[__('Status'), frm.doc.booking_status && esc(frm.doc.booking_status)],
+			[
+				__('Total Charges'),
+				frm.doc.charges_total && format_currency(frm.doc.charges_total, frm.doc.currency),
+			],
+			[__('Payment'), frm.doc.payment_status && esc(frm.doc.payment_status)],
+			[__('Sales Invoice'), link('Sales Invoice', frm.doc.sales_invoice)],
+			[__('Containers'), frm.doc.container_summary && esc(frm.doc.container_summary)],
+			[__('Gate Out Plan'), link('Gate Out Plan', frm.doc.gate_out_plan)],
+			[__('Ref Email'), link('Communication', frm.doc.reff_email)],
+			[__('Block Reason'), frm.doc.block_reason && esc(frm.doc.block_reason)],
+		]);
+	},
+	// Depot is the operator's pick on a Tank In and a derived, read-only fact on a Tank
+	// Out (hidden by depends_on until the server fills it in).
+	_depot_mode(frm) {
+		frm.set_df_property('depot', 'read_only', frm.doc.direction === 'Tank Out' ? 1 : 0);
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));
-		// Retired tanks (Active off) are out of the fleet and never offered.
+		// Narrowed server-side by direction: Tank In offers the whole (active, owned)
+		// fleet, Tank Out only tanks actually present in a depot of this Branch — see
+		// booking_container_query.
 		frm.set_query('container', 'items', () => ({
-			filters: { principal: frm.doc.principal || '', is_active: 1 },
+			query: 'container_depot.container_depot.doctype.container_booking.container_booking.booking_container_query',
+			filters: {
+				principal: frm.doc.principal || '',
+				direction: frm.doc.direction || 'Tank In',
+				branch: frm.doc.branch || '',
+			},
 		}));
 		// Charge services: the "Booking" Depot Service Menu ∩ the customer's active price
 		// list (both resolved server-side).
@@ -557,10 +642,9 @@ frappe.ui.form.on('Container Booking', {
 	},
 	// Grid row add / remove events fire on the PARENT form.
 	items_add(frm, cdt, cdn) {
-		// EMKL / Shipper defaults to the booking's Customer so the common case (one
-		// transporter for the whole booking) costs no typing; the operator overrides the
-		// row when a booking is split across several EMKL. Any row left blank is filled
-		// server-side on save (see _default_row_shipper).
+		// EMKL / Shipper starts at the booking's Customer (Bill To) so the common case —
+		// one transporter for the whole booking — costs no typing; the row stays editable
+		// for a booking split across several EMKL.
 		if (frm.doc.customer) frappe.model.set_value(cdt, cdn, 'shipper', frm.doc.customer);
 		frm.trigger('_sync_charge_qty');
 	},
