@@ -49,13 +49,21 @@ frappe.ui.form.on('Container Booking', {
 		}
 		// Pending Payment -> Draft. The way back while nothing has settled: voids the draft
 		// invoice and reopens the charges. Refused server-side once the invoice is submitted.
+		//
+		// This and its submitted-booking counterpart below both end at "Draft", so they share
+		// a name and are told apart by what each one costs — the old pair ("Rollback ke
+		// Draft" / "Revert to Draft") said the same thing twice in two languages and named
+		// neither difference. They can never both be on screen: this one only exists at
+		// docstatus 0, that one only at docstatus 1.
 		if (
 			!frm.is_new() &&
 			may_write &&
 			frm.doc.docstatus === 0 &&
 			['Pending Payment', 'Pending Confirmation'].includes(frm.doc.booking_status)
 		) {
-			frm.add_custom_button(__('Rollback ke Draft'), () => _confirm_rollback(frm));
+			frm.add_custom_button(__('Kembali ke Draft (batalkan invoice)'), () =>
+				_confirm_rollback(frm)
+			);
 		}
 		// A confirmed booking can spawn multiple bon/voucher (Order Bongkar),
 		// each carrying up to 3 of its still-pending containers.
@@ -113,7 +121,7 @@ frappe.ui.form.on('Container Booking', {
 		}
 	},
 	// A bon is the point of no return. Once one has been raised from this booking the two
-	// undos are gone — no Revert to Draft, no Cancel — because the bon is paper a driver
+	// undos are gone — no Kembali ke Draft, no Cancel — because the bon is paper a driver
 	// was handed at the gate and it names this booking. Reopening the booking for edits, or
 	// voiding it, leaves that paper pointing at a record that no longer says what it said.
 	// Enforced server-side (`_block_if_bon_raised`, reached from `before_cancel`,
@@ -135,7 +143,9 @@ frappe.ui.form.on('Container Booking', {
 				const locked = state.locked_containers || [];
 				if (!bons.length) {
 					if (may_cancel) {
-						frm.add_custom_button(__('Revert to Draft'), () => _confirm_revert(frm));
+						frm.add_custom_button(__('Kembali ke Draft (pembayaran tetap)'), () =>
+							_confirm_revert(frm)
+						);
 					}
 				} else if (may_cancel) {
 					// Frappe's own Cancel lives in the Menu, so it is stripped the same way
@@ -179,7 +189,9 @@ frappe.ui.form.on('Container Booking', {
 		frm.set_df_property('customer', 'read_only', locked ? 1 : 0);
 		if (locked) {
 			frm.dashboard.add_comment(
-				__('Charges terkunci karena invoice sudah dibuat. Tekan Rollback ke Draft untuk mengubahnya.'),
+				__(
+					'Charges terkunci karena invoice sudah dibuat. Tekan <b>Kembali ke Draft (batalkan invoice)</b> untuk mengubahnya.'
+				),
 				'blue',
 				true
 			);
@@ -668,7 +680,7 @@ function _confirm_void(frm) {
 function _confirm_generate_invoice(frm) {
 	frappe.confirm(
 		__(
-			'Buat Sales Invoice untuk booking ini sebesar {0}?<br><br>Setelah ini charges dan customer terkunci — gunakan Rollback ke Draft kalau masih perlu diubah.',
+			'Buat Sales Invoice untuk booking ini sebesar {0}?<br><br>Setelah ini charges dan customer terkunci — gunakan <b>Kembali ke Draft (batalkan invoice)</b> kalau masih perlu diubah.',
 			[format_currency(frm.doc.charges_total, frm.doc.currency)]
 		),
 		() => {

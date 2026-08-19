@@ -17,10 +17,16 @@ Carries the critical controllers:
 3. Booking Code issuance on submit (one per item). Codes do not expire.
 4. Staged billing. A booking starts at ``Draft`` and generates NOTHING, so the operator
    can get it right first. **Generate Invoice** raises the draft Sales Invoice and moves
-   it to ``Pending Payment``, where the billing facts are frozen. **Rollback ke Draft**
-   is the way back while the invoice is still unpaid; once the Cashier submits it, only
-   cancelling the invoice (or the booking) reopens anything. See :func:`generate_invoice`
-   / :func:`rollback_to_draft` / ``_guard_locked_charges``.
+   it to ``Pending Payment``, where the billing facts are frozen. **Kembali ke Draft
+   (batalkan invoice)** is the way back while the invoice is still unpaid; once the
+   Cashier submits it, only cancelling the invoice (or the booking) reopens anything. See
+   :func:`generate_invoice` / :func:`rollback_to_draft` / ``_guard_locked_charges``.
+
+   Its counterpart on a SUBMITTED booking is **Kembali ke Draft (pembayaran tetap)** —
+   same destination, opposite cost: that one undoes the submit and keeps the settled
+   invoice, this one undoes the invoice. The two share a name because they share an
+   outcome, and are told apart by the qualifier; they never appear together, since each
+   exists at only one docstatus. See :func:`revert_booking_to_draft`.
 """
 
 from __future__ import annotations
@@ -182,7 +188,7 @@ class ContainerBooking(Document):
 		notify_booking_submitted(self)
 
 	# ---- revision in place (docstatus stays 1, status stays Confirmed) --------
-	# Correcting a Confirmed booking used to mean Revert to Draft, and that door is now shut
+	# Correcting a Confirmed booking used to mean Kembali ke Draft, and that door is now shut
 	# once a bon exists. This is the way in that does not move the booking backwards: the
 	# fields below are `allow_on_submit`, so Frappe saves them on a submitted document and
 	# routes the save through these two hooks instead of validate/before_save.
@@ -319,8 +325,8 @@ class ContainerBooking(Document):
 		  picks the revision up on its own.
 
 		Contrast :meth:`_guard_locked_charges`, which polices the same facts on a DRAFT
-		booking and simply refuses: there, Rollback ke Draft is the way through, and that
-		button does not exist on a submitted one.
+		booking and simply refuses: there, "Kembali ke Draft (batalkan invoice)" is the way
+		through, and that button does not exist on a submitted one.
 		"""
 		before = self.get_doc_before_save()
 		if not before or _billing_signature(before) == _billing_signature(self):
@@ -819,8 +825,8 @@ class ContainerBooking(Document):
 		document the Cashier can act on, and the booking must not drift away from it. The
 		way back is deliberate, not accidental:
 
-		* invoice still a draft  -> **Rollback ke Draft** (voids the invoice, reopens the
-		  booking) — see :func:`rollback_to_draft`.
+		* invoice still a draft  -> **Kembali ke Draft (batalkan invoice)** (voids the
+		  invoice, reopens the booking) — see :func:`rollback_to_draft`.
 		* invoice already submitted / paid -> cancel the invoice (and its payments) or the
 		  whole booking; the numbers are in the ledger by then.
 
@@ -848,8 +854,8 @@ class ContainerBooking(Document):
 			)
 		frappe.throw(
 			_(
-				"Invoice untuk booking ini sudah dibuat. Tekan <b>Rollback ke Draft</b> dulu "
-				"kalau mau mengubah charges atau customer."
+				"Invoice untuk booking ini sudah dibuat. Tekan <b>Kembali ke Draft "
+				"(batalkan invoice)</b> dulu kalau mau mengubah charges atau customer."
 			),
 			title=_("Booking Terkunci"),
 		)
@@ -1318,6 +1324,10 @@ def generate_invoice(booking):
 def rollback_to_draft(booking):
 	"""Pending Payment -> Draft: void the booking's draft invoice and reopen it for editing.
 
+	The form button is **Kembali ke Draft (batalkan invoice)**. The function keeps its own
+	name — it is a whitelisted endpoint others may call — so the label is recorded here
+	rather than guessed from it.
+
 	The undo for :func:`generate_invoice`, and the ONLY way to change charges once an
 	invoice exists. Allowed strictly while nothing has settled:
 
@@ -1497,6 +1507,10 @@ def void_draft(booking):
 @frappe.whitelist()
 def revert_booking_to_draft(booking):
 	"""Bring a SUBMITTED booking back to an editable draft WITHOUT touching its payment.
+
+	The form button is **Kembali ke Draft (pembayaran tetap)** — the qualifier IS the
+	difference from :func:`rollback_to_draft`, which reaches the same Draft by voiding the
+	invoice instead. The function keeps its own name for the same reason as that one.
 
 	Use case: a Cash booking was paid (and so auto-confirmed), but a data correction is
 	needed before the tank moves. Unlike Cancel — which reverses the Payment Entries and
