@@ -27,11 +27,14 @@ GATE_OUT = "Gate_Out"
 # Statuses that mean the tank is physically in the depot right now.
 PRESENT = (IN_DEPOT, AVAILABLE)
 
-# Order states that still count as "open" (i.e. keep the container In_Depot).
-_DONE_CLEANING = ("Completed", "Cancelled")
-_DONE_REPAIR = ("Completed", "Cancelled", "Rejected")
+# Terminal order states — everything else counts as "open" (i.e. keeps the container
+# In_Depot). Public because this is the app's definition of finished work: the Desk
+# dashboard cards and the Container Status Report read it from here rather than
+# restating it, so "open" cannot come to mean two different things.
+DONE_CLEANING = ("Completed", "Cancelled")
+DONE_REPAIR = ("Completed", "Cancelled", "Rejected")
 # Periodic Test Order shares the M&R owner-approval machine — same terminal set.
-_DONE_PERIODIC = ("Completed", "Cancelled", "Rejected")
+DONE_PERIODIC = ("Completed", "Cancelled", "Rejected")
 
 
 def container_open_orders(container: str) -> list[dict]:
@@ -65,9 +68,9 @@ def container_open_orders(container: str) -> list[dict]:
     ):
         out.append({"doctype": "Inspection", "name": row.name, "label": "EIR-In", "status": "Draft"})
     for doctype, done, label in (
-        ("Cleaning Order", _DONE_CLEANING, "Cleaning"),
-        ("Repair Order", _DONE_REPAIR, "M&R"),
-        ("Periodic Test Order", _DONE_PERIODIC, "Periodic Test"),
+        ("Cleaning Order", DONE_CLEANING, "Cleaning"),
+        ("Repair Order", DONE_REPAIR, "M&R"),
+        ("Periodic Test Order", DONE_PERIODIC, "Periodic Test"),
     ):
         for row in frappe.get_all(
             doctype,

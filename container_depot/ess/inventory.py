@@ -387,9 +387,9 @@ def _count_active_job_containers(allowed) -> int:
 	excluded there and excluded here.
 	"""
 	from container_depot.container_depot.container_status import (
-		_DONE_CLEANING,
-		_DONE_PERIODIC,
-		_DONE_REPAIR,
+		DONE_CLEANING,
+		DONE_PERIODIC,
+		DONE_REPAIR,
 	)
 
 	scope = {} if allowed is None else {"depot": ["in", allowed or [""]]}
@@ -401,9 +401,9 @@ def _count_active_job_containers(allowed) -> int:
 		)
 	)
 	for doctype, done in (
-		("Cleaning Order", _DONE_CLEANING),
-		("Repair Order", _DONE_REPAIR),
-		("Periodic Test Order", _DONE_PERIODIC),
+		("Cleaning Order", DONE_CLEANING),
+		("Repair Order", DONE_REPAIR),
+		("Periodic Test Order", DONE_PERIODIC),
 	):
 		containers |= set(
 			frappe.get_all(

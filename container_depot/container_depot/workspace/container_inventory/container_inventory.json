@@ -20,9 +20,21 @@
   {
    "chart_name": "Activity by Type (Last Month)",
    "label": "Activity by Type (Last Month)"
+  },
+  {
+   "chart_name": "Cleaning Order by Status",
+   "label": "Cleaning Order by Status"
+  },
+  {
+   "chart_name": "M&R by Status",
+   "label": "M&R by Status"
+  },
+  {
+   "chart_name": "Periodic Test by Status",
+   "label": "Periodic Test by Status"
   }
  ],
- "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Container Inventory \\u2014 Live Monitoring</b></span>\", \"col\": 12}}, {\"id\": \"hdr_rpt\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Reports & Lists</b></span>\", \"col\": 12}}, {\"id\": \"sc_ci\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Inventory\", \"col\": 3}}, {\"id\": \"sc_ca\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Activity\", \"col\": 3}}, {\"id\": \"sc_kpi\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Inventory KPI per Principal\", \"col\": 3}}, {\"id\": \"sc_status\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Status Report\", \"col\": 3}}, {\"id\": \"sc_daily\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Daily Operations Report\", \"col\": 3}}, {\"id\": \"sc_container\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container\", \"col\": 3}}, {\"id\": \"hdr_kpi\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Snapshot</b></span>\", \"col\": 12}}, {\"id\": \"nc_Stock In Depo\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Stock In Depo\", \"col\": 3}}, {\"id\": \"nc_Dirty Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Dirty Tank\", \"col\": 3}}, {\"id\": \"nc_Clean Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Clean Tank\", \"col\": 3}}, {\"id\": \"nc_Tanks In Cleaning\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Cleaning\", \"col\": 3}}, {\"id\": \"nc_Tanks In Survey or Repair\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks In Survey or Repair\", \"col\": 3}}, {\"id\": \"nc_Tanks Ready for Release\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks Ready for Release\", \"col\": 3}}, {\"id\": \"nc_Tank In Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank In Today\", \"col\": 3}}, {\"id\": \"nc_Tank Out Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank Out Today\", \"col\": 3}}, {\"id\": \"hdr2\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Stock & Flow</b></span>\", \"col\": 12}}, {\"id\": \"ch_Tanks by Stage\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Stage\", \"col\": 6}}, {\"id\": \"ch_Tanks by Principal\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Principal\", \"col\": 6}}, {\"id\": \"ch_Tank IN (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank IN (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Tank OUT (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank OUT (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Activity by Type (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Activity by Type (Last Month)\", \"col\": 6}}]",
+ "content": "[{\"id\": \"hdr1\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Container Inventory \\u2014 Live Monitoring</b></span>\", \"col\": 12}}, {\"id\": \"hdr_rpt\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Reports & Lists</b></span>\", \"col\": 12}}, {\"id\": \"sc_ci\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Inventory\", \"col\": 3}}, {\"id\": \"sc_ca\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Activity\", \"col\": 3}}, {\"id\": \"sc_kpi\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Inventory KPI per Principal\", \"col\": 3}}, {\"id\": \"sc_status\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container Status Report\", \"col\": 3}}, {\"id\": \"sc_daily\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Daily Operations Report\", \"col\": 3}}, {\"id\": \"sc_container\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Container\", \"col\": 3}}, {\"id\": \"hdr_kpi\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Snapshot</b></span>\", \"col\": 12}}, {\"id\": \"nc_Stock In Depo\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Stock In Depo\", \"col\": 3}}, {\"id\": \"nc_Dirty Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Dirty Tank\", \"col\": 3}}, {\"id\": \"nc_Clean Tank\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Clean Tank\", \"col\": 3}}, {\"id\": \"nc_Tanks Ready for Release\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tanks Ready for Release\", \"col\": 3}}, {\"id\": \"nc_Tank In Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank In Today\", \"col\": 3}}, {\"id\": \"nc_Tank Out Today\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Tank Out Today\", \"col\": 3}}, {\"id\": \"hdr_order\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Order Aktif</b></span>\", \"col\": 12}}, {\"id\": \"nc_EIR Menunggu Review\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"EIR Menunggu Review\", \"col\": 3}}, {\"id\": \"nc_Cleaning Order Aktif\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Cleaning Order Aktif\", \"col\": 3}}, {\"id\": \"nc_M&R Aktif\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"M&R Aktif\", \"col\": 3}}, {\"id\": \"nc_M&R Menunggu Approval\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"M&R Menunggu Approval\", \"col\": 3}}, {\"id\": \"nc_Periodic Test Aktif\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Periodic Test Aktif\", \"col\": 3}}, {\"id\": \"nc_Survey Order Aktif\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Survey Order Aktif\", \"col\": 3}}, {\"id\": \"nc_Survey Posisi Pending\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Survey Posisi Pending\", \"col\": 3}}, {\"id\": \"nc_Order Bongkar Aktif\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Order Bongkar Aktif\", \"col\": 3}}, {\"id\": \"nc_Order Muat Aktif\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Order Muat Aktif\", \"col\": 3}}, {\"id\": \"nc_Gate Out Plan Open\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Gate Out Plan Open\", \"col\": 3}}, {\"id\": \"nc_Booking Belum Dibayar\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Booking Belum Dibayar\", \"col\": 3}}, {\"id\": \"hdr2\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Stock & Flow</b></span>\", \"col\": 12}}, {\"id\": \"ch_Tanks by Stage\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Stage\", \"col\": 6}}, {\"id\": \"ch_Tanks by Principal\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tanks by Principal\", \"col\": 6}}, {\"id\": \"ch_Tank IN (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank IN (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Tank OUT (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Tank OUT (Last Month)\", \"col\": 6}}, {\"id\": \"ch_Activity by Type (Last Month)\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Activity by Type (Last Month)\", \"col\": 6}}, {\"id\": \"hdr_order_chart\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h5\\\"><b>Order Watch</b></span>\", \"col\": 12}}, {\"id\": \"ch_Cleaning Order by Status\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Cleaning Order by Status\", \"col\": 6}}, {\"id\": \"ch_M&R by Status\", \"type\": \"chart\", \"data\": {\"chart_name\": \"M&R by Status\", \"col\": 6}}, {\"id\": \"ch_Periodic Test by Status\", \"type\": \"chart\", \"data\": {\"chart_name\": \"Periodic Test by Status\", \"col\": 6}}]",
  "creation": "2026-06-20 00:00:00.000000",
  "docstatus": 0,
  "doctype": "Workspace",
@@ -47,14 +59,6 @@
    "number_card_name": "Clean Tank"
   },
   {
-   "label": "Tanks In Cleaning",
-   "number_card_name": "Tanks In Cleaning"
-  },
-  {
-   "label": "Tanks In Survey or Repair",
-   "number_card_name": "Tanks In Survey or Repair"
-  },
-  {
    "label": "Tanks Ready for Release",
    "number_card_name": "Tanks Ready for Release"
   },
@@ -65,6 +69,50 @@
   {
    "label": "Tank Out Today",
    "number_card_name": "Tank Out Today"
+  },
+  {
+   "label": "EIR Menunggu Review",
+   "number_card_name": "EIR Menunggu Review"
+  },
+  {
+   "label": "Cleaning Order Aktif",
+   "number_card_name": "Cleaning Order Aktif"
+  },
+  {
+   "label": "M&R Aktif",
+   "number_card_name": "M&R Aktif"
+  },
+  {
+   "label": "M&R Menunggu Approval",
+   "number_card_name": "M&R Menunggu Approval"
+  },
+  {
+   "label": "Periodic Test Aktif",
+   "number_card_name": "Periodic Test Aktif"
+  },
+  {
+   "label": "Survey Order Aktif",
+   "number_card_name": "Survey Order Aktif"
+  },
+  {
+   "label": "Survey Posisi Pending",
+   "number_card_name": "Survey Posisi Pending"
+  },
+  {
+   "label": "Order Bongkar Aktif",
+   "number_card_name": "Order Bongkar Aktif"
+  },
+  {
+   "label": "Order Muat Aktif",
+   "number_card_name": "Order Muat Aktif"
+  },
+  {
+   "label": "Gate Out Plan Open",
+   "number_card_name": "Gate Out Plan Open"
+  },
+  {
+   "label": "Booking Belum Dibayar",
+   "number_card_name": "Booking Belum Dibayar"
   }
  ],
  "owner": "Administrator",
@@ -123,5 +171,7 @@
   }
  ],
  "title": "Container Inventory",
- "type": "Workspace"
+ "type": "Workspace",
+ "modified": "2026-08-19 12:00:00.000000",
+ "modified_by": "Administrator"
 }

@@ -2,6 +2,13 @@ import os
 
 import frappe
 
+from container_depot.container_depot.container_status import (
+	DONE_CLEANING,
+	DONE_PERIODIC,
+	DONE_REPAIR,
+)
+from container_depot.state_machine import IN_DEPO_STAGES
+
 # Roles that get a blanket DocPerm on EVERY Container Depot doctype, including ones added
 # after this line was written. The per-role matrix lives further down (FIELD_ROLE_MATRIX
 # / OFFICE_ROLE_MATRIX); this is only the catch-all beneath it.
@@ -728,10 +735,28 @@ def setup_property_setters():
 # Container Inventory dashboard — Number Cards + Dashboard Charts (native
 # records, no custom source). Seeded idempotently so the "Container Inventory"
 # workspace lights up on fresh install and stays in sync on every migrate.
-# "In Depo" = every inventory_stage except Pre-Arrival / Departed.
+#
+# Two halves, and the split matters:
+#   * SNAPSHOT  — counted on Container / Gate Entry / Container Movement. Where the
+#     tanks are right now.
+#   * ORDER WATCH — counted on the order doctypes themselves. Container.status is
+#     presence-based (Booked / In_Depot / Available / Gate_Out) and carries NO work
+#     detail any more, so "how much work is open" can only be read off the orders.
+#     The old stage-based cards (inventory_stage = Cleaning / Survey / Repair (M&R))
+#     silently counted zero from the day those stages were removed — v0_59 deletes
+#     them; the ``* Aktif`` cards below are their replacement.
 # ---------------------------------------------------------------------------
 
-_IN_DEPO_FILTER = [["inventory_stage", "not in", ["Pre-Arrival", "Departed"]]]
+# "In Depo" = physically present. Stated positively (IN_DEPO_STAGES) rather than as
+# "not Pre-Arrival/Departed", so a container with a blank stage (never saved through
+# the controller) is not silently counted as stock.
+_IN_DEPO_FILTER = [["inventory_stage", "in", IN_DEPO_STAGES]]
+
+# "Open" is defined by listing the CLOSED statuses, not the open ones: a status added to
+# the Select later then counts as outstanding work by default. The other way round it
+# would drop out of the dashboard silently, which is how work goes missing. The terminal
+# sets come from container_status — the same ones that decide whether a tank is Available
+# — so a card can never disagree with the tank's own readiness.
 
 # Number Card autonames from ``label`` and Dashboard Chart from ``chart_name``,
 # so those fields ARE the record name — keep them unique + readable; the
@@ -743,10 +768,6 @@ INVENTORY_NUMBER_CARDS = [
 	 "document_type": "Container", "filters_json": [["cleaning_status", "in", ["Pending", "In_Progress"]]]},
 	{"label": "Clean Tank",
 	 "document_type": "Container", "filters_json": [["cleaning_status", "=", "Completed"]]},
-	{"label": "Tanks In Cleaning",
-	 "document_type": "Container", "filters_json": [["inventory_stage", "=", "Cleaning"]]},
-	{"label": "Tanks In Survey or Repair",
-	 "document_type": "Container", "filters_json": [["inventory_stage", "in", ["Survey", "Repair (M&R)"]]]},
 	{"label": "Tanks Ready for Release",
 	 "document_type": "Container", "filters_json": [["inventory_stage", "=", "Ready"]]},
 	{"label": "Tank In Today",
@@ -754,6 +775,42 @@ INVENTORY_NUMBER_CARDS = [
 	{"label": "Tank Out Today",
 	 "document_type": "Container Movement",
 	 "filters_json": [["to_status", "=", "Gate_Out"], ["movement_timestamp", "Timespan", "today"]]},
+]
+
+# Order watch — one card per order doctype, each counting only what is still open, so
+# the dashboard answers "what is outstanding" without opening nine list views.
+# Submittable doctypes get an explicit ``docstatus`` filter where a cancelled document
+# keeps its last status (Order Bongkar / Order Muat have no "Cancelled" option at all).
+ORDER_NUMBER_CARDS = [
+	{"label": "EIR Menunggu Review",
+	 "document_type": "Inspection", "filters_json": [["status", "=", "Pending Review"]]},
+	{"label": "Cleaning Order Aktif",
+	 "document_type": "Cleaning Order",
+	 "filters_json": [["status", "not in", list(DONE_CLEANING)], ["docstatus", "<", 2]]},
+	{"label": "M&R Aktif",
+	 "document_type": "Repair Order", "filters_json": [["status", "not in", list(DONE_REPAIR)]]},
+	{"label": "M&R Menunggu Approval",
+	 "document_type": "Repair Order", "filters_json": [["status", "=", "Pending Approval"]]},
+	{"label": "Periodic Test Aktif",
+	 "document_type": "Periodic Test Order",
+	 "filters_json": [["status", "not in", list(DONE_PERIODIC)]]},
+	{"label": "Survey Order Aktif",
+	 "document_type": "Survey Order",
+	 "filters_json": [["status", "not in", ["Paid", "Cancelled"]], ["docstatus", "<", 2]]},
+	{"label": "Survey Posisi Pending",
+	 "document_type": "Container Position Survey",
+	 "filters_json": [["status", "=", "Pending Survey"], ["docstatus", "<", 2]]},
+	{"label": "Order Bongkar Aktif",
+	 "document_type": "Order Bongkar",
+	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},
+	{"label": "Order Muat Aktif",
+	 "document_type": "Order Muat",
+	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},
+	{"label": "Gate Out Plan Open",
+	 "document_type": "Gate Out Plan", "filters_json": [["status", "=", "Open"]]},
+	{"label": "Booking Belum Dibayar",
+	 "document_type": "Container Booking",
+	 "filters_json": [["payment_status", "=", "Unpaid"], ["docstatus", "=", 1]]},
 ]
 
 INVENTORY_CHARTS = [
@@ -774,6 +831,19 @@ INVENTORY_CHARTS = [
 	 "document_type": "Container Activity", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "activity_type", "type": "Bar",
 	 "filters_json": [["activity_time", "Timespan", "last month"]]},
+	# Order watch, the distribution behind the counters: where the open work is stuck.
+	# Cancelled documents are filtered out so the bar chart is a worklist, not a ledger.
+	{"chart_name": "Cleaning Order by Status",
+	 "document_type": "Cleaning Order", "chart_type": "Group By", "group_by_type": "Count",
+	 "group_by_based_on": "status", "type": "Bar", "filters_json": [["docstatus", "<", 2]]},
+	{"chart_name": "M&R by Status",
+	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
+	 "group_by_based_on": "status", "type": "Bar",
+	 "filters_json": [["status", "!=", "Cancelled"]]},
+	{"chart_name": "Periodic Test by Status",
+	 "document_type": "Periodic Test Order", "chart_type": "Group By", "group_by_type": "Count",
+	 "group_by_based_on": "status", "type": "Bar",
+	 "filters_json": [["status", "!=", "Cancelled"]]},
 ]
 
 
@@ -820,10 +890,14 @@ def setup_inventory_dashboard():
 	"""Seed the Container Inventory Number Cards + Dashboard Charts (idempotent).
 
 	Skipped quietly if the dashboard doctypes or the inventory_stage column aren't
-	present yet (e.g. very early in a fresh bootstrap)."""
+	present yet (e.g. very early in a fresh bootstrap). A single spec whose
+	``document_type`` does not exist yet is skipped too, so adding a card for a
+	doctype that lands in the same release can never break the migrate."""
 	if not frappe.db.has_column("Container", "inventory_stage"):
 		return
-	for card in INVENTORY_NUMBER_CARDS:
+	for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS:
+		if not frappe.db.exists("DocType", card["document_type"]):
+			continue
 		# Number Card autonames from label → that is the record name.
 		_ensure_dashboard_doc("Number Card", card["label"], {
 			"is_public": 1,
@@ -832,6 +906,8 @@ def setup_inventory_dashboard():
 			**card,
 		})
 	for chart in INVENTORY_CHARTS:
+		if not frappe.db.exists("DocType", chart["document_type"]):
+			continue
 		spec = dict(chart)
 		spec.setdefault("filters_json", [])  # Dashboard Chart requires filters_json.
 		# Dashboard Chart autonames from chart_name → that is the record name.
