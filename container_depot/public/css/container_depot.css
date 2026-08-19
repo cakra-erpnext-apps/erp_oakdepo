@@ -99,6 +99,61 @@ img.oak-grid-photo:hover {
 	border-radius: var(--border-radius-md);
 }
 
+/*
+ * The photo carousel (open_photo_carousel in inspection.js).
+ *
+ * A FIXED stage, for the same reason .oak-photo-large is fixed: the set holds a 12MP shot
+ * of a whole tank next to a tight crop of one valve, and a box that shrinks to its image
+ * makes the second one postage-stamp sized. object-fit:contain scales either to the same
+ * usable area, and — because the box does not resize between slides — the arrows stay
+ * under the reviewer's cursor while they page through twenty photos.
+ */
+.oak-carousel {
+	display: flex;
+	align-items: center;
+	gap: var(--margin-sm);
+}
+
+.oak-carousel-stage {
+	flex: 1;
+	min-width: 0; /* without it the image floors the flex item and pushes the arrows out */
+	background: var(--control-bg);
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md);
+}
+
+.oak-carousel-stage img {
+	display: block;
+	width: 100%;
+	height: 60vh;
+	min-height: 320px;
+	object-fit: contain;
+}
+
+.oak-carousel-nav {
+	flex: 0 0 auto;
+	font-size: 22px;
+	line-height: 1;
+	padding: var(--padding-sm) var(--padding-md);
+}
+
+.oak-carousel-caption {
+	display: flex;
+	align-items: center;
+	gap: var(--margin-sm);
+	margin-top: var(--margin-sm);
+	color: var(--text-muted);
+}
+
+/* The position counter reads as a label, not as prose. */
+.oak-carousel-count {
+	font-weight: 600;
+	color: var(--text-color);
+	background: var(--control-bg);
+	border-radius: var(--border-radius-sm);
+	padding: 2px var(--padding-xs);
+}
+
 /* Full-size view opened by clicking a thumbnail. */
 .oak-photo-full {
 	text-align: center;

@@ -63,6 +63,12 @@ frappe.ui.form.on('Inspection', {
 		if (!frm.is_new() && (frm.doc.item_photos || []).length) {
 			frm.add_custom_button(__('Filter Foto per Section'), () => filter_photos_by_section(frm));
 		}
+		// Clicking a thumbnail opens the carousel too, but only once you know that — and a
+		// reviewer arriving at a submitted EIR is here to page through the photos, not to
+		// hunt for the way in.
+		if (!frm.is_new() && photo_slides(frm).length) {
+			frm.add_custom_button(__('Lihat Semua Foto'), () => open_photo_carousel(frm, photo_slides(frm), 0));
+		}
 		install_photo_thumbnails(frm);
 		bind_photo_lightbox(frm);
 	},
@@ -255,7 +261,7 @@ function bind_photo_lightbox(frm) {
 				const large = e.target.closest('.oak-photo-large img');
 				if (large) {
 					e.preventDefault();
-					show_photo(large.getAttribute('data-oak-photo'));
+					show_photo(large.getAttribute('data-oak-photo'), frm);
 					return;
 				}
 				const cell = e.target.closest('.grid-static-col');
@@ -264,7 +270,7 @@ function bind_photo_lightbox(frm) {
 				if (!img) return; // empty cell — let Frappe open the upload control
 				e.stopPropagation();
 				e.preventDefault();
-				show_photo(img.getAttribute('data-oak-photo'));
+				show_photo(img.getAttribute('data-oak-photo'), frm);
 			},
 			true,
 		);
@@ -322,15 +328,173 @@ function render_photo_preview(frm, cdt, cdn) {
 	);
 }
 
-function show_photo(src) {
+// --- The carousel ---
+//
+// Reviewing an EIR means looking at every photo in turn — twenty shots of one tank, is the
+// damage there, is anything missing. Opening a dialog per photo made that twenty
+// open-look-close cycles, so the viewer holds the whole set and moves between them.
+//
+// It also carries the ONE edit a reviewer makes while looking: which checklist item a
+// photo belongs to. The PWA lets a surveyor dump "foto cepat" without picking a section,
+// and somebody has to sort them afterwards — a job that is only possible while you can see
+// the photo. Doing it in the grid meant opening a row, reading a filename, guessing. Here
+// the picture and the picker are on screen together.
+//
+// Both photo tables feed one list, in form order: a reviewer wants the exterior shots and
+// the item shots as one pass, not two. Only item rows carry a checklist item, so the picker
+// hides itself on an exterior slide rather than offering an edit that would go nowhere.
+
+function photo_slides(frm) {
+	const out = [];
+	(frm.doc.exterior_photos || []).forEach((row) => {
+		if (row.photo_url) {
+			out.push({
+				src: row.photo_url,
+				cdt: 'Inspection Photo',
+				cdn: row.name,
+				kind: 'exterior',
+				label: row.photo_view || __('Foto luar'),
+			});
+		}
+	});
+	(frm.doc.item_photos || []).forEach((row) => {
+		if (row.photo) {
+			out.push({
+				src: row.photo,
+				cdt: 'Inspection Item Photo',
+				cdn: row.name,
+				kind: 'item',
+				label: row.item_name || __('(Belum disortir)'),
+			});
+		}
+	});
+	return out;
+}
+
+// Assigning a checklist item is only an edit of item_photos, which is allow_on_submit — so
+// it stays available on a submitted EIR, which is exactly when the sorting usually happens.
+// A cancelled EIR is a closed record, and a reader without write permission gets the viewer
+// without the picker.
+function may_sort_photos(frm) {
+	return frm.doc.docstatus !== 2 && frappe.perm.has_perm(frm.doctype, 0, 'write');
+}
+
+// Section + item name come off the chosen checklist item. Shared with the grid's own
+// trigger so the two can never fill a row differently.
+function fill_from_checklist_item(cdt, cdn) {
+	const row = (locals[cdt] || {})[cdn];
+	if (!row || !row.checklist_item) return Promise.resolve();
+	return frappe.db
+		.get_value('Inspection Checklist Item', row.checklist_item, ['item_name', 'area'])
+		.then((r) => {
+			const ci = r.message || {};
+			frappe.model.set_value(cdt, cdn, 'area', ci.area);
+			frappe.model.set_value(cdt, cdn, 'item_name', ci.item_name);
+		});
+}
+
+function show_photo(src, frm) {
 	if (!src) return;
-	const d = new frappe.ui.Dialog({ title: __('Foto'), size: 'large' });
-	d.$body.html(
-		`<div class="oak-photo-full"><img src="${frappe.utils.escape_html(src)}" alt=""></div>`,
-	);
-	d.set_secondary_action_label(__('Buka di tab baru'));
-	d.set_secondary_action(() => window.open(src, '_blank'));
+	// Called from a click on one photo: that photo is where the carousel opens, the rest is
+	// what it can reach. Matched by URL because the click arrives as an <img>, not a row —
+	// and two rows holding the same file are the same picture anyway.
+	const slides = frm ? photo_slides(frm) : [];
+	const start = Math.max(0, slides.findIndex((s) => s.src === src));
+	if (!slides.length) return open_photo_carousel(frm, [{ src, kind: 'exterior', label: '' }], 0);
+	open_photo_carousel(frm, slides, start);
+}
+
+function open_photo_carousel(frm, slides, start) {
+	if (!slides || !slides.length) {
+		frappe.msgprint(__('Belum ada foto di EIR ini.'));
+		return;
+	}
+	let idx = Math.min(Math.max(start || 0, 0), slides.length - 1);
+	const sortable = frm && may_sort_photos(frm);
+	// Guards the Link control's own change handler while the carousel writes into it on
+	// every slide change — without it, moving to the next photo would "assign" the previous
+	// photo's item to the new row.
+	let syncing = false;
+
+	const d = new frappe.ui.Dialog({
+		title: __('Foto Inspeksi'),
+		size: 'large',
+		fields: [
+			{ fieldname: 'viewer', fieldtype: 'HTML' },
+			{
+				fieldname: 'checklist_item',
+				fieldtype: 'Link',
+				label: __('Checklist Item'),
+				options: 'Inspection Checklist Item',
+				// Only the items still in use — a retired one would file the photo under a
+				// section nothing else reports on.
+				get_query: () => ({ filters: { is_active: 1 } }),
+				read_only: sortable ? 0 : 1,
+				onchange() {
+					if (syncing) return;
+					const slide = slides[idx];
+					if (!slide || slide.kind !== 'item') return;
+					frappe.model.set_value(slide.cdt, slide.cdn, 'checklist_item', d.get_value('checklist_item'));
+					fill_from_checklist_item(slide.cdt, slide.cdn).then(() => {
+						const row = (locals[slide.cdt] || {})[slide.cdn] || {};
+						slide.label = row.item_name || __('(Belum disortir)');
+						frm.refresh_field('item_photos');
+						render();
+					});
+				},
+			},
+		],
+	});
+
+	function render() {
+		const slide = slides[idx];
+		const src = frappe.utils.escape_html(slide.src);
+		d.fields_dict.viewer.$wrapper.html(`
+			<div class="oak-carousel">
+				<button class="btn btn-default oak-carousel-nav" data-oak-step="-1"
+					title="${__('Sebelumnya')}" ${idx === 0 ? 'disabled' : ''}>&lsaquo;</button>
+				<div class="oak-carousel-stage"><img src="${src}" alt=""></div>
+				<button class="btn btn-default oak-carousel-nav" data-oak-step="1"
+					title="${__('Berikutnya')}" ${idx === slides.length - 1 ? 'disabled' : ''}>&rsaquo;</button>
+			</div>
+			<div class="oak-carousel-caption">
+				<span class="oak-carousel-count">${idx + 1} / ${slides.length}</span>
+				<span>${frappe.utils.escape_html(slide.label || '')}</span>
+			</div>
+		`);
+		d.$wrapper.find('.oak-carousel-nav').on('click', (e) => go(cint($(e.currentTarget).attr('data-oak-step'))));
+		// The picker belongs to an item photo. On an exterior slide there is nothing to
+		// assign, so it goes away rather than sitting there inert.
+		d.set_df_property('checklist_item', 'hidden', slide.kind === 'item' ? 0 : 1);
+		if (slide.kind === 'item') {
+			syncing = true;
+			const row = (locals[slide.cdt] || {})[slide.cdn] || {};
+			d.set_value('checklist_item', row.checklist_item || '');
+			syncing = false;
+		}
+		d.set_secondary_action_label(__('Buka di tab baru'));
+		d.set_secondary_action(() => window.open(slide.src, '_blank'));
+	}
+
+	function go(step) {
+		const next = idx + step;
+		if (next < 0 || next >= slides.length) return;
+		idx = next;
+		render();
+	}
+
+	// Arrow keys, because a carousel you have to aim at with a mouse is not much better
+	// than opening the rows one at a time. Bound on the dialog and removed with it.
+	d.$wrapper.on('keydown', (e) => {
+		if (e.key === 'ArrowLeft') go(-1);
+		else if (e.key === 'ArrowRight') go(1);
+	});
+
+	render();
 	d.show();
+	// The dialog traps focus on its first control; put it on the body so the arrow keys
+	// work without the reviewer clicking the picture first.
+	d.$wrapper.find('.modal-content').attr('tabindex', '-1').trigger('focus');
 }
 
 // --- A photo row without a photo is not a row ---
@@ -405,15 +569,7 @@ frappe.ui.form.on('Inspection Item Photo', {
 	},
 
 	checklist_item(frm, cdt, cdn) {
-		const row = locals[cdt][cdn];
-		if (!row.checklist_item) return;
-		frappe.db
-			.get_value('Inspection Checklist Item', row.checklist_item, ['item_name', 'area'])
-			.then((r) => {
-				const ci = r.message || {};
-				frappe.model.set_value(cdt, cdn, 'area', ci.area);
-				frappe.model.set_value(cdt, cdn, 'item_name', ci.item_name);
-			});
+		fill_from_checklist_item(cdt, cdn);
 	},
 });
 

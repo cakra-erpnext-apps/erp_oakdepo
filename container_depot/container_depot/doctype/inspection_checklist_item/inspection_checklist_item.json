@@ -88,7 +88,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-08-18 22:30:00.000000",
  "module": "Container Depot",
  "name": "Inspection Checklist Item",
  "naming_rule": "By fieldname",
@@ -96,5 +96,6 @@
  "search_fields": "area,item_name,printed_no",
  "sort_field": "sequence",
  "sort_order": "ASC",
- "title_field": "item_name"
+ "title_field": "item_name",
+ "show_title_field_in_link": 1
 }
