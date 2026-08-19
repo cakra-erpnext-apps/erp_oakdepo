@@ -16,7 +16,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, getdate, now_datetime, time_diff_in_seconds, today
+from frappe.utils import cint, flt, getdate, now_datetime, time_diff_in_seconds, today
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
@@ -88,11 +88,20 @@ def get_eir_masters() -> dict:
 	)
 	# Active cargos for the EIR's "set last cargo" picker (name == cargo_name).
 	cargos = frappe.get_all("Cargo", filters={"is_active": 1}, pluck="name", order_by="name asc")
+	# Pilihan Tipe / Ukuran untuk kolom Data Tank yang bisa diisi dari EIR — dibaca dari
+	# doctype Container supaya menambah opsi di sana cukup sekali, tidak perlu menyalin
+	# daftarnya ke PWA.
+	meta = frappe.get_meta("Container")
+	tank_options = {
+		f: [o for o in (meta.get_field(f).options or "").split("\n") if o]
+		for f in ("container_type", "size")
+	}
 	return {
 		"checklist": checklist,
 		"damage_codes": damage_codes,
 		"repair_codes": repair_codes,
 		"cargos": cargos,
+		"tank_options": tank_options,
 	}
 
 
@@ -598,9 +607,9 @@ def prefill(
 
 	c = frappe.db.get_value(
 		"Container", name,
-		["name", "container_no", "serial_no", "manufacture_date", "capacity",
-		 "tare_weight", "max_gross_weight", "last_test_date", "last_cargo", "ex_vessel",
-		 "depot", "principal", "eir_in_date", "eir_out_date"],
+		["name", "container_no", "container_type", "size", "serial_no", "manufacture_date",
+		 "capacity", "tare_weight", "max_gross_weight", "last_test_date", "last_cargo",
+		 "ex_vessel", "depot", "principal", "eir_in_date", "eir_out_date"],
 		as_dict=True,
 	)
 	if not c:
@@ -620,6 +629,8 @@ def prefill(
 		"direction": direction,
 		"container": c.name,
 		"container_no": c.container_no,
+		"container_type": c.container_type,
+		"size": c.size,
 		"serial_no": c.serial_no,
 		"manufacture_date": c.manufacture_date,
 		"capacity": c.capacity,
@@ -1022,6 +1033,73 @@ def start_eir(inspection: str) -> dict:
 	}
 
 
+# Facts about the TANK ITSELF that a surveyor may complete from an EIR, with how each one
+# is read off the payload. The EIR is the moment somebody is standing at the tank with the
+# data plate in front of them, so a half-empty Container master gets filled in there rather
+# than in a separate Desk trip that never happens.
+#
+# What is deliberately NOT here: everything the depot writes by itself — status, inventory
+# stage, depot, last cargo, ex vessel, the gate dates, ``last_test_date`` (stamped by a
+# Periodic Test Order) — plus ``principal``, because who owns a tank is a commercial fact
+# that decides billing, not something read off its side. ``container_no`` is the Container's
+# own name and can never be edited from anywhere.
+TANK_MASTER_FIELDS = {
+	"container_type": "data",
+	"size": "data",
+	"serial_no": "data",
+	"manufacture_date": "date",
+	"capacity": "float",
+	"tare_weight": "float",
+	"max_gross_weight": "float",
+}
+
+
+def _tank_value(kind: str, value):
+	"""Normalise one tank field so an unchanged value never counts as an edit."""
+	if kind == "float":
+		return flt(value)
+	if kind == "date":
+		return getdate(value) if value else None
+	return (str(value).strip() or None) if value is not None else None
+
+
+def _apply_tank_master(container: str, tank) -> list:
+	"""Write the tank's own facts from an EIR back onto its Container master.
+
+	Only the keys the payload actually carries are touched, so a form that shows three of
+	the fields can never blank the other four. Returns the field names that really changed
+	— an unchanged auto-save writes nothing at all.
+
+	Saved with ``ignore_permissions``: the field roles hold Container **read** (§8.1) and
+	are not about to be handed blanket write over the master, where ``status`` and ``depot``
+	also live. The grant is this narrow list, reached only through an EIR the caller already
+	has write permission on (``save_draft`` saves the Inspection under real permissions
+	first) and only for a tank inside the caller's own branch.
+	"""
+	if isinstance(tank, str):
+		try:
+			tank = json.loads(tank)
+		except json.JSONDecodeError:
+			frappe.throw(_("tank must be a JSON object."))
+	if not (container and isinstance(tank, dict) and tank):
+		return []
+
+	_guard_container_branch(container)
+	doc = frappe.get_doc("Container", container)
+	changed = []
+	for field, kind in TANK_MASTER_FIELDS.items():
+		if field not in tank:
+			continue
+		value = _tank_value(kind, tank.get(field))
+		if _tank_value(kind, doc.get(field)) == value:
+			continue
+		doc.set(field, value)
+		changed.append(field)
+	if changed:
+		doc.save(ignore_permissions=True)
+	return changed
+
+
 def save_draft(
 	inspection: str,
 	inspection_type: str | None = None,
@@ -1039,6 +1117,7 @@ def save_draft(
 	lines=None,
 	photos=None,
 	seals=None,
+	tank=None,
 	submit=False,
 ) -> dict:
 	"""Update an existing draft EIR — the PWA auto-save (and finalize) action.
@@ -1050,6 +1129,12 @@ def save_draft(
 	``submit`` finalizes the EIR: the Inspection is submitted and its ``on_submit`` drives
 	the container's status + cargo writeback (we never set status here). Permissions are
 	enforced (no bypass).
+
+	``tank`` completes the Container master from the tank in front of the surveyor — serial,
+	type, size, build date, capacity, tare, MGW (see ``TANK_MASTER_FIELDS``). Unlike
+	``cargo`` this is written straight away rather than on submit: it is not EIR state that a
+	review could still change, it is the tank's own data, and an EIR that never gets finished
+	should not take the correction down with it.
 	"""
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
@@ -1118,6 +1203,8 @@ def save_draft(
 	else:
 		doc.save()  # NOT ignore_permissions.
 
+	tank_updated = _apply_tank_master(doc.container, tank)
+
 	return {
 		"success": True,
 		"inspection": doc.name,
@@ -1127,6 +1214,7 @@ def save_draft(
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
 		"photo_rows": len(photo_rows),
+		"tank_updated": tank_updated,
 	}
 
 
@@ -1235,8 +1323,9 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 		filters=filters,
 		or_filters=or_filters,
 		fields=[
-			"name", "inspection_id", "container", "container_no", "inspection_type",
-			"status", "tank_status", "docstatus", "revision_requested", "eir_date", "creation",
+			"name", "inspection_id", "container", "container_no", "container_principal",
+			"inspection_type", "status", "tank_status", "docstatus", "revision_requested",
+			"eir_date", "creation",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1290,8 +1379,9 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=[
-			"name", "inspection_id", "container", "container_no", "inspection_type",
-			"tank_status", "referred_voucher", "voucher_doctype", "depot", "eir_date", "creation",
+			"name", "inspection_id", "container", "container_no", "container_principal",
+			"inspection_type", "tank_status", "referred_voucher", "voucher_doctype", "depot",
+			"eir_date", "creation",
 			# Empty = not started yet, set = in progress (stamped by ``start_eir``). Drives
 			# the PWA worklist's belum / dikerjakan split; work_started_by scopes the
 			# next/prev EIR navigator to the account that is working them.
@@ -1340,8 +1430,8 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=[
-			"name", "inspection_id", "container", "container_no", "inspection_type",
-			"status", "tank_status", "docstatus", "eir_date", "creation",
+			"name", "inspection_id", "container", "container_no", "container_principal",
+			"inspection_type", "status", "tank_status", "docstatus", "eir_date", "creation",
 		],
 		order_by="creation desc",
 		limit_start=start,
@@ -1470,8 +1560,8 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=[
-			"name", "inspection_id", "container", "container_no", "tank_status",
-			"referred_voucher", "depot", "eir_date", "creation",
+			"name", "inspection_id", "container", "container_no", "container_principal",
+			"tank_status", "referred_voucher", "depot", "eir_date", "creation",
 			# See list_pending_eirs: empty = not started, set = in progress; work_started_by
 			# scopes the next/prev EIR navigator to the account working them.
 			"work_started_on", "work_started_by",

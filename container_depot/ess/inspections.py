@@ -184,12 +184,15 @@ def eir_save_draft(
 	lines=None,
 	photos=None,
 	seals=None,
+	tank=None,
 	submit=False,
 	request_id=None,
 ):
 	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR.
 
-	``seals`` is EIR-Out only: the seal numbers fitted at load-out.
+	``seals`` is EIR-Out only: the seal numbers fitted at load-out. ``tank`` completes the
+	Container master (serial / type / size / build date / capacity / tare / MGW) from the
+	tank the surveyor is standing at — see ``eir.TANK_MASTER_FIELDS``.
 
 	``request_id`` makes a retry safe. The offline outbox replays anything it could not
 	confirm, and a submit whose response was lost in transit would otherwise finalise the
@@ -212,6 +215,7 @@ def eir_save_draft(
 		create_repair_order=create_repair_order,
 		lines=lines,
 		photos=photos,
+		tank=tank,
 		submit=submit,
 	))
 

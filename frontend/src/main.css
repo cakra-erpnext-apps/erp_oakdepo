@@ -54,6 +54,23 @@
 		@apply font-medium text-brand-600 underline-offset-2 hover:text-brand-700;
 	}
 
+	/* A page-level bar that floats under the app header (App.vue publishes its measured
+	   height as --oak-header-h; the fallback covers the first paint). */
+	.oak-subheader {
+		position: sticky;
+		top: var(--oak-header-h, 56px);
+		z-index: 10;
+	}
+	/* A SECOND floating bar on the same screen — the EIR form header when the batch
+	   navigator is already parked above it. It stacks flush under whatever published
+	   --oak-nav-h (0 when there is no such bar) instead of landing on top of it, and sits
+	   one z-index lower so the two can never fight over the same strip. */
+	.oak-subheader-stacked {
+		position: sticky;
+		top: calc(var(--oak-header-h, 56px) + var(--oak-nav-h, 0px));
+		z-index: 9;
+	}
+
 	/* Form controls ------------------------------------------------------ */
 	.oak-input {
 		@apply w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition

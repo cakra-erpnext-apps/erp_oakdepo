@@ -6,10 +6,13 @@
 			     surveyor jump ◀ / ▶ between the EIRs they started without going back to the list;
 			     submitting one auto-advances to the next (see onSubmitted / onBack). -->
 			<!-- Sticky so the ◀ / ▶ controls stay reachable while scrolling a long EIR form.
-			     Pinned just below the app header (≈3.5rem tall + safe-area). -->
+			     Pinned just below the app header, whose real height App.vue publishes as
+			     --oak-header-h. Its OWN height goes out as --oak-nav-h so the EIR form's
+			     header parks under it instead of landing on the same strip. -->
 			<div
 				v-if="navQueue.length > 1 && activeIndex !== -1"
-				class="oak-card sticky z-10 space-y-2 p-2 top-[calc(env(safe-area-inset-top,0px)+3.5rem)]"
+				ref="navBar"
+				class="oak-card oak-subheader space-y-2 p-2"
 			>
 				<div class="flex items-center justify-between gap-2">
 					<button class="oak-btn oak-btn-secondary px-3 py-2" @click="goRel(-1)">
@@ -134,7 +137,9 @@
 									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'clipboard'" :size="16" />
 								</span>
 								<div class="min-w-0 flex-1">
-									<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+									<p class="truncate font-semibold text-gray-900">
+										{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+									</p>
 									<!-- The in-progress badge shares the subtitle line so the row keeps a
 									     single right-hand chip and stays readable on a narrow phone. -->
 									<p class="flex items-center gap-1.5 text-[11px]">
@@ -187,7 +192,9 @@
 						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
 							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
 							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+								<p class="truncate font-semibold text-gray-900">
+									{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+								</p>
 								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
 								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
 							</div>
@@ -216,7 +223,9 @@
 						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
 							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="16" /></span>
 							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+								<p class="truncate font-semibold text-gray-900">
+									{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+								</p>
 								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
 								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
 							</div>
@@ -234,7 +243,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue"
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
@@ -281,6 +290,36 @@ const outRes = cachedResource({
 	makeParams: () => ({ search: search.value || undefined, page_length: 50 }),
 	auto: true,
 	onSuccess: (data) => (outItems.value = (data.items || []).map((x) => ({ ...x, _type: "EIR-Out" }))),
+})
+
+// How tall the batch navigator is, published for whatever floats beneath it (the EIR form
+// header). Zero — not "unset" — while there is no navigator, so the form header comes back
+// up flush against the app bar the moment the batch is left.
+const navBar = ref(null)
+let navWatcher = null
+function setNavHeight(px) {
+	document.documentElement.style.setProperty("--oak-nav-h", `${px}px`)
+}
+watch(
+	navBar,
+	(el) => {
+		navWatcher?.disconnect()
+		navWatcher = null
+		if (!el || typeof ResizeObserver === "undefined") {
+			setNavHeight(0)
+			return
+		}
+		navWatcher = new ResizeObserver(([entry]) => {
+			const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height
+			setNavHeight(Math.round(h))
+		})
+		navWatcher.observe(el)
+	},
+	{ flush: "post" },
+)
+onBeforeUnmount(() => {
+	navWatcher?.disconnect()
+	setNavHeight(0)
 })
 
 // --- queue navigator + batch selection --------------------------------------

@@ -292,6 +292,54 @@ class TestEirDraft(FrappeTestCase):
 		self.assertEqual(len(d2["photos"]), 1)
 		self.assertEqual(d2["photos"][0]["photo"], "/private/files/p1.jpg")
 
+	def test_save_draft_completes_tank_master(self):
+		# The EIR is where the tank is actually in front of somebody, so its own facts are
+		# written straight onto the Container master — and only those: the keys the depot
+		# fills in by itself are ignored even when a caller sends them.
+		c = _make_container("EIRD1000010")
+		d = eir.open_draft(container_no="EIRD1000010")
+		eir.start_eir(d["inspection"])
+		res = eir.save_draft(
+			inspection=d["inspection"],
+			tank={
+				"serial_no": "SER-9911",
+				"manufacture_date": "2019-05-01",
+				"capacity": 24000,
+				"tare_weight": 3800,
+				"max_gross_weight": 36000,
+				"size": "20'",
+				# Not in TANK_MASTER_FIELDS — the depot owns these.
+				"last_cargo": "Palm Oil",
+				"principal": "Somebody Else",
+				"status": "Available",
+			},
+		)
+		self.assertIn("serial_no", res["tank_updated"])
+		for auto in ("last_cargo", "principal", "status"):
+			self.assertNotIn(auto, res["tank_updated"])
+
+		master = frappe.get_doc("Container", c)
+		self.assertEqual(master.serial_no, "SER-9911")
+		self.assertEqual(str(master.manufacture_date), "2019-05-01")
+		self.assertEqual(master.capacity, 24000)
+		self.assertEqual(master.tare_weight, 3800)
+		self.assertEqual(master.max_gross_weight, 36000)
+		self.assertNotEqual(master.last_cargo, "Palm Oil")
+		self.assertNotEqual(master.status, "Available")
+		# The header the PWA reopens with reads back off the master it just completed.
+		self.assertEqual(eir.open_draft(container_no="EIRD1000010")["serial_no"], "SER-9911")
+
+	def test_save_draft_tank_unchanged_writes_nothing(self):
+		# Every keystroke auto-saves, so an unchanged tank block must not touch the master.
+		_make_container("EIRD1000011", serial_no="SER-SAME", capacity=24000)
+		d = eir.open_draft(container_no="EIRD1000011")
+		eir.start_eir(d["inspection"])
+		res = eir.save_draft(
+			inspection=d["inspection"],
+			tank={"serial_no": "SER-SAME", "capacity": 24000, "manufacture_date": ""},
+		)
+		self.assertEqual(res["tank_updated"], [])
+
 	def test_save_draft_replaces_previous_state(self):
 		c = _make_container("EIRD1000003")
 		d = eir.open_draft(container_no="EIRD1000003")

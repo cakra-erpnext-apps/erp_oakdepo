@@ -1,15 +1,23 @@
 <template>
 	<div class="space-y-4">
-		<!-- Compact form header (the page header + worklist live in Eir.vue) -->
-		<div class="flex items-center gap-2">
+		<!-- Form header (the page header + worklist live in Eir.vue). Floats under the app
+		     bar so the surveyor always knows which tank the checklist under their thumb
+		     belongs to — this form is long enough to scroll for a minute straight.
+		     Everything shown once elsewhere is gone from here: the booking code has its own
+		     row in Dokumen Rujukan, the container number is the title, and the start time is
+		     a stamp, not a sentence. -->
+		<div class="oak-subheader-stacked -mx-4 flex items-center gap-2 border-b border-gray-200/80 bg-gray-50/95 px-4 py-2 backdrop-blur">
 			<button class="oak-btn oak-btn-secondary px-2 py-2" @click="emit('back')">
 				<Icon name="arrow-left" :size="18" />
 			</button>
-			<span class="oak-icon-tile h-9 w-9 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="20" /></span>
-			<div class="min-w-0">
-				<h2 class="text-base font-extrabold leading-tight tracking-tight">{{ labels.eirBadgeIn }} · {{ header?.container_no || "" }}</h2>
-				<p v-if="eirCode" class="truncate font-mono text-[11px] text-gray-500">{{ eirCode }}</p>
-				<p v-if="bookingCode" class="truncate font-mono text-[11px] font-semibold text-brand-600">{{ labels.bookingCode }}: {{ bookingCode }}</p>
+			<div class="min-w-0 flex-1">
+				<h2 class="truncate text-base font-extrabold leading-tight tracking-tight">
+					{{ labels.eirBadgeIn }} · {{ header?.container_no || "" }}<span v-if="header?.principal" class="font-semibold text-gray-500"> · {{ header.principal }}</span>
+				</h2>
+				<p class="truncate text-[11px] text-gray-500">
+					<span v-if="eirCode" class="font-mono">{{ eirCode }}</span>
+					<span v-if="workStartedShort"> · {{ labels.eirStartedAt }} {{ workStartedShort }}</span>
+				</p>
 			</div>
 		</div>
 
@@ -37,58 +45,74 @@
 			</section>
 
 			<template v-else>
-			<p class="flex items-center gap-1.5 text-[11px] text-gray-400">
-				<Icon name="clock" :size="12" /> {{ labels.eirStartedAt }}: {{ workStartedOn }}
-			</p>
-			<!-- Step 1b — referred voucher: pull shipper / truck / driver (read-only) -->
-			<section class="oak-section space-y-3">
+			<!-- Step 1b — referred voucher: shipper / truck / driver, one read-only block.
+			     Was two grey cards stacked (bon codes, then the crew) which read as two
+			     different facts about the same bon. -->
+			<section class="oak-section space-y-2">
 				<div class="flex items-center gap-2">
 					<Icon name="file-text" :size="16" class="text-gray-400" />
 					<p class="oak-section-title">{{ labels.referredVoucher }}</p>
 				</div>
-				<div class="rounded-xl bg-gray-50 p-3">
-					<div class="grid grid-cols-2 gap-3">
-						<div>
-							<p class="text-xs text-gray-500">{{ labels.bookingCode }}</p>
-							<p class="font-mono font-semibold text-brand-600">{{ bookingCode || "—" }}</p>
-						</div>
-						<div>
-							<p class="text-xs text-gray-500">{{ labels.referredVoucher }}</p>
-							<p class="font-mono font-semibold text-gray-800">{{ referredVoucher || "—" }}</p>
-						</div>
-					</div>
-					<p class="mt-1 text-[11px] text-gray-400">{{ labels.eirVoucherLocked }}</p>
-				</div>
-				<dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl bg-gray-50 p-3 text-sm">
-					<div>
-						<dt class="text-xs text-gray-500">{{ labels.shipper }}</dt>
-						<dd class="font-semibold text-gray-800">{{ shipper || "—" }}</dd>
-					</div>
-					<div>
-						<dt class="text-xs text-gray-500">{{ labels.truckNo }}</dt>
-						<dd class="font-semibold text-gray-800">{{ truckNo || "—" }}</dd>
-					</div>
-					<div>
-						<dt class="text-xs text-gray-500">{{ labels.driverName }}</dt>
-						<dd class="font-semibold text-gray-800">{{ driver || "—" }}</dd>
-					</div>
-					<div>
-						<dt class="text-xs text-gray-500">{{ labels.driverPhone }}</dt>
-						<dd class="font-semibold text-gray-800">{{ driverPhone || "—" }}</dd>
+				<dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl bg-gray-50 p-3 text-sm sm:grid-cols-3">
+					<div v-for="f in voucherCells" :key="f.label">
+						<dt class="text-xs text-gray-500">{{ f.label }}</dt>
+						<dd class="truncate font-semibold" :class="f.mono ? 'font-mono text-brand-600' : 'text-gray-800'">{{ f.value || "—" }}</dd>
 					</div>
 				</dl>
+				<p class="text-[11px] text-gray-400">{{ labels.eirVoucherLocked }}</p>
 			</section>
 
-			<!-- Step 2 — tank header (all from the Container master) -->
+			<!-- Step 2 — tank data. The tank's OWN facts are editable here and saved onto the
+			     Container master: the EIR is the one moment somebody is standing at the tank
+			     with its data plate in front of them, and a master left half empty stays that
+			     way for ever. What the depot fills in by itself (owner, depot, ex vessel)
+			     stays read-only underneath. -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
 					<Icon name="package" :size="16" class="text-gray-400" />
 					<p class="oak-section-title">{{ labels.eirHeader }}</p>
 				</div>
-				<dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl bg-gray-50 p-3 text-sm sm:grid-cols-3">
-					<div v-for="f in headerCells" :key="f.label">
-						<dt class="text-xs text-gray-500">{{ f.label }}</dt>
-						<dd class="font-semibold text-gray-800">{{ f.value ?? "—" }}</dd>
+				<p class="text-xs text-gray-400">{{ labels.eirTankHint }}</p>
+				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+					<div>
+						<label class="oak-label">{{ labels.type }}</label>
+						<select v-model="tank.container_type" class="oak-input">
+							<option value="">—</option>
+							<option v-for="o in tankOptions.container_type" :key="o" :value="o">{{ o }}</option>
+						</select>
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.tankSize }}</label>
+						<select v-model="tank.size" class="oak-input">
+							<option value="">—</option>
+							<option v-for="o in tankOptions.size" :key="o" :value="o">{{ o }}</option>
+						</select>
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.serialNo }}</label>
+						<input v-model.trim="tank.serial_no" class="oak-input" />
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.dateManufacture }}</label>
+						<input v-model="tank.manufacture_date" type="date" class="oak-input" />
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.capacity }}</label>
+						<input v-model="tank.capacity" type="number" inputmode="decimal" placeholder="L" class="oak-input" />
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.tare }}</label>
+						<input v-model="tank.tare_weight" type="number" inputmode="decimal" class="oak-input" />
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.maxGross }}</label>
+						<input v-model="tank.max_gross_weight" type="number" inputmode="decimal" class="oak-input" />
+					</div>
+				</div>
+				<dl class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-gray-50 p-3 text-xs sm:grid-cols-3">
+					<div v-for="f in autoCells" :key="f.label">
+						<dt class="text-gray-500">{{ f.label }}</dt>
+						<dd class="truncate font-semibold text-gray-800">{{ f.value || "—" }}</dd>
 					</div>
 				</dl>
 			</section>
@@ -288,6 +312,23 @@ const header = ref(null)
 const inspection = ref(null)
 const workStartedOn = ref("") // set once the operator presses Mulai; gates editing
 const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
+// "2026-08-19 22:14:53.627161" is a database row, not something to read on a phone.
+const workStartedShort = computed(() => {
+	const [d, t] = String(workStartedOn.value || "").split(" ")
+	return d ? `${d.slice(8, 10)}/${d.slice(5, 7)} ${(t || "").slice(0, 5)}` : ""
+})
+// The tank's own facts, editable here and written to the Container master on save
+// (eir.TANK_MASTER_FIELDS). Everything the depot fills in by itself stays out.
+const tank = reactive({
+	container_type: "",
+	size: "",
+	serial_no: "",
+	manufacture_date: "",
+	capacity: "",
+	tare_weight: "",
+	max_gross_weight: "",
+})
+const tankOptions = ref({ container_type: [], size: [] })
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
 const remarks = ref("")
@@ -350,6 +391,7 @@ const mastersRes = cachedResource({
 		damageCodes.value = data.damage_codes || []
 		repairCodes.value = data.repair_codes || []
 		cargos.value = data.cargos || []
+		tankOptions.value = { container_type: [], size: [], ...(data.tank_options || {}) }
 		rows.value = (data.checklist || []).map((i) =>
 			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "", added: false })
 		)
@@ -357,22 +399,22 @@ const mastersRes = cachedResource({
 	},
 })
 
-const headerCells = computed(() => {
+// Under the editable fields: what the depot writes by itself. Not repeated here — the
+// container number and its owner are the screen title, and Last Cargo is the Cargo picker
+// two sections down.
+const autoCells = computed(() => {
 	const h = header.value || {}
-	return [
-		{ label: labels.containerNumber, value: h.container_no },
-		{ label: labels.serialNo, value: h.serial_no },
-		{ label: labels.dateManufacture, value: h.manufacture_date },
-		{ label: labels.ownerPrincipal, value: h.principal },
-		{ label: labels.eirInDate, value: h.eir_in_date },
-		{ label: labels.capacity, value: h.capacity },
-		{ label: labels.tare, value: h.tare_weight },
-		{ label: labels.maxGross, value: h.max_gross_weight },
-		{ label: labels.lastCargo, value: h.last_cargo },
-		{ label: labels.exVessel, value: h.ex_vessel },
-		{ label: labels.depot, value: h.depot },
-	]
+	return [{ label: labels.depot, value: h.depot }]
 })
+
+const voucherCells = computed(() => [
+	{ label: labels.bookingCode, value: bookingCode.value, mono: true },
+	{ label: labels.referredVoucher, value: referredVoucher.value, mono: true },
+	{ label: labels.shipper, value: shipper.value },
+	{ label: labels.truckNo, value: truckNo.value },
+	{ label: labels.driverName, value: driver.value },
+	{ label: labels.driverPhone, value: driverPhone.value },
+])
 
 const openRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_open",
@@ -395,6 +437,9 @@ const openRes = cachedResource({
 		shipper.value = data.shipper || ""
 		cargo.value = data.cargo || data.last_cargo || ""
 		bookingCode.value = data.booking_code || ""
+		Object.keys(tank).forEach((k) => {
+			tank[k] = data[k] ?? ""
+		})
 		createCleaning.value = data.create_cleaning_order !== 0
 		createRepair.value = data.create_repair_order !== 0
 		signatureUrl.value = data.inspector_signature || ""
@@ -662,6 +707,9 @@ function eirPayload(submit) {
 		// find the `local:` photo references and swap them for real file_urls.
 		lines: buildLines(),
 		photos: buildPhotos(),
+		// One JSON blob rather than seven params: the server takes only the keys it knows
+		// (eir.TANK_MASTER_FIELDS) and writes nothing when none of them changed.
+		tank: JSON.stringify(tank),
 		submit: submit ? 1 : 0,
 	}
 }
@@ -757,6 +805,7 @@ function scheduleSave() {
 }
 
 watch([tanggal, tankStatus, cargo, remarks, reffDoc, signatureUrl, createCleaning, createRepair], scheduleSave)
+watch(tank, scheduleSave, { deep: true })
 watch(rows, scheduleSave, { deep: true })
 watch(bulkPhotos, scheduleSave, { deep: true })
 

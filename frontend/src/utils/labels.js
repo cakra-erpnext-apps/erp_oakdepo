@@ -280,6 +280,11 @@ export const labels = {
 	vessel: "Vessel",
 	serialNo: "Serial No",
 	dateManufacture: "Tgl. Manufaktur", // Date of manufacture
+	tankSize: "Ukuran", // Container size (master field, editable from the EIR)
+	// The EIR is where somebody is actually standing at the tank, so the Container master
+	// gets completed there instead of in a Desk trip that never happens.
+	eirTankHint: "Lengkapi data tank di sini — langsung tersimpan ke master container.",
+	eirTankAuto: "Diisi sistem", // read-only facts under the editable tank fields
 	ownerPrincipal: "Prinsipal (Pemilik)", // Principal / owner (from Container master)
 	exVessel: "Ex Vessel", // Ex vessel (from Container master)
 	tanggal: "Tanggal", // Date
