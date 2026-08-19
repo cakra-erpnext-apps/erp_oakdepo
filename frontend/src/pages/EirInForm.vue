@@ -268,7 +268,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
-import { toast } from "@/utils/toast"
+import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
@@ -276,8 +276,7 @@ import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
-import { compressPhoto } from "@/utils/photo"
-import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
+import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -415,6 +414,7 @@ const saveRes = createResource({
 		// Field submit now moves the EIR to Pending Review (docstatus stays 0) — Admin Ops
 		// finalises it on the Desk. Treat that as "done" from the operator's side.
 		if (data.docstatus === 1 || data.pending_review) {
+			saveToast.close()
 			toast.success(data.pending_review ? labels.eirSentForReview : labels.eirSubmitted, {
 				title: data.inspection_id || data.inspection,
 			})
@@ -422,11 +422,12 @@ const saveRes = createResource({
 			emit("back")
 		} else {
 			savedOk.value = true
+			saveToast.done()
 		}
 		flushPendingSave()
 	},
 	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		saveToast.fail(err?.messages?.[0] || err?.message || labels.error)
 		flushPendingSave()
 	},
 })
@@ -513,14 +514,13 @@ function buildPhotos() {
 /**
  * Take a picked photo and hand back a reference the form can hold onto.
  *
- * This used to upload immediately, which made the yard's dead spots brutal: the surveyor
- * photographed a dent, the POST failed, and the evidence was gone on the spot — long before
- * anyone reached the Kirim button. Now the file is shrunk and parked in IndexedDB, and the
- * `local:` reference it returns travels through the form exactly like a file_url, until
- * `send` uploads it and swaps in the real one (see data/send.js).
+ * It goes up straight away, so the autosave a second later writes a real file_url into the
+ * draft and a reload never costs the surveyor a photo. In a dead spot it falls back to a
+ * `local:` reference that travels through the form exactly like a URL, and `send` uploads it
+ * when the EIR is submitted (see data/send.js).
  */
 async function uploadFile(file) {
-	return stashPhoto(await compressPhoto(file))
+	return uploadPhoto(file)
 }
 
 async function onBulkPhotoPick(event) {
@@ -679,6 +679,7 @@ function doSave(submit = false) {
 	// Draft autosave to the server. Strip anything not yet uploaded — a `local:` string
 	// written into Inspection Photo would be a broken image for ever.
 	const payload = eirPayload(false)
+	saveToast.start()
 	saveRes.submit({
 		...payload,
 		signature: isLocalRef(payload.signature) ? undefined : payload.signature,

@@ -125,13 +125,12 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from "vue"
 import { labels } from "@/utils/labels"
-import { toast } from "@/utils/toast"
+import { saveToast, toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
-import { compressPhoto } from "@/utils/photo"
-import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
+import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
@@ -212,11 +211,14 @@ const saveRes = createResource({
 	method: "POST",
 	onSuccess() {
 		savedOk.value = true
+		saveToast.done()
 		flushPendingSave()
 	},
-	// Reported inline via `draftError`, never as a toast: an autosave that could not land is
-	// not worth interrupting a surveyor mid-form, and the Simpan below carries the data anyway.
+	// Reported inline via `draftError`, never as a red toast: an autosave that could not land
+	// is not worth interrupting a surveyor mid-form, and the Simpan below carries the data
+	// anyway. The "Menyimpan…" toast still has to go, so the slot is simply taken back.
 	onError() {
+		saveToast.fail("")
 		flushPendingSave()
 	},
 })
@@ -224,6 +226,7 @@ const draftError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] |
 
 function saveDraft() {
 	if (!detail.value) return
+	saveToast.start()
 	saveRes.submit({
 		name: detail.value.name,
 		location_note: form.location_note || "",
@@ -265,14 +268,14 @@ watch([() => form.location_note, () => form.notes], scheduleSave)
 watch(photos, scheduleSave, { deep: true })
 
 /**
- * Park a picked photo locally rather than uploading it now.
+ * Shrink a picked photo and upload it now, so the draft save that follows records it.
  *
- * A survey is taken at the far end of the yard, which is exactly where the signal is worst.
- * Uploading on pick meant the photo of where the tank actually stands was lost the moment
- * the POST failed. Now it is shrunk, kept in IndexedDB, and uploaded as part of the save.
+ * A survey is taken at the far end of the yard, which is exactly where the signal is worst —
+ * so an upload that cannot land parks the photo on the handset instead of failing, and it
+ * leaves with the final Simpan (see data/send.js).
  */
 async function uploadFile(file) {
-	return stashPhoto(await compressPhoto(file))
+	return uploadPhoto(file)
 }
 async function onPhotoPick(event) {
 	const files = Array.from(event.target.files || [])

@@ -13,15 +13,21 @@
 // failure throws, every caller already catches and toasts it, and nothing is written to
 // IndexedDB — the form keeps its own state on screen and the operator presses send again.
 //
-// Photos are the one thing still held locally, and that is not offline support: a picked
-// photo is parked as a blob and stands in the payload as a `local:` ref until the document
-// is actually sent, so the upload and the save succeed or fail together. Uploading on pick
-// instead would leave orphan files on the server every time a form is abandoned.
+// Photos go up the moment they are taken (`uploadPhoto`), so the autosave that follows a
+// second later writes a real file_url into the draft and the server is never behind what the
+// operator sees. Parking one locally is now only the FALLBACK: an upload that cannot reach
+// the server hands back a `local:` ref instead of failing, the form carries it exactly as it
+// carried a URL, and `send` retries it when the document is finally sent. The cost is a file
+// left attached to a draft that is later abandoned — cheaper than an operator who photographs
+// a dent, reloads the app, and finds the evidence was never anywhere but in the tab.
 
 import { reactive } from "vue"
 
 import { link, noteLinkDown, noteLinkUp, noteSessionExpired } from "@/data/link"
 import { STORE_BLOBS, idbDelete, idbGet, idbPut, uid } from "@/utils/idb"
+import { compressPhoto } from "@/utils/photo"
+import { labels } from "@/utils/labels"
+import { dismissKey, toast } from "@/utils/toast"
 
 const LOCAL_PREFIX = "local:"
 
@@ -39,6 +45,33 @@ export async function stashPhoto(file) {
 	const ref = `${LOCAL_PREFIX}${id}`
 	previews[ref] = URL.createObjectURL(file)
 	return ref
+}
+
+/**
+ * Shrink a picked photo and get it onto the server NOW, returning its file_url — which the
+ * next autosave writes straight into the draft.
+ *
+ * Never throws for a link that is down: an upload that cannot land parks the photo instead
+ * and returns a `local:` ref, so the operator keeps shooting and `send` carries the backlog
+ * when the document is submitted. Only the operator's own picture matters here; losing it to
+ * a red error message would be the one unrecoverable outcome.
+ */
+export async function uploadPhoto(file) {
+	const small = await compressPhoto(file)
+	const key = "photo-upload"
+	try {
+		// Held back 400 ms — a photo that lands quickly needs no announcement at all.
+		toast.busy(labels.photoUploading, { key, delay: 400 })
+		return await uploadBlob(small, small.name || file.name || "photo.jpg")
+	} catch (e) {
+		if (e?.name === "SessionExpired") noteSessionExpired()
+		else noteLinkDown()
+		// One toast however many photos are waiting: they all leave together on Kirim.
+		toast.info(labels.photoParked, { key: "photo-parked" })
+		return stashPhoto(small)
+	} finally {
+		dismissKey(key)
+	}
 }
 
 export const isLocalRef = (url) => typeof url === "string" && url.startsWith(LOCAL_PREFIX)
@@ -69,6 +102,9 @@ const dropBlob = (ref) => idbDelete(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
 /** Is a save in flight? Screens use it to keep a button from being pressed twice. */
 export const sending = reactive({ count: 0 })
 
+// Names this send's toast slot, so two sends in flight own one card each.
+let sendSeq = 0
+
 /**
  * Upload whatever photos the payload still references locally, substitute their real URLs,
  * then post the document.
@@ -86,12 +122,23 @@ export async function send({ url, payload }) {
 	const uploadedRefs = []
 	let body = payload
 	sending.count += 1
+	// One toast per send, replaced in place as the work moves: the photos, then the save.
+	// It holds back 400 ms first — an action that answers straight away needs no spinner,
+	// only its result, and the caller already toasts that. A send carrying photos always
+	// outlives the delay, which is exactly the wait worth narrating. Cleared in `finally`,
+	// so no spinner is ever left hanging beside the caller's success or error toast.
+	const key = `send-${++sendSeq}`
+	const step = (message) => toast.busy(message, { key, delay: 400 })
 	try {
-		for (const ref of collectLocalRefs(body)) {
+		const refs = collectLocalRefs(body)
+		let done = 0
+		for (const ref of refs) {
+			step(`${labels.sendUploadingPhoto} ${++done}/${refs.length}`)
 			const fileUrl = await uploadStashed(ref)
 			body = substitute(body, ref, fileUrl)
 			uploadedRefs.push(ref)
 		}
+		step(labels.sendSaving)
 		const answer = await post(url, body)
 		noteLinkUp() // proof, not a guess: something just got through
 		for (const ref of uploadedRefs) await dropBlob(ref)
@@ -104,6 +151,7 @@ export async function send({ url, payload }) {
 		throw e
 	} finally {
 		sending.count -= 1
+		dismissKey(key)
 	}
 }
 
@@ -126,13 +174,19 @@ async function uploadStashed(ref) {
 		// `local:` reference in it.
 		throw named("Rejected", "Foto tidak ditemukan di penyimpanan lokal.")
 	}
+	const fileUrl = await uploadBlob(stored.blob, stored.name)
+	uploaded.set(ref, fileUrl)
+	return fileUrl
+}
+
+/** Put one blob on the server and hand back its file_url. Throws like any other request. */
+async function uploadBlob(blob, name) {
 	const fd = new FormData()
-	fd.append("file", stored.blob, stored.name)
+	fd.append("file", blob, name)
 	fd.append("is_private", 1)
 	fd.append("folder", "Home")
 	const res = await request("/api/method/upload_file", { method: "POST", body: fd })
 	const data = await res.json()
-	uploaded.set(ref, data.message.file_url)
 	return data.message.file_url
 }
 

@@ -11,12 +11,17 @@
 				role="status"
 				@click="dismiss(t.id)"
 			>
-				<Icon :name="toneIcon(t.type)" :size="18" class="mt-0.5 shrink-0" />
+				<Icon
+					:name="toneIcon(t.type)"
+					:size="18"
+					class="mt-0.5 shrink-0"
+					:class="{ 'toast-spin': t.type === 'busy' }"
+				/>
 				<div class="min-w-0 flex-1">
 					<p v-if="t.title" class="text-sm font-bold leading-snug">{{ t.title }}</p>
 					<p class="text-sm leading-snug">{{ t.message }}</p>
 				</div>
-				<Icon name="x" :size="15" class="mt-0.5 shrink-0 opacity-40" />
+				<Icon v-if="t.type !== 'busy'" name="x" :size="15" class="mt-0.5 shrink-0 opacity-40" />
 			</div>
 		</transition-group>
 	</div>
@@ -32,6 +37,8 @@ function toneClass(type) {
 			return "border-leaf-200 bg-leaf-50/95 text-leaf-800"
 		case "error":
 			return "border-red-200 bg-red-50/95 text-red-700"
+		case "busy":
+			return "border-gray-200 bg-white/95 text-gray-600"
 		default:
 			return "border-gray-200 bg-white/95 text-gray-800"
 	}
@@ -42,6 +49,8 @@ function toneIcon(type) {
 			return "check-circle"
 		case "error":
 			return "alert-circle"
+		case "busy":
+			return "loader"
 		default:
 			return "info"
 	}
@@ -63,5 +72,14 @@ function toneIcon(type) {
 }
 .toast-move {
 	transition: transform 0.25s ease;
+}
+/* The busy spinner: feather's `loader` is a static asterisk, so we turn it. */
+.toast-spin :deep(svg) {
+	animation: toast-spin 1s linear infinite;
+}
+@keyframes toast-spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 </style>

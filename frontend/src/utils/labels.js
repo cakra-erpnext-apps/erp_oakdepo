@@ -378,6 +378,15 @@ export const labels = {
 	eirOutBackToList: "Kembali ke daftar",
 	savingDraft: "Menyimpan…", // Saving…
 	draftSaved: "Tersimpan", // Saved
+	// Progress toasts while a send is in flight (see data/send.js). The operator sees the
+	// photos go up one by one, then the save itself — a slow 3G upload looks like work,
+	// not like a dead button.
+	photoUploading: "Mengunggah foto…", // a photo going up the moment it is taken
+	// Shown once when the link is down: the photo is safe on the handset and leaves with the
+	// document, so this is information, not an error.
+	photoParked: "Foto disimpan di HP — akan terkirim saat Kirim.",
+	sendUploadingPhoto: "Mengunggah foto", // followed by "3/5"
+	sendSaving: "Menyimpan ke server…", // posting the document
 	eirSubmitted: "EIR berhasil disubmit", // EIR submitted
 	eirSendReview: "Kirim untuk Review", // field submit -> Pending Review (Admin Ops finalises)
 	eirSentForReview: "EIR terkirim untuk review Adm Ops", // sent-for-review toast

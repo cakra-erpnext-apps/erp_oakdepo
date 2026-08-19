@@ -268,14 +268,13 @@ import { computed, nextTick, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
-import { toast } from "@/utils/toast"
+import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
-import { compressPhoto } from "@/utils/photo"
-import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
+import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 
 const route = useRoute()
 const router = useRouter()
@@ -475,13 +474,15 @@ const saveRes = createResource({
 	method: "POST",
 	onSuccess() {
 		savedOk.value = true
+		saveToast.done()
 		flushPendingSave()
 	},
 	// An autosave that could not reach the server is not worth a red toast — the operator is
 	// mid-form, the local draft has the data, and the finalise will carry it. Anything the
 	// server actively refused, they do need to see.
+	// The busy toast is cleared either way — `fail("")` just takes the slot back.
 	onError(err) {
-		if (err?.response) toast.error(err?.messages?.[0] || err?.message || labels.error)
+		saveToast.fail(err?.response ? err?.messages?.[0] || err?.message || labels.error : "")
 		flushPendingSave()
 	},
 })
@@ -549,6 +550,7 @@ function save(submit) {
 		return
 	}
 	const p = payload(false)
+	saveToast.start()
 	// Strip anything not yet uploaded: a `local:` string written into a QC photo
 	// row would be a broken image for ever. Those travel with the finalise instead.
 	saveRes.fetch({
@@ -644,16 +646,15 @@ function resetForm() {
 // --- file upload + virtual signature pad ------------------------------------
 
 /**
- * Park a picked photo locally and hand back a reference the form can hold onto.
+ * Take a picked photo and hand back a reference the form can hold onto.
  *
- * This used to upload immediately, which made the yard's dead spots brutal: the operator
- * photographed a cleaned tank, the POST failed, and the evidence was gone on the spot — long
- * before anyone reached Selesaikan. Now the file is shrunk and parked in IndexedDB, and the
- * `local:` reference travels through the form exactly like a file_url. `send` swaps it
- * for the real one when the document is sent (see data/send.js).
+ * It goes up straight away, so the autosave that follows puts a real file_url on the order
+ * and the QC evidence survives a reload. When the link is down it is parked instead and the
+ * `local:` reference travels through the form exactly like a URL, until `send` uploads it on
+ * Selesaikan (see data/send.js).
  */
 async function uploadFile(file) {
-	return stashPhoto(await compressPhoto(file))
+	return uploadPhoto(file)
 }
 
 const sigCanvas = ref(null)

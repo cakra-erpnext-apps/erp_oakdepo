@@ -233,12 +233,11 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
-import { toast } from "@/utils/toast"
+import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
-import { compressPhoto } from "@/utils/photo"
-import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
+import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 
@@ -374,9 +373,9 @@ function buildSeals() {
 }
 
 // ---- file upload ----
-/** Shrink and park the photo locally; `send` uploads it. See EirInForm for why. */
+/** Shrink and upload the photo now, parking it only if the link is down. See EirInForm. */
 async function uploadFile(file) {
-	return stashPhoto(await compressPhoto(file))
+	return uploadPhoto(file)
 }
 async function onBulkPhotoPick(event) {
 	const files = Array.from(event.target.files || [])
@@ -492,6 +491,7 @@ const saveRes = createResource({
 		// Server has it — the local draft has nothing left to protect (see EirInForm).
 		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
 		if (data.docstatus === 1 || data.pending_review) {
+			saveToast.close()
 			toast.success(
 				data.pending_review ? labels.eirSentForReview : labels.eirSubmitted,
 				{ title: data.inspection },
@@ -500,11 +500,12 @@ const saveRes = createResource({
 			emit("back")
 		} else {
 			savedOk.value = true
+			saveToast.done()
 		}
 		flushPendingSave()
 	},
 	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		saveToast.fail(err?.messages?.[0] || err?.message || labels.error)
 		flushPendingSave()
 	},
 })
@@ -538,6 +539,7 @@ function doSave(submit = false) {
 		return
 	}
 	const payload = eirPayload(false)
+	saveToast.start()
 	saveRes.submit({
 		...payload,
 		signature: isLocalRef(payload.signature) ? undefined : payload.signature,
