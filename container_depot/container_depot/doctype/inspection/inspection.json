@@ -329,7 +329,7 @@
   },
   {
    "allow_on_submit": 1,
-   "description": "Foto per item checklist (ditangkap di PWA). Tiap baris tampil Area + Item + foto, sesuai kategorinya. Baris tanpa Checklist Item = foto cepat belum disortir; admin mengisi section-nya (boleh setelah submit).",
+   "description": "Foto per item checklist (ditangkap di PWA). Klik satu baris untuk membuka form fotonya (foto besar + Checklist Item), lalu pakai panah \u2039 \u203a untuk pindah ke baris berikutnya. Baris tanpa Checklist Item = foto cepat belum disortir; admin mengisi section-nya (boleh setelah submit).",
    "fieldname": "item_photos",
    "fieldtype": "Table",
    "label": "Foto per Item",
@@ -619,7 +619,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-19 10:45:00.000000",
+ "modified": "2026-08-19 11:30:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

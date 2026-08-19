@@ -63,14 +63,14 @@ frappe.ui.form.on('Inspection', {
 		if (!frm.is_new() && (frm.doc.item_photos || []).length) {
 			frm.add_custom_button(__('Filter Foto per Section'), () => filter_photos_by_section(frm));
 		}
-		// Clicking a thumbnail opens the carousel too, but only once you know that — and a
-		// reviewer arriving at a submitted EIR is here to page through the photos, not to
-		// hunt for the way in.
+		// Clicking a row opens the same modal at that photo, but only once you know that —
+		// and a reviewer arriving at a submitted EIR is here to page through the photos,
+		// not to hunt for the way in.
 		if (!frm.is_new() && photo_slides(frm).length) {
 			frm.add_custom_button(__('Lihat Semua Foto'), () => open_photo_carousel(frm, photo_slides(frm), 0));
 		}
 		install_photo_thumbnails(frm);
-		bind_photo_lightbox(frm);
+		bind_photo_grid_clicks(frm);
 	},
 
 	// Switching type re-skins the form (banner + which sections apply).
@@ -229,22 +229,27 @@ function install_photo_thumbnails(frm) {
 	});
 }
 
-// Click a filled photo cell -> view it full size. Never edit it.
+// Click a row -> open it in the modal editor. Click a photo cell -> the same modal, at
+// that photo.
+//
+// The grid is a list to SCAN, not a form to fill in: an item photo carries one editable
+// field (which checklist item it documents) and a picture you cannot judge at thumbnail
+// size, so editing in place meant opening a row, squinting, closing it, opening the next.
+// The modal shows the picture at working size with the field beside it and steps to the
+// next row without closing — the "sort forty bulk photos" job in one pass.
 //
 // This has to run in the CAPTURE phase. Frappe binds click-to-edit directly on the cell
-// (grid_row.js: $col.on("click", ... toggle_editable_row())), and a delegated jQuery
-// handler on the form wrapper is an ANCESTOR — so it fires after the cell's own handler,
-// by which point the row is already in edit mode, the thumbnail is hidden and an Attach
-// control with the raw URL has taken its place. That is the "photo disappears after I
-// click it" bug: nothing was lost, the cell had simply swapped itself for an editor.
-// Capturing on the grid wrapper gets there first, and stopPropagation there keeps the
-// event from ever reaching the cell.
+// (grid_row.js: $col.on("click", ... toggle_editable_row())) and on .row-index /
+// .btn-open-row (toggle_view -> the inline row form), and a delegated jQuery handler on
+// the form wrapper is an ANCESTOR — so it fires after those, by which point the inline
+// form is already open underneath our dialog. Capturing on the grid wrapper gets there
+// first, and stopPropagation keeps the event from ever reaching the row.
 //
-// Only a cell that ALREADY has a photo is intercepted. An empty one still opens the
-// normal upload control, so adding a photo works exactly as before — it is only the
-// permanent, already-uploaded image that is view-only.
-function bind_photo_lightbox(frm) {
-	PHOTO_TABLES.forEach(([table_fieldname]) => {
+// exterior_photos is the retired legacy table (hidden on the form, still fed by the
+// upload API): it has no editable field worth a modal, so a filled cell there just opens
+// the read-only viewer, exactly as before.
+function bind_photo_grid_clicks(frm) {
+	PHOTO_TABLES.forEach(([table_fieldname, doctype]) => {
 		const grid = frm.fields_dict[table_fieldname] && frm.fields_dict[table_fieldname].grid;
 		const el = grid && grid.wrapper && grid.wrapper.get(0);
 		// The wrapper is built once and rows re-render inside it, so one listener holds for
@@ -252,6 +257,7 @@ function bind_photo_lightbox(frm) {
 		// would open one dialog per refresh.
 		if (!el || el._oakPhotoBound) return;
 		el._oakPhotoBound = true;
+		const rows_open_editor = doctype === 'Inspection Item Photo';
 		el.addEventListener(
 			'click',
 			(e) => {
@@ -262,6 +268,18 @@ function bind_photo_lightbox(frm) {
 				if (large) {
 					e.preventDefault();
 					show_photo(large.getAttribute('data-oak-photo'), frm);
+					return;
+				}
+				if (rows_open_editor) {
+					// Only a real data row. The heading and search rows are .grid-row too,
+					// but carry no data-name; the checkbox and the sort handle keep their
+					// own jobs.
+					const row = e.target.closest('.grid-row[data-name]');
+					if (!row || e.target.closest('.grid-row-check')) return;
+					if (!e.target.closest('.grid-static-col, .btn-open-row')) return;
+					e.stopPropagation();
+					e.preventDefault();
+					open_item_photo_editor(frm, row.getAttribute('data-name'));
 					return;
 				}
 				const cell = e.target.closest('.grid-static-col');
@@ -371,6 +389,38 @@ function photo_slides(frm) {
 	return out;
 }
 
+// Row-click entry point: EVERY item_photos row, in the order the grid is showing them —
+// including the rows whose photo is still missing, because those are exactly the ones that
+// need filling. photo_slides above answers "show me the pictures"; this one answers "walk
+// me through the rows".
+function item_photo_slides(frm) {
+	const grid = frm.fields_dict.item_photos && frm.fields_dict.item_photos.grid;
+	const by_docname = (grid && grid.grid_rows_by_docname) || {};
+	return (frm.doc.item_photos || [])
+		// Rows hidden by "Filter Foto per Section" drop out, so next/prev walks the
+		// filtered set the admin is actually working through. The filter hides with an
+		// inline display:none, which is why the test reads the inline style: a row sitting
+		// on another page of the grid is simply not rendered and must stay in the list.
+		.filter((row) => {
+			const gr = by_docname[row.name];
+			const el = gr && gr.wrapper && gr.wrapper.get(0);
+			return !(el && el.style.display === 'none');
+		})
+		.map((row) => ({
+			src: row.photo || '',
+			cdt: 'Inspection Item Photo',
+			cdn: row.name,
+			kind: 'item',
+			label: row.item_name || __('(Belum disortir)'),
+		}));
+}
+
+function open_item_photo_editor(frm, cdn) {
+	const slides = item_photo_slides(frm);
+	const start = Math.max(0, slides.findIndex((s) => s.cdn === cdn));
+	open_photo_carousel(frm, slides, start);
+}
+
 // Assigning a checklist item is only an edit of item_photos, which is allow_on_submit — so
 // it stays available on a submitted EIR, which is exactly when the sorting usually happens.
 // A cancelled EIR is a closed record, and a reader without write permission gets the viewer
@@ -411,9 +461,10 @@ function open_photo_carousel(frm, slides, start) {
 	}
 	let idx = Math.min(Math.max(start || 0, 0), slides.length - 1);
 	const sortable = frm && may_sort_photos(frm);
-	// Guards the Link control's own change handler while the carousel writes into it on
-	// every slide change — without it, moving to the next photo would "assign" the previous
-	// photo's item to the new row.
+	// Guards the controls' own change handlers while the carousel writes into them on every
+	// slide change — without it, moving to the next photo would "assign" the previous
+	// photo's item to the new row. The handlers re-check the row's stored value as well, so
+	// a change event that lands after the flag has cleared is still a no-op.
 	let syncing = false;
 
 	const d = new frappe.ui.Dialog({
@@ -434,10 +485,44 @@ function open_photo_carousel(frm, slides, start) {
 					if (syncing) return;
 					const slide = slides[idx];
 					if (!slide || slide.kind !== 'item') return;
-					frappe.model.set_value(slide.cdt, slide.cdn, 'checklist_item', d.get_value('checklist_item'));
+					const row = (locals[slide.cdt] || {})[slide.cdn] || {};
+					const value = d.get_value('checklist_item') || '';
+					if (value === (row.checklist_item || '')) return;
+					frappe.model.set_value(slide.cdt, slide.cdn, 'checklist_item', value);
 					fill_from_checklist_item(slide.cdt, slide.cdn).then(() => {
-						const row = (locals[slide.cdt] || {})[slide.cdn] || {};
-						slide.label = row.item_name || __('(Belum disortir)');
+						const fresh = (locals[slide.cdt] || {})[slide.cdn] || {};
+						slide.label = fresh.item_name || __('(Belum disortir)');
+						frm.refresh_field('item_photos');
+						render();
+					});
+				},
+			},
+			{
+				fieldname: 'photo',
+				fieldtype: 'Attach Image',
+				label: __('Foto'),
+				// `options` on an Attach control is not a link target — ControlAttach merges
+				// it into its FileUploader config (set_upload_options). Naming the parent doc
+				// here is what keeps the uploaded File attached to this EIR: a dialog control
+				// has no `frm` to infer it from, and a private file with no attached_to is
+				// readable only by whoever uploaded it — the next reviewer would get a broken
+				// image. (Passing `frm` to the Dialog instead would make the control write the
+				// URL onto Inspection itself and save the form; it must not.)
+				options: {
+					doctype: frm && frm.doctype,
+					docname: frm && frm.docname,
+					fieldname: 'item_photos',
+					restrictions: { allowed_file_types: ['image/*'] },
+				},
+				onchange() {
+					if (syncing) return;
+					const slide = slides[idx];
+					if (!slide || slide.kind !== 'item') return;
+					const url = d.get_value('photo') || '';
+					const row = (locals[slide.cdt] || {})[slide.cdn] || {};
+					if (!url || url === (row.photo || '')) return;
+					frappe.model.set_value(slide.cdt, slide.cdn, 'photo', url).then(() => {
+						slide.src = url;
 						frm.refresh_field('item_photos');
 						render();
 					});
@@ -446,19 +531,39 @@ function open_photo_carousel(frm, slides, start) {
 		],
 	});
 
+	// Saving is the reviewer's own step, not something a slide change does behind their
+	// back: paging through forty photos would otherwise be forty round trips. item_photos is
+	// allow_on_submit, so a submitted EIR takes the same edits through save("Update").
+	if (sortable) {
+		d.set_primary_action(__('Simpan'), () => {
+			d.hide();
+			if (frm.is_dirty()) frm.save(frm.doc.docstatus === 1 ? 'Update' : undefined);
+		});
+	}
+
 	function render() {
 		const slide = slides[idx];
-		const src = frappe.utils.escape_html(slide.src);
+		const row = slide.cdn ? (locals[slide.cdt] || {})[slide.cdn] || {} : {};
+		const src = slide.src ? frappe.utils.escape_html(slide.src) : '';
+		// A row still waiting for its picture keeps the same stage size, so the arrows do
+		// not jump around while paging through a mixed set.
+		const stage = src
+			? `<div class="oak-carousel-stage"><img src="${src}" alt=""></div>`
+			: `<div class="oak-carousel-stage oak-carousel-empty">
+					<div class="oak-photo-none">${__('Belum ada foto')}</div>
+				</div>`;
+		const area = slide.kind === 'item' ? row.area || '' : '';
 		d.fields_dict.viewer.$wrapper.html(`
 			<div class="oak-carousel">
 				<button class="btn btn-default oak-carousel-nav" data-oak-step="-1"
 					title="${__('Sebelumnya')}" ${idx === 0 ? 'disabled' : ''}>&lsaquo;</button>
-				<div class="oak-carousel-stage"><img src="${src}" alt=""></div>
+				${stage}
 				<button class="btn btn-default oak-carousel-nav" data-oak-step="1"
 					title="${__('Berikutnya')}" ${idx === slides.length - 1 ? 'disabled' : ''}>&rsaquo;</button>
 			</div>
 			<div class="oak-carousel-caption">
 				<span class="oak-carousel-count">${idx + 1} / ${slides.length}</span>
+				${area ? `<span class="oak-carousel-area">${frappe.utils.escape_html(area)}</span>` : ''}
 				<span>${frappe.utils.escape_html(slide.label || '')}</span>
 			</div>
 		`);
@@ -466,14 +571,20 @@ function open_photo_carousel(frm, slides, start) {
 		// The picker belongs to an item photo. On an exterior slide there is nothing to
 		// assign, so it goes away rather than sitting there inert.
 		d.set_df_property('checklist_item', 'hidden', slide.kind === 'item' ? 0 : 1);
+		// The upload control is for a row that has no picture yet — a row created by hand in
+		// the grid. Once the photo is there it goes away: an EIR photo is evidence, and
+		// replacing it from a viewer is not an edit anyone should make in passing.
+		d.set_df_property('photo', 'hidden', sortable && slide.kind === 'item' && !slide.src ? 0 : 1);
 		if (slide.kind === 'item') {
 			syncing = true;
-			const row = (locals[slide.cdt] || {})[slide.cdn] || {};
 			d.set_value('checklist_item', row.checklist_item || '');
+			d.set_value('photo', row.photo || '');
 			syncing = false;
 		}
+		const $open_tab = d.get_secondary_btn();
 		d.set_secondary_action_label(__('Buka di tab baru'));
-		d.set_secondary_action(() => window.open(slide.src, '_blank'));
+		d.set_secondary_action(() => slide.src && window.open(slide.src, '_blank'));
+		$open_tab.toggleClass('hide', !slide.src);
 	}
 
 	function go(step) {
@@ -485,7 +596,10 @@ function open_photo_carousel(frm, slides, start) {
 
 	// Arrow keys, because a carousel you have to aim at with a mouse is not much better
 	// than opening the rows one at a time. Bound on the dialog and removed with it.
+	// Ignored while a control has focus, or typing into the Link's search box would page
+	// the carousel away mid-word.
 	d.$wrapper.on('keydown', (e) => {
+		if ($(e.target).is('input, textarea, select')) return;
 		if (e.key === 'ArrowLeft') go(-1);
 		else if (e.key === 'ArrowRight') go(1);
 	});

@@ -130,6 +130,24 @@ img.oak-grid-photo:hover {
 	object-fit: contain;
 }
 
+/*
+ * A slide whose row has no photo yet (a row added by hand in the grid). It keeps the
+ * stage's footprint so the arrows do not move between slides — the placeholder simply
+ * sits where the picture will be.
+ */
+.oak-carousel-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 60vh;
+	min-height: 320px;
+}
+
+.oak-carousel-empty .oak-photo-none {
+	margin: 0;
+	border: 0;
+}
+
 .oak-carousel-nav {
 	flex: 0 0 auto;
 	font-size: 22px;
@@ -152,6 +170,12 @@ img.oak-grid-photo:hover {
 	background: var(--control-bg);
 	border-radius: var(--border-radius-sm);
 	padding: 2px var(--padding-xs);
+}
+
+/* Section of the checklist item the photo is filed under, ahead of the item name. */
+.oak-carousel-area {
+	font-weight: 600;
+	color: var(--text-color);
 }
 
 /* Full-size view opened by clicking a thumbnail. */
