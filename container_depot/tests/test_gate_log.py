@@ -13,6 +13,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, add_to_date, now_datetime, today
 
+from container_depot.container_depot.container_status import PRESENT
 from container_depot.container_depot.doctype.booking_code.booking_code import generate_code
 from container_depot.container_depot.gate import open_gate_entry_for
 from container_depot.container_depot.order_generation import make_order
@@ -161,7 +162,10 @@ class TestGateLog(FrappeTestCase):
 		c = _container(f"{PREFIX}000002")
 		_tank_in_bon(c)
 		self.assertEqual(frappe.db.get_value("Gate Entry", {"container_no": c}, "docstatus"), 0)
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
+		# PRESENT, not In_Depot specifically: arrival now settles on the computed state, so
+		# a tank that lands with no open work reads Available. Either way it is in the
+		# depot, which is what makes the Gate Entry unsubmittable.
+		self.assertIn(frappe.db.get_value("Container", c, "status"), PRESENT)
 
 	def test_one_record_spans_the_whole_visit(self):
 		"""In and out land on the SAME row — the reuse branch that had never fired."""

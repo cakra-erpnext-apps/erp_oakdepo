@@ -149,11 +149,15 @@ class TestBookingDoubleGuard(FrappeTestCase):
 
 		self._book(C_IN)  # must not raise
 
-	def test_a_draft_does_not_block(self):
-		"""Codes are only issued at submit, so an unsubmitted draft reserves nothing —
-		whichever booking submits first wins."""
+	def test_a_draft_blocks_too(self):
+		"""A draft reserves its tanks from the moment it is saved. Booking Codes are only
+		issued at submit, so the code-based half of the guard cannot see a draft — the
+		draft rows are queried directly (``_draft_booking_holders``). Without this, two
+		operators could each prepare a booking for the same tank and only collide at
+		submit, with the paperwork already done."""
 		self._book(C_IN, submit=False)
-		self._book(C_IN)  # must not raise
+		with self.assertRaises(frappe.ValidationError):
+			self._book(C_IN)
 
 	# --- draft-time early warning (open_booking_conflicts) ---------------
 	def test_warning_names_the_clashing_booking(self):

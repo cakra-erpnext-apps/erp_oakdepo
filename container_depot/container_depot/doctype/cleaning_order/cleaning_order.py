@@ -158,6 +158,21 @@ class CleaningOrder(Document):
 
 		recompute_availability(self.container)
 
+	def on_cancel(self):
+		# Cancelling (docstatus 2) takes the order out of `container_open_orders` — the
+		# tank it was holding In_Depot has to be recomputed, exactly as a delete does.
+		# The status-field route (status -> Cancelled) already goes through on_update.
+		from container_depot.container_depot.container_status import recompute_availability
+
+		recompute_availability(self.container)
+
+	def after_delete(self):
+		# A deleted draft order is work that no longer exists — the tank it was holding
+		# In_Depot has to be recomputed, or it stays "busy" with nothing open.
+		from container_depot.container_depot.container_status import recompute_availability
+
+		recompute_availability(self.container)
+
 	def on_submit(self):
 		"""Update container status when cleaning order is submitted. For a normal clean
 		this completes the tank (-> Available, parked in the Cleaning Bay)."""

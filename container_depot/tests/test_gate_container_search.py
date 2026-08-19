@@ -90,6 +90,12 @@ class TestGateContainerSearch(FrappeTestCase):
 		_cleanup(self.customer)
 
 	def _submit_booking(self, container_no: str, *, bypass_open_booking_guard=False) -> str:
+		# A second live booking on one container is refused on SAVE now
+		# (_validate_no_open_booking), so the historical double hold is built the only way
+		# it can still exist: the booking is saved against its own tank and the row is
+		# repointed straight in the DB before submit, so the Booking Code is issued for the
+		# shared container exactly as it was before the guard.
+		saved_no = f"{container_no}X" if bypass_open_booking_guard else container_no
 		b = frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",
@@ -98,12 +104,16 @@ class TestGateContainerSearch(FrappeTestCase):
 			"booking_status": "Pending Confirmation",
 			"do_reference": "DO-GS",
 			"do_document": "/files/do.pdf",
-			"items": [{"container_no": container_no}],
+			"items": [{"container_no": saved_no}],
 		}).insert(ignore_permissions=True)
 		if bypass_open_booking_guard:
-			# A second live booking on one container is refused at submit now (see
-			# _validate_no_open_booking); ignore_validate skips that gate while still
-			# running on_submit, so the Booking Codes are issued as before.
+			frappe.db.set_value(
+				"Container Booking Item",
+				b.items[0].name,
+				{"container_no": container_no, "container": container_no},
+				update_modified=False,
+			)
+			b.reload()
 			b.flags.ignore_validate = True
 		b.submit()
 		return b.name

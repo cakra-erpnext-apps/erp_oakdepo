@@ -74,11 +74,12 @@ class TestInventoryStage(FrappeTestCase):
 		self.assertEqual(phantom.inventory_stage, "Pre-Arrival")
 
 	def test_cancel_reverts_preexisting_container_stage(self):
-		# A pre-existing tank flipped to Booked by a booking returns to Ready on cancel
+		# A pre-existing tank flipped to Booked by a booking returns to Departed on cancel
 		# (exercises the one direct set_value site in container_booking.py).
 		customer = ensure_test_customer("InvStage Revert Cust")
 		make_contract(customer)
-		container = _make_container("INVREVERT01", status="Available").name
+		# Owned by the booking's customer: a booking may only carry its Principal's tanks.
+		container = _make_container("INVREVERT01", status="Available", principal=customer).name
 		booking = frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",
@@ -92,5 +93,6 @@ class TestInventoryStage(FrappeTestCase):
 
 		void_draft(booking.name)
 		reverted = frappe.db.get_value("Container", container, ["status", "inventory_stage"], as_dict=True)
-		self.assertEqual(reverted.status, "Available")
-		self.assertEqual(reverted.inventory_stage, "Ready")
+		# Back OUTSIDE the depot, not into the yard: the tank never arrived.
+		self.assertEqual(reverted.status, "Gate_Out")
+		self.assertEqual(reverted.inventory_stage, "Departed")

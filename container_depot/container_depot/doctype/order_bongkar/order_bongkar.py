@@ -249,6 +249,8 @@ def _sync_container_arrival(order: Document):
 	The transitions used (Booked / Available / Gate_Out -> Gate_In) are all valid in
 	the state machine, so no automation bypass is needed.
 	"""
+	from container_depot.container_depot.container_status import recompute_availability
+
 	depot = _booking_depot(order)
 	for row in _order_rows(order):
 		if not row.get("container"):
@@ -263,6 +265,9 @@ def _sync_container_arrival(order: Document):
 			changed = True
 		if changed:
 			container.save(ignore_permissions=True)
+		# In_Depot means "here WITH open work" — settle on the computed state so a tank
+		# that arrived with nothing open is not left looking busy (see container_status).
+		recompute_availability(row.container)
 
 
 def _sync_booking(doc: Document):

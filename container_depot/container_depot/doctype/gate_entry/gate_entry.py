@@ -70,6 +70,13 @@ class GateEntry(Document):
 			container.status = IN_DEPOT
 			container.eir_in_date = self.gate_in_timestamp or datetime.datetime.now()
 			container.save(ignore_permissions=True)
+			# In_Depot means "here WITH open work". A tank that arrives with nothing open
+			# — no EIR draft, no cleaning, no M&R — is already free to leave, so the
+			# arrival settles on the computed state instead of parking on In_Depot until
+			# some order happens to fire a recompute.
+			from container_depot.container_depot.container_status import recompute_availability
+
+			recompute_availability(container.name)
 			log_container_activity(
 				container.name, "Gate In",
 				reference_doctype=self.doctype, reference_name=self.name,

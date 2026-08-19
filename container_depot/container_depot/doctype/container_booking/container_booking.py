@@ -130,6 +130,7 @@ class ContainerBooking(Document):
 		self._default_row_shipper()
 		self._validate_row_principal()
 		self._validate_unique_containers()
+		self._validate_no_open_booking()
 		self._sync_container_summary()
 		self._guard_locked_charges()
 		self._reset_charges_on_customer_change()
@@ -216,6 +217,7 @@ class ContainerBooking(Document):
 		self._default_row_shipper()
 		self._validate_row_principal()
 		self._validate_unique_containers()
+		self._validate_no_open_booking()
 		self._price_charges()
 		self._sync_container_summary()
 		# Stash what the post-save hook needs; `get_doc_before_save()` is the only view of
@@ -235,7 +237,14 @@ class ContainerBooking(Document):
 			before and _billing_signature(before) != _billing_signature(self)
 		)
 
+	def on_update(self):
+		# A row the operator deleted (or repointed at another tank) leaves its container
+		# reserved behind it — release it here, not in validate: nothing may be deleted
+		# while the save is still in flight.
+		self._release_dropped_containers()
+
 	def on_update_after_submit(self):
+		self._release_dropped_containers()
 		# A row added by the revision has no Booking Code yet — issue it, exactly as
 		# on_submit does for the original rows (the helper skips rows that already have one).
 		self._issue_booking_codes()
@@ -404,47 +413,73 @@ class ContainerBooking(Document):
 		frappe.throw(_("A Container Booking cannot be deleted — use Cancel to void it instead."))
 
 	def _release_pre_arrival_containers(self):
-		"""Unwind the Tank-In container reservations this booking made.
-
-		For each item's container that is still ``Booked`` and has **never gated
-		in** (``eir_in_date`` empty) and is not reserved by any *other* live
-		booking:
-
-		* **Phantom** (``created_by_booking == this booking``) — a master that
-		  only exists because of this booking → delete it (force, since the
-		  cancelled booking / voided codes still point at it).
-		* **Pre-existing** tank this booking merely flipped → revert to
-		  ``Available``.
-
-		Containers that have gated in, moved on in their lifecycle, or are held by
-		another active booking are left untouched."""
+		"""Unwind every Tank-In container reservation this booking made (cancel)."""
 		for item in self.items or []:
-			container = item.container
-			if not container or not frappe.db.exists("Container", container):
-				continue
-			row = frappe.db.get_value(
-				"Container", container, ["status", "eir_in_date", "created_by_booking"], as_dict=True
-			)
-			if not row or row.status != "Booked" or row.eir_in_date:
-				continue  # live / already moved on — never touch
-			if self._container_held_by_other_booking(container):
-				continue  # another live booking still reserves it
-			if row.created_by_booking == self.name:
-				# Phantom born for this booking: drop the dangling links (item ref,
-				# booking codes, and the auto-logged status Movement), then delete.
-				frappe.db.set_value("Container Booking Item", item.name, "container", None, update_modified=False)
-				frappe.db.delete("Booking Code", {"booking": self.name, "container": container})
-				frappe.db.delete("Container Movement", {"container": container})
-				frappe.delete_doc("Container", container, ignore_permissions=True, force=True)
-			else:
-				# Pre-existing tank we only flipped to Booked → release it. Direct
-				# set_value bypasses Container.before_save, so set the stage too.
+			self._release_reserved_container(item.container, item=item)
+
+	def _release_dropped_containers(self):
+		"""Release the tanks a save just took off the booking.
+
+		A reservation is made by putting a container on a row (``_mark_pre_arrival``), so
+		it has to be given back when the row goes away — deleted outright, or repointed at
+		a different tank. Without this the first number an operator typed stayed ``Booked``
+		forever: invisible on the booking, yet refused by every later booking as
+		"already spoken for", and counted as a tank the depot was expecting.
+
+		Runs in ``on_update`` / ``on_update_after_submit``, after the write: a phantom
+		master may have to be deleted, and nothing may be deleted while the parent save is
+		still in flight.
+		"""
+		before = self.get_doc_before_save()
+		if not before:
+			return
+		kept = {row.container for row in (self.items or []) if row.container}
+		for row in before.items or []:
+			if row.container and row.container not in kept:
+				self._release_reserved_container(row.container)
+
+	def _release_reserved_container(self, container, item=None):
+		"""Give one reserved tank back.
+
+		Only ever touches a tank that is still ``Booked``, has **never gated in**
+		(``eir_in_date`` empty) and is held by no *other* live booking — anything that has
+		arrived or moved on in its lifecycle is left exactly as it is.
+
+		* **Phantom** (``created_by_booking == this booking``) — a master that exists only
+		  because of this booking → delete it (force: the booking / its codes still point
+		  at it).
+		* **Pre-existing** tank this booking merely flipped → back to ``Gate_Out``, the
+		  state it was reserved out of. Not ``Available``: a tank that never arrived is
+		  not standing in the yard, and saying so would put a phantom into the inventory
+		  and offer it to the next Tank Out booking.
+		"""
+		if not container or not frappe.db.exists("Container", container):
+			return
+		row = frappe.db.get_value(
+			"Container", container, ["status", "eir_in_date", "created_by_booking"], as_dict=True
+		)
+		if not row or row.status != "Booked" or row.eir_in_date:
+			return  # live / already moved on — never touch
+		if self._container_held_by_other_booking(container):
+			return  # another live booking still reserves it
+		if row.created_by_booking == self.name:
+			# Phantom born for this booking: drop the dangling links (item ref, booking
+			# codes, and the auto-logged status Movement), then delete.
+			if item is not None:
 				frappe.db.set_value(
-					"Container",
-					container,
-					{"status": "Available", "inventory_stage": stage_for_status("Available")},
-					update_modified=False,
+					"Container Booking Item", item.name, "container", None, update_modified=False
 				)
+			frappe.db.delete("Booking Code", {"booking": self.name, "container": container})
+			frappe.db.delete("Container Movement", {"container": container})
+			frappe.delete_doc("Container", container, ignore_permissions=True, force=True)
+		else:
+			# Direct set_value bypasses Container.before_save, so set the stage too.
+			frappe.db.set_value(
+				"Container",
+				container,
+				{"status": GATE_OUT, "inventory_stage": stage_for_status(GATE_OUT)},
+				update_modified=False,
+			)
 
 	def _container_held_by_other_booking(self, container):
 		"""True if a *different* non-cancelled Container Booking still has this
@@ -1939,10 +1974,41 @@ def on_payment_entry_change(doc, method=None):
 
 # --- Open-booking conflict (submit block + draft early warning) ---------------
 
+def _draft_booking_holders(exclude_booking, keys) -> list[dict]:
+	"""Live DRAFT bookings carrying one of ``keys`` (container name / number).
+
+	A draft has no Booking Code yet — those are issued at submit — so the code-based test
+	below cannot see it, and two operators could each prepare a booking for the same tank
+	and only find out at submit. A draft that is not Cancelled is a real claim on the tank,
+	so it counts from the moment it is saved.
+	"""
+	if not keys:
+		return []
+	rows = frappe.db.sql(
+		"""
+		SELECT b.name AS booking, b.direction
+		FROM `tabContainer Booking Item` i
+		JOIN `tabContainer Booking` b ON b.name = i.parent
+		WHERE b.name != %(exclude)s
+		  AND b.docstatus = 0
+		  AND IFNULL(b.booking_status, '') != 'Cancelled'
+		  AND (i.container IN %(keys)s OR i.container_no IN %(keys)s)
+		""",
+		{"exclude": exclude_booking or "", "keys": tuple(keys)},
+		as_dict=True,
+	)
+	return rows
+
+
 def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
-	"""Containers already spoken for by ANOTHER non-cancelled booking, keyed off a
-	still-``Active`` Booking Code (issued at submit, consumed -> ``Used`` when the tank
-	goes on a bon, voided on cancel — so ``Active`` means "confirmed, no bon yet").
+	"""Containers already spoken for by ANOTHER non-cancelled booking.
+
+	Two ways a booking can hold a tank, and both count:
+
+	* a still-``Active`` Booking Code (issued at submit, consumed -> ``Used`` when the tank
+	  goes on a bon, voided on cancel — so ``Active`` means "confirmed, no bon yet");
+	* a live **draft** that simply has the container on a row (see
+	  :func:`_draft_booking_holders`).
 
 	``containers``: iterable of ``(container, container_no)`` pairs (either may be None).
 	Returns ``[{container_no, booking, direction}]``, one entry per (container, booking).
@@ -1962,6 +2028,7 @@ def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
 			or_filters=[["container", "in", keys], ["container_no", "in", keys]],
 			fields=["booking", "direction"],
 		)
+		rows = list(rows) + _draft_booking_holders(exclude_booking, keys)
 		for r in rows:
 			label = container_no or container
 			key = (label, r.booking)

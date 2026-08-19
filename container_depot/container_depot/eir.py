@@ -1660,6 +1660,14 @@ def revert_to_draft(name: str) -> dict:
 		"EIR dikembalikan ke draft oleh {0} (dari Submitted)."
 	).format(frappe.session.user))
 
+	# The snapshot says where the tank WAS; whether it is BUSY is decided by the work open
+	# right now — and this EIR is open work again as of the line above. Recomputed here,
+	# after the docstatus flip, because a still-submitted EIR is invisible to
+	# `container_open_orders`. Booked / Gate_Out are left alone by the recompute.
+	from container_depot.container_depot.container_status import recompute_availability
+
+	recompute_availability(doc.container)
+
 	# Append an inverse activity for the audit trail (the on_submit one stays — the log
 	# is append-only). Never let a logging failure block the revert.
 	try:

@@ -158,27 +158,18 @@ frappe.ui.form.on('Container Booking', {
 						.parent()
 						.remove();
 				}
-				if (bons.length) {
-					frm.dashboard.add_comment(
-						__('Bon sudah terbit ({0}) — booking ini tidak bisa dikembalikan ke draft atau dibatalkan. Data lain masih bisa direvisi langsung di sini, tanpa mengubah status.', [
-							bons.join(', '),
-						]),
-						'orange',
-						true
-					);
-				}
-				// Name the frozen tanks up front. The server refuses the save with the
-				// container and the field it refused, but by then the operator has already
-				// typed — and on a booking with several containers it is not obvious which
-				// rows the bon took.
+				// ONE banner for the whole "a bon exists" situation. It used to be two, each
+				// spelling out what was still allowed — three lines of prose above a form
+				// whose buttons already say the same thing. The frozen tanks are still named:
+				// the server refuses the save row by row, and on a multi-container booking it
+				// is not obvious which rows the bon took.
+				const notes = [];
+				if (bons.length) notes.push(__('Bon terbit ({0}) — status terkunci.', [bons.join(', ')]));
 				if (locked.length) {
-					frm.dashboard.add_comment(
-						__('Container yang sudah masuk bon tidak bisa diubah atau dihapus: {0}. Baris lain bebas direvisi.', [
-							locked.join(', '),
-						]),
-						'blue',
-						true
-					);
+					notes.push(__('Container di bon tidak bisa diubah: {0}.', [locked.join(', ')]));
+				}
+				if (notes.length) {
+					frm.dashboard.add_comment(notes.join(' '), bons.length ? 'orange' : 'blue', true);
 				}
 			},
 		});
@@ -192,9 +183,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.set_df_property('customer', 'read_only', locked ? 1 : 0);
 		if (locked) {
 			frm.dashboard.add_comment(
-				__(
-					'Charges terkunci karena invoice sudah dibuat. Tekan <b>Kembali ke Draft (batalkan invoice)</b> untuk mengubahnya.'
-				),
+				__('Charges terkunci — invoice sudah dibuat. Ubah lewat <b>Kembali ke Draft</b>.'),
 				'blue',
 				true
 			);
@@ -274,7 +263,7 @@ frappe.ui.form.on('Container Booking', {
 					frm.set_intro('');
 					return;
 				}
-				frm.set_intro(__('Heads up — these will be refused at Submit:') + '<br>' + lines.join('<br>'), 'orange');
+				frm.set_intro(__('Akan ditolak saat Submit:') + '<br>' + lines.join('<br>'), 'orange');
 			})
 			.catch(() => {
 				/* non-blocking — a failed warning must never get in the operator's way */

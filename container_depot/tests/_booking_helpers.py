@@ -32,6 +32,11 @@ def make_contract(customer: str) -> str:
 	}).insert(ignore_permissions=True).name
 
 
+# The parent booking every Booking Code fixture hangs off. A placeholder tank, reused on
+# purpose so the fixtures stay cheap — see the cleanup in make_booking_code.
+_PLACEHOLDER_TANK = "TANK0009999"
+
+
 def make_booking_code(
 	*,
 	customer: str,
@@ -49,13 +54,23 @@ def make_booking_code(
 	carries its own ``direction`` and that is what the gate/SST checks.
 	"""
 	contract_name = make_contract(customer)
+	# One live booking per tank (ContainerBooking._validate_no_open_booking). This helper
+	# always parks its parent booking on the same placeholder tank, so the previous one it
+	# made has to go first — the number is used by nothing else, so nothing real is hit.
+	stale = frappe.get_all(
+		"Container Booking Item", filters={"container_no": _PLACEHOLDER_TANK}, pluck="parent"
+	)
+	if stale:
+		frappe.db.delete("Booking Code", {"booking": ("in", stale)})
+		frappe.db.delete("Container Booking Item", {"parent": ("in", stale)})
+		frappe.db.delete("Container Booking", {"name": ("in", stale)})
 	booking = frappe.get_doc({
 		"doctype": "Container Booking",
 		"direction": "Tank In",
 		"customer": customer,
 		"contract": contract_name,
 		"booking_status": "Confirmed",
-		"items": [{"container_no": "TANK0009999"}],
+		"items": [{"container_no": _PLACEHOLDER_TANK}],
 	}).insert(ignore_permissions=True)
 	return frappe.get_doc({
 		"doctype": "Booking Code",

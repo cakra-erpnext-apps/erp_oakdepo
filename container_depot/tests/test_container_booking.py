@@ -10,6 +10,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime, today
 
+from container_depot.container_depot.container_status import GATE_OUT
 from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 
@@ -44,6 +45,23 @@ def _cleanup_customer_world(customer: str):
 	if booked:
 		frappe.db.delete("Container Movement", {"container": ("in", booked)})
 		frappe.db.delete("Container", {"name": ("in", booked)})
+	frappe.db.commit()
+
+
+def _purge_bookings(customer: str):
+	"""Drop this customer's bookings between tests.
+
+	A live (non-cancelled) booking now RESERVES its containers — a second booking naming
+	the same tank is refused on save (``_validate_no_open_booking``). These classes reuse
+	one container number across every test, so each test has to start from a clean sheet
+	or it collides with the booking the previous one left behind. Deliberately narrower
+	than ``_cleanup_customer_world``: the contract and price list built in setUpClass stay.
+	"""
+	bookings = frappe.get_all("Container Booking", filters={"customer": customer}, pluck="name")
+	if bookings:
+		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
+		frappe.db.delete("Container Booking Item", {"parent": ("in", bookings)})
+		frappe.db.delete("Container Booking", {"name": ("in", bookings)})
 	frappe.db.commit()
 
 
@@ -104,6 +122,11 @@ class TestTankInFlow(FrappeTestCase):
 		_cleanup_customer_world(cls.customer)
 		_cleanup_customer_world(cls.nocon)
 		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
+		_purge_bookings(self.nocon)
 
 	def _booking(self, customer, **over):
 		doc = {
@@ -347,7 +370,13 @@ class TestTankInFlow(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			generate_invoice(zero.name)
 
-		top = self._booking(self.customer, charges=[{"item": "Lift Off"}], payment_type="TOP")
+		top = self._booking(
+			self.customer,
+			charges=[{"item": "Lift Off"}],
+			payment_type="TOP",
+			# A different tank: the zero-total booking above still holds TANK0000050.
+			items=[{"container_no": "TANK0000051", "condition": "EMPTY CLEAN"}],
+		)
 		top.insert(ignore_permissions=True)
 		with self.assertRaises(frappe.ValidationError):
 			generate_invoice(top.name)  # TOP is swept by consolidated billing, never here
@@ -722,6 +751,10 @@ class TestWalkInPriceListPricing(FrappeTestCase):
 		frappe.db.commit()
 		super().tearDownClass()
 
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
+
 	def _walkin_booking(self):
 		# No ``contract`` key at all — this is the walk-in path.
 		return frappe.get_doc({
@@ -787,6 +820,10 @@ class TestBookingCancel(FrappeTestCase):
 			frappe.db.delete("Container", {"container_no": cn})
 		frappe.db.commit()
 		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
 
 	def _submit_cash_booking(self, container_no, *, bypass_open_booking_guard=False):
 		b = frappe.get_doc({
@@ -856,8 +893,8 @@ class TestBookingCancel(FrappeTestCase):
 			frappe.db.exists("Container", "CXLEXIST001"), "pre-existing tank must not be deleted"
 		)
 		self.assertEqual(
-			frappe.db.get_value("Container", "CXLEXIST001", "status"), "Available",
-			"flipped pre-existing tank must revert to Available on cancel",
+			frappe.db.get_value("Container", "CXLEXIST001", "status"), GATE_OUT,
+			"a tank that never arrived goes back outside the depot, not into the yard",
 		)
 
 	def test_cancel_leaves_container_held_by_other_booking(self):
@@ -870,10 +907,18 @@ class TestBookingCancel(FrappeTestCase):
 				"principal": self.customer,
 			}).insert(ignore_permissions=True)
 		a = self._submit_cash_booking("CXLHELD0001")
-		# A second live booking on the same tank is refused at submit now (see
-		# _validate_no_open_booking), so it is forced through here: the branch under test
-		# still has to hold for the rows that predate that guard.
-		b = self._submit_cash_booking("CXLHELD0001", bypass_open_booking_guard=True)
+		# Two live bookings can no longer BOTH claim one tank — the second is refused on
+		# save (_validate_no_open_booking). The branch under test still has to hold for
+		# rows that predate that guard, so the double hold is written straight to the DB
+		# instead of through the form.
+		b = self._submit_cash_booking("CXLNODEL001")
+		frappe.db.set_value(
+			"Container Booking Item",
+			b.items[0].name,
+			{"container": "CXLHELD0001", "container_no": "CXLHELD0001"},
+			update_modified=False,
+		)
+		a.reload()
 		a.cancel()
 		self.assertEqual(
 			frappe.db.get_value("Container", "CXLHELD0001", "status"), "Booked",
@@ -935,6 +980,10 @@ class TestTankOutGating(FrappeTestCase):
 		frappe.db.delete("Container", {"container_no": cls.container})
 		frappe.db.commit()
 		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
 
 	def _booking(self):
 		return frappe.get_doc({
@@ -1092,6 +1141,10 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 			"principal": cls.customer,
 		}).insert(ignore_permissions=True)
 
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
+
 	def _booking(self, containers, **kwargs):
 		doc = frappe.get_doc({
 			"doctype": "Container Booking",
@@ -1237,3 +1290,123 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 			)
 		]
 		self.assertIn(self.UNSTAMPED, names)
+
+
+class TestContainerReservation(FrappeTestCase):
+	"""A live booking RESERVES its containers: nobody else may book them, and dropping a
+	row gives the tank straight back."""
+
+	CUSTOMER = "Phase3 Reservation Customer"
+	TANK = "RSVU0000001"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.customer = ensure_test_customer(cls.CUSTOMER)
+		_cleanup_customer_world(cls.customer)
+		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
+
+	@classmethod
+	def tearDownClass(cls):
+		_cleanup_customer_world(cls.customer)
+		for no in (cls.TANK, "RSVU0000002", "RSVU0000003"):
+			frappe.db.delete("Container Movement", {"container": no})
+			frappe.db.delete("Container", {"container_no": no})
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
+		self._tank(self.TANK)
+
+	def _tank(self, no):
+		if frappe.db.exists("Container", no):
+			frappe.db.set_value(
+				"Container", no, {"status": GATE_OUT, "created_by_booking": None}, update_modified=False
+			)
+			return no
+		return frappe.get_doc({
+			"doctype": "Container",
+			"container_no": no,
+			"container_type": "ISO Tank",
+			"status": GATE_OUT,
+			"principal": self.customer,
+		}).insert(ignore_permissions=True).name
+
+	def _booking(self, *container_nos):
+		return frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank In",
+			"customer": self.customer,
+			"principal": self.customer,
+			"contract": self.contract,
+			"items": [{"container_no": no} for no in container_nos],
+		})
+
+	def test_a_booked_tank_cannot_be_booked_again(self):
+		"""The reservation holds from the moment the FIRST booking is saved — a draft has
+		no Booking Code yet, so the code-based submit gate never saw it."""
+		first = self._booking(self.TANK)
+		first.insert(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), "Booked")
+
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			self._booking(self.TANK).insert(ignore_permissions=True)
+		self.assertIn(first.name, str(ctx.exception))
+
+	def test_a_cancelled_booking_frees_the_tank_for_the_next_one(self):
+		first = self._booking(self.TANK)
+		first.insert(ignore_permissions=True)
+		first.booking_status = "Cancelled"
+		first.docstatus = 2
+		first.db_update()
+		frappe.db.commit()
+		self._booking(self.TANK).insert(ignore_permissions=True)  # must NOT raise
+
+	def test_dropping_a_row_releases_the_tank(self):
+		"""Removing the row gives the tank back to Gate_Out — where it was reserved from.
+		Never to Available: a tank that never arrived is not standing in the yard."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), "Booked")
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), GATE_OUT)
+		self.assertEqual(
+			frappe.db.get_value("Container", other, "status"), "Booked",
+			"the row that stayed keeps its reservation",
+		)
+
+	def test_repointing_a_row_releases_the_tank_it_left(self):
+		swapped = self._tank("RSVU0000003")
+		b = self._booking(self.TANK)
+		b.insert(ignore_permissions=True)
+
+		b.items[0].container = swapped
+		b.items[0].container_no = swapped
+		b.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), GATE_OUT)
+		self.assertEqual(frappe.db.get_value("Container", swapped, "status"), "Booked")
+
+	def test_dropping_a_row_deletes_the_master_it_minted(self):
+		"""A phantom exists only because of this booking, so a dropped row takes it with
+		it — the same rule cancel applies."""
+		phantom = "RSVU0009999"
+		frappe.db.delete("Container", {"container_no": phantom})
+		b = self._booking(phantom)
+		b.insert(ignore_permissions=True)
+		self.assertTrue(frappe.db.exists("Container", phantom))
+
+		b.items = []
+		with self.assertRaises(frappe.ValidationError):
+			b.save(ignore_permissions=True)  # a booking still needs a container
+		b.reload()
+		b.items[0].container_no = self.TANK
+		b.items[0].container = self.TANK
+		b.save(ignore_permissions=True)
+		self.assertFalse(
+			frappe.db.exists("Container", phantom), "the phantom master goes with its row"
+		)

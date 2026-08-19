@@ -126,6 +126,25 @@ class Inspection(Document):
 				row.idx = idx
 			self.set(table_fieldname, kept)
 
+	def on_update(self):
+		"""A DRAFT EIR-In is open work — the tank is not free to leave while one is on it.
+
+		The status used to move only at submit, so an EIR raised by hand on a tank that had
+		nothing open left it reading ``Available`` with an inspection in progress. Cleaning
+		and M&R already recompute on every save; this closes the same hole for the EIR.
+		Cheap: the recompute writes nothing when the tank is already in the right state.
+		"""
+		if self.inspection_type == "EIR-In" and self.docstatus == 0:
+			from container_depot.container_depot.container_status import recompute_availability
+
+			recompute_availability(self.container)
+
+	def after_delete(self):
+		# A deleted draft EIR is work that no longer exists — give the tank back.
+		from container_depot.container_depot.container_status import recompute_availability
+
+		recompute_availability(self.container)
+
 	def on_cancel(self):
 		"""Keep the ``status`` field in step with the docstatus so Desk + PWA never disagree.
 
@@ -133,6 +152,11 @@ class Inspection(Document):
 		"Submitted" — the record then looks live in the Desk form while the badge says
 		cancelled. (``revert_to_draft`` writes docstatus/status raw, so it never fires this.)"""
 		self.db_set("status", "Cancelled", update_modified=False)
+		# Cancelled (docstatus 2) drops out of `container_open_orders`, so the tank it was
+		# holding In_Depot has to be recomputed.
+		from container_depot.container_depot.container_status import recompute_availability
+
+		recompute_availability(self.container)
 
 	def on_submit(self):
 		"""Update container status + last cargo when inspection is submitted"""

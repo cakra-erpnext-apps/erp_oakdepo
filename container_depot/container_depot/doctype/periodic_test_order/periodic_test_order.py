@@ -48,6 +48,13 @@ class PeriodicTestOrder(Document):
 
 		recompute_availability(self.container)
 
+	def after_delete(self):
+		# A deleted draft order is work that no longer exists — the tank it was holding
+		# In_Depot has to be recomputed, or it stays "busy" with nothing open.
+		from container_depot.container_depot.container_status import recompute_availability
+
+		recompute_availability(self.container)
+
 	# --- helpers -------------------------------------------------------------
 	def _fetch_principal(self):
 		if not self.container:
