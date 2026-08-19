@@ -18,6 +18,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, getdate, now_datetime, time_diff_in_seconds, today
 
+from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
@@ -505,6 +506,11 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
 				out["deleted"].append(d.name)
 			else:
 				frappe.db.set_value("Inspection", d.name, "referred_voucher", None, update_modified=False)
+				# Raw write (update_modified=False on purpose), so nothing else records it —
+				# say on the EIR's own timeline why its bon link vanished.
+				log_doc_note("Inspection", d.name, _(
+					"Bon {0} dibatalkan — link bon dilepas, isian EIR dipertahankan."
+				).format(order_name))
 				out["detached"].append(d.name)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"release EIR {d.name} on {order_name}")
@@ -1002,7 +1008,12 @@ def start_eir(inspection: str) -> dict:
 	if not doc.work_started_on:
 		# Stamp who started it too, so the PWA can scope the "next/prev EIR" navigator to
 		# the EIRs this account is working (idempotent: keep the original starter).
-		doc.db_set({"work_started_on": now_datetime(), "work_started_by": frappe.session.user})
+		# doc.save() and not db_set: Inspection tracks changes, and only the document path
+		# writes the Version row that puts "Mulai" on the EIR's timeline. Safe here — the
+		# doc is still a draft (guarded above), so neither field needs allow_on_submit.
+		doc.work_started_on = now_datetime()
+		doc.work_started_by = frappe.session.user
+		doc.save()
 	return {
 		"success": True,
 		"inspection": doc.name,
@@ -1365,10 +1376,9 @@ def withdraw_review(inspection: str) -> dict:
 	doc.save()  # NOT ignore_permissions — the operator holds Inspection write.
 
 	# Audit trail on the timeline (best-effort — must not fail the withdraw).
-	try:
-		doc.add_comment("Comment", _("EIR ditarik dari review untuk diperbaiki oleh {0}").format(frappe.session.user))
-	except Exception:
-		frappe.log_error(title="EIR withdraw comment", message=frappe.get_traceback())
+	log_doc_note("Inspection", doc.name, _(
+		"EIR ditarik dari review untuk diperbaiki oleh {0}"
+	).format(frappe.session.user))
 
 	return {
 		"success": True,
@@ -1570,10 +1580,7 @@ def request_revision(inspection: str, reason: str | None = None) -> dict:
 		note += ": " + reason
 	# Audit trail on the EIR timeline (visible in Desk). Best-effort — the notification
 	# is what matters, so a comment-permission hiccup must not fail the request.
-	try:
-		doc.add_comment("Comment", note)
-	except Exception:
-		frappe.log_error(title="EIR revision comment", message=frappe.get_traceback())
+	log_doc_note("Inspection", doc.name, note)
 
 	eir_id = doc.inspection_id or doc.name
 	subject = _("Minta revisi EIR {0} • {1} • oleh {2}").format(
@@ -1635,6 +1642,11 @@ def revert_to_draft(name: str) -> dict:
 		"Inspection", doc.name,
 		{"docstatus": 0, "status": "Draft", "revision_requested": 0, "revision_note": None},
 	)
+	# A backwards docstatus flip can never go through doc.save(), so no Version row is
+	# written — put it on the EIR's timeline by hand.
+	log_doc_note("Inspection", doc.name, _(
+		"EIR dikembalikan ke draft oleh {0} (dari Submitted)."
+	).format(frappe.session.user))
 
 	# Append an inverse activity for the audit trail (the on_submit one stays — the log
 	# is append-only). Never let a logging failure block the revert.

@@ -17,6 +17,7 @@ import frappe
 from container_depot.ess.guard import require_menu
 from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import mr
+from container_depot.container_depot.container_activity import log_doc_note
 
 # Allowed Repair Order status transitions — single source of truth in container_depot/mr.py
 # (the owner-approval state machine, shared by the controller, PWA, and Desk).
@@ -109,12 +110,16 @@ def set_repair_status(repair_order, status):
 	doc.status = status
 	doc.save()  # before_save -> calculate_totals() + update_container_status()
 
-	# Auditable approval: reflect the decision on the linked EIR.
+	# Auditable approval: reflect the decision on the linked EIR. Raw set_value, not
+	# doc.save() — approval_status is not allow_on_submit, so saving a submitted EIR would
+	# throw; that also means no Version row, hence the explicit timeline note.
 	if doc.inspection:
-		if status == "Approved":
-			frappe.db.set_value("Inspection", doc.inspection, "approval_status", "Approved")
-		elif status == "Cancelled":
-			frappe.db.set_value("Inspection", doc.inspection, "approval_status", "Rejected")
+		decision = {"Approved": "Approved", "Cancelled": "Rejected"}.get(status)
+		if decision:
+			frappe.db.set_value("Inspection", doc.inspection, "approval_status", decision)
+			log_doc_note("Inspection", doc.inspection, frappe._(
+				"Approval EIR: {0} — dari M&R {1} ({2}) oleh {3}"
+			).format(decision, doc.name, status, frappe.session.user))
 
 	return {
 		"success": True,

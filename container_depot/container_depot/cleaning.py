@@ -162,10 +162,12 @@ def start_cleaning(cleaning_order):
 	_guard_container_branch(co.container)
 
 	if co.status != "In_Progress":
-		frappe.db.set_value(
-			"Cleaning Order", co.name,
-			{"status": "In_Progress", "cleaning_start": now_datetime()}, update_modified=True,
-		)
+		# doc.save() and not db.set_value: Cleaning Order tracks changes, and only the
+		# document path writes the Version row that puts "Mulai" on the order's timeline.
+		doc = frappe.get_doc("Cleaning Order", co.name)
+		doc.status = "In_Progress"
+		doc.cleaning_start = now_datetime()
+		doc.save()  # NOT ignore_permissions — same rule as complete(): the caller holds write.
 	# The order is still a draft, so its controller propagation hasn't run — mirror the
 	# In_Progress cleaning hint onto the container here (status stays presence-based).
 	cont = frappe.get_doc("Container", co.container)

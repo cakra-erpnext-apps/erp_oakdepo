@@ -273,12 +273,13 @@
     }
   ],
   "links": [],
-  "modified": "2026-08-18 21:00:00.000000",
+  "modified": "2026-08-19 09:00:00.000000",
   "module": "Container Depot",
   "name": "Repair Order",
   "naming_rule": "Expression (BY ASSIGNMENT)",
   "search_fields": "repair_order_id, container, status",
   "sort_field": "creation",
   "sort_order": "DESC",
-  "title_field": "repair_order_id"
+  "title_field": "repair_order_id",
+  "track_changes": 1
 }

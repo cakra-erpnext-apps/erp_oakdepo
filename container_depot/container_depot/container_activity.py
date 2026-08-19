@@ -60,6 +60,28 @@ def log_container_activity(
 		return None
 
 
+def log_doc_note(doctype, name, message) -> None:
+	"""Append one timeline comment to a document — best-effort, never raises.
+
+	Companion to :func:`log_container_activity` for the deliberate raw-write paths
+	(``db_set`` / ``frappe.db.set_value``) that bypass the document layer: those leave no
+	``Version`` row, so without this the change is invisible on the order's own timeline.
+	Prefer ``doc.save()`` where it is safe — reach for this only when saving is impossible
+	(docstatus flips, non-``allow_on_submit`` fields on a submitted doc).
+	"""
+	try:
+		frappe.get_doc({
+			"doctype": "Comment",
+			"comment_type": "Comment",
+			"comment_email": frappe.session.user,
+			"reference_doctype": doctype,
+			"reference_name": name,
+			"content": message,
+		}).insert(ignore_permissions=True)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"container_depot timeline note failed: {doctype} {name}")
+
+
 # ---------------------------------------------------------------------------
 # Riwayat (history): read the Container Activity timeline.
 # ---------------------------------------------------------------------------

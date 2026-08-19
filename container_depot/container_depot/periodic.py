@@ -15,6 +15,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime, today
 
+from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
 
 # Read helpers shared with M&R (doctype-agnostic): stock on-hand, photo-JSON parse, input
@@ -124,7 +125,7 @@ def reopen_to_draft(periodic_test_order, note=None):
 	doc.status = "Draft"
 	doc.requested_on = doc.decided_on = doc.decided_by = None
 	doc.save(ignore_permissions=True)
-	doc.add_comment("Comment", _("Dikembalikan ke Draft") + (f": {note}" if note else ""))
+	log_doc_note("Periodic Test Order", doc.name, _("Dikembalikan ke Draft") + (f": {note}" if note else ""))
 	return {"success": True, "name": doc.name, "status": doc.status}
 
 

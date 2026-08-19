@@ -21,6 +21,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, getdate, now_datetime
 
+from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
 from container_depot.container_depot.service_menu import filter_items_by_menu, is_real_menu
@@ -509,13 +510,10 @@ def reopen_to_draft(repair_order, note=None):
 		ro.owner_note = _clean(note)
 	ro.save()
 	# Audit trail on the timeline — best-effort, must not block the reopen.
-	try:
-		msg = _("M&R dikembalikan ke Draft dari {0} oleh {1}").format(prev, frappe.session.user)
-		if note:
-			msg += ": " + _clean(note)
-		ro.add_comment("Comment", msg)
-	except Exception:
-		frappe.log_error(title="M&R reopen_to_draft comment", message=frappe.get_traceback())
+	msg = _("M&R dikembalikan ke Draft dari {0} oleh {1}").format(prev, frappe.session.user)
+	if note:
+		msg += ": " + _clean(note)
+	log_doc_note("Repair Order", ro.name, msg)
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 
