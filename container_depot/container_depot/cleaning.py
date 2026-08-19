@@ -236,6 +236,8 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 			for r in co.cleaning_services
 		],
 		"cleaning_items": _cleaning_item_options(co.container),
+		# Free-text instruction Admin Ops leaves on the order — read-only for the operator.
+		"cleaning_instructions": co.cleaning_instructions or "",
 		"reff_doc": co.reff_doc,
 		"remarks": co.remarks or "",
 		# The signature is autosaved like any other field, so reopening the order has to bring

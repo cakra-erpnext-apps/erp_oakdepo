@@ -129,6 +129,12 @@
 				<p v-else class="text-sm text-gray-400">{{ labels.cleaningNoMethod }}</p>
 			</section>
 
+			<!-- Instruksi Cleaning — free text Admin Ops left on the order (read-only). -->
+			<section v-if="order.cleaning_instructions" class="oak-card p-4 space-y-2">
+				<p class="oak-section-title">{{ labels.cleaningInstructions }}</p>
+				<p class="whitespace-pre-line text-sm text-gray-800">{{ order.cleaning_instructions }}</p>
+			</section>
+
 			<!-- Tank header -->
 			<section class="oak-card p-4">
 				<p class="oak-section-title mb-2">{{ labels.cleaningTankDetails }}</p>

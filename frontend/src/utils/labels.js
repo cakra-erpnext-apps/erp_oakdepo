@@ -574,6 +574,7 @@ export const labels = {
 	cleaningOrder: "Cleaning Order",
 	cleaningType: "Metode Cleaning", // cleaning method (now one or more billable service items)
 	cleaningNoMethod: "Metode cleaning belum diset oleh Admin Ops.", // read-only method not yet chosen upstream
+	cleaningInstructions: "Instruksi Cleaning", // free-text instruction from Admin Ops (read-only)
 	cleaningTypeUnset: "Belum diset", // not set
 	cleaningSelectServices: "Pilih layanan cleaning (bisa lebih dari satu)", // multi-select hint
 	cleaningServicesCount: "layanan", // worklist + count chip: "<n> layanan" (count, NOT price)

@@ -43,6 +43,11 @@
 				</dl>
 			</section>
 
+			<section v-if="data.cleaning_instructions" class="oak-card space-y-2 p-4">
+				<p class="oak-section-title">{{ labels.cleaningInstructions }}</p>
+				<p class="whitespace-pre-line text-sm text-gray-800">{{ data.cleaning_instructions }}</p>
+			</section>
+
 			<section v-if="(data.cleaning_services || []).length" class="oak-card space-y-2 p-4">
 				<p class="oak-section-title">{{ labels.cleaningType }}</p>
 				<ul class="space-y-1 text-sm">

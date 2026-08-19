@@ -65,6 +65,15 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(d["capacity"], 26000)
 		self.assertEqual(str(d["date_of_issue"]), frappe.utils.today())
 
+	def test_detail_carries_cleaning_instructions(self):
+		"""Instruksi yang ditulis Admin Ops di order harus sampai ke PWA operator."""
+		co = self._order(self._container("CLNINSTR001"))
+		frappe.db.set_value("Cleaning Order", co, "cleaning_instructions", "Bilas 2x, jangan pakai deterjen.")
+		self.assertEqual(
+			cleaning.get_cleaning_order_detail(co)["cleaning_instructions"],
+			"Bilas 2x, jangan pakai deterjen.",
+		)
+
 	def test_cargo_history_empty_ok(self):
 		c = self._container("CLNCARGO001")
 		self.assertEqual(cleaning.cargo_history(c), [])
