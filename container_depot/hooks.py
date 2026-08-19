@@ -292,6 +292,9 @@ app_include_js = [
 	"/assets/container_depot/js/notification_click.js",
 	# Backport perbaikan Frappe untuk pill Table MultiSelect (lihat file-nya).
 	"/assets/container_depot/js/table_multiselect_fix.js",
+	# container_depot.render_system_facts — the shared sidebar block every depot document
+	# shows its system-filled facts in (see the file).
+	"/assets/container_depot/js/system_facts.js",
 ]
 
 # include js, css files in header of web template
