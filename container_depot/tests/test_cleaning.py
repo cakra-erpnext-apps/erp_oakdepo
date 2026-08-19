@@ -16,7 +16,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot import cleaning
 from container_depot.container_depot.exceptions import AlreadySettled
-from container_depot.tests.test_eir import _make_container
+from container_depot.tests.test_eir import _ensure_cargo, _make_container
 
 
 class TestCleaningOrderFlow(FrappeTestCase):
@@ -24,14 +24,18 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self._containers = []
 		self._orders = []
+		self._cargos = []
 
 	def tearDown(self):
 		for o in self._orders:
 			frappe.db.delete("Cleaning Order", {"name": o})
 		for c in self._containers:
 			frappe.db.delete("Cleaning Order", {"container": c})
+			frappe.db.delete("Inspection", {"container": c})
 			frappe.db.delete("Container Activity", {"container": c})
 			frappe.db.delete("Container", {"name": c})
+		for cargo in self._cargos:
+			frappe.db.delete("Cargo", {"name": cargo})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -39,6 +43,20 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		c = _make_container(cno, **kw)
 		self._containers.append(c)
 		return c
+
+	def _cargo(self, name):
+		self._cargos.append(name)
+		return _ensure_cargo(name)
+
+	def _eir(self, container, cargo, eir_date, inspection_type="EIR-In"):
+		"""A submitted EIR carrying ``cargo`` — docstatus is flipped directly so the
+		controller's container writeback stays out of this query-level test."""
+		doc = frappe.get_doc({
+			"doctype": "Inspection", "container": container, "inspection_type": inspection_type,
+			"eir_date": eir_date, "cargo": self._cargo(cargo),
+		}).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("Inspection", doc.name, "docstatus", 1)
+		return doc.name
 
 	def _order(self, container, **kw):
 		co = frappe.get_doc({
@@ -77,6 +95,36 @@ class TestCleaningOrderFlow(FrappeTestCase):
 	def test_cargo_history_empty_ok(self):
 		c = self._container("CLNCARGO001")
 		self.assertEqual(cleaning.cargo_history(c), [])
+
+	def test_cargo_history_comes_from_submitted_eirs(self):
+		"""Riwayat cargo dibaca langsung dari EIR yang sudah disubmit — terbaru dulu."""
+		c = self._container("CLNCARGO002")
+		self._eir(c, "CLN Toluene", "2026-01-10")
+		self._eir(c, "CLN Methanol", "2026-03-05")
+		self.assertEqual(
+			cleaning.cargo_history(c),
+			[{"cargo": "CLN Methanol", "date": "2026-03-05"},
+			 {"cargo": "CLN Toluene", "date": "2026-01-10"}],
+		)
+
+	def test_cargo_history_skips_drafts_and_collapses_repeats(self):
+		"""EIR draft tidak dihitung; EIR-Out yang membawa cargo yang sama tidak diulang."""
+		c = self._container("CLNCARGO003")
+		self._eir(c, "CLN Toluene", "2026-01-10")
+		self._eir(c, "CLN Toluene", "2026-01-12", inspection_type="EIR-Out")
+		frappe.get_doc({
+			"doctype": "Inspection", "container": c, "inspection_type": "EIR-In",
+			"eir_date": "2026-02-01", "cargo": self._cargo("CLN Xylene"),
+		}).insert(ignore_permissions=True, ignore_mandatory=True)  # draft — must be ignored
+		self.assertEqual(
+			cleaning.cargo_history(c), [{"cargo": "CLN Toluene", "date": "2026-01-12"}],
+		)
+
+	def test_cargo_history_respects_limit(self):
+		c = self._container("CLNCARGO004")
+		for i, cargo in enumerate(["CLN A", "CLN B", "CLN C"], start=1):
+			self._eir(c, cargo, f"2026-01-0{i}")
+		self.assertEqual([h["cargo"] for h in cleaning.cargo_history(c, limit=2)], ["CLN C", "CLN B"])
 
 	# --- lifecycle ------------------------------------------------------------
 	def test_start_marks_in_progress(self):

@@ -58,21 +58,35 @@ def _default_place_of_issue(user, depot) -> str | None:
 
 
 def cargo_history(container, limit=4) -> list:
-	"""The container's recent cargo history from Container Booking Item — newest to
-	oldest, capped at ``limit`` (default 4)."""
-	cno = frappe.db.get_value("Container", container, "container_no")
+	"""The container's recent cargo history, straight from its submitted EIRs — newest to
+	oldest, capped at ``limit`` (default 4).
+
+	The EIR is where a cargo is recorded (and written back to ``Container.last_cargo`` on
+	submit), so it is the source of truth. An EIR-Out normally carries the container's
+	current cargo forward unchanged, which would repeat the EIR-In that recorded it —
+	consecutive repeats of the same cargo are collapsed into one entry.
+	"""
+	limit = cint(limit) or 4
 	rows = frappe.get_all(
-		"Container Booking Item",
-		filters={"cargo": ["is", "set"]},
-		or_filters={"container": container, "container_no": cno},
-		fields=["cargo", "tanggal_bongkar", "creation"],
-		order_by="creation desc",
-		limit_page_length=cint(limit),
+		"Inspection",
+		filters={
+			"container": container,
+			"docstatus": 1,
+			"cargo": ["is", "set"],
+			"inspection_type": ["in", ["EIR-In", "EIR-Out"]],
+		},
+		fields=["cargo", "eir_date", "creation"],
+		order_by="eir_date desc, creation desc",
+		limit_page_length=limit * 4,  # room to collapse in/out repeats before capping
 	)
-	return [
-		{"cargo": r.cargo, "date": str(r.tanggal_bongkar or r.creation)[:10]}
-		for r in rows
-	]
+	history = []
+	for r in rows:
+		if history and history[-1]["cargo"] == r.cargo:
+			continue  # same cargo carried forward by the next EIR — one entry is enough
+		history.append({"cargo": r.cargo, "date": str(r.eir_date or r.creation)[:10]})
+		if len(history) == limit:
+			break
+	return history
 
 
 def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
