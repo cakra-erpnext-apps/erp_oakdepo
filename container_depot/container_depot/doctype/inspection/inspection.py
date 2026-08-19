@@ -160,9 +160,7 @@ class Inspection(Document):
 			# Status is no longer set here — a dirty/damaged tank simply keeps the
 			# container In_Depot via the open Cleaning/Repair order created below, and
 			# recompute_availability (end of on_submit) flips it to Available once every
-			# related order is done. Keep the cleaning hint for a dirty tank.
-			if self.get("create_cleaning_order") and self.get("tank_status") == "Empty Dirty" and not self.has_damage:
-				container.cleaning_status = "Pending"
+			# related order is done.
 			self._save_container(container)
 		elif self.inspection_type == "EIR-Out":
 			# Record the gate-out inspection date on the container (mirrors EIR-In).

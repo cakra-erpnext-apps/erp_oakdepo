@@ -745,6 +745,10 @@ def setup_property_setters():
 #     The old stage-based cards (inventory_stage = Cleaning / Survey / Repair (M&R))
 #     silently counted zero from the day those stages were removed — v0_59 deletes
 #     them; the ``* Aktif`` cards below are their replacement.
+#     ``Dirty Tank`` / ``Clean Tank`` went the same way in v0_62: they counted
+#     Container.cleaning_status, which nothing ever reset, so a tank cleaned last cycle
+#     stayed "Clean" long after it had gated out — and the card did not even filter to
+#     tanks still in the depo. ``Cleaning Order Aktif`` counts the work itself.
 # ---------------------------------------------------------------------------
 
 # "In Depo" = physically present. Stated positively (IN_DEPO_STAGES) rather than as
@@ -764,10 +768,6 @@ _IN_DEPO_FILTER = [["inventory_stage", "in", IN_DEPO_STAGES]]
 INVENTORY_NUMBER_CARDS = [
 	{"label": "Stock In Depo",
 	 "document_type": "Container", "filters_json": _IN_DEPO_FILTER},
-	{"label": "Dirty Tank",
-	 "document_type": "Container", "filters_json": [["cleaning_status", "in", ["Pending", "In_Progress"]]]},
-	{"label": "Clean Tank",
-	 "document_type": "Container", "filters_json": [["cleaning_status", "=", "Completed"]]},
 	{"label": "Tanks Ready for Release",
 	 "document_type": "Container", "filters_json": [["inventory_stage", "=", "Ready"]]},
 	{"label": "Tank In Today",

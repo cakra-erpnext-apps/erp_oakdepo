@@ -221,7 +221,8 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(doc.status, "Rejected")
 		self.assertEqual(doc.owner_note, "owner declined")
 		self.assertTrue(all(r.decision == "Rejected" for r in doc.used_items))
-		self.assertEqual(frappe.db.get_value("Container", c, "repair_status"), "Not_Required")
+		# A rejected M&R is finished work — nothing holds the tank any more.
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
 
 	# --- revision loop --------------------------------------------------------
 	def test_revision_loop_returns_to_editable(self):

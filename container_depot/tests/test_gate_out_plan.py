@@ -593,13 +593,21 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertEqual(row.driver_phone, "0811-2233")
 		self.assertEqual(row.ro, "RO-9")
 
-	def test_make_booking_reads_the_condition_off_the_tank(self):
+	def test_make_booking_reads_the_condition_off_the_open_cleaning(self):
 		c = self._container("GOPBKG00002")
-		frappe.db.set_value("Container", c, "cleaning_status", "In_Progress", update_modified=False)
+		self._cleaning(c, status="In_Progress")
 		plan = self._plan([(c, add_days(today(), 5))])
 
 		booking = gate_out_plan.make_container_booking(plan.name)
 		self.assertEqual(booking.items[0].condition, "EMPTY DIRTY")
+
+	def test_make_booking_calls_a_tank_with_no_open_cleaning_clean(self):
+		c = self._container("GOPBKG00007")
+		self._cleaning(c, status="Completed")
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		booking = gate_out_plan.make_container_booking(plan.name)
+		self.assertEqual(booking.items[0].condition, "EMPTY CLEAN")
 
 	def test_make_booking_drops_tanks_that_already_left(self):
 		gone = self._container("GOPBKG00003")

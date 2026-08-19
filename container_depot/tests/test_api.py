@@ -155,7 +155,7 @@ def run_tests():
 		assert repair_order.principal == principal_customer, "Principal not auto-fetched"
 		
 		container.reload()
-		assert container.repair_status == "Pending_Estimate", "Container repair status should be Pending_Estimate for Draft RO"
+		assert container.status == "In_Depot", "A draft M&R keeps the container In_Depot"
 		print("✓ Repair Order calculations and Draft state verified.")
 
 		# Move Repair Order to In Progress
@@ -164,7 +164,6 @@ def run_tests():
 		repair_order.save(ignore_permissions=True)
 		
 		container.reload()
-		assert container.repair_status == "In_Progress", "Container repair status should be In_Progress"
 		assert container.status == "In_Depot", "Container status should be In_Depot"
 		print("✓ Repair Order In Progress state verified.")
 
@@ -174,7 +173,6 @@ def run_tests():
 		repair_order.save(ignore_permissions=True)
 		
 		container.reload()
-		assert container.repair_status == "Completed", "Container repair status should be Completed"
 		assert container.status == "Available", "Container status should be Available"
 		print("✓ Repair Order Completion state verified.")
 

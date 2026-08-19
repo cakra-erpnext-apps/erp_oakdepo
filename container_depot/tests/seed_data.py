@@ -18,8 +18,8 @@ def seed():
 	containers = [
 		{"container_no": "OAKU9812734", "container_type": "ISO Tank", "size": "20'", "status": "In_Depot", "principal": "Oak Depot Principal", "yard_zone": "PreClean_Buffer", "depot": "SUB"},
 		{"container_no": "MSCU1122334", "container_type": "ISO Tank", "size": "20'", "status": "Available", "principal": "MSC Shipping", "yard_zone": "Storage_Yard_A", "depot": "SUB"},
-		{"container_no": "TEXU4455667", "container_type": "20ft Dry", "size": "20'", "status": "In_Depot", "principal": "TexTainer", "yard_zone": "Workshop_D", "repair_status": "In_Progress", "depot": "SUB"},
-		{"container_no": "GLOU8877665", "container_type": "ISO Tank", "size": "20'", "status": "In_Depot", "principal": "Global Tanks Co", "yard_zone": "Cleaning_Bay_C", "cleaning_status": "Pending", "depot": "KIM11"},
+		{"container_no": "TEXU4455667", "container_type": "20ft Dry", "size": "20'", "status": "In_Depot", "principal": "TexTainer", "yard_zone": "Workshop_D", "depot": "SUB"},
+		{"container_no": "GLOU8877665", "container_type": "ISO Tank", "size": "20'", "status": "In_Depot", "principal": "Global Tanks Co", "yard_zone": "Cleaning_Bay_C", "depot": "KIM11"},
 		{"container_no": "TRLU5566778", "container_type": "40ft HC", "size": "40'", "status": "Available", "principal": "Triton Containers", "yard_zone": "Storage_Yard_B", "depot": "KIM11"}
 	]
 
@@ -34,8 +34,6 @@ def seed():
 			"principal": c["principal"],
 			"depot": c.get("depot"),
 			"yard_zone": c["yard_zone"],
-			"cleaning_status": c.get("cleaning_status", "Not_Required"),
-			"repair_status": c.get("repair_status", "Not_Required")
 		})
 		doc.insert(ignore_permissions=True)
 		cont_docs[c["container_no"]] = doc

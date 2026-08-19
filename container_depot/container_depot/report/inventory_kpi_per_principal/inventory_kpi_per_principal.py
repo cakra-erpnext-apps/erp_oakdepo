@@ -4,7 +4,7 @@ One row per principal (Container.principal -> Customer) with the v0.2 inventory
 KPIs, optionally scoped to a single depot via the ``depot`` filter:
 
 - Stock In Depo   — containers currently in the depot (status != Gate_Out)
-- Dirty / Clean   — by Container.cleaning_status
+- Dirty / Clean   — in-depo tanks with / without an open Cleaning Order
 - Total IN / OUT  — submitted Container Booking items by direction
 - Total Cleaned   — submitted, Completed Cleaning Orders
 - Total PT2.5 / PT5 — Periodic Test Orders by type, cancelled ones excluded
@@ -19,6 +19,8 @@ data.
 from __future__ import annotations
 
 import frappe
+
+from container_depot.container_depot.container_status import DONE_CLEANING
 
 
 def execute(filters=None):
@@ -48,10 +50,14 @@ def _columns():
 
 
 def _data(depot):
-	# Container-based metrics (principal + cleaning_status live on Container).
+	# Container-based metrics (principal lives on Container).
 	stock = _container_counts(depot, "status != 'Gate_Out'")
-	dirty = _container_counts(depot, "cleaning_status IN ('Pending', 'In_Progress')")
-	clean = _container_counts(depot, "cleaning_status = 'Completed'")
+	# Dirty / Clean used to read Container.cleaning_status, which nothing ever reset —
+	# a tank cleaned last cycle counted as Clean forever, gated out or not. Both are
+	# asked of the open Cleaning Orders instead, over tanks actually in the depo, so
+	# the two columns always add up to Stock In Depo.
+	dirty = _container_counts(depot, f"c.status != 'Gate_Out' AND {_OPEN_CLEANING}")
+	clean = _container_counts(depot, f"c.status != 'Gate_Out' AND NOT {_OPEN_CLEANING}")
 
 	# Activity metrics, attributed via the container's principal.
 	total_in = _booking_counts(depot, "Tank In")
@@ -84,6 +90,15 @@ def _data(depot):
 			"steam": steam.get(principal, 0),
 		})
 	return rows
+
+
+# "Dirty" = the depot still has cleaning to do on the tank. Terminal statuses come from
+# container_status so this can never disagree with what keeps a tank from leaving.
+_OPEN_CLEANING = (
+	"EXISTS (SELECT 1 FROM `tabCleaning Order` co0"
+	"        WHERE co0.container = c.name AND co0.docstatus < 2"
+	"          AND co0.status NOT IN ('" + "', '".join(DONE_CLEANING) + "'))"
+)
 
 
 def _depot_clause(alias, depot, params):

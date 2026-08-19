@@ -204,36 +204,19 @@ class RepairOrder(Document):
 			self.append("totals", {"currency": cur, "total": amt})
 
 	def update_container_status(self):
-		"""Update container's status and repair_status based on this Repair Order"""
+		"""Log this Repair Order's milestones against its container.
+
+		The container used to mirror a ``repair_status`` hint here (Pending_Estimate /
+		Awaiting_Approval / ...). Nothing read it except two report columns, and nothing
+		reset it once the M&R closed, so a tank repaired a year ago still read "Completed".
+		The Repair Order's own status is the answer, and ``container_open_orders`` is what
+		decides whether the tank may leave — so only the activity log is left here.
+		"""
 		if not self.container:
 			return
 
 		before = self.get_doc_before_save()
 		prev_status = before.status if before else None
-		container_doc = frappe.get_doc("Container", self.container)
-
-		# Only the informational repair_status hint is mirrored here — the main
-		# Container.status is presence-based now and recomputed in on_update once this
-		# order's new status is persisted (In_Depot while open, Available when done).
-		if self.status in ("Draft", "Service Setup"):
-			# Service Setup is still estimate-building (Admin Ops arranging it) — the owner
-			# has not been asked yet, so it is not "awaiting approval".
-			container_doc.repair_status = "Pending_Estimate"
-		elif self.status in ("Pending Approval", "Revision Requested"):
-			container_doc.repair_status = "Awaiting_Approval"
-		elif self.status in ["Approved", "In Progress"]:
-			container_doc.repair_status = "In_Progress"
-		elif self.status == "Completed":
-			container_doc.repair_status = "Completed"
-		elif self.status in ("Cancelled", "Rejected"):
-			container_doc.repair_status = "Not_Required"
-
-		# Controller-driven status change: bypass the manual-transition guard.
-		frappe.flags.in_status_automation = True
-		try:
-			container_doc.save(ignore_permissions=True)
-		finally:
-			frappe.flags.in_status_automation = False
 
 		# Log a Repair milestone when the order is approved / progressed / finished.
 		if self.status in ("Approved", "In Progress", "Completed") and self.status != prev_status:
@@ -242,7 +225,7 @@ class RepairOrder(Document):
 			log_container_activity(
 				self.container, "Repair",
 				reference_doctype=self.doctype, reference_name=self.name,
-				to_status=container_doc.status,
+				to_status=frappe.db.get_value("Container", self.container, "status"),
 				performed_by=self.get("technician"),
 				summary=f"Repair {self.status}" + (f" (cost {self.total_cost})" if self.get("total_cost") else ""),
 			)

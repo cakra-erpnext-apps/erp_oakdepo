@@ -711,12 +711,26 @@ def handle_repair_status(message, from_user, session_id):
 	response = f"*Repair Status: {container_no}*\n"
 	response += f"Current Status: {(doc.status or '').replace('_', ' ')}\n"
 
-	if doc.status == "Awaiting_MR_Approval":
-		response += f"\n⚠️ Container awaiting M&R approval.\nLocation: {doc.current_location or 'Workshop'}\n"
-	elif doc.status == "Repair_In_Progress":
-		response += f"\n🔧 Repair in progress.\nLocation: {doc.current_location or 'Workshop'}\n"
-	else:
+	# Answered from the Repair Orders themselves. This used to branch on
+	# Container.status == "Awaiting_MR_Approval" / "Repair_In_Progress" — Select options
+	# that stopped existing when the status went presence-based, so every tank in the
+	# workshop was reported as having no repair work.
+	from container_depot.container_depot.container_status import DONE_REPAIR
+
+	open_ros = frappe.get_all(
+		"Repair Order",
+		filters={"container": container_name, "status": ["not in", DONE_REPAIR], "docstatus": ["<", 2]},
+		fields=["name", "status"],
+		order_by="modified desc",
+	)
+	if not open_ros:
 		response += "\nNo active repair work.\n"
+		return response
+
+	response += f"\n🔧 {len(open_ros)} M&R terbuka.\nLocation: {doc.current_location or 'Workshop'}\n"
+	for ro in open_ros:
+		icon = "⚠️" if ro.status in ("Pending Approval", "Revision Requested") else "🔧"
+		response += f"{icon} {ro.name}: {ro.status}\n"
 	return response
 
 

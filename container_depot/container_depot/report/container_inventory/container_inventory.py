@@ -29,8 +29,6 @@ def _columns():
 		{"fieldname": "inventory_stage", "label": "Stage", "fieldtype": "Data", "width": 110},
 		{"fieldname": "status", "label": "Raw Status", "fieldtype": "Data", "width": 150},
 		{"fieldname": "last_cargo", "label": "Last Cargo", "fieldtype": "Link", "options": "Cargo", "width": 120},
-		{"fieldname": "cleaning_status", "label": "Cleaning", "fieldtype": "Data", "width": 100},
-		{"fieldname": "repair_status", "label": "Repair", "fieldtype": "Data", "width": 110},
 		{"fieldname": "in_date", "label": "In Date", "fieldtype": "Date", "width": 100},
 		{"fieldname": "days_in_depo", "label": "Days In Depo", "fieldtype": "Int", "width": 110},
 		{"fieldname": "next_pt_due", "label": "Next PT Due", "fieldtype": "Date", "width": 100},
@@ -54,8 +52,7 @@ def _data(filters):
 	rows = frappe.db.sql(
 		f"""
 		SELECT c.container_no, c.principal, c.container_type, c.size, c.inventory_stage,
-		       c.status, c.last_cargo, c.cleaning_status, c.repair_status,
-		       c.eir_in_date, c.next_pt_due
+		       c.status, c.last_cargo, c.eir_in_date, c.next_pt_due
 		FROM `tabContainer` c{clause}
 		ORDER BY c.principal, c.container_no
 		""",
@@ -77,8 +74,6 @@ def _data(filters):
 			"inventory_stage": r.inventory_stage,
 			"status": r.status,
 			"last_cargo": r.last_cargo,
-			"cleaning_status": r.cleaning_status,
-			"repair_status": r.repair_status,
 			"in_date": in_date,
 			"days_in_depo": days,
 			"next_pt_due": r.next_pt_due,

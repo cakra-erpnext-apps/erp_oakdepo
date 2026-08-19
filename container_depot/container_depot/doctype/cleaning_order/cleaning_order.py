@@ -152,8 +152,7 @@ class CleaningOrder(Document):
 		A DRAFT cleaning is already work in progress, so the tank is not free to leave. The
 		status only moved at submit before — unlike M&R and Periodic Test, which recompute
 		on every save — so a container could read ``Available`` while an open cleaning sat
-		on it. Only the cheap recompute runs here; the cleaning_status / certification
-		mirroring stays on the submit path where it belongs.
+		on it.
 		"""
 		from container_depot.container_depot.container_status import recompute_availability
 
@@ -170,32 +169,18 @@ class CleaningOrder(Document):
 		self._propagate_to_container()
 
 	def _propagate_to_container(self, log_always=False):
-		"""Mirror the cleaning order's progress onto its container.
+		"""Push this cleaning order's progress onto its container.
 
-		Re-cleaning (post-survey) uses the portal lifecycle states; a normal
-		first clean keeps the original behaviour (-> Available).
+		The container carries no cleaning field of its own any more. It used to mirror a
+		``cleaning_status`` / ``certification_status`` hint here, but nothing ever cleared
+		either one — a tank cleaned last cycle still read "Completed" after it had gated
+		out and come back dirty — and the open Cleaning Order is the same answer without
+		the staleness. So all that is left is the presence recompute.
 		"""
 		if not self.container:
 			return
 		before = self.get_doc_before_save()
 		prev_status = before.status if before else None
-		container = frappe.get_doc("Container", self.container)
-
-		# Only the informational cleaning_status / certification_status hints are set here;
-		# the main Container.status is presence-based now and recomputed below.
-		if self.status == "In_Progress":
-			container.cleaning_status = "In_Progress"
-		elif self.status == "Completed":
-			container.cleaning_status = "Completed"
-			if not self.is_recleaning:
-				container.certification_status = "Completed"
-
-		# Controller-driven save: bypass the manual-transition guard.
-		frappe.flags.in_status_automation = True
-		try:
-			container.save(ignore_permissions=True)
-		finally:
-			frappe.flags.in_status_automation = False
 
 		# Flip In_Depot <-> Available now that this cleaning order's state changed.
 		from container_depot.container_depot.container_status import recompute_availability
@@ -211,7 +196,7 @@ class CleaningOrder(Document):
 			log_container_activity(
 				self.container, "Cleaning",
 				reference_doctype=self.doctype, reference_name=self.name,
-				to_status=container.status,
+				to_status=frappe.db.get_value("Container", self.container, "status"),
 				performed_by=self.get("completed_by") or self.get("assigned_to"),
 				summary=f"Cleaning {self.status.lower().replace('_', ' ')} ({label})",
 			)

@@ -49,9 +49,8 @@ class TestEirCleaningFlow(FrappeTestCase):
 		self.assertEqual(orders[0].status, "Service Setup")
 		# EIR -> Cleaning Order: the order carries its source EIR.
 		self.assertEqual(orders[0].inspection, eir_name)
-		container = frappe.db.get_value("Container", c, ["status", "cleaning_status"], as_dict=True)
-		self.assertEqual(container.status, "In_Depot")
-		self.assertEqual(container.cleaning_status, "Pending")
+		# The tank carries no cleaning field of its own — the open order is what holds it.
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
 	def test_empty_clean_eir_creates_no_cleaning_order(self):
 		c, _ = self._eir_in("CLEANEIR001", tank_status="Empty Clean")

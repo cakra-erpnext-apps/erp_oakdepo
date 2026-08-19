@@ -56,8 +56,6 @@ def execute(filters=None):
 			"status": c.status,
 			"readiness": _readiness(work),
 			"open_orders": len(work),
-			"cleaning_status": c.cleaning_status,
-			"repair_status": c.repair_status,
 			"target_lift_on": c.target_lift_on,
 			"next_pt_due": c.next_pt_due,
 		}
@@ -95,8 +93,6 @@ def _columns():
 		{"fieldname": "status", "label": "Status", "fieldtype": "Data", "width": 100},
 		{"fieldname": "readiness", "label": "Kesiapan", "fieldtype": "Data", "width": 170},
 		{"fieldname": "open_orders", "label": "Order Terbuka", "fieldtype": "Int", "width": 110},
-		{"fieldname": "cleaning_status", "label": "Cleaning Status", "fieldtype": "Data", "width": 120},
-		{"fieldname": "repair_status", "label": "Repair Status", "fieldtype": "Data", "width": 120},
 	]
 	cols += [
 		{"fieldname": key, "label": label, "fieldtype": "Link", "options": doctype, "width": 150}
@@ -123,7 +119,7 @@ def _containers(filters):
 		filters=query,
 		fields=[
 			"name", "principal", "container_type", "size", "status",
-			"cleaning_status", "repair_status", "target_lift_on", "next_pt_due",
+			"target_lift_on", "next_pt_due",
 		],
 		order_by="principal asc, name asc",
 		limit_page_length=0,

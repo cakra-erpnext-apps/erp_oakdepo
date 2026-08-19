@@ -21,7 +21,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_days, cint, flt, getdate, today
 
-from container_depot.container_depot.container_status import assert_rows_active
+from container_depot.container_depot.container_status import DONE_CLEANING, assert_rows_active
 
 # Only an Open plan drives priority; closing it releases the container stamps.
 ACTIVE_STATUS = "Open"
@@ -624,7 +624,21 @@ def parse_container_xlsx(
 # cleaning is still running leaves as EMPTY DIRTY (and the booking's own Tank Out gate will
 # refuse to submit it) — writing EMPTY CLEAN over it would state the opposite of what the
 # depot knows.
-_DIRTY_CLEANING = ("Pending", "In_Progress")
+def _needs_cleaning(container: str) -> bool:
+	"""True while the depot still has an unfinished Cleaning Order on this tank.
+
+	This used to read ``Container.cleaning_status``, a hint nothing ever reset: a tank
+	cleaned last cycle read "Completed" after it had gated out and come back dirty, so the
+	booking line was stamped EMPTY CLEAN on a dirty tank. The open order is the same
+	question asked of the document that actually knows.
+	"""
+	return bool(
+		container
+		and frappe.db.exists(
+			"Cleaning Order",
+			{"container": container, "status": ["not in", DONE_CLEANING], "docstatus": ["<", 2]},
+		)
+	)
 
 
 @frappe.whitelist()
@@ -663,11 +677,8 @@ def make_container_booking(source_name, target_doc=None):
 			)
 
 	def set_line(source_row, target_row, source_parent):
-		cleaning, cargo = frappe.db.get_value(
-			"Container", source_row.container, ["cleaning_status", "last_cargo"]
-		) or (None, None)
-		target_row.condition = "EMPTY DIRTY" if cleaning in _DIRTY_CLEANING else "EMPTY CLEAN"
-		target_row.cargo = cargo
+		target_row.condition = "EMPTY DIRTY" if _needs_cleaning(source_row.container) else "EMPTY CLEAN"
+		target_row.cargo = frappe.db.get_value("Container", source_row.container, "last_cargo")
 		# EMKL / truck / driver / RO carry over as typed (same fieldnames, mapped for free).
 		# A row that named no transporter falls back to the party being billed — the same
 		# default the booking applies on save (``_default_row_shipper``), just visible on
