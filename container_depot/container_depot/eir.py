@@ -1582,9 +1582,8 @@ def request_revision(inspection: str, reason: str | None = None) -> dict:
 	# is what matters, so a comment-permission hiccup must not fail the request.
 	log_doc_note("Inspection", doc.name, note)
 
-	eir_id = doc.inspection_id or doc.name
-	subject = _("Minta revisi EIR {0} • {1} • oleh {2}").format(
-		eir_id, doc.container_no or doc.container, user
+	subject = _("Minta revisi EIR • {0} • oleh {1}").format(
+		doc.container_no or doc.container, user
 	)
 	if reason:
 		subject += f" — {reason}"

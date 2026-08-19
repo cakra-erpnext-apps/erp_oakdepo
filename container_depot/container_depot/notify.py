@@ -289,8 +289,7 @@ def _depot_branch(depot):
 def notify_eir_submitted(inspection, container):
 	"""Fire when an EIR (EIR-In / EIR-Out) is submitted — tells the crew a tank was
 	inspected so cleaning / M&R can pick it up."""
-	code = inspection.get("inspection_id") or inspection.name
-	subject = f"EIR {code} • {container.container_no} • {inspection.inspection_type}"
+	subject = f"{inspection.inspection_type} • {container.container_no}"
 	notify(
 		doctype="Inspection",
 		name=inspection.name,
@@ -305,10 +304,9 @@ def notify_eir_pending_review(inspection):
 
 	Tells Admin Ops (+ ops oversight) a tank inspection is waiting for their check and
 	final Desk Submit. Reviewers only — the field crew already finished their part."""
-	code = inspection.get("inspection_id") or inspection.name
 	who = frappe.session.user
 	cno = inspection.container_no or inspection.container
-	subject = f"EIR {code} • {cno} • {inspection.inspection_type} — menunggu review Admin Ops (oleh {who})"
+	subject = f"{inspection.inspection_type} • {cno} — menunggu review Admin Ops (oleh {who})"
 	notify(
 		doctype="Inspection",
 		name=inspection.name,
@@ -323,11 +321,11 @@ def notify_cleaning_order_created(cleaning_order):
 	cleaning team a tank is queued for cleaning so they can pick it up."""
 	co = frappe.db.get_value(
 		"Cleaning Order", cleaning_order,
-		["name", "container", "container_no", "depot", "order_id"], as_dict=True,
+		["name", "container", "container_no", "depot"], as_dict=True,
 	)
 	if not co:
 		return
-	subject = f"Cleaning Order {co.order_id or co.name} • {co.container_no or co.container} — siap dikerjakan"
+	subject = f"Cleaning Order • {co.container_no or co.container} — siap dikerjakan"
 	notify(
 		doctype="Cleaning Order",
 		name=co.name,
@@ -342,11 +340,11 @@ def notify_repair_order_created(repair_order):
 	team a tank needs repair so they can pick parts and start work."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
-		["name", "container", "container_no", "depot", "repair_order_id"], as_dict=True,
+		["name", "container", "container_no", "depot"], as_dict=True,
 	)
 	if not ro:
 		return
-	subject = f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container} — perlu perbaikan"
+	subject = f"M&R • {ro.container_no or ro.container} — perlu perbaikan"
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
@@ -362,12 +360,12 @@ def notify_repair_order_service_setup(repair_order):
 	the prompt that stops it being forgotten."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
-		["name", "container", "container_no", "depot", "repair_order_id", "total_cost"], as_dict=True,
+		["name", "container", "container_no", "depot", "total_cost"], as_dict=True,
 	)
 	if not ro:
 		return
 	subject = (
-		f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container} — "
+		f"M&R • {ro.container_no or ro.container} — "
 		f"perlu ditata Admin Ops sebelum tampil ke customer (est. {ro.total_cost or 0})"
 	)
 	notify(
@@ -384,12 +382,12 @@ def notify_repair_order_pending_approval(repair_order):
 	is awaited (and, once owner self-service is live, the owner). Carries the cost."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
-		["name", "container", "container_no", "depot", "repair_order_id", "total_cost"], as_dict=True,
+		["name", "container", "container_no", "depot", "total_cost"], as_dict=True,
 	)
 	if not ro:
 		return
 	subject = (
-		f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container} — "
+		f"M&R • {ro.container_no or ro.container} — "
 		f"menunggu persetujuan owner (est. {ro.total_cost or 0})"
 	)
 	notify(
@@ -406,11 +404,11 @@ def notify_repair_order_decided(repair_order):
 	(Approved / Rejected / Revision Requested) so they can start work or revise."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
-		["name", "container", "container_no", "depot", "repair_order_id", "status"], as_dict=True,
+		["name", "container", "container_no", "depot", "status"], as_dict=True,
 	)
 	if not ro:
 		return
-	subject = f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container} — owner: {ro.status}"
+	subject = f"M&R • {ro.container_no or ro.container} — owner: {ro.status}"
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
@@ -431,7 +429,7 @@ def notify_order_gate(order, direction):
 		return
 	gate = "Gate In" if direction == "in" else "Gate Out"
 	bon = "Bongkar" if direction == "in" else "Muat"
-	subject = f"{gate} • {', '.join(nos)} • {bon} {order.name} — siap print"
+	subject = f"{gate} • {', '.join(nos)} • {bon} — siap print"
 	# One function, two events: inbound and outbound bons go to different people (Team
 	# Kalmar cares about the outbound one, nobody needs both), so they route separately.
 	notify(
@@ -451,7 +449,7 @@ def notify_order_muat_survey(order):
 	nos = [r.get("container_no") or r.get("container") for r in rows if (r.get("container_no") or r.get("container"))]
 	if not nos:
 		return
-	subject = f"EIR-Out • {', '.join(nos)} • Order Muat {order.name} — siap survey keluar"
+	subject = f"EIR-Out • {', '.join(nos)} — siap survey keluar"
 	notify(
 		doctype=order.doctype,
 		name=order.name,
