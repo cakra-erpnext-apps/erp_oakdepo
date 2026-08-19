@@ -192,6 +192,30 @@ def get_survey_detail(name: str) -> dict:
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
+def save_survey_draft(name, location_note=None, photos=None, notes=None) -> dict:
+	"""Surveyor autosave: park the note + photos on the survey while the form is still open.
+
+	Deliberately looser than :func:`record_survey_position`. An autosave fires mid-typing, so
+	a half-filled (or empty) ``location_note`` is written as-is instead of being thrown at —
+	the whole point is that whatever the surveyor has so far survives the app being closed.
+
+	What it must NOT do is advance the status or stamp ``surveyed_by`` / ``surveyed_on``: the
+	survey only counts as done when the surveyor taps Simpan, and the Kalmar worklist reads
+	``Surveyed`` to decide what is ready for Position Fix.
+	"""
+	doc = frappe.get_doc(DOCTYPE, name)
+	_guard_container_branch(doc.container)
+	if doc.status != PENDING:
+		frappe.throw(_("Survey {0} sudah bukan Pending Survey.").format(name))
+
+	doc.location_note = str(location_note).strip() if location_note is not None else ""
+	doc.survey_notes = notes
+	doc.set("position_photos", [{"photo": url} for url in _coerce_photos(photos)])
+	doc.save()  # NOT ignore_permissions — same DocPerm check as the real save.
+
+	return {"success": True, "name": doc.name, "status": doc.status}
+
+
 def record_survey_position(name, location_note, photos=None, notes=None) -> dict:
 	"""Surveyor action: record where the container physically sits (free-text note + photos),
 	then move to ``Surveyed``.

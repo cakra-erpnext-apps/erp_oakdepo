@@ -31,7 +31,7 @@
 		     flagged: "no internet" invites a retry, "the booking's payment status has to be
 		     checked live" tells them to go and find signal. -->
 		<section
-			v-if="!outbox.online"
+			v-if="!link.online"
 			class="oak-card flex items-start gap-3 border-amber-200 bg-amber-50 p-4"
 		>
 			<Icon name="cloud-off" :size="20" class="mt-0.5 shrink-0 text-amber-600" />
@@ -348,7 +348,7 @@ import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
-import { outbox } from "@/data/outbox"
+import { link } from "@/data/link"
 import { uid } from "@/utils/idb"
 import { useDismissOnBack } from "@/utils/backstack"
 

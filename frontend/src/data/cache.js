@@ -1,11 +1,11 @@
 // The read half of working offline.
 //
-// The outbox answers "this finished work cannot leave yet". On its own that is only half a
-// feature, and the smaller half: every screen in the PWA starts with a worklist fetched from
-// the server. Without a cached answer to that fetch, an operator standing in a dead spot sees
-// an empty list, never reaches the form, and so never reaches the queue that was supposed to
-// save them. The queue would only ever help someone whose signal died *while* a form was
-// already open.
+// Saving is online-only now (data/send.js), and this is what keeps the app usable anyway:
+// every screen in the PWA starts with a worklist fetched from the server, and without a
+// cached answer an operator standing in a dead spot sees an empty list and cannot even read
+// what they were working on. Showing the last known list is not a promise that anything can
+// be saved — the banner says exactly that — it is the difference between a usable screen and
+// a blank one.
 //
 // So each successful worklist / detail GET is kept, and replayed when the same call cannot
 // reach the server. Deliberately last-answer-wins per (endpoint, params) rather than a
@@ -25,7 +25,7 @@ import { createResource } from "frappe-ui"
 
 import { STORE_READS, idbDelete, idbGet, idbGetAll, idbPut } from "@/utils/idb"
 import { sessionUser } from "@/data/session"
-import { noteLinkDown, noteLinkUp } from "@/data/outbox"
+import { noteLinkDown, noteLinkUp } from "@/data/link"
 
 // A worklist is worth showing a day later ("these are the tanks I was working"). A week later
 // it is fiction. Pruned on startup.
@@ -145,8 +145,8 @@ export async function pruneReads() {
 			if (expired || someoneElse) await idbDelete(STORE_READS, row.key)
 			else kept.push(row)
 		}
-		// Then the count cap, newest kept. This store is a convenience; the outbox and the
-		// drafts are the ones holding work, and neither is touched here.
+		// Then the count cap, newest kept. This store is a convenience — nothing here is
+		// work the operator is waiting on, so pruning it can never lose anything.
 		kept.sort((a, b) => (b.saved_at || 0) - (a.saved_at || 0))
 		for (const row of kept.slice(MAX_ENTRIES)) await idbDelete(STORE_READS, row.key)
 	} catch {

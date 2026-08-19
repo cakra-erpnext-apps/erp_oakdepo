@@ -246,13 +246,16 @@
 					<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600"><Icon name="check" :size="13" /> {{ labels.draftSaved }}</span>
 					<span v-else class="text-gray-400">{{ labels.eirAutosaveHint }}</span>
 				</p>
+				<!-- Deliberately NOT gated on `saveRes.loading`. The submit builds and sends the
+				     whole EIR itself, so waiting for an autosave to land buys nothing — and on a
+				     weak link it left the operator tapping a dead button for twenty seconds. -->
 				<button
 					class="oak-btn oak-btn-primary w-full py-3"
-					:disabled="saveRes.loading || submitting || missingFields.length > 0"
+					:disabled="submitting || missingFields.length > 0"
 					@click="confirmSubmit"
 				>
-					<Icon v-if="!saveRes.loading && !submitting" name="check-circle" :size="18" />
-					{{ saveRes.loading || submitting ? "…" : labels.eirSendReview }}
+					<Icon v-if="!submitting" name="check-circle" :size="18" />
+					{{ submitting ? "…" : labels.eirSendReview }}
 				</button>
 			</section>
 			</template>
@@ -274,8 +277,7 @@ import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
 import { compressPhoto } from "@/utils/photo"
-import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isLocalRef, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -399,11 +401,9 @@ const openRes = cachedResource({
 		signatureUrl.value = data.inspector_signature || ""
 		signing.value = false
 		applyDraftToRows(data)
-		restoreLocalDraft().finally(() => {
-			nextTick(() => {
+				nextTick(() => {
 				suppressSave.value = false
 			})
-		})
 	},
 })
 
@@ -411,10 +411,6 @@ const saveRes = createResource({
 	url: "container_depot.ess.inspections.eir_save_draft",
 	method: "POST",
 	onSuccess(data) {
-		// The server now holds everything except photos still waiting in the outbox, so the
-		// local draft has nothing left to protect. Dropping it here is what keeps
-		// restoreLocalDraft from ever putting stale text back over fresher server data.
-		if (!hasStashedPhotos()) clearDraft(draftKey.value)
 		result.value = data
 		// Field submit now moves the EIR to Pending Review (docstatus stays 0) — Admin Ops
 		// finalises it on the Desk. Treat that as "done" from the operator's side.
@@ -427,9 +423,11 @@ const saveRes = createResource({
 		} else {
 			savedOk.value = true
 		}
+		flushPendingSave()
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		flushPendingSave()
 	},
 })
 
@@ -446,9 +444,7 @@ const saveError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] ||
 async function startWork() {
 	if (!inspection.value) return
 	try {
-		await enqueue({
-			kind: "eir-start",
-			title: `EIR · Mulai`,
+		await send({
 			url: "container_depot.ess.inspections.eir_start",
 			payload: { inspection: inspection.value },
 		})
@@ -520,8 +516,8 @@ function buildPhotos() {
  * This used to upload immediately, which made the yard's dead spots brutal: the surveyor
  * photographed a dent, the POST failed, and the evidence was gone on the spot — long before
  * anyone reached the Kirim button. Now the file is shrunk and parked in IndexedDB, and the
- * `local:` reference it returns travels through the form exactly like a file_url. The
- * outbox swaps it for the real one when there is a network (see data/outbox.js).
+ * `local:` reference it returns travels through the form exactly like a file_url, until
+ * `send` uploads it and swaps in the real one (see data/send.js).
  */
 async function uploadFile(file) {
 	return stashPhoto(await compressPhoto(file))
@@ -642,18 +638,12 @@ function startResign() {
 	nextTick(sigCtxInit)
 }
 
-// --- Offline safety net -------------------------------------------------------
-// Two different problems, two different mechanisms, and conflating them is the usual way
-// this goes wrong:
-//
-//   the LOCAL DRAFT answers "the tab died"   — IndexedDB, every keystroke, disposable
-//   the OUTBOX answers    "there is no signal" — IndexedDB, on Kirim, never dropped
-//
-// The periodic autosave still goes straight to the server when it can: that keeps Admin Ops
-// seeing live progress on the Desk. It just cannot carry photos that have not been uploaded
-// yet, so those are stripped and travel with the final submit instead.
+// --- Autosave -----------------------------------------------------------------
+// The debounced autosave goes straight to the server: that is what keeps Admin Ops seeing
+// live progress on the Desk, and it is the only thing standing between a closed tab and a
+// re-typed EIR. It cannot carry photos that have not been uploaded yet, so those are
+// stripped here and travel with the final submit instead.
 
-const draftKey = computed(() => `eir-in:${inspection.value || props.inspection}`)
 
 function eirPayload(submit) {
 	return {
@@ -668,7 +658,7 @@ function eirPayload(submit) {
 		signature: signatureUrl.value || undefined,
 		create_cleaning_order: createCleaning.value ? 1 : 0,
 		create_repair_order: createRepair.value ? 1 : 0,
-		// Sent as arrays, not JSON strings: the outbox has to be able to walk the payload to
+		// Sent as arrays, not JSON strings: `send` has to be able to walk the payload to
 		// find the `local:` photo references and swap them for real file_urls.
 		lines: buildLines(),
 		photos: buildPhotos(),
@@ -676,75 +666,18 @@ function eirPayload(submit) {
 	}
 }
 
-/** Everything the operator has typed, in a shape restoreLocalDraft can put back. */
-function localSnapshot() {
-	return {
-		saved_at: Date.now(),
-		tanggal: tanggal.value,
-		tankStatus: tankStatus.value,
-		cargo: cargo.value,
-		remarks: remarks.value,
-		reffDoc: reffDoc.value,
-		signatureUrl: signatureUrl.value,
-		createCleaning: createCleaning.value,
-		createRepair: createRepair.value,
-		bulkPhotos: [...bulkPhotos.value],
-		bulkMeta: { ...bulkMeta.value },
-		rows: rows.value.map((r) => ({
-			item_code: r.item_code,
-			damage_code: r.damage_code,
-			repair_code: r.repair_code,
-			remarks: r.remarks,
-			photos: [...(r.photos || [])],
-			added: r.added,
-		})),
-	}
-}
-
-async function restoreLocalDraft() {
-	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
-	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
-	// same document twice under two request_ids.
-	if (isQueued(inspection.value)) return
-	const saved = await loadDraft(draftKey.value)
-	if (!saved) return
-	tanggal.value = saved.tanggal || tanggal.value
-	tankStatus.value = saved.tankStatus || tankStatus.value
-	cargo.value = saved.cargo || cargo.value
-	remarks.value = saved.remarks ?? remarks.value
-	reffDoc.value = saved.reffDoc ?? reffDoc.value
-	signatureUrl.value = saved.signatureUrl || signatureUrl.value
-	createCleaning.value = saved.createCleaning
-	createRepair.value = saved.createRepair
-	bulkPhotos.value = saved.bulkPhotos || []
-	bulkMeta.value = saved.bulkMeta || {}
-	;(saved.rows || []).forEach((sr) => {
-		const row = rows.value.find((r) => r.item_code === sr.item_code)
-		if (!row) return
-		Object.assign(row, { damage_code: sr.damage_code, repair_code: sr.repair_code, remarks: sr.remarks, photos: sr.photos || [], added: sr.added })
-	})
-	// Object URLs die with the document that created them, so a restored draft has to
-	// re-open one per stashed photo or the thumbnails come back blank.
-	await hydratePreviews([...bulkPhotos.value, ...rows.value.flatMap((r) => r.photos || []), signatureUrl.value])
-	toast.info(labels.draftRestored)
-}
-
-const hasStashedPhotos = () =>
-	buildPhotos().some((p) => isLocalRef(p.photo)) || isLocalRef(signatureUrl.value)
-
 function doSave(submit = false) {
 	if (!inspection.value) return
 	if (saveTimer) {
 		clearTimeout(saveTimer)
 		saveTimer = null
 	}
-	saveDraft(draftKey.value, localSnapshot())
 	if (submit) {
-		queueSubmit()
+		submitEir()
 		return
 	}
-	// Draft autosave to the server. Strip anything still sitting in the outbox — a
-	// `local:` string written into Inspection Photo would be a broken image for ever.
+	// Draft autosave to the server. Strip anything not yet uploaded — a `local:` string
+	// written into Inspection Photo would be a broken image for ever.
 	const payload = eirPayload(false)
 	saveRes.submit({
 		...payload,
@@ -754,36 +687,21 @@ function doSave(submit = false) {
 	})
 }
 
-// Held while the send is in flight. With a link `enqueue` now waits for the server, and for
+// Held while the send is in flight. `send` waits for the server, and for
 // every stashed photo to upload first — on 3G that is long enough for an impatient second tap
 // to raise a second EIR under a second request_id.
 const submitting = ref(false)
 
-/**
- * Hand the finished EIR to `enqueue`, which posts it now if there is a link and queues it
- * if there is not.
- *
- * The fork lives in one place — data/outbox.js — rather than being written out per screen. A
- * per-screen fork gives two code paths of which one is barely ever exercised, and it is the
- * one that runs on the worst day.
- */
-async function queueSubmit() {
+/** Hand the finished EIR to `send`, which posts it and waits for the server's answer. */
+async function submitEir() {
 	if (submitting.value) return
 	submitting.value = true
 	try {
-		await enqueue({
-			kind: "eir-in-submit",
-			title: `EIR-In · ${header.value?.container_no || eirCode.value}`,
-			// Names the EIR so the worklist can drop it the moment it is queued — see
-			// Eir.vue's pendingItems.
-			ref: inspection.value,
-			// Cleared by the queue once the save has actually landed — not here, so a refused
-			// row leaves the checklist recoverable instead of gone.
-			draft: draftKey.value,
+		await send({
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		toast.success(outbox.online ? labels.eirSentForReview : labels.queuedOffline, {
+		toast.success(labels.eirSentForReview, {
 			title: eirCode.value || inspection.value,
 		})
 		emit("submitted", inspection.value)
@@ -810,11 +728,31 @@ async function confirmSubmit() {
 	if (ok) doSave(true)
 }
 
+// Never two autosaves in flight at once. Each one writes the whole document, so on a slow
+// link an earlier response landing after a later one restores stale text over what the
+// operator has since typed. When the debounce fires mid-flight we remember the edit and
+// re-arm from the response handler instead of stacking a second POST.
+let resaveWanted = false
+
+/** Called when a save settles: if edits arrived while it flew, start the debounce again. */
+function flushPendingSave() {
+	if (!resaveWanted) return
+	resaveWanted = false
+	scheduleSave()
+}
+
 function scheduleSave() {
 	if (!inspection.value || suppressSave.value) return
 	savedOk.value = false
 	if (saveTimer) clearTimeout(saveTimer)
-	saveTimer = setTimeout(() => doSave(false), 700)
+	saveTimer = setTimeout(() => {
+		saveTimer = null
+		if (saveRes.loading) {
+			resaveWanted = true
+			return
+		}
+		doSave(false)
+	}, 700)
 }
 
 watch([tanggal, tankStatus, cargo, remarks, reffDoc, signatureUrl, createCleaning, createRepair], scheduleSave)

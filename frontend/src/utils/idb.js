@@ -8,12 +8,12 @@
 //
 //   blobs   — the picked photos, kept as Blobs until they reach the server. Deleted the
 //             moment an upload returns a file_url, because the URL is durable by then.
-//   outbox  — queued work, one row per document save (see data/outbox.js).
-//   drafts  — what the operator has typed, saved as they type. This one is not about the
-//             network at all: it is what survives a killed tab or a flat battery.
-//   reads   — the last good answer to each worklist / detail GET. Without it the offline
-//             queue is unreachable: an operator who cannot load the worklist never gets to
-//             the form whose submit the queue would have carried.
+//   reads   — the last good answer to each worklist / detail GET, so a handset in a dead
+//             spot can still READ what it was working on. Saving is online-only.
+//
+// The `outbox` (queued saves) and `drafts` (local autosave) stores were removed on
+// 2026-08-18 along with the offline-save feature. Existing installs keep those two object
+// stores until the browser drops the database; nothing reads or writes them any more.
 
 import { isRef, toRaw } from "vue"
 
@@ -23,8 +23,6 @@ const DB_NAME = "oak-depot"
 const DB_VERSION = 2
 
 export const STORE_BLOBS = "blobs"
-export const STORE_OUTBOX = "outbox"
-export const STORE_DRAFTS = "drafts"
 export const STORE_READS = "reads"
 
 let dbPromise = null
@@ -40,8 +38,6 @@ function open() {
 		req.onupgradeneeded = () => {
 			const db = req.result
 			if (!db.objectStoreNames.contains(STORE_BLOBS)) db.createObjectStore(STORE_BLOBS, { keyPath: "id" })
-			if (!db.objectStoreNames.contains(STORE_OUTBOX)) db.createObjectStore(STORE_OUTBOX, { keyPath: "id" })
-			if (!db.objectStoreNames.contains(STORE_DRAFTS)) db.createObjectStore(STORE_DRAFTS, { keyPath: "key" })
 			if (!db.objectStoreNames.contains(STORE_READS)) db.createObjectStore(STORE_READS, { keyPath: "key" })
 		}
 		req.onsuccess = () => resolve(req.result)
@@ -106,23 +102,6 @@ export function uid() {
 	if (window.crypto?.randomUUID) return window.crypto.randomUUID()
 	// Older WebViews — some depot handsets are not current. Random enough for a queue key.
 	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-/**
- * Ask the browser to stop treating our storage as disposable.
- *
- * A "best-effort" origin can have its IndexedDB evicted when the device runs low on space —
- * exactly when the outbox is fullest and the work in it is least replaceable. Best-effort,
- * silent: Chrome grants it to installed PWAs, Firefox prompts, Safari ignores it.
- */
-export async function requestPersistentStorage() {
-	try {
-		if (navigator.storage?.persist && !(await navigator.storage.persisted())) {
-			await navigator.storage.persist()
-		}
-	} catch {
-		/* storage stays best-effort; the queue still works, it is just evictable */
-	}
 }
 
 /** Bytes still available to this origin, or null when the browser will not say. */

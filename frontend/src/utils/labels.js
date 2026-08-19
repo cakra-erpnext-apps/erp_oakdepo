@@ -122,34 +122,18 @@ export const labels = {
 	// Desk access — see menu.deskAccess.
 	openDesk: "Buka Desk",
 	openDeskHint: "Kelola booking, tarif, dan laporan di ERPNext.",
-	// --- Offline / antrean kirim (data/outbox.js) ---
-	draftRestored: "Draf lokal dipulihkan — isian terakhir Anda belum sempat terkirim.",
-	queuedOffline: "Tersimpan di HP. Otomatis terkirim saat internet tersambung.",
-	queueTitle: "Menunggu Terkirim",
-	queueSending: "Mengirim…",
-	queueOffline: "Tidak ada internet",
-	queueFailedOne: "gagal",
-	queueFailedTitle: "Gagal terkirim",
-	queueRetry: "Coba lagi",
-	queueDiscard: "Buang",
-	queueDiscardConfirm: "Data ini belum pernah terkirim ke server. Kalau dibuang, isinya hilang permanen.",
-	queueSessionExpired: "Sesi berakhir. Login lagi supaya antrean bisa terkirim.",
-	queueEmpty: "Semua sudah terkirim",
-	queuePhotoPending: "menunggu kirim",
-	// A row the server refused because the job was already finished on the Desk while this
-	// handset was out of signal. Not the operator's mistake, and not something a retry can
-	// fix — so it is worded as news, and the panel offers only "lihat isi" and "buang".
-	queueSettledOne: "sudah ditangani",
-	queueSettledTitle: "Sudah dikerjakan orang lain",
-	queueSettledHint: "Pekerjaan ini sudah diselesaikan di sistem selagi HP Anda offline, jadi kiriman ini tidak bisa masuk. Cek isinya di bawah — kalau ada yang belum tercatat, catat manual di ERPNext, lalu buang.",
-	queueSettledDiscardConfirm: "Pekerjaan ini sudah tercatat di sistem oleh orang lain. Isian yang tampil di sini akan hilang permanen kalau dibuang.",
-	queueShowPayload: "Lihat isi",
-	queueHidePayload: "Tutup isi",
-	queuePayloadPhotos: "foto",
-	// Shown once, app-wide, while the link is down. Says what the operator is looking at
-	// (older data) and what still works (everything they fill in) — a bare "offline" leaves
-	// them guessing whether it is safe to keep working, and the answer is yes.
-	offlineBanner: "Mode offline — data yang tampil dari koneksi terakhir. Isian tetap tersimpan dan terkirim otomatis nanti.",
+	// --- Status koneksi (data/link.js) ---
+	// The send queue and the local drafts were removed on 2026-08-18: everything is saved
+	// straight to the server and a failure is reported on the spot, so none of the labels
+	// that described queued work, restored drafts or "tersimpan di HP" have anything left to
+	// name. What survives is the one thing still true offline — the READ cache (data/cache.js)
+	// showing the last worklist — and the gate, which cannot work without a live answer.
+	// Shown once, app-wide, while the link is down. It promises NOTHING about saving, because
+	// nothing is held locally any more: the operator is reading a cached worklist and a save
+	// will simply fail until there is signal. Saying so is the point — the old wording
+	// ("terkirim otomatis nanti") is exactly what operators acted on while a day of sign-offs
+	// sat unsent on the handset.
+	offlineBanner: "Mode offline — data dari koneksi terakhir. Simpanan belum bisa masuk sistem; sambungkan internet dulu.",
 	// The gate is the one screen that genuinely cannot work offline — it has to read the
 	// booking's live payment/block status before a bon may be issued.
 	gateNeedsOnline: "Gate butuh internet",
@@ -559,7 +543,7 @@ export const labels = {
 	cleaningTitle: "Cleaning Order", // page + Home tile + nav title
 	cleaningDesc: "Kerjakan cleaning order & terbitkan sertifikat", // Home tile subtitle
 	cleaningOrdersHint: "Pilih cleaning order untuk dikerjakan", // worklist hint
-	cleaningCargoHistory: "Riwayat Cargo", // cargo history (from booking items)
+	cleaningCargoHistory: "Riwayat Cargo", // cargo history (from submitted EIRs)
 	cleaningNoCargoHistory: "Belum ada riwayat cargo.", // no cargo history
 	cleaningStartFull: "Mulai Cleaning", // start button (in form)
 	cleaningStartFirst: "Mulai cleaning dulu sebelum bisa diselesaikan.", // gate hint

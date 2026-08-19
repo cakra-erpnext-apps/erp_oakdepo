@@ -50,6 +50,19 @@ def position_detail(name=None):
 
 
 @frappe.whitelist(methods=["POST"])
+def position_save_draft(name=None, location_note=None, photos=None, notes=None):
+	"""POST /api/v1/ess/position-save-draft — surveyor autosave while the form is open.
+
+	No ``request_id``: this is a plain overwrite of three fields on one draft, so a replay
+	writes exactly the same values. Guarding it would only fill the idempotency table with a
+	row per typing pause."""
+	require_menu("surveyPos")
+	return position_survey.save_survey_draft(
+		name, location_note=location_note, photos=photos, notes=notes
+	)
+
+
+@frappe.whitelist(methods=["POST"])
 def position_record(name=None, location_note=None, photos=None, notes=None, request_id=None):
 	"""POST /api/v1/ess/position-record — Surveyor records the container's location note +
 	photos (→ Surveyed). DocPerm (Surveyor) is enforced (no bypass).

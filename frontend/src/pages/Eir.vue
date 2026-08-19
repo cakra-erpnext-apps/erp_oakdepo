@@ -239,7 +239,6 @@ import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
-import { isQueued, onOutboxSent } from "@/data/outbox"
 import { keepScrollForNextNavigation } from "@/router"
 import EirInForm from "@/pages/EirInForm.vue"
 import EirOutForm from "@/pages/EirOutForm.vue"
@@ -324,7 +323,7 @@ const pendingItems = computed(() => {
 	// An EIR whose submit is queued has left this queue, whatever the server still says. The
 	// list is only refreshed when there is a link, so without this the surveyor sees the tank
 	// they just finished sitting there untouched and inspects it again.
-	const all = [...inItems.value, ...outItems.value].filter((r) => !isQueued(r.name))
+	const all = [...inItems.value, ...outItems.value]
 	all.sort((a, b) => {
 		const started = Number(!!b.work_started_on) - Number(!!a.work_started_on)
 		return started || String(b.creation || "").localeCompare(String(a.creation || ""))
@@ -364,14 +363,6 @@ function reloadPending() {
 	outRes.reload()
 }
 
-// The lists refetched right after a submit race the queue and usually lose — refetch once
-// the EIR has actually landed, so it leaves "pending" and appears under "recently
-// submitted" instead of popping back into the worklist. See onOutboxSent.
-onOutboxSent(() => {
-	reloadPending()
-	doneRes.reload()
-	reviewRes.reload()
-})
 
 // Landing "recently submitted" — the caller's own latest completed EIRs (In & Out),
 // newest first (no date filter). Tapping one opens its read-only detail (+ revision).

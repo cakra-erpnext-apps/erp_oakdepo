@@ -131,3 +131,57 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		self.assertNotIn(n1, surveyed_names)
 		self.assertIn(n2, surveyed_names)
 		self.assertNotIn(n2, pending_names)
+
+	# --- autosave draft ------------------------------------------------------
+	def test_draft_saves_without_advancing_status(self):
+		"""The PWA autosaves while the surveyor types; that must not look like a finished
+		survey to the Kalmar worklist."""
+		c = self._container("CPSDRAFT001")
+		name = self._new_survey(c)
+
+		ps.save_survey_draft(name, "blok kiri, tumpukan 1", photos=["/files/d1.jpg"], notes="wip")
+
+		doc = frappe.get_doc("Container Position Survey", name)
+		self.assertEqual(doc.location_note, "blok kiri, tumpukan 1")
+		self.assertEqual(doc.survey_notes, "wip")
+		self.assertEqual(len(doc.position_photos), 1)
+		# Untouched: status, and the stamps that say a human finished the job.
+		self.assertEqual(doc.status, ps.PENDING)
+		self.assertFalse(doc.surveyed_by)
+		self.assertFalse(doc.surveyed_on)
+		# Still on the surveyor's worklist, not the approver's.
+		self.assertIn(name, {i["name"] for i in ps.list_pending_surveys(page_length=100)["items"]})
+		self.assertNotIn(name, {i["name"] for i in ps.list_surveyed(page_length=100)["items"]})
+
+	def test_draft_accepts_an_empty_note(self):
+		"""An autosave fires mid-typing. Refusing a half-filled form there would mean the
+		first thing the surveyor writes is the first thing that fails to save."""
+		c = self._container("CPSDRAFT002")
+		name = self._new_survey(c)
+		ps.save_survey_draft(name, "", photos=["/files/d2.jpg"])
+		doc = frappe.get_doc("Container Position Survey", name)
+		self.assertEqual(doc.location_note, "")
+		self.assertEqual(len(doc.position_photos), 1)
+		self.assertEqual(doc.status, ps.PENDING)
+
+	def test_draft_then_record_finishes_normally(self):
+		c = self._container("CPSDRAFT003")
+		name = self._new_survey(c)
+		ps.save_survey_draft(name, "sementara", photos=["/files/d3.jpg"])
+
+		# The final Simpan carries the full payload and overwrites the draft wholesale.
+		ps.record_survey_position(name, "final", photos=["/files/f1.jpg", "/files/f2.jpg"])
+
+		doc = frappe.get_doc("Container Position Survey", name)
+		self.assertEqual(doc.status, ps.SURVEYED)
+		self.assertEqual(doc.location_note, "final")
+		self.assertEqual([p.photo for p in doc.position_photos], ["/files/f1.jpg", "/files/f2.jpg"])
+		self.assertEqual(doc.surveyed_by, "Administrator")
+
+	def test_draft_rejects_non_pending(self):
+		"""A late autosave must not reopen a survey somebody has already finished."""
+		c = self._container("CPSDRAFT004")
+		name = self._new_survey(c)
+		ps.record_survey_position(name, "sudah disurvei")
+		with self.assertRaises(frappe.ValidationError):
+			ps.save_survey_draft(name, "ketikan yang telat sampai")

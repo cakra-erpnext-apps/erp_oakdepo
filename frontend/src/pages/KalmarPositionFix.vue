@@ -100,12 +100,12 @@
 <script setup>
 import { computed, ref } from "vue"
 import { labels } from "@/utils/labels"
+import { send } from "@/data/send"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
@@ -132,16 +132,13 @@ const listRes = cachedResource({
 })
 
 // An approval already queued is done; the server just has not heard yet.
-const items = computed(() => allItems.value.filter((r) => !isQueued(r.name)))
+const items = computed(() => allItems.value)
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
 
-// A list refetched before the queue drained still shows the approved survey — refetch once
-// the save has actually landed. See onOutboxSent.
-onOutboxSent(() => listRes.reload())
 
 // ---- detail ----
 const detail = ref(null)
@@ -164,7 +161,7 @@ function openItem(r) {
 
 // ---- approve ----
 //
-// Queued, online and off. The Kalmar operator is standing at the stack when they confirm the
+// The Kalmar operator is standing at the stack when they confirm the
 // tank is down, which is the worst place in the yard for signal — and the confirmation is
 // worth no less for arriving a few minutes late.
 const approving = ref(false)
@@ -173,7 +170,6 @@ const approveError = ref(null)
 async function confirmApprove() {
 	if (approving.value) return
 	const ok = await confirm({
-		title: labels.posFixConfirmTitle,
 		message: labels.posFixConfirmMsg,
 		confirmLabel: labels.posFixApprove,
 		cancelLabel: labels.confirmCancel,
@@ -183,14 +179,11 @@ async function confirmApprove() {
 	approveError.value = null
 	const d = detail.value
 	try {
-		await enqueue({
-			kind: "position-approve",
-			title: `${labels.posFixTitle} · ${d.container_no || d.container}`,
-			ref: d.name,
+		await send({
 			url: "container_depot.ess.position_survey.position_approve",
 			payload: { name: d.name, note: note.value || undefined },
 		})
-		toast.success(outbox.online ? labels.posFixApproved : labels.queuedOffline, { title: d.name })
+		toast.success(labels.posFixApproved, { title: d.name })
 		backToList()
 	} catch (e) {
 		approveError.value = e?.message || labels.error

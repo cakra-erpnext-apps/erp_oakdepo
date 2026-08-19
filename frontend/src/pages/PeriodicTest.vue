@@ -195,6 +195,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from "vue"
+import { send } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
@@ -204,7 +205,6 @@ import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -231,7 +231,7 @@ const used = ref([])
 
 // An order whose completion is queued is done as far as the technician is concerned; the
 // server just has not heard yet. Leaving it listed invites them to redo the whole test.
-const orders = computed(() => allOrders.value.filter((o) => !isQueued(o.name)))
+const orders = computed(() => allOrders.value)
 // The date the test was actually performed — drives the next due-date on completion.
 const periodicDate = ref(todayStr())
 
@@ -264,9 +264,6 @@ function reloadOrders() {
 	ordersRes.fetch(s ? { search: s } : {})
 }
 
-// A worklist refetched before the queue drained still shows the finished job — refetch once
-// the save has actually landed. See onOutboxSent.
-onOutboxSent(reloadOrders)
 
 const headerCells = computed(() => {
 	const h = order.value || {}
@@ -347,7 +344,7 @@ watch(
 
 // --- start (Approved -> In Progress) ----------------------------------------
 //
-// Queued, and the status flipped locally rather than re-fetched. The response carried nothing
+// The status is flipped locally rather than re-fetched. The response carried nothing
 // the screen needed except the new status, and waiting for it is what made "Mulai" impossible
 // in a dead spot — which locked the technician out of the rest of the form.
 //
@@ -355,9 +352,7 @@ watch(
 async function startCurrent() {
 	if (!order.value) return
 	try {
-		await enqueue({
-			kind: "pt-start",
-			title: `${labels.navPt} · Mulai`,
+		await send({
 			url: "container_depot.ess.periodic.pt_start",
 			payload: { periodic_test_order: order.value.name },
 		})
@@ -370,14 +365,13 @@ async function startCurrent() {
 
 // --- complete (In Progress -> Completed; issues parts + advances the due date) ---
 //
-// Through the outbox, online and off. Completing pushes the container's next test due-date
+// Completing pushes the container's next test due-date
 // forward, which is precisely why it carries a request_id: replaying it would advance the
 // date a second interval into the future (see ess/idempotency.py).
 const completing = ref(false)
 
 async function confirmComplete() {
 	const ok = await confirm({
-		title: labels.confirmSubmitTitle,
 		message: labels.confirmSubmitMessage,
 		confirmLabel: labels.confirmSubmitYes,
 		cancelLabel: labels.confirmCancel,
@@ -390,10 +384,7 @@ async function complete() {
 	completing.value = true
 	const o = order.value
 	try {
-		await enqueue({
-			kind: "pt-complete",
-			title: `${labels.navPt} · ${o.container_no || o.container}`,
-			ref: o.name,
+		await send({
 			url: "container_depot.ess.periodic.pt_order_save",
 			payload: {
 				periodic_test_order: o.name,
@@ -401,7 +392,7 @@ async function complete() {
 				submit: 1,
 			},
 		})
-		toast.success(outbox.online ? labels.ptCompleted : labels.queuedOffline, { title: o.name })
+		toast.success(labels.ptCompleted, { title: o.name })
 		order.value = null
 		if (route.query.o) router.replace({ query: {} })
 		reloadOrders()

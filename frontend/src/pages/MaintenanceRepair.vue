@@ -201,6 +201,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from "vue"
+import { send } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
@@ -210,7 +211,6 @@ import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 
 const route = useRoute()
 const router = useRouter()
@@ -254,7 +254,7 @@ const used = ref([])
 
 // An order whose completion is queued is done as far as the technician is concerned; the
 // server just has not heard yet. Leaving it listed invites them to redo the whole job.
-const orders = computed(() => allOrders.value.filter((o) => !isQueued(o.name)))
+const orders = computed(() => allOrders.value)
 
 // --- status-driven view flags (execution phase only) -----------------------
 const isApproved = computed(() => order.value?.status === "Approved")
@@ -286,9 +286,6 @@ function reloadOrders() {
 	ordersRes.fetch(s ? { search: s } : {})
 }
 
-// A worklist refetched before the queue drained still shows the finished job — refetch once
-// the save has actually landed. See onOutboxSent.
-onOutboxSent(reloadOrders)
 
 const headerCells = computed(() => {
 	const h = order.value || {}
@@ -368,7 +365,7 @@ watch(
 
 // --- start (Approved -> In Progress) ----------------------------------------
 //
-// Queued, and the status flipped locally rather than re-fetched. The response carried nothing
+// The status is flipped locally rather than re-fetched. The response carried nothing
 // the screen needed except the new status, and waiting for it is what made "Mulai" impossible
 // in a dead spot — which locked the technician out of the rest of the form.
 //
@@ -376,9 +373,7 @@ watch(
 async function startCurrent() {
 	if (!order.value) return
 	try {
-		await enqueue({
-			kind: "mr-start",
-			title: `${labels.mrTitle} · Mulai`,
+		await send({
 			url: "container_depot.ess.repairs.mr_start",
 			payload: { repair_order: order.value.name },
 		})
@@ -391,14 +386,13 @@ async function startCurrent() {
 
 // --- complete (In Progress -> Completed, issues approved parts from stock) ---
 //
-// Through the outbox, online and off. Completing issues parts from the warehouse, which is
+// Completing issues parts from the warehouse, which is
 // exactly why it carries a request_id: a lost response plus a naive retry would take the same
 // parts out of stock twice (see ess/idempotency.py).
 const completing = ref(false)
 
 async function confirmComplete() {
 	const ok = await confirm({
-		title: labels.confirmSubmitTitle,
 		message: labels.confirmSubmitMessage,
 		confirmLabel: labels.confirmSubmitYes,
 		cancelLabel: labels.confirmCancel,
@@ -413,14 +407,11 @@ async function complete() {
 	completing.value = true
 	const o = order.value
 	try {
-		await enqueue({
-			kind: "mr-complete",
-			title: `${labels.mrTitle} · ${o.container_no || o.container}`,
-			ref: o.name,
+		await send({
 			url: "container_depot.ess.repairs.mr_order_save",
 			payload: { repair_order: o.name, submit: 1 },
 		})
-		toast.success(outbox.online ? labels.mrCompleted : labels.queuedOffline, {
+		toast.success(labels.mrCompleted, {
 			title: o.repair_order_id || o.name,
 		})
 		order.value = null

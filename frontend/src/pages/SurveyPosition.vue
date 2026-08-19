@@ -106,6 +106,12 @@
 
 			<!-- Save -->
 			<section class="space-y-2">
+				<p class="flex items-center gap-1.5 text-xs">
+					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
+					<span v-else-if="draftError" class="text-red-600">{{ draftError }}</span>
+					<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600"><Icon name="check" :size="13" /> {{ labels.draftSaved }}</span>
+					<span v-else class="text-gray-400">{{ labels.autosaveHint }}</span>
+				</p>
 				<p v-if="saveError" class="text-xs text-red-600">{{ saveError }}</p>
 				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saving || !form.location_note" @click="save">
 					<Icon v-if="!saving" name="check-circle" :size="18" />
@@ -117,15 +123,15 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue"
+import { computed, nextTick, reactive, ref, watch } from "vue"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
+import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { compressPhoto } from "@/utils/photo"
-import { loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isQueued, onOutboxSent, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
 import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
@@ -151,18 +157,12 @@ const listRes = cachedResource({
 	},
 })
 
-// A survey already queued is done as far as the surveyor is concerned; the server just has
-// not heard yet. Leaving it listed invites them to walk out and photograph the tank twice.
-const items = computed(() => allItems.value.filter((r) => !isQueued(r.name)))
+const items = computed(() => allItems.value)
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
-
-// A list refetched before the queue drained still shows the surveyed tank — refetch once the
-// save has actually landed. See onOutboxSent.
-onOutboxSent(() => listRes.reload())
 
 // ---- detail ----
 const detail = ref(null)
@@ -175,12 +175,18 @@ const detailRes = cachedResource({
 	url: "container_depot.ess.position_survey.position_detail",
 	method: "GET",
 	onSuccess(data) {
+		// Muted while the fields are being filled from the server, or the assignments below
+		// would each look like an edit and bounce the same values straight back.
+		suppressSave.value = true
+		savedOk.value = false
 		detail.value = data
 		form.location_note = data.location_note || ""
 		form.notes = data.survey_notes || ""
 		photos.value = data.photos || []
 		mode.value = "detail"
-		restoreLocalDraft()
+		nextTick(() => {
+			suppressSave.value = false
+		})
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
@@ -190,12 +196,80 @@ function openItem(r) {
 	detailRes.submit({ name: r.name })
 }
 
+// ---- autosave ----
+//
+// A survey is filled standing next to the tank: a location note typed one-handed, a few
+// photos, sometimes a remark. Until now none of that existed anywhere but component state
+// until Simpan was tapped, so a phone that slept or an app that was swiped away lost the
+// walk out to the tank with it. The draft goes to the SERVER (still Pending Survey — the
+// status and `surveyed_by` are untouched), so there is no local copy to go stale.
+const savedOk = ref(false)
+const suppressSave = ref(false)
+let saveTimer = null
+
+const saveRes = createResource({
+	url: "container_depot.ess.position_survey.position_save_draft",
+	method: "POST",
+	onSuccess() {
+		savedOk.value = true
+		flushPendingSave()
+	},
+	// Reported inline via `draftError`, never as a toast: an autosave that could not land is
+	// not worth interrupting a surveyor mid-form, and the Simpan below carries the data anyway.
+	onError() {
+		flushPendingSave()
+	},
+})
+const draftError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] || saveRes.error.message : null))
+
+function saveDraft() {
+	if (!detail.value) return
+	saveRes.submit({
+		name: detail.value.name,
+		location_note: form.location_note || "",
+		notes: form.notes || undefined,
+		// Strip anything not uploaded yet — a `local:` string written into a photo row would
+		// be a broken image for ever. Those travel with the final Simpan instead.
+		photos: JSON.stringify(photos.value.filter((u) => !isLocalRef(u))),
+	})
+}
+
+// Never two autosaves in flight at once. Each one rewrites the whole survey, so on a slow
+// link an earlier response landing after a later one restores stale text over what the
+// surveyor has since typed. When the debounce fires mid-flight we remember the edit and
+// re-arm from the response handler instead of stacking a second POST.
+let resaveWanted = false
+
+function scheduleSave() {
+	if (!detail.value || suppressSave.value) return
+	savedOk.value = false
+	if (saveTimer) clearTimeout(saveTimer)
+	saveTimer = setTimeout(() => {
+		saveTimer = null
+		if (saveRes.loading) {
+			resaveWanted = true
+			return
+		}
+		saveDraft()
+	}, 700)
+}
+
+/** Called when a save settles: if edits arrived while it flew, start the debounce again. */
+function flushPendingSave() {
+	if (!resaveWanted) return
+	resaveWanted = false
+	scheduleSave()
+}
+
+watch([() => form.location_note, () => form.notes], scheduleSave)
+watch(photos, scheduleSave, { deep: true })
+
 /**
  * Park a picked photo locally rather than uploading it now.
  *
  * A survey is taken at the far end of the yard, which is exactly where the signal is worst.
  * Uploading on pick meant the photo of where the tank actually stands was lost the moment
- * the POST failed. Now it is shrunk, kept in IndexedDB, and travels with the queued save.
+ * the POST failed. Now it is shrunk, kept in IndexedDB, and uploaded as part of the save.
  */
 async function uploadFile(file) {
 	return stashPhoto(await compressPhoto(file))
@@ -217,56 +291,35 @@ async function onPhotoPick(event) {
 
 // ---- save ----
 //
-// Through `enqueue`, which sends immediately when there is a link and queues when there is
-// not. Keeping that fork inside the outbox rather than here means the offline branch is the
-// same code every screen uses, not a branch only exercised on the day the yard has no signal.
+// Straight to the server, and the surveyor waits for the real answer. Nothing is held back
+// locally, so a failure is reported here and now with the form still filled in.
 const saving = ref(false)
 const saveError = ref(null)
-const draftKey = computed(() => `survey-pos:${detail.value?.name || ""}`)
-
-function localSnapshot() {
-	return { saved_at: Date.now(), location_note: form.location_note, notes: form.notes, photos: [...photos.value] }
-}
-
-async function restoreLocalDraft() {
-	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
-	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
-	// same document twice under two request_ids.
-	if (isQueued(detail.value?.name)) return
-	const saved = await loadDraft(draftKey.value)
-	if (!saved) return
-	form.location_note = saved.location_note || form.location_note
-	form.notes = saved.notes || form.notes
-	if (saved.photos?.length) photos.value = saved.photos
-	// Object URLs die with the document that made them, so a restored draft has to re-open
-	// one per stashed photo or the thumbnails come back blank.
-	await hydratePreviews(photos.value)
-	toast.info(labels.draftRestored)
-}
 
 async function save() {
 	if (!detail.value || !form.location_note || saving.value) return
+	// The full payload below supersedes any draft still waiting on the debounce.
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+		saveTimer = null
+	}
+	resaveWanted = false
 	saving.value = true
 	saveError.value = null
 	const d = detail.value
 	try {
-		await enqueue({
-			kind: "survey-position",
-			title: `${labels.surveyPosTitle} · ${d.container_no || d.container}`,
-			ref: d.name,
-			// Cleared by the queue once the save has actually landed — see EirInForm.vue.
-			draft: draftKey.value,
+		await send({
 			url: "container_depot.ess.position_survey.position_record",
 			payload: {
 				name: d.name,
 				location_note: form.location_note,
-				// An array, not a JSON string: the outbox has to walk the payload to find the
+				// An array, not a JSON string: `send` has to walk the payload to find the
 				// `local:` photo references and swap them for real file_urls.
 				photos: [...photos.value],
 				notes: form.notes || undefined,
 			},
 		})
-		toast.success(outbox.online ? labels.surveyPosSaved : labels.queuedOffline, { title: d.name })
+		toast.success(labels.surveyPosSaved, { title: d.name })
 		backToList()
 	} catch (e) {
 		saveError.value = e?.message || labels.error
@@ -277,14 +330,16 @@ async function save() {
 }
 
 function backToList() {
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+		saveTimer = null
+	}
+	resaveWanted = false
+	savedOk.value = false
 	mode.value = "list"
 	detail.value = null
 	saveError.value = null
 	listRes.reload()
 }
 
-// Autosave what has been typed so far: a killed tab must not cost the surveyor the walk.
-watch([() => form.location_note, () => form.notes, photos], () => {
-	if (detail.value) saveDraft(draftKey.value, localSnapshot())
-}, { deep: true })
 </script>

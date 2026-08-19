@@ -164,9 +164,9 @@
 
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue"
+import { send } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 import { labels, statusLabels, statusColors } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
 import { toast } from "@/utils/toast"
@@ -186,7 +186,7 @@ const loaded = ref([]) // what the server (or the offline cache) last said
 
 // Monitor is read-only apart from TANK OUT. A tank whose gate-out is queued has already
 // left, so drop it here rather than leaving it in the live-inventory buckets.
-const items = computed(() => loaded.value.filter((c) => !isQueued(c.name)))
+const items = computed(() => loaded.value)
 const total = ref(0)
 const start = ref(0)
 const sentinel = ref(null)
@@ -248,9 +248,6 @@ function loadMore() {
 	tankRes.reload()
 }
 
-// A list refetched before the queue drained still shows the tank that was just moved out —
-// reload from the first page once the save has actually landed. See onOutboxSent.
-onOutboxSent(() => reload(true))
 function setStatus(key) {
 	statusFilter.value = key
 	reload(true)
@@ -278,7 +275,7 @@ function orderTint(status) {
 
 // TANK OUT — confirm + complete gate-out for a pickup-pending tank, then refresh so it
 // drops out of the live-inventory buckets.
-// Through the outbox, for the same reason as the Siap Keluar screen: this is pressed at the
+// Sent straight away, for the same reason as the Siap Keluar screen: this is pressed at the
 // barrier, and with a link it is a single fast round trip that answers honestly, while a dead
 // spot queues it rather than holding the truck — and every truck behind it. Carries a
 // request_id so a lost response cannot become a second gate move.
@@ -286,7 +283,6 @@ const gatingOut = ref(false)
 async function confirmGateOut(c) {
 	if (gatingOut.value) return
 	const ok = await confirm({
-		title: labels.gateOutConfirmTitle,
 		message: labels.gateOutConfirmMessage,
 		confirmLabel: labels.gateOutAction,
 		cancelLabel: labels.confirmCancel,
@@ -294,14 +290,11 @@ async function confirmGateOut(c) {
 	if (!ok) return
 	gatingOut.value = true
 	try {
-		await enqueue({
-			kind: "gate-out",
-			title: `${labels.gateOutAction} · ${c.container_no || c.name}`,
-			ref: c.name,
+		await send({
 			url: "container_depot.ess.gate.gate_out",
 			payload: { container: c.name },
 		})
-		toast.success(outbox.online ? labels.gateOutDone : labels.queuedOffline, {
+		toast.success(labels.gateOutDone, {
 			title: c.container_no || c.name,
 		})
 	} catch (e) {

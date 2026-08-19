@@ -108,7 +108,7 @@
 import { computed, ref } from "vue"
 import { labels } from "@/utils/labels"
 import { openLightbox } from "@/utils/lightbox"
-import { photoSrc } from "@/data/outbox"
+import { photoSrc } from "@/data/send"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 

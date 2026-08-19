@@ -90,12 +90,12 @@
 <script setup>
 import { computed, onMounted, ref } from "vue"
 import { labels } from "@/utils/labels"
+import { send } from "@/data/send"
 import { userContext, branchLabel } from "@/data/context"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, isQueued, onOutboxSent, outbox } from "@/data/outbox"
 
 const PAGE = 20
 const search = ref("")
@@ -106,7 +106,7 @@ const start = ref(0)
 // A tank whose ACC is queued has left, or is leaving. It stays in the server's answer until
 // the queue drains, so filter it out here — a released tank sitting in the "waiting" list is
 // how the same truck gets released twice.
-const items = computed(() => loaded.value.filter((c) => !isQueued(c.container)))
+const items = computed(() => loaded.value)
 
 const branch = computed(() => branchLabel())
 
@@ -135,9 +135,6 @@ function loadMore() {
 	readyRes.reload()
 }
 
-// A list refetched before the queue drained still shows the tank that was just gated out —
-// reload from the first page once the save has actually landed. See onOutboxSent.
-onOutboxSent(() => reload(true))
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
@@ -190,7 +187,6 @@ const accing = ref(false)
 async function confirmAcc(c) {
 	if (accing.value) return
 	const ok = await confirm({
-		title: labels.readyOutAccTitle,
 		message: `${c.container_no || c.container} — ${labels.readyOutAccMessage}`,
 		confirmLabel: labels.readyOutAcc,
 		cancelLabel: labels.confirmCancel,
@@ -198,14 +194,11 @@ async function confirmAcc(c) {
 	if (!ok) return
 	accing.value = true
 	try {
-		await enqueue({
-			kind: "gate-out",
-			title: `${labels.readyOutTitle} · ${c.container_no || c.container}`,
-			ref: c.container,
+		await send({
 			url: "container_depot.ess.gate.gate_out",
 			payload: { container: c.container },
 		})
-		toast.success(outbox.online ? labels.gateOutDone : labels.queuedOffline, {
+		toast.success(labels.gateOutDone, {
 			title: c.container_no || c.container,
 		})
 	} catch (e) {

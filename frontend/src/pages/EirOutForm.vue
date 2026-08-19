@@ -216,9 +216,11 @@
 				</p>
 				<!-- One action, whatever the outcome: this hands the EIR-Out to Adm Ops. The
 				     colour and the preview box above already say what it will become. -->
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="saveRes.loading || submitting" @click="confirmSubmit">
-					<Icon v-if="!saveRes.loading && !submitting" name="send" :size="18" />
-					{{ saveRes.loading || submitting ? "…" : labels.eirSendReview }}
+				<!-- Not gated on `saveRes.loading` — see EirInForm.vue: the submit carries the
+				     whole payload, so a slow autosave must never hold the button hostage. -->
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="submitting" @click="confirmSubmit">
+					<Icon v-if="!submitting" name="send" :size="18" />
+					{{ submitting ? "…" : labels.eirSendReview }}
 				</button>
 			</section>
 			</template>
@@ -236,8 +238,7 @@ import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import { compressPhoto } from "@/utils/photo"
-import { clearDraft, loadDraft, saveDraft } from "@/data/drafts"
-import { enqueue, hydratePreviews, isLocalRef, isQueued, outbox, photoSrc, stashPhoto } from "@/data/outbox"
+import { isLocalRef, photoSrc, send, stashPhoto } from "@/data/send"
 import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 
@@ -319,9 +320,7 @@ const openRes = cachedResource({
 		savedOk.value = false
 		seals.value = (data.seals || []).map((s) => reactive({ seal_no: s.seal_no || "", remarks: s.remarks || "" }))
 		applyDraftPhotos(data)
-		restoreLocalDraft().finally(() => {
-			nextTick(() => { suppressSave.value = false })
-		})
+				nextTick(() => { suppressSave.value = false })
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
@@ -340,9 +339,7 @@ const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] |
 async function startWork() {
 	if (!inspection.value) return
 	try {
-		await enqueue({
-			kind: "eir-start",
-			title: `EIR · Mulai`,
+		await send({
 			url: "container_depot.ess.inspections.eir_start",
 			payload: { inspection: inspection.value },
 		})
@@ -377,7 +374,7 @@ function buildSeals() {
 }
 
 // ---- file upload ----
-/** Shrink and park the photo locally; the outbox uploads it. See EirInForm for why. */
+/** Shrink and park the photo locally; `send` uploads it. See EirInForm for why. */
 async function uploadFile(file) {
 	return stashPhoto(await compressPhoto(file))
 }
@@ -493,7 +490,6 @@ const saveRes = createResource({
 	method: "POST",
 	onSuccess(data) {
 		// Server has it — the local draft has nothing left to protect (see EirInForm).
-		if (!hasStashedPhotos()) clearDraft(draftKey.value)
 		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
 		if (data.docstatus === 1 || data.pending_review) {
 			toast.success(
@@ -505,17 +501,17 @@ const saveRes = createResource({
 		} else {
 			savedOk.value = true
 		}
+		flushPendingSave()
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		flushPendingSave()
 	},
 })
 const saveError = computed(() => (saveRes.error ? saveRes.error.messages?.[0] || saveRes.error.message : null))
 
-// Offline handling mirrors EirInForm exactly — see the long note there. Local draft for a
-// dead tab, outbox for a dead signal, photos stripped from the server autosave until they
-// have actually been uploaded.
-const draftKey = computed(() => `eir-out:${inspection.value || props.inspection}`)
+// Photo handling mirrors EirInForm exactly — see the note there: a picked photo is parked
+// locally and stripped from the server autosave until `send` has actually uploaded it.
 
 function eirPayload(submit) {
 	return {
@@ -533,46 +529,12 @@ function eirPayload(submit) {
 	}
 }
 
-function localSnapshot() {
-	return {
-		saved_at: Date.now(),
-		tanggal: tanggal.value,
-		tankStatus: tankStatus.value,
-		cargo: cargo.value,
-		remarks: remarks.value,
-		signatureUrl: signatureUrl.value,
-		bulkPhotos: [...bulkPhotos.value],
-		seals: seals.value.map((r) => ({ seal_no: r.seal_no, remarks: r.remarks })),
-	}
-}
-
-async function restoreLocalDraft() {
-	// Work already waiting in the outbox: do not offer its draft back. Restoring it would put
-	// a finished job back on screen as if it were unsent, and a second Kirim would raise the
-	// same document twice under two request_ids.
-	if (isQueued(inspection.value)) return
-	const saved = await loadDraft(draftKey.value)
-	if (!saved) return
-	tanggal.value = saved.tanggal || tanggal.value
-	tankStatus.value = saved.tankStatus || tankStatus.value
-	cargo.value = saved.cargo || cargo.value
-	remarks.value = saved.remarks ?? remarks.value
-	signatureUrl.value = saved.signatureUrl || signatureUrl.value
-	bulkPhotos.value = saved.bulkPhotos || []
-	;(saved.seals || []).forEach((sv, i) => seals.value[i] && Object.assign(seals.value[i], sv))
-	await hydratePreviews([...bulkPhotos.value, signatureUrl.value])
-	toast.info(labels.draftRestored)
-}
-
-const hasStashedPhotos = () =>
-	buildPhotos().some((p) => isLocalRef(p.photo)) || isLocalRef(signatureUrl.value)
 
 function doSave(submit = false) {
 	if (!inspection.value) return
 	if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-	saveDraft(draftKey.value, localSnapshot())
 	if (submit) {
-		queueSubmit()
+		submitEir()
 		return
 	}
 	const payload = eirPayload(false)
@@ -584,26 +546,21 @@ function doSave(submit = false) {
 	})
 }
 
-// Held while the send is in flight — same reason as EirInForm.vue: with a link `enqueue`
+// Held while the send is in flight — same reason as EirInForm.vue: `send`
 // waits for the photos and the server, and a second tap would raise a second EIR.
 const submitting = ref(false)
 
-async function queueSubmit() {
+async function submitEir() {
 	if (submitting.value) return
 	submitting.value = true
 	try {
-		await enqueue({
-			kind: "eir-out-submit",
-			title: `EIR-Out · ${header.value?.container_no || inspection.value}`,
+		await send({
 			// Names the EIR so the worklist can drop it the moment it is queued — see
 			// Eir.vue's pendingItems.
-			ref: inspection.value,
-			// Cleared by the queue once the save has actually landed — see EirInForm.vue.
-			draft: draftKey.value,
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		toast.success(outbox.online ? labels.eirSentForReview : labels.queuedOffline, {
+		toast.success(labels.eirSentForReview, {
 			title: eirCode.value || inspection.value,
 		})
 		emit("submitted", inspection.value)
@@ -614,15 +571,33 @@ async function queueSubmit() {
 		submitting.value = false
 	}
 }
+// Never two autosaves in flight at once. Each one writes the whole document, so on a slow
+// link an earlier response landing after a later one restores stale text over what the
+// operator has since typed. When the debounce fires mid-flight we remember the edit and
+// re-arm from the response handler instead of stacking a second POST.
+let resaveWanted = false
+
+/** Called when a save settles: if edits arrived while it flew, start the debounce again. */
+function flushPendingSave() {
+	if (!resaveWanted) return
+	resaveWanted = false
+	scheduleSave()
+}
+
 function scheduleSave() {
+	if (!inspection.value || suppressSave.value) return
 	savedOk.value = false
 	if (saveTimer) clearTimeout(saveTimer)
-	saveTimer = setTimeout(() => doSave(false), 1200)
+	saveTimer = setTimeout(() => {
+		saveTimer = null
+		if (saveRes.loading) {
+			resaveWanted = true
+			return
+		}
+		doSave(false)
+	}, 1200)
 }
-watch([remarks, cargo, seals, bulkPhotos], () => {
-	if (suppressSave.value || !inspection.value) return
-	scheduleSave()
-}, { deep: true })
+watch([remarks, cargo, seals, bulkPhotos], scheduleSave, { deep: true })
 
 async function confirmSubmit() {
 	// Surface the seal count here rather than blocking submit on it: a tank can legitimately

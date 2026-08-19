@@ -16,7 +16,6 @@
 					</span>
 				</router-link>
 				<div v-if="session.isLoggedIn" class="flex items-center gap-1">
-					<OutboxBadge />
 					<NotificationBell />
 					<button
 						class="oak-btn oak-btn-ghost -mr-1.5 h-9 gap-1.5 px-2.5 text-xs text-gray-500"
@@ -30,7 +29,7 @@
 			<!-- One banner for the whole app rather than a badge per list. Every screen is
 			     affected by the same thing, and an operator needs the explanation once. -->
 			<p
-				v-if="session.isLoggedIn && !outbox.online"
+				v-if="session.isLoggedIn && !link.online"
 				class="border-t border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-[11px] leading-snug text-amber-800"
 			>
 				{{ labels.offlineBanner }}
@@ -55,13 +54,12 @@
 <script setup>
 import { session } from "@/data/session"
 import { labels } from "@/utils/labels"
-import { outbox } from "@/data/outbox"
+import { link } from "@/data/link"
 import { clearBrowserVisits, mustInstall } from "@/utils/install"
 import Icon from "@/components/Icon.vue"
 import InstallGate from "@/components/InstallGate.vue"
 import BottomNav from "@/components/BottomNav.vue"
 import NotificationBell from "@/components/NotificationBell.vue"
-import OutboxBadge from "@/components/OutboxBadge.vue"
 import ToastHost from "@/components/ToastHost.vue"
 import LightboxHost from "@/components/LightboxHost.vue"
 import ConfirmHost from "@/components/ConfirmHost.vue"

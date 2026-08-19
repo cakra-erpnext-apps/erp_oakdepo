@@ -93,14 +93,14 @@
 </template>
 
 <script setup>
-import { computed, ref } from "vue"
+import { ref } from "vue"
 import { labels } from "@/utils/labels"
+import { send } from "@/data/send"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import { cachedResource } from "@/data/cache"
-import { enqueue, onOutboxSent, outbox } from "@/data/outbox"
 import { useDetailView } from "@/utils/backstack"
 
 const mode = ref("list") // list | detail
@@ -131,9 +131,6 @@ function onSearchInput() {
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
 
-// A list refetched before the queue drained still shows the EIR that was just sorted —
-// refetch once the save has actually landed. See onOutboxSent.
-onOutboxSent(() => listRes.reload())
 
 // ---- section options (flat checklist, ordered by sequence → grouped by area), loaded once ----
 const checklistItems = ref([])
@@ -166,8 +163,8 @@ function openEir(r) {
 	photosRes.submit({ inspection: r.name })
 }
 
-// Queued like every other write in the app. Sorting addresses a photo by its stable child-row
-// name and an item code, so a queued assignment means the same thing whenever it lands.
+// Sorting addresses a photo by its stable child-row name and an item code, so the assignment
+// means the same thing whenever it lands.
 //
 // No `ref` here: a row is one photo, not the whole EIR, and the EIR must stay in the worklist
 // while its other photos are still unsorted. The photo is dropped from the local list on
@@ -176,14 +173,12 @@ async function assign(p) {
 	if (!p.chosen || p.pending) return
 	p.pending = true
 	try {
-		await enqueue({
-			kind: "eir-sort",
-			title: `${labels.eirSortTitle} · ${current.value.container_no || current.value.inspection}`,
+		await send({
 			url: "container_depot.ess.inspections.eir_assign_photo_section",
 			payload: { inspection: current.value.inspection, row: p.row, item_code: p.chosen },
 		})
 		photos.value = photos.value.filter((x) => x.row !== p.row)
-		toast.success(outbox.online ? labels.eirSortAssigned : labels.queuedOffline)
+		toast.success(labels.eirSortAssigned)
 	} catch (err) {
 		toast.error(err?.message || labels.error)
 		p.chosen = ""

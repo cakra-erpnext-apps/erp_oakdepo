@@ -1,8 +1,6 @@
 import { createApp } from "vue"
 import App from "./App.vue"
 import router from "./router"
-import { startOutbox } from "@/data/outbox"
-import { pruneDrafts } from "@/data/drafts"
 import { pruneReads } from "@/data/cache"
 
 import {
@@ -54,8 +52,6 @@ router.isReady().then(async () => {
 	// Start the offline queue before the first screen paints: a handset that was closed
 	// mid-shift with work still queued should be sending it while the operator is still
 	// looking at the home screen, not waiting for them to reopen the form.
-	startOutbox()
-	pruneDrafts()
 	// Also drops anything cached under a previous login — depot handsets change hands
 	// between shifts and one operator's branch-scoped worklist is not the next one's.
 	pruneReads()
