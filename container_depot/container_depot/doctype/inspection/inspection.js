@@ -67,6 +67,18 @@ frappe.ui.form.on('Inspection', {
 		hide_sidebar_attachments(frm);
 	},
 
+	// Frappe checks reqd fields in the BROWSER before the request ever leaves (form.js
+	// save() -> validate/before_save -> frappe.ui.form.check_mandatory), so
+	// Inspection.drop_empty_photo_rows on the server never gets a chance at a photo row
+	// somebody added in the grid and never filled: the save bounces with "Mandatory fields
+	// required in table Foto per Item, Row 1 - Photo" — pointing at a table the user may
+	// not even have been working in (typically they were filling Checklist Kerusakan).
+	// Adding an empty row and uploading into it from the modal is a supported flow, so the
+	// row must be allowed to exist; it just must not survive the save.
+	validate(frm) {
+		drop_empty_photo_rows(frm);
+	},
+
 	inspector_signature(frm) {
 		set_signature_preview(frm);
 	},
@@ -584,6 +596,7 @@ function open_damage_editor(frm, cdn) {
 	if (editable) {
 		d.set_primary_action(__('Simpan'), () => {
 			d.hide();
+			drop_empty_photo_rows(frm);
 			if (frm.is_dirty()) frm.save();
 		});
 	}
@@ -923,6 +936,9 @@ function open_photo_carousel(frm, slides, start) {
 	if (sortable) {
 		d.set_primary_action(__('Simpan'), () => {
 			d.hide();
+			// A submitted EIR saves with "Update", which skips the `validate` hook — so the
+			// empty rows have to go here or the mandatory check refuses the sort.
+			drop_empty_photo_rows(frm);
 			if (frm.is_dirty()) frm.save(frm.doc.docstatus === 1 ? 'Update' : undefined);
 		});
 	}
@@ -1017,6 +1033,35 @@ function drop_row_without_photo(frm, table_fieldname, photo_fieldname, cdt, cdn)
 		message: __('Baris foto dihapus — foto tidak bisa dikosongkan.'),
 		indicator: 'orange',
 	});
+}
+
+// The save-time half of the same rule. `drop_row_without_photo` above only fires when a
+// photo is CLEARED, so a row added in the grid and left empty lives on until the save —
+// where Frappe's client-side mandatory check refuses it before the server's
+// `drop_empty_photo_rows` can quietly do the same thing. Runs from `validate`, which
+// form.js fires before check_mandatory.
+//
+// Not reached on a docstatus 1 "Update" save (form.js skips validate for it), so the two
+// dialogs that can save a submitted EIR call this themselves.
+function drop_empty_photo_rows(frm) {
+	let dropped = 0;
+	PHOTO_TABLES.forEach(([table_fieldname, , photo_fieldname]) => {
+		const rows = frm.doc[table_fieldname] || [];
+		const kept = rows.filter((row) => (row[photo_fieldname] || '').trim());
+		if (kept.length === rows.length) return;
+		dropped += rows.length - kept.length;
+		kept.forEach((row, i) => {
+			row.idx = i + 1;
+		});
+		frm.doc[table_fieldname] = kept;
+		frm.refresh_field(table_fieldname);
+	});
+	if (dropped) {
+		frappe.show_alert({
+			message: __('{0} baris foto tanpa foto dihapus.', [dropped]),
+			indicator: 'orange',
+		});
+	}
 }
 
 // --- Bulk photo sorting (Desk) ---
