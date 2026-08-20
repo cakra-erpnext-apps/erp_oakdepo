@@ -26,6 +26,7 @@ from frappe.utils import add_days, now_datetime, today
 
 from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
 from container_depot.tests.test_api import ensure_test_customer
+from container_depot.tests._booking_helpers import cancel_submitted_booking
 
 CUSTOMER = "Notif Revoke Co"
 CONTAINER = "NRVU3334440"
@@ -163,7 +164,7 @@ class TestNotificationRevoke(FrappeTestCase):
 		self.assertGreaterEqual(_feed("Container Booking", b.name), 1)
 
 		b.reload()
-		b.cancel()
+		cancel_submitted_booking(b.name)
 		self.assertEqual(_feed("Container Booking", b.name), 0)
 
 	def test_voiding_a_draft_booking_clears_its_feed(self):

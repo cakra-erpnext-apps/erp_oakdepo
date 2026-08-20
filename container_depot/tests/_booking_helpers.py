@@ -83,3 +83,23 @@ def make_booking_code(
 		"issued_at": now_datetime(),
 		"expires_at": add_to_date(now_datetime(), hours=offset_hours),
 	}).insert(ignore_permissions=True)
+
+
+def cancel_submitted_booking(booking: str) -> str:
+	"""Cancel a SUBMITTED Container Booking the only way the app still allows.
+
+	``before_cancel`` refuses a direct cancel at docstatus 1 (as ``before_update_after_submit``
+	refuses every edit): what Submit set in motion is undone by stepping back through
+	**Kembali ke Draft** and cancelling the draft. ``void_draft`` unwinds exactly what the old
+	direct cancel did — invoice cancelled and kept linked, reservations released, codes voided.
+
+	Refused, correctly, once a bon has been raised or a code has been used at the gate — a
+	test that needs that case should assert the refusal rather than call this.
+	"""
+	from container_depot.container_depot.doctype.container_booking.container_booking import (
+		revert_booking_to_draft,
+		void_draft,
+	)
+
+	revert_booking_to_draft(booking)
+	return void_draft(booking)

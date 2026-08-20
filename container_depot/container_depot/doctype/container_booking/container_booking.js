@@ -28,6 +28,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_mark_new_containers');
 		frm.trigger('_flag_open_conflicts');
+		frm.trigger('_apply_submit_lock');
 		frm.trigger('_apply_billing_lock');
 		frm.trigger('_render_work_per_container');
 		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
@@ -135,7 +136,12 @@ frappe.ui.form.on('Container Booking', {
 	// been raised?" without asking the server. The buttons are therefore ADDED in the
 	// callback rather than added-then-removed, which would flicker.
 	_gate_undo_actions(frm) {
+		// One form object serves every booking the user opens, so start from "no bon" —
+		// otherwise the previous booking's frozen rows would tint this one until (or unless)
+		// the call below answers.
+		frm._bon_containers = new Set();
 		if (frm.is_new() || frm.doc.docstatus !== 1) return;
+		// (Frappe's own Cancel is already out of the Menu — see _lock_actions.)
 		const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
 		frappe.call({
 			method: 'container_depot.container_depot.doctype.container_booking.container_booking.revision_state',
@@ -144,41 +150,78 @@ frappe.ui.form.on('Container Booking', {
 				const state = r.message || {};
 				const bons = state.bons || [];
 				const locked = state.locked_containers || [];
-				if (!bons.length) {
-					if (may_cancel) {
-						frm.add_custom_button(__('Kembali ke Draft (pembayaran tetap)'), () =>
-							_confirm_revert(frm)
-						);
-					}
-				} else if (may_cancel) {
-					// Frappe's own Cancel lives in the Menu, so it is stripped the same way
-					// _lock_actions strips Delete / Discard.
-					frm.page.menu
-						.find(`a[data-label="${encodeURIComponent(__('Cancel'))}"]`)
-						.parent()
-						.remove();
+				frm._bon_containers = new Set(locked);
+				frm.trigger('_freeze_bon_rows');
+				if (!bons.length && may_cancel) {
+					// The only door out of a submitted booking, so it leads.
+					frm.add_custom_button(__('Kembali ke Draft (pembayaran tetap)'), () =>
+						_confirm_revert(frm)
+					).addClass('btn-primary');
 				}
-				// ONE banner for the whole "a bon exists" situation. It used to be two, each
-				// spelling out what was still allowed — three lines of prose above a form
-				// whose buttons already say the same thing. The frozen tanks are still named:
-				// the server refuses the save row by row, and on a multi-container booking it
-				// is not obvious which rows the bon took.
-				const notes = [];
-				if (bons.length) notes.push(__('Bon terbit ({0}) — status terkunci.', [bons.join(', ')]));
-				if (locked.length) {
-					notes.push(__('Container di bon tidak bisa diubah: {0}.', [locked.join(', ')]));
-				}
-				if (notes.length) {
-					frm.dashboard.add_comment(notes.join(' '), bons.length ? 'orange' : 'blue', true);
-				}
+				// ONE banner saying where this booking stands. Which containers are already
+				// on a bon is NOT spelled out here any more — that is a per-row fact and it
+				// is now drawn on the rows themselves (the orange "Bon" pill), where the
+				// operator is actually looking.
+				frm.dashboard.add_comment(
+					bons.length
+						? __(
+								'Booking terkunci. Bon sudah terbit ({0}) — tidak bisa dikembalikan ke draft ataupun dibatalkan.',
+								[bons.join(', ')]
+						  )
+						: __(
+								'Booking sudah disubmit — isinya terkunci. Untuk mengoreksi atau membatalkan, pakai <b>Kembali ke Draft</b> dulu.'
+						  ),
+					bons.length ? 'orange' : 'blue',
+					true
+				);
 			},
 		});
+	},
+	// Which tanks already have a bon. Nothing on a submitted booking is editable any more
+	// (_apply_submit_lock), so this is not about protecting the rows — it is about reading
+	// the grid: on a nine-container booking "sudah dibonkan yang mana?" is otherwise a
+	// sentence in the banner that the operator has to match against rows by eye.
+	_freeze_bon_rows(frm) {
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (!grid) return;
+		// Repaint: the pill is drawn by the container_no formatter, which read an empty set
+		// when the grid was first painted.
+		grid.refresh();
+	},
+	// A submitted booking is closed — mirror `before_update_after_submit`, which refuses
+	// every change to it. Frappe would otherwise render these fields editable (they carry
+	// `allow_on_submit`, which they keep so the server can answer with a sentence that says
+	// what to do instead of core's "not allowed to change X after submission").
+	//
+	// Reversible on purpose: one form object serves every booking the user opens, and
+	// Kembali ke Draft brings this very document back to docstatus 0, so the unlocked branch
+	// has to put every field back.
+	_apply_submit_lock(frm) {
+		const locked = frm.doc.docstatus === 1;
+		[
+			'branch', 'depot', 'reff_doc', 'customer', 'principal', 'items', 'charges',
+			'payment_type', 'do_reference', 'do_document', 'sales_name', 'remarks',
+		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (grid) {
+			grid.cannot_add_rows = locked;
+			grid.cannot_delete_rows = locked;
+		}
+		const charges = frm.fields_dict.charges && frm.fields_dict.charges.grid;
+		if (charges) {
+			charges.cannot_add_rows = locked;
+			charges.cannot_delete_rows = locked;
+		}
 	},
 	// Mirror the server lock in the UI: outside Draft the billing facts are frozen, so
 	// showing them as editable would only let the operator type into a field whose save
 	// is about to be refused. Everything else on the booking stays editable.
 	_apply_billing_lock(frm) {
-		const locked = frm.doc.docstatus === 0 && !['Draft', 'Cancelled'].includes(frm.doc.booking_status);
+		// Draft-only: this runs AFTER _apply_submit_lock, so without the guard its "unlock"
+		// branch would hand charges / customer back on a submitted booking that just locked
+		// them.
+		if (frm.doc.docstatus !== 0) return;
+		const locked = !['Draft', 'Cancelled'].includes(frm.doc.booking_status);
 		frm.set_df_property('charges', 'read_only', locked ? 1 : 0);
 		frm.set_df_property('customer', 'read_only', locked ? 1 : 0);
 		if (locked) {
@@ -289,11 +332,22 @@ frappe.ui.form.on('Container Booking', {
 		// formatting (grid_row.js `_escape_for_format`) — so don't escape it twice.
 		const base = frappe.form.get_formatter(df.fieldtype);
 		df.formatter = (value, _df, _options, row) => {
-			const cell = base(value, _df, _options, row);
-			if (!row || !row.is_new_container) return cell;
-			return `${cell} <span class="indicator-pill green" title="${__(
-				'Master Container dibuat oleh booking ini'
-			)}">${__('Baru')}</span>`;
+			let cell = base(value, _df, _options, row);
+			if (!row) return cell;
+			// "Bon" first: it is the one that decides whether the row can still be touched.
+			// Filled in asynchronously by _gate_undo_actions — until its answer lands the
+			// set is empty and no row claims to be frozen.
+			if (frm._bon_containers && frm._bon_containers.has(row.container_no)) {
+				cell += ` <span class="indicator-pill orange" title="${__(
+					'Sudah masuk bon — baris ini terkunci'
+				)}">${__('Bon')}</span>`;
+			}
+			if (row.is_new_container) {
+				cell += ` <span class="indicator-pill green" title="${__(
+					'Master Container dibuat oleh booking ini'
+				)}">${__('Baru')}</span>`;
+			}
+			return cell;
 		};
 		// The grid's columns were already painted by the time a refresh script runs
 		// (frm.refresh_fields precedes it), so the freshly attached formatter needs one
@@ -474,12 +528,23 @@ frappe.ui.form.on('Container Booking', {
 		});
 	},
 	_lock_actions(frm) {
-		// A booking is never permanently deleted or silently discarded — it is voided
-		// (Cancel) so its cancelled invoice + audit trail stay. Strip both menu items
-		// (server also blocks delete in on_trash).
+		// A booking is never permanently removed — it is voided (Cancel) so its cancelled
+		// invoice and history stay readable, and `on_trash` refuses the alternative. Strip
+		// both menu items.
 		['Delete', 'Discard'].forEach((label) => {
 			frm.page.menu.find(`a[data-label="${encodeURIComponent(__(label))}"]`).parent().remove();
 		});
+		// Cancel is gone from a SUBMITTED booking: `before_cancel` refuses it unconditionally
+		// because what Submit set in motion is undone by stepping back — Kembali ke Draft,
+		// then cancelling the draft. A button whose only possible answer is an error is worse
+		// than no button.
+		//
+		// It is NOT a menu item, which is why removing it from `frm.page.menu` alongside
+		// Delete/Discard did nothing: Frappe renders Cancel as the SECONDARY action button
+		// next to Submit/Update (toolbar.js set_page_actions, status === 'Cancel'), so the
+		// button is what has to go. Safe to clear wholesale — Cancel is the only secondary
+		// action a submitted booking is ever given.
+		if (frm.doc.docstatus === 1) frm.page.clear_secondary_action();
 		// Saved draft → the only undo is Cancel = void: cancel the draft's invoice (kept
 		// linked) + release reservations and mark it Cancelled. Submit (Approve) stays
 		// the primary action.
@@ -584,6 +649,26 @@ frappe.ui.form.on('Container Booking', {
 		const out = frm.doc.direction === 'Tank Out';
 		frm.set_df_property('depot', 'hidden', out ? 1 : 0);
 		frm.set_df_property('depot', 'read_only', out ? 1 : 0);
+		// Mirror image on the rows. The row Depo is fetched from each tank's master —
+		// where it is standing right now — so it only answers something on a Tank Out.
+		// A Tank In tank has not arrived yet: the column is blank on every row and the
+		// header field above is the answer, so drop the column entirely.
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		const row_df = grid && grid.get_docfield('depot');
+		const hide = out ? 0 : 1;
+		if (row_df && row_df.hidden !== hide) {
+			grid.update_docfield_property('depot', 'hidden', hide);
+			row_df.hidden = hide;
+			// Also on the shared meta docfield: a grid whose columns the user has configured
+			// by hand (the gear in the header) reads THOSE objects, not the per-doc copies.
+			const meta_df = frappe.meta.get_docfield('Container Booking Item', 'depot');
+			if (meta_df) meta_df.hidden = hide;
+			// `hidden` alone changes nothing: setup_visible_columns() returns early while
+			// this.visible_columns is non-empty, so the painted header survives a plain
+			// refresh(). Clearing it is what forces the columns to be recomputed.
+			grid.visible_columns = [];
+			grid.refresh();
+		}
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));

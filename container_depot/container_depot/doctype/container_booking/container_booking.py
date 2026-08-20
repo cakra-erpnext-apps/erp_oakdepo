@@ -191,50 +191,32 @@ class ContainerBooking(Document):
 		from container_depot.container_depot.notify import notify_booking_submitted
 		notify_booking_submitted(self)
 
-	# ---- revision in place (docstatus stays 1, status stays Confirmed) --------
-	# Correcting a Confirmed booking used to mean Kembali ke Draft, and that door is now shut
-	# once a bon exists. This is the way in that does not move the booking backwards: the
-	# fields below are `allow_on_submit`, so Frappe saves them on a submitted document and
-	# routes the save through these two hooks instead of validate/before_save.
+	# ---- a submitted booking is closed ---------------------------------------
+	# Submit is the point the booking becomes an operational fact: codes are issued, the
+	# invoice is raised, the depot is expecting these tanks. From here NOTHING on the
+	# document may change — not a truck plate, not a row, not the charges. The one way in is
+	# **Kembali ke Draft** (``revert_booking_to_draft``), which is itself refused once a bon
+	# has been raised or a code has been used at the gate.
 	#
-	# `before_update_after_submit` runs BEFORE the row is written — guards and anything that
-	# mutates the document belong here, because nothing assigned in the post-save hook would
-	# be persisted. `on_update_after_submit` runs after, and is where the side effects go
-	# (issuing a code for a new row, voiding one for a dropped row, re-raising the invoice).
+	# That is a deliberate step back from revising in place. Editing a Confirmed booking
+	# silently left no trace that it had been reopened, and "the booking says X but the
+	# operator remembers agreeing Y" is exactly the argument the depot cannot win. Reopening
+	# is now a visible act with its own status.
+	#
+	# The user-editable fields keep `allow_on_submit` so this hook is reached at all — a
+	# plain "not allowed to change after submit" from Frappe core names one field and says
+	# nothing about what to do instead. Every SYSTEM write to a submitted booking goes
+	# through ``db_set`` / ``frappe.db.set_value`` (booking_status, sales_invoice,
+	# payment_status, the bon's write-back in ``order_generation``), none of which reaches
+	# this hook, so nothing internal is caught by the throw below.
 
 	def before_update_after_submit(self):
-		self._guard_rows_already_on_a_bon()
-		self._guard_billing_on_revision()
-		# Same derivations validate() does for a draft, minus the ones keyed on fields a
-		# revision cannot reach (direction / lift_type are set_only_once or read-only).
-		self._require_containers()
-		self._ensure_depot()
-		self._ensure_branch_and_principal()
-		self._validate_depot_in_branch()
-		self._resolve_pricing_context()
-		self._resolve_containers()
-		assert_rows_active(self, "items")
-		self._default_row_shipper()
-		self._validate_row_principal()
-		self._validate_unique_containers()
-		self._validate_no_open_booking()
-		self._price_charges()
-		self._sync_container_summary()
-		# Stash what the post-save hook needs; `get_doc_before_save()` is the only view of
-		# the pre-edit document, and rows dropped from `items` are gone by then.
-		before = self.get_doc_before_save()
-		kept = {row.name for row in (self.items or [])}
-		self.flags.revision_dropped_codes = [
-			code
-			for code in (
-				self._row_code(row)
-				for row in ((before.items if before else None) or [])
-				if row.name not in kept
-			)
-			if code
-		]
-		self.flags.revision_rebilled = bool(
-			before and _billing_signature(before) != _billing_signature(self)
+		frappe.throw(
+			_(
+				"Booking {0} sudah disubmit — isinya tidak bisa diubah lagi. "
+				"Pakai <b>Kembali ke Draft</b> dulu kalau memang harus dikoreksi."
+			).format(self.name),
+			title=_("Booking terkunci"),
 		)
 
 	def on_update(self):
@@ -243,147 +225,26 @@ class ContainerBooking(Document):
 		# while the save is still in flight.
 		self._release_dropped_containers()
 
-	def on_update_after_submit(self):
-		self._release_dropped_containers()
-		# A row added by the revision has no Booking Code yet — issue it, exactly as
-		# on_submit does for the original rows (the helper skips rows that already have one).
-		self._issue_booking_codes()
-		# A row dropped by the revision takes its code out of circulation. Void rather than
-		# delete: the code may already have been quoted to the customer, and a cancelled
-		# code answers "why was this refused at the gate?" where a missing row cannot.
-		for code in self.flags.get("revision_dropped_codes") or []:
-			if frappe.db.exists("Booking Code", code):
-				frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
-		if self.flags.get("revision_rebilled"):
-			self._rebill_after_revision()
-
-	# Fields of a container row a revision may change. `container_no` and `booking_code` are
-	# system-written and stay read-only in every state.
-	REVISABLE_ITEM_FIELDS = (
-		"container", "condition", "cargo", "shipper",
-		"truck_plate", "driver", "driver_phone", "ro", "tanggal_bongkar", "remarks",
-	)
-
-	def _row_code(self, row):
-		"""The Booking Code a container row belongs to.
-
-		Normally the stored link, written by :meth:`_issue_booking_codes`. Falls back to a
-		lookup by container number, because the guards below are a safety property and must
-		not quietly pass on a row whose link was never written — a booking whose codes were
-		issued by some other path would otherwise look unprotected.
-		"""
-		if row.booking_code:
-			return row.booking_code
-		if not row.container_no:
-			return None
-		return frappe.db.get_value(
-			"Booking Code", {"booking": self.name, "container_no": row.container_no}, "name"
-		)
-
-	def _guard_rows_already_on_a_bon(self):
-		"""A container that has been put on a bon is finished as far as this booking goes.
-
-		The bon is printed paper carrying that container's truck, driver and dates; letting
-		the booking row drift away from it would leave two documents describing one tank and
-		no way to tell which one the gate should believe. Rows NOT yet on a bon stay fully
-		editable, and rows may still be added — that is the whole point of revising in place.
-		"""
-		before = self.get_doc_before_save()
-		if not before:
-			return
-		frozen = _codes_on_a_bon(self.name)
-		if not frozen:
-			return
-		current = {row.name: row for row in (self.items or [])}
-		for row in before.items or []:
-			code = self._row_code(row)
-			if code not in frozen:
-				continue
-			label = row.container_no or row.container or code
-			now = current.get(row.name)
-			if now is None:
-				frappe.throw(
-					_("Container {0} tidak bisa dihapus: sudah masuk bon (Booking Code {1}).").format(
-						label, code
-					),
-					title=_("Baris Terkunci"),
-				)
-			# str() both sides: a Date round-trips as `datetime.date` from the DB and as
-			# "YYYY-MM-DD" from the client, and an empty field arrives as None or "".
-			changed = [
-				field
-				for field in self.REVISABLE_ITEM_FIELDS
-				if str(now.get(field) or "") != str(row.get(field) or "")
-			]
-			if changed:
-				frappe.throw(
-					_(
-						"Container {0} tidak bisa direvisi: sudah masuk bon (Booking Code {1}). "
-						"Field yang diubah: {2}. Perbaikan datanya dilakukan lewat bon."
-					).format(label, code, ", ".join(changed)),
-					title=_("Baris Terkunci"),
-				)
-
-	def _guard_billing_on_revision(self):
-		"""Billing facts may move during a revision only while nothing is in the ledger.
-
-		The three cases, and why they differ:
-
-		* **Submitted invoice** — refused. The numbers are booked; a booking that quietly
-		  disagrees with a submitted invoice is the exact drift this whole lock exists to
-		  prevent. Cancel the invoice (or issue a credit note) first.
-		* **Draft invoice** — allowed, and the invoice is re-raised afterwards
-		  (:meth:`_rebill_after_revision`) so the Cashier is never handed a document that
-		  disagrees with the booking it came from.
-		* **No invoice** — allowed. A TOP booking is billed later by
-		  ``consolidated_billing.bill_customer``, which reads the booking at run time and so
-		  picks the revision up on its own.
-
-		Contrast :meth:`_guard_locked_charges`, which polices the same facts on a DRAFT
-		booking and simply refuses: there, "Kembali ke Draft (batalkan invoice)" is the way
-		through, and that button does not exist on a submitted one.
-		"""
-		before = self.get_doc_before_save()
-		if not before or _billing_signature(before) == _billing_signature(self):
-			return
-		if (
-			self.sales_invoice
-			and frappe.db.get_value("Sales Invoice", self.sales_invoice, "docstatus") == 1
-		):
-			frappe.throw(
-				_(
-					"Sales Invoice {0} sudah disubmit — charges / customer booking ini tidak bisa "
-					"direvisi. Batalkan invoice-nya dulu (atau terbitkan credit note)."
-				).format(self.sales_invoice),
-				title=_("Invoice Sudah Disubmit"),
-			)
-
-	def _rebill_after_revision(self):
-		"""Charges moved on a Confirmed booking → its DRAFT invoice is stale. Void it and
-		raise a fresh one, so the two never disagree.
-
-		A submitted invoice cannot reach this: :meth:`_guard_billing_on_revision` refuses the
-		edit that would strand it. A booking with no invoice is left alone — TOP accrues and
-		is swept later, and a site with finance switched off never raises one at all."""
-		if not self.sales_invoice:
-			return
-		self._cancel_invoice_keep_link()
-		old = self.sales_invoice
-		self.db_set("sales_invoice", None, update_modified=False)
-		self.sales_invoice = None
-		self._auto_invoice()
-		frappe.msgprint(
-			_("Charges berubah — Sales Invoice {0} dibatalkan dan diganti {1}.").format(
-				old, self.sales_invoice or _("(belum ada, akan ditagih lewat billing bulanan)")
-			),
-			indicator="orange",
-			alert=True,
-		)
-
 	def before_cancel(self):
 		# Before, not on_cancel: on_cancel has already voided the codes and reversed the
 		# payment by the time it runs, so a throw there would leave the unwinding half done.
 		_block_if_bon_raised(self.name, _("dibatalkan"))
+		# Cancel is not an action on a submitted booking either — same rule as editing, and
+		# for the same reason: what Submit set in motion is undone by stepping back through
+		# Kembali ke Draft (which refuses once a bon exists / a code was used at the gate),
+		# then cancelling the draft. `void_draft` does that second half and unwinds exactly
+		# what this path would have.
+		# `self.docstatus` is already 2 by the time this hook runs (Document._cancel sets it,
+		# then saves), so the question "was this submitted?" has to be asked of the row on
+		# disk. `void_draft` never reaches here — it writes docstatus 2 with db.set_value.
+		if frappe.db.get_value("Container Booking", self.name, "docstatus") == 1:
+			frappe.throw(
+				_(
+					"Booking {0} sudah disubmit dan tidak bisa langsung dibatalkan. "
+					"Kembali ke Draft dulu, lalu batalkan draft-nya."
+				).format(self.name),
+				title=_("Booking terkunci"),
+			)
 
 	def on_cancel(self):
 		"""Cancelling a booking unwinds everything it spun up:
@@ -1649,8 +1510,9 @@ _BON_CONTAINER_TABLES = (
 
 
 def _codes_on_a_bon(booking: str) -> set[str]:
-	"""Booking Codes of ``booking`` that already sit on a bon — the rows a revision may not
-	touch (see ``ContainerBooking._guard_rows_already_on_a_bon``).
+	"""Booking Codes of ``booking`` that already sit on a bon — i.e. which containers have
+	been put on paper. Drives the "Bon" marker on the form's container rows (via
+	``revision_state``); the booking itself is frozen from Submit either way.
 
 	Read off the bons themselves rather than off ``Booking Code.state``: voiding a bon puts
 	its codes back to ``Active``, and the row is still on paper that was printed.
@@ -1695,11 +1557,11 @@ def revision_state(booking: str) -> dict:
 	(they are reachable only through the Connections tab):
 
 	``bons``
-	    every bon ever raised. Non-empty means the booking is frozen as a whole: no Revert
-	    to Draft, no Cancel.
+	    every bon ever raised. Non-empty means even Kembali ke Draft is gone — the booking is
+	    frozen for good (a submitted booking is already closed for editing regardless).
 	``locked_containers``
-	    the container numbers already carried on a bon. Those rows cannot be edited or
-	    removed; every other row, and the rest of the booking, stays revisable in place.
+	    the container numbers already carried on a bon, marked with a "Bon" pill on their
+	    row so "sudah dibonkan yang mana?" is answered where the operator is looking.
 	"""
 	frappe.has_permission("Container Booking", "read", doc=booking, throw=True)
 	codes = _codes_on_a_bon(booking)
@@ -1737,10 +1599,23 @@ def void_draft(booking):
 	# booking, and `revert_booking_to_draft` refuses to reopen one that has raised any —
 	# so this only fires if some other path put the pair in that state.
 	_block_if_bon_raised(doc.name, _("dibatalkan"))
-	doc._cancel_invoice_keep_link()
-	doc._release_pre_arrival_containers()
+	# Statuses FIRST, exactly as `on_cancel` orders it, and the order is load-bearing:
+	# cancelling the invoice fires `resync_booking_on_invoice_cancel`, which drops the link
+	# from any booking that is not itself cancelled. Marking the booking first is what makes
+	# this path keep the cancelled invoice linked & visible, as the docstring promises.
 	doc.db_set("booking_status", "Cancelled", update_modified=False)
 	doc.db_set("payment_status", "Cancelled", update_modified=False)
+	# A draft that was never submitted holds no codes, but a booking brought back by
+	# `revert_booking_to_draft` keeps the ones Submit issued — and since that is now the only
+	# road to cancelling a confirmed booking, this is where they are taken out of
+	# circulation. Same rule as `on_cancel`: a cancelled booking must not leave live 72h
+	# gate-access codes behind it.
+	for code in frappe.get_all(
+		"Booking Code", filters={"booking": doc.name, "state": "Active"}, pluck="name"
+	):
+		frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
+	doc._cancel_invoice_keep_link()
+	doc._release_pre_arrival_containers()
 	# A draft can't go through native submit→cancel, so mark Cancelled (docstatus 2)
 	# directly; child rows mirror the parent docstatus.
 	frappe.db.set_value("Container Booking", doc.name, "docstatus", 2, update_modified=False)

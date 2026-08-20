@@ -18,6 +18,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
 from container_depot.tests.test_api import ensure_test_customer
+from container_depot.tests._booking_helpers import cancel_submitted_booking
 
 CUSTOMER = "Double Booking Co"
 C_IN = "DBGU1110001"
@@ -196,7 +197,7 @@ class TestBookingDoubleGuard(FrappeTestCase):
 	def test_a_cancelled_booking_no_longer_blocks(self):
 		first = self._book(C_IN)
 		first.reload()
-		first.cancel()
+		cancel_submitted_booking(first.name)
 
 		self._book(C_IN)  # must not raise
 

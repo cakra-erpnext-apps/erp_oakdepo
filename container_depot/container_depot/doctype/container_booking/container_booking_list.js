@@ -67,6 +67,7 @@ frappe.listview_settings['Container Booking'] = {
 	// Runs after every list load, i.e. after the filter area exists. Appending each control
 	// in turn is idempotent, so re-running it on refresh cannot scramble the row.
 	refresh(listview) {
+		strip_bulk_cancel(listview);
 		const $form = listview.page && listview.page.page_form;
 		if (!$form || !$form.length) return;
 		// Prepended in REVERSE, so the row ends up in FILTER_ORDER with the filters on the
@@ -88,3 +89,19 @@ frappe.listview_settings['Container Booking'] = {
 		});
 	},
 };
+
+// Actions -> Cancel can only fail from here, whichever rows are ticked. A draft is voided
+// through the booking's own Cancel button (`void_draft` — the native cancel cannot touch a
+// docstatus 0 record anyway), and a submitted booking refuses cancel outright
+// (`before_cancel`: the way back is Kembali ke Draft, then cancelling the draft). Bulk
+// "Cancel 3 documents?" therefore ends in three errors, so the item goes — the same strip
+// the form does on its Menu (container_booking.js, _lock_actions).
+function strip_bulk_cancel(listview) {
+	const $actions = listview.page && listview.page.actions;
+	if (!$actions || !$actions.length) return;
+	// Frappe labels this one with a translation CONTEXT, which can resolve to a different
+	// string than a bare __('Cancel') on a translated Desk. Match both.
+	[__('Cancel'), __('Cancel', null, 'Button in list view actions menu')].forEach((label) => {
+		$actions.find(`a[data-label="${encodeURIComponent(label)}"]`).parent().remove();
+	});
+}

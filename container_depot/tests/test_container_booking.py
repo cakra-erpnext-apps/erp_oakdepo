@@ -11,6 +11,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime, today
 
 from container_depot.container_depot.container_status import GATE_OUT
+from container_depot.tests._booking_helpers import cancel_submitted_booking
 from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 
@@ -854,7 +855,7 @@ class TestBookingCancel(FrappeTestCase):
 		b = self._submit_cash_booking("CXLPHANT001")
 		self.assertEqual(b.booking_status, "Confirmed")
 		self.assertTrue(frappe.db.exists("Booking Code", {"booking": b.name, "state": "Active"}))
-		b.cancel()
+		cancel_submitted_booking(b.name)
 		b.reload()
 		self.assertEqual(b.booking_status, "Cancelled")
 		self.assertFalse(
@@ -869,7 +870,7 @@ class TestBookingCancel(FrappeTestCase):
 			frappe.db.get_value("Container", "CXLPHANT001", "created_by_booking"), b.name,
 			"pre-arrival phantom must be stamped with its booking",
 		)
-		b.cancel()
+		cancel_submitted_booking(b.name)
 		self.assertFalse(
 			frappe.db.exists("Container", "CXLPHANT001"),
 			"auto-created phantom container must be deleted on cancel",
@@ -888,7 +889,7 @@ class TestBookingCancel(FrappeTestCase):
 		b = self._submit_cash_booking("CXLEXIST001")
 		self.assertEqual(frappe.db.get_value("Container", "CXLEXIST001", "status"), "Booked")
 		self.assertFalse(frappe.db.get_value("Container", "CXLEXIST001", "created_by_booking"))
-		b.cancel()
+		cancel_submitted_booking(b.name)
 		self.assertTrue(
 			frappe.db.exists("Container", "CXLEXIST001"), "pre-existing tank must not be deleted"
 		)
@@ -919,7 +920,7 @@ class TestBookingCancel(FrappeTestCase):
 			update_modified=False,
 		)
 		a.reload()
-		a.cancel()
+		cancel_submitted_booking(a.name)
 		self.assertEqual(
 			frappe.db.get_value("Container", "CXLHELD0001", "status"), "Booked",
 			"a tank still reserved by another live booking must stay Booked",
@@ -932,7 +933,7 @@ class TestBookingCancel(FrappeTestCase):
 		b = self._submit_cash_booking("CXLPHANT001")
 		si = b.sales_invoice
 		self.assertTrue(si)
-		b.cancel()
+		cancel_submitted_booking(b.name)
 		b.reload()
 		self.assertEqual(b.sales_invoice, si, "the cancelled invoice stays linked for audit")
 		self.assertEqual(b.payment_status, "Cancelled")

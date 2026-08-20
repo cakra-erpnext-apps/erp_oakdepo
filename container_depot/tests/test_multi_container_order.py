@@ -701,13 +701,20 @@ class TestBookingFrozenOnceBonRaised(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Container Booking", booking, "docstatus"), 0)
 
 
-class TestReviseConfirmedBooking(FrappeTestCase):
-	"""Revision in place: a Confirmed booking is corrected WITHOUT going back to Draft.
+class TestConfirmedBookingIsLocked(FrappeTestCase):
+	"""A submitted booking is closed: nothing on it can be changed, and it cannot be
+	cancelled either.
 
-	The fields are ``allow_on_submit``, so an ordinary ``save()`` on the submitted document
-	is the whole mechanism — docstatus stays 1 and ``booking_status`` stays Confirmed. What
-	the hooks add is the two things that must not drift: a container already on a bon is
-	frozen, and the invoice is kept in step with the charges.
+	It used to be revisable in place (the user-editable fields are ``allow_on_submit``, so an
+	ordinary ``save()`` reached ``before_update_after_submit``). That hook now refuses every
+	such save, and ``before_cancel`` refuses a direct cancel — the one way in is **Kembali ke
+	Draft** (``revert_booking_to_draft``), which is itself refused once a bon has been raised
+	or a code has been used at the gate (see ``TestBookingFrozenOnceBonRaised``).
+
+	The fields keep ``allow_on_submit`` on purpose: it is what lets the hook be reached at
+	all, so the refusal can say what to do instead of core's "not allowed to change X after
+	submission". Every system write to a submitted booking goes through ``db_set`` and never
+	reaches the hook.
 	"""
 
 	@classmethod
@@ -721,119 +728,81 @@ class TestReviseConfirmedBooking(FrappeTestCase):
 		)
 		return frappe.get_doc("Container Booking", booking), codes
 
-	@staticmethod
-	def _row_for(doc, code):
-		"""The booking row a Booking Code belongs to.
+	def _refuses(self, doc):
+		doc.flags.ignore_permissions = True
+		with self.assertRaises(frappe.ValidationError):
+			doc.save()
 
-		Matched on container number, not on ``Container Booking Item.booking_code``: this
-		module's fixture inserts its codes directly instead of going through
-		``_issue_booking_codes``, so the back-link is not written. That is the same gap
-		``ContainerBooking._row_code`` covers on the server side.
-		"""
-		cno = frappe.db.get_value("Booking Code", code, "container_no")
-		return [r for r in doc.items if r.container_no == cno][0]
-
-	def test_revision_keeps_docstatus_and_status(self):
+	def test_a_header_field_cannot_be_changed(self):
 		doc, _codes = self._confirmed("MCRVA0")
 		doc.remarks = "revisi catatan"
+		self._refuses(doc)
+		doc.reload()
+		self.assertNotEqual(doc.remarks, "revisi catatan")
+
+	def test_a_row_cannot_be_edited(self):
+		doc, _codes = self._confirmed("MCRVB0")
 		doc.items[0].driver = "Sopir Baru"
-		doc.flags.ignore_permissions = True
-		doc.save()
-		doc.reload()
-		self.assertEqual(doc.docstatus, 1)
-		self.assertEqual(doc.booking_status, "Confirmed")
-		self.assertEqual(doc.remarks, "revisi catatan")
-		self.assertEqual(doc.items[0].driver, "Sopir Baru")
+		self._refuses(doc)
 
-	def test_row_on_a_bon_cannot_be_edited(self):
-		doc, codes = self._confirmed("MCRVB0")
-		make_order(doc.name, [codes[0]])
-		doc.reload()
-		on_bon = self._row_for(doc, codes[0])
-		on_bon.driver = "Sopir Lain"
-		doc.flags.ignore_permissions = True
-		with self.assertRaises(frappe.ValidationError):
-			doc.save()
-
-	def test_row_on_a_bon_cannot_be_removed(self):
-		doc, codes = self._confirmed("MCRVC0")
-		make_order(doc.name, [codes[0]])
-		doc.reload()
-		dropped = self._row_for(doc, codes[0])
-		doc.items = [r for r in doc.items if r.name != dropped.name]
-		doc.flags.ignore_permissions = True
-		with self.assertRaises(frappe.ValidationError):
-			doc.save()
-
-	def test_row_not_on_a_bon_stays_editable(self):
-		"""The bon freezes its own containers, not the whole booking."""
-		doc, codes = self._confirmed("MCRVD0")
-		make_order(doc.name, [codes[0]])
-		doc.reload()
-		free = self._row_for(doc, codes[1])
-		free.driver = "Sopir Bebas"
-		doc.flags.ignore_permissions = True
-		doc.save()
-		doc.reload()
-		self.assertEqual(self._row_for(doc, codes[1]).driver, "Sopir Bebas")
-
-	def test_freeze_survives_voiding_the_bon(self):
-		"""Voiding releases the code to Active, but the row was still printed on paper."""
-		from container_depot.container_depot.order_generation import void_order
-
-		doc, codes = self._confirmed("MCRVE0")
-		name = make_order(doc.name, [codes[0]])
-		void_order(name, "Order Bongkar")
-		self.assertEqual(_states([codes[0]]), ["Active"])
-		doc.reload()
-		self._row_for(doc, codes[0]).driver = "Sopir Lain"
-		doc.flags.ignore_permissions = True
-		with self.assertRaises(frappe.ValidationError):
-			doc.save()
-
-	def test_added_row_gets_a_booking_code(self):
+	def test_a_row_cannot_be_added(self):
 		doc, _codes = self._confirmed("MCRVF0", count=1)
 		doc.append("items", {
 			"container_no": "MCRVF0X0009",
 			"condition": "EMPTY CLEAN",
 			"tanggal_bongkar": today(),
 		})
-		doc.flags.ignore_permissions = True
-		doc.save()
-		doc.reload()
-		added = doc.items[-1]
-		self.assertTrue(added.booking_code, "a row added by a revision must be issued a code")
-		self.assertEqual(
-			frappe.db.get_value("Booking Code", added.booking_code, "state"), "Active"
-		)
+		self._refuses(doc)
 
-	def test_dropped_row_voids_its_code(self):
-		doc, codes = self._confirmed("MCRVG0")
-		dropped = self._row_for(doc, codes[1])
-		doc.items = [r for r in doc.items if r.name != dropped.name]
-		doc.flags.ignore_permissions = True
-		doc.save()
-		# Voided, not deleted: a cancelled code can still answer "why was this refused?".
-		self.assertEqual(frappe.db.get_value("Booking Code", codes[1], "state"), "Cancelled")
+	def test_a_row_cannot_be_dropped(self):
+		doc, _codes = self._confirmed("MCRVG0")
+		doc.items = [doc.items[0]]
+		self._refuses(doc)
 
-	def test_charges_refused_while_a_submitted_invoice_stands(self):
-		"""The drift the whole lock exists to prevent — booking says one thing, ledger another."""
+	def test_charges_cannot_be_changed(self):
 		doc, _codes = self._confirmed("MCRVH0")
-		doc.db_set("sales_invoice", "SINV-REVISE-PROBE", update_modified=False)
-		# Only the docstatus of the linked invoice is read, so a stub row is enough and
-		# keeps this test out of the accounting fixtures.
-		frappe.db.sql(
-			"INSERT INTO `tabSales Invoice` (name, docstatus, creation, modified, owner, modified_by)"
-			" VALUES ('SINV-REVISE-PROBE', 1, NOW(), NOW(), 'Administrator', 'Administrator')"
+		doc.append("charges", {"item": "Lift Off", "qty": 1, "rate": 999})
+		self._refuses(doc)
+
+	def test_cancel_is_refused(self):
+		"""Same rule as editing: undo a submitted booking by stepping back, not sideways."""
+		doc, _codes = self._confirmed("MCRVI0")
+		doc.flags.ignore_permissions = True
+		with self.assertRaises(frappe.ValidationError):
+			doc.cancel()
+		doc.reload()
+		self.assertEqual(doc.docstatus, 1)
+		self.assertEqual(doc.booking_status, "Confirmed")
+
+	def test_the_way_out_is_draft_then_void(self):
+		"""The supported two-step, and it must unwind what a direct cancel used to.
+
+		Codes especially: ``revert_booking_to_draft`` deliberately keeps them (the booking is
+		meant to be re-submitted), so a booking cancelled through this path would leave live
+		72h gate codes behind if ``void_draft`` did not void them.
+		"""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			revert_booking_to_draft,
+			void_draft,
 		)
-		try:
-			doc.reload()
-			doc.append("charges", {"item": "Lift Off", "qty": 1, "rate": 999})
-			doc.flags.ignore_permissions = True
-			with self.assertRaises(frappe.ValidationError):
-				doc.save()
-		finally:
-			frappe.db.sql("DELETE FROM `tabSales Invoice` WHERE name = 'SINV-REVISE-PROBE'")
+
+		doc, codes = self._confirmed("MCRVJ0")
+		revert_booking_to_draft(doc.name)
+		doc.reload()
+		self.assertEqual(doc.docstatus, 0)
+		# Now editable again — that is the whole point of going back.
+		doc.remarks = "koreksi setelah dibuka"
+		doc.flags.ignore_permissions = True
+		doc.save()
+
+		void_draft(doc.name)
+		doc.reload()
+		self.assertEqual(doc.docstatus, 2)
+		self.assertEqual(doc.booking_status, "Cancelled")
+		self.assertFalse(
+			[c for c in _states(codes) if c == "Active"],
+			"a cancelled booking must not leave live gate codes behind",
+		)
 
 	def test_direction_is_not_revisable(self):
 		"""Codes and the bon type are derived from it — it must stay put after submit."""
@@ -841,7 +810,7 @@ class TestReviseConfirmedBooking(FrappeTestCase):
 			frappe.get_meta("Container Booking").get_field("direction").allow_on_submit
 		)
 		# charges_total / container_summary are deliberately absent: they are read-only and
-		# server-computed, and the revision hooks must be able to write them.
+		# server-computed, and the system paths must be able to write them.
 		for fieldname in ("booking_status", "payment_status", "sales_invoice", "lift_type"):
 			self.assertFalse(
 				frappe.get_meta("Container Booking").get_field(fieldname).allow_on_submit,
