@@ -83,6 +83,15 @@ def provision_position_survey_for_booking(booking_name: str) -> list:
 		# Dedup: never open a second survey for a container that still has an open one.
 		if frappe.db.exists(DOCTYPE, {"container": container, "docstatus": 0, "status": ["!=", "Cancelled"]}):
 			continue
+		# ... nor a second one for a booking that has been through submit before. A finished
+		# survey is SUBMITTED (``approve_position`` calls doc.submit()), so the open-survey
+		# test above cannot see it — and a booking CAN be submitted twice, since
+		# ``revert_booking_to_draft`` only refuses once a bon exists or a code is Used, both
+		# of which happen after the survey. Same rule as ``eir._already_provisioned``.
+		if frappe.db.exists(DOCTYPE, {
+			"container": container, "booking": booking_name, "docstatus": ["!=", 2],
+		}):
+			continue
 		try:
 			doc = frappe.new_doc(DOCTYPE)
 			doc.container = container

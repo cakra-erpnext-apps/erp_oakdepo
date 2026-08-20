@@ -94,6 +94,17 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 	)
 	if not insp or not insp.container or insp.tank_status != EMPTY_DIRTY:
 		return None
+	# This EIR already filed a Cleaning Order once — hand back the same one whatever state
+	# it has reached, instead of filing a second order for the same visit. An EIR can be
+	# submitted more than once (``eir.revert_to_draft`` sends it back for correction), and
+	# the order it spawned the first time is NOT undone by that revert: it may already be
+	# finished and billed. Checked before the open-order lookup below, which only sees
+	# orders still in play and would happily duplicate a Completed one.
+	spawned = frappe.db.get_value(
+		"Cleaning Order", {"inspection": inspection, "status": ["!=", "Cancelled"]}, "name"
+	)
+	if spawned:
+		return spawned
 	existing = frappe.db.exists(
 		"Cleaning Order",
 		{"container": insp.container, "status": ["in", ["Service Setup", "Pending", "In_Progress"]]},
@@ -201,6 +212,15 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True):
 	)
 	if not insp or not insp.container:
 		return None
+	# Same rule as the Cleaning Order: one M&R per EIR, forever. ``open_repair_order`` below
+	# only knows about orders still in play, so a re-submitted EIR whose M&R was already
+	# completed would otherwise get a second Draft — with the parts of the first one already
+	# issued and billed.
+	spawned = frappe.db.get_value(
+		"Repair Order", {"inspection": inspection, "status": ["!=", "Cancelled"]}, "name"
+	)
+	if spawned:
+		return spawned
 	existing = open_repair_order(insp.container)
 	if existing:
 		# Make sure the open M&R points back at an EIR (the draft may pre-date this one).

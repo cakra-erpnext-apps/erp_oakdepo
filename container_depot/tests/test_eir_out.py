@@ -121,6 +121,21 @@ class TestEirOut(FrappeTestCase):
 			frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out", "docstatus": 0}), 1
 		)
 
+	def test_a_resubmitted_bon_does_not_provision_a_second_eir_out(self):
+		# A bon can go back to draft for a correction (order_generation.revert_order_to_draft)
+		# and be submitted again. By then the surveyor may already have SUBMITTED the EIR-Out
+		# the first submit provisioned — invisible to the open-draft check, which used to open
+		# a second, empty EIR-Out for the same departure.
+		c = _container(f"{PREFIX}0000009")
+		_eir_in(c, damage=True)
+		_finish_cleaning(c)
+		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+		eo = eir.provision_eir_out_for_order_muat(om)[0]
+		frappe.db.set_value("Inspection", eo, {"docstatus": 1, "status": "Submitted"})
+
+		self.assertEqual(eir.provision_eir_out_for_order_muat(om), [])
+		self.assertEqual(frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out"}), 1)
+
 	def test_open_eir_out_reference(self):
 		c = _container(f"{PREFIX}0000005")
 		_eir_in(c, damage=True)

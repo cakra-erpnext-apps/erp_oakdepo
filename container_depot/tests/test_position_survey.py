@@ -73,6 +73,19 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		# Idempotent: a second run does not open a duplicate.
 		self.assertEqual(ps.provision_position_survey_for_booking(bk), [])
 
+	def test_a_resubmitted_booking_does_not_provision_a_second_survey(self):
+		# A booking can be returned to draft (revert_booking_to_draft) and submitted again;
+		# it is only refused once a bon exists or a code is Used, both of which come AFTER
+		# the survey. A finished survey is submitted, so the open-survey check cannot see it
+		# and a duplicate used to be opened for the same booking.
+		c = self._container("CPSPROV0002")
+		bk = self._tank_out_booking(c)
+		created = ps.provision_position_survey_for_booking(bk)[0]
+		frappe.db.set_value("Container Position Survey", created, {"docstatus": 1, "status": ps.CONFIRMED})
+
+		self.assertEqual(ps.provision_position_survey_for_booking(bk), [])
+		self.assertEqual(frappe.db.count("Container Position Survey", {"container": c}), 1)
+
 	def test_record_position_saves_note_and_photos(self):
 		c = self._container("CPSREC00001")
 		name = self._new_survey(c)

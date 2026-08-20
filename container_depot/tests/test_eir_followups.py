@@ -117,6 +117,25 @@ class TestEirFollowups(FrappeTestCase):
 		# It copied the EIR damage entry into the M&R's read-only Damages snapshot.
 		self.assertEqual(frappe.db.count("Repair Damage Entry", {"parent": name}), 1)
 
+	def test_a_resubmitted_eir_does_not_file_a_second_order(self):
+		# An EIR can be submitted twice: "Kembalikan ke Draft" sends it back for correction
+		# and the operator submits it again. The orders it spawned the first time are NOT
+		# undone by that revert — they may already be finished and billed — so the second
+		# submit must hand back the same ones instead of filing a fresh pair. The
+		# open-status lookup alone cannot see a Completed order and used to duplicate it.
+		c, dmg = self._eir(
+			"FUPMR000008", tank_status="Empty Dirty",
+			lines=[{"item_code": "11", "damage_code": "12", "remarks": "bocor"}],
+		)
+		co = eir_followups.create_cleaning_order_from_eir(dmg)
+		ro = eir_followups.create_repair_order_from_eir(dmg)
+		frappe.db.set_value("Cleaning Order", co, {"status": "Completed", "docstatus": 1})
+		frappe.db.set_value("Repair Order", ro, {"status": "Completed", "docstatus": 1})
+		self.assertEqual(eir_followups.create_cleaning_order_from_eir(dmg), co)
+		self.assertEqual(eir_followups.create_repair_order_from_eir(dmg), ro)
+		self.assertEqual(frappe.db.count("Cleaning Order", {"container": c}), 1)
+		self.assertEqual(frappe.db.count("Repair Order", {"container": c}), 1)
+
 	def test_no_repair_order_without_damage(self):
 		_, none = self._eir("FUPMR000004")
 		self.assertIsNone(eir_followups.create_repair_order_from_eir(none))

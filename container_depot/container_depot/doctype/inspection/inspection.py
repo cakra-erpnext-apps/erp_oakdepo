@@ -254,13 +254,15 @@ class Inspection(Document):
 		from container_depot.container_depot.container_activity import log_container_activity
 		from container_depot.container_depot.notify import notify_cleaning_order_created
 
-		had_open = frappe.db.exists(
-			"Cleaning Order",
-			{"container": container.name, "status": ["in", ["Service Setup", "Pending", "In_Progress"]]},
-		)
+		# Notify for a NEW order only. The create call is idempotent and answers with an
+		# order that already existed whenever one does — this EIR's own from an earlier
+		# submit, or another EIR's still open on the tank — and neither is news to the
+		# cleaning team. Comparing against what was there beforehand is the one test that
+		# covers both without asking which kind it was.
+		before = set(frappe.get_all("Cleaning Order", filters={"container": container.name}, pluck="name"))
 		order = eir_followups.create_cleaning_order_from_eir(self.name)
-		if not order or had_open:
-			return  # nothing created (not dirty / already queued) — don't re-notify
+		if not order or order in before:
+			return  # nothing created (not dirty / already filed) — don't re-notify
 		log_container_activity(
 			container.name, "Cleaning",
 			reference_doctype="Cleaning Order", reference_name=order,
@@ -278,10 +280,11 @@ class Inspection(Document):
 		from container_depot.container_depot.container_activity import log_container_activity
 		from container_depot.container_depot.notify import notify_repair_order_created
 
-		had_open = bool(eir_followups.open_repair_order(container.name))
+		# New order only — same reasoning as _ensure_cleaning_order above.
+		before = set(frappe.get_all("Repair Order", filters={"container": container.name}, pluck="name"))
 		order = eir_followups.create_repair_order_from_eir(self.name)
-		if not order or had_open:
-			return  # nothing to repair / already in play — don't re-notify
+		if not order or order in before:
+			return  # nothing to repair / already filed — don't re-notify
 		log_container_activity(
 			container.name, "Repair",
 			reference_doctype="Repair Order", reference_name=order,

@@ -338,6 +338,9 @@ def provision_eir_out_for_order_muat(order_name: str) -> list:
 			{"container": container, "docstatus": 0, "inspection_type": "EIR-Out"},
 		):
 			continue
+		# ... nor a second one for a bon that has been through submit before.
+		if _already_provisioned(container, "EIR-Out", order_name):
+			continue
 		try:
 			doc = frappe.new_doc("Inspection")
 			doc.inspection_type = "EIR-Out"
@@ -422,6 +425,28 @@ def get_eir_out_reference(inspection) -> dict:
 	return out
 
 
+def _already_provisioned(container: str, inspection_type: str, voucher: str) -> bool:
+	"""True when this bon has ALREADY raised an EIR of this type for this container.
+
+	A bon can be submitted more than once: ``order_generation.revert_order_to_draft`` sends a
+	submitted Order Bongkar / Order Muat back to an editable draft, and re-submitting it runs
+	the provisioning again. The "is there an open draft?" test each caller does first cannot
+	see the EIR from the first submit once the surveyor has SUBMITTED it — so a second, empty
+	EIR was opened for the same arrival, and the PWA (which fetches the single draft for a
+	container) handed the surveyor that duplicate to fill in.
+
+	Keyed on the voucher rather than on time: a tank that genuinely comes back on a NEW bon
+	must still get its own EIR. Cancelled (docstatus 2) EIRs do not count — a voided EIR is
+	work that no longer exists, and the bon may legitimately raise a replacement.
+	"""
+	return bool(frappe.db.exists("Inspection", {
+		"container": container,
+		"inspection_type": inspection_type,
+		"referred_voucher": voucher,
+		"docstatus": ["!=", 2],
+	}))
+
+
 def provision_eirs_for_order_bongkar(order_name: str) -> list:
 	"""Submit-time hook for an Order Bongkar: create one DRAFT EIR-In per container and
 	stamp the bon as each container's latest Order Bongkar voucher (surfaced in the depot
@@ -455,6 +480,9 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 			"Inspection",
 			{"container": container, "docstatus": 0, "inspection_type": "EIR-In"},
 		):
+			continue
+		# ... nor a second one for a bon that has been through submit before.
+		if _already_provisioned(container, "EIR-In", order_name):
 			continue
 		try:
 			doc = frappe.new_doc("Inspection")
