@@ -27,16 +27,19 @@ frappe.listview_settings['Gate Entry'] = {
 		listview.page.clear_primary_action();
 	},
 
+	// Colour convention, shared by every Container Depot list: grey = draft / status
+	// belum terisi, red = batal, blue = the terminal state, any other colour = a stage
+	// in between. The gate log ends at Gate_Out_Completed, so "Keluar" is the blue one.
 	get_indicator(doc) {
 		const map = {
 			// Still in the yard — the tank has arrived but has not left.
-			Active: ['Di Depo', 'orange', 'status,=,Active'],
-			Gate_In_Completed: ['Masuk', 'blue', 'status,=,Gate_In_Completed'],
-			EIR_Completed: ['EIR Selesai', 'light-blue', 'status,=,EIR_Completed'],
+			Active: [__('Di Depo'), 'orange', 'status,=,Active'],
+			Gate_In_Completed: [__('Masuk'), 'green', 'status,=,Gate_In_Completed'],
+			EIR_Completed: [__('EIR Selesai'), 'purple', 'status,=,EIR_Completed'],
 			// The terminal, and the only state that occurs today.
-			Gate_Out_Completed: ['Keluar', 'green', 'status,=,Gate_Out_Completed'],
-			Cancelled: ['Batal', 'red', 'status,=,Cancelled'],
+			Gate_Out_Completed: [__('Keluar'), 'blue', 'status,=,Gate_Out_Completed'],
+			Cancelled: [__('Batal'), 'red', 'status,=,Cancelled'],
 		};
-		return map[doc.status] || [doc.status || '—', 'gray', 'status,=,' + (doc.status || '')];
+		return map[doc.status] || [doc.status || __('Draf'), 'gray', 'status,=,' + (doc.status || '')];
 	},
 };

@@ -9,12 +9,19 @@
 frappe.listview_settings["Booking Code"] = {
 	add_fields: ["state"],
 
+	// Colour convention, shared by every Container Depot list (see also
+	// cleaning_order_list.js, inspection_list.js, …):
+	//   grey = draft / belum jalan · red = dibatalkan or void · blue = the terminal
+	//   "done" state · everything in between takes any other colour.
+	// A code is issued Active (usable), so its terminal state is Used — that is the one
+	// that gets blue. Expired/Reissued are neither done nor cancelled, so they take the
+	// warning colours; grey is left to mean draft and nothing else.
 	get_indicator(doc) {
 		const colours = {
 			Active: "green",
 			Used: "blue",
-			Reissued: "orange",
-			Expired: "gray",
+			Reissued: "purple",
+			Expired: "orange",
 			Cancelled: "red",
 		};
 		return [__(doc.state), colours[doc.state] || "gray", `state,=,${doc.state}`];

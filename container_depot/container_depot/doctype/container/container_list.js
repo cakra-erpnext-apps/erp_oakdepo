@@ -25,12 +25,16 @@ frappe.listview_settings["Container"] = {
 
 	get_indicator(doc) {
 		if (!doc.is_active) return [__("Non-Aktif"), "red", "is_active,=,0"];
+		// Colour convention, shared by every Container Depot list: grey = draft,
+		// red = dibatalkan / void (here: a retired tank), blue = the terminal state,
+		// any other colour = a stage in between. A tank's life ends at Gate_Out, so
+		// that is the blue one; grey is reserved for drafts and this doctype has none.
 		const map = {
-			Booked: [__("Dipesan"), "blue", "status,=,Booked"],
+			Booked: [__("Dipesan"), "purple", "status,=,Booked"],
 			// Deliberately not "In Depo": being here is not the point — the open work is.
 			In_Depot: [__("Ada Pekerjaan"), "orange", "status,=,In_Depot"],
 			Available: [__("Siap Keluar"), "green", "status,=,Available"],
-			Gate_Out: [__("Sudah Keluar"), "gray", "status,=,Gate_Out"],
+			Gate_Out: [__("Sudah Keluar"), "blue", "status,=,Gate_Out"],
 		};
 		return map[doc.status] || [__(doc.status || "-"), "gray", `status,=,${doc.status || ""}`];
 	},

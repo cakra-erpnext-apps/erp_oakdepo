@@ -13,6 +13,36 @@
 frappe.listview_settings["Repair Order"] = {
 	hide_name_filter: 1,
 
+	// status is not a column here, so the list query would not fetch it and get_indicator
+	// would read undefined on every row.
+	add_fields: ["status"],
+
+	// Ten statuses, and without this map Frappe falls back to `guess_colour`, which paints
+	// most of them the same grey and gives "Rejected" the same red as "Cancelled" but also
+	// hands red to plain drafts. Colour convention, shared by every Container Depot list:
+	//   grey   — Draft: belum diajukan ke owner, masih bisa diubah
+	//   red    — Cancelled / Rejected: mati, tidak diteruskan
+	//   blue   — Completed: the terminal "done" state (M&R selesai dan ditutup)
+	//   others — the stages in between; Approved is green rather than blue because the
+	//            owner's approval only STARTS the work, it does not finish the order.
+	// Labels mirror frontend/src/utils/labels.js (repairStatusLabels) so Desk and the PWA
+	// name the same status the same way.
+	get_indicator(doc) {
+		const map = {
+			Draft: [__("Draf"), "gray", "status,=,Draft"],
+			"Pending Approval": [__("Menunggu Persetujuan"), "orange", "status,=,Pending Approval"],
+			Approved: [__("Disetujui"), "green", "status,=,Approved"],
+			Rejected: [__("Ditolak"), "red", "status,=,Rejected"],
+			"Revision Requested": [__("Minta Revisi"), "pink", "status,=,Revision Requested"],
+			Pending: [__("Siap Dikerjakan"), "orange", "status,=,Pending"],
+			"In Progress": [__("Dikerjakan"), "yellow", "status,=,In Progress"],
+			"Pending Review": [__("Menunggu Review"), "purple", "status,=,Pending Review"],
+			Completed: [__("Selesai"), "blue", "status,=,Completed"],
+			Cancelled: [__("Dibatalkan"), "red", "status,=,Cancelled"],
+		};
+		return map[doc.status] || [__(doc.status || "-"), "gray", `status,=,${doc.status || ""}`];
+	},
+
 	// A Datetime field with in_standard_filter would only give an "=" box, which is useless
 	// for a created-on search. Add a DateRange control instead: its value is a [from, to]
 	// pair and its `between` condition is what get_standard_filters passes to the server,

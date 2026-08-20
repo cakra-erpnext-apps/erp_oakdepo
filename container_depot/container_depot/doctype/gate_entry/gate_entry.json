@@ -154,7 +154,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-08-11 18:00:00.000000",
+  "modified": "2026-08-21 11:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Entry",
   "search_fields": "gate_entry_id, container_no, booking_code, status",

@@ -29,16 +29,21 @@ frappe.listview_settings["Cleaning Order"] = {
 		if (doc.docstatus === 1 && doc.revision_requested) {
 			return [__("Revisi Diminta"), "orange", "revision_requested,=,1"];
 		}
+		// Colour convention, shared by every Container Depot list: grey = draft /
+		// belum jalan, red = dibatalkan or void, blue = the terminal "done" state,
+		// any other colour = a stage in between. So Service Setup (docstatus 0, Admin
+		// Ops belum menentukan metode) is the draft here and takes grey, and Completed
+		// — not the mid-flow stages — is the one that gets blue.
 		const map = {
-			// Belum diteruskan — Admin Ops masih memilih metode cleaning.
-			"Service Setup": [__("Belum Diteruskan"), "orange", "status,=,Service Setup"],
+			// Belum diteruskan — Admin Ops masih memilih metode cleaning (ini drafnya).
+			"Service Setup": [__("Belum Diteruskan"), "gray", "status,=,Service Setup"],
 			// Sudah diteruskan ke operator cuci, menunggu dikerjakan.
-			Pending: [__("Menunggu Operator"), "blue", "status,=,Pending"],
+			Pending: [__("Menunggu Operator"), "orange", "status,=,Pending"],
 			// Operator sedang mengerjakan.
 			In_Progress: [__("Dikerjakan"), "yellow", "status,=,In_Progress"],
 			// Selesai di lapangan, menunggu Admin Ops memeriksa lalu Submit.
 			"Pending Review": [__("Menunggu Review"), "purple", "status,=,Pending Review"],
-			Completed: [__("Selesai"), "green", "status,=,Completed"],
+			Completed: [__("Selesai"), "blue", "status,=,Completed"],
 			Cancelled: [__("Dibatalkan"), "red", "status,=,Cancelled"],
 		};
 		return map[doc.status] || [__(doc.status), "gray", `status,=,${doc.status}`];

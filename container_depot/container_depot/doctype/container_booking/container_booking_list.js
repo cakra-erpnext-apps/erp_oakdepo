@@ -29,26 +29,40 @@ const FILTER_ORDER = [
 // (Draft / Submitted / Cancelled) for free, and Booking Status sat next to it repeating
 // most of it — while the states the depot actually works by (Pending Payment, Blocked)
 // showed up in neither. Teaching the indicator to read booking_status collapses them.
+//
+// Colour convention, shared by every Container Depot list: grey = draft, red =
+// dibatalkan / void, blue = the terminal "confirmed / submitted" state, any other
+// colour = a stage in between. Blocked is a hold, not a cancellation, so it stays out
+// of red — it gets pink, which still shouts across a list.
 const STATUS_COLOURS = {
-	Draft: 'red',
+	Draft: 'grey',
 	'Pending Payment': 'orange',
-	'Pending Confirmation': 'orange',
-	Confirmed: 'green',
-	Cancelled: 'gray',
-	Blocked: 'red',
+	'Pending Confirmation': 'yellow',
+	Confirmed: 'blue',
+	Cancelled: 'red',
+	Blocked: 'pink',
 };
 
 frappe.listview_settings['Container Booking'] = {
 	// booking_status is no longer a column of its own, so the list query would not fetch
 	// it — and `get_indicator` would read undefined on every row and paint them all Draft.
 	add_fields: ['booking_status'],
+	// Container Booking is submittable, and frappe.get_indicator returns a blanket red
+	// "Draft" / "Cancelled" for docstatus 0 / 2 — bailing out BEFORE get_indicator below
+	// is ever called — unless these opt out of that default. Without them the booking_status
+	// pill only ever showed on submitted rows. `on_cancel` writes booking_status =
+	// 'Cancelled', but docstatus 2 is also handled explicitly so a stale value cannot make
+	// a cancelled booking read as live.
+	has_indicator_for_draft: 1,
+	has_indicator_for_cancelled: 1,
 	// Frappe puts an ID box at the FRONT of the quick filters. Nobody hunts a booking by
 	// its BKG number from here (the search bar and the Filter button both do it), and it
 	// was the widest thing in the row.
 	hide_name_filter: true,
 	get_indicator(doc) {
+		if (doc.docstatus === 2) return [__('Cancelled'), 'red', 'docstatus,=,2'];
 		const status = doc.booking_status || 'Draft';
-		return [__(status), STATUS_COLOURS[status] || 'gray', `booking_status,=,${status}`];
+		return [__(status), STATUS_COLOURS[status] || 'grey', `booking_status,=,${status}`];
 	},
 	// Runs after every list load, i.e. after the filter area exists. Appending each control
 	// in turn is idempotent, so re-running it on refresh cannot scramble the row.
