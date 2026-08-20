@@ -150,14 +150,15 @@ class TestEirCreate(FrappeTestCase):
 		doc = frappe.get_doc("Inspection", res["name"])
 		self.assertEqual(doc.docstatus, 0)
 		self.assertEqual(len(doc.damage_log), 2)
-		# Required Inspection Damage Entry fields are defaulted server-side (B2).
+		# Severity is defaulted server-side (B2); the description is NOT — it carries what
+		# the operator wrote and stays empty when they wrote nothing.
 		for d in doc.damage_log:
 			self.assertEqual(d.severity, "Minor")
-			self.assertTrue(d.damage_description)
 		first = doc.damage_log[0]
 		self.assertEqual(first.checklist_item, "01")
 		self.assertEqual(first.component, "1. Underside")
 		self.assertEqual(first.damage_description, "dent on underside")
+		self.assertFalse(doc.damage_log[1].damage_description)  # repair-only line, no remark
 
 	def test_submit_moves_container_via_controller(self):
 		# EIR-In submit must route the Container through Inspection.on_submit, NOT
@@ -203,10 +204,15 @@ class TestEirCreate(FrappeTestCase):
 		)
 		self.assertEqual(res["photo_rows"], 3)
 		doc = frappe.get_doc("Inspection", res["name"])
-		self.assertEqual(len(doc.item_photos), 3)
-		self.assertEqual(doc.item_photos[0].checklist_item, "01")
-		self.assertEqual(doc.item_photos[0].photo, "/private/files/a.jpg")
-		self.assertEqual(doc.item_photos[2].checklist_item, "03")
+		# Item "01" is the damaged one, so both of its photos are evidence and live in the
+		# damage album; item "03" was only photographed, so it stays in Foto per Item.
+		self.assertEqual(
+			[(p.checklist_item, p.photo) for p in doc.damage_photos],
+			[("01", "/private/files/a.jpg"), ("01", "/private/files/b.jpg")],
+		)
+		self.assertEqual(len(doc.item_photos), 1)
+		self.assertEqual(doc.item_photos[0].checklist_item, "03")
+		self.assertEqual(doc.item_photos[0].photo, "/private/files/c.jpg")
 
 	def test_create_rejects_unknown_photo_item(self):
 		c = _make_container("EIRC1000006")
@@ -291,6 +297,106 @@ class TestEirDraft(FrappeTestCase):
 		self.assertEqual(d2["lines"][0]["damage_code"], "11")
 		self.assertEqual(len(d2["photos"]), 1)
 		self.assertEqual(d2["photos"][0]["photo"], "/private/files/p1.jpg")
+
+	def test_damage_photo_lands_in_its_own_album(self):
+		# Evidence for a finding belongs beside the finding, not in the walk-around album:
+		# only the photo of the DAMAGED part moves to damage_photos, the rest stay put.
+		_make_container("EIRD1000114")
+		d = eir.open_draft(container_no="EIRD1000114")
+		eir.start_eir(d["inspection"])
+		eir.save_draft(
+			inspection=d["inspection"],
+			lines=[
+				{"item_code": "01", "damage_code": "11", "remarks": "penyok"},
+				{"item_code": "02", "damage_code": "v", "repair_code": "X", "added": 1},
+			],
+			photos=[
+				{"item_code": "01", "photo": "/private/files/dmg.jpg"},
+				{"item_code": "02", "photo": "/private/files/ok.jpg"},
+				{"item_code": "", "photo": "/private/files/bulk.jpg"},  # foto cepat
+			],
+		)
+
+		doc = frappe.get_doc("Inspection", d["inspection"])
+		# Both cards keep their own photo — "Acceptable" is still a part somebody walked up
+		# to and photographed. Only the unsorted foto cepat stays in the inspection album.
+		self.assertEqual(
+			sorted(p.photo for p in doc.damage_photos),
+			["/private/files/dmg.jpg", "/private/files/ok.jpg"],
+		)
+		self.assertEqual([p.photo for p in doc.item_photos], ["/private/files/bulk.jpg"])
+		# The PWA still receives one flat list, so every photo comes back on its card.
+		again = eir.open_draft(container_no="EIRD1000114")
+		self.assertEqual(len(again["photos"]), 3)
+		self.assertIn(
+			{"item_code": "01", "photo": "/private/files/dmg.jpg"}, again["photos"]
+		)
+
+	def test_photo_follows_its_card_when_the_card_is_removed(self):
+		# The split is derived, never sent by the client: the photo sits with its card for as
+		# long as the card exists, and returns to the inspection album once it is dropped.
+		_make_container("EIRD1000115")
+		d = eir.open_draft(container_no="EIRD1000115")
+		eir.start_eir(d["inspection"])
+		photos = [{"item_code": "01", "photo": "/private/files/moves.jpg"}]
+		eir.save_draft(
+			inspection=d["inspection"],
+			lines=[{"item_code": "01", "damage_code": "11"}],
+			photos=photos,
+		)
+		self.assertEqual(len(frappe.get_doc("Inspection", d["inspection"]).damage_photos), 1)
+
+		# Downgraded to "checked, acceptable" — still a card, so the photo does not move.
+		eir.save_draft(
+			inspection=d["inspection"],
+			lines=[{"item_code": "01", "damage_code": "v", "repair_code": "X", "added": 1}],
+			photos=photos,
+		)
+		self.assertEqual(len(frappe.get_doc("Inspection", d["inspection"]).damage_photos), 1)
+
+		# Card removed altogether: the photo is a plain inspection photo again.
+		eir.save_draft(inspection=d["inspection"], lines=[], photos=photos)
+		doc = frappe.get_doc("Inspection", d["inspection"])
+		self.assertEqual(len(doc.damage_photos), 0)
+		self.assertEqual([p.photo for p in doc.item_photos], ["/private/files/moves.jpg"])
+
+	def test_added_checklist_card_survives_without_a_finding(self):
+		# Opening a part's card is itself worth saving. It used to be dropped as a blank
+		# line, so the card vanished at the next reload — and the photo hung on it came back
+		# as an unsorted Foto Cepat, because the line it belonged to no longer existed.
+		_make_container("EIRD1000112")
+		d = eir.open_draft(container_no="EIRD1000112")
+		eir.start_eir(d["inspection"])
+		eir.save_draft(
+			inspection=d["inspection"],
+			lines=[{"item_code": "01", "damage_code": "v", "repair_code": "X", "added": 1}],
+			photos=[{"item_code": "01", "photo": "/private/files/p9.jpg"}],
+		)
+
+		again = eir.open_draft(container_no="EIRD1000112")
+		self.assertEqual([ln["item_code"] for ln in again["lines"]], ["01"])
+		self.assertEqual(again["photos"][0]["item_code"], "01")  # stays on its part
+		# Checked-and-acceptable is not damage — no flag on the EIR, and the read-only view
+		# lists the card (its photos hang off it) while counting zero findings.
+		self.assertFalse(frappe.get_doc("Inspection", d["inspection"]).has_damage)
+		view = eir.view_eir(d["inspection"])
+		self.assertEqual([c["item"] for c in view["damages"]], ["01"])
+		self.assertEqual(view["damages"][0]["is_finding"], 0)
+		self.assertEqual(view["damages"][0]["photos"], ["/private/files/p9.jpg"])
+		self.assertEqual(view["finding_count"], 0)
+		self.assertEqual(view["photos"], [])  # nothing left over for the walk-around album
+
+	def test_blank_line_without_added_is_still_skipped(self):
+		# Nothing changes for a caller that does not open cards (Desk, automation): a line
+		# with no finding and no `added` is still the default condition and is not stored.
+		_make_container("EIRD1000113")
+		d = eir.open_draft(container_no="EIRD1000113")
+		eir.start_eir(d["inspection"])
+		res = eir.save_draft(
+			inspection=d["inspection"],
+			lines=[{"item_code": "01", "damage_code": "v", "repair_code": "X"}],
+		)
+		self.assertEqual(res["damage_rows"], 0)
 
 	def test_save_draft_completes_tank_master(self):
 		# The EIR is where the tank is actually in front of somebody, so its own facts are

@@ -17,6 +17,7 @@ frappe.ui.form.on('Inspection', {
 		// Retired tanks (Active off) are out of the fleet and never offered.
 		frm.set_query('container', () => ({ filters: { is_active: 1 } }));
 		install_photo_thumbnails(frm);
+		install_damage_thumbnails(frm);
 	},
 
 	refresh(frm) {
@@ -60,15 +61,10 @@ frappe.ui.form.on('Inspection', {
 		if (!frm.is_new() && photo_slides(frm).length) {
 			frm.add_custom_button(__('Lihat Semua Foto'), () => open_photo_carousel(frm, photo_slides(frm), 0));
 		}
-		// The guided damage-entry dialog used to open by ticking "Has Damage". That box is
-		// derived from the rows now (Inspection.sync_has_damage), so the dialog gets its own
-		// door — typing straight into the grid means remembering which of component / area /
-		// severity the server needs, which is exactly what the dialog fills in.
-		if (!frm.is_new() && frm.doc.docstatus === 0) {
-			frm.add_custom_button(__('Tambah Kerusakan'), () => add_damage_entry(frm));
-		}
 		install_photo_thumbnails(frm);
 		bind_photo_grid_clicks(frm);
+		bind_damage_grid_clicks(frm);
+		hide_sidebar_attachments(frm);
 	},
 
 	inspector_signature(frm) {
@@ -209,7 +205,24 @@ function revert_to_draft(frm) {
 const PHOTO_TABLES = [
 	['exterior_photos', 'Inspection Photo', 'photo_url'],
 	['item_photos', 'Inspection Item Photo', 'photo'],
+	// Evidence for a damage finding, kept out of the inspection album. No row editor: these
+	// rows are never "belum disortir" — the finding they belong to is the whole point — so a
+	// filled cell just opens the picture, same as the legacy exterior table.
+	['damage_photos', 'Inspection Damage Photo', 'photo'],
 ];
+
+// The sidebar's Attachments list is dropped from this form. Every EIR photo is already an
+// attachment, so the list is a second, unsorted copy of the grids above — dozens of rows
+// deep on a real inspection — and its "+" files a picture into the document without ever
+// saying which part it documents, which is the one thing an EIR photo has to say. Photos go
+// in through Foto per Item or a finding's own strip.
+//
+// Hidden by CSS class, not by hiding the element: frappe.ui.form.Attachments.refresh() calls
+// parent.toggle(true) on every form refresh, and an inline display would win back.
+function hide_sidebar_attachments(frm) {
+	const parent = frm.attachments && frm.attachments.parent;
+	if (parent && parent.length) parent.addClass('oak-no-attachments');
+}
 
 function photo_thumbnail(value) {
 	if (!value) return '';
@@ -346,6 +359,368 @@ function render_photo_preview(frm, cdt, cdn) {
 	);
 }
 
+// Photos of ONE finding, rendered into the row's `photos_html` field: a strip of
+// thumbnails, each removable, plus an add button. Click a thumbnail for the big view.
+//
+// Editable only while the EIR is a draft the user may write to: the rows live in
+// `damage_photos`, whose field is not allow_on_submit, so a submitted EIR shows the strip
+// read-only rather than offering buttons that would bounce on save.
+function damage_photo_rows(frm, item_code) {
+	return (frm.doc.damage_photos || []).filter((p) => p.checklist_item === item_code);
+}
+
+function render_damage_photos(frm, cdt, cdn) {
+	const grid = frm.fields_dict.damage_log && frm.fields_dict.damage_log.grid;
+	const grid_row = grid && grid.grid_rows_by_docname && grid.grid_rows_by_docname[cdn];
+	const field = grid_row && grid_row.grid_form && grid_row.grid_form.fields_dict.photos_html;
+	if (!field) return;
+
+	const row = (locals[cdt] || {})[cdn] || {};
+	const item_code = row.checklist_item;
+	const may_edit = frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'write');
+
+	if (!item_code) {
+		field.$wrapper.html(`<div class="oak-photo-none">${__('Pilih Checklist Item dulu.')}</div>`);
+		return;
+	}
+
+	const photos = damage_photo_rows(frm, item_code);
+	const thumbs = photos
+		.map((p) => {
+			const src = frappe.utils.escape_html(p.photo || '');
+			if (!src) return '';
+			return `<div class="oak-damage-photo">
+				<img src="${src}" data-oak-photo="${src}" alt="">
+				${may_edit ? `<button type="button" class="oak-damage-photo-x" data-oak-drop="${frappe.utils.escape_html(p.name)}">&times;</button>` : ''}
+			</div>`;
+		})
+		.join('');
+
+	field.$wrapper.html(
+		`<div class="oak-damage-photos">
+			${thumbs || `<div class="oak-photo-none">${__('Belum ada foto')}</div>`}
+			${may_edit ? `<button type="button" class="btn btn-xs btn-default oak-damage-photo-add">${__('Tambah Foto')}</button>` : ''}
+		</div>`,
+	);
+
+	field.$wrapper.find('img[data-oak-photo]').on('click', (e) => {
+		show_photo(e.currentTarget.getAttribute('data-oak-photo'), frm);
+	});
+	field.$wrapper.find('[data-oak-drop]').on('click', (e) => {
+		const name = e.currentTarget.getAttribute('data-oak-drop');
+		frm.doc.damage_photos = (frm.doc.damage_photos || []).filter((p) => p.name !== name);
+		frm.refresh_field('damage_photos');
+		frm.dirty();
+		render_damage_photos(frm, cdt, cdn);
+	});
+	field.$wrapper.find('.oak-damage-photo-add').on('click', () => {
+		add_damage_photo(frm, row, () => render_damage_photos(frm, cdt, cdn));
+	});
+}
+
+// --- Checklist Kerusakan, built like Foto per Item ---------------------------------
+//
+// Same bargain as the photo grid: the grid is a list to SCAN — part, codes, a thumbnail —
+// and the work happens in a modal that shows the picture at working size with the fields
+// beside it and steps to the next FINDING without closing. Filling a finding in place meant
+// squinting at a Small Text column and never seeing the photo it is about.
+
+// The Photo column of the damage grid. The pictures live in the Inspection's damage_photos
+// table (a child doctype cannot own a child table), so the value of this column is nothing
+// and the formatter renders from the open form instead — `cur_frm`, because a grid formatter
+// is handed the child row and never the parent.
+function damage_thumbnail(value, df, options, doc) {
+	const frm = cur_frm;
+	if (!frm || !doc || !doc.checklist_item) return '';
+	const photos = damage_photo_rows(frm, doc.checklist_item).filter((p) => p.photo);
+	if (!photos.length) return '';
+	const src = frappe.utils.escape_html(photos[0].photo);
+	const more = photos.length > 1 ? `<span class="oak-damage-more">+${photos.length - 1}</span>` : '';
+	return `<span class="oak-damage-thumb"><img class="oak-grid-photo" src="${src}" data-oak-photo="${src}" loading="lazy" alt="">${more}</span>`;
+}
+
+function install_damage_thumbnails(frm) {
+	const std = (frappe.meta.docfield_map['Inspection Damage Entry'] || {}).photos_preview;
+	if (std) std.formatter = damage_thumbnail;
+	if (!frm.docname) return;
+	const df = frappe.meta.get_docfield('Inspection Damage Entry', 'photos_preview', frm.docname);
+	if (df) df.formatter = damage_thumbnail;
+}
+
+// Capture phase, same reason as bind_photo_grid_clicks: Frappe's own cell handler opens the
+// inline row form underneath the dialog otherwise.
+function bind_damage_grid_clicks(frm) {
+	const grid = frm.fields_dict.damage_log && frm.fields_dict.damage_log.grid;
+	const el = grid && grid.wrapper && grid.wrapper.get(0);
+	if (!el || el._oakDamageBound) return;
+	el._oakDamageBound = true;
+	el.addEventListener(
+		'click',
+		(e) => {
+			if (!e.target.closest) return;
+			const row = e.target.closest('.grid-row[data-name]');
+			if (!row || e.target.closest('.grid-row-check')) return;
+			if (!e.target.closest('.grid-static-col, .btn-open-row')) return;
+			e.stopPropagation();
+			e.preventDefault();
+			open_damage_editor(frm, row.getAttribute('data-name'));
+		},
+		true,
+	);
+}
+
+function damage_findings(frm) {
+	const grid = frm.fields_dict.damage_log && frm.fields_dict.damage_log.grid;
+	const by_docname = (grid && grid.grid_rows_by_docname) || {};
+	return (frm.doc.damage_log || [])
+		.filter((r) => {
+			const gr = by_docname[r.name];
+			return !gr || !gr.wrapper || !gr.wrapper.hasClass('hidden');
+		})
+		.map((r) => r.name);
+}
+
+// One finding at a time: its photos on the stage, its fields beneath, and ‹ / › walking the
+// EIR's evidence photo by photo — into the next finding once the current one runs out.
+// Editing is a draft-only affair — damage_log is not allow_on_submit — so a submitted EIR
+// opens the same modal read-only.
+function open_damage_editor(frm, cdn) {
+	const rows = damage_findings(frm);
+	if (!rows.length) return;
+	const editable = frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'write');
+	let syncing = false;
+
+	// One slide per PHOTO, walked in finding order — the arrows are the only way through the
+	// EIR's evidence, so they must never sit dead on a finding that happens to carry three
+	// pictures. A finding with no photo yet still gets one slide: it is a row that needs
+	// filling, and skipping it would hide it. The strip below the stage jumps within the
+	// current finding; the arrows just keep going and cross into the next one.
+	function build_slides() {
+		const out = [];
+		rows.forEach((name) => {
+			const row = (locals['Inspection Damage Entry'] || {})[name] || {};
+			const photos = damage_photo_rows(frm, row.checklist_item).filter((p) => p.photo);
+			if (!photos.length) {
+				out.push({ cdn: name, src: '', photo: '', pos: 0, count: 0 });
+				return;
+			}
+			photos.forEach((p, i) =>
+				out.push({ cdn: name, src: p.photo, photo: p.name, pos: i, count: photos.length }),
+			);
+		});
+		return out;
+	}
+
+	let slides = build_slides();
+	let idx = Math.max(0, slides.findIndex((s) => s.cdn === cdn));
+
+	// Photos come and go while the dialog is open. Rebuild the walk and stay on the same
+	// picture — or, when that picture was just deleted, on its finding.
+	function resync(prefer) {
+		const want = prefer || slides[idx] || {};
+		slides = build_slides();
+		if (!slides.length) return;
+		let at = slides.findIndex((s) => s.photo && s.photo === want.photo);
+		if (at < 0) at = slides.findIndex((s) => s.cdn === want.cdn);
+		idx = Math.max(0, at);
+	}
+
+	const row_of = () => (locals['Inspection Damage Entry'] || {})[(slides[idx] || {}).cdn] || {};
+
+	const field = (fieldname, fieldtype, label, extra) =>
+		Object.assign(
+			{
+				fieldname,
+				fieldtype,
+				label: __(label),
+				read_only: editable ? 0 : 1,
+				onchange() {
+					if (syncing) return;
+					const row = row_of();
+					const value = d.get_value(fieldname);
+					if (!row.name || (value || '') === (row[fieldname] || '')) return;
+					const was = row.checklist_item;
+					frappe.model.set_value('Inspection Damage Entry', row.name, fieldname, value);
+					if (fieldname === 'checklist_item') {
+						// The photos are keyed by checklist item, so re-pointing the finding
+						// has to take them along — otherwise they belong to a part this EIR
+						// no longer reports on and vanish from the form.
+						(frm.doc.damage_photos || []).forEach((p) => {
+							if (p.checklist_item === was) p.checklist_item = value;
+						});
+						fill_damage_from_checklist_item(row.name).then(() => {
+							frm.refresh_field('damage_log');
+							resync();
+							render();
+						});
+					} else {
+						frm.refresh_field('damage_log');
+					}
+				},
+			},
+			extra || {},
+		);
+
+	// The picture gets the full width at the top — it is what the reviewer came to look
+	// at — and the fields sit underneath in two columns. Severity is not asked: nobody
+	// fills it in the yard, and the server defaults it to Minor.
+	const d = new frappe.ui.Dialog({
+		title: __('Checklist Kerusakan'),
+		size: 'large',
+		fields: [
+			{ fieldname: 'viewer', fieldtype: 'HTML' },
+			{ fieldname: 'sec_fields', fieldtype: 'Section Break' },
+			field('checklist_item', 'Link', 'Checklist Item', {
+				options: 'Inspection Checklist Item',
+				get_query: () => ({ filters: { is_active: 1 } }),
+			}),
+			field('damage_type', 'Link', 'Damage Code', { options: 'Inspection Damage Code' }),
+			{ fieldname: 'col', fieldtype: 'Column Break' },
+			field('repair_code', 'Link', 'Repair Code', { options: 'Inspection Repair Code' }),
+			field('damage_description', 'Small Text', 'Description'),
+		],
+	});
+
+	if (editable) {
+		d.set_primary_action(__('Simpan'), () => {
+			d.hide();
+			if (frm.is_dirty()) frm.save();
+		});
+	}
+
+	function render() {
+		const slide = slides[idx] || {};
+		const row = row_of();
+		const photos = damage_photo_rows(frm, row.checklist_item).filter((p) => p.photo);
+		const src = slide.src ? frappe.utils.escape_html(slide.src) : '';
+		const stage = src
+			? `<div class="oak-carousel-stage"><img src="${src}" alt=""></div>`
+			: `<div class="oak-carousel-stage oak-carousel-empty">
+					<div class="oak-photo-none">${__('Belum ada foto')}</div>
+				</div>`;
+		const strip = photos
+			.map((p) => {
+				const psrc = frappe.utils.escape_html(p.photo);
+				const on = p.name === slide.photo ? 'is-on' : '';
+				return `<div class="oak-damage-photo ${on}">
+					<img src="${psrc}" data-oak-pick="${frappe.utils.escape_html(p.name)}" alt="">
+					${editable ? `<button type="button" class="oak-damage-photo-x" data-oak-drop="${frappe.utils.escape_html(p.name)}">&times;</button>` : ''}
+				</div>`;
+			})
+			.join('');
+
+		d.fields_dict.viewer.$wrapper.html(`
+			<div class="oak-carousel">
+				<button class="btn btn-default oak-carousel-nav" data-oak-step="-1"
+					title="${__('Sebelumnya')}" ${idx === 0 ? 'disabled' : ''}>&lsaquo;</button>
+				${stage}
+				<button class="btn btn-default oak-carousel-nav" data-oak-step="1"
+					title="${__('Berikutnya')}" ${idx === slides.length - 1 ? 'disabled' : ''}>&rsaquo;</button>
+			</div>
+			<div class="oak-carousel-caption">
+				<span class="oak-carousel-count">${idx + 1} / ${slides.length}</span>
+				${row.area ? `<span class="oak-carousel-area">${frappe.utils.escape_html(row.area)}</span>` : ''}
+				<span>${frappe.utils.escape_html(row.component || row.checklist_item || '')}</span>
+				${slide.count > 1 ? `<span class="text-muted">${__('foto')} ${slide.pos + 1}/${slide.count}</span>` : ''}
+			</div>
+			<div class="oak-damage-photos">
+				${strip}
+				${editable ? `<button type="button" class="btn btn-xs btn-default oak-damage-photo-add">${__('Tambah Foto')}</button>` : ''}
+			</div>
+		`);
+
+		d.$wrapper.find('.oak-carousel-nav').on('click', (e) => go(cint($(e.currentTarget).attr('data-oak-step'))));
+		d.$wrapper.find('[data-oak-pick]').on('click', (e) => {
+			const name = e.currentTarget.getAttribute('data-oak-pick');
+			const at = slides.findIndex((s) => s.photo === name);
+			if (at >= 0) idx = at;
+			render();
+		});
+		d.$wrapper.find('[data-oak-drop]').on('click', (e) => {
+			const name = e.currentTarget.getAttribute('data-oak-drop');
+			frm.doc.damage_photos = (frm.doc.damage_photos || []).filter((p) => p.name !== name);
+			frm.refresh_field('damage_log');
+			frm.dirty();
+			resync({ cdn: slide.cdn });
+			render();
+		});
+		d.$wrapper.find('.oak-damage-photo-add').on('click', () =>
+			add_damage_photo(frm, row, (added) => {
+				resync({ cdn: slide.cdn, photo: added && added.name });
+				render();
+			}),
+		);
+
+		syncing = true;
+		['checklist_item', 'damage_type', 'repair_code', 'damage_description'].forEach((f) =>
+			d.set_value(f, row[f] || ''),
+		);
+		syncing = false;
+
+		const $open_tab = d.get_secondary_btn();
+		d.set_secondary_action_label(__('Detail Foto'));
+		d.set_secondary_action(() => slide.src && window.open(slide.src, '_blank'));
+		$open_tab.toggleClass('hide', !slide.src);
+	}
+
+	function go(step) {
+		const next = idx + step;
+		if (next < 0 || next >= slides.length) return;
+		idx = next;
+		render();
+	}
+
+	d.$wrapper.on('keydown', (e) => {
+		if ($(e.target).is('input, textarea, select')) return;
+		if (e.key === 'ArrowLeft') go(-1);
+		else if (e.key === 'ArrowRight') go(1);
+	});
+
+	render();
+	d.show();
+}
+
+
+// Component / Area come off the chosen checklist item — the same fill the grid trigger does,
+// so a finding edited in the modal can never read differently from one edited in the grid.
+function fill_damage_from_checklist_item(cdn) {
+	const row = (locals['Inspection Damage Entry'] || {})[cdn];
+	if (!row || !row.checklist_item) return Promise.resolve();
+	return frappe.db
+		.get_value('Inspection Checklist Item', row.checklist_item, ['printed_no', 'item_name', 'area'])
+		.then((r) => {
+			const ci = r.message || {};
+			frappe.model.set_value('Inspection Damage Entry', cdn, 'component', `${ci.printed_no}. ${ci.item_name}`);
+			frappe.model.set_value('Inspection Damage Entry', cdn, 'area', ci.area);
+		});
+}
+
+// Upload one or more photos onto a finding. `doctype`/`docname` keep the File attached to
+// this EIR: a private file with no owner document is readable only by whoever uploaded it,
+// and the next reviewer would get a broken image.
+function add_damage_photo(frm, row, done) {
+	if (!row || !row.checklist_item) {
+		frappe.msgprint(__('Pilih Checklist Item dulu.'));
+		return;
+	}
+	new frappe.ui.FileUploader({
+		doctype: frm.doctype,
+		docname: frm.docname,
+		allow_multiple: true,
+		restrictions: { allowed_file_types: ['image/*'] },
+		on_success(file_doc) {
+			const added = frm.add_child('damage_photos', {
+				checklist_item: row.checklist_item,
+				photo: file_doc.file_url,
+			});
+			added.area = row.area;
+			frm.refresh_field('damage_log');
+			frm.dirty();
+			if (done) done(added);
+		},
+	});
+}
+
 // --- The carousel ---
 //
 // Reviewing an EIR means looking at every photo in turn — twenty shots of one tank, is the
@@ -383,6 +758,17 @@ function photo_slides(frm) {
 				cdn: row.name,
 				kind: 'item',
 				label: row.item_name || __('(Belum disortir)'),
+			});
+		}
+	});
+	(frm.doc.damage_photos || []).forEach((row) => {
+		if (row.photo) {
+			out.push({
+				src: row.photo,
+				cdt: 'Inspection Damage Photo',
+				cdn: row.name,
+				kind: 'damage',
+				label: `${__('Kerusakan')}: ${row.item_name || row.checklist_item || ''}`,
 			});
 		}
 	});
@@ -695,6 +1081,13 @@ frappe.ui.form.on('Inspection Item Photo', {
 // checklist dialog / PWA: checklist item -> component + area, repair code ->
 // estimated hours, damage code -> description + default severity.
 frappe.ui.form.on('Inspection Damage Entry', {
+	// Opening a finding shows its own photos, right under the description. The pictures
+	// live in the Inspection's `damage_photos` table (a child doctype cannot own a child
+	// table of its own), but nobody reading the form has to know that: the separate grid is
+	// hidden, so the form carries ONE list of findings and each finding carries its shots.
+	form_render(frm, cdt, cdn) {
+		render_damage_photos(frm, cdt, cdn);
+	},
 	checklist_item(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.checklist_item) return;
@@ -731,62 +1124,6 @@ frappe.ui.form.on('Inspection Damage Entry', {
 		}
 	},
 });
-
-function add_damage_entry(frm) {
-	const d = new frappe.ui.Dialog({
-		title: __('Tambah Kerusakan'),
-		fields: [
-			{ fieldname: 'checklist_item', fieldtype: 'Link', label: __('Checklist Item'), options: 'Inspection Checklist Item' },
-			{ fieldname: 'damage_type', fieldtype: 'Link', label: __('Damage Code'), options: 'Inspection Damage Code' },
-			{ fieldname: 'repair_code', fieldtype: 'Link', label: __('Repair Code'), options: 'Inspection Repair Code' },
-			{ fieldname: 'severity', fieldtype: 'Select', label: __('Severity'), options: 'Minor\nModerate\nMajor\nCritical', default: 'Minor' },
-			{ fieldname: 'damage_description', fieldtype: 'Small Text', label: __('Description'), description: __('Optional — defaults to the damage code description or the item name.') },
-		],
-		primary_action_label: __('Add'),
-		primary_action(values) {
-			append_damage_row(frm, values).then(() => d.hide());
-		},
-	});
-	d.show();
-}
-
-// Resolve a checklist item's printed_no / item_name / area (used to fill component+area).
-function resolve_checklist(item_code) {
-	if (!item_code) return Promise.resolve(null);
-	return frappe.db
-		.get_value('Inspection Checklist Item', item_code, ['printed_no', 'item_name', 'area'])
-		.then((r) => r.message || null);
-}
-
-// Append one Inspection Damage Entry, mirroring create_eir's mapping: component =
-// "{printed_no}. {item_name}", area from the checklist item, severity defaults Minor,
-// and a non-empty description (input -> damage code desc -> item name) so the reqd
-// fields never trip validation.
-function append_damage_row(frm, values) {
-	return resolve_checklist(values.checklist_item).then((ci) => {
-		const finish = (desc) => {
-			frm.add_child('damage_log', {
-				checklist_item: values.checklist_item || undefined,
-				area: ci ? ci.area : undefined,
-				component: ci ? `${ci.printed_no}. ${ci.item_name}` : undefined,
-				damage_type: values.damage_type || undefined,
-				repair_code: values.repair_code || undefined,
-				damage_description: desc || (ci ? ci.item_name : __('Damage')),
-				severity: values.severity || 'Minor',
-				repair_status: 'Pending',
-			});
-			frm.refresh_field('damage_log');
-		};
-		const typed = (values.damage_description || '').trim();
-		if (typed) return finish(typed);
-		if (values.damage_type) {
-			return frappe.db
-				.get_value('Inspection Damage Code', values.damage_type, 'description')
-				.then((r) => finish((r.message || {}).description));
-		}
-		return finish('');
-	});
-}
 
 // --- B-D4: prefill the EIR header from the Container ---
 // Calls the SAME whitelisted function the PWA uses

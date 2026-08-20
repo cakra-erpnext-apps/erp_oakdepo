@@ -33,8 +33,20 @@ def eir_needs_cleaning(inspection) -> bool:
 
 
 def eir_real_damage_rows(inspection) -> list:
-	"""Inspection Damage Entry rows of ``inspection`` that are real findings — damage
-	other than Acceptable, or repair other than No Action."""
+	"""Inspection Damage Entry rows of ``inspection`` worth an M&R.
+
+	Three things count as an indication of damage:
+
+	* a damage code other than Acceptable,
+	* a repair code other than No Action,
+	* **a note the surveyor typed** — even on a card coded Acceptable / No Action. Somebody
+	  standing at the tank wrote something down about that part; that is the indication, and
+	  letting the code alone veto it meant the M&R team never heard about it.
+
+	Note this is deliberately wider than ``eir.is_real_finding`` (which decides what reads as
+	a "kerusakan" on screen and which photos are evidence): a noted-but-acceptable part still
+	shows as checked-and-fine, it just also reaches the M&R queue.
+	"""
 	rows = frappe.get_all(
 		"Inspection Damage Entry",
 		filters={"parent": inspection, "parenttype": "Inspection"},
@@ -49,13 +61,15 @@ def eir_real_damage_rows(inspection) -> list:
 	for r in rows:
 		real_damage = r.damage_type and r.damage_type != ACCEPTABLE_DAMAGE_CODE
 		real_repair = r.repair_code and r.repair_code != NO_ACTION_REPAIR_CODE
-		if real_damage or real_repair:
+		noted = bool((r.damage_description or "").strip())
+		if real_damage or real_repair or noted:
 			out.append(r)
 	return out
 
 
 def eir_needs_mr(inspection) -> bool:
-	"""True when the EIR has at least one real damage/repair finding (→ M&R is due)."""
+	"""True when the EIR carries at least one indication of damage (→ M&R is due) — a real
+	damage code, a real repair code, or a note the surveyor typed."""
 	return bool(eir_real_damage_rows(inspection))
 
 
@@ -112,19 +126,21 @@ def seed_damages_from_eir(ro, inspection) -> None:
 	``damages`` table — a self-contained snapshot of what the EIR found. The team then
 	records the services/parts used in a separate section.
 
-	The PWA stores EIR photos in ``item_photos`` keyed by checklist item (not on the
-	damage row), so for each finding we gather every photo of its checklist item, plus
-	any before/after photo on the row, into a ``photos`` JSON list."""
+	EIR photos are keyed by checklist item, not by damage row: the evidence for a finding
+	lives in ``damage_photos`` and the general walk-around shots in ``item_photos``. Both are
+	gathered here — a photo taken before the defect code was entered sits in the second table
+	until the next save moves it — plus any before/after photo on the row itself."""
 	import json
 
 	photos_by_item: dict = {}
-	for p in frappe.get_all(
-		"Inspection Item Photo",
-		filters={"parent": inspection, "parenttype": "Inspection"},
-		fields=["checklist_item", "photo"],
-	):
-		if p.photo:
-			photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
+	for table in ("Inspection Damage Photo", "Inspection Item Photo"):
+		for p in frappe.get_all(
+			table,
+			filters={"parent": inspection, "parenttype": "Inspection"},
+			fields=["checklist_item", "photo"],
+		):
+			if p.photo:
+				photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
 
 	rows = frappe.get_all(
 		"Inspection Damage Entry",

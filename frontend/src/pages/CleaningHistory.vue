@@ -58,11 +58,6 @@
 				</ul>
 			</section>
 
-			<div class="flex flex-wrap gap-2">
-				<a :href="printOrderUrl(data)" target="_blank" rel="noopener" class="oak-btn oak-btn-secondary inline-flex px-3 py-2">
-					<Icon name="printer" :size="16" /> {{ labels.cleaningPrint }}
-				</a>
-			</div>
 		</template>
 	</HistoryPage>
 </template>
@@ -92,10 +87,5 @@ function cells(d) {
 		{ label: labels.cleaningRefEir, value: d.inspection },
 		{ label: labels.cleaningDateIssue, value: fmtDate(d.date_of_issue) },
 	]
-}
-function printOrderUrl(d) {
-	return `/api/method/frappe.utils.print_format.download_pdf?doctype=Cleaning%20Order&name=${encodeURIComponent(
-		d.name
-	)}&format=Cleaning%20Order%20Format&no_letterhead=1`
 }
 </script>

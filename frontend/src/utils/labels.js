@@ -471,6 +471,12 @@ export const labels = {
 	eirEmkl: "Shipper / EMKL", // one hauling party — the EIR's own emkl field was merged into shipper
 	eirDamages: "Kerusakan",
 	eirNoDamage: "Tidak ada kerusakan dicatat.",
+	// Riwayat detail: album inspeksi + bukti per temuan, supaya EIR bisa diperiksa dari HP
+	// tanpa membuka Desk.
+	eirChecklistDamage: "Checklist Kerusakan", // section header, sama dengan form Desk
+	eirPhotosTitle: "Foto Inspeksi",
+	eirNoPhotos: "Belum ada foto.",
+	eirPhotoUnsorted: "Belum disortir",
 	eirDamageCode: "D",
 	eirRepairCode: "R",
 	// Request edit/revision on a completed EIR (notifies Admin Ops)

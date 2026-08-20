@@ -381,18 +381,24 @@ def get_eir_out_reference(inspection) -> dict:
 				for r in frappe.get_all("Inspection Checklist Item", fields=["item_code", "item_name"])
 			}
 			photos_by_item: dict = {}
-			for p in frappe.get_all(
-				"Inspection Item Photo", filters={"parent": ref, "parenttype": "Inspection"},
-				fields=["checklist_item", "photo"],
-			):
-				if p.photo:
-					photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
+			for table in ("Inspection Damage Photo", "Inspection Item Photo"):
+				for p in frappe.get_all(
+					table, filters={"parent": ref, "parenttype": "Inspection"},
+					fields=["checklist_item", "photo"],
+				):
+					if p.photo:
+						photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
 			damages = []
 			for d in frappe.get_all(
 				"Inspection Damage Entry", filters={"parent": ref, "parenttype": "Inspection"},
 				fields=["checklist_item", "area", "component", "damage_type", "repair_code", "damage_description"],
 				order_by="idx asc",
 			):
+				# Real findings only — a part the EIR-In surveyor checked and found
+				# acceptable is stored (see ``_build_damage_rows``) but is not something
+				# for the EIR-Out comparison panel to raise.
+				if not is_real_finding(d.damage_type, d.repair_code):
+					continue
 				damages.append({
 					"item": d.checklist_item,
 					"item_name": names.get(d.checklist_item) or d.checklist_item,
@@ -684,10 +690,10 @@ def _checklist_items() -> dict:
 def _build_damage_rows(lines, items):
 	"""Map checklist payload lines to Inspection Damage Entry rows (only filled lines).
 
-	Blank ("Acceptable") lines are skipped. reqd Inspection Damage Entry fields are defaulted
-	server-side (severity=Minor; description from remark, else damage code desc, else
-	item name). Returns ``(rows, has_damage)`` — has_damage true for any real damage
-	code (not "v").
+	Blank ("Acceptable") lines are skipped unless the operator opened the card (``added``).
+	``severity`` is defaulted server-side (Minor); ``damage_description`` carries the
+	operator's own remark and nothing else — an untouched finding has none. Returns
+	``(rows, has_damage)`` — has_damage true for any real damage code (not "v").
 	"""
 	rows, has_damage = [], False
 	for ln in lines:
@@ -697,20 +703,26 @@ def _build_damage_rows(lines, items):
 		line_remarks = (ln.get("remarks") or "").strip() or None
 		# A part with no real finding — Acceptable (or blank) damage AND No Action (or
 		# blank) repair AND no remark — is the default condition and is not stored.
+		#
+		# Unless the operator OPENED that part's card ("added"): then it is a part somebody
+		# deliberately walked up to, and dropping it meant the card vanished at the next
+		# reload — along with any photo already hung on it, which came back as an unsorted
+		# Foto Cepat because its line no longer existed. Stored, it reads as what it is: this
+		# part was checked and found acceptable.
 		is_acceptable = damage_code in (None, ACCEPTABLE_DAMAGE_CODE)
 		is_no_action = repair_code in (None, NO_ACTION_REPAIR_CODE)
-		if is_acceptable and is_no_action and not line_remarks:
+		if is_acceptable and is_no_action and not line_remarks and not _as_bool(ln.get("added")):
 			continue
 
 		item = items.get(item_code)
 		if not item:
 			frappe.throw(_("Unknown checklist item_code: {0}").format(item_code or "(blank)"))
 
+		# Keterangan = apa yang DITULIS petugas, titik. Dulu baris kosong diisi deskripsi
+		# kode kerusakan lalu nama item supaya field reqd terpenuhi — hasilnya kolom "Ket"
+		# penuh gema kode ("Acceptable", "Front Top Rail") yang terbaca seperti catatan orang
+		# padahal tidak ada yang menulisnya. Field-nya kini boleh kosong.
 		description = line_remarks
-		if not description and damage_code:
-			description = frappe.db.get_value("Inspection Damage Code", damage_code, "description")
-		if not description:
-			description = item.item_name
 
 		if damage_code and damage_code != ACCEPTABLE_DAMAGE_CODE:
 			has_damage = True
@@ -720,7 +732,7 @@ def _build_damage_rows(lines, items):
 			"component": f"{item.printed_no}. {item.item_name}",
 			"damage_type": damage_code,
 			"repair_code": repair_code,
-			"damage_description": description,  # fulfils reqd (B2)
+			"damage_description": description,  # catatan petugas; boleh kosong
 			"severity": "Minor",               # default fulfils reqd (B2)
 		})
 	return rows, has_damage
@@ -744,6 +756,40 @@ def _build_photo_rows(photos, items):
 			frappe.throw(_("Unknown checklist item_code for photo: {0}").format(item_code))
 		rows.append({"checklist_item": item_code or None, "photo": photo})
 	return rows
+
+
+def is_real_finding(damage_type, repair_code) -> bool:
+	"""True when a checklist row records an actual defect, not just "sudah diperiksa".
+
+	Acceptable ("v") with No Action ("X") is what an opened-but-clean card carries — it is
+	stored so the card (and its photos) survive a reload, but it is not a damage: no M&R,
+	no entry in the Riwayat damage list, and no damage photo.
+	"""
+	return (damage_type or "") not in ("", ACCEPTABLE_DAMAGE_CODE) or (repair_code or "") not in (
+		"",
+		NO_ACTION_REPAIR_CODE,
+	)
+
+
+def _split_damage_photos(photo_rows: list, damage_rows: list) -> tuple:
+	"""Split one flat photo payload into (Foto per Item, Foto Kerusakan).
+
+	A photo taken WHILE FILLING a checklist card belongs to that card, so it goes to the
+	damage album — whatever the card ends up saying. The code on the row is not the test:
+	"Acceptable / No Action" is still a part somebody walked up to, photographed and
+	recorded, and its picture reads as noise in the general inspection album.
+
+	What stays in Foto per Item is what was never taken on a card: foto cepat that has not
+	been sorted yet, and photos assigned to a part that carries no checklist row at all.
+
+	The split is derived, never sent by the client — remove the card and its photos come
+	back on the next save.
+	"""
+	damaged = {r["checklist_item"] for r in damage_rows if r.get("checklist_item")}
+	item_rows, damage_photo_rows = [], []
+	for row in photo_rows:
+		(damage_photo_rows if row.get("checklist_item") in damaged else item_rows).append(row)
+	return item_rows, damage_photo_rows
 
 
 def _build_seal_rows(seals):
@@ -794,11 +840,11 @@ def create_eir(
 ) -> dict:
 	"""Build an Inspection (EIR) from a checklist payload.
 
-	Only lines carrying a ``damage_code``, ``repair_code`` or ``remarks`` become
-	Inspection Damage Entry rows — blank ("Acceptable") lines are not stored. The reqd Damage
-	Entry fields are defaulted server-side (severity=Minor; damage_description from
-	the line remarks, else the damage code's description, else the item name) so the
-	checklist flow never trips validation (B2).
+	Only lines carrying a ``damage_code``, ``repair_code``, ``remarks`` or the PWA's
+	``added`` marker become Inspection Damage Entry rows — an untouched ("Acceptable") line
+	is not stored. ``severity`` is defaulted server-side (Minor) so the checklist flow never
+	trips validation (B2); ``damage_description`` holds the operator's remark and nothing
+	else.
 
 	``has_damage`` is true when any line carries a real damage code (not "v").
 	``inspector`` is the session user. Status transitions are NOT done here — when
@@ -845,7 +891,9 @@ def create_eir(
 		doc.order_doctype = order_doctype or "Order Bongkar"
 		doc.order_ref = order_ref
 	doc.set("damage_log", damage_rows)
-	doc.set("item_photos", photo_rows)
+	item_rows, damage_photo_rows = _split_damage_photos(photo_rows, damage_rows)
+	doc.set("item_photos", item_rows)
+	doc.set("damage_photos", damage_photo_rows)
 
 	doc.insert()  # NOT ignore_permissions — let Frappe enforce Inspection create.
 	if submit:
@@ -932,8 +980,12 @@ def _draft_payload(doc, header: dict) -> dict:
 		}
 		for d in doc.damage_log if d.checklist_item
 	]
+	# Both albums travel as one list: the PWA hangs a photo on its damage card when the
+	# card exists and drops the rest into Foto Cepat, which is the same rule the split on
+	# the way in uses. Nothing in the client has to know there are two tables.
 	header["photos"] = [
-		{"item_code": p.checklist_item, "photo": p.photo} for p in doc.item_photos
+		{"item_code": p.checklist_item, "photo": p.photo}
+		for p in list(doc.item_photos) + list(doc.damage_photos)
 	]
 	return header
 
@@ -1179,7 +1231,9 @@ def save_draft(
 		_apply_voucher(doc, referred_voucher)
 	doc.has_damage = 1 if has_damage else 0
 	doc.set("damage_log", damage_rows)
-	doc.set("item_photos", photo_rows)
+	item_rows, damage_photo_rows = _split_damage_photos(photo_rows, damage_rows)
+	doc.set("item_photos", item_rows)
+	doc.set("damage_photos", damage_photo_rows)
 	# EIR-Out seal numbers. Only replaced when the caller sends the key at all, so an
 	# EIR-In save (which never carries seals) cannot wipe a Desk-entered list.
 	if seals is not None:
@@ -1608,16 +1662,47 @@ def view_eir(inspection: str) -> dict:
 		r.item_code: r.item_name
 		for r in frappe.get_all("Inspection Checklist Item", fields=["item_code", "item_name"])
 	}
+	# Evidence per finding, and the walk-around album on its own — the same two lists the
+	# Desk form shows, so a reviewer checking an EIR from the phone sees what the office sees.
+	photos_by_item: dict = {}
+	for p in doc.damage_photos:
+		if p.photo:
+			photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
+	# Codes are keys, not words: "v" / "X" mean nothing on a phone. The Desk grid shows the
+	# master's description because a Link renders its title; the PWA has to be handed it.
+	code_names = {
+		dt: {c.name: c.description for c in frappe.get_all(dt, fields=["name", "description"])}
+		for dt in ("Inspection Damage Code", "Inspection Repair Code")
+	}
+
+	# EVERY checklist card, exactly the list the Desk form shows under "Checklist Kerusakan"
+	# — including the ones that came back Acceptable. Hiding those would drop their photos
+	# into the inspection album, where a reviewer counting "2 foto inspeksi" finds five.
+	# ``is_finding`` says which ones are actual defects so the UI can mark them apart.
 	damages = [
 		{
 			"item": d.checklist_item,
 			"item_name": names.get(d.checklist_item) or d.checklist_item,
 			"damage_type": d.damage_type,
+			"damage_label": code_names["Inspection Damage Code"].get(d.damage_type) or d.damage_type,
 			"repair_code": d.repair_code,
+			"repair_label": code_names["Inspection Repair Code"].get(d.repair_code) or d.repair_code,
 			"damage_description": d.damage_description,
+			"is_finding": 1 if is_real_finding(d.get("damage_type"), d.get("repair_code")) else 0,
+			"photos": photos_by_item.get(d.checklist_item, []),
 		}
 		for d in doc.damage_log
-		if (d.get("damage_type") or d.get("repair_code") or d.get("damage_description"))
+	]
+	# The album is what was never taken on a card: foto cepat and photos of parts with no
+	# checklist row at all.
+	photos = [
+		{
+			"item": p.checklist_item,
+			"item_name": names.get(p.checklist_item) or p.checklist_item,
+			"photo": p.photo,
+		}
+		for p in doc.item_photos
+		if p.photo
 	]
 	return {
 		"name": doc.name,
@@ -1641,6 +1726,9 @@ def view_eir(inspection: str) -> dict:
 		"remarks": doc.get("remarks"),
 		"damages": damages,
 		"damage_count": len(damages),
+		"finding_count": sum(1 for d in damages if d["is_finding"]),
+		"photos": photos,
+		"photo_count": len(photos),
 	}
 
 

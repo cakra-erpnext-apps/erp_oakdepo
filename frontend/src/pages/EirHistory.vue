@@ -44,25 +44,67 @@
 			</section>
 
 			<section class="oak-card space-y-2 p-4">
-				<p class="oak-section-title">{{ labels.eirDamages }} ({{ data.damage_count || 0 }})</p>
+				<p class="oak-section-title">
+					{{ labels.eirChecklistDamage }} ({{ data.damage_count || 0 }})
+					<span v-if="data.finding_count" class="ml-1 text-xs font-normal text-amber-600">
+						· {{ data.finding_count }} {{ labels.eirDamages.toLowerCase() }}
+					</span>
+				</p>
 				<p v-if="!(data.damages || []).length" class="text-sm text-gray-400">{{ labels.eirNoDamage }}</p>
-				<ul v-else class="space-y-1.5 text-sm">
+				<ul v-else class="space-y-3 text-sm">
+					<!-- Kartu yang kembali "Acceptable" tetap dilist — itu bagian yang benar-benar
+					     didatangi dan difoto — tapi ikonnya beda supaya temuan nyata tetap menonjol. -->
 					<li v-for="(d, i) in data.damages" :key="i" class="flex items-start gap-2 text-gray-800">
-						<Icon name="alert-triangle" :size="14" class="mt-0.5 shrink-0 text-amber-500" />
-						<span class="min-w-0">
+						<Icon
+							:name="d.is_finding ? 'alert-triangle' : 'check'"
+							:size="14"
+							class="mt-0.5 shrink-0"
+							:class="d.is_finding ? 'text-amber-500' : 'text-leaf-500'"
+						/>
+						<div class="min-w-0 flex-1">
 							<span class="font-medium">{{ d.item_name || d.item }}</span>
-							<span v-if="d.damage_type" class="text-gray-500"> · {{ labels.eirDamageCode }} {{ d.damage_type }}</span>
-							<span v-if="d.repair_code" class="text-gray-500"> / {{ labels.eirRepairCode }} {{ d.repair_code }}</span>
+							<span v-if="d.damage_type" class="text-gray-500"> · {{ d.damage_label || d.damage_type }}</span>
+							<span v-if="d.repair_code" class="text-gray-500"> / {{ d.repair_label || d.repair_code }}</span>
 							<span v-if="d.damage_description" class="block text-xs text-gray-400">{{ d.damage_description }}</span>
-						</span>
+							<!-- Bukti temuan ini, sejajar dengan yang ada di form Desk. -->
+							<div v-if="(d.photos || []).length" class="mt-1.5 flex flex-wrap gap-1.5">
+								<button
+									v-for="(url, pi) in d.photos"
+									:key="url"
+									type="button"
+									class="oak-press"
+									@click="openLightbox(d.photos.map(photoSrc), pi)"
+								>
+									<img :src="photoSrc(url)" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
+								</button>
+							</div>
+						</div>
 					</li>
 				</ul>
 			</section>
 
+			<!-- Album inspeksi: foto keliling tank dan foto bagian yang diperiksa tapi tidak
+			     rusak — sama seperti tabel Foto per Item di Desk. -->
+			<section class="oak-card space-y-2 p-4">
+				<p class="oak-section-title">{{ labels.eirPhotosTitle }} ({{ data.photo_count || 0 }})</p>
+				<p v-if="!(data.photos || []).length" class="text-sm text-gray-400">{{ labels.eirNoPhotos }}</p>
+				<div v-else class="flex flex-wrap gap-2">
+					<button
+						v-for="(p, i) in data.photos"
+						:key="p.photo"
+						type="button"
+						class="oak-press w-[104px] text-left"
+						@click="openLightbox((data.photos || []).map((x) => photoSrc(x.photo)), i)"
+					>
+						<img :src="photoSrc(p.photo)" class="h-24 w-[104px] rounded-lg border border-gray-200 object-cover" />
+						<span class="mt-0.5 block truncate text-[11px]" :class="p.item_name ? 'text-gray-500' : 'text-gray-400'">
+							{{ p.item_name || labels.eirPhotoUnsorted }}
+						</span>
+					</button>
+				</div>
+			</section>
+
 			<div class="flex flex-wrap items-center gap-2">
-				<a :href="printUrl(data)" target="_blank" rel="noopener" class="oak-btn oak-btn-secondary inline-flex px-3 py-2">
-					<Icon name="printer" :size="16" /> {{ labels.cleaningPrint }}
-				</a>
 				<button
 					v-if="data.docstatus === 1 && revisionFor !== data.name"
 					type="button"
@@ -112,6 +154,8 @@ import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
+import { openLightbox } from "@/utils/lightbox"
+import { photoSrc } from "@/data/send"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 
@@ -186,10 +230,5 @@ function cells(d) {
 		{ label: labels.eirDriver, value: d.driver },
 		{ label: labels.eirEmkl, value: d.shipper },
 	]
-}
-function printUrl(d) {
-	return `/api/method/frappe.utils.print_format.download_pdf?doctype=Inspection&name=${encodeURIComponent(
-		d.name
-	)}&format=EIR%20Format&no_letterhead=1`
 }
 </script>

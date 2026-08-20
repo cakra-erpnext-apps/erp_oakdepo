@@ -31,6 +31,7 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  * keep their own (shorter) height — they share the .grid-static-col class.
  */
 [data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col,
+[data-fieldname="damage_photos"] .grid-body .grid-row .grid-static-col,
 [data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col {
 	height: 64px;
 }
@@ -42,6 +43,7 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  * no background of their own to hide it behind.
  */
 [data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
+[data-fieldname="damage_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
 [data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
 	display: flex;
 	align-items: center;
@@ -57,6 +59,7 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  * the sum is wider than the container, so the last cells ride over their neighbours (and
  * over the thumbnail). Letting the cells shrink keeps the same proportions at every width.
  */
+[data-fieldname="damage_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index),
 [data-fieldname="item_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
 	flex-shrink: 1;
 	min-width: 0;
@@ -77,10 +80,12 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  */
 /* :not([data-fieldname]) — a real data column always carries one, so the rule can never
    swallow Photo if a future Frappe stops appending the button cell. */
+[data-fieldname="damage_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]),
 [data-fieldname="item_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]) {
 	display: none;
 }
 
+[data-fieldname="damage_photos"] .grid-row > .row > .grid-static-col:not(.row-index),
 [data-fieldname="item_photos"] .grid-row > .row > .grid-static-col:not(.row-index) {
 	flex-grow: 1;
 	max-width: none;
@@ -90,10 +95,12 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  * Photo is the last column now, so it carries the grid's right edge: no cell border of its
  * own (the container already draws one) and the heading's rounded corner.
  */
+[data-fieldname="damage_photos"] .grid-row > .row > .col:nth-last-child(2),
 [data-fieldname="item_photos"] .grid-row > .row > .col:nth-last-child(2) {
 	border-right: none;
 }
 
+[data-fieldname="damage_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2),
 [data-fieldname="item_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2) {
 	border-top-right-radius: var(--border-radius-md);
 }
@@ -146,6 +153,106 @@ img.oak-grid-photo:hover {
 }
 
 /* A row whose photo has not been uploaded yet — say so instead of leaving a silent gap. */
+/* Sidebar Attachments on the EIR form — see hide_sidebar_attachments in inspection.js.
+   !important because the component re-shows itself with an inline style on every refresh. */
+.oak-no-attachments {
+	display: none !important;
+}
+
+/*
+ * The photo strip inside an opened Checklist Kerusakan row. Thumbnails wrap, each with a
+ * corner button to drop it, and the add button sits at the end of the same flow — one
+ * block that grows downward instead of a second grid competing with the findings list.
+ */
+/*
+ * Checklist Kerusakan reads like Foto per Item: a scannable row with room for a thumbnail,
+ * and no open-row button — the row itself opens the modal (bind_damage_grid_clicks).
+ */
+[data-fieldname="damage_log"] .grid-body .grid-row .grid-static-col {
+	height: 64px;
+}
+
+[data-fieldname="damage_log"] .grid-body .grid-row .grid-static-col[data-fieldname="photos_preview"] .static-area {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	overflow: hidden;
+}
+
+[data-fieldname="damage_log"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
+	min-width: 0;
+}
+
+/* The "+2" badge on a finding that carries more than one photo. */
+.oak-damage-thumb {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+}
+
+.oak-damage-more {
+	margin-left: var(--margin-xs);
+	padding: 0 6px;
+	border-radius: 10px;
+	background: var(--control-bg);
+	color: var(--text-muted);
+	font-size: var(--text-xs);
+}
+
+/* The photo being shown on the stage, picked from the strip. */
+.oak-damage-photo.is-on img {
+	outline: 2px solid var(--primary);
+	outline-offset: 1px;
+}
+
+.oak-damage-photo img {
+	cursor: pointer;
+}
+
+.oak-damage-photos {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--margin-sm);
+	margin-top: var(--margin-sm);
+}
+
+.oak-damage-photo {
+	position: relative;
+	line-height: 0;
+}
+
+.oak-damage-photo img {
+	width: 96px;
+	height: 96px;
+	object-fit: cover;
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md);
+	cursor: zoom-in;
+}
+
+/* Sits ON the thumbnail's corner: the strip has no room for a row of labelled buttons. */
+.oak-damage-photo-x {
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	line-height: 18px;
+	font-size: 14px;
+	border: 0;
+	border-radius: 50%;
+	background: var(--text-color);
+	color: var(--bg-color);
+	cursor: pointer;
+}
+
+.oak-damage-photos .oak-photo-none {
+	margin-top: 0;
+	padding: var(--padding-sm) var(--padding-md);
+}
+
 .oak-photo-none {
 	margin-top: var(--margin-sm);
 	padding: var(--padding-lg);
@@ -255,6 +362,7 @@ img.oak-grid-photo:hover {
  * drop_row_without_photo in inspection.js and Inspection.validate on the server.
  */
 [data-fieldname="exterior_photos"] a[data-action="clear_attachment"],
+[data-fieldname="damage_photos"] a[data-action="clear_attachment"],
 [data-fieldname="item_photos"] a[data-action="clear_attachment"] {
 	display: none;
 }
@@ -278,6 +386,7 @@ img.oak-grid-photo:hover {
  * file in a tab lives on in the full-size dialog (show_photo).
  */
 [data-fieldname="exterior_photos"] .attached-file > .ellipsis,
+[data-fieldname="damage_photos"] .attached-file > .ellipsis,
 [data-fieldname="item_photos"] .attached-file > .ellipsis {
 	display: none;
 }

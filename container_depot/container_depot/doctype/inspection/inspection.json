@@ -26,6 +26,7 @@
   "damage_section",
   "has_damage",
   "damage_log",
+  "damage_photos",
   "followup_section",
   "create_cleaning_order",
   "create_repair_order",
@@ -80,7 +81,8 @@
   "work_started_on",
   "work_started_by",
   "work_ended_on",
-  "work_duration"
+  "work_duration",
+  "links_tab"
  ],
  "fields": [
   {
@@ -232,6 +234,14 @@
    "fieldtype": "Table",
    "label": "Damage Details",
    "options": "Inspection Damage Entry"
+  },
+  {
+   "description": "Foto milik baris Checklist Kerusakan di atas. Disembunyikan sebagai daftar tersendiri \u2014 tiap foto muncul di dalam temuannya (buka baris kerusakan); tabel ini tetap yang menyimpannya.",
+   "fieldname": "damage_photos",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Foto Kerusakan",
+   "options": "Inspection Damage Photo"
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-In'",
@@ -658,11 +668,18 @@
    "hidden": 1,
    "label": "Durasi Pengerjaan",
    "read_only": 1
+  },
+  {
+   "description": "Semua yang lahir dari EIR ini dan yang menunjuk balik ke dia \u2014 disusun di inspection_dashboard.py.",
+   "fieldname": "links_tab",
+   "fieldtype": "Tab Break",
+   "label": "Dokumen Terkait",
+   "show_dashboard": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-20 00:15:00.000000",
+ "modified": "2026-08-20 13:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

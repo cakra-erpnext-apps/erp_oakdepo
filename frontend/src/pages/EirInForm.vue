@@ -109,12 +109,6 @@
 						<input v-model="tank.max_gross_weight" type="number" inputmode="decimal" class="oak-input" />
 					</div>
 				</div>
-				<dl class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-gray-50 p-3 text-xs sm:grid-cols-3">
-					<div v-for="f in autoCells" :key="f.label">
-						<dt class="text-gray-500">{{ f.label }}</dt>
-						<dd class="truncate font-semibold text-gray-800">{{ f.value || "—" }}</dd>
-					</div>
-				</dl>
 			</section>
 
 			<!-- Step 3 — tank status -->
@@ -399,17 +393,13 @@ const mastersRes = cachedResource({
 	},
 })
 
-// Under the editable fields: what the depot writes by itself. Not repeated here — the
-// container number and its owner are the screen title, and Last Cargo is the Cargo picker
-// two sections down.
-const autoCells = computed(() => {
-	const h = header.value || {}
-	return [{ label: labels.depot, value: h.depot }]
-})
-
+// The read-only block: what this EIR was handed rather than what the surveyor writes. Depo
+// sits here too — it comes from the bon's booking, not off the tank. Owner and container
+// number are the screen title, and Last Cargo is the Cargo picker below; neither repeats.
 const voucherCells = computed(() => [
 	{ label: labels.bookingCode, value: bookingCode.value, mono: true },
 	{ label: labels.referredVoucher, value: referredVoucher.value, mono: true },
+	{ label: labels.depot, value: header.value?.depot },
 	{ label: labels.shipper, value: shipper.value },
 	{ label: labels.truckNo, value: truckNo.value },
 	{ label: labels.driverName, value: driver.value },
@@ -534,18 +524,24 @@ function applyDraftToRows(data) {
 		r.remarks = (l && l.remarks) || ""
 		r.photos = photoMap[r.item_code] ? [...photoMap[r.item_code]] : []
 		r.photoErr = ""
-		r.added = rowHasFinding(r)
+		// Saved line = the card stays open, even one that only says "acceptable".
+		r.added = Boolean(l) || rowHasFinding(r)
 	})
 }
 
+// Every card the operator has OPENED travels, not only the ones that already say
+// something. A freshly added part carries "v / X" (checked, acceptable) and nothing else,
+// and used to be dropped on both sides — so it disappeared at the next reload and took its
+// photos with it into Foto Cepat. `added` is what tells the server to keep such a line.
 function buildLines() {
 	return rows.value
-		.filter(rowHasFinding)
+		.filter((r) => r.added || rowHasFinding(r))
 		.map((r) => ({
 			item_code: r.item_code,
 			damage_code: r.damage_code || undefined,
 			repair_code: r.repair_code || undefined,
 			remarks: (r.remarks || "").trim() || undefined,
+			added: 1,
 		}))
 }
 

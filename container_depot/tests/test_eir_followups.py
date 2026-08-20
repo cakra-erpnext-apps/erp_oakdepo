@@ -56,6 +56,26 @@ class TestEirFollowups(FrappeTestCase):
 		self.assertEqual(len(eir_followups.eir_real_damage_rows(dmg)), 1)
 		self.assertFalse(eir_followups.eir_needs_mr(none))
 
+	def test_a_noted_acceptable_part_still_reaches_mr(self):
+		# The code says the part is fine, but somebody standing at the tank wrote something
+		# about it — that note IS the indication of damage, and the M&R team has to hear it.
+		_, noted = self._eir(
+			"FUPMR000005",
+			lines=[{"item_code": "11", "damage_code": "v", "repair_code": "X", "remarks": "rembes tipis"}],
+		)
+		self.assertTrue(eir_followups.eir_needs_mr(noted))
+		rows = eir_followups.eir_real_damage_rows(noted)
+		self.assertEqual([r.damage_description for r in rows], ["rembes tipis"])
+
+	def test_an_untouched_acceptable_card_does_not(self):
+		# An opened-but-silent card (the PWA stores it so the card survives a reload) is not
+		# an indication of anything.
+		_, quiet = self._eir(
+			"FUPMR000006",
+			lines=[{"item_code": "11", "damage_code": "v", "repair_code": "X", "added": 1}],
+		)
+		self.assertFalse(eir_followups.eir_needs_mr(quiet))
+
 	# --- creation -------------------------------------------------------------
 	def test_create_cleaning_order_idempotent(self):
 		c, dirty = self._eir("FUPCLEAN003", tank_status="Empty Dirty")
