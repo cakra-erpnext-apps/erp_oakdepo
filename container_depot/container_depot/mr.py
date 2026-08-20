@@ -985,6 +985,68 @@ def finalize_repair(repair_order):
 	}
 
 
+# The team's half of the flow, in the order it is walked. ``submit_direct`` steps along it
+# one status at a time because ``_validate_status_transition`` checks every save against the
+# STORED status — a single jump from Pending to Completed would be refused.
+MR_TEAM_TAIL = ("Pending", "In Progress", "Pending Review")
+
+
+def submit_direct(repair_order, note=None):
+	"""Desk "Submit": close an M&R in one press, from wherever it currently stands.
+
+	This is the convenience a submittable Cleaning Order gets for free — whoever is looking at
+	the order signs it off there and then, instead of walking work that is already over
+	through the owner, the dispatch and the review. Repair Order carries no docstatus, so
+	"Submit" is this function.
+
+	Nothing is skipped, only pressed for you: every stage it passes through is that stage's own
+	function, so the still-Pending lines are approved, the parts leave the warehouse exactly
+	once (:func:`issue_parts_on_approval`), the notifications fire and the timeline records both
+	the bypass and the completion.
+
+	Guarded to the bypass roles in the ESS wrapper (``mr_submit_direct``): it approves on the
+	owner's behalf, which is the one thing an ordinary M&R press may not do."""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status == "Completed":
+		frappe.throw(_("M&R ini sudah selesai."), exc=AlreadySettled)
+	if ro.status in ("Cancelled", "Rejected"):
+		frappe.throw(_("M&R sudah {0} — tidak bisa di-submit.").format(ro.status), exc=AlreadySettled)
+
+	note = _clean(note) or _("Diselesaikan langsung dari Desk (submit).")
+
+	if ro.status in MR_EDITABLE_STATUSES and ro.used_items:
+		bypass_approval(repair_order, note=note)
+	elif ro.status in MR_EDITABLE_STATUSES:
+		# An order with no estimate at all is CLOSED as it stands, not refused — the same
+		# answer a Cleaning Order with no service line gives its Submit. There is nothing to
+		# charge and no part to take out of the warehouse, so the approval is stamped here
+		# rather than through ``bypass_approval`` (which insists on ≥1 item, because an
+		# estimate sent for approval with nothing on it is a different mistake).
+		ro.status = "Approved"
+		ro.owner_note = note
+		ro.requested_on = ro.requested_on or now_datetime()
+		ro.decided_on = now_datetime()
+		ro.decided_by = frappe.session.user
+		ro.save()
+	elif ro.status == "Pending Approval":
+		record_decision(repair_order, "Approved", note=note)
+	elif ro.status in MR_TEAM_TAIL:
+		# Already handed to the team: walk forward to Pending Review, one legal edge per save.
+		for nxt in MR_TEAM_TAIL[MR_TEAM_TAIL.index(ro.status) + 1 :]:
+			step = frappe.get_doc("Repair Order", repair_order)
+			step.status = nxt
+			if nxt == "In Progress" and not step.start_date:
+				step.start_date = now_datetime()
+			step.save()
+
+	log_doc_note(
+		"Repair Order", repair_order,
+		_("Submit langsung dari Desk oleh {0}: {1}").format(frappe.session.user, note),
+	)
+	return finalize_repair(repair_order)
+
+
 def _coerce_list(value) -> list:
 	if isinstance(value, str):
 		value = json.loads(value) if value.strip() else []

@@ -280,6 +280,68 @@ class TestMRApproval(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			mr.bypass_approval(ro)
 
+	# --- Desk "Submit" (one press, from wherever the order stands) -------------
+	def test_submit_direct_closes_a_draft_in_one_press(self):
+		"""Draft -> Completed without the owner, the hand-over or the review. The parts still
+		leave stock, because approving is what issues them."""
+		_, ro = self._draft_ro("MRASUB00001")
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[
+				{"item": _PART, "quantity": 1, "warehouse": self._stocked(1)},
+				{"item": _SERVICE, "quantity": 1},
+			],
+			submit=False,
+		)
+		res = mr.submit_direct(ro, note="dikerjakan di tempat")
+		self.assertEqual(res["status"], "Completed")
+		doc = frappe.get_doc("Repair Order", ro)
+		self.assertEqual(doc.status, "Completed")
+		self.assertTrue(all(r.decision == "Approved" for r in doc.used_items))
+		self.assertEqual(flt(doc.total_cost), 150.0)
+		self.assertIsNotNone(doc.completion_date)
+		self.assertIsNotNone(doc.start_date)  # a closed order always says when work happened
+		self.assertTrue(doc.stock_entry)
+		self._stock_entries.append(doc.stock_entry)
+		self.assertEqual(flt(mr._on_hand(_PART, self._wh_name())), 0.0)
+
+	def test_submit_direct_walks_the_team_tail(self):
+		"""An order already handed to the team closes just the same — Pending is walked to
+		Pending Review one legal edge at a time, then finalised."""
+		_, ro = self._draft_ro("MRASUB00002")
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		mr.bypass_approval(ro)
+		mr.forward_to_team(ro)  # -> Pending
+		mr.submit_direct(ro)
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Completed")
+
+	def test_submit_direct_closes_an_empty_estimate(self):
+		"""Nothing on the order = nothing to bill and no part to issue, so it closes rather
+		than being refused (``bypass_approval`` alone insists on an item)."""
+		_, ro = self._draft_ro("MRASUB00003")
+		mr.submit_direct(ro)
+		doc = frappe.get_doc("Repair Order", ro)
+		self.assertEqual(doc.status, "Completed")
+		self.assertEqual(flt(doc.total_cost), 0.0)
+		self.assertFalse(doc.stock_entry)
+
+	def test_submit_direct_refuses_a_settled_order(self):
+		_, ro = self._draft_ro("MRASUB00004")
+		mr.submit_direct(ro)
+		with self.assertRaises(frappe.ValidationError):
+			mr.submit_direct(ro)
+
+	def test_submit_direct_ess_guard_rejects_unauthorized(self):
+		from container_depot.ess import repairs
+
+		_, ro = self._draft_ro("MRASUB00005")
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				repairs.mr_submit_direct(repair_order=ro)
+		finally:
+			frappe.set_user("Administrator")
+
 	def test_reopen_to_draft_rewinds_and_resets_approval(self):
 		# Human-error recovery: an Approved M&R rewinds to an editable Draft, wiping the
 		# approval round, and can be re-approved after the fix.

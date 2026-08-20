@@ -316,6 +316,17 @@ def mr_finalize(repair_order=None):
 
 
 @frappe.whitelist(methods=["POST"])
+def mr_submit_direct(repair_order=None, note=None):
+	"""POST /api/v1/ess/mr-submit-direct — the Desk form's "Submit": close the M&R in one
+	press from whatever status it is on, skipping owner approval, dispatch and review.
+
+	Role-guarded like the other bypass endpoints — it approves on the owner's behalf."""
+	_require_admin_ops()
+	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
+	return mr.submit_direct(repair_order, note=note)
+
+
+@frappe.whitelist(methods=["POST"])
 def mr_start(repair_order=None, request_id=None):
 	"""POST /api/v1/ess/mr-start — the team picks the job off its worklist: Pending -> In
 	Progress. Only a job Admin Ops has handed over (``forward_to_team``) is startable."""

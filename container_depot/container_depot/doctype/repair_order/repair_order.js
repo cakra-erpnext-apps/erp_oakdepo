@@ -123,6 +123,33 @@ function mr_bypass_button(frm, group) {
 	);
 }
 
+// SUBMIT — the primary button, in the very slot Frappe would otherwise fill with "Save" on
+// an already-saved form. Repair Order has no docstatus, so what a submittable Cleaning Order
+// gets for free is done by hand here: one press closes the order from wherever it stands,
+// skipping the owner, the dispatch to the team and the review (mr.submit_direct walks those
+// steps server-side, so nothing is left half-done).
+//
+// Save is never taken away — Frappe puts it straight back the moment the form goes dirty
+// (Toolbar.add_update_button_on_dirty), and the refresh after each save hands the slot back
+// to us, so editing still saves normally. The toolbar sets its own primary action in
+// refresh_header, which run_serially runs BEFORE the refresh script trigger: this wins.
+function mr_submit_primary(frm) {
+	if (frm.is_new() || frm.is_dirty()) return;
+	if (['Completed', 'Cancelled', 'Rejected'].includes(frm.doc.status)) return;
+	// Same gate as the server (ess/repairs._require_admin_ops): submitting approves on the
+	// owner's behalf, so it stays with the bypass roles.
+	if (!is_admin_ops() || !frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
+	// An order with nothing on it closes without billing anything — say so, because that is
+	// a different thing to agree to than approving an estimate.
+	const empty = !(frm.doc.used_items || []).length;
+	const warn = empty
+		? __('Submit M&R ini sekarang? Service & Parts masih KOSONG — order ditutup tanpa tagihan.')
+		: __('Submit M&R ini sekarang? Order langsung SELESAI — owner tidak diminta menyetujui, order tidak diteruskan ke team, dan part yang disetujui KELUAR dari stok.');
+	frm.page.set_primary_action(__('Submit'), () =>
+		mr_call(frm, 'container_depot.ess.repairs.mr_submit_direct', {}, warn)
+	);
+}
+
 function mr_decision_with_note(frm, decision, title) {
 	frappe.prompt(
 		[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Catatan dari owner') }],
@@ -257,6 +284,7 @@ frappe.ui.form.on('Repair Order', {
 		if (intros[frm.doc.status]) frm.set_intro(intros[frm.doc.status][0], intros[frm.doc.status][1]);
 
 		frm.trigger('_mr_buttons');
+		mr_submit_primary(frm);
 		frm.trigger('_lock_estimate_grid');
 		install_work_photo_thumbnails(frm);
 		bind_work_photo_clicks(frm);

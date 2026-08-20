@@ -270,6 +270,7 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/mr-request-revision", "to_route": "container_depot.ess.repairs.mr_request_revision"},
 	{"from_route": "/api/v1/ess/mr-reopen-completed", "to_route": "container_depot.ess.repairs.mr_reopen_completed"},
 	{"from_route": "/api/v1/ess/mr-finalize", "to_route": "container_depot.ess.repairs.mr_finalize"},
+	{"from_route": "/api/v1/ess/mr-submit-direct", "to_route": "container_depot.ess.repairs.mr_submit_direct"},
 	{"from_route": "/api/v1/ess/mr-decision", "to_route": "container_depot.ess.repairs.mr_decision"},
 	# Admin Ops gate between the workshop's estimate and the customer web.
 	{"from_route": "/api/v1/ess/mr-publish-to-owner", "to_route": "container_depot.ess.repairs.mr_publish_to_owner"},
