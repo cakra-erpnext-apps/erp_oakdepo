@@ -9,7 +9,8 @@
 // contract currency so Rate / Manhour format in the Base Price List currency.
 //
 // Status is driven by workflow buttons (set_status), not picked from a dropdown:
-// Draft -> Submit -> Active, then Invalid / Expired.
+// Draft -> Submit -> Active, then Invalid (or Amend). Expired has no button: the daily
+// expire_lapsed_contracts task applies it once valid_to has passed.
 //
 // A contract that left Draft is never edited, duplicated or deleted — it is
 // Amended: "Amend" copies it into a new Draft (amends_contract -> the source),
@@ -71,9 +72,11 @@ frappe.ui.form.on("Depot Contract", {
 	},
 	refresh(frm) {
 		frm.trigger("_set_tariff_item_query");
+		// _apply_edit_lock owns save_disabled, so it runs before _set_status_actions —
+		// which claims the freed-up primary slot for the real next action.
+		frm.trigger("_apply_edit_lock");
 		frm.trigger("_set_status_actions");
 		frm.trigger("_set_grid_import_button");
-		frm.trigger("_apply_edit_lock");
 		frm.trigger("_hide_delete_menu_item");
 	},
 	_hide_delete_menu_item(frm) {
@@ -105,7 +108,7 @@ frappe.ui.form.on("Depot Contract", {
 						fieldname: "hint",
 						fieldtype: "HTML",
 						options: `<p class="text-muted small">${__(
-							"Columns: Item, Rate, Manhour. Only Item is required — Rate/Manhour default to 0 (or the Base Price List, if set). A header row is skipped."
+							"Columns: Item Name, Rate, Manhour. Item Name is the name exactly as it appears in the Item Master sheet below — only that column is required; Rate/Manhour default to 0 (or the Base Price List, if set). A header row is skipped."
 						)}</p>`,
 					},
 					{ fieldname: "file", fieldtype: "Attach", label: __("Excel File (.xlsx)"), reqd: 1 },
@@ -147,15 +150,17 @@ frappe.ui.form.on("Depot Contract", {
 					});
 				},
 			});
-			// Downloads live in the dialog so the template + valid item codes are one
-			// click away right where the user is about to import. window.open (not
+			// Downloads live in the dialog so the template + the valid item names are one
+			// click away right where the user is about to import. Both sheets label the
+			// item column "Item Name" and carry the same values, so it is copy-paste with
+			// nothing to decide. window.open (not
 			// frappe.call) because these stream a file back, not JSON; the session
 			// cookie rides along so the GET is authenticated.
 			const base = "/api/method/container_depot.container_depot.doctype.depot_contract.depot_contract";
 			d.add_custom_action(__("Download Template"), () => {
 				window.open(`${base}.download_tariff_template`);
 			});
-			d.add_custom_action(__("Download Item Master"), () => {
+			d.add_custom_action(__("Download Item Master (Item Names)"), () => {
 				const q = frm.doc.base_price_list
 					? `?base_price_list=${encodeURIComponent(frm.doc.base_price_list)}`
 					: "";
@@ -170,9 +175,12 @@ frappe.ui.form.on("Depot Contract", {
 		// Draft -> Active -> Expired, with Void as the invalidate/cancel terminal.
 		// "Invalid" and "Cancel" both land on Void — the same terminal state, named
 		// for what it means at each stage.
+		// Expiry is not a decision anyone makes — it is the valid_to date arriving, applied
+		// by the daily expire_lapsed_contracts task (and on any save), so there is no manual
+		// "Expired" button. What is left for a running contract is Invalid and Amend.
 		const ACTIONS = {
 			Draft: [["Submit", "Active", "primary"], ["Cancel", "Void"]],
-			Active: [["Invalid", "Void"], ["Expired", "Expired"]],
+			Active: [["Invalid", "Void"]],
 		};
 		// set_status() reaches the server as a plain doc.save(), so `write` is the
 		// permission it will be measured against. Amend opens a Draft copy the user then
@@ -180,14 +188,26 @@ frappe.ui.form.on("Depot Contract", {
 		// were being shown all of them.
 		const may_write = frappe.perm.has_perm(frm.doctype, 0, "write");
 		(may_write ? ACTIONS[frm.doc.status] || [] : []).forEach(([label, target, type]) => {
+			// A saved Draft with nothing changed has nothing to save, but this doctype is
+			// not submittable so Frappe parks "Save" in the primary slot anyway. Put the
+			// real next step (Submit) there instead; editing anything fires the form's
+			// dirty event, which hands the slot back to Save.
+			if (type === "primary" && !frm.is_dirty()) {
+				frm.page.set_primary_action(__(label), () => container_depot_transition(frm, target));
+				return;
+			}
 			const btn = frm.add_custom_button(__(label), () => container_depot_transition(frm, target));
 			if (type === "primary") btn.removeClass("btn-default").addClass("btn-primary");
 		});
 		// Amend replaces Duplicate for a contract that is past Draft — it is also the
-		// only way to change the terms of a running (Active) contract.
+		// only way to change the terms of a running (Active) contract, which is why on an
+		// Active contract it takes the primary slot Save just vacated.
 		if (frm.doc.status !== "Draft" && frappe.perm.has_perm(frm.doctype, 0, "create")) {
-			const amend = frm.add_custom_button(__("Amend"), () => container_depot_amend(frm));
-			if (frm.doc.status === "Active") amend.removeClass("btn-default").addClass("btn-primary");
+			if (frm.doc.status === "Active") {
+				frm.page.set_primary_action(__("Amend"), () => container_depot_amend(frm));
+			} else {
+				frm.add_custom_button(__("Amend"), () => container_depot_amend(frm));
+			}
 		}
 	},
 	_apply_edit_lock(frm) {
@@ -198,6 +218,10 @@ frappe.ui.form.on("Depot Contract", {
 			"credit_limit", "valid_from", "valid_to", "tariff_lines", "generate_lines",
 			"company_docs", "esign_status", "signed_pdf",
 		].forEach((f) => frm.set_df_property(f, "read_only", locked ? 1 : 0));
+		// Nothing on a locked contract is editable, so there is nothing to Save — drop the
+		// button (Frappe offers it on any docstatus-0 doc otherwise). Re-armed on Draft.
+		if (locked) frm.disable_save();
+		else frm.save_disabled = false;
 		// An amendment stays with the customer of the contract it replaces (server-enforced).
 		if (frm.doc.amends_contract) frm.set_df_property("customer", "read_only", 1);
 		if (frm.fields_dict.tariff_lines) {
@@ -208,6 +232,9 @@ frappe.ui.form.on("Depot Contract", {
 	currency(frm) {
 		frm.trigger("_sync_line_currency");
 	},
+	customer(frm) {
+		frm.trigger("_apply_customer_currency");
+	},
 	base_price_list(frm) {
 		frm.trigger("_set_tariff_item_query");
 		if (!frm.doc.base_price_list) return;
@@ -215,6 +242,17 @@ frappe.ui.form.on("Depot Contract", {
 		// Price List currency). Lines are generated only on the button.
 		frappe.db.get_value("Price List", frm.doc.base_price_list, "currency").then((r) => {
 			if (r.message && r.message.currency) frm.set_value("currency", r.message.currency);
+			// ...unless the customer master pins a billing currency — that one wins.
+			frm.trigger("_apply_customer_currency");
+		});
+	},
+	_apply_customer_currency(frm) {
+		// Billing Currency (default_currency) on the Customer master, when set, is
+		// what this customer is quoted and invoiced in — carry it into Pricing.
+		if (!frm.doc.customer) return;
+		frappe.db.get_value("Customer", frm.doc.customer, "default_currency").then((r) => {
+			const currency = r.message && r.message.default_currency;
+			if (currency && currency !== frm.doc.currency) frm.set_value("currency", currency);
 		});
 	},
 	generate_lines(frm) {

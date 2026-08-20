@@ -193,6 +193,8 @@ del _dt, _ev
 scheduler_events = {
 	"daily": [
 		"container_depot.tasks.notify_customers",
+		# A contract past its valid_to stops being the live tariff on its own.
+		"container_depot.tasks.expire_lapsed_contracts",
 		# Reconcile the bell: doc_events miss raw/bulk deletes, so sweep the feed
 		# entries whose source document is cancelled or gone.
 		"container_depot.tasks.sweep_stale_notifications",

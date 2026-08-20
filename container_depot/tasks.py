@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, now_datetime, today
 
 
 SST_STALE_AFTER_MINUTES = 15
@@ -15,6 +15,29 @@ def generate_monthly_invoices() -> int:
 	from container_depot.monthly_invoicing import generate_monthly_invoices as _run
 
 	return _run()
+
+
+def expire_lapsed_contracts() -> int:
+	"""Daily: retire every Active Depot Contract whose valid_to has passed.
+
+	Expiry is a date arriving, not a decision — the form offers no "Expired" button.
+	``DepotContract.on_update`` already flips a lapsed contract on any save, but a
+	contract that nobody touches would otherwise stay Active (and keep pricing orders)
+	forever, so the same rule runs here once a day. Goes through the doc so the Price
+	List gets disabled, exactly as a manual status move would.
+	"""
+	from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
+
+	lapsed = frappe.get_all(
+		"Depot Contract",
+		filters={"status": "Active", "valid_to": ["<", today()]},
+		pluck="name",
+	)
+	for name in lapsed:
+		set_status(name, "Expired")
+	if lapsed:
+		frappe.db.commit()
+	return len(lapsed)
 
 
 def _portal_users(customer) -> list[str]:

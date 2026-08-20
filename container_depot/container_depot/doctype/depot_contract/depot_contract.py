@@ -531,10 +531,25 @@ def base_price_list_lines_for_menu(base_price_list: str, menu: str) -> list:
 	return [ln for ln in lines if ln["item"] in codes]
 
 
+# First-cell values that mark a header row rather than an item, so an imported sheet
+# keeps working whichever column title the user typed. "Item Name" is what our own
+# template ships with; the rest are what people paste from their own sheets.
+_HEADER_TOKENS = (
+	"item name",
+	"nama item",
+	"nama barang",
+	"nama",
+	"item",
+	"item code",
+	"kode",
+	"kode item",
+)
+
+
 def _parse_pasted_lines(text: str) -> list:
 	"""Parse spreadsheet paste into row dicts. One item per line; columns are tab- or
-	comma-separated: ``item [, rate [, manhour_rate [, uom]]]``. A header row whose
-	first cell is item/kode is skipped."""
+	comma-separated: ``item name [, rate [, manhour_rate [, uom]]]``. A header row is
+	skipped (see ``_HEADER_TOKENS``)."""
 	rows = []
 	for line in (text or "").splitlines():
 		line = line.strip()
@@ -544,7 +559,7 @@ def _parse_pasted_lines(text: str) -> list:
 		first = cells[0] if cells else ""
 		if not first:
 			continue
-		if first.lower() in ("item", "item code", "kode", "kode item"):
+		if first.lower() in _HEADER_TOKENS:
 			continue  # header
 		rows.append({
 			"item": first,
@@ -556,8 +571,10 @@ def _parse_pasted_lines(text: str) -> list:
 
 
 def _resolve_paste_item(token: str, base_price_list: str | None) -> str | None:
-	"""Resolve a pasted token to an Item code: exact Item name (code) first, else an
-	exact item_name match (preferring items priced in the Base Price List)."""
+	"""Resolve a pasted token to an Item code. The template asks for the Item Name, but
+	an exact Item code is accepted first (they are the same string for almost every
+	item here), then an exact item_name match, preferring items priced in the Base
+	Price List."""
 	if not token:
 		return None
 	if frappe.db.exists("Item", token):
@@ -636,18 +653,32 @@ from container_depot.xlsx_utils import new_sheet as _new_sheet
 
 @frappe.whitelist(methods=["GET"])
 def download_tariff_template():
-	"""Blank import template: the exact Item / Rate / Manhour columns the grid's
-	"Import Excel" button expects, with one illustrative row."""
-	headers = ["Item", "Rate", "Manhour"]
-	output, wb, ws, _fmts = _new_sheet("Template", headers, [46, 14, 14])
-	ws.write_row(1, 0, ["CONTOH-KODE-ITEM", 250000, 25000])
+	"""Blank import template: the exact Item Name / Rate / Manhour columns the grid's
+	"Import Excel" button expects, with one illustrative row.
+
+	The item column is the Item **Name** — the same value the "Download Item Master"
+	sheet lists — so there is only ever one thing to copy across. (The parser still
+	accepts an item code for sheets built before this, see ``_resolve_paste_item``.)
+	"""
+	headers = ["Item Name", "Rate", "Manhour"]
+	output, wb, ws, _fmts = _new_sheet("Template", headers, [56, 14, 14])
+	# Sample row uses a real item name so the expected format is unmistakable.
+	sample = (
+		frappe.db.get_value(
+			"Item", {"disabled": 0, "is_sales_item": 1}, "item_name", order_by="item_name asc"
+		)
+		or _("(copy an Item Name from the Item Master sheet)")
+	)
+	ws.write_row(1, 0, [sample, 250000, 25000])
 	_finish_sheet(output, wb, ws, "tariff_import_template.xlsx", 1, len(headers) - 1)
 
 
 @frappe.whitelist(methods=["GET"])
 def download_item_master(base_price_list: str | None = None):
-	"""Reference list of the sellable items valid for a Price List line — the codes to
-	put in the template's Item column. Mirrors the form's item picker filter
+	"""Reference list of the sellable items valid for a Price List line — the names to
+	put in the template's "Item Name" column. One item column only, deliberately: the
+	Item Name is unique here, so listing the code beside it just invites the wrong
+	column being copied. Mirrors the form's item picker filter
 	(``is_sales_item=1, disabled=0``). When a Base Price List is given, its Rate /
 	Manhour are included so the sheet doubles as a starting rate card.
 
@@ -665,8 +696,8 @@ def download_item_master(base_price_list: str | None = None):
 	for it in items:
 		grouped.setdefault(it.item_group or _("Ungrouped"), []).append(it)
 
-	headers = ["Item", "Item Name", "UoM", "Rate", "Manhour"]
-	output, wb, ws, fmts = _new_sheet("Items", headers, [46, 46, 10, 14, 14])
+	headers = ["Item Name", "UoM", "Rate", "Manhour"]
+	output, wb, ws, fmts = _new_sheet("Items", headers, [56, 10, 14, 14])
 	row = 1
 	for group in sorted(grouped):
 		# Banner spans the full width so the section reads as one band.
@@ -677,8 +708,7 @@ def download_item_master(base_price_list: str | None = None):
 		for it in grouped[group]:
 			defaults = item_price_defaults(base_price_list, it.name) if base_price_list else {}
 			ws.write_row(row, 0, [
-				it.name,
-				it.item_name,
+				it.item_name or it.name,
 				defaults.get("uom") or it.stock_uom,
 				defaults.get("rate") or "",
 				defaults.get("manhour_rate") or "",
@@ -712,7 +742,7 @@ def parse_tariff_xlsx(file_url: str, base_price_list: str | None = None) -> dict
 		token = (str(cells[0]).strip() if cells[0] is not None else "")
 		if not token:
 			continue
-		if token.lower() in ("item", "item code", "kode", "kode item"):
+		if token.lower() in _HEADER_TOKENS:
 			continue  # header
 		item = _resolve_paste_item(token, base_price_list)
 		if not item:
