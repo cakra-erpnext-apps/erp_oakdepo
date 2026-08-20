@@ -6,8 +6,9 @@ both directions a second booking submitted cleanly and the gate ended up holding
 live Booking Codes for the same tank.
 
 The guard keys off the Booking Code instead — ``Active`` means "confirmed, no bon
-yet". The two release paths (bon issued -> ``Used``; booking cancelled -> voided) must
-both stop blocking, so each has its own test.
+yet". A ``Used`` code goes on holding the tank until the tank actually MOVES: the code is
+consumed on the bon's first DRAFT save, which is paperwork, not an arrival. Cancelling the
+booking voids its codes and releases the tank outright. Each release path has its own test.
 """
 
 from __future__ import annotations
@@ -39,6 +40,14 @@ def _cleanup():
 	bookings = frappe.get_all("Container Booking", filters=by_customer, pluck="name")
 	if bookings:
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
+		# Bons first: they hang off the bookings, and a submitted one drags the arrival
+		# paperwork (gate log + auto-provisioned EIR) along with it. Raw deletes on
+		# purpose — Order Bongkar refuses ``on_trash`` by design.
+		_purge("Order Bongkar", {"booking": ("in", bookings)}, ("Container Booking Item",))
+	_purge("Gate Entry", {"container_no": ("in", CONTAINERS)})
+	_purge("Inspection", {"container": ("in", CONTAINERS)},
+		   ("Inspection Item Photo", "Inspection Damage Entry", "Inspection Damage Photo",
+		    "Inspection Seal", "Repair Estimate Item", "Inspection Photo"))
 	_purge("Container Booking", by_customer, ("Container Booking Item",))
 	# Both audit logs, not just movements: submitting a booking writes a Container
 	# Activity row too, and leaving those behind strands them on a deleted container.
@@ -131,15 +140,57 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			self._book(C_OUT, "Tank Out")
 		self.assertIn(first.name, str(cm.exception))
 
-	def test_a_consumed_code_no_longer_blocks(self):
-		"""Once the bon is issued the code goes Used and the tank is in motion, so the
-		next cycle's booking is legitimate."""
-		self._book(C_IN)
-		frappe.db.set_value(
-			"Booking Code", {"container_no": C_IN, "state": "Active"}, "state", "Used",
-			update_modified=False,
+	def _bon(self, booking, submit=False):
+		"""The Order Bongkar an operator raises off a confirmed Tank In booking.
+
+		Saving it as a draft is what consumes the Booking Code (``_reconcile_codes`` runs
+		from ``on_update``) — which is exactly the state this guard has to survive.
+		"""
+		codes = frappe.get_all("Booking Code", filters={"booking": booking.name}, pluck="name")
+		bon = frappe.get_doc({
+			"doctype": "Order Bongkar",
+			"booking": booking.name,
+			"order_status": "Issued",
+			"tanggal_bongkar": today(),
+			"principal": self.customer,
+			"containers": [{
+				"container": row.container,
+				"container_no": row.container_no,
+				"condition": row.condition,
+				"tanggal_bongkar": today(),
+				"booking_code": code,
+			} for row, code in zip(booking.items, codes)],
+		}).insert(ignore_permissions=True)
+		if submit:
+			bon.submit()
+		return bon
+
+	def test_a_draft_bon_still_blocks(self):
+		"""The code turns ``Used`` the moment the bon is SAVED, which is paperwork — the
+		tank has not arrived. Releasing the reservation there let a second Tank In booking
+		through for a tank that was still standing outside the depot."""
+		first = self._book(C_IN)
+		self._bon(first)  # draft only
+		self.assertEqual(
+			frappe.db.get_value("Booking Code", {"booking": first.name}, "state"), "Used"
 		)
-		# Booked is not PRESENT, so the presence gate stays out of the way here.
+		self.assertEqual(frappe.db.get_value("Container", C_IN, "status"), "Booked")
+
+		with self.assertRaises(frappe.ValidationError) as cm:
+			self._book(C_IN)
+		self.assertIn(first.name, str(cm.exception))
+
+	def test_a_submitted_bon_stops_blocking_once_the_tank_leaves_again(self):
+		"""...and the hold must lift once the tank really moved, or the next cycle's
+		booking could never be raised. Submitting the bon IS the arrival; the tank then
+		does its visit and gates out, and booking it back in is legitimate."""
+		first = self._book(C_IN)
+		self._bon(first, submit=True)
+		# The bon's submit brought the tank in for real.
+		self.assertEqual(frappe.db.get_value("Container", C_IN, "status"), "In_Depot")
+		# ...it finished its visit and left.
+		frappe.db.set_value("Container", C_IN, "status", "Gate_Out", update_modified=False)
+
 		self._book(C_IN)  # must not raise
 
 	def test_a_cancelled_booking_no_longer_blocks(self):

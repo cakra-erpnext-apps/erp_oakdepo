@@ -239,7 +239,14 @@ frappe.ui.form.on('Container Booking', {
 			.then(([conflicts, mismatches]) => {
 				const lines = [];
 				(conflicts || []).forEach((c) => {
-					lines.push(__('Container {0} is already on booking {1} ({2}).', [c.container_no, c.booking, c.direction || '-']));
+					// A bon that exists but has not been submitted holds the tank just as
+					// firmly, and is undone differently — say which one it is, or the
+					// operator goes looking for a bon that is already sitting there.
+					lines.push(
+						c.state === 'Used'
+							? __('Container {0} sudah dibonkan lewat booking {1} ({2}), tapi tank-nya belum bergerak — submit bon itu dulu.', [c.container_no, c.booking, c.direction || '-'])
+							: __('Container {0} is already on booking {1} ({2}).', [c.container_no, c.booking, c.direction || '-'])
+					);
 				});
 				(mismatches || []).forEach((m) => {
 					if (m.direction === 'Tank In') {
@@ -350,6 +357,9 @@ frappe.ui.form.on('Container Booking', {
 							// Scopes the Tank Out check: a tank standing in another branch's
 							// yard is reported instead of silently imported.
 							branch: frm.doc.branch || null,
+							// This form's own name, so its own rows are not reported as a
+							// clash with itself. Null on a booking that has never been saved.
+							booking: frm.is_new() ? null : frm.doc.name,
 						},
 						freeze: true,
 						freeze_message: __('Membaca file…'),

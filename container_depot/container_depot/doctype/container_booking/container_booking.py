@@ -45,7 +45,7 @@ from container_depot.container_depot.doctype.depot_contract.depot_contract impor
 	get_active_contract,
 )
 from container_depot.container_depot.container_activity import log_container_activity
-from container_depot.container_depot.container_status import GATE_OUT, assert_rows_active
+from container_depot.container_depot.container_status import GATE_OUT, PRESENT, assert_rows_active
 from container_depot.state_machine import stage_for_status
 
 
@@ -1208,9 +1208,10 @@ class ContainerBooking(Document):
 
 		A Booking Code is the right signal: it is issued at submit and consumed
 		(``Used``) the moment the container is placed on a bon, so a still-``Active`` code
-		means exactly "confirmed, no bon yet". Once the bon exists the tank is in motion
-		and the next cycle's booking is legitimate, so ``Used`` codes never block.
-		Cancelling a booking voids its codes, so a cancelled booking never blocks either.
+		means exactly "confirmed, no bon yet". A ``Used`` code keeps holding the tank until
+		the tank actually MOVES — being typed onto a draft bon is not a move (see
+		:func:`_code_still_holds`). Cancelling a booking voids its codes, so a cancelled
+		booking never blocks either.
 
 		Cross-document, unlike ``_validate_unique_containers``, which only dedups the rows
 		of THIS form.
@@ -1219,14 +1220,10 @@ class ContainerBooking(Document):
 			self.name, [(i.container, i.container_no) for i in (self.items or [])]
 		)
 		if conflicts:
-			failures = [
-				_(
-					"Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — "
-					"batalkan booking itu dulu atau terbitkan bon-nya."
-				).format(c["container_no"], c["booking"], c["direction"] or "-")
-				for c in conflicts
-			]
-			frappe.throw("<br>".join(failures), title=_("Container Sudah Dibooking"))
+			frappe.throw(
+				"<br>".join(_describe_booking_conflict(c) for c in conflicts),
+				title=_("Container Sudah Dibooking"),
+			)
 
 	def _validate_in_not_present(self):
 		"""TANK IN submit gate: a container must NOT already be physically in a depot —
@@ -2026,11 +2023,15 @@ def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
 
 	* a still-``Active`` Booking Code (issued at submit, consumed -> ``Used`` when the tank
 	  goes on a bon, voided on cancel — so ``Active`` means "confirmed, no bon yet");
+	* a ``Used`` code whose tank has not moved yet — the bon exists but is still a draft
+	  (see :func:`_code_still_holds`);
 	* a live **draft** that simply has the container on a row (see
 	  :func:`_draft_booking_holders`).
 
 	``containers``: iterable of ``(container, container_no)`` pairs (either may be None).
-	Returns ``[{container_no, booking, direction}]``, one entry per (container, booking).
+	Returns ``[{container_no, booking, direction, state}]``, one entry per (container,
+	booking); ``state`` is the code state (``Active`` / ``Used``) or ``Draft``, and is what
+	:func:`_describe_booking_conflict` words the message from.
 
 	The single source of truth for both the submit block (``_validate_no_open_booking``)
 	and the draft-time early warning (``open_booking_conflicts``), so the warning can
@@ -2041,21 +2042,76 @@ def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
 		keys = [k for k in (container, container_no) if k]
 		if not keys:
 			continue
-		rows = frappe.get_all(
-			"Booking Code",
-			filters={"state": "Active", "booking": ["!=", exclude_booking or ""]},
-			or_filters=[["container", "in", keys], ["container_no", "in", keys]],
-			fields=["booking", "direction"],
+		status = frappe.db.get_value(
+			"Container", container or {"container_no": container_no}, "status"
 		)
-		rows = list(rows) + _draft_booking_holders(exclude_booking, keys)
+		rows = [
+			r
+			for r in frappe.get_all(
+				"Booking Code",
+				filters={"state": ["in", ("Active", "Used")], "booking": ["!=", exclude_booking or ""]},
+				or_filters=[["container", "in", keys], ["container_no", "in", keys]],
+				fields=["name", "booking", "direction", "state"],
+			)
+			if r.state == "Active" or _code_still_holds(r, status)
+		]
+		rows += _draft_booking_holders(exclude_booking, keys)
 		for r in rows:
 			label = container_no or container
 			key = (label, r.booking)
 			if key in seen:
 				continue
 			seen.add(key)
-			out.append({"container_no": label, "booking": r.booking, "direction": r.direction})
+			out.append({
+				"container_no": label,
+				"booking": r.booking,
+				"direction": r.direction,
+				"state": r.get("state") or "Draft",
+			})
 	return out
+
+
+def _code_still_holds(code, status) -> bool:
+	"""Does a ``Used`` Booking Code still reserve the tank?
+
+	A code turns ``Used`` the moment the container is typed onto a bon — and that happens
+	on the bon's first DRAFT save (``_reconcile_codes`` runs from ``on_update``), long
+	before the bon is submitted and anything physically happens. Reading ``Used`` as "the
+	tank is in motion" therefore opened the reservation while the tank was still standing
+	exactly where it was, and a second booking for the same tank went through cleanly.
+
+	What counts as the move differs per direction, so each is asked the question its own
+	way rather than sharing one wrong answer:
+
+	* **Tank In** — submitting the bon IS the arrival (``_sync_container_arrival`` brings
+	  the tank In_Depot), so the bon's docstatus is the signal. The container's status
+	  cannot be used here: a Tank In booking flips its own tanks to ``Booked`` during
+	  ``validate`` (``_mark_pre_arrival``), so by the time this runs the booking has
+	  already overwritten the very fact being tested.
+	* **Tank Out** — submitting the bon does NOT move the tank; it leaves at the gate,
+	  which is what puts it outside ``PRESENT``. A Tank Out booking never touches the
+	  container's status, so reading it here is safe.
+	"""
+	if code.get("direction") == "Tank Out":
+		return status in PRESENT
+	return not _bon_submitted_for_code(code.get("name"))
+
+
+def _bon_submitted_for_code(code: str) -> bool:
+	"""Is the Booking Code sitting on a bon that has actually been submitted?
+
+	A draft bon is paperwork — it consumes the code but moves nothing. Only a submitted one
+	runs the arrival hooks.
+	"""
+	if not code:
+		return False
+	for doctype, child in _BON_CONTAINER_TABLES:
+		parents = frappe.get_all(
+			child, filters={"parenttype": doctype, "booking_code": code}, pluck="parent"
+		)
+		if parents and frappe.db.count(doctype, {"name": ["in", parents], "docstatus": 1}):
+			return True
+	return False
 
 
 @frappe.whitelist()
@@ -2069,6 +2125,27 @@ def open_booking_conflicts(booking=None, containers=None) -> list[dict]:
 	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
 	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
 	return _find_booking_conflicts(booking, pairs)
+
+
+def _describe_booking_conflict(conflict) -> str:
+	"""Why one container is not free to be booked, in terms the operator can act on.
+
+	The two holds need different instructions, so they are not said the same way: a
+	booking with no bon yet is undone by cancelling it, while a bon that already exists is
+	undone by submitting it (the tank moves and the hold lifts by itself) or by voiding it.
+	Saying "belum dibuatkan bon" over a tank that HAS one sent the operator looking for a
+	document that was already sitting there.
+	"""
+	if conflict.get("state") == "Used":
+		moved = _("keluar dari") if conflict.get("direction") == "Tank Out" else _("masuk ke")
+		return _(
+			"Container {0} sudah dibonkan lewat booking {1} ({2}), tapi tank-nya belum {3} depo — "
+			"submit bon itu dulu, atau batalkan kalau tank-nya memang tidak jadi."
+		).format(conflict["container_no"], conflict["booking"], conflict.get("direction") or "-", moved)
+	return _(
+		"Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — "
+		"batalkan booking itu dulu atau terbitkan bon-nya."
+	).format(conflict["container_no"], conflict["booking"], conflict.get("direction") or "-")
 
 
 def _describe_out_block(mismatch) -> str:
@@ -2319,6 +2396,7 @@ def parse_container_xlsx(
 	direction: str | None = None,
 	principal: str | None = None,
 	branch: str | None = None,
+	booking: str | None = None,
 ) -> dict:
 	"""Parse an uploaded .xlsx into container rows for the booking grid's "Import Excel".
 
@@ -2358,6 +2436,12 @@ def parse_container_xlsx(
 	one way into the grid that bypasses that picker, so without this a booking could be
 	filled with another principal's tanks, or with tanks that are already gone, and only
 	find out at submit — twenty rows later.
+
+	A tank already spoken for by ANOTHER booking is dropped the same way (see
+	:func:`_find_booking_conflicts`), which is why ``booking`` — this form's own name, so
+	its own rows are not read as a clash with itself — is passed in. Save refuses those
+	rows anyway; catching them here turns one wall of twenty failures at save time into
+	twenty named, skipped rows the operator can act on one at a time.
 
 	Returns ``{rows: [{container_no, condition, container, cargo, is_new}], errors: [...],
 	unknown: [...], created: [...]}``.
@@ -2418,6 +2502,12 @@ def parse_container_xlsx(
 			continue
 		if container:
 			blocked = _import_block(master, direction, principal, out_depots)
+			if not blocked:
+				clash = _find_booking_conflicts(booking, [(container, cno)])
+				if clash:
+					blocked = _("{0}: sudah terikat booking {1} — dilewati").format(
+						cno, ", ".join(dict.fromkeys(c["booking"] for c in clash))
+					)
 			if blocked:
 				seen.add(cno)
 				errors.append(blocked)

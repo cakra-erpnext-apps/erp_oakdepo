@@ -243,6 +243,13 @@ def _sync_container_arrival(order: Document):
 	  else, so without this a gated-in tank keeps a blank depot — which breaks
 	  Depot Storage zone recommendation).
 	* ``status`` -> ``Gate_In`` for a not-yet-arrived tank.
+	* ``eir_in_date`` — the arrival timestamp, when the tank does not already carry one.
+	  Submitting a bon IS the arrival for a tank that comes in this way, but the field was
+	  only ever written by ``GateEntry.on_submit`` — and the Gate Entry this bon opens is
+	  deliberately left a draft (see :func:`_record_gate_in`), so that hook never fires.
+	  The tank therefore stood ``In_Depot`` with a blank arrival date until somebody
+	  submitted its EIR-In, which is a different event on a different day. Stamped from
+	  the same ``gate_in_time`` the gate log gets, so the two can never disagree.
 
 	Saved through the ORM so ``Container.before_save`` keeps ``inventory_stage`` in
 	step (-> Incoming) and ``Container.on_update`` logs the Status Container Movement.
@@ -262,6 +269,11 @@ def _sync_container_arrival(order: Document):
 			changed = True
 		if container.status in _ARRIVAL_SOURCE_STATUS:
 			container.status = "In_Depot"
+			changed = True
+		# Never overwritten: a tank that already carries an arrival date is on a visit that
+		# started before this bon, and that earlier timestamp is the true one.
+		if not container.eir_in_date:
+			container.eir_in_date = order.get("gate_in_time") or now_datetime()
 			changed = True
 		if changed:
 			container.save(ignore_permissions=True)
