@@ -48,8 +48,16 @@
 			</div>
 		</section>
 
-		<!-- WORKLIST -->
-		<section v-else-if="!order && !submitted" class="space-y-3">
+		<!-- WORKLIST — same shape as the EIR worklist (/depot/eir): search, then Semua /
+		     Belum / Dikerjakan toggles with counts, then a capped scroller of fixed-height
+		     rows. Cleaning is triaged exactly the way EIR is, so it reads the same way; each
+		     row leads with the tank and WHOSE it is, because that is what the operator sorts
+		     the queue by. -->
+		<section v-else-if="!order && !submitted" class="oak-section space-y-3">
+			<div class="flex items-center gap-2">
+				<Icon name="droplet" :size="16" class="text-brand-500" />
+				<p class="oak-section-title">{{ labels.cleaningOrdersList }}</p>
+			</div>
 			<div class="flex gap-2">
 				<input
 					v-model="search"
@@ -60,6 +68,7 @@
 					autocomplete="off"
 					spellcheck="false"
 					enterkeyhint="search"
+					@input="onSearchInput"
 					@keyup.enter="reloadOrders"
 				/>
 				<button class="oak-btn oak-btn-secondary shrink-0 px-3" @click="reloadOrders">
@@ -67,34 +76,145 @@
 				</button>
 			</div>
 
-			<SkeletonList v-if="ordersRes.loading && !orders.length" />
-			<div v-else-if="!orders.length" class="oak-card p-6 text-center text-gray-400">
-				{{ labels.cleaningOrdersEmpty }}
-			</div>
-			<div v-for="o in orders" :key="o.name" class="oak-card flex items-center gap-3 p-4">
-				<button class="oak-press flex min-w-0 flex-1 items-center gap-3 text-left" @click="openOrder(o)">
-					<span class="oak-icon-tile h-11 w-11 shrink-0 bg-brand-50 text-brand-600">
-						<Icon name="droplet" :size="20" />
-					</span>
-					<div class="min-w-0 flex-1">
-						<p class="truncate font-bold text-gray-900">{{ o.container_no || o.container }}</p>
-						<p class="truncate text-xs text-gray-500">
-							{{ o.order_id }}<template v-if="o.service_count"> · {{ o.service_count }} {{ labels.cleaningServicesCount }}</template><template v-else-if="o.cleaning_type"> · {{ o.cleaning_type }}</template>
-							<span v-if="o.last_cargo"> · {{ o.last_cargo }}</span>
-						</p>
-						<p class="truncate text-[11px] text-gray-400">{{ labels.createdOn }} {{ fmtDate(o.order_created) }}</p>
-						<p v-if="o.target_lift_on" class="truncate text-[11px] font-semibold" :class="liftClass(o.target_lift_on)">Lift-on {{ fmtDate(o.target_lift_on) }} · {{ hMinus(o.target_lift_on) }}</p>
-					</div>
-				</button>
+			<!-- Belum / Dikerjakan split: a Pending order is "belum" until Mulai moves it to
+			     In_Progress; a completed one leaves the worklist entirely (Riwayat). -->
+			<div class="grid grid-cols-3 gap-2">
 				<button
-					v-if="o.status !== 'In_Progress'"
-					class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
-					@click.stop="startOrder(o)"
+					v-for="f in FILTERS"
+					:key="f.key"
+					class="oak-toggle flex items-center justify-center gap-1.5"
+					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
+					@click="filter = f.key"
 				>
-					{{ labels.cleaningStart }}
+					{{ f.label }}
+					<span class="oak-chip" :class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
 				</button>
-				<span v-else class="oak-chip shrink-0 bg-amber-50 text-amber-700">{{ labels.cleaningInProgress }}</span>
 			</div>
+
+			<SkeletonList v-if="ordersRes.loading && !orders.length" />
+			<p v-else-if="!visibleOrders.length" class="py-4 text-center text-sm text-gray-400">{{ emptyText }}</p>
+			<!-- The scroller reveals about 5 rows (fixed 60px each); the rest scroll, so a
+			     long queue never runs far down the page. -->
+			<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
+				<ul class="divide-y divide-gray-100">
+					<li v-for="o in visibleOrders" :key="o.name">
+						<div class="flex h-[60px] items-center gap-3">
+							<button class="oak-press flex h-full min-w-0 flex-1 items-center gap-3 text-left" @click="openOrder(o)">
+								<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
+									<Icon name="droplet" :size="16" />
+								</span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate font-semibold text-gray-900">
+										{{ o.container_no || o.container }}<span v-if="o.container_principal" class="font-normal text-gray-500"> · {{ o.container_principal }}</span>
+									</p>
+									<!-- One subtitle line: what state it is in, when it has to be out, and
+									     what it is. Ordered by urgency so the truncation eats the least
+									     important half first. -->
+									<p class="flex items-center gap-1.5 text-[11px]">
+										<span v-if="o.status === 'In_Progress'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
+											<Icon name="clock" :size="11" /> {{ labels.cleaningInProgress }}
+										</span>
+										<span v-if="o.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(o.target_lift_on)">
+											Lift-on {{ hMinus(o.target_lift_on) }}
+										</span>
+										<span class="truncate text-gray-400">
+											<template v-if="o.service_count">{{ o.service_count }} {{ labels.cleaningServicesCount }}</template>
+											<template v-else-if="o.cleaning_type">{{ o.cleaning_type }}</template>
+											<template v-if="o.last_cargo"> · {{ o.last_cargo }}</template>
+										</span>
+									</p>
+								</div>
+							</button>
+							<button
+								v-if="o.status !== 'In_Progress'"
+								class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+								@click.stop="startOrder(o)"
+							>
+								{{ labels.cleaningStart }}
+							</button>
+						</div>
+					</li>
+				</ul>
+			</div>
+			<p v-if="visibleOrders.length" class="text-center text-xs text-gray-400">
+				{{ visibleOrders.length }} {{ labels.cleaningOrdersCount }}
+			</p>
+		</section>
+
+		<!-- Sent for review (Pending Review) — the field is done, Admin Ops still has to check
+		     and Submit on the Desk. Same section the EIR screen carries, and it stays visible
+		     even when empty is false: an order sitting here is work nobody is doing. -->
+		<section v-if="!order && !submitted && (reviewRes.loading || reviewItems.length)" class="oak-section space-y-3">
+			<div class="flex items-center gap-2">
+				<Icon name="clock" :size="16" class="text-sky-500" />
+				<p class="oak-section-title">{{ labels.cleaningReviewList }}</p>
+				<span v-if="reviewItems.length" class="oak-chip bg-sky-100 text-sky-700">{{ reviewItems.length }}</span>
+			</div>
+			<ul v-if="reviewRes.loading && !reviewItems.length" class="space-y-2">
+				<li v-for="n in 2" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
+			</ul>
+			<p v-else-if="!reviewItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.cleaningReviewEmpty }}</p>
+			<ul v-else class="divide-y divide-gray-100">
+				<li v-for="r in reviewItems" :key="r.name">
+					<div class="flex items-center gap-3 py-2.5">
+						<button type="button" class="oak-press flex min-w-0 flex-1 items-center gap-3 text-left" @click="goFinished(r)">
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-semibold text-gray-900">
+									{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+								</p>
+								<p class="truncate text-[11px] text-gray-400">{{ r.order_id || r.name }}</p>
+							</div>
+							<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.cleaningStatusPendingReview }}</span>
+						</button>
+						<!-- Pulling it back is the operator's own fix — no Admin Ops needed — so it
+						     sits on the row rather than behind the detail. -->
+						<button
+							type="button"
+							class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+							:disabled="withdrawRes.loading"
+							@click.stop="withdrawReview(r)"
+						>
+							{{ labels.cleaningWithdrawReview }}
+						</button>
+					</div>
+				</li>
+			</ul>
+		</section>
+
+		<!-- Finished (Completed / Cancelled) — the last few, with the full log behind Riwayat. -->
+		<section v-if="!order && !submitted" class="oak-section space-y-3">
+			<div class="flex items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<Icon name="check-circle" :size="16" class="text-leaf-600" />
+					<p class="oak-section-title">{{ labels.cleaningCompleteList }}</p>
+				</div>
+				<router-link to="/cleaning/history" class="oak-link text-sm">{{ labels.cleaningListMore }}</router-link>
+			</div>
+			<ul v-if="doneRes.loading && !doneItems.length" class="space-y-2">
+				<li v-for="n in 3" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
+			</ul>
+			<p v-else-if="!doneItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.cleaningCompleteEmpty }}</p>
+			<ul v-else class="divide-y divide-gray-100">
+				<li v-for="r in doneItems" :key="r.name">
+					<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goFinished(r)">
+						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="droplet" :size="16" /></span>
+						<div class="min-w-0 flex-1">
+							<p class="truncate font-semibold text-gray-900">
+								{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+							</p>
+							<p class="truncate text-xs text-gray-500">
+								{{ r.order_id }}<span v-if="r.cleaning_end"> · {{ fmtDate(r.cleaning_end) }}</span>
+							</p>
+						</div>
+						<span v-if="r.revision_requested" class="oak-chip shrink-0 bg-orange-100 text-orange-800">{{ labels.cleaningStatusRevision }}</span>
+						<span class="oak-chip shrink-0" :class="r.status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-leaf-100 text-leaf-800'">
+							{{ r.status === 'Cancelled' ? labels.cleaningStatusCancelled : labels.cleaningStatusCompleted }}
+						</span>
+						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
+					</button>
+				</li>
+			</ul>
 		</section>
 
 		<!-- FORM -->
@@ -258,6 +378,7 @@
 				<Icon v-if="submitting" name="loader" :size="18" class="animate-spin" />
 				<span v-else>{{ labels.cleaningComplete }}</span>
 			</button>
+			<p class="text-center text-xs text-gray-400">{{ labels.cleaningCompleteHint }}</p>
 			</template>
 		</template>
 	</div>
@@ -342,6 +463,48 @@ const ordersRes = cachedResource({
 	onSuccess: (data) => (allOrders.value = data.items || []),
 })
 
+// How many finished orders the landing shows before "Lihat semua" takes over.
+const LANDING_LIMIT = 5
+
+// "Diajukan Review" — orders finished in the field, waiting for Admin Ops to check and
+// Submit on the Desk. Opened read-only like a finished one; withdrawable from the row.
+const reviewItems = ref([])
+const reviewRes = cachedResource({
+	url: "container_depot.ess.cleaning.cleaning_pending_review",
+	method: "GET",
+	auto: true,
+	onSuccess: (data) => (reviewItems.value = data.items || []),
+})
+
+const doneItems = ref([])
+const doneRes = cachedResource({
+	url: "container_depot.ess.cleaning.cleaning_history",
+	method: "GET",
+	makeParams: () => ({ page_length: LANDING_LIMIT }),
+	auto: true,
+	onSuccess: (data) => (doneItems.value = data.items || []),
+})
+
+// Finished (or field-done) work has no editable form to open — the Riwayat detail takes an
+// ?open= deep link and fetches the order straight from the server.
+function goFinished(r) {
+	router.push({ path: "/cleaning/history", query: { open: r.name } })
+}
+
+const withdrawRes = createResource({
+	url: "container_depot.ess.cleaning.cleaning_withdraw_review",
+	method: "POST",
+	onSuccess: () => {
+		toast.success(labels.cleaningWithdrawReviewDone)
+		reloadOrders()
+		reviewRes.reload()
+	},
+	onError: (e) => toast.error(e?.messages?.[0] || e?.message || labels.error),
+})
+function withdrawReview(r) {
+	withdrawRes.submit({ cleaning_order: r.name })
+}
+
 // An order whose sign-off is already queued is finished as far as the operator is concerned.
 // Leaving it in the list — which it will be, because the server has not heard about it yet —
 // invites them to do the whole job a second time.
@@ -351,6 +514,36 @@ function reloadOrders() {
 	const s = search.value.trim()
 	ordersRes.fetch(s ? { search: s } : {})
 }
+
+// Typing searches on its own after a beat — same feel as the EIR worklist — while Enter and
+// the button still fire it immediately.
+let searchTimer = null
+function onSearchInput() {
+	clearTimeout(searchTimer)
+	searchTimer = setTimeout(reloadOrders, 300)
+}
+
+// Worklist status filter. "Selesai" is not a choice here: a submitted cleaning leaves the
+// worklist entirely and shows under Riwayat.
+const filter = ref("all")
+const startedOrders = computed(() => orders.value.filter((o) => o.status === "In_Progress"))
+const todoOrders = computed(() => orders.value.filter((o) => o.status !== "In_Progress"))
+const visibleOrders = computed(() => {
+	if (filter.value === "started") return startedOrders.value
+	if (filter.value === "todo") return todoOrders.value
+	return orders.value
+})
+const FILTERS = computed(() => [
+	{ key: "all", label: labels.cleaningFilterAll, count: orders.value.length },
+	{ key: "todo", label: labels.cleaningFilterTodo, count: todoOrders.value.length },
+	{ key: "started", label: labels.cleaningFilterStarted, count: startedOrders.value.length },
+])
+const emptyText = computed(() => {
+	if (!orders.value.length) return labels.cleaningOrdersEmpty
+	if (filter.value === "started") return labels.cleaningFilterEmptyStarted
+	if (filter.value === "todo") return labels.cleaningFilterEmptyTodo
+	return labels.cleaningOrdersEmpty
+})
 
 
 const headerCells = computed(() => {
@@ -586,6 +779,9 @@ async function submitCleaning() {
 		order.value = null
 		if (route.query.o) router.replace({ query: {} })
 		reloadOrders()
+		// It has left the worklist for the review queue — show it there rather than making
+		// the operator wonder where their order went.
+		reviewRes.reload()
 	} catch (e) {
 		toast.error(e?.message || labels.error)
 	} finally {

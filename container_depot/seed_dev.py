@@ -29,6 +29,7 @@ you want stock issue on repair completion.
 from __future__ import annotations
 
 import frappe
+from frappe.utils import flt
 
 # --- reuse existing in-app seeders (their data already ships inside the app) -------
 from container_depot.patches.v0_12.seed_cargo import execute as _seed_cargo
@@ -87,13 +88,20 @@ CUSTOMERS = ["Stolt", "Bertschi"]
 # kontrak. Karena itu kontraknya ikut di-seed — kalau site di-reset, satu `seed_dev.run()`
 # mengembalikannya.
 #
-# Satu item per Item Group (22 grup), USD, tarif dan manhour sengaja dibuat bervariasi
-# supaya invoice tidak pernah kebetulan benar: manhour tiap baris ditotal di header invoice
-# lalu dikali "Hour", jadi baris ber-manhour 0 dan yang besar menghasilkan tagihan berbeda.
+# Satu item per Item Group (22 grup), USD, tarif dan jam sengaja dibuat bervariasi supaya
+# invoice tidak pernah kebetulan benar: JAM tiap baris ditotal di header invoice lalu dikali
+# TARIF PER JAM, jadi baris tanpa jam dan yang besar menghasilkan tagihan berbeda.
+#
+# Dua hal berbeda, dua master berbeda (lihat container_depot.pricing):
+#   * jam  -> master Item (``Item.manhour``), sama untuk semua pelanggan
+#   * tarif per jam -> rate card kontrak (``Tariff Rate.manhour_rate``), per pelanggan
 CONTRACT_CUSTOMER = "Bertschi"
 CONTRACT_CURRENCY = "USD"
+# Tarif labour Bertschi: USD 4.00 per jam, dipasang sama di semua baris rate card-nya.
+CONTRACT_MANHOUR_RATE = 4.00
 
-# (item, rate, manhour) — satu wakil per Item Group, urut seperti ITEM_GROUPS.
+# (item, rate, jam) — satu wakil per Item Group, urut seperti ITEM_GROUPS. Kolom ketiga
+# adalah JAM yang dibukukan service itu; ia di-seed ke ``Item.manhour``, bukan ke rate card.
 CONTRACT_TARIFFS = [
     # LOLO dua-duanya wajib: Lift Off menagih booking Tank In, Lift On menagih Tank Out.
     # Tanpa Lift On, booking Tank Out ber-charge 0 dan tidak bisa di-invoice sama sekali.
@@ -339,6 +347,23 @@ def _ensure_item(group, uom, name):
     }).insert(ignore_permissions=True)
 
 
+def _seed_item_manhours():
+    """Jam kerja standar tiap service di master Item (``Item.manhour``).
+
+    Jam adalah sifat SERVICE-nya (sama untuk semua pelanggan), jadi tempatnya di Item —
+    bukan di rate card, yang hanya menyimpan harga satu jam. Idempoten dan add-only: item
+    yang jam-nya sudah diisi tidak ditimpa.
+    """
+    filled = 0
+    for item, _rate, hours in CONTRACT_TARIFFS:
+        if not (hours and frappe.db.exists("Item", item)):
+            continue
+        if not flt(frappe.db.get_value("Item", item, "manhour")):
+            frappe.db.set_value("Item", item, "manhour", hours)
+            filled += 1
+    print(f"[seed_dev] Item.manhour: {filled}")
+
+
 def _ensure_menu(name, sequence, groups):
     """Create the menu, or fill in group rows it is missing.
 
@@ -381,8 +406,8 @@ def _ensure_contract():
     from frappe.utils import add_days, today
 
     lines = [
-        {"item": item, "rate": rate, "manhour_rate": manhour, "currency": CONTRACT_CURRENCY}
-        for item, rate, manhour in CONTRACT_TARIFFS
+        {"item": item, "rate": rate, "manhour_rate": CONTRACT_MANHOUR_RATE, "currency": CONTRACT_CURRENCY}
+        for item, rate, _hours in CONTRACT_TARIFFS
         if frappe.db.exists("Item", item)
     ]
 
@@ -480,6 +505,7 @@ def run():
     for _code, group, uom, name in ITEMS:
         _ensure_item(group, uom, name)
     print(f"[seed_dev] Item: {len(ITEMS)}")
+    _seed_item_manhours()
 
     for name, sequence, groups in MENUS:
         _ensure_menu(name, sequence, groups)

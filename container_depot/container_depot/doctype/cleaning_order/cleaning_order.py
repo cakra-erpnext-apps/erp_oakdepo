@@ -43,21 +43,20 @@ class CleaningOrder(Document):
 
 	def _resolve_cleaning_services(self):
 		"""Seed every chosen cleaning Service (one or more) from the contract that owns the
-		container, so the order starts on the rates negotiated with the tank owner.
+		container, so the order starts on the figures negotiated with the tank owner.
 
-		Each row carries the two things the contract states about that service, side by side
-		and NEVER merged into one number:
-		  * ``rate``         — the tariff (money), summed into ``cleaning_total``
-		  * ``manhour_rate`` — the labour hours it books, summed into ``manhour_total``
+		Each row carries the two PRICES the rate card states, side by side and never merged:
+		  * ``rate``         — the service tariff, summed into ``cleaning_total``
+		  * ``manhour_rate`` — its labour tariff, summed into ``manhour_charge_total``
 
-		The hours are not costed here on purpose: billing totals the manhours of everything
-		on the invoice and charges them once, on their own line. Adding them to the tariff
-		would mean paying for labour twice.
+		Both are taken AS THEY STAND — no hours arithmetic here. The order records what the
+		price list charges; how labour is settled on the invoice is billing's business, and
+		doubling it into the service tariff here would pay for it twice.
 
-		Both are only a BASE PRICE: they are seeded once (when the row is still at 0) and
-		never overwritten afterwards, so Admin Ops can negotiate a one-off figure on the
-		order without a later save silently resetting it back to the contract.
-		No contract / no price list leaves them at 0 for Admin Ops to fill in.
+		Both are only a BASE PRICE: seeded once (while the row still reads 0) and never
+		overwritten afterwards, so Admin Ops can negotiate a one-off figure on the order
+		without a later save silently resetting it back to the contract. No contract / no
+		price list leaves them at 0 for Admin Ops to fill in.
 		"""
 		from frappe.utils import flt
 
@@ -73,7 +72,7 @@ class CleaningOrder(Document):
 		for row in self.cleaning_services:
 			row.currency = self.currency
 			if not row.cleaning_item:
-				row.rate = 0
+				row.rate = row.manhour_rate = 0
 			else:
 				if not row.item_name:
 					row.item_name = frappe.db.get_value("Item", row.cleaning_item, "item_name")
@@ -84,7 +83,7 @@ class CleaningOrder(Document):
 			service_total += flt(row.rate)
 			manhour_total += flt(row.manhour_rate)
 		self.cleaning_total = service_total
-		self.manhour_total = manhour_total
+		self.manhour_charge_total = manhour_total
 
 	def _cleaning_method_label(self) -> str:
 		"""Human label of the chosen cleaning services (printed on the cleaning report)."""
@@ -176,6 +175,15 @@ class CleaningOrder(Document):
 		from container_depot.container_depot.container_status import recompute_availability
 
 		recompute_availability(self.container)
+		# A revision request asked for exactly this; it has been actioned, so the flag (and
+		# the "Revisi Diminta" badge it drives) comes off. The amended copy starts clean —
+		# both fields are no_copy.
+		if self.get("revision_requested"):
+			frappe.db.set_value(
+				"Cleaning Order", self.name,
+				{"revision_requested": 0, "revision_note": None},
+				update_modified=False,
+			)
 
 	def after_delete(self):
 		# A deleted draft order is work that no longer exists — the tank it was holding
@@ -290,12 +298,12 @@ def cleaning_item_query(doctype, txt, searchfield, start, page_len, filters):
 # ---------------------------------------------------------------------------
 @frappe.whitelist()
 def service_pricing(container=None, item_code=None) -> dict:
-	"""Base figures of one cleaning Service under the contract that owns the container:
-	its tariff and the labour hours the contract books for it.
+	"""Base figures of one cleaning Service under the contract that owns the container: its
+	service tariff and its labour tariff.
 
-	The Desk form calls this the moment a Service is picked so the row's Tarif and Manhour
-	(and the totals) fill in immediately instead of only after a save. Both are just a
-	starting point — the fields stay editable and the seeded value is never re-applied.
+	The Desk form calls this the moment a Service is picked so the row's Tarif and Tarif
+	Manhour (and the totals) fill in immediately instead of only after a save. Both are just a
+	starting point — the fields stay editable and a seeded value is never re-applied.
 	Read-only lookup.
 	"""
 	from container_depot import pricing
@@ -307,6 +315,7 @@ def service_pricing(container=None, item_code=None) -> dict:
 	)
 	return {
 		"rate": base_rate_for(item_code, price_list),
+		# Tarif labour dari rate card pemilik tank — dipakai apa adanya di order ini.
 		"manhour_rate": pricing.manhour_for(item_code, price_list),
 		"currency": currency,
 		"item_name": frappe.db.get_value("Item", item_code, "item_name") if item_code else None,

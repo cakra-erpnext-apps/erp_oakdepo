@@ -538,9 +538,15 @@ class Smoke:
 			lambda: ess_cleaning.cleaning_order_detail(self.cleaning_order))
 		self.step("Cleaning · mulai kerjakan (PWA)",
 			lambda: ess_cleaning.cleaning_start(self.cleaning_order))
-		self.step("Cleaning · sign-off + submit (PWA)",
+		# "Selesai" di PWA menyerahkan order ke Admin Ops — belum menyelesaikannya.
+		self.step("Cleaning · sign-off + kirim untuk review (PWA)",
 			lambda: ess_cleaning.cleaning_order_save(
 				cleaning_order=self.cleaning_order, remarks="smoke: cleaning selesai", submit=1))
+		self.check("Cleaning Order · masuk antrean review Admin Ops (Pending Review)",
+			frappe.db.get_value("Cleaning Order", self.cleaning_order, "status") == "Pending Review")
+		# Admin Ops memeriksa lalu Submit di Desk — itulah yang menyelesaikan order.
+		self.step("Cleaning · review + submit (Desk)",
+			lambda: frappe.get_doc("Cleaning Order", self.cleaning_order).submit())
 		return self.check("Cleaning Order · Completed + tersubmit",
 			frappe.db.get_value("Cleaning Order", self.cleaning_order, "status") == "Completed"
 			and frappe.db.get_value("Cleaning Order", self.cleaning_order, "docstatus") == 1)
@@ -560,6 +566,7 @@ class Smoke:
 		doc.append("cleaning_services", {
 			"cleaning_item": item,
 			"rate": price.get("rate") or 0,
+			# Tarif labour dari rate card, dipakai apa adanya.
 			"manhour_rate": price.get("manhour_rate") or 0,
 			"currency": price.get("currency"),
 		})

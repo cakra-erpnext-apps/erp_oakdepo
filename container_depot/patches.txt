@@ -91,3 +91,4 @@ container_depot.patches.v0_62.drop_container_work_status
 container_depot.patches.v0_63.split_damage_photos
 container_depot.patches.v0_64.booking_list_columns
 container_depot.patches.v0_64.clear_echoed_damage_description
+container_depot.patches.v0_65.cleaning_manhour_is_raw_again

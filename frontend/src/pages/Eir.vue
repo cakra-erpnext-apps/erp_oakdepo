@@ -115,6 +115,23 @@
 					</button>
 				</div>
 
+				<!-- Masuk / Keluar split, on top of the row above: the two directions are
+				     different jobs (tank arriving vs leaving) and are often worked in
+				     batches. Each row's counts are for the list the OTHER row has already
+				     narrowed, so the two read together. -->
+				<div class="grid grid-cols-3 gap-2">
+					<button
+						v-for="f in DIR_FILTERS"
+						:key="f.key"
+						class="oak-toggle flex items-center justify-center gap-1.5"
+						:class="dirFilter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
+						@click="dirFilter = f.key"
+					>
+						{{ f.label }}
+						<span class="oak-chip" :class="dirFilter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
+					</button>
+				</div>
+
 				<ul v-if="loadingPending && !pendingItems.length" class="space-y-2">
 					<li v-for="n in 4" :key="n" class="oak-skeleton h-14 rounded-xl"></li>
 				</ul>
@@ -370,23 +387,46 @@ const pendingItems = computed(() => {
 	return all
 })
 
-// Worklist status filter. "Selesai" is not a choice here: a submitted EIR leaves the
-// pending queue entirely and shows in its own section below.
+// Worklist filters, two independent dimensions: how far along an EIR is (Belum /
+// Dikerjakan) and which direction it is (Masuk / Keluar). "Selesai" is not a choice on
+// either: a submitted EIR leaves the pending queue entirely and shows in its own section
+// below.
 const filter = ref("all")
-const startedItems = computed(() => pendingItems.value.filter((r) => r.work_started_on))
-const notStartedItems = computed(() => pendingItems.value.filter((r) => !r.work_started_on))
-const visibleItems = computed(() => {
-	if (filter.value === "started") return startedItems.value
-	if (filter.value === "todo") return notStartedItems.value
-	return pendingItems.value
+const dirFilter = ref("all")
+const byStatus = (list) =>
+	filter.value === "started"
+		? list.filter((r) => r.work_started_on)
+		: filter.value === "todo"
+			? list.filter((r) => !r.work_started_on)
+			: list
+const byDir = (list) =>
+	dirFilter.value === "all" ? list : list.filter((r) => r._type === dirFilter.value)
+
+// Each row counts the list the OTHER row has already narrowed, so the numbers always add
+// up to what tapping that button would actually show.
+const dirScoped = computed(() => byDir(pendingItems.value))
+const statusScoped = computed(() => byStatus(pendingItems.value))
+const visibleItems = computed(() => byStatus(dirScoped.value))
+const FILTERS = computed(() => {
+	const list = dirScoped.value
+	return [
+		{ key: "all", label: labels.eirFilterAll, count: list.length },
+		{ key: "todo", label: labels.eirFilterNotStarted, count: list.filter((r) => !r.work_started_on).length },
+		{ key: "started", label: labels.eirFilterStarted, count: list.filter((r) => r.work_started_on).length },
+	]
 })
-const FILTERS = computed(() => [
-	{ key: "all", label: labels.eirFilterAll, count: pendingItems.value.length },
-	{ key: "todo", label: labels.eirFilterNotStarted, count: notStartedItems.value.length },
-	{ key: "started", label: labels.eirFilterStarted, count: startedItems.value.length },
-])
+const DIR_FILTERS = computed(() => {
+	const list = statusScoped.value
+	return [
+		{ key: "all", label: labels.eirFilterAll, count: list.length },
+		{ key: "EIR-In", label: labels.eirBadgeIn, count: list.filter((r) => r._type === "EIR-In").length },
+		{ key: "EIR-Out", label: labels.eirBadgeOut, count: list.filter((r) => r._type === "EIR-Out").length },
+	]
+})
 const emptyText = computed(() => {
 	if (!pendingItems.value.length) return labels.eirPendingEmpty
+	if (dirFilter.value === "EIR-In" && !dirScoped.value.length) return labels.eirFilterEmptyIn
+	if (dirFilter.value === "EIR-Out" && !dirScoped.value.length) return labels.eirFilterEmptyOut
 	if (filter.value === "started") return labels.eirFilterEmptyStarted
 	if (filter.value === "todo") return labels.eirFilterEmptyNotStarted
 	return labels.eirPendingEmpty

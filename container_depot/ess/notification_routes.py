@@ -92,7 +92,9 @@ def _cleaning(doctype, name):
 	st = _state("Cleaning Order", name, ["docstatus", "status"])
 	if not st:
 		return None
-	if st.docstatus == 1 or st.status in ("Completed", "Cancelled"):
+	# "Pending Review" is field-done: the worklist no longer carries it and the form refuses
+	# a save, so the reviewer is sent to the read-only detail — same rule as the EIR route.
+	if st.docstatus == 1 or st.status in ("Completed", "Cancelled", "Pending Review"):
 		return f"/cleaning/history?open={name}"
 	return f"/cleaning?o={name}"
 
@@ -162,6 +164,7 @@ def _none(doctype, name):
 _BY_EVENT = {
 	"eir_submitted": _eir,
 	"eir_pending_review": _eir,
+	"cleaning_pending_review": _cleaning,
 	"cleaning_order_created": _cleaning,
 	"repair_order_created": _repair,
 	"repair_order_service_setup": _repair,

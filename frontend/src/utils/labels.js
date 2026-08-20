@@ -433,6 +433,12 @@ export const labels = {
 	cleaningStatusCompleted: "Selesai",
 	cleaningStatusCancelled: "Batal",
 	cleaningDateIssue: "Tgl. Terbit",
+	cleaningPlaceIssue: "Tempat Terbit",
+	cleaningSignedBy: "Ditandatangani",
+	cleaningWorkedBy: "Dikerjakan Oleh",
+	cleaningStartAt: "Mulai Cuci",
+	cleaningEndAt: "Selesai Cuci",
+	cleaningRemarks: "Catatan",
 
 	// M&R history
 	mrHistoryTitle: "Riwayat M&R",
@@ -508,7 +514,7 @@ export const labels = {
 	eirCompleteEmpty: "Belum ada EIR selesai.", // No completed EIRs yet
 	eirResume: "Lanjutkan", // Resume (open a draft)
 	// Pending EIR worklist (auto-created per container when an Order Bongkar is submitted)
-	eirPendingList: "EIR Menunggu Pemeriksaan", // EIRs awaiting inspection
+	eirPendingList: "Eir List", // EIRs awaiting inspection
 	eirPendingEmpty: "Belum ada EIR menunggu. EIR otomatis dibuat saat Order Bongkar di-submit.", // none pending
 	eirPendingSearch: "Cari no. container / voucher…", // search container no / voucher
 	// Worklist status split — a draft EIR is "belum" until Mulai stamps work_started_on,
@@ -519,6 +525,8 @@ export const labels = {
 	eirChipStarted: "Dikerjakan", // row badge for an in-progress EIR
 	eirFilterEmptyStarted: "Belum ada EIR yang sedang dikerjakan.", // no in-progress EIRs
 	eirFilterEmptyNotStarted: "Semua EIR sudah mulai dikerjakan. 🎉", // nothing left unstarted
+	eirFilterEmptyIn: "Tidak ada EIR masuk di daftar ini.", // no EIR-In under the current filter
+	eirFilterEmptyOut: "Tidak ada EIR keluar di daftar ini.", // no EIR-Out under the current filter
 	eirOpenBtn: "Buka", // Open (a pending EIR)
 	eirBackToList: "Daftar EIR", // Back to the EIR worklist
 	eirVoucherLocked: "Otomatis dari Order Bongkar saat bon dibuat.", // voucher fixed at creation
@@ -545,11 +553,34 @@ export const labels = {
 	cleaningStartFirst: "Mulai cleaning dulu sebelum bisa diselesaikan.", // gate hint
 	cleaningStartGate: "Order ini belum dimulai. Mulai dulu untuk mengisi detail cleaning.", // detail-access gate
 	cleaningSave: "Simpan", // save draft
-	cleaningComplete: "Selesaikan (Submit)", // complete/submit
+	cleaningComplete: "Kirim untuk Review", // field sign-off -> Admin Ops review (NOT the finish)
+	cleaningCompleteHint: "Admin Ops memeriksa dulu sebelum order benar-benar selesai.",
 	cleaningSaved: "Tersimpan", // saved toast
 	navCleaning: "Cleaning", // bottom-nav label
 	cleaningOrdersSearch: "Cari no. container / order…",
 	cleaningOrdersEmpty: "Tidak ada cleaning order terbuka.",
+	cleaningOrdersList: "Cleaning Order List", // worklist section title
+	cleaningOrdersCount: "menunggu", // worklist count suffix
+	cleaningFilterAll: "Semua", // All
+	cleaningFilterTodo: "Belum", // not started yet (status Pending)
+	cleaningFilterStarted: "Dikerjakan", // started (status In_Progress)
+	cleaningFilterEmptyTodo: "Semua cleaning sudah mulai dikerjakan. 🎉", // nothing left unstarted
+	cleaningFilterEmptyStarted: "Belum ada cleaning yang sedang dikerjakan.", // none in progress
+	// --- review queue + finished list on the cleaning landing (mirrors the EIR screen) ---
+	cleaningReviewList: "Diajukan Review", // sent for Admin Ops review (Pending Review)
+	cleaningReviewEmpty: "Tidak ada cleaning menunggu review.", // none awaiting review
+	cleaningStatusPendingReview: "Menunggu Review", // Pending Review chip
+	cleaningStatusRevision: "Revisi Diminta", // completed order with a pending revision request
+	cleaningCompleteList: "Cleaning Selesai", // completed orders
+	cleaningCompleteEmpty: "Belum ada cleaning selesai.", // none completed yet
+	cleaningListMore: "Lihat semua", // see all (-> Riwayat)
+	cleaningWithdrawReview: "Tarik & Perbaiki", // withdraw from review + edit
+	cleaningWithdrawReviewDone: "Order ditarik — silakan perbaiki lalu kirim ulang", // done toast
+	cleaningReqRevision: "Ajukan Revisi ke Admin Ops", // request revision
+	cleaningReqRevisionHint: "Minta Admin Ops membuka order ini agar bisa diperbaiki.",
+	cleaningReqRevisionReason: "Alasan revisi (opsional)",
+	cleaningReqRevisionSend: "Kirim Permintaan",
+	cleaningReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops",
 	createdOn: "Dibuat", // worklist row: created-on date prefix
 	cleaningOrder: "Cleaning Order",
 	cleaningType: "Metode Cleaning", // cleaning method (now one or more billable service items)
@@ -586,7 +617,7 @@ export const labels = {
 	cleaningSignature: "Tanda Tangan Surveyor", // surveyor signature
 	cleaningResign: "Tanda tangan ulang", // re-sign
 	cleaningUploading: "Mengunggah…", // uploading
-	cleaningSubmitted: "Cleaning order selesai & sertifikat terbit", // completed toast
+	cleaningSubmitted: "Cleaning dikirim untuk review Admin Ops", // sent-for-review toast
 	cleaningPrint: "Cetak / Unduh PDF", // print / download
 	cleaningTankType: "Tipe Tank",
 	cleaningClient: "Client / Prinsipal",

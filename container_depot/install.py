@@ -405,7 +405,7 @@ CUSTOM_FIELDS = {
 		# Invoice Item field below). The hours are NOT priced into the line — they are
 		# totalled here and charged once, so the invoice reads:
 		#
-		#     Total Price + (Total Manhour × Hour) -> tax -> Grand Total
+		#     Total Price + (Total Jam × Tarif per Jam) -> tax -> Grand Total
 		#
 		# These live in the standard Totals block, right under Total / Net Total, so labour
 		# is read side by side with the price it accompanies instead of in a section of its
@@ -417,16 +417,20 @@ CUSTOM_FIELDS = {
 			"precision": "2",
 			"insert_after": "net_total",
 			"read_only": 1,
-			"description": "Jumlah manhour semua item (tidak dikali qty). Di luar Total.",
+			"description": "Jumlah JAM semua item (tidak dikali qty). Di luar Total.",
 		},
 		{
 			"fieldname": "manhour_hour",
-			"label": "Hour (pengali)",
-			"fieldtype": "Float",
-			"precision": "2",
-			"default": "4",
+			"label": "Tarif per Jam",
+			"fieldtype": "Currency",
+			"options": "currency",
+			# NO default: the tariff is the customer's own (seeded from their rate card by
+			# invoicing.apply_manhour_charge). A hardcoded default would quietly bill every
+			# customer the same hourly rate — and, because the seed only fills a BLANK field,
+			# would stop the real rate from ever landing.
+			"default": "",
 			"insert_after": "total_manhour",
-			"description": "Bisa diubah per invoice.",
+			"description": "Tarif labour per jam, dari rate card pelanggan. Bisa diubah per invoice.",
 		},
 		{
 			"fieldname": "manhour_amount",
@@ -436,7 +440,7 @@ CUSTOM_FIELDS = {
 			"insert_after": "manhour_hour",
 			"read_only": 1,
 			"bold": 1,
-			"description": "Total Manhour × Hour — masuk ke Grand Total.",
+			"description": "Total Manhour × Tarif per Jam — masuk ke Grand Total.",
 		},
 	],
 	# The manhour the contract books for this service. Shown in the items grid beside the
@@ -1916,6 +1920,8 @@ NOTIFICATION_RULES = [
 	("eir_submitted", "EIR disubmit", "Sebuah EIR (In/Out) disubmit — tank selesai diperiksa.",
 		["Team EIR", "Team Cleaning", "Team Repair", "SPV Lapangan", "Admin Ops"]),
 	("eir_pending_review", "EIR menunggu review", "Operator lapangan mengirim EIR untuk direview Admin Ops.",
+		["Admin Ops", "SPV Lapangan"]),
+	("cleaning_pending_review", "Cleaning menunggu review", "Operator cuci selesai di PWA dan mengirim order untuk direview Admin Ops.",
 		["Admin Ops", "SPV Lapangan"]),
 	("cleaning_order_created", "Cleaning Order dibuat", "Cleaning Order otomatis dibuat dari EIR Empty-Dirty.",
 		["Team Cleaning", "SPV Lapangan", "Admin Ops"]),

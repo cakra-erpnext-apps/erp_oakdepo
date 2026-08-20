@@ -106,6 +106,7 @@ def _resolve_tax_template(title_or_name, company):
 def create_draft_sales_invoice(
 	customer, lines, due_days=30, posting_date=None, remarks=None, taxes_and_charges=None,
 	currency=None, selling_price_list=None, branch=None, conversion_rate=None, manhour=True,
+	manhour_hour=None,
 ):
 	"""Create (and return the name of) a Draft Sales Invoice.
 
@@ -116,7 +117,11 @@ def create_draft_sales_invoice(
 	Every depot invoice is raised through here, so this is also where labour starts: each
 	line is stamped with the manhour its contract books for that service (never priced into
 	the line), which :func:`apply_manhour_charge` totals and charges once in the header.
-	Pass ``manhour=False`` for an invoice that must not carry it.
+	Pass ``manhour=False`` for an invoice that must not carry it. ``manhour_hour`` overrides the
+	hourly tariff the header would otherwise seed from the customer's rate card — used when the
+	swept work orders all agreed on a negotiated rate of their own (see
+	``consolidated_billing``); :func:`apply_manhour_charge` only seeds a BLANK one, so a value
+	set here survives.
 
 	``currency`` / ``selling_price_list`` make the invoice follow the booking's chosen
 	rate card — the price-list currency (USD / IDR) is used as-is with conversion_rate 1
@@ -180,6 +185,11 @@ def create_draft_sales_invoice(
 			"income_account": income_account,
 		})
 
+	# A negotiated hourly tariff off the orders being billed. Set before insert so
+	# apply_manhour_charge (which seeds only when blank) leaves it alone.
+	if manhour and manhour_hour:
+		si.manhour_hour = flt(manhour_hour)
+
 	tmpl = _resolve_tax_template(taxes_and_charges, company)
 	if tmpl:
 		si.taxes_and_charges = tmpl
@@ -209,23 +219,25 @@ def create_draft_sales_invoice(
 # A service's tariff and the labour it takes are two different things, and the invoice
 # keeps them apart to the very end:
 #
-#     Total = Total Price + (Total Manhour × Hour)
+#     Total = Total Price + (Total Jam × Tarif per Jam)
 #
-# Every line shows the manhour its contract books (``Sales Invoice Item.manhour``); the
-# hours never touch that line's own amount. Here they are totalled into the header and
-# charged ONCE, as an *Actual* Sales Taxes and Charges row — the native way to fold a flat
-# amount into ERPNext's grand total while keeping it out of the items' Sub Total.
+# Every line shows the HOURS its service books (``Sales Invoice Item.manhour``, from
+# ``Item.manhour``); the hours never touch that line's own amount. Here they are totalled
+# into the header, met by the customer's labour TARIFF, and charged ONCE as an *Actual*
+# Sales Taxes and Charges row — the native way to fold a flat amount into ERPNext's grand
+# total while keeping it out of the items' Sub Total.
 #
-# ``Hour`` (the multiplier) seeds from the contract default and stays editable: change it
-# and everything below recomputes on save.
+# ``Tarif per Jam`` seeds from the customer's own rate card (``Item Price.manhour_rate``,
+# published by their contract) and stays editable: change it and everything below
+# recomputes on save.
 # --------------------------------------------------------------------------- #
 def apply_manhour_charge(doc, method=None):
-	"""validate hook: total the lines' manhours and charge them as one amount.
+	"""validate hook: total the lines' hours and charge them as one amount.
 
-	Manhour does NOT scale with qty — that is what makes it different from the rate. A rate
-	is per unit and is multiplied by the line's qty; a manhour is the labour the line books,
-	full stop. The lines' manhours are summed as they stand and the sum is multiplied by
-	``Hour`` — once, at the end.
+	Labour does NOT scale with qty — that is what makes it different from the rate. A rate
+	is per unit and is multiplied by the line's qty; the hours are the labour the line books,
+	full stop. The lines' hours are summed as they stand and the sum is multiplied by the
+	customer's ``Tarif per Jam`` — once, at the end.
 
 	No-op on an invoice whose lines book no labour, so ordinary ERPNext invoices — and any
 	depot invoice raised with ``manhour=False`` — are left exactly as they were.
@@ -233,10 +245,11 @@ def apply_manhour_charge(doc, method=None):
 	hours = sum(flt(row.get("manhour")) for row in (doc.items or []))
 	doc.total_manhour = hours
 	if hours and doc.is_new() and not flt(doc.get("manhour_hour")):
-		# Seed the multiplier ONCE, as the invoice is raised. Doing it on every save would
-		# make ``Hour = 0`` — the way to say "no labour on this one" — impossible to keep:
-		# it would be overwritten back to the default before the charge is computed.
-		doc.manhour_hour = pricing.DEFAULT_MANHOUR_HOUR
+		# Seed the tariff ONCE, as the invoice is raised, from the customer's own rate card.
+		# Doing it on every save would make ``Tarif per Jam = 0`` — the way to say "no labour
+		# on this one" — impossible to keep: it would be overwritten back before the charge
+		# is computed.
+		doc.manhour_hour = pricing.manhour_rate_for(doc.customer) or pricing.DEFAULT_MANHOUR_HOUR
 	repaired = False
 	deleted_idx = _deleted_charge_row_idx(doc) if hours and flt(doc.get("manhour_hour")) else 0
 	if deleted_idx:

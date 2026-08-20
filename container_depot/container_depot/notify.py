@@ -316,6 +316,24 @@ def notify_eir_pending_review(inspection):
 	)
 
 
+def notify_cleaning_pending_review(cleaning_order):
+	"""Fire when the cleaning team finishes in the PWA and sends the order for review
+	(Pending Review, still a draft).
+
+	Tells Admin Ops (+ ops oversight) that a wash is done and waiting for their check and
+	final Desk Submit — the crew notification only comes later, when that Submit lands."""
+	who = frappe.session.user
+	cno = cleaning_order.container_no or cleaning_order.container
+	subject = f"Cleaning • {cno} — menunggu review Admin Ops (oleh {who})"
+	notify(
+		doctype="Cleaning Order",
+		name=cleaning_order.name,
+		subject=subject,
+		branch=_depot_branch(cleaning_order.get("depot")),
+		event_key="cleaning_pending_review",
+	)
+
+
 def notify_cleaning_order_created(cleaning_order):
 	"""Fire when a Cleaning Order is auto-created from an Empty-Dirty EIR — tells the
 	cleaning team a tank is queued for cleaning so they can pick it up."""

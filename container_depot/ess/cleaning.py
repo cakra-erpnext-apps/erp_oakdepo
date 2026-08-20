@@ -36,10 +36,38 @@ def cleaning_history(start=0, page_length=10, search=None):
 
 
 @frappe.whitelist(methods=["GET"])
+def cleaning_pending_review(start=0, page_length=20, search=None):
+	"""GET /api/v1/ess/cleaning-pending-review — orders finished in the field and waiting for
+	Admin Ops to review + Submit on the Desk. Branch-scoped like the worklist."""
+	require_menu("cleaning")
+	return cleaning.list_review_cleaning_orders(start=start, page_length=page_length, search=search)
+
+
+@frappe.whitelist(methods=["GET"])
 def cleaning_order_detail(cleaning_order=None):
 	"""GET /api/v1/ess/cleaning-order-detail — one order's cleanliness state + tank spec."""
 	require_menu("cleaning")
 	return cleaning.get_cleaning_order_detail(cleaning_order)
+
+
+@frappe.whitelist(methods=["POST"])
+def cleaning_withdraw_review(cleaning_order=None, request_id=None):
+	"""POST /api/v1/ess/cleaning-withdraw-review — pull a "Pending Review" order back to
+	In_Progress so the operator can fix it before Admin Ops finalizes."""
+	require_menu("cleaning")
+	return guarded(request_id, lambda: cleaning.withdraw_review(cleaning_order))
+
+
+@frappe.whitelist(methods=["POST"])
+def cleaning_request_revision(cleaning_order=None, reason=None, request_id=None):
+	"""POST /api/v1/ess/cleaning-request-revision — ask Admin Ops to reopen a submitted order.
+
+	Mutating (notifies + drops an audit comment + flags the order), hence POST. Does not edit
+	the cleaning work itself.
+
+	``request_id`` stops a replay sending Admin Ops the same request twice."""
+	require_menu("cleaning")
+	return guarded(request_id, lambda: cleaning.request_revision(cleaning_order=cleaning_order, reason=reason))
 
 
 @frappe.whitelist(methods=["POST"])

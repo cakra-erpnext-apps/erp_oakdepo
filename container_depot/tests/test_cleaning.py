@@ -1,5 +1,5 @@
 """Cleaning Order flow (container_depot.cleaning): the order carries the chosen services
-(tariff + manhour), the remarks and the surveyor's signature.
+(tariff + labour), the remarks and the surveyor's signature.
 
 Flow: order (Pending) -> start_cleaning (In_Progress) -> save_cleaning_order(submit) ->
 Completed, which parks the tank in the Cleaning Bay. The submitted Completed order is
@@ -25,6 +25,7 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self._containers = []
 		self._orders = []
 		self._cargos = []
+		self._items = []
 
 	def tearDown(self):
 		for o in self._orders:
@@ -36,6 +37,9 @@ class TestCleaningOrderFlow(FrappeTestCase):
 			frappe.db.delete("Container", {"name": c})
 		for cargo in self._cargos:
 			frappe.db.delete("Cargo", {"name": cargo})
+		for item in self._items:
+			frappe.db.delete("Item Price", {"item_code": item})
+			frappe.db.delete("Item", {"name": item})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -64,6 +68,39 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		}).insert(ignore_permissions=True)
 		self._orders.append(co.name)
 		return co.name
+
+	# --- what a chosen service is priced at -----------------------------------
+	def test_service_row_carries_both_tariffs_from_the_price_list(self):
+		"""A cleaning line carries the two prices the rate card states — the service tariff and
+		its labour tariff — each as it stands. Neither is multiplied by anything here, and
+		neither is folded into the other: billing settles labour on its own invoice line."""
+		from frappe.utils import flt
+
+		item, price_list = "CLEAN-MHR-TEST", "Standard Selling"
+		tariff, labour = 200.0, 50.0
+		if not frappe.db.exists("Item", item):
+			frappe.get_doc({
+				"doctype": "Item", "item_code": item, "item_name": "Cleaning Manhour Test",
+				"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups",
+				"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+			}).insert(ignore_permissions=True)
+		self._items.append(item)
+		frappe.get_doc({
+			"doctype": "Item Price", "item_code": item, "price_list": price_list,
+			"selling": 1, "price_list_rate": tariff, "manhour_rate": labour,
+		}).insert(ignore_permissions=True)
+
+		cno = self._container("MHRCLEAN001")
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": cno, "status": "Service Setup",
+			"cleaning_services": [{"cleaning_item": item}],
+		}).insert(ignore_permissions=True)
+		self._orders.append(co.name)
+		row = co.cleaning_services[0]
+		self.assertAlmostEqual(flt(row.rate), tariff, msg="tarif service dari price list")
+		self.assertAlmostEqual(flt(row.manhour_rate), labour, msg="tarif manhour dari price list")
+		self.assertAlmostEqual(flt(co.cleaning_total), tariff)
+		self.assertAlmostEqual(flt(co.manhour_charge_total), labour, msg="apa adanya, tanpa dikali")
 
 	# --- masters / detail -----------------------------------------------------
 	def test_detail_remarks_start_blank(self):
@@ -134,15 +171,62 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "status"), "In_Progress")
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
-	def test_submit_without_start_completes_and_stamps_it(self):
-		# Submit IS the finish action (there is no separate "selesaikan" button any more).
-		# An order that never went through the operator route — work done off-system —
-		# completes and has its missing cleaning_start stamped, not refused.
+	def test_start_stamps_the_operator_who_pressed_mulai(self):
+		"""Assigned To records who is doing the work — the PWA account that started it, not
+		whoever raised the order in Desk."""
+		c = self._container("CLNSTART002", status="In_Depot")
+		co = self._order(c)
+		self.assertFalse(frappe.db.get_value("Cleaning Order", co, "assigned_to"))
+		cleaning.start_cleaning(co)
+		self.assertEqual(
+			frappe.db.get_value("Cleaning Order", co, "assigned_to"), frappe.session.user
+		)
+
+	def test_field_submit_sends_for_review_instead_of_finishing(self):
+		"""The PWA's "selesai" hands the order to Admin Ops — it does not finalize it.
+
+		Until the Desk Submit lands the order is still open, so the tank stays In_Depot."""
 		c = self._container("CLNNOST0001", status="In_Depot")
 		co = self._order(c)
 		res = cleaning.save_cleaning_order(cleaning_order=co, submit=True)
-		self.assertEqual(res["docstatus"], 1)
-		self.assertEqual(res["status"], "Completed")
+		self.assertEqual(res["docstatus"], 0)
+		self.assertEqual(res["status"], "Pending Review")
+		self.assertTrue(res["pending_review"])
+		# Who did the work, and when it ended, are recorded now — the reviewer's Submit
+		# must not claim them.
+		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "completed_by"), frappe.session.user)
+		self.assertTrue(frappe.db.get_value("Cleaning Order", co, "cleaning_end"))
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
+
+	def test_review_queue_lists_what_is_waiting_for_admin_ops(self):
+		c = self._container("CLNREVQ0001", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		names = {i["name"] for i in cleaning.list_review_cleaning_orders(page_length=500)["items"]}
+		self.assertIn(co, names)
+		# ...and it has left the operator worklist.
+		open_names = {i["name"] for i in cleaning.list_open_cleaning_orders(page_length=500)["items"]}
+		self.assertNotIn(co, open_names)
+
+	def test_withdraw_review_returns_the_order_to_the_operator(self):
+		c = self._container("CLNWDRW0001", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.start_cleaning(co)
+		cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		cleaning.withdraw_review(co)
+		row = frappe.db.get_value("Cleaning Order", co, ["status", "cleaning_end"], as_dict=True)
+		self.assertEqual(row.status, "In_Progress")
+		self.assertFalse(row.cleaning_end, "the finish time is re-taken on the next send")
+
+	def test_admin_ops_submit_completes_and_stamps_a_missing_start(self):
+		# Submit (Desk, Admin Ops) IS the finish action. An order that never went through the
+		# operator route — work done off-system — completes and has its missing cleaning_start
+		# stamped, not refused.
+		c = self._container("CLNNOST0002", status="In_Depot")
+		co = self._order(c)
+		doc = frappe.get_doc("Cleaning Order", co)
+		doc.submit()
+		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "status"), "Completed")
 		self.assertTrue(frappe.db.get_value("Cleaning Order", co, "cleaning_start"))
 
 	def test_start_then_submit_completes(self):
@@ -153,8 +237,9 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		res = cleaning.save_cleaning_order(
 			cleaning_order=co, cleaning_type="Steam Wash", remarks="bersih", submit=True,
 		)
-		self.assertEqual(res["docstatus"], 1)
-		self.assertEqual(res["status"], "Completed")
+		self.assertEqual(res["status"], "Pending Review")
+		# Admin Ops reviews on the Desk; THAT submit is what completes the order.
+		frappe.get_doc("Cleaning Order", co).submit()
 
 		cont = frappe.db.get_value("Container", c, ["status"], as_dict=True)
 		self.assertEqual(cont.status, "Available")
@@ -163,6 +248,40 @@ class TestCleaningOrderFlow(FrappeTestCase):
 			"Cleaning Order", {"container": c, "status": "Completed", "docstatus": 1}
 		))
 		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "remarks"), "bersih")
+
+	def test_revert_to_draft_reopens_a_completed_order(self):
+		"""Admin Ops acting on a revision request: the SAME order goes back to In_Progress —
+		editable, back in the PWA worklist — and the tank is held again."""
+		c = self._container("CLNRVRT0001", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.start_cleaning(co)
+		cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		frappe.get_doc("Cleaning Order", co).submit()
+		cleaning.request_revision(co, reason="foto QC kurang")
+		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "revision_requested"), 1)
+
+		cleaning.revert_to_draft(co)
+		row = frappe.db.get_value(
+			"Cleaning Order", co,
+			["docstatus", "status", "cleaning_end", "revision_requested"], as_dict=True,
+		)
+		self.assertEqual(row.docstatus, 0)
+		self.assertEqual(row.status, "In_Progress")
+		self.assertFalse(row.cleaning_end, "the finish time is re-taken on the next sign-off")
+		self.assertFalse(row.revision_requested, "the request has been actioned")
+		# Open work again -> the tank is not free to leave.
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
+
+	def test_revert_refuses_an_order_that_is_already_invoiced(self):
+		c = self._container("CLNRVRT0002", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.start_cleaning(co)
+		cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		frappe.get_doc("Cleaning Order", co).submit()
+		frappe.db.set_value("Cleaning Order", co, "sales_invoice", "ACC-SINV-TEST-0001")
+		with self.assertRaises(frappe.ValidationError):
+			cleaning.revert_to_draft(co)
+		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "docstatus"), 1)
 
 	def test_finished_order_refuses_a_late_save_as_AlreadySettled(self):
 		# The offline queue's worst case: the surveyor signed off in a dead spot, and by the
@@ -175,6 +294,7 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		co = self._order(c)
 		cleaning.start_cleaning(co)
 		cleaning.save_cleaning_order(cleaning_order=co, cleaning_type="Steam Wash", submit=True)
+		frappe.get_doc("Cleaning Order", co).submit()  # Admin Ops finalizes on the Desk
 
 		with self.assertRaises(AlreadySettled):
 			cleaning.save_cleaning_order(cleaning_order=co, remarks="dari HP yang offline")

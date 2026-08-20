@@ -1,17 +1,22 @@
 """Labour (manhour) is billed ONCE, at invoicing — never folded into a service's rate.
 
-Every line of a contract's Price List carries a **Manhour** beside its Rate: the hours that
-service takes. Orders keep the two apart; the invoice is where the hours of everything being
-billed are totalled and charged once:
+Labour has two halves living in two masters (see ``container_depot.pricing``):
 
-    Total = Total Price + (Total Manhour x Hour)
+  * **Jam** — how long a service takes: ``Item.manhour``, the same for every customer.
+  * **Tarif per jam** — what an hour costs THIS customer: ``Item Price.manhour_rate``,
+    published by their contract's rate card.
 
-Both halves of that rule are asserted here: the rate resolver must NOT merge labour into a
+Orders keep both apart from the service tariff; the invoice is where they meet, once:
+
+    Total = Total Price + (Total Jam x Tarif per Jam)
+
+Every part of that rule is asserted here: the rate resolver must NOT merge labour into a
 service's price, and the invoice funnel every menu goes through must show the hours per line,
-total them in the header, and fold that one charge into the grand total.
+total them in the header, meet them with the customer's tariff, and fold that one charge into
+the grand total.
 
-The contract publishes a Price List, so each test cleans the customer's world back to its
-pre-test state.
+The contract publishes a Price List and the hours live on shared Items, so each test cleans
+the customer's world — and the Items it touched — back to its pre-test state.
 """
 
 from __future__ import annotations
@@ -25,9 +30,14 @@ from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_container_booking import _cleanup_customer_world
 
-# Hours the contract books per service (the "Manhour" column of its Price List).
+# Hours each service books (``Item.manhour`` — a property of the service, not of the deal).
 LIFT_OFF_HOURS = 1.5
 CLEAN_HOURS = 0.5
+# What one hour of depot labour costs this customer (the "Tarif Manhour" column of the
+# contract's rate card, published onto every Item Price it writes).
+HOUR_RATE = 60_000.0
+# Services whose hours these tests pin on the shared Item master.
+_HOURS = {"Lift Off": LIFT_OFF_HOURS, "Standard Clean": CLEAN_HOURS, "Lift On": 0.0}
 
 
 class TestManhourBilling(FrappeTestCase):
@@ -53,13 +63,20 @@ class TestManhourBilling(FrappeTestCase):
 			"valid_from": today(),
 			"valid_to": add_days(today(), 365),
 			"tariff_lines": [
-				{"item": "Lift Off", "rate": 250000, "manhour_rate": LIFT_OFF_HOURS},
-				{"item": "Standard Clean", "rate": 100000, "manhour_rate": CLEAN_HOURS},
-				# A service the contract prices but books no labour for.
-				{"item": "Lift On", "rate": 200000},
+				{"item": "Lift Off", "rate": 250000, "manhour_rate": HOUR_RATE},
+				{"item": "Standard Clean", "rate": 100000, "manhour_rate": HOUR_RATE},
+				# A service the contract prices but that books no labour (Item.manhour 0).
+				{"item": "Lift On", "rate": 200000, "manhour_rate": HOUR_RATE},
 			],
 		}).insert(ignore_permissions=True)
 		cls.price_list = cls.contract.generated_price_list
+		# Hours belong to the shared Item master — pin them for the duration and put back
+		# exactly what was there, or every later test bills a different amount of labour.
+		cls._hours_before = {
+			item: flt(frappe.db.get_value("Item", item, "manhour")) for item in _HOURS
+		}
+		for item, hours in _HOURS.items():
+			frappe.db.set_value("Item", item, "manhour", hours)
 		# ERPNext auto-inserts a missing Item Price when an invoice line prices an item the
 		# selling list does not carry (Stock Settings "auto insert price list rate if
 		# missing"). Snapshot what exists now so tearDownClass can drop exactly what these
@@ -68,6 +85,8 @@ class TestManhourBilling(FrappeTestCase):
 
 	@classmethod
 	def tearDownClass(cls):
+		for item, hours in cls._hours_before.items():
+			frappe.db.set_value("Item", item, "manhour", hours)
 		_cleanup_customer_world(cls.customer)
 		_cleanup_customer_world(cls.nocon)
 		leaked = set(frappe.get_all("Item Price", pluck="name")) - cls._item_prices_before
@@ -103,11 +122,22 @@ class TestManhourBilling(FrappeTestCase):
 			"Sales Taxes and Charges Template", {"company": company, "is_default": 0}, "name"
 		) or frappe.db.get_value("Sales Taxes and Charges Template", {}, "name")
 
-	# --- the contract carries hours beside the rate ---------------------------
-	def test_contract_publishes_manhour_next_to_rate(self):
+	# --- two masters: hours on the Item, the hourly tariff on the rate card ----
+	def test_contract_publishes_the_hourly_tariff_next_to_the_rate(self):
 		self.assertEqual(pricing.contract_price_list(self.customer), self.price_list)
-		self.assertAlmostEqual(pricing.manhour_for("Lift Off", self.price_list), LIFT_OFF_HOURS)
+		self.assertAlmostEqual(pricing.manhour_for("Lift Off", self.price_list), HOUR_RATE)
 		self.assertAlmostEqual(pricing_model.resolve_price("Lift Off", self.price_list), 250000)
+
+	def test_hours_come_from_the_item_not_from_the_deal(self):
+		"""The rate card prices an hour; how many hours a service takes is the same for
+		everyone and is read off the Item."""
+		self.assertAlmostEqual(pricing.manhour_hours_for("Lift Off"), LIFT_OFF_HOURS)
+		self.assertAlmostEqual(pricing.manhour_hours_for("Standard Clean"), CLEAN_HOURS)
+		self.assertEqual(pricing.manhour_hours_for("Lift On"), 0.0)
+
+	def test_customer_hourly_tariff_is_read_from_their_rate_card(self):
+		self.assertAlmostEqual(pricing.manhour_rate_for(self.customer), HOUR_RATE)
+		self.assertEqual(pricing.manhour_rate_for(self.nocon), 0.0, "no contract, nobody to bill")
 
 	def test_rate_never_includes_labour(self):
 		"""The tariff resolves to the agreed rate alone — labour is not folded in."""
@@ -138,11 +168,9 @@ class TestManhourBilling(FrappeTestCase):
 		])
 		hours = LIFT_OFF_HOURS + CLEAN_HOURS
 		self.assertAlmostEqual(flt(inv.total_manhour), hours)
-		self.assertAlmostEqual(flt(inv.manhour_hour), pricing.DEFAULT_MANHOUR_HOUR)
-		self.assertAlmostEqual(flt(inv.manhour_amount), hours * pricing.DEFAULT_MANHOUR_HOUR)
-		self.assertAlmostEqual(
-			flt(inv.grand_total), flt(inv.total) + hours * pricing.DEFAULT_MANHOUR_HOUR
-		)
+		self.assertAlmostEqual(flt(inv.manhour_hour), HOUR_RATE, msg="seeded from the rate card")
+		self.assertAlmostEqual(flt(inv.manhour_amount), hours * HOUR_RATE)
+		self.assertAlmostEqual(flt(inv.grand_total), flt(inv.total) + hours * HOUR_RATE)
 
 	def test_hours_do_not_scale_with_quantity(self):
 		"""A rate is per unit; a manhour is not — qty must leave the hours alone.
@@ -152,11 +180,9 @@ class TestManhourBilling(FrappeTestCase):
 		inv = self._invoice([{"item_code": "Lift Off", "qty": 3, "rate": 250000}])
 		self.assertAlmostEqual(flt(inv.total_manhour), LIFT_OFF_HOURS)
 		self.assertAlmostEqual(flt(inv.items[0].amount), 750000, msg="the rate still follows qty")
-		self.assertAlmostEqual(
-			flt(inv.manhour_amount), LIFT_OFF_HOURS * pricing.DEFAULT_MANHOUR_HOUR
-		)
+		self.assertAlmostEqual(flt(inv.manhour_amount), LIFT_OFF_HOURS * HOUR_RATE)
 
-	def test_services_priced_without_labour_add_no_hours(self):
+	def test_services_that_book_no_hours_add_no_labour(self):
 		inv = self._invoice([{"item_code": "Lift On", "qty": 2, "rate": 200000}])
 		self.assertEqual(flt(inv.total_manhour), 0)
 		self.assertEqual(self._charge_rows(inv), [], "no hours -> no labour charge at all")
@@ -179,7 +205,8 @@ class TestManhourBilling(FrappeTestCase):
 
 	# --- Hour is the editable multiplier --------------------------------------
 	def test_editing_hour_reprices_labour_and_the_total(self):
-		"""4 is only a default: change Hour and the charge (and grand total) follow."""
+		"""The rate card only SEEDS it: change Tarif per Jam and the charge (and grand
+		total) follow."""
 		inv = self._invoice([{"item_code": "Lift Off", "qty": 1, "rate": 250000}])
 		price = flt(inv.total)
 		inv.manhour_hour = 10
@@ -275,7 +302,7 @@ class TestManhourBilling(FrappeTestCase):
 			[{"item_code": "Lift Off", "qty": 1, "rate": 250000}], taxes_and_charges=tmpl
 		)
 		subtotal = flt(inv.total) + flt(inv.manhour_amount)
-		self.assertAlmostEqual(flt(inv.manhour_amount), LIFT_OFF_HOURS * pricing.DEFAULT_MANHOUR_HOUR)
+		self.assertAlmostEqual(flt(inv.manhour_amount), LIFT_OFF_HOURS * HOUR_RATE)
 		# The labour row comes first so the percentage below it accumulates on top of it.
 		self.assertEqual(self._charge_rows(inv)[0].idx, 1)
 		percent = [t for t in inv.taxes if flt(t.rate)]

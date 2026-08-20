@@ -34,22 +34,25 @@ CLEANING_ITEM = "Standard Cleaning"
 # --------------------------------------------------------------------------- #
 # Labour (manhour)
 #
-# Every line of a contract's Price List carries a **Manhour** next to its Rate
-# (``Tariff Rate.manhour_rate``, published onto ``Item Price.manhour_rate``): the labour
-# hours that service takes — e.g. Standard Clean 0.5, Lift On 1.5.
+# Labour has TWO halves, and they live in two different masters — that is the whole model:
 #
-# The two are deliberately NEVER merged into one rate inside an order: each menu bills its
-# tariff and carries its manhour untouched. Billing is where labour is settled — every line
-# of the invoice shows the manhour it books, the hours are totalled ONCE in the header, and
-# that total is charged as a single amount:
+#   * **Jam** — how long a service takes. A property of the SERVICE, the same for everyone:
+#     ``Item.manhour`` (e.g. Standard Clean 0.5 h, Lift On 1.5 h).
+#   * **Tarif per jam** — what an hour of depot labour costs THIS customer. A property of
+#     the RATE CARD, negotiated per principal: ``Item Price.manhour_rate``, published from
+#     the contract's ``Tariff Rate.manhour_rate`` (e.g. OAK 4.50, Bertschi 4.00).
 #
-#     Total = Total Price + (Total Manhour × Hour)
+# Labour is never folded into a service's own rate. Each order keeps the two apart and
+# billing settles them once, in the invoice header:
+#
+#     Total = Total Price + (Total Jam × Tarif per Jam)
 #
 # Note the asymmetry, and that it is deliberate: a RATE is per unit, so the line multiplies
-# it by qty; a MANHOUR is not. It is the labour that line books, whatever the quantity, so
-# the hours are summed as they stand and only the SUM meets a multiplier — ``Hour``, which
-# seeds from :data:`DEFAULT_MANHOUR_HOUR` and stays editable per invoice.
+# it by qty; the JAM a line books is the labour that line takes, whatever the quantity, so
+# the hours are summed as they stand and only the SUM meets the tariff — ``Tarif per Jam``,
+# which seeds from the customer's rate card and stays editable per invoice.
 # --------------------------------------------------------------------------- #
+# Fallback labour tariff (money per hour) for a customer whose rate card carries none.
 DEFAULT_MANHOUR_HOUR = 4.0
 
 
@@ -69,7 +72,12 @@ def contract_price_list(customer):
 
 
 def manhour_for(item, price_list):
-	"""Labour hours the contract books for one service (0 when it carries none)."""
+	"""Labour TARIFF (money per hour) one rate card charges for a service (0 when none).
+
+	This is the price of an hour, not a number of hours — the hours are on the Item
+	(:func:`manhour_hours_for`). Held per Item Price so each principal's rate card can carry
+	its own figure.
+	"""
 	from frappe.utils import flt
 
 	if not (item and price_list):
@@ -83,19 +91,58 @@ def manhour_for(item, price_list):
 	)
 
 
-def invoice_manhours(customer, lines):
-	"""Manhour each invoice line books, from the customer's contract.
+def manhour_hours_for(item) -> float:
+	"""Standard labour HOURS one service takes (``Item.manhour``; 0 when it books none).
 
-	Returns ``{index: hours_per_unit}`` for the lines the contract books labour for, so the
-	caller can stamp each line and let the header total them. Empty when the customer has
-	no active contract or nothing billed carries a manhour.
+	The same for every customer — what differs per customer is what an hour costs them
+	(:func:`manhour_for`).
 	"""
+	from frappe.utils import flt
+
+	if not item:
+		return 0.0
+	return flt(frappe.db.get_value("Item", item, "manhour"))
+
+
+def manhour_rate_for(customer) -> float:
+	"""The labour tariff (money per hour) to charge this customer's invoice.
+
+	A rate card states one price for an hour of depot labour, repeated on every line it
+	prices, so any non-zero figure on the customer's published Price List is that price —
+	the most common one wins if a stray line disagrees. Falls back to
+	:data:`DEFAULT_MANHOUR_HOUR` when the contract prices no labour at all.
+	"""
+	from collections import Counter
+
+	from frappe.utils import flt
+
 	price_list = contract_price_list(customer)
 	if not price_list:
+		return 0.0
+	rates = [
+		flt(r)
+		for r in frappe.get_all(
+			"Item Price", filters={"price_list": price_list, "selling": 1}, pluck="manhour_rate"
+		)
+		if flt(r)
+	]
+	if not rates:
+		return DEFAULT_MANHOUR_HOUR
+	return Counter(rates).most_common(1)[0][0]
+
+
+def invoice_manhours(customer, lines):
+	"""Labour hours each invoice line books, from the Item master.
+
+	Returns ``{index: hours}`` for the lines that take labour, so the caller can stamp each
+	line and let the header total them and meet the tariff once. Empty when the customer has
+	no active contract (nobody to charge labour to) or nothing billed books hours.
+	"""
+	if not contract_price_list(customer):
 		return {}
 	out = {}
 	for i, ln in enumerate(lines):
-		hours = manhour_for(ln.get("item_code"), price_list)
+		hours = manhour_hours_for(ln.get("item_code"))
 		if hours:
 			out[i] = hours
 	return out

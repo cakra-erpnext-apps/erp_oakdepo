@@ -9,11 +9,8 @@
   "header_section",
   "container",
   "depot",
-  "is_recleaning",
   "column_break_1",
-  "inspection",
   "reff_doc",
-  "assigned_to",
   "service_section",
   "cleaning_services",
   "cleaning_instructions",
@@ -30,21 +27,26 @@
   "order_id",
   "status",
   "approval_status",
+  "revision_requested",
+  "revision_note",
+  "is_recleaning",
   "container_no",
   "container_principal",
   "last_cargo",
   "zone",
+  "inspection",
   "container_booking",
   "reff_email",
   "target_lift_on",
   "priority_score",
   "cleaning_total",
-  "manhour_total",
+  "manhour_charge_total",
   "currency",
   "cleaning_start",
   "cleaning_end",
   "order_created",
   "created_by",
+  "assigned_to",
   "completed_by",
   "sales_invoice",
   "cleaning_item",
@@ -81,22 +83,8 @@
    "options": "Depot"
   },
   {
-   "default": "0",
-   "description": "Opsional. Cuci ulang setelah hasil survei tidak lolos.",
-   "fieldname": "is_recleaning",
-   "fieldtype": "Check",
-   "label": "Is Re-cleaning"
-  },
-  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
-  },
-  {
-   "description": "Opsional. EIR pemicu order ini.",
-   "fieldname": "inspection",
-   "fieldtype": "Link",
-   "label": "Reference EIR",
-   "options": "Inspection"
   },
   {
    "description": "Opsional. Terisi dari EIR, bisa diubah.",
@@ -105,26 +93,19 @@
    "label": "Reff Doc"
   },
   {
-   "description": "Opsional. Operator yang mengerjakan.",
-   "fieldname": "assigned_to",
-   "fieldtype": "Link",
-   "label": "Assigned To",
-   "options": "User"
-  },
-  {
    "fieldname": "service_section",
    "fieldtype": "Section Break",
    "label": "Metode Cleaning"
   },
   {
-   "description": "Wajib sebelum diteruskan ke operator. Tarif & manhour dari kontrak pemilik tank, bisa diubah.",
+   "description": "Wajib sebelum diteruskan ke team. Tarif & tarif manhour dari kontrak pemilik tank, bisa diubah.",
    "fieldname": "cleaning_services",
    "fieldtype": "Table",
    "label": "Metode Cleaning (Service)",
    "options": "Cleaning Order Service"
   },
   {
-   "description": "Opsional.",
+   "description": "Opsional. Tampil untuk operator cuci di PWA depot.",
    "fieldname": "cleaning_instructions",
    "fieldtype": "Small Text",
    "label": "Cleaning Instructions"
@@ -198,13 +179,13 @@
   {
    "allow_on_submit": 1,
    "default": "Service Setup",
-   "description": "Diatur alur cleaning: Service Setup → Pending → In_Progress → Completed.",
+   "description": "Diatur alur cleaning: Service Setup → Pending → In_Progress → Pending Review → Completed. Pending Review = operator sudah selesai di PWA, menunggu review + Submit Admin Ops.",
    "fieldname": "status",
    "fieldtype": "Select",
    "hidden": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Service Setup\nPending\nIn_Progress\nCompleted\nCancelled",
+   "options": "Service Setup\nPending\nIn_Progress\nPending Review\nCompleted\nCancelled",
    "read_only": 1,
    "reqd": 1
   },
@@ -217,6 +198,35 @@
    "hidden": 1,
    "label": "Tank Owner Approval",
    "options": "Not Required\nPending\nApproved\nRejected"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "description": "Operator PWA meminta order ini dibuka kembali. Diangkat lewat “Ajukan Revisi”, dibersihkan saat order dibatalkan.",
+   "fieldname": "revision_requested",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Revisi Diminta",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Alasan permintaan revisi (dari PWA).",
+   "fieldname": "revision_note",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Catatan Revisi",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Cuci ulang setelah hasil survei tidak lolos: Submit tidak otomatis menyelesaikan order. Tidak ada alur yang mencentangnya sendiri.",
+   "fieldname": "is_recleaning",
+   "fieldtype": "Check",
+   "label": "Is Re-cleaning",
+   "hidden": 1
   },
   {
    "description": "Dari master Container.",
@@ -253,6 +263,15 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Zone (Cleaning Bay)",
+   "read_only": 1
+  },
+  {
+   "description": "EIR pemicu order ini; terisi otomatis saat order dibuat dari EIR.",
+   "fieldname": "inspection",
+   "fieldtype": "Link",
+   "label": "Reference EIR",
+   "options": "Inspection",
+   "hidden": 1,
    "read_only": 1
   },
   {
@@ -297,7 +316,7 @@
    "read_only": 1
   },
   {
-   "description": "Jumlah tarif semua service.",
+   "description": "Jumlah tarif semua service (belum termasuk labour).",
    "fieldname": "cleaning_total",
    "fieldtype": "Currency",
    "hidden": 1,
@@ -306,12 +325,12 @@
    "read_only": 1
   },
   {
-   "description": "Jumlah jam kerja semua service; ditagih terpisah di invoice.",
-   "fieldname": "manhour_total",
-   "fieldtype": "Float",
+   "description": "Jumlah Tarif Manhour semua service, apa adanya. Ditagihkan terpisah dari tarif service.",
+   "fieldname": "manhour_charge_total",
+   "fieldtype": "Currency",
    "hidden": 1,
-   "label": "Total Manhour (jam)",
-   "precision": "2",
+   "label": "Biaya Manhour",
+   "options": "currency",
    "read_only": 1
   },
   {
@@ -352,6 +371,15 @@
    "hidden": 1,
    "label": "Created By",
    "options": "User",
+   "read_only": 1
+  },
+  {
+   "description": "Otomatis: petugas yang menekan “Mulai” di PWA depot — bukan pembuat dokumen.",
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Assigned To",
+   "options": "User",
+   "hidden": 1,
    "read_only": 1
   },
   {
@@ -400,7 +428,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-20 15:00:00.000000",
+ "modified": "2026-08-21 04:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

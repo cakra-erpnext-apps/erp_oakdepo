@@ -32,7 +32,9 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  */
 [data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col,
 [data-fieldname="damage_photos"] .grid-body .grid-row .grid-static-col,
-[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col {
+[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col,
+/* Foto QC on the Cleaning Order reads the same way as Foto Inspeksi does. */
+[data-fieldname="qc_photos"] .grid-body .grid-row .grid-static-col {
 	height: 64px;
 }
 
@@ -44,7 +46,8 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  */
 [data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
 [data-fieldname="damage_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
-[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
+[data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
+[data-fieldname="qc_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
 	display: flex;
 	align-items: center;
 	height: 100%;
@@ -60,7 +63,8 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  * over the thumbnail). Letting the cells shrink keeps the same proportions at every width.
  */
 [data-fieldname="damage_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index),
-[data-fieldname="item_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
+[data-fieldname="item_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index),
+[data-fieldname="qc_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
 	flex-shrink: 1;
 	min-width: 0;
 }

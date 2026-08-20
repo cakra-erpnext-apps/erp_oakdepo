@@ -15,13 +15,19 @@
 // in cleaning_order.json).
 frappe.listview_settings["Cleaning Order"] = {
 	// Pull status so get_indicator always has it even when columns are customised.
-	add_fields: ["status"],
+	add_fields: ["status", "revision_requested"],
 	has_indicator_for_draft: 1,
 	has_indicator_for_cancelled: 1,
 	get_indicator(doc) {
 		// A cancelled document is cancelled whatever stage its status was left at.
 		if (doc.docstatus === 2) {
 			return [__("Dibatalkan"), "red", "docstatus,=,2"];
+		}
+		// A finished order the field asked to reopen (PWA "Ajukan Revisi") needs Admin Ops,
+		// so it outranks the plain "Selesai" badge — otherwise the request leaves no mark
+		// anywhere in the list.
+		if (doc.docstatus === 1 && doc.revision_requested) {
+			return [__("Revisi Diminta"), "orange", "revision_requested,=,1"];
 		}
 		const map = {
 			// Belum diteruskan — Admin Ops masih memilih metode cleaning.
@@ -30,6 +36,8 @@ frappe.listview_settings["Cleaning Order"] = {
 			Pending: [__("Menunggu Operator"), "blue", "status,=,Pending"],
 			// Operator sedang mengerjakan.
 			In_Progress: [__("Dikerjakan"), "yellow", "status,=,In_Progress"],
+			// Selesai di lapangan, menunggu Admin Ops memeriksa lalu Submit.
+			"Pending Review": [__("Menunggu Review"), "purple", "status,=,Pending Review"],
 			Completed: [__("Selesai"), "green", "status,=,Completed"],
 			Cancelled: [__("Dibatalkan"), "red", "status,=,Cancelled"],
 		};
