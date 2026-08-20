@@ -134,12 +134,16 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "status"), "In_Progress")
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
-	def test_cannot_submit_before_start(self):
+	def test_submit_without_start_completes_and_stamps_it(self):
+		# Submit IS the finish action (there is no separate "selesaikan" button any more).
+		# An order that never went through the operator route — work done off-system —
+		# completes and has its missing cleaning_start stamped, not refused.
 		c = self._container("CLNNOST0001", status="In_Depot")
 		co = self._order(c)
-		with self.assertRaises(frappe.ValidationError):
-			cleaning.save_cleaning_order(cleaning_order=co, submit=True)
-		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "docstatus"), 0)
+		res = cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		self.assertEqual(res["docstatus"], 1)
+		self.assertEqual(res["status"], "Completed")
+		self.assertTrue(frappe.db.get_value("Cleaning Order", co, "cleaning_start"))
 
 	def test_start_then_submit_completes(self):
 		# OAK1 has a seeded Cleaning Bay zone (OAK1-CBAY).

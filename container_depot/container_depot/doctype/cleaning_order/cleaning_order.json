@@ -5,88 +5,84 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "order_info",
-  "order_id",
-  "status",
-  "approval_status",
+  "cleaning_tab",
+  "header_section",
+  "container",
+  "depot",
   "is_recleaning",
   "column_break_1",
-  "container",
-  "container_no",
-  "container_principal",
   "inspection",
-  "container_booking",
   "reff_doc",
-  "reff_email",
-  "priority_score",
-  "target_lift_on",
-  "depot",
-  "section_break_2",
-  "last_cargo",
-  "cleaning_services",
-  "cleaning_total",
-  "manhour_total",
-  "currency",
-  "cleaning_item",
-  "cleaning_rate",
-  "cleaning_type",
-  "cleaning_instructions",
-  "column_break_3",
   "assigned_to",
-  "zone",
-  "qc_section",
-  "qc_photos",
+  "service_section",
+  "cleaning_services",
+  "cleaning_instructions",
   "signoff_section",
+  "qc_photos",
   "remarks",
-  "surveyor_signature",
   "column_break_signoff",
+  "surveyor_signature",
   "signed_by",
   "date_of_issue",
   "place_of_issue",
-  "timestamps",
-  "order_created",
+  "system_tab",
+  "auto_section",
+  "order_id",
+  "status",
+  "approval_status",
+  "container_no",
+  "container_principal",
+  "last_cargo",
+  "zone",
+  "container_booking",
+  "reff_email",
+  "target_lift_on",
+  "priority_score",
+  "cleaning_total",
+  "manhour_total",
+  "currency",
   "cleaning_start",
   "cleaning_end",
-  "column_break_4",
+  "order_created",
   "created_by",
   "completed_by",
-  "sales_invoice"
+  "sales_invoice",
+  "cleaning_item",
+  "cleaning_rate",
+  "cleaning_type"
  ],
  "fields": [
   {
-   "fieldname": "order_info",
+   "fieldname": "cleaning_tab",
+   "fieldtype": "Tab Break",
+   "label": "Cleaning"
+  },
+  {
+   "fieldname": "header_section",
    "fieldtype": "Section Break",
-   "label": "Order Information"
+   "label": "Cleaning"
   },
   {
-   "bold": 1,
-   "fieldname": "order_id",
-   "fieldtype": "Data",
-   "label": "Order ID",
-   "read_only": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "default": "Service Setup",
-   "description": "Service Setup = Admin Ops masih memilih metode cleaning; Pending = sudah diteruskan ke operator cuci.",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Service Setup\nPending\nIn_Progress\nCompleted\nCancelled",
+   "description": "Wajib.",
+   "fieldname": "container",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Container",
+   "options": "Container",
    "reqd": 1
   },
   {
-   "allow_on_submit": 1,
-   "default": "Not Required",
-   "description": "Tank Owner approval for a re-cleaning order.",
-   "fieldname": "approval_status",
-   "fieldtype": "Select",
-   "label": "Tank Owner Approval",
-   "options": "Not Required\nPending\nApproved\nRejected"
+   "description": "Opsional.",
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot"
   },
   {
    "default": "0",
-   "description": "Set when this order is a re-clean after a failed cleanliness survey.",
+   "description": "Opsional. Cuci ulang setelah hasil survei tidak lolos.",
    "fieldname": "is_recleaning",
    "fieldtype": "Check",
    "label": "Is Re-cleaning"
@@ -96,23 +92,146 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "container",
+   "description": "Opsional. EIR pemicu order ini.",
+   "fieldname": "inspection",
    "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Container",
-   "options": "Container",
+   "label": "Reference EIR",
+   "options": "Inspection"
+  },
+  {
+   "description": "Opsional. Terisi dari EIR, bisa diubah.",
+   "fieldname": "reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc"
+  },
+  {
+   "description": "Opsional. Operator yang mengerjakan.",
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Assigned To",
+   "options": "User"
+  },
+  {
+   "fieldname": "service_section",
+   "fieldtype": "Section Break",
+   "label": "Metode Cleaning"
+  },
+  {
+   "description": "Wajib sebelum diteruskan ke operator. Tarif & manhour dari kontrak pemilik tank, bisa diubah.",
+   "fieldname": "cleaning_services",
+   "fieldtype": "Table",
+   "label": "Metode Cleaning (Service)",
+   "options": "Cleaning Order Service"
+  },
+  {
+   "description": "Opsional.",
+   "fieldname": "cleaning_instructions",
+   "fieldtype": "Small Text",
+   "label": "Cleaning Instructions"
+  },
+  {
+   "fieldname": "signoff_section",
+   "fieldtype": "Section Break",
+   "label": "Hasil & Sign-off"
+  },
+  {
+   "description": "Opsional. Foto QC dari lapangan.",
+   "fieldname": "qc_photos",
+   "fieldtype": "Table",
+   "label": "Foto QC",
+   "options": "Cleaning QC Photo"
+  },
+  {
+   "description": "Opsional.",
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "column_break_signoff",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Opsional.",
+   "fieldname": "surveyor_signature",
+   "fieldtype": "Attach Image",
+   "label": "Surveyor Signature"
+  },
+  {
+   "description": "Opsional. Terisi saat submit.",
+   "fieldname": "signed_by",
+   "fieldtype": "Link",
+   "label": "Signed By",
+   "options": "User"
+  },
+  {
+   "description": "Opsional. Terisi saat submit.",
+   "fieldname": "date_of_issue",
+   "fieldtype": "Date",
+   "label": "Date of Issue"
+  },
+  {
+   "description": "Opsional.",
+   "fieldname": "place_of_issue",
+   "fieldtype": "Data",
+   "label": "Place of Issue"
+  },
+  {
+   "fieldname": "system_tab",
+   "fieldtype": "Tab Break",
+   "label": "Sistem"
+  },
+  {
+   "fieldname": "auto_section",
+   "fieldtype": "Section Break",
+   "label": "Terisi Otomatis Sistem"
+  },
+  {
+   "bold": 1,
+   "description": "Nomor internal order.",
+   "fieldname": "order_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Order ID",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Service Setup",
+   "description": "Diatur alur cleaning: Service Setup → Pending → In_Progress → Completed.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Service Setup\nPending\nIn_Progress\nCompleted\nCancelled",
+   "read_only": 1,
    "reqd": 1
   },
   {
+   "allow_on_submit": 1,
+   "default": "Not Required",
+   "description": "Persetujuan pemilik tank untuk cuci ulang.",
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Tank Owner Approval",
+   "options": "Not Required\nPending\nApproved\nRejected"
+  },
+  {
+   "description": "Dari master Container.",
    "fieldname": "container_no",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Container Number",
    "read_only": 1
   },
   {
+   "description": "Pemilik tank, dari master Container.",
    "fetch_from": "container.principal",
    "fieldname": "container_principal",
    "fieldtype": "Link",
+   "hidden": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Owner (Principal)",
@@ -120,105 +239,141 @@
    "read_only": 1
   },
   {
-   "description": "The EIR that triggered this cleaning (EIR -> Cleaning Order).",
-   "fieldname": "inspection",
+   "description": "Dari master Container.",
+   "fieldname": "last_cargo",
    "fieldtype": "Link",
-   "label": "Reference EIR",
-   "options": "Inspection"
+   "hidden": 1,
+   "label": "Last Cargo",
+   "options": "Cargo",
+   "read_only": 1
   },
   {
+   "description": "Dari master Container.",
+   "fieldname": "zone",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Zone (Cleaning Bay)",
+   "read_only": 1
+  },
+  {
+   "description": "Booking induk kunjungan tank ini, dari EIR referensinya.",
    "fieldname": "container_booking",
    "fieldtype": "Link",
-   "options": "Container Booking",
+   "hidden": 1,
    "label": "Container Booking",
-   "description": "Booking induk kunjungan tank ini. Terisi otomatis dari EIR referensinya; kosong = order berdiri sendiri.",
+   "options": "Container Booking",
+   "read_only": 1,
    "search_index": 1
   },
   {
-   "description": "Nomor dokumen referensi (opsional). Terisi otomatis dari EIR, bisa diubah manual.",
-   "fieldname": "reff_doc",
-   "fieldtype": "Data",
-   "label": "Reff Doc"
-  },
-  {
    "depends_on": "eval:doc.reff_email",
-   "description": "Email sumber order ini. Terisi otomatis saat order dibuat dari Communication \u2014 bukan isian manual.",
+   "description": "Bila order dibuat dari email.",
    "fieldname": "reff_email",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Ref Email",
    "no_copy": 1,
    "options": "Communication",
    "read_only": 1
   },
   {
-   "default": "0",
-   "fieldname": "priority_score",
-   "fieldtype": "Float",
-   "label": "Priority Score",
-   "read_only": 1
-  },
-  {
-   "description": "Rencana lift-on (gate out) dari Gate Out Plan \u2014 untuk memprioritaskan pengerjaan. Otomatis dari container.",
+   "description": "Rencana lift-on, dari container.",
    "fetch_from": "container.target_lift_on",
    "fieldname": "target_lift_on",
    "fieldtype": "Date",
+   "hidden": 1,
    "in_list_view": 1,
    "label": "Target Lift-On",
    "no_copy": 1,
    "read_only": 1
   },
   {
-   "fieldname": "depot",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Depot",
-   "options": "Depot"
+   "default": "0",
+   "description": "Skor urutan antrean cuci.",
+   "fieldname": "priority_score",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "label": "Priority Score",
+   "read_only": 1
   },
   {
-   "fieldname": "section_break_2",
-   "fieldtype": "Section Break",
-   "label": "Cleaning Details"
-  },
-  {
-   "fieldname": "last_cargo",
-   "fieldtype": "Link",
-   "label": "Last Cargo",
-   "options": "Cargo"
-  },
-  {
-   "description": "Layanan cleaning (bisa lebih dari satu) dari Depot Service Menu \u201cCleaning\u201d, difilter ke Price List milik Owner (Principal) container. Tiap baris ditagihkan ke owner tank.",
-   "fieldname": "cleaning_services",
-   "fieldtype": "Table",
-   "label": "Metode Cleaning (Service)",
-   "options": "Cleaning Order Service"
-  },
-  {
-   "description": "Jumlah tarif semua service cleaning (belum termasuk manhour). Base price dari kontrak aktif pemilik container, bisa diubah per baris.",
+   "description": "Jumlah tarif semua service.",
    "fieldname": "cleaning_total",
    "fieldtype": "Currency",
+   "hidden": 1,
    "label": "Total Tarif Service",
    "options": "currency",
    "read_only": 1
   },
   {
+   "description": "Jumlah jam kerja semua service; ditagih terpisah di invoice.",
    "fieldname": "manhour_total",
    "fieldtype": "Float",
+   "hidden": 1,
    "label": "Total Manhour (jam)",
-   "read_only": 1,
-   "description": "Jumlah jam kerja semua service. Ditagihkan di invoice: total manhour seluruh order dikalikan tarif per jam.",
-   "precision": "2"
+   "precision": "2",
+   "read_only": 1
   },
   {
-   "description": "Mata uang Price List kontrak pemilik container \u2014 tarif cleaning ditampilkan dalam mata uang ini.",
+   "description": "Dari price list kontrak pemilik tank.",
    "fieldname": "currency",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Currency",
    "options": "Currency",
    "read_only": 1
   },
   {
-   "description": "Deprecated \u2014 digantikan oleh tabel Metode Cleaning (Service). Disimpan untuk data lama.",
+   "description": "Distempel saat operator mulai mencuci.",
+   "fieldname": "cleaning_start",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Cleaning Start"
+  },
+  {
+   "description": "Distempel saat cleaning selesai / submit.",
+   "fieldname": "cleaning_end",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Cleaning End"
+  },
+  {
+   "description": "Waktu order dibuat.",
+   "fieldname": "order_created",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Order Created",
+   "read_only": 1
+  },
+  {
+   "description": "Pembuat order.",
+   "fieldname": "created_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Created By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "description": "Penyelesai order, distempel saat submit.",
+   "fieldname": "completed_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Completed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "description": "Terisi saat cleaning ini masuk invoice konsolidasi.",
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Sales Invoice",
+   "options": "Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "description": "Deprecated — diganti tabel Metode Cleaning (Service).",
    "fieldname": "cleaning_item",
    "fieldtype": "Link",
    "hidden": 1,
@@ -226,7 +381,7 @@
    "options": "Item"
   },
   {
-   "description": "Deprecated \u2014 digantikan oleh tabel Metode Cleaning (Service). Disimpan untuk data lama.",
+   "description": "Deprecated — diganti tabel Metode Cleaning (Service).",
    "fieldname": "cleaning_rate",
    "fieldtype": "Currency",
    "hidden": 1,
@@ -235,136 +390,22 @@
    "read_only": 1
   },
   {
-   "description": "Deprecated \u2014 digantikan oleh Metode Cleaning (Service). Disimpan untuk data lama.",
+   "description": "Deprecated — diganti tabel Metode Cleaning (Service).",
    "fieldname": "cleaning_type",
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Cleaning Type (lama)",
    "options": "PP Wash\nMethanol Rinse\nSteam Wash\nHot Water\nChemical\nDetergent\nNitrogen Purge"
-  },
-  {
-   "fieldname": "cleaning_instructions",
-   "fieldtype": "Small Text",
-   "label": "Cleaning Instructions"
-  },
-  {
-   "fieldname": "column_break_3",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "assigned_to",
-   "fieldtype": "Link",
-   "label": "Assigned To",
-   "options": "User"
-  },
-  {
-   "fieldname": "zone",
-   "fieldtype": "Data",
-   "label": "Zone (Cleaning Bay)"
-  },
-  {
-   "fieldname": "qc_section",
-   "fieldtype": "Section Break",
-   "label": "Foto QC",
-   "collapsible": 1
-  },
-  {
-   "fieldname": "qc_photos",
-   "fieldtype": "Table",
-   "label": "Foto QC",
-   "options": "Cleaning QC Photo",
-   "description": "Foto hasil QC (top flange / interior) diunggah langsung dari lapangan."
-  },
-  {
-   "fieldname": "signoff_section",
-   "fieldtype": "Section Break",
-   "label": "Sign-off"
-  },
-  {
-   "fieldname": "remarks",
-   "fieldtype": "Small Text",
-   "label": "Remarks"
-  },
-  {
-   "fieldname": "surveyor_signature",
-   "fieldtype": "Attach Image",
-   "label": "Surveyor Signature"
-  },
-  {
-   "fieldname": "column_break_signoff",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "signed_by",
-   "fieldtype": "Link",
-   "label": "Signed By",
-   "options": "User"
-  },
-  {
-   "fieldname": "date_of_issue",
-   "fieldtype": "Date",
-   "label": "Date of Issue"
-  },
-  {
-   "fieldname": "place_of_issue",
-   "fieldtype": "Data",
-   "label": "Place of Issue"
-  },
-  {
-   "fieldname": "timestamps",
-   "fieldtype": "Section Break",
-   "label": "Timestamps"
-  },
-  {
-   "fieldname": "order_created",
-   "fieldtype": "Datetime",
-   "in_list_view": 1,
-   "label": "Order Created",
-   "read_only": 1
-  },
-  {
-   "fieldname": "cleaning_start",
-   "fieldtype": "Datetime",
-   "label": "Cleaning Start"
-  },
-  {
-   "fieldname": "cleaning_end",
-   "fieldtype": "Datetime",
-   "label": "Cleaning End"
-  },
-  {
-   "fieldname": "column_break_4",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "created_by",
-   "fieldtype": "Link",
-   "label": "Created By",
-   "options": "User"
-  },
-  {
-   "fieldname": "completed_by",
-   "fieldtype": "Link",
-   "label": "Completed By",
-   "options": "User"
-  },
-  {
-   "description": "Set when this cleaning is swept into a consolidated/monthly Sales Invoice. Prevents double-billing.",
-   "fieldname": "sales_invoice",
-   "fieldtype": "Link",
-   "label": "Sales Invoice",
-   "options": "Sales Invoice",
-   "read_only": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-19 09:00:00.000000",
+ "modified": "2026-08-20 15:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",
  "sort_field": "creation",
  "sort_order": "DESC",
- "title_field": "order_id",
+ "title_field": "container_no",
  "track_changes": 1
 }

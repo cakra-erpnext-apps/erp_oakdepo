@@ -130,12 +130,23 @@ class CleaningOrder(Document):
 		return score
 
 	def before_submit(self):
-		"""A normal (non-re-clean) order can only be submitted once cleaning has started,
-		and submitting it = Completed. (Re-cleaning keeps its own approval-driven flow.)"""
+		"""Submitting a normal (non-re-clean) order IS completing it — Submit is the single
+		finish action, for the PWA sign-off and the Desk form alike. (Re-cleaning keeps its
+		own approval-driven flow.)
+
+		An order that never went through the operator route — work done off-system, or a
+		tank that left before anyone opened the PWA — carries no ``cleaning_start``. It is
+		stamped here rather than refused: submitting asserts the cleaning happened, and a
+		start equal to the end records that better than a blocked submit. This used to be a
+		throw with a Desk-only "Selesaikan Langsung (Bypass Alur)" button next to Submit
+		that just pre-stamped the same field; folding it in leaves one button. The operator
+		route always arrives with its real start time set, so this only fires on the
+		straight-to-Submit path.
+		"""
 		if self.is_recleaning:
 			return
 		if not self.cleaning_start:
-			frappe.throw(_("Mulai cleaning dulu sebelum submit (selesaikan) order ini."))
+			self.cleaning_start = datetime.datetime.now()
 		self.status = "Completed"
 		if not self.cleaning_end:
 			self.cleaning_end = datetime.datetime.now()

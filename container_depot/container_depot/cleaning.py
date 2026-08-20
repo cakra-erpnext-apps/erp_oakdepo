@@ -294,8 +294,8 @@ def save_cleaning_order(
 	submit=False,
 ) -> dict:
 	"""Save the cleanliness detail onto a Cleaning Order and, when ``submit`` is true,
-	complete it. Submitting requires the order to
-	have been started (``before_submit`` guards this). Permissions are NOT bypassed."""
+	complete it — submitting IS completing (``before_submit``). Permissions are NOT
+	bypassed."""
 	if not cleaning_order:
 		frappe.throw(_("cleaning_order is required."))
 	co = frappe.get_doc("Cleaning Order", cleaning_order)
@@ -343,7 +343,7 @@ def save_cleaning_order(
 
 	co.save()  # NOT ignore_permissions — Frappe enforces Cleaning Order write on the caller.
 	if _as_bool(submit):
-		co.submit()  # before_submit gate (must be started) + on_submit mints the cert
+		co.submit()  # before_submit stamps the completion fields + on_submit mints the cert
 
 	return {
 		"success": True,

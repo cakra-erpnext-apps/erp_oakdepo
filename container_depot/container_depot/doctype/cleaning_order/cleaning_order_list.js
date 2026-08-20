@@ -8,6 +8,11 @@
 // frappe.get_indicator returns a blanket red "Draft" for every docstatus 0 doc — bailing out
 // before it ever calls get_indicator — unless these opt out of that default. Since they also
 // suppress the built-in "Cancelled" badge, docstatus 2 is handled explicitly below.
+// Kolom paling kiri (the "Subject") is always the doctype's `title_field`, and that is
+// `container_no`: an order is looked up by the tank it is for, never by its own id. Frappe
+// still appends the CO series name as an "ID" column on the far right, so nothing is lost.
+// Filters above the list: Status, Container, Owner (Principal), Depot (in_standard_filter
+// in cleaning_order.json).
 frappe.listview_settings["Cleaning Order"] = {
 	// Pull status so get_indicator always has it even when columns are customised.
 	add_fields: ["status"],
