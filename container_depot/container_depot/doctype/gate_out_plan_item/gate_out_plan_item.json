@@ -11,6 +11,9 @@
     "container_no",
     "is_new_container",
     "gated_out",
+    "was_out",
+    "container_status",
+    "depot",
     "target_lift_on",
     "readiness",
     "is_ready",
@@ -32,7 +35,8 @@
       "in_list_view": 1,
       "label": "Container",
       "options": "Container",
-      "reqd": 1
+      "reqd": 1,
+      "search_index": 1
     },
     {
       "columns": 2,
@@ -56,7 +60,7 @@
       "description": "Tank ini sudah Gate-Out.",
       "fieldname": "gated_out",
       "fieldtype": "Check",
-      "in_list_view": 1,
+      "hidden": 1,
       "label": "Keluar",
       "no_copy": 1,
       "read_only": 1
@@ -75,7 +79,7 @@
       "description": "Otomatis: 'Siap', atau daftar pekerjaan yang belum selesai (Cleaning / M&R).",
       "fieldname": "readiness",
       "fieldtype": "Data",
-      "in_list_view": 1,
+      "hidden": 1,
       "label": "Kesiapan",
       "read_only": 1
     },
@@ -130,11 +134,42 @@
       "fieldname": "driver_phone",
       "fieldtype": "Data",
       "label": "No. HP Driver"
+    },
+    {
+      "columns": 1,
+      "description": "Depo tank ini sekarang, dari master Container. Kosong = belum pernah gate-in.",
+      "fetch_from": "container.depot",
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Depo",
+      "options": "Depot",
+      "read_only": 1
+    },
+    {
+      "default": "0",
+      "description": "Tank sudah di luar depo saat baris ini dibuat, jadi kepergiannya bukan hasil plan ini.",
+      "fieldname": "was_out",
+      "fieldtype": "Check",
+      "hidden": 1,
+      "label": "Sudah Di Luar Saat Didaftar",
+      "no_copy": 1,
+      "read_only": 1
+    },
+    {
+      "columns": 1,
+      "description": "Status tank sekarang, dari master Container. Berubah sendiri saat tank masuk / keluar.",
+      "fetch_from": "container.status",
+      "fieldname": "container_status",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Status",
+      "read_only": 1
     }
   ],
   "istable": 1,
   "links": [],
-  "modified": "2026-08-18 20:00:00.000000",
+  "modified": "2026-08-21 01:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Out Plan Item",
   "permissions": [],

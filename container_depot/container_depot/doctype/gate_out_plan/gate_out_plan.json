@@ -6,39 +6,46 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "orders_section",
-  "related_orders_html",
+  "plan_tab",
   "header_section",
   "principal",
-  "customer",
-  "depot",
   "column_break_1",
-  "status",
+  "customer",
   "plan_date",
-  "next_lift_on",
-  "per_fulfilled",
   "source_section",
-  "source",
-  "reff_email",
   "reff_doc",
   "column_break_src",
   "customer_do",
   "customer_do_no",
   "containers_section",
   "containers",
+  "notes_section",
+  "notes",
+  "system_section",
+  "status",
+  "next_lift_on",
+  "per_fulfilled",
   "container_summary",
   "readiness_summary",
-  "notes_section",
-  "notes"
+  "source",
+  "reff_email",
+  "orders_tab",
+  "orders_section",
+  "related_orders_html"
  ],
  "fields": [
+  {
+   "fieldname": "plan_tab",
+   "fieldtype": "Tab Break",
+   "label": "Gate Out Plan"
+  },
   {
    "fieldname": "header_section",
    "fieldtype": "Section Break",
    "label": "Gate Out Plan"
   },
   {
-   "description": "Pemilik tank. Container picker tiap baris difilter ke tank milik customer ini.",
+   "description": "Wajib. Pemilik tank; memfilter pilihan container.",
    "fieldname": "principal",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -48,59 +55,22 @@
    "reqd": 1
   },
   {
-   "description": "Pihak yang ditagih saat dibuatkan Container Booking (Bill To). Kosongkan kalau belum tahu \u2014 dilengkapi di booking. Sering sama dengan Principal, tapi tidak selalu.",
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Opsional. Pihak yang ditagih saat dibuat Container Booking; bisa dilengkapi nanti.",
    "fieldname": "customer",
    "fieldtype": "Link",
    "label": "Customer (Bill To)",
    "options": "Customer"
   },
   {
-   "fieldname": "depot",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Depot",
-   "options": "Depot",
-   "reqd": 1
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "Open",
-   "description": "Open = prioritas aktif (target tanggal mendorong urutan kerja). Fulfilled / Cancelled melepas target dari container.",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Status",
-   "options": "Open\nFulfilled\nCancelled"
-  },
-  {
    "default": "Today",
-   "description": "Tanggal info lift-on diterima (dari email customer).",
+   "description": "Opsional. Tanggal info lift-on diterima.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
    "label": "Tanggal Terima Info"
-  },
-  {
-   "description": "Target lift-on paling dekat dari daftar container (otomatis) — untuk mengurutkan plan yang paling mendesak.",
-   "fieldname": "next_lift_on",
-   "fieldtype": "Date",
-   "in_list_view": 1,
-   "label": "Lift-On Terdekat",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "description": "Berapa persen container di plan ini yang sudah Gate-Out. 100% → plan otomatis Fulfilled.",
-   "fieldname": "per_fulfilled",
-   "fieldtype": "Percent",
-   "in_list_view": 1,
-   "label": "% Keluar",
-   "no_copy": 1,
-   "read_only": 1
   },
   {
    "fieldname": "source_section",
@@ -108,26 +78,17 @@
    "label": "Sumber"
   },
   {
-   "default": "Email",
-   "description": "Sekarang: Email (dicatat manual oleh tim OAK). 'Customer Channel' menyusul saat web customer siap.",
+   "description": "Email bila plan dibuat dari email; kosong bila diketik manual.",
    "fieldname": "source",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_standard_filter": 1,
    "label": "Sumber",
-   "options": "Email\nCustomer Channel"
-  },
-  {
-   "depends_on": "eval:doc.reff_email",
-   "description": "Email sumber. Terisi otomatis saat plan dibuat dari Communication — bukan isian manual.",
-   "fieldname": "reff_email",
-   "fieldtype": "Link",
-   "label": "Ref Email",
-   "no_copy": 1,
-   "options": "Communication",
+   "options": "Email\nCustomer Channel",
    "read_only": 1
   },
   {
-   "description": "No. dokumen customer (mis. nomor Release DO / referensi email).",
+   "description": "Opsional. No. dokumen / referensi email customer.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "label": "No. Ref"
@@ -137,12 +98,13 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Lampiran Release DO milik customer (PDF/scan). OAK tidak membuat Release DO sendiri — dokumen customer yang jadi acuan keluar.",
+   "description": "Opsional. Scan / PDF Release DO milik customer.",
    "fieldname": "customer_do",
    "fieldtype": "Attach",
    "label": "Dokumen Release DO Customer"
   },
   {
+   "description": "Opsional.",
    "fieldname": "customer_do_no",
    "fieldtype": "Data",
    "label": "No. Release DO Customer"
@@ -153,7 +115,7 @@
    "label": "Container"
   },
   {
-   "description": "Daftar container yang akan lift-on (gate out) + target tanggalnya. Target ini mendorong prioritas cleaning / repair.",
+   "description": "Wajib. Minimal satu container beserta target tanggal lift-on.",
    "fieldname": "containers",
    "fieldtype": "Table",
    "label": "Container",
@@ -161,50 +123,106 @@
    "reqd": 1
   },
   {
-   "description": "Otomatis dari baris container (untuk list & pencarian).",
-   "fieldname": "container_summary",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Container",
-   "read_only": 1
-  },
-  {
-   "description": "Otomatis: berapa container yang sudah siap gate-out (tidak ada cleaning/repair terbuka).",
-   "fieldname": "readiness_summary",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Kesiapan",
-   "read_only": 1
-  },
-  {
-   "description": "Order cleaning / M&R tiap container beserta statusnya sekarang, plus EIR-In / EIR-Out tank tersebut. Dibaca langsung saat form dibuka — tidak disimpan, jadi tidak bisa basi. EIR hanya riwayat kondisi, tidak menahan kesiapan gate-out.",
-   "fieldname": "orders_section",
-   "fieldtype": "Section Break",
-   "label": "Order & EIR Terkait"
-  },
-  {
-   "fieldname": "related_orders_html",
-   "fieldtype": "HTML",
-   "label": "Order & EIR Terkait"
-  },
-  {
    "fieldname": "notes_section",
    "fieldtype": "Section Break",
    "label": "Catatan"
   },
   {
+   "description": "Opsional.",
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Catatan"
+  },
+  {
+   "fieldname": "system_section",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Terisi Otomatis Sistem"
+  },
+  {
+   "default": "Open",
+   "description": "Otomatis Fulfilled saat semua tank keluar. Cancelled diisi manual.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nFulfilled\nCancelled"
+  },
+  {
+   "description": "Target lift-on paling dekat dari daftar container.",
+   "fieldname": "next_lift_on",
+   "fieldtype": "Date",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Lift-On Terdekat",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Persentase container yang sudah Gate-Out.",
+   "fieldname": "per_fulfilled",
+   "fieldtype": "Percent",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "% Keluar",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Ringkasan untuk list & pencarian.",
+   "fieldname": "container_summary",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Container",
+   "read_only": 1
+  },
+  {
+   "description": "Berapa container yang siap gate-out.",
+   "fieldname": "readiness_summary",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Kesiapan",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.reff_email",
+   "description": "Bila plan dibuat dari email.",
+   "fieldname": "reff_email",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Ref Email",
+   "no_copy": 1,
+   "options": "Communication",
+   "read_only": 1
+  },
+  {
+   "fieldname": "orders_tab",
+   "fieldtype": "Tab Break",
+   "label": "Order & EIR Terkait"
+  },
+  {
+   "description": "Cleaning / M&R tiap container beserta statusnya, plus EIR-In / EIR-Out. Dibaca saat form dibuka. EIR hanya riwayat kondisi, tidak menahan kesiapan gate-out.",
+   "fieldname": "orders_section",
+   "fieldtype": "Section Break",
+   "label": "Order & EIR per Container"
+  },
+  {
+   "fieldname": "related_orders_html",
+   "fieldtype": "HTML",
+   "label": "Order & EIR Terkait"
   }
  ],
  "is_submittable": 0,
  "links": [],
- "modified": "2026-08-18 21:00:00.000000",
+ "modified": "2026-08-21 04:00:00.000000",
  "module": "Container Depot",
  "name": "Gate Out Plan",
  "permissions": [],
- "search_fields": "principal, depot, status, container_summary",
+ "search_fields": "principal, status, container_summary",
  "sort_field": "creation",
  "sort_order": "DESC",
  "title_field": "principal"

@@ -49,6 +49,7 @@
   },
   {
    "fieldname": "container",
+   "search_index": 1,
    "fieldtype": "Link",
    "label": "Container",
    "options": "Container",
@@ -328,7 +329,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-21 00:30:00.000000",
+ "modified": "2026-08-20 19:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

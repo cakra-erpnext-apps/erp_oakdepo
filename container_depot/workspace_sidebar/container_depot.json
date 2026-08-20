@@ -146,6 +146,18 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "Gate Out Plan",
+   "link_to": "Gate Out Plan",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-calender"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Booking Code",
    "link_to": "Booking Code",
    "link_type": "DocType",
@@ -176,18 +188,6 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "es-line-upload"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Gate Out Plan",
-   "link_to": "Gate Out Plan",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-calender"
   },
   {
    "child": 0,
@@ -754,7 +754,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-20 10:00:00.000000",
+ "modified": "2026-08-21 05:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

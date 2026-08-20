@@ -321,22 +321,33 @@ class TestMailToOrder(FrappeTestCase):
 		gate_out = get_order_prefill(comm, "Gate Out", containers=[_A], options={"principal": owner})
 		self.assertEqual(gate_out["values"]["principal"], owner)
 
-	def test_prefill_seeds_depot_and_principal_only_when_unanimous(self):
+	def test_prefill_seeds_depot_only_when_unanimous(self):
+		"""Depot is seeded on the doctypes that HAVE one — Container Booking. A Gate Out Plan
+		has no header depot at all (an outbound notice reads it off each tank), so the seeder
+		simply passes it by."""
+		self._container(_A)
+		self._container(_B)
+		comm = self._email("Booking")
+
+		res = get_order_prefill(comm, "Booking", containers=f"{_A}\n{_B}")
+		self.assertEqual(res["values"]["depot"], _DEPOT)
+
+		# Mixed depots must not be guessed.
+		other = self._container("MTOU1000003", depot="OAK2")
+		mixed = get_order_prefill(comm, "Booking", containers=f"{_A}\n{other}")
+		self.assertNotIn("depot", mixed["values"])
+
+	def test_gate_out_prefill_seeds_principal_and_the_container_table(self):
 		self._container(_A)
 		self._container(_B)
 		comm = self._email("Siap lift on")
 
 		res = get_order_prefill(comm, "Gate Out", containers=f"{_A}\n{_B}",
 							   options={"target_lift_on": today()})
-		self.assertEqual(res["values"]["depot"], _DEPOT)
 		self.assertEqual(res["values"]["principal"], self._principal)
+		self.assertNotIn("depot", res["values"])
 		self.assertEqual(res["table"]["fieldname"], "containers")
 		self.assertEqual([r["target_lift_on"] for r in res["table"]["rows"]], [today(), today()])
-
-		# Mixed depots must not be guessed.
-		other = self._container("MTOU1000003", depot="OAK2")
-		mixed = get_order_prefill(comm, "Gate Out", containers=f"{_A}\n{other}")
-		self.assertNotIn("depot", mixed["values"])
 
 	def test_only_booking_and_gate_out_can_be_raised(self):
 		"""Cleaning / M&R / Survey are depot decisions, not something a mail books."""

@@ -43,21 +43,35 @@ class GateOutPlan(Document):
 		assert_rows_active(self, "containers")
 		self._assert_rows_match_header()
 		self._assert_containers_unique()
+		self._set_source()
 		self._roll_up()
+
+	def _set_source(self):
+		"""Where the notice came in — the system's own note, not an operator field.
+
+		Only a plan seeded from a Communication has an answer (``reff_email``, written by
+		``mail_to_order``). A plan typed by hand leaves it blank: stamping "Email" on every
+		manual plan told nobody anything and made the field look like an isian. An explicit
+		value already set by an API caller (the customer channel, when it lands) stands.
+		"""
+		if self.reff_email and not self.source:
+			self.source = "Email"
 
 	def _fill_rows(self):
 		"""Per row: mirror the container number, compute gate-out readiness, and flag the
-		tanks that have already left."""
+		tanks that have left since this plan listed them."""
+		before = None if self.is_new() else self.get_doc_before_save()
+		listed = {r.name: r.container for r in ((before.get("containers") if before else None) or [])}
 		for row in self.containers or []:
 			if not row.container:
 				row.container_no = row.readiness = None
-				row.is_ready = row.gated_out = 0
+				row.is_ready = row.gated_out = row.was_out = 0
 				continue
 			cn, status = frappe.db.get_value(
 				"Container", row.container, ["container_no", "status"]
 			) or (None, None)
 			row.container_no = cn
-			row.gated_out = 1 if status == GATE_OUT_STATUS else 0
+			_set_departure(row, status, newly_listed=listed.get(row.name) != row.container)
 			pending = _pending_work(row.container)
 			row.is_ready = 0 if pending else 1
 			row.readiness = _readiness_label(pending)
@@ -80,47 +94,43 @@ class GateOutPlan(Document):
 		# the moment someone lists a tank that happens to have left on an earlier visit.
 
 	def _assert_rows_match_header(self):
-		"""Every tank still to be collected must belong to the header's Principal and sit at
-		its Depot.
+		"""Every tank still to be collected must belong to the header's Principal.
 
-		The row picker already filters on both, so this is the server's own answer to what
-		the picker cannot see: an Excel import, an API caller, or a header edited *after* the
-		rows were listed. It matters because saving is what stamps ``target_lift_on`` — a
-		mismatched row would hand another owner's tank (or a tank at another depot) a
-		lift-on target nobody asked for, and float it up somebody else's cleaning worklist.
+		Ownership is the only thing a plan can insist on. There is no header Depot to match
+		against: a lift-on notice is written days ahead, and its tanks are routinely spread
+		across depots, still on the road, or carrying no depot at all because they have
+		never gated in here. Where each tank stands is the Container master's answer, shown
+		per row (``depot``, fetched) rather than declared once for the whole notice.
 
-		Rows already gated out are skipped: that tank has left and its row is history. Where
-		it belongs *now* — a resale, a re-entry at another depot — says nothing about the
-		lift-on it was collected under, and re-checking it would lock up a partly-collected
-		plan whose remaining tanks are still being worked.
+		The row picker already filters on Principal, so this is the server's own answer to
+		what the picker cannot see: an Excel import, an API caller, or a header edited
+		*after* the rows were listed. It matters because saving is what stamps
+		``target_lift_on`` — another owner's tank would get a lift-on target nobody asked
+		for, and float up somebody else's cleaning worklist.
+
+		Rows already gated out are skipped: that tank has left and its row is history. Who
+		owns it *now* — a resale — says nothing about the lift-on it was collected under, and
+		re-checking it would lock up a partly-collected plan whose remaining tanks are still
+		being worked.
 		"""
 		names = [r.container for r in (self.containers or []) if r.container and not r.gated_out]
-		if not names:
+		if not names or not self.principal:
 			return
-		wrong = []
-		for c in frappe.get_all(
-			"Container",
-			filters={"name": ["in", names]},
-			fields=["name", "container_no", "principal", "depot"],
-		):
-			label = c.container_no or c.name
-			if self.principal and c.principal != self.principal:
-				wrong.append(
-					_("{0}: milik {1}, bukan {2}").format(
-						label, c.principal or _("(tanpa pemilik)"), self.principal
-					)
-				)
-			elif self.depot and c.depot != self.depot:
-				wrong.append(
-					_("{0}: ada di depo {1}, bukan {2}").format(
-						label, c.depot or _("(tanpa depo)"), self.depot
-					)
-				)
+		wrong = [
+			_("{0}: milik {1}, bukan {2}").format(
+				c.container_no or c.name, c.principal or _("(tanpa pemilik)"), self.principal
+			)
+			for c in frappe.get_all(
+				"Container",
+				filters={"name": ["in", names], "principal": ["!=", self.principal]},
+				fields=["name", "container_no", "principal"],
+			)
+		]
 		if wrong:
 			frappe.throw(
 				"<br>".join(wrong)
 				+ "<br><br>"
-				+ _("Ganti Principal / Depot di header, atau hapus baris container ini."),
+				+ _("Ganti Principal di header, atau hapus baris container ini."),
 				title=_("Container Tidak Cocok dengan Header"),
 			)
 
@@ -221,8 +231,11 @@ def _tank_orders(container: str) -> list:
 				"doctype": doctype,
 				"name": r.name,
 				"status": _("Cancelled") if cancelled else r.status,
+				# Work that must finish before the tank can leave: open means blocking here.
 				"blocks": blocks,
-				"done": not blocks,
+				"open": blocks,
+				"done": not blocks and not cancelled,
+				"cancelled": cancelled,
 			})
 	return out
 
@@ -244,16 +257,140 @@ def _tank_eirs(container: str) -> list:
 		order_by="creation desc",
 	):
 		cancelled = r.docstatus == 2
+		done = not cancelled and r.status == "Submitted"
 		out.append({
 			"kind": r.inspection_type or "EIR",
 			"doctype": "Inspection",
 			"name": r.name,
 			"status": _("Cancelled") if cancelled else r.status,
 			"blocks": False,
-			# Only a submitted EIR is a finished record; a draft one is still being written.
-			"done": not cancelled and r.status == "Submitted",
+			# Only a submitted EIR is a finished record; a draft one is still being written —
+			# unfinished, and worth tracking, but never a reason a tank cannot leave.
+			"open": not cancelled and not done,
+			"done": done,
+			"cancelled": cancelled,
 		})
 	return out
+
+
+# The paperwork a tank moves under: the booking that authorises the visit and the bons that
+# work it. None of these hold a lift-on back — a Tank Out booking IS the way out, not an
+# obstacle — but an unfinished one is exactly what an operator preparing a pickup needs to
+# see, which is why they are tracked here rather than folded into Kesiapan.
+#
+# (kind, doctype, child doctype, parentfield, status field, direction)
+#
+# Direction is what says WHICH WAY the tank was meant to move, and that is the only thing
+# that can tell whether the document is finished with it. A booking carries its own; a bon
+# does not need one — bongkar is unloading (inbound) and muat is loading (outbound), always.
+_TANK_JOBS = (
+	("Booking", "Container Booking", "Container Booking Item", "items", "booking_status", "p.direction"),
+	("Bongkar", "Order Bongkar", "Container Booking Item", "containers", "order_status", "'Tank In'"),
+	("Muat", "Order Muat", "Order Container Item", "containers", "order_status", "'Tank Out'"),
+)
+
+
+def _tank_jobs(container: str, tank_status: str | None) -> list:
+	"""Bookings and bons this tank sits on, newest first — same line shape as an order.
+
+	They reach the tank through a child table rather than a field of their own, so each is
+	one join instead of "read the rows, then read their parents". The row tables are indexed
+	on ``container``, so this is a lookup, not a scan.
+
+	Whether one is FINISHED is judged per tank, not per document, because that is the
+	question being asked: a booking covering ten tanks is done for the three that have
+	arrived and still pending for the seven that have not. See :func:`_job_done`.
+	"""
+	out = []
+	for kind, doctype, child, parentfield, status_field, extra in _TANK_JOBS:
+		rows = frappe.db.sql(
+			"""
+			select p.name, p.docstatus, p.`{status_field}` as status, {extra} as direction
+			  from `tab{child}` r
+			  join `tab{parent}` p on p.name = r.parent
+			 where r.container = %s and r.parenttype = %s and r.parentfield = %s
+			 order by p.creation desc
+			""".format(child=child, parent=doctype, status_field=status_field, extra=extra),
+			(container, doctype, parentfield),
+			as_dict=True,
+		)
+		for r in rows:
+			cancelled = r.docstatus == 2 or r.status == "Cancelled"
+			done = False if cancelled else _job_done(r, tank_status)
+			out.append({
+				"kind": kind,
+				# Which way the booking was going. Only one booking is shown per tank (the
+				# latest), so without this the line cannot say whether that last booking
+				# brought the tank in or took it out — the first thing asked of it.
+				"detail": r.direction if doctype == "Container Booking" else None,
+				"doctype": doctype,
+				"name": r.name,
+				"status": _("Cancelled") if cancelled else r.status,
+				"blocks": False,
+				"open": not cancelled and not done,
+				"done": done,
+				"cancelled": cancelled,
+			})
+	return out
+
+
+def _job_done(job, tank_status: str | None) -> bool:
+	"""Has this booking / bon finished with THIS tank?
+
+	**The tank moving is what finishes the document, not a status field.** Two of these
+	fields do not reliably advance on their own: ``booking_status`` stops at ``Confirmed``
+	(approved and paid — where a booking STARTS being work, not where it stops), and an Order
+	Bongkar has no auto-complete at all, so it sits at ``Issued`` long after every tank on it
+	has been unloaded and parked. Reading either as "still open" leaves finished paperwork
+	glowing on the worklist; reading Confirmed as "done" hides bookings that have brought
+	nothing in yet. Neither is a state an operator can act on.
+
+	So the rule is the same for all three, and it is about the tank:
+
+	* still a draft → never done, it is still being written;
+	* ``Hold`` → never done, that status exists to say something needs attention;
+	* ``Completed`` → done, the document says so outright;
+	* **inbound** (Tank In / Bongkar) → done once the tank is no longer merely reserved: it
+	  has arrived (``In_Depot`` / ``Available``), or has since left again;
+	* **outbound** (Tank Out / Muat) → done once the tank has actually left.
+	"""
+	if job.docstatus != 1:
+		return False
+	if job.status == "Hold":
+		return False
+	if job.status == "Completed":
+		return True
+	if job.direction == "Tank Out":
+		return tank_status == GATE_OUT_STATUS
+	return tank_status is not None and tank_status != "Booked"
+
+
+def _set_departure(row, status: str | None, *, newly_listed: bool) -> None:
+	"""Decide whether this row's tank has left FOR THIS PLAN, and keep its baseline honest.
+
+	``Gate_Out`` on a Container means "not in my yard" — which covers a tank that just rolled
+	out the gate AND a tank that was never here in the first place (the doctype's own default,
+	and what a bulk-injected master carries until it gates in). Reading that status flat would
+	mark a plan 100% collected the moment it lists such a tank, and a plan that starts at 100%
+	can never be worked: no booking button, and the auto-close only fires on a real gate-out
+	that will never come.
+
+	So the row remembers where the tank STOOD when it was listed (``was_out``) and reports
+	only the change:
+
+	* tank present  → the baseline is spent; clear it (a tank that came back and leaves again
+	  counts, which is the whole point of listing it).
+	* tank away, just listed → baseline set; this departure predates the plan.
+	* tank away, listed earlier with a clear baseline → it left on this plan's watch.
+
+	Deliberately NOT keyed on a Gate Entry: tanks that arrive by data import have no gate
+	record at all, and their presence is carried by ``status`` alone.
+	"""
+	if status != GATE_OUT_STATUS:
+		row.was_out = 0
+	elif newly_listed:
+		row.was_out = 1
+	row.gated_out = 1 if status == GATE_OUT_STATUS and not cint(row.was_out) else 0
 
 
 def _pending_work(container: str) -> list:
@@ -405,28 +542,35 @@ def refresh_plan_fulfilment(plan: str) -> bool:
 	rows = frappe.get_all(
 		"Gate Out Plan Item",
 		filters={"parent": plan, "parenttype": "Gate Out Plan"},
-		fields=["name", "container"],
+		fields=["name", "container", "was_out"],
 	)
 	listed = [r for r in rows if r.container]
 	if not listed:
 		frappe.db.set_value("Gate Out Plan", plan, "per_fulfilled", 0, update_modified=False)
 		return False
 
-	gone = set(
+	away = set(
 		frappe.get_all(
 			"Container",
 			filters={"name": ["in", [r.container for r in listed]], "status": GATE_OUT_STATUS},
 			pluck="name",
 		)
 	)
+	# Same rule as the save path (:func:`_set_departure`), applied field by field because
+	# this runs on rows, not on a loaded document.
+	left = 0
 	for r in listed:
-		frappe.db.set_value(
-			"Gate Out Plan Item", r.name,
-			"gated_out", 1 if r.container in gone else 0,
-			update_modified=False,
-		)
+		updates = {}
+		if r.container not in away:
+			if cint(r.was_out):
+				updates["was_out"] = 0
+			r.was_out = 0
+		out = r.container in away and not cint(r.was_out)
+		updates["gated_out"] = 1 if out else 0
+		left += 1 if out else 0
+		frappe.db.set_value("Gate Out Plan Item", r.name, updates, update_modified=False)
 
-	per = flt(len(gone) * 100.0 / len(listed), 2)
+	per = flt(left * 100.0 / len(listed), 2)
 	updates = {"per_fulfilled": per}
 	close = per >= 100 and frappe.db.get_value("Gate Out Plan", plan, "status") == ACTIVE_STATUS
 	if close:
@@ -441,17 +585,27 @@ def refresh_plan_fulfilment(plan: str) -> bool:
 
 @frappe.whitelist()
 def related_orders(gate_out_plan: str) -> list:
-	"""Per listed tank, the Cleaning / M&R orders behind its Kesiapan, plus its EIRs.
+	"""Per listed tank, EVERY document still open against it, plus the finished ones as history.
 
-	The "Belum: Cleaning, M&R" column says a tank is held up but not by WHAT — this names the
-	orders so an operator can open the one that is blocking a lift-on instead of hunting for
-	it. The EIRs ride along as context (see :func:`_tank_eirs`) — they never change Kesiapan.
+	Six kinds, in the order an operator thinks about them: the Cleaning / M&R work behind
+	Kesiapan, the EIRs recording its condition, and the Booking / Bongkar / Muat paperwork it
+	moves under. "Belum: Cleaning, M&R" says a tank is held up but not by WHAT — this names
+	the document, so it can be opened instead of hunted for.
+
+	Two different questions are answered side by side and must not be confused:
+
+	* ``open``   — unfinished. Everything here is tracked on that basis.
+	* ``blocks`` — unfinished AND standing between the tank and the gate. Only Cleaning and
+	  M&R can. A draft EIR is unfinished paperwork; an open Tank Out booking is the very way
+	  out. Counting either as a blocker would hold up every tank on the plan forever.
+
 	Read live, never stored: the answer must not be able to age.
 	"""
 	frappe.has_permission("Gate Out Plan", "read", doc=gate_out_plan, throw=True)
 	readable = {
 		dt
-		for dt in ("Cleaning Order", "Repair Order", "Inspection")
+		for dt in ("Cleaning Order", "Repair Order", "Inspection",
+				   "Container Booking", "Order Bongkar", "Order Muat")
 		if frappe.has_permission(dt, "read")
 	}
 	out = []
@@ -463,15 +617,26 @@ def related_orders(gate_out_plan: str) -> list:
 	):
 		if not r.container:
 			continue
+		tank_status = frappe.db.get_value("Container", r.container, "status")
+		orders = [
+			o
+			for o in _tank_orders(r.container)
+			+ _tank_eirs(r.container)
+			+ _tank_jobs(r.container, tank_status)
+			if o["doctype"] in readable
+		]
 		out.append({
 			"container": r.container,
 			"container_no": r.container_no or r.container,
+			# Read here rather than off the stored row: the tab is the live answer, and the
+			# grid's copy is only as fresh as the last save.
+			"status": tank_status,
 			"target_lift_on": str(r.target_lift_on) if r.target_lift_on else None,
-			"orders": [
-				o
-				for o in _tank_orders(r.container) + _tank_eirs(r.container)
-				if o["doctype"] in readable
-			],
+			# Counted here, not in the browser: a role that cannot read Cleaning Orders must
+			# not be told how many of them are open either.
+			"open_count": sum(1 for o in orders if o["open"]),
+			"blocking_count": sum(1 for o in orders if o["blocks"]),
+			"orders": orders,
 		})
 	return out
 
@@ -496,33 +661,62 @@ def download_container_template():
 	finish_sheet(output, wb, ws, "gate_out_plan_template.xlsx", 1, len(headers) - 1)
 
 
-def _create_container(container_no: str, principal: str, depot: str | None) -> str:
-	"""Register a Container master for a tank the depot already holds but never recorded.
+def _create_container(container_no: str, principal: str) -> str:
+	"""Register a Container master for a number a lift-on notice introduced.
 
-	The plan's own Principal and Depot are stamped on it — anything else would fail
-	:meth:`GateOutPlan._assert_rows_match_header` on the very next save. Status
-	``Available``: the tank is physically here (that is why it is on a lift-on notice) and
-	no order has been raised against it yet, which is exactly what that status means (see
-	``container_status``). Type defaults to ISO Tank, the only thing this depot stores; the
-	rest of the spec is filled in on the master later.
+	Same terms as Container Booking's importer (``_create_imported_container``): only the
+	owner is stamped, and ``status`` / ``depot`` are left to the doctype's own default —
+	*Departed*, "the master exists but the tank is not in my yard". A plan is written days
+	ahead of the pickup and no longer asks the tank to be here, so claiming it stands
+	Available at this depot would be the import inventing a gate-in that never happened.
+	Gate-in is what stamps presence. Type defaults to ISO Tank, the only thing this depot
+	stores; the rest of the spec is filled in on the master later.
 	"""
 	doc = frappe.get_doc({
 		"doctype": "Container",
 		"container_no": container_no,
 		"container_type": "ISO Tank",
-		"status": "Available",
 		"principal": principal,
-		"depot": depot,
 	})
 	doc.insert()
 	return doc.name
+
+
+def _match_key(container_no: str) -> str:
+	"""A container number reduced to what identifies it: no spaces, no dashes, upper case.
+
+	For MATCHING only. A depot's own numbering carries separators the customer's spreadsheet
+	will not spell the same way twice, and the tank is the same tank either way. It must
+	never be what gets stored — a master registered under the flattened form is a second,
+	phantom record of a tank that already exists.
+	"""
+	return re.sub(r"[\s\-]+", "", container_no or "").upper()
+
+
+def _container_index() -> dict:
+	"""Every Container master keyed by :func:`_match_key`, for one file's worth of lookups.
+
+	Where two masters flatten to the same key (the duplicates a dash-blind import used to
+	create), the ACTIVE one wins, and failing that the older — the record with the history
+	on it, rather than the empty one minted by mistake.
+	"""
+	index = {}
+	for c in frappe.get_all(
+		"Container",
+		fields=["name", "container_no", "principal", "is_active", "creation"],
+		order_by="creation asc",
+	):
+		key = _match_key(c.container_no or c.name)
+		kept = index.get(key)
+		if not kept or (c.is_active and not kept.is_active):
+			index[key] = c
+	return index
 
 
 @frappe.whitelist()
 def parse_container_xlsx(
 	file_url: str,
 	principal: str | None = None,
-	depot: str | None = None,
 	create_missing: int | str | None = None,
 ) -> dict:
 	"""Parse an uploaded .xlsx into plan rows: Container, Target Lift-On, Catatan.
@@ -534,15 +728,16 @@ def parse_container_xlsx(
 	  tank number hides, and a plan stamps its target onto a real Container or it does
 	  nothing at all.
 	* on — the master is REGISTERED here and now (:func:`_create_container`), owned by the
-	  plan's Principal and sitting at its Depot, and the row comes back flagged
-	  ``is_new: 1``. The depot routinely holds tanks whose master entry lags behind the
-	  yard; refusing the whole notice over that is what the flag exists to avoid. Every
-	  one created is named back in ``created`` so a typo that just minted a master is
-	  visible immediately rather than discovered months later.
+	  plan's Principal, and the row comes back flagged ``is_new: 1``. Customers routinely
+	  announce tanks whose master entry lags behind; refusing the whole notice over that is
+	  what the flag exists to avoid. Every one created is named back in ``created`` so a
+	  typo that just minted a master is visible immediately rather than discovered months
+	  later.
 
-	``principal`` / ``depot`` (the plan's own) are applied as the row picker applies them —
-	a tank of another owner, or sitting at another depot, is refused and named in
-	``errors`` rather than silently landing on the grid.
+	``principal`` (the plan's own) is applied as the row picker applies it — a tank of
+	another owner is refused and named in ``errors`` rather than silently landing on the
+	grid. Nothing else narrows the file: status and depot say where a tank is today, and a
+	plan is written days before it needs to be anywhere.
 
 	A missing or unreadable date is reported but does NOT drop the row: Target Lift-On is
 	mandatory on the row, so the empty cell shows up on the grid itself where the operator
@@ -563,6 +758,10 @@ def parse_container_xlsx(
 			frappe.throw(_("Isi Principal di header dulu sebelum membuat master Container baru."))
 		frappe.has_permission("Container", "create", throw=True)
 
+	# Built once per file, not per row: the master keyed by its number with separators
+	# removed, so "CNTH-1", "CNTH 1" and "cnth1" all find the tank that is already there.
+	by_key = _container_index()
+
 	rows, unknown, errors, created, seen = [], [], [], [], set()
 	for cells in read_xlsx_file_from_attached_file(file_url=file_url) or []:
 		if not cells or cells[0] is None:
@@ -570,14 +769,16 @@ def parse_container_xlsx(
 		raw = str(cells[0]).strip()
 		if not raw or raw.lower() in _FILE_HEADERS:
 			continue
-		cno = re.sub(r"[\s\-]+", "", raw).upper()
-		if cno in seen:
+		# `cno` is the number AS WRITTEN (tidied only) — that is what a new master is
+		# registered under, and what the operator sees reported back. `key` exists solely to
+		# match it against the master; the two were once the same value, and collapsing them
+		# is what minted a duplicate tank for every dashed number in a file.
+		cno = raw.upper()
+		key = _match_key(cno)
+		if key in seen:
 			continue
-		seen.add(cno)
-		container = frappe.db.get_value(
-			"Container", {"container_no": cno},
-			["name", "principal", "depot", "is_active"], as_dict=True,
-		)
+		seen.add(key)
+		container = by_key.get(key)
 		# A retired tank is out of the fleet: named and dropped rather than quietly given a
 		# lift-on target, and never re-registered under the same number.
 		if container and not container.is_active:
@@ -589,15 +790,13 @@ def parse_container_xlsx(
 				unknown.append(cno)
 				continue
 			container = frappe._dict(
-				name=_create_container(cno, principal, depot), principal=principal, depot=depot
+				name=_create_container(cno, principal), principal=principal
 			)
+			by_key[key] = container
 			created.append(cno)
 			is_new = 1
 		if principal and container.principal != principal:
 			errors.append(_("{0}: bukan tank milik {1}").format(cno, principal))
-			continue
-		if depot and container.depot != depot:
-			errors.append(_("{0}: tidak berada di depo {1}").format(cno, depot))
 			continue
 		target = None
 		raw_date = cells[1] if len(cells) > 1 else None
@@ -642,14 +841,15 @@ def _needs_cleaning(container: str) -> bool:
 
 
 @frappe.whitelist()
-def make_container_booking(source_name, target_doc=None):
+def make_container_booking(source_name, target_doc=None, containers=None):
 	"""Turn the plan into an unsaved Tank Out (Lift On) Container Booking.
 
 	The plan is only the notice — the booking is the priced, submittable document that
 	actually lets a tank out, so this hand-off is the plan's endpoint. Everything the plan
-	already knows rides along: owner, depot (and the branch behind it), the source email /
-	reference, the customer's Release DO, and per tank its target lift-on date as the
-	booking line's date.
+	already knows rides along: owner, the source email / reference, the customer's Release
+	DO, and per tank its target lift-on date as the booking line's date. Depot and Branch
+	are read off the tanks themselves — the booking derives its own depot for a Tank Out,
+	and Branch is filled here when the collected tanks all stand in one depot.
 
 	**Customer (Bill To)** rides along too when the plan recorded one: the tank owner is not
 	always the party billed for the lift-on, so it is a field of its own on the plan rather
@@ -661,20 +861,46 @@ def make_container_booking(source_name, target_doc=None):
 	which is where the price list and payment mode live.
 
 	Tanks that have already gated out are dropped: a fulfilled row has nothing left to book.
+	``containers`` narrows it further to a chosen few — a lift-on notice is routinely
+	collected over several visits, so the form asks which tanks this booking is for rather
+	than assuming the whole plan leaves at once. Left out, every tank still on the plan goes.
+
 	Nothing is saved here; the operator lands on a fresh draft.
 	"""
 	from frappe.model.mapper import get_mapped_doc
+
+	# open_mapped_doc does not forward its `args` as keyword arguments — frappe's
+	# make_mapped_doc calls method(source_name) and leaves them in frappe.flags.args — so the
+	# Desk picker arrives there. The keyword stays for direct callers and tests.
+	picked = containers if containers is not None else (frappe.flags.args or {}).get("containers")
+	if isinstance(picked, str):
+		picked = frappe.parse_json(picked)
+	picked = set(picked) if picked else None
 
 	def set_missing(source, target):
 		# set_only_once on the booking, so it is fixed here before the first save — and it
 		# is what drives the whole outbound pipeline (naming, gates, Order Muat, EIR).
 		target.direction = "Tank Out"
-		if not target.branch and source.depot:
-			target.branch = frappe.db.get_value("Depot", source.depot, "branch")
 		if not target.get("items"):
 			frappe.throw(
-				_("Semua container di plan ini sudah keluar — tidak ada yang perlu dibooking.")
+				_("Tidak ada container yang bisa dibooking — semuanya sudah keluar.")
+				if picked is None
+				else _("Container yang dipilih sudah keluar semua.")
 			)
+		# Branch is mandatory on the booking and the plan has no depot of its own to read it
+		# off, so it comes from the tanks actually being collected. Only when they agree: a
+		# notice spanning two depots has no single answer, and guessing one would file the
+		# booking under the wrong branch. Left blank, the operator picks it on the form.
+		if not target.branch:
+			depots = {
+				d for d in frappe.get_all(
+					"Container",
+					filters={"name": ["in", [r.container for r in target.items if r.container]]},
+					pluck="depot",
+				) if d
+			}
+			if len(depots) == 1:
+				target.branch = frappe.db.get_value("Depot", depots.pop(), "branch")
 
 	def set_line(source_row, target_row, source_parent):
 		target_row.condition = "EMPTY DIRTY" if _needs_cleaning(source_row.container) else "EMPTY CLEAN"
@@ -707,7 +933,9 @@ def make_container_booking(source_name, target_doc=None):
 			"Gate Out Plan Item": {
 				"doctype": "Container Booking Item",
 				"field_map": {"target_lift_on": "tanggal_bongkar", "remark": "remarks"},
-				"condition": lambda row: row.container and not row.gated_out,
+				"condition": lambda row: (
+					row.container and not row.gated_out and (picked is None or row.container in picked)
+				),
 				"postprocess": set_line,
 			},
 		},

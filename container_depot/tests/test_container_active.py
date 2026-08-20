@@ -240,7 +240,7 @@ class TestContainerActive(FrappeTestCase):
 
 		url = self._xlsx([["Container", "Target Lift-On"], [f"{PREFIX}0000008", add_days(today(), 5)]])
 		res = gop.parse_container_xlsx(
-			url, principal=self.customer, depot=DEPOT, create_missing=1
+			url, principal=self.customer, create_missing=1
 		)
 
 		self.assertEqual(res["rows"], [])

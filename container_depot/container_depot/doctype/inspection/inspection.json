@@ -109,6 +109,7 @@
   {
    "description": "Wajib.",
    "fieldname": "container",
+   "search_index": 1,
    "fieldtype": "Link",
    "label": "Container",
    "options": "Container",

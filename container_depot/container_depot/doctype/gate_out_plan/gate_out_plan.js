@@ -1,22 +1,28 @@
 // Gate Out Plan — Desk form behaviour.
 frappe.ui.form.on("Gate Out Plan", {
 	setup(frm) {
-		// Filter the container picker to the plan's Principal (tank owner) + Depot, so ops
-		// can only list tanks that actually belong to this customer at this depot. Retired
-		// tanks (Active off) never appear — they are out of the fleet.
+		// Owner only — every tank of this Principal, whatever its status or whereabouts.
+		// A plan is a notice written days ahead: the tank is routinely still In_Depot, out
+		// on a previous trip, or has no depot at all because it never gated in here, and
+		// none of that stops the customer from announcing they will lift it on. There is no
+		// header Depot to narrow by either — this is an OUTBOUND notice, so each row shows
+		// the depot its own tank stands in (fetched from the Container master). Retired
+		// tanks (Active off) still never appear — they are out of the fleet, and the server
+		// refuses them on save anyway.
 		frm.set_query("container", "containers", () => {
 			const filters = { is_active: 1 };
 			if (frm.doc.principal) filters.principal = frm.doc.principal;
-			if (frm.doc.depot) filters.depot = frm.doc.depot;
 			return { filters };
 		});
 	},
 
 	refresh(frm) {
 		render_related_orders(frm);
+		render_system_facts(frm);
 		set_fulfilment_progress(frm);
 		set_grid_import_button(frm);
 		mark_new_containers(frm);
+		set_status_buttons(frm);
 
 		// Where the plan ends: a Container Booking (Tank Out / Lift On) carrying these
 		// tanks. Top-level, not buried in a "Buat" menu — it is the one action a finished
@@ -29,24 +35,63 @@ frappe.ui.form.on("Gate Out Plan", {
 		// nothing to book — offering the button there only leads to a server-side throw.
 		if (frm.doc.status === "Cancelled") return;
 		if (!(frm.doc.containers || []).some((r) => r.container && !r.gated_out)) return;
-		frm.add_custom_button(__("Buat Container Booking (Lift On)"), () => make_booking(frm));
+		frm.add_custom_button(__("Buat Container Booking (Lift On)"), () =>
+			pick_containers_then_book(frm)
+		);
 	},
 
 	principal(frm) {
 		reset_containers(frm, __("Principal / Tank Owner"));
 	},
-
-	depot(frm) {
-		reset_containers(frm, __("Depot"));
-	},
 });
 
-// Principal and Depot scope the container picker, so changing either invalidates every row
-// already listed. The table is emptied outright rather than just clearing each row's link
-// (what Container Booking does): here the ROW is the tank — its target date and note only
-// mean anything attached to that tank — so leaving empty rows behind would keep dates
-// hanging off nothing. The server refuses a mismatched row anyway
-// (``_assert_rows_match_header``); this is what keeps the operator from hitting that.
+// Everything the plan fills in by itself lives in the sidebar, above Last Edited By — same
+// block Container Booking / Order Bongkar / Order Muat use (public/js/system_facts.js). The
+// fields stay on the doctype (hidden) for the list view, the standard filters and the server.
+function render_system_facts(frm) {
+	const esc = frappe.utils.escape_html;
+	container_depot.render_system_facts(frm, [
+		[__("Status"), frm.doc.status && esc(frm.doc.status)],
+		[
+			__("Lift-On Terdekat"),
+			frm.doc.next_lift_on && frappe.datetime.str_to_user(frm.doc.next_lift_on),
+		],
+		// Two decimals like the progress bar, not the Percent field's own six.
+		[__("% Keluar"), frm.doc.container_summary ? `${flt(frm.doc.per_fulfilled, 2)}%` : null],
+		[__("Kesiapan"), frm.doc.readiness_summary && esc(frm.doc.readiness_summary)],
+		[__("Container"), frm.doc.container_summary && esc(frm.doc.container_summary)],
+		[__("Sumber"), frm.doc.source && esc(frm.doc.source)],
+		[__("Ref Email"), container_depot.doc_link("Communication", frm.doc.reff_email)],
+	]);
+}
+
+// Status is no longer a field on the form, so the one thing an operator did with it needs a
+// button: closing a notice the customer called off. Fulfilled is never set by hand — it is
+// what a full gate-out means. A normal save (not db_set) so on_update releases the tanks'
+// lift-on stamps, exactly as editing the field used to.
+function set_status_buttons(frm) {
+	if (frm.is_new() || !frappe.perm.has_perm(frm.doctype, 0, "write")) return;
+	if (frm.doc.status === "Open") {
+		frm.add_custom_button(__("Batalkan Plan"), () =>
+			frappe.confirm(
+				__("Batalkan plan ini? Target lift-on dilepas dari semua container-nya."),
+				() => frm.set_value("status", "Cancelled").then(() => frm.save())
+			)
+		);
+	} else if (frm.doc.status === "Cancelled") {
+		frm.add_custom_button(__("Buka Lagi"), () =>
+			frm.set_value("status", "Open").then(() => frm.save())
+		);
+	}
+}
+
+// Principal scopes the container picker, so changing it invalidates every row already
+// listed. (Depot does not — it says where the hand-over happens, not which tanks qualify.)
+// The table is emptied outright rather than just clearing each row's link (what Container
+// Booking does): here the ROW is the tank — its target date and note only mean anything
+// attached to that tank — so leaving empty rows behind would keep dates hanging off
+// nothing. The server refuses a mismatched row anyway (``_assert_rows_match_header``);
+// this is what keeps the operator from hitting that.
 function reset_containers(frm, what) {
 	if (!(frm.doc.containers || []).length) return;
 	frm.clear_table("containers");
@@ -88,9 +133,7 @@ function set_fulfilment_progress(frm) {
 function render_related_orders(frm) {
 	const field = frm.get_field("related_orders_html");
 	if (!field) return;
-	// The section sits at the very top, so on a brand-new plan it would be the first thing on
-	// screen with nothing in it — there are no saved containers to report on yet.
-	frm.toggle_display("orders_section", !frm.is_new());
+	// Nothing to report on a brand-new plan — no saved containers yet.
 	if (frm.is_new()) {
 		field.$wrapper.empty();
 		return;
@@ -112,48 +155,168 @@ function related_orders_html(tanks) {
 	const esc = frappe.utils.escape_html;
 	if (!tanks.length) return `<div class="text-muted">${__("Belum ada container di plan ini.")}</div>`;
 
+	// Same shape as Container Booking's "Pekerjaan per Container" block: the tank as a link
+	// to its master, then one flush row per document — pill first, then the link, then what
+	// kind of document it is. Two panels answering the same question should not look like
+	// two different features.
 	return tanks
 		.map((t) => {
-			const head = [esc(t.container_no), t.target_lift_on ? `${__("Target")}: ${esc(t.target_lift_on)}` : null]
-				.filter(Boolean)
-				.join(" · ");
-			const orders = t.orders.length
-				? t.orders.map(order_line).join("")
-				: `<div class="text-muted small py-1">${__("Tidak ada order cleaning / M&R atau EIR.")}</div>`;
-			return `
-				<div class="mb-4">
-					<div class="bold mb-1">${head}</div>
-					${orders}
-				</div>`;
+			const title = frappe.utils.get_form_link(
+				"Container", t.container, true, esc(t.container_no)
+			);
+			// "Available" is the only state a Tank Out booking may be submitted from, so it
+			// is the one worth calling out in green; everything else is stated plainly.
+			const status = t.status
+				? `<span class="indicator-pill ${
+						t.status === "Available" ? "green" : "gray"
+				  } no-indicator-dot">${esc(t.status)}</span>`
+				: "";
+			const target = t.target_lift_on
+				? `<span class="text-muted small">${__("Target")}: ${esc(t.target_lift_on)}</span>`
+				: "";
+			const counts = t.blocking_count
+				? `<span class="text-danger small">${__("{0} menahan lift-on", [t.blocking_count])}</span>`
+				: t.open_count
+				  ? `<span class="text-muted small">${__("{0} belum selesai", [t.open_count])}</span>`
+				  : "";
+			// Every tank is listed even when it has nothing open — "this one is clear" is an
+			// answer the operator came for, and a tank that silently vanished from the list
+			// would read as one nobody has looked at. Say it out loud rather than leaving an
+			// empty block, which reads as a broken panel.
+			const rows = summary_rows(t.orders);
+			const body = rows.length
+				? `<div class="mt-2">${rows.map(order_line).join("")}</div>`
+				: `<div class="text-muted mt-2">${__("Belum ada dokumen yang tercatat pada tank ini.")}</div>`;
+
+			return `<div class="mb-4">
+				<div class="d-flex align-items-center" style="gap: .5rem;">
+					<b>${title}</b>${status}${target}
+					<span class="ml-auto">${counts}</span>
+				</div>
+				${body}
+			</div>`;
 		})
 		.join("");
+}
+
+// One line per kind: the tank's LAST cleaning, last M&R, last EIR-In, last EIR-Out, last
+// booking, last bon. On a tank that has been through the depot twenty times the full history
+// is dozens of rows and none of it is news — "what happened last" is the question, and the
+// toggle is there for the rest.
+//
+// The one exception is an OLDER document still unfinished. That is rare (a cleaning left at
+// Pending while a newer one was raised and finished), and precisely the thing an operator
+// must not have hidden from them — this tab exists to surface outstanding work. So it stays
+// on the list even though something newer of its kind is already shown.
+//
+// Voided documents are never the representative: "the last thing that happened" being a
+// cancellation says nothing about the tank. Each producer returns its kind newest-first, so
+// the first surviving row of a kind IS the latest one.
+function summary_rows(orders) {
+	const shown_kind = new Set();
+	return orders.filter((o) => {
+		if (o.cancelled) return false;
+		if (!shown_kind.has(o.kind)) {
+			shown_kind.add(o.kind);
+			return true;
+		}
+		return o.open;
+	});
 }
 
 function order_line(o) {
 	const esc = frappe.utils.escape_html;
 	// get_form_link emits this desk's own route, so the link holds wherever the desk is mounted.
 	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
-	// Orange = still holding the lift-on back. Green = finished. Grey = neither: an EIR that
-	// is only a draft, or a cancelled document — history, not a warning and not a clearance.
-	const tone = o.blocks ? "orange" : o.done ? "green" : "gray";
-	const pill = `<span class="indicator-pill ${tone} no-indicator-dot">${esc(o.status)}</span>`;
-	return `
-		<div class="flex justify-between align-center py-1 border-bottom">
-			<div class="ellipsis">${link} <span class="text-muted small">${esc(o.kind)}</span></div>
-			${pill}
-		</div>`;
+	// Orange = unfinished AND holding the lift-on back (only Cleaning / M&R can). Blue =
+	// unfinished but not in the way: a draft EIR, a booking still being prepared. Green =
+	// finished. Grey = cancelled — history, neither a warning nor a clearance.
+	const tone = o.blocks ? "orange" : o.cancelled ? "gray" : o.open ? "blue" : "green";
+	const kind = o.detail ? `${o.kind} · ${o.detail}` : o.kind;
+	return `<div class="d-flex align-items-center" style="gap: .5rem; padding: 2px 0;">
+		<span class="indicator-pill ${tone}">${esc(o.status || "—")}</span>
+		<span style="min-width: 11rem;">${link}</span>
+		<span class="text-muted">${esc(kind)}</span>
+	</div>`;
 }
 
-function make_booking(frm) {
+// A plan is collected over several visits, so the question "which tanks is THIS booking
+// for?" is asked outright instead of being buried in grid tick-boxes nobody finds. The ones
+// actually ready to leave are pre-ticked; the rest can still be chosen deliberately, because
+// a booking is often raised a day ahead of the cleaning finishing.
+function pick_containers_then_book(frm) {
+	const rows = (frm.doc.containers || []).filter((r) => r.container && !r.gated_out);
+	if (!rows.length) {
+		frappe.msgprint(__("Semua container di plan ini sudah keluar."));
+		return;
+	}
+	const options = rows.map((r) => {
+		// "Available" is the app's word for present in the yard with no open work — the one
+		// state a Tank Out booking may actually be submitted from. Anything else can be
+		// booked, it just cannot go out yet, and the row says why.
+		const ready = r.container_status === "Available";
+		const bits = [r.container_status || __("status tidak diketahui")];
+		if (r.target_lift_on) bits.push(`${__("Target")}: ${frappe.datetime.str_to_user(r.target_lift_on)}`);
+		if (!ready && r.readiness && r.readiness !== "Siap") bits.push(r.readiness);
+		return {
+			label: `${frappe.utils.escape_html(r.container_no || r.container)} — ${frappe.utils.escape_html(
+				bits.join(" · ")
+			)}`,
+			value: r.container,
+			checked: ready,
+			warning: !ready,
+			description: ready ? __("Siap diambil") : __("Belum siap diambil"),
+		};
+	});
+	const ready_count = options.filter((o) => o.checked).length;
+
+	const d = new frappe.ui.Dialog({
+		title: __("Pilih container untuk dibooking"),
+		fields: [
+			{
+				fieldname: "hint",
+				fieldtype: "HTML",
+				options: `<p class="text-muted small">${
+					ready_count
+						? __("{0} dari {1} container siap diambil (Available) — sudah dicentang.", [
+								ready_count,
+								options.length,
+						  ])
+						: __("Belum ada container yang Available. Centang manual kalau booking dibuat lebih dulu.")
+				}</p>`,
+			},
+			{
+				fieldname: "containers",
+				fieldtype: "MultiCheck",
+				label: __("Container"),
+				options,
+				select_all: true,
+				sort_options: false,
+			},
+		],
+		primary_action_label: __("Buat Booking"),
+		primary_action() {
+			const picked = d.get_value("containers") || [];
+			if (!picked.length) {
+				frappe.msgprint(__("Pilih minimal satu container."));
+				return;
+			}
+			d.hide();
+			make_booking(frm, picked);
+		},
+	});
+	d.show();
+}
+
+function make_booking(frm, picked) {
 	// Mapped server-side (see ``make_container_booking``): the booking line's condition and
 	// cargo are read off each tank, which the browser cannot do, and the rows that already
 	// gated out are dropped there rather than filtered in two places.
-	// Tick rows in the Container grid first to book only those (open_mapped_doc passes the
-	// selection through) — a plan is often collected in more than one visit.
 	frappe.model
 		.open_mapped_doc({
 			method: "container_depot.container_depot.doctype.gate_out_plan.gate_out_plan.make_container_booking",
 			frm,
+			args: { containers: picked },
 			freeze_message: __("Menyiapkan booking…"),
 		})
 		.then((r) => {
@@ -209,6 +372,10 @@ function mark_new_containers(frm) {
 	grid.refresh();
 }
 
+// Same dialog as Container Booking's grid importer, field for field: the hint, the Principal
+// picker that writes back to the form, the file, and "Ganti baris yang ada". Only the column
+// list differs — a plan carries a target date and a note where a booking carries condition
+// and cargo. Parsed server-side, rows added client-side, so it works on an unsaved plan too.
 function import_dialog(frm) {
 	const d = new frappe.ui.Dialog({
 		title: __("Import Container dari Excel"),
@@ -217,20 +384,29 @@ function import_dialog(frm) {
 				fieldname: "hint",
 				fieldtype: "HTML",
 				options: `<p class="text-muted small">${__(
-					"Kolom: Container, Target Lift-On (YYYY-MM-DD), Catatan (opsional). Baris header dilewati. Tank milik principal lain atau di depo lain ditolak."
+					"Kolom: Container, Target Lift-On (YYYY-MM-DD), Catatan (opsional). Baris judul dilewati."
 				)}</p>`,
 			},
-			{ fieldname: "file", fieldtype: "Attach", label: __("File Excel (.xlsx)"), reqd: 1 },
-			{ fieldname: "replace", fieldtype: "Check", label: __("Ganti baris yang sudah ada") },
+			// Principal is shown (and editable) here because it decides what the import does:
+			// it OWNS every container master the file registers, and it is what a row is
+			// refused for belonging to someone else. Editing it writes straight back to the
+			// form, so the two can never drift — and changing it clears the rows already on
+			// the grid, exactly as changing it on the form does.
 			{
-				fieldname: "create_missing",
-				fieldtype: "Check",
-				default: 1,
-				label: __("Buat master Container kalau belum terdaftar"),
-				description: __(
-					"Nomor yang belum ada di master didaftarkan langsung (Principal & Depo dari header, status Available) dan ditandai <b>Baru</b> di grid. Matikan kalau file-nya belum dipastikan bebas salah ketik — nomor asing akan dilewati saja."
-				),
+				fieldname: "principal",
+				fieldtype: "Link",
+				options: "Customer",
+				label: __("Principal / Tank Owner"),
+				reqd: 1,
+				default: frm.doc.principal || "",
+				description: __("Pemilik tank. Container baru didaftarkan atas nama ini."),
+				onchange() {
+					const picked = this.get_value();
+					if (picked && picked !== frm.doc.principal) frm.set_value("principal", picked);
+				},
 			},
+			{ fieldname: "file", fieldtype: "Attach", label: __("File Excel (.xlsx)"), reqd: 1 },
+			{ fieldname: "replace", fieldtype: "Check", label: __("Ganti baris yang ada") },
 		],
 		primary_action_label: __("Import"),
 		primary_action(values) {
@@ -238,9 +414,13 @@ function import_dialog(frm) {
 				method: "container_depot.container_depot.doctype.gate_out_plan.gate_out_plan.parse_container_xlsx",
 				args: {
 					file_url: values.file,
-					principal: frm.doc.principal || null,
-					depot: frm.doc.depot || null,
-					create_missing: values.create_missing ? 1 : 0,
+					// A Container cannot be created without an owner; the dialog carries it
+					// (and has already written it back to the form).
+					principal: values.principal || frm.doc.principal || null,
+					// Always on, as on a booking: a lift-on notice routinely names a tank whose
+					// master entry lags behind, and every number registered is reported back by
+					// name so a typo is caught here rather than months later.
+					create_missing: 1,
 				},
 				freeze: true,
 				freeze_message: __("Membaca file…"),
@@ -260,9 +440,11 @@ function import_dialog(frm) {
 		window.open(`${gop}.download_container_template`);
 	});
 	// The Container master is Container Booking's endpoint, reused as-is: same tanks, and
-	// scoped to this plan's Principal so the file lists exactly what the picker allows.
+	// scoped to the principal the operator is looking at right now — not the one the form
+	// carried when the dialog opened.
 	d.add_custom_action(__("Download Master Container"), () => {
-		const q = frm.doc.principal ? `?principal=${encodeURIComponent(frm.doc.principal)}` : "";
+		const owner = d.get_value("principal") || frm.doc.principal;
+		const q = owner ? `?principal=${encodeURIComponent(owner)}` : "";
 		window.open(`${bkg}.download_container_master${q}`);
 	});
 	d.show();
@@ -296,21 +478,20 @@ function apply_import(frm, res, replace) {
 
 	let msg = __("{0} baris ditambahkan.", [added]);
 	if (skipped) msg += " " + __("{0} sudah ada di grid, dilewati.", [skipped]);
-	// Two things can go partly wrong and each is named separately: numbers the master does
-	// not know (skipped outright), and rows imported with something missing.
+	// Same three outcomes a booking import names, in the same order.
 	const notes = [];
-	// Registering a master is the one thing here that changes data outside the plan, so it
-	// is reported first and by name — a typo'd number that just became a permanent record
-	// is fixable now, not in six months.
+	// Registering a Container master is the one thing an import does outside this plan, so
+	// the numbers it created are named first and by name — a typo caught here costs nothing,
+	// one found later is a phantom tank.
 	const created = res.created || [];
 	if (created.length) {
 		notes.push(
 			"<b>" +
-				__("Master Container baru dibuat ({0}):", [created.length]) +
+				__("Baru didaftarkan ({0}):", [created.length]) +
 				"</b><br>" +
 				created.join(", ") +
 				'<br><span class="text-muted">' +
-				__("Ditandai <b>Baru</b> di grid. Lengkapi spesifikasi tank-nya di master Container.") +
+				__("Cek ejaannya — hapus barisnya kalau salah ketik.") +
 				"</span>"
 		);
 	}
@@ -318,19 +499,19 @@ function apply_import(frm, res, replace) {
 	if (unknown.length) {
 		notes.push(
 			"<b>" +
-				__("Tidak ada di master Container — dilewati ({0}):", [unknown.length]) +
+				__("Tidak dikenal — dilewati ({0}):", [unknown.length]) +
 				"</b><br>" +
 				unknown.join(", ") +
 				'<br><span class="text-muted">' +
-				__("Daftarkan dulu di master Container, lalu import ulang.") +
+				__("Daftarkan di master Container dulu.") +
 				"</span>"
 		);
 	}
 	const warns = res.errors || [];
-	if (warns.length) notes.push("<b>" + __("Perlu diperiksa:") + "</b><br>" + warns.join("<br>"));
+	if (warns.length) notes.push("<b>" + __("Tidak diimport:") + "</b><br>" + warns.join("<br>"));
 	if (notes.length) {
 		frappe.msgprint({
-			title: __("Import selesai dengan catatan"),
+			title: __("Catatan import"),
 			message: msg + "<br><br>" + notes.join("<br><br>"),
 			indicator: "orange",
 		});

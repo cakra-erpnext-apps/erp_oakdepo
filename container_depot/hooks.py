@@ -182,6 +182,27 @@ for _ev in ("on_update", "on_submit", "on_update_after_submit", "on_cancel", "af
 	_append_event("Cleaning Order", _ev, _GOP_REFRESH)
 del _ev
 
+# "What happened to this tank last?" — the latest Booking / Bongkar / Muat / Cleaning / M&R /
+# EIR-In / EIR-Out, cached on the Container master so a screen asking that does not have to
+# query six tables. The cache is REBUILT FROM SOURCE on every one of these events rather than
+# stepped forward, so a cancel or a delete lands on the previous order instead of leaving a
+# stale pointer (see last_orders.py).
+_LAST_ORDERS = "container_depot.container_depot.last_orders.refresh_for_doc"
+# on_trash, NOT after_delete: Frappe refuses a delete that anything still links to, so the
+# pointer has to be dropped BEFORE the check, or it would block the very delete it exists to
+# follow. See last_orders.clear_for_doc.
+_LAST_ORDERS_CLEAR = "container_depot.container_depot.last_orders.clear_for_doc"
+_LAST_ORDER_SOURCES = (
+	"Container Booking", "Order Bongkar", "Order Muat",
+	"Cleaning Order", "Repair Order", "Inspection",
+)
+for _dt in _LAST_ORDER_SOURCES:
+	# Repair Order is not submittable, so its submit-side events simply never fire.
+	for _ev in ("on_update", "on_submit", "on_update_after_submit", "on_cancel"):
+		_append_event(_dt, _ev, _LAST_ORDERS)
+	_append_event(_dt, "on_trash", _LAST_ORDERS_CLEAR)
+del _dt, _ev
+
 # Scheduled Jobs
 # --------------
 

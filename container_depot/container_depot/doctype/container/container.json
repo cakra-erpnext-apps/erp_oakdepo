@@ -36,6 +36,12 @@
   "order_ref_section",
   "created_by_booking",
   "last_order_bongkar",
+  "last_booking",
+  "last_order_muat",
+  "last_cleaning_order",
+  "last_repair_order",
+  "last_eir_in",
+  "last_eir_out",
   "gate_out_plan",
   "column_break_ref",
   "target_lift_on",
@@ -237,11 +243,11 @@
    "read_only": 1
   },
   {
-   "description": "Latest Order Bongkar (unloading voucher) this container was placed on — stamped automatically when the bon is submitted.",
+   "description": "Order Bongkar terakhir yang memuat tank ini.",
    "fieldname": "last_order_bongkar",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "label": "Order Bongkar",
-   "options": "Order Bongkar",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -310,10 +316,58 @@
    "fieldname": "seal_history_html",
    "fieldtype": "HTML",
    "label": "Riwayat Seal"
+  },
+  {
+   "description": "Container Booking terakhir yang memuat tank ini.",
+   "fieldname": "last_booking",
+   "fieldtype": "Data",
+   "label": "Booking Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Order Muat terakhir yang memuat tank ini.",
+   "fieldname": "last_order_muat",
+   "fieldtype": "Data",
+   "label": "Order Muat Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Cleaning Order terakhir tank ini (yang dibatalkan tidak dihitung).",
+   "fieldname": "last_cleaning_order",
+   "fieldtype": "Data",
+   "label": "Cleaning Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Repair Order terakhir tank ini (yang dibatalkan tidak dihitung).",
+   "fieldname": "last_repair_order",
+   "fieldtype": "Data",
+   "label": "M&R Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "EIR-In terakhir tank ini.",
+   "fieldname": "last_eir_in",
+   "fieldtype": "Data",
+   "label": "EIR-In Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "EIR-Out terakhir tank ini.",
+   "fieldname": "last_eir_out",
+   "fieldtype": "Data",
+   "label": "EIR-Out Terakhir",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-08-20 10:05:00.000000",
+ "modified": "2026-08-20 21:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

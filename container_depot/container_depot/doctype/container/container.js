@@ -4,6 +4,7 @@
 frappe.ui.form.on('Container', {
 	refresh(frm) {
 		render_seal_history(frm);
+		link_last_orders(frm);
 		// A "Gate-In" button used to sit here calling
 		// `container.create_gate_entry`. That method has never existed anywhere in the
 		// app — the only whitelist in container.py is `seal_history` — so the button
@@ -76,4 +77,30 @@ function seal_history_html(releases) {
 				</div>`;
 		})
 		.join('');
+}
+
+// --- "order terakhir" cache ------------------------------------------------------
+// These are Data, not Link, on purpose: Frappe validates a Link's target before any hook
+// of ours can run, so a pointer left dangling by a raw delete would block this Container
+// from ever saving again (see last_orders.py). Being Data costs the click-through, which
+// this puts back — the value is a document name, so it renders as the link it names.
+const LAST_ORDER_DOCTYPES = {
+	last_booking: 'Container Booking',
+	last_order_bongkar: 'Order Bongkar',
+	last_order_muat: 'Order Muat',
+	last_cleaning_order: 'Cleaning Order',
+	last_repair_order: 'Repair Order',
+	last_eir_in: 'Inspection',
+	last_eir_out: 'Inspection'
+};
+
+function link_last_orders(frm) {
+	Object.entries(LAST_ORDER_DOCTYPES).forEach(([fieldname, doctype]) => {
+		const df = frm.fields_dict[fieldname] && frm.fields_dict[fieldname].df;
+		if (!df || df.formatter) return;
+		// get_form_link emits this desk's own route, so the link holds wherever it is mounted.
+		df.formatter = (value) =>
+			value ? frappe.utils.get_form_link(doctype, value, true, frappe.utils.escape_html(value)) : '';
+	});
+	frm.refresh_fields(Object.keys(LAST_ORDER_DOCTYPES));
 }

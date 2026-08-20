@@ -18,7 +18,7 @@ import io
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, today
+from frappe.utils import add_days, getdate, today
 
 from container_depot.container_depot import cleaning
 from container_depot.container_depot.doctype.gate_out_plan import gate_out_plan
@@ -41,6 +41,8 @@ class TestGateOutPlan(FrappeTestCase):
 		self._comms = []
 		self._files = []        # uploaded .xlsx probes
 		self._customers = []    # extra Customers minted by a test
+		self._bookings = []     # Container Bookings raised to test the tracking list
+		self._bons = []         # Order Bongkar bons raised to test the tracking list
 
 	def tearDown(self):
 		# frappe.response is process-global; the template download test leaves it set.
@@ -56,6 +58,12 @@ class TestGateOutPlan(FrappeTestCase):
 			frappe.db.delete("Repair Order", {"name": r})
 		for e in self._eirs:
 			frappe.db.delete("Inspection", {"name": e})
+		for b in self._bookings:
+			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Container Booking", {"name": b})
+		for b in self._bons:
+			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Order Bongkar", {"name": b})
 		for cm in self._comms:
 			frappe.db.delete("Communication", {"name": cm})
 		for c in self._containers:
@@ -82,7 +90,6 @@ class TestGateOutPlan(FrappeTestCase):
 		doc = frappe.get_doc({
 			"doctype": "Gate Out Plan",
 			"principal": kw.pop("principal", self._principal),
-			"depot": kw.pop("depot", _DEPOT),
 			"source": "Email",
 			"status": status,
 			"containers": [{"container": c, "target_lift_on": d} for c, d in rows],
@@ -104,6 +111,40 @@ class TestGateOutPlan(FrappeTestCase):
 		}).insert(ignore_permissions=True)
 		self._repairs.append(ro.name)
 		return ro.name
+
+	def _booking(self, container, booking_status="Draft", direction="Tank Out", submitted=False):
+		"""Validation is bypassed: pricing, contract and the payment gate say nothing about
+		whether the booking shows up on this tank's tracking list."""
+		doc = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": direction,
+			"customer": self._principal,
+			"principal": self._principal,
+			"booking_status": booking_status,
+			"items": [{"container": container}],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		if submitted:
+			frappe.db.set_value("Container Booking", doc.name, "docstatus", 1, update_modified=False)
+		self._bookings.append(doc.name)
+		return doc.name
+
+	def _bongkar(self, container, order_status="Issued"):
+		"""A submitted unloading bon. Validation is bypassed — the bon's own paperwork says
+		nothing about whether it shows up on this tank's tracking list."""
+		doc = frappe.get_doc({
+			"doctype": "Order Bongkar",
+			"shipper": self._principal,
+			"ex_vessel": "MV GOP TEST",
+			"order_status": order_status,
+			"containers": [{"container": container}],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("Order Bongkar", doc.name, "docstatus", 1, update_modified=False)
+		self._bons.append(doc.name)
+		return doc.name
 
 	def _eir(self, container, inspection_type, status="Submitted"):
 		insp = frappe.get_doc({
@@ -253,6 +294,116 @@ class TestGateOutPlan(FrappeTestCase):
 		# ...and that is precisely what the stored column says.
 		self.assertEqual(self._readiness(plan.name)[1], "Belum: M&R")
 
+	def test_import_matches_a_dashed_master_instead_of_minting_a_twin(self):
+		"""The number in the file and the number in the master rarely agree on separators.
+
+		Flattening the file value and then looking THAT up finds nothing, so `create_missing`
+		registers a second master for a tank that already exists — a phantom with no depot,
+		no history and a default `Gate_Out` status, which then reads as "already collected"
+		on the plan. Match on the flattened form; store the number as written.
+		"""
+		dashed = self._container("GOP-XLS-01")
+		url = self._xlsx([
+			["Container", "Target Lift-On"],
+			["gop xls 01", add_days(today(), 5)],   # same tank, spelled loosely
+		])
+		res = gate_out_plan.parse_container_xlsx(
+			url, principal=self._principal, create_missing=1
+		)
+
+		self.assertEqual(res["created"], [])
+		self.assertEqual([r["container"] for r in res["rows"]], [dashed])
+
+	def test_related_orders_tracks_the_booking_and_bons_too(self):
+		"""Every unfinished document against the tank, not only the work: the booking that
+		authorises the visit and the bons that run it belong on the same list."""
+		c = self._container("GOPREL0002")
+		booking = self._booking(c, booking_status="Draft")
+		cancelled = self._booking(c, booking_status="Cancelled")
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		by_name = {o["name"]: o for o in gate_out_plan.related_orders(plan.name)[0]["orders"]}
+		self.assertEqual(by_name[booking]["kind"], "Booking")
+		self.assertTrue(by_name[booking]["open"])
+		# Only the newest booking is shown per tank, so the line has to say which way that
+		# one was going — "the last booking" is useless without In or Out.
+		self.assertEqual(by_name[booking]["detail"], "Tank Out")
+		# Paperwork is tracked, never a blocker: a Tank Out booking IS the way out, so
+		# counting it as an obstacle would hold every planned tank up forever.
+		self.assertFalse(by_name[booking]["blocks"])
+		# A voided booking is history — neither unfinished work nor a clearance.
+		self.assertTrue(by_name[cancelled]["cancelled"])
+		self.assertFalse(by_name[cancelled]["open"])
+
+	def test_a_confirmed_tank_in_is_still_open_until_the_tank_arrives(self):
+		"""Confirmed is where a booking STARTS being work, not where it stops.
+
+		A Tank In that is approved and paid for but whose tank is still merely ``Booked`` has
+		brought nothing in — the bon has not even been generated. Reading Confirmed as
+		"finished" hid precisely the bookings an operator preparing a lift-on is looking for.
+		"""
+		waiting = self._container("GOPBKG0001", status="Booked", depot=None)
+		arrived = self._container("GOPBKG0002", status="Available")
+		booking_waiting = self._booking(
+			waiting, booking_status="Confirmed", direction="Tank In", submitted=True
+		)
+		booking_arrived = self._booking(
+			arrived, booking_status="Confirmed", direction="Tank In", submitted=True
+		)
+		plan = self._plan([
+			(waiting, add_days(today(), 5)),
+			(arrived, add_days(today(), 5)),
+		])
+
+		tanks = {t["container"]: t for t in gate_out_plan.related_orders(plan.name)}
+		still_open = {o["name"]: o for o in tanks[waiting]["orders"]}
+		self.assertTrue(still_open[booking_waiting]["open"])
+		self.assertEqual(tanks[waiting]["open_count"], 1)
+		# The same booking IS finished for a tank that actually turned up — judged per tank,
+		# because one booking routinely covers ten of them at different stages.
+		finished = {o["name"]: o for o in tanks[arrived]["orders"]}
+		self.assertFalse(finished[booking_arrived]["open"])
+		self.assertEqual(tanks[arrived]["open_count"], 0)
+
+	def test_an_issued_bon_is_done_once_its_tank_has_moved(self):
+		"""An Order Bongkar has no auto-complete — nothing ever advances it past ``Issued``.
+
+		Judged by that field alone it stays "unfinished" forever, long after every tank on it
+		has been unloaded and parked, which drains the meaning out of the unfinished colour.
+		The tank moving is what finishes it, exactly as for the booking above.
+		"""
+		arrived = self._container("GOPBON0001", status="Available")
+		waiting = self._container("GOPBON0002", status="Booked", depot=None)
+		held = self._container("GOPBON0003", status="Available")
+		done_bon = self._bongkar(arrived)
+		open_bon = self._bongkar(waiting)
+		held_bon = self._bongkar(held, order_status="Hold")
+		plan = self._plan([
+			(arrived, add_days(today(), 5)),
+			(waiting, add_days(today(), 5)),
+			(held, add_days(today(), 5)),
+		])
+
+		tanks = {t["container"]: t for t in gate_out_plan.related_orders(plan.name)}
+		by = lambda c: {o["name"]: o for o in tanks[c]["orders"]}
+		self.assertFalse(by(arrived)[done_bon]["open"])       # tank is in — the bon is spent
+		self.assertTrue(by(waiting)[open_bon]["open"])        # nothing unloaded yet
+		# Hold is a flag that something needs attention, so it stays open whatever the tank did.
+		self.assertTrue(by(held)[held_bon]["open"])
+
+	def test_related_orders_counts_open_and_blocking_separately(self):
+		"""Unfinished and in-the-way are different questions, and the counts must not merge
+		them — otherwise a draft booking reads like a tank that cannot leave."""
+		c = self._container("GOPREL0003")
+		self._repair(c)                       # open work: unfinished AND blocking
+		self._booking(c, booking_status="Draft")   # unfinished, not blocking
+		self._cleaning(c, status="Completed")      # finished: neither
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		tank = gate_out_plan.related_orders(plan.name)[0]
+		self.assertEqual(tank["open_count"], 2)
+		self.assertEqual(tank["blocking_count"], 1)
+
 	def test_related_orders_lists_the_eirs_without_blocking(self):
 		"""The tank's EIR-In / EIR-Out belong in the list as condition history, but never as
 		blockers: an EIR-Out is written AT the gate on the way out, so counting EIRs as
@@ -385,6 +536,31 @@ class TestGateOutPlan(FrappeTestCase):
 			frappe.db.get_value("Gate Out Plan Item", plan.containers[0].name, "gated_out"), 1
 		)
 
+	def test_a_tank_already_out_when_listed_does_not_count_as_collected(self):
+		"""``Gate_Out`` also means "never was here" — the default a bulk-imported master
+		carries until it gates in. Reading it flat made a plan 100% collected on the day it
+		was written: no booking to raise, and an auto-close that never fires."""
+		c = self._container("GOPPCT00008", depot=None, status="Gate_Out")
+		plan = self._plan([(c, add_days(today(), 3))])
+		self.assertEqual(plan.containers[0].gated_out, 0)
+		self.assertEqual(plan.containers[0].was_out, 1)
+		self.assertEqual(plan.per_fulfilled, 0)
+
+	def test_a_tank_that_comes_back_and_leaves_again_counts(self):
+		"""The baseline is spent the moment the tank is in the yard again — otherwise a
+		notice for a tank the customer returns could never be fulfilled."""
+		c = self._container("GOPPCT00009", depot=None, status="Gate_Out")
+		plan = self._plan([(c, add_days(today(), 3))])
+		self.assertEqual(plan.containers[0].was_out, 1)
+
+		# Back in the yard: the baseline clears on the next save.
+		frappe.db.set_value("Container", c, "status", "In_Depot", update_modified=False)
+		plan.save(ignore_permissions=True)
+		self.assertEqual(plan.containers[0].was_out, 0)
+
+		self._gate_out(c)
+		self.assertEqual(self._plan_row(plan.name).per_fulfilled, 100)
+
 	# --- email bridge ---------------------------------------------------------
 	def test_email_prefill_maps_to_gate_out_plan(self):
 		comm = frappe.get_doc({
@@ -429,7 +605,7 @@ class TestGateOutPlan(FrappeTestCase):
 			["GOPXLS-00001", when, ""],                   # same tank, punctuated -> collapsed
 			["GOPXLS00002", when, ""],
 		])
-		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal, depot=_DEPOT)
+		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal)
 
 		self.assertEqual([r["container"] for r in res["rows"]], [c1, c2])
 		self.assertEqual(res["rows"][0]["target_lift_on"], str(when))
@@ -447,7 +623,7 @@ class TestGateOutPlan(FrappeTestCase):
 			["GOPXLS00004", add_days(today(), 4)],   # another owner's tank
 			["NOSUCH1234567", add_days(today(), 4)], # not in the Container master
 		])
-		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal, depot=_DEPOT)
+		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal)
 
 		self.assertEqual([r["container"] for r in res["rows"]], [mine])
 		self.assertEqual(res["unknown"], ["NOSUCH1234567"])
@@ -463,19 +639,24 @@ class TestGateOutPlan(FrappeTestCase):
 			["gopxls-00007", add_days(today(), 5)],  # not in the master yet
 		])
 		res = gate_out_plan.parse_container_xlsx(
-			url, principal=self._principal, depot=_DEPOT, create_missing=1
+			url, principal=self._principal, create_missing=1
 		)
 
 		self.assertEqual(res["unknown"], [])
-		self.assertEqual(res["created"], ["GOPXLS00007"])
+		# Registered AS WRITTEN (tidied to upper case), separators and all. Flattening it
+		# here would file the tank under a number nobody uses, and a later file spelling it
+		# the original way would not recognise its own tank.
+		self.assertEqual(res["created"], ["GOPXLS-00007"])
 		self.assertEqual([r["is_new"] for r in res["rows"]], [0, 1])
 		self.assertEqual(res["rows"][0]["container"], known)
 
 		made = res["rows"][1]["container"]
 		self._containers.append(made)
+		# Owner only. No depot, and the doctype's own default status (Departed): the import
+		# registers a tank the customer named, it does not invent a gate-in.
 		self.assertEqual(
 			frappe.db.get_value("Container", made, ["container_no", "principal", "depot", "status"]),
-			("GOPXLS00007", self._principal, _DEPOT, "Available"),
+			("GOPXLS-00007", self._principal, None, "Gate_Out"),
 		)
 		# And the plan the rows land on saves — the created master matches the header, so
 		# _assert_rows_match_header has nothing to complain about — carrying the badge the
@@ -483,7 +664,6 @@ class TestGateOutPlan(FrappeTestCase):
 		plan = frappe.get_doc({
 			"doctype": "Gate Out Plan",
 			"principal": self._principal,
-			"depot": _DEPOT,
 			"source": "Email",
 			"status": "Open",
 			"containers": [
@@ -503,7 +683,7 @@ class TestGateOutPlan(FrappeTestCase):
 		# A Container cannot exist without an owner and this must not guess one.
 		url = self._xlsx([["Container", "Target Lift-On"], ["GOPXLS00008", add_days(today(), 5)]])
 		with self.assertRaises(frappe.ValidationError):
-			gate_out_plan.parse_container_xlsx(url, principal=None, depot=_DEPOT, create_missing=1)
+			gate_out_plan.parse_container_xlsx(url, principal=None, create_missing=1)
 		self.assertFalse(frappe.db.exists("Container", {"container_no": "GOPXLS00008"}))
 
 	def test_import_keeps_a_row_whose_date_is_missing(self):
@@ -511,7 +691,7 @@ class TestGateOutPlan(FrappeTestCase):
 		# the operator can fill it — losing the container instead would be worse.
 		c = self._container("GOPXLS00005")
 		url = self._xlsx([["Container", "Target Lift-On"], ["GOPXLS00005", ""]])
-		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal, depot=_DEPOT)
+		res = gate_out_plan.parse_container_xlsx(url, principal=self._principal)
 
 		self.assertEqual([r["container"] for r in res["rows"]], [c])
 		self.assertIsNone(res["rows"][0]["target_lift_on"])
@@ -538,11 +718,12 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertEqual(booking.doctype, "Container Booking")
 		self.assertEqual(booking.direction, "Tank Out")
 		self.assertEqual(booking.principal, self._principal)
-		self.assertEqual(booking.depot, _DEPOT)
 		self.assertEqual(booking.gate_out_plan, plan.name)
 		self.assertEqual(booking.do_reference, "RDO-99")
 		self.assertEqual(booking.reff_doc, "MAIL-7")
-		self.assertTrue(booking.branch)  # from the depot, so the mandatory field is filled
+		# Branch is mandatory on the booking; with every collected tank in one depot the
+		# hand-off fills it from the tanks rather than from a header the plan no longer has.
+		self.assertTrue(booking.branch)
 		self.assertEqual(len(booking.items), 1)
 		row = booking.items[0]
 		self.assertEqual(row.container, c)
@@ -609,6 +790,35 @@ class TestGateOutPlan(FrappeTestCase):
 		booking = gate_out_plan.make_container_booking(plan.name)
 		self.assertEqual(booking.items[0].condition, "EMPTY CLEAN")
 
+	def test_make_booking_takes_only_the_containers_chosen(self):
+		"""A plan is collected over several visits, so the form asks which tanks THIS booking
+		is for. Everything else on the plan stays behind, still claimed by the plan."""
+		wanted = self._container("GOPPICK001")
+		left_behind = self._container("GOPPICK002")
+		plan = self._plan([
+			(wanted, add_days(today(), 3)),
+			(left_behind, add_days(today(), 9)),
+		])
+
+		booking = gate_out_plan.make_container_booking(plan.name, containers=[wanted])
+		self.assertEqual([r.container for r in booking.items], [wanted])
+
+		# No choice made = the whole plan, as before.
+		everything = gate_out_plan.make_container_booking(plan.name)
+		self.assertEqual(
+			sorted(r.container for r in everything.items), sorted([wanted, left_behind])
+		)
+
+	def test_make_booking_refuses_when_every_chosen_tank_has_left(self):
+		gone = self._container("GOPPICK003")
+		staying = self._container("GOPPICK004")
+		plan = self._plan([(gone, add_days(today(), 3)), (staying, add_days(today(), 4))])
+		self._gate_out(gone)
+		plan.reload()
+
+		with self.assertRaises(frappe.ValidationError):
+			gate_out_plan.make_container_booking(plan.name, containers=[gone])
+
 	def test_make_booking_drops_tanks_that_already_left(self):
 		gone = self._container("GOPBKG00003")
 		staying = self._container("GOPBKG00004")
@@ -635,10 +845,22 @@ class TestGateOutPlan(FrappeTestCase):
 		# Refused means refused: no stamp leaked onto somebody else's tank.
 		self.assertIsNone(self._target(theirs).target_lift_on)
 
-	def test_container_at_another_depot_is_refused(self):
+	def test_container_anywhere_is_accepted(self):
+		# A plan is a notice written days ahead, so the header Depot says where OAK expects
+		# to hand the tank over — NOT where it has to be sitting today. A tank at another
+		# depot, or one that has never gated in here at all, is still plannable.
 		elsewhere = self._container("GOPHDR00002", depot="OAK2")
-		with self.assertRaises(frappe.ValidationError):
-			self._plan([(elsewhere, add_days(today(), 4))])
+		nowhere = self._container("GOPHDR00006", depot=None, status="Gate_Out")
+		plan = self._plan([
+			(elsewhere, add_days(today(), 4)),
+			(nowhere, add_days(today(), 5)),
+		])
+		self.assertEqual(len(plan.containers), 2)
+		self.assertEqual(self._target(elsewhere).target_lift_on, getdate(add_days(today(), 4)))
+		self.assertEqual(self._target(nowhere).target_lift_on, getdate(add_days(today(), 5)))
+		# Where each tank stands is per row, read off its own master — there is no header
+		# Depot to declare one answer for the whole notice.
+		self.assertEqual([r.depot for r in plan.containers], ["OAK2", None])
 
 	def test_changing_the_principal_refuses_the_old_rows(self):
 		# What the Desk form prevents by clearing the table; the server says it too, because
