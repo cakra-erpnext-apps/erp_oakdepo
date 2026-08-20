@@ -9,6 +9,7 @@
   "container",
   "container_no",
   "is_new_container",
+  "depot",
   "condition",
   "cargo",
   "shipper",
@@ -65,7 +66,7 @@
    "allow_on_submit": 1
   },
   {
-   "columns": 2,
+   "columns": 1,
    "fieldname": "cargo",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -131,11 +132,22 @@
    "label": "Booking Code",
    "options": "Booking Code",
    "read_only": 1
+  },
+  {
+   "columns": 1,
+   "description": "Depo tempat tank ini berdiri sekarang, dari master Container. Tank Out: tiap baris bisa beda depo selama masih satu Branch.",
+   "fetch_from": "container.depot",
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Depo",
+   "options": "Depot",
+   "read_only": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-08-20 19:00:00.000000",
+ "modified": "2026-08-21 06:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking Item",
  "sort_field": "creation",

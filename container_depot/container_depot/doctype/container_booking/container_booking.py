@@ -526,25 +526,26 @@ class ContainerBooking(Document):
 	def _ensure_depot(self):
 		"""Which depot this booking happens at.
 
-		**Tank Out never asks.** The tank is already sitting somewhere, and the master
-		says where — so the depot is DERIVED from the rows (the form hides the field for
-		an outbound booking) and overwrites whatever was there. Anything else lets an
-		operator name a depot the tank is not in.
+		**Tank Out never asks, and often has no single answer.** Each tank is already
+		sitting somewhere and its master says where, so the depot is read PER ROW (``items``
+		carries its own ``depot``, fetched from the container) and the header is hidden on
+		the form. The header keeps a value only when every tank agrees; a branch running two
+		depots routinely has one customer's tanks split across both, and that is one pickup,
+		not two bookings. Downstream readers that want "the depot of THIS tank" must use the
+		row — the header cannot answer for a split booking, and is left blank rather than
+		naming one of the two.
 
 		**Tank In** is the operator's pick (the tank has not arrived yet, so no master can
 		answer): mandatory on the Desk form. Programmatic callers (tests / data patches /
 		future portal) that omit it fall back to the primary active depot so every booking
 		still carries one rather than failing the mandatory check.
 		"""
-		self.flags.depot_from_containers = False
 		if self.direction == "Tank Out":
-			derived = self._depot_from_containers()
-			if derived:
-				self.depot = derived
-				self.flags.depot_from_containers = True
-				return
-			# No row names a depot yet (empty draft, or a legacy tank whose master was
-			# never stamped with one) — fall through to the same fallback Tank In uses.
+			# Whatever the rows say, including nothing. NO fallback here: an outbound header
+			# depot is either the one answer every tank gave or it is blank, and inventing
+			# one would put a depot on the document that half its tanks are not in.
+			self.depot = self._depot_from_containers()
+			return
 		if self.depot:
 			return
 		# Inside the booking's own Branch first: a fallback that lands in another branch
@@ -562,17 +563,13 @@ class ContainerBooking(Document):
 		if depot:
 			self.depot = depot
 
-	def _depot_from_containers(self):
-		"""The one depot the booking's tanks are currently in, or None when no row names
-		one (blank draft, or a legacy master with an empty ``depot``).
+	def _row_depots(self) -> dict:
+		"""``{depot: [container numbers]}`` for the rows that name one.
 
 		``Container.depot`` is stamped at gate-in from the inbound booking's depot
 		(``order_bongkar._sync_container_arrival``), so a tank that came in through the
-		normal flow always knows where it is.
-
-		Rows spanning TWO depots are refused: one booking issues one set of booking codes
-		for one gate, so tanks from different depots cannot ride on it — they are two
-		bookings.
+		normal flow always knows where it is. Rows with no container yet, or a legacy master
+		never stamped with a depot, simply do not appear.
 		"""
 		depots: dict[str, list[str]] = {}
 		for item in self.items or []:
@@ -586,38 +583,60 @@ class ContainerBooking(Document):
 			depot = frappe.db.get_value("Container", name, "depot")
 			if depot:
 				depots.setdefault(depot, []).append(item.container_no or name)
-		if len(depots) > 1:
-			frappe.throw(
-				_("Container-nya ada di depo yang berbeda — satu booking hanya untuk satu depo:")
-				+ "<br>"
-				+ "<br>".join(f"<b>{d}</b>: {', '.join(nos)}" for d, nos in depots.items()),
-				title=_("Beda Depo"),
-			)
-		return next(iter(depots), None)
+		return depots
+
+	def _depot_from_containers(self):
+		"""The depot for the header — only when every tank agrees on one.
+
+		Tanks spread across two depots of the same Branch are ALLOWED: that is one customer
+		collecting from a branch that happens to run two yards, and each tank gates out at
+		its own depot (the gate reads ``Container.depot``, never the booking's). Forcing
+		them apart made two bookings, two invoices and two sets of paperwork out of one
+		pickup.
+
+		What such a booking cannot do is name a single depot, so the header is left blank
+		rather than made to pick a side. Per-tank answers come off the row.
+		"""
+		depots = self._row_depots()
+		return next(iter(depots)) if len(depots) == 1 else None
 
 	def _validate_depot_in_branch(self):
-		"""Tank Out: the derived depot must sit in the booking's Branch.
+		"""Tank Out: EVERY tank's depot must sit in the booking's Branch.
 
-		The depot comes off the container, the branch is the operator's pick — when they
-		disagree the tank is simply not in the branch this booking belongs to (only
+		The Branch, not the depot, is the boundary. A booking may collect from two depots of
+		one branch, so this is checked per row rather than against a single derived header —
+		a header that a split booking deliberately leaves blank, which would have skipped the
+		check altogether.
+
+		The depot comes off the container and the branch is the operator's pick, so a
+		mismatch means the tank simply is not in the branch this booking belongs to (only
 		reachable through the Excel import / API; the Desk picker is branch-scoped). Said
-		plainly rather than silently rewriting Branch, which is what scopes the document
-		for every branch-restricted user.
+		plainly rather than silently rewriting Branch, which is what scopes the document for
+		every branch-restricted user.
 		"""
-		# Only a depot the CONTAINERS answered for is judged here. A fallback depot (no
-		# row names one yet) says nothing about where the tanks are, so holding the branch
-		# against it would refuse a legacy tank for a mismatch it never claimed.
-		if not self.flags.get("depot_from_containers"):
+		if self.direction != "Tank Out" or not self.branch:
 			return
-		if self.direction != "Tank Out" or not (self.depot and self.branch):
+		depots = self._row_depots()
+		if not depots:
 			return
-		depot_branch = frappe.db.get_value("Depot", self.depot, "branch")
-		if depot_branch and depot_branch != self.branch:
+		branch_of = {
+			d.name: d.branch
+			for d in frappe.get_all(
+				"Depot", filters={"name": ["in", list(depots)]}, fields=["name", "branch"]
+			)
+		}
+		wrong = [
+			_("{0} — depo {1} (Branch {2})").format(", ".join(nos), depot, branch_of.get(depot))
+			for depot, nos in depots.items()
+			if branch_of.get(depot) and branch_of[depot] != self.branch
+		]
+		if wrong:
 			frappe.throw(
-				_(
-					"Container-nya ada di depo {0} (Branch {1}), bukan Branch {2} yang dipilih "
-					"— ganti Branch booking atau pilih container dari depo Branch ini."
-				).format(self.depot, depot_branch, self.branch),
+				_("Container ini tidak ada di Branch {0}:").format(self.branch)
+				+ "<br>"
+				+ "<br>".join(wrong)
+				+ "<br><br>"
+				+ _("Ganti Branch booking, atau pilih container dari depo Branch ini."),
 				title=_("Beda Branch"),
 			)
 
@@ -2424,6 +2443,10 @@ def parse_container_xlsx(
 			"condition": condition,
 			"container": container,
 			"cargo": cargo,
+			# Where the tank stands, so the grid shows it on the imported draft rather than
+			# only after the first save. Never asked for in the file: the master is the only
+			# thing that knows, and a freshly registered tank has not arrived anywhere yet.
+			"depot": master.depot if master else None,
 			"is_new": is_new,
 		})
 	return {"rows": rows, "errors": errors, "unknown": unknown, "created": created}

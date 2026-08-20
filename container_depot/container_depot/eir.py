@@ -176,17 +176,29 @@ def _voucher_detail(doctype, voucher, container):
 	)
 
 
-def _voucher_depot(doctype: str, voucher: str | None) -> str | None:
-	"""The depot behind a bon: ``voucher.booking`` -> ``Container Booking.depot``.
+def _voucher_depot(doctype: str, voucher: str | None, container: str | None = None) -> str | None:
+	"""The depot behind a bon: ``voucher.booking`` -> the booking's answer for THIS tank.
 
-	An EIR created from a bon should record the booking's depot (where the tank is
-	being handled per that order), not necessarily the Container master's current depot.
+	An EIR created from a bon should record the depot the tank is being handled at per that
+	order, not necessarily the Container master's current depot.
+
+	The booking's own row is asked first. An outbound booking may collect from two depots of
+	one branch, and then its header carries no depot at all — reading the header alone would
+	leave every EIR on such a booking without one.
 	"""
 	if not voucher:
 		return None
 	booking = frappe.db.get_value(doctype, voucher, "booking")
 	if not booking:
 		return None
+	if container:
+		row_depot = frappe.db.get_value(
+			"Container Booking Item",
+			{"parent": booking, "parenttype": "Container Booking", "container": container},
+			"depot",
+		)
+		if row_depot:
+			return row_depot
 	return frappe.db.get_value("Container Booking", booking, "depot")
 
 
@@ -240,7 +252,7 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 		frappe.throw(_("Container {0} is not on {1} {2}.").format(container, doctype, voucher))
 	snap["referred_voucher"] = voucher
 	snap["shipper"] = frappe.db.get_value(doctype, voucher, "shipper")
-	snap["depot"] = _voucher_depot(doctype, voucher)
+	snap["depot"] = _voucher_depot(doctype, voucher, container)
 	snap["reff_doc"] = _voucher_reff_doc(doctype, voucher)
 	detail = _voucher_detail(doctype, voucher, container)
 	snap["truck_no"] = detail.get("truck_plate")

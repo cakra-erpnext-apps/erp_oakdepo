@@ -97,3 +97,4 @@ container_depot.patches.v0_67.move_used_item_photos_to_album
 container_depot.patches.v0_68.gate_out_plan_departure_baseline
 container_depot.patches.v0_69.backfill_container_last_orders
 container_depot.patches.v0_70.fill_gate_out_plan_row_status
+container_depot.patches.v0_71.fill_booking_row_depot

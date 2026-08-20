@@ -1075,8 +1075,8 @@ class TestTankOutGating(FrappeTestCase):
 
 class TestTankOutDepotDerivation(FrappeTestCase):
 	"""Tank Out never asks for a Depot — the tank is already somewhere and its master says
-	where. The depot is derived from the rows, and the rows are checked against it: two
-	depots on one booking is refused, and so is a tank standing in another Branch."""
+	where, per row. The header keeps a depot only when every tank agrees; two depots of ONE
+	branch ride on one booking, and a tank standing in another Branch is refused."""
 
 	CUSTOMER = "Phase3 TankOutDepot Customer"
 	IN_BRANCH = "TankOut Branch A"
@@ -1085,6 +1085,7 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 	ELSEWHERE = "TSTU7000002"  # Available, depot in OUT_BRANCH
 	GONE = "TSTU7000003"  # already left, depot in IN_BRANCH
 	UNSTAMPED = "TSTU7000004"  # present, but the master never got a depot (legacy data)
+	SIBLING = "TSTU7000005"  # Available, in the OTHER depot of the SAME branch
 
 	@classmethod
 	def setUpClass(cls):
@@ -1094,6 +1095,9 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
 		cls.depot_here = cls._depot("TOA", cls.IN_BRANCH)
 		cls.depot_there = cls._depot("TOB", cls.OUT_BRANCH)
+		# A second yard in the SAME branch — the case a single-depot booking used to refuse.
+		cls.depot_sibling = cls._depot("TOC", cls.IN_BRANCH)
+		cls._container(cls.SIBLING, "Available", cls.depot_sibling)
 		cls._container(cls.HERE, "Available", cls.depot_here)
 		cls._container(cls.ELSEWHERE, "Available", cls.depot_there)
 		cls._container(cls.GONE, "Gate_Out", cls.depot_here)
@@ -1102,10 +1106,10 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 	@classmethod
 	def tearDownClass(cls):
 		_cleanup_customer_world(cls.customer)
-		for no in (cls.HERE, cls.ELSEWHERE, cls.GONE, cls.UNSTAMPED):
+		for no in (cls.HERE, cls.ELSEWHERE, cls.GONE, cls.UNSTAMPED, cls.SIBLING):
 			frappe.db.delete("Container Movement", {"container": no})
 			frappe.db.delete("Container", {"container_no": no})
-		for depot in (cls.depot_here, cls.depot_there):
+		for depot in (cls.depot_here, cls.depot_there, cls.depot_sibling):
 			frappe.db.delete("Depot", {"name": depot})
 		for branch in (cls.IN_BRANCH, cls.OUT_BRANCH):
 			frappe.db.delete("Branch", {"name": branch})
@@ -1172,10 +1176,27 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 		b.insert(ignore_permissions=True)
 		self.assertEqual(b.depot, self.depot_here)
 
-	def test_two_depots_on_one_booking_is_refused(self):
+	def test_two_depots_of_one_branch_ride_on_one_booking(self):
+		"""One customer collecting from a branch that runs two yards is ONE pickup.
+
+		Splitting it made two bookings, two invoices and two sets of paperwork out of a
+		single job. Each tank still gates out at its own depot — the gate reads
+		``Container.depot``, never the booking's — so nothing downstream needs one answer.
+		"""
+		b = self._booking([self.HERE, self.SIBLING])
+		b.insert(ignore_permissions=True)
+		# No single answer, so the header states none rather than picking a side.
+		self.assertIsNone(b.depot)
+		self.assertEqual(
+			sorted(r.depot for r in b.items), sorted([self.depot_here, self.depot_sibling])
+		)
+
+	def test_a_tank_in_another_branch_is_still_refused_on_a_split_booking(self):
+		"""Branch is the boundary, not depot — and it is checked per row, so a booking that
+		deliberately carries no header depot cannot slip past the check."""
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			self._booking([self.HERE, self.ELSEWHERE]).insert(ignore_permissions=True)
-		self.assertIn("depo yang berbeda", str(ctx.exception))
+		self.assertIn("Branch", str(ctx.exception))
 
 	def test_container_outside_the_booking_branch_is_refused(self):
 		with self.assertRaises(frappe.ValidationError) as ctx:
@@ -1268,13 +1289,14 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 		finally:
 			frappe.db.set_value("Container", self.HERE, "principal", self.customer, update_modified=False)
 
-	def test_container_without_a_depot_falls_back_inside_the_branch(self):
-		"""Legacy tanks were never stamped with a depot (the stamp is written at gate-in),
-		so the rows can answer nothing — the booking still saves, on a depot of its own
-		Branch, and is NOT refused for a mismatch it never claimed."""
+	def test_container_without_a_depot_leaves_the_header_blank(self):
+		"""Legacy tanks were never stamped with a depot (the stamp is written at gate-in), so
+		the rows can answer nothing. The booking still saves and is NOT refused for a
+		mismatch it never claimed — but no depot is invented for it either: an outbound
+		header depot is what the tanks said, or nothing."""
 		b = self._booking([self.UNSTAMPED])
 		b.insert(ignore_permissions=True)
-		self.assertEqual(b.depot, self.depot_here)
+		self.assertIsNone(b.depot)
 
 	def test_picker_still_offers_a_tank_with_no_depot(self):
 		"""Narrowing by branch must not hide tanks the depot really is holding."""

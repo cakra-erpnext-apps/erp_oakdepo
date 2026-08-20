@@ -377,6 +377,8 @@ frappe.ui.form.on('Container Booking', {
 								const row = frm.add_child('items');
 								row.container_no = ln.container_no;
 								row.condition = ln.condition;
+								// Straight from the master, like the picker — nobody types a depot.
+								row.depot = ln.depot;
 								// add_child doesn't fire items_add — default the EMKL here too.
 								row.shipper = frm.doc.customer;
 								if (ln.container) row.container = ln.container;
@@ -564,7 +566,14 @@ frappe.ui.form.on('Container Booking', {
 	// Depot is the operator's pick on a Tank In and a derived, read-only fact on a Tank
 	// Out (hidden by depends_on until the server fills it in).
 	_depot_mode(frm) {
-		frm.set_df_property('depot', 'read_only', frm.doc.direction === 'Tank Out' ? 1 : 0);
+		// Tank Out has no header depot to show. The tanks are already standing somewhere and
+		// each row says where — and a branch running two yards routinely splits one
+		// customer's tanks across both, so there is often no single answer to display.
+		// Hidden rather than read-only: a greyed field still reads as "this is the depot",
+		// which for a split booking would be wrong for half its rows.
+		const out = frm.doc.direction === 'Tank Out';
+		frm.set_df_property('depot', 'hidden', out ? 1 : 0);
+		frm.set_df_property('depot', 'read_only', out ? 1 : 0);
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));

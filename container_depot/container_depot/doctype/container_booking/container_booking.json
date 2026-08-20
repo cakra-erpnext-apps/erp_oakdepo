@@ -82,7 +82,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Tank In: wajib. Tank Out: otomatis dari depo container.",
+   "description": "Tank In: wajib. Tank Out: tidak dipakai — depo dibaca per baris container.",
    "fieldname": "depot",
    "fieldtype": "Link",
    "label": "Depot",
@@ -357,7 +357,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-20 12:30:00.000000",
+ "modified": "2026-08-21 06:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

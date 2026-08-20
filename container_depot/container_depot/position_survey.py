@@ -69,11 +69,14 @@ def provision_position_survey_for_booking(booking_name: str) -> list:
 	one failure is logged and never blocks the booking submit. Mirrors
 	``eir.provision_eir_out_for_order_muat``.
 	"""
-	depot = frappe.db.get_value("Container Booking", booking_name, "depot")
+	# Per row, not off the booking header: an outbound booking may collect from two depots
+	# of one branch, and then the header carries no depot at all. Each survey is tasked at
+	# the yard its own tank is standing in.
+	booking_depot = frappe.db.get_value("Container Booking", booking_name, "depot")
 	rows = frappe.get_all(
 		"Container Booking Item",
 		filters={"parent": booking_name, "parenttype": "Container Booking"},
-		fields=["container"],
+		fields=["container", "depot"],
 	)
 	created = []
 	for row in rows:
@@ -95,7 +98,11 @@ def provision_position_survey_for_booking(booking_name: str) -> list:
 		try:
 			doc = frappe.new_doc(DOCTYPE)
 			doc.container = container
-			doc.depot = depot or frappe.db.get_value("Container", container, "depot")
+			doc.depot = (
+				row.get("depot")
+				or frappe.db.get_value("Container", container, "depot")
+				or booking_depot
+			)
 			doc.booking = booking_name
 			doc.status = PENDING
 			doc.insert(ignore_permissions=True)  # system automation on booking submit

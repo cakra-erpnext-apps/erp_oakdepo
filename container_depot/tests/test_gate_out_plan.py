@@ -727,6 +727,9 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertEqual(len(booking.items), 1)
 		row = booking.items[0]
 		self.assertEqual(row.container, c)
+		# Depot rides along per row — nobody types it, and the outbound booking has no header
+		# depot to read it from.
+		self.assertEqual(row.depot, _DEPOT)
 		# The plan's target date IS the booking line's date — not "today".
 		self.assertEqual(str(row.tanggal_bongkar), str(when))
 		self.assertEqual(row.condition, "EMPTY CLEAN")

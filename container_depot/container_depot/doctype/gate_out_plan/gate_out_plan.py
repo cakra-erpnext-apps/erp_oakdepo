@@ -903,6 +903,9 @@ def make_container_booking(source_name, target_doc=None, containers=None):
 				target.branch = frappe.db.get_value("Depot", depots.pop(), "branch")
 
 	def set_line(source_row, target_row, source_parent):
+		# fetch_from fills this on save; set it here so the operator sees which yard each
+		# tank is in while the draft is still being completed.
+		target_row.depot = frappe.db.get_value("Container", source_row.container, "depot")
 		target_row.condition = "EMPTY DIRTY" if _needs_cleaning(source_row.container) else "EMPTY CLEAN"
 		target_row.cargo = frappe.db.get_value("Container", source_row.container, "last_cargo")
 		# EMKL / truck / driver / RO carry over as typed (same fieldnames, mapped for free).
