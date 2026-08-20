@@ -88,3 +88,4 @@ container_depot.patches.v0_59.drop_stale_inventory_cards
 container_depot.patches.v0_60.backfill_inspection_title
 container_depot.patches.v0_61.renumber_inspection_id
 container_depot.patches.v0_62.drop_container_work_status
+container_depot.patches.v0_64.booking_list_columns

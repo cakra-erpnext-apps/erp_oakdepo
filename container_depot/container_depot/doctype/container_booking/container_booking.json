@@ -71,11 +71,11 @@
    "description": "Wajib.",
    "fieldname": "branch",
    "fieldtype": "Link",
-   "in_standard_filter": 1,
    "label": "Branch",
    "options": "Branch",
    "reqd": 1,
-   "allow_on_submit": 1
+   "allow_on_submit": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "column_break_1",
@@ -85,12 +85,12 @@
    "description": "Tank In: wajib. Tank Out: otomatis dari depo container.",
    "fieldname": "depot",
    "fieldtype": "Link",
-   "in_standard_filter": 1,
    "label": "Depot",
    "options": "Depot",
    "allow_on_submit": 1,
    "mandatory_depends_on": "eval:doc.direction!='Tank Out'",
-   "depends_on": "eval:doc.direction!='Tank Out' || doc.depot"
+   "depends_on": "eval:doc.direction!='Tank Out' || doc.depot",
+   "in_list_view": 1
   },
   {
    "description": "Opsional. No. dokumen referensi.",
@@ -219,7 +219,6 @@
    "description": "Diatur alur booking.",
    "fieldname": "booking_status",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Booking Status",
    "options": "Draft\nPending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
@@ -247,7 +246,8 @@
    "label": "Payment Status",
    "options": "Unpaid\nInvoiced\nPaid\nCancelled",
    "read_only": 1,
-   "hidden": 1
+   "hidden": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "sales_invoice",
@@ -273,7 +273,6 @@
    "label": "Containers",
    "read_only": 1,
    "allow_on_submit": 1,
-   "in_standard_filter": 1,
    "hidden": 1
   },
   {
@@ -358,7 +357,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-19 23:30:00.000000",
+ "modified": "2026-08-20 12:30:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",
