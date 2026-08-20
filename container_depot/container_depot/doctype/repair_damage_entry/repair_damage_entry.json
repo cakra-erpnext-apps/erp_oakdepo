@@ -12,12 +12,13 @@
     "component",
     "damage_code",
     "repair_code",
-    "severity",
+    "damage_description",
+    "photos_preview",
+    "photos_html",
     "column_break_1",
+    "severity",
     "part_face",
     "location",
-    "damage_description",
-    "photo_section",
     "photos",
     "before_photo",
     "after_photo"
@@ -28,19 +29,19 @@
       "fieldtype": "Link",
       "label": "Checklist Item",
       "options": "Inspection Checklist Item",
-      "read_only": 1
+      "read_only": 1,
+      "in_list_view": 1,
+      "columns": 3
     },
     {
       "fieldname": "area",
       "fieldtype": "Data",
-      "in_list_view": 1,
       "label": "Area",
       "read_only": 1
     },
     {
       "fieldname": "component",
       "fieldtype": "Data",
-      "in_list_view": 1,
       "label": "Component / Item",
       "read_only": 1
     },
@@ -50,7 +51,8 @@
       "in_list_view": 1,
       "label": "Damage Code",
       "options": "Inspection Damage Code",
-      "read_only": 1
+      "read_only": 1,
+      "columns": 1
     },
     {
       "fieldname": "repair_code",
@@ -58,17 +60,42 @@
       "in_list_view": 1,
       "label": "Repair Code",
       "options": "Inspection Repair Code",
+      "read_only": 1,
+      "columns": 1
+    },
+    {
+      "fieldname": "damage_description",
+      "fieldtype": "Small Text",
+      "label": "Description",
+      "read_only": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "columns": 2,
+      "description": "Kolom tampilan: thumbnail foto pertama temuan ini (+n bila lebih), dirender client-side dari EIR Photos. Tidak menyimpan apa pun.",
+      "fieldname": "photos_preview",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Photo",
+      "no_copy": 1,
       "read_only": 1
+    },
+    {
+      "description": "Foto temuan ini dari EIR \u2014 hanya dibaca.",
+      "fieldname": "photos_html",
+      "fieldtype": "HTML",
+      "label": "Foto Kerusakan"
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
     },
     {
       "fieldname": "severity",
       "fieldtype": "Data",
       "label": "Severity",
       "read_only": 1
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
     },
     {
       "fieldname": "part_face",
@@ -83,22 +110,12 @@
       "read_only": 1
     },
     {
-      "fieldname": "damage_description",
-      "fieldtype": "Small Text",
-      "label": "Description",
-      "read_only": 1
-    },
-    {
-      "fieldname": "photo_section",
-      "fieldtype": "Section Break",
-      "label": "EIR Photos"
-    },
-    {
       "description": "JSON array of the EIR photo URLs for this finding (from the EIR item photos + before/after).",
       "fieldname": "photos",
       "fieldtype": "Long Text",
       "label": "EIR Photos (JSON)",
-      "read_only": 1
+      "read_only": 1,
+      "hidden": 1
     },
     {
       "fieldname": "before_photo",
@@ -116,7 +133,7 @@
   "index_web_pages_for_search": 1,
   "istable": 1,
   "links": [],
-  "modified": "2026-08-07 10:00:00.000000",
+  "modified": "2026-08-20 11:00:00.000000",
   "module": "Container Depot",
   "name": "Repair Damage Entry",
   "owner": "Administrator",

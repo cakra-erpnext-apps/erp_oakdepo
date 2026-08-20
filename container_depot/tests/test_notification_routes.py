@@ -38,10 +38,17 @@ EVENT_DOCTYPES = [
 	("eir_submitted", "Inspection"),
 	("eir_pending_review", "Inspection"),
 	("cleaning_order_created", "Cleaning Order"),
+	("cleaning_pending_review", "Cleaning Order"),
 	("repair_order_created", "Repair Order"),
+	# Historic key, current meaning: the M&R staging step it was named for is gone, and it
+	# now fires when the repair team sends a finished job to Desk for review. Kept because
+	# the key is what install.py's rules and _BY_EVENT are wired to, and the audience —
+	# "an M&R needs Admin Ops" — never changed.
 	("repair_order_service_setup", "Repair Order"),
+	("repair_order_forwarded", "Repair Order"),
 	("repair_order_pending_approval", "Repair Order"),
 	("repair_order_decided", "Repair Order"),
+	("repair_revision_requested", "Repair Order"),
 	("order_gate_in", "Order Bongkar"),
 	("order_gate_out", "Order Muat"),
 	("order_muat_survey", "Order Muat"),

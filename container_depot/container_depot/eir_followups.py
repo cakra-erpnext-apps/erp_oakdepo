@@ -110,7 +110,8 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 # An M&R is "open" (still in play) until it is finished or dropped. "Revision Requested"
 # bounces back to the depot for edits, so it stays on the worklist too.
 MR_OPEN_STATUSES = [
-	"Draft", "Service Setup", "Pending Approval", "Approved", "Revision Requested", "In Progress",
+	"Draft", "Pending Approval", "Approved", "Revision Requested",
+	"Pending", "In Progress", "Pending Review",
 ]
 
 

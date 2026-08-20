@@ -33,8 +33,10 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
 [data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col,
 [data-fieldname="damage_photos"] .grid-body .grid-row .grid-static-col,
 [data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col,
-/* Foto QC on the Cleaning Order reads the same way as Foto Inspeksi does. */
-[data-fieldname="qc_photos"] .grid-body .grid-row .grid-static-col {
+/* Foto QC on the Cleaning Order and Foto Bukti Pekerjaan on the M&R read the same way
+   Foto Inspeksi does. */
+[data-fieldname="qc_photos"] .grid-body .grid-row .grid-static-col,
+[data-fieldname="work_photos"] .grid-body .grid-row .grid-static-col {
 	height: 64px;
 }
 
@@ -47,7 +49,8 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
 [data-fieldname="exterior_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
 [data-fieldname="damage_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
 [data-fieldname="item_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
-[data-fieldname="qc_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
+[data-fieldname="qc_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area,
+[data-fieldname="work_photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
 	display: flex;
 	align-items: center;
 	height: 100%;
@@ -64,7 +67,8 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  */
 [data-fieldname="damage_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index),
 [data-fieldname="item_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index),
-[data-fieldname="qc_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
+[data-fieldname="qc_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index),
+[data-fieldname="work_photos"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
 	flex-shrink: 1;
 	min-width: 0;
 }
@@ -85,12 +89,14 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
 /* :not([data-fieldname]) — a real data column always carries one, so the rule can never
    swallow Photo if a future Frappe stops appending the button cell. */
 [data-fieldname="damage_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]),
-[data-fieldname="item_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]) {
+[data-fieldname="item_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]),
+[data-fieldname="work_photos"] .grid-row > .row > .col:last-child:not([data-fieldname]) {
 	display: none;
 }
 
 [data-fieldname="damage_photos"] .grid-row > .row > .grid-static-col:not(.row-index),
-[data-fieldname="item_photos"] .grid-row > .row > .grid-static-col:not(.row-index) {
+[data-fieldname="item_photos"] .grid-row > .row > .grid-static-col:not(.row-index),
+[data-fieldname="work_photos"] .grid-row > .row > .grid-static-col:not(.row-index) {
 	flex-grow: 1;
 	max-width: none;
 }
@@ -100,12 +106,14 @@ body:not(.full-width) .std-form-layout .form-dashboard-section > .form-section-d
  * own (the container already draws one) and the heading's rounded corner.
  */
 [data-fieldname="damage_photos"] .grid-row > .row > .col:nth-last-child(2),
-[data-fieldname="item_photos"] .grid-row > .row > .col:nth-last-child(2) {
+[data-fieldname="item_photos"] .grid-row > .row > .col:nth-last-child(2),
+[data-fieldname="work_photos"] .grid-row > .row > .col:nth-last-child(2) {
 	border-right: none;
 }
 
 [data-fieldname="damage_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2),
-[data-fieldname="item_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2) {
+[data-fieldname="item_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2),
+[data-fieldname="work_photos"] .grid-heading-row .grid-row > .row > .col:nth-last-child(2) {
 	border-top-right-radius: var(--border-radius-md);
 }
 
@@ -172,18 +180,21 @@ img.oak-grid-photo:hover {
  * Checklist Kerusakan reads like Foto per Item: a scannable row with room for a thumbnail,
  * and no open-row button — the row itself opens the modal (bind_damage_grid_clicks).
  */
-[data-fieldname="damage_log"] .grid-body .grid-row .grid-static-col {
+[data-fieldname="damage_log"] .grid-body .grid-row .grid-static-col,
+[data-fieldname="damages"] .grid-body .grid-row .grid-static-col {
 	height: 64px;
 }
 
-[data-fieldname="damage_log"] .grid-body .grid-row .grid-static-col[data-fieldname="photos_preview"] .static-area {
+[data-fieldname="damage_log"] .grid-body .grid-row .grid-static-col[data-fieldname="photos_preview"] .static-area,
+[data-fieldname="damages"] .grid-body .grid-row .grid-static-col[data-fieldname="photos_preview"] .static-area {
 	display: flex;
 	align-items: center;
 	height: 100%;
 	overflow: hidden;
 }
 
-[data-fieldname="damage_log"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
+[data-fieldname="damage_log"] .grid-row > .row > .col:not(.row-check):not(.row-index),
+[data-fieldname="damages"] .grid-row > .row > .col:not(.row-check):not(.row-index) {
 	min-width: 0;
 }
 
@@ -367,7 +378,8 @@ img.oak-grid-photo:hover {
  */
 [data-fieldname="exterior_photos"] a[data-action="clear_attachment"],
 [data-fieldname="damage_photos"] a[data-action="clear_attachment"],
-[data-fieldname="item_photos"] a[data-action="clear_attachment"] {
+[data-fieldname="item_photos"] a[data-action="clear_attachment"],
+[data-fieldname="work_photos"] a[data-action="clear_attachment"] {
 	display: none;
 }
 
@@ -391,7 +403,8 @@ img.oak-grid-photo:hover {
  */
 [data-fieldname="exterior_photos"] .attached-file > .ellipsis,
 [data-fieldname="damage_photos"] .attached-file > .ellipsis,
-[data-fieldname="item_photos"] .attached-file > .ellipsis {
+[data-fieldname="item_photos"] .attached-file > .ellipsis,
+[data-fieldname="work_photos"] .attached-file > .ellipsis {
 	display: none;
 }
 

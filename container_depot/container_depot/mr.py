@@ -9,8 +9,12 @@ Concept (two sections in the PWA):
      photos) when the Draft M&R is auto-created. Pure information: what the EIR found.
   2. **Used Items** — the services / parts actually used, picked from the **owner's Item
      Price** list (service or part). Only the qty is shown (price is hidden but still
-     computed for billing); each used item carries multiple evidence photos. A part row
-     names the gudang it comes from and is issued out of it (Material Issue) on completion.
+     computed for billing). A part row names the gudang it comes from and is issued out of
+     it (Material Issue) the moment the owner approves — the workshop cannot fit a part that
+     is still on a shelf.
+  3. **Work Photos** — proof of the work, one row per photo, each pointing back at the used
+     item it proves. A table of its own because the estimate freezes when it leaves Draft
+     while the evidence is gathered days later, mid-repair.
 """
 
 from __future__ import annotations
@@ -37,35 +41,57 @@ MR_MENU = "Maintenance"
 # estimate (Pending Approval) before any work starts; they may reject, or ask for a
 # revision, and may approve only some lines (partial approval, per Repair Used Item).
 MR_TRANSITIONS = {
-	# "Approved" straight from Draft / Revision / Service Setup is the Admin-Ops BYPASS
-	# (skip the owner). It is code-guarded to Admin Ops in the ESS layer (bypass_approval);
-	# the state machine only declares it a legal edge so validate() doesn't reject it.
+	# Draft is where Admin Ops builds the estimate — they are the first pair of eyes on an
+	# M&R, so there is no staging step in front of them; ``publish_to_owner`` takes the
+	# estimate straight from Draft to the customer web. Pending Approval -> Draft is the
+	# withdraw ("tarik ulang"), which re-opens editing for a re-send.
 	#
-	# ``Service Setup`` is the Admin-Ops staging step: the workshop hands the estimate over
-	# there, Admin Ops arranges it, and only ``publish_to_owner`` moves it to Pending
-	# Approval — the first status the customer web can see. Pending Approval -> Service
-	# Setup is the withdraw ("tarik ulang"), which re-opens editing for a re-submit.
+	# "Approved" straight from Draft / Revision Requested is the Admin-Ops BYPASS (skip the
+	# owner). It is code-guarded to Admin Ops in the ESS layer (bypass_approval); the state
+	# machine only declares it a legal edge so validate() doesn't reject it.
+	#
+	# After the owner has agreed, the tail mirrors Cleaning Order exactly: Admin Ops HANDS
+	# the job over (Approved -> Pending, ``forward_to_team``) and only then does it appear on
+	# the depot PWA worklist; the team starts it (-> In Progress) and finishes it (-> Pending
+	# Review); Desk checks the work and finalises it (-> Completed).
+	#
+	# Approved -> Completed short-circuits that whole tail, and is deliberate: plenty of M&R
+	# is a five-minute job the Desk operator watched happen, or work a subcontractor already
+	# did. Routing it through the PWA would mean handing it to a team, having them open it,
+	# start it and finish it — four presses to record something that is over. The parts have
+	# already left stock at approval either way, so nothing is skipped except the dispatch.
+	#
 	# "Draft" appears on every in-flight status because a human can always mis-enter or miss
-	# an item — ``reopen_to_draft`` (Adm Ops) rewinds a Service Setup / Pending Approval /
-	# Approved / In Progress M&R back to an editable Draft to fix it, then it goes through
-	# approval again. Completed is deliberately excluded (parts already issued → Cancel instead).
-	"Draft": ["Service Setup", "Approved", "Cancelled"],
-	"Revision Requested": ["Service Setup", "Approved", "Draft", "Cancelled"],  # editable like Draft
-	"Service Setup": ["Pending Approval", "Draft", "Approved", "Cancelled"],
-	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Service Setup", "Draft", "Cancelled"],
-	"Approved": ["In Progress", "Draft", "Cancelled"],
-	"In Progress": ["Completed", "Draft", "Cancelled"],
-	"Completed": [],
+	# an item — ``reopen_to_draft`` (Adm Ops) rewinds a Pending Approval / Approved / Pending
+	# / In Progress / Pending Review M&R back to an editable Draft to fix it, then it goes
+	# through approval again. Completed is deliberately excluded (parts already issued →
+	# Cancel instead).
+	"Draft": ["Pending Approval", "Approved", "Cancelled"],
+	"Revision Requested": ["Pending Approval", "Approved", "Draft", "Cancelled"],  # editable like Draft
+	"Pending Approval": ["Approved", "Rejected", "Revision Requested", "Draft", "Cancelled"],
+	"Approved": ["Pending", "Completed", "Draft", "Cancelled"],
+	"Pending": ["In Progress", "Draft", "Cancelled"],
+	"In Progress": ["Pending Review", "Draft", "Cancelled"],
+	"Pending Review": ["Completed", "In Progress", "Draft", "Cancelled"],
+	# Completed -> In Progress is the reopen (``reopen_completed``): the team asked for the
+	# job to be opened again because the WORK was not right. It is the only way out of
+	# Completed and it is gated twice — the controller refuses the edge unless
+	# ``flags.oak_reopen`` is set, so no generic status endpoint can walk it, and the function
+	# itself refuses an order that has already been billed. Not "Draft": the estimate and the
+	# parts were right, the repair was not.
+	"Completed": ["In Progress"],
 	"Rejected": ["Draft"],
 	"Cancelled": [],
 }
-# Statuses where the depot may still edit the estimate (used items). Service Setup is
-# included: arranging the estimate before the customer sees it is the whole point of it.
-MR_EDITABLE_STATUSES = ("Draft", "Revision Requested", "Service Setup")
+# Statuses where the depot may still edit the estimate (used items) — the two states that
+# sit on Admin Ops' desk, before the owner has been asked and after they sent it back.
+MR_EDITABLE_STATUSES = ("Draft", "Revision Requested")
 
 # Statuses the customer web may show. The owner only ever sees an estimate Admin Ops has
-# explicitly published — never a Draft or a Service Setup still being arranged.
-MR_CUSTOMER_VISIBLE_STATUSES = ("Pending Approval", "Approved", "Rejected", "In Progress", "Completed")
+# explicitly sent them — never a Draft still being arranged.
+MR_CUSTOMER_VISIBLE_STATUSES = (
+	"Pending Approval", "Approved", "Rejected", "Pending", "In Progress", "Pending Review", "Completed",
+)
 
 # Tank-spec fields read from the Container master for the form header.
 _CONTAINER_FIELDS = [
@@ -153,7 +179,7 @@ def _out_of_stock_items(warehouse) -> set:
 
 
 def _photos_list(value) -> list:
-	"""Parse a Used Item ``photos`` JSON string into a list of file URLs."""
+	"""Parse a Damage Entry ``photos`` JSON string into a list of file URLs."""
 	if not value:
 		return []
 	try:
@@ -201,8 +227,20 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 	filters = {"disabled": 0}
 	# The row's Jenis narrows the catalogue before anything else: pick "Jasa" and no part can
 	# turn up, pick "Part" and no service can. Blank keeps both (the PWA / API callers).
-	if line_type == "Jasa":
+	#
+	# The two NON-STOCK kinds are the hard case. "Part (Beli Langsung)" is a physical part the
+	# depot buys per job and never stocks, and ERPNext has no flag for that — it and a plain
+	# service are both is_stock_item = 0. The answer is carried by the ITEM GROUP instead
+	# (``Item Group.is_depot_part_group``, seeded in install.py): tick the groups that hold
+	# goods, and the two labels stop offering each other's catalogue. Until at least one group
+	# is ticked this does nothing and both show the whole non-stock list — the same
+	# "unconfigured means don't filter" rule the Depot Service Menu follows, so the picker is
+	# never mysteriously empty on a site that has not classified its groups yet.
+	if line_type in ("Jasa", "Part (Beli Langsung)"):
 		filters["is_stock_item"] = 0
+		part_groups = frappe.get_all("Item Group", filters={"is_depot_part_group": 1}, pluck="name")
+		if part_groups:
+			filters["item_group"] = ["in" if line_type == "Part (Beli Langsung)" else "not in", part_groups]
 	elif line_type == "Part":
 		filters["is_stock_item"] = 1
 	# Scope to the Maintenance menu (group-derived) when it's configured, intersecting
@@ -269,7 +307,9 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 # Execution phase — the PWA M&R menu is the field/cleaning division's console: it only shows
 # work the owner (or an Admin-Ops bypass) has already approved. Estimate-building and the
 # owner decision live in Desk (ERP).
-MR_EXECUTION_STATUSES = ["Approved", "In Progress"]
+# The PWA worklist. An Approved M&R is NOT here yet: Admin Ops still has to hand it over
+# (``forward_to_team`` -> Pending), the same gate Cleaning Order puts in front of its team.
+MR_EXECUTION_STATUSES = ["Pending", "In Progress"]
 
 
 def item_pricing(repair_order, item) -> dict:
@@ -287,9 +327,35 @@ def item_pricing(repair_order, item) -> dict:
 	return breakdown
 
 
+def _attach_item_counts(items) -> None:
+	"""Stamp ``item_count`` — how many lines the team actually has to work.
+
+	Rejected lines are excluded because they are not work: an order the owner cut down to one
+	item would otherwise advertise five on the worklist, and the operator would open it
+	expecting a job four times the size. Mirrors the ``service_count`` on a Cleaning Order row.
+	"""
+	names = [i["name"] for i in items]
+	if not names:
+		return
+	from collections import Counter
+
+	counts = Counter(
+		frappe.get_all(
+			"Repair Used Item",
+			filters={"parent": ["in", names], "decision": ["!=", "Rejected"]},
+			pluck="parent",
+		)
+	)
+	for i in items:
+		i["item_count"] = counts.get(i["name"], 0)
+
+
 def list_mr_execution(start=0, page_length=20, search=None) -> dict:
-	"""Approved / In Progress M&R orders — the PWA execution worklist (start -> done).
-	Depot-scoped to the caller's branch."""
+	"""Pending / In Progress M&R orders — the PWA execution worklist (start -> done).
+
+	An Approved order is NOT here: Admin Ops still has to hand it over (``forward_to_team``),
+	the same gate Cleaning Order puts in front of its team. Depot-scoped to the caller's
+	branch."""
 	filters = {"status": ["in", MR_EXECUTION_STATUSES]}
 	depots = get_user_depots()
 	if depots is not None:
@@ -310,7 +376,39 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 	total = len(items)
 	pl = cint(page_length)
 	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
+	_attach_item_counts(items)
 	return {"items": items, "total": total}
+
+
+def list_review_mr_orders(start=0, page_length=20, search=None) -> dict:
+	"""M&R orders awaiting Desk review — the PWA "Diajukan Review" list.
+
+	These were finished in the field: the team pressed "Kirim untuk Review" and the order is
+	sitting on Desk waiting for someone to check the work and close it. Depot-scoped exactly
+	like the worklist (NOT owner-scoped: an M&R is auto-created from an EIR, so it is rarely
+	owned by whoever did the repair). Newest first, searchable by container no / order id.
+
+	It is a separate list rather than a status inside the worklist on purpose: work waiting on
+	somebody ELSE must not sit among work waiting on YOU, or the operator re-opens it looking
+	for something to do. Mirrors ``cleaning.list_review_cleaning_orders``.
+	"""
+	filters = {"status": "Pending Review"}
+	depots = get_user_depots()
+	if depots is not None:
+		filters["depot"] = ["in", depots or [""]]
+	or_filters = None
+	search = (search or "").strip()
+	if search and search.lower() != "undefined":
+		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
+	items = frappe.get_all(
+		"Repair Order", filters=filters, or_filters=or_filters,
+		fields=["name", "repair_order_id", "container", "container_no", "status",
+			"principal", "depot", "total_cost", "target_lift_on", "creation"],
+		order_by="modified desc, creation desc",
+		limit_start=cint(start), limit_page_length=cint(page_length),
+	)
+	_attach_item_counts(items)
+	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
 
 
 def list_mr_history(start=0, page_length=10, search=None) -> dict:
@@ -353,6 +451,9 @@ def get_mr_order_detail(repair_order) -> dict:
 	} for d in ro.damages]
 
 	used_items = [{
+		# The child row id. The PWA stamps it onto every evidence photo it takes, so a photo
+		# still points at the right line when one item appears on the order twice.
+		"name": r.name,
 		"item": r.item, "item_name": r.item_name, "is_stock_item": r.is_stock_item,
 		"quantity": r.quantity, "remark": r.remark,
 		# The gudang this line is issued from — chosen per row on the Desk form.
@@ -364,7 +465,6 @@ def get_mr_order_detail(repair_order) -> dict:
 		"manhour": r.manhour, "manhour_rate": r.manhour_rate, "manhour_amount": r.manhour_amount,
 		"item_rate": r.item_rate, "item_amount": r.item_amount,
 		"amount": r.amount, "currency": r.currency,
-		"photos": _photos_list(r.photos),
 		# Stock at THIS row's gudang. Never a company-wide total: that would promise stock the
 		# line cannot actually issue.
 		"on_hand": _on_hand(r.item, r.warehouse) if r.item and r.is_stock_item and r.warehouse else None,
@@ -388,6 +488,17 @@ def get_mr_order_detail(repair_order) -> dict:
 		"requested_on": str(ro.requested_on) if ro.requested_on else None,
 		"decided_on": str(ro.decided_on) if ro.decided_on else None,
 		"revision_no": ro.revision_no,
+		# When the work itself happened. The Riwayat entry has to stand on its own as the
+		# record of the job, and a repair with no dates reads as one that never happened.
+		"start_date": str(ro.start_date) if ro.start_date else None,
+		"completion_date": str(ro.completion_date) if ro.completion_date else None,
+		# A standing "buka lagi" request, so the PWA shows the reason instead of offering the
+		# button a second time.
+		"reopen_requested": cint(ro.reopen_requested),
+		"reopen_note": ro.reopen_note,
+		# Whether reopening is still free. Once billed it is an accounting decision, and a
+		# button that always throws is worse than no button.
+		"billing_status": ro.billing_status,
 		# Tank spec (read-only).
 		"tank_type": c.container_type,
 		"client": c.principal,
@@ -399,53 +510,40 @@ def get_mr_order_detail(repair_order) -> dict:
 		"last_test_date": c.last_test_date,
 		"damages": damages,
 		"used_items": used_items,
+		# Evidence photos, in their own table — keyed to the line they prove.
+		"work_photos": [{
+			"name": p.name, "photo": p.photo, "item": p.item, "item_name": p.item_name,
+			"caption": p.caption, "used_item": p.used_item,
+		} for p in (ro.work_photos or [])],
 	}
 
 
 # --- owner approval ----------------------------------------------------------
-def submit_for_approval(repair_order):
-	"""Hand the estimate to Admin Ops: Draft / Revision Requested -> Service Setup.
+def publish_to_owner(repair_order):
+	"""Admin Ops sends the estimate to the customer web: Draft / Revision Requested ->
+	Pending Approval.
 
-	This does NOT reach the customer. Admin Ops arranges the estimate in Service Setup and
-	then :func:`publish_to_owner` puts it on the customer web. Requires at least one used
-	item; per-line decisions are reset to Pending so a re-submitted revision starts a fresh
-	decision round.
+	There used to be a "Service Setup" staging step in front of this, on the idea that the
+	workshop drafted an estimate and handed it to Admin Ops to arrange. In practice Admin Ops
+	is the first pair of eyes on every M&R, so the hand-off was to themselves — Draft IS
+	their desk, and this is the first thing that leaves it.
+
+	This is the moment the owner can first see (and decide on) the estimate, so
+	``requested_on`` is stamped here — it measures how long the OWNER has had it. Per-line
+	decisions are reset so a re-sent revision starts a fresh round, and re-publishing after a
+	withdraw restarts the clock, which is what "ajukan ulang" means.
 	"""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
-	if ro.status not in ("Draft", "Revision Requested"):
+	if ro.status not in MR_EDITABLE_STATUSES:
 		frappe.throw(
-			_("M&R hanya bisa diajukan dari Draft / Revision Requested (status: {0}).").format(ro.status)
+			_("M&R hanya bisa dikirim ke owner dari Draft / Revision Requested (status: {0}).").format(ro.status)
 		)
 	if not (ro.used_items and len(ro.used_items) > 0):
-		frappe.throw(_("Tambahkan minimal satu item sebelum mengajukan."))
+		frappe.throw(_("Tambahkan minimal satu item sebelum mengirim ke owner."))
 	for r in ro.used_items:
 		r.decision = "Pending"
 		r.owner_remark = None
-	ro.status = "Service Setup"
-	ro.save()
-	from container_depot.container_depot.notify import notify_repair_order_service_setup
-	notify_repair_order_service_setup(ro.name)
-	return {"success": True, "name": ro.name, "status": ro.status}
-
-
-def publish_to_owner(repair_order):
-	"""Admin Ops publishes the arranged estimate to the customer web: Service Setup ->
-	Pending Approval.
-
-	This is the moment the owner can first see (and decide on) the estimate, so
-	``requested_on`` is stamped here rather than at ``submit_for_approval`` — it measures
-	how long the OWNER has had it, not how long it sat with Admin Ops. Re-publishing after
-	a withdraw restarts that clock, which is what "ajukan ulang" means.
-	"""
-	ro = frappe.get_doc("Repair Order", repair_order)
-	_guard_container_branch(ro.container)
-	if ro.status != "Service Setup":
-		frappe.throw(
-			_("Hanya M&R berstatus Service Setup yang bisa ditampilkan ke customer (status: {0}).").format(ro.status)
-		)
-	if not (ro.used_items and len(ro.used_items) > 0):
-		frappe.throw(_("Tambahkan minimal satu item sebelum menampilkan ke customer."))
 	ro.status = "Pending Approval"
 	ro.requested_on = now_datetime()
 	ro.save()
@@ -456,7 +554,7 @@ def publish_to_owner(repair_order):
 
 def withdraw_from_owner(repair_order, note=None):
 	"""Admin Ops pulls a published estimate back off the customer web ("tarik ulang"):
-	Pending Approval -> Service Setup.
+	Pending Approval -> Draft.
 
 	Only while the owner has not decided — once they have (Approved / Rejected / Revision
 	Requested) the decision stands and this refuses, so a withdrawal can never erase an
@@ -473,7 +571,7 @@ def withdraw_from_owner(repair_order, note=None):
 	for r in ro.used_items or []:
 		r.decision = "Pending"
 		r.owner_remark = None
-	ro.status = "Service Setup"
+	ro.status = "Draft"
 	ro.requested_on = None
 	if note:
 		ro.owner_note = _clean(note)
@@ -485,15 +583,18 @@ def reopen_to_draft(repair_order, note=None):
 	"""Rewind an in-flight M&R back to an editable **Draft** so a human can fix a wrong /
 	missing input, then run it through approval again.
 
-	Allowed from Service Setup, Pending Approval, Approved, In Progress and Rejected — every
-	stage before the parts are actually issued. NOT from Completed (the stock issue already
+	Allowed from Pending Approval, Approved, Pending, In Progress, Pending Review and
+	Rejected — every stage before the parts are actually issued. NOT from Completed (the stock issue already
 	happened; use Cancel + a fresh order) nor Cancelled. Wipes the approval round entirely
 	(per-line decisions, requested_on / decided_on / decided_by) so the re-quote starts clean;
 	the used items are kept — editing them is the whole point. Adm Ops action (role gate in the
 	ESS wrapper); branch-guarded here."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
-	REOPENABLE = ("Service Setup", "Pending Approval", "Approved", "In Progress", "Rejected", "Revision Requested")
+	REOPENABLE = (
+		"Pending Approval", "Approved", "Pending", "In Progress", "Pending Review",
+		"Rejected", "Revision Requested",
+	)
 	if ro.status not in REOPENABLE:
 		frappe.throw(
 			_("M&R {0} tidak bisa dikembalikan ke Draft (part sudah dikeluarkan / order sudah ditutup).").format(ro.status)
@@ -519,7 +620,7 @@ def reopen_to_draft(repair_order, note=None):
 
 def bypass_approval(repair_order, note=None):
 	"""Admin-Ops BYPASS: approve the estimate directly (Draft / Revision Requested ->
-	Approved) without sending it to the owner. Same preconditions as ``submit_for_approval``
+	Approved) without sending it to the owner. Same preconditions as ``publish_to_owner``
 	(≥1 used item); every still-Pending line is auto-approved so the total + stock issue are
 	consistent with a normal Approved.
 
@@ -529,7 +630,9 @@ def bypass_approval(repair_order, note=None):
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
 	if ro.status not in MR_EDITABLE_STATUSES:
-		frappe.throw(_("Bypass hanya dari Draft / Revision Requested (status: {0}).").format(ro.status))
+		frappe.throw(
+			_("Bypass hanya dari Draft / Revision Requested (status: {0}).").format(ro.status)
+		)
 	if not (ro.used_items and len(ro.used_items) > 0):
 		frappe.throw(_("Tambahkan minimal satu item sebelum menyetujui."))
 	for r in ro.used_items:
@@ -542,6 +645,7 @@ def bypass_approval(repair_order, note=None):
 	ro.requested_on = ro.requested_on or now_datetime()
 	ro.decided_on = now_datetime()
 	ro.decided_by = frappe.session.user
+	issue_parts_on_approval(ro)
 	ro.save()
 	from container_depot.container_depot.notify import notify_repair_order_decided
 	notify_repair_order_decided(ro.name)
@@ -619,6 +723,7 @@ def record_decision(repair_order, decision, line_decisions=None, note=None):
 		ro.owner_note = note
 		ro.decided_on = now_datetime()
 		ro.decided_by = frappe.session.user
+		issue_parts_on_approval(ro)
 
 	ro.save()
 	from container_depot.container_depot.notify import notify_repair_order_decided
@@ -626,19 +731,258 @@ def record_decision(repair_order, decision, line_decisions=None, note=None):
 	return {"success": True, "name": ro.name, "status": ro.status, "total_cost": ro.total_cost}
 
 
+def issue_parts_on_approval(ro) -> None:
+	"""Take the approved parts out of the warehouse the moment the estimate is agreed.
+
+	The workshop cannot repair anything with parts that are still on a shelf, so the stock
+	moves when the money is agreed, not when the work is reported done. Both roads to
+	"Approved" come through here — the owner's own yes (``record_decision``) and the Admin-Ops
+	bypass (``bypass_approval``) — because from the warehouse's point of view they are the
+	same event: someone with authority said these parts are being used.
+
+	Only Approved lines are issued; a line the owner struck out is never repaired, so it never
+	leaves stock. Nothing is issued twice: an order that already carries a Stock Entry is
+	skipped, and rewinding one (``RepairOrder._return_parts_if_rewound``) cancels that entry
+	and puts the parts back before it can be issued again.
+
+	Mutates ``ro`` in place; the caller saves. ``stock_entry`` is set BEFORE that save on
+	purpose — ``_validate_stock_available`` reads it to know the on-hand figure has already
+	moved and must not be re-checked against the estimate.
+	"""
+	if ro.get("stock_entry"):
+		return
+	assert_stock_available(ro)
+	stock_entry = _issue_parts_stock(ro)
+	if stock_entry:
+		ro.stock_entry = stock_entry
+
+
+def return_parts_stock(ro) -> None:
+	"""Put the issued parts back: cancel the Material Issue this M&R raised.
+
+	Called when an order that has already taken its parts is rewound to Draft or cancelled.
+	Cancelling the Stock Entry (rather than raising a Material Receipt) is what keeps the
+	ledger honest — the issue and its reversal stay one linked pair instead of two unrelated
+	movements that happen to net to zero.
+
+	Mutates ``ro`` in place; the caller saves.
+	"""
+	name = ro.get("stock_entry")
+	if not name or not frappe.db.exists("Stock Entry", name):
+		ro.stock_entry = None
+		return
+	se = frappe.get_doc("Stock Entry", name)
+	if se.docstatus == 1:
+		se.flags.ignore_permissions = True
+		se.cancel()
+	ro.stock_entry = None
+
+
+def _assert_not_billed(ro) -> None:
+	"""Refuse to reopen an M&R that has already reached an invoice.
+
+	Un-finishing a closed order changes what the owner is charged for. While it is still
+	``Unbilled`` that costs nothing; once it has been swept onto a Sales Invoice, undoing it
+	is an accounting decision (credit note, amend) and not something a PWA button may take.
+	"""
+	if (ro.get("billing_status") or "Unbilled") != "Unbilled" or ro.get("sales_invoice"):
+		frappe.throw(
+			_("M&R ini sudah masuk invoice — pembukaan kembali harus lewat proses billing.")
+		)
+
+
+def request_revision(repair_order, reason=None) -> dict:
+	"""The team asks Admin Ops to open a CLOSED M&R again ("Ajukan Revisi" in the PWA).
+
+	Mirrors ``cleaning.request_revision``: a closed order cannot be edited from the PWA, so
+	this raises a REQUEST rather than touching the work — an audit note on the timeline, a
+	flag the Desk shows with its reason, and a notification to Admin Ops. Reopening stays a
+	human decision on the Desk side (:func:`reopen_completed`).
+
+	Only from Completed. A job still in flight does not need asking: the team can pull it back
+	themselves (``withdraw_review``), and offering both would make the cheap, permissionless
+	route look like the expensive one.
+	"""
+	from container_depot.container_depot import notify as _notify
+	from container_depot.container_depot.container_activity import log_doc_note
+
+	if not repair_order:
+		frappe.throw(_("repair_order is required."))
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status != "Completed":
+		frappe.throw(
+			_("Hanya M&R yang sudah selesai yang bisa diajukan revisi (status: {0}).").format(ro.status)
+		)
+	_assert_not_billed(ro)
+
+	reason = _clean(reason)
+	user = frappe.session.user
+	note = _("Permintaan buka kembali M&R oleh {0}").format(user)
+	if reason:
+		note += ": " + reason
+	# Best-effort audit trail — the notification is what carries the request, so a
+	# comment-permission hiccup must not fail it.
+	log_doc_note("Repair Order", ro.name, note)
+	frappe.db.set_value(
+		"Repair Order", ro.name,
+		{"reopen_requested": 1, "reopen_note": note},
+		update_modified=False,
+	)
+	from container_depot.container_depot.notify import notify_repair_revision_requested
+
+	sent = notify_repair_revision_requested(ro.name, reason=reason)
+	return {"success": True, "notified": sent, "repair_order": ro.name, "status": ro.status}
+
+
+def reopen_completed(repair_order, note=None) -> dict:
+	"""Admin Ops opens a closed M&R again: Completed -> In Progress.
+
+	The other half of :func:`request_revision`, and offered without one too — Admin Ops may
+	spot the mistake themselves. **In Progress**, not Draft: what was wrong is the repair, not
+	the estimate. The owner's approval, the prices and the parts already issued all stand, so
+	rewinding past them would make the team re-quote work that was correctly quoted.
+
+	``flags.oak_reopen`` is what the controller checks: the Completed -> In Progress edge is
+	legal in the state machine (validate has to allow this save) but refused on every other
+	path, so a generic status endpoint cannot un-finish a closed order.
+	"""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status != "Completed":
+		frappe.throw(_("Hanya M&R yang sudah selesai yang bisa dibuka kembali (status: {0}).").format(ro.status))
+	_assert_not_billed(ro)
+
+	from container_depot.container_depot.container_activity import log_doc_note
+
+	msg = _("M&R dibuka kembali ke In Progress oleh {0}").format(frappe.session.user)
+	note = _clean(note)
+	if note:
+		msg += ": " + note
+	ro.status = "In Progress"
+	# The order is open again, so the completion never happened. Left standing it would print
+	# on the record as a job that finished before it was worked.
+	ro.completion_date = None
+	ro.reopen_requested = 0
+	ro.reopen_note = None
+	ro.flags.oak_reopen = True
+	ro.save()
+	log_doc_note("Repair Order", ro.name, msg)
+	return {"success": True, "name": ro.name, "status": ro.status}
+
+
 # --- lifecycle ---------------------------------------------------------------
-def start_repair(repair_order):
-	"""Move an Approved M&R into work (In Progress). The controller mirrors this onto the
-	container (-> Repair_In_Progress). Approval is mandatory, so only Approved may start."""
+def forward_to_team(repair_order):
+	"""Admin Ops hands an approved M&R to the workshop: Approved -> Pending.
+
+	The gate exists so approval and dispatch stay separate decisions. An owner's yes says the
+	money is agreed; it does not say the depot is ready to start — the tank may still be
+	waiting on cleaning, on a part, or on a slot. Until this is pressed the order is invisible
+	to the PWA worklist (``MR_EXECUTION_STATUSES``), exactly the way Cleaning Order holds a
+	job in Service Setup until "Teruskan ke Team".
+	"""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
 	if ro.status != "Approved":
-		frappe.throw(_("M&R harus Approved oleh owner sebelum dimulai (status: {0}).").format(ro.status))
+		frappe.throw(
+			_("Hanya M&R yang sudah disetujui owner yang bisa diteruskan ke team (status: {0}).").format(ro.status)
+		)
+	ro.status = "Pending"
+	ro.save()
+	from container_depot.container_depot.notify import notify_repair_forwarded_to_team
+	notify_repair_forwarded_to_team(ro.name)
+	return {"success": True, "name": ro.name, "status": ro.status}
+
+
+def start_repair(repair_order):
+	"""The team picks the job up off its worklist: Pending -> In Progress. The controller
+	mirrors this onto the container (-> Repair_In_Progress).
+
+	Only a job Admin Ops has actually handed over may start — approval alone is not the
+	starting gun (see :func:`forward_to_team`)."""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status != "Pending":
+		frappe.throw(
+			_("M&R harus diteruskan ke team dulu sebelum dikerjakan (status: {0}).").format(ro.status)
+		)
 	ro.status = "In Progress"
 	if not ro.start_date:
 		ro.start_date = now_datetime()
 	ro.save()
 	return {"success": True, "name": ro.name, "status": ro.status}
+
+
+def withdraw_review(repair_order):
+	"""The team pulls a finished job back to fix something: Pending Review -> In Progress.
+
+	Their own correction, before Desk finalises it — no Admin Ops needed, and nothing has
+	left the warehouse yet. Mirrors ``cleaning.withdraw_review``."""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status != "Pending Review":
+		frappe.throw(
+			_("Hanya M&R yang menunggu review yang bisa ditarik kembali (status: {0}).").format(ro.status)
+		)
+	ro.status = "In Progress"
+	ro.save()
+	return {"success": True, "name": ro.name, "status": ro.status}
+
+
+MR_FINALIZABLE_STATUSES = ("Pending Review", "Approved")
+
+
+def finalize_repair(repair_order):
+	"""Desk closes the job: Pending Review -> Completed, or Approved -> Completed.
+
+	Nothing moves in the warehouse here — the parts left it back at approval
+	(:func:`issue_parts_on_approval`), which is when the workshop actually needed them in
+	hand. This is the sign-off on the WORK: a human agreed the repair is right, so the order
+	closes and becomes billable.
+
+	Two ways in, one meaning. From **Pending Review** it closes a job the team reported done
+	in the PWA — the ordinary path. From **Approved** it closes a job that never needed
+	dispatching: the repair is already over (a five-minute fix, or a subcontractor's work),
+	and sending it round the PWA would only make the operator press Mulai and Selesai on
+	something finished. Nothing is skipped by taking the short road; the money was agreed and
+	the parts were issued at approval either way.
+
+	``start_date`` is stamped when it is missing so a directly-closed order still says when
+	the work happened, rather than showing a completion with no beginning.
+	"""
+	ro = frappe.get_doc("Repair Order", repair_order)
+	_guard_container_branch(ro.container)
+	if ro.status not in MR_FINALIZABLE_STATUSES:
+		frappe.throw(
+			_("M&R hanya bisa diselesaikan dari Disetujui atau Menunggu Review (status: {0}).").format(ro.status)
+		)
+	direct = ro.status == "Approved"
+	ro.status = "Completed"
+	# A standing request asked for exactly this round of work; it has been actioned and the
+	# order is closed again, so the badge comes off rather than following it into history.
+	ro.reopen_requested = 0
+	ro.reopen_note = None
+	if not ro.completion_date:
+		ro.completion_date = now_datetime()
+	if not ro.start_date:
+		ro.start_date = ro.completion_date
+	ro.save()
+	if direct:
+		# Worth a timeline note: an order that reaches Completed without ever appearing on
+		# the team's worklist looks, in the history, like a step went missing.
+		log_doc_note(
+			"Repair Order", ro.name,
+			_("M&R diselesaikan langsung dari Disetujui (tanpa diteruskan ke team) oleh {0}").format(
+				frappe.session.user
+			),
+		)
+	return {
+		"success": True,
+		"name": ro.name,
+		"status": ro.status,
+		"total_cost": ro.total_cost,
+		"stock_entry": ro.get("stock_entry"),
+	}
 
 
 def _coerce_list(value) -> list:
@@ -663,8 +1007,6 @@ def _apply_used_items(ro, used_items) -> None:
 		item = _clean(u.get("item"))
 		if not item:
 			continue  # a used-item line is meaningless without an Item
-		photos = u.get("photos")
-		photos = _coerce_list(photos) if photos is not None else []
 		rows.append({
 			"item": item,
 			"quantity": flt(u.get("quantity")) or 1,
@@ -672,9 +1014,36 @@ def _apply_used_items(ro, used_items) -> None:
 			# default in ``row_warehouse``, and the controller stamps it back onto the row.
 			"warehouse": _clean(u.get("warehouse")),
 			"remark": _clean(u.get("remark")),
-			"photos": json.dumps([p for p in photos if p]) if photos else None,
 		})
 	ro.set("used_items", rows)
+
+
+def _apply_work_photos(ro, work_photos) -> None:
+	"""Replace the evidence album with what the caller sent.
+
+	Whole-table replace, not a merge: the PWA holds the full list on screen and a removal is
+	as meaningful an edit as an addition — merging would make deleting a wrong photo
+	impossible from the one screen it is visible on. Rows without a ``photo`` are dropped
+	rather than refused, so an upload that never landed cannot block the save that carries the
+	rest.
+
+	The item/line pairing is NOT resolved here — ``RepairOrder._bind_work_photos`` does it on
+	validate, so a photo attached from the Desk grid gets the same treatment as one shot in
+	the PWA.
+	"""
+	ro.set("work_photos", [])
+	for row in _coerce_list(work_photos):
+		if not isinstance(row, dict):
+			continue
+		photo = _clean(row.get("photo"))
+		if not photo:
+			continue
+		ro.append("work_photos", {
+			"photo": photo,
+			"item": row.get("item"),
+			"caption": _clean(row.get("caption")),
+			"used_item": _clean(row.get("used_item")),
+		})
 
 
 def _assert_warehouses_in_user_branch(ro) -> None:
@@ -822,19 +1191,38 @@ def _issue_parts_stock(ro) -> str | None:
 	return se.name
 
 
+# Where evidence photos may be added or dropped. Wider than MR_EDITABLE_STATUSES on purpose:
+# the photos are proof of WORK, and the work happens long after the estimate is frozen — the
+# team shoots them mid-repair, which is In Progress. Narrower than "always": once the order is
+# closed the album is part of what the owner was shown, and Pending Review is somebody else's
+# turn (withdraw first, which is one press).
+MR_PHOTO_STATUSES = MR_EDITABLE_STATUSES + ("Approved", "Pending", "In Progress")
+
+
 def save_mr_order(
 	repair_order=None,
 	used_items=None,
+	work_photos=None,
 	technician=None,
 	reff_doc=None,
 	remarks=None,
 	submit=False,
 ) -> dict:
-	"""Save the M&R's Used Items (each with its own gudang) and, when ``submit`` is
-	true, complete it — which issues the stockable **approved** parts and returns the tank
-	to the ready pool. Used items may only be edited while Draft / Revision Requested;
-	completion is only allowed from In Progress (approval is mandatory). The copied
-	``damages`` are read-only. Rates follow the owner's Item Price (controller-computed)."""
+	"""Save the M&R's Used Items (each with its own gudang) and its evidence photos and, when
+	``submit`` is true, hand the finished job to Desk for review (In Progress -> **Pending
+	Review**).
+
+	The two tables answer to different rules and that is the point of them being two tables:
+	``used_items`` is the estimate the owner agreed to and freezes when it leaves Draft, while
+	``work_photos`` is proof of the work and is gathered while the repair is happening.
+
+	``submit`` does NOT complete the order — that is :func:`finalize_repair`, run by Desk once
+	a human has checked the work. No stock moves here either: the parts were taken out at
+	approval (:func:`issue_parts_on_approval`), because the workshop needed them in hand to do
+	the job at all. Mirrors ``cleaning.save_cleaning_order``.
+
+	Used items may only be edited while Draft / Revision Requested; the copied ``damages`` are
+	read-only. Rates follow the owner's Item Price (controller-computed)."""
 	if not repair_order:
 		frappe.throw(_("repair_order is required."))
 	ro = frappe.get_doc("Repair Order", repair_order)
@@ -845,12 +1233,22 @@ def save_mr_order(
 	submitting = _as_bool(submit)
 	if submitting and ro.status != "In Progress":
 		frappe.throw(_("M&R harus In Progress untuk diselesaikan (status: {0}).").format(ro.status))
+	if ro.status == "Pending Review" and not submitting:
+		frappe.throw(
+			_("M&R sedang menunggu review Desk — tarik kembali dulu kalau mau diubah."), exc=AlreadySettled
+		)
 	if used_items is not None and ro.status not in MR_EDITABLE_STATUSES:
 		frappe.throw(_("Item hanya bisa diubah saat Draft / Revision Requested."))
+	if work_photos is not None and ro.status not in MR_PHOTO_STATUSES:
+		frappe.throw(
+			_("Foto bukti tidak bisa diubah saat status {0}.").format(ro.status)
+		)
 
 	if used_items is not None:
 		_apply_used_items(ro, used_items)
 		_assert_warehouses_in_user_branch(ro)
+	if work_photos is not None:
+		_apply_work_photos(ro, work_photos)
 	if technician is not None:
 		ro.technician = _clean(technician)
 	# Optional reference doc (usually pre-filled from the EIR; editable here).
@@ -860,17 +1258,16 @@ def save_mr_order(
 		ro.remarks = remarks
 
 	if submitting:
-		# Re-checked here (not just on save): stock can drop between the estimate and the
-		# completion when another M&R issues the same part first.
-		assert_stock_available(ro)
-		stock_entry = _issue_parts_stock(ro)
-		if stock_entry:
-			ro.stock_entry = stock_entry
-		ro.status = "Completed"
-		if not ro.completion_date:
-			ro.completion_date = now_datetime()
+		# No stock check and no stock movement: the parts were issued at approval, so on-hand
+		# is ALREADY lower by exactly this order's amount and re-checking it against the
+		# estimate would fail on every order that ever took a part.
+		ro.status = "Pending Review"
 
 	ro.save()  # before_save -> calculate_totals() (prices from Item Price) + container sync
+	if submitting:
+		from container_depot.container_depot.notify import notify_repair_pending_review
+
+		notify_repair_pending_review(ro.name)
 	return {
 		"success": True,
 		"name": ro.name,

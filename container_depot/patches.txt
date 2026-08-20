@@ -93,3 +93,4 @@ container_depot.patches.v0_64.booking_list_columns
 container_depot.patches.v0_64.clear_echoed_damage_description
 container_depot.patches.v0_65.cleaning_manhour_is_raw_again
 container_depot.patches.v0_66.drop_periodic_test_and_survey_order
+container_depot.patches.v0_67.move_used_item_photos_to_album

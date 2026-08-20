@@ -603,10 +603,8 @@ class Smoke:
 		self.step("M&R · isi 1 service dari kontrak (PWA)",
 			lambda: ess_mr.mr_order_save(repair_order=self.repair_order,
 				used_items=[{"item": service, "quantity": 1}]))
-		# Estimasi naik ke Admin Ops dulu (Service Setup), baru ditampilkan ke owner.
-		self.step("M&R · ajukan estimasi ke Admin Ops (PWA)",
-			lambda: ess_mr.mr_submit_approval(repair_order=self.repair_order))
-		self.step("M&R · Admin Ops tampilkan ke owner (PWA)",
+		# Draft IS Admin Ops' desk — the estimate goes straight from there to the owner.
+		self.step("M&R · Admin Ops kirim estimasi ke owner (Desk)",
 			lambda: ess_mr.mr_publish_to_owner(repair_order=self.repair_order))
 		self.check("M&R · menunggu keputusan owner (Pending Approval)",
 			frappe.db.get_value("Repair Order", self.repair_order, "status") == "Pending Approval")
@@ -614,10 +612,18 @@ class Smoke:
 		self.step("M&R · owner menyetujui (Desk)",
 			lambda: ess_mr.mr_decision(repair_order=self.repair_order, decision="Approved",
 				line_decisions={service: "Approved"}))
+		# Approval menyelesaikan uangnya; penyerahan ke team adalah keputusan terpisah.
+		self.step("M&R · Admin Ops teruskan ke team (Desk)",
+			lambda: ess_mr.mr_forward_to_team(repair_order=self.repair_order))
 		self.step("M&R · mulai pengerjaan (PWA)",
 			lambda: ess_mr.mr_start(repair_order=self.repair_order))
-		self.step("M&R · selesaikan (PWA)",
+		self.step("M&R · team selesai, ajukan review (PWA)",
 			lambda: ess_mr.mr_order_save(repair_order=self.repair_order, submit=1))
+		self.check("M&R · menunggu review Desk (Pending Review)",
+			frappe.db.get_value("Repair Order", self.repair_order, "status") == "Pending Review")
+		# Part baru keluar gudang di sini, bukan saat team menekan selesai di lapangan.
+		self.step("M&R · Desk selesaikan & keluarkan part (Desk)",
+			lambda: ess_mr.mr_finalize(repair_order=self.repair_order))
 		return self.check("Repair Order · Completed",
 			frappe.db.get_value("Repair Order", self.repair_order, "status") == "Completed")
 

@@ -666,8 +666,13 @@ export const labels = {
 	mrInProgress: "Dikerjakan", // In Progress chip
 	mrSave: "Simpan", // save draft
 	mrSaved: "Tersimpan",
-	mrComplete: "Selesaikan", // complete (issues stock)
-	mrCompleted: "M&R selesai & part dikeluarkan dari stok", // completed toast
+	mrComplete: "Selesaikan", // complete
+	mrCompleted: "M&R selesai", // completed toast
+	// The field crew does not close an M&R — they hand it to Desk, who checks the work and
+	// closes it. Same two-step sign-off the cleaning and EIR screens use.
+	mrSubmitReview: "Kirim untuk Review", // In Progress -> Pending Review
+	mrSubmitReviewHint: "Admin Ops akan memeriksa pekerjaan ini sebelum M&R ditutup.",
+	mrSubmittedReview: "Dikirim untuk review Admin Ops", // submitted toast
 	mrRemove: "Hapus", // remove part row
 	// Owner approval (Fase B — depot records the owner's decision)
 	mrStatus: "Status",
@@ -691,11 +696,52 @@ export const labels = {
 	mrNeedItemFirst: "Tambahkan minimal satu item dulu.",
 	// PWA M&R = execution-only console (divisi lapangan): only approved work, start -> done.
 	mrExecInProgress: "Sedang dikerjakan.",
-	mrExecPartsTitle: "Part Disetujui",
+	// One card per approved line on the PWA: what to do, how many, and the photos proving it
+	// was done. "Pekerjaan" and not "Part" because most of the list is services (painting,
+	// renewing a seal), which the old title quietly excluded.
+	mrExecPartsTitle: "Pekerjaan Disetujui",
+	mrWorkPhotosHint: "Foto tiap pekerjaan — jadi bukti untuk owner tank.",
+	mrPhotoCaption: "Keterangan (mis. sebelum / sesudah)", // per-photo caption input
+	// --- Riwayat detail: the finished record, read-only ---
+	mrWorkPhotos: "Foto Bukti Pekerjaan", // album section title (Riwayat)
+	mrNoPhotos: "Belum ada foto bukti.",
+	mrWorkRecord: "Catatan Pekerjaan", // who/when section
+	mrStartDate: "Mulai Dikerjakan",
+	mrDoneDate: "Selesai",
+	mrRequestedOn: "Diajukan ke Owner",
+	mrDecidedOn: "Keputusan Owner",
+	mrRevisionNo: "Revisi ke",
 	mrExecOrdersHint: "M&R siap dikerjakan", // worklist hint
 	mrExecEmpty: "Tidak ada M&R siap dikerjakan.",
 	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
 	mrExecStartGate: "Mulai perbaikan dulu untuk melihat detail pekerjaan.", // start-first gate
+	// --- landing sections (mirrors the cleaning screen: worklist, review queue, finished) ---
+	mrOrdersList: "M&R Order List", // worklist section title
+	mrOrdersCount: "menunggu", // worklist count suffix
+	mrItemsCount: "item", // worklist row: "<n> item" to be repaired
+	mrFilterAll: "Semua", // All
+	mrFilterTodo: "Belum", // handed over but not started (status Pending)
+	mrFilterStarted: "Dikerjakan", // started (status In Progress)
+	mrFilterEmptyTodo: "Semua M&R sudah mulai dikerjakan. 🎉", // nothing left unstarted
+	mrFilterEmptyStarted: "Belum ada M&R yang sedang dikerjakan.", // none in progress
+	mrReviewList: "Diajukan Review", // sent for Admin Ops review (Pending Review)
+	mrReviewEmpty: "Tidak ada M&R menunggu review.", // none awaiting review
+	mrStatusPendingReview: "Menunggu Review", // Pending Review chip
+	mrCompleteList: "M&R Selesai", // completed orders
+	mrCompleteEmpty: "Belum ada M&R selesai.", // none completed yet
+	mrListMore: "Lihat semua", // see all (-> Riwayat)
+	mrWithdrawReview: "Tarik & Perbaiki", // withdraw from review + edit
+	mrWithdrawReviewDone: "M&R ditarik — silakan perbaiki lalu kirim ulang", // done toast
+	mrWithdrawReviewHint: "Order kembali ke worklist dan bisa dikerjakan lagi.", // Riwayat detail
+	// Asking Admin Ops to open a CLOSED M&R again. Deliberately NOT the same words as the
+	// owner's "Minta Revisi" on the estimate: that one sends prices back to be re-quoted,
+	// this one says the repair itself needs more work.
+	mrReqRevision: "Ajukan Revisi ke Admin Ops",
+	mrReqRevisionHint: "Minta Admin Ops membuka order ini agar bisa dikerjakan lagi.",
+	mrReqRevisionReason: "Alasan revisi (opsional)",
+	mrReqRevisionSend: "Kirim Permintaan",
+	mrReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops",
+	mrReopenRequested: "Menunggu Admin Ops membuka order", // standing request banner
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
@@ -816,7 +862,11 @@ export const repairStatusLabels = {
 	Approved: "Disetujui",
 	Rejected: "Ditolak",
 	"Revision Requested": "Minta Revisi",
+	// Handed to the team but not picked up yet — the depot PWA worklist's "Belum".
+	Pending: "Siap Dikerjakan",
 	"In Progress": "Dikerjakan",
+	// Finished in the field, waiting for Desk to check the work and close it.
+	"Pending Review": "Menunggu Review",
 	Completed: "Selesai",
 	Cancelled: "Dibatalkan",
 }

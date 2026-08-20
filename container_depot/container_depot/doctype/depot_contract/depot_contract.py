@@ -378,6 +378,42 @@ def get_active_contract(customer: str) -> dict | None:
 	return row
 
 
+@frappe.whitelist()
+def rate_card_status(customer: str | None = None) -> dict:
+	"""Is this party's rate card live? — the one question every order form must ask before it
+	can price anything.
+
+	A tank whose owner has no Active Depot Contract still gets imported, gated in, cleaned and
+	repaired: nothing in the depot flow blocks on the contract. But every line on those orders
+	then prices at 0 (no Item Price to read), and consolidated billing invoices straight off
+	those zeros — so the work is done and never billed, silently. The order forms use this to
+	say so up front instead.
+
+	``ok`` is False in two different ways, and the caller needs to tell them apart:
+	  * no Active contract at all — nothing has been agreed yet;
+	  * an Active contract that published no Item Prices — agreed, but its Tariff Lines are
+	    empty, so there is still nothing to price from.
+	"""
+	if not customer:
+		return {"customer": None, "contract": None, "price_list": None, "priced_items": 0, "ok": True}
+	contract = frappe.db.get_value(
+		"Depot Contract", {"customer": customer, "status": "Active"}, "name", order_by="valid_from desc"
+	)
+	# The contract's own published list (Customer.default_price_list is what _publish_price_list
+	# writes), NOT the Selling Settings fallback — a site-wide default is not this owner's tariff.
+	price_list = frappe.db.get_value("Customer", customer, "default_price_list")
+	priced_items = (
+		frappe.db.count("Item Price", {"price_list": price_list, "selling": 1}) if price_list else 0
+	)
+	return {
+		"customer": customer,
+		"contract": contract,
+		"price_list": price_list,
+		"priced_items": priced_items,
+		"ok": bool(contract and price_list and priced_items),
+	}
+
+
 # --- tariff line item picker (seeded from the contract's Base Price List) --------
 
 @frappe.whitelist()

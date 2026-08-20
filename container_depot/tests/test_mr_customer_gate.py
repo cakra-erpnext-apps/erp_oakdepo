@@ -1,12 +1,18 @@
-"""The Admin-Ops gate between the workshop's estimate and the customer web.
+"""The gate between the depot's estimate and the customer web.
 
-The workshop no longer publishes straight to the owner: ``submit_for_approval`` hands
-the estimate to Admin Ops (``Service Setup``), and only ``publish_to_owner`` moves it
-to ``Pending Approval`` — the first status the customer can see. Admin Ops can pull it
-back (``withdraw_from_owner``) and publish again.
+``publish_to_owner`` is what puts an estimate in front of the owner: Draft ->
+``Pending Approval``, the first status the customer can see. Admin Ops can pull it back
+(``withdraw_from_owner``) and publish again.
 
-``requested_on`` is the tell for whether the owner has actually been asked: it is
-stamped at publish, not at the workshop's submit, and cleared on withdraw.
+There used to be a ``Service Setup`` staging step in front of it, on the idea that the
+workshop drafted an estimate and handed it to Admin Ops to arrange. That hand-off was to
+themselves — Admin Ops is the first pair of eyes on every M&R, so **Draft IS their desk**
+and publishing is the first thing that leaves it. What the step really protected is still
+protected: an estimate nobody has published is invisible to the customer, which is what
+these tests assert.
+
+``requested_on`` is the tell for whether the owner has actually been asked: it is stamped
+at publish and cleared on withdraw.
 """
 
 from __future__ import annotations
@@ -61,26 +67,26 @@ class TestMrCustomerGate(FrappeTestCase):
 			"billing_status": "Unbilled",
 		}
 		if with_items:
+			# "Lift Off" is a seeded service item: no stock behind it, so an Approved in
+			# these tests never has to raise a Material Issue.
 			doc["used_items"] = [{"item": "Lift Off", "quantity": 1, "item_rate": 100000}]
 		return frappe.get_doc(doc).insert(ignore_permissions=True)
 
 	def _status(self, name):
 		return frappe.db.get_value("Repair Order", name, ["status", "requested_on"], as_dict=True)
 
-	def test_workshop_submit_stops_at_admin_ops(self):
-		"""The whole point: the customer must not see it yet."""
+	def test_an_unpublished_estimate_is_invisible_to_the_customer(self):
+		"""The whole point of the gate: a Draft is the depot's own working copy."""
 		ro = self._draft()
-		mr.submit_for_approval(ro.name)
 
 		row = self._status(ro.name)
-		self.assertEqual(row.status, "Service Setup")
+		self.assertEqual(row.status, "Draft")
 		self.assertNotIn(row.status, mr.MR_CUSTOMER_VISIBLE_STATUSES)
 		# The owner clock only starts when they are actually asked.
 		self.assertIsNone(row.requested_on)
 
 	def test_publish_puts_it_on_the_customer_web(self):
 		ro = self._draft()
-		mr.submit_for_approval(ro.name)
 		mr.publish_to_owner(ro.name)
 
 		row = self._status(ro.name)
@@ -91,12 +97,13 @@ class TestMrCustomerGate(FrappeTestCase):
 	def test_withdraw_then_republish(self):
 		"""Tarik ulang + ajukan ulang — the round trip Admin Ops needs."""
 		ro = self._draft()
-		mr.submit_for_approval(ro.name)
 		mr.publish_to_owner(ro.name)
 
 		mr.withdraw_from_owner(ro.name, note="harga salah")
 		row = self._status(ro.name)
-		self.assertEqual(row.status, "Service Setup")
+		# Back on the depot's desk, and off the customer web again.
+		self.assertEqual(row.status, "Draft")
+		self.assertNotIn(row.status, mr.MR_CUSTOMER_VISIBLE_STATUSES)
 		# Cleared, so the re-publish starts a fresh owner round rather than back-dating it.
 		self.assertIsNone(row.requested_on)
 
@@ -105,7 +112,6 @@ class TestMrCustomerGate(FrappeTestCase):
 
 	def test_withdraw_resets_line_decisions(self):
 		ro = self._draft()
-		mr.submit_for_approval(ro.name)
 		mr.publish_to_owner(ro.name)
 		frappe.db.set_value("Repair Used Item", {"parent": ro.name}, "decision", "Approved", update_modified=False)
 
@@ -116,7 +122,6 @@ class TestMrCustomerGate(FrappeTestCase):
 	def test_withdraw_refused_once_the_owner_decided(self):
 		"""A withdrawal must never erase an answer the customer already gave."""
 		ro = self._draft()
-		mr.submit_for_approval(ro.name)
 		mr.publish_to_owner(ro.name)
 		mr.record_decision(ro.name, "Approved")
 
@@ -124,17 +129,29 @@ class TestMrCustomerGate(FrappeTestCase):
 			mr.withdraw_from_owner(ro.name)
 		self.assertEqual(self._status(ro.name).status, "Approved")
 
-	def test_publish_refused_from_a_draft(self):
-		"""Publishing skips the Admin-Ops step it exists to enforce, so it is refused."""
+	def test_publish_refused_once_it_is_already_out(self):
+		"""Re-publishing a live round would restart the owner's clock behind their back,
+		so the second call is refused — withdraw first, which is the explicit way to say
+		"this round is void"."""
 		ro = self._draft()
+		mr.publish_to_owner(ro.name)
 		with self.assertRaises(frappe.ValidationError):
 			mr.publish_to_owner(ro.name)
 
-	def test_submit_needs_at_least_one_item(self):
+	def test_publish_refused_after_the_owner_answered(self):
+		ro = self._draft()
+		mr.publish_to_owner(ro.name)
+		mr.record_decision(ro.name, "Approved")
+		with self.assertRaises(frappe.ValidationError):
+			mr.publish_to_owner(ro.name)
+
+	def test_publish_needs_at_least_one_item(self):
 		ro = self._draft(with_items=False)
 		with self.assertRaises(frappe.ValidationError):
-			mr.submit_for_approval(ro.name)
+			mr.publish_to_owner(ro.name)
 
-	def test_estimate_stays_editable_in_service_setup(self):
-		"""Admin Ops has to be able to arrange it — that is what the step is for."""
-		self.assertIn("Service Setup", mr.MR_EDITABLE_STATUSES)
+	def test_the_two_editable_statuses_are_the_two_the_depot_owns(self):
+		"""Draft and Revision Requested — the estimate is only ever edited while it is
+		NOT in front of the owner."""
+		self.assertEqual(set(mr.MR_EDITABLE_STATUSES), {"Draft", "Revision Requested"})
+		self.assertNotIn("Draft", mr.MR_CUSTOMER_VISIBLE_STATUSES)

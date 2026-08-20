@@ -28,16 +28,58 @@ class RepairOrder(Document):
 			assert_container_active(self.container)
 		self._validate_status_transition()
 		self._validate_stock_available()
+		self._bind_work_photos()
+
+	def _bind_work_photos(self):
+		"""Tie every evidence photo to a Service & Parts line it can actually belong to.
+
+		The photos are a table of their own, so nothing structural stops someone attaching one
+		to an item that is not on this order — and a photo captioned with a part the owner is
+		not being charged for is worse than no photo at all, because it reads as proof of work
+		nobody agreed to. So the item must be on the order.
+
+		``used_item`` is filled in from the item when it is blank. It only earns its keep when
+		one item appears on the order twice (two corner posts, two visits), which is why no
+		human is ever asked for it: the first matching line is right in every other case, and
+		the PWA stamps the exact row anyway.
+		"""
+		rows = self.get("work_photos") or []
+		if not rows:
+			return
+		by_name = {r.name: r for r in (self.used_items or []) if r.name}
+		first_for_item = {}
+		for r in self.used_items or []:
+			if r.item and r.item not in first_for_item:
+				first_for_item[r.item] = r
+		for p in rows:
+			line = by_name.get(p.used_item) if p.used_item else None
+			if line is None:
+				line = first_for_item.get(p.item)
+			if line is None:
+				frappe.throw(
+					frappe._("Foto bukti #{0}: item {1} tidak ada di Service & Parts order ini.").format(
+						p.idx, p.item or "-"
+					)
+				)
+			# Keep the pair honest in both directions: a row picked by name decides the item,
+			# not the other way round.
+			p.used_item = line.name
+			p.item = line.item
 
 	def _validate_stock_available(self):
 		"""A part may only sit on an M&R when its own gudang actually holds it.
 
 		Placed in validate() so it covers every path — the Desk grid, the PWA, and
-		``mr.save_mr_order`` alike. Closed orders are skipped: Completed has *already*
-		issued its parts (on-hand is now lower by exactly that amount, so re-checking would
-		always fail), and Cancelled / Rejected must stay closable whatever the stock says.
+		``mr.save_mr_order`` alike.
+
+		An order that has already ISSUED its parts is skipped: on-hand is now lower by exactly
+		this order's amount, so re-checking the estimate against it would fail on every order
+		that ever took a part. Parts leave at approval now (``mr.issue_parts_on_approval``), so
+		that covers most of an M&R's life — ``stock_entry`` is the honest test for it, not the
+		status. Cancelled / Rejected are skipped too: they must stay closable whatever the
+		stock says.
 		"""
-		if self.status in ("Completed", "Cancelled", "Rejected"):
+		if self.get("stock_entry") or self.status in ("Completed", "Cancelled", "Rejected"):
 			return
 		from container_depot.container_depot.mr import assert_stock_available
 
@@ -57,9 +99,22 @@ class RepairOrder(Document):
 			frappe.throw(
 				frappe._("Tidak bisa mengubah status M&R dari {0} ke {1}.").format(before.status, self.status)
 			)
+		# Completed -> In Progress is legal in the state machine so that mr.reopen_completed's
+		# own save passes validate — but ONLY that function may walk it. Without this, any
+		# holder of write permission could un-finish a closed order through the generic
+		# status endpoint, undoing a completion that may already be on its way to an invoice.
+		if before.status == "Completed" and not self.flags.get("oak_reopen"):
+			frappe.throw(
+				frappe._("M&R yang sudah selesai hanya bisa dibuka kembali lewat Setujui Revisi (Admin Ops).")
+			)
 
 	def before_save(self):
 		"""Auto-fetch principal, calculate costs, and update container status"""
+		# Parts leave the warehouse at approval, so any road BACK from there has to bring
+		# them home again — checked here rather than in each caller because the state machine
+		# lets Draft / Cancelled be reached from five different statuses and three different
+		# entry points (Desk buttons, ESS endpoints, a direct status edit).
+		self._return_parts_if_rewound()
 		# File this M&R under the booking its EIR was raised on. Blank when there is no
 		# EIR — an ad-hoc repair belongs to no visit in particular.
 		apply_booking_link(self)
@@ -67,6 +122,26 @@ class RepairOrder(Document):
 		self.calculate_totals()
 		self.stamp_on_hand()
 		self.update_container_status()
+
+	def _return_parts_if_rewound(self):
+		"""Cancel this order's Material Issue when it is rewound to Draft or dropped.
+
+		``mr.issue_parts_on_approval`` takes the parts out the moment the estimate is agreed;
+		if that agreement is then undone — Admin Ops rewinds it to Draft to fix a wrong item,
+		or the whole job is cancelled — the warehouse would otherwise stay short of parts that
+		were never fitted to anything.
+
+		Reads the value as it was BEFORE this save: ``stock_entry`` is what says parts went
+		out, and clearing it is how this marks them returned.
+		"""
+		before = self.get_doc_before_save()
+		if not before or not before.get("stock_entry"):
+			return
+		if self.status not in ("Draft", "Cancelled", "Rejected"):
+			return
+		from container_depot.container_depot.mr import return_parts_stock
+
+		return_parts_stock(self)
 
 	def stamp_on_hand(self):
 		"""Fill each part row's Stok from **its own gudang**, so the grid shows what is still
@@ -143,8 +218,9 @@ class RepairOrder(Document):
 		line with the manhour its contract books for that item and totals them once in the
 		header (``invoicing.apply_manhour_charge``). That only works because an M&R is billed
 		item by item — see ``consolidated_billing._mr_lines``. The ``manhour`` /
-		``manhour_rate`` / ``manhour_amount`` fields are kept on the row (hidden) so historical
-		orders keep their figures, but nothing recomputes or totals them.
+		``manhour_rate`` / ``manhour_amount`` fields on the row are a read-only PREVIEW of that
+		invoice charge, shown beside Total Cost so the estimate says what the labour will come
+		to; they never enter the line amount or the order total.
 
 		``quantity`` and ``item_rate`` are the ADJUSTABLE inputs (seeded from the owner's Item
 		Price when a line is first added); the amounts are always derived here, so they stay
@@ -173,17 +249,37 @@ class RepairOrder(Document):
 
 		from container_depot.container_depot.mr import default_warehouse
 
+		# The labour PREVIEW stamped on every row. It is never priced into the line: the
+		# invoice books each billed line's hours (``Item.manhour``) and multiplies the SUM by
+		# ONE hourly tariff in its header (``invoicing.apply_manhour_charge``). That tariff is
+		# read here exactly the way the invoice reads it — the customer's own rate card, and
+		# 0 when they have no contract — so the estimate previews what will actually be
+		# charged, and nothing when nothing will be. Deliberately NOT scaled by qty: the hours
+		# are what the line books as a whole, which is how the invoice reads them too.
+		from container_depot import pricing
+
+		manhour_hour = flt(pricing.manhour_rate_for(self.principal)) if self.principal else 0.0
+
 		for row in self.get("used_items") or []:
 			row.is_stock_item = (
 				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
 			)
-			# Jenis is an INPUT while the row is empty (it narrows the item picker), but once
-			# an item is chosen the Item master is the truth — otherwise a row could claim to
-			# be Jasa while holding a stock part, and skip the stock guard entirely.
+			# Jenis is an INPUT while the row is empty (it narrows the item picker). Once an
+			# item is chosen the Item master decides what can be TRUE of it: a stock item is
+			# always "Part" (it has a gudang and must face the stock guard), and a non-stock
+			# item can never be. Which of the two non-stock labels it wears — plain work
+			# ("Jasa") or a part bought for this job ("Part (Beli Langsung)") — is the user's
+			# call, because nothing in the system can tell them apart; it only changes how the
+			# line reads on the estimate the owner approves.
 			if row.item:
-				row.line_type = "Part" if row.is_stock_item else "Jasa"
-			if row.line_type == "Jasa":
-				row.warehouse = None  # a service is not taken out of a gudang
+				if row.is_stock_item:
+					row.line_type = "Part"
+				elif row.line_type not in ("Jasa", "Part (Beli Langsung)"):
+					row.line_type = "Jasa"
+			# Keyed on the ITEM, not the label: only a stock item is ever issued from a gudang,
+			# so only a stock item may name one.
+			if not row.is_stock_item:
+				row.warehouse = None
 			elif row.item and not row.warehouse:
 				# Show the gudang actually used instead of leaving the column blank while the
 				# stock silently comes from the branch default.
@@ -199,6 +295,18 @@ class RepairOrder(Document):
 			# Derived amounts (read-only in the UI). Labour is the invoice's job.
 			row.item_amount = flt(row.quantity or 0.0) * flt(row.item_rate)
 			row.amount = row.item_amount
+			row.manhour = flt(breakdown.get("manhour"))
+			# Biaya Manhour is the INPUT: seeded once from the owner's rate card, then left
+			# alone — Admin Ops may negotiate the labour on a job, and re-deriving it every
+			# save would undo the edit before anyone saw it. Same bargain as item_rate above.
+			if not flt(row.manhour_amount):
+				row.manhour_amount = flt(row.manhour) * manhour_hour
+			# ...and the hourly tariff is what falls OUT of it. The invoice can only bill
+			# labour one way — total hours × a single tariff in the header — so a typed amount
+			# reaches it as the rate it implies (see consolidated_billing._negotiated_manhour_hour).
+			# A line whose item books no standard hours therefore has no way to carry labour to
+			# the invoice; there is nothing to multiply.
+			row.manhour_rate = flt(row.manhour_amount) / flt(row.manhour) if flt(row.manhour) else 0.0
 			# Owner-rejected lines aren't repaired or billed — exclude from every total.
 			if (row.get("decision") or "Pending") != "Rejected":
 				numeric_total += row.amount

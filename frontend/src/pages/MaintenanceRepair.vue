@@ -21,17 +21,6 @@
 			</div>
 		</div>
 
-		<!-- Completed confirmation -->
-		<section v-if="completed" class="oak-card border-leaf-200 bg-leaf-50 p-4 space-y-2">
-			<p class="font-bold text-leaf-700">
-				<Icon name="check-circle" :size="18" /> {{ labels.mrCompleted }}
-			</p>
-			<p class="font-mono text-sm text-gray-700">{{ completed.repair_order_id || completed.name }}</p>
-			<p v-if="completed.stock_entry" class="font-mono text-[11px] text-gray-500">
-				Stock Entry: {{ completed.stock_entry }}
-			</p>
-		</section>
-
 		<!-- OPENING AN ORDER — placeholder while its detail is fetched. Without this the
 		     worklist just sat there unchanged after a tap, which reads as a dead button. -->
 		<SkeletonDetail v-if="detailPending" :cells="6" :sections="3" />
@@ -48,8 +37,16 @@
 			</div>
 		</section>
 
-		<!-- WORKLIST (Approved / In Progress only) -->
-		<section v-else-if="!order && !completed" class="space-y-3">
+		<!-- WORKLIST — same shape as the Cleaning worklist (/depot/cleaning): search, then
+		     Semua / Belum / Dikerjakan toggles with counts, then a capped scroller of
+		     fixed-height rows. M&R is triaged exactly the way cleaning is, so it reads the
+		     same way; each row leads with the tank and WHOSE it is, because that is what the
+		     operator sorts the queue by. -->
+		<section v-else-if="!order" class="oak-section space-y-3">
+			<div class="flex items-center gap-2">
+				<Icon name="tool" :size="16" class="text-brand-500" />
+				<p class="oak-section-title">{{ labels.mrOrdersList }}</p>
+			</div>
 			<div class="flex gap-2">
 				<input
 					v-model="search"
@@ -60,6 +57,7 @@
 					autocomplete="off"
 					spellcheck="false"
 					enterkeyhint="search"
+					@input="onSearchInput"
 					@keyup.enter="reloadOrders"
 				/>
 				<button class="oak-btn oak-btn-secondary shrink-0 px-3" @click="reloadOrders">
@@ -67,31 +65,150 @@
 				</button>
 			</div>
 
-			<SkeletonList v-if="ordersRes.loading && !orders.length" />
-			<div v-else-if="!orders.length" class="oak-card p-6 text-center text-gray-400">
-				{{ labels.mrExecEmpty }}
-			</div>
-			<div v-for="o in orders" :key="o.name" class="oak-card flex items-center gap-3 p-4">
-				<button class="oak-press flex min-w-0 flex-1 items-center gap-3 text-left" @click="openOrder(o)">
-					<span class="oak-icon-tile h-11 w-11 shrink-0 bg-brand-50 text-brand-600">
-						<Icon name="tool" :size="20" />
-					</span>
-					<div class="min-w-0 flex-1">
-						<p class="truncate font-bold text-gray-900">{{ o.container_no || o.container }}</p>
-						<p class="truncate text-xs text-gray-500">{{ o.repair_order_id }} · {{ o.principal || "—" }}</p>
-						<p class="truncate text-[11px] text-gray-400">{{ labels.createdOn }} {{ fmtDate(o.creation) }}</p>
-						<p v-if="o.target_lift_on" class="truncate text-[11px] font-semibold" :class="liftClass(o.target_lift_on)">Lift-on {{ fmtDate(o.target_lift_on) }} · {{ hMinus(o.target_lift_on) }}</p>
-					</div>
+			<!-- Belum / Dikerjakan split: an order Admin Ops handed over is "belum" until
+			     Mulai moves it to In Progress; one sent for review leaves the worklist for
+			     the section below it. -->
+			<div class="grid grid-cols-3 gap-2">
+				<button
+					v-for="f in FILTERS"
+					:key="f.key"
+					class="oak-toggle flex items-center justify-center gap-1.5"
+					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
+					@click="filter = f.key"
+				>
+					{{ f.label }}
+					<span class="oak-chip" :class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
 				</button>
-				<span class="oak-chip shrink-0" :class="statusChipClass(o.status)">{{ repairStatusLabel(o.status) }}</span>
 			</div>
+
+			<SkeletonList v-if="ordersRes.loading && !orders.length" />
+			<p v-else-if="!visibleOrders.length" class="py-4 text-center text-sm text-gray-400">{{ emptyText }}</p>
+			<!-- The scroller reveals about 5 rows (fixed 60px each); the rest scroll, so a
+			     long queue never runs far down the page. -->
+			<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
+				<ul class="divide-y divide-gray-100">
+					<li v-for="o in visibleOrders" :key="o.name">
+						<div class="flex h-[60px] items-center gap-3">
+							<button class="oak-press flex h-full min-w-0 flex-1 items-center gap-3 text-left" @click="openOrder(o)">
+								<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
+									<Icon name="tool" :size="16" />
+								</span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate font-semibold text-gray-900">
+										{{ o.container_no || o.container }}<span v-if="o.principal" class="font-normal text-gray-500"> · {{ o.principal }}</span>
+									</p>
+									<!-- One subtitle line: what state it is in, when it has to be out, and
+									     how big the job is. Ordered by urgency so the truncation eats the
+									     least important half first. -->
+									<p class="flex items-center gap-1.5 text-[11px]">
+										<span v-if="o.status === 'In Progress'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
+											<Icon name="clock" :size="11" /> {{ labels.mrInProgress }}
+										</span>
+										<span v-if="o.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(o.target_lift_on)">
+											Lift-on {{ hMinus(o.target_lift_on) }}
+										</span>
+										<span class="truncate text-gray-400">
+											<template v-if="o.item_count">{{ o.item_count }} {{ labels.mrItemsCount }}</template>
+											<template v-else>{{ o.repair_order_id }}</template>
+										</span>
+									</p>
+								</div>
+							</button>
+							<button
+								v-if="o.status !== 'In Progress'"
+								class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+								@click.stop="startOrder(o)"
+							>
+								{{ labels.mrStart }}
+							</button>
+						</div>
+					</li>
+				</ul>
+			</div>
+			<p v-if="visibleOrders.length" class="text-center text-xs text-gray-400">
+				{{ visibleOrders.length }} {{ labels.mrOrdersCount }}
+			</p>
+		</section>
+
+		<!-- Sent for review (Pending Review) — the field is done, Desk still has to check the
+		     work and close it. Kept out of the worklist above: work waiting on somebody ELSE
+		     must not sit among work waiting on YOU. -->
+		<section v-if="!order && !detailPending && !detailFailed && (reviewRes.loading || reviewItems.length)" class="oak-section space-y-3">
+			<div class="flex items-center gap-2">
+				<Icon name="clock" :size="16" class="text-sky-500" />
+				<p class="oak-section-title">{{ labels.mrReviewList }}</p>
+				<span v-if="reviewItems.length" class="oak-chip bg-sky-100 text-sky-700">{{ reviewItems.length }}</span>
+			</div>
+			<ul v-if="reviewRes.loading && !reviewItems.length" class="space-y-2">
+				<li v-for="n in 2" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
+			</ul>
+			<p v-else-if="!reviewItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrReviewEmpty }}</p>
+			<ul v-else class="divide-y divide-gray-100">
+				<li v-for="r in reviewItems" :key="r.name">
+					<div class="flex items-center gap-3 py-2.5">
+						<button type="button" class="oak-press flex min-w-0 flex-1 items-center gap-3 text-left" @click="goFinished(r)">
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-semibold text-gray-900">
+									{{ r.container_no || r.container }}<span v-if="r.principal" class="font-normal text-gray-500"> · {{ r.principal }}</span>
+								</p>
+								<p class="truncate text-[11px] text-gray-400">{{ r.repair_order_id || r.name }}</p>
+							</div>
+							<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.mrStatusPendingReview }}</span>
+						</button>
+						<!-- Pulling it back is the team's own fix — no Admin Ops needed, and nothing
+						     has left the warehouse since approval — so it sits on the row rather
+						     than behind the detail. -->
+						<button
+							type="button"
+							class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+							:disabled="withdrawRes.loading"
+							@click.stop="withdrawReview(r)"
+						>
+							{{ labels.mrWithdrawReview }}
+						</button>
+					</div>
+				</li>
+			</ul>
+		</section>
+
+		<!-- Finished (Completed / Rejected / Cancelled) — the last few, full log behind Riwayat. -->
+		<section v-if="!order && !detailPending && !detailFailed" class="oak-section space-y-3">
+			<div class="flex items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<Icon name="check-circle" :size="16" class="text-leaf-600" />
+					<p class="oak-section-title">{{ labels.mrCompleteList }}</p>
+				</div>
+				<router-link to="/mr/history" class="oak-link text-sm">{{ labels.mrListMore }}</router-link>
+			</div>
+			<ul v-if="doneRes.loading && !doneItems.length" class="space-y-2">
+				<li v-for="n in 3" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
+			</ul>
+			<p v-else-if="!doneItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrCompleteEmpty }}</p>
+			<ul v-else class="divide-y divide-gray-100">
+				<li v-for="r in doneItems" :key="r.name">
+					<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goFinished(r)">
+						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="tool" :size="16" /></span>
+						<div class="min-w-0 flex-1">
+							<p class="truncate font-semibold text-gray-900">
+								{{ r.container_no || r.container }}<span v-if="r.principal" class="font-normal text-gray-500"> · {{ r.principal }}</span>
+							</p>
+							<p class="truncate text-xs text-gray-500">
+								{{ r.repair_order_id }}<span v-if="r.completion_date"> · {{ fmtDate(r.completion_date) }}</span>
+							</p>
+						</div>
+						<span class="oak-chip shrink-0" :class="doneChipClass(r.status)">{{ repairStatusLabel(r.status) }}</span>
+						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
+					</button>
+				</li>
+			</ul>
 		</section>
 
 		<!-- DETAIL (execution, read-only estimate) -->
-		<template v-if="order && !completed">
-			<!-- GATE: an Approved (not-yet-started) order must be started before its work
-			     detail is shown — mirrors the Cleaning start gate. -->
-			<section v-if="isApproved" class="oak-card space-y-4 p-5 text-center">
+		<template v-if="order">
+			<!-- GATE: a handed-over (Pending) order must be started before its work detail is
+			     shown — mirrors the Cleaning start gate. -->
+			<section v-if="isPending" class="oak-card space-y-4 p-5 text-center">
 				<span class="oak-icon-tile mx-auto h-14 w-14 bg-brand-50 text-brand-600"><Icon name="tool" :size="26" /></span>
 				<div class="space-y-1">
 					<p class="font-bold text-gray-900">{{ order.container_no || order.container }}</p>
@@ -153,34 +270,76 @@
 					</div>
 				</section>
 
-				<!-- Approved parts/services (read-only — the estimate is owned by ERP) -->
+				<!-- Pekerjaan + bukti, ONE card per line: nama, qty, lalu fotonya.
+				     They are two tables on the server (and two grids on the Desk) because their
+				     lifetimes differ — the estimate freezes, the evidence is gathered mid-repair. On a
+				     phone that split bought nothing and cost a lot: the same three item names were
+				     printed twice, one screen apart, so the operator had to scroll past the whole
+				     estimate to reach the camera for the line they were standing in front of.
+				     Storage stays split; the screen does not. -->
 				<section class="oak-card p-4 space-y-3">
-					<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
-					<p v-if="!repairLines.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
-					<div
-						v-for="(u, i) in repairLines"
-						:key="i"
-						class="rounded-xl border p-3 space-y-2"
-						:class="u.decision === 'Rejected' ? 'border-red-100 bg-red-50/40' : 'border-gray-100'"
-					>
-						<div class="flex items-start justify-between gap-2">
-							<div class="min-w-0">
-								<p class="truncate font-semibold text-gray-900">{{ u.item_name || u.item }}</p>
-								<p class="text-xs text-gray-500">
-									{{ labels.mrQty }} {{ u.quantity }}<span v-if="u.on_hand != null"> · {{ labels.mrOnHand }} {{ u.on_hand }}</span>
-								</p>
-								<!-- Each part names its own gudang and is issued from there on completion. -->
-								<p v-if="u.warehouse" class="text-xs text-gray-500">{{ labels.mrWarehouse }}: {{ u.warehouse }}</p>
-								<p v-if="u.remark" class="text-xs text-gray-400">{{ u.remark }}</p>
-							</div>
-							<span class="oak-chip shrink-0" :class="decChipClass(u.decision)">{{ repairStatusLabel(u.decision) }}</span>
-						</div>
-						<div v-if="u.photos && u.photos.length" class="flex flex-wrap gap-2">
-							<button v-for="(ph, pi) in u.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(u.photos, pi)">
-								<img :src="ph" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-							</button>
-						</div>
+					<div>
+						<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
+						<p class="mt-0.5 text-xs text-gray-400">{{ labels.mrWorkPhotosHint }}</p>
 					</div>
+					<p v-if="!photoGroups.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
+					<div v-for="g in photoGroups" :key="g.key" class="rounded-xl border border-gray-100 p-3 space-y-2">
+						<div>
+							<p class="font-semibold text-gray-900">{{ g.label }}</p>
+							<p class="text-xs text-gray-500">
+								{{ labels.mrQty }} {{ g.line.quantity }}<span v-if="g.line.on_hand != null"> · {{ labels.mrOnHand }} {{ g.line.on_hand }}</span>
+								<!-- Each part names the gudang it was issued from when the owner approved. -->
+								<span v-if="g.line.warehouse"> · {{ g.line.warehouse }}</span>
+							</p>
+							<p v-if="g.line.remark" class="text-xs text-gray-400">{{ g.line.remark }}</p>
+						</div>
+						<!-- One photo per ROW, not a wrapped strip of tiles: the caption has to be
+						     typeable on a phone, and a text box the width of a 64px thumbnail is not.
+						     Thumbnail left, keterangan filling the rest, delete on the right. -->
+						<div v-if="g.photos.length" class="space-y-2">
+							<div v-for="(ph, pi) in g.photos" :key="ph.photo" class="flex items-center gap-2">
+								<button type="button" class="oak-press shrink-0" @click="openLightbox(g.photos.map((x) => photoSrc(x.photo)), pi)">
+									<img :src="photoSrc(ph.photo)" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
+								</button>
+								<input
+									v-model="ph.caption"
+									type="text"
+									class="oak-input min-w-0 flex-1 px-2.5 py-2 text-sm"
+									:placeholder="labels.mrPhotoCaption"
+									@input="scheduleSave"
+								/>
+								<button
+									type="button"
+									class="oak-press shrink-0 p-2 text-gray-400"
+									:aria-label="labels.mrRemove"
+									@click="removePhoto(ph)"
+								>
+									<Icon name="trash-2" :size="16" />
+								</button>
+							</div>
+						</div>
+						<label class="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
+							<input
+								type="file"
+								accept="image/*"
+								capture="environment"
+								multiple
+								class="hidden"
+								:disabled="g.uploading"
+								@change="onPickPhotos(g, $event)"
+							/>
+							<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
+							<template v-else><Icon name="camera" :size="16" /> {{ labels.mrAddPhoto }}</template>
+						</label>
+					</div>
+					<p v-if="photoErr" class="text-xs text-red-600">{{ photoErr }}</p>
+					<p class="flex items-center gap-1.5 text-xs">
+						<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
+						<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600">
+							<Icon name="check" :size="13" /> {{ labels.draftSaved }}
+						</span>
+						<span v-else class="text-gray-400">{{ labels.autosaveHint }}</span>
+					</p>
 				</section>
 
 				<!-- Remarks (read-only) -->
@@ -189,19 +348,21 @@
 					<p class="whitespace-pre-line text-sm text-gray-700">{{ order.remarks }}</p>
 				</section>
 
-				<!-- Complete -->
-				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="completing" @click="confirmComplete">
-					<Icon v-if="completing" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.mrComplete }}</span>
+				<!-- Hand the finished job to Desk. This does NOT close the order. -->
+				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="submitting" @click="confirmSubmit">
+					<Icon v-if="submitting" name="loader" :size="18" class="animate-spin" />
+					<span v-else>{{ labels.mrSubmitReview }}</span>
 				</button>
+				<p class="text-center text-xs text-gray-400">{{ labels.mrSubmitReviewHint }}</p>
 			</template>
 		</template>
 	</div>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue"
-import { send } from "@/data/send"
+import { computed, nextTick, reactive, ref, watch } from "vue"
+import { createResource } from "frappe-ui"
+import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
@@ -249,29 +410,48 @@ const liftClass = (v) => {
 const search = ref("")
 const allOrders = ref([]) // what the server (or the offline cache) last said
 const order = ref(null)
-const completed = ref(null)
 const used = ref([])
 
-// An order whose completion is queued is done as far as the technician is concerned; the
-// server just has not heard yet. Leaving it listed invites them to redo the whole job.
-const orders = computed(() => allOrders.value)
+// Evidence photos — the whole album for this order, flat. Grouping happens in the view.
+const workPhotos = ref([])
+const photoErr = ref("")
+const savedOk = ref(false) // last auto-save succeeded
+const suppressSave = ref(false) // mute auto-save while a detail is being loaded
 
 // --- status-driven view flags (execution phase only) -----------------------
-const isApproved = computed(() => order.value?.status === "Approved")
+//
+// "Pending" is an order Admin Ops handed over that nobody has picked up yet; the team's
+// first press is Mulai. An Approved order never reaches this screen — it has not been
+// forwarded — so opening one by deep link falls through to the ERP banner.
+const isPending = computed(() => order.value?.status === "Pending")
 const isInProgress = computed(() => order.value?.status === "In Progress")
-const isExecution = computed(() => isApproved.value || isInProgress.value)
-// Only approved lines are relevant to the field crew (rejected ones aren't repaired).
+// Only approved lines are relevant to the field crew (rejected ones aren't repaired, and
+// their parts were never issued).
 const repairLines = computed(() => used.value.filter((u) => u.decision !== "Rejected"))
 
-function decChipClass(d) {
-	if (d === "Approved") return "bg-leaf-100 text-leaf-700"
-	if (d === "Rejected") return "bg-red-100 text-red-700"
-	return "bg-gray-100 text-gray-500"
-}
-function statusChipClass(s) {
-	if (s === "Approved") return "bg-leaf-50 text-leaf-700"
-	if (s === "In Progress") return "bg-indigo-50 text-indigo-700"
-	return "bg-gray-100 text-gray-600"
+// Which group is mid-upload — one at a time is enough, and it keeps the flag off the photo
+// rows themselves (which are sent to the server verbatim).
+const uploading = ref(null)
+
+// One group per line that was actually approved. A photo belongs to the group whose ROW it
+// names; the fallback on `item` catches rows attached from the Desk, where a human picks the
+// service/part and never sees a row id.
+const photoGroups = computed(() =>
+	repairLines.value.map((u) => ({
+		key: u.name || u.item,
+		line: u,
+		label: u.item_name || u.item,
+		uploading: uploading.value === (u.name || u.item),
+		photos: workPhotos.value.filter((p) =>
+			p.used_item ? p.used_item === u.name : p.item === u.item
+		),
+	}))
+)
+
+function doneChipClass(s) {
+	if (s === "Completed") return "bg-leaf-100 text-leaf-800"
+	if (s === "Rejected") return "bg-red-100 text-red-700"
+	return "bg-gray-200 text-gray-600"
 }
 
 const ordersRes = cachedResource({
@@ -281,11 +461,84 @@ const ordersRes = cachedResource({
 	onSuccess: (data) => (allOrders.value = data.items || []),
 })
 
+// How many finished orders the landing shows before "Lihat semua" takes over.
+const LANDING_LIMIT = 5
+
+// "Diajukan Review" — jobs finished in the field, waiting for Desk to check the work and
+// close them. Opened read-only like a finished one; withdrawable from the row.
+const reviewItems = ref([])
+const reviewRes = cachedResource({
+	url: "container_depot.ess.repairs.mr_pending_review",
+	method: "GET",
+	auto: true,
+	onSuccess: (data) => (reviewItems.value = data.items || []),
+})
+
+const doneItems = ref([])
+const doneRes = cachedResource({
+	url: "container_depot.ess.repairs.mr_history",
+	method: "GET",
+	makeParams: () => ({ page_length: LANDING_LIMIT }),
+	auto: true,
+	onSuccess: (data) => (doneItems.value = data.items || []),
+})
+
+// Finished (or field-done) work has no editable form to open — the Riwayat detail takes an
+// ?open= deep link and fetches the order straight from the server.
+function goFinished(r) {
+	router.push({ path: "/mr/history", query: { open: r.name } })
+}
+
+const withdrawRes = createResource({
+	url: "container_depot.ess.repairs.mr_withdraw_review",
+	method: "POST",
+	onSuccess: () => {
+		toast.success(labels.mrWithdrawReviewDone)
+		reloadOrders()
+		reviewRes.reload()
+	},
+	onError: (e) => toast.error(e?.messages?.[0] || e?.message || labels.error),
+})
+function withdrawReview(r) {
+	withdrawRes.submit({ repair_order: r.name })
+}
+
+const orders = computed(() => allOrders.value)
+
 function reloadOrders() {
 	const s = search.value.trim()
 	ordersRes.fetch(s ? { search: s } : {})
 }
 
+// Typing searches on its own after a beat — same feel as the cleaning worklist — while Enter
+// and the button still fire it immediately.
+let searchTimer = null
+function onSearchInput() {
+	clearTimeout(searchTimer)
+	searchTimer = setTimeout(reloadOrders, 300)
+}
+
+// Worklist status filter. "Selesai" is not a choice here: a job sent for review leaves the
+// worklist for the review queue, and a closed one shows under Riwayat.
+const filter = ref("all")
+const startedOrders = computed(() => orders.value.filter((o) => o.status === "In Progress"))
+const todoOrders = computed(() => orders.value.filter((o) => o.status !== "In Progress"))
+const visibleOrders = computed(() => {
+	if (filter.value === "started") return startedOrders.value
+	if (filter.value === "todo") return todoOrders.value
+	return orders.value
+})
+const FILTERS = computed(() => [
+	{ key: "all", label: labels.mrFilterAll, count: orders.value.length },
+	{ key: "todo", label: labels.mrFilterTodo, count: todoOrders.value.length },
+	{ key: "started", label: labels.mrFilterStarted, count: startedOrders.value.length },
+])
+const emptyText = computed(() => {
+	if (!orders.value.length) return labels.mrExecEmpty
+	if (filter.value === "started") return labels.mrFilterEmptyStarted
+	if (filter.value === "todo") return labels.mrFilterEmptyTodo
+	return labels.mrExecEmpty
+})
 
 const headerCells = computed(() => {
 	const h = order.value || {}
@@ -300,7 +553,7 @@ const headerCells = computed(() => {
 })
 
 // Whether a detail fetch is in flight, tracked explicitly rather than derived from
-// `route.query.o && !order`. The derived version flickers: completing an order nulls `order`
+// `route.query.o && !order`. The derived version flickers: submitting an order nulls `order`
 // while the query is still set, and the screen would flash a skeleton on its way back to the
 // worklist.
 const detailPending = ref(false)
@@ -313,10 +566,17 @@ const detailRes = cachedResource({
 	onSuccess(data) {
 		detailPending.value = false
 		detailFailed.value = false
+		// Mute auto-save while the album is populated from the loaded order — otherwise
+		// opening a job would immediately post back what it just read.
+		suppressSave.value = true
+		savedOk.value = false
 		order.value = data
-		used.value = (data.used_items || []).map((u) =>
-			reactive({ ...u, decision: u.decision || "Pending", photos: [...(u.photos || [])] })
-		)
+		used.value = (data.used_items || []).map((u) => reactive({ ...u, decision: u.decision || "Pending" }))
+		workPhotos.value = (data.work_photos || []).map((p) => ({ ...p }))
+		photoErr.value = ""
+		nextTick(() => {
+			suppressSave.value = false
+		})
 	},
 	// The error stays on the page here rather than in a toast: a toast disappears, and the
 	// operator would be left staring at a worklist wondering why their tap did nothing.
@@ -350,10 +610,7 @@ watch(
 	() => route.query.o,
 	(o) => {
 		if (o) {
-			if (order.value?.name !== o) {
-				completed.value = null
-				fetchDetail(o)
-			}
+			if (order.value?.name !== o) fetchDetail(o)
 		} else {
 			order.value = null
 			detailPending.value = false
@@ -363,70 +620,183 @@ watch(
 	{ immediate: true }
 )
 
-// --- start (Approved -> In Progress) ----------------------------------------
+// --- start (Pending -> In Progress) -----------------------------------------
 //
-// The status is flipped locally rather than re-fetched. The response carried nothing
-// the screen needed except the new status, and waiting for it is what made "Mulai" impossible
-// in a dead spot — which locked the technician out of the rest of the form.
+// The status is flipped locally rather than re-fetched. The response carried nothing the
+// screen needed except the new status, and waiting for it is what made "Mulai" impossible in
+// a dead spot — which locked the technician out of the rest of the form.
 //
 // No `ref` on this row: starting is not finishing, so the order must stay in the worklist.
-async function startCurrent() {
-	if (!order.value) return
+async function startRepair(name) {
 	try {
 		await send({
 			url: "container_depot.ess.repairs.mr_start",
-			payload: { repair_order: order.value.name },
+			payload: { repair_order: name },
 		})
-		order.value = { ...order.value, status: "In Progress" }
 		toast.success(labels.mrStarted)
+		return true
 	} catch (e) {
 		toast.error(e?.message || labels.error)
+		return false
 	}
 }
 
-// --- complete (In Progress -> Completed, issues approved parts from stock) ---
-//
-// Completing issues parts from the warehouse, which is
-// exactly why it carries a request_id: a lost response plus a naive retry would take the same
-// parts out of stock twice (see ess/idempotency.py).
-const completing = ref(false)
-
-async function confirmComplete() {
-	const ok = await confirm({
-		message: labels.confirmSubmitMessage,
-		confirmLabel: labels.confirmSubmitYes,
-		cancelLabel: labels.confirmCancel,
-	})
-	if (ok) complete()
+async function startOrder(o) {
+	if (await startRepair(o.name)) o.status = "In Progress"
+}
+async function startCurrent() {
+	if (!order.value) return
+	if (await startRepair(order.value.name)) order.value = { ...order.value, status: "In Progress" }
 }
 
-// Used items aren't editable here — each one already names the gudang it is issued from — so
-// completing is just the submit flag.
-async function complete() {
-	if (!order.value || completing.value) return
-	completing.value = true
+// --- evidence photos --------------------------------------------------------
+//
+// A photo goes up the moment it is taken and the album is saved straight after, so a phone
+// that dies mid-repair loses nothing. `uploadPhoto` hands back a `local:` ref when the upload
+// itself could not land; those are stripped from the auto-save (a `local:` string written
+// into the table would be a broken image for ever) and carried by the submit instead, which
+// goes through `send` and swaps them for real file_urls.
+
+async function onPickPhotos(group, event) {
+	const files = Array.from(event.target.files || [])
+	event.target.value = "" // allow re-picking the same file
+	if (!files.length) return
+	photoErr.value = ""
+	uploading.value = group.key
+	try {
+		for (const f of files) {
+			workPhotos.value.push({
+				photo: await uploadPhoto(f),
+				// Both halves of the link: the ROW for precision (the same item can be on the
+				// order twice) and the ITEM because that is what a human — and the owner
+				// reading the print — actually recognises.
+				used_item: group.line.name || null,
+				item: group.line.item,
+				caption: "",
+			})
+		}
+		scheduleSave()
+	} catch (e) {
+		photoErr.value = labels.mrPhotoError
+	} finally {
+		uploading.value = null
+	}
+}
+
+function removePhoto(row) {
+	const i = workPhotos.value.indexOf(row)
+	if (i >= 0) workPhotos.value.splice(i, 1)
+	scheduleSave()
+}
+
+const saveRes = createResource({
+	url: "container_depot.ess.repairs.mr_order_save",
+	method: "POST",
+	onSuccess() {
+		savedOk.value = true
+		flushPendingSave()
+	},
+	// An auto-save that could not reach the server is not worth a red toast — the operator is
+	// mid-repair and the submit will carry the album anyway. Anything the server actively
+	// REFUSED they do need to see.
+	onError(err) {
+		if (err?.response) photoErr.value = err?.messages?.[0] || err?.message || labels.error
+		flushPendingSave()
+	},
+})
+
+// Never two saves in flight at once. Each one replaces the whole album, so on a slow link an
+// earlier response landing after a later one would restore photos the operator has since
+// deleted. When the debounce fires mid-flight we remember it and re-arm from the handler.
+let saveTimer = null
+let resaveWanted = false
+
+function flushPendingSave() {
+	if (!resaveWanted) return
+	resaveWanted = false
+	scheduleSave()
+}
+
+function scheduleSave() {
+	if (!order.value || suppressSave.value) return
+	savedOk.value = false
+	if (saveTimer) clearTimeout(saveTimer)
+	saveTimer = setTimeout(() => {
+		saveTimer = null
+		if (saveRes.loading) {
+			resaveWanted = true
+			return
+		}
+		saveRes.fetch({
+			repair_order: order.value.name,
+			work_photos: JSON.stringify(workPhotos.value.filter((p) => !isLocalRef(p.photo))),
+		})
+	}, 700)
+}
+
+// --- send for review (In Progress -> Pending Review) ------------------------
+//
+// This is a hand-over, not a close: Desk checks the work and finalises it. Nothing moves in
+// the warehouse either — the approved parts were issued back when the owner agreed.
+//
+// It still carries a request_id (`send` adds one): a lost response plus a naive retry would
+// otherwise raise a second sign-off under a second id (see ess/idempotency.py).
+const submitting = ref(false)
+
+async function confirmSubmit() {
+	const ok = await confirm({
+		message: labels.mrSubmitReviewHint,
+		confirmLabel: labels.mrSubmitReview,
+		cancelLabel: labels.confirmCancel,
+	})
+	if (ok) submitForReview()
+}
+
+// Used items aren't editable here — the estimate is owned by ERP — so this is just the
+// submit flag.
+async function submitForReview() {
+	if (!order.value || submitting.value) return
+	submitting.value = true
 	const o = order.value
 	try {
+		if (saveTimer) {
+			clearTimeout(saveTimer)
+			saveTimer = null
+		}
 		await send({
 			url: "container_depot.ess.repairs.mr_order_save",
-			payload: { repair_order: o.name, submit: 1 },
+			payload: {
+				repair_order: o.name,
+				// An array, not a JSON string: `send` has to walk the payload to find the
+				// `local:` photo refs and swap them for real file_urls before it posts.
+				work_photos: workPhotos.value,
+				submit: 1,
+			},
 		})
-		toast.success(labels.mrCompleted, {
+		toast.success(labels.mrSubmittedReview, {
 			title: o.repair_order_id || o.name,
 		})
 		order.value = null
 		if (route.query.o) router.replace({ query: {} })
 		reloadOrders()
+		// It has left the worklist for the review queue — show it there rather than making
+		// the operator wonder where their order went.
+		reviewRes.reload()
 	} catch (e) {
 		toast.error(e?.message || labels.error)
 	} finally {
-		completing.value = false
+		submitting.value = false
 	}
 }
 
 function backToList() {
-	completed.value = null
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+		saveTimer = null
+	}
+	suppressSave.value = true
 	used.value = []
+	workPhotos.value = []
 	// A real Back, not another push: it drops the entry opening this order added (so the
 	// phone's own Back does not walk straight back into it) and lets the router restore the
 	// worklist to the row that was tapped.

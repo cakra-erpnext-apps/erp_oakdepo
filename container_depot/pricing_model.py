@@ -50,9 +50,19 @@ def resolve_price(item_code: str, price_list: str) -> float:
 
 
 def item_rate_breakdown(item_code: str, price_list: str) -> dict:
-	"""The cost inputs that default a Repair Order line, so Admin Ops can adjust them:
-	``manhour``, ``manhour_rate`` (labour) and ``item_rate`` (the per-unit item price). A
-	flat-priced part (``Item.manhour == 0``) puts its whole Item Price into ``item_rate``.
+	"""The cost inputs that default a Repair Order line: ``item_rate`` (what
+	the line costs) plus ``manhour`` / ``manhour_rate`` for reference (what the INVOICE will
+	book for it — see :func:`container_depot.invoicing.apply_manhour_charge`).
+
+	``item_rate`` is ALWAYS the agreed Item Price rate from the owner's contract list. It
+	used to fall back to ``Item.material_cost`` whenever the item booked labour hours —
+	a leftover from the old model where a line cost ``manhour × manhour_rate +
+	material_cost``. Labour left the order itself long ago (``RepairOrder.calculate_totals``:
+	the invoice totals the hours once, in its header), which turned that branch from a split
+	into a silent zero: every service on a real rate card carries ``Item.manhour > 0`` and
+	``material_cost = 0``, so the agreed Rate never reached the line — and
+	``consolidated_billing`` bills straight off ``item_rate``, so the invoice went out at
+	zero too. There is no split left to make; the contract Rate IS the line's price.
 
 	``currency`` is read from the Item Price itself (each Item Price carries its own), so a
 	Repair Order can mix currencies — it is NOT the site/company default."""
@@ -66,13 +76,9 @@ def item_rate_breakdown(item_code: str, price_list: str) -> dict:
 		as_dict=True,
 	) or frappe._dict()
 	manhour = flt(frappe.db.get_value("Item", item_code, "manhour"))
-	# Always surface the Item Price manhour_rate as a default (even for a currently
-	# flat-priced item) so it can be shown and adjusted on the Repair Order line.
+	# Reported, never priced in here: the hours are charged once on the invoice header.
 	manhour_rate = flt(ip.manhour_rate)
-	if manhour > 0:
-		item_rate = flt(frappe.db.get_value("Item", item_code, "material_cost"))
-	else:
-		item_rate = flt(ip.price_list_rate or 0.0)
+	item_rate = flt(ip.price_list_rate or 0.0)
 	return {
 		"manhour": manhour,
 		"manhour_rate": manhour_rate,

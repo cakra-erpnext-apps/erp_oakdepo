@@ -371,26 +371,82 @@ def notify_repair_order_created(repair_order):
 	)
 
 
-def notify_repair_order_service_setup(repair_order):
-	"""Fire when the workshop hands an estimate to Admin Ops (-> Service Setup) — it is
-	NOT on the customer web yet and sits there until Admin Ops publishes it, so this is
-	the prompt that stops it being forgotten."""
+def notify_repair_forwarded_to_team(repair_order):
+	"""Fire when Admin Ops hands an approved M&R to the workshop (-> Pending) — the moment it
+	lands on the depot PWA worklist and the team may pick it up."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
 		["name", "container", "container_no", "depot", "total_cost"], as_dict=True,
 	)
 	if not ro:
 		return
-	subject = (
-		f"M&R • {ro.container_no or ro.container} — "
-		f"perlu ditata Admin Ops sebelum tampil ke customer (est. {ro.total_cost or 0})"
+	subject = f"M&R • {ro.container_no or ro.container} — diteruskan ke team, siap dikerjakan"
+	notify(
+		doctype="Repair Order",
+		name=ro.name,
+		subject=subject,
+		branch=_depot_branch(ro.depot),
+		event_key="repair_order_forwarded",
 	)
+
+
+def notify_repair_pending_review(repair_order):
+	"""Fire when the repair team finishes in the PWA and sends the order for review
+	(Pending Review).
+
+	Tells Admin Ops a repair is done and waiting for their check. Nothing moves in the
+	warehouse on their sign-off — the parts left it back at approval — so what they are being
+	asked to check is the WORK. Mirrors ``notify_cleaning_pending_review``.
+
+	Keeps the old ``repair_order_service_setup`` event key: the Service Setup staging step is
+	gone, but the key is what routes and permissions are wired to (install.py, ess/
+	notification_routes.py), and the audience — Admin Ops, "an M&R needs your attention" — is
+	the same one. Renaming it would orphan every existing subscription for no gain."""
+	ro = frappe.db.get_value(
+		"Repair Order", repair_order,
+		["name", "container", "container_no", "depot", "total_cost"], as_dict=True,
+	)
+	if not ro:
+		return
+	who = frappe.session.user
+	subject = f"M&R • {ro.container_no or ro.container} — menunggu review Admin Ops (oleh {who})"
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
 		subject=subject,
 		branch=_depot_branch(ro.depot),
 		event_key="repair_order_service_setup",
+	)
+
+
+def notify_repair_revision_requested(repair_order, reason=None):
+	"""Fire when the field team asks for a CLOSED M&R to be opened again ("Ajukan Revisi").
+
+	Reaches Admin Ops, who are the only ones who can act on it (``mr.reopen_completed``).
+	Carries the reason in the subject: a bare "minta revisi" makes the reader open the order
+	just to find out what for, and this is a request they have to judge, not just route.
+
+	Routed on its own event key rather than sent unrouted. An ``event_key=None`` notify skips
+	the role filter entirely and reaches everyone in the branch — a broadcast, for a message
+	that concerns exactly one desk.
+	"""
+	ro = frappe.db.get_value(
+		"Repair Order", repair_order,
+		["name", "container", "container_no", "depot"], as_dict=True,
+	)
+	if not ro:
+		return 0
+	subject = frappe._("Minta revisi M&R • {0} • oleh {1}").format(
+		ro.container_no or ro.container, frappe.session.user
+	)
+	if reason:
+		subject += f" — {reason}"
+	return notify(
+		doctype="Repair Order",
+		name=ro.name,
+		subject=subject,
+		branch=_depot_branch(ro.depot),
+		event_key="repair_revision_requested",
 	)
 
 

@@ -92,5 +92,31 @@
     </tbody>
   </table>
 
+  {# Proof of work, grouped by the service/part each photo belongs to — this is the half of
+     the document that shows the owner WHAT was done, not just what it cost. Skipped entirely
+     when the album is empty rather than printing an empty heading. #}
+  {% set photos = doc.get('work_photos') or [] %}
+  {% if photos %}
+  <div style="font-size:11px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; margin:14px 0 4px;">FOTO BUKTI PEKERJAAN</div>
+  {% set groups = [] %}
+  {% for row in photos %}
+    {% set key = row.get('item_name') or row.get('item') or '-' %}
+    {% if key not in groups %}{% set _ = groups.append(key) %}{% endif %}
+  {% endfor %}
+  {% for key in groups %}
+  <div style="margin-bottom:8px; page-break-inside:avoid;">
+    <div style="font-size:10px; font-weight:600; margin-bottom:3px;">{{ key }}</div>
+    <table style="border-collapse:collapse;"><tr>
+      {% for row in photos if (row.get('item_name') or row.get('item') or '-') == key %}
+      <td style="border:none; padding:0 6px 6px 0; vertical-align:top;">
+        <img src="{{ row.photo }}" style="width:120px; height:120px; object-fit:cover; border:1px solid #e2e2e2;">
+        {% if row.get('caption') %}<div style="font-size:9px; color:#666; width:120px;">{{ row.caption }}</div>{% endif %}
+      </td>
+      {% endfor %}
+    </tr></table>
+  </div>
+  {% endfor %}
+  {% endif %}
+
   {% if doc.get('remarks') %}<p style="font-size:11px; margin-top:10px;"><strong>Remarks:</strong> {{ doc.remarks }}</p>{% endif %}
 </div>

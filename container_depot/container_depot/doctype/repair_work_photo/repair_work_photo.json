@@ -1,0 +1,73 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "hash",
+  "creation": "2026-08-20 22:00:00",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "item",
+    "caption",
+    "photo",
+    "photo_preview",
+    "item_name",
+    "used_item"
+  ],
+  "fields": [
+    {
+      "description": "Wajib. Service/part yang difoto — hanya item yang ada di Service & Parts order ini.",
+      "fieldname": "item",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Untuk Item",
+      "options": "Item",
+      "reqd": 1,
+      "columns": 4
+    },
+    {
+      "description": "Opsional. mis. \"sebelum\", \"sesudah las\", \"nomor seri baru\".",
+      "fieldname": "caption",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Keterangan",
+      "columns": 3
+    },
+    {
+      "description": "Wajib. Foto bukti pekerjaan.",
+      "fieldname": "photo",
+      "fieldtype": "Attach Image",
+      "in_list_view": 1,
+      "label": "Foto",
+      "reqd": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "photo_preview",
+      "fieldtype": "HTML",
+      "label": "Preview"
+    },
+    {
+      "fetch_from": "item.item_name",
+      "fieldname": "item_name",
+      "fieldtype": "Data",
+      "label": "Item Name",
+      "read_only": 1,
+      "hidden": 1
+    },
+    {
+      "description": "Baris Service & Parts yang difoto — diisi otomatis, dipakai kalau satu item muncul lebih dari sekali.",
+      "fieldname": "used_item",
+      "fieldtype": "Data",
+      "label": "Baris Service & Parts",
+      "read_only": 1,
+      "hidden": 1
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2026-08-20 23:30:00.000000",
+  "module": "Container Depot",
+  "name": "Repair Work Photo"
+}

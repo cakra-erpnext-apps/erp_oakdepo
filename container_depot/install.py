@@ -330,6 +330,23 @@ CUSTOM_FIELDS = {
 			"description": "Spare-part / material cost added on top of labour for a repair service.",
 		},
 	],
+	# The one thing ERPNext cannot tell us: is a NON-STOCK item a service, or a physical part
+	# the depot buys per job and never stocks? Both are is_stock_item = 0, and nothing else on
+	# the Item separates them (manhour, material_cost, service_unit and stock_uom are all
+	# alike across the two). Flagging the GROUP instead of the item is what makes this cheap:
+	# a rate card has ~20 groups and ~150 items, and a new item inherits the answer from the
+	# group it lands in. Consumed by ``mr.mr_item_search`` — while NO group is flagged it
+	# changes nothing, the same "unconfigured means don't filter" rule the Depot Service Menu
+	# already follows.
+	"Item Group": [
+		{
+			"fieldname": "is_depot_part_group",
+			"label": "Kelompok Part Depot",
+			"fieldtype": "Check",
+			"insert_after": "is_group",
+			"description": "Centang bila grup ini berisi BARANG FISIK (gasket, valve, seal), bukan jasa. Dipakai untuk memisahkan pilihan item \"Part (Beli Langsung)\" dari \"Jasa\" di Repair Order.",
+		}
+	],
 	"Item Price": [
 		{
 			"fieldname": "manhour_rate",
@@ -1901,12 +1918,16 @@ NOTIFICATION_RULES = [
 		["Team Cleaning", "SPV Lapangan", "Admin Ops"]),
 	("repair_order_created", "M&R dibuat", "Repair Order draft otomatis dibuat dari EIR yang menemukan kerusakan.",
 		["Team Repair", "SPV Lapangan", "Admin Ops"]),
-	("repair_order_service_setup", "M&R perlu ditata Admin Ops", "Bengkel menyerahkan estimasi; belum tampil ke customer sampai Admin Ops menata.",
-		["Admin Ops"]),
+	("repair_order_service_setup", "M&R menunggu review", "Team repair selesai di PWA dan mengirim order untuk direview Admin Ops; part belum keluar gudang sampai Desk menyelesaikan.",
+		["Admin Ops", "SPV Lapangan"]),
+	("repair_order_forwarded", "M&R diteruskan ke team", "Admin Ops meneruskan M&R yang sudah disetujui owner — order masuk worklist PWA team repair.",
+		["Team Repair", "SPV Lapangan", "Admin Ops"]),
 	("repair_order_pending_approval", "M&R menunggu approval owner", "Estimasi M&R dikirim ke owner tank.",
 		["Admin Ops", "Management"]),
 	("repair_order_decided", "Owner memutuskan M&R", "Owner menyetujui / menolak / minta revisi estimasi M&R.",
 		["Team Repair", "SPV Lapangan", "Admin Ops"]),
+	("repair_revision_requested", "Team minta M&R dibuka lagi", "Team repair mengajukan revisi atas M&R yang sudah ditutup — Admin Ops yang memutuskan membukanya.",
+		["Admin Ops", "SPV Lapangan"]),
 	("order_gate_in", "Bon Bongkar terbit", "Order Bongkar disubmit — bon gate-in siap diprint.",
 		["Security", "SPV Lapangan", "Admin Ops"]),
 	("order_gate_out", "Bon Muat terbit", "Order Muat disubmit — bon gate-out siap diprint.",

@@ -1,9 +1,10 @@
 """M&R owner-approval workflow (container_depot.mr + the Repair Order controller).
 
-The estimate must be submitted to the container owner and approved before any work
+The estimate must be published to the container owner and approved before any work
 starts (approval is mandatory). The owner may approve, reject, or request a revision,
 and may approve only some lines (partial approval, per Repair Used Item). Only Approved
-lines drive ``total_cost`` and the stock issue on completion.
+lines drive ``total_cost`` and the stock issue — which happens **at approval**, not at
+completion: the workshop needs the parts in hand to do the job at all.
 
 Pricing is wired through a per-owner Price List so the totals are real. All fixtures use
 the ``MRA`` prefix and are removed in tearDown (stock entries are cancelled too).
@@ -152,9 +153,9 @@ class TestMRApproval(FrappeTestCase):
 		return c, ro
 
 	def _submit(self, ro, used_items, warehouse=None):
-		"""Estimate -> workshop submit (Admin Ops) -> published to the customer. The
-		publish step is the Admin-Ops gate added later; these tests are about what the
-		OWNER does, so the helper drives straight through it to Pending Approval.
+		"""Estimate -> published to the customer (Pending Approval). Draft is Admin Ops'
+		own desk, so publishing is the first thing that leaves it; these tests are about
+		what the OWNER does with it afterwards.
 
 		A part may only sit on an M&R when the gudang named ON ITS ROW holds it
 		(``mr.assert_stock_available``), so any fixture that uses ``_PART`` gets stock
@@ -167,16 +168,15 @@ class TestMRApproval(FrappeTestCase):
 		if warehouse:
 			used_items = [{**u, "warehouse": u.get("warehouse") or warehouse} for u in used_items]
 		mr.save_mr_order(repair_order=ro, used_items=used_items, submit=False)
-		mr.submit_for_approval(ro)
 		mr.publish_to_owner(ro)
 
-	# --- submit ---------------------------------------------------------------
-	def test_submit_requires_item(self):
+	# --- publish --------------------------------------------------------------
+	def test_publish_requires_item(self):
 		_, ro = self._draft_ro("MRAREQ00001")
 		with self.assertRaises(frappe.ValidationError):
-			mr.submit_for_approval(ro)
+			mr.publish_to_owner(ro)
 
-	def test_submit_sets_pending_and_parks_container(self):
+	def test_publish_sets_pending_and_parks_container(self):
 		c, ro = self._draft_ro("MRAPEN00001")
 		self._submit(ro, [{"item": _SERVICE, "quantity": 1}])
 		doc = frappe.get_doc("Repair Order", ro)
@@ -239,10 +239,8 @@ class TestMRApproval(FrappeTestCase):
 			used_items=[{"item": _PART, "quantity": 2, "warehouse": self._stocked(2)}],
 			submit=False,
 		)
-		mr.submit_for_approval(ro)
-		# A revised estimate goes back through the Admin-Ops gate before the customer
-		# sees it again, exactly like a first-time one.
-		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Service Setup")
+		# A revised estimate is published the same way a first-time one is — Revision
+		# Requested is editable for exactly this reason.
 		mr.publish_to_owner(ro)
 		doc = frappe.get_doc("Repair Order", ro)
 		self.assertEqual(doc.status, "Pending Approval")
@@ -267,7 +265,13 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(flt(doc.total_cost), 150.0)  # 100 + 50, no owner round-trip
 		self.assertEqual(doc.owner_note, "urgent")
 		self.assertIsNotNone(doc.decided_on)
-		# Ready to start straight away.
+		# The bypass is a real approval, so the parts leave stock here too — skipping the
+		# owner skips the ASKING, not the consequences.
+		self.assertTrue(doc.stock_entry)
+		self._stock_entries.append(doc.stock_entry)
+		self.assertEqual(flt(mr._on_hand(_PART, self._wh_name())), 0.0)  # 1 received, 1 issued
+		# Still has to be handed to the team before anyone can start.
+		mr.forward_to_team(ro)
 		mr.start_repair(ro)
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "In Progress")
 
@@ -287,6 +291,9 @@ class TestMRApproval(FrappeTestCase):
 		)
 		mr.bypass_approval(ro)  # -> Approved
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Approved")
+		issued = frappe.db.get_value("Repair Order", ro, "stock_entry")
+		self._stock_entries.append(issued)
+
 		mr.reopen_to_draft(ro, note="kurang input")
 		doc = frappe.get_doc("Repair Order", ro)
 		self.assertEqual(doc.status, "Draft")
@@ -294,16 +301,24 @@ class TestMRApproval(FrappeTestCase):
 		self.assertIsNone(doc.requested_on)
 		self.assertTrue(all(r.decision == "Pending" for r in doc.used_items))
 		self.assertGreaterEqual(len(doc.used_items), 1)  # items kept for editing
+		# The approval took the parts out, so the rewind hands them back — otherwise a
+		# mis-typed estimate would quietly write off stock every time it was corrected.
+		self.assertIsNone(doc.stock_entry)
+		self.assertEqual(flt(mr._on_hand(_PART, self._wh_name())), 1.0)
+
 		mr.bypass_approval(ro)  # editable again → re-approve
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Approved")
+		self._stock_entries.append(frappe.db.get_value("Repair Order", ro, "stock_entry"))
 
 	def test_reopen_blocked_after_completed(self):
-		# Completed already issued parts — reopen refuses (Cancel + fresh order instead).
+		# A closed order is billable history — reopen refuses (Cancel + fresh order instead).
 		_, ro = self._draft_ro("MRARE000002")
 		mr.save_mr_order(repair_order=ro, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
 		mr.bypass_approval(ro)
+		mr.forward_to_team(ro)
 		mr.start_repair(ro)
-		mr.save_mr_order(repair_order=ro, submit=True)  # -> Completed
+		mr.save_mr_order(repair_order=ro, submit=True)  # -> Pending Review
+		mr.finalize_repair(ro)                          # -> Completed
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Completed")
 		with self.assertRaises(frappe.ValidationError):
 			mr.reopen_to_draft(ro)
@@ -326,21 +341,31 @@ class TestMRApproval(FrappeTestCase):
 		finally:
 			frappe.set_user("Administrator")
 
-	# --- execution worklist (Approved / In Progress only) ---------------------
-	def test_execution_list_only_approved_and_in_progress(self):
+	# --- execution worklist (Pending / In Progress only) ----------------------
+	def test_execution_list_starts_at_the_hand_over_not_at_approval(self):
+		"""An owner's yes does not put a job on the team's screen — "Teruskan ke Team"
+		does. Approval says the money is agreed; the tank may still be waiting on cleaning,
+		on a part, or on a slot, and a worklist full of jobs nobody may start yet is worse
+		than no worklist."""
 		_, ro_draft = self._draft_ro("MRAEXE00001")
 		mr.save_mr_order(repair_order=ro_draft, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
 		_, ro_appr = self._draft_ro("MRAEXE00002")
 		mr.save_mr_order(repair_order=ro_appr, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
 		mr.bypass_approval(ro_appr)
+		_, ro_pend = self._draft_ro("MRAEXE00004")
+		mr.save_mr_order(repair_order=ro_pend, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		mr.bypass_approval(ro_pend)
+		mr.forward_to_team(ro_pend)
 		_, ro_prog = self._draft_ro("MRAEXE00003")
 		mr.save_mr_order(repair_order=ro_prog, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
 		mr.bypass_approval(ro_prog)
+		mr.forward_to_team(ro_prog)
 		mr.start_repair(ro_prog)
 
 		names = {i["name"] for i in mr.list_mr_execution(page_length=500)["items"]}
-		self.assertIn(ro_appr, names)   # Approved
-		self.assertIn(ro_prog, names)   # In Progress
+		self.assertIn(ro_pend, names)      # Pending — handed over, not started
+		self.assertIn(ro_prog, names)      # In Progress
+		self.assertNotIn(ro_appr, names)   # Approved but not yet handed over
 		self.assertNotIn(ro_draft, names)  # Draft is estimate-phase (ERP only)
 
 	# --- item costing, adjustable inputs --------------------------------------
@@ -354,12 +379,14 @@ class TestMRApproval(FrappeTestCase):
 				"doctype": "Item", "item_code": svc, "item_name": "MRA Weld",
 				"item_group": frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups",
 				"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
-				"manhour": 2.0, "material_cost": 10.0,
+				# material_cost is a decoy: it belongs to the retired "labour + material"
+				# split and must never reach the line — the contract Rate does.
+				"manhour": 2.0, "material_cost": 999.0,
 			}).insert(ignore_permissions=True)
 		if not frappe.db.exists("Item Price", {"item_code": svc, "price_list": _PL, "selling": 1}):
 			frappe.get_doc({
 				"doctype": "Item Price", "item_code": svc, "price_list": _PL,
-				"selling": 1, "price_list_rate": 0, "manhour_rate": 5.0,
+				"selling": 1, "price_list_rate": 10.0, "manhour_rate": 5.0,
 			}).insert(ignore_permissions=True)
 		_, ro = self._draft_ro("MRAMHR00001")
 		# Build the line the Desk way (edit the child rows, then doc.save()).
@@ -367,7 +394,7 @@ class TestMRApproval(FrappeTestCase):
 		doc.append("used_items", {"item": svc, "quantity": 2})
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
-		self.assertEqual(flt(row.item_rate), 10.0)       # seeded from Item.material_cost
+		self.assertEqual(flt(row.item_rate), 10.0)       # the contract Rate, NOT material_cost
 		self.assertEqual(flt(row.item_amount), 20.0)     # 2 × 10
 		self.assertEqual(flt(row.amount), 20.0)          # labour excluded
 		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 20.0)
@@ -390,8 +417,11 @@ class TestMRApproval(FrappeTestCase):
 		_, ro = self._draft_ro("MRABILL0001")
 		self._submit(ro, [{"item": _PART, "quantity": 2}, {"item": _SERVICE, "quantity": 1}])
 		mr.record_decision(ro, "Approved")
+		self._stock_entries.append(frappe.db.get_value("Repair Order", ro, "stock_entry"))
+		mr.forward_to_team(ro)
 		mr.start_repair(ro)
 		mr.save_mr_order(repair_order=ro, submit=True)
+		mr.finalize_repair(ro)
 		frappe.db.set_value("Repair Order", ro, "billing_status", "Unbilled", update_modified=False)
 
 		units = _mr_lines(_CUST, "2000-01-01 00:00:00", f"{frappe.utils.today()} 23:59:59")
@@ -446,16 +476,23 @@ class TestMRApproval(FrappeTestCase):
 		self.assertIn("Approved", d["actions"])
 
 	# --- stock issue only for approved lines ----------------------------------
-	def test_complete_issues_only_approved_stock(self):
+	def test_a_struck_out_line_never_leaves_the_warehouse(self):
+		"""A line the owner rejected is never repaired, so it is never issued — and the
+		order still runs to Completed on the strength of the lines that survived."""
 		warehouse = self._ensure_warehouse()
 		self._receive_stock(warehouse, 10)
 		c, ro = self._draft_ro("MRASTK00001")
-		# Part (stock) rejected, service approved → completion issues NO stock.
+		# Part (stock) rejected, service approved → the approval issues NO stock.
 		self._submit(ro, [{"item": _PART, "quantity": 4}, {"item": _SERVICE, "quantity": 1}], warehouse=warehouse)
 		mr.record_decision(ro, "Approved", line_decisions=["Rejected", "Approved"])
-		mr.start_repair(ro)
-		res = mr.save_mr_order(repair_order=ro, submit=True)
-		self.assertEqual(res["status"], "Completed")
-		self.assertIsNone(res["stock_entry"])  # the only stock line was rejected
+		self.assertIsNone(frappe.db.get_value("Repair Order", ro, "stock_entry"))
 		self.assertEqual(flt(mr._on_hand(_PART, warehouse)), 10.0)  # untouched
+
+		mr.forward_to_team(ro)
+		mr.start_repair(ro)
+		mr.save_mr_order(repair_order=ro, submit=True)
+		res = mr.finalize_repair(ro)
+		self.assertEqual(res["status"], "Completed")
+		self.assertIsNone(res["stock_entry"])
+		self.assertEqual(flt(mr._on_hand(_PART, warehouse)), 10.0)
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")

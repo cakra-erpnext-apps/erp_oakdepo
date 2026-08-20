@@ -239,11 +239,16 @@ website_route_rules = [
 	# ESS PWA M&R (Maintenance & Repair) endpoints — auto-created from EIRs with damage
 	{"from_route": "/api/v1/ess/mr-orders", "to_route": "container_depot.ess.repairs.mr_orders"},
 	{"from_route": "/api/v1/ess/mr-execution", "to_route": "container_depot.ess.repairs.mr_execution"},
+	{"from_route": "/api/v1/ess/mr-pending-review", "to_route": "container_depot.ess.repairs.mr_pending_review"},
 	{"from_route": "/api/v1/ess/mr-bypass-approval", "to_route": "container_depot.ess.repairs.mr_bypass_approval"},
 	{"from_route": "/api/v1/ess/mr-order-detail", "to_route": "container_depot.ess.repairs.mr_order_detail"},
 	{"from_route": "/api/v1/ess/mr-items", "to_route": "container_depot.ess.repairs.mr_items"},
 	{"from_route": "/api/v1/ess/mr-item-pricing", "to_route": "container_depot.ess.repairs.mr_item_pricing"},
-	{"from_route": "/api/v1/ess/mr-submit-approval", "to_route": "container_depot.ess.repairs.mr_submit_approval"},
+	{"from_route": "/api/v1/ess/mr-forward-to-team", "to_route": "container_depot.ess.repairs.mr_forward_to_team"},
+	{"from_route": "/api/v1/ess/mr-withdraw-review", "to_route": "container_depot.ess.repairs.mr_withdraw_review"},
+	{"from_route": "/api/v1/ess/mr-request-revision", "to_route": "container_depot.ess.repairs.mr_request_revision"},
+	{"from_route": "/api/v1/ess/mr-reopen-completed", "to_route": "container_depot.ess.repairs.mr_reopen_completed"},
+	{"from_route": "/api/v1/ess/mr-finalize", "to_route": "container_depot.ess.repairs.mr_finalize"},
 	{"from_route": "/api/v1/ess/mr-decision", "to_route": "container_depot.ess.repairs.mr_decision"},
 	# Admin Ops gate between the workshop's estimate and the customer web.
 	{"from_route": "/api/v1/ess/mr-publish-to-owner", "to_route": "container_depot.ess.repairs.mr_publish_to_owner"},
