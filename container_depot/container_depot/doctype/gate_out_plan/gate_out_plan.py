@@ -21,7 +21,12 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import add_days, cint, flt, getdate, today
 
-from container_depot.container_depot.container_status import DONE_CLEANING, assert_rows_active
+from container_depot.container_depot.container_status import (
+	DONE_CLEANING,
+	assert_rows_active,
+	container_open_orders,
+	is_ready_to_leave,
+)
 
 # Only an Open plan drives priority; closing it releases the container stamps.
 ACTIVE_STATUS = "Open"
@@ -43,6 +48,7 @@ class GateOutPlan(Document):
 		assert_rows_active(self, "containers")
 		self._assert_rows_match_header()
 		self._assert_containers_unique()
+		self._assert_booked_tanks_stay()
 		self._set_source()
 		self._roll_up()
 
@@ -58,35 +64,28 @@ class GateOutPlan(Document):
 			self.source = "Email"
 
 	def _fill_rows(self):
-		"""Per row: mirror the container number, compute gate-out readiness, and flag the
-		tanks that have left since this plan listed them."""
+		"""Per row: mirror the container number and flag the tanks that have left since this
+		plan listed them."""
 		before = None if self.is_new() else self.get_doc_before_save()
 		listed = {r.name: r.container for r in ((before.get("containers") if before else None) or [])}
 		for row in self.containers or []:
 			if not row.container:
-				row.container_no = row.readiness = None
-				row.is_ready = row.gated_out = row.was_out = 0
+				row.container_no = None
+				row.gated_out = row.was_out = 0
 				continue
 			cn, status = frappe.db.get_value(
 				"Container", row.container, ["container_no", "status"]
 			) or (None, None)
 			row.container_no = cn
 			_set_departure(row, status, newly_listed=listed.get(row.name) != row.container)
-			pending = _pending_work(row.container)
-			row.is_ready = 0 if pending else 1
-			row.readiness = _readiness_label(pending)
 
 	def _roll_up(self):
-		"""Header summaries for the list view: containers, X/Y ready, % keluar, nearest date."""
+		"""Header summaries for the list view: containers, % keluar, nearest date."""
 		rows = [r for r in (self.containers or []) if r.container]
 		self.container_summary = ", ".join(r.container_no or r.container for r in rows) or None
-		if rows:
-			ready = sum(1 for r in rows if r.is_ready)
-			self.readiness_summary = f"{ready}/{len(rows)} siap"
-			self.per_fulfilled = flt(sum(1 for r in rows if r.gated_out) * 100.0 / len(rows), 2)
-		else:
-			self.readiness_summary = None
-			self.per_fulfilled = 0
+		self.per_fulfilled = (
+			flt(sum(1 for r in rows if r.gated_out) * 100.0 / len(rows), 2) if rows else 0
+		)
 		dates = [getdate(r.target_lift_on) for r in rows if r.target_lift_on]
 		self.next_lift_on = min(dates) if dates else None
 		# NOT closed here on purpose: closing belongs to the gate-out event
@@ -177,6 +176,58 @@ class GateOutPlan(Document):
 						"Selesaikan / batalkan plan itu dulu, atau hapus container-nya dari sana."
 					).format(r.container, r.parent)
 				)
+
+	def _assert_booked_tanks_stay(self):
+		"""Refuse to let go of a tank a live Tank Out booking is still waiting for.
+
+		A plan lets go of a tank in exactly two ways, and both run through here: the plan is
+		closed (every row released at once) or a row is deleted. Either is ordinary while the
+		tank is still only *planned* — customers trim a notice all the time — but once the
+		booking exists the plan is no longer the only document holding that tank, and letting
+		the stamp go without a word would leave the pickup standing with nothing behind it.
+
+		So the answer is not "no", it is the two ways forward: call off the booking if the
+		tank really is not going, or leave the plan Open and drop only the tanks not yet
+		booked. That second one is the normal case — a notice half-collected is not a notice
+		cancelled.
+
+		Nothing is checked on a plan that was ALREADY closed: it released its tanks when it
+		closed, and re-saving it releases nothing new. Same reason a Fulfilled plan sails
+		through — its tanks have left, so no booking is still waiting for them.
+		"""
+		before = None if self.is_new() else self.get_doc_before_save()
+		if not before or before.status != ACTIVE_STATUS:
+			return
+		was = [r for r in (before.get("containers") or []) if r.container]
+		if self.status == ACTIVE_STATUS:
+			kept = {r.container for r in (self.containers or []) if r.container}
+			leaving = [r for r in was if r.container not in kept]
+			title = _("Container Sudah Dibooking")
+			lead = _("Container ini tidak bisa dihapus dari plan — sudah dibuatkan Container Booking (Tank Out) yang masih berjalan:")
+			tail = _("Batalkan booking-nya dulu kalau tank ini memang tidak jadi diambil.")
+		else:
+			leaving = was
+			title = _("Plan Sudah Dipakai")
+			lead = _("Plan tidak bisa ditutup — container berikut sudah dibuatkan Container Booking (Tank Out) yang masih berjalan:")
+			tail = _(
+				"Batalkan dulu booking-nya, atau biarkan plan tetap Open dan hapus hanya "
+				"container yang belum dibooking."
+			)
+		held = _live_out_bookings([r.container for r in leaving])
+		if not held:
+			return
+		lines = [
+			"<li>{0} → {1} ({2})</li>".format(
+				frappe.utils.escape_html(r.container_no or r.container),
+				frappe.utils.escape_html(held[r.container]["booking"]),
+				frappe.utils.escape_html(held[r.container]["status"] or _("Draft")),
+			)
+			for r in leaving
+			if r.container in held
+		]
+		frappe.throw(
+			"{0}<ul>{1}</ul>{2}".format(lead, "".join(lines), tail), title=title
+		)
 
 	def on_update(self):
 		self._sync_container_targets()
@@ -365,6 +416,47 @@ def _job_done(job, tank_status: str | None) -> bool:
 	return tank_status is not None and tank_status != "Booked"
 
 
+# --- tanks already committed to a lift-on booking ----------------------------
+def _live_out_bookings(containers) -> dict:
+	"""Per container, the Tank Out booking still waiting for it — ``{container: {booking, status}}``.
+
+	*Still waiting* = raised, and neither called off nor already carried out: ``docstatus <
+	2``, ``booking_status`` not Cancelled, and the tank has not left yet. A booking whose
+	tank is already out has done its job and holds nothing back; a cancelled one never will.
+	Both exclusions matter — without them a plan collected over several visits could never
+	be closed, because its first booking would hold it open forever.
+
+	This is what turns a plan row from a note into a commitment. Cancelling the plan or
+	deleting the row releases that tank's lift-on stamp (:meth:`_sync_container_targets`),
+	and that must not happen behind the back of a booking that still expects the tank to be
+	handed over: the priority the cleaning / M&R worklists sort by would quietly vanish
+	while the pickup itself stayed on. Newest booking per tank — one name is enough to go on.
+	"""
+	containers = [c for c in (containers or []) if c]
+	if not containers:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		select r.container, p.name, p.booking_status as status
+		  from `tabContainer Booking Item` r
+		  join `tabContainer Booking` p on p.name = r.parent
+		  join `tabContainer` c on c.name = r.container
+		 where r.container in %(containers)s
+		   and r.parenttype = 'Container Booking' and r.parentfield = 'items'
+		   and p.direction = 'Tank Out' and p.docstatus < 2
+		   and ifnull(p.booking_status, '') != 'Cancelled'
+		   and ifnull(c.status, '') != %(gone)s
+		 order by p.creation desc
+		""",
+		{"containers": tuple(containers), "gone": GATE_OUT_STATUS},
+		as_dict=True,
+	)
+	held = {}
+	for r in rows:
+		held.setdefault(r.container, {"booking": r.name, "status": r.status})
+	return held
+
+
 def _set_departure(row, status: str | None, *, newly_listed: bool) -> None:
 	"""Decide whether this row's tank has left FOR THIS PLAN, and keep its baseline honest.
 
@@ -394,13 +486,15 @@ def _set_departure(row, status: str | None, *, newly_listed: bool) -> None:
 
 
 def _pending_work(container: str) -> list:
-	"""Open work that must finish before this tank can gate out (readiness = its blockers)."""
-	kinds = [o["kind"] for o in _tank_orders(container) if o["blocks"]]
-	return list(dict.fromkeys(kinds))  # dedupe, keep Cleaning before M&R
+	"""Open work that must finish before this tank can gate out — what the picker names.
 
-
-def _readiness_label(pending: list) -> str:
-	return "Siap" if not pending else "Belum: " + ", ".join(pending)
+	Read from :func:`container_status.container_open_orders`, the same list the container's
+	own status is computed from, so the picker cannot claim a tank is free while the
+	master (and the booking's submit gate) still hold it. A plan-local Cleaning / M&R
+	lookup could not see a draft EIR-In, which is the one thing most likely to be holding
+	a tank that has just arrived.
+	"""
+	return list(dict.fromkeys(o["label"] for o in container_open_orders(container)))
 
 
 def _set_target(container: str, date, plan: str) -> None:
@@ -445,25 +539,6 @@ def _containers_pointing_to(plan: str) -> list:
 	return frappe.get_all("Container", filters={"gate_out_plan": plan}, pluck="name")
 
 
-# --- keeping Kesiapan current ------------------------------------------------
-def refresh_plans_for_order(doc, method=None) -> None:
-	"""Recompute the Kesiapan of every Open plan that lists this order's container.
-
-	Readiness is STORED (``is_ready`` / ``readiness`` / ``readiness_summary``) so the list
-	view can sort and filter on it — which means it goes stale the moment a Cleaning / M&R
-	order finishes, i.e. exactly when the plan matters most. So every write to such an order
-	pushes the recompute here (see hooks.doc_events).
-
-	Only Open plans: a Fulfilled / Cancelled plan is a closed record and its numbers should
-	stay as they were when it closed.
-	"""
-	container = doc.get("container")
-	if not container:
-		return
-	for plan in _open_plans_for(container):
-		refresh_plan_readiness(plan)
-
-
 def _open_plans_for(container: str) -> list:
 	parents = frappe.get_all(
 		"Gate Out Plan Item",
@@ -477,40 +552,6 @@ def _open_plans_for(container: str) -> list:
 		"Gate Out Plan",
 		filters={"name": ["in", parents], "status": ACTIVE_STATUS},
 		pluck="name",
-	)
-
-
-def refresh_plan_readiness(plan: str) -> None:
-	"""Rewrite one plan's stored readiness from the live order state.
-
-	Deliberately ``db.set_value`` and not ``doc.save()``: saving would re-run validation (a
-	plan whose container was meanwhile claimed elsewhere would start throwing from inside an
-	unrelated order's save) and would re-stamp every container's target_lift_on. Nothing here
-	touches the plan's own data — only the derived readiness — so the document is left alone,
-	``modified`` included.
-	"""
-	rows = frappe.get_all(
-		"Gate Out Plan Item",
-		filters={"parent": plan, "parenttype": "Gate Out Plan"},
-		fields=["name", "container"],
-	)
-	listed, ready = 0, 0
-	for r in rows:
-		if not r.container:
-			continue
-		listed += 1
-		pending = _pending_work(r.container)
-		if not pending:
-			ready += 1
-		frappe.db.set_value(
-			"Gate Out Plan Item", r.name,
-			{"is_ready": 0 if pending else 1, "readiness": _readiness_label(pending)},
-			update_modified=False,
-		)
-	frappe.db.set_value(
-		"Gate Out Plan", plan,
-		{"readiness_summary": f"{ready}/{listed} siap" if listed else None},
-		update_modified=False,
 	)
 
 
@@ -534,10 +575,10 @@ def refresh_plan_fulfilment(plan: str) -> bool:
 	open/closed flag. Reaching 100% flips the plan to Fulfilled, which is what releases each
 	tank's ``target_lift_on`` stamp and frees it for the customer's next lift-on notice.
 
-	Deliberately ``db.set_value`` and never ``doc.save()`` — for the same reason as
-	:func:`refresh_plan_readiness`: this runs from inside an unrelated document's save (the
-	gate-out), where re-running the plan's validation could throw on a state that has nothing
-	to do with the tank leaving. Returns whether this call closed the plan.
+	Deliberately ``db.set_value`` and never ``doc.save()``: this runs from inside an
+	unrelated document's save (the gate-out), where re-running the plan's validation could
+	throw on a state that has nothing to do with the tank leaving. Returns whether this call
+	closed the plan.
 	"""
 	rows = frappe.get_all(
 		"Gate Out Plan Item",
@@ -655,31 +696,79 @@ def pickable_containers(gate_out_plan: str) -> list:
 	Same source as :func:`related_orders`, so the two cannot drift again.
 	"""
 	frappe.has_permission("Gate Out Plan", "read", doc=gate_out_plan, throw=True)
+	rows = [
+		r
+		for r in frappe.get_all(
+			"Gate Out Plan Item",
+			filters={"parent": gate_out_plan, "parenttype": "Gate Out Plan"},
+			fields=["container", "container_no", "target_lift_on"],
+			order_by="idx asc",
+		)
+		if r.container
+	]
+	# One query for the whole plan, not one per tank.
+	held = _live_out_bookings([r.container for r in rows])
 	out = []
-	for r in frappe.get_all(
-		"Gate Out Plan Item",
-		filters={"parent": gate_out_plan, "parenttype": "Gate Out Plan"},
-		fields=["container", "container_no", "target_lift_on"],
-		order_by="idx asc",
-	):
-		if not r.container:
-			continue
+	for r in rows:
 		status = frappe.db.get_value("Container", r.container, "status")
 		# Already gone: nothing left to book, and the row is history.
 		if status == GATE_OUT_STATUS:
 			continue
+		booking = held.get(r.container, {}).get("booking")
+		pending = _pending_work(r.container)
 		out.append({
 			"container": r.container,
 			"container_no": r.container_no or r.container,
 			"status": status,
 			"target_lift_on": str(r.target_lift_on) if r.target_lift_on else None,
-			# `Available` IS "present with no open work" (container_status.recompute_
-			# availability keeps it so), which is the one state a Tank Out booking may be
-			# submitted from — so it is the readiness test, not a second opinion on it.
-			"ready": status == "Available",
-			"readiness": _readiness_label(_pending_work(r.container)),
+			# The tank is already on a lift-on booking that has not gone yet. Shown rather
+			# than hidden — the operator may still have a reason to add it to another — but
+			# never pre-ticked, because ticking it by default is how the same tank ends up
+			# booked out twice.
+			"booking": booking,
+			# Same test the booking's own submit gate applies: present, and nothing left
+			# to finish. Deliberately not a flat ``status == "Available"`` — a tank whose
+			# last order closed a moment ago is free to go whether or not the status has
+			# caught up, and a picker that disagreed with the gate would tick the wrong tanks.
+			"ready": is_ready_to_leave(status, pending) and not booking,
+			# The work still holding the tank, named rather than summarised: the status
+			# beside it already says where the tank is, so the only thing left to add is
+			# what someone has to finish.
+			"blockers": pending,
 		})
 	return out
+
+
+@frappe.whitelist()
+def blocking_bookings(gate_out_plan: str) -> list:
+	"""The plan's tanks a live Tank Out booking is still waiting for.
+
+	The same answer :meth:`GateOutPlan._assert_booked_tanks_stay` gives on save, asked
+	BEFORE the Batalkan button flips anything — otherwise the refusal arrives with the form
+	already sitting dirty on a status the server was always going to reject, and the
+	operator has to reload to get out of it.
+	"""
+	frappe.has_permission("Gate Out Plan", "read", doc=gate_out_plan, throw=True)
+	rows = [
+		r
+		for r in frappe.get_all(
+			"Gate Out Plan Item",
+			filters={"parent": gate_out_plan, "parenttype": "Gate Out Plan"},
+			fields=["container", "container_no"],
+			order_by="idx asc",
+		)
+		if r.container
+	]
+	held = _live_out_bookings([r.container for r in rows])
+	return [
+		{
+			"container": r.container,
+			"container_no": r.container_no or r.container,
+			**held[r.container],
+		}
+		for r in rows
+		if r.container in held
+	]
 
 
 # --- container list from Excel -----------------------------------------------

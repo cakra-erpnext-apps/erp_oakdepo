@@ -4,12 +4,15 @@
 // looking identical to one nobody has touched.
 
 frappe.listview_settings["Gate Out Plan"] = {
-	add_fields: ["status", "per_fulfilled", "readiness_summary", "next_lift_on"],
+	add_fields: ["status", "per_fulfilled", "next_lift_on"],
 
+	// Colour convention, shared by every Container Depot list: grey = draft, red =
+	// dibatalkan / void, blue = the terminal "done" state, any other colour = a stage in
+	// between. A plan is done when everything on it has left, so Fulfilled is the blue one.
 	get_indicator(doc) {
 		const per = flt(doc.per_fulfilled, 2);
-		if (doc.status === "Cancelled") return [__("Dibatalkan"), "gray", "status,=,Cancelled"];
-		if (doc.status === "Fulfilled") return [__("Selesai Keluar"), "green", "status,=,Fulfilled"];
+		if (doc.status === "Cancelled") return [__("Dibatalkan"), "red", "status,=,Cancelled"];
+		if (doc.status === "Fulfilled") return [__("Selesai Keluar"), "blue", "status,=,Fulfilled"];
 		if (per > 0) return [__("Sebagian Keluar"), "yellow", "status,=,Open"];
 		return [__("Open"), "orange", "status,=,Open"];
 	},

@@ -31,6 +31,7 @@ import frappe
 from container_depot.container_depot.container_status import (
 	DONE_CLEANING,
 	DONE_REPAIR,
+	readiness_label,
 )
 
 
@@ -52,7 +53,7 @@ def execute(filters=None):
 			"container_type": c.container_type,
 			"size": c.size,
 			"status": c.status,
-			"readiness": _readiness(work),
+			"readiness": readiness_label(c.status, work),
 			"open_orders": len(work),
 			"target_lift_on": c.target_lift_on,
 		}
@@ -158,13 +159,6 @@ def _open_work(names: list[str]) -> dict[str, list[str]]:
 		):
 			add(row.container, label)
 	return out
-
-
-def _readiness(work: list[str]) -> str:
-	"""Same vocabulary the Gate Out Plan uses, so the two never read differently."""
-	if not work:
-		return "Siap"
-	return "Belum: " + ", ".join(dict.fromkeys(work))
 
 
 def _related_orders(names: list[str]) -> dict[str, dict[str, str]]:

@@ -4,7 +4,7 @@ Covers the whole point of the feature:
 - stamping ``target_lift_on`` / ``gate_out_plan`` onto each listed Container while Open,
   and releasing it on Fulfilled / Cancelled / row-removal / delete (without clobbering a
   stamp another plan owns);
-- readiness computed from the tank's open Cleaning / M&R work;
+- the work still holding each tank, answered live when a booking is picked;
 - the denormalised target pushed onto already-open orders so the worklists sort by it;
 - the Email → Order bridge exposing a "Gate Out" prefill.
 
@@ -147,6 +147,16 @@ class TestGateOutPlan(FrappeTestCase):
 		return doc.name
 
 	def _eir(self, container, inspection_type, status="Submitted"):
+		"""A submitted EIR is stamped submitted, not merely labelled so.
+
+		``docstatus`` is what the rest of the app reads — ``container_open_orders`` calls a
+		draft EIR-In open work holding the tank — so an Inspection carrying status
+		"Submitted" on docstatus 0 is a fixture that does not exist in the yard, and every
+		readiness assertion written against it would be measuring a state the app never
+		produces. Stamped directly rather than via ``submit()``: the real submit runs the
+		gate (EIR-In brings the tank In_Depot, EIR-Out sends it out), which is a different
+		test's subject.
+		"""
 		insp = frappe.get_doc({
 			"doctype": "Inspection",
 			"inspection_type": inspection_type,
@@ -156,6 +166,8 @@ class TestGateOutPlan(FrappeTestCase):
 			"inspector": "Administrator",
 			"status": status,
 		}).insert(ignore_permissions=True)
+		if status == "Submitted":
+			frappe.db.set_value("Inspection", insp.name, "docstatus", 1, update_modified=False)
 		self._eirs.append(insp.name)
 		return insp.name
 
@@ -220,62 +232,31 @@ class TestGateOutPlan(FrappeTestCase):
 		p2 = self._plan([(c, add_days(today(), 6))])  # now allowed to claim it
 		self.assertEqual(self._target(c).gate_out_plan, p2.name)
 
-	# --- readiness ------------------------------------------------------------
-	def test_readiness_ready_when_no_open_work(self):
-		c = self._container("GOPRDY0001")
+	# --- what still holds a tank (the picker's answer) -------------------------
+	def test_picker_names_the_work_holding_a_tank(self):
+		"""The plan no longer stores a Kesiapan column — the question is asked live, at the
+		one moment it matters: when the operator picks tanks for a booking.
+
+		A draft EIR-In counts. The plan's old lookup saw only Cleaning / M&R, so the thing
+		most likely to be holding a tank that just arrived read as ready.
+		"""
+		c = self._container("GOPRDY0005")
+		self._eir(c, "EIR-In", status="Draft")
 		plan = self._plan([(c, add_days(today(), 5))])
-		row = plan.containers[0]
-		self.assertEqual(row.readiness, "Siap")
-		self.assertEqual(row.is_ready, 1)
-		self.assertEqual(plan.readiness_summary, "1/1 siap")
 
-	def test_readiness_flags_open_cleaning_and_mr(self):
-		c = self._container("GOPRDY0002")
-		self._cleaning(c)
-		self._repair(c)
-		plan = self._plan([(c, add_days(today(), 5))])
-		row = plan.containers[0]
-		self.assertEqual(row.is_ready, 0)
-		self.assertIn("Cleaning", row.readiness)
-		self.assertIn("M&R", row.readiness)
-		self.assertEqual(plan.readiness_summary, "0/1 siap")
+		row = gate_out_plan.pickable_containers(plan.name)[0]
+		self.assertEqual(row["blockers"], ["EIR-In"])
+		self.assertFalse(row["ready"])
 
-	# --- readiness stays current ----------------------------------------------
-	def test_finishing_the_work_updates_the_plan_without_touching_it(self):
-		"""The whole point of the monitoring: Kesiapan is stored, so it has to be pushed by the
-		ORDERS. Finishing the last blocker must flip the plan to Siap with nobody re-saving it
-		— that staleness is what made a plan read "Belum: Cleaning" long after cleaning was done."""
-		c = self._container("GOPLIVE001")
-		co = self._cleaning(c)
-		ro = self._repair(c)
-		plan = self._plan([(c, add_days(today(), 5))])
-		self.assertEqual(plan.readiness_summary, "0/1 siap")
+	def test_picker_does_not_offer_a_tank_that_has_not_arrived(self):
+		"""Nothing is open on a tank that was never here — which is exactly why "no open
+		work" was the wrong test on its own. Presence is asked first."""
+		coming = self._container("GOPRDY0007", status="Booked")
+		here = self._container("GOPRDY0006", status="Available")
+		plan = self._plan([(coming, add_days(today(), 3)), (here, add_days(today(), 2))])
 
-		# One blocker done -> the other is still named, and nothing re-saved the plan.
-		frappe.get_doc("Cleaning Order", co).db_set("status", "Completed", update_modified=False)
-		gate_out_plan.refresh_plans_for_order(frappe.get_doc("Cleaning Order", co))
-		self.assertEqual(self._readiness(plan.name), ("0/1 siap", "Belum: M&R", 0))
-
-		# Last blocker done -> Siap, still without opening the plan.
-		mr_doc = frappe.get_doc("Repair Order", ro)
-		mr_doc.status = "Cancelled"
-		mr_doc.save(ignore_permissions=True)  # the real path: doc_events fires the refresh
-		self.assertEqual(self._readiness(plan.name), ("1/1 siap", "Siap", 1))
-
-	def test_closed_plan_is_left_alone(self):
-		"""A Fulfilled plan is a record of how it closed, so later work must not rewrite its
-		numbers — otherwise history changes every time a tank is cleaned again."""
-		c = self._container("GOPCLOSED1")
-		co = self._cleaning(c)
-		plan = self._plan([(c, add_days(today(), 5))])
-		plan.status = "Fulfilled"
-		plan.save(ignore_permissions=True)
-		before = self._readiness(plan.name)
-
-		doc = frappe.get_doc("Cleaning Order", co)
-		doc.status = "Completed"
-		doc.save(ignore_permissions=True)
-		self.assertEqual(self._readiness(plan.name), before)
+		ready = {r["container"]: r["ready"] for r in gate_out_plan.pickable_containers(plan.name)}
+		self.assertEqual(ready, {coming: False, here: True})
 
 	def test_related_orders_names_the_blockers_per_container(self):
 		"""The detail list has to name WHICH order holds a tank up, and agree with the column:
@@ -291,8 +272,8 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertFalse(by_name[co]["blocks"])   # finished cleaning is history
 		self.assertTrue(by_name[ro]["blocks"])    # the open M&R is the blocker
 		self.assertEqual(by_name[ro]["kind"], "M&R")
-		# ...and that is precisely what the stored column says.
-		self.assertEqual(self._readiness(plan.name)[1], "Belum: M&R")
+		# ...and the picker names the same order as what is holding the tank.
+		self.assertEqual(gate_out_plan.pickable_containers(plan.name)[0]["blockers"], ["M&R"])
 
 	def test_import_matches_a_dashed_master_instead_of_minting_a_twin(self):
 		"""The number in the file and the number in the master rarely agree on separators.
@@ -420,16 +401,9 @@ class TestGateOutPlan(FrappeTestCase):
 		self.assertFalse(by_name[eout]["blocks"])
 		self.assertTrue(by_name[ein]["done"])       # submitted = a finished record
 		self.assertFalse(by_name[eout]["done"])     # a draft is neither blocking nor finished
-		# No open cleaning / M&R, so listing EIRs must leave the tank Siap.
-		self.assertEqual(self._readiness(plan.name), ("1/1 siap", "Siap", 1))
-
-	def _readiness(self, plan):
-		"""(readiness_summary, row readiness, row is_ready) read fresh from the DB."""
-		summary = frappe.db.get_value("Gate Out Plan", plan, "readiness_summary")
-		row = frappe.get_all(
-			"Gate Out Plan Item", filters={"parent": plan}, fields=["readiness", "is_ready"]
-		)[0]
-		return summary, row.readiness, row.is_ready
+		# The EIR-In is finished and the EIR-Out is written at the gate on the way out, so
+		# neither holds the tank back.
+		self.assertEqual(gate_out_plan.pickable_containers(plan.name)[0]["blockers"], [])
 
 	def test_next_lift_on_is_earliest(self):
 		a = self._container("GOPNEXT001A")
@@ -866,6 +840,78 @@ class TestGateOutPlan(FrappeTestCase):
 		self._gate_out(c)
 		with self.assertRaises(frappe.ValidationError):
 			gate_out_plan.make_container_booking(plan.name)
+
+	# --- a booked tank is a commitment ----------------------------------------
+	def test_cannot_cancel_a_plan_whose_tank_is_already_booked_out(self):
+		"""Closing the plan releases every tank's lift-on stamp — which must not happen
+		while a lift-on booking is still waiting for one of them."""
+		c = self._container("GOPHOLD0001", status="Available")
+		plan = self._plan([(c, add_days(today(), 3))])
+		booking = self._booking(c, booking_status="Confirmed", submitted=True)
+
+		held = gate_out_plan.blocking_bookings(plan.name)
+		self.assertEqual([(h["container"], h["booking"]) for h in held], [(c, booking)])
+
+		plan.status = "Cancelled"
+		with self.assertRaises(frappe.ValidationError):
+			plan.save(ignore_permissions=True)
+
+	def test_a_cancelled_booking_no_longer_holds_the_plan(self):
+		c = self._container("GOPHOLD0002", status="Available")
+		plan = self._plan([(c, add_days(today(), 3))])
+		booking = self._booking(c, booking_status="Confirmed", submitted=True)
+		frappe.db.set_value("Container Booking", booking, "booking_status", "Cancelled")
+
+		self.assertEqual(gate_out_plan.blocking_bookings(plan.name), [])
+		plan.status = "Cancelled"
+		plan.save(ignore_permissions=True)
+		self.assertIsNone(self._target(c).target_lift_on)
+
+	def test_a_tank_already_collected_does_not_hold_the_plan_open(self):
+		"""Half a notice collected, the rest called off: the bookings behind the tanks that
+		already left have done their job, so only the tanks still here can hold the plan."""
+		gone = self._container("GOPHOLD0003", status="Available")
+		staying = self._container("GOPHOLD0004", status="Available")
+		plan = self._plan([(gone, add_days(today(), 2)), (staying, add_days(today(), 5))])
+		self._booking(gone, booking_status="Confirmed", submitted=True)
+		self._gate_out(gone)
+
+		self.assertEqual(gate_out_plan.blocking_bookings(plan.name), [])
+		plan.reload()
+		plan.status = "Cancelled"
+		plan.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Gate Out Plan", plan.name, "status"), "Cancelled")
+
+	def test_a_booked_row_cannot_be_dropped_but_an_unbooked_one_can(self):
+		"""The way out of a plan that is only partly going ahead: trim the tanks nobody has
+		booked yet and leave the plan Open."""
+		booked = self._container("GOPHOLD0005", status="Available")
+		free = self._container("GOPHOLD0006", status="Available")
+		plan = self._plan([(booked, add_days(today(), 2)), (free, add_days(today(), 4))])
+		self._booking(booked, booking_status="Confirmed", submitted=True)
+
+		plan.containers = [r for r in plan.containers if r.container != booked]
+		with self.assertRaises(frappe.ValidationError):
+			plan.save(ignore_permissions=True)
+
+		plan.reload()
+		plan.containers = [r for r in plan.containers if r.container != free]
+		plan.save(ignore_permissions=True)
+		self.assertEqual([r.container for r in plan.containers], [booked])
+		self.assertIsNone(self._target(free).target_lift_on)
+
+	def test_picker_names_the_booking_a_tank_is_already_on_and_does_not_pretick_it(self):
+		booked = self._container("GOPHOLD0007", status="Available")
+		free = self._container("GOPHOLD0008", status="Available")
+		plan = self._plan([(booked, add_days(today(), 2)), (free, add_days(today(), 4))])
+		booking = self._booking(booked, booking_status="Confirmed", submitted=True)
+
+		picked = {r["container"]: r for r in gate_out_plan.pickable_containers(plan.name)}
+		self.assertEqual(picked[booked]["booking"], booking)
+		self.assertFalse(picked[booked]["ready"])
+		# ...and the tank nobody booked is still offered, ticked.
+		self.assertIsNone(picked[free]["booking"])
+		self.assertTrue(picked[free]["ready"])
 
 	# --- header vs rows -------------------------------------------------------
 	def test_container_of_another_principal_is_refused(self):

@@ -26,7 +26,6 @@
   "next_lift_on",
   "per_fulfilled",
   "container_summary",
-  "readiness_summary",
   "source",
   "reff_email",
   "orders_tab",
@@ -180,15 +179,6 @@
    "read_only": 1
   },
   {
-   "description": "Berapa container yang siap gate-out.",
-   "fieldname": "readiness_summary",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "in_list_view": 1,
-   "label": "Kesiapan",
-   "read_only": 1
-  },
-  {
    "depends_on": "eval:doc.reff_email",
    "description": "Bila plan dibuat dari email.",
    "fieldname": "reff_email",
@@ -218,7 +208,7 @@
  ],
  "is_submittable": 0,
  "links": [],
- "modified": "2026-08-21 07:00:00.000000",
+ "modified": "2026-08-21 10:45:00.000000",
  "module": "Container Depot",
  "name": "Gate Out Plan",
  "permissions": [],

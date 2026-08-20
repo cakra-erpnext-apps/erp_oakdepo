@@ -45,7 +45,10 @@ frappe.query_reports["Container Status Report"] = {
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
 		if (column.fieldname === "readiness" && data && data.readiness) {
-			const colour = data.readiness === "Siap" ? "green" : "orange";
+			// Orange is "someone has to do something". A tank that has not arrived or has
+			// already gone is nobody's queue, so it stays grey rather than reading as work.
+			const idle = ["Belum tiba", "Sudah keluar"].includes(data.readiness);
+			const colour = data.readiness === "Siap" ? "green" : idle ? "gray" : "orange";
 			value = `<span class="indicator-pill ${colour}">${data.readiness}</span>`;
 		}
 		return value;

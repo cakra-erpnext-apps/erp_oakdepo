@@ -58,7 +58,6 @@ function render_system_facts(frm) {
 		],
 		// Two decimals like the progress bar, not the Percent field's own six.
 		[__("% Keluar"), frm.doc.container_summary ? `${flt(frm.doc.per_fulfilled, 2)}%` : null],
-		[__("Kesiapan"), frm.doc.readiness_summary && esc(frm.doc.readiness_summary)],
 		[__("Container"), frm.doc.container_summary && esc(frm.doc.container_summary)],
 		[__("Sumber"), frm.doc.source && esc(frm.doc.source)],
 		[__("Ref Email"), container_depot.doc_link("Communication", frm.doc.reff_email)],
@@ -72,17 +71,55 @@ function render_system_facts(frm) {
 function set_status_buttons(frm) {
 	if (frm.is_new() || !frappe.perm.has_perm(frm.doctype, 0, "write")) return;
 	if (frm.doc.status === "Open") {
-		frm.add_custom_button(__("Batalkan Plan"), () =>
-			frappe.confirm(
-				__("Batalkan plan ini? Target lift-on dilepas dari semua container-nya."),
-				() => frm.set_value("status", "Cancelled").then(() => frm.save())
-			)
-		);
+		frm.add_custom_button(__("Batalkan Plan"), () => cancel_plan(frm));
 	} else if (frm.doc.status === "Cancelled") {
 		frm.add_custom_button(__("Buka Lagi"), () =>
 			frm.set_value("status", "Open").then(() => frm.save())
 		);
 	}
+}
+
+// Asked BEFORE the status is touched. The server refuses to close a plan whose tanks are
+// already on a live Tank Out booking — closing it would pull the lift-on priority out from
+// under a pickup that is still on — and meeting that refusal from a form already flipped to
+// Cancelled leaves the operator with a dirty doc to reload out of. Same check either way;
+// this one just arrives in time to be useful, and names the way forward.
+function cancel_plan(frm) {
+	frappe.call({
+		method: "container_depot.container_depot.doctype.gate_out_plan.gate_out_plan.blocking_bookings",
+		args: { gate_out_plan: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Memeriksa booking yang sudah dibuat…"),
+	}).then((r) => {
+		const held = r.message || [];
+		if (held.length) {
+			const esc = frappe.utils.escape_html;
+			frappe.msgprint({
+				title: __("Plan Sudah Dipakai"),
+				indicator: "red",
+				message:
+					__(
+						"Container berikut sudah dibuatkan Container Booking (Tank Out) yang masih berjalan:"
+					) +
+					`<ul>${held
+						.map(
+							(h) =>
+								`<li>${esc(h.container_no)} → ${esc(h.booking)} (${esc(
+									h.status || __("Draft")
+								)})</li>`
+						)
+						.join("")}</ul>` +
+					__(
+						"Batalkan dulu booking-nya, atau biarkan plan tetap Open dan hapus hanya container yang belum dibooking."
+					),
+			});
+			return;
+		}
+		frappe.confirm(
+			__("Batalkan plan ini? Target lift-on dilepas dari semua container-nya."),
+			() => frm.set_value("status", "Cancelled").then(() => frm.save())
+		);
+	});
 }
 
 // Principal scopes the container picker, so changing it invalidates every row already
@@ -292,16 +329,26 @@ function show_picker(frm, rows) {
 	const options = rows.map((r) => {
 		const bits = [r.status || __("status tidak diketahui")];
 		if (r.target_lift_on) bits.push(`${__("Target")}: ${frappe.datetime.str_to_user(r.target_lift_on)}`);
-		// Only worth saying when it adds something the status has not: "Belum: Cleaning".
-		if (!r.ready && r.readiness && r.readiness !== "Siap") bits.push(r.readiness);
+		// Only the work itself is worth adding — the status already says "Booked" or
+		// "Gate_Out", and repeating that as "Belum tiba" tells the operator nothing twice.
+		if (r.blockers && r.blockers.length) bits.push(__("Belum: {0}", [r.blockers.join(", ")]));
+		// Already on a lift-on booking that has not gone yet. Left on the list — there are
+		// reasons to add it to another — but never pre-ticked, and the booking is named, so
+		// booking the same tank twice takes a deliberate click instead of a default one.
+		if (r.booking) bits.push(__("sudah dibooking {0}", [r.booking]));
 		return {
 			label: `${frappe.utils.escape_html(r.container_no)} — ${frappe.utils.escape_html(
 				bits.join(" · ")
 			)}`,
 			value: r.container,
 			checked: r.ready,
-			warning: !r.ready,
-			description: r.ready ? __("Siap diambil") : __("Belum siap diambil"),
+			danger: !!r.booking,
+			warning: !r.ready && !r.booking,
+			description: r.booking
+				? __("Sudah ada booking berjalan")
+				: r.ready
+				? __("Siap diambil")
+				: __("Belum siap diambil"),
 		};
 	});
 	const ready_count = options.filter((o) => o.checked).length;

@@ -80,6 +80,39 @@ def container_open_orders(container: str) -> list[dict]:
     return out
 
 
+def readiness_label(status: str | None, blockers: list[str]) -> str:
+    """Can this tank leave? — one vocabulary, for every screen that asks.
+
+    Readiness is NOT the same question as "is there open work", and conflating the two is
+    how a Gate Out Plan came to read *11/11 siap* while nine of its tanks were still
+    ``Booked`` and one had already left: a tank that was never here has no work to finish
+    either, so "no open work" answered yes for all of them.
+
+    So presence is asked first, and only a tank that is actually in the yard is judged on
+    its work. Present-with-nothing-open is ``Siap`` whether the status says ``Available``
+    or has simply not caught up yet (``In_Depot``) — the booking's own submit gate reads
+    the work rather than the status for exactly that reason, and a readiness column that
+    disagreed with the gate would be worse than none.
+
+    ``blockers``: the labels of the work still holding the tank (see
+    :func:`container_open_orders`), empty when nothing does.
+    """
+    if status == GATE_OUT:
+        return "Sudah keluar"
+    if status == BOOKED:
+        return "Belum tiba"
+    if blockers:
+        return "Belum: " + ", ".join(dict.fromkeys(blockers))
+    if status in PRESENT:
+        return "Siap"
+    return "Belum siap"
+
+
+def is_ready_to_leave(status: str | None, blockers: list[str]) -> bool:
+    """The yes/no behind :func:`readiness_label` — present, and nothing left to finish."""
+    return status in PRESENT and not blockers
+
+
 def container_has_open_orders(container: str) -> bool:
     """True if the container still has an unfinished processing order."""
     return bool(container_open_orders(container))
