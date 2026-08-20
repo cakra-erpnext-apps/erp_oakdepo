@@ -641,6 +641,47 @@ def related_orders(gate_out_plan: str) -> list:
 	return out
 
 
+@frappe.whitelist()
+def pickable_containers(gate_out_plan: str) -> list:
+	"""The plan's tanks that can still be booked, with their status read LIVE.
+
+	The picker used to read the status mirrored on the plan row, which is only as fresh as
+	the last save — so a tank whose cleaning finished after the plan was written still
+	offered itself as ``In_Depot`` while the Order & EIR tab, which reads live, already
+	called it ``Available``. Two panels on the same screen disagreeing about the same tank
+	is worse than either being slightly stale, and the pre-ticking was wrong with it: the
+	tank ready to go was not offered.
+
+	Same source as :func:`related_orders`, so the two cannot drift again.
+	"""
+	frappe.has_permission("Gate Out Plan", "read", doc=gate_out_plan, throw=True)
+	out = []
+	for r in frappe.get_all(
+		"Gate Out Plan Item",
+		filters={"parent": gate_out_plan, "parenttype": "Gate Out Plan"},
+		fields=["container", "container_no", "target_lift_on"],
+		order_by="idx asc",
+	):
+		if not r.container:
+			continue
+		status = frappe.db.get_value("Container", r.container, "status")
+		# Already gone: nothing left to book, and the row is history.
+		if status == GATE_OUT_STATUS:
+			continue
+		out.append({
+			"container": r.container,
+			"container_no": r.container_no or r.container,
+			"status": status,
+			"target_lift_on": str(r.target_lift_on) if r.target_lift_on else None,
+			# `Available` IS "present with no open work" (container_status.recompute_
+			# availability keeps it so), which is the one state a Tank Out booking may be
+			# submitted from — so it is the readiness test, not a second opinion on it.
+			"ready": status == "Available",
+			"readiness": _readiness_label(_pending_work(r.container)),
+		})
+	return out
+
+
 # --- container list from Excel -----------------------------------------------
 # A lift-on notice routinely names twenty tanks, and they arrive as a spreadsheet attached
 # to the customer's mail. Mirrors Container Booking's grid importer (same dialog, same

@@ -793,6 +793,35 @@ class TestGateOutPlan(FrappeTestCase):
 		booking = gate_out_plan.make_container_booking(plan.name)
 		self.assertEqual(booking.items[0].condition, "EMPTY CLEAN")
 
+	def test_picker_reads_status_live_not_off_the_saved_row(self):
+		"""The picker and the Order & EIR tab must never disagree about the same tank.
+
+		The row's mirrored status is only as fresh as the last save, so a tank whose work
+		finished afterwards still offered itself as In_Depot — unticked — while the tab
+		already called it Available. Both now read the master.
+		"""
+		c = self._container("GOPLIVE0001", status="In_Depot")
+		plan = self._plan([(c, add_days(today(), 3))])
+		self.assertEqual(plan.containers[0].container_status, "In_Depot")
+
+		# Work finishes; the master moves on without the plan being touched.
+		frappe.db.set_value("Container", c, "status", "Available", update_modified=False)
+
+		picked = gate_out_plan.pickable_containers(plan.name)
+		self.assertEqual([r["status"] for r in picked], ["Available"])
+		self.assertEqual([r["ready"] for r in picked], [True])
+		# ...and the tab, its other source, says exactly the same thing.
+		self.assertEqual(gate_out_plan.related_orders(plan.name)[0]["status"], "Available")
+
+	def test_picker_drops_tanks_that_already_left(self):
+		gone = self._container("GOPLIVE0002")
+		staying = self._container("GOPLIVE0003")
+		plan = self._plan([(gone, add_days(today(), 3)), (staying, add_days(today(), 4))])
+		self._gate_out(gone)
+		self.assertEqual(
+			[r["container"] for r in gate_out_plan.pickable_containers(plan.name)], [staying]
+		)
+
 	def test_make_booking_takes_only_the_containers_chosen(self):
 		"""A plan is collected over several visits, so the form asks which tanks THIS booking
 		is for. Everything else on the plan stays behind, still claimed by the plan."""

@@ -147,8 +147,32 @@ function render_related_orders(frm) {
 		args: { gate_out_plan: frm.doc.name },
 	}).then((r) => {
 		if (frm.doc.name !== shown_for) return; // reply landed after the form moved on
-		field.$wrapper.html(related_orders_html(r.message || []));
+		const tanks = r.message || [];
+		field.$wrapper.html(related_orders_html(tanks));
+		sync_row_status(frm, tanks);
 	});
+}
+
+// The grid's Status column is a stored mirror, refreshed by fetch_from on save — so between
+// saves it drifts from the master, and the tank whose cleaning just finished still reads
+// In_Depot in the grid while this tab already says Available. The live answer is in hand
+// anyway, so the grid is repainted with it.
+//
+// Assigned straight onto the row rather than through frappe.model.set_value: this is a
+// display refresh of a read-only field the server recomputes on every save, and marking the
+// form dirty for it would ask the operator to save a change they did not make.
+function sync_row_status(frm, tanks) {
+	const live = {};
+	tanks.forEach((t) => (live[t.container] = t.status));
+	let changed = false;
+	(frm.doc.containers || []).forEach((row) => {
+		const status = live[row.container];
+		if (status && row.container_status !== status) {
+			row.container_status = status;
+			changed = true;
+		}
+	});
+	if (changed) frm.refresh_field("containers");
 }
 
 function related_orders_html(tanks) {
@@ -245,27 +269,39 @@ function order_line(o) {
 // actually ready to leave are pre-ticked; the rest can still be chosen deliberately, because
 // a booking is often raised a day ahead of the cleaning finishing.
 function pick_containers_then_book(frm) {
-	const rows = (frm.doc.containers || []).filter((r) => r.container && !r.gated_out);
-	if (!rows.length) {
-		frappe.msgprint(__("Semua container di plan ini sudah keluar."));
-		return;
-	}
+	// Status is read LIVE from the server, never off the grid row. The row's copy is only as
+	// fresh as the last save, so a tank whose cleaning finished since then still offered
+	// itself as In_Depot while the Order & EIR tab — which reads live — already called it
+	// Available. Same endpoint family as that tab, so the two cannot disagree again.
+	frappe.call({
+		method: "container_depot.container_depot.doctype.gate_out_plan.gate_out_plan.pickable_containers",
+		args: { gate_out_plan: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Membaca status container…"),
+	}).then((r) => {
+		const rows = r.message || [];
+		if (!rows.length) {
+			frappe.msgprint(__("Semua container di plan ini sudah keluar."));
+			return;
+		}
+		show_picker(frm, rows);
+	});
+}
+
+function show_picker(frm, rows) {
 	const options = rows.map((r) => {
-		// "Available" is the app's word for present in the yard with no open work — the one
-		// state a Tank Out booking may actually be submitted from. Anything else can be
-		// booked, it just cannot go out yet, and the row says why.
-		const ready = r.container_status === "Available";
-		const bits = [r.container_status || __("status tidak diketahui")];
+		const bits = [r.status || __("status tidak diketahui")];
 		if (r.target_lift_on) bits.push(`${__("Target")}: ${frappe.datetime.str_to_user(r.target_lift_on)}`);
-		if (!ready && r.readiness && r.readiness !== "Siap") bits.push(r.readiness);
+		// Only worth saying when it adds something the status has not: "Belum: Cleaning".
+		if (!r.ready && r.readiness && r.readiness !== "Siap") bits.push(r.readiness);
 		return {
-			label: `${frappe.utils.escape_html(r.container_no || r.container)} — ${frappe.utils.escape_html(
+			label: `${frappe.utils.escape_html(r.container_no)} — ${frappe.utils.escape_html(
 				bits.join(" · ")
 			)}`,
 			value: r.container,
-			checked: ready,
-			warning: !ready,
-			description: ready ? __("Siap diambil") : __("Belum siap diambil"),
+			checked: r.ready,
+			warning: !r.ready,
+			description: r.ready ? __("Siap diambil") : __("Belum siap diambil"),
 		};
 	});
 	const ready_count = options.filter((o) => o.checked).length;
