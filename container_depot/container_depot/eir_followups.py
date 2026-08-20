@@ -5,10 +5,11 @@ is hooked into ``Inspection.on_submit`` or any menu. Call these from wherever yo
 
 Rules (per ops):
 - **Cleaning Order**  ← an EIR whose ``tank_status`` is ``Empty Dirty``.
-- **Repair Order (M&R)** ← an EIR with at least one *real* Inspection Damage Entry — a
-  row whose damage is other than Acceptable (``v``) or whose repair is other than No
-  Action (``X``). (With the new checklist default these rows aren't even stored unless
-  they are findings, but the filter is applied defensively for older / Desk-entered data.)
+- **Repair Order (M&R)** ← an EIR with at least one Inspection Damage Entry that is not
+  an explicitly-clean card: any row carrying a real damage code, a real repair code, a
+  remark, or NO codes at all (a part written onto the checklist with nothing ticked yet).
+  Only a row coded Acceptable (``v``) + No Action (``X``) with no remark is skipped — that
+  is the PWA storing an opened-and-fine card, not a finding.
 """
 
 from __future__ import annotations
@@ -35,13 +36,21 @@ def eir_needs_cleaning(inspection) -> bool:
 def eir_real_damage_rows(inspection) -> list:
 	"""Inspection Damage Entry rows of ``inspection`` worth an M&R.
 
-	Three things count as an indication of damage:
+	Four things count as an indication of damage:
 
 	* a damage code other than Acceptable,
 	* a repair code other than No Action,
 	* **a note the surveyor typed** — even on a card coded Acceptable / No Action. Somebody
 	  standing at the tank wrote something down about that part; that is the indication, and
 	  letting the code alone veto it meant the M&R team never heard about it.
+	* **a row with no codes at all** — a part written onto the Checklist Kerusakan without
+	  anything being ticked. Nobody adds a line to that table to say a part is fine; the line
+	  itself is the report, and the codes are what the M&R team fills in. Requiring a code
+	  first meant a hand-entered checklist submitted silently and no M&R ever appeared.
+
+	An OPENED-but-clean card is the one case that stays out: it carries the codes explicitly
+	(Acceptable + No Action), which is the PWA saying "checked, nothing wrong" rather than a
+	blank line waiting to be worked.
 
 	Note this is deliberately wider than ``eir.is_real_finding`` (which decides what reads as
 	a "kerusakan" on screen and which photos are evidence): a noted-but-acceptable part still
@@ -62,14 +71,16 @@ def eir_real_damage_rows(inspection) -> list:
 		real_damage = r.damage_type and r.damage_type != ACCEPTABLE_DAMAGE_CODE
 		real_repair = r.repair_code and r.repair_code != NO_ACTION_REPAIR_CODE
 		noted = bool((r.damage_description or "").strip())
-		if real_damage or real_repair or noted:
+		uncoded = not r.damage_type and not r.repair_code
+		if real_damage or real_repair or noted or uncoded:
 			out.append(r)
 	return out
 
 
 def eir_needs_mr(inspection) -> bool:
 	"""True when the EIR carries at least one indication of damage (→ M&R is due) — a real
-	damage code, a real repair code, or a note the surveyor typed."""
+	damage code, a real repair code, a note the surveyor typed, or a checklist row with no
+	codes filled in yet."""
 	return bool(eir_real_damage_rows(inspection))
 
 

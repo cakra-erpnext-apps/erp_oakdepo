@@ -76,6 +76,14 @@ class TestEirFollowups(FrappeTestCase):
 		)
 		self.assertFalse(eir_followups.eir_needs_mr(quiet))
 
+	def test_an_uncoded_checklist_row_reaches_mr(self):
+		# A part written onto the Checklist Kerusakan with nothing ticked — no damage code,
+		# no repair code, no remark. Nobody writes a line there to say a part is fine, so the
+		# line itself is the report and the M&R team fills in the codes.
+		_, bare = self._eir("FUPMR000007", lines=[{"item_code": "11", "added": 1}])
+		self.assertTrue(eir_followups.eir_needs_mr(bare))
+		self.assertEqual(len(eir_followups.eir_real_damage_rows(bare)), 1)
+
 	# --- creation -------------------------------------------------------------
 	def test_create_cleaning_order_idempotent(self):
 		c, dirty = self._eir("FUPCLEAN003", tank_status="Empty Dirty")
