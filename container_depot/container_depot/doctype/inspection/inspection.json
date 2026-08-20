@@ -252,14 +252,14 @@
   },
   {
    "default": "1",
-   "description": "Opsional. Saat submit: buat Cleaning Order bila tank Empty Dirty.",
+   "description": "Tercentang sendiri saat Tank Status = Empty Dirty. Hilangkan centang untuk melewati.",
    "fieldname": "create_cleaning_order",
    "fieldtype": "Check",
    "label": "Buat Cleaning Order"
   },
   {
    "default": "1",
-   "description": "Opsional. Saat submit: buat draft M&R bila ada kerusakan.",
+   "description": "Tercentang sendiri saat ada temuan di Checklist Kerusakan. Hilangkan centang untuk melewati.",
    "fieldname": "create_repair_order",
    "fieldtype": "Check",
    "label": "Buat M&R (Repair Order)"
@@ -680,7 +680,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-21 11:00:00.000000",
+ "modified": "2026-08-21 12:30:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

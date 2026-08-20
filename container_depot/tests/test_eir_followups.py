@@ -139,3 +139,73 @@ class TestEirFollowups(FrappeTestCase):
 	def test_no_repair_order_without_damage(self):
 		_, none = self._eir("FUPMR000004")
 		self.assertIsNone(eir_followups.create_repair_order_from_eir(none))
+
+
+class TestFollowupFlags(FrappeTestCase):
+	"""The two "Tindak Lanjut" boxes on the EIR (Inspection.sync_followup_flags).
+
+	They are opt-OUTs read at submit, so a box left ticked on a tank that qualifies for
+	neither follow-up promised a Cleaning Order / M&R that was never going to be filed. Each
+	one now follows its evidence, and only an operator's untick on an already-due box stands.
+	"""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._containers = []
+
+	def tearDown(self):
+		for c in self._containers:
+			frappe.db.delete("Inspection", {"container": c})
+			frappe.db.delete("Container", {"name": c})
+		frappe.db.commit()
+		super().tearDown()
+
+	def _draft(self, cno, **kwargs):
+		c = _make_container(cno)
+		self._containers.append(c)
+		doc = frappe.new_doc("Inspection")
+		doc.update({"inspection_type": "EIR-In", "container": c, **kwargs})
+		doc.insert()
+		return doc
+
+	def test_a_blank_draft_promises_nothing(self):
+		# The doctype default is 1, but a freshly opened EIR knows neither the tank status
+		# nor the findings yet — so it must not announce either follow-up.
+		doc = self._draft("FUPFLAG0001")
+		self.assertEqual(doc.create_cleaning_order, 0)
+		self.assertEqual(doc.create_repair_order, 0)
+
+	def test_the_boxes_tick_when_the_follow_up_becomes_due(self):
+		# The condition comes true on a LATER save (the draft is opened blank), which is
+		# exactly where a clear-only rule would have lost the follow-up for good.
+		doc = self._draft("FUPFLAG0002")
+		doc.tank_status = "Empty Dirty"
+		doc.append("damage_log", {"component": "01. Manhole", "damage_type": "12"})
+		doc.save()
+		self.assertEqual(doc.create_cleaning_order, 1)
+		self.assertEqual(doc.create_repair_order, 1)
+
+	def test_an_untick_stands(self):
+		# Opting out is the whole point of the boxes: once the follow-up is due, the answer
+		# belongs to the operator and re-saving must not argue with it.
+		doc = self._draft("FUPFLAG0003", tank_status="Empty Dirty")
+		doc.reload()
+		doc.create_cleaning_order = 0
+		doc.save()
+		doc.remarks = "cek ulang"
+		doc.save()
+		self.assertEqual(doc.create_cleaning_order, 0)
+
+	def test_a_box_is_cleared_when_its_condition_goes_away(self):
+		doc = self._draft("FUPFLAG0004")
+		doc.tank_status = "Empty Dirty"
+		doc.save()
+		self.assertEqual(doc.create_cleaning_order, 1)
+		doc.tank_status = "Empty Clean"  # surveyor corrects the reading
+		doc.save()
+		self.assertEqual(doc.create_cleaning_order, 0)
+
+	def test_only_an_eir_in_carries_follow_ups(self):
+		doc = self._draft("FUPFLAG0005", inspection_type="EIR-Out", tank_status="Empty Dirty")
+		self.assertEqual(doc.create_cleaning_order, 0)
+		self.assertEqual(doc.create_repair_order, 0)

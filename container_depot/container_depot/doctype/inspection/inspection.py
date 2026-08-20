@@ -36,6 +36,7 @@ class Inspection(Document):
 		self.drop_empty_photo_rows()
 		self.stamp_container_booking()
 		self.sync_has_damage()
+		self.sync_followup_flags()
 		self.stamp_inspector()
 		# Recommend the 4 exterior views for EIR-In — but only once the surveyor has
 		# started uploading them (1-3 present). Don't nag empty drafts (the PWA EIR uses
@@ -69,6 +70,60 @@ class Inspection(Document):
 		self.has_damage = 1 if any(
 			(r.damage_type or "") not in ("", ACCEPTABLE_DAMAGE_CODE) for r in (self.damage_log or [])
 		) else 0
+
+	def sync_followup_flags(self):
+		"""Keep the two "Tindak Lanjut" boxes on what submit will ACTUALLY do.
+
+		Both are opt-OUTs: ``on_submit`` only files the follow-up when the box is ticked, and
+		the create call itself no-ops when the condition is not met. Ticked-by-default they
+		promised a Cleaning Order for a clean tank and an M&R for an undamaged one — work the
+		user then went off waiting for and that never appeared.
+
+		So each box answers to its evidence, on every save and whatever wrote it (Desk, PWA,
+		API):
+
+		* not due  → cleared. Nothing may stand as a promise of work that will not be filed.
+		* newly due → ticked, because that is the default answer to "shall I file it?" — the
+		  tank turned Empty Dirty / the first finding landed, typically on a save well after
+		  the draft was opened (``eir.open_draft`` creates it blank, so the doctype default
+		  never survives to see the condition come true).
+		* due, and was already due on the last save → left exactly as it is. This is where an
+		  operator's deliberate untick lives, and re-ticking it would be arguing with them.
+
+		A brand-new doc has no "last save" to compare against: whatever the caller passed —
+		or the doctype default of 1 — is their answer, and only the not-due clearing applies.
+		``inspection.js`` mirrors the same rule live in the Desk form so the surveyor watches
+		the box follow the tank instead of finding out at submit.
+		"""
+		from container_depot.container_depot.eir_followups import EMPTY_DIRTY, damage_row_needs_mr
+
+		if self.inspection_type != "EIR-In":
+			# The section only exists for EIR-In; no other type spawns either follow-up.
+			self.create_cleaning_order = 0
+			self.create_repair_order = 0
+			return
+
+		before = self.get_doc_before_save()
+		was_eir_in = bool(before) and before.inspection_type == "EIR-In"
+		self.create_cleaning_order = self._followup_flag(
+			"create_cleaning_order",
+			due=self.tank_status == EMPTY_DIRTY,
+			was_due=was_eir_in and before.tank_status == EMPTY_DIRTY,
+			had_last_save=bool(before),
+		)
+		self.create_repair_order = self._followup_flag(
+			"create_repair_order",
+			due=any(damage_row_needs_mr(r) for r in (self.damage_log or [])),
+			was_due=was_eir_in and any(damage_row_needs_mr(r) for r in (before.damage_log or [])),
+			had_last_save=bool(before),
+		)
+
+	def _followup_flag(self, fieldname, due, was_due, had_last_save) -> int:
+		if not due:
+			return 0
+		if had_last_save and not was_due:
+			return 1  # just became due — offer to file it
+		return 1 if self.get(fieldname) else 0
 
 	def stamp_inspector(self):
 		"""Inspector = who WORKED the EIR, not who created the record.

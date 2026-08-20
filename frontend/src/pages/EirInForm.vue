@@ -327,8 +327,6 @@ const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
 const remarks = ref("")
 const reffDoc = ref("")
-const createCleaning = ref(true)
-const createRepair = ref(true)
 const referredVoucher = ref("")
 const truckNo = ref("")
 const driver = ref("")
@@ -430,8 +428,6 @@ const openRes = cachedResource({
 		Object.keys(tank).forEach((k) => {
 			tank[k] = data[k] ?? ""
 		})
-		createCleaning.value = data.create_cleaning_order !== 0
-		createRepair.value = data.create_repair_order !== 0
 		signatureUrl.value = data.inspector_signature || ""
 		signing.value = false
 		applyDraftToRows(data)
@@ -697,8 +693,14 @@ function eirPayload(submit) {
 		reff_doc: reffDoc.value,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
-		create_cleaning_order: createCleaning.value ? 1 : 0,
-		create_repair_order: createRepair.value ? 1 : 0,
+		// "Kerjakan kalau memang perlu" — the PWA has no opt-out for either follow-up, so it
+		// asks for both on every save and Inspection.sync_followup_flags clears the one that
+		// is not due (tank not Empty Dirty / no finding on the checklist). Reading the flags
+		// back off the draft instead would freeze that clearing in: a tank marked Empty Dirty
+		// AFTER the first autosave would keep sending the 0 the server had just written, and
+		// the Cleaning Order would never be filed.
+		create_cleaning_order: 1,
+		create_repair_order: 1,
 		// Sent as arrays, not JSON strings: `send` has to be able to walk the payload to
 		// find the `local:` photo references and swap them for real file_urls.
 		lines: buildLines(),
@@ -800,7 +802,7 @@ function scheduleSave() {
 	}, 700)
 }
 
-watch([tanggal, tankStatus, cargo, remarks, reffDoc, signatureUrl, createCleaning, createRepair], scheduleSave)
+watch([tanggal, tankStatus, cargo, remarks, reffDoc, signatureUrl], scheduleSave)
 watch(tank, scheduleSave, { deep: true })
 watch(rows, scheduleSave, { deep: true })
 watch(bulkPhotos, scheduleSave, { deep: true })

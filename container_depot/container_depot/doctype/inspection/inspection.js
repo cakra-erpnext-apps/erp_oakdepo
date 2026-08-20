@@ -65,6 +65,7 @@ frappe.ui.form.on('Inspection', {
 		bind_photo_grid_clicks(frm);
 		bind_damage_grid_clicks(frm);
 		hide_sidebar_attachments(frm);
+		sync_followup_flags(frm, false);
 	},
 
 	// Frappe checks reqd fields in the BROWSER before the request ever leaves (form.js
@@ -89,7 +90,86 @@ frappe.ui.form.on('Inspection', {
 	container(frm) {
 		if (frm.doc.container) prefill_from_container(frm);
 	},
+
+	// The "Tindak Lanjut" boxes follow the evidence — see sync_followup_flags.
+	inspection_type(frm) {
+		sync_followup_flags(frm, true);
+	},
+
+	tank_status(frm) {
+		sync_followup_flags(frm, true);
+	},
+
+	damage_log_add(frm) {
+		sync_followup_flags(frm, true);
+	},
+
+	damage_log_remove(frm) {
+		sync_followup_flags(frm, true);
+	},
 });
+
+// --- Tindak Lanjut: the boxes may only promise work that submit will really file --------
+// Both checkboxes are opt-OUTs — on_submit skips the follow-up when unticked — and both
+// creations no-op when their condition is not met. Left ticked by default (they used to be)
+// they announced a Cleaning Order for a clean tank and an M&R for an undamaged one, and the
+// user went off waiting for a job nobody would ever see. So the box now tracks the tank in
+// front of the surveyor: ticked the moment the status turns Empty Dirty or a finding lands
+// on the Checklist Kerusakan, cleared and locked (with the reason written on the field)
+// while the follow-up is not due.
+//
+// Ticking happens only on the TRANSITION into "due", never on a plain refresh: an operator
+// who unticks a box that is legitimately due means it, and re-rendering the form must not
+// argue with them. Inspection.sync_followup_flags applies the SAME rule on every save —
+// that copy is what covers the PWA and the API, this one is so the person filling the form
+// watches the box follow the tank instead of finding out at submit. Keep the two in sync,
+// along with eir_followups.damage_row_needs_mr, the M&R test in Python.
+const EMPTY_DIRTY = 'Empty Dirty';
+const ACCEPTABLE_DAMAGE_CODE = 'v';
+const NO_ACTION_REPAIR_CODE = 'X';
+
+function damage_row_needs_mr(row) {
+	const real_damage = row.damage_type && row.damage_type !== ACCEPTABLE_DAMAGE_CODE;
+	const real_repair = row.repair_code && row.repair_code !== NO_ACTION_REPAIR_CODE;
+	const noted = !!(row.damage_description || '').trim();
+	const uncoded = !row.damage_type && !row.repair_code;
+	return !!(real_damage || real_repair || noted || uncoded);
+}
+
+function sync_followup_flags(frm, on_change) {
+	const eir_in = frm.doc.inspection_type === 'EIR-In';
+	apply_followup_flag(frm, 'create_cleaning_order', eir_in && frm.doc.tank_status === EMPTY_DIRTY, on_change, {
+		due: __('Tank Empty Dirty — Cleaning Order dibuat saat submit. Hilangkan centang untuk melewati.'),
+		not_due: __('Tidak berlaku: Cleaning Order hanya dibuat untuk tank Empty Dirty.'),
+	});
+	apply_followup_flag(
+		frm,
+		'create_repair_order',
+		eir_in && (frm.doc.damage_log || []).some(damage_row_needs_mr),
+		on_change,
+		{
+			due: __('Ada temuan kerusakan — draft M&R dibuat saat submit. Hilangkan centang untuk melewati.'),
+			not_due: __('Tidak berlaku: belum ada temuan di Checklist Kerusakan.'),
+		},
+	);
+}
+
+function apply_followup_flag(frm, fieldname, due, on_change, hints) {
+	// The reason reads on a submitted EIR too — that is where somebody comes looking for the
+	// Cleaning Order / M&R that never appeared.
+	frm.set_df_property(fieldname, 'description', due ? hints.due : hints.not_due);
+	frm.set_df_property(fieldname, 'read_only', due ? 0 : 1);
+	const was = (frm.__followup_due || {})[fieldname];
+	frm.__followup_due = Object.assign({}, frm.__followup_due, { [fieldname]: due });
+	if (frm.doc.docstatus !== 0) return; // submitted: what happened, happened
+	if (!due) {
+		if (frm.doc[fieldname]) frm.set_value(fieldname, 0);
+		return;
+	}
+	// `was === false` — the follow-up just BECAME due. `undefined` is the first render of a
+	// form that was already due, where the stored answer is the operator's and stands.
+	if (on_change && was === false) frm.set_value(fieldname, 1);
+}
 
 // Frappe's Attach Image control renders as a file LINK and only reveals the picture in a
 // hover popover, so a signed EIR showed "/private/files/eir-signature….png" where the
@@ -1147,6 +1227,7 @@ frappe.ui.form.on('Inspection Damage Entry', {
 
 	repair_code(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
+		sync_followup_flags(frm, true);
 		if (!row.repair_code || row.estimated_repair_hours) return;
 		frappe.db.get_value('Inspection Repair Code', row.repair_code, 'standard_hours').then((r) => {
 			const hours = (r.message || {}).standard_hours;
@@ -1156,6 +1237,7 @@ frappe.ui.form.on('Inspection Damage Entry', {
 
 	damage_type(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
+		sync_followup_flags(frm, true);
 		if (!row.damage_type) return;
 		if (!row.severity) frappe.model.set_value(cdt, cdn, 'severity', 'Minor');
 		if (!row.damage_description) {
@@ -1167,6 +1249,12 @@ frappe.ui.form.on('Inspection Damage Entry', {
 				}
 			});
 		}
+	},
+
+	// A note the surveyor typed counts as a finding on its own (eir_followups), so the
+	// "Buat M&R" box has to answer to it too.
+	damage_description(frm) {
+		sync_followup_flags(frm, true);
 	},
 });
 

@@ -66,15 +66,24 @@ def eir_real_damage_rows(inspection) -> list:
 		],
 		order_by="idx asc",
 	)
-	out = []
-	for r in rows:
-		real_damage = r.damage_type and r.damage_type != ACCEPTABLE_DAMAGE_CODE
-		real_repair = r.repair_code and r.repair_code != NO_ACTION_REPAIR_CODE
-		noted = bool((r.damage_description or "").strip())
-		uncoded = not r.damage_type and not r.repair_code
-		if real_damage or real_repair or noted or uncoded:
-			out.append(r)
-	return out
+	return [r for r in rows if damage_row_needs_mr(r)]
+
+
+def damage_row_needs_mr(row) -> bool:
+	"""One Inspection Damage Entry read as an indication of damage — the four tests spelled
+	out in :func:`eir_real_damage_rows`, on a single row.
+
+	Split out so the rule has ONE home: ``Inspection.sync_followup_flags`` asks it about rows
+	that are still in memory (unsaved), and ``inspection.js`` mirrors it in the browser to
+	tick the "Buat M&R" box live.
+	"""
+	damage_type = row.get("damage_type")
+	repair_code = row.get("repair_code")
+	real_damage = damage_type and damage_type != ACCEPTABLE_DAMAGE_CODE
+	real_repair = repair_code and repair_code != NO_ACTION_REPAIR_CODE
+	noted = bool((row.get("damage_description") or "").strip())
+	uncoded = not damage_type and not repair_code
+	return bool(real_damage or real_repair or noted or uncoded)
 
 
 def eir_needs_mr(inspection) -> bool:
