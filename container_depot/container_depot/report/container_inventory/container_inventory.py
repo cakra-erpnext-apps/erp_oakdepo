@@ -31,7 +31,6 @@ def _columns():
 		{"fieldname": "last_cargo", "label": "Last Cargo", "fieldtype": "Link", "options": "Cargo", "width": 120},
 		{"fieldname": "in_date", "label": "In Date", "fieldtype": "Date", "width": 100},
 		{"fieldname": "days_in_depo", "label": "Days In Depo", "fieldtype": "Int", "width": 110},
-		{"fieldname": "next_pt_due", "label": "Next PT Due", "fieldtype": "Date", "width": 100},
 	]
 
 
@@ -52,7 +51,7 @@ def _data(filters):
 	rows = frappe.db.sql(
 		f"""
 		SELECT c.container_no, c.principal, c.container_type, c.size, c.inventory_stage,
-		       c.status, c.last_cargo, c.eir_in_date, c.next_pt_due
+		       c.status, c.last_cargo, c.eir_in_date
 		FROM `tabContainer` c{clause}
 		ORDER BY c.principal, c.container_no
 		""",
@@ -76,6 +75,5 @@ def _data(filters):
 			"last_cargo": r.last_cargo,
 			"in_date": in_date,
 			"days_in_depo": days,
-			"next_pt_due": r.next_pt_due,
 		})
 	return out

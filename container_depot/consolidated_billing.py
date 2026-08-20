@@ -1,13 +1,13 @@
 """On-demand consolidated billing for postpaid (TOP) customers.
 
-A TOP customer's charges — TOP bookings, TOP survey orders, and their cleaning,
-M&R, periodic tests and storage — accrue *unbilled*. The depot triggers :func:`bill_customer`
+A TOP customer's charges — TOP bookings and their cleaning, M&R and storage —
+accrue *unbilled*. The depot triggers :func:`bill_customer`
 (the **Generate Invoice** button on the *Order Billing Status* report: pick a
 customer + optional window) to sweep everything unbilled into draft Sales
 Invoices (PPN applied) and mark each source billed so re-runs never double-charge.
 
 **One draft Sales Invoice per currency.** A customer may transact in more than one
-currency (e.g. USD bookings + IDR surveys). ERPNext invoices are single-currency,
+currency (e.g. USD bookings + IDR cleaning). ERPNext invoices are single-currency,
 so charges are grouped by their order's currency and each currency gets its own
 draft invoice, billed in that currency (value-as-is, conversion_rate 1). Never
 force everything onto the company default (IDR) — that mis-states USD charges.
@@ -21,9 +21,9 @@ invoice as *generated*, its line items are frozen — you cannot delete/edit lin
 (:func:`protect_consolidated_items`); to change what is billed, fix the source
 order and rollback + re-generate.
 
-Only **TOP** charges are swept. Bookings and Survey Orders carry a per-order
+Only **TOP** charges are swept. Bookings carry a per-order
 ``payment_type`` — Cash ones settle at the transaction and are skipped here.
-Cleaning / M&R / Periodic Test / Storage have no per-order payment type; they accrue at the
+Cleaning / M&R / Storage have no per-order payment type; they accrue at the
 container-owner level and are only swept when the customer is postpaid
 (``_is_postpaid``), otherwise the monthly scheduler bills them and sweeping here
 too would double-charge.
@@ -157,9 +157,8 @@ def _cleaning_lines(customer, lo, hi):
 
 
 # Work orders: a completed job carrying a table of used items, billed one invoice line per
-# item. M&R and the Periodic Test are the same thing to accounting — the tank is worked on,
-# parts and services are consumed, the owner is charged — and differ only in which work it
-# was. So they are billed by one function and told apart by a label and a party field.
+# item. Kept as a registry (rather than inlined into the M&R builder) because the shape is
+# generic — a work order is told apart only by its label and party field.
 _WORK_ORDERS = (
 	{
 		"doctype": "Repair Order",
@@ -168,19 +167,11 @@ _WORK_ORDERS = (
 		"party_field": "principal",
 		"label": "M&R",
 	},
-	{
-		"doctype": "Periodic Test Order",
-		"child": "Periodic Used Item",
-		# The periodic test carries an explicit ``billed_to`` (defaulted to the owner in
-		# validate, but overridable), so the bill follows it rather than the owner.
-		"party_field": "billed_to",
-		"label": "Periodic Test",
-	},
 )
 
 
-# Both carry billing_status + a sales_invoice back-link, so _mark_billed / _unmark_billed
-# treat them as one kind rather than naming each doctype.
+# Work orders carry billing_status + a sales_invoice back-link, so _mark_billed /
+# _unmark_billed treat them as one kind rather than naming each doctype.
 _WORK_ORDER_DOCTYPES = frozenset(spec["doctype"] for spec in _WORK_ORDERS)
 
 
@@ -208,24 +199,42 @@ def _work_order_lines(customer, lo, hi, spec):
 		fields=["name"],
 	)
 	fallback_ccy = _fallback_currency(customer)
+	# Ask the child doctype whether it carries a negotiated labour tariff rather than
+	# assuming every work-order child is shaped alike.
+	labour_fields = (
+		["manhour", "manhour_rate"]
+		if frappe.get_meta(spec["child"]).has_field("manhour_rate")
+		else []
+	)
 	units = []
 	for r in rows:
 		used = frappe.get_all(
 			spec["child"],
 			filters={"parent": r.name, "parenttype": spec["doctype"]},
-			fields=["item", "item_name", "quantity", "item_rate", "currency", "decision"],
+			fields=["item", "item_name", "quantity", "item_rate", "currency", "decision"] + labour_fields,
 			order_by="idx asc",
 		)
 		lines, currencies = [], set()
 		for u in used:
 			if not u.item or (u.decision or "Pending") == "Rejected":
 				continue
-			lines.append({
+			line = {
 				"item_code": u.item,
 				"description": f"{spec['label']} {r.name} · {u.item_name or u.item}",
 				"qty": flt(u.quantity) or 1,
 				"rate": flt(u.item_rate),
-			})
+			}
+			# The hours THIS line agreed to book and the tariff it was quoted at — the order is
+			# what the owner approved, so it, not the item master, is what the invoice bills.
+			# Passed ONLY when the row actually carries hours: an order saved before the row
+			# started stamping them would otherwise send an explicit 0 and suppress the labour
+			# ``invoicing.create_draft_sales_invoice`` would have looked up for itself.
+			# ``manhour_rate`` never reaches a Sales Invoice Item; ``_negotiated_manhour_hour``
+			# reads it back out to set the header tariff.
+			if labour_fields and flt(u.get("manhour")):
+				line["manhour"] = flt(u.manhour)
+				line["manhour_rate"] = flt(u.manhour_rate)
+			lines.append(line)
 			if u.currency:
 				currencies.add(u.currency)
 		if not lines:
@@ -241,54 +250,22 @@ def _work_order_lines(customer, lo, hi, spec):
 	return units
 
 
+def _negotiated_manhour_hour(lines) -> float | None:
+	"""The hourly tariff to stamp on the invoice header, or None to let it seed itself.
+
+	The invoice charges labour ONCE: total hours × one tariff. So a negotiated rate can only
+	be honoured when every line that books hours agrees on it — which is the normal case, since
+	a rate card states one price for an hour of depot labour. When they disagree (two orders
+	quoted differently in the same period) there is no single answer to stamp, so this returns
+	None and the header falls back to the customer's own rate card, exactly as before.
+	"""
+	rates = {flt(ln.get("manhour_rate")) for ln in lines if flt(ln.get("manhour")) and flt(ln.get("manhour_rate"))}
+	return rates.pop() if len(rates) == 1 else None
+
+
 def _mr_lines(customer, lo, hi):
 	"""Completed, Unbilled Repair Orders (see :func:`_work_order_lines`)."""
 	return _work_order_lines(customer, lo, hi, _WORK_ORDERS[0])
-
-
-def _periodic_lines(customer, lo, hi):
-	"""Completed, Unbilled Periodic Test Orders (see :func:`_work_order_lines`)."""
-	return _work_order_lines(customer, lo, hi, _WORK_ORDERS[1])
-
-
-def _survey_lines(customer, lo, hi):
-	"""Unbilled (no ``sales_invoice``) submitted **TOP** Survey Orders billed to the
-	customer (``paid_to``) → one line per priced charge row.
-
-	Cash surveys raise their own draft invoice at submit and are skipped here."""
-	rows = frappe.get_all(
-		"Survey Order",
-		filters={
-			"paid_to": customer,
-			"payment_type": "TOP",
-			"docstatus": 1,
-			"sales_invoice": ["is", "not set"],
-			"creation": ["between", [lo, hi]],
-		},
-		fields=["name", "currency"],
-	)
-	fallback = _fallback_currency(customer)
-	units = []
-	for row in rows:
-		charges = frappe.get_all(
-			"Survey Order Charge", filters={"parent": row.name},
-			fields=["item", "price", "container_no", "container", "survey_date"], order_by="idx asc",
-		)
-		lines = []
-		for c in charges:
-			if not c.item or flt(c.price) <= 0:
-				continue
-			ref = c.container_no or c.container or ""
-			desc = f"Survey {row.name}" + (f" · {ref}" if ref else "")
-			lines.append({"item_code": c.item, "description": desc, "qty": 1, "rate": flt(c.price)})
-		if not lines:
-			continue
-		units.append({
-			"currency": row.currency or fallback,
-			"lines": lines,
-			"sources": [{"dt": "Survey Order", "name": row.name}],
-		})
-	return units
 
 
 def _storage_lines(customer, from_date, to_date):
@@ -337,22 +314,20 @@ def _storage_lines(customer, from_date, to_date):
 # Storage alone, …) and a window; everything downstream — preview, fill, the report's
 # selection — works off this registry rather than a hard-coded sweep.
 # --------------------------------------------------------------------------- #
-CATEGORIES = ("Booking", "Survey", "Cleaning", "M&R", "Periodic Test", "Storage")
+CATEGORIES = ("Booking", "Cleaning", "M&R", "Storage")
 
-# Bookings and Survey Orders carry their own ``payment_type``, so their TOP rows are
-# billable for anyone. The rest accrue at the container-owner level with no per-order
-# payment type, and are only swept for a postpaid customer — a pure-Cash customer's are
-# the monthly scheduler's to bill, and sweeping them here too would double-charge.
-_ACCRUAL_CATEGORIES = frozenset({"Cleaning", "M&R", "Periodic Test", "Storage"})
+# Bookings carry their own ``payment_type``, so their TOP rows are billable for anyone.
+# The rest accrue at the container-owner level with no per-order payment type, and are
+# only swept for a postpaid customer — a pure-Cash customer's are the monthly scheduler's
+# to bill, and sweeping them here too would double-charge.
+_ACCRUAL_CATEGORIES = frozenset({"Cleaning", "M&R", "Storage"})
 
 # Storage is deliberately absent: alone among the categories it has no order document to
 # read, so it is built from plain dates rather than datetime bounds (see collect_units).
 _BUILDERS = {
 	"Booking": _booking_lines,
-	"Survey": _survey_lines,
 	"Cleaning": _cleaning_lines,
 	"M&R": _mr_lines,
-	"Periodic Test": _periodic_lines,
 }
 
 # Shared billing number across the per-currency invoices of one run (see _issue_group).
@@ -439,10 +414,6 @@ def _mark_billed(dt, name, si):
 		frappe.db.set_value(dt, name, {"sales_invoice": si, "payment_status": "Invoiced"}, update_modified=False)
 	elif dt in _WORK_ORDER_DOCTYPES:
 		frappe.db.set_value(dt, name, {"billing_status": "Client Billed", "sales_invoice": si}, update_modified=False)
-	elif dt == "Survey Order":
-		# Link the (draft) SI; the Sales Invoice → Survey Order bridge (hooks.doc_events)
-		# advances invoice_status to Unpaid/Paid once it is submitted & settled.
-		frappe.db.set_value(dt, name, {"sales_invoice": si, "invoice_status": "Draft"}, update_modified=False)
 	elif dt == "Cleaning Order":
 		frappe.db.set_value(dt, name, "sales_invoice", si, update_modified=False)
 
@@ -450,14 +421,15 @@ def _mark_billed(dt, name, si):
 def _unmark_billed(dt, name):
 	"""Reverse :func:`_mark_billed` — return the order to its pre-generate, un-invoiced
 	state so it is billable again."""
-	if not frappe.db.exists(dt, name):
+	# A manifest written before a doctype was taken down (Periodic Test Order / Survey
+	# Order, v0_66) still names it; rolling back such an invoice must not blow up on a
+	# table that no longer exists.
+	if not frappe.db.exists("DocType", dt) or not frappe.db.exists(dt, name):
 		return
 	if dt == "Container Booking":
 		frappe.db.set_value(dt, name, {"sales_invoice": None, "payment_status": "Unpaid"}, update_modified=False)
 	elif dt in _WORK_ORDER_DOCTYPES:
 		frappe.db.set_value(dt, name, {"billing_status": "Unbilled", "sales_invoice": None}, update_modified=False)
-	elif dt == "Survey Order":
-		frappe.db.set_value(dt, name, {"sales_invoice": None, "invoice_status": "Not Invoiced"}, update_modified=False)
 	elif dt == "Cleaning Order":
 		frappe.db.set_value(dt, name, "sales_invoice", None, update_modified=False)
 
@@ -643,6 +615,7 @@ def fill_invoice(customer, categories=None, from_date=None, to_date=None, keys=N
 			remarks=f"Consolidated billing for {customer} ({from_d} → {to_d}) · {ccy}",
 			taxes_and_charges=invoicing.PPN_TEMPLATE,
 			currency=ccy,
+			manhour_hour=_negotiated_manhour_hour(g["lines"]),
 		)
 		if not si:
 			continue
@@ -689,6 +662,7 @@ def fill_invoice_from_orders(customer, orders):
 			remarks=f"Consolidated billing for {customer} · {len(wanted)} order dipilih · {ccy}",
 			taxes_and_charges=invoicing.PPN_TEMPLATE,
 			currency=ccy,
+			manhour_hour=_negotiated_manhour_hour(g["lines"]),
 		)
 		if not si:
 			continue

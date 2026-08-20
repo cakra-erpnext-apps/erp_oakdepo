@@ -19,8 +19,6 @@ from frappe.tests.utils import FrappeTestCase
 from container_depot import seed_dev
 from container_depot.container_depot import mr, service_menu
 from container_depot.container_depot.doctype.depot_contract import depot_contract
-from container_depot.container_depot.doctype.periodic_test_order import periodic_test_order
-from container_depot.container_depot.doctype.survey_order import survey_order
 
 _PREFIX = "ZZ-MENU-TEST"
 _MENU = "ZZ Menu Test"
@@ -202,9 +200,8 @@ class TestDepotServiceMenu(FrappeTestCase):
 	# --- every price-list picker declares its catalogue through a menu ---------
 	def test_a_menu_exists_for_every_price_list_picker(self):
 		"""One menu per flow whose item picker is scoped by a price list. A flow missing from
-		here means its filter lives in code, where no operator can see or change it — which is
-		how Survey Order and Periodic Test Order ended up offering the whole catalogue."""
-		expected = {"Booking", "Cleaning", "Maintenance", "Survey", "Periodic Test"}
+		here means its filter lives in code, where no operator can see or change it."""
+		expected = {"Booking", "Cleaning", "Maintenance"}
 		self.assertEqual(set(service_menu.DEFAULT_MENUS), expected)
 		# The dev seeder must cover exactly the same flows, or dev and production drift.
 		self.assertEqual({name for name, _seq, _groups in seed_dev.MENUS}, expected)
@@ -241,37 +238,6 @@ class TestDepotServiceMenu(FrappeTestCase):
 		# A booking prices the lift and nothing else.
 		booking = next(groups for name, _seq, groups in seed_dev.MENUS if name == "Booking")
 		self.assertEqual(booking, ["LOLO"])
-
-	def test_survey_picker_is_scoped_to_the_survey_menu(self):
-		"""A survey charge offers only what the "Survey" menu declares. The no-price-list case
-		is the one that used to escape the filter entirely (it returned every sellable item)."""
-		group = frappe.db.get_value("Depot Service Menu Group", {"parent": "Survey"}, "item_group")
-		self._ensure_item(f"{_PREFIX}-SVY", group)
-		codes = {
-			r[0]
-			for r in survey_order.item_price_query(
-				doctype="Item", txt=_PREFIX, searchfield="name", start=0, page_len=20, filters={}
-			)
-		}
-		self.assertIn(f"{_PREFIX}-SVY", codes)
-		self.assertNotIn(f"{_PREFIX}-A", codes)      # test group — outside the menu
-		self.assertNotIn(f"{_PREFIX}-MR", codes)     # a Maintenance item is not a survey charge
-
-	def test_periodic_test_picker_is_scoped_to_its_menu(self):
-		"""Same contract for Periodic Test Order, which had no query on the field at all."""
-		group = frappe.db.get_value(
-			"Depot Service Menu Group", {"parent": "Periodic Test"}, "item_group"
-		)
-		self._ensure_item(f"{_PREFIX}-PT", group)
-		codes = {
-			r[0]
-			for r in periodic_test_order.used_item_query(
-				doctype="Item", txt=_PREFIX, searchfield="name", start=0, page_len=20, filters={}
-			)
-		}
-		self.assertIn(f"{_PREFIX}-PT", codes)
-		self.assertNotIn(f"{_PREFIX}-SVY", codes)    # a survey fee is not a periodic test
-		self.assertNotIn(f"{_PREFIX}-A", codes)
 
 	# --- contract paste-import ------------------------------------------------
 	def test_import_paste_with_defaults_and_unknown(self):

@@ -18,7 +18,6 @@ const ITEM_PICKERS = {
 	"Container Booking": [[null, "lift_item"]], // Lift Service (contract price list)
 	"Cleaning Order": [["cleaning_services", "cleaning_item"]], // Service (owner price list)
 	"Repair Order": [["used_items", "item"]], // Item (Service / Part)
-	"Survey Order": [["charges", "item"]], // survey charge (header price list)
 	"Sales Invoice": [["items", "item_code"]],
 };
 

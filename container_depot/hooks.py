@@ -92,11 +92,9 @@ doc_events = {
 	"Payment Entry": {
 		"on_submit": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
-			"container_depot.container_depot.doctype.survey_order.survey_order.on_payment_entry_change",
 		],
 		"on_cancel": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
-			"container_depot.container_depot.doctype.survey_order.survey_order.on_payment_entry_change",
 		],
 	},
 	# Keep a Container Booking pinned to a VALID Sales Invoice. EVERY handler below is a
@@ -116,18 +114,15 @@ doc_events = {
 		],
 		"after_insert": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.relink_amended_invoice",
-			"container_depot.container_depot.doctype.survey_order.survey_order.relink_amended_invoice",
 		],
 		"on_submit": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.sync_booking_on_invoice_submit",
-			"container_depot.container_depot.doctype.survey_order.survey_order.sync_survey_on_invoice_submit",
 			# Tell the Cashier / Commercial there is a bill (and, unless it is already
 			# settled, money to collect).
 			"container_depot.container_depot.notify.notify_invoice_submitted",
 		],
 		"on_cancel": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
-			"container_depot.container_depot.doctype.survey_order.survey_order.sync_survey_on_invoice_cancel",
 			# Roll a generated invoice's orders back to un-invoiced (no-op otherwise).
 			"container_depot.consolidated_billing.rollback_billed_sources",
 		],
@@ -167,7 +162,7 @@ def _append_event(doctype, event, handler):
 
 for _dt in _REVOCABLE_DOCTYPES:
 	_append_event(_dt, "on_cancel", _REVOKE)
-for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Survey Order", "Gate Entry"):
+for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Gate Entry"):
 	_append_event(_dt, "on_trash", _REVOKE)
 del _dt
 
@@ -192,7 +187,6 @@ del _ev
 
 scheduler_events = {
 	"daily": [
-		"container_depot.tasks.remind_periodic_test_due",
 		"container_depot.tasks.notify_customers",
 		# Reconcile the bell: doc_events miss raw/bulk deletes, so sweep the feed
 		# entries whose source document is cancelled or gone.
@@ -327,7 +321,6 @@ doctype_js = {
 	"Container Booking": "public/js/lock_item_picker.js",
 	"Cleaning Order": "public/js/lock_item_picker.js",
 	"Repair Order": "public/js/lock_item_picker.js",
-	"Survey Order": "public/js/lock_item_picker.js",
 	# Rapikan form User baru + guard handler Role Profiles bawaan (lihat file-nya).
 	"User": "public/js/user.js",
 }

@@ -98,12 +98,12 @@ class TestRoleMenu(FrappeTestCase):
 		# ess/repairs.py and ess/documents.py. Cosmetics are not worth that.
 		self.assertEqual(self._menu_as(USERS["Team Cleaning"]), {"cleaning", "monitor"})
 		# What matters is the negative: no gate, no EIR, no M&R, no survey.
-		for forbidden in ("gate", "eir", "mr", "periodicTest", "surveyPos", "posFix"):
+		for forbidden in ("gate", "eir", "mr", "surveyPos", "posFix"):
 			self.assertNotIn(forbidden, self._menu_as(USERS["Team Cleaning"]))
 
 	def test_spv_gets_all_menus(self):
 		self.assertEqual(self._menu_as(USERS["SPV Lapangan"]), set(MENU_KEYS))
-		self.assertEqual(len(MENU_KEYS), 8)
+		self.assertEqual(len(MENU_KEYS), 7)
 
 	def test_office_role_gets_empty_menu(self):
 		# Cashier holds real DocPerms (Container read, Gate Entry read) but no field role,

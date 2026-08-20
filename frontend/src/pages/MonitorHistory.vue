@@ -69,7 +69,6 @@ const ICONS = {
 	"Inspection (EIR)": "clipboard",
 	Cleaning: "droplet",
 	Repair: "tool",
-	"Periodic Test": "check-circle",
 	"Order Bongkar": "download",
 	"Order Muat": "upload",
 	Release: "send",

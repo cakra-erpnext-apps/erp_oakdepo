@@ -3,8 +3,8 @@
 Three groups, because they answer different questions:
 
 * **Pekerjaan Depo** — the orders the EIR raised on submit: a Cleaning Order for a dirty
-  tank, an M&R for an indication of damage, and any Periodic Test Order later filed against
-  it. All three carry ``inspection``, so they are found by the standard fieldname.
+  tank and an M&R for an indication of damage. Both carry ``inspection``, so they are found
+  by the standard fieldname.
 * **Gate** — the gate record whose ``eir_reference`` is this EIR. An EIR-Out submit IS the
   departure (``gate.mark_gate_out``), so this is where the visit was closed.
 * **EIR** — the EIR-Out that used this EIR-In as its comparison baseline
@@ -30,7 +30,7 @@ def get_data():
 			"Container Booking": "container_booking",
 		},
 		"transactions": [
-			{"label": "Pekerjaan Depo", "items": ["Cleaning Order", "Repair Order", "Periodic Test Order"]},
+			{"label": "Pekerjaan Depo", "items": ["Cleaning Order", "Repair Order"]},
 			{"label": "Gate", "items": ["Gate Entry"]},
 			{"label": "EIR", "items": ["Inspection"]},
 			{"label": "Tank & Booking", "items": ["Container", "Container Booking"]},

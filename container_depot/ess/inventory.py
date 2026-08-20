@@ -24,7 +24,6 @@ from container_depot.api import _require_authenticated_user
 from container_depot.ess.guard import require_menu
 from container_depot.container_depot import container_activity
 from container_depot.container_depot.user_branch import get_user_depots
-from container_depot.tasks import PT_REMINDER_DAYS
 
 # Canonical Monitor status buckets — order-state centric so a field observer sees the
 # concrete work state per container (keys are stable; labels live in the front-end).
@@ -147,24 +146,9 @@ def _order_ref(drv):
 	return {"kind": drv["kind"], "doctype": drv["doctype"], "name": drv["name"], "status": drv["status"]}
 
 
-def _pt_due_set(names):
-	"""Container names whose next periodic test (``Container.next_pt_due``) falls within the
-	reminder horizon — same horizon + source as ``remind_periodic_test_due`` so counts
-	reconcile. The Container master is the single source of truth for the next due-date."""
-	if not names:
-		return set()
-	horizon = add_to_date(getdate(today()), days=PT_REMINDER_DAYS)
-	rows = frappe.get_all(
-		"Container",
-		filters={"name": ["in", names], "next_pt_due": ["is", "set"]},
-		fields=["name", "next_pt_due"],
-	)
-	return {r.name for r in rows if r.next_pt_due and getdate(r.next_pt_due) <= horizon}
-
-
 @frappe.whitelist(methods=["GET"])
 def get_inventory_summary(depot=None):
-	"""Status-count header + periodic-test-due count, depot-scoped.
+	"""Status-count header, depot-scoped.
 
 	GET /api/v1/ess/inventory-summary
 	"""
@@ -173,7 +157,7 @@ def get_inventory_summary(depot=None):
 	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
 	scoped = _apply_user_depot_scope(filters, depot)
 	if scoped is None:
-		return {"success": True, "counts": {b: 0 for b in BUCKETS}, "periodic_test_due": 0, "total": 0}
+		return {"success": True, "counts": {b: 0 for b in BUCKETS}, "total": 0}
 	filters = scoped
 
 	# Permission-aware: User Permissions on Depot (and DocPerms) filter this.
@@ -185,7 +169,6 @@ def get_inventory_summary(depot=None):
 	)
 	names = [c.name for c in containers]
 	driving = _driving_orders(names)
-	pt_due = _pt_due_set(names)
 
 	counts = {b: 0 for b in BUCKETS}
 	for c in containers:
@@ -196,7 +179,6 @@ def get_inventory_summary(depot=None):
 	return {
 		"success": True,
 		"counts": counts,
-		"periodic_test_due": len(pt_due),
 		"total": len(names),
 	}
 
@@ -244,7 +226,6 @@ def get_tank_list(
 	)
 	names = [r.name for r in rows]
 	driving = _driving_orders(names)
-	pt_due = _pt_due_set(names)
 
 	today_flag = cint(today)
 	today_set = None
@@ -277,7 +258,6 @@ def get_tank_list(
 				"status": bucket,
 				"raw_status": r.status,  # exact Container.status (drives the gate-out action eligibility)
 				"order_bongkar": r.last_order_bongkar,
-				"pt_due": r.name in pt_due,
 				# Which order put the tank in this bucket (draft/pending/in_progress) —
 				# lets the UI say "Draft M&R" and link straight to the order.
 				"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
@@ -337,7 +317,7 @@ def list_user_depots():
 
 @frappe.whitelist(methods=["GET"])
 def get_tank_detail(container):
-	"""Single-tank detail with derived status + periodic-test-due flag.
+	"""Single-tank detail with derived status.
 
 	GET /api/v1/ess/tank-detail
 	"""
@@ -348,7 +328,6 @@ def get_tank_detail(container):
 	doc = frappe.get_doc("Container", container)
 	drv = _driving_orders([doc.name]).get(doc.name)
 	st = (drv or {}).get("state")
-	pt_due = _pt_due_set([doc.name])
 	bucket = derive_status(doc.status, st == "in_progress", st == "pending", st == "draft")
 
 	return {
@@ -366,12 +345,10 @@ def get_tank_detail(container):
 		"tare_weight": doc.tare_weight,
 		"max_gross_weight": doc.max_gross_weight,
 		"last_test_date": str(doc.last_test_date) if doc.last_test_date else None,
-		"next_pt_due": str(doc.next_pt_due) if doc.next_pt_due else None,
 		"serial_no": doc.serial_no,
 		"eir_in_date": str(doc.eir_in_date) if doc.eir_in_date else None,
 		"eir_out_date": str(doc.eir_out_date) if doc.eir_out_date else None,
 		"status": bucket,
-		"pt_due": bool(pt_due),
 		"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
 	}
 
@@ -383,12 +360,11 @@ def _count_active_job_containers(allowed) -> int:
 	supervisor nothing; "31 tanks with a job running" is the number they chase. Open
 	means the same thing it means everywhere else in the app — see
 	``container_status.container_open_orders``, which this deliberately mirrors: a draft
-	EIR-In, or a Cleaning / M&R / Periodic Test order not yet finished. EIR-Out is
+	EIR-In, or a Cleaning / M&R order not yet finished. EIR-Out is
 	excluded there and excluded here.
 	"""
 	from container_depot.container_depot.container_status import (
 		DONE_CLEANING,
-		DONE_PERIODIC,
 		DONE_REPAIR,
 	)
 
@@ -403,7 +379,6 @@ def _count_active_job_containers(allowed) -> int:
 	for doctype, done in (
 		("Cleaning Order", DONE_CLEANING),
 		("Repair Order", DONE_REPAIR),
-		("Periodic Test Order", DONE_PERIODIC),
 	):
 		containers |= set(
 			frappe.get_all(
@@ -429,7 +404,6 @@ def get_dashboard_summary(depot=None):
 	Sections, each gated on its menu key:
 
 	* ``counts`` / ``total`` — container per status bucket (``monitor``)
-	* ``periodic_test_due`` — tanks past their next test date (``periodicTest``)
 	* ``today`` — Gate In / Out (``gate``), EIR submitted today (``eir``)
 	* ``pending`` — per-worklist open counts, one key per menu
 	* ``active_jobs`` — tanks with a job running; supervisors only (every menu)
@@ -451,15 +425,11 @@ def get_dashboard_summary(depot=None):
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
 	out = {"success": True, "menu": sorted(menu)}
 
-	# 1) Container-per-status buckets (+ periodic-test-due) — reuse the summary. One
-	# query serves both cards, so compute it when either menu is present.
-	if {"monitor", "periodicTest"} & menu:
+	# 1) Container-per-status buckets — reuse the summary.
+	if "monitor" in menu:
 		summary = get_inventory_summary(depot)
-		if "monitor" in menu:
-			out["counts"] = summary["counts"]
-			out["total"] = summary["total"]
-		if "periodicTest" in menu:
-			out["periodic_test_due"] = summary["periodic_test_due"]
+		out["counts"] = summary["counts"]
+		out["total"] = summary["total"]
 
 	# 2) Today's activity from the Container Activity log (depot-scoped).
 	act_filters = {"activity_time": [">=", today()]}

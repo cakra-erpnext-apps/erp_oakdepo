@@ -1,8 +1,7 @@
 """Monthly categorized invoice generation (Tank Owner billing).
 
 Aggregates a prior month's depot activity into one OAK Monthly Invoice per
-(customer, period, category): Cleaning / M&R / Periodic Test / Storage /
-Order Service. Each
+(customer, period, category): Cleaning / M&R / Storage / Order Service. Each
 invoice's ``on_submit`` then issues a native ERPNext Sales Invoice with PPN.
 
 Invoked monthly by :func:`container_depot.tasks.generate_monthly_invoices`, but
@@ -20,7 +19,7 @@ from container_depot.pricing import CLEANING_ITEM, STORAGE_ITEM, resolve_tariff_
 # Lift on/off charges are billed at the BOOKING (Cash: paid at submit; TOP: swept
 # by consolidated_billing). The voucher (Order Bongkar/Muat) is operational only,
 # so there is no order-based billing category here.
-CATEGORIES = ("Cleaning", "M&R", "Periodic Test", "Storage")
+CATEGORIES = ("Cleaning", "M&R", "Storage")
 
 
 def _period_window(period=None):
@@ -57,7 +56,7 @@ def _is_postpaid(customer):
 def _work_order_items(customer, from_date, to_date, doctype, party_field, label):
 	"""Work-order charges for the monthly scheduler — ONE lump line per order.
 
-	Work orders (M&R, Periodic Test) are a TOP arrangement in practice, so they are normally
+	Work orders (M&R) are a TOP arrangement in practice, so they are normally
 	swept by ``consolidated_billing._work_order_lines`` instead, which bills item by item
 	precisely so the Sales Invoice can charge labour off each ``item_code``. This monthly
 	path only fires for a pure-Cash customer, and an OAK Monthly Invoice has no manhour
@@ -85,12 +84,6 @@ def _work_order_items(customer, from_date, to_date, doctype, party_field, label)
 
 def _mr_items(customer, from_date, to_date):
 	return _work_order_items(customer, from_date, to_date, "Repair Order", "principal", "M&R")
-
-
-def _periodic_items(customer, from_date, to_date):
-	return _work_order_items(
-		customer, from_date, to_date, "Periodic Test Order", "billed_to", "Periodic Test"
-	)
 
 
 def _cleaning_items(customer, from_date, to_date):
@@ -181,7 +174,6 @@ def _days_in_depot(container, from_date, to_date):
 _BUILDERS = {
 	"Cleaning": _cleaning_items,
 	"M&R": _mr_items,
-	"Periodic Test": _periodic_items,
 	"Storage": _storage_items,
 }
 

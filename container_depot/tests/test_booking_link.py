@@ -84,7 +84,7 @@ class TestBookingLink(FrappeTestCase):
 
 	@classmethod
 	def tearDownClass(cls):
-		for doctype in ("Cleaning Order", "Repair Order", "Periodic Test Order", "Inspection"):
+		for doctype in ("Cleaning Order", "Repair Order", "Inspection"):
 			frappe.db.delete(doctype, {"container": ("in", [cls.container, cls.other])})
 		bookings = (cls.booking, cls.foreign_booking, cls.multi)
 		frappe.db.delete("Order Bongkar", {"booking": ("in", list(bookings))})
@@ -123,7 +123,7 @@ class TestBookingLink(FrappeTestCase):
 
 	def test_orders_inherit_the_booking_from_their_eir(self):
 		eir = self._eir(voucher=self.bon)
-		for doctype in ("Cleaning Order", "Repair Order", "Periodic Test Order"):
+		for doctype in ("Cleaning Order", "Repair Order"):
 			with self.subTest(doctype=doctype):
 				order = self._order(doctype, inspection=eir)
 				self.assertEqual(order.container_booking, self.booking)
@@ -131,7 +131,7 @@ class TestBookingLink(FrappeTestCase):
 	def test_an_order_without_an_eir_stands_alone(self):
 		"""The whole point of the rule. The container IS on a booking, and the order still
 		gets no parent — because nothing says THIS work belongs to THAT visit."""
-		for doctype in ("Cleaning Order", "Repair Order", "Periodic Test Order"):
+		for doctype in ("Cleaning Order", "Repair Order"):
 			with self.subTest(doctype=doctype):
 				order = self._order(doctype)
 				self.assertFalse(
@@ -216,13 +216,13 @@ class TestBookingLink(FrappeTestCase):
 
 		ERPNext hands every submittable doctype a blanket ``{"docstatus": 0}`` open filter,
 		which got Cleaning Order wrong (its life is in ``status``; submitting is a separate
-		act) and skipped Repair Order and Periodic Test Order entirely because they are not
-		submittable — a booking with repairs in progress showed no badge at all.
+		act) and skipped Repair Order entirely because it is not submittable — a booking
+		with repairs in progress showed no badge at all.
 		"""
 		from frappe.desk.notifications import get_filters_for
 
 		frappe.cache.hdel("notification_config", frappe.session.user)
-		for doctype in ("Cleaning Order", "Repair Order", "Periodic Test Order"):
+		for doctype in ("Cleaning Order", "Repair Order"):
 			with self.subTest(doctype=doctype):
 				f = get_filters_for(doctype)
 				self.assertIn("status", f, f"{doctype} must count open work by status")

@@ -207,7 +207,6 @@ REVOCABLE_DOCTYPES = (
 	"Inspection",
 	"Cleaning Order",
 	"Repair Order",
-	"Survey Order",
 	"Gate Entry",
 )
 
@@ -588,15 +587,3 @@ def notify_invoice_submitted(invoice, method=None):
 		branch=invoice.get("branch"),
 		event_key="invoice_submitted",
 	)
-
-
-def notify_survey_order_submitted(order):
-	"""Fire when a Survey Order is submitted — third-party survey charges billed to the
-	Paid To. Cash raises a draft invoice to review and collect, so the Cashier is told."""
-	money = frappe.utils.fmt_money(frappe.utils.flt(order.get("total")), currency=order.get("currency"))
-	pay = order.get("payment_type") or "Cash"
-	tail = " • bayar di kasir" if pay == "Cash" else ""
-	subject = f"Survey Order {order.name} • {_customer_name(order.get('paid_to'))} • {money} • {pay}{tail}"
-	# Survey Order carries no branch/depot of its own; its charge rows may each name a
-	# different container, so there is no single branch to scope to.
-	notify(doctype="Survey Order", name=order.name, subject=subject, event_key="survey_order_submitted")

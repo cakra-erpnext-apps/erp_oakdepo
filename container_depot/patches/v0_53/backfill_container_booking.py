@@ -17,7 +17,9 @@ Idempotent — only ever fills a blank, never rewrites a value.
 import frappe
 
 # Orders that inherit the booking from their EIR, and the field naming that EIR.
-ORDER_DOCTYPES = ("Cleaning Order", "Repair Order", "Periodic Test Order")
+# "Periodic Test Order" was here too, until v0_66 took that menu down — a doctype named
+# by a historical patch has to be skipped when it is gone, not assumed.
+ORDER_DOCTYPES = ("Cleaning Order", "Repair Order")
 
 
 def execute():
@@ -56,11 +58,10 @@ def _backfill_inspections() -> int:
 def _backfill_orders(doctype: str) -> int:
 	"""Work order -> its EIR -> the booking just stamped above.
 
-	``Periodic Test Order.inspection`` is new too, so it is empty everywhere and this is a
-	no-op for it today. It is included so the patch does not have to be rewritten the first
-	time a periodic test is raised off an EIR on an older site.
+	A doctype that no longer exists (or has not been synced yet) is skipped rather than
+	raising: this patch also runs on a fresh site, where the table may never appear.
 	"""
-	if not frappe.db.has_column(doctype, "inspection"):
+	if not frappe.db.table_exists(doctype) or not frappe.db.has_column(doctype, "inspection"):
 		return 0
 	rows = frappe.get_all(
 		doctype,

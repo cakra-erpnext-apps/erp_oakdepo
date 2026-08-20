@@ -109,8 +109,6 @@ REPLAYED_ENDPOINTS = [
 	("container_depot.ess.cleaning", "cleaning_order_save", "container_depot.container_depot.cleaning", "save_cleaning_order"),
 	("container_depot.ess.repairs", "mr_start", "container_depot.container_depot.mr", "start_repair"),
 	("container_depot.ess.repairs", "mr_order_save", "container_depot.container_depot.mr", "save_mr_order"),
-	("container_depot.ess.periodic", "pt_start", "container_depot.container_depot.periodic", "start_test"),
-	("container_depot.ess.periodic", "pt_order_save", "container_depot.container_depot.periodic", "save_pt_order"),
 	(
 		"container_depot.ess.position_survey", "position_record",
 		"container_depot.container_depot.position_survey", "record_survey_position",

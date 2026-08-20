@@ -40,7 +40,6 @@ def _cleanup():
 			("Order Bongkar", "Container Booking Item"),
 			("Order Muat", "Order Container Item"),
 			("Gate Out Plan", "Gate Out Plan Item"),
-			("Survey Order", "Survey Order Charge"),
 		):
 			for p in set(
 				frappe.get_all(
@@ -53,7 +52,7 @@ def _cleanup():
 				frappe.db.delete(parent, {"name": p})
 			frappe.db.delete("Booking Code", {"booking": ("in", [])})
 		for dt in (
-			"Inspection", "Cleaning Order", "Repair Order", "Periodic Test Order",
+			"Inspection", "Cleaning Order", "Repair Order",
 			"Container Position Survey", "Container Movement", "Container Activity",
 		):
 			frappe.db.delete(dt, {"container": ("in", names)})
@@ -118,9 +117,6 @@ class TestContainerStatusReport(FrappeTestCase):
 				"customer": self.customer, "status": "Pending",
 			}),
 			"repair_order": self._insert({"doctype": "Repair Order", "container": TANK}),
-			"periodic_test_order": self._insert({
-				"doctype": "Periodic Test Order", "container": TANK,
-			}),
 			"position_survey": self._insert({
 				"doctype": "Container Position Survey", "container": TANK,
 			}),
@@ -144,10 +140,6 @@ class TestContainerStatusReport(FrappeTestCase):
 				"doctype": "Gate Out Plan", "principal": self.customer, "depot": DEPOT,
 				"source": "Email", "status": "Open",
 				"containers": [{"container": TANK, "target_lift_on": add_days(today(), 3)}],
-			}),
-			"survey_order": self._insert({
-				"doctype": "Survey Order", "paid_to": self.customer, "currency": "IDR",
-				"charges": [{"container": TANK, "container_no": TANK, "price": 1000}],
 			}),
 		}
 

@@ -1,6 +1,6 @@
 """The finance master switch: run the depot with or without invoicing.
 
-The depot's operational side — gate, EIR, cleaning, M&R, bon, periodic test — has no
+The depot's operational side — gate, EIR, cleaning, M&R, bon — has no
 business dependency on accounting. Invoicing grew alongside it, and every place the two
 meet is listed here so it can be turned off in one move:
 

@@ -644,7 +644,7 @@ def prefill(
 		"max_gross_weight": c.max_gross_weight,
 		"last_test_date": c.last_test_date,
 		# EIR gate dates from the Container master (date-only for clean display). The PWA
-		# header shows EIR-In Date here since last_test_date (periodic test) is rarely set.
+		# header shows EIR-In Date here since last_test_date is rarely set.
 		"eir_in_date": str(c.eir_in_date)[:10] if c.eir_in_date else None,
 		"eir_out_date": str(c.eir_out_date)[:10] if c.eir_out_date else None,
 		"last_cargo": c.last_cargo,
@@ -1091,10 +1091,10 @@ def start_eir(inspection: str) -> dict:
 # than in a separate Desk trip that never happens.
 #
 # What is deliberately NOT here: everything the depot writes by itself — status, inventory
-# stage, depot, last cargo, ex vessel, the gate dates, ``last_test_date`` (stamped by a
-# Periodic Test Order) — plus ``principal``, because who owns a tank is a commercial fact
-# that decides billing, not something read off its side. ``container_no`` is the Container's
-# own name and can never be edited from anywhere.
+# stage, depot, last cargo, ex vessel, the gate dates, ``last_test_date`` — plus
+# ``principal``, because who owns a tank is a commercial fact that decides billing, not
+# something read off its side. ``container_no`` is the Container's own name and can never
+# be edited from anywhere.
 TANK_MASTER_FIELDS = {
 	"container_type": "data",
 	"size": "data",

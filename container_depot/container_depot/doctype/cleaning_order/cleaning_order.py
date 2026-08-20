@@ -160,7 +160,7 @@ class CleaningOrder(Document):
 		"""Keep the container's presence status in step from the moment the order exists.
 
 		A DRAFT cleaning is already work in progress, so the tank is not free to leave. The
-		status only moved at submit before — unlike M&R and Periodic Test, which recompute
+		status only moved at submit before — unlike M&R, which recomputes
 		on every save — so a container could read ``Available`` while an open cleaning sat
 		on it.
 		"""

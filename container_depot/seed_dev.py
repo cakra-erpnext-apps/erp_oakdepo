@@ -16,7 +16,7 @@ What it seeds
                            patches.v0_39 (Inspection Checklist Item, 138 rows)
 * Item Group + Item      — from reference/seed/{Item_Group,Item}.csv (embedded below);
                            item_code == item_name (the descriptive name is the identity)
-* Depot Service Menu     — Booking / Cleaning / Maintenance / Survey / Periodic Test,
+* Depot Service Menu     — Booking / Cleaning / Maintenance,
                            WITH dummy group filters (production seeds them empty — see
                            container_depot/service_menu.DEFAULT_MENUS)
 * Customer               — Stolt, Bertschi
@@ -74,10 +74,6 @@ MENUS = [
         "Frame & Metal Work",
         "Others (Bertschi)",
     ]),
-    # Third-party / class survey charges billed on a Survey Order.
-    ("Survey", 4, ["Survey Fee"]),
-    # Periodic (2.5yr / 5yr) test + the pressure / leak tests billed with it.
-    ("Periodic Test", 5, ["Testing Charges"]),
 ]
 
 CUSTOMERS = ["Stolt", "Bertschi"]

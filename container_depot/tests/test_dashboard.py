@@ -72,7 +72,7 @@ class TestDashboardSummary(FrappeTestCase):
 	def test_summary_shape(self):
 		res = get_dashboard_summary()
 		self.assertTrue(res["success"])
-		for key in ("counts", "periodic_test_due", "total", "today", "pending"):
+		for key in ("counts", "total", "today", "pending"):
 			self.assertIn(key, res)
 		# Yard occupancy was removed in the Phase 2 status/zone refactor.
 		self.assertNotIn("yard", res)

@@ -16,7 +16,7 @@ Seeded (in order)
   Cargo, EIR Damage/Repair
   codes, EIR checklist
 * UOM / Item Group / Item — full OAK service + M&R parts + packages catalogue
-* Depot Service Menu      — Booking / Cleaning / Maintenance / Survey / Periodic Test,
+* Depot Service Menu      — Booking / Cleaning / Maintenance,
   created EMPTY             created without item groups (see below)
 * Customer                — principal masters (Stolt, Bertschi)
 

@@ -4,7 +4,6 @@ import frappe
 
 from container_depot.container_depot.container_status import (
 	DONE_CLEANING,
-	DONE_PERIODIC,
 	DONE_REPAIR,
 )
 from container_depot.state_machine import IN_DEPO_STAGES
@@ -271,7 +270,7 @@ CUSTOM_FIELDS = {
 			"fieldtype": "Check",
 			"insert_after": "oak_roles_section",
 			"in_standard_filter": 1,
-			"description": "Owns the ISO tanks — billed periodically (storage / cleaning / repair / LOLO / periodic test / steam wash).",
+			"description": "Owns the ISO tanks — billed periodically (storage / cleaning / repair / LOLO / steam wash).",
 		},
 		{
 			"fieldname": "is_transporter",
@@ -473,20 +472,6 @@ CUSTOM_FIELDS = {
 			"read_only": 1,
 			"no_copy": 1,
 			"description": "Consolidated invoice this repair was billed into (set on Generate, cleared on rollback).",
-		}
-	],
-	# The periodic test is billed exactly like M&R (consolidated_billing._work_order_lines),
-	# so it needs the same back-link for _mark_billed / _unmark_billed to write.
-	"Periodic Test Order": [
-		{
-			"fieldname": "sales_invoice",
-			"label": "Sales Invoice",
-			"fieldtype": "Link",
-			"options": "Sales Invoice",
-			"insert_after": "billing_status",
-			"read_only": 1,
-			"no_copy": 1,
-			"description": "Consolidated invoice this periodic test was billed into (set on Generate, cleared on rollback).",
 		}
 	],
 	# Optional multi-branch tag on the User — pick zero, one, or many depot Branches to
@@ -795,12 +780,6 @@ ORDER_NUMBER_CARDS = [
 	 "document_type": "Repair Order", "filters_json": [["status", "not in", list(DONE_REPAIR)]]},
 	{"label": "M&R Menunggu Approval",
 	 "document_type": "Repair Order", "filters_json": [["status", "=", "Pending Approval"]]},
-	{"label": "Periodic Test Aktif",
-	 "document_type": "Periodic Test Order",
-	 "filters_json": [["status", "not in", list(DONE_PERIODIC)]]},
-	{"label": "Survey Order Aktif",
-	 "document_type": "Survey Order",
-	 "filters_json": [["status", "not in", ["Paid", "Cancelled"]], ["docstatus", "<", 2]]},
 	{"label": "Survey Posisi Pending",
 	 "document_type": "Container Position Survey",
 	 "filters_json": [["status", "=", "Pending Survey"], ["docstatus", "<", 2]]},
@@ -842,10 +821,6 @@ INVENTORY_CHARTS = [
 	 "group_by_based_on": "status", "type": "Bar", "filters_json": [["docstatus", "<", 2]]},
 	{"chart_name": "M&R by Status",
 	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
-	 "group_by_based_on": "status", "type": "Bar",
-	 "filters_json": [["status", "!=", "Cancelled"]]},
-	{"chart_name": "Periodic Test by Status",
-	 "document_type": "Periodic Test Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "status", "type": "Bar",
 	 "filters_json": [["status", "!=", "Cancelled"]]},
 ]
@@ -1541,7 +1516,6 @@ FIELD_ROLE_MATRIX = [
 	("Inspection",                  ("",      "rwcs",  "r",    "r",      "r",    "r",    "rwcs")),
 	("Cleaning Order",              ("",      "r",     "r",    "rwcs",   "",     "",     "rwcs")),
 	("Repair Order",                ("",      "r",     "r",    "",       "rwc",  "",     "rwc")),
-	("Periodic Test Order",         ("",      "",      "",     "",       "rwc",  "",     "rwc")),
 	("Container Position Survey",   ("",      "",      "rws",  "",       "",     "rwc",  "rwcs")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
@@ -1953,8 +1927,6 @@ NOTIFICATION_RULES = [
 		["Commercial", "Management", "Admin Ops"]),
 	("invoice_submitted", "Invoice terbit", "Sales Invoice disubmit — ada tagihan untuk ditagih/dicatat.",
 		["Cashier", "Finance"]),
-	("survey_order_submitted", "Survey Order disubmit", "Survey pihak ketiga disubmit — ada biaya untuk ditagih.",
-		["Team Survey", "Admin Ops", "Cashier"]),
 ]
 
 # Recipients when an event fires with no rule at all (a new event_key shipped without a

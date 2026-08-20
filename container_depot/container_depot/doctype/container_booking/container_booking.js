@@ -80,7 +80,7 @@ frappe.ui.form.on('Container Booking', {
 		// never rendered for anyone but Administrator, who short-circuits to all rights.
 		// `can_create` reads `frappe.boot.user.can_create`, which is computed server-side
 		// from the real permissions and is always present. Same reasoning wherever we ask
-		// about a doctype other than `frm.doctype` — see container.js / survey_order.js.
+		// about a doctype other than `frm.doctype` — see container.js.
 		const order_dt = frm.doc.direction === 'Tank In' ? 'Order Bongkar' : 'Order Muat';
 		if (
 			!frm.is_new() &&

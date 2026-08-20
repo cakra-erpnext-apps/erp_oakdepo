@@ -8,10 +8,9 @@ match container numbers by eye.
 
 Every order type that can name a container is therefore a column here:
 
-* raised directly on the tank — EIR-In, EIR-Out, Cleaning, M&R, Periodic Test,
-  Survey Posisi;
+* raised directly on the tank — EIR-In, EIR-Out, Cleaning, M&R, Survey Posisi;
 * raised on a document that LISTS the tank — Container Booking, Order Bongkar, Order
-  Muat, Gate Out Plan, Survey Order (each via its container child table).
+  Muat, Gate Out Plan (each via its container child table).
 
 Each cell holds the most recent non-cancelled document of that type, as a Link, so the
 row is a jumping-off point rather than a summary to be re-searched.
@@ -31,7 +30,6 @@ import frappe
 
 from container_depot.container_depot.container_status import (
 	DONE_CLEANING,
-	DONE_PERIODIC,
 	DONE_REPAIR,
 )
 
@@ -57,7 +55,6 @@ def execute(filters=None):
 			"readiness": _readiness(work),
 			"open_orders": len(work),
 			"target_lift_on": c.target_lift_on,
-			"next_pt_due": c.next_pt_due,
 		}
 		for key, _label, _doctype in _ORDER_COLUMNS:
 			row[key] = related.get(key, {}).get(c.name)
@@ -74,8 +71,6 @@ _ORDER_COLUMNS = (
 	("eir_out", "EIR-Out", "Inspection"),
 	("cleaning_order", "Cleaning Order", "Cleaning Order"),
 	("repair_order", "M&R", "Repair Order"),
-	("periodic_test_order", "Periodic Test", "Periodic Test Order"),
-	("survey_order", "Survey Order", "Survey Order"),
 	("position_survey", "Survey Posisi", "Container Position Survey"),
 	("order_muat", "Order Muat", "Order Muat"),
 	("gate_out_plan", "Gate Out Plan", "Gate Out Plan"),
@@ -100,7 +95,6 @@ def _columns():
 	]
 	cols += [
 		{"fieldname": "target_lift_on", "label": "Target Lift-On", "fieldtype": "Date", "width": 110},
-		{"fieldname": "next_pt_due", "label": "Next PT Due", "fieldtype": "Date", "width": 110},
 	]
 	return cols
 
@@ -119,7 +113,7 @@ def _containers(filters):
 		filters=query,
 		fields=[
 			"name", "principal", "container_type", "size", "status",
-			"target_lift_on", "next_pt_due",
+			"target_lift_on",
 		],
 		order_by="principal asc, name asc",
 		limit_page_length=0,
@@ -130,7 +124,7 @@ def _open_work(names: list[str]) -> dict[str, list[str]]:
 	"""``{container: [label, ...]}`` for work that still holds the tank.
 
 	Mirrors :func:`container_status.container_open_orders` exactly — a draft EIR-In plus
-	any unfinished Cleaning / M&R / Periodic Test — but resolved for the whole result set
+	any unfinished Cleaning / M&R — but resolved for the whole result set
 	in four queries instead of four per row.
 	"""
 	if not names:
@@ -151,7 +145,6 @@ def _open_work(names: list[str]) -> dict[str, list[str]]:
 	for doctype, done, label in (
 		("Cleaning Order", DONE_CLEANING, "Cleaning"),
 		("Repair Order", DONE_REPAIR, "M&R"),
-		("Periodic Test Order", DONE_PERIODIC, "Periodic Test"),
 	):
 		for row in frappe.get_all(
 			doctype,
@@ -191,9 +184,6 @@ def _related_orders(names: list[str]) -> dict[str, dict[str, str]]:
 		"eir_out": _direct("Inspection", names, {"inspection_type": "EIR-Out"}),
 		"cleaning_order": _direct("Cleaning Order", names),
 		"repair_order": _direct("Repair Order", names, {"status": ["!=", "Cancelled"]}),
-		"periodic_test_order": _direct(
-			"Periodic Test Order", names, {"status": ["!=", "Cancelled"]}
-		),
 		"position_survey": _direct("Container Position Survey", names),
 		# Raised on a parent document that lists the container.
 		"booking": _via_child(
@@ -205,9 +195,6 @@ def _related_orders(names: list[str]) -> dict[str, dict[str, str]]:
 		# shared with the booking itself. Hence the parenttype pin in _via_child.
 		"order_bongkar": _via_child("Container Booking Item", "Order Bongkar", names),
 		"order_muat": _via_child("Order Container Item", "Order Muat", names),
-		"survey_order": _via_child(
-			"Survey Order Charge", "Survey Order", names, "p.status != 'Cancelled'"
-		),
 		"gate_out_plan": _via_child(
 			"Gate Out Plan Item", "Gate Out Plan", names, "p.status != 'Cancelled'"
 		),

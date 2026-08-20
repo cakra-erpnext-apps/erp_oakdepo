@@ -5,7 +5,7 @@ is being done to the tank (that lives on the related orders), only *where* it is
 
 * ``Booked``    — reserved by a Tank In booking, not yet physically at the gate.
 * ``In_Depot``  — physically present with open work: a draft EIR-In, or an open
-  Cleaning / Repair (M&R) / Periodic Test order.
+  Cleaning / Repair (M&R) order.
 * ``Available`` — physically present and every related order is finished → ready
   to leave (the only state a Tank Out booking may submit from).
 * ``Gate_Out``  — has left the depot.
@@ -33,17 +33,14 @@ PRESENT = (IN_DEPOT, AVAILABLE)
 # restating it, so "open" cannot come to mean two different things.
 DONE_CLEANING = ("Completed", "Cancelled")
 DONE_REPAIR = ("Completed", "Cancelled", "Rejected")
-# Periodic Test Order shares the M&R owner-approval machine — same terminal set.
-DONE_PERIODIC = ("Completed", "Cancelled", "Rejected")
 
 
 def container_open_orders(container: str) -> list[dict]:
     """Every unfinished order still holding the container, newest first.
 
     Open = a draft EIR-In (never submitted), a Cleaning Order not yet Completed/
-    Cancelled, a Repair (M&R) Order not yet Completed/Cancelled/Rejected, or a
-    Periodic Test Order not yet Completed/Cancelled/Rejected. Any of these is work
-    that must finish before the tank may leave, so it keeps the tank In_Depot (and
+    Cancelled, or a Repair (M&R) Order not yet Completed/Cancelled/Rejected. Any of these
+    is work that must finish before the tank may leave, so it keeps the tank In_Depot (and
     thus blocks a Tank Out booking + the gate-out). EIR-Out is deliberately excluded
     — it belongs to the outbound flow and must not drag a ready tank back to In_Depot.
 
@@ -70,7 +67,6 @@ def container_open_orders(container: str) -> list[dict]:
     for doctype, done, label in (
         ("Cleaning Order", DONE_CLEANING, "Cleaning"),
         ("Repair Order", DONE_REPAIR, "M&R"),
-        ("Periodic Test Order", DONE_PERIODIC, "Periodic Test"),
     ):
         for row in frappe.get_all(
             doctype,

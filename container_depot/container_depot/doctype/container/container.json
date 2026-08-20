@@ -39,7 +39,6 @@
   "gate_out_plan",
   "column_break_ref",
   "target_lift_on",
-  "next_pt_due",
   "location_section",
   "current_location",
   "row",
@@ -134,14 +133,14 @@
    "label": "Max Gross Weight / MWG (kg)"
   },
   {
-   "description": "Tanggal periodic test terakhir. Diisi manual saat onboarding tank; setelah itu diperbarui otomatis oleh Periodic Test Order.",
+   "description": "Tanggal periodic test terakhir dari data plate tank. Diisi manual.",
    "fieldname": "last_test_date",
    "fieldtype": "Date",
    "label": "Last Test Date"
   },
   {
    "collapsible": 1,
-   "description": "Depot & Shipper diisi manual. Status dan Inventory Stage dihitung otomatis dari order yang masih terbuka (EIR, Cleaning Order, Repair Order, Periodic Test Order) — lihat container_status.container_open_orders.",
+   "description": "Depot & Shipper diisi manual. Status dan Inventory Stage dihitung otomatis dari order yang masih terbuka (EIR, Cleaning Order, Repair Order) — lihat container_status.container_open_orders.",
    "fieldname": "status_section",
    "fieldtype": "Section Break",
    "label": "Status Operasional (otomatis)"
@@ -267,13 +266,6 @@
    "read_only": 1
   },
   {
-   "description": "Next periodic-test due date. Maintained from the latest Periodic Test; blocks TANK OUT once overdue.",
-   "fieldname": "next_pt_due",
-   "fieldtype": "Date",
-   "label": "Next Periodic Test Due",
-   "read_only": 1
-  },
-  {
    "collapsible": 1,
    "description": "Penempatan yard sudah tidak dipakai lagi sejak zona/placement dihapus. Isian di sini hanya catatan bebas, tidak dipakai proses manapun.",
    "fieldname": "location_section",
@@ -321,7 +313,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-19 12:00:00.000000",
+ "modified": "2026-08-20 10:05:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

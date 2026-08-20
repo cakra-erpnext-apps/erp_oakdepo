@@ -119,7 +119,6 @@
 							</div>
 							<p class="mt-0.5 truncate text-xs text-gray-500">
 								<span v-if="c.principal">{{ c.principal }}</span>
-								<span v-if="c.pt_due" class="text-red-500"> · {{ labels.monitorPtDue }}</span>
 							</p>
 							<!-- What put the tank in this bucket (draft/pending/dikerjakan) + link to the order -->
 							<p v-if="c.order" class="mt-1 flex items-center gap-1 truncate text-xs font-semibold" :class="orderTint(c.status)">

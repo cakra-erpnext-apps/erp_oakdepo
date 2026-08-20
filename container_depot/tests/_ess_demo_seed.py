@@ -95,12 +95,6 @@ def seed():
 				"inspector": "Administrator",
 			}
 		).insert(ignore_permissions=True)
-	# Two periodic tests due soon -> periodic_test_due count = 2. The next-due watermark
-	# lives on the Container (single source of truth), advanced by a completed Periodic
-	# Test Order; the reminder cron + dashboard KPI read it here.
-	for no in ["DEMU1000001", "DEMU1000004"]:
-		frappe.db.set_value("Container", no, "next_pt_due", add_days(today(), 10), update_modified=False)
-
 	# Active Booking Code so the /gate page (F4) can validate + gate-in end to end.
 	if not frappe.db.exists("Booking Code", DEMO_CODE):
 		customer = _customer("Stolt")
@@ -142,7 +136,7 @@ def clear():
 	frappe.db.delete("Booking Code", {"name": DEMO_CODE})
 	if booking:
 		frappe.db.delete("Container Booking", {"name": booking})
-	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection", "Periodic Test Order"]:
+	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection"]:
 		frappe.db.delete(dt, {"container": ["in", names]})
 	frappe.db.delete("Container", {"name": ["in", names]})
 	if frappe.db.exists("Depot", DEPOT):

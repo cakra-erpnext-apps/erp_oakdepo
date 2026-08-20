@@ -65,7 +65,7 @@ _SNIPPET_LEN = 600
 # field that identifies it at a glance). The state field is NOT shared — Container Booking
 # is submittable and calls it ``booking_status``.
 #
-# Deliberately WIDER than ORDER_MAP: this is the read side. Cleaning / M&R / Survey can no
+# Deliberately WIDER than ORDER_MAP: this is the read side. Cleaning / M&R can no
 # longer be raised from an email, but ones raised back when they could are still linked to
 # theirs, and an email that already became work must not look untouched. Every doctype in
 # ORDER_MAP has to appear here too — a new order type says how it is summarised rather than
@@ -73,7 +73,6 @@ _SNIPPET_LEN = 600
 _ORDER_SUMMARY = {
 	"Container Booking": ("booking_status", "customer"),
 	"Repair Order": ("status", "container_no"),
-	"Survey Order": ("status", "paid_to"),
 	"Cleaning Order": ("status", "container_no"),
 	"Gate Out Plan": ("status", "principal"),
 }

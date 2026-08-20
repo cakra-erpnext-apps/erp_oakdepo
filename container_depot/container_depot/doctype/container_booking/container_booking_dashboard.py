@@ -19,7 +19,6 @@ def get_data():
 			"Inspection": "container_booking",
 			"Cleaning Order": "container_booking",
 			"Repair Order": "container_booking",
-			"Periodic Test Order": "container_booking",
 		},
 		"internal_links": {
 			# The booking stores the invoice it raised, not the other way round, so this one
@@ -34,7 +33,7 @@ def get_data():
 			},
 			{
 				"label": "Pekerjaan Depo",
-				"items": ["Inspection", "Cleaning Order", "Repair Order", "Periodic Test Order"],
+				"items": ["Inspection", "Cleaning Order", "Repair Order"],
 			},
 			{"label": "Billing", "items": ["Sales Invoice"]},
 		],

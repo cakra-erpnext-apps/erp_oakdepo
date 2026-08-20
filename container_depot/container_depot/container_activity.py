@@ -1,7 +1,7 @@
 """Shared writer for the Container Activity timeline.
 
 Every business action against a container (gate, EIR, cleaning, certificate,
-repair, release, orders, periodic test, booking) calls
+repair, release, orders, booking) calls
 :func:`log_container_activity` from its finalize hook (usually ``on_submit``).
 The rich source doctype keeps the detail; this writes one thin, append-only
 row that links back to it — giving monitoring a single chronological feed.

@@ -21,8 +21,6 @@ frappe.query_reports["Order Billing Status"] = {
 				"Container Booking",
 				"Cleaning Order",
 				"Repair Order",
-				"Periodic Test Order",
-				"Survey Order",
 			].join("\n"),
 		},
 		{

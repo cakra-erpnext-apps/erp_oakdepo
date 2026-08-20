@@ -103,7 +103,6 @@ export const labels = {
 	dashSummaryHide: "Ketuk untuk sembunyikan", // expanded-state hint
 	dashStatusTitle: "Status Container", // Container per status bucket
 	dashStatusTotal: "Total", // "Total {n}" badge
-	dashPtDue: "uji periodik jatuh tempo", // periodic-test-due flag suffix
 	dashTodayTitle: "Aktivitas Hari Ini", // Today's activity
 	dashTodayIn: "Gate In",
 	dashTodayOut: "Gate Out",
@@ -247,8 +246,6 @@ export const labels = {
 	gateOk: "Gate-in tercatat", // Gate registered
 	codeInvalid: "Kode tidak valid / tidak aktif", // Invalid/inactive code
 	reset: "Ulangi", // Reset/again
-	ptDue: "Tes Periodik Jatuh Tempo", // Periodic test due
-	ptDueFlag: "PT Jatuh Tempo", // PT due (short)
 	// EIR (Equipment Interchange Receipt) checklist
 	eir: "EIR",
 	eirDesc: "Buat laporan kondisi kontainer (EIR)", // Create container condition report
@@ -699,31 +696,6 @@ export const labels = {
 	mrExecEmpty: "Tidak ada M&R siap dikerjakan.",
 	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
 	mrExecStartGate: "Mulai perbaikan dulu untuk melihat detail pekerjaan.", // start-first gate
-	// --- Periodic Test (Uji Periodik 2,5Y / 5Y) — M&R-style execution console ---
-	navPt: "Uji Periodik", // Home tile + history label
-	ptTitleFull: "Uji Periodik (Periodic Test)",
-	ptDesc: "Uji tekanan berkala tank (2,5Y / 5Y)", // Home tile subtitle
-	ptSearch: "Cari no. container / PTO…",
-	ptBack: "Kembali",
-	ptExecOrdersHint: "Uji periodik siap dikerjakan", // worklist hint
-	ptExecEmpty: "Tidak ada uji periodik siap dikerjakan.",
-	ptExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
-	ptExecStartGate: "Mulai uji dulu untuk melihat detail pekerjaan.", // start-first gate
-	ptExecInProgress: "Sedang dikerjakan.",
-	ptStartFull: "Mulai Uji", // start (in form)
-	ptStarted: "Uji dimulai", // started toast
-	ptComplete: "Selesaikan", // complete (issues stock + advances due date)
-	ptCompleted: "Uji periodik selesai — jatuh tempo berikutnya diperbarui", // completed toast
-	ptPartsTitle: "Jasa & Part Disetujui",
-	ptTestInfoTitle: "Detail Uji",
-	ptTestType: "Jenis Uji",
-	ptPeriodicDate: "Tanggal Uji",
-	ptPeriodicDateHint: "Tanggal uji dilakukan — jadi dasar jatuh tempo berikutnya.",
-	ptNextDue: "Jatuh Tempo Berikutnya",
-	ptLastTest: "Uji Terakhir",
-	ptHistoryTitle: "Riwayat Uji Periodik",
-	ptHistorySearch: "Cari no. container / PTO…",
-	ptHistoryCount: "uji periodik",
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
@@ -769,7 +741,6 @@ export const labels = {
 	monitorAllPrincipals: "Semua Prinsipal", // principal filter default
 	monitorAllDepots: "Semua Depot", // depot filter default
 	monitorEmpty: "Tidak ada container untuk filter ini.", // empty state
-	monitorPtDue: "PT jatuh tempo", // periodic test due flag
 	monitorToday: "Hari Ini", // today filter
 	storageTitle: "Depot Storage",
 	storagePlaceTitle: "Tempatkan Isotank", // Place an isotank

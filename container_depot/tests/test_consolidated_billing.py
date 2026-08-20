@@ -1,12 +1,10 @@
 """Acceptance tests for on-demand consolidated postpaid billing
 (``consolidated_billing.bill_customer``).
 
-- A submitted TOP Survey Order is swept into a consolidated draft Sales Invoice
-  and linked back (``sales_invoice`` set, ``invoice_status`` = Draft).
-- A Cash Survey Order settles at submit (its own draft invoice) and is NOT swept.
+- A submitted TOP Container Booking is swept into a consolidated draft Sales Invoice
+  and linked back (``sales_invoice`` set, ``payment_status`` = Invoiced).
+- A Cash booking settles at the booking itself and is NOT swept.
 - The sweep is idempotent: a second run finds nothing new.
-- Per-order TOP charges (Survey Order) are swept even for a Cash-contract customer,
-  while contract-level accruals (cleaning / M&R / storage) are gated on postpaid.
 - **Multi-currency**: a customer with USD + IDR orders gets ONE draft invoice per
   currency, each billed in its own currency (never forced to the company default).
 
@@ -42,35 +40,92 @@ def _ensure_service_item():
 	return code
 
 
-def _cleanup_surveys(customer):
-	"""Raw-delete every Survey Order for the customer (+ its charges), regardless of
-	docstatus, and drop any leftover draft Sales Invoices."""
-	surveys = frappe.get_all("Survey Order", filters={"paid_to": customer}, pluck="name")
-	if surveys:
-		frappe.db.delete("Survey Order Charge", {"parent": ("in", surveys)})
-		frappe.db.delete("Survey Order", {"name": ("in", surveys)})
-	frappe.db.delete("Sales Invoice", {"customer": customer, "docstatus": 0})
+def _cleanup_bookings(customer):
+	"""Raw-delete every Container Booking for the customer (+ its items / charges /
+	codes), regardless of docstatus, and drop any leftover draft Sales Invoices."""
+	bookings = frappe.get_all("Container Booking", filters={"customer": customer}, pluck="name")
+	if bookings:
+		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
+		frappe.db.delete("Container Booking Item", {"parent": ("in", bookings)})
+		frappe.db.delete("Container Booking Charge", {"parent": ("in", bookings)})
+		frappe.db.delete("Container Booking", {"name": ("in", bookings)})
+	# Pre-arrival (Booked) phantom tanks the booking spawned reserve their number, so a
+	# later booking in the same class would collide with them.
+	booked = frappe.get_all("Container", filters={"principal": customer, "status": "Booked"}, pluck="name")
+	if booked:
+		frappe.db.delete("Container Movement", {"container": ("in", booked)})
+		frappe.db.delete("Container", {"name": ("in", booked)})
+	# Invoices the fixtures raised. Anything a Payment Entry references is left alone —
+	# that one carries GL entries, and ripping it out from under them is worse than the
+	# stray row. Everything else is a draft (or a forged Cash settlement) and goes.
+	paid = set(
+		frappe.get_all(
+			"Payment Entry Reference",
+			filters={"reference_doctype": "Sales Invoice"},
+			pluck="reference_name",
+		)
+	)
+	for si in frappe.get_all("Sales Invoice", filters={"customer": customer}, pluck="name"):
+		if si in paid:
+			continue
+		frappe.db.delete("Sales Invoice Item", {"parent": si})
+		frappe.db.delete("Sales Invoice", {"name": si})
 	frappe.db.commit()
 
 
-def _make_survey(customer, item, payment_type, price, currency="IDR"):
-	"""Insert + submit a one-charge Survey Order billed to ``customer``."""
+_TANK_SEQ = [0]
+
+
+def _next_tank():
+	"""A fresh tank number per booking — a live booking RESERVES its containers."""
+	_TANK_SEQ[0] += 1
+	return f"CBTU{_TANK_SEQ[0]:07d}"
+
+
+def _make_booking(customer, contract, item, payment_type, price, currency=None):
+	"""Insert + submit a one-charge Container Booking for ``customer``.
+
+	``currency`` is stamped straight onto the row: a booking derives its currency from the
+	price list its contract published, and the multi-currency case here is about what the
+	sweep does with two currencies, not about how a booking gets one.
+
+	Cash is pay-first — a Cash booking refuses to submit until its invoice is raised AND
+	settled, then auto-submits — so it goes through that door rather than ``submit()``."""
+	from container_depot.container_depot.doctype.container_booking.container_booking import (
+		generate_invoice,
+		sync_bookings_for_invoice,
+	)
+
 	doc = frappe.get_doc({
-		"doctype": "Survey Order",
-		"paid_to": customer,
+		"doctype": "Container Booking",
+		"direction": "Tank In",
+		"customer": customer,
+		"contract": contract,
 		"payment_type": payment_type,
-		"currency": currency,
-		"charges": [{"item": item, "price": price, "container_no": "TESTU0000001"}],
+		"do_reference": "DO-CB-TEST",
+		"do_document": "/files/do.pdf",
+		"items": [{"container_no": _next_tank()}],
+		"charges": [{"item": item, "qty": 1, "rate": price}],
 	})
-	doc.flags.ignore_permissions = True
+	doc.flags.ignore_mandatory = True
 	doc.insert(ignore_permissions=True)
-	doc.submit()
+	if payment_type == "Cash":
+		generate_invoice(doc.name)
+		si = frappe.db.get_value("Container Booking", doc.name, "sales_invoice")
+		frappe.db.set_value(
+			"Sales Invoice", si, {"docstatus": 1, "status": "Paid", "outstanding_amount": 0}
+		)
+		sync_bookings_for_invoice(si)
+	else:
+		doc.submit()
+	if currency:
+		frappe.db.set_value("Container Booking", doc.name, "currency", currency, update_modified=False)
 	doc.reload()
 	return doc
 
 
-class TestConsolidatedBillingSurvey(FrappeTestCase):
-	"""TOP survey orders flow into the consolidated draft; Cash ones stay out."""
+class TestConsolidatedBillingBooking(FrappeTestCase):
+	"""TOP bookings flow into the consolidated draft; Cash ones stay out."""
 
 	CUSTOMER = "Consolidated Billing TOP Co"
 
@@ -80,58 +135,60 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 		require_finance(cls)
 		cls.item = invoicing.ensure_service_item()
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
-		_cleanup_surveys(cls.customer)
+		_cleanup_bookings(cls.customer)
 		_cleanup_customer_world(cls.customer)
+		# "Both" so one customer can raise a TOP booking AND a Cash one: the per-order
+		# payment_type is what decides whether the sweep takes it, not the contract.
 		cls.contract = _make_active_contract(
-			cls.customer, payment_type="TOP", credit_limit=1_000_000_000, payment_terms="NET 30"
+			cls.customer, payment_type="Both", credit_limit=1_000_000_000, payment_terms="NET 30"
 		)
 
 	@classmethod
 	def tearDownClass(cls):
-		_cleanup_surveys(cls.customer)
+		_cleanup_bookings(cls.customer)
 		_cleanup_customer_world(cls.customer)
 		super().tearDownClass()
 
 	def setUp(self):
-		# Each test starts from a clean slate (surveys accrue + commit across tests).
-		_cleanup_surveys(self.customer)
+		# Each test starts from a clean slate (bookings accrue + commit across tests).
+		_cleanup_bookings(self.customer)
 
-	def test_top_survey_swept_into_draft_invoice(self):
-		survey = _make_survey(self.customer, self.item, "TOP", 500000)
-		self.assertFalse(survey.sales_invoice, "TOP survey carries no invoice at submit")
+	def test_top_booking_swept_into_draft_invoice(self):
+		booking = _make_booking(self.customer, self.contract, self.item, "TOP", 500000)
+		self.assertFalse(booking.sales_invoice, "TOP booking carries no invoice at submit")
 
 		sis = bill_customer(self.customer)
 		self.assertEqual(len(sis), 1, "one consolidated draft Sales Invoice (single currency)")
 		si = sis[0]
 
-		survey.reload()
-		self.assertEqual(survey.sales_invoice, si, "survey linked to the consolidated invoice")
-		self.assertEqual(survey.invoice_status, "Draft", "invoice_status reads Draft (SI is a draft)")
+		booking.reload()
+		self.assertEqual(booking.sales_invoice, si, "booking linked to the consolidated invoice")
+		self.assertEqual(booking.payment_status, "Invoiced")
 
 		inv = frappe.get_doc("Sales Invoice", si)
 		self.assertEqual(inv.docstatus, 0, "consolidated invoice is a draft")
-		self.assertEqual(inv.currency, "IDR", "billed in the survey's currency")
+		self.assertEqual(inv.currency, "IDR", "billed in the booking's currency")
 		self.assertTrue(
 			any(abs(flt(row.rate) - 500000) < 1 for row in inv.items),
-			"the survey charge is a line on the consolidated invoice",
+			"the booking charge is a line on the consolidated invoice",
 		)
 
 		self.assertEqual(bill_customer(self.customer), [], "re-run finds nothing unbilled (idempotent)")
 
-	def test_cash_survey_not_swept(self):
-		cash = _make_survey(self.customer, self.item, "Cash", 300000)
-		self.assertTrue(cash.sales_invoice, "Cash survey raises its own draft invoice at submit")
+	def test_cash_booking_not_swept(self):
+		cash = _make_booking(self.customer, self.contract, self.item, "Cash", 300000)
 		own_si = cash.sales_invoice
+		self.assertTrue(own_si, "a Cash booking settles at its own invoice")
 
 		self.assertEqual(
-			bill_customer(self.customer), [], "a Cash survey is never swept into consolidated billing"
+			bill_customer(self.customer), [], "a Cash booking is never swept into consolidated billing"
 		)
 		cash.reload()
-		self.assertEqual(cash.sales_invoice, own_si, "Cash survey keeps its own invoice")
+		self.assertEqual(cash.sales_invoice, own_si, "Cash booking keeps its own invoice")
 
 	def test_multi_currency_one_invoice_per_currency(self):
-		usd = _make_survey(self.customer, self.item, "TOP", 500, currency="USD")
-		idr = _make_survey(self.customer, self.item, "TOP", 700000, currency="IDR")
+		usd = _make_booking(self.customer, self.contract, self.item, "TOP", 500, currency="USD")
+		idr = _make_booking(self.customer, self.contract, self.item, "TOP", 700000, currency="IDR")
 
 		sis = bill_customer(self.customer)
 		self.assertEqual(len(sis), 2, "one draft invoice per currency")
@@ -142,30 +199,30 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 		idr.reload()
 		self.assertEqual(
 			frappe.db.get_value("Sales Invoice", usd.sales_invoice, "currency"), "USD",
-			"USD survey linked to the USD invoice",
+			"USD booking linked to the USD invoice",
 		)
 		self.assertEqual(
 			frappe.db.get_value("Sales Invoice", idr.sales_invoice, "currency"), "IDR",
-			"IDR survey linked to the IDR invoice",
+			"IDR booking linked to the IDR invoice",
 		)
 		# The USD charge is billed at face value (conversion_rate 1, no FX to IDR).
 		usd_inv = frappe.get_doc("Sales Invoice", usd.sales_invoice)
 		self.assertTrue(any(abs(flt(r.rate) - 500) < 1 for r in usd_inv.items))
 
 	def test_discard_draft_rolls_back_orders(self):
-		survey = _make_survey(self.customer, self.item, "TOP", 500000)
+		booking = _make_booking(self.customer, self.contract, self.item, "TOP", 500000)
 		sis = bill_customer(self.customer)
 		self.assertEqual(len(sis), 1)
 		si = sis[0]
-		survey.reload()
-		self.assertEqual(survey.sales_invoice, si)
+		booking.reload()
+		self.assertEqual(booking.sales_invoice, si)
 
 		# Discard (delete) the generated draft invoice → orders roll back to un-invoiced.
 		frappe.delete_doc("Sales Invoice", si, ignore_permissions=True)
 		self.assertFalse(frappe.db.exists("Sales Invoice", si), "draft invoice discarded")
-		survey.reload()
-		self.assertFalse(survey.sales_invoice, "survey link cleared on discard")
-		self.assertEqual(survey.invoice_status, "Not Invoiced", "survey rolled back to un-invoiced")
+		booking.reload()
+		self.assertFalse(booking.sales_invoice, "booking link cleared on discard")
+		self.assertEqual(booking.payment_status, "Unpaid", "booking rolled back to un-invoiced")
 
 		# The order is billable again — a re-generate resyncs it into a fresh invoice.
 		# (The invoice name may coincide with the discarded one: Frappe reverts the
@@ -173,12 +230,12 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 		sis2 = bill_customer(self.customer)
 		self.assertEqual(len(sis2), 1, "order billable again after rollback")
 		self.assertTrue(frappe.db.exists("Sales Invoice", sis2[0]))
-		survey.reload()
-		self.assertEqual(survey.sales_invoice, sis2[0], "survey re-linked to the regenerated invoice")
+		booking.reload()
+		self.assertEqual(booking.sales_invoice, sis2[0], "booking re-linked to the regenerated invoice")
 
 	def test_discard_one_currency_rolls_back_only_that_currency(self):
-		usd = _make_survey(self.customer, self.item, "TOP", 500, currency="USD")
-		idr = _make_survey(self.customer, self.item, "TOP", 700000, currency="IDR")
+		usd = _make_booking(self.customer, self.contract, self.item, "TOP", 500, currency="USD")
+		idr = _make_booking(self.customer, self.contract, self.item, "TOP", 700000, currency="IDR")
 		sis = bill_customer(self.customer)
 		self.assertEqual(len(sis), 2)
 		usd.reload()
@@ -189,22 +246,26 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 		frappe.delete_doc("Sales Invoice", usd_si, ignore_permissions=True)
 		usd.reload()
 		idr.reload()
-		self.assertFalse(usd.sales_invoice, "USD survey rolled back on discard")
-		self.assertEqual(usd.invoice_status, "Not Invoiced")
-		self.assertEqual(idr.sales_invoice, idr_si, "IDR survey untouched by USD discard")
+		self.assertFalse(usd.sales_invoice, "USD booking rolled back on discard")
+		self.assertEqual(usd.payment_status, "Unpaid")
+		self.assertEqual(idr.sales_invoice, idr_si, "IDR booking untouched by USD discard")
 
 	def test_generated_invoice_items_cannot_be_deleted(self):
 		doc = frappe.get_doc({
-			"doctype": "Survey Order",
-			"paid_to": self.customer,
+			"doctype": "Container Booking",
+			"direction": "Tank In",
+			"customer": self.customer,
+			"contract": self.contract,
 			"payment_type": "TOP",
-			"currency": "IDR",
+			"do_reference": "DO-CB-TEST",
+			"do_document": "/files/do.pdf",
+			"items": [{"container_no": _next_tank()}],
 			"charges": [
-				{"item": self.item, "price": 100000, "container_no": "TESTU0000001"},
-				{"item": self.item, "price": 200000, "container_no": "TESTU0000002"},
+				{"item": self.item, "qty": 1, "rate": 100000},
+				{"item": self.item, "qty": 1, "rate": 200000},
 			],
 		})
-		doc.flags.ignore_permissions = True
+		doc.flags.ignore_mandatory = True
 		doc.insert(ignore_permissions=True)
 		doc.submit()
 
@@ -220,13 +281,13 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 	def test_generated_invoice_submit_and_pay_reflects_paid(self):
 		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 
-		survey = _make_survey(self.customer, self.item, "TOP", 500000)
+		booking = _make_booking(self.customer, self.contract, self.item, "TOP", 500000)
 		si = frappe.get_doc("Sales Invoice", bill_customer(self.customer)[0])
 
 		# The item-freeze guard must NOT block a legitimate submit.
 		si.submit()
-		survey.reload()
-		self.assertIn(survey.invoice_status, ("Unpaid", "Overdue"), "submitted invoice → Unpaid")
+		booking.reload()
+		self.assertEqual(booking.payment_status, "Invoiced", "submitted invoice → still unsettled")
 
 		pe = get_payment_entry("Sales Invoice", si.name)
 		if not pe.paid_to:
@@ -243,9 +304,9 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 		pe.submit()
 
 		si.reload()
-		survey.reload()
+		booking.reload()
 		self.assertEqual(si.status, "Paid", "consolidated invoice marked Paid natively")
-		self.assertEqual(survey.invoice_status, "Paid", "survey reflects Paid after payment")
+		self.assertEqual(booking.payment_status, "Paid", "booking reflects Paid after payment")
 
 	def test_repair_links_invoice_and_rolls_back(self):
 		cno = "TESTMR00001"
@@ -302,9 +363,13 @@ class TestConsolidatedBillingSurvey(FrappeTestCase):
 			frappe.db.commit()
 
 
-class TestConsolidatedBillingPostpaidSplit(FrappeTestCase):
-	"""A per-order TOP charge is swept even when the customer's contract is Cash —
-	proving the per-order vs contract-level split."""
+class TestConsolidatedBillingCashContract(FrappeTestCase):
+	"""A Cash-contract customer accrues nothing for the consolidated sweep.
+
+	Its bookings are forced to Cash (they settle at the booking), and the contract-level
+	accruals — cleaning / M&R / storage — are gated on ``_is_postpaid``, so the monthly
+	scheduler bills them instead. Sweeping them here too would double-charge.
+	"""
 
 	CUSTOMER = "Consolidated Billing Cash Co"
 
@@ -314,22 +379,23 @@ class TestConsolidatedBillingPostpaidSplit(FrappeTestCase):
 		require_finance(cls)
 		cls.item = invoicing.ensure_service_item()
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
-		_cleanup_surveys(cls.customer)
+		_cleanup_bookings(cls.customer)
 		_cleanup_customer_world(cls.customer)
 		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
 
 	@classmethod
 	def tearDownClass(cls):
-		_cleanup_surveys(cls.customer)
+		_cleanup_bookings(cls.customer)
 		_cleanup_customer_world(cls.customer)
 		super().tearDownClass()
 
 	def setUp(self):
-		_cleanup_surveys(self.customer)
+		_cleanup_bookings(self.customer)
 
-	def test_top_survey_swept_even_for_cash_customer(self):
-		survey = _make_survey(self.customer, self.item, "TOP", 400000)
-		sis = bill_customer(self.customer)
-		self.assertTrue(sis, "per-order TOP survey is swept regardless of contract mode")
-		survey.reload()
-		self.assertEqual(survey.sales_invoice, sis[0])
+	def test_cash_contract_customer_has_nothing_to_sweep(self):
+		booking = _make_booking(self.customer, self.contract, self.item, "Cash", 400000)
+		self.assertEqual(booking.payment_type, "Cash", "a Cash contract forces the booking to Cash")
+		own_si = booking.sales_invoice
+		self.assertEqual(bill_customer(self.customer), [], "nothing accrues for a Cash contract")
+		booking.reload()
+		self.assertEqual(booking.sales_invoice, own_si, "the sweep left the Cash booking alone")

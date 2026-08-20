@@ -3,7 +3,7 @@
 Two things are under test:
 
 * each doctype in the notified set actually drops something in the bell when its
-  event fires (contract, booking, invoice, survey order);
+  event fires (contract, booking, invoice);
 * voiding a document takes its notifications back down, so a cancelled booking / bon
   stops sitting there as work to do.
 
@@ -73,7 +73,6 @@ def _cleanup(customer: str):
 	if bookings:
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
 	_purge("Container Booking", by_customer, ("Container Booking Item",))
-	_purge("Survey Order", {"paid_to": customer}, ("Survey Order Charge",))
 
 	containers = frappe.get_all("Container", filters={"principal": customer}, pluck="name")
 	if containers:
@@ -196,22 +195,6 @@ class TestNotificationRevoke(FrappeTestCase):
 		c.status = "Void"
 		c.save(ignore_permissions=True)
 		self.assertEqual(_feed("Depot Contract", c.name), 0)
-
-	def test_survey_order_submit_notifies_and_cancel_clears(self):
-		order = frappe.get_doc({
-			"doctype": "Survey Order",
-			"paid_to": self.customer,
-			"payment_type": "TOP",
-			"currency": "IDR",
-			"charges": [{"item": "Lift Off", "price": 100000}],
-		}).insert(ignore_permissions=True)
-		order.submit()
-		_log("Survey Order", order.name)
-		self.assertGreaterEqual(_feed("Survey Order", order.name), 1)
-
-		order.reload()
-		order.cancel()
-		self.assertEqual(_feed("Survey Order", order.name), 0)
 
 	def test_repair_order_cancel_clears_but_reject_does_not(self):
 		"""Cancelled is an M&R's void; Rejected is an outcome the crew must still see."""

@@ -1,7 +1,7 @@
 """Container Activity — the unified action-history feed.
 
 One row per logged business action (Booking, Gate, EIR, Cleaning, Certificate,
-Repair, Release, Orders, Periodic Test) against a container, newest first. Each
+Repair, Release, Orders) against a container, newest first. Each
 row links back to its source document. Reads the append-only Container Activity
 ledger written by ``container_depot.container_activity.log_container_activity``.
 """

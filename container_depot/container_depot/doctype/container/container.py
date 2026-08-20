@@ -33,7 +33,7 @@ class Container(Document):
 		(not ``In_Depot`` / ``Available``), carrying no open work, and promised to nobody.
 		Retiring a tank that is physically sitting on the ground would take it out of every
 		picker while the depot still has to gate it out; retiring one with an open Cleaning
-		/ M&R / Periodic Test order would strand that order on a tank nobody can select
+		/ M&R order would strand that order on a tank nobody can select
 		again; and retiring one a live Container Booking still names would let it be gated
 		in tomorrow on a booking made yesterday — the order gate cannot catch that, because
 		it only fires when a container is newly put on a document.

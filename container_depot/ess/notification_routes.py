@@ -108,15 +108,6 @@ def _repair(doctype, name):
 	return f"/mr?o={name}"
 
 
-def _periodic(doctype, name):
-	st = _state("Periodic Test Order", name, ["status"])
-	if not st:
-		return None
-	if st.status in ("Completed", "Cancelled", "Rejected"):
-		return f"/periodic-test/history?open={name}"
-	return f"/periodic-test?o={name}"
-
-
 def _survey(doctype, name):
 	"""Only valid when the notified document IS the survey — see `_survey_worklist`."""
 	st = _state("Container Position Survey", name, ["status"])
@@ -180,7 +171,6 @@ _BY_EVENT = {
 	"contract_created": _none,
 	"contract_activated": _none,
 	"invoice_submitted": _none,
-	"survey_order_submitted": _none,
 }
 
 # Fallback for logs written before `depot_event` existed. Order Muat and Container are
@@ -190,7 +180,6 @@ _BY_DOCTYPE = {
 	"Inspection": _eir,
 	"Cleaning Order": _cleaning,
 	"Repair Order": _repair,
-	"Periodic Test Order": _periodic,
 	"Container Position Survey": _survey,
 	"Gate Entry": _gate_history,
 	"Order Bongkar": _gate,

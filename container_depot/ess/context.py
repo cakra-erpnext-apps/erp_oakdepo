@@ -28,7 +28,6 @@ _MENU = [
 	("eir",          "/eir",             "Inspection",                "write"),
 	("cleaning",     "/cleaning",        "Cleaning Order",            "write"),
 	("mr",           "/mr",              "Repair Order",              "write"),
-	("periodicTest", "/periodic-test",   "Periodic Test Order",       "write"),
 	("monitor",      "/monitor",         "Container",                 "read"),
 	("surveyPos",    "/survey-position", "Container Position Survey", "create"),
 	("posFix",       "/position-fix",    "Container Position Survey", "submit"),

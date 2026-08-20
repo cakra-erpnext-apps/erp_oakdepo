@@ -10,7 +10,7 @@
 // then closes the topmost one and the navigation is cancelled. With nothing registered Back
 // behaves exactly as before, so leaving a page is still one press away.
 //
-// Routed detail views (Eir, Cleaning, M&R, Periodic Test — the ones that put the open record
+// Routed detail views (Eir, Cleaning, M&R — the ones that put the open record
 // in `?o=`) need none of this: their Back already pops a real history entry. This is for the
 // views that live in a component ref, where the browser has no idea anything opened.
 

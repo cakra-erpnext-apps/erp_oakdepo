@@ -239,30 +239,6 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Periodic Test Order",
-   "link_to": "Periodic Test Order",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-certificates"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Survey Order",
-   "link_to": "Survey Order",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-details"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
    "label": "Container Position Survey",
    "link_to": "Container Position Survey",
    "link_type": "DocType",
@@ -778,7 +754,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-19 10:00:00.000000",
+ "modified": "2026-08-20 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

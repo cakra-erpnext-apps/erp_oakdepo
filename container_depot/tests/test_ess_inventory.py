@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import today
 
 from container_depot.ess.inventory import (
 	derive_status,
@@ -41,7 +40,7 @@ TANKS = {
 
 def _teardown():
 	names = list(TANKS.keys())
-	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection", "Periodic Test Order"]:
+	for dt in ["Container Movement", "Cleaning Order", "Repair Order", "Inspection"]:
 		frappe.db.delete(dt, {"container": ["in", names]})
 	frappe.db.delete("Container", {"name": ["in", names]})
 	if frappe.db.exists("Depot", ESS_DEPOT):
@@ -97,9 +96,6 @@ def _build():
 			"inspector": "Administrator",
 		}
 	).insert(ignore_permissions=True)
-	# ESST1000001: periodic test due today. The next-due watermark lives on the Container
-	# (the single source of truth), advanced by a completed Periodic Test Order.
-	frappe.db.set_value("Container", "ESST1000001", "next_pt_due", today(), update_modified=False)
 	frappe.db.commit()
 
 
@@ -141,16 +137,14 @@ class TestEssInventory(FrappeTestCase):
 			{"available": 2, "draft": 1, "pending": 1, "in_progress": 2, "gate_out": 1},
 		)
 		self.assertEqual(res["total"], 7)
-		self.assertEqual(res["periodic_test_due"], 1)
 
 	def test_tank_list_pagination(self):
 		res = get_tank_list(depot=ESS_DEPOT, page_length=3)
 		self.assertEqual(res["total"], 7)
 		self.assertEqual(len(res["items"]), 3)
-		# Each row carries a derived bucket + pt_due flag (not the raw status).
+		# Each row carries a derived bucket (not the raw status).
 		row = next(i for i in res["items"] if i["container_no"] == "ESST1000001")
 		self.assertEqual(row["status"], "pending")
-		self.assertTrue(row["pt_due"])
 
 	def test_tank_list_status_filter(self):
 		res = get_tank_list(depot=ESS_DEPOT, status="in_progress")
@@ -191,7 +185,6 @@ class TestEssInventory(FrappeTestCase):
 		res = get_tank_detail("ESST1000001")
 		self.assertTrue(res["success"])
 		self.assertEqual(res["status"], "pending")  # Cleaning Order Pending
-		self.assertTrue(res["pt_due"])
 		for key in ("capacity", "tare_weight", "last_test_date", "yard_zone", "container_type"):
 			self.assertIn(key, res)
 
@@ -226,10 +219,10 @@ class TestEssInventory(FrappeTestCase):
 		ro = res["repairs"][0]
 		self.assertEqual(ro["status"], "Draft")
 		self.assertEqual(ro["billing_status"], "Unbilled")
-		# A Draft hands over to Admin Ops (Service Setup) — it can no longer jump straight
-		# to the customer-visible Pending Approval. "Approved" is the Admin-Ops bypass
-		# edge (this assertion had omitted it, so it was failing before the gate landed).
-		self.assertEqual(ro["next_statuses"], ["Service Setup", "Approved", "Cancelled"])
+		# Draft IS Admin Ops' desk, so the estimate goes straight out to the owner
+		# (Pending Approval). "Approved" is the Admin-Ops bypass edge — approving without
+		# asking the owner at all.
+		self.assertEqual(ro["next_statuses"], ["Pending Approval", "Approved", "Cancelled"])
 		self.assertIn("items", ro)
 
 	def test_set_repair_status_transitions(self):
@@ -257,12 +250,9 @@ class TestEssInventory(FrappeTestCase):
 			with self.assertRaises(frappe.ValidationError):
 				set_repair_status(ro.name, "Completed")
 
-			# Draft -> Service Setup (Admin Ops) -> Pending Approval (customer web).
-			r1 = set_repair_status(ro.name, "Service Setup")
-			self.assertEqual(r1["status"], "Service Setup")
-
-			r1b = set_repair_status(ro.name, "Pending Approval")
-			self.assertEqual(r1b["status"], "Pending Approval")
+			# Draft -> Pending Approval (customer web).
+			r1 = set_repair_status(ro.name, "Pending Approval")
+			self.assertEqual(r1["status"], "Pending Approval")
 
 			r2 = set_repair_status(ro.name, "Approved")
 			self.assertEqual(r2["status"], "Approved")

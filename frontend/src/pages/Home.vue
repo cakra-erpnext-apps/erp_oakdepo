@@ -119,20 +119,6 @@
 				</div>
 			</section>
 
-			<!-- Periodic-test due — its own block, not part of the status grid: Team Repair
-			     gets this card without the Monitor menu that carries the grid. -->
-			<router-link
-				v-if="dash.periodic_test_due > 0"
-				to="/periodic-test"
-				class="oak-card oak-press flex items-center gap-2 p-3"
-			>
-				<span class="oak-icon-tile h-8 w-8 bg-amber-50 text-amber-600"><Icon name="alert-triangle" :size="16" /></span>
-				<p class="flex-1 text-sm font-medium text-gray-700">
-					<span class="font-bold text-amber-700">{{ dash.periodic_test_due }}</span> {{ labels.dashPtDue }}
-				</p>
-				<Icon name="chevron-right" :size="16" class="text-gray-300" />
-			</router-link>
-
 			<!-- Tank dengan job aktif — supervisors only (server sends it to accounts
 			     holding every menu). Gap Analysis §4.8.4. -->
 			<div v-if="dash.active_jobs !== undefined" class="oak-card flex items-center gap-2 p-3">
@@ -275,7 +261,7 @@ const dashOpen = ref(localStorage.getItem(DASH_OPEN_KEY) === "1")
 watch(dashOpen, (v) => localStorage.setItem(DASH_OPEN_KEY, v ? "1" : "0"))
 
 // Collapsed-summary figures: pending tasks awaiting action + urgent alerts
-// (periodic test due, M&R approvals, near-full yard).
+// (M&R approvals, near-full yard).
 const summaryPending = computed(() => {
 	const p = dash.value?.pending || {}
 	return (
@@ -289,7 +275,7 @@ const summaryPending = computed(() => {
 })
 const summaryAlerts = computed(() => {
 	const p = dash.value?.pending || {}
-	return (dash.value?.periodic_test_due || 0) + (p.mr_approval || 0)
+	return p.mr_approval || 0
 })
 
 // --- KPI: container per order-state (tap → Monitor pre-filtered to the bucket) ---
@@ -355,7 +341,6 @@ const tiles = {
 	eir: { key: "eir", to: "/eir", icon: "clipboard", title: labels.eir, desc: labels.eirDesc, tile: "bg-leaf-50 text-leaf-600" },
 	cleaning: { key: "cleaning", to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
 	mr: { key: "mr", to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
-	periodicTest: { key: "periodicTest", to: "/periodic-test", icon: "activity", title: labels.ptTitleFull, desc: labels.ptDesc, tile: "bg-amber-50 text-amber-600" },
 	monitor: { key: "monitor", to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
 	surveyPos: { key: "surveyPos", to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
 	posFix: { key: "posFix", to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
@@ -363,7 +348,7 @@ const tiles = {
 const allMenuGroups = [
 	{ title: labels.grpGate, items: [tiles.gate] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
-	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr, tiles.periodicTest] },
+	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr] },
 	{ title: labels.grpYard, items: [tiles.monitor] },
 	{ title: labels.grpSurvey, items: [tiles.surveyPos, tiles.posFix] },
 ]
@@ -383,7 +368,6 @@ const allHistory = [
 	{ key: "eir", to: "/eir/history", icon: "clipboard", title: labels.eirHistoryTitle },
 	{ key: "cleaning", to: "/cleaning/history", icon: "droplet", title: labels.cleaningHistoryTitle },
 	{ key: "mr", to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
-	{ key: "periodicTest", to: "/periodic-test/history", icon: "activity", title: labels.ptHistoryTitle },
 	{ key: "surveyPos", to: "/survey-position/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
 	{ key: "monitor", to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
 ]

@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_to_date, getdate, now_datetime, today
+from frappe.utils import add_to_date, now_datetime
 
 
 SST_STALE_AFTER_MINUTES = 15
-
-# How far ahead a periodic test is flagged for a due-date reminder.
-PT_REMINDER_DAYS = 30
 
 
 def generate_monthly_invoices() -> int:
@@ -145,54 +142,6 @@ def mark_stale_sst_heartbeats() -> int:
 			}).insert(ignore_permissions=True)
 	frappe.db.commit()
 	return len(rows)
-
-
-def remind_periodic_test_due() -> int:
-	"""Flag containers whose next periodic test is due within the reminder horizon.
-
-	Runs daily. The next-due watermark lives on the **Container** (``Container.next_pt_due``,
-	advanced when a Periodic Test Order completes — the single source of truth). Opens one
-	ToDo per due/overdue container, addressed to System Manager holders (it used to be
-	Commercial + Ops Supervisor, deleted 2026-08-05 with the custom role model — retarget
-	it when the new roles are designed).
-	Returns the count of containers in the due/overdue window.
-	"""
-	horizon = add_to_date(getdate(today()), days=PT_REMINDER_DAYS)
-	rows = frappe.get_all(
-		"Container",
-		filters={"next_pt_due": ("is", "set")},
-		fields=["name", "container_no", "next_pt_due"],
-	)
-	due = [r for r in rows if r.next_pt_due and getdate(r.next_pt_due) <= horizon]
-	if not due:
-		return 0
-
-	recipients = sorted(set(_role_holders(["System Manager"])))
-
-	for r in due:
-		for user in recipients:
-			already = frappe.db.exists(
-				"ToDo",
-				{
-					"reference_type": "Container",
-					"reference_name": r.name,
-					"allocated_to": user,
-					"status": "Open",
-				},
-			)
-			if already:
-				continue
-			frappe.get_doc({
-				"doctype": "ToDo",
-				"description": f"Uji periodik untuk {r.container_no or r.name} jatuh tempo {r.next_pt_due}.",
-				"reference_type": "Container",
-				"reference_name": r.name,
-				"allocated_to": user,
-				"priority": "High",
-				"status": "Open",
-			}).insert(ignore_permissions=True)
-	frappe.db.commit()
-	return len(due)
 
 
 def sweep_stale_notifications() -> int:

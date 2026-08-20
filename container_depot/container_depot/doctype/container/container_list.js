@@ -9,7 +9,7 @@
 // gate-out rules use (container_depot/container_status.py):
 //
 //   Booked     — reserved by an inbound booking, not physically here yet.
-//   In_Depot   — here, but an order (EIR-In / Cleaning / M&R / Periodic Test) is still open.
+//   In_Depot   — here, but an order (EIR-In / Cleaning / M&R) is still open.
 //   Available  — here with nothing open: free to be booked out.
 //   Gate_Out   — has left.
 //

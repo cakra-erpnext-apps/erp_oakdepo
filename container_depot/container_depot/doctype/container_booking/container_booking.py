@@ -1396,7 +1396,7 @@ def booking_container_query(doctype, txt, searchfield, start, page_len, filters)
 	``PRESENT`` (In_Depot / Available) — and only those in a depot of the booking's
 	Branch. A tank that already left, or one sitting in another branch's yard, cannot be
 	lifted out of this depot; it used to be pickable and only bounced at submit, which is
-	the worst moment to find out. Open work (cleaning / repair / periodic test) is NOT
+	the worst moment to find out. Open work (cleaning / repair) is NOT
 	filtered here: those tanks are legitimately being prepared for this very booking, the
 	draft warning names the orders, and ``_validate_out_ready`` blocks the submit.
 
@@ -1444,7 +1444,7 @@ def charge_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Options for a booking charge line: the Depot Service Menu "Booking" ∩ the items
 	priced in the customer's *active* Price List.
 
-	Same two-step narrowing the M&R / Periodic Test pickers use, so *which* services a
+	Same two-step narrowing the M&R picker uses, so *which* services a
 	booking may bill is maintained by an operator in Desk rather than pinned to one Item
 	Group in code.
 
@@ -2443,7 +2443,6 @@ _WORK_SOURCES = (
 	("Inspection", "eir_date", "inspection_type"),
 	("Cleaning Order", "order_created", None),
 	("Repair Order", "order_created", None),
-	("Periodic Test Order", "order_created", None),
 )
 
 

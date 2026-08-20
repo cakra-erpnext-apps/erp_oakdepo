@@ -12,7 +12,7 @@ each order it spawns.
 Two rules decide the value, and both matter:
 
 * **Only an EIR reference confers parentage.** An order raised on its own — a walk-in
-  cleaning, an ad-hoc repair, a scheduled periodic test — stands alone. There is no
+  cleaning, an ad-hoc repair — stands alone. There is no
   fall-back to "the container's most recent booking": on this data one tank appears on 52
   bookings, so guessing would file real work under a visit that never happened. Blank means
   "not known", which is honest and searchable; a wrong link is neither.

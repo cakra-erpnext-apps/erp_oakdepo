@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "hash",
- "description": "Append-only unified history of business actions against a Container. Auto-written by each action document (Gate Entry, Inspection, Cleaning, Repair, Release, Orders, Periodic Test, Booking) via container_activity.log_container_activity. Container Movement remains the low-level status/yard log; this is the action layer that links back to the source record.",
+ "description": "Append-only unified history of business actions against a Container. Auto-written by each action document (Gate Entry, Inspection, Cleaning, Repair, Release, Orders, Booking) via container_activity.log_container_activity. Container Movement remains the low-level status/yard log; this is the action layer that links back to the source record.",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -45,7 +45,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Activity Type",
-   "options": "Booking\nGate In\nInspection (EIR)\nCleaning\nRepair\nPeriodic Test\nOrder Bongkar\nOrder Muat\nRelease\nGate Out\nStatus Change",
+   "options": "Booking\nGate In\nInspection (EIR)\nCleaning\nRepair\nOrder Bongkar\nOrder Muat\nRelease\nGate Out\nStatus Change",
    "reqd": 1
   },
   {

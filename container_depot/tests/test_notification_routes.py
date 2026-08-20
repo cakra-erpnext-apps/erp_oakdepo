@@ -53,7 +53,6 @@ EVENT_DOCTYPES = [
 	("contract_created", "Depot Contract"),
 	("contract_activated", "Depot Contract"),
 	("invoice_submitted", "Sales Invoice"),
-	("survey_order_submitted", "Survey Order"),
 ]
 
 DESK_ONLY_EVENTS = {
@@ -62,7 +61,6 @@ DESK_ONLY_EVENTS = {
 	"contract_created",
 	"contract_activated",
 	"invoice_submitted",
-	"survey_order_submitted",
 }
 
 
@@ -134,8 +132,6 @@ class TestNotificationRouteTable(FrappeTestCase):
 			"/cleaning/history?open=X",
 			"/mr?o=X",
 			"/mr/history?open=X",
-			"/periodic-test?o=X",
-			"/periodic-test/history?open=X",
 			"/survey-position",
 			"/survey-position/history?open=X",
 			"/position-fix",

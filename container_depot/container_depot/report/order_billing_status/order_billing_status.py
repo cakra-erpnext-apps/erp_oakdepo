@@ -1,7 +1,7 @@
 """Order Billing Status — one list of every order across the 4 order types with
 its billing/invoice state.
 
-Unions Container Booking, Cleaning Order, Repair Order and Survey Order into a
+Unions Container Booking, Cleaning Order and Repair Order into a
 single, normalized list so the depot can see — in one place — which orders are
 already invoiced/paid and, crucially, which **TOP** (postpaid/termin) orders are
 still un-invoiced and ready to be swept into one consolidated Sales Invoice via
@@ -12,7 +12,7 @@ read from the orders' stored fields, and TOP-vs-Cash for cleaning/repair reuses
 the same ``_is_postpaid`` authority as the billing engine.
 
 Each order carries its own currency (IDR / USD), so the Amount column is bound to
-the per-row ``currency`` and formatted in that currency. Booking/Cleaning/Survey
+the per-row ``currency`` and formatted in that currency. Booking/Cleaning
 store a ``currency`` field; Repair Order has none, so its currency is read from the
 owner's active Depot Contract (falling back to the company default).
 
@@ -27,16 +27,10 @@ import frappe
 from frappe.utils import flt, getdate
 
 from container_depot.monthly_invoicing import _active_contract, _is_postpaid
-from container_depot.container_depot.doctype.survey_order.survey_order import (
-	_survey_invoice_status,
-)
-
 ORDER_TYPES = (
 	"Container Booking",
 	"Cleaning Order",
 	"Repair Order",
-	"Periodic Test Order",
-	"Survey Order",
 )
 
 
@@ -56,10 +50,6 @@ def execute(filters=None):
 		rows += _cleaning_rows(filters, ctx)
 	if not order_type or order_type == "Repair Order":
 		rows += _repair_rows(filters, ctx)
-	if not order_type or order_type == "Periodic Test Order":
-		rows += _periodic_rows(filters, ctx)
-	if not order_type or order_type == "Survey Order":
-		rows += _survey_rows(filters, ctx)
 
 	# payment_type / invoice_status are derived, so filter them after building rows.
 	pt = filters.get("payment_type")
@@ -112,11 +102,27 @@ def _apply_date(f: dict, field: str, filters: dict) -> None:
 def _si_status(sales_invoice):
 	"""Normalized invoice status for an order linked to a Sales Invoice.
 
-	Reuses the Survey Order → SI mapper (Not Invoiced / Draft / Unpaid / Partly
-	Paid / Overdue / Paid / Cancelled)."""
-	if not sales_invoice:
+	Not Invoiced / Draft / Unpaid / Partly Paid / Overdue / Paid / Cancelled."""
+	if not sales_invoice or not frappe.db.exists("Sales Invoice", sales_invoice):
 		return "Not Invoiced"
-	return _survey_invoice_status(sales_invoice)
+	si = frappe.db.get_value(
+		"Sales Invoice", sales_invoice,
+		["docstatus", "status", "outstanding_amount", "grand_total"], as_dict=True,
+	)
+	if not si:
+		return "Not Invoiced"
+	if si.docstatus == 0:
+		return "Draft"
+	if si.docstatus == 2:
+		return "Cancelled"
+	# Submitted: read settlement from status / outstanding.
+	if si.status in ("Paid", "Credit Note Issued") or flt(si.outstanding_amount) <= 0:
+		return "Paid"
+	if "Overdue" in (si.status or ""):
+		return "Overdue"
+	if flt(si.outstanding_amount) < flt(si.grand_total):
+		return "Partly Paid"
+	return "Unpaid"
 
 
 def _postpaid(customer, ctx) -> bool:
@@ -205,9 +211,8 @@ def _cleaning_rows(filters, ctx):
 
 
 def _work_order_rows(filters, ctx, doctype, party_field):
-	"""Rows for a completed work order (M&R / Periodic Test) — the two are billed
-	identically (consolidated_billing._work_order_lines) and read identically here; the
-	Order Type filter is the only thing that tells them apart."""
+	"""Rows for a completed work order (M&R), billed by
+	``consolidated_billing._work_order_lines`` and read back here."""
 	f = {"status": "Completed"}
 	if filters.get("customer"):
 		f[party_field] = filters["customer"]
@@ -244,35 +249,3 @@ def _work_order_rows(filters, ctx, doctype, party_field):
 
 def _repair_rows(filters, ctx):
 	return _work_order_rows(filters, ctx, "Repair Order", "principal")
-
-
-def _periodic_rows(filters, ctx):
-	return _work_order_rows(filters, ctx, "Periodic Test Order", "billed_to")
-
-
-def _survey_rows(filters, ctx):
-	f = {"docstatus": 1}
-	if filters.get("customer"):
-		f["paid_to"] = filters["customer"]
-	_apply_date(f, "creation", filters)
-	recs = frappe.get_all(
-		"Survey Order",
-		filters=f,
-		fields=["name", "paid_to", "creation", "payment_type", "total", "currency", "sales_invoice", "invoice_status"],
-		ignore_permissions=True,
-	)
-	return [
-		{
-			"order_type": "Survey Order",
-			"order": r.name,
-			"customer": r.paid_to,
-			"date": getdate(r.creation),
-			"payment_type": r.payment_type,
-			"currency": r.currency or ctx["default"],
-			"amount": flt(r.total),
-			# Survey Order keeps its own invoice_status synced from the linked SI.
-			"invoice_status": r.invoice_status or "Not Invoiced",
-			"sales_invoice": r.sales_invoice,
-		}
-		for r in recs
-	]

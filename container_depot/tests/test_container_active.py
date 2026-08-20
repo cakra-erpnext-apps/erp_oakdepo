@@ -195,7 +195,6 @@ class TestContainerActive(FrappeTestCase):
 		for doctype, extra in (
 			("Cleaning Order", {"customer": self.customer}),
 			("Repair Order", {}),
-			("Periodic Test Order", {}),
 			("Inspection", {"inspection_type": "EIR-In"}),
 			("Container Position Survey", {}),
 		):

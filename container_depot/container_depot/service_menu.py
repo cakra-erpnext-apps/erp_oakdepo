@@ -19,10 +19,9 @@ import frappe
 from frappe.utils.nestedset import get_descendants_of
 
 # --- the default menus --------------------------------------------------------
-# One menu per flow whose item picker is scoped by a price list: Booking (lift), Cleaning,
-# Maintenance (M&R), Survey and Periodic Test. A flow missing from here has its filter buried
-# in code, where no operator can see or change it — which is how Survey Order and Periodic
-# Test Order ended up offering the whole catalogue.
+# One menu per flow whose item picker is scoped by a price list: Booking (lift), Cleaning
+# and Maintenance (M&R). A flow missing from here has its filter buried in code, where no
+# operator can see or change it.
 #
 # The menus ship with NO Item Groups on purpose. Production has no Item Prices registered
 # yet, so any mapping guessed here would be fiction — and the old seeder proved the failure
@@ -33,9 +32,9 @@ from frappe.utils.nestedset import get_descendants_of
 # An empty menu does not filter (``is_real_menu`` -> False), so each picker stays open until
 # an operator maps the groups in Desk. Dev sites get a realistic mapping from
 # ``seed_dev.MENUS`` instead of a migration.
-DEFAULT_MENUS = ("Booking", "Cleaning", "Maintenance", "Survey", "Periodic Test")
+DEFAULT_MENUS = ("Booking", "Cleaning", "Maintenance")
 
-DEFAULT_SEQUENCE = {"Booking": 1, "Cleaning": 2, "Maintenance": 3, "Survey": 4, "Periodic Test": 5}
+DEFAULT_SEQUENCE = {"Booking": 1, "Cleaning": 2, "Maintenance": 3}
 
 
 def seed_default_menus() -> int:

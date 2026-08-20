@@ -10,12 +10,11 @@ both directions:
   life is in its ``status`` (Service Setup → Pending → In_Progress → Completed), and
   submitting is a separate act — a Completed order left unsubmitted counted as open, a
   Cancelled one too.
-* **Repair Order** and **Periodic Test Order** are NOT submittable, so they got no filter at
-  all and never showed the badge — a booking with two repairs in progress looked as quiet
-  as one with none.
+* **Repair Order** is NOT submittable, so it got no filter at all and never showed the
+  badge — a booking with two repairs in progress looked as quiet as one with none.
 
 Declaring them here fixes both: the badge now means "work not finished", the same thing on
-all three. This hook is merged after ERPNext's (config[key].update, app install order), so
+both. This hook is merged after ERPNext's (config[key].update, app install order), so
 these entries replace the blanket rule rather than fighting it.
 
 Inspection is deliberately left alone: a draft EIR *is* the unfinished work, so the
@@ -32,6 +31,5 @@ def get_notification_config():
 		"for_doctype": {
 			"Cleaning Order": {"status": ("not in", _CLEANING_DONE)},
 			"Repair Order": {"status": ("not in", _WORK_ORDER_DONE)},
-			"Periodic Test Order": {"status": ("not in", _WORK_ORDER_DONE)},
 		}
 	}
