@@ -1821,11 +1821,6 @@ def request_revision(inspection: str, reason: str | None = None) -> dict:
 	# is what matters, so a comment-permission hiccup must not fail the request.
 	log_doc_note("Inspection", doc.name, note)
 
-	subject = _("Minta revisi EIR • {0} • oleh {1}").format(
-		doc.container_no or doc.container, user
-	)
-	if reason:
-		subject += f" — {reason}"
 	# Mark the EIR so the Desk list shows a "Revisi Diminta" indicator + the reason
 	# (cleared on revert_to_draft). Raw set_value — the doc is submitted; both fields are
 	# allow_on_submit.
@@ -1833,13 +1828,7 @@ def request_revision(inspection: str, reason: str | None = None) -> dict:
 		"Inspection", doc.name, {"revision_requested": 1, "revision_note": note},
 	)
 
-	sent = _notify.notify(
-		doctype="Inspection",
-		name=doc.name,
-		subject=subject,
-		branch=_notify._depot_branch(doc.depot) if doc.get("depot") else None,
-		notification_type="Alert",
-	)
+	sent = _notify.notify_eir_revision_requested(doc.name, reason=reason)
 	return {"success": True, "notified": sent, "inspection": doc.name}
 
 

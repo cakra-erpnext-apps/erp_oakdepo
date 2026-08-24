@@ -12,8 +12,8 @@ landed on the wrong screen.
 WHY THE EVENT, NOT JUST THE DOCTYPE
 -----------------------------------
 The doctype alone is not enough to say where to go. ``Order Muat`` is the subject of four
-different events that belong on three different screens: a bon was generated (Gate), a survey
-was requested (Survey Posisi), or a tank is held after its EIR-Out (EIR).
+different events that belong on three different screens: a bon was generated (Gate), an EIR-Out
+came due (EIR worklist), or a tank is held after its EIR-Out (EIR history).
 Routing on doctype would send two notifications out of three to the wrong menu.
 
 So ``notify()`` stamps the event key onto the Notification Log (``depot_event``, a custom
@@ -83,7 +83,7 @@ def _eir_worklist(doctype, name):
 	"""The EIR screen, for events whose document is NOT an Inspection.
 
 	`eir_out_hold` fires on the **Order Muat** (or the Container) behind a held tank, so there
-	is no Inspection name to deep-link to — same shape as `_survey_worklist`.
+	is no Inspection name to deep-link to — same shape as `_eir_pending`.
 	"""
 	return "/eir/history"
 
@@ -109,7 +109,7 @@ def _repair(doctype, name):
 
 
 def _survey(doctype, name):
-	"""Only valid when the notified document IS the survey — see `_survey_worklist`."""
+	"""Only valid when the notified document IS a Container Position Survey."""
 	st = _state("Container Position Survey", name, ["status"])
 	if not st:
 		return None
@@ -121,15 +121,16 @@ def _survey(doctype, name):
 	return f"/survey-position/history?open={name}"
 
 
-def _survey_worklist(doctype, name):
-	"""The survey queue, for events whose document is NOT a survey.
+def _eir_pending(doctype, name):
+	"""The EIR worklist (open drafts), for events whose document is NOT an Inspection.
 
-	`order_muat_survey` fires on an **Order Muat** — a survey has been asked for, and no
-	survey record exists yet to deep-link to. Pointing this at `_survey` looked right and
-	resolved to nothing every time, because it went looking for a Container Position Survey
-	under an Order Muat's name.
+	`order_muat_survey` fires on an **Order Muat**: EIR-Out drafts have just been provisioned
+	for its tanks and there is no single Inspection to deep-link to. It used to resolve to
+	`/survey-position` — the Container Position Survey menu, a different feature worked by a
+	different team — so the one event that says "EIR-Out wajib sebelum tank boleh dimuat"
+	pointed away from the EIR screen. `/eir` is where those drafts are.
 	"""
-	return "/survey-position"
+	return "/eir"
 
 
 def _gate_history(doctype, name):
@@ -163,9 +164,11 @@ _BY_EVENT = {
 	"repair_order_pending_approval": _repair,
 	"repair_order_decided": _repair,
 	"repair_revision_requested": _repair,
+	"eir_revision_requested": _eir,
+	"cleaning_revision_requested": _cleaning,
 	"order_gate_in": _gate,
 	"order_gate_out": _gate,
-	"order_muat_survey": _survey_worklist,
+	"order_muat_survey": _eir_pending,
 	"eir_out_hold": _eir_worklist,
 	"gate_out": _gate_history,
 	"booking_created": _none,

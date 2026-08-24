@@ -1505,7 +1505,10 @@ FIELD_ROLE_MATRIX = [
 	# create/submit app-wide because every gate record is written by a hook. Security, Kalmar
 	# and SPV keep write so a mistyped truck plate stays correctable.
 	("Gate Entry",                  ("rw",    "r",     "rw",   "",       "",     "",     "rw")),
-	("Order Bongkar",               ("rwc",   "r",     "r",    "",       "",     "",     "rwc")),
+	# Kalmar reads "r" in the handoff table, which left them holding gate notifications they
+	# could not open: the Gate tile keys on create over Order Bongkar (ess.context._MENU), and
+	# gate-out / load-complete is their work. Granted rwc to match Security and SPV.
+	("Order Bongkar",               ("rwc",   "r",     "rwc",  "",       "",     "",     "rwc")),
 	# SPV reads "rw" in the handoff table, which left NOBODY below Admin Ops able to issue a
 	# bon Muat: `_require_order_create` keys on create over the direction's doctype, so on a
 	# Tank Out booking the "Generate Bon / Order" button never rendered for the yard. Granting
@@ -1896,8 +1899,12 @@ def setup_permissions():
 #
 # (event_key, label, description, [roles])
 NOTIFICATION_RULES = [
+	# Team Cleaning / Team Repair are deliberately NOT here. Their Inspection perm is read-only,
+	# so `/eir` (which the tap resolves to) refuses them the menu and the bell leads nowhere —
+	# and the EIR that concerns them already fires `cleaning_order_created` / `repair_order_created`,
+	# which opens the order they can actually work. Adding them back re-creates a dead notification.
 	("eir_submitted", "EIR disubmit", "Sebuah EIR (In/Out) disubmit — tank selesai diperiksa.",
-		["Team EIR", "Team Cleaning", "Team Repair", "SPV Lapangan", "Admin Ops"]),
+		["Team EIR", "SPV Lapangan", "Admin Ops"]),
 	("eir_pending_review", "EIR menunggu review", "Operator lapangan mengirim EIR untuk direview Admin Ops.",
 		["Admin Ops", "SPV Lapangan"]),
 	("cleaning_pending_review", "Cleaning menunggu review", "Operator cuci selesai di PWA dan mengirim order untuk direview Admin Ops.",
@@ -1916,12 +1923,19 @@ NOTIFICATION_RULES = [
 		["Team Repair", "SPV Lapangan", "Admin Ops"]),
 	("repair_revision_requested", "Team minta M&R dibuka lagi", "Team repair mengajukan revisi atas M&R yang sudah ditutup — Admin Ops yang memutuskan membukanya.",
 		["Admin Ops", "SPV Lapangan"]),
+	("eir_revision_requested", "Team minta EIR dibuka lagi", "Operator mengajukan revisi atas EIR yang sudah disubmit — Admin Ops yang memutuskan membukanya.",
+		["Admin Ops", "SPV Lapangan"]),
+	("cleaning_revision_requested", "Team minta cleaning dibuka lagi", "Operator cuci mengajukan revisi atas Cleaning Order yang sudah disubmit — Admin Ops yang memutuskan membukanya.",
+		["Admin Ops", "SPV Lapangan"]),
 	("order_gate_in", "Bon Bongkar terbit", "Order Bongkar disubmit — bon gate-in siap diprint.",
 		["Security", "SPV Lapangan", "Admin Ops"]),
 	("order_gate_out", "Bon Muat terbit", "Order Muat disubmit — bon gate-out siap diprint.",
 		["Security", "Team Kalmar", "SPV Lapangan", "Admin Ops"]),
+	# Team Survey used to be on this one, which read right and was wrong twice over: this event
+	# is about the EIR-Out, not the position survey, and Team Survey holds no Inspection perm at
+	# all. The tank inspection is Team EIR's work.
 	("order_muat_survey", "EIR-Out jatuh tempo", "Order Muat disubmit — EIR-Out wajib sebelum tank boleh dimuat.",
-		["Team Survey", "Team EIR", "SPV Lapangan", "Admin Ops"]),
+		["Team EIR", "SPV Lapangan", "Admin Ops"]),
 	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
 		["SPV Lapangan", "Admin Ops"]),
 	("gate_out", "Isotank keluar depo", "Gate-out / load-complete selesai untuk sebuah tank.",

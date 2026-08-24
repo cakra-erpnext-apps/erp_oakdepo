@@ -195,6 +195,48 @@ def _push(users, subject, doctype=None, name=None, event_key=None):
 		frappe.log_error(title="Depot push dispatch failed", message=frappe.get_traceback())
 
 
+def audit_routing() -> dict:
+	"""Print who currently receives what, and who is unscoped. Read-only.
+
+	::
+
+		bench --site <site> execute container_depot.container_depot.notify.audit_routing
+
+	Two questions this answers that the rule form cannot. First, a rule lists ROLES, not
+	people — "Admin Ops" tells you nothing about whether three users or thirty will get the
+	bell. Second, and the usual culprit behind "saya kebanjiran notif": a user with no Branch
+	on their User record is not restricted to nothing, they are unrestricted, so they receive
+	every branch's events (see ``user_branch.get_user_branches``). That is invisible on the
+	notification side and shows up only here.
+
+	Run it after tuning rules, and after onboarding anyone.
+	"""
+	table = _rules()
+	print(f"master switch: {'ON' if table['_enabled'] else 'OFF'}")
+	print(f"fallback roles: {', '.join(table['_fallback']) or '(none)'}\n")
+
+	for event_key in sorted(table["_events"]):
+		rule = table["_events"][event_key]
+		users = _recipients(None, rule["roles"]) if rule["enabled"] else []
+		flag = "" if rule["enabled"] else "  [DISABLED]"
+		print(f"{event_key:32s} {len(users):3d} user{flag}  <- {', '.join(rule['roles']) or '(nobody)'}")
+		for u in users:
+			print(f"{'':36s}{u}")
+
+	routed_roles = {r for rule in table["_events"].values() for r in rule["roles"]}
+	unscoped = [
+		u
+		for u in frappe.get_all("User", filters={"enabled": 1}, pluck="name")
+		if u not in _SKIP_USERS
+		and get_user_branches(u) is None
+		and routed_roles & set(frappe.get_roles(u))
+	]
+	print(f"\nunrestricted by branch (receive EVERY branch): {len(unscoped)}")
+	for u in unscoped:
+		print(f"    {u}")
+	return {"events": len(table["_events"]), "unscoped_users": unscoped}
+
+
 # Doctypes whose feed entries are revoked when the document is voided. There is now a
 # single source of Alert rows for these documents — ``notify`` below. The built-in
 # Notification rules that used to duplicate it were removed in v0_51.
@@ -447,6 +489,61 @@ def notify_repair_revision_requested(repair_order, reason=None):
 		subject=subject,
 		branch=_depot_branch(ro.depot),
 		event_key="repair_revision_requested",
+	)
+
+
+def notify_eir_revision_requested(inspection, reason=None):
+	"""Fire when an operator asks for a SUBMITTED EIR to be opened again ("Ajukan Revisi").
+
+	Same shape, and the same reasoning, as :func:`notify_repair_revision_requested`: only Admin
+	Ops can act on it (``eir.revert_to_draft``), and the reason travels in the subject so the
+	reader can judge the request without opening the EIR first.
+
+	It lived unrouted until 2026-08-24 — ``event_key=None`` skips the role filter entirely, so
+	a request for one desk went to every enabled user in the branch, Cashier and Management
+	included. That is the single loudest source of "kenapa saya dapat notif ini".
+	"""
+	ins = frappe.db.get_value(
+		"Inspection", inspection, ["name", "container", "container_no", "depot"], as_dict=True
+	)
+	if not ins:
+		return 0
+	subject = frappe._("Minta revisi EIR • {0} • oleh {1}").format(
+		ins.container_no or ins.container, frappe.session.user
+	)
+	if reason:
+		subject += f" — {reason}"
+	return notify(
+		doctype="Inspection",
+		name=ins.name,
+		subject=subject,
+		branch=_depot_branch(ins.depot),
+		event_key="eir_revision_requested",
+	)
+
+
+def notify_cleaning_revision_requested(cleaning_order, reason=None):
+	"""Fire when the cleaning team asks for a SUBMITTED Cleaning Order to be opened again.
+
+	The cleaning half of :func:`notify_eir_revision_requested`, and it was unrouted for the
+	same reason and just as long.
+	"""
+	co = frappe.db.get_value(
+		"Cleaning Order", cleaning_order, ["name", "container", "container_no", "depot"], as_dict=True
+	)
+	if not co:
+		return 0
+	subject = frappe._("Minta revisi cleaning • {0} • oleh {1}").format(
+		co.container_no or co.container, frappe.session.user
+	)
+	if reason:
+		subject += f" — {reason}"
+	return notify(
+		doctype="Cleaning Order",
+		name=co.name,
+		subject=subject,
+		branch=_depot_branch(co.depot),
+		event_key="cleaning_revision_requested",
 	)
 
 

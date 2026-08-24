@@ -7,7 +7,11 @@ Two failure modes to keep out of the depot:
     perfectly reasonable in the source. That bug shipped once during development
     (``order_muat_survey`` fires on an Order Muat and was pointed at a resolver that reads a
     Container Position Survey); ``test_no_resolver_reads_a_doctype_it_was_not_given`` is what
-    caught it.
+    caught it. Its sequel was quieter and lived longer: the replacement resolver read nothing
+    at all, so this test passed while the event still pointed at ``/survey-position`` — the
+    wrong menu, worked by a different team, for an event about an EIR-Out. A resolver reading
+    no doctype is not the same as a resolver being right, which is why
+    ``test_an_event_lands_on_the_menu_its_subject_names`` now pins the menu too.
 
   * A notification that becomes a side door. The PWA menu gate must be the same gate the
     tile filter and the router guard use, or a notification would let an operator into a
@@ -49,6 +53,8 @@ EVENT_DOCTYPES = [
 	("repair_order_pending_approval", "Repair Order"),
 	("repair_order_decided", "Repair Order"),
 	("repair_revision_requested", "Repair Order"),
+	("eir_revision_requested", "Inspection"),
+	("cleaning_revision_requested", "Cleaning Order"),
 	("order_gate_in", "Order Bongkar"),
 	("order_gate_out", "Order Muat"),
 	("order_muat_survey", "Order Muat"),
@@ -120,6 +126,27 @@ class TestNotificationRouteTable(FrappeTestCase):
 						"it will resolve to None for every real notification",
 					)
 
+	# Events whose resolver returns a fixed path (no document read), and the menu that must
+	# own it. A static resolver is exactly where a wrong-but-plausible route hides: nothing
+	# fails, the operator just arrives somewhere else.
+	STATIC_EVENT_MENUS = {
+		"order_muat_survey": "eir",
+		"eir_out_hold": "eir",
+		"order_gate_in": "gate",
+		"order_gate_out": "gate",
+		"gate_out": "gate",
+	}
+
+	def test_an_event_lands_on_the_menu_its_subject_names(self):
+		for event, doctype in EVENT_DOCTYPES:
+			expected = self.STATIC_EVENT_MENUS.get(event)
+			if not expected:
+				continue
+			with self.subTest(event=event):
+				route = nr.route_for(doctype, "X-0001", event)
+				self.assertIsNotNone(route, f"{event} resolves nowhere")
+				self.assertEqual(nr.menu_for_route(route)[0], expected)
+
 	def test_desk_only_events_offer_no_pwa_route(self):
 		"""An invoice has no PWA screen. Sending the operator to Beranda instead would look
 		exactly like a tap that failed."""
@@ -149,6 +176,60 @@ class TestNotificationRouteTable(FrappeTestCase):
 		for route in shapes:
 			with self.subTest(route=route):
 				self.assertIsNotNone(nr.menu_for_route(route), f"{route} maps to no menu")
+
+	def test_no_rule_routes_a_field_role_to_a_menu_it_cannot_open(self):
+		"""The recipient table and the menu gate are two files that must agree.
+
+		They drifted, and the failure was invisible from either side: the bell rang for Team
+		Cleaning and Team Repair on `eir_submitted` (Inspection is read-only for them, `/eir`
+		needs write), and for Team Survey on `order_muat_survey` (no Inspection perm at all).
+		Nothing errored — the operator tapped and got "Anda tidak punya akses ke menu ini".
+
+		Checked against the SHIPPED matrix rather than the seeded DocPerms on purpose: this
+		has to fail in review when someone adds a role to a rule, not months later on a site.
+
+		Office roles are skipped. They hold no field role, so the PWA refuses them every menu
+		by design — they read the same notification on the Desk bell, which is the point.
+		"""
+		from container_depot.install import FIELD_ROLE_MATRIX, FIELD_ROLES, NOTIFICATION_RULES
+
+		letters = {"read": "r", "write": "w", "create": "c", "submit": "s"}
+		perms = {dt: dict(zip(FIELD_ROLES, cols)) for dt, cols in FIELD_ROLE_MATRIX}
+		menu_ptype = {key: (dt, ptype) for key, _route, dt, ptype in _MENU}
+		doctype_of = dict(EVENT_DOCTYPES)
+
+		for event_key, _label, _desc, roles in NOTIFICATION_RULES:
+			menu = self._menu_of(event_key, doctype_of.get(event_key))
+			if not menu:
+				continue  # Desk-only event; every recipient reads it on the Desk bell
+			menu_dt, ptype = menu_ptype[menu]
+			for role in roles:
+				if role not in FIELD_ROLES:
+					continue
+				with self.subTest(event=event_key, role=role):
+					self.assertIn(
+						letters[ptype],
+						perms.get(menu_dt, {}).get(role, ""),
+						f"{event_key} routes to the '{menu}' menu, which needs {ptype} on "
+						f"{menu_dt} — {role} does not have it, so the bell leads nowhere",
+					)
+
+	def _menu_of(self, event_key, doctype):
+		"""The PWA menu an event's route belongs to, or None for a Desk-only event.
+
+		Derived by asking the real route table with a stand-in document, so there is no second
+		copy of the mapping to drift. The stand-in is a fresh/open document: the finished
+		variants of every resolver land in the same menu (`/eir/history` is still `eir`), so
+		the menu answer does not depend on which one is used.
+		"""
+		if not doctype:
+			return None
+		open_doc = frappe._dict(
+			{"docstatus": 0, "status": "Draft", "inspection_type": "EIR-In"}
+		)
+		with patch.object(nr, "_state", lambda dt, name, fields: open_doc):
+			route = nr.route_for(doctype, "X-0001", event_key)
+		return nr.menu_for_route(route)[0] if route else None
 
 	def test_longest_prefix_wins(self):
 		"""`/survey-position/history` is surveyPos, not a near-miss on some shorter route."""

@@ -114,6 +114,24 @@ class TestNotificationRouting(FrappeTestCase):
 		self.assertEqual(_logs_for(FIELD_USER), 1)
 		self.assertEqual(_logs_for(FINANCE_USER), 0)
 
+	def test_revision_requests_are_routed_not_broadcast(self):
+		"""EIR and cleaning "Ajukan Revisi" used to call notify() with no event_key at all.
+
+		That path skips the role filter entirely (see `_recipients`), so a request only Admin
+		Ops can act on reached every enabled user in the branch — Finance included. The M&R
+		twin was fixed at the time and these two were missed; this pins all three.
+		"""
+		for event_key in (
+			"eir_revision_requested",
+			"cleaning_revision_requested",
+			"repair_revision_requested",
+		):
+			with self.subTest(event=event_key):
+				frappe.db.delete("Notification Log", {"document_name": DOC})
+				self._fire(event_key)
+				self.assertEqual(_logs_for(FINANCE_USER), 0)
+				self.assertEqual(_logs_for(FIELD_USER), 0)
+
 	def test_actor_is_never_notified_about_their_own_action(self):
 		frappe.set_user(ACTOR)
 		try:

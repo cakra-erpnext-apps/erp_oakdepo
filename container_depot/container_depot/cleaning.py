@@ -370,18 +370,7 @@ def request_revision(cleaning_order, reason: str | None = None) -> dict:
 		"Cleaning Order", doc.name, {"revision_requested": 1, "revision_note": note},
 	)
 
-	subject = _("Minta revisi cleaning • {0} • oleh {1}").format(
-		doc.container_no or doc.container, user
-	)
-	if reason:
-		subject += f" — {reason}"
-	sent = _notify.notify(
-		doctype="Cleaning Order",
-		name=doc.name,
-		subject=subject,
-		branch=_notify._depot_branch(doc.depot) if doc.get("depot") else None,
-		notification_type="Alert",
-	)
+	sent = _notify.notify_cleaning_revision_requested(doc.name, reason=reason)
 	return {"success": True, "notified": sent, "cleaning_order": doc.name}
 
 
