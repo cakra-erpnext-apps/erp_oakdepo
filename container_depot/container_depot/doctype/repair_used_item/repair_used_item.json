@@ -8,12 +8,11 @@
  "engine": "InnoDB",
  "field_order": [
   "line_type",
+  "warehouse",
   "item",
   "item_name",
   "column_break_1",
-  "warehouse",
   "on_hand",
-  "decision",
   "section_cost",
   "quantity",
   "currency",
@@ -22,33 +21,33 @@
   "item_amount",
   "amount",
   "section_labour",
-  "manhour",
   "manhour_rate",
   "column_break_labour",
-  "manhour_amount",
+  "manhour",
   "section_notes",
+  "decision",
   "owner_remark",
   "remark",
   "is_stock_item"
  ],
  "fields": [
   {
-   "description": "Jasa = pekerjaan/servis. Part = barang dari gudang (dikeluarkan dari stok saat M&R selesai). Part (Beli Langsung) = barang fisik yang tidak distok — tanpa gudang, tanpa cek stok.",
+   "description": "Jasa = pekerjaan/servis. Part = barang dari gudang (dikeluarkan dari stok saat M&R selesai).",
    "fieldname": "line_type",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Jenis",
-   "options": "Jasa\nPart\nPart (Beli Langsung)",
+   "options": "Jasa\nPart",
    "reqd": 1,
+   "in_list_view": 1,
    "columns": 1
   },
   {
    "description": "Service or spare part — must have an Item Price in the owner's price list.",
    "fieldname": "item",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Item (Service / Part)",
    "options": "Item",
+   "in_list_view": 1,
    "columns": 2
   },
   {
@@ -67,11 +66,9 @@
    "description": "Gudang asal part ini. Tiap baris boleh beda gudang.",
    "fieldname": "warehouse",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Gudang",
    "mandatory_depends_on": "eval:doc.line_type=='Part'",
-   "options": "Warehouse",
-   "columns": 1
+   "options": "Warehouse"
   },
   {
    "description": "Sisa stok di gudang baris ini. Kosong untuk Jasa.",
@@ -79,18 +76,16 @@
    "fieldtype": "Data",
    "label": "Stok",
    "no_copy": 1,
-   "read_only": 1,
-   "in_list_view": 1,
-   "columns": 1
+   "read_only": 1
   },
   {
    "default": "Pending",
    "description": "Owner's per-line decision. Only Approved lines are repaired, issued from stock, and billed.",
    "fieldname": "decision",
    "fieldtype": "Select",
-   "in_list_view": 1,
    "label": "Owner Decision",
    "options": "Pending\nApproved\nRejected",
+   "in_list_view": 1,
    "columns": 1
   },
   {
@@ -101,8 +96,8 @@
    "default": "1",
    "fieldname": "quantity",
    "fieldtype": "Float",
-   "in_list_view": 1,
    "label": "Qty",
+   "in_list_view": 1,
    "columns": 1
   },
   {
@@ -111,19 +106,17 @@
    "fieldtype": "Link",
    "label": "Currency",
    "options": "Currency",
-   "read_only": 1,
-   "in_list_view": 1,
-   "columns": 1
+   "read_only": 1
   },
   {
    "default": "0",
    "description": "Per-unit item price from the owner's Item Price (adjustable).",
    "fieldname": "item_rate",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Item Rate",
    "options": "currency",
-   "columns": 1
+   "in_list_view": 1,
+   "columns": 2
   },
   {
    "fieldname": "column_break_cost",
@@ -141,11 +134,11 @@
    "description": "Auto: Amount Cost Manhour + Amount Item Rate.",
    "fieldname": "amount",
    "fieldtype": "Currency",
-   "in_list_view": 1,
    "label": "Total Cost",
    "options": "currency",
    "read_only": 1,
-   "columns": 1
+   "in_list_view": 1,
+   "columns": 2
   },
   {
    "fieldname": "section_labour",
@@ -153,33 +146,25 @@
   },
   {
    "default": "0",
-   "description": "Jam kerja standar item ini (dari master Item). Tidak dikali Qty.",
+   "description": "Auto: jam kerja standar item ini (master Item). Hidden \u2014 tidak diisi manusia, tapi INILAH jam yang ditagihkan invoice (Sales Invoice Item.manhour); lihat consolidated_billing._work_order_lines.",
    "fieldname": "manhour",
    "fieldtype": "Float",
    "label": "Manhour",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
-   "description": "Otomatis: Biaya Manhour ÷ Manhour. Inilah tarif per jam yang dipakai header invoice bila semua baris sepakat.",
+   "description": "Tarif labour baris ini, apa adanya dari rate card pemilik tank \u2014 tidak dikali jam di sini. Boleh diubah. TIDAK masuk Total Cost: labour ditagih di header invoice (total jam \u00d7 tarif ini).",
    "fieldname": "manhour_rate",
    "fieldtype": "Currency",
-   "label": "Tarif per Jam (efektif)",
+   "label": "Tarif Manhour",
    "options": "currency",
-   "read_only": 1
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "column_break_labour",
    "fieldtype": "Column Break"
-  },
-  {
-   "description": "Biaya labour baris ini. Terisi dari kontrak pemilik tank (Manhour × tarif per jam), boleh diubah. TIDAK masuk Total Cost — ditagih terpisah di header invoice.",
-   "fieldname": "manhour_amount",
-   "fieldtype": "Currency",
-   "label": "Biaya Manhour",
-   "options": "currency",
-   "read_only": 0,
-   "in_list_view": 1,
-   "columns": 1
   },
   {
    "fieldname": "section_notes",
@@ -209,7 +194,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-20 22:00:00.000000",
+ "modified": "2026-08-24 14:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Used Item",
  "owner": "Administrator",

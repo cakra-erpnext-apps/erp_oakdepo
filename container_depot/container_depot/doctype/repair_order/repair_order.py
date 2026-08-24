@@ -217,10 +217,10 @@ class RepairOrder(Document):
 		**Labour is not costed here.** It is charged on the invoice, which stamps every billed
 		line with the manhour its contract books for that item and totals them once in the
 		header (``invoicing.apply_manhour_charge``). That only works because an M&R is billed
-		item by item — see ``consolidated_billing._mr_lines``. The ``manhour`` /
-		``manhour_rate`` / ``manhour_amount`` fields on the row are a read-only PREVIEW of that
-		invoice charge, shown beside Total Cost so the estimate says what the labour will come
-		to; they never enter the line amount or the order total.
+		item by item — see ``consolidated_billing._mr_lines``. The row carries ``manhour_rate``,
+		the labour tariff off the owner's rate card, taken as it stands; ``manhour`` rides
+		along hidden as the hours the invoice books for that item. Neither enters the line
+		amount or the order total.
 
 		``quantity`` and ``item_rate`` are the ADJUSTABLE inputs (seeded from the owner's Item
 		Price when a line is first added); the amounts are always derived here, so they stay
@@ -249,33 +249,16 @@ class RepairOrder(Document):
 
 		from container_depot.container_depot.mr import default_warehouse
 
-		# The labour PREVIEW stamped on every row. It is never priced into the line: the
-		# invoice books each billed line's hours (``Item.manhour``) and multiplies the SUM by
-		# ONE hourly tariff in its header (``invoicing.apply_manhour_charge``). That tariff is
-		# read here exactly the way the invoice reads it — the customer's own rate card, and
-		# 0 when they have no contract — so the estimate previews what will actually be
-		# charged, and nothing when nothing will be. Deliberately NOT scaled by qty: the hours
-		# are what the line books as a whole, which is how the invoice reads them too.
-		from container_depot import pricing
-
-		manhour_hour = flt(pricing.manhour_rate_for(self.principal)) if self.principal else 0.0
-
 		for row in self.get("used_items") or []:
 			row.is_stock_item = (
 				1 if row.item and frappe.db.get_value("Item", row.item, "is_stock_item") else 0
 			)
 			# Jenis is an INPUT while the row is empty (it narrows the item picker). Once an
-			# item is chosen the Item master decides what can be TRUE of it: a stock item is
-			# always "Part" (it has a gudang and must face the stock guard), and a non-stock
-			# item can never be. Which of the two non-stock labels it wears — plain work
-			# ("Jasa") or a part bought for this job ("Part (Beli Langsung)") — is the user's
-			# call, because nothing in the system can tell them apart; it only changes how the
-			# line reads on the estimate the owner approves.
+			# item is chosen the Item master decides it outright: a stock item is "Part" (it
+			# has a gudang and must face the stock guard), anything else is "Jasa". The old
+			# third label ("Part (Beli Langsung)") is gone — see mr.mr_item_search.
 			if row.item:
-				if row.is_stock_item:
-					row.line_type = "Part"
-				elif row.line_type not in ("Jasa", "Part (Beli Langsung)"):
-					row.line_type = "Jasa"
+				row.line_type = "Part" if row.is_stock_item else "Jasa"
 			# Keyed on the ITEM, not the label: only a stock item is ever issued from a gudang,
 			# so only a stock item may name one.
 			if not row.is_stock_item:
@@ -296,17 +279,16 @@ class RepairOrder(Document):
 			row.item_amount = flt(row.quantity or 0.0) * flt(row.item_rate)
 			row.amount = row.item_amount
 			row.manhour = flt(breakdown.get("manhour"))
-			# Biaya Manhour is the INPUT: seeded once from the owner's rate card, then left
-			# alone — Admin Ops may negotiate the labour on a job, and re-deriving it every
-			# save would undo the edit before anyone saw it. Same bargain as item_rate above.
-			if not flt(row.manhour_amount):
-				row.manhour_amount = flt(row.manhour) * manhour_hour
-			# ...and the hourly tariff is what falls OUT of it. The invoice can only bill
-			# labour one way — total hours × a single tariff in the header — so a typed amount
-			# reaches it as the rate it implies (see consolidated_billing._negotiated_manhour_hour).
-			# A line whose item books no standard hours therefore has no way to carry labour to
-			# the invoice; there is nothing to multiply.
-			row.manhour_rate = flt(row.manhour_amount) / flt(row.manhour) if flt(row.manhour) else 0.0
+			# Tarif Manhour is the INPUT, and it is taken AS IT STANDS from the owner's rate
+			# card — no hours arithmetic on the order, the same bargain Cleaning Order strikes
+			# with its own ``manhour_rate`` (``CleaningOrder._resolve_cleaning_services``).
+			# Seeded once, while the row still reads 0, then left alone: Admin Ops may
+			# negotiate the labour on a job, and re-deriving it every save would undo the edit
+			# before anyone saw it. The multiplication lives where the money is settled — the
+			# invoice bills total hours × one tariff in its header — and this is the tariff it
+			# reads back (``consolidated_billing._negotiated_manhour_hour``).
+			if not flt(row.manhour_rate):
+				row.manhour_rate = flt(breakdown.get("manhour_rate"))
 			# Owner-rejected lines aren't repaired or billed — exclude from every total.
 			if (row.get("decision") or "Pending") != "Rejected":
 				numeric_total += row.amount

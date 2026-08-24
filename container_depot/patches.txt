@@ -97,4 +97,6 @@ container_depot.patches.v0_68.gate_out_plan_departure_baseline
 container_depot.patches.v0_69.backfill_container_last_orders
 container_depot.patches.v0_70.fill_gate_out_plan_row_status
 container_depot.patches.v0_71.fill_booking_row_depot
+container_depot.patches.v0_72.drop_direct_buy_line_type
+container_depot.patches.v0_72.drop_used_item_manhour_amount
 container_depot.patches.v0_73.clear_echoed_damage_description_again

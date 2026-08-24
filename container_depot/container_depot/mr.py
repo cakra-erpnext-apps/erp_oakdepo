@@ -228,19 +228,13 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 	# The row's Jenis narrows the catalogue before anything else: pick "Jasa" and no part can
 	# turn up, pick "Part" and no service can. Blank keeps both (the PWA / API callers).
 	#
-	# The two NON-STOCK kinds are the hard case. "Part (Beli Langsung)" is a physical part the
-	# depot buys per job and never stocks, and ERPNext has no flag for that — it and a plain
-	# service are both is_stock_item = 0. The answer is carried by the ITEM GROUP instead
-	# (``Item Group.is_depot_part_group``, seeded in install.py): tick the groups that hold
-	# goods, and the two labels stop offering each other's catalogue. Until at least one group
-	# is ticked this does nothing and both show the whole non-stock list — the same
-	# "unconfigured means don't filter" rule the Depot Service Menu follows, so the picker is
-	# never mysteriously empty on a site that has not classified its groups yet.
-	if line_type in ("Jasa", "Part (Beli Langsung)"):
+	# The split is the Item master's own ``is_stock_item``, nothing else. There used to be a
+	# third label, "Part (Beli Langsung)", for a physical part the depot buys per job and never
+	# stocks; it was dropped because it is invisible to ERPNext (such an item is is_stock_item
+	# = 0, exactly like a service) and the operator had to know which of two identical-looking
+	# labels to pick. Anything not drawn from a gudang is now simply "Jasa".
+	if line_type == "Jasa":
 		filters["is_stock_item"] = 0
-		part_groups = frappe.get_all("Item Group", filters={"is_depot_part_group": 1}, pluck="name")
-		if part_groups:
-			filters["item_group"] = ["in" if line_type == "Part (Beli Langsung)" else "not in", part_groups]
 	elif line_type == "Part":
 		filters["is_stock_item"] = 1
 	# Scope to the Maintenance menu (group-derived) when it's configured, intersecting
@@ -461,8 +455,9 @@ def get_mr_order_detail(repair_order) -> dict:
 		# Owner-approval: prices + per-line decision are exposed (the owner approves by cost).
 		"decision": r.decision or "Pending",
 		"owner_remark": r.owner_remark,
-		# Labour + item breakdown; `amount` is the line's Total Cost.
-		"manhour": r.manhour, "manhour_rate": r.manhour_rate, "manhour_amount": r.manhour_amount,
+		# Labour + item breakdown; `amount` is the line's Total Cost. Labour never enters it:
+		# `manhour_rate` is the tariff as it stands, `manhour` the hours the invoice bills.
+		"manhour": r.manhour, "manhour_rate": r.manhour_rate,
 		"item_rate": r.item_rate, "item_amount": r.item_amount,
 		"amount": r.amount, "currency": r.currency,
 		# Stock at THIS row's gudang. Never a company-wide total: that would promise stock the

@@ -326,7 +326,7 @@ frappe.ui.form.on('Repair Order', {
 				__('Total Biaya Manhour'),
 				(() => {
 					const rows = (frm.doc.used_items || []).filter((r) => (r.decision || 'Pending') !== 'Rejected');
-					const amount = rows.reduce((n, r) => n + flt(r.manhour_amount), 0);
+					const amount = rows.reduce((n, r) => n + flt(r.manhour_rate), 0);
 					if (!amount) return '';
 					return esc(format_currency(amount, (rows.find((r) => r.currency) || {}).currency));
 				})(),
@@ -478,7 +478,7 @@ frappe.ui.form.on('Repair Order', {
 		grid.cannot_delete_rows = !editable;
 		// The adjustable cost inputs follow the estimate-build phase (the three amounts are
 		// always derived, so they stay read-only via the doctype).
-		['item', 'quantity', 'item_rate', 'manhour_amount'].forEach((f) =>
+		['item', 'quantity', 'item_rate', 'manhour_rate'].forEach((f) =>
 			grid.update_docfield_property(f, 'read_only', editable ? 0 : 1)
 		);
 		['decision', 'owner_remark'].forEach((f) => grid.update_docfield_property(f, 'read_only', pending ? 0 : 1));
@@ -499,6 +499,31 @@ frappe.ui.form.on('Repair Order', {
 			);
 			photos.refresh();
 		}
+	},
+	// The row form's own close control is an icon-only chevron in the corner of the heading,
+	// which reads as "collapse" rather than "done with this line". A labelled button sits
+	// beside it instead.
+	//
+	// It ONLY closes. There is deliberately no Save here: every field writes straight into the
+	// M&R as it is typed, so a closed row has lost nothing, and what puts it in the database is
+	// the order's own Save — one press at the end, not one per line.
+	//
+	// Re-injected on every render because the toolbar is rebuilt with the form, and guarded by
+	// its own class so a second render never stacks two buttons.
+	used_items_on_form_rendered(frm) {
+		const grid_form = frm.fields_dict.used_items && frm.fields_dict.used_items.grid.open_grid_row;
+		if (!grid_form) return;
+		const actions = grid_form.wrapper.find('.grid-form-heading .row-actions');
+		if (!actions.length || actions.find('.mr-row-close').length) return;
+		$(`<button class="btn btn-primary btn-sm pull-right mr-row-close">${__('Tutup')}</button>`)
+			.prependTo(actions)
+			.on('click', () => {
+				grid_form.row.toggle_view(false);
+				// Swallow the click. The heading this button sits in carries a handler of its
+				// own that TOGGLES the row, so a bubbling click reopens what was just closed
+				// — which is why every native button in this toolbar returns false too.
+				return false;
+			});
 	},
 	container(frm) {
 		if (frm.doc.container) {
@@ -536,25 +561,52 @@ frappe.ui.form.on('Repair Work Photo', {
 	},
 });
 
+// Everything on a line that is only true BECAUSE of the item picked on it, and the value it
+// falls back to. Dropping the item alone is not enough: the price, the currency, the manhour
+// preview and the Stok reading all outlive it and would sit under the next item as if they
+// had been quoted for it. Qty is in here too — changing Jenis or Gudang starts the line over,
+// so it starts at the doctype default. Remarks and the owner's decision are NOT: those are
+// typed about the line, not derived from the item.
+const USED_ROW_DERIVED = {
+	item: null,
+	item_name: null,
+	currency: null,
+	on_hand: null,
+	is_stock_item: 0,
+	item_rate: 0,
+	item_amount: 0,
+	amount: 0,
+	manhour: 0,
+	manhour_rate: 0,
+	quantity: 1,
+};
+
+function reset_used_row(frm, cdt, cdn) {
+	// An untouched row has nothing to undo, and clearing it would dirty the form the instant
+	// a fresh line's Jenis is set.
+	if (!(frappe.get_doc(cdt, cdn) || {}).item) return;
+	// item first: its own handler bails on an empty item, so nothing re-seeds what follows.
+	Object.keys(USED_ROW_DERIVED).forEach((f) => frappe.model.set_value(cdt, cdn, f, USED_ROW_DERIVED[f]));
+	recompute_used_total(frm);
+}
+
 // Service & Parts — a line costs the ITEM only:
 //   Total Cost (amount) = Qty × Item Rate
-// Biaya Manhour sits beside it and is deliberately left OUT of Total Cost: the invoice
+// Tarif Manhour sits beside it and is deliberately left OUT of Total Cost: the invoice
 // charges labour once in its own header (invoicing.apply_manhour_charge), so adding it here
 // would bill the owner twice. It is an INPUT — seeded from the owner's contract, then typed
-// over freely — while Total Cost stays derived. Editable: quantity, item_rate, manhour_amount.
+// over freely — while Total Cost stays derived. Editable: quantity, item_rate, manhour_rate.
 frappe.ui.form.on('Repair Used Item', {
 	line_type(frm, cdt, cdn) {
-		// Jenis narrows the picker, so an item chosen under the old Jenis is no longer valid.
-		// Only plain "Part" draws from a gudang — Jasa and Part (Beli Langsung) never do.
-		const row = frappe.get_doc(cdt, cdn);
-		if (row.item) frappe.model.set_value(cdt, cdn, 'item', null);
-		if (row.line_type !== 'Part') frappe.model.set_value(cdt, cdn, 'warehouse', null);
+		// Jenis narrows the picker, so an item chosen under the old Jenis is no longer valid
+		// — and neither is anything that was derived from it. Only "Part" draws from a gudang.
+		reset_used_row(frm, cdt, cdn);
+		if (frappe.get_doc(cdt, cdn).line_type !== 'Part') frappe.model.set_value(cdt, cdn, 'warehouse', null);
 	},
 	warehouse(frm, cdt, cdn) {
 		// Stock is per gudang: a part valid in one warehouse may not exist in another, and
 		// the Stok figure has to follow the row's own warehouse.
-		const row = frappe.get_doc(cdt, cdn);
-		if (row.item) frappe.model.set_value(cdt, cdn, 'item', null);
+		reset_used_row(frm, cdt, cdn);
 		frm.trigger('_refresh_on_hand');
 	},
 	item(frm, cdt, cdn) {
@@ -570,32 +622,46 @@ frappe.ui.form.on('Repair Used Item', {
 				// Currency follows the item's own Item Price (lines may differ).
 				frappe.model.set_value(cdt, cdn, 'currency', b.currency || '');
 				frappe.model.set_value(cdt, cdn, 'item_rate', flt(b.item_rate));
-				// A fresh item means fresh labour: reseed both from the owner's contract, the
-				// same figures the server would seed. Neither touches Total Cost.
+				// A fresh item means fresh labour: reseed from the owner's contract, the same
+				// figures the server would seed. The tariff is taken AS IT STANDS — no hours
+				// arithmetic on the order — and neither figure touches Total Cost.
 				frappe.model.set_value(cdt, cdn, 'manhour', flt(b.manhour));
-				frappe.model.set_value(cdt, cdn, 'manhour_amount', flt(b.manhour) * flt(b.manhour_rate));
+				frappe.model.set_value(cdt, cdn, 'manhour_rate', flt(b.manhour_rate));
 			},
 		});
 	},
 	quantity: price_used_row,
 	item_rate: price_used_row,
-	manhour: price_used_row,
-	// Typing a labour figure re-derives its hourly tariff and repaints the sidebar total.
-	manhour_amount(frm, cdt, cdn) {
-		price_used_row(frm, cdt, cdn);
+	// Typing a labour tariff only repaints the sidebar total — it is never priced into the
+	// line, so there is nothing to recompute on the row itself.
+	manhour_rate(frm) {
 		frm.trigger('_render_system_facts');
 	},
 	decision: recompute_used_total,
 	used_items_remove: recompute_used_total,
+	// Filling a line is a sequence — Jenis, then Gudang, then Item, then the numbers the
+	// item seeds — and the grid can only ever show a few of those columns at once. So a new
+	// row opens straight into its OWN form, where the whole line is visible and the fields
+	// sit in the order they are meant to be filled; the grid itself stays a list, and an
+	// existing line is still editable in place.
+	//
+	// Deferred by a tick on purpose: Grid.add_new_row fires this trigger BEFORE it calls
+	// refresh(), so the GridRow for the new line does not exist yet at trigger time.
+	used_items_add(frm, cdt, cdn) {
+		setTimeout(() => {
+			const grid = frm.fields_dict.used_items && frm.fields_dict.used_items.grid;
+			const row = grid && grid.grid_rows_by_docname && grid.grid_rows_by_docname[cdn];
+			if (row) row.toggle_view(true);
+		}, 0);
+	},
 });
 
 function price_used_row(frm, cdt, cdn) {
 	const row = frappe.get_doc(cdt, cdn);
 	const item_amount = flt(row.quantity) * flt(row.item_rate);
 	frappe.model.set_value(cdt, cdn, 'item_amount', item_amount);
-	// Labour is an input, is NOT scaled by qty, and is NOT added to the line total. The
-	// effective hourly tariff falls out of it — mirrors the server.
-	frappe.model.set_value(cdt, cdn, 'manhour_rate', flt(row.manhour) ? flt(row.manhour_amount) / flt(row.manhour) : 0);
+	// Labour is an input, is NOT scaled by qty, and is NOT added to the line total — the
+	// invoice settles it in its own header. Nothing here derives from it.
 	frappe.model.set_value(cdt, cdn, 'amount', item_amount);
 	recompute_used_total(frm);
 }
