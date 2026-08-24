@@ -1,122 +1,220 @@
-{%- macro rp(v) -%}{{ "{:,.0f}".format(frappe.utils.flt(v)).replace(",", ".") }}{%- endmacro -%}
-<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
-  <table style="width:100%; border-collapse:collapse;">
+{#-
+  REPAIR ORDER (M&R) — what was found on the tank, what was done about it, what it costs.
+
+  Read by the tank owner, who approves or rejects line by line, so the decision on each
+  part/service line is printed beside its price rather than summarised at the bottom.
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+
+{%- set _ccy = frappe.db.get_default("currency") or "IDR" -%}
+{%- set _dmg = doc.get("damages") or [] -%}
+{%- set _items = doc.get("used_items") or [] -%}
+{%- set _photos = doc.get("work_photos") or [] -%}
+{%- set _qr = qr_data_uri(doc.name) -%}
+
+{#- Manhour is charged beside the part price, never inside it, so it is totalled on its
+    own line the way the invoice does it. -#}
+{%- set _mh = [] -%}
+{%- for r in _items -%}{%- set _ = _mh.append(frappe.utils.flt(r.get("manhour"))) -%}{%- endfor -%}
+{%- set _mh_total = _mh | sum -%}
+
+<div class="oak-doc">
+  {{ oak.watermark() }}
+  {{ oak.head("REPAIR ORDER", "Maintenance &amp; Repair") }}
+
+  {{ oak.strip([
+    {"k": "No. Order", "v": doc.name, "w": "28%"},
+    {"k": "Container", "v": doc.get("container_no") or doc.get("container") or "&mdash;", "w": "26%"},
+    {"k": "Status", "v": oak.status_pill(doc.get("status")), "w": "24%"},
+    {"k": "Total Biaya", "v": oak.money(doc.get("total_cost"), _ccy), "w": "22%"},
+  ]) }}
+
+  <table class="band boxrow">
     <tr>
-      <td style="width:28%; vertical-align:middle; border:none; padding:0;">
-        <img src="{{ get_logo_pdf() }}" style="max-height:76px; max-width:100%;">
+      <td class="box" style="width:38%;">
+        <div class="box-h">Tank</div>
+        <table class="kv">
+          <tr><td class="k">Container</td><td class="v mono">{{ doc.get("container_no") or doc.get("container") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Tank Owner</td><td class="v">{{ doc.get("principal") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Depot</td><td class="v">{{ doc.get("depot") or "&mdash;" }}</td></tr>
+          <tr><td class="k">EIR Ref</td><td class="v">{{ doc.get("inspection") or "&mdash;" }}</td></tr>
+        </table>
       </td>
-      <td style="vertical-align:middle; border:none; padding:0 6px;">
-        <div style="font-size:20px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
-        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
-          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
-          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
-          No Telp : 061-42064205 / 061-48732784
-        </div>
+      <td class="gut"></td>
+      <td class="box" style="width:38%;">
+        <div class="box-h">Pekerjaan</div>
+        <table class="kv">
+          <tr><td class="k">Teknisi</td><td class="v">{{ doc.get("technician") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Mulai / Selesai</td><td class="v">{{ oak.tgl(doc.get("start_date")) }} &rarr; {{ oak.tgl(doc.get("completion_date")) }}</td></tr>
+          <tr><td class="k">Billing</td><td class="v">{{ doc.get("billing_status") or "&mdash;" }}</td></tr>
+          {%- if doc.get("decided_by") %}
+          <tr><td class="k">Diputus Oleh</td><td class="v">{{ frappe.db.get_value("User", doc.decided_by, "full_name") or doc.decided_by }}{% if doc.get("decided_on") %} <span class="sub" style="font-weight:400;">&middot; {{ oak.tgl(doc.decided_on) }}</span>{% endif %}</td></tr>
+          {%- endif %}
+          {%- if doc.get("revision_no") %}
+          <tr><td class="k">Revisi Ke</td><td class="v">{{ doc.revision_no }}</td></tr>
+          {%- endif %}
+        </table>
       </td>
-      <td style="width:24%; vertical-align:middle; text-align:right; border:none; padding:0;">
-        <div style="font-size:16px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">REPAIR ORDER (M&amp;R)</div>
-        {% if qr_data_uri(doc.name) %}<img src="{{ qr_data_uri(doc.name) }}" style="width:88px; height:88px; margin-top:4px;">{% endif %}
-        <div style="font-size:11px; font-weight:bold;">{{ doc.name }}</div>
+      <td class="gut"></td>
+      <td class="box ctr" style="width:24%;">
+        <div class="box-h" style="text-align:left;">Scan Order</div>
+        {%- if _qr %}
+        <img src="{{ _qr }}" style="width:96px; height:96px; margin-top:4px;">
+        {%- else %}
+        <div style="height:96px;"></div>
+        {%- endif %}
+        <div class="mono" style="font-size:9px; margin-top:4px;">{{ doc.name }}</div>
       </td>
     </tr>
   </table>
-  <div style="border-bottom:2px solid #6f9b3f; margin:6px 0 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact;"></div>
 
-  <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px;">
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Container</td><td style="border:none; padding:2px 6px; width:34%;">: <strong>{{ doc.get('container_no') or doc.get('container') or '-' }}</strong></td>
-      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('status') or '-' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Owner</td><td style="border:none; padding:2px 6px;">: {{ doc.get('principal') or '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Depot</td><td style="border:none; padding:2px 6px;">: {{ doc.get('depot') or '-' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">EIR Ref</td><td style="border:none; padding:2px 6px;">: {{ doc.get('inspection') or '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Technician</td><td style="border:none; padding:2px 6px;">: {{ doc.get('technician') or '-' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Start / Done</td><td style="border:none; padding:2px 6px;">: {{ frappe.utils.formatdate(doc.get('start_date')) if doc.get('start_date') else '-' }} &rarr; {{ frappe.utils.formatdate(doc.get('completion_date')) if doc.get('completion_date') else '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Billing</td><td style="border:none; padding:2px 6px;">: {{ doc.get('billing_status') or '-' }}</td>
-    </tr>
-  </table>
-
-  <div style="font-size:11px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; margin-bottom:4px;">DAMAGE / REPAIR</div>
-  <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">
-    <thead>
-      <tr style="color:#fff;">
-        {% for h in ['#','AREA','COMPONENT','DAMAGE','REPAIR','SEVERITY','DESCRIPTION'] %}
-        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in doc.damages %}
-      <tr style="border-bottom:1px solid #e2e2e2;">
-        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('area') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('component') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('damage_code') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('repair_code') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('severity') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('damage_description') or '-' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <div style="font-size:11px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; margin-bottom:4px;">SPAREPART / JASA</div>
-  <table style="width:100%; border-collapse:collapse;">
-    <thead>
-      <tr style="color:#fff;">
-        {% for h in ['#','ITEM','QTY','DECISION','RATE','AMOUNT'] %}
-        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in doc.used_items %}
-      <tr style="border-bottom:1px solid #e2e2e2;">
-        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('item_name') or row.get('item') or '-' }}</td>
-        <td style="padding:6px 8px; text-align:center; border:none;">{{ (row.get('quantity') or 0)|int }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('decision') or '-' }}</td>
-        <td style="padding:6px 8px; text-align:right; border:none;">{{ rp(row.get('rate')) }}</td>
-        <td style="padding:6px 8px; text-align:right; border:none;">{{ rp(row.get('amount')) }}</td>
-      </tr>
-      {% endfor %}
-      <tr style="color:#fff;">
-        <td colspan="5" style="padding:6px 8px; text-align:right; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">TOTAL</td>
-        <td style="padding:6px 8px; text-align:right; font-weight:bold; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; border:none;">{{ rp(doc.get('total_cost')) }}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  {# Proof of work, grouped by the service/part each photo belongs to — this is the half of
-     the document that shows the owner WHAT was done, not just what it cost. Skipped entirely
-     when the album is empty rather than printing an empty heading. #}
-  {% set photos = doc.get('work_photos') or [] %}
-  {% if photos %}
-  <div style="font-size:11px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; margin:14px 0 4px;">FOTO BUKTI PEKERJAAN</div>
-  {% set groups = [] %}
-  {% for row in photos %}
-    {% set key = row.get('item_name') or row.get('item') or '-' %}
-    {% if key not in groups %}{% set _ = groups.append(key) %}{% endif %}
-  {% endfor %}
-  {% for key in groups %}
-  <div style="margin-bottom:8px; page-break-inside:avoid;">
-    <div style="font-size:10px; font-weight:600; margin-bottom:3px;">{{ key }}</div>
-    <table style="border-collapse:collapse;"><tr>
-      {% for row in photos if (row.get('item_name') or row.get('item') or '-') == key %}
-      <td style="border:none; padding:0 6px 6px 0; vertical-align:top;">
-        <img src="{{ row.photo }}" style="width:120px; height:120px; object-fit:cover; border:1px solid #e2e2e2;">
-        {% if row.get('caption') %}<div style="font-size:9px; color:#666; width:120px;">{{ row.caption }}</div>{% endif %}
-      </td>
-      {% endfor %}
-    </tr></table>
+  {%- if doc.get("owner_note") %}
+  <div class="box" style="margin-top:12px;">
+    <div class="box-h">Catatan Owner</div>
+    <div style="font-size:9.5px; white-space:pre-line;">{{ doc.owner_note }}</div>
   </div>
-  {% endfor %}
-  {% endif %}
+  {%- endif %}
 
-  {% if doc.get('remarks') %}<p style="font-size:11px; margin-top:10px;"><strong>Remarks:</strong> {{ doc.remarks }}</p>{% endif %}
+  <!-- ============ TEMUAN ============ -->
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="7">TEMUAN KERUSAKAN &mdash; {{ _dmg | length }} ITEM</th></tr>
+      <tr>
+        <th style="width:4%;">#</th>
+        <th style="width:15%;">AREA</th>
+        <th style="width:19%;">KOMPONEN</th>
+        <th style="width:8%;" class="ctr">DMG</th>
+        <th style="width:8%;" class="ctr">RPR</th>
+        <th style="width:12%;">SEVERITY</th>
+        <th>KETERANGAN</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in _dmg %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td>{{ row.get("area") or "&mdash;" }}</td>
+        <td>{{ row.get("component") or "&mdash;" }}{% if row.get("location") %}<div class="sub">{{ row.location }}</div>{% endif %}</td>
+        <td class="ctr mono">{{ row.get("damage_code") or "&mdash;" }}</td>
+        <td class="ctr mono">{{ row.get("repair_code") or "&mdash;" }}</td>
+        <td>{{ row.get("severity") or "&mdash;" }}</td>
+        <td>{{ row.get("damage_description") or "&mdash;" }}</td>
+      </tr>
+      {%- else %}
+      <tr><td colspan="7" class="ctr sub">Tidak ada temuan.</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+
+  <!-- ============ SPAREPART / JASA ============ -->
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="7">SPAREPART &amp; JASA</th></tr>
+      <tr>
+        <th style="width:4%;">#</th>
+        <th>ITEM</th>
+        <th style="width:8%;" class="ctr">JENIS</th>
+        <th style="width:7%;" class="ctr">QTY</th>
+        <th style="width:9%;" class="ctr">MANHOUR</th>
+        <th style="width:14%;" class="num">TARIF</th>
+        <th style="width:16%;" class="num">JUMLAH</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in _items %}
+      {%- set _rc = row.get("currency") or _ccy %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td>
+          {{ row.get("item_name") or row.get("item") or "&mdash;" }}
+          {#- The owner's verdict belongs against the line it decides, not in a summary. -#}
+          {%- set _d = row.get("decision") %}
+          {%- if _d == "Approved" %}<div style="margin-top:3px;">{{ oak.pill("APPROVED", "#e7f2e0", "#2f7a30") }}</div>
+          {%- elif _d == "Rejected" %}<div style="margin-top:3px;">{{ oak.pill("REJECTED", "#f8e0de", "#b3261e") }}</div>
+          {%- elif _d %}<div style="margin-top:3px;">{{ oak.pill(_d | upper, "#f4ecdd", "#9a5b00") }}</div>{% endif %}
+          {%- if row.get("owner_remark") %}<div class="sub">{{ row.owner_remark }}</div>{% endif %}
+        </td>
+        <td class="ctr">{{ row.get("line_type") or "&mdash;" }}</td>
+        <td class="ctr">{{ "%g" | format(frappe.utils.flt(row.get("quantity"))) }}</td>
+        <td class="ctr">{{ "%g" | format(frappe.utils.flt(row.get("manhour"))) }}</td>
+        {#- item_rate, not `rate`: Repair Used Item has no `rate` field, so the old sheet
+            silently printed 0 on every line. -#}
+        <td class="num">{{ oak.money(row.get("item_rate"), _rc) }}</td>
+        <td class="num">{{ oak.money(row.get("amount"), _rc) }}</td>
+      </tr>
+      {%- else %}
+      <tr><td colspan="7" class="ctr sub">Belum ada sparepart / jasa.</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+
+  <table style="margin-top:8px;">
+    <tr>
+      <td style="width:58%;"></td>
+      <td style="width:42%; vertical-align:top;">
+        <table>
+          {%- if _mh_total %}
+          <tr>
+            <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Total Manhour</td>
+            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ "%g" | format(_mh_total) }} jam</td>
+          </tr>
+          {%- endif %}
+          <tr class="total-row">
+            <td>TOTAL BIAYA</td>
+            <td class="num">{{ oak.money(doc.get("total_cost"), _ccy) }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============ FOTO BUKTI ============ -->
+  {#- Proof of work, grouped by the service/part each photo belongs to — the half of the
+      document that shows the owner WHAT was done, not just what it cost. Skipped whole
+      when the album is empty rather than printing a bare heading. -#}
+  {%- if _photos %}
+  {%- set groups = [] -%}
+  {%- for row in _photos -%}
+    {%- set key = row.get("item_name") or row.get("item") or "Lain-lain" -%}
+    {%- if key not in groups -%}{%- set _ = groups.append(key) -%}{%- endif -%}
+  {%- endfor -%}
+  <table>
+    <thead><tr><th class="sec-row">FOTO BUKTI PEKERJAAN</th></tr></thead>
+    <tbody><tr><td style="padding:0;">
+      {%- for key in groups %}
+      <div style="margin-bottom:10px; page-break-inside:avoid;">
+        <div class="lbl" style="margin-bottom:4px;">{{ key }}</div>
+        <table style="width:auto;"><tr>
+          {%- for row in _photos if (row.get("item_name") or row.get("item") or "Lain-lain") == key %}
+          <td style="padding:0 8px 8px 0; vertical-align:top;">
+            <img src="{{ row.photo }}" style="width:118px; height:118px; object-fit:cover; border:1px solid #e3e7ea;">
+            {%- if row.get("caption") %}<div class="sub" style="width:118px;">{{ row.caption }}</div>{% endif %}
+          </td>
+          {%- endfor %}
+        </tr></table>
+      </div>
+      {%- endfor %}
+    </td></tr></tbody>
+  </table>
+  {%- endif %}
+
+  <div class="band">
+  {%- if doc.get("remarks") %}
+  <div class="box" style="margin-top:14px;">
+    <div class="box-h">Remarks</div>
+    <div style="font-size:9.5px; white-space:pre-line;">{{ doc.remarks }}</div>
+  </div>
+  {%- endif %}
+
+  {{ oak.sign([
+    {"cap": "Teknisi,", "name": doc.get("technician") or "&hellip;&hellip;&hellip;&hellip;&hellip;&hellip;", "sub": "Pelaksana"},
+    {"cap": "Diperiksa,", "name": "PT. Oasis Anugerah Kasih", "sub": "SPV Lapangan"},
+    {"cap": "Disetujui &mdash; Tank Owner,", "name": doc.get("principal") or "&mdash;", "sub": "Nama terang &amp; stempel"},
+  ], top=14) }}
+
+  {{ oak.foot("FM-OPS-MR-01") }}
+  </div>
+
 </div>

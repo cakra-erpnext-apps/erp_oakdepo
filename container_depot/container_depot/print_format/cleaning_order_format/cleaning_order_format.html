@@ -1,0 +1,191 @@
+{#-
+  ISO TANK CLEANLINESS STATEMENT — the certificate a customer receives after a wash.
+
+  The tank's identity comes off the Container master rather than being retyped here, so
+  the statement always describes the same tank the depot has on record. Note there is no
+  validity date: the cleaning certificate expiry was removed from the app (patch v0_39),
+  and printing one would be inventing a fact.
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+
+{%- set c = frappe.get_doc("Container", doc.container) if doc.get("container") else {} -%}
+{%- set _ccy = doc.get("currency") or frappe.db.get_default("currency") or "IDR" -%}
+{%- set _svc = doc.get("cleaning_services") or [] -%}
+{%- set _photos = doc.get("qc_photos") or [] -%}
+{%- set _total = frappe.utils.flt(doc.get("cleaning_total")) + frappe.utils.flt(doc.get("manhour_charge_total")) -%}
+
+<div class="oak-doc">
+  {{ oak.watermark() }}
+  {{ oak.head("CLEANLINESS STATEMENT", "ISO Tank Cleaning") }}
+
+  {{ oak.strip([
+    {"k": "No. Order", "v": doc.get("order_id") or doc.name, "w": "28%"},
+    {"k": "Tank No.", "v": doc.get("container_no") or doc.get("container") or "&mdash;", "w": "26%"},
+    {"k": "Date of Issue", "v": oak.tanggal(doc.get("date_of_issue")), "w": "24%"},
+    {"k": "Status", "v": oak.status_pill(doc.get("status")), "w": "22%"},
+  ]) }}
+
+  <table class="band boxrow">
+    <tr>
+      <td class="box" style="width:49%;">
+        <div class="box-h">Tank &amp; Pemilik</div>
+        <table class="kv">
+          <tr><td class="k">Tank No.</td><td class="v mono">{{ doc.get("container_no") or doc.get("container") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Client / Principal</td><td class="v">{{ doc.get("container_principal") or c.get("principal") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Tank Type</td><td class="v">{{ c.get("container_type") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Previous Cargo</td><td class="v">{{ doc.get("last_cargo") or c.get("last_cargo") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Reference EIR</td><td class="v">{{ doc.get("inspection") or "&mdash;" }}</td></tr>
+        </table>
+      </td>
+      <td class="gut"></td>
+      <td class="box" style="width:49%;">
+        <div class="box-h">Pelaksanaan</div>
+        <table class="kv">
+          <tr><td class="k">Place of Issue</td><td class="v">{{ doc.get("place_of_issue") or doc.get("depot") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Metode</td><td class="v">{{ doc.get("cleaning_type") or "&mdash;" }}{% if doc.get("is_recleaning") %} <span class="sub" style="font-weight:400;">&middot; recleaning</span>{% endif %}</td></tr>
+          <tr><td class="k">Mulai / Selesai</td><td class="v">{{ oak.tgl(doc.get("cleaning_start")) }} &rarr; {{ oak.tgl(doc.get("cleaning_end")) }}</td></tr>
+          <tr><td class="k">Dikerjakan Oleh</td><td class="v">{{ doc.get("completed_by") or doc.get("assigned_to") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Reff Doc</td><td class="v">{{ doc.get("reff_doc") or "&mdash;" }}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============ SPESIFIKASI TANK ============ -->
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="6">SPESIFIKASI TANK</th></tr>
+      <tr>
+        <th>DATE OF MFG</th>
+        <th>LAST TEST</th>
+        <th class="num">CAPACITY (L)</th>
+        <th class="num">TARE (KG)</th>
+        <th class="num">MGW (KG)</th>
+        <th>SERIAL NO</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ oak.tgl(c.get("manufacture_date")) }}</td>
+        <td>{{ oak.tgl(c.get("last_test_date")) }}</td>
+        <td class="num">{{ c.get("capacity") or "&mdash;" }}</td>
+        <td class="num">{{ c.get("tare_weight") or "&mdash;" }}</td>
+        <td class="num">{{ c.get("max_gross_weight") or "&mdash;" }}</td>
+        <td class="mono">{{ c.get("serial_no") or "&mdash;" }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ============ PEKERJAAN CLEANING ============ -->
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="4">PEKERJAAN CLEANING</th></tr>
+      <tr>
+        <th style="width:5%;">#</th>
+        <th>SERVICE</th>
+        <th style="width:22%;" class="num">TARIF</th>
+        <th style="width:22%;" class="num">TARIF MANHOUR</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for r in _svc %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td>{{ r.get("item_name") or r.get("cleaning_item") or "&mdash;" }}</td>
+        <td class="num">{{ oak.money(r.get("rate"), r.get("currency") or _ccy) }}</td>
+        <td class="num">{{ oak.money(r.get("manhour_rate"), r.get("currency") or _ccy) }}</td>
+      </tr>
+      {%- else %}
+      <tr><td colspan="4" class="ctr sub">Tidak ada baris service.</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+
+  <table style="margin-top:8px;">
+    <tr>
+      <td style="width:56%;"></td>
+      <td style="width:44%; vertical-align:top;">
+        <table>
+          <tr>
+            <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Total Tarif Service</td>
+            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(doc.get("cleaning_total"), _ccy) }}</td>
+          </tr>
+          <tr>
+            <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Biaya Manhour</td>
+            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(doc.get("manhour_charge_total"), _ccy) }}</td>
+          </tr>
+          <tr class="total-row">
+            <td>TOTAL</td>
+            <td class="num">{{ oak.money(_total, _ccy) }}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============ FOTO QC ============ -->
+  {%- if _photos %}
+  <table>
+    <thead><tr><th class="sec-row">FOTO QC</th></tr></thead>
+    <tbody><tr><td style="padding:0;">
+      <table style="width:auto;"><tr>
+        {%- for p in _photos %}
+        <td style="padding:0 8px 8px 0; vertical-align:top;">
+          <img src="{{ p.photo }}" style="width:118px; height:118px; object-fit:cover; border:1px solid #e3e7ea;">
+          {%- if p.get("caption") %}<div class="sub" style="width:118px;">{{ p.caption }}</div>{% endif %}
+        </td>
+        {%- endfor %}
+      </tr></table>
+    </td></tr></tbody>
+  </table>
+  {%- endif %}
+
+  <div class="band">
+  <table class="boxrow" style="margin-top:14px;">
+    <tr>
+      <td class="box" style="width:44%;">
+        <div class="box-h">Remarks</div>
+        <div style="font-size:9.5px; white-space:pre-line;">{{ doc.get("remarks") or "&mdash;" }}</div>
+      </td>
+      <td class="gut"></td>
+      <td class="box terms" style="width:54%;">
+        <div class="box-h">Pernyataan</div>
+        <p style="margin:0;">
+          Dengan ini dinyatakan bahwa tank tersebut di atas telah dibersihkan sesuai metode yang
+          tercantum dan diperiksa dalam keadaan bersih, kering, serta bebas dari sisa muatan
+          sebelumnya pada tanggal penerbitan dokumen ini.
+        </p>
+      </td>
+    </tr>
+  </table>
+
+  <table style="margin-top:12px;">
+    <tr>
+      <td class="sign" style="width:50%;">
+        <div class="cap">Customer Representative,</div>
+        <div class="line"></div>
+        <div>&mdash;</div>
+        <div class="sub">Nama terang</div>
+      </td>
+      <td class="sign" style="width:50%;">
+        <div class="cap">Surveyor,</div>
+        {#- A captured signature replaces the ruled line; without one the line stays so the
+            sheet can still be signed by hand. -#}
+        {%- if doc.get("surveyor_signature") %}
+        <div style="height:44px; margin-top:6px;"><img src="{{ doc.surveyor_signature }}" style="max-height:44px; object-fit:contain;"></div>
+        <div style="border-top:1px solid #9aa3ab; margin:0 24px 3px;"></div>
+        {%- else %}
+        <div class="line"></div>
+        {%- endif %}
+        <div>{{ doc.get("signed_by") or "&mdash;" }}</div>
+        <div class="sub">PT. Oasis Anugerah Kasih</div>
+      </td>
+    </tr>
+  </table>
+
+  {{ oak.foot("FM-OPS-CLN-01") }}
+  </div>
+
+</div>

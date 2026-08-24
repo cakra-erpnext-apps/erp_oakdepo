@@ -1,67 +1,114 @@
-{%- macro rp(v) -%}{{ "{:,.0f}".format(frappe.utils.flt(v)).replace(",", ".") }}{%- endmacro -%}
-<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
-  <table style="width:100%; border-collapse:collapse;">
+{#-
+  KONTRAK DEPO — the customer's rate card, in the form both sides sign.
+
+  The tariff table is the operative part: those rates are what every booking, bon and
+  invoice for this customer is priced from (the contract publishes them as a Price List
+  when it goes Active), so the sheet has to be readable line by line.
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+
+{%- set _ccy = doc.get("currency") or frappe.db.get_default("currency") or "IDR" -%}
+{%- set _rows = doc.get("tariff_lines") or [] -%}
+{%- set _cust = frappe.db.get_value("Customer", doc.get("customer"), "customer_name") or doc.get("customer") -%}
+{%- set _addr_name = frappe.db.get_value("Dynamic Link", {"link_doctype": "Customer", "link_name": doc.get("customer"), "parenttype": "Address"}, "parent") if doc.get("customer") else None -%}
+{%- set _addr = frappe.db.get_value("Address", _addr_name, ["address_line1", "address_line2", "city", "state", "pincode"], as_dict=True) if _addr_name else None -%}
+
+<div class="oak-doc">
+  {{ oak.watermark() }}
+  {{ oak.head("KONTRAK DEPO", "Depot Service Agreement") }}
+
+  {{ oak.strip([
+    {"k": "No. Kontrak", "v": doc.name, "w": "28%"},
+    {"k": "Customer", "v": doc.get("customer") or "&mdash;", "w": "26%"},
+    {"k": "Masa Berlaku", "v": oak.tgl(doc.get("valid_from")) ~ " &rarr; " ~ oak.tgl(doc.get("valid_to")), "w": "26%"},
+    {"k": "Status", "v": oak.status_pill(doc.get("status")), "w": "20%"},
+  ]) }}
+
+  <table class="band boxrow">
     <tr>
-      <td style="width:28%; vertical-align:middle; border:none; padding:0;">
-        <img src="{{ get_logo_pdf() }}" style="max-height:76px; max-width:100%;">
-      </td>
-      <td style="vertical-align:top; border:none; padding:0 6px;">
-        <div style="font-size:20px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
-        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
-          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
-          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
-          No Telp : 061-42064205 / 061-48732784
+      <td class="box" style="width:49%;">
+        <div class="box-h">Pihak Kedua &mdash; Customer</div>
+        <div style="font-size:13px; font-weight:700;">{{ _cust or "&mdash;" }}</div>
+        {%- if _addr %}
+        <div class="sub" style="margin-top:3px;">
+          {{ _addr.address_line1 or "" }}{% if _addr.address_line2 %}, {{ _addr.address_line2 }}{% endif %}<br>
+          {{ _addr.city or "" }}{% if _addr.state %}, {{ _addr.state }}{% endif %} {{ _addr.pincode or "" }}
         </div>
+        {%- endif %}
+        <table class="kv" style="margin-top:7px;">
+          <tr><td class="k">Price List</td><td class="v">{{ doc.get("base_price_list") or "&mdash;" }}</td></tr>
+          {%- if doc.get("generated_price_list") %}
+          <tr><td class="k">Terbit Sebagai</td><td class="v">{{ doc.generated_price_list }}</td></tr>
+          {%- endif %}
+          {%- if doc.get("amends_contract") %}
+          <tr><td class="k">Amandemen Dari</td><td class="v">{{ doc.amends_contract }}</td></tr>
+          {%- endif %}
+        </table>
       </td>
-      <td style="width:22%; vertical-align:bottom; text-align:right; border:none; padding:0;">
-        <div style="font-size:17px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">KONTRAK DEPO</div>
-        <div style="font-size:11px; font-weight:bold; margin-top:2px;">{{ doc.name }}</div>
+      <td class="gut"></td>
+      <td class="box" style="width:49%;">
+        <div class="box-h">Ketentuan Komersial</div>
+        <table class="kv">
+          <tr><td class="k">Mata Uang</td><td class="v">{{ _ccy }}</td></tr>
+          <tr>
+            <td class="k">Pembayaran</td>
+            <td class="v">{{ doc.get("payment_type") or "&mdash;" }}{% if doc.get("payment_terms") %} <span class="sub" style="font-weight:400;">&middot; {{ doc.payment_terms }}</span>{% endif %}</td>
+          </tr>
+          <tr><td class="k">Credit Limit</td><td class="v">{{ oak.money(doc.get("credit_limit"), _ccy) }}</td></tr>
+          <tr><td class="k">Jumlah Tarif</td><td class="v">{{ _rows | length }} baris</td></tr>
+          {%- if doc.get("esign_status") %}
+          <tr><td class="k">E-Sign</td><td class="v">{{ doc.esign_status }}</td></tr>
+          {%- endif %}
+        </table>
       </td>
     </tr>
   </table>
-  <div style="border-bottom:2px solid #6f9b3f; margin:6px 0 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact;"></div>
 
-  <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px;">
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Customer</td><td style="border:none; padding:2px 6px; width:34%;">: <strong>{{ doc.get('customer') or '-' }}</strong></td>
-      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('status') or '-' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Payment</td><td style="border:none; padding:2px 6px;">: {{ doc.get('payment_type') or '-' }}{% if doc.get('payment_terms') %} &middot; {{ doc.payment_terms }}{% endif %}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Credit Limit</td><td style="border:none; padding:2px 6px;">: {{ rp(doc.get('credit_limit')) }} {{ doc.get('currency') or '' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Berlaku</td><td style="border:none; padding:2px 6px;">: {{ frappe.utils.formatdate(doc.get('valid_from')) if doc.get('valid_from') else '-' }} &rarr; {{ frappe.utils.formatdate(doc.get('valid_to')) if doc.get('valid_to') else '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Price List</td><td style="border:none; padding:2px 6px;">: {{ doc.get('base_price_list') or '-' }}</td>
-    </tr>
-  </table>
-
-  <div style="font-size:11px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; margin-bottom:4px;">TARIF</div>
-  <table style="width:100%; border-collapse:collapse;">
+  <table class="grid">
     <thead>
-      <tr style="color:#fff;">
-        {% for h in ['#','ITEM / SERVICE','UOM','RATE','MANHOUR RATE'] %}
-        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
-        {% endfor %}
+      <tr><th class="sec-row" colspan="5">DAFTAR TARIF &mdash; {{ _rows | length }} BARIS</th></tr>
+      <tr>
+        <th style="width:5%;">#</th>
+        <th>ITEM / SERVICE</th>
+        <th style="width:12%;" class="ctr">UOM</th>
+        <th style="width:19%;" class="num">TARIF</th>
+        <th style="width:19%;" class="num">TARIF MANHOUR</th>
       </tr>
     </thead>
     <tbody>
-      {% for row in doc.tariff_lines %}
-      <tr style="border-bottom:1px solid #e2e2e2;">
-        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('item') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('uom') or '-' }}</td>
-        <td style="padding:6px 8px; text-align:right; border:none;">{{ rp(row.get('rate')) }}</td>
-        <td style="padding:6px 8px; text-align:right; border:none;">{{ rp(row.get('manhour_rate')) }}</td>
+      {%- for row in _rows %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td>{{ row.get("item") or "&mdash;" }}</td>
+        <td class="ctr">{{ row.get("uom") or "&mdash;" }}</td>
+        <td class="num">{{ oak.money(row.get("rate"), _ccy) }}</td>
+        <td class="num">{{ oak.money(row.get("manhour_rate"), _ccy) }}</td>
       </tr>
-      {% endfor %}
+      {%- else %}
+      <tr><td colspan="5" class="ctr sub">Belum ada baris tarif.</td></tr>
+      {%- endfor %}
     </tbody>
   </table>
 
-  <table style="width:100%; border-collapse:collapse; margin-top:40px;">
-    <tr>
-      <td style="width:50%; border:none; text-align:center; font-size:11px;">Pihak Pertama<br><br><br><br>( PT. Oasis Anugerah Kasih )</td>
-      <td style="width:50%; border:none; text-align:center; font-size:11px;">Pihak Kedua<br><br><br><br>( {{ doc.get('customer') or '.....................' }} )</td>
-    </tr>
-  </table>
+  <div class="band">
+  <div class="box terms" style="margin-top:14px;">
+    <div class="box-h">Ketentuan</div>
+    <ol>
+      <li>Tarif di atas berlaku selama masa berlaku kontrak dan menjadi dasar penagihan seluruh layanan depo bagi customer ini.</li>
+      <li>Perubahan tarif dilakukan melalui amandemen kontrak, bukan penyesuaian pada dokumen transaksi.</li>
+      <li>Pembayaran mengikuti ketentuan komersial di atas; batas kredit yang terlampaui menahan booking baru sampai diselesaikan.</li>
+      <li>Tarif belum termasuk PPN kecuali dinyatakan lain.</li>
+    </ol>
+  </div>
+
+  {{ oak.sign([
+    {"cap": "Pihak Pertama,", "name": "PT. Oasis Anugerah Kasih", "sub": "Nama terang, jabatan &amp; stempel"},
+    {"cap": "Pihak Kedua,", "name": _cust, "sub": "Nama terang, jabatan &amp; stempel"},
+  ], top=16) }}
+
+  {{ oak.foot("FM-COM-KTR-01") }}
+  </div>
+
 </div>

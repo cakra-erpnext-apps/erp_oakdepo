@@ -640,6 +640,11 @@ PROPERTY_SETTERS = [
 	("Customer", "default_price_list", "description",
 	 "Diatur otomatis dari Depot Contract yang Active. Untuk mengubahnya, amend contract "
 	 "customer ini — bukan dari sini.", "Small Text"),
+	# The booking print is a customer-facing document, so Print must open the OAK format
+	# rather than Frappe's Standard field-dump. Nothing else selects it: /desk/print/...
+	# falls back to the doctype default. The driver's copy is a separate pick from the
+	# dropdown ("OAK Booking Voucher"), one page per container.
+	("Container Booking", None, "default_print_format", "OAK Booking Confirmation", "Data"),
 ] + [
 	# Declutter the Sales Invoice form. UI-only: the fields stay in the DB and every
 	# controller still reads them — nothing is deleted, only hidden.

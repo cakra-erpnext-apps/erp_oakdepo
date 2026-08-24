@@ -1,0 +1,10 @@
+{
+ "custom_format": 1,
+ "doc_type": "Cleaning Order",
+ "doctype": "Print Format",
+ "module": "Container Depot",
+ "name": "Cleaning Order Format",
+ "print_format_type": "Jinja Template",
+ "standard": "Yes",
+ "modified": "2026-08-24 12:00:00.000000"
+}

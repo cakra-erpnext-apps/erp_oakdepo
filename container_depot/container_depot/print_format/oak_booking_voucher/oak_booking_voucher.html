@@ -1,0 +1,130 @@
+{#-
+  BOOKING VOUCHER — one sheet per container, handed to the driver.
+
+  The booking sheet is a list; this is the opposite: a single tank blown up large enough
+  to read across a gatehouse counter, with its Booking Code QR as the payload the PWA
+  scans (container_depot.api.validate_qr takes the bare code).
+
+  Every item gets a page, confirmed or not. A booking still in Draft has no code yet, so
+  the QR block says so rather than printing an empty frame — an operator who prints too
+  early gets told why, instead of handing a driver a slip that will not scan.
+
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+<style>
+  /* voucher-only: the tank number is what everyone at the gate looks for first */
+  .oak-doc .hero { margin: 16px 0 0; border: 1px solid #e3e7ea; border-left: 5px solid #6f9b3f; padding: 14px 18px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .hero .no { font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 700; letter-spacing: 2px; line-height: 1.05; }
+  .oak-doc .hero .who { font-size: 10px; color: #5c6670; margin-top: 5px; }
+  .oak-doc .qrbox { border: 1px solid #e3e7ea; padding: 14px 10px; text-align: center; }
+  .oak-doc .qrbox img { width: 178px; height: 178px; }
+  .oak-doc .qrbox .code { font-family: 'Courier New', Courier, monospace; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 8px; }
+  .oak-doc .qrbox .cap { font-size: 8.5px; letter-spacing: 1px; color: #8a949d; text-transform: uppercase; }
+  .oak-doc .qrbox .none { color: #9a5b00; font-size: 10px; font-weight: 700; }
+  .oak-doc .steps { font-size: 9.5px; color: #45505a; line-height: 1.55; }
+  .oak-doc .steps ol { margin: 5px 0 0 15px; padding: 0; }
+</style>
+
+{%- set _dir = doc.direction or "Tank In" -%}
+{%- set _lift = doc.lift_type or ("Lift Off" if _dir == "Tank In" else "Lift On") -%}
+{%- set _status = doc.booking_status or "Draft" -%}
+{%- set _cust_name = frappe.db.get_value("Customer", doc.customer, "customer_name") or doc.customer -%}
+{%- set _prin_name = frappe.db.get_value("Customer", doc.principal, "customer_name") or doc.principal -%}
+{%- set _total = (doc.items or []) | length -%}
+
+{%- for row in doc.items or [] %}
+<div class="oak-doc"{% if not loop.first %} style="page-break-before:always;"{% endif %}>
+
+  {{ oak.head("VOUCHER CONTAINER", _dir ~ " · " ~ _lift, show_print_date=false, logo_h=58) }}
+
+  <!-- ============ HERO: NOMOR CONTAINER ============ -->
+  <table class="hero">
+    <tr>
+      <td style="vertical-align:middle;">
+        <div class="lbl">Container No.</div>
+        <div class="no">{{ row.container_no or row.container or "&mdash;" }}</div>
+        <div class="who">{{ _prin_name or "&mdash;" }}{% if row.cargo %} &middot; {{ row.cargo }}{% endif %}</div>
+      </td>
+      <td style="width:34%; vertical-align:middle; text-align:right;">
+        {{ oak.cond_pill(row.condition) }}
+        <div class="lbl" style="margin-top:8px;">Container {{ loop.index }} dari {{ _total }}</div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- ============ QR + RINCIAN ============ -->
+  <table class="boxrow" style="margin-top:12px;">
+    <tr>
+      <td class="left" style="width:39%;">
+        <div class="qrbox">
+          <div class="cap">Booking Code</div>
+          {%- set _qr = qr_data_uri(row.booking_code) if row.booking_code else "" %}
+          {%- if _qr %}
+          <img src="{{ _qr }}" style="margin-top:8px;">
+          <div class="code">{{ row.booking_code }}</div>
+          {%- elif row.booking_code %}
+          <div style="height:178px;"></div>
+          <div class="code">{{ row.booking_code }}</div>
+          {%- else %}
+          <div style="height:150px; padding-top:28px;">
+            <div class="none">BOOKING CODE BELUM TERBIT</div>
+            <div class="cap" style="margin-top:6px; letter-spacing:0; text-transform:none; color:#7b858e;">
+              Kode terbit setelah booking dikonfirmasi.<br>Voucher ini belum dapat dipakai di gate.
+            </div>
+          </div>
+          {%- endif %}
+        </div>
+        <div class="box steps" style="margin-top:12px;">
+          <div class="box-h">Petunjuk di gate</div>
+          <ol>
+            <li>Tunjukkan voucher ini kepada petugas gate untuk dipindai. Satu voucher berlaku untuk satu container.</li>
+            <li>Bila QR tidak terbaca, petugas dapat memasukkan Booking Code secara manual.</li>
+            <li>Kode hanya dapat dipakai satu kali; setelah dipakai voucher tidak berlaku lagi.</li>
+            <li>Pastikan nomor container pada tank sama persis dengan yang tertera di atas.</li>
+          </ol>
+        </div>
+      </td>
+      <td class="gut"></td>
+      <td class="box" style="width:59%;">
+          <div class="box-h">Rincian</div>
+          <table class="kv">
+            <tr><td class="k">No. Booking</td><td class="v">{{ doc.name }}</td></tr>
+            <tr><td class="k">Tanggal Booking</td><td class="v">{{ oak.tanggal(doc.creation) }}</td></tr>
+            <tr><td class="k">Customer</td><td class="v">{{ _cust_name or "&mdash;" }}</td></tr>
+            <tr><td class="k">Tank Owner</td><td class="v">{{ _prin_name or "&mdash;" }}</td></tr>
+            <tr><td class="k">Depot</td><td class="v">{{ row.depot or doc.depot or "&mdash;" }}{% if doc.branch %} <span style="font-weight:400; color:#7b858e;">&middot; {{ doc.branch }}</span>{% endif %}</td></tr>
+            <tr><td class="k">EMKL / Shipper</td><td class="v">{{ row.shipper or "&mdash;" }}</td></tr>
+            <tr><td class="k">Truck</td><td class="v">{{ row.truck_plate or "&mdash;" }}</td></tr>
+            <tr><td class="k">Supir</td><td class="v">{{ row.driver or "&mdash;" }}{% if row.driver_phone %} <span style="font-weight:400; color:#7b858e;">&middot; {{ row.driver_phone }}</span>{% endif %}</td></tr>
+            <tr><td class="k">R/O</td><td class="v">{{ row.ro or "&mdash;" }}</td></tr>
+            <tr><td class="k">Est. Tanggal Bongkar</td><td class="v">{{ frappe.utils.formatdate(row.tanggal_bongkar) if row.tanggal_bongkar else "&mdash;" }}</td></tr>
+            <tr><td class="k">DO Reference</td><td class="v">{{ doc.do_reference or "&mdash;" }}</td></tr>
+          </table>
+      </td>
+    </tr>
+  </table>
+
+  {%- if row.remarks or doc.remarks %}
+  <div class="box" style="margin-top:10px;">
+    <div class="box-h">Catatan</div>
+    <div style="font-size:9.5px; white-space:pre-line;">{{ row.remarks or doc.remarks }}</div>
+  </div>
+  {%- endif %}
+
+  <!-- ============ SERAH TERIMA ============ -->
+  {{ oak.sign([
+    {"cap": "Diserahkan oleh,", "name": "PT. Oasis Anugerah Kasih", "sub": "Petugas depo"},
+    {"cap": "Diterima — Supir,", "name": row.driver or "…………………", "sub": row.truck_plate or "Nama terang"},
+  ], top=10) }}
+
+  <div class="foot">
+    {{ doc.name }} &middot; {{ row.container_no or row.container or "" }} &middot; container {{ loop.index }}/{{ _total }}
+    &middot; dicetak {{ frappe.utils.format_datetime(frappe.utils.now(), "dd MMM yyyy HH:mm") }} &middot; FM-OPS-BKG-03
+  </div>
+
+</div>
+{%- else %}
+<div class="oak-doc"><p>Booking ini belum memiliki container.</p></div>
+{%- endfor %}

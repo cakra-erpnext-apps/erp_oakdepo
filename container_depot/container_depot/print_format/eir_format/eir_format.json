@@ -1,0 +1,10 @@
+{
+ "custom_format": 1,
+ "doc_type": "Inspection",
+ "doctype": "Print Format",
+ "modified": "2026-08-24 12:00:00.000000",
+ "module": "Container Depot",
+ "name": "EIR Format",
+ "print_format_type": "Jinja Template",
+ "standard": "Yes"
+}

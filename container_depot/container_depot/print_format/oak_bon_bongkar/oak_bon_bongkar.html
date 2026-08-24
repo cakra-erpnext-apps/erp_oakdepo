@@ -1,64 +1,113 @@
-<div class="oak-doc" style="font-family:'Helvetica Neue',Arial,sans-serif; color:#222; font-size:12px;">
-  <table style="width:100%; border-collapse:collapse;">
+{#-
+  BON BONGKAR — the gate-in paper for a Tank In. The driver arrives with it, the depot
+  signs it, and the containers on it are what the yard expects to receive.
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+
+{%- set _rows = doc.get("containers") or [] -%}
+{%- set _qr = qr_data_uri(doc.name) -%}
+
+<div class="oak-doc">
+  {{ oak.watermark() }}
+  {{ oak.head("BON BONGKAR", "Tank In · Lift Off") }}
+
+  {{ oak.strip([
+    {"k": "No. Bon", "v": doc.name, "w": "28%"},
+    {"k": "Tanggal Bongkar", "v": oak.tanggal(doc.get("tanggal_bongkar")), "w": "24%"},
+    {"k": "Booking", "v": doc.get("booking") or "&mdash;", "w": "28%"},
+    {"k": "Status", "v": oak.status_pill(doc.get("order_status")), "w": "22%"},
+  ]) }}
+
+  <table class="band boxrow">
     <tr>
-      <td style="width:28%; vertical-align:middle; border:none; padding:0;">
-        <img src="{{ get_logo_pdf() }}" style="max-height:76px; max-width:100%;">
+      <td class="box" style="width:38%;">
+        <div class="box-h">Pihak</div>
+        <table class="kv">
+          <tr><td class="k">Shipper</td><td class="v">{{ doc.get("shipper") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Tank Owner</td><td class="v">{{ doc.get("principal") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Ex Vessel</td><td class="v">{{ doc.get("ex_vessel") or "&mdash;" }}</td></tr>
+        </table>
       </td>
-      <td style="vertical-align:middle; border:none; padding:0 6px;">
-        <div style="font-size:20px; font-weight:bold; line-height:1.1;">PT. Oasis Anugerah Kasih</div>
-        <div style="font-size:10px; color:#555; line-height:1.4; margin-top:3px;">
-          Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
-          Kota Medan Sumatera Utara 20525 &middot; Indonesia<br>
-          No Telp : 061-42064205 / 061-48732784
-        </div>
+      <td class="gut"></td>
+      <td class="box" style="width:38%;">
+        <div class="box-h">Operasional</div>
+        <table class="kv">
+          <tr><td class="k">Branch</td><td class="v">{{ doc.get("branch") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Gate-in</td><td class="v">{% if doc.get("gate_in_time") %}{{ frappe.utils.format_datetime(doc.gate_in_time, "dd MMM yyyy HH:mm") }}{% else %}&mdash;{% endif %}</td></tr>
+          <tr><td class="k">SST</td><td class="v">{{ doc.get("sst") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Container</td><td class="v">{{ _rows | length }} unit</td></tr>
+        </table>
       </td>
-      <td style="width:24%; vertical-align:middle; text-align:right; border:none; padding:0;">
-        <div style="font-size:17px; font-weight:bold; color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact;">BON BONGKAR</div>
-        {% set _qr = qr_data_uri(doc.name) %}
-        {% if _qr %}<img src="{{ _qr }}" style="width:90px; height:90px; margin-top:4px;">{% endif %}
-        <div style="font-size:11px; font-weight:bold;">{{ doc.name }}</div>
+      <td class="gut"></td>
+      <td class="box ctr" style="width:24%;">
+        <div class="box-h" style="text-align:left;">Scan Bon</div>
+        {%- if _qr %}
+        <img src="{{ _qr }}" style="width:96px; height:96px; margin-top:4px;">
+        {%- else %}
+        <div style="height:96px;"></div>
+        {%- endif %}
+        <div class="mono" style="font-size:9px; margin-top:4px;">{{ doc.name }}</div>
       </td>
     </tr>
   </table>
-  <div style="border-bottom:2px solid #6f9b3f; margin:6px 0 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact;"></div>
 
-  <table style="width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11px;">
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Booking</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('booking') or '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666; width:16%;">Status</td><td style="border:none; padding:2px 6px; width:34%;">: {{ doc.get('order_status') or '-' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Shipper</td><td style="border:none; padding:2px 6px;">: {{ doc.get('shipper') or '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Tank Owner</td><td style="border:none; padding:2px 6px;">: {{ doc.get('principal') or '-' }}</td>
-    </tr>
-    <tr>
-      <td style="border:none; padding:2px 6px; color:#666;">Ex Vessel</td><td style="border:none; padding:2px 6px;">: {{ doc.get('ex_vessel') or '-' }}</td>
-      <td style="border:none; padding:2px 6px; color:#666;">Tgl Bongkar</td><td style="border:none; padding:2px 6px;">: {{ frappe.utils.formatdate(doc.get('tanggal_bongkar')) if doc.get('tanggal_bongkar') else '-' }}</td>
-    </tr>
-  </table>
-
-  <table style="width:100%; border-collapse:collapse;">
+  <table class="grid">
     <thead>
-      <tr style="color:#fff;">
-        {% for h in ['#','CONTAINER NO','CONDITION','CARGO','TRUCK PLATE','DRIVER','R/O'] %}
-        <th style="padding:6px 8px; text-align:left; color:#fff; background-color:#6f9b3f; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-weight:600;">{{ h }}</th>
-        {% endfor %}
+      <tr><th class="sec-row" colspan="7">CONTAINER &mdash; {{ _rows | length }} UNIT</th></tr>
+      <tr>
+        <th style="width:4%;">#</th>
+        <th style="width:19%;">CONTAINER NO</th>
+        <th style="width:14%;">CONDITION</th>
+        <th style="width:17%;">CARGO</th>
+        <th style="width:16%;">TRUCK</th>
+        <th style="width:17%;">DRIVER</th>
+        <th style="width:13%;">R/O</th>
       </tr>
     </thead>
     <tbody>
-      {% for row in doc.containers %}
-      <tr style="border-bottom:1px solid #e2e2e2;">
-        <td style="padding:6px 8px; border:none;">{{ loop.index }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('container_no') or row.get('container') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('condition') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('cargo') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('truck_plate') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('driver') or '-' }}</td>
-        <td style="padding:6px 8px; border:none;">{{ row.get('ro') or '-' }}</td>
+      {%- for row in _rows %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td><span class="mono">{{ row.get("container_no") or row.get("container") or "&mdash;" }}</span></td>
+        <td>{{ oak.cond_pill(row.get("condition")) }}</td>
+        <td>{{ row.get("cargo") or "&mdash;" }}</td>
+        <td>{{ row.get("truck_plate") or "&mdash;" }}</td>
+        <td>{{ row.get("driver") or "&mdash;" }}{% if row.get("driver_phone") %}<div class="sub">{{ row.driver_phone }}</div>{% endif %}</td>
+        <td>{{ row.get("ro") or "&mdash;" }}</td>
       </tr>
-      {% endfor %}
+      {%- else %}
+      <tr><td colspan="7" class="ctr sub">Tidak ada container.</td></tr>
+      {%- endfor %}
     </tbody>
   </table>
 
-  {% if doc.get('notes') %}<p style="font-size:11px; margin-top:10px;"><strong>Catatan:</strong> {{ doc.notes }}</p>{% endif %}
+  <div class="band">
+  <table class="boxrow" style="margin-top:14px;">
+    <tr>
+      <td class="box" style="width:44%;">
+        <div class="box-h">Catatan</div>
+        <div style="font-size:9.5px; white-space:pre-line;">{{ doc.get("notes") or "&mdash;" }}</div>
+      </td>
+      <td class="gut"></td>
+      <td class="box terms" style="width:54%;">
+        <div class="box-h">Perhatian</div>
+        <ol>
+          <li>Container diperiksa (EIR) saat masuk depo; hasil pemeriksaan yang menentukan kondisi yang dicatat.</li>
+          <li>Kerusakan yang ditemukan setelah bon ini ditandatangani menjadi catatan EIR, bukan bon.</li>
+          <li>Bon ini tidak berlaku sebagai bukti pembayaran.</li>
+        </ol>
+      </td>
+    </tr>
+  </table>
+
+  {{ oak.sign([
+    {"cap": "Supir / Pengantar,", "name": (_rows[0].get("driver") if _rows else "") or "&hellip;&hellip;&hellip;&hellip;&hellip;&hellip;", "sub": "Nama terang"},
+    {"cap": "Petugas Gate,", "name": "PT. Oasis Anugerah Kasih", "sub": "Nama terang &amp; paraf"},
+  ]) }}
+
+  {{ oak.foot("FM-OPS-BKR-01") }}
+  </div>
+
 </div>

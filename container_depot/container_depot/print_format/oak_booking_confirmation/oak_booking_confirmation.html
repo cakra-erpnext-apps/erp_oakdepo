@@ -1,0 +1,247 @@
+{#-
+  BOOKING CONFIRMATION — the customer's copy.
+
+  Modelled on how a carrier (Maersk / CMA CGM) confirms a booking: the number and its
+  status first, then who booked with whom, then the equipment, then the terms. What it
+  deliberately does NOT carry is the gate pass — the Booking Code QR is the driver's
+  credential, not the customer's, and it lives on the voucher. There is no "Disetujui"
+  column either: this sheet reports a confirmation, it does not ask for one.
+
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+
+{%- set _dir = doc.direction or "Tank In" -%}
+{%- set _lift = doc.lift_type or ("Lift Off" if _dir == "Tank In" else "Lift On") -%}
+{%- set _ccy = doc.currency or frappe.db.get_default("currency") or "IDR" -%}
+{%- set _status = doc.booking_status or "Draft" -%}
+
+{%- if _status == "Confirmed" -%}{%- set _sc = "#2f7a30" -%}
+{%- elif _status in ("Cancelled", "Blocked") -%}{%- set _sc = "#b3261e" -%}
+{%- elif _status == "Draft" -%}{%- set _sc = "#6b7280" -%}
+{%- else -%}{%- set _sc = "#b26a00" -%}{%- endif -%}
+
+{%- set _addr_name = frappe.db.get_value("Dynamic Link", {"link_doctype": "Customer", "link_name": doc.customer, "parenttype": "Address"}, "parent") if doc.customer else None -%}
+{%- set _addr = frappe.db.get_value("Address", _addr_name, ["address_line1", "address_line2", "city", "state", "pincode", "phone"], as_dict=True) if _addr_name else None -%}
+{%- set _cust_name = frappe.db.get_value("Customer", doc.customer, "customer_name") or doc.customer -%}
+{%- set _prin_name = frappe.db.get_value("Customer", doc.principal, "customer_name") or doc.principal -%}
+
+{#- The stamp is evidence, not decoration: it appears only once the linked Sales
+    Invoice is actually settled (payment_status is stamped Paid from there). A TOP
+    booking stays Unpaid on purpose — it is billed on terms — so it never gets one. -#}
+{%- set _paid = (doc.payment_status == "Paid") -%}
+{%- set _paid_date = frappe.db.get_value("Sales Invoice", doc.sales_invoice, "posting_date") if (_paid and doc.sales_invoice) else None -%}
+
+{%- set _tot = {} -%}
+{%- for r in doc.charges or [] -%}
+  {%- set c = r.currency or _ccy -%}
+  {%- set _ = _tot.update({c: (_tot.get(c) or 0) + frappe.utils.flt(r.amount)}) -%}
+{%- endfor -%}
+
+{%- set _mix = {} -%}
+{%- for r in doc.items or [] -%}
+  {%- set k = r.condition or "TANPA KONDISI" -%}
+  {%- set _ = _mix.update({k: (_mix.get(k) or 0) + 1}) -%}
+{%- endfor -%}
+
+<div class="oak-doc">
+
+  {{ oak.watermark() }}
+
+  {{ oak.head("BOOKING CONFIRMATION") }}
+
+  {{ oak.strip([
+    {"k": "Booking No.", "v": doc.name, "w": "30%"},
+    {"k": "Tanggal Booking", "v": oak.tanggal(doc.creation), "w": "24%"},
+    {"k": "Jenis", "v": _dir ~ ' <span style="font-weight:400; color:#5c6670;">· ' ~ _lift ~ '</span>', "w": "24%"},
+    {"k": "Status", "v": oak.status_pill(_status), "w": "22%"},
+  ]) }}
+
+  <!-- ============ PARTIES + BOOKING DETAILS ============ -->
+  <table class="band boxrow">
+    <tr>
+      <td class="box" style="width:49%;">
+          <div class="box-h">Booked by party</div>
+          <div style="font-size:13px; font-weight:700;">{{ _cust_name or "&mdash;" }}</div>
+          {%- if _addr %}
+          <div class="sub" style="margin-top:3px;">
+            {{ _addr.address_line1 or "" }}{% if _addr.address_line2 %}, {{ _addr.address_line2 }}{% endif %}<br>
+            {{ _addr.city or "" }}{% if _addr.state %}, {{ _addr.state }}{% endif %} {{ _addr.pincode or "" }}
+            {%- if _addr.phone %}<br>Telp : {{ _addr.phone }}{% endif %}
+          </div>
+          {%- endif %}
+          <table class="kv" style="margin-top:7px;">
+            <tr><td class="k">Tank Owner</td><td class="v">{{ _prin_name or "&mdash;" }}</td></tr>
+            <tr><td class="k">Sales</td><td class="v">{{ doc.sales_name or "&mdash;" }}</td></tr>
+            <tr><td class="k">Reff Doc</td><td class="v">{{ doc.reff_doc or "&mdash;" }}</td></tr>
+          </table>
+      </td>
+      <td class="gut"></td>
+      <td class="box" style="width:49%;">
+          <div class="box-h">Booking details</div>
+          <table class="kv">
+            <tr><td class="k">Depot</td><td class="v">{{ doc.depot or "&mdash;" }}</td></tr>
+            <tr><td class="k">Branch</td><td class="v">{{ doc.branch or "&mdash;" }}</td></tr>
+            <tr>
+              <td class="k">Pembayaran</td>
+              <td class="v">{{ doc.payment_type or "&mdash;" }}
+                {%- if doc.payment_type == "Cash" and doc.payment_status %} <span class="sub">&middot; {{ doc.payment_status }}</span>{% endif %}</td>
+            </tr>
+            <tr><td class="k">DO Reference</td><td class="v">{{ doc.do_reference or "&mdash;" }}</td></tr>
+            <tr>
+              <td class="k">Jumlah Container</td>
+              <td class="v">{{ (doc.items or []) | length }} unit
+                {%- if _mix %}<div class="sub" style="font-weight:400;">
+                  {%- for k, n in _mix.items() %}{% if not loop.first %} &middot; {% endif %}{{ n }} {{ k }}{% endfor %}
+                </div>{% endif %}</td>
+            </tr>
+            {%- if _tot %}
+            <tr>
+              <td class="k">Total Biaya</td>
+              <td class="v">{% for c, amt in _tot.items() %}{% if not loop.first %} &middot; {% endif %}{{ oak.money(amt, c) }}{% endfor %}</td>
+            </tr>
+            {%- endif %}
+          </table>
+      </td>
+    </tr>
+  </table>
+
+  <div style="font-size:10px; color:#45505a; margin:14px 0 2px;">
+    Dengan hormat, booking Anda telah kami terima dan tercatat dengan nomor di atas.
+    Berikut rincian container serta ketentuan yang berlaku &mdash; mohon diperiksa kembali sebelum kedatangan.
+  </div>
+
+  <!-- ============ CONTAINER ============ -->
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="7">CONTAINER &mdash; {{ (doc.items or []) | length }} UNIT</th></tr>
+      <tr>
+        <th style="width:4%;">#</th>
+        <th style="width:18%;">CONTAINER NO</th>
+        <th style="width:14%;">CONDITION</th>
+        <th style="width:15%;">CARGO</th>
+        <th style="width:17%;">EMKL / SHIPPER</th>
+        <th style="width:19%;">TRUCK &amp; DRIVER</th>
+        <th style="width:13%;">R/O &amp; TGL</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in doc.items or [] %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td>
+          <span class="mono">{{ row.container_no or row.container or "&mdash;" }}</span>
+          {%- if row.is_new_container %}<div class="sub">Container baru</div>{% endif %}
+          {%- if row.depot and row.depot != doc.depot %}<div class="sub">{{ row.depot }}</div>{% endif %}
+        </td>
+        <td>{{ oak.cond_pill(row.condition) }}</td>
+        <td>{{ row.cargo or "&mdash;" }}</td>
+        <td>{{ row.shipper or "&mdash;" }}</td>
+        <td>
+          {{ row.truck_plate or "&mdash;" }}
+          {%- if row.driver %}<div class="sub">{{ row.driver }}{% if row.driver_phone %} &middot; {{ row.driver_phone }}{% endif %}</div>{% endif %}
+        </td>
+        <td>
+          {%- if row.ro %}{{ row.ro }}
+            {%- if row.tanggal_bongkar %}<div class="sub">{{ frappe.utils.formatdate(row.tanggal_bongkar) }}</div>{% endif %}
+          {%- elif row.tanggal_bongkar %}{{ frappe.utils.formatdate(row.tanggal_bongkar) }}
+          {%- else %}&mdash;{% endif %}
+        </td>
+      </tr>
+      {%- if row.remarks %}
+      <tr><td></td><td colspan="6" class="sub" style="padding-top:0;">Catatan: {{ row.remarks }}</td></tr>
+      {%- endif %}
+      {%- else %}
+      <tr><td colspan="7" class="ctr sub">Tidak ada container.</td></tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+
+  <!-- ============ CHARGES ============ -->
+  {%- if doc.charges %}
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="5">RINCIAN BIAYA</th></tr>
+      <tr>
+        <th style="width:5%;">#</th>
+        <th>DESKRIPSI</th>
+        <th style="width:9%;" class="ctr">QTY</th>
+        <th style="width:19%;" class="num">TARIF</th>
+        <th style="width:21%;" class="num">JUMLAH</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in doc.charges %}
+      {%- set _rc = row.currency or _ccy %}
+      <tr>
+        <td class="ctr">{{ loop.index }}</td>
+        <td>{{ row.item_name or row.item or "&mdash;" }}{% if row.item_name and row.item and row.item_name != row.item %}<div class="sub">{{ row.item }}</div>{% endif %}</td>
+        <td class="ctr">{{ "%g" | format(frappe.utils.flt(row.qty)) }}</td>
+        <td class="num">{{ oak.money(row.rate, _rc) }}</td>
+        <td class="num">{{ oak.money(row.amount, _rc) }}</td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+
+  <table style="margin-top:8px;">
+    <tr>
+      <td style="width:58%; vertical-align:middle; padding-left:26px;">
+        {%- if _paid %}
+        <div class="stamp">
+          <div class="big">PAID</div>
+          <div class="small">LUNAS{% if _paid_date %} &middot; {{ frappe.utils.formatdate(_paid_date) }}{% endif %}</div>
+        </div>
+        {%- endif %}
+      </td>
+      <td style="width:42%; vertical-align:top;">
+        <table>
+          {%- for c, amt in _tot.items() %}
+          <tr class="total-row">
+            <td>TOTAL{% if _tot | length > 1 %} {{ c }}{% endif %}</td>
+            <td class="num">{{ oak.money(amt, c) }}</td>
+          </tr>
+          {%- endfor %}
+        </table>
+        {%- if doc.payment_type == "TOP" %}
+        <div class="sub" style="margin-top:4px; text-align:right;">Ditagih sesuai termin kontrak (TOP).</div>
+        {%- endif %}
+      </td>
+    </tr>
+  </table>
+  {%- endif %}
+
+  <!-- ============ REMARKS + TERMS ============ -->
+  <table class="band boxrow" style="margin-top:16px;">
+    <tr>
+      <td class="box" style="width:41%;">
+          <div class="box-h">Remarks</div>
+          <div style="font-size:9.5px; white-space:pre-line;">{{ doc.remarks or "&mdash;" }}</div>
+      </td>
+      <td class="gut"></td>
+      <td class="box terms" style="width:57%;">
+          <div class="box-h">Syarat &amp; ketentuan</div>
+          <ol>
+            <li>Konfirmasi ini berlaku untuk container yang tercantum di atas. Perubahan jumlah, nomor container, atau kondisi harap dikonfirmasi ulang sebelum kedatangan.</li>
+            <li>Booking Code diterbitkan per container setelah booking dikonfirmasi dan wajib ditunjukkan supir di gate.</li>
+            <li>Booking Cash wajib lunas sebelum container dilayani; booking TOP ditagih sesuai termin pada kontrak yang berlaku.</li>
+            <li>Kondisi container dinilai ulang saat pemeriksaan (EIR) di depot; hasil pemeriksaan yang menentukan tindakan cleaning / perbaikan.</li>
+          </ol>
+      </td>
+    </tr>
+  </table>
+
+  <div class="band">
+  {{ oak.sign([
+    {"cap": "Dibuat oleh,", "name": frappe.db.get_value("User", doc.owner, "full_name") or doc.owner, "sub": "PT. Oasis Anugerah Kasih"},
+    {"cap": "Customer,", "name": _cust_name, "sub": "Nama terang &amp; stempel"},
+  ]) }}
+
+  <div class="foot">
+    {{ doc.name }} &middot; {{ _cust_name or "" }} &middot; FM-OPS-BKG-02 &mdash;
+    dokumen ini diterbitkan secara elektronik dan sah tanpa tanda tangan basah.
+  </div>
+  </div>
+
+</div>
