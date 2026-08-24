@@ -166,6 +166,26 @@ for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Gate Entry"):
 	_append_event(_dt, "on_trash", _REVOKE)
 del _dt
 
+# Foto/lampiran yang naik dari PWA lahir tanpa tuan (upload_file dipanggil tanpa doctype —
+# fotonya diambil sebelum dokumennya tentu ada). File privat tanpa tuan hanya bisa dibuka
+# oleh yang mengunggahnya, jadi rekan satu depot dapat 403. Penyimpanan dokumen menempelkan
+# file yang dirujuknya ke dirinya sendiri; izin bacanya lalu ikut dokumen itu. Lihat files.py.
+_ATTACH_FILES = "container_depot.files.attach_to_document"
+# Doctype yang memuat unggahan (field Attach di dirinya atau di tabel anaknya).
+FILE_BEARING_DOCTYPES = (
+	"Inspection",
+	"Cleaning Order",
+	"Repair Order",
+	"Container Position Survey",
+	"Container Booking",
+	"Gate Out Plan",
+	"Depot Contract",
+)
+for _dt in FILE_BEARING_DOCTYPES:
+	for _ev in ("on_update", "on_submit", "on_update_after_submit"):
+		_append_event(_dt, _ev, _ATTACH_FILES)
+del _dt, _ev
+
 # "What happened to this tank last?" — the latest Booking / Bongkar / Muat / Cleaning / M&R /
 # EIR-In / EIR-Out, cached on the Container master so a screen asking that does not have to
 # query six tables. The cache is REBUILT FROM SOURCE on every one of these events rather than

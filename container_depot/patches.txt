@@ -100,3 +100,4 @@ container_depot.patches.v0_71.fill_booking_row_depot
 container_depot.patches.v0_72.drop_direct_buy_line_type
 container_depot.patches.v0_72.drop_used_item_manhour_amount
 container_depot.patches.v0_73.clear_echoed_damage_description_again
+container_depot.patches.v0_74.attach_orphan_pwa_files
