@@ -1235,20 +1235,15 @@ frappe.ui.form.on('Inspection Damage Entry', {
 		});
 	},
 
+	// Description = apa yang DITULIS orangnya, titik. Dulu memilih kode kerusakan
+	// menyalin deskripsi kode itu ke Description, jadi kolomnya penuh gema kode
+	// ("Dented", "Rusty") yang terbaca seperti catatan padahal tidak ada yang menulis.
+	// Server (_build_damage_rows) sudah lama tidak mengisinya; ini sisanya di Desk.
 	damage_type(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		sync_followup_flags(frm, true);
 		if (!row.damage_type) return;
 		if (!row.severity) frappe.model.set_value(cdt, cdn, 'severity', 'Minor');
-		if (!row.damage_description) {
-			frappe.db.get_value('Inspection Damage Code', row.damage_type, 'description').then((r) => {
-				const desc = (r.message || {}).description;
-				const fresh = locals[cdt][cdn];
-				if (desc && fresh && !fresh.damage_description) {
-					frappe.model.set_value(cdt, cdn, 'damage_description', desc);
-				}
-			});
-		}
 	},
 
 	// A note the surveyor typed counts as a finding on its own (eir_followups), so the
