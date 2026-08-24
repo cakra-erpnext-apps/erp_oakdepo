@@ -423,6 +423,52 @@ class TestGateOutPlan(FrappeTestCase):
 		plan.save(ignore_permissions=True)
 		self.assertIsNone(frappe.db.get_value("Cleaning Order", co, "target_lift_on"))
 
+	def test_push_target_onto_open_eir(self):
+		"""A draft EIR-In is open work holding the tank, so it carries the stamp too.
+
+		The mirror used to name Cleaning and M&R itself and skipped the EIR entirely — which
+		meant a tank whose ONLY open work was its arrival inspection got no urgency anywhere,
+		even while the plan's own readiness column reported "Belum: EIR-In".
+		"""
+		c = self._container("GOPEIRPUSH1")
+		eir = self._eir(c, "EIR-In", status="Draft")
+		d = add_days(today(), 3)
+		plan = self._plan([(c, d)])
+		self.assertEqual(str(frappe.db.get_value("Inspection", eir, "target_lift_on")), str(d))
+		# Closing the plan releases the EIR's copy exactly like the other orders'.
+		plan.status = "Fulfilled"
+		plan.save(ignore_permissions=True)
+		self.assertIsNone(frappe.db.get_value("Inspection", eir, "target_lift_on"))
+
+	def test_push_target_onto_open_eir_out(self):
+		"""EIR-Out is NOT a blocker (container_open_orders leaves it out on purpose) but it
+		is still unfinished work on a tank the customer is coming for, and its worklist is
+		the one place where "the pickup is today" matters most."""
+		c = self._container("GOPEIRPUSH2")
+		eir = self._eir(c, "EIR-Out", status="Draft")
+		d = add_days(today(), 2)
+		self._plan([(c, d)])
+		self.assertEqual(str(frappe.db.get_value("Inspection", eir, "target_lift_on")), str(d))
+
+	def test_submitted_eir_keeps_no_target(self):
+		"""Finished work is not prioritised — the stamp reaches OPEN orders only."""
+		c = self._container("GOPEIRDONE1")
+		eir = self._eir(c, "EIR-In", status="Submitted")
+		self._plan([(c, add_days(today(), 3))])
+		self.assertIsNone(frappe.db.get_value("Inspection", eir, "target_lift_on"))
+
+	def test_eir_worklist_sorts_nearest_target_first(self):
+		"""Same priority rule as the cleaning / M&R worklists, so one habit covers all three."""
+		from container_depot.container_depot import eir as eir_api
+
+		near = self._container("GOPEIRSRT0N")
+		far = self._container("GOPEIRSRT0F")
+		self._eir(far, "EIR-In", status="Draft")    # unstamped → sinks
+		self._eir(near, "EIR-In", status="Draft")
+		self._plan([(near, add_days(today(), 1))])
+		nos = [i["container_no"] for i in eir_api.list_pending_eirs(page_length=50)["items"]]
+		self.assertLess(nos.index("GOPEIRSRT0N"), nos.index("GOPEIRSRT0F"))
+
 	def test_new_order_inherits_target_via_fetch_from(self):
 		c = self._container("GOPFETCH001")
 		d = add_days(today(), 6)

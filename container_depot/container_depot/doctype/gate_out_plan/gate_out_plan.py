@@ -520,19 +520,40 @@ def _clear_target(container: str, plan: str) -> None:
 
 
 def _push_to_open_orders(container: str, date) -> None:
-	"""Mirror the container's target_lift_on onto its still-open Cleaning / M&R orders so the
-	PWA + Desk worklists can sort & badge by it across pagination. New orders inherit it via
-	``fetch_from``; this keeps ALREADY-open orders in sync when the plan changes or closes."""
-	for ro in frappe.get_all(
-		"Repair Order", filters={"container": container, "status": ["not in", _MR_DONE]}, pluck="name"
-	):
-		frappe.db.set_value("Repair Order", ro, "target_lift_on", date, update_modified=False)
-	for co in frappe.get_all(
-		"Cleaning Order",
-		filters={"container": container, "status": ["not in", _CLEANING_DONE], "docstatus": ["<", 2]},
-		pluck="name",
-	):
-		frappe.db.set_value("Cleaning Order", co, "target_lift_on", date, update_modified=False)
+	"""Mirror the container's target_lift_on onto EVERY order still holding it, so the PWA +
+	Desk worklists can sort & badge by it across pagination. New orders inherit it via
+	``fetch_from``; this keeps ALREADY-open orders in sync when the plan changes or closes.
+
+	Driven off :func:`container_open_orders` — the same list the plan's own readiness column
+	and the booking's submit gate read — rather than a private list of doctypes here. That is
+	the whole point: "belum selesai" must mean one thing across the app. The old version named
+	Cleaning and M&R itself and so quietly skipped the DRAFT EIR-In, which is both the most
+	common thing holding a tank that just arrived and the one the plan was already reporting
+	as a blocker — a tank could read "Belum: EIR-In" on the plan while the surveyor's own
+	worklist showed no urgency at all.
+
+	Two questions, though, not one. ``container_open_orders`` answers "what BLOCKS departure",
+	and so leaves EIR-Out out on purpose: the outbound inspection is part of leaving, not
+	something standing in its way. The stamp answers a different question — "when is the
+	customer coming for this tank" — which the outbound worklist wants to know arguably most
+	of all. So the blockers come from the shared definition and the open EIR-Out is added to
+	them here, rather than by loosening what "blocking" means for every other caller.
+
+	Guarded by ``has_field`` so a doctype joining that list later cannot break saving a plan;
+	it simply carries no stamp until someone gives it the field.
+	"""
+	targets = [(o["doctype"], o["name"]) for o in container_open_orders(container)]
+	targets += [
+		("Inspection", name)
+		for name in frappe.get_all(
+			"Inspection",
+			filters={"container": container, "inspection_type": "EIR-Out", "docstatus": 0},
+			pluck="name",
+		)
+	]
+	for doctype, name in targets:
+		if frappe.get_meta(doctype).has_field("target_lift_on"):
+			frappe.db.set_value(doctype, name, "target_lift_on", date, update_modified=False)
 
 
 def _containers_pointing_to(plan: str) -> list:

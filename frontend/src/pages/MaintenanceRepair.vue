@@ -365,6 +365,7 @@ import { createResource } from "frappe-ui"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
+import { hMinus, liftClass } from "@/utils/liftOn"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
@@ -384,28 +385,6 @@ const fmtDate = (v) =>
 				year: "numeric",
 		  })
 		: "—"
-
-// Gate Out Plan target lift-on → countdown badge (H-minus) with urgency colour.
-const liftDays = (v) => {
-	if (!v) return null
-	const target = new Date(String(v).slice(0, 10) + "T00:00:00")
-	const today = new Date(new Date().toDateString())
-	return Math.round((target - today) / 86400000)
-}
-const hMinus = (v) => {
-	const d = liftDays(v)
-	if (d === null) return ""
-	if (d < 0) return `Lewat ${-d} hr`
-	if (d === 0) return "Hari-H"
-	return `H-${d}`
-}
-const liftClass = (v) => {
-	const d = liftDays(v)
-	if (d === null) return ""
-	if (d <= 1) return "text-red-600"
-	if (d <= 3) return "text-amber-600"
-	return "text-brand-600"
-}
 
 const search = ref("")
 const allOrders = ref([]) // what the server (or the offline cache) last said

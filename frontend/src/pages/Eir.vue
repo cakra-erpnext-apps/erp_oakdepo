@@ -163,6 +163,9 @@
 										<span v-if="r.work_started_on" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
 											<Icon name="clock" :size="11" /> {{ labels.eirChipStarted }}
 										</span>
+										<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
+											Lift-on {{ hMinus(r.target_lift_on) }}
+										</span>
 										<span v-if="r.referred_voucher" class="truncate font-mono text-gray-500">{{ r.referred_voucher }}</span>
 										<span v-else-if="r.tank_status" class="truncate text-gray-400">{{ r.tank_status }}</span>
 									</p>
@@ -213,7 +216,12 @@
 									{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
 								</p>
 								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
-								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
+								<p class="flex items-center gap-1.5 text-[11px]">
+									<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
+										Lift-on {{ hMinus(r.target_lift_on) }}
+									</span>
+									<span class="truncate text-gray-400">{{ r.inspection_id || r.name }}</span>
+								</p>
 							</div>
 							<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.eirStatusPendingReview }}</span>
 							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
@@ -263,6 +271,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
+import { hMinus, liftClass } from "@/utils/liftOn"
 import Icon from "@/components/Icon.vue"
 import { cachedResource } from "@/data/cache"
 import { keepScrollForNextNavigation } from "@/router"

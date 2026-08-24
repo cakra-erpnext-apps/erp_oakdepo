@@ -1428,6 +1428,21 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
 
 
+def _by_lift_on(items: list, start: int, page_length: int) -> list:
+	"""Nearest customer target lift-on first; unstamped keep the order the query gave them.
+
+	The stamp is the Gate Out Plan's (``gate_out_plan._push_to_open_orders``), so an EIR
+	holding a tank the customer is already coming for rises to the top of the surveyor's
+	list instead of waiting its turn by date. Sorted in Python and sliced here rather than in
+	SQL because this Frappe's order_by validator rejects the ``ifnull(...)`` the sort needs —
+	the same reason the M&R and cleaning worklists do it this way (see
+	``mr.list_open_mr_orders`` / ``cleaning.list_open_cleaning_orders``). Python's sort is
+	stable, so the query's own order_by still settles ties.
+	"""
+	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
+	return items[start:start + page_length] if page_length else items[start:]
+
+
 def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 	"""Open (draft) EIR inspections in the user's branch scope — the PWA EIR worklist.
 
@@ -1465,9 +1480,6 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			["referred_voucher", "like", s],
 		]
 
-	total = len(frappe.get_all(
-		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
-	))
 	items = frappe.get_all(
 		"Inspection",
 		filters=filters,
@@ -1480,11 +1492,17 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			# the PWA worklist's belum / dikerjakan split; work_started_by scopes the
 			# next/prev EIR navigator to the account that is working them.
 			"work_started_on", "work_started_by",
+			# Gate Out Plan's stamp — sorts and badges this worklist by pickup urgency.
+			"target_lift_on",
 		],
 		order_by="creation desc",
-		limit_start=start,
-		limit_page_length=page_length,
+		limit_page_length=0,
 	)
+	# Whole list, then sort, then slice: the priority order is decided in Python (see
+	# _by_lift_on), so SQL cannot page it. The open EIR list is bounded by the tanks in the
+	# yard, which is what makes that affordable.
+	total = len(items)
+	items = _by_lift_on(items, start, page_length)
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
 
 
@@ -1516,9 +1534,6 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 		term = ""
 	or_filters = [["container_no", "like", f"%{term}%"], ["inspection_id", "like", f"%{term}%"]] if term else None
 
-	total = len(frappe.get_all(
-		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
-	))
 	items = frappe.get_all(
 		"Inspection",
 		filters=filters,
@@ -1526,11 +1541,16 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "container_principal",
 			"inspection_type", "status", "tank_status", "docstatus", "eir_date", "creation",
+			"target_lift_on",
 		],
 		order_by="creation desc",
-		limit_start=start,
-		limit_page_length=page_length,
+		limit_page_length=0,
 	)
+	# Whole list, then sort, then slice: the priority order is decided in Python (see
+	# _by_lift_on), so SQL cannot page it. The open EIR list is bounded by the tanks in the
+	# yard, which is what makes that affordable.
+	total = len(items)
+	items = _by_lift_on(items, start, page_length)
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
 
 
@@ -1646,9 +1666,6 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 			["referred_voucher", "like", s],
 		]
 
-	total = len(frappe.get_all(
-		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
-	))
 	items = frappe.get_all(
 		"Inspection",
 		filters=filters,
@@ -1659,11 +1676,15 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 			# See list_pending_eirs: empty = not started, set = in progress; work_started_by
 			# scopes the next/prev EIR navigator to the account working them.
 			"work_started_on", "work_started_by",
+			# The tank is on its way out — the plan's stamp says whether that is today.
+			"target_lift_on",
 		],
 		order_by="creation desc",
-		limit_start=start,
-		limit_page_length=page_length,
+		limit_page_length=0,
 	)
+	# See list_pending_eirs: priority is decided in Python, so SQL cannot page it.
+	total = len(items)
+	items = _by_lift_on(items, start, page_length)
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
 
 
