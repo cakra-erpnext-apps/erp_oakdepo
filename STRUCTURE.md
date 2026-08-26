@@ -475,6 +475,34 @@ stylesheet the browser must still fetch. It covers a real gap — Vue does not m
 `#app` when it mounts over it, so there is no teardown code to keep in step. Keep the markup
 free of `{{ }}`: the built file is copied to `www/depot.html` and rendered by Jinja.
 
+## Claimed work (PWA)
+
+Whoever presses **Mulai** first holds that job. From that moment the EIR / Cleaning Order /
+M&R disappears from every other operator's PWA worklist, and the open/start/save endpoints
+refuse anyone else with `ClaimedByAnother`
+(`container_depot/container_depot/work_claim.py`). One tank, one operator — and the record
+of who it was is the same field the Desk shows: `Inspection.work_started_by`,
+`Cleaning Order.assigned_to`, `Repair Order.started_by`, each in the form's "Sistem" block.
+
+**The Desk is deliberately untouched.** Supervision needs to see everything; the claim is a
+field-floor rule, not a permission. `frappe.get_all` in the worklists never consulted
+row-level permissions in the first place, and this changes none of that.
+
+**Why the endpoints and not just the list.** A notification goes to a whole role, not to one
+person, so a colleague tapping the bell a second later lands straight on the form the
+worklist had already hidden from them. The refusal therefore lives on the endpoint, names
+the holder, and the PWA turns it into a toast and sends them back to the worklist
+(`frontend/src/utils/claim.js`). Without it they would fill in a checklist the next autosave
+would reject.
+
+**What is NOT claimed**: "Diajukan Review" and Riwayat. Work sent for review has left the
+operator's hands — anyone in the branch may read it, and pull it back, exactly as before.
+An unclaimed order is likewise everyone's: the claim begins at Mulai, not at creation.
+
+**Bypass** is `work_claim.CLAIM_BYPASS_ROLES` — System Manager and Admin Ops (the ops
+backstop that lands in the yard to unstick a job), plus Administrator. Adding SPV Lapangan
+is one line there.
+
 ## Notification click-through
 
 Every notification leads somewhere, on all three surfaces — PWA bell, Desk bell, Web Push
@@ -524,11 +552,21 @@ test — which is held against `notify.py` by source scan, so an unrouted event 
 
 ## Notifications
 
-Routing is DATA, not code: one `Depot Notification Rule` per event (19 seeded), editable
+Routing is DATA, not code: one `Depot Notification Rule` per event (23 seeded), editable
 in Desk with no deploy. `Depot Notification Settings` holds the master switch and the
 fallback roles used when an event has no rule — never "everyone".
 
 A recipient must clear both filters: branch scope AND one of the event's roles.
+
+**The field crews are told on handoff, not on creation.** Team Cleaning is on
+`cleaning_order_forwarded` (Service Setup → Pending) and Team Repair on
+`repair_order_forwarded` (Approved → Pending) — the two "Teruskan ke Team" moments — and on
+nothing else. A Cleaning Order in Service Setup has no method picked, an M&R draft has no
+owner approval, so both describe work Admin Ops has not released; creation-time events go to
+Admin Ops + SPV Lapangan only. Team EIR is on no rule at all: an EIR-Out draft is provisioned
+by the Order Muat submit with no Admin Ops step in front of it, so there is no handoff moment
+to ring, and they work the `/eir` worklist. `test_field_teams_are_only_told_on_handoff` pins
+this; patch `v0_78` carried it onto sites already running (the seeder is add-only).
 
 This is deliberately the opposite call from the PWA menu, which stays hardcoded — a new
 menu always needs a new Vue page, so a config doctype would save nothing there. Do not
