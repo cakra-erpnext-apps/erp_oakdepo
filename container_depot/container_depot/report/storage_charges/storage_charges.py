@@ -1,60 +1,52 @@
-"""Storage Charges — hari menginap per tank, dan berapa hari yang boleh ditagih.
+"""Storage Charges — hari menginap per tank, dan berapa hari yang belum ditagih.
 
-One row per **depot visit**, not per container: a tank that came, left, and came back
-appears twice, because that is two stays and two bills. Both ways a depot charges storage
-are the same list under a different filter:
+**No filters, and that is the design.** The report opens on every tank that has ever
+stayed, showing each one's newest visit, over its whole recorded history — no period, no
+mode, nothing pre-narrowed. A ledger that filters itself before being asked is a ledger
+whose blank spots read as "tidak ada".
+
+One box remains: **Container**. Setting it is how the older visits are read — the report
+switches from "newest visit per tank" to "every visit of this tank". That is the drill-down,
+and it is the only thing that changes what rows exist.
+
+The newest row still has to answer for what is behind it, so it carries
+``older_unpaid_days``: the days the tank's earlier visits are still owed. Without it,
+"newest only" would hide exactly the money the per-visit ledger exists to protect — a tank
+that left in July unbilled and came back in August would look settled.
+
+Both ways a depot charges storage are the same rows:
 
 * **Saat Tank Keluar** — nothing until the tank gates out, then the whole visit at once.
 * **Berjalan (Periodik)** — charged period by period while the tank is still inside, with
   the tail billed when it finally leaves.
 
-Which one applies to a given owner is negotiated, not picked per run: it is read from their
-``Depot Contract.storage_billing_mode`` (see ``storage.billing_mode_for``) and shown on
-every row. Filtering by it — *Sesuai Kontrak* — is opt-in, and narrows the list to what each
-owner's contract allows to be charged yet. Unfiltered, which is how the report opens, every
-stay is listed whatever its owner's policy.
+Which applies to an owner is negotiated, not picked per run: read from their
+``Depot Contract.storage_billing_mode`` and shown on every row. They cannot double-charge
+each other because both read the same interval and both subtract what has already been
+billed — and that comes from the visit's own **Storage Charge** row, not from the
+container: one watermark per container could not say *"kunjungan Juli belum ditagih,
+kunjungan Agustus sudah"*, and silently dropped the July days.
 
-The two modes cannot double-charge each other because they read the same interval and both
-subtract what has already been billed — whatever a running run took is gone from the front
-of the closing bill. That "already billed" comes from the visit's own **Storage Charge**
-row, not from the container: one watermark per container could not say *"kunjungan Juli
-belum ditagih, kunjungan Agustus sudah"*, and silently dropped the July days.
+**This report raises nothing.** No Sales Invoice, no watermark move, nothing written at
+all. Every figure is recomputed on open, so a corrected gate timestamp shows up
+immediately.
 
-**Only the newest visit is listed by default.** A tank's history belongs in the Storage
-Charge list, not in a billing worksheet. The *Semua kunjungan* switch brings the older ones
-back — and any older visit still carrying unbilled days is listed regardless, because a
-default that hides money owed is a default that loses it.
-
-**This report raises nothing.** It is the days ledger; no Sales Invoice, no watermark
-move, nothing written at all. Every figure is recomputed on open, so a corrected gate
-timestamp shows up immediately.
-
-Rates are best-effort and may well be 0 — the day count is what is being verified here,
-and a rate card can be filled in afterwards without any of the days changing (see
+Rates are best-effort and may well be 0 — the day count is what is being verified here, and
+a rate card can be filled in afterwards without any of the days changing (see
 ``pricing.storage_rate_for``). The **Sumber** column says which record each stay's dates
-came from, because a storage day the customer disputes has to be traceable to a gate
-record rather than to an audit row written whenever someone happened to save the tank.
+came from, because a storage day the customer disputes has to be traceable to a gate record
+rather than to an audit row written whenever someone happened to save the tank.
 """
 
 from __future__ import annotations
 
 import frappe
-from frappe.utils import get_first_day, get_last_day, getdate, today
+from frappe.utils import getdate, today
 
 from container_depot import storage, storage_charge
 from container_depot.container_depot.container_status import AVAILABLE, GATE_OUT, IN_DEPOT
 from container_depot.monthly_invoicing import _active_contract
 from container_depot.pricing import storage_rate_for
-
-# The "Cara Charge" filter, and it is EMPTY by default: opening the menu shows every stay.
-# A report that narrows itself before the operator has asked anything is a report whose
-# blank spots read as "tidak ada" — the filter has to be a question they chose to ask.
-#
-# BY_CONTRACT is the billing view (each owner sees only what their contract says may be
-# charged yet); the other two filter by the stay's own state and ignore the contract.
-FILTER_BY_CONTRACT = "Sesuai Kontrak"
-FILTER_RUNNING = "Masih Menginap"
-FILTER_CLOSED = "Sudah Keluar"
 
 STAY_RUNNING = "Masih Menginap"
 STAY_CLOSED = "Sudah Keluar"
@@ -81,7 +73,8 @@ def _columns():
 		{"fieldname": "stay_days", "label": "Hari Menginap", "fieldtype": "Int", "width": 110},
 		{"fieldname": "free_days", "label": "Free Days", "fieldtype": "Int", "width": 90},
 		{"fieldname": "billed_until", "label": "Ditagih s/d", "fieldtype": "Date", "width": 100},
-		{"fieldname": "chargeable_days", "label": "Hari Ditagih", "fieldtype": "Int", "width": 105},
+		{"fieldname": "chargeable_days", "label": "Hari Belum Ditagih", "fieldtype": "Int", "width": 130},
+		{"fieldname": "older_unpaid_days", "label": "Kunjungan Lama Belum Ditagih (hari)", "fieldtype": "Int", "width": 220},
 		{"fieldname": "charge_from", "label": "Tagih Dari", "fieldtype": "Date", "width": 100},
 		{"fieldname": "charge_to", "label": "Tagih s/d", "fieldtype": "Date", "width": 100},
 		{"fieldname": "item", "label": "Item Tarif", "fieldtype": "Link", "options": "Item", "width": 160},
@@ -96,14 +89,19 @@ def _columns():
 	]
 
 
-def _window(filters):
-	"""The period being looked at — defaults to the current month."""
-	from_date = getdate(filters.from_date) if filters.from_date else get_first_day(getdate(today()))
-	to_date = getdate(filters.to_date) if filters.to_date else get_last_day(getdate(today()))
-	return from_date, to_date
+# No date filter: the report covers the tank's whole recorded history. A storage ledger
+# asked "berapa hari belum ditagih" has one honest answer, and it is not "in the month you
+# happened to be looking at" — a window silently turned days outside it into zero.
+EPOCH = "1900-01-01"
 
 
 def _containers(filters):
+	"""The tanks in the answer.
+
+	``principal`` / ``depot`` are honoured when passed but are NOT filters in the UI: the
+	report opens unfiltered on purpose, and Container is the only box on it. They stay
+	because callers (and tests) scope by them programmatically.
+	"""
 	where = {"status": ["in", STATUSES]}
 	for field in ("principal", "depot"):
 		if filters.get(field):
@@ -113,15 +111,15 @@ def _containers(filters):
 	return frappe.get_all(
 		"Container",
 		filters=where,
-		fields=["name", "container_no", "principal", "size", "status", "depot", "storage_billed_until"],
+		fields=["name", "container_no", "principal", "size", "status", "depot"],
 		order_by="principal asc, container_no asc",
 	)
 
 
 def _data(filters):
-	from_date, to_date = _window(filters)
-	mode = filters.get("mode")
+	from_date, to_date = getdate(EPOCH), getdate(today())
 	mode_count = storage.count_mode()
+	drilled = bool(filters.get("container"))
 	containers = _containers(filters)
 	periods = storage.periods_for_many(containers)
 	ledger = _ledger([c.name for c in containers])
@@ -133,24 +131,33 @@ def _data(filters):
 		if c.principal not in free_days:
 			free_days[c.principal] = storage.free_days_for(c.principal)
 			modes[c.principal] = storage.billing_mode_for(c.principal)
-		visits = periods.get(c.name) or []
-		newest = max((getdate(p["start"]) for p in visits), default=None)
+		visits = sorted(periods.get(c.name) or [], key=lambda p: getdate(p["start"]))
+		if not visits:
+			continue
+
+		measured = []
 		for period in visits:
 			entry = ledger.get(_ledger_key(c.name, period)) or {}
-			row = storage.measure(
+			measured.append((period, entry, storage.measure(
 				period, from_date, to_date,
 				free_days=free_days[c.principal],
 				billed_until=entry.get("billed_until"),
 				mode=mode_count,
-			)
-			if not _visible(period, newest, row, filters):
-				continue
-			if not _in_scope(row, period, from_date, to_date, mode, modes[c.principal], mode_count):
-				continue
-			key = (c.principal, c.size)
-			if key not in rates:
-				rates[key] = _rate(c.principal, c.size)
-			rate, item, currency = rates[key]
+			)))
+
+		# One row per tank — its newest visit — unless the operator has drilled into a
+		# single container, which is how the older visits are read. What the newest row
+		# must NOT do is hide that money is still owed behind it, so the older visits'
+		# unbilled days are carried onto it as a number: see the tank, see the backlog,
+		# then set the Container filter to see the visits themselves.
+		shown = measured if drilled else measured[-1:]
+		older_unpaid = 0 if drilled else sum(m["chargeable_days"] for _, _, m in measured[:-1])
+
+		key = (c.principal, c.size)
+		if key not in rates:
+			rates[key] = _rate(c.principal, c.size)
+		rate, item, currency = rates[key]
+		for period, entry, row in shown:
 			rows.append({
 				"container": c.name,
 				"principal": c.principal,
@@ -163,6 +170,7 @@ def _data(filters):
 				"free_days": row["free_days"],
 				"billed_until": entry.get("billed_until"),
 				"chargeable_days": row["chargeable_days"],
+				"older_unpaid_days": older_unpaid,
 				"charge_from": row["charge_from"],
 				"charge_to": row["charge_to"],
 				"item": item,
@@ -176,34 +184,8 @@ def _data(filters):
 				"charge_status": entry.get("status"),
 			})
 
-	if not filters.get("show_zero"):
-		rows = [r for r in rows if r["chargeable_days"] > 0]
 	rows.sort(key=lambda r: (r["principal"] or "", r["container"], r["in_date"]))
 	return rows
-
-
-def _in_scope(row, period, from_date, to_date, mode, policy, mode_count) -> bool:
-	"""Does this stay belong in the answer?
-
-	Two gates. First the **Cara Charge** filter: either the owner's contract decides
-	(``Sesuai Kontrak`` — an owner billed on exit hides their tanks that are still inside,
-	because those are not chargeable to them yet), or the operator overrides it to look at
-	one kind of stay regardless of contract.
-
-	Then the **window**: a stay is in scope when it OVERLAPS it — started on or before the
-	window ends, and had not already finished before it began. A stay wholly in the past is
-	not "0 days", it is a different period's business, so it is dropped rather than listed
-	as an empty row.
-	"""
-	if mode == FILTER_RUNNING and not row["is_open"]:
-		return False
-	if mode == FILTER_CLOSED and row["is_open"]:
-		return False
-	if mode == FILTER_BY_CONTRACT and not storage.billable_now(period, policy):
-		return False
-	if getdate(period["start"]) > to_date:
-		return False
-	return row["is_open"] or storage.last_billable_day(period, to_date, mode_count) >= from_date
 
 
 def _ledger(containers):
@@ -229,18 +211,6 @@ def _ledger(containers):
 
 def _ledger_key(container, period):
 	return (container, period.get("ref") or str(getdate(period["start"])))
-
-
-def _visible(period, newest, row, filters) -> bool:
-	"""Newest visit only, unless asked otherwise — or unless the visit still owes days.
-
-	The exception is the point. A tank that left in July unbilled and came back in August is
-	exactly the case a per-visit ledger exists for; hiding it behind a "newest only" default
-	would reintroduce, in the UI, the loss the ledger was built to stop.
-	"""
-	if filters.get("all_visits") or newest is None:
-		return True
-	return getdate(period["start"]) == newest or row["chargeable_days"] > 0
 
 
 def _rate(principal, size):

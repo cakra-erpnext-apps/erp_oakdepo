@@ -1,67 +1,20 @@
-// Filters for "Storage Charges" — the storage days ledger.
+// "Storage Charges" — hari menginap per tank, dan berapa hari yang belum ditagih.
 //
-// Dibuka tanpa filter: semua kunjungan tampil. Pilih "Sesuai Kontrak" kalau mau menyaring
-// ke apa yang boleh ditagih menurut kontrak tiap owner (Depot Contract -> Cara Charge
-// Storage); dua pilihan lainnya menyaring berdasarkan kunjungannya sendiri, bukan kontrak.
+// Sengaja TANPA filter: begitu dibuka, semua tank tampil, satu baris per tank (kunjungan
+// terbaru), sepanjang seluruh riwayat. Untuk melihat kunjungan-kunjungan lama sebuah tank,
+// isi filter Container — daftar berubah jadi seluruh kunjungan tank itu.
 //
-// Satu baris = satu KUNJUNGAN. Defaultnya hanya kunjungan terbaru tiap tank — kecuali
-// kunjungan lama yang masih punya hari belum ditagih, yang selalu ikut tampil supaya tidak
-// hilang. Centang "Semua kunjungan" untuk melihat seluruh riwayat.
+// Kolom "Kunjungan Lama Belum Ditagih" ada supaya baris terbaru tidak menyembunyikan
+// tagihan yang masih menggantung di kunjungan sebelumnya.
 //
-// This report never bills anything. It shows the days so they can be checked against the
-// gate records BEFORE any invoice exists.
+// Laporan ini tidak membuat invoice apa pun.
 frappe.query_reports["Storage Charges"] = {
 	filters: [
-		{
-			fieldname: "mode",
-			label: __("Cara Charge"),
-			fieldtype: "Select",
-			options: ["", "Sesuai Kontrak", "Masih Menginap", "Sudah Keluar"].join("\n"),
-			default: "",
-		},
-		{
-			fieldname: "from_date",
-			label: __("Dari Tanggal"),
-			fieldtype: "Date",
-			default: frappe.datetime.month_start(),
-			reqd: 1,
-		},
-		{
-			fieldname: "to_date",
-			label: __("Sampai Tanggal"),
-			fieldtype: "Date",
-			default: frappe.datetime.month_end(),
-			reqd: 1,
-		},
-		{
-			fieldname: "principal",
-			label: __("Tank Owner"),
-			fieldtype: "Link",
-			options: "Customer",
-		},
-		{
-			fieldname: "depot",
-			label: __("Depot"),
-			fieldtype: "Link",
-			options: "Depot",
-		},
 		{
 			fieldname: "container",
 			label: __("Container"),
 			fieldtype: "Link",
 			options: "Container",
-		},
-		{
-			fieldname: "all_visits",
-			label: __("Semua kunjungan"),
-			fieldtype: "Check",
-			default: 0,
-		},
-		{
-			fieldname: "show_zero",
-			label: __("Tampilkan yang 0 hari"),
-			fieldtype: "Check",
-			default: 0,
 		},
 	],
 
@@ -77,14 +30,20 @@ frappe.query_reports["Storage Charges"] = {
 		if (column.fieldname === "chargeable_days" && data && data.chargeable_days > 0) {
 			value = `<b>${value}</b>`;
 		}
+		// Money still owed on an older visit of the same tank: set the Container filter to
+		// see the visits themselves.
+		if (column.fieldname === "older_unpaid_days" && data && data.older_unpaid_days > 0) {
+			value = `<span style="color: var(--orange-600)"><b>${value}</b></span>`;
+		}
 		return value;
 	},
 
 	onload(report) {
 		report.page.add_inner_message(
 			"Laporan hitungan hari saja — tidak membuat invoice apa pun. " +
-				"Cara charge storage & free days diatur per pelanggan di <b>Depot Contract</b>, " +
-				"defaultnya di <b>Depot Finance Settings</b>."
+				"Satu baris = kunjungan terbaru tiap tank; isi filter <b>Container</b> untuk " +
+				"melihat seluruh kunjungan tank itu. Cara charge storage & free days diatur " +
+				"per pelanggan di <b>Depot Contract</b>."
 		);
 	},
 };
