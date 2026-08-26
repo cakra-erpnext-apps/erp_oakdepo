@@ -1,55 +1,118 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<!-- Header -->
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<div class="flex items-center gap-2">
-				<button v-if="mode === 'detail'" class="oak-btn oak-btn-secondary px-2 py-2" @click="backToList">
-					<Icon name="arrow-left" :size="18" />
+		<!-- Header — same shape as /depot/eir, /depot/cleaning and /depot/mr: the title on
+		     the left, the one escape hatch on the right (Riwayat from the worklist, Kembali
+		     from an open survey). -->
+		<div class="flex items-center justify-between">
+			<div class="min-w-0">
+				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">
+					{{ labels.surveyPosTitle }}
+				</h1>
+				<p v-if="detail" class="truncate font-mono text-[11px] text-gray-500">
+					{{ detail.name }} · {{ detail.container_no || detail.container }}
+				</p>
+				<p v-else class="text-sm text-gray-500">{{ labels.surveyPosHint }}</p>
+			</div>
+			<div class="flex shrink-0 items-center gap-2">
+				<router-link
+					v-if="!detail"
+					to="/survey-position/history"
+					class="oak-btn oak-btn-secondary px-3 py-2"
+				>
+					<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+				</router-link>
+				<button v-else class="oak-btn oak-btn-secondary px-3 py-2" @click="backToList">
+					<Icon name="arrow-left" :size="16" /> {{ labels.surveyPosBack }}
 				</button>
-				<span class="oak-icon-tile h-9 w-9 bg-brand-50 text-brand-600"><Icon name="map-pin" :size="20" /></span>
-				<div class="min-w-0">
-					<h1 class="text-lg font-extrabold tracking-tight">{{ labels.surveyPosTitle }}</h1>
-					<p class="truncate text-xs text-gray-500">{{ mode === 'detail' ? (detail?.container_no || '') : labels.surveyPosDesc }}</p>
-				</div>
 			</div>
 		</div>
 
-		<!-- =================== WORKLIST =================== -->
-		<template v-if="mode === 'list'">
-			<div class="relative">
-				<Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-				<input v-model="search" type="search" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" enterkeyhint="search" :placeholder="labels.surveyPosSearch" class="oak-input pl-10 uppercase" @input="onSearchInput" />
+		<!-- OPENING A SURVEY — placeholder while its detail is fetched. Without this the
+		     worklist just sat there unchanged after a tap, which reads as a dead button. -->
+		<SkeletonDetail v-if="detailPending" :cells="4" :sections="3" />
+
+		<!-- The detail could not be fetched and there is no cached copy to fall back on. -->
+		<section v-else-if="detailFailed" class="oak-card space-y-3 p-6 text-center">
+			<span class="oak-icon-tile mx-auto h-12 w-12 bg-red-50 text-red-500">
+				<Icon name="alert-triangle" :size="24" />
+			</span>
+			<p class="text-sm text-gray-600">{{ detailError }}</p>
+			<div class="flex gap-2">
+				<button class="oak-btn oak-btn-secondary flex-1" @click="backToList">{{ labels.surveyPosBack }}</button>
+				<button class="oak-btn oak-btn-primary flex-1" @click="retryDetail">{{ labels.retry }}</button>
+			</div>
+		</section>
+
+		<!-- =================== WORKLIST ===================
+		     Same shape as the cleaning and M&R worklists: search, then a capped scroller of
+		     fixed-height rows. No Belum / Dikerjakan toggles here — a survey has exactly one
+		     open state (Pending Survey), so a filter row would be three buttons that all
+		     show the same list. -->
+		<section v-else-if="!detail" class="oak-section space-y-3">
+			<div class="flex items-center gap-2">
+				<Icon name="map-pin" :size="16" class="text-brand-500" />
+				<p class="oak-section-title">{{ labels.surveyPosList }}</p>
+			</div>
+			<div class="flex gap-2">
+				<input
+					v-model="search"
+					class="oak-input uppercase"
+					:placeholder="labels.surveyPosSearch"
+					autocapitalize="characters"
+					autocorrect="off"
+					autocomplete="off"
+					spellcheck="false"
+					enterkeyhint="search"
+					@input="onSearchInput"
+					@keyup.enter="reloadList"
+				/>
+				<button class="oak-btn oak-btn-secondary shrink-0 px-3" @click="reloadList">
+					<Icon name="search" :size="16" />
+				</button>
 			</div>
 
-			<ul v-if="listRes.loading && !items.length" class="oak-card divide-y divide-gray-100 overflow-hidden">
-				<li v-for="n in 5" :key="n" class="flex items-center gap-3 px-4 py-3.5">
-					<div class="oak-skeleton h-9 w-9 rounded-xl"></div>
-					<div class="flex-1 space-y-2"><div class="oak-skeleton h-3.5 w-1/2"></div><div class="oak-skeleton h-3 w-3/4"></div></div>
-				</li>
-			</ul>
-
-			<div v-else-if="!items.length" class="oak-card flex flex-col items-center gap-2 p-8 text-center">
-				<span class="oak-icon-tile h-12 w-12 bg-gray-100 text-gray-300"><Icon name="map-pin" :size="24" /></span>
-				<p class="text-sm text-gray-400">{{ labels.surveyPosEmpty }}</p>
+			<SkeletonList v-if="listRes.loading && !items.length" :action="false" />
+			<p v-else-if="!items.length" class="py-4 text-center text-sm text-gray-400">
+				{{ labels.surveyPosEmpty }}
+			</p>
+			<!-- The scroller reveals about 5 rows (fixed 60px each); the rest scroll, so a
+			     long queue never runs far down the page. -->
+			<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
+				<ul class="divide-y divide-gray-100">
+					<li v-for="r in items" :key="r.name">
+						<button
+							class="oak-press flex h-[60px] w-full items-center gap-3 text-left"
+							@click="openItem(r)"
+						>
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
+								<Icon name="map-pin" :size="16" />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+								<!-- One subtitle line: whether a note is already parked on it (an
+								     autosaved draft someone walked away from), then the depot, then
+								     the id — ordered so truncation eats the least important half. -->
+								<p class="flex items-center gap-1.5 text-[11px]">
+									<span v-if="r.location_note" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
+										<Icon name="edit" :size="11" /> {{ labels.draftSaved }}
+									</span>
+									<span class="truncate text-gray-400">
+										<template v-if="r.depot">{{ r.depot }} · </template>{{ r.name }}
+									</span>
+								</p>
+							</div>
+							<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
+						</button>
+					</li>
+				</ul>
 			</div>
-
-			<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
-				<li v-for="r in items" :key="r.name">
-					<button class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-gray-50" @click="openItem(r)">
-						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-amber-50 text-amber-600"><Icon name="package" :size="16" /></span>
-						<div class="min-w-0 flex-1">
-							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
-							<p class="mt-0.5 truncate text-xs text-gray-500"><span class="font-mono">{{ r.name }}</span><span v-if="r.depot"> · {{ r.depot }}</span></p>
-						</div>
-						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
-					</button>
-				</li>
-			</ul>
-			<p v-if="items.length" class="text-center text-xs text-gray-400">{{ total }} {{ labels.surveyPosCount }}</p>
-		</template>
+			<p v-if="items.length" class="text-center text-xs text-gray-400">
+				{{ total }} {{ labels.surveyPosCount }}
+			</p>
+		</section>
 
 		<!-- =================== DETAIL =================== -->
-		<template v-else-if="mode === 'detail' && detail">
+		<template v-else>
 			<!-- Container header -->
 			<section class="oak-card grid grid-cols-2 gap-x-3 gap-y-2 p-4">
 				<div>
@@ -123,21 +186,30 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from "vue"
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import Icon from "@/components/Icon.vue"
+import SkeletonList from "@/components/SkeletonList.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useDetailView } from "@/utils/backstack"
 
-const mode = ref("list") // list | detail
+const route = useRoute()
+const router = useRouter()
+
+// The open survey, or null for the worklist. Declared up here because the back-stack watch
+// below reads it on the spot; `detail` IS the mode, and a second ref saying the same thing
+// would only be a second thing to get wrong.
+const detail = ref(null)
 
 // Back closes the detail instead of leaving the page, and opening one starts at the top.
 useDetailView(
-	() => mode.value === "detail",
+	() => !!detail.value,
 	() => backToList()
 )
 
@@ -158,22 +230,35 @@ const listRes = cachedResource({
 
 const items = computed(() => allItems.value)
 let searchTimer = null
+function reloadList() {
+	clearTimeout(searchTimer)
+	listRes.reload()
+}
 function onSearchInput() {
 	clearTimeout(searchTimer)
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
 
 // ---- detail ----
-const detail = ref(null)
 const form = reactive({ location_note: "", notes: "" })
 const photos = ref([])
 const uploading = ref(false)
 const photoErr = ref("")
 
+// A tap has to change the screen at once, or it reads as a dead button — the worklist is
+// replaced by a skeleton while the survey is fetched, and by an error card with a retry if
+// it never arrives. Same three states as the cleaning and M&R forms.
+const detailPending = ref(false)
+const detailFailed = ref(false)
+const detailError = ref("")
+let openingName = null
+
 const detailRes = cachedResource({
 	url: "container_depot.ess.position_survey.position_detail",
 	method: "GET",
 	onSuccess(data) {
+		detailPending.value = false
+		detailFailed.value = false
 		// Muted while the fields are being filled from the server, or the assignments below
 		// would each look like an edit and bounce the same values straight back.
 		suppressSave.value = true
@@ -182,18 +267,40 @@ const detailRes = cachedResource({
 		form.location_note = data.location_note || ""
 		form.notes = data.survey_notes || ""
 		photos.value = data.photos || []
-		mode.value = "detail"
 		nextTick(() => {
 			suppressSave.value = false
 		})
 	},
+	// The error stays on the page rather than in a toast: a toast disappears, and the
+	// surveyor would be left staring at a worklist wondering why their tap did nothing.
 	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		detailPending.value = false
+		detailFailed.value = true
+		detailError.value = err?.messages?.[0] || err?.message || labels.error
 	},
 })
-function openItem(r) {
-	detailRes.submit({ name: r.name })
+function fetchDetail(name) {
+	openingName = name
+	detailPending.value = true
+	detailFailed.value = false
+	detailRes.submit({ name })
 }
+function openItem(r) {
+	fetchDetail(r.name)
+}
+function retryDetail() {
+	if (openingName) fetchDetail(openingName)
+}
+
+// Deep link from the bell: `/survey-position?s=CPS-0001` opens that survey straight away
+// (ess/notification_routes._survey). The query is dropped once consumed so Back leaves the
+// page instead of re-opening the same record for ever.
+onMounted(() => {
+	const s = route.query.s
+	if (!s) return
+	router.replace({ query: {} })
+	fetchDetail(String(s))
+})
 
 // ---- autosave ----
 //
@@ -339,8 +446,10 @@ function backToList() {
 	}
 	resaveWanted = false
 	savedOk.value = false
-	mode.value = "list"
 	detail.value = null
+	detailPending.value = false
+	detailFailed.value = false
+	openingName = null
 	saveError.value = null
 	listRes.reload()
 }

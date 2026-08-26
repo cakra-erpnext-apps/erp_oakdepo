@@ -2,12 +2,16 @@
 	<nav
 		class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pb-safe-bottom backdrop-blur-md"
 	>
-		<div class="mx-auto flex max-w-2xl items-stretch justify-around px-1">
+		<!-- `overflow-x-auto` + a per-tab floor rather than a hard cap on how many tabs may
+		     show: SPV Lapangan holds every menu, and squeezing nine tabs into a handset width
+		     turns the labels into unreadable slivers. Everyone else holds three or four and
+		     never sees a scrollbar, because `flex-1` still spreads them edge to edge. -->
+		<div class="mx-auto flex max-w-2xl items-stretch justify-around overflow-x-auto px-1">
 			<router-link
 				v-for="t in tabs"
 				:key="t.to"
 				:to="t.to"
-				class="group flex flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
+				class="group flex min-w-[3.75rem] flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
 				:class="isActive(t) ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'"
 			>
 				<span
@@ -42,6 +46,10 @@ const allTabs = [
 	{ key: "cleaning", to: "/cleaning", icon: "droplet", label: labels.navCleaning },
 	{ key: "mr", to: "/mr", icon: "tool", label: labels.navMr },
 	{ key: "monitor", to: "/monitor", icon: "grid", label: labels.navMonitor || labels.monitorTitle },
+	// The two halves of the position-survey workflow. One doctype, two menu keys, and almost
+	// nobody holds both — Team Survey sees "Survey", Team Kalmar sees "Fix".
+	{ key: "surveyPos", to: "/survey-position", icon: "map-pin", label: labels.navSurveyPos },
+	{ key: "posFix", to: "/position-fix", icon: "check-circle", label: labels.navPosFix },
 	{ to: "/profile", icon: "user", label: labels.navProfile },
 ]
 
@@ -59,6 +67,9 @@ function isActive(t) {
 	const p = route.path
 	if (t.to === "/") return p === "/"
 	if (t.to === "/eir") return p === "/eir" // not /eir/history
+	// Same reason as /eir: Riwayat Survey Posisi is its own screen, reached from the header,
+	// and lighting the Survey tab there would claim the operator is in the worklist.
+	if (t.to === "/survey-position") return p === "/survey-position"
 	return p === t.to || p.startsWith(t.to + "/")
 }
 </script>

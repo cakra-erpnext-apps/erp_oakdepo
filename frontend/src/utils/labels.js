@@ -12,6 +12,8 @@ export const labels = {
 	navMonitor: "Monitor", // Monitor Container tab
 	navProfile: "Profil", // Profile tab
 	navHistory: "Riwayat", // History tab (reachable from Home tile + EIR checklist)
+	navSurveyPos: "Survey", // bottom-nav label — Survey Posisi
+	navPosFix: "Fix", // bottom-nav label — Fix Posisi
 	// --- Profil (account + access overview) ---
 	profileTitle: "Profil",
 	profileBranchTitle: "Cakupan Branch",
@@ -746,11 +748,14 @@ export const labels = {
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
 	// --- Container Position Survey (Lift On) ---
-	surveyPosTitle: "Survey Container Position", // Surveyor menu/screen
-	surveyPosDesc: "Cari & petakan posisi container", // tile subtitle
+	surveyPosTitle: "Survey Posisi", // Surveyor menu/screen
+	surveyPosDesc: "Catat letak tank yang mau keluar", // tile subtitle
+	surveyPosHint: "Tank booking Tank Out yang harus dicari posisinya", // header subtitle
+	surveyPosList: "Antrean Survey", // worklist section title
 	surveyPosSearch: "Cari no. container / CPS…",
 	surveyPosEmpty: "Tidak ada container untuk disurvei.",
 	surveyPosCount: "container",
+	surveyPosBack: "Kembali",
 	surveyPosSection: "Letak Container",
 	surveyPosLocation: "Letak container di mana?",
 	surveyPosLocationHint: "mis. blok kanan dekat pos, tumpukan 2",
@@ -759,9 +764,12 @@ export const labels = {
 	surveyPosSave: "Simpan Posisi",
 	surveyPosSaved: "Posisi tersimpan",
 	// Operator Kalmar approval
-	posFixTitle: "Opt Kalmar Container Position Fix", // Kalmar menu/screen
-	posFixDesc: "Approve container 'udah turun'", // tile subtitle
+	posFixTitle: "Fix Posisi", // Kalmar menu/screen
+	posFixDesc: "Approve tank 'udah turun'", // tile subtitle
+	posFixHint: "Hasil survey yang menunggu konfirmasi Kalmar", // header subtitle
+	posFixList: "Menunggu Approval", // worklist section title
 	posFixEmpty: "Tidak ada posisi menunggu approval.",
+	posFixCount: "menunggu",
 	posFixSurveyed: "Posisi Hasil Survey",
 	posFixNote: "Catatan (opsional)",
 	posFixNoteHint: "mis. sudah diturunkan ke ground slot",
