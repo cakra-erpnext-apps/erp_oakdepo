@@ -632,7 +632,7 @@ def notify_order_muat_survey(order):
 	)
 
 
-def notify_position_survey_pending(survey):
+def notify_position_survey_pending(survey, *, reopened=False):
 	"""Fire when a Container Position Survey is provisioned from an outbound (Tank Out)
 	booking — the tank has to be found in the yard before it can be pulled.
 
@@ -640,9 +640,17 @@ def notify_position_survey_pending(survey):
 	between this document and the work. Admin Ops does not release it, no method has to be
 	picked — the survey landing in `/survey-position` IS the job arriving. So creation and
 	handoff are one moment here too.
+
+	A reopen rides the SAME event key rather than getting its own. The audience is identical
+	(whoever works that queue) and the routing is identical, so a second rule would be one
+	more row for an admin to keep in step with this one for no gain — only the wording of the
+	subject differs, because "kerjakan lagi" and "kerjakan" are not the same news.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
-	subject = f"Survey Posisi • {cno} — cari posisi tank (booking Tank Out)"
+	if reopened:
+		subject = f"Survey Posisi • {cno} — dibuka lagi, posisinya perlu disurvei ulang"
+	else:
+		subject = f"Survey Posisi • {cno} — cari posisi tank (booking Tank Out)"
 	notify(
 		doctype=DOCTYPE_SURVEY,
 		name=survey.get("name"),
@@ -652,20 +660,24 @@ def notify_position_survey_pending(survey):
 	)
 
 
-def notify_position_surveyed(survey):
+def notify_position_surveyed(survey, *, reopened=False):
 	"""Fire when the surveyor records a position (Pending Survey -> Surveyed) — Team Kalmar's
 	handoff: the tank is located and its "udah turun" approval is now theirs to give.
 
 	The location note travels in the subject, trimmed. It is the one thing that decides
 	whether the operator walks to the right stack, and reading it from the bell saves the
 	tap that would otherwise be needed just to know where to go.
+
+	Shares its event key with the reopen for the reason given on
+	:func:`notify_position_survey_pending`.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
 	note = (survey.get("location_note") or "").strip().replace("\n", " ")
 	if len(note) > 60:
 		note = note[:57] + "…"
 	tail = f" • {note}" if note else ""
-	subject = f"Fix Posisi • {cno} — menunggu approval Kalmar{tail}"
+	head = "dibuka lagi, approval diulang" if reopened else "menunggu approval Kalmar"
+	subject = f"Fix Posisi • {cno} — {head}{tail}"
 	notify(
 		doctype=DOCTYPE_SURVEY,
 		name=survey.get("name"),

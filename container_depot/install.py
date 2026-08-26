@@ -787,7 +787,9 @@ ORDER_NUMBER_CARDS = [
 	 "document_type": "Repair Order", "filters_json": [["status", "=", "Pending Approval"]]},
 	{"label": "Survey Posisi Pending",
 	 "document_type": "Container Position Survey",
-	 "filters_json": [["status", "=", "Pending Survey"], ["docstatus", "<", 2]]},
+	 # "In Survey" too: somebody has picked it up, but the tank is still un-located, so it is
+	 # every bit as outstanding as one nobody has started.
+	 "filters_json": [["status", "in", ["Pending Survey", "In Survey"]], ["docstatus", "<", 2]]},
 	{"label": "Order Bongkar Aktif",
 	 "document_type": "Order Bongkar",
 	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},

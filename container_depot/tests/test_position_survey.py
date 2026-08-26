@@ -14,7 +14,9 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot import position_survey as ps
+from container_depot.container_depot.exceptions import ClaimedByAnother
 from container_depot.tests.test_eir import _make_container
+from container_depot.tests.test_work_claim import _user
 
 DEPOT = "OAK1"
 
@@ -255,3 +257,286 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		c = self._container("CPSNOTIF004")
 		name = self._new_survey(c)
 		self.assertEqual(self._fired(ps.save_survey_draft, name, "setengah jalan"), [])
+
+
+class TestPositionSurveyWork(FrappeTestCase):
+	"""Mulai / selesai / buka lagi — the two halves of the workflow, each claimed on its own
+	column and each able to undo itself.
+
+	Runs as two real field users rather than Administrator: the claim fence has a bypass for
+	ops roles (``work_claim.CLAIM_BYPASS_ROLES``), so an Administrator would sail through the
+	very thing these tests exist to pin.
+	"""
+
+	SURVEYOR = "cps-surveyor@example.com"
+	OTHER_SURVEYOR = "cps-surveyor2@example.com"
+	KALMAR = "cps-kalmar@example.com"
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._containers = []
+		_user(self.SURVEYOR, "Team Survey")
+		_user(self.OTHER_SURVEYOR, "Team Survey")
+		_user(self.KALMAR, "Team Kalmar")
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		surveys = frappe.get_all(
+			DOCTYPE_FILTER := "Container Position Survey",
+			filters={"container": ["in", self._containers or [""]]},
+			pluck="name",
+		)
+		if surveys:
+			frappe.db.delete("Notification Log", {
+				"document_type": DOCTYPE_FILTER, "document_name": ["in", surveys],
+			})
+			frappe.db.delete("Comment", {
+				"reference_doctype": DOCTYPE_FILTER, "reference_name": ["in", surveys],
+			})
+		frappe.db.delete(DOCTYPE_FILTER, {"container": ["in", self._containers or [""]]})
+		for c in self._containers:
+			frappe.db.delete("Container", {"name": c})
+		for email in (self.SURVEYOR, self.OTHER_SURVEYOR, self.KALMAR):
+			if frappe.db.exists("User", email):
+				frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+		frappe.db.commit()
+		super().tearDown()
+
+	def _survey(self, cno):
+		c = _make_container(cno, depot=DEPOT)
+		self._containers.append(c)
+		return frappe.get_doc({
+			"doctype": "Container Position Survey", "container": c,
+			"depot": DEPOT, "status": ps.PENDING,
+		}).insert(ignore_permissions=True).name
+
+	def _status(self, name):
+		return frappe.db.get_value("Container Position Survey", name, ["status", "docstatus"])
+
+	def _names(self, listing):
+		return {i["name"] for i in listing["items"]}
+
+	# --- Mulai ---------------------------------------------------------------
+	def test_mulai_claims_the_survey_and_hides_it_from_other_surveyors(self):
+		name = self._survey("CPSWORK0001")
+
+		frappe.set_user(self.SURVEYOR)
+		ps.start_survey(name)
+		self.assertEqual(self._status(name), (ps.IN_SURVEY, 0))
+		# Still on the worklist of whoever holds it — the job is not finished, just taken.
+		self.assertIn(name, self._names(ps.list_pending_surveys(page_length=100)))
+
+		frappe.set_user(self.OTHER_SURVEYOR)
+		self.assertNotIn(name, self._names(ps.list_pending_surveys(page_length=100)))
+		# ...and the notification link is refused too, not just the list hidden.
+		with self.assertRaises(ClaimedByAnother):
+			ps.start_survey(name)
+
+	def test_the_fix_half_is_claimed_on_its_own_column(self):
+		"""A survey held by a surveyor earlier must not read as claimed to the Kalmar later."""
+		name = self._survey("CPSWORK0002")
+		frappe.set_user(self.SURVEYOR)
+		ps.start_survey(name)
+		ps.record_survey_position(name, "blok kanan")
+
+		frappe.set_user(self.KALMAR)
+		self.assertIn(name, self._names(ps.list_surveyed(page_length=100)))
+		ps.start_fix(name)
+		self.assertEqual(self._status(name), (ps.IN_FIX, 0))
+		ps.approve_position(name)
+		self.assertEqual(self._status(name), (ps.CONFIRMED, 1))
+
+	def test_pressing_mulai_twice_is_a_no_op(self):
+		"""A retry from a dead spot must not read as a failure."""
+		name = self._survey("CPSWORK0003")
+		frappe.set_user(self.SURVEYOR)
+		ps.start_survey(name)
+		self.assertEqual(ps.start_survey(name)["status"], ps.IN_SURVEY)
+
+	def test_finishing_without_mulai_still_claims_the_job(self):
+		"""The handset that came back from a dead spot straight into Simpan."""
+		name = self._survey("CPSWORK0004")
+		frappe.set_user(self.SURVEYOR)
+		ps.record_survey_position(name, "langsung simpan")
+		self.assertEqual(
+			frappe.db.get_value("Container Position Survey", name, "survey_started_by"),
+			self.SURVEYOR,
+		)
+
+	# --- buka lagi (revisi / rollback) ---------------------------------------
+	def test_reopen_survey_unsubmits_and_returns_it_to_the_surveyor(self):
+		name = self._survey("CPSWORK0005")
+		frappe.set_user(self.SURVEYOR)
+		ps.start_survey(name)
+		ps.record_survey_position(name, "posisi awal")
+		frappe.set_user(self.KALMAR)
+		ps.start_fix(name)
+		ps.approve_position(name)
+		self.assertEqual(self._status(name), (ps.CONFIRMED, 1))
+
+		# The Kalmar operator standing at the wrong stack sends it back.
+		ps.reopen_survey(name, note="tanknya tidak ada di situ")
+		doc = frappe.get_doc("Container Position Survey", name)
+		self.assertEqual((doc.status, doc.docstatus), (ps.IN_SURVEY, 0))
+		# The step being redone is wiped; the note the surveyor has to correct is NOT.
+		self.assertFalse(doc.surveyed_by)
+		self.assertFalse(doc.approved_by)
+		self.assertFalse(doc.fix_started_by)
+		self.assertEqual(doc.location_note, "posisi awal")
+		self.assertIn("tanknya tidak ada di situ", doc.reopen_note)
+
+		# Back in the survey worklist, gone from the Kalmar one.
+		frappe.set_user(self.SURVEYOR)
+		self.assertIn(name, self._names(ps.list_pending_surveys(page_length=100)))
+		frappe.set_user(self.KALMAR)
+		self.assertNotIn(name, self._names(ps.list_surveyed(page_length=100)))
+
+	def test_reopen_fix_leaves_the_surveyors_work_alone(self):
+		name = self._survey("CPSWORK0006")
+		frappe.set_user(self.SURVEYOR)
+		ps.start_survey(name)
+		ps.record_survey_position(name, "ground slot A1", photos=["/files/p1.jpg"])
+		frappe.set_user(self.KALMAR)
+		ps.start_fix(name)
+		ps.approve_position(name, note="udah turun")
+
+		ps.reopen_fix(name, note="kepencet, belum turun")
+		doc = frappe.get_doc("Container Position Survey", name)
+		self.assertEqual((doc.status, doc.docstatus), (ps.IN_FIX, 0))
+		self.assertFalse(doc.approved_by)
+		self.assertFalse(doc.approval_note)
+		# Untouched: nobody walks out to the tank again for an approval pressed too early.
+		self.assertEqual(doc.surveyed_by, self.SURVEYOR)
+		self.assertEqual(doc.location_note, "ground slot A1")
+		self.assertEqual(len(doc.position_photos), 1)
+		self.assertIn(name, self._names(ps.list_surveyed(page_length=100)))
+
+	def test_reopen_fix_refuses_a_survey_that_was_never_confirmed(self):
+		"""Otherwise "buka lagi approval" would drop a tank nobody has located into the
+		Kalmar worklist with no position note to approve."""
+		name = self._survey("CPSWORK0007")
+		frappe.set_user(self.SURVEYOR)
+		with self.assertRaises(frappe.ValidationError):
+			ps.reopen_fix(name)
+
+	def test_reopening_a_reopened_survey_is_a_no_op(self):
+		name = self._survey("CPSWORK0008")
+		frappe.set_user(self.SURVEYOR)
+		ps.record_survey_position(name, "posisi")
+		ps.reopen_survey(name)
+		self.assertEqual(ps.reopen_survey(name)["status"], ps.IN_SURVEY)
+
+	def test_a_redone_step_clears_the_reopen_note(self):
+		"""The reason it came back stops being news once the redo lands."""
+		name = self._survey("CPSWORK0009")
+		frappe.set_user(self.SURVEYOR)
+		ps.record_survey_position(name, "posisi awal")
+		ps.reopen_survey(name, note="salah blok")
+		self.assertTrue(frappe.db.get_value("Container Position Survey", name, "reopen_note"))
+		ps.record_survey_position(name, "posisi benar")
+		self.assertFalse(frappe.db.get_value("Container Position Survey", name, "reopen_note"))
+
+	def test_reopen_rings_the_queue_it_lands_in(self):
+		name = self._survey("CPSWORK0010")
+		frappe.set_user(self.SURVEYOR)
+		ps.record_survey_position(name, "posisi")
+		with patch("container_depot.container_depot.notify.notify") as spy:
+			ps.reopen_survey(name, note="ulangi")
+		self.assertEqual(
+			[c.kwargs.get("event_key") for c in spy.call_args_list],
+			["position_survey_pending"],
+		)
+
+
+class TestPositionSurveyMenuGates(FrappeTestCase):
+	"""The endpoint layer, not the logic: who may call what.
+
+	One doctype behind two menus is exactly the shape where a gate ends up on the wrong
+	half — and the two endpoints that serve BOTH menus (`require_any_menu`) are new, so the
+	thing worth pinning is that "either" never quietly became "anyone".
+	"""
+
+	SURVEYOR = "cps-gate-survey@example.com"
+	KALMAR = "cps-gate-kalmar@example.com"
+	OUTSIDER = "cps-gate-none@example.com"
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._containers = []
+		_user(self.SURVEYOR, "Team Survey")
+		_user(self.KALMAR, "Team Kalmar")
+		_user(self.OUTSIDER)  # a login with no depot role at all
+		c = _make_container("CPSGATE0001", depot=DEPOT)
+		self._containers.append(c)
+		self.survey = frappe.get_doc({
+			"doctype": "Container Position Survey", "container": c,
+			"depot": DEPOT, "status": ps.PENDING,
+		}).insert(ignore_permissions=True).name
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		# The bell rows and the timeline comments a reopen leaves behind outlive the survey
+		# they point at, so they go first — see the same block in TestPositionSurveyWork.
+		frappe.db.delete("Notification Log", {
+			"document_type": "Container Position Survey", "document_name": self.survey,
+		})
+		frappe.db.delete("Comment", {
+			"reference_doctype": "Container Position Survey", "reference_name": self.survey,
+		})
+		frappe.db.delete("Container Position Survey", {"container": ["in", self._containers or [""]]})
+		for c in self._containers:
+			frappe.db.delete("Container", {"name": c})
+		for email in (self.SURVEYOR, self.KALMAR, self.OUTSIDER):
+			if frappe.db.exists("User", email):
+				frappe.delete_doc("User", email, ignore_permissions=True, force=True)
+		frappe.db.commit()
+		super().tearDown()
+
+	def _refused(self, user, fn, *args, **kwargs):
+		frappe.set_user(user)
+		with self.assertRaises(frappe.PermissionError):
+			fn(*args, **kwargs)
+
+	def test_each_half_owns_its_own_start(self):
+		from container_depot.ess import position_survey as ess
+
+		frappe.set_user(self.SURVEYOR)
+		self.assertEqual(ess.position_start(name=self.survey)["status"], ps.IN_SURVEY)
+		self._refused(self.SURVEYOR, ess.position_fix_start, name=self.survey)
+
+		frappe.set_user(self.SURVEYOR)
+		ess.position_record(name=self.survey, location_note="blok kanan")
+		frappe.set_user(self.KALMAR)
+		self.assertEqual(ess.position_fix_start(name=self.survey)["status"], ps.IN_FIX)
+		self._refused(self.KALMAR, ess.position_record, name=self.survey, location_note="x")
+
+	def test_riwayat_and_the_survey_reopen_are_open_to_both_menus(self):
+		from container_depot.ess import position_survey as ess
+
+		for user in (self.SURVEYOR, self.KALMAR):
+			with self.subTest(user=user):
+				frappe.set_user(user)
+				self.assertIn("items", ess.position_history())
+				self.assertIn("status", ess.position_detail(name=self.survey))
+
+		# Both may send a located survey back to the surveyor — the Kalmar is the one who
+		# finds the tank missing, so refusing them would put the undo out of reach.
+		frappe.set_user(self.SURVEYOR)
+		ess.position_record(name=self.survey, location_note="posisi")
+		frappe.set_user(self.KALMAR)
+		self.assertEqual(ess.position_reopen_survey(name=self.survey)["status"], ps.IN_SURVEY)
+
+	def test_the_approval_reopen_stays_with_kalmar(self):
+		"""`require_any_menu` must not have leaked into the one that is single-menu."""
+		from container_depot.ess import position_survey as ess
+
+		self._refused(self.SURVEYOR, ess.position_reopen_fix, name=self.survey)
+
+	def test_an_account_with_no_depot_role_is_refused_everywhere(self):
+		from container_depot.ess import position_survey as ess
+
+		for fn in (ess.position_history, ess.position_pending, ess.position_surveyed):
+			with self.subTest(fn=fn.__name__):
+				self._refused(self.OUTSIDER, fn)
+		self._refused(self.OUTSIDER, ess.position_detail, name=self.survey)
+		self._refused(self.OUTSIDER, ess.position_reopen_survey, name=self.survey)

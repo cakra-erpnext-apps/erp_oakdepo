@@ -44,10 +44,8 @@
 		</section>
 
 		<!-- =================== WORKLIST ===================
-		     Same shape as the cleaning and M&R worklists: search, then a capped scroller of
-		     fixed-height rows. No Belum / Dikerjakan toggles here — a survey has exactly one
-		     open state (Pending Survey), so a filter row would be three buttons that all
-		     show the same list. -->
+		     Same shape as the cleaning and M&R worklists: search, Semua / Belum / Dikerjakan
+		     toggles with counts, then a capped scroller of fixed-height rows. -->
 		<section v-else-if="!detail" class="oak-section space-y-3">
 			<div class="flex items-center gap-2">
 				<Icon name="map-pin" :size="16" class="text-brand-500" />
@@ -71,38 +69,61 @@
 				</button>
 			</div>
 
-			<SkeletonList v-if="listRes.loading && !items.length" :action="false" />
+			<!-- Belum / Dikerjakan split: a survey is "belum" until Mulai claims it; once
+			     located it leaves this worklist for the Kalmar one. -->
+			<div class="grid grid-cols-3 gap-2">
+				<button
+					v-for="f in FILTERS"
+					:key="f.key"
+					class="oak-toggle flex items-center justify-center gap-1.5"
+					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
+					@click="filter = f.key"
+				>
+					{{ f.label }}
+					<span class="oak-chip" :class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
+				</button>
+			</div>
+
+			<SkeletonList v-if="listRes.loading && !allItems.length" :action="false" />
 			<p v-else-if="!items.length" class="py-4 text-center text-sm text-gray-400">
-				{{ labels.surveyPosEmpty }}
+				{{ emptyText }}
 			</p>
 			<!-- The scroller reveals about 5 rows (fixed 60px each); the rest scroll, so a
 			     long queue never runs far down the page. -->
 			<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
 				<ul class="divide-y divide-gray-100">
 					<li v-for="r in items" :key="r.name">
-						<button
-							class="oak-press flex h-[60px] w-full items-center gap-3 text-left"
-							@click="openItem(r)"
-						>
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
-								<Icon name="map-pin" :size="16" />
-							</span>
-							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
-								<!-- One subtitle line: whether a note is already parked on it (an
-								     autosaved draft someone walked away from), then the depot, then
-								     the id — ordered so truncation eats the least important half. -->
-								<p class="flex items-center gap-1.5 text-[11px]">
-									<span v-if="r.location_note" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
-										<Icon name="edit" :size="11" /> {{ labels.draftSaved }}
-									</span>
-									<span class="truncate text-gray-400">
-										<template v-if="r.depot">{{ r.depot }} · </template>{{ r.name }}
-									</span>
-								</p>
-							</div>
-							<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
-						</button>
+						<div class="flex h-[60px] items-center gap-3">
+							<button class="oak-press flex h-full min-w-0 flex-1 items-center gap-3 text-left" @click="openItem(r)">
+								<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
+									<Icon name="map-pin" :size="16" />
+								</span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+									<!-- One subtitle line, ordered by urgency so truncation eats the
+									     least important half: sent back for a redo, being worked, then
+									     the depot and the id. -->
+									<p class="flex items-center gap-1.5 text-[11px]">
+										<span v-if="r.reopen_note" class="oak-chip shrink-0 bg-orange-100 text-orange-800">
+											<Icon name="rotate-ccw" :size="11" /> {{ labels.posReopenNote }}
+										</span>
+										<span v-else-if="r.status === 'In Survey'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
+											<Icon name="clock" :size="11" /> {{ labels.surveyPosInProgress }}
+										</span>
+										<span class="truncate text-gray-400">
+											<template v-if="r.depot">{{ r.depot }} · </template>{{ r.name }}
+										</span>
+									</p>
+								</div>
+							</button>
+							<button
+								v-if="r.status !== 'In Survey'"
+								class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+								@click.stop="startRow(r)"
+							>
+								{{ labels.surveyPosStart }}
+							</button>
+						</div>
 					</li>
 				</ul>
 			</div>
@@ -113,6 +134,29 @@
 
 		<!-- =================== DETAIL =================== -->
 		<template v-else>
+			<!-- GATE: the survey must be started before its form is accessible — same rule as
+			     the cleaning form, and the press is what claims the tank. -->
+			<section v-if="detail.status !== 'In Survey'" class="oak-card space-y-4 p-5 text-center">
+				<span class="oak-icon-tile mx-auto h-14 w-14 bg-brand-50 text-brand-600"><Icon name="map-pin" :size="26" /></span>
+				<div class="space-y-1">
+					<p class="font-bold text-gray-900">{{ detail.container_no || detail.container }}</p>
+					<p class="font-mono text-xs text-gray-400">{{ detail.name }}</p>
+					<p class="text-sm text-gray-500">{{ labels.surveyPosStartGate }}</p>
+				</div>
+				<button class="oak-btn oak-btn-primary w-full py-3 text-base" :disabled="starting" @click="startCurrent">
+					{{ starting ? "…" : labels.surveyPosStartFull }}
+				</button>
+			</section>
+
+			<template v-else>
+			<!-- Sent back for a redo: why, before anything else on the screen. -->
+			<section v-if="detail.reopen_note" class="oak-card border-orange-200 bg-orange-50 space-y-1 p-4">
+				<p class="flex items-center gap-1.5 text-sm font-bold text-orange-800">
+					<Icon name="rotate-ccw" :size="15" /> {{ labels.posReopenNote }}
+				</p>
+				<p class="whitespace-pre-line text-sm text-orange-900">{{ detail.reopen_note }}</p>
+			</section>
+
 			<!-- Container header -->
 			<section class="oak-card grid grid-cols-2 gap-x-3 gap-y-2 p-4">
 				<div>
@@ -181,6 +225,7 @@
 					{{ saving ? "…" : labels.surveyPosSave }}
 				</button>
 			</section>
+			</template>
 		</template>
 	</div>
 </template>
@@ -228,7 +273,29 @@ const listRes = cachedResource({
 	},
 })
 
-const items = computed(() => allItems.value)
+// Belum / Dikerjakan, exactly as the cleaning worklist splits them. "Dikerjakan" can only
+// ever hold this surveyor's own jobs: a survey claimed by somebody else never reaches the
+// list (work_claim filters it server-side).
+const filter = ref("all")
+const startedItems = computed(() => allItems.value.filter((r) => r.status === "In Survey"))
+const todoItems = computed(() => allItems.value.filter((r) => r.status !== "In Survey"))
+const items = computed(() => {
+	if (filter.value === "started") return startedItems.value
+	if (filter.value === "todo") return todoItems.value
+	return allItems.value
+})
+const FILTERS = computed(() => [
+	{ key: "all", label: labels.surveyPosFilterAll, count: allItems.value.length },
+	{ key: "todo", label: labels.surveyPosFilterTodo, count: todoItems.value.length },
+	{ key: "started", label: labels.surveyPosFilterStarted, count: startedItems.value.length },
+])
+const emptyText = computed(() => {
+	if (!allItems.value.length) return labels.surveyPosEmpty
+	if (filter.value === "started") return labels.surveyPosFilterEmptyStarted
+	if (filter.value === "todo") return labels.surveyPosFilterEmptyTodo
+	return labels.surveyPosEmpty
+})
+
 let searchTimer = null
 function reloadList() {
 	clearTimeout(searchTimer)
@@ -290,6 +357,44 @@ function openItem(r) {
 }
 function retryDetail() {
 	if (openingName) fetchDetail(openingName)
+}
+
+// ---- Mulai ----
+//
+// The press that claims the tank: from that moment the survey is gone from every other
+// surveyor's worklist. The status is flipped locally rather than re-fetched — the response
+// carries nothing the screen needs beyond it, and waiting is what would make "Mulai"
+// impossible in a dead spot, which is exactly where a surveyor stands.
+const starting = ref(false)
+
+async function startSurvey(name) {
+	try {
+		await send({
+			url: "container_depot.ess.position_survey.position_start",
+			payload: { name },
+		})
+		toast.success(labels.surveyPosStarted)
+		return true
+	} catch (e) {
+		toast.error(e?.message || labels.error)
+		return false
+	}
+}
+
+async function startRow(r) {
+	if (await startSurvey(r.name)) r.status = "In Survey"
+}
+
+async function startCurrent() {
+	if (starting.value || !detail.value) return
+	starting.value = true
+	try {
+		if (await startSurvey(detail.value.name)) {
+			detail.value = { ...detail.value, status: "In Survey" }
+		}
+	} finally {
+		starting.value = false
+	}
 }
 
 // Deep link from the bell: `/survey-position?s=CPS-0001` opens that survey straight away

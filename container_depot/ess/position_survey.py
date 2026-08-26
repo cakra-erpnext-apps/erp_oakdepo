@@ -11,7 +11,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from container_depot.ess.guard import require_menu
+from container_depot.ess.guard import require_any_menu, require_menu
 from container_depot.ess.idempotency import guarded
 from container_depot.container_depot import position_survey
 
@@ -37,16 +37,59 @@ def position_surveyed(start=0, page_length=20, search=None):
 
 @frappe.whitelist(methods=["GET"])
 def position_history(start=0, page_length=10, search=None):
-	"""GET /api/v1/ess/position-history — finished surveys (Confirmed / Cancelled), depot-scoped."""
-	require_menu("surveyPos")
+	"""GET /api/v1/ess/position-history — finished surveys (Confirmed / Cancelled), depot-scoped.
+
+	Open to BOTH menus. Riwayat is where a finished survey is reopened from, and half of what
+	is reopened there is the Kalmar's own approval — gating it on `surveyPos` alone would put
+	the undo behind a menu the operator who needs it does not hold."""
+	require_any_menu("surveyPos", "posFix")
 	return position_survey.list_survey_history(start=start, page_length=page_length, search=search)
 
 
 @frappe.whitelist(methods=["GET"])
 def position_detail(name=None):
-	"""GET /api/v1/ess/position-detail — one survey's header + location note + photos."""
-	require_menu("surveyPos")
+	"""GET /api/v1/ess/position-detail — one survey's header + location note + photos.
+
+	Both menus read the same detail — the Kalmar screen and the Riwayat are built on it."""
+	require_any_menu("surveyPos", "posFix")
 	return position_survey.get_survey_detail(name)
+
+
+@frappe.whitelist(methods=["POST"])
+def position_start(name=None, request_id=None):
+	"""POST /api/v1/ess/position-start — Surveyor presses Mulai (-> In Survey) and claims
+	the job. Idempotent on its own (a second press on a job already yours is a no-op), but
+	guarded anyway so a replay cannot race the claim check."""
+	require_menu("surveyPos")
+	return guarded(request_id, lambda: position_survey.start_survey(name))
+
+
+@frappe.whitelist(methods=["POST"])
+def position_fix_start(name=None, request_id=None):
+	"""POST /api/v1/ess/position-fix-start — Team Kalmar presses Mulai (-> In Fix)."""
+	require_menu("posFix")
+	return guarded(request_id, lambda: position_survey.start_fix(name))
+
+
+@frappe.whitelist(methods=["POST"])
+def position_reopen_survey(name=None, note=None, request_id=None):
+	"""POST /api/v1/ess/position-reopen-survey — send a survey back to the surveyor
+	(-> In Survey) because the position note is wrong.
+
+	Either menu may call it: the surveyor correcting themselves from Riwayat, or the Kalmar
+	operator who is standing at the wrong stack right now. See ``position_survey.reopen_survey``
+	for why a field role is allowed to un-submit here at all."""
+	require_any_menu("surveyPos", "posFix")
+	return guarded(request_id, lambda: position_survey.reopen_survey(name, note=note))
+
+
+@frappe.whitelist(methods=["POST"])
+def position_reopen_fix(name=None, note=None, request_id=None):
+	"""POST /api/v1/ess/position-reopen-fix — send a confirmed survey back to the Kalmar
+	worklist (-> In Fix) because the "udah turun" was pressed too early. The surveyor's work
+	is left alone."""
+	require_menu("posFix")
+	return guarded(request_id, lambda: position_survey.reopen_fix(name, note=note))
 
 
 @frappe.whitelist(methods=["POST"])

@@ -763,6 +763,16 @@ export const labels = {
 	surveyPosNotes: "Catatan Tambahan",
 	surveyPosSave: "Simpan Posisi",
 	surveyPosSaved: "Posisi tersimpan",
+	surveyPosStart: "Mulai", // start button on a worklist row
+	surveyPosStartFull: "Mulai Survey", // start button inside the detail gate
+	surveyPosStartGate: "Survey ini belum dimulai. Tekan Mulai untuk mengambilnya.",
+	surveyPosStarted: "Survey dimulai",
+	surveyPosInProgress: "Dikerjakan", // chip on a row this surveyor already started
+	surveyPosFilterAll: "Semua",
+	surveyPosFilterTodo: "Belum",
+	surveyPosFilterStarted: "Dikerjakan",
+	surveyPosFilterEmptyTodo: "Semua survey sudah mulai dikerjakan. 🎉",
+	surveyPosFilterEmptyStarted: "Belum ada survey yang sedang dikerjakan.",
 	// Operator Kalmar approval
 	posFixTitle: "Fix Posisi", // Kalmar menu/screen
 	posFixDesc: "Approve tank 'udah turun'", // tile subtitle
@@ -777,12 +787,29 @@ export const labels = {
 	posFixApproved: "Posisi di-approve",
 	posFixConfirmTitle: "Approve posisi?",
 	posFixConfirmMsg: "Konfirmasi container sudah turun & posisinya benar. Setelah di-approve, survey difinalisasi.",
+	posFixStart: "Mulai",
+	posFixStartFull: "Mulai Fix Posisi",
+	posFixStartGate: "Belum dimulai. Tekan Mulai untuk mengambil pekerjaan ini.",
+	posFixStarted: "Fix posisi dimulai",
+	// --- Buka lagi (revisi / rollback ke pekerjaan) ---
+	// Tidak ada langkah review di alur ini, jadi yang salah dibetulkan sendiri oleh yang
+	// mengerjakan — bukan lewat permintaan ke Admin Ops seperti cleaning / M&R.
+	posReopenSurvey: "Kembalikan ke Survey",
+	posReopenSurveyHint: "Posisinya salah — surveyor mengulang pencarian tank.",
+	posReopenFix: "Buka Lagi Approval",
+	posReopenFixHint: "Approval-nya kecepetan — hasil survey tetap dipakai.",
+	posReopenReason: "Alasan (opsional)",
+	posReopenSend: "Kembalikan",
+	posReopenDone: "Dikembalikan ke pekerjaan",
+	posReopenNote: "Dibuka lagi", // banner label on a survey that came back
 	// Survey Posisi history (finished surveys — Confirmed / Cancelled)
 	surveyPosHistoryTitle: "Riwayat Survey Posisi",
 	surveyPosHistoryDesc: "Survey posisi selesai / batal",
 	surveyPosHistoryCount: "survey",
 	surveyPosStatusConfirmed: "Selesai", // Confirmed
 	surveyPosStatusSurveyed: "Disurvei", // Surveyed
+	surveyPosStatusInSurvey: "Sedang disurvei", // In Survey (a surveyor is on it)
+	surveyPosStatusInFix: "Diproses Kalmar", // In Fix
 	surveyPosStatusPending: "Menunggu", // Pending Survey
 	surveyPosStatusCancelled: "Batal", // Cancelled
 	surveyPosApprovedBy: "Di-approve oleh",

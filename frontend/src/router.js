@@ -5,7 +5,8 @@ import { fetchMenu, menu } from "@/data/menu"
 
 // `meta.menuKey` ties a route to the same menu key the server grants in
 // container_depot.ess.context.get_menu. A route without one (Home) is open to anyone
-// with a session — Home renders its own empty state when the menu is empty.
+// with a session — Home renders its own empty state when the menu is empty. `meta.menuKeys`
+// is the plural form for the one route two menus share (Riwayat Survey Posisi).
 const routes = [
 	{
 		path: "/",
@@ -95,7 +96,10 @@ const routes = [
 	{
 		path: "/survey-position/history",
 		name: "SurveyPositionHistory",
-		meta: { menuKey: "surveyPos" },
+		// Two owners, unlike every other route: this Riwayat lists both halves of the
+		// position-survey workflow and is where either one is reopened, so a Kalmar-only
+		// operator must be able to open it (see ess.position_survey.position_history).
+		meta: { menuKeys: ["surveyPos", "posFix"] },
 		component: () => import("@/pages/SurveyPositionHistory.vue"),
 	},
 	{
@@ -149,13 +153,14 @@ router.beforeEach(async (to, from, next) => {
 		redirectToLogin()
 		return
 	}
-	const key = to.meta?.menuKey
-	if (!key) {
+	// `menuKeys` (plural) means "any one of these is enough" — see the Riwayat route above.
+	const keys = to.meta?.menuKeys || (to.meta?.menuKey ? [to.meta.menuKey] : null)
+	if (!keys) {
 		next()
 		return
 	}
 	if (!menu.ready) await fetchMenu()
-	next(menu.has(key) ? undefined : { path: "/" })
+	next(keys.some((k) => menu.has(k)) ? undefined : { path: "/" })
 })
 
 export default router

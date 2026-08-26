@@ -46,3 +46,21 @@ def require_menu(menu_key: str) -> None:
 	_key, _route, doctype, ptype = entry
 	if not frappe.has_permission(doctype, ptype):
 		frappe.throw(_("Anda tidak punya akses menu ini."), frappe.PermissionError)
+
+
+def require_any_menu(*menu_keys: str) -> None:
+	"""Reject a caller who holds NONE of these menus.
+
+	For the handful of endpoints that serve two menus at once — the position-survey Riwayat
+	and its reopen, which both halves of that workflow reach. Written as an OR over
+	:func:`require_menu` rather than a second permission model, so an endpoint can never end
+	up admitting somebody the single-menu check would have refused.
+	"""
+	last = None
+	for key in menu_keys:
+		try:
+			require_menu(key)
+			return
+		except frappe.PermissionError as e:
+			last = e
+	raise last or frappe.PermissionError(_("Anda tidak punya akses menu ini."))

@@ -27,8 +27,12 @@ frappe.listview_settings["Container Position Survey"] = {
 		const map = {
 			// Menunggu Surveyor mencatat posisi tank di yard.
 			"Pending Survey": [__("Menunggu Survei"), "orange", "status,=,Pending Survey"],
+			// Sudah ditekan "Mulai" di PWA — ada surveyor yang memegangnya (survey_started_by).
+			"In Survey": [__("Sedang Disurvei"), "purple", "status,=,In Survey"],
 			// Posisi sudah dicatat, menunggu Operator Kalmar mengonfirmasi.
 			Surveyed: [__("Sudah Disurvei"), "yellow", "status,=,Surveyed"],
+			// Kalmar sudah menekan "Mulai" dan sedang menurunkan tank-nya.
+			"In Fix": [__("Diproses Kalmar"), "purple", "status,=,In Fix"],
 			Confirmed: [__("Dikonfirmasi"), "blue", "status,=,Confirmed"],
 		};
 		return map[doc.status] || [__(doc.status || "Draf"), "gray", `status,=,${doc.status || ""}`];

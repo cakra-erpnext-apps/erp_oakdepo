@@ -116,9 +116,13 @@ def _survey(doctype, name):
 	# The two halves of this workflow are two different menus held by two different teams.
 	# Deep-linked (`?s=`) the way cleaning and M&R are: the worklist can be long, and a bell
 	# that only opens the list still leaves the operator hunting for the tank it just named.
-	if st.status == "Pending Survey":
+	#
+	# Each half owns two statuses: the one waiting to be picked up and the one somebody is
+	# already working. Both belong on the same screen — the operator holding it needs to get
+	# back in, and a reopened survey lands in exactly these states.
+	if st.status in ("Pending Survey", "In Survey"):
 		return f"/survey-position?s={name}"
-	if st.status == "Surveyed":
+	if st.status in ("Surveyed", "In Fix"):
 		return f"/position-fix?s={name}"
 	return f"/survey-position/history?open={name}"
 
