@@ -1,8 +1,8 @@
 // Filters for "Storage Charges" — the storage days ledger.
 //
-// "Cara Charge" defaults to *Sesuai Kontrak*: each tank owner is shown what THEIR contract
-// allows to be charged (Depot Contract -> Cara Charge Storage). The other options ignore
-// the contract and filter by the stay itself — use them to inspect the yard, not to bill.
+// Dibuka tanpa filter: semua kunjungan tampil. Pilih "Sesuai Kontrak" kalau mau menyaring
+// ke apa yang boleh ditagih menurut kontrak tiap owner (Depot Contract -> Cara Charge
+// Storage); dua pilihan lainnya menyaring berdasarkan kunjungannya sendiri, bukan kontrak.
 //
 // Satu baris = satu KUNJUNGAN. Defaultnya hanya kunjungan terbaru tiap tank — kecuali
 // kunjungan lama yang masih punya hari belum ditagih, yang selalu ikut tampil supaya tidak
@@ -16,8 +16,8 @@ frappe.query_reports["Storage Charges"] = {
 			fieldname: "mode",
 			label: __("Cara Charge"),
 			fieldtype: "Select",
-			options: ["Sesuai Kontrak", "Masih Menginap", "Sudah Keluar", "Semua"].join("\n"),
-			default: "Sesuai Kontrak",
+			options: ["", "Sesuai Kontrak", "Masih Menginap", "Sudah Keluar"].join("\n"),
+			default: "",
 		},
 		{
 			fieldname: "from_date",

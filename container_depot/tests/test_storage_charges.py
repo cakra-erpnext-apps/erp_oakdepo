@@ -72,7 +72,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -10), add_days(today(), -8))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["stay_days"], 3)          # in + middle + out day
@@ -86,7 +86,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -4))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["chargeable_days"], 5)     # day -4 .. today, inclusive
@@ -100,7 +100,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -2))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": add_days(today(), 30),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["chargeable_days"], 3)
@@ -113,7 +113,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -5))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["stay_days"], 6)           # the stay itself is unchanged
@@ -127,7 +127,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -2))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "show_zero": 1, "mode": "Semua",
+			"principal": self.customer, "show_zero": 1
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["chargeable_days"], 0)
@@ -147,7 +147,7 @@ class TestStorageCharges(FrappeTestCase):
 		frappe.db.set_value("Storage Charge", visit, "billed_until", add_days(today(), -6))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["stay_days"], 8)           # the whole stay, for reference
@@ -162,7 +162,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -4))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		mine = [r for r in rows if r["container"] == cno]
 		self.assertEqual(len(mine), 2)
@@ -184,7 +184,7 @@ class TestStorageCharges(FrappeTestCase):
 		self.assertEqual({r["container"] for r in running}, {open_no})
 		_, closed = execute({**base, "mode": "Sudah Keluar"})
 		self.assertEqual({r["container"] for r in closed}, {closed_no})
-		_, both = execute({**base, "mode": "Semua"})
+		_, both = execute(base)
 		self.assertEqual({r["container"] for r in both}, {open_no, closed_no})
 
 	def test_out_day_can_be_excluded(self):
@@ -196,7 +196,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -10), add_days(today(), -8))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		row = next(r for r in rows if r["container"] == cno)
 		self.assertEqual(row["chargeable_days"], 2)     # 3 under the other convention
@@ -207,7 +207,7 @@ class TestStorageCharges(FrappeTestCase):
 		_gate_entry(cno, add_days(today(), -60), add_days(today(), -55))
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "show_zero": 1, "mode": "Semua",
+			"principal": self.customer, "show_zero": 1
 		})
 		self.assertFalse([r for r in rows if r["container"] == cno])
 
@@ -216,7 +216,7 @@ class TestStorageCharges(FrappeTestCase):
 		_container(cno, "Booked", self.customer)
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "show_zero": 1, "mode": "Semua",
+			"principal": self.customer, "show_zero": 1
 		})
 		self.assertFalse([r for r in rows if r["container"] == cno])
 
@@ -296,9 +296,11 @@ class TestStorageBillingMode(FrappeTestCase):
 		return open_no, closed_no
 
 	def _rows(self, **extra):
+		"""Rows under the billing view — this class tests the contract policy, and the
+		report only applies it when the operator asks for it (it opens unfiltered)."""
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, **extra,
+			"principal": self.customer, "mode": "Sesuai Kontrak", **extra,
 		})
 		return {r["container"] for r in rows}
 
@@ -338,15 +340,16 @@ class TestStorageBillingMode(FrappeTestCase):
 		self._contract(storage.MODE_ON_EXIT)
 		open_no, closed_no = self._yard()
 		self.assertEqual(self._rows(mode="Masih Menginap"), {open_no})
-		self.assertEqual(self._rows(mode="Semua"), {open_no, closed_no})
+		self.assertEqual(self._rows(mode=""), {open_no, closed_no})   # tanpa filter
 
 	def test_mode_is_shown_on_every_row(self):
 		self._contract(storage.MODE_ON_EXIT)
 		self._yard()
 		_, rows = execute({
 			"from_date": add_days(today(), -30), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
+		self.assertEqual(len(rows), 2)   # tanpa filter: policy tidak menyembunyikan apa pun
 		self.assertEqual({r["billing_mode"] for r in rows}, {storage.MODE_ON_EXIT})
 
 
@@ -426,7 +429,7 @@ class TestStorageChargeLedger(FrappeTestCase):
 		storage_charge.sync(doc.name, cno)
 		_, rows = execute({
 			"from_date": add_days(today(), -60), "to_date": today(),
-			"principal": self.customer, "mode": "Semua",
+			"principal": self.customer
 		})
 		self.assertEqual(len(rows), 2)
 
@@ -441,7 +444,7 @@ class TestStorageChargeLedger(FrappeTestCase):
 		storage_charge.sync(doc.name, cno)
 
 		base = {"from_date": add_days(today(), -60), "to_date": today(),
-		        "principal": self.customer, "mode": "Semua", "show_zero": 1}
+		        "principal": self.customer, "show_zero": 1}
 		_, rows = execute(base)
 		self.assertEqual([r["container"] for r in rows], [cno])          # newest only
 		_, all_rows = execute({**base, "all_visits": 1})

@@ -8,12 +8,11 @@ are the same list under a different filter:
 * **Berjalan (Periodik)** — charged period by period while the tank is still inside, with
   the tail billed when it finally leaves.
 
-Which one applies is **not** a filter the operator picks: it is negotiated per tank owner
-and read from their ``Depot Contract.storage_billing_mode`` (see
-``storage.billing_mode_for``). The default filter, *Sesuai Kontrak*, therefore shows each
-owner exactly what their own contract allows to be charged — an on-exit owner's tanks stay
-hidden while they are still inside. The stay-status filters beside it ignore the contract
-and are there to inspect the yard, not to bill it.
+Which one applies to a given owner is negotiated, not picked per run: it is read from their
+``Depot Contract.storage_billing_mode`` (see ``storage.billing_mode_for``) and shown on
+every row. Filtering by it — *Sesuai Kontrak* — is opt-in, and narrows the list to what each
+owner's contract allows to be charged yet. Unfiltered, which is how the report opens, every
+stay is listed whatever its owner's policy.
 
 The two modes cannot double-charge each other because they read the same interval and both
 subtract what has already been billed — whatever a running run took is gone from the front
@@ -47,14 +46,15 @@ from container_depot.container_depot.container_status import AVAILABLE, GATE_OUT
 from container_depot.monthly_invoicing import _active_contract
 from container_depot.pricing import storage_rate_for
 
-# The "Cara Charge" filter. BY_CONTRACT is the real one — it shows each owner exactly
-# what their contract says may be charged. The other three ignore the contract and filter
-# by the stay's own state; they are inspection tools ("what is sitting in my yard right
-# now"), not billing views.
+# The "Cara Charge" filter, and it is EMPTY by default: opening the menu shows every stay.
+# A report that narrows itself before the operator has asked anything is a report whose
+# blank spots read as "tidak ada" — the filter has to be a question they chose to ask.
+#
+# BY_CONTRACT is the billing view (each owner sees only what their contract says may be
+# charged yet); the other two filter by the stay's own state and ignore the contract.
 FILTER_BY_CONTRACT = "Sesuai Kontrak"
 FILTER_RUNNING = "Masih Menginap"
 FILTER_CLOSED = "Sudah Keluar"
-FILTER_ALL = "Semua"
 
 STAY_RUNNING = "Masih Menginap"
 STAY_CLOSED = "Sudah Keluar"
@@ -199,7 +199,7 @@ def _in_scope(row, period, from_date, to_date, mode, policy, mode_count) -> bool
 		return False
 	if mode == FILTER_CLOSED and row["is_open"]:
 		return False
-	if mode in ("", None, FILTER_BY_CONTRACT) and not storage.billable_now(period, policy):
+	if mode == FILTER_BY_CONTRACT and not storage.billable_now(period, policy):
 		return False
 	if getdate(period["start"]) > to_date:
 		return False
