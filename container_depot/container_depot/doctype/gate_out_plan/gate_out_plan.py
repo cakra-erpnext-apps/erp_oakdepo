@@ -551,6 +551,18 @@ def _push_to_open_orders(container: str, date) -> None:
 			pluck="name",
 		)
 	]
+	# ...and the open position survey, for the same reason as the EIR-Out: locating the tank
+	# is part of getting it OUT, not something standing in the way of it, so it never appears
+	# in `container_open_orders`. Its worklist is arguably the one that wants the date most —
+	# a surveyor with ten tanks to find should walk to the one on a truck's schedule first.
+	targets += [
+		("Container Position Survey", name)
+		for name in frappe.get_all(
+			"Container Position Survey",
+			filters={"container": container, "docstatus": 0, "status": ["!=", "Cancelled"]},
+			pluck="name",
+		)
+	]
 	for doctype, name in targets:
 		if frappe.get_meta(doctype).has_field("target_lift_on"):
 			frappe.db.set_value(doctype, name, "target_lift_on", date, update_modified=False)

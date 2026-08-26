@@ -108,6 +108,10 @@
 										<span v-else-if="r.status === 'In Fix'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
 											<Icon name="clock" :size="11" /> {{ labels.surveyPosInProgress }}
 										</span>
+										<!-- Why this row is where it is — same badge as every other queue. -->
+										<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
+											Lift-on {{ hMinus(r.target_lift_on) }}
+										</span>
 										<span class="truncate" :class="r.location_note ? 'text-gray-600' : 'text-gray-400'">
 											{{ r.location_note || r.name }}
 										</span>
@@ -233,6 +237,7 @@ import { send } from "@/data/send"
 import { toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
+import { hMinus, liftClass } from "@/utils/liftOn"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"

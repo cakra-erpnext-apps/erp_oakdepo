@@ -110,6 +110,12 @@
 										<span v-else-if="r.status === 'In Survey'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
 											<Icon name="clock" :size="11" /> {{ labels.surveyPosInProgress }}
 										</span>
+										<!-- Why this row is where it is: the list leads with the tanks the
+										     customer already has a date for. Same badge as the cleaning and
+										     M&R queues, so the countdown reads the same everywhere. -->
+										<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
+											Lift-on {{ hMinus(r.target_lift_on) }}
+										</span>
 										<span class="truncate text-gray-400">
 											<template v-if="r.depot">{{ r.depot }} · </template>{{ r.name }}
 										</span>
@@ -236,6 +242,7 @@ import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
+import { hMinus, liftClass } from "@/utils/liftOn"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"

@@ -23,11 +23,12 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate, now_datetime
+from frappe.utils import cint, flt, now_datetime
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.work_claim import filter_claimed, guard_claim
+from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
 from container_depot.container_depot.service_menu import filter_items_by_menu, is_real_menu
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots, get_user_warehouses
@@ -293,12 +294,10 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 		order_by="creation asc", limit_page_length=0,
 	)
 	items = filter_claimed(items, "started_by")
-	# Priority: nearest customer target lift-on first; unstamped keep their creation order below.
-	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
-	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
 	total = len(items)
-	pl = cint(page_length)
-	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
+	# Gate-out priority, then the job already in this operator's hands, then the rest —
+	# see ``worklist.sort_by_priority`` for why that order.
+	items = sort_by_priority(items, lambda r: r.get("status") == "In Progress", start, page_length)
 	return {"items": items, "total": total}
 
 
@@ -370,12 +369,10 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 		order_by="creation asc", limit_page_length=0,
 	)
 	items = filter_claimed(items, "started_by")
-	# Priority: nearest customer target lift-on first; unstamped keep their creation order below.
-	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
-	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
 	total = len(items)
-	pl = cint(page_length)
-	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
+	# Gate-out priority, then the job already in this operator's hands, then the rest —
+	# see ``worklist.sort_by_priority`` for why that order.
+	items = sort_by_priority(items, lambda r: r.get("status") == "In Progress", start, page_length)
 	_attach_item_counts(items)
 	return {"items": items, "total": total}
 

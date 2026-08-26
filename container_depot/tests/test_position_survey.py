@@ -146,6 +146,21 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			ps.record_survey_position(name, "posisi 2")
 
+	def test_worklist_leads_with_the_customers_pickup_date(self):
+		"""Tier 1 of the shared worklist order, on real rows: a tank the customer has a date
+		for outranks one that has been waiting longer. The rule itself lives in
+		``worklist.sort_by_priority`` (see test_worklist_order)."""
+		from frappe.utils import add_days, today
+
+		older = self._container("CPSSORT0001")
+		booked = self._container("CPSSORT0002")
+		self._new_survey(older)          # created first, no pickup date
+		name = self._new_survey(booked)
+		frappe.db.set_value("Container Position Survey", name, "target_lift_on", add_days(today(), 1))
+
+		nos = [i["container_no"] for i in ps.list_pending_surveys(page_length=100)["items"]]
+		self.assertLess(nos.index("CPSSORT0002"), nos.index("CPSSORT0001"))
+
 	def test_worklists_split_by_status(self):
 		c1 = self._container("CPSWL000001")
 		c2 = self._container("CPSWL000002")
@@ -362,6 +377,30 @@ class TestPositionSurveyWork(FrappeTestCase):
 			frappe.db.get_value("Container Position Survey", name, "survey_started_by"),
 			self.SURVEYOR,
 		)
+
+	def test_a_started_job_sits_above_an_untouched_one(self):
+		"""Tier 2: finishing what is already open beats opening something new — and a
+		half-filled form at the bottom of a long list is how a tank gets worked twice."""
+		untouched = self._survey("CPSSORT0003")
+		started = self._survey("CPSSORT0004")
+		frappe.set_user(self.SURVEYOR)
+		ps.start_survey(started)
+
+		names = [i["name"] for i in ps.list_pending_surveys(page_length=100)["items"]]
+		self.assertLess(names.index(started), names.index(untouched))
+
+	def test_the_fix_worklist_uses_the_same_order(self):
+		"""One habit covers both menus: the Kalmar list is read exactly like the survey one."""
+		untouched = self._survey("CPSSORT0005")
+		started = self._survey("CPSSORT0006")
+		frappe.set_user(self.SURVEYOR)
+		for n in (untouched, started):
+			ps.record_survey_position(n, "posisi")
+		frappe.set_user(self.KALMAR)
+		ps.start_fix(started)
+
+		names = [i["name"] for i in ps.list_surveyed(page_length=100)["items"]]
+		self.assertLess(names.index(started), names.index(untouched))
 
 	# --- buka lagi (revisi / rollback) ---------------------------------------
 	def test_reopen_survey_unsubmits_and_returns_it_to_the_surveyor(self):

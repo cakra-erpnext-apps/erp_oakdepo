@@ -45,6 +45,7 @@ from container_depot.container_depot.notify import (
 )
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 from container_depot.container_depot.work_claim import filter_claimed, guard_claim
+from container_depot.container_depot.worklist import sort_by_priority
 
 DOCTYPE = "Container Position Survey"
 
@@ -146,9 +147,13 @@ def provision_position_survey_for_booking(booking_name: str) -> list:
 # ---------------------------------------------------------------------------
 # Worklists
 # ---------------------------------------------------------------------------
-def _list_by_status(statuses, claim_field, start=0, page_length=20, search=None) -> dict:
+def _list_by_status(statuses, in_progress, claim_field, start=0, page_length=20, search=None) -> dict:
 	"""Open surveys in the given statuses, depot-scoped to the caller's branch, searchable,
 	paginated. Copies ``cleaning.list_open_cleaning_orders``.
+
+	``in_progress`` is the status this half ends on once Mulai is pressed (In Survey for the
+	surveyor's list, In Fix for the Kalmar's) — it decides tier 2 of the sort, and is passed
+	rather than derived so the order can never drift from the screen's own Dikerjakan tab.
 
 	``claim_field`` is the column that says who pressed Mulai on this half of the workflow:
 	once someone has, the row leaves everybody else's worklist (see ``work_claim``). Filtered
@@ -168,22 +173,28 @@ def _list_by_status(statuses, claim_field, start=0, page_length=20, search=None)
 		or_filters=or_filters,
 		fields=[
 			"name", "container", "container_no", "status", "depot", "booking",
-			"location_note", "reopen_note", "creation",
+			"location_note", "reopen_note", "creation", "target_lift_on",
 			"survey_started_by", "fix_started_by",
 		],
+		# Whole list, then filter, then sort, then slice: the priority order is decided in
+		# Python (see ``worklist.sort_by_priority``), so SQL cannot page it.
 		order_by="creation asc",
-		limit_start=cint(start),
-		limit_page_length=cint(page_length),
+		limit_page_length=0,
 	)
 	items = filter_claimed(items, claim_field)
-	return {"items": items, "total": len(items)}
+	total = len(items)
+	# Gate-out priority, then the job already in this operator's hands, then the rest —
+	# see ``worklist.sort_by_priority`` for why that order.
+	items = sort_by_priority(items, lambda r: r.get("status") == in_progress, start, page_length)
+	return {"items": items, "total": total}
 
 
 def list_pending_surveys(start=0, page_length=20, search=None) -> dict:
 	"""Surveyor worklist — surveys still to be located (Pending Survey + the ones this
 	surveyor has already started)."""
 	return _list_by_status(
-		SURVEY_OPEN, "survey_started_by", start=start, page_length=page_length, search=search
+		SURVEY_OPEN, IN_SURVEY, "survey_started_by",
+		start=start, page_length=page_length, search=search,
 	)
 
 
@@ -191,7 +202,8 @@ def list_surveyed(start=0, page_length=20, search=None) -> dict:
 	"""Operator Kalmar worklist — located surveys awaiting approval (Surveyed + the ones this
 	operator has already started)."""
 	return _list_by_status(
-		FIX_OPEN, "fix_started_by", start=start, page_length=page_length, search=search
+		FIX_OPEN, IN_FIX, "fix_started_by",
+		start=start, page_length=page_length, search=search,
 	)
 
 
@@ -214,7 +226,7 @@ def list_survey_history(start=0, page_length=10, search=None) -> dict:
 		fields=[
 			"name", "container", "container_no", "status", "depot", "booking",
 			"location_note", "surveyed_by", "surveyed_on", "approved_by", "approved_on",
-			"reopen_note", "creation",
+			"reopen_note", "target_lift_on", "creation",
 		],
 		order_by="creation desc",
 		limit_start=cint(start),
@@ -252,6 +264,8 @@ def get_survey_detail(name: str) -> dict:
 		"fix_started_on": doc.fix_started_on,
 		# Why it came back, for the operator who now has to redo it.
 		"reopen_note": doc.reopen_note,
+		# The customer's lift-on date, from the Gate Out Plan via the container.
+		"target_lift_on": doc.target_lift_on,
 		"photos": [p.photo for p in doc.position_photos],
 	}
 

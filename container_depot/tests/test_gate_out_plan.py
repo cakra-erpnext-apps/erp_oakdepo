@@ -70,6 +70,7 @@ class TestGateOutPlan(FrappeTestCase):
 			frappe.db.delete("Cleaning Order", {"container": c})
 			frappe.db.delete("Repair Order", {"container": c})
 			frappe.db.delete("Inspection", {"container": c})
+			frappe.db.delete("Container Position Survey", {"container": c})
 			frappe.db.delete("Container Activity", {"container": c})
 			frappe.db.delete("Container", {"name": c})
 		for cust in self._customers:
@@ -449,6 +450,26 @@ class TestGateOutPlan(FrappeTestCase):
 		d = add_days(today(), 2)
 		self._plan([(c, d)])
 		self.assertEqual(str(frappe.db.get_value("Inspection", eir, "target_lift_on")), str(d))
+
+	def test_push_target_onto_open_position_survey(self):
+		"""Same reasoning as the EIR-Out one line up: locating the tank is part of getting it
+		OUT, so the survey never appears in ``container_open_orders`` — and its worklist is
+		the one that wants the date most. A surveyor with ten tanks to find should walk to the
+		one on a truck's schedule first."""
+		c = self._container("GOPCPSPUSH1")
+		survey = frappe.get_doc({
+			"doctype": "Container Position Survey", "container": c,
+			"depot": frappe.db.get_value("Container", c, "depot"), "status": "Pending Survey",
+		}).insert(ignore_permissions=True).name
+		d = add_days(today(), 2)
+		plan = self._plan([(c, d)])
+		self.assertEqual(
+			str(frappe.db.get_value("Container Position Survey", survey, "target_lift_on")), str(d)
+		)
+		# Closing the plan releases the survey's copy exactly like every other order's.
+		plan.status = "Fulfilled"
+		plan.save(ignore_permissions=True)
+		self.assertIsNone(frappe.db.get_value("Container Position Survey", survey, "target_lift_on"))
 
 	def test_submitted_eir_keeps_no_target(self):
 		"""Finished work is not prioritised — the stamp reaches OPEN orders only."""

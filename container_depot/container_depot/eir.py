@@ -21,6 +21,7 @@ from frappe.utils import cint, flt, getdate, now_datetime, time_diff_in_seconds,
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.work_claim import filter_claimed, guard_claim
+from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 # Damage code "v" = Acceptable — it is recorded as a condition but does not mean
@@ -1436,18 +1437,13 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 
 
 def _by_lift_on(items: list, start: int, page_length: int) -> list:
-	"""Nearest customer target lift-on first; unstamped keep the order the query gave them.
+	"""The shared PWA worklist order, with the EIR's own test for "sedang dikerjakan".
 
-	The stamp is the Gate Out Plan's (``gate_out_plan._push_to_open_orders``), so an EIR
-	holding a tank the customer is already coming for rises to the top of the surveyor's
-	list instead of waiting its turn by date. Sorted in Python and sliced here rather than in
-	SQL because this Frappe's order_by validator rejects the ``ifnull(...)`` the sort needs —
-	the same reason the M&R and cleaning worklists do it this way (see
-	``mr.list_open_mr_orders`` / ``cleaning.list_open_cleaning_orders``). Python's sort is
-	stable, so the query's own order_by still settles ties.
+	An EIR is in hand once ``start_eir`` has stamped ``work_started_on`` — the same field the
+	screen's Belum / Dikerjakan split reads, so the list order and the filter tabs can never
+	disagree. Everything else about the ordering lives in ``worklist.sort_by_priority``.
 	"""
-	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
-	return items[start:start + page_length] if page_length else items[start:]
+	return sort_by_priority(items, lambda r: bool(r.get("work_started_on")), start, page_length)
 
 
 def list_pending_eirs(search=None, start=0, page_length=20) -> dict:

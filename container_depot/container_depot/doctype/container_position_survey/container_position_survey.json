@@ -14,6 +14,7 @@
     "reopen_note",
     "booking",
     "booking_code",
+    "target_lift_on",
     "survey_section",
     "location_note",
     "survey_meta_section",
@@ -98,6 +99,16 @@
       "fieldtype": "Link",
       "label": "Booking Code",
       "options": "Booking Code",
+      "read_only": 1
+    },
+    {
+      "description": "Rencana lift-on, dari container. Distempel Gate Out Plan — dipakai worklist Survey Posisi / Fix Posisi untuk mengurutkan prioritas.",
+      "fetch_from": "container.target_lift_on",
+      "fieldname": "target_lift_on",
+      "fieldtype": "Date",
+      "hidden": 1,
+      "label": "Target Lift-On",
+      "no_copy": 1,
       "read_only": 1
     },
     {
@@ -213,7 +224,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-08-26 10:30:00.000000",
+  "modified": "2026-08-26 11:00:00.000000",
   "module": "Container Depot",
   "name": "Container Position Survey",
   "search_fields": "container_no, status, depot",

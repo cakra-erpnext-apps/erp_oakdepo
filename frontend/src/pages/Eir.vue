@@ -382,14 +382,24 @@ const fetchError = computed(() => {
 	return e ? e.messages?.[0] || e.message : null
 })
 
-// Merge both queues. In-progress first — resuming an inspection someone already opened
-// matters more than picking up a fresh one — then newest by creation.
+// Merge both queues, in the same three tiers the server sorts every worklist by
+// (container_depot.container_depot.worklist): the customer's lift-on date first, then the
+// inspection already in this surveyor's hands, then the rest newest-first.
+//
+// Re-sorted here at all only because this screen is the one that MERGES two server lists —
+// EIR-In and EIR-Out arrive separately, each already ordered, and concatenating them would
+// otherwise put every outbound tank below every inbound one. Sorting by anything other than
+// the server's own rule is what used to happen here, and it quietly dropped gate-out
+// priority off the one screen that most needed it.
 const pendingItems = computed(() => {
 	// An EIR whose submit is queued has left this queue, whatever the server still says. The
 	// list is only refreshed when there is a link, so without this the surveyor sees the tank
 	// they just finished sitting there untouched and inspects it again.
 	const all = [...inItems.value, ...outItems.value]
+	const NO_LIFT_ON = "9999-12-31" // sorts after every real date, same as the server's sentinel
 	all.sort((a, b) => {
+		const lift = String(a.target_lift_on || NO_LIFT_ON).localeCompare(String(b.target_lift_on || NO_LIFT_ON))
+		if (lift) return lift
 		const started = Number(!!b.work_started_on) - Number(!!a.work_started_on)
 		return started || String(b.creation || "").localeCompare(String(a.creation || ""))
 	})

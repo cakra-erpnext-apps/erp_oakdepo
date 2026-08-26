@@ -15,10 +15,11 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, getdate, now_datetime, today
+from frappe.utils import cint, now_datetime, today
 
 from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.work_claim import filter_claimed, guard_claim
+from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
 # Tank-spec fields read from the Container master for the form header + print.
@@ -117,12 +118,10 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		limit_page_length=0,
 	)
 	items = filter_claimed(items, "assigned_to")
-	# Priority: nearest customer target lift-on first; unstamped keep their queue order below.
-	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
-	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
 	total = len(items)
-	pl = cint(page_length)
-	items = items[cint(start):cint(start) + pl] if pl else items[cint(start):]
+	# Gate-out priority, then the wash already in this operator's hands, then the rest —
+	# see ``worklist.sort_by_priority`` for why that order.
+	items = sort_by_priority(items, lambda r: r.get("status") == "In_Progress", start, page_length)
 	# Number of chosen cleaning services per order (NOT the price — hidden from the depot PWA).
 	names = [i.name for i in items]
 	if names:
