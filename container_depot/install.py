@@ -483,9 +483,29 @@ CUSTOM_FIELDS = {
 			"label": "Branch",
 			"fieldtype": "Table MultiSelect",
 			"options": "Allowed Branch",
-			"insert_after": "user_image",
+			# Right below Role Profiles, so it also lands there in the New User quick-entry
+			# popup (that dialog lists fields in docfield order).
+			"insert_after": "role_profiles",
+			"allow_in_quick_entry": 1,
 			"description": "Opsional. Kosongkan = akses semua branch. Pilih satu atau beberapa branch untuk membatasi data (mis. order) hanya ke branch tersebut.",
-		}
+		},
+		{
+			# The value actually used. The Role Profile field above is the default it is seeded
+			# FROM — one is the template, the other is the setting, and keeping them apart is what
+			# lets one person be moved without redefining the job (or a job be redefined without
+			# chasing every account).
+			"fieldname": "home_page",
+			"label": "Home Page",
+			"fieldtype": "Data",
+			"insert_after": "default_app",
+			"description": (
+				"Halaman awal setelah login, mis. <code>/depot</code>. Kosong = ikut bawaan Role "
+				"Profile. Diisi sekali saat user disimpan, lalu tidak pernah ditimpa. "
+				"<b>Catatan:</b> path yang lebih dalam (mis. <code>/depot/monitor</code>) dipakai "
+				"saat user membuka Desk, tapi login tetap mendarat di akar app (<code>/depot</code>) "
+				"— batas dari Frappe, bukan setelan ini."
+			),
+		},
 	],
 	# Tag a Warehouse with its depot Branch so the M&R parts picker can scope the
 	# source-warehouse list by branch (blank = visible to all branches).
@@ -557,24 +577,6 @@ CUSTOM_FIELDS = {
 				"Halaman awal <b>bawaan</b> untuk pemegang profil ini, mis. <code>/depot</code>. "
 				"Disalin ke User saat kolom Home Page user masih kosong; nilai di User yang dipakai. "
 				"Kosongkan untuk memakai Desk."
-			),
-		}
-	],
-	# The value actually used. The profile above is the default it is seeded FROM — one is the
-	# template, the other is the setting, and keeping them apart is what lets one person be
-	# moved without redefining the job (or a job be redefined without chasing every account).
-	"User": [
-		{
-			"fieldname": "home_page",
-			"label": "Home Page",
-			"fieldtype": "Data",
-			"insert_after": "default_app",
-			"description": (
-				"Halaman awal setelah login, mis. <code>/depot</code>. Kosong = ikut bawaan Role "
-				"Profile. Diisi sekali saat user disimpan, lalu tidak pernah ditimpa. "
-				"<b>Catatan:</b> path yang lebih dalam (mis. <code>/depot/monitor</code>) dipakai "
-				"saat user membuka Desk, tapi login tetap mendarat di akar app (<code>/depot</code>) "
-				"— batas dari Frappe, bukan setelan ini."
 			),
 		}
 	],

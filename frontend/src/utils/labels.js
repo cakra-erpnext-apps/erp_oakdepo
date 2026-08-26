@@ -95,26 +95,6 @@ export const labels = {
 		"Notifikasi pekerjaan hanya bisa masuk ke aplikasi yang terpasang. Kalau dibuka lewat browser, notifikasi tidak akan sampai saat HP terkunci.",
 	greeting: "Halo", // "Halo, {name}"
 	homeHint: "Pilih menu untuk mulai bekerja", // Pick a menu to start
-	// --- Dashboard (home KPI sections + menu groups) ---
-	dashSummaryTitle: "Ringkasan Operasional", // collapsible KPI section header
-	dashSummaryUnit: "unit", // "{n} unit" in collapsed summary
-	dashSummaryTask: "tugas", // "{n} tugas" pending count in collapsed summary
-	dashSummaryAlert: "alert", // "⚠ {n} alert" in collapsed summary
-	dashSummaryLoading: "Memuat ringkasan…", // collapsed summary while loading
-	dashSummaryUnavailable: "Ringkasan tidak tersedia", // collapsed summary on error
-	dashSummaryHide: "Ketuk untuk sembunyikan", // expanded-state hint
-	dashStatusTitle: "Status Container", // Container per status bucket
-	dashStatusTotal: "Total", // "Total {n}" badge
-	dashTodayTitle: "Aktivitas Hari Ini", // Today's activity
-	dashTodayIn: "Gate In",
-	dashTodayOut: "Gate Out",
-	dashTodayEir: "EIR",
-	dashPendingTitle: "Tugas Tertunda", // Pending tasks
-	dashPendingApproval: "approval", // "{n} approval" sub-badge on M&R
-	dashNoPending: "Tidak ada tugas tertunda 🎉", // empty pending state
-	dashActiveJobs: "tank dengan job aktif", // supervisor card: tanks with work running
-	dashPosSurvey: "Survey Posisi", // pending survey-position queue
-	dashPosFix: "Position Fix", // pending "udah turun" approval queue
 	// Shown when the server grants this account no PWA menu at all (office staff, or a
 	// field user whose roles have not been assigned yet).
 	menuEmptyTitle: "Belum ada menu untuk akun ini",
@@ -140,8 +120,6 @@ export const labels = {
 	gateNeedsOnline: "Gate butuh internet",
 	gateNeedsOnlineHint:
 		"Status bayar dan blokir booking harus dicek langsung ke server sebelum bon dibuat, jadi layar ini tidak bisa dipakai offline. Sambungkan internet dulu.",
-	dashYardTitle: "Okupansi Yard", // Yard occupancy
-	dashYardEmpty: "Belum ada zona yard aktif", // empty yard state
 	dashMenuTitle: "Menu", // menu section heading
 	grpGate: "Gate", // workflow group: gate
 	grpInspeksi: "Inspeksi", // workflow group: EIR / EIR Out
