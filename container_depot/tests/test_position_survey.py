@@ -8,6 +8,8 @@ erp.localhost instance is left as it was.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -24,6 +26,17 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		self._bookings = []
 
 	def tearDown(self):
+		# The bell rows too: every provision / record / approve here writes a Notification Log
+		# for whoever holds the routed roles, and those outlive the survey they point at.
+		surveys = frappe.get_all(
+			"Container Position Survey",
+			filters={"container": ["in", self._containers or [""]]},
+			pluck="name",
+		)
+		if surveys:
+			frappe.db.delete("Notification Log", {
+				"document_type": "Container Position Survey", "document_name": ["in", surveys],
+			})
 		frappe.db.delete("Container Position Survey", {"container": ["in", self._containers or [""]]})
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})
@@ -198,3 +211,47 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		ps.record_survey_position(name, "sudah disurvei")
 		with self.assertRaises(frappe.ValidationError):
 			ps.save_survey_draft(name, "ketikan yang telat sampai")
+
+	# --- notifications -------------------------------------------------------
+	#
+	# One doctype, two menus, two teams: each half of the workflow has to ring the team that
+	# picks it up. The events are asserted on rather than the recipients — who receives what
+	# is routing data an admin may retune (Depot Notification Rule), the fact that the event
+	# fires at all is code.
+	def _fired(self, fn, *args, **kwargs):
+		"""Run ``fn`` with notify() spied on; return the event keys it emitted."""
+		with patch("container_depot.container_depot.notify.notify") as spy:
+			fn(*args, **kwargs)
+		return [c.kwargs.get("event_key") for c in spy.call_args_list]
+
+	def test_provisioning_rings_the_survey_team(self):
+		c = self._container("CPSNOTIF001")
+		bk = self._tank_out_booking(c)
+		self.assertEqual(
+			self._fired(ps.provision_position_survey_for_booking, bk),
+			["position_survey_pending"],
+		)
+
+	def test_recording_a_position_rings_kalmar(self):
+		c = self._container("CPSNOTIF002")
+		name = self._new_survey(c)
+		self.assertEqual(
+			self._fired(ps.record_survey_position, name, "blok kanan"),
+			["position_surveyed"],
+		)
+
+	def test_approving_rings_oversight(self):
+		c = self._container("CPSNOTIF003")
+		name = self._new_survey(c)
+		ps.record_survey_position(name, "ground slot B2")
+		self.assertEqual(
+			self._fired(ps.approve_position, name),
+			["position_confirmed"],
+		)
+
+	def test_an_autosave_rings_nobody(self):
+		"""The draft fires on every typing pause. A bell there would be a notification storm
+		about a survey nobody has finished."""
+		c = self._container("CPSNOTIF004")
+		name = self._new_survey(c)
+		self.assertEqual(self._fired(ps.save_survey_draft, name, "setengah jalan"), [])

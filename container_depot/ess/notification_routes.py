@@ -114,10 +114,12 @@ def _survey(doctype, name):
 	if not st:
 		return None
 	# The two halves of this workflow are two different menus held by two different teams.
+	# Deep-linked (`?s=`) the way cleaning and M&R are: the worklist can be long, and a bell
+	# that only opens the list still leaves the operator hunting for the tank it just named.
 	if st.status == "Pending Survey":
-		return "/survey-position"
+		return f"/survey-position?s={name}"
 	if st.status == "Surveyed":
-		return "/position-fix"
+		return f"/position-fix?s={name}"
 	return f"/survey-position/history?open={name}"
 
 
@@ -169,6 +171,9 @@ _BY_EVENT = {
 	"order_gate_in": _gate,
 	"order_gate_out": _gate,
 	"order_muat_survey": _eir_pending,
+	"position_survey_pending": _survey,
+	"position_surveyed": _survey,
+	"position_confirmed": _survey,
 	"eir_out_hold": _eir_worklist,
 	"gate_out": _gate_history,
 	"booking_created": _none,

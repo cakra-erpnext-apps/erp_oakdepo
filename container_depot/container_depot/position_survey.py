@@ -22,6 +22,11 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 
 from container_depot.container_depot.exceptions import AlreadySettled
+from container_depot.container_depot.notify import (
+	notify_position_confirmed,
+	notify_position_survey_pending,
+	notify_position_surveyed,
+)
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 DOCTYPE = "Container Position Survey"
@@ -107,6 +112,7 @@ def provision_position_survey_for_booking(booking_name: str) -> list:
 			doc.status = PENDING
 			doc.insert(ignore_permissions=True)  # system automation on booking submit
 			created.append(doc.name)
+			notify_position_survey_pending(doc)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"auto position survey for {container} on {booking_name}")
 	return created
@@ -254,6 +260,7 @@ def record_survey_position(name, location_note, photos=None, notes=None) -> dict
 	doc.set("position_photos", [{"photo": url} for url in _coerce_photos(photos)])
 	doc.status = SURVEYED
 	doc.save()  # NOT ignore_permissions — DocPerm (Surveyor) is enforced.
+	notify_position_surveyed(doc)
 
 	return {
 		"success": True,
@@ -284,5 +291,6 @@ def approve_position(name, note=None) -> dict:
 	doc.approval_note = note
 	doc.status = CONFIRMED
 	doc.submit()
+	notify_position_confirmed(doc)
 
 	return {"success": True, "name": doc.name, "status": doc.status, "docstatus": doc.docstatus}

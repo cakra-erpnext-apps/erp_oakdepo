@@ -1945,6 +1945,17 @@ NOTIFICATION_RULES = [
 		["Team EIR", "SPV Lapangan", "Admin Ops"]),
 	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
 		["SPV Lapangan", "Admin Ops"]),
+	# Survey posisi (Lift On). One doctype, two menus, so two handoffs: the survey lands in
+	# Team Survey's worklist, then the recorded position lands in Team Kalmar's. Each team is
+	# on its own handoff and nothing else — the same rule the cleaning / M&R crews follow.
+	("position_survey_pending", "Survey posisi dibuat", "Booking Tank Out disubmit — posisi tank harus disurvei sebelum bisa ditarik.",
+		["Team Survey", "SPV Lapangan", "Admin Ops"]),
+	("position_surveyed", "Posisi menunggu approval Kalmar", "Surveyor sudah mencatat letak tank — menunggu konfirmasi \"udah turun\" dari Team Kalmar.",
+		["Team Kalmar", "SPV Lapangan", "Admin Ops"]),
+	# Oversight only: both field teams are finished by the time this fires, and the route
+	# behind it is Riwayat — a bell about work nobody may pick up is the kind that gets muted.
+	("position_confirmed", "Posisi dikonfirmasi", "Team Kalmar sudah approve \"udah turun\" — survey posisi selesai.",
+		["SPV Lapangan", "Admin Ops"]),
 	("gate_out", "Isotank keluar depo", "Gate-out / load-complete selesai untuk sebuah tank.",
 		["Security", "Team Kalmar", "Admin Ops", "Cashier"]),
 	("booking_created", "Booking baru", "Container Booking dibuat (masih draft).",

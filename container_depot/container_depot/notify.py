@@ -323,6 +323,9 @@ def sweep_stale_notifications() -> int:
 	return removed
 
 
+DOCTYPE_SURVEY = "Container Position Survey"
+
+
 def _depot_branch(depot):
 	return frappe.db.get_value("Depot", depot, "branch") if depot else None
 
@@ -626,6 +629,67 @@ def notify_order_muat_survey(order):
 		subject=subject,
 		branch=order.get("branch"),
 		event_key="order_muat_survey",
+	)
+
+
+def notify_position_survey_pending(survey):
+	"""Fire when a Container Position Survey is provisioned from an outbound (Tank Out)
+	booking — the tank has to be found in the yard before it can be pulled.
+
+	Team Survey's handoff, and the same exception `notify_eir_created` is: nothing stands
+	between this document and the work. Admin Ops does not release it, no method has to be
+	picked — the survey landing in `/survey-position` IS the job arriving. So creation and
+	handoff are one moment here too.
+	"""
+	cno = survey.get("container_no") or survey.get("container")
+	subject = f"Survey Posisi • {cno} — cari posisi tank (booking Tank Out)"
+	notify(
+		doctype=DOCTYPE_SURVEY,
+		name=survey.get("name"),
+		subject=subject,
+		branch=_depot_branch(survey.get("depot")),
+		event_key="position_survey_pending",
+	)
+
+
+def notify_position_surveyed(survey):
+	"""Fire when the surveyor records a position (Pending Survey -> Surveyed) — Team Kalmar's
+	handoff: the tank is located and its "udah turun" approval is now theirs to give.
+
+	The location note travels in the subject, trimmed. It is the one thing that decides
+	whether the operator walks to the right stack, and reading it from the bell saves the
+	tap that would otherwise be needed just to know where to go.
+	"""
+	cno = survey.get("container_no") or survey.get("container")
+	note = (survey.get("location_note") or "").strip().replace("\n", " ")
+	if len(note) > 60:
+		note = note[:57] + "…"
+	tail = f" • {note}" if note else ""
+	subject = f"Fix Posisi • {cno} — menunggu approval Kalmar{tail}"
+	notify(
+		doctype=DOCTYPE_SURVEY,
+		name=survey.get("name"),
+		subject=subject,
+		branch=_depot_branch(survey.get("depot")),
+		event_key="position_surveyed",
+	)
+
+
+def notify_position_confirmed(survey):
+	"""Fire when Team Kalmar approves ("udah turun") — the survey is finished and the tank is
+	standing where the release crew expects it.
+
+	Oversight only. The two field teams are both done by now: telling them again would ring a
+	bell about work nobody has to pick up, which is exactly what trains a crew to ignore it.
+	"""
+	cno = survey.get("container_no") or survey.get("container")
+	subject = f"Fix Posisi • {cno} — sudah turun & dikonfirmasi"
+	notify(
+		doctype=DOCTYPE_SURVEY,
+		name=survey.get("name"),
+		subject=subject,
+		branch=_depot_branch(survey.get("depot")),
+		event_key="position_confirmed",
 	)
 
 

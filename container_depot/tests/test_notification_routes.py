@@ -60,6 +60,9 @@ EVENT_DOCTYPES = [
 	("order_muat_survey", "Order Muat"),
 	("eir_out_hold", "Order Muat"),
 	("eir_out_hold", "Container"),
+	("position_survey_pending", "Container Position Survey"),
+	("position_surveyed", "Container Position Survey"),
+	("position_confirmed", "Container Position Survey"),
 	("gate_out", "Gate Entry"),
 	("booking_created", "Container Booking"),
 	("booking_submitted", "Container Booking"),
@@ -166,9 +169,9 @@ class TestNotificationRouteTable(FrappeTestCase):
 			"/cleaning/history?open=X",
 			"/mr?o=X",
 			"/mr/history?open=X",
-			"/survey-position",
+			"/survey-position?s=X",
 			"/survey-position/history?open=X",
-			"/position-fix",
+			"/position-fix?s=X",
 			"/gate",
 			"/gate/history?open=X",
 			"/monitor",
@@ -214,18 +217,30 @@ class TestNotificationRouteTable(FrappeTestCase):
 						f"{menu_dt} — {role} does not have it, so the bell leads nowhere",
 					)
 
+	# Events whose menu depends on the document's STATUS, with the state the event fires in.
+	# Container Position Survey is one doctype behind two menus (`surveyPos` records, `posFix`
+	# approves), so a generic stand-in would answer for the wrong half of the workflow and
+	# report Team Kalmar as routed to a menu they cannot open.
+	STANDIN_STATE = {
+		"position_survey_pending": {"status": "Pending Survey"},
+		"position_surveyed": {"status": "Surveyed"},
+		"position_confirmed": {"status": "Confirmed", "docstatus": 1},
+	}
+
 	def _menu_of(self, event_key, doctype):
 		"""The PWA menu an event's route belongs to, or None for a Desk-only event.
 
 		Derived by asking the real route table with a stand-in document, so there is no second
-		copy of the mapping to drift. The stand-in is a fresh/open document: the finished
-		variants of every resolver land in the same menu (`/eir/history` is still `eir`), so
-		the menu answer does not depend on which one is used.
+		copy of the mapping to drift. The stand-in is a fresh/open document unless the event
+		is listed in `STANDIN_STATE`: for most resolvers the finished variant lands in the same
+		menu (`/eir/history` is still `eir`), so the menu answer does not depend on which one
+		is used, and only the split-menu doctypes have to say.
 		"""
 		if not doctype:
 			return None
 		open_doc = frappe._dict(
-			{"docstatus": 0, "status": "Draft", "inspection_type": "EIR-In"}
+			{"docstatus": 0, "status": "Draft", "inspection_type": "EIR-In",
+			 **self.STANDIN_STATE.get(event_key, {})}
 		)
 		with patch.object(nr, "_state", lambda dt, name, fields: open_doc):
 			route = nr.route_for(doctype, "X-0001", event_key)
