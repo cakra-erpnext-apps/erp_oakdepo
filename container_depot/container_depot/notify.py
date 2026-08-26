@@ -633,8 +633,8 @@ def notify_order_muat_survey(order):
 
 
 def notify_position_survey_pending(survey, *, reopened=False):
-	"""Fire when a Container Position Survey is provisioned from an outbound (Tank Out)
-	booking — the tank has to be found in the yard before it can be pulled.
+	"""Fire when a Container Position Survey lands in the surveyor's worklist — provisioned
+	from an outbound (Tank Out) booking, or sent back for a redo (`reopened`).
 
 	Team Survey's handoff, and the same exception `notify_eir_created` is: nothing stands
 	between this document and the work. Admin Ops does not release it, no method has to be
@@ -661,8 +661,8 @@ def notify_position_survey_pending(survey, *, reopened=False):
 
 
 def notify_position_surveyed(survey, *, reopened=False):
-	"""Fire when the surveyor records a position (Pending Survey -> Surveyed) — Team Kalmar's
-	handoff: the tank is located and its "udah turun" approval is now theirs to give.
+	"""Fire when a survey lands in the Kalmar worklist — the surveyor recorded a position
+	(Pending Survey -> Surveyed), or a confirmed one was sent back for a redo (`reopened`).
 
 	The location note travels in the subject, trimmed. It is the one thing that decides
 	whether the operator walks to the right stack, and reading it from the bell saves the
