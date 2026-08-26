@@ -14,6 +14,8 @@
     "payment_type",
     "payment_terms",
     "credit_limit",
+    "storage_billing_mode",
+    "storage_free_days",
     "validity_section",
     "valid_from",
     "column_break_2",
@@ -202,10 +204,24 @@
       "fieldtype": "Attach",
       "label": "Signed PDF",
       "no_copy": 1
+    },
+    {
+      "default": "0",
+      "fieldname": "storage_free_days",
+      "fieldtype": "Int",
+      "label": "Storage Free Days",
+      "description": "Hari bebas storage untuk pelanggan ini. <b>0 = ikut default global</b> di Depot Finance Settings (Int tidak bisa menyimpan \"kosong\"); untuk benar-benar nol hari bebas, set default globalnya ke 0."
+    },
+    {
+      "fieldname": "storage_billing_mode",
+      "fieldtype": "Select",
+      "label": "Cara Charge Storage",
+      "options": "\nSaat Tank Keluar\nBerjalan (Periodik)",
+      "description": "<b>Saat Tank Keluar</b>: hari menginap baru ditagih setelah tank gate-out, sekali untuk seluruh kunjungan. <b>Berjalan (Periodik)</b>: ditagih jalan tiap periode meski tank belum keluar, sisanya ditagih saat keluar. Kosong = ikut default global di Depot Finance Settings."
     }
   ],
   "links": [],
-  "modified": "2026-08-20 13:00:00.000000",
+  "modified": "2026-08-26 12:00:00.000000",
   "module": "Container Depot",
   "name": "Depot Contract",
   "search_fields": "customer, status",

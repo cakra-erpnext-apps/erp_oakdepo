@@ -1,0 +1,209 @@
+{
+  "actions": [],
+  "allow_import": 0,
+  "autoname": "format:STG-{container}-{date_in_key}",
+  "creation": "2026-08-26 14:00:00.000000",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "header_section",
+    "container",
+    "principal",
+    "depot",
+    "column_break_1",
+    "status",
+    "gate_entry",
+    "source",
+    "stay_section",
+    "date_in",
+    "date_out",
+    "column_break_2",
+    "stay_days",
+    "date_in_key",
+    "billing_section",
+    "billing_mode",
+    "free_days",
+    "column_break_3",
+    "billed_until",
+    "billed_days",
+    "unbilled_days",
+    "invoice_section",
+    "sales_invoice"
+  ],
+  "fields": [
+    {
+      "fieldname": "header_section",
+      "fieldtype": "Section Break",
+      "label": "Kunjungan"
+    },
+    {
+      "fieldname": "container",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Container",
+      "options": "Container",
+      "read_only": 1,
+      "reqd": 1
+    },
+    {
+      "fieldname": "principal",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Tank Owner",
+      "options": "Customer",
+      "read_only": 1
+    },
+    {
+      "fieldname": "depot",
+      "fieldtype": "Link",
+      "label": "Depot",
+      "options": "Depot",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Berjalan",
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "label": "Status",
+      "options": "Berjalan\nUnpaid\nPartly Paid\nPaid",
+      "read_only": 1,
+      "description": "Dihitung otomatis. <b>Berjalan</b>: tank masih di depo. <b>Unpaid</b>: kunjungan selesai / hari berjalan belum ada yang ditagih. <b>Partly Paid</b>: sebagian hari sudah ditagih. <b>Paid</b>: seluruh hari kunjungan ini sudah ditagih."
+    },
+    {
+      "fieldname": "gate_entry",
+      "fieldtype": "Link",
+      "label": "Gate Entry",
+      "options": "Gate Entry",
+      "read_only": 1
+    },
+    {
+      "fieldname": "source",
+      "fieldtype": "Data",
+      "label": "Sumber Tanggal",
+      "read_only": 1,
+      "description": "Dokumen asal tanggal masuk/keluar. Selain <i>Gate Entry</i> berarti tanggalnya turunan (log status / EIR), bukan catatan gate."
+    },
+    {
+      "fieldname": "stay_section",
+      "fieldtype": "Section Break",
+      "label": "Menginap"
+    },
+    {
+      "fieldname": "date_in",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Masuk",
+      "read_only": 1,
+      "reqd": 1
+    },
+    {
+      "fieldname": "date_out",
+      "fieldtype": "Datetime",
+      "in_list_view": 1,
+      "label": "Keluar",
+      "read_only": 1,
+      "description": "Kosong = tank masih di depo."
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "stay_days",
+      "fieldtype": "Int",
+      "label": "Hari Menginap",
+      "read_only": 1,
+      "description": "Seluruh hari kunjungan ini sampai keluar (atau sampai hari ini kalau masih di depo). Fakta fisik — tidak berubah oleh penagihan."
+    },
+    {
+      "fieldname": "date_in_key",
+      "fieldtype": "Data",
+      "hidden": 1,
+      "label": "Date In Key",
+      "read_only": 1
+    },
+    {
+      "fieldname": "billing_section",
+      "fieldtype": "Section Break",
+      "label": "Penagihan"
+    },
+    {
+      "fieldname": "billing_mode",
+      "fieldtype": "Data",
+      "label": "Cara Charge",
+      "read_only": 1,
+      "description": "Disalin dari Depot Contract saat kunjungan dibuka, supaya tagihan lama tidak berubah artinya ketika kontraknya direnegosiasi."
+    },
+    {
+      "fieldname": "free_days",
+      "fieldtype": "Int",
+      "label": "Free Days",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_3",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "billed_until",
+      "fieldtype": "Date",
+      "label": "Ditagih s/d",
+      "read_only": 1,
+      "description": "Watermark PER KUNJUNGAN. Inilah yang membuat kunjungan lama yang belum ditagih tidak bisa tertelan oleh kunjungan baru yang sudah ditagih."
+    },
+    {
+      "fieldname": "billed_days",
+      "fieldtype": "Int",
+      "label": "Hari Sudah Ditagih",
+      "read_only": 1
+    },
+    {
+      "fieldname": "unbilled_days",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Hari Belum Ditagih",
+      "read_only": 1
+    },
+    {
+      "fieldname": "invoice_section",
+      "fieldtype": "Section Break",
+      "label": "Invoice"
+    },
+    {
+      "fieldname": "sales_invoice",
+      "fieldtype": "Link",
+      "label": "Sales Invoice",
+      "options": "Sales Invoice",
+      "read_only": 1
+    }
+  ],
+  "links": [],
+  "modified": "2026-08-26 14:00:00.000000",
+  "module": "Container Depot",
+  "name": "Storage Charge",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1
+    }
+  ],
+  "search_fields": "container, principal, status",
+  "sort_field": "date_in",
+  "sort_order": "DESC",
+  "title_field": "container",
+  "track_changes": 1
+}

@@ -296,6 +296,30 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "Storage Charges",
+   "link_to": "Storage Charges",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-reports"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Storage Charge",
+   "link_to": "Storage Charge",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-calender"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Depot Finance Settings",
    "link_to": "Depot Finance Settings",
    "link_type": "DocType",
@@ -754,7 +778,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-21 05:00:00.000000",
+ "modified": "2026-08-26 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

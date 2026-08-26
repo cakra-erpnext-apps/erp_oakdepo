@@ -177,3 +177,16 @@ def sweep_stale_notifications() -> int:
 	from container_depot.container_depot.notify import sweep_stale_notifications as _run
 
 	return _run()
+
+
+def sync_storage_charges() -> int:
+	"""Daily: reconcile the Storage Charge ledger with what the gate records say.
+
+	``Container.on_update`` already opens and closes a visit as a tank arrives and leaves,
+	so this sweep exists for the corrections nobody's status change touches — a backdated
+	Gate Entry, a hand-fixed timestamp, a visit whose sync failed. Cheap and idempotent:
+	the ledger is derived, so re-deriving it converges rather than accumulating.
+	"""
+	from container_depot import storage_charge
+
+	return storage_charge.sync_all()

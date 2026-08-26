@@ -6,7 +6,12 @@
   "enable_finance",
   "finance_note",
   "column_break_start",
-  "finance_start_date"
+  "finance_start_date",
+  "storage_section",
+  "storage_free_days",
+  "storage_billing_mode",
+  "column_break_storage",
+  "storage_day_count"
  ],
  "fields": [
   {
@@ -34,11 +39,43 @@
    "fieldtype": "Date",
    "label": "Tagih Mulai Tanggal",
    "description": "Batas bawah penagihan. Pekerjaan sebelum tanggal ini tidak ikut tersapu saat Generate Invoice. Kosongkan untuk menagih semua riwayat."
+  },
+  {
+   "fieldname": "storage_section",
+   "fieldtype": "Section Break",
+   "label": "Storage (Menginap)"
+  },
+  {
+   "default": "0",
+   "fieldname": "storage_free_days",
+   "fieldtype": "Int",
+   "label": "Free Days (default)",
+   "description": "Jumlah hari pertama tiap kunjungan yang tidak ditagih. Dihitung dari tanggal masuk, per kunjungan — bukan per bulan. Bisa ditimpa per pelanggan di Depot Contract."
+  },
+  {
+   "fieldname": "column_break_storage",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Hari masuk & keluar dihitung",
+   "fieldname": "storage_day_count",
+   "fieldtype": "Select",
+   "label": "Cara Hitung Hari",
+   "options": "Hari masuk & keluar dihitung\nHari keluar tidak dihitung",
+   "description": "Tank masuk 1 Jan dan keluar 3 Jan = 3 hari (masuk & keluar dihitung) atau 2 hari (hari keluar tidak dihitung)."
+  },
+  {
+   "fieldname": "storage_billing_mode",
+   "fieldtype": "Select",
+   "label": "Cara Charge Storage (default)",
+   "options": "Saat Tank Keluar\nBerjalan (Periodik)",
+   "description": "Dipakai untuk tank owner yang kontraknya tidak menentukan sendiri. <b>Saat Tank Keluar</b>: tagih sekali setelah gate-out. <b>Berjalan (Periodik)</b>: tagih jalan tiap periode meski tank belum keluar.",
+   "default": "Saat Tank Keluar"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-08-26 13:00:00.000000",
  "module": "Container Depot",
  "name": "Depot Finance Settings",
  "permissions": [

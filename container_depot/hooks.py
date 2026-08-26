@@ -218,6 +218,9 @@ scheduler_events = {
 		# Reconcile the bell: doc_events miss raw/bulk deletes, so sweep the feed
 		# entries whose source document is cancelled or gone.
 		"container_depot.tasks.sweep_stale_notifications",
+		# Reconcile the storage-visit ledger with the gate records (see the task's docstring
+		# for why the status hook alone is not enough).
+		"container_depot.tasks.sync_storage_charges",
 	],
 	"cron": {
 		"*/5 * * * *": [

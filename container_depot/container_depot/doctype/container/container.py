@@ -108,6 +108,12 @@ class Container(Document):
 			"to_status": self.status,
 		}).insert(ignore_permissions=True)
 
+		# The same transition opens or closes a storage visit. Derived from the gate
+		# records rather than from this event, so it self-heals; see storage_charge.sync.
+		from container_depot import storage_charge
+
+		storage_charge.on_container_status_change(self)
+
 
 @frappe.whitelist()
 def seal_history(container: str) -> list:

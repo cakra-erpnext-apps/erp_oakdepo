@@ -105,3 +105,6 @@ container_depot.patches.v0_75.push_lift_on_to_open_eirs
 container_depot.patches.v0_76.kalmar_gate_access
 container_depot.patches.v0_76.prune_dead_notification_recipients
 container_depot.patches.v0_77.drop_oak_booking_container_print_format
+container_depot.patches.v0_79.seed_storage_size_items
+container_depot.patches.v0_80.backfill_storage_charges
+container_depot.patches.v0_81.lock_storage_charge_perms

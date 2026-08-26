@@ -27,6 +27,15 @@ ITEM_FOR_ORDER_TYPE = {
 LIFT_ON_ITEM = "Lift On"
 LIFT_OFF_ITEM = "Lift Off"
 STORAGE_ITEM = "Storage per Day"
+# Storage is priced PER SIZE — a 40ft eats twice the yard slot a 20ft does, so the rate
+# cards quote it per size. The generic ``Storage per Day`` above stays as the fallback:
+# it is what every existing contract is priced on, and a depot that charges one flat
+# storage rate never has to create the size items at all.
+STORAGE_ITEM_BY_SIZE = {
+	"20'": "Storage per Day 20FT",
+	"40'": "Storage per Day 40FT",
+	"45'": "Storage per Day 45FT",
+}
 # Representative cleaning charge billed per Cleaning Order. Adjust to the grade a
 # customer's rate card actually negotiates if cleaning is priced per wash type.
 CLEANING_ITEM = "Standard Cleaning"
@@ -185,3 +194,24 @@ def order_amount(order):
 		item = ITEM_FOR_ORDER_TYPE.get(order.get("order_type"))
 		rate = resolve_tariff_rate(contract, item)
 	return (rate or 0) * qty, (rate or 0)
+
+
+def storage_item_for(size: str | None) -> str:
+	"""The storage service Item a container of this size is priced on."""
+	return STORAGE_ITEM_BY_SIZE.get(size) or STORAGE_ITEM
+
+
+def storage_rate_for(contract, size: str | None):
+	"""``(rate, item)`` — the storage day-rate for one size on one contract.
+
+	Falls back from the size-specific Item to the generic ``Storage per Day`` whenever the
+	rate card prices no size (the normal case until someone fills the size rates in), and
+	returns ``(0, item)`` when it prices neither. A zero rate is not an error here: the day
+	count is the point, and the money can be filled in later without the days changing.
+	"""
+	item = storage_item_for(size)
+	if item != STORAGE_ITEM:
+		rate = resolve_tariff_rate(contract, item)
+		if rate:
+			return rate, item
+	return resolve_tariff_rate(contract, STORAGE_ITEM), STORAGE_ITEM

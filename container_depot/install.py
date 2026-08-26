@@ -1443,7 +1443,11 @@ STOCK_ROLE_PROFILES = ["Accounts", "HR", "Inventory", "Manufacturing", "Purchase
 
 # Container Depot doctypes that record what happened rather than drive it. Read-only for
 # everyone: these are written by hooks, never by hand.
-AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log"}
+# Storage Charge belongs here for the same reason as the rest: every field on it is
+# derived from the gate records by ``storage_charge.sync``, so a hand-typed row is a row
+# that disagrees with the yard — and one hand-edited "Ditagih s/d" is a day billed twice
+# or never. It is read + corrected, never created.
+AUDIT_DOCTYPES = {"Container Activity", "Container Movement", "SST Activity Log", "Storage Charge"}
 
 # Doctypes nobody may CREATE from the Desk — the audit ledgers above plus Gate Entry.
 #
@@ -1534,6 +1538,7 @@ FIELD_ROLE_MATRIX = [
 # they are defined as "everything except…" rather than as a list.
 OFFICE_ROLE_MATRIX = {
 	"Cashier": {
+		"Storage Charge": "r",
 		"Container Booking": "r",
 		"Gate Entry": "r",
 		"Container": "r",
@@ -1541,6 +1546,7 @@ OFFICE_ROLE_MATRIX = {
 		"Order Bongkar": "r",
 	},
 	"Finance": {
+		"Storage Charge": "r",
 		"Container Booking": "r",
 		"Gate Entry": "r",
 		"Container": "r",
@@ -1551,6 +1557,7 @@ OFFICE_ROLE_MATRIX = {
 		"Depot Contract": "r",
 	},
 	"Commercial": {
+		"Storage Charge": "r",
 		"Depot Contract": "rwcsxa",
 		"Depot Service Menu": "rwc",
 		"Container": "r",
