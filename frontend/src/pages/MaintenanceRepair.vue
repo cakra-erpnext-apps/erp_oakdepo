@@ -367,6 +367,7 @@ import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { hMinus, liftClass } from "@/utils/liftOn"
 import { toast } from "@/utils/toast"
+import { claimMessage, isClaimed } from "@/utils/claim"
 import { openLightbox } from "@/utils/lightbox"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
@@ -561,6 +562,14 @@ const detailRes = cachedResource({
 	// operator would be left staring at a worklist wondering why their tap did nothing.
 	onError(err) {
 		detailPending.value = false
+		// Sudah dipegang rekan lain — kasusnya hampir selalu tautan notifikasi, karena
+		// worklist sendiri sudah menyembunyikannya. Ini bukan kegagalan yang perlu tombol
+		// "coba lagi": sebut siapa yang memegang lalu pulangkan ke worklist.
+		if (isClaimed(err)) {
+			toast.error(claimMessage(err))
+			router.replace({ query: {} })
+			return
+		}
 		detailFailed.value = true
 		detailError.value = err?.messages?.[0] || err?.message || labels.error
 	},

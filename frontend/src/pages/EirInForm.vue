@@ -287,6 +287,7 @@ import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
+import { claimMessage, isClaimed } from "@/utils/claim"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
@@ -434,6 +435,14 @@ const openRes = cachedResource({
 				nextTick(() => {
 				suppressSave.value = false
 			})
+	},
+	// Rekan lain sudah menekan "Mulai" di tangki ini — tautan notifikasi masih bisa
+	// mendaratkan kita di sini. Sebut siapa yang memegangnya lalu kembali ke worklist,
+	// daripada memperlihatkan form yang pasti ditolak server waktu autosave.
+	onError(err) {
+		if (!isClaimed(err)) return
+		toast.error(claimMessage(err))
+		emit("back")
 	},
 })
 

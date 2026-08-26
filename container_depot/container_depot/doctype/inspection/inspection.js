@@ -220,6 +220,7 @@ function render_system_facts(frm) {
 		[__('Serial No'), doc.serial_no && esc(doc.serial_no)],
 		[__('Spesifikasi Tank'), spec],
 		[__('Tanggal Tank'), tank_dates],
+		[__('Dimulai Oleh'), link('User', doc.work_started_by)],
 		[__('Waktu Pengerjaan'), work],
 		[__('Durasi Pengerjaan'), doc.work_duration && frappe.format(doc.work_duration, { fieldtype: 'Duration' })],
 		[__('Foto Belum Disortir'), doc.has_unsorted_photos ? __('Ada') : null],

@@ -653,6 +653,7 @@
    "fieldname": "work_started_on",
    "fieldtype": "Datetime",
    "hidden": 1,
+   "in_list_view": 1,
    "label": "Mulai Pengerjaan",
    "read_only": 1
   },
@@ -661,6 +662,7 @@
    "fieldname": "work_started_by",
    "fieldtype": "Link",
    "hidden": 1,
+   "in_list_view": 1,
    "label": "Dimulai Oleh",
    "options": "User",
    "read_only": 1
@@ -691,7 +693,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-24 17:00:00.000000",
+ "modified": "2026-08-26 11:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

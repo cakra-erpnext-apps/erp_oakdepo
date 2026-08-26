@@ -29,3 +29,17 @@ class AlreadySettled(frappe.ValidationError):
 	shows the two differently: a settled row is a fact to be acknowledged and discarded, not
 	a failure to be retried for ever. See ``frontend/src/data/outbox.js``.
 	"""
+
+
+class ClaimedByAnother(frappe.ValidationError):
+	"""Pekerjaan ini sudah dipegang operator lain sejak dia menekan "Mulai".
+
+	Bukan soal izin — di Desk semua orang yang berwenang tetap melihat dan membuka dokumen
+	yang sama. Ini pagar lapangan: satu tangki tidak boleh dikerjakan (dan diisi checklist-nya)
+	dua orang sekaligus, dan begitu diklaim harus jelas siapa yang memegangnya.
+
+	Dipisahkan dari ``AlreadySettled`` karena artinya berbeda: dokumennya belum selesai, hanya
+	bukan giliran pemanggil. PWA membacanya lewat ``exc_type`` untuk menampilkan toast dan
+	memulangkan operator ke worklist — kasus paling sering: dia menekan notifikasi untuk
+	order yang sudah diambil rekannya. Lihat ``container_depot.container_depot.work_claim``.
+	"""

@@ -20,6 +20,7 @@ from frappe.utils import cint, flt, getdate, now_datetime, time_diff_in_seconds,
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
+from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 # Damage code "v" = Acceptable — it is recorded as a condition but does not mean
@@ -1108,6 +1109,9 @@ def start_eir(inspection: str) -> dict:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
 	doc.check_permission("write")
+	# First press wins: a second operator pressing Mulai on the same tank is refused rather
+	# than silently sharing the draft.
+	guard_claim(doc.work_started_by, _("EIR {0}").format(doc.inspection_id or doc.name))
 	if not doc.work_started_on:
 		# Stamp who started it too, so the PWA can scope the "next/prev EIR" navigator to
 		# the EIRs this account is working (idempotent: keep the original starter).
@@ -1235,6 +1239,9 @@ def save_draft(
 	# (see ``start_eir``), so every saved EIR carries a real work-start timestamp.
 	if not doc.work_started_on:
 		frappe.throw(_("Tekan \"Mulai\" dulu sebelum mengisi EIR ini."))
+	# Whoever pressed Mulai owns the checklist until it is sent for review — including an
+	# autosave that only reaches the server later, out of the offline queue.
+	guard_claim(doc.work_started_by, _("EIR {0}").format(doc.inspection_id or doc.name))
 
 	submit = _as_bool(submit)
 	items = _checklist_items()
@@ -1498,6 +1505,9 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		order_by="creation desc",
 		limit_page_length=0,
 	)
+	# An EIR somebody already pressed "Mulai" on belongs to them — it leaves everyone else's
+	# worklist so two surveyors never fill in the same tank (see work_claim).
+	items = filter_claimed(items, "work_started_by")
 	# Whole list, then sort, then slice: the priority order is decided in Python (see
 	# _by_lift_on), so SQL cannot page it. The open EIR list is bounded by the tanks in the
 	# yard, which is what makes that affordable.
@@ -1682,6 +1692,8 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 		order_by="creation desc",
 		limit_page_length=0,
 	)
+	# See list_pending_eirs: an EIR-Out that is already being worked leaves the others' list.
+	items = filter_claimed(items, "work_started_by")
 	# See list_pending_eirs: priority is decided in Python, so SQL cannot page it.
 	total = len(items)
 	items = _by_lift_on(items, start, page_length)
@@ -1703,6 +1715,12 @@ def open_draft_by_name(inspection: str) -> dict:
 	if doc.docstatus != 0:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
+	# The worklist already hides an EIR somebody else started, but a notification link carries
+	# the name straight here — so the refusal has to live on the endpoint too. Not applied to
+	# "Pending Review": that one is out of the field's hands and anyone in the branch may pull
+	# it back (see ``withdraw_review``).
+	if doc.status != "Pending Review":
+		guard_claim(doc.work_started_by, _("EIR {0}").format(doc.inspection_id or doc.name))
 	header = prefill(container=doc.container)
 	return _draft_payload(doc, header)
 

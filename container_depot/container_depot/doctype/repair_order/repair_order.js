@@ -306,6 +306,7 @@ frappe.ui.form.on('Repair Order', {
 			[__('Order Created'), frm.doc.order_created && esc(frappe.datetime.str_to_user(frm.doc.order_created))],
 			[__('Inspection Reference'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],
+			[__('Dikerjakan Oleh'), link('User', frm.doc.started_by)],
 			[__('Start Date'), frm.doc.start_date && esc(frappe.datetime.str_to_user(frm.doc.start_date))],
 			[__('Completion Date'), frm.doc.completion_date && esc(frappe.datetime.str_to_user(frm.doc.completion_date))],
 			// One line per currency: an M&R can mix them (each Item Price carries its own),

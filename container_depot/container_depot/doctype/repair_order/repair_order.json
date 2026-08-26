@@ -29,6 +29,7 @@
   "container_booking",
   "reff_email",
   "start_date",
+  "started_by",
   "completion_date",
   "requested_on",
   "decided_on",
@@ -225,6 +226,15 @@
    "hidden": 1
   },
   {
+   "description": "Otomatis: petugas yang menekan “Mulai” di PWA depot — bukan pembuat dokumen. Selama dia memegangnya, M&R ini hilang dari worklist PWA operator lain.",
+   "fieldname": "started_by",
+   "fieldtype": "Link",
+   "label": "Dikerjakan Oleh",
+   "options": "User",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
    "fieldname": "completion_date",
    "fieldtype": "Datetime",
    "label": "Completion Date",
@@ -329,7 +339,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-24 16:00:00.000000",
+ "modified": "2026-08-26 10:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

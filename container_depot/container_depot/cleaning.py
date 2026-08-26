@@ -18,6 +18,7 @@ from frappe import _
 from frappe.utils import cint, getdate, now_datetime, today
 
 from container_depot.container_depot.exceptions import AlreadySettled
+from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
 # Tank-spec fields read from the Container master for the form header + print.
@@ -108,11 +109,14 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		or_filters=or_filters,
 		# container_principal: the tank OWNER, shown next to the container number in the
 		# worklist — two tanks in the queue are told apart by whose they are.
+		# assigned_to: who pressed "Mulai". Not shown on the row — it is what hides an order
+		# already being washed from everyone else's worklist (see work_claim).
 		fields=["name", "order_id", "container", "container_no", "container_principal", "status",
-			"cleaning_type", "last_cargo", "depot", "target_lift_on", "order_created"],
+			"cleaning_type", "last_cargo", "depot", "target_lift_on", "order_created", "assigned_to"],
 		order_by="order_created asc",
 		limit_page_length=0,
 	)
+	items = filter_claimed(items, "assigned_to")
 	# Priority: nearest customer target lift-on first; unstamped keep their queue order below.
 	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
 	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
@@ -182,6 +186,9 @@ def start_cleaning(cleaning_order):
 			exc=AlreadySettled,
 		)
 	_guard_container_branch(co.container)
+	# First press wins — see work_claim.
+	claim = frappe.db.get_value("Cleaning Order", co.name, ["assigned_to", "order_id"], as_dict=True)
+	guard_claim(claim.assigned_to, _("Cleaning Order {0}").format(claim.order_id or co.name))
 
 	if co.status != "In_Progress":
 		# doc.save() and not db.set_value: Cleaning Order tracks changes, and only the
@@ -399,6 +406,11 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 	defaults."""
 	co = frappe.get_doc("Cleaning Order", cleaning_order)
 	_guard_container_branch(co.container)
+	# Only while the washing is actually running: a notification tap must not drop a second
+	# operator into a form somebody else is filling in. Once it is sent for review or closed
+	# the claim is over and the Riwayat detail stays readable to the whole branch.
+	if co.status == "In_Progress":
+		guard_claim(co.assigned_to, _("Cleaning Order {0}").format(co.order_id or co.name))
 	c = frappe.db.get_value("Container", co.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
 	user = frappe.session.user
 	return {
@@ -502,6 +514,10 @@ def save_cleaning_order(
 			_("Cleaning Order sudah dikirim untuk review Admin Ops."), exc=AlreadySettled
 		)
 	_guard_container_branch(co.container)
+	# The operator who started it owns the form until it leaves for review — an autosave that
+	# only reaches the server later (offline queue) is checked here too.
+	if co.status == "In_Progress":
+		guard_claim(co.assigned_to, _("Cleaning Order {0}").format(co.order_id or co.name))
 
 	# "Metode Cleaning" is now one OR MORE billable Service items (each priced from the
 	# owner's Price List); the controller resolves every row's rate + the total. The legacy

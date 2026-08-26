@@ -27,6 +27,7 @@ from frappe.utils import cint, flt, getdate, now_datetime
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
+from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
 from container_depot.container_depot.service_menu import filter_items_by_menu, is_real_menu
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots, get_user_warehouses
@@ -285,10 +286,13 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
+		# started_by: who pressed "Mulai" — what hides a job already in someone's hands from
+		# everyone else's worklist (see work_claim).
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "target_lift_on", "creation"],
+			"principal", "depot", "total_cost", "target_lift_on", "creation", "started_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
+	items = filter_claimed(items, "started_by")
 	# Priority: nearest customer target lift-on first; unstamped keep their creation order below.
 	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
 	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
@@ -360,10 +364,12 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
+		# See list_open_mr_orders: started_by is the claim, not a displayed column.
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "target_lift_on", "creation"],
+			"principal", "depot", "total_cost", "target_lift_on", "creation", "started_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
+	items = filter_claimed(items, "started_by")
 	# Priority: nearest customer target lift-on first; unstamped keep their creation order below.
 	# (order_by can't COALESCE in this Frappe, so sort in Python — the open worklist is small.)
 	items.sort(key=lambda r: getdate(r.get("target_lift_on") or "2999-12-31"))
@@ -432,6 +438,11 @@ def get_mr_order_detail(repair_order) -> dict:
 	photos) and the tank spec."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
+	# Only while the job is actually running: a notification tap must not drop a second
+	# operator into a form somebody else is filling in. Once it is sent for review or closed
+	# the claim is over and the Riwayat detail stays readable to the whole branch.
+	if ro.status == "In Progress":
+		guard_claim(ro.started_by, _("M&R {0}").format(ro.repair_order_id or ro.name))
 	c = frappe.db.get_value("Container", ro.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
 
 	dmg_desc = {d.name: d.description for d in frappe.get_all("Inspection Damage Code", fields=["name", "description"])}
@@ -897,6 +908,10 @@ def start_repair(repair_order):
 	starting gun (see :func:`forward_to_team`)."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
+	# First press wins — see work_claim. Checked BEFORE the status gate: a job a colleague
+	# already started is "In Progress", and "teruskan ke team dulu" would be a confusing way
+	# to say "Budi is holding it".
+	guard_claim(ro.started_by, _("M&R {0}").format(ro.repair_order_id or ro.name))
 	if ro.status != "Pending":
 		frappe.throw(
 			_("M&R harus diteruskan ke team dulu sebelum dikerjakan (status: {0}).").format(ro.status)
@@ -904,6 +919,11 @@ def start_repair(repair_order):
 	ro.status = "In Progress"
 	if not ro.start_date:
 		ro.start_date = now_datetime()
+	# Who is doing the work is whoever pressed "Mulai" here — not whoever built the estimate
+	# in Desk. Same rule as Cleaning Order.assigned_to and Inspection.work_started_by, and it
+	# is what keeps the job in this operator's hands until it leaves for review.
+	if not ro.started_by:
+		ro.started_by = frappe.session.user
 	ro.save()
 	return {"success": True, "name": ro.name, "status": ro.status}
 
@@ -1286,6 +1306,10 @@ def save_mr_order(
 	if ro.status in ("Completed", "Cancelled", "Rejected"):
 		frappe.throw(_("M&R sudah {0}.").format(ro.status), exc=AlreadySettled)
 	_guard_container_branch(ro.container)
+	# The operator who started it owns the form until it leaves for review — an autosave that
+	# only reaches the server later (offline queue) is checked here too.
+	if ro.status == "In Progress":
+		guard_claim(ro.started_by, _("M&R {0}").format(ro.repair_order_id or ro.name))
 
 	submitting = _as_bool(submit)
 	if submitting and ro.status != "In Progress":

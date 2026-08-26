@@ -323,6 +323,9 @@ const openRes = cachedResource({
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		// Sudah dipegang rekan lain (biasanya dari tautan notifikasi): pulangkan ke worklist,
+		// form ini tidak akan bisa disimpan. Lihat EirInForm.vue.
+		if (isClaimed(err)) emit("back")
 	},
 })
 const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] || openRes.error.message : null))
