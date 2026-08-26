@@ -93,9 +93,23 @@ def allowed_menu(user: str = None) -> list:
 	return [key for key, _route, dt, ptype in _MENU if frappe.has_permission(dt, ptype, user=user)]
 
 
+def depot_roles(user: str = None) -> list:
+	"""The user's roles that are depot roles, sorted, e.g. ["SPV Lapangan", "Team EIR"].
+
+	The PWA names the account by what it does ("Team Cleaning") rather than by its menu
+	list. `frappe.get_roles` also returns All / Guest / Desk User and whatever ERPNext
+	roles the account carries alongside, none of which say anything about depot work —
+	so the answer is intersected with the same `is_depot_field_role` set that decides
+	whether the PWA opens at all. An account with none (office staff) gets [], which is
+	the same signal as the empty menu.
+	"""
+	return sorted(_field_roles() & set(frappe.get_roles(user or frappe.session.user)))
+
+
 @frappe.whitelist(methods=["GET"])
 def get_user_context():
-	"""GET /api/v1/ess/user-context — {user, full_name, user_image, roles, branches, all_branches}."""
+	"""GET /api/v1/ess/user-context — {user, full_name, user_image, roles, depot_roles,
+	branches, all_branches}."""
 	_require_authenticated_user()
 	user = frappe.session.user
 	info = frappe.db.get_value("User", user, ["full_name", "user_image"], as_dict=True) or {}
@@ -107,6 +121,7 @@ def get_user_context():
 		# The PWA falls back to initials when this is empty — see ess.profile for the writer.
 		"user_image": info.get("user_image") or None,
 		"roles": frappe.get_roles(user),
+		"depot_roles": depot_roles(user),
 		"branches": branches or [],
 		"all_branches": branches is None,
 	}

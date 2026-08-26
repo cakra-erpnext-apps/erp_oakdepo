@@ -167,6 +167,23 @@ class CleaningOrder(Document):
 		from container_depot.container_depot.container_status import recompute_availability
 
 		recompute_availability(self.container)
+		self._notify_if_forwarded_to_team()
+
+	def _notify_if_forwarded_to_team(self):
+		"""Service Setup -> Pending is the handoff: ring the cleaning crew, and only here.
+
+		"Teruskan ke Team" is a plain status edit on the form (no endpoint of its own), so
+		the transition is watched on the controller — that way the PWA, a bulk edit or an
+		import all reach the same bell. Order creation deliberately does not notify the crew;
+		see ``install.NOTIFICATION_RULES``.
+		"""
+		before = self.get_doc_before_save()
+		if not before or before.status == self.status:
+			return
+		if before.status == "Service Setup" and self.status == "Pending":
+			from container_depot.container_depot.notify import notify_cleaning_forwarded_to_team
+
+			notify_cleaning_forwarded_to_team(self.name)
 
 	def on_cancel(self):
 		# Cancelling (docstatus 2) takes the order out of `container_open_orders` — the

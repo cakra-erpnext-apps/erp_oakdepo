@@ -1906,30 +1906,64 @@ def setup_permissions():
 # manager who gets a bell for every tank arriving stops reading the bell, and then misses
 # the approval that mattered. Resist adding them to operational events.
 #
+# THE FIELD TEAMS ARE ONLY TOLD ON HANDOFF. Team EIR / Team Cleaning / Team Repair sit on
+# the events where work is HANDED to them, never on "an order was created / submitted".
+# A tank arriving is not yet their job: Admin Ops still picks the cleaning method, still
+# waits for the owner to approve an estimate, still decides the depot is ready to start.
+# Ringing the team at creation trains them to chase orders Admin Ops has not released —
+# and to tune out the bell that finally says the work is theirs. So creation is Admin Ops
+# + SPV Lapangan, and each team hears exactly one thing:
+#
+#     cleaning_order_forwarded  Cleaning Order, Service Setup -> Pending ("Teruskan ke Team")
+#     repair_order_forwarded    Repair Order,   Approved      -> Pending ("Teruskan ke Team")
+#     eir_created               Inspection,     draft dibuat  ("EIR dibuat")
+#
+# Team EIR's line reads differently from the other two, and deliberately. There IS no Admin
+# Ops step in front of an EIR — the tank is at the gate, the draft is provisioned by the bon
+# submit itself, and the checklist is the work — so for this queue creation and handoff are
+# the same moment, and `eir_created` is that moment. It is still ONE bell on ONE event: they
+# stay off `order_muat_survey` and `eir_submitted`, which fire on the bon and on a FINISHED
+# inspection respectively, neither of which is a job landing in their worklist.
+# (v0_78.team_notified_on_handoff_only took them off those two; `eir_created` is what they
+# were given instead.)
+#
 # (event_key, label, description, [roles])
 NOTIFICATION_RULES = [
-	# Team Cleaning / Team Repair are deliberately NOT here. Their Inspection perm is read-only,
-	# so `/eir` (which the tap resolves to) refuses them the menu and the bell leads nowhere —
-	# and the EIR that concerns them already fires `cleaning_order_created` / `repair_order_created`,
-	# which opens the order they can actually work. Adding them back re-creates a dead notification.
-	("eir_submitted", "EIR disubmit", "Sebuah EIR (In/Out) disubmit — tank selesai diperiksa.",
+	# The only rule Team EIR is on. Fires on the DRAFT, which is the thing they can actually
+	# pick up — see `notify.notify_eir_created` for why creation is the handoff here.
+	("eir_created", "EIR dibuat", "EIR draft dibuat (otomatis dari bon Bongkar/Muat, atau manual) — tank menunggu diperiksa.",
 		["Team EIR", "SPV Lapangan", "Admin Ops"]),
+	# No field team here at all. Team Cleaning / Team Repair hold read-only Inspection, so `/eir`
+	# (which the tap resolves to) refuses them the menu and the bell leads nowhere. Team EIR was
+	# dropped for the other reason: this fires when an EIR is *finished*, which is news to whoever
+	# is waiting on the tank, not to the crew that just recorded it.
+	("eir_submitted", "EIR disubmit", "Sebuah EIR (In/Out) disubmit — tank selesai diperiksa.",
+		["SPV Lapangan", "Admin Ops"]),
 	("eir_pending_review", "EIR menunggu review", "Operator lapangan mengirim EIR untuk direview Admin Ops.",
 		["Admin Ops", "SPV Lapangan"]),
 	("cleaning_pending_review", "Cleaning menunggu review", "Operator cuci selesai di PWA dan mengirim order untuk direview Admin Ops.",
 		["Admin Ops", "SPV Lapangan"]),
-	("cleaning_order_created", "Cleaning Order dibuat", "Cleaning Order otomatis dibuat dari EIR Empty-Dirty.",
+	# Lands in Admin Ops' queue as Service Setup, where the cleaning method is still to be picked —
+	# the crew cannot start on it yet, so they are not told yet. `cleaning_order_forwarded` is theirs.
+	("cleaning_order_created", "Cleaning Order dibuat", "Cleaning Order otomatis dibuat dari EIR Empty-Dirty — masuk antrean Admin Ops (Service Setup).",
+		["SPV Lapangan", "Admin Ops"]),
+	("cleaning_order_forwarded", "Cleaning diteruskan ke team", "Admin Ops sudah memilih metode cleaning dan meneruskan order — masuk worklist PWA team cuci.",
 		["Team Cleaning", "SPV Lapangan", "Admin Ops"]),
+	# Draft only: nothing may be worked until the owner approves the estimate and Admin Ops
+	# forwards it. The team's bell is `repair_order_forwarded`.
 	("repair_order_created", "M&R dibuat", "Repair Order draft otomatis dibuat dari EIR yang menemukan kerusakan.",
-		["Team Repair", "SPV Lapangan", "Admin Ops"]),
+		["SPV Lapangan", "Admin Ops"]),
 	("repair_order_service_setup", "M&R menunggu review", "Team repair selesai di PWA dan mengirim order untuk direview Admin Ops; part belum keluar gudang sampai Desk menyelesaikan.",
 		["Admin Ops", "SPV Lapangan"]),
 	("repair_order_forwarded", "M&R diteruskan ke team", "Admin Ops meneruskan M&R yang sudah disetujui owner — order masuk worklist PWA team repair.",
 		["Team Repair", "SPV Lapangan", "Admin Ops"]),
 	("repair_order_pending_approval", "M&R menunggu approval owner", "Estimasi M&R dikirim ke owner tank.",
 		["Admin Ops", "Management"]),
+	# An owner's "yes" is not yet a work order — dispatch is a separate decision Admin Ops takes
+	# (`repair_order_forwarded`), so telling the team here would ring twice for one job and, on a
+	# "no", ring about work that will never come.
 	("repair_order_decided", "Owner memutuskan M&R", "Owner menyetujui / menolak / minta revisi estimasi M&R.",
-		["Team Repair", "SPV Lapangan", "Admin Ops"]),
+		["SPV Lapangan", "Admin Ops"]),
 	("repair_revision_requested", "Team minta M&R dibuka lagi", "Team repair mengajukan revisi atas M&R yang sudah ditutup — Admin Ops yang memutuskan membukanya.",
 		["Admin Ops", "SPV Lapangan"]),
 	("eir_revision_requested", "Team minta EIR dibuka lagi", "Operator mengajukan revisi atas EIR yang sudah disubmit — Admin Ops yang memutuskan membukanya.",
@@ -1940,11 +1974,11 @@ NOTIFICATION_RULES = [
 		["Security", "SPV Lapangan", "Admin Ops"]),
 	("order_gate_out", "Bon Muat terbit", "Order Muat disubmit — bon gate-out siap diprint.",
 		["Security", "Team Kalmar", "SPV Lapangan", "Admin Ops"]),
-	# Team Survey used to be on this one, which read right and was wrong twice over: this event
-	# is about the EIR-Out, not the position survey, and Team Survey holds no Inspection perm at
-	# all. The tank inspection is Team EIR's work.
+	# Fires on the Order Muat submit itself, which is creation-time by any reading, so no field
+	# team is on it. (Team Survey was removed earlier for a different reason: this is the EIR-Out,
+	# not the position survey, and they hold no Inspection perm at all.)
 	("order_muat_survey", "EIR-Out jatuh tempo", "Order Muat disubmit — EIR-Out wajib sebelum tank boleh dimuat.",
-		["Team EIR", "SPV Lapangan", "Admin Ops"]),
+		["SPV Lapangan", "Admin Ops"]),
 	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
 		["SPV Lapangan", "Admin Ops"]),
 	# Survey posisi (Lift On). One doctype, two menus, so two handoffs: the survey lands in

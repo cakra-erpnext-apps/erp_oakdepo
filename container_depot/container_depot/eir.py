@@ -937,6 +937,9 @@ def create_eir(
 	doc.set("item_photos", item_rows)
 	doc.set("damage_photos", damage_photo_rows)
 
+	# Created and finished in one call: there is no draft for anyone to pick up, so the
+	# "siap diperiksa" bell would point Team EIR at a submitted document (Inspection.after_insert).
+	doc.flags.skip_created_notify = submit
 	doc.insert()  # NOT ignore_permissions — let Frappe enforce Inspection create.
 	if submit:
 		doc.submit()  # on_submit moves the Container; we never set status here.

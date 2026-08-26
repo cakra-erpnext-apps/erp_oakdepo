@@ -39,9 +39,11 @@ OFFICE_USER = "nr-office@example.com"
 #
 # `None` for the route means "Desk only, deliberately" (see `_none` in the route module).
 EVENT_DOCTYPES = [
+	("eir_created", "Inspection"),
 	("eir_submitted", "Inspection"),
 	("eir_pending_review", "Inspection"),
 	("cleaning_order_created", "Cleaning Order"),
+	("cleaning_order_forwarded", "Cleaning Order"),
 	("cleaning_pending_review", "Cleaning Order"),
 	("repair_order_created", "Repair Order"),
 	# Historic key, current meaning: the M&R staging step it was named for is gone, and it

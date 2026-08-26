@@ -330,6 +330,36 @@ def _depot_branch(depot):
 	return frappe.db.get_value("Depot", depot, "branch") if depot else None
 
 
+def notify_eir_created(inspection):
+	"""Fire when an EIR draft is born — auto-provisioned from a bon (Order Bongkar →
+	EIR-In, Order Muat → EIR-Out) or raised by hand.
+
+	The ONE bell Team EIR is on, and the exception that proves the handoff rule rather
+	than breaking it (see ``install.NOTIFICATION_RULES``). Cleaning and M&R are rung on
+	dispatch because Admin Ops still stands between the document and any work — a method
+	to pick, an owner to approve. Nothing stands in front of an EIR: the tank is at the
+	gate, the checklist is waiting, and the draft IS the job. So for this one queue,
+	creation and handoff are the same moment.
+
+	Drafts only. An EIR inserted already finished (``eir.create_eir(submit=True)`` sets
+	``flags.skip_created_notify``) is a record of an inspection that happened, not work
+	anyone can pick up — ringing "siap diperiksa" for it sends the crew to a submitted
+	document.
+	"""
+	cno = inspection.container_no or inspection.container
+	# The direction is the whole point of the message: it tells the crew which checklist
+	# they are about to work and whether the tank is arriving or leaving.
+	arah = "tank masuk" if inspection.inspection_type == "EIR-In" else "tank akan keluar"
+	subject = f"{inspection.inspection_type} • {cno} — {arah}, siap diperiksa"
+	notify(
+		doctype="Inspection",
+		name=inspection.name,
+		subject=subject,
+		branch=_depot_branch(inspection.get("depot")),
+		event_key="eir_created",
+	)
+
+
 def notify_eir_submitted(inspection, container):
 	"""Fire when an EIR (EIR-In / EIR-Out) is submitted — tells the crew a tank was
 	inspected so cleaning / M&R can pick it up."""
@@ -379,15 +409,18 @@ def notify_cleaning_pending_review(cleaning_order):
 
 
 def notify_cleaning_order_created(cleaning_order):
-	"""Fire when a Cleaning Order is auto-created from an Empty-Dirty EIR — tells the
-	cleaning team a tank is queued for cleaning so they can pick it up."""
+	"""Fire when a Cleaning Order is auto-created from an Empty-Dirty EIR.
+
+	Admin Ops' bell, not the crew's: the order lands in Service Setup with no cleaning
+	method picked yet, so there is nothing for the team to work. They are told when it is
+	handed over — see ``notify_cleaning_forwarded_to_team``."""
 	co = frappe.db.get_value(
 		"Cleaning Order", cleaning_order,
 		["name", "container", "container_no", "depot"], as_dict=True,
 	)
 	if not co:
 		return
-	subject = f"Cleaning Order • {co.container_no or co.container} — siap dikerjakan"
+	subject = f"Cleaning Order • {co.container_no or co.container} — perlu metode cleaning"
 	notify(
 		doctype="Cleaning Order",
 		name=co.name,
@@ -397,9 +430,33 @@ def notify_cleaning_order_created(cleaning_order):
 	)
 
 
+def notify_cleaning_forwarded_to_team(cleaning_order):
+	"""Fire when Admin Ops hands a cleaning job to the crew (Service Setup -> Pending) — the
+	moment it lands on the depot PWA worklist and the team may pick it up.
+
+	The twin of ``notify_repair_forwarded_to_team``, and for the same reason: creation and
+	dispatch are two decisions, and only the second one is the crew's business."""
+	co = frappe.db.get_value(
+		"Cleaning Order", cleaning_order,
+		["name", "container", "container_no", "depot"], as_dict=True,
+	)
+	if not co:
+		return
+	subject = f"Cleaning • {co.container_no or co.container} — diteruskan ke team, siap dikerjakan"
+	notify(
+		doctype="Cleaning Order",
+		name=co.name,
+		subject=subject,
+		branch=_depot_branch(co.depot),
+		event_key="cleaning_order_forwarded",
+	)
+
+
 def notify_repair_order_created(repair_order):
-	"""Fire when a Draft M&R is auto-created from an EIR with damage — tells the M&R
-	team a tank needs repair so they can pick parts and start work."""
+	"""Fire when a Draft M&R is auto-created from an EIR with damage.
+
+	Admin Ops' bell, not the workshop's: the draft is an estimate to be priced and sent to
+	the owner, and no work may start until ``notify_repair_forwarded_to_team``."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
 		["name", "container", "container_no", "depot"], as_dict=True,
@@ -573,8 +630,11 @@ def notify_repair_order_pending_approval(repair_order):
 
 
 def notify_repair_order_decided(repair_order):
-	"""Fire when the owner's decision is recorded — tells the M&R team the outcome
-	(Approved / Rejected / Revision Requested) so they can start work or revise."""
+	"""Fire when the owner's decision is recorded (Approved / Rejected / Revision Requested).
+
+	Goes to Admin Ops + SPV, not the workshop: an approval still has to be dispatched by
+	hand (``forward_to_team``), so ringing the team here would ring twice for one job — and
+	on a refusal, ring about work that never arrives."""
 	ro = frappe.db.get_value(
 		"Repair Order", repair_order,
 		["name", "container", "container_no", "depot", "status"], as_dict=True,

@@ -116,7 +116,6 @@ def _survey(doctype, name):
 	# The two halves of this workflow are two different menus held by two different teams.
 	# Deep-linked (`?s=`) the way cleaning and M&R are: the worklist can be long, and a bell
 	# that only opens the list still leaves the operator hunting for the tank it just named.
-	#
 	# Each half owns two statuses: the one waiting to be picked up and the one somebody is
 	# already working. Both belong on the same screen — the operator holding it needs to get
 	# back in, and a reopened survey lands in exactly these states.
@@ -160,10 +159,12 @@ def _none(doctype, name):
 # Event key → route. This is the authoritative map; see the module docstring for why the
 # event and not the doctype decides.
 _BY_EVENT = {
+	"eir_created": _eir,
 	"eir_submitted": _eir,
 	"eir_pending_review": _eir,
 	"cleaning_pending_review": _cleaning,
 	"cleaning_order_created": _cleaning,
+	"cleaning_order_forwarded": _cleaning,
 	"repair_order_created": _repair,
 	"repair_order_service_setup": _repair,
 	"repair_order_forwarded": _repair,

@@ -110,7 +110,9 @@ class TestNotificationRouting(FrappeTestCase):
 		self.assertEqual(_logs_for(FIELD_USER), 0)
 
 	def test_cleaning_notification_skips_finance(self):
-		self._fire("cleaning_order_created")
+		# `cleaning_order_forwarded`, not `..._created`: the crew is rung on the handoff out
+		# of Service Setup, never when the order is filed. See install.NOTIFICATION_RULES.
+		self._fire("cleaning_order_forwarded")
 		self.assertEqual(_logs_for(FIELD_USER), 1)
 		self.assertEqual(_logs_for(FINANCE_USER), 0)
 
@@ -135,7 +137,7 @@ class TestNotificationRouting(FrappeTestCase):
 	def test_actor_is_never_notified_about_their_own_action(self):
 		frappe.set_user(ACTOR)
 		try:
-			self._fire("cleaning_order_created")  # Admin Ops is on this rule
+			self._fire("cleaning_order_forwarded")  # Admin Ops is on this rule
 		finally:
 			frappe.set_user("Administrator")
 		self.assertEqual(_logs_for(ACTOR), 0)
@@ -183,13 +185,13 @@ class TestNotificationRouting(FrappeTestCase):
 		self.assertLess(sent, enabled_users)
 
 	def test_disabled_rule_sends_nothing(self):
-		self._set_rule_roles("cleaning_order_created", ["Team Cleaning"], enabled=0)
+		self._set_rule_roles("cleaning_order_forwarded", ["Team Cleaning"], enabled=0)
 		try:
-			self.assertEqual(self._fire("cleaning_order_created"), 0)
+			self.assertEqual(self._fire("cleaning_order_forwarded"), 0)
 			self.assertEqual(_logs_for(FIELD_USER), 0)
 		finally:
 			self._set_rule_roles(
-				"cleaning_order_created", ["Team Cleaning", "SPV Lapangan", "Admin Ops"]
+				"cleaning_order_forwarded", ["Team Cleaning", "SPV Lapangan", "Admin Ops"]
 			)
 
 	def test_master_switch_off_sends_nothing(self):
@@ -224,6 +226,40 @@ class TestNotificationRouting(FrappeTestCase):
 		before = frappe.db.count("Depot Notification Rule")
 		setup_notification_rules()
 		self.assertEqual(frappe.db.count("Depot Notification Rule"), before)
+
+	def test_field_teams_are_only_told_on_handoff(self):
+		"""The crews hear "this job is yours", never "a document exists".
+
+		Creation-time bells (a Cleaning Order still in Service Setup, an unapproved M&R draft,
+		an Order Muat submit) all describe work Admin Ops has not released yet. Routing them to
+		the crew trains it to chase orders it may not start, and to tune out the one bell that
+		matters. So each team is allowed on its handoff event and nothing else.
+
+		Team EIR's handoff is `eir_created` and that is not a loophole: no Admin Ops step stands
+		in front of an EIR, so the draft landing in `/eir` IS the job arriving. They stay off
+		`order_muat_survey` (fires on the bon) and `eir_submitted` (fires when an inspection is
+		already finished). Pinned here because the regression is a one-word edit to a rule row.
+		"""
+		allowed = {
+			"Team Cleaning": {"cleaning_order_forwarded"},
+			"Team Repair": {"repair_order_forwarded"},
+			"Team EIR": {"eir_created"},
+			# Survey posisi splits one doctype across two menus, so it has two handoffs — the
+			# survey arriving for Team Survey, the recorded position arriving for Team Kalmar.
+			# Neither is on `position_confirmed`: by then both are done.
+			"Team Survey": {"position_survey_pending"},
+			"Team Kalmar": {"position_surveyed", "order_gate_out", "gate_out"},
+		}
+		for event_key, _label, _desc, roles in NOTIFICATION_RULES:
+			for role in roles:
+				if role not in allowed:
+					continue
+				with self.subTest(event=event_key, role=role):
+					self.assertIn(
+						event_key,
+						allowed[role],
+						f"{role} is on '{event_key}', which is not a handoff to them",
+					)
 
 	def test_seeder_never_overwrites_admin_tuning(self):
 		self._set_rule_roles("gate_out", ["Team Cleaning"])
@@ -333,3 +369,95 @@ class TestPwaNotificationEndpoints(FrappeTestCase):
 		self.assertEqual(
 			frappe.db.count("Notification Log", {"for_user": frappe.session.user, "read": 0}), 0
 		)
+
+
+class TestEirCreatedReachesTeamEir(FrappeTestCase):
+	"""Team EIR's only bell, tested on the DOCUMENT rather than on the rule table.
+
+	``test_field_teams_are_only_told_on_handoff`` above pins who ``eir_created`` is routed
+	to; a rule row cannot prove the event ever fires. The hook lives on
+	``Inspection.after_insert`` precisely so that every path an EIR is born through rings it
+	— the two bon provisioners, the Desk form, the legacy REST create — so what is worth
+	pinning is that an ordinary insert is enough, and that a finished EIR is not.
+	"""
+
+	EIR_USER = "notif-eir@example.com"  # Team EIR
+	CNO = "NEIR1000001"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		frappe.set_user("Administrator")
+		_user(cls.EIR_USER, "Team EIR")
+		setup_notification_rules()
+		from container_depot.tests.test_api import ensure_test_customer
+
+		cls.container = frappe.get_doc({
+			"doctype": "Container",
+			"container_no": cls.CNO,
+			"container_type": "ISO Tank",
+			"status": "In_Depot",
+			"principal": ensure_test_customer("EIR Notif Principal"),
+		}).insert(ignore_permissions=True).name
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		frappe.db.delete("Notification Log", {"for_user": cls.EIR_USER})
+		frappe.db.delete("Inspection", {"container": cls.container})
+		frappe.db.delete("Container", {"name": cls.container})
+		if frappe.db.exists("User", cls.EIR_USER):
+			frappe.delete_doc("User", cls.EIR_USER, ignore_permissions=True, force=True)
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		frappe.db.delete("Notification Log", {"for_user": self.EIR_USER})
+		frappe.db.delete("Inspection", {"container": self.container})
+
+	def _subjects(self):
+		return frappe.get_all(
+			"Notification Log",
+			filters={"for_user": self.EIR_USER, "depot_event": "eir_created"},
+			pluck="subject",
+		)
+
+	def _draft(self, inspection_type):
+		return frappe.get_doc({
+			"doctype": "Inspection",
+			"inspection_type": inspection_type,
+			"container": self.container,
+		}).insert(ignore_permissions=True)
+
+	def test_an_eir_in_draft_rings_team_eir_and_says_the_tank_is_arriving(self):
+		self._draft("EIR-In")
+		subjects = self._subjects()
+		self.assertEqual(len(subjects), 1, "one draft, one bell")
+		self.assertIn("EIR-In", subjects[0])
+		self.assertIn(self.CNO, subjects[0])
+		# Direction is the point of the message — which checklist, and which way the tank goes.
+		self.assertIn("tank masuk", subjects[0])
+
+	def test_an_eir_out_draft_says_the_tank_is_leaving(self):
+		self._draft("EIR-Out")
+		subjects = self._subjects()
+		self.assertEqual(len(subjects), 1)
+		self.assertIn("EIR-Out", subjects[0])
+		self.assertIn("tank akan keluar", subjects[0])
+
+	def test_the_bell_opens_the_draft_it_is_about(self):
+		"""A notification the crew cannot act on is the failure mode this replaces."""
+		from container_depot.ess.notification_routes import route_for
+
+		doc = self._draft("EIR-In")
+		self.assertEqual(route_for("Inspection", doc.name, "eir_created"), f"/eir?e={doc.name}&t=in")
+
+	def test_an_eir_created_already_finished_rings_nobody(self):
+		"""``create_eir(submit=True)`` records an inspection that already happened. There is
+		no draft to pick up, so "siap diperiksa" would point Team EIR at a submitted doc."""
+		from container_depot.container_depot import eir
+
+		eir.create_eir(inspection_type="EIR-In", container=self.container, submit=True)
+		self.assertEqual(self._subjects(), [])

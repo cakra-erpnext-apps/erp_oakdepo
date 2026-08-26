@@ -69,6 +69,40 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self._orders.append(co.name)
 		return co.name
 
+	# --- the handoff to the crew ----------------------------------------------
+	def test_the_crew_is_notified_on_forward_and_never_before(self):
+		"""Service Setup -> Pending is the one moment the cleaning team is rung.
+
+		"Teruskan ke Team" is a plain status edit on the Desk form, not an endpoint, so the
+		bell hangs off the controller — and a controller hook is exactly where a "fires on
+		every save" bug hides. Both halves are pinned: an ordinary save while the order sits
+		in Admin Ops' queue says nothing, and a later save of an order already forwarded does
+		not ring a second time.
+		"""
+		from unittest.mock import patch
+
+		from container_depot.container_depot import notify as notify_mod
+
+		container = self._container("CLEANFWD0000001")
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": container, "status": "Service Setup",
+		}).insert(ignore_permissions=True)
+		self._orders.append(co.name)
+
+		with patch.object(notify_mod, "notify_cleaning_forwarded_to_team") as spy:
+			co.remarks = "Admin Ops masih memilih metode"
+			co.save(ignore_permissions=True)
+			self.assertEqual(spy.call_count, 0, "a save in Service Setup is not a handoff")
+
+			co.status = "Pending"
+			co.save(ignore_permissions=True)
+			self.assertEqual(spy.call_count, 1)
+			self.assertEqual(spy.call_args[0][0], co.name)
+
+			co.remarks = "sudah di worklist team"
+			co.save(ignore_permissions=True)
+			self.assertEqual(spy.call_count, 1, "already forwarded — do not ring again")
+
 	# --- what a chosen service is priced at -----------------------------------
 	def test_service_row_carries_both_tariffs_from_the_price_list(self):
 		"""A cleaning line carries the two prices the rate card states — the service tariff and

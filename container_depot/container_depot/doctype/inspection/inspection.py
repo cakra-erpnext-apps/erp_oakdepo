@@ -20,6 +20,23 @@ class Inspection(Document):
 		prefix = "EIR-OUT" if self.inspection_type == "EIR-Out" else "EIR-IN"
 		return make_autoname(f"{prefix}-.YYYY.-.#####")
 
+	def after_insert(self):
+		"""Tell Team EIR a tank is waiting to be inspected.
+
+		Here rather than at the two provisioning call sites (``eir.provision_eirs_for_order_bongkar``
+		/ ``provision_eir_out_for_order_muat``) so that EVERY way an EIR is born rings the same
+		bell — the two bons, the Desk "new Inspection", the legacy REST create. A notification
+		wired per call site is one that a future creation path silently skips.
+
+		``skip_created_notify`` is the one opt-out: an EIR inserted and submitted in the same
+		breath is a finished record, not a job (see ``eir.create_eir``).
+		"""
+		if self.flags.get("skip_created_notify"):
+			return
+		from container_depot.container_depot.notify import notify_eir_created
+
+		notify_eir_created(self)
+
 	def before_save(self):
 		"""Auto-populate container number"""
 		if self.container:

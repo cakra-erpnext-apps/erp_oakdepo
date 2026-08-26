@@ -174,8 +174,8 @@ class RepairOrder(Document):
 		"""An M&R is not submittable, so Cancelled is its void — clear the "perlu
 		perbaikan" / "menunggu persetujuan owner" prompts still in the bell.
 
-		Rejected is deliberately NOT swept: the owner's refusal is an outcome the M&R
-		team has to see, and ``notify_repair_order_decided`` announces it.
+		Rejected is deliberately NOT swept: the owner's refusal is an outcome Admin Ops
+		has to see, and ``notify_repair_order_decided`` announces it.
 		"""
 		before = self.get_doc_before_save()
 		if before and before.status != self.status and self.status == "Cancelled":
