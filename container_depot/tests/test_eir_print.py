@@ -53,16 +53,18 @@ class TestEirPrintFormat(FrappeTestCase):
 			"damage_description": "penyok 12cm sisi kiri",
 			"severity": "Minor",
 		})
-		# Kelengkapan tank — the printed sheet's fill-in boxes, not defects.
-		doc.append("fittings", {
-			"fitting_item": "BDC-09-IN",
-			"compartment": "Bottom Discharge",
-			"printed_no": "9",
-			"item_label": "Steam Pipe",
-			"slot_label": "IN",
-			"value": "3",
-			"uom": "inch",
-		})
+		# Kelengkapan tank — the printed sheet's fill-in boxes, not defects. TWO slots of the
+		# SAME item, so the one-row-per-item fold is actually exercised.
+		for slot, value in (("IN", "3"), ("OUT", "4")):
+			doc.append("fittings", {
+				"fitting_item": f"BDC-09-{slot}",
+				"compartment": "Bottom Discharge",
+				"printed_no": "9",
+				"item_label": "Steam Pipe",
+				"slot_label": slot,
+				"value": value,
+				"uom": "inch",
+			})
 		doc.insert(ignore_permissions=True)
 
 		html = frappe.get_print("Inspection", doc.name, print_format="EIR Format")
@@ -75,7 +77,15 @@ class TestEirPrintFormat(FrappeTestCase):
 		self.assertIn("Underside", html)                       # 50-row checklist grid
 		self.assertIn("dent on underside", html)               # damage_log joined by checklist_item
 		self.assertIn("KELENGKAPAN TANK", html)                # fittings block
-		self.assertIn("Steam Pipe", html)
+		self.assertIn("BOTTOM DISCHARGE COMPARTMENT", html)    # grouped as the paper groups it
+		# One row per item, both boxes on it — "Steam Pipe IN 3 inch · OUT 4 inch" is how the
+		# paper reads, not two rows both captioned Steam Pipe. Counted inside the kelengkapan
+		# block only: the checklist above it has four parts of its own with Steam Pipe in the
+		# name (Front Steam Pipe Cap, Left/Right Side Steam Pipe, Underframe Steam Pipe).
+		block = html.split("KELENGKAPAN TANK", 1)[1].split("Damage codes", 1)[0]
+		self.assertEqual(block.count("Steam Pipe"), 1)
+		for box in (">IN<", ">OUT<", ">3<", ">4<", ">inch<"):
+			self.assertIn(box, block)
 		# Header block mirrors the OAK paper form's field grid.
 		for caption in ("Date of Inspection", "Tank No", "Max Gross Weight", "Inspect Location",
 						"Shipper / Consignee", "EMKL", "Reference No.", "Seal"):

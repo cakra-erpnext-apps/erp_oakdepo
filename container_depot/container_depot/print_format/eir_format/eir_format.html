@@ -48,8 +48,16 @@
   /* A part with a finding is what the reader is looking for — let it carry weight. */
   .oak-doc .eir tr.hit .it { font-weight: 700; }
   .oak-doc .eir tr.hit .cd { background-color: #fbf3e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .oak-doc .eir .val { width: 9%; text-align: center; font-weight: 700; }
-  .oak-doc .eir .slot { width: 7%; color: #6b7580; }
+  /* Kelengkapan: caption and unit stay quiet so the recorded number is what the eye lands on. */
+  .oak-doc .eir td.fitv { font-size: 7.5px; }
+  .oak-doc .eir td.fitv .cap { color: #8a949d; }
+  .oak-doc .eir td.fitv .num { font-weight: 700; font-family: 'Courier New', Courier, monospace; }
+  .oak-doc .eir td.fitv .sep { color: #aab5a0; }
+  /* Airline Valve carries four boxes on one line — let each hold together rather than
+     orphan a stray "pcs" on a second row. NOT named `.box`: that is the shared design
+     system's bordered-panel class, and a span wearing it grows a border. */
+  .oak-doc .eir td.fitv .fitbox { white-space: nowrap; }
+  .oak-doc .eir td.comp { background-color: #f7f9f5; font-weight: 700; letter-spacing: .4px; color: #4a5a3a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .oak-doc .legend { font-size: 7px; color: #45505a; line-height: 1.5; }
   .oak-doc .notes { font-size: 8px; line-height: 1.55; }
   .oak-doc .notes .part { font-weight: 700; }
@@ -57,6 +65,18 @@
   .oak-doc .kv td { padding: 1px 0 !important; }
   .oak-doc .signbox .cap { font-size: 7.5px; letter-spacing: .8px; color: #8a949d; text-transform: uppercase; }
 </style>
+
+{#- One item's fill-in boxes on a single line: "IN 3 inch · OUT 3 inch", or just the value
+    when the box has no caption of its own (Strap, Calibration Chart). -#}
+{%- macro slot_line(item) -%}
+  {%- for s in item.slots -%}
+    <span class="fitbox">
+      {%- if s.slot_label %}<span class="cap">{{ s.slot_label }}</span> {% endif -%}
+      <span class="num">{{ s.value }}</span>{% if s.uom %} <span class="cap">{{ s.uom }}</span>{% endif -%}
+    </span>
+    {%- if not loop.last %} <span class="sep">&middot;</span> {% endif -%}
+  {%- endfor -%}
+{%- endmacro -%}
 
 {%- set cn = (doc.get("container_no") or "") | upper -%}
 {%- set io_date = doc.get("eir_date") or doc.get("gate_in_timestamp") or doc.get("gate_out_timestamp") or doc.creation -%}
@@ -79,11 +99,24 @@
   {%- if d and d.damage_description -%}{%- set _ = notes.append({"item": c.item_name, "no": c.printed_no, "d": d}) -%}{%- endif -%}
 {%- endfor -%}
 {#- Kelengkapan tank: the paper form's fill-in boxes. Recorded rows only — a slot the
-    surveyor left blank means "not checked", so printing a 0 for it would be a lie. -#}
+    surveyor left blank means "not checked", so printing a 0 for it would be a lie.
+
+    Collapsed to ONE ROW PER ITEM, the way the paper reads it: "Steam Pipe IN (3 inch)
+    OUT (3 inch)" is a single line there, not two rows both captioned Steam Pipe. The
+    stored rows are one-per-slot and already arrive in master sequence, so an item's
+    slots are contiguous and fold in a single pass. -#}
 {%- set fittings = doc.get("fittings") or [] -%}
+{%- set fit_items = [] -%}
+{%- for f in fittings -%}
+  {%- set key = f.compartment ~ "|" ~ f.item_label -%}
+  {%- if fit_items and fit_items[-1].key == key -%}
+    {%- set _ = fit_items[-1].slots.append(f) -%}
+  {%- else -%}
+    {%- set _ = fit_items.append({"key": key, "compartment": f.compartment, "item_label": f.item_label, "slots": [f]}) -%}
+  {%- endif -%}
+{%- endfor -%}
 {%- set fit_areas = [] -%}
 {%- for f in fittings -%}{%- if f.compartment not in fit_areas -%}{%- set _ = fit_areas.append(f.compartment) -%}{%- endif -%}{%- endfor -%}
-{%- set fhalf = ((fittings | length) + 1) // 2 -%}
 {%- set seals = doc.get("out_seals") or [] -%}
 
 <div class="oak-doc">
@@ -191,25 +224,21 @@
   {%- if fittings -%}
   <table class="eir" style="margin-top:6px;">
     <thead>
-      <tr><th colspan="8" style="text-align:left;">KELENGKAPAN TANK</th></tr>
+      <tr><th colspan="4" style="text-align:left;">KELENGKAPAN TANK</th></tr>
     </thead>
     <tbody>
       {%- for area in fit_areas -%}
-      {%- set rows = fittings | selectattr("compartment", "equalto", area) | list -%}
+      {%- set rows = fit_items | selectattr("compartment", "equalto", area) | list -%}
       {%- set rhalf = ((rows | length) + 1) // 2 -%}
-      <tr><td colspan="8" style="background-color:#f7f9f5; font-weight:700; letter-spacing:.4px;">{{ area | upper }}</td></tr>
+      <tr><td colspan="4" class="comp">{{ area | upper }} COMPARTMENT</td></tr>
       {%- for i in range(rhalf) -%}
       {%- set L = rows[i] if i < rows | length else None -%}
       {%- set R = rows[i + rhalf] if (i + rhalf) < rows | length else None -%}
       <tr>
-        <td class="it" style="width:22%;">{{ L.item_label if L else "" }}</td>
-        <td class="slot">{{ L.slot_label if L and L.slot_label else "" }}</td>
-        <td class="val">{{ L.value if L else "" }}</td>
-        <td class="slot">{{ L.uom if L and L.uom else "" }}</td>
-        <td class="it" style="width:22%;">{{ R.item_label if R else "" }}</td>
-        <td class="slot">{{ R.slot_label if R and R.slot_label else "" }}</td>
-        <td class="val">{{ R.value if R else "" }}</td>
-        <td class="slot">{{ R.uom if R and R.uom else "" }}</td>
+        <td class="it" style="width:17%;">{{ L.item_label if L else "" }}</td>
+        <td class="fitv" style="width:33%;">{{ slot_line(L) if L else "" }}</td>
+        <td class="it" style="width:17%;">{{ R.item_label if R else "" }}</td>
+        <td class="fitv" style="width:33%;">{{ slot_line(R) if R else "" }}</td>
       </tr>
       {%- endfor -%}
       {%- endfor -%}
