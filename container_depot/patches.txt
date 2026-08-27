@@ -109,3 +109,4 @@ container_depot.patches.v0_78.team_notified_on_handoff_only
 container_depot.patches.v0_79.seed_storage_size_items
 container_depot.patches.v0_80.backfill_storage_charges
 container_depot.patches.v0_81.lock_storage_charge_perms
+container_depot.patches.v0_82.seed_eir_fittings

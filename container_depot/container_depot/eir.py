@@ -88,6 +88,26 @@ def get_eir_masters() -> dict:
 		fields=["name as code", "description"],
 		order_by="code asc",
 	)
+	# Kelengkapan tank (kotak isian pada form EIR cetak). Bukan checklist kerusakan —
+	# lihat ``eir_fitting_data``; the PWA renders one input per row, grouped by compartment.
+	fittings = frappe.get_all(
+		"Inspection Fitting Item",
+		filters={"is_active": 1},
+		fields=[
+			"name as fitting_item",
+			"compartment",
+			"printed_no",
+			"item_label",
+			"slot_label",
+			"value_type",
+			"options",
+			"uom",
+			"sequence",
+		],
+		order_by="sequence asc",
+	)
+	for f in fittings:
+		f["options"] = [o for o in (f.get("options") or "").split("\n") if o.strip()]
 	# Active cargos for the EIR's "set last cargo" picker (name == cargo_name).
 	cargos = frappe.get_all("Cargo", filters={"is_active": 1}, pluck="name", order_by="name asc")
 	# Pilihan Tipe / Ukuran untuk kolom Data Tank yang bisa diisi dari EIR — dibaca dari
@@ -102,6 +122,7 @@ def get_eir_masters() -> dict:
 		"checklist": checklist,
 		"damage_codes": damage_codes,
 		"repair_codes": repair_codes,
+		"fittings": fittings,
 		"cargos": cargos,
 		"tank_options": tank_options,
 	}
@@ -834,6 +855,78 @@ def _split_damage_photos(photo_rows: list, damage_rows: list) -> tuple:
 	return item_rows, damage_photo_rows
 
 
+def _fitting_items() -> dict:
+	"""fitting_code -> master row for every ACTIVE kelengkapan slot (see ``eir_fitting_data``)."""
+	return {
+		f.name: f
+		for f in frappe.get_all(
+			"Inspection Fitting Item",
+			filters={"is_active": 1},
+			fields=[
+				"name",
+				"compartment",
+				"printed_no",
+				"item_label",
+				"slot_label",
+				"uom",
+				"sequence",
+			],
+		)
+	}
+
+
+def _build_fitting_rows(fittings, items):
+	"""Map the kelengkapan payload to ``Inspection Fitting`` rows.
+
+	A blank value is dropped rather than stored: a slot nobody filled must read back as
+	"not recorded", never as "recorded zero" — the difference decides whether a missing
+	strap is a finding or just an unanswered box.
+
+	Labels travel onto the row (compartment / item / slot / uom) instead of being resolved
+	through the Link at read time, so editing the master later cannot rewrite what a
+	submitted EIR says the tank carried. Same rule as ``Inspection Damage Entry``.
+	"""
+	rows = []
+	seen = set()
+	for f in fittings:
+		if not isinstance(f, dict):
+			continue
+		code = (f.get("fitting_item") or "").strip()
+		item = items.get(code)
+		if not item or code in seen:
+			continue
+		value = str(f.get("value") if f.get("value") is not None else "").strip()
+		if not value:
+			continue
+		seen.add(code)
+		rows.append(
+			{
+				"fitting_item": code,
+				"compartment": item.compartment,
+				"printed_no": item.printed_no,
+				"item_label": item.item_label,
+				"slot_label": item.slot_label,
+				"uom": item.uom,
+				"value": value,
+			}
+		)
+	rows.sort(key=lambda r: items[r["fitting_item"]].sequence or 0)
+	return rows
+
+
+def _saved_fittings(inspection: str) -> dict:
+	"""fitting_code -> recorded value on a stored EIR."""
+	return {
+		r.fitting_item: r.value
+		for r in frappe.get_all(
+			"Inspection Fitting",
+			filters={"parent": inspection, "parenttype": "Inspection"},
+			fields=["fitting_item", "value"],
+		)
+		if r.fitting_item
+	}
+
+
 def _build_seal_rows(seals):
 	"""Map the EIR-Out seal payload to Inspection Seal rows.
 
@@ -878,6 +971,7 @@ def create_eir(
 	create_repair_order=None,
 	lines=None,
 	photos=None,
+	fittings=None,
 	submit=False,
 ) -> dict:
 	"""Build an Inspection (EIR) from a checklist payload.
@@ -887,6 +981,9 @@ def create_eir(
 	is not stored. ``severity`` is defaulted server-side (Minor) so the checklist flow never
 	trips validation (B2); ``damage_description`` holds the operator's remark and nothing
 	else.
+
+	``fittings`` is the kelengkapan tank (the printed sheet's fill-in boxes) — separate
+	from ``lines`` because it records what the tank CARRIES, not what is wrong with it.
 
 	``has_damage`` is true when any line carries a real damage code (not "v").
 	``inspector`` is the session user. Status transitions are NOT done here — when
@@ -936,6 +1033,7 @@ def create_eir(
 	item_rows, damage_photo_rows = _split_damage_photos(photo_rows, damage_rows)
 	doc.set("item_photos", item_rows)
 	doc.set("damage_photos", damage_photo_rows)
+	doc.set("fittings", _build_fitting_rows(_coerce_lines(fittings), _fitting_items()))
 
 	# Created and finished in one call: there is no draft for anyone to pick up, so the
 	# "siap diperiksa" bell would point Team EIR at a submitted document (Inspection.after_insert).
@@ -952,6 +1050,7 @@ def create_eir(
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
 		"photo_rows": len(photo_rows),
+		"fitting_rows": len(doc.get("fittings") or []),
 	}
 
 
@@ -977,6 +1076,35 @@ def _resolve_booking_code_for_eir(doc) -> str | None:
 		{"parent": voucher, "parenttype": doc.get("voucher_doctype"), "container": doc.container},
 		"booking_code",
 	)
+
+
+def _fitting_payload(doc) -> list:
+	"""Kelengkapan tank recorded on this draft, as ``{fitting_item, value, baseline}``.
+
+	``baseline`` is what the SAME slot held on the container's last EIR-In, so the EIR-Out
+	screen can show "masuk 2 pcs" beside the box the surveyor is filling — that comparison
+	is the whole reason the numbers are recorded at both gates.
+
+	An EIR-Out that has recorded nothing yet starts pre-filled from that baseline: the
+	surveyor confirms or corrects instead of retyping 24 boxes. The prefill is all-or-
+	nothing on purpose — once ANY slot is saved the draft owns its own values, so a box
+	the surveyor deliberately cleared does not come back on the next open.
+	"""
+	saved = {r.fitting_item: r.value for r in (doc.get("fittings") or []) if r.fitting_item}
+	baseline = {}
+	if doc.inspection_type == "EIR-Out":
+		ref = doc.get("reference_eir_in") or latest_eir_in(doc.container)
+		if ref:
+			baseline = _saved_fittings(ref)
+	prefill = not saved and bool(baseline)
+	return [
+		{
+			"fitting_item": code,
+			"value": saved.get(code) or (baseline.get(code) if prefill else "") or "",
+			"baseline": baseline.get(code) or "",
+		}
+		for code in sorted(set(saved) | set(baseline))
+	]
 
 
 def _draft_payload(doc, header: dict) -> dict:
@@ -1025,6 +1153,7 @@ def _draft_payload(doc, header: dict) -> dict:
 		}
 		for d in doc.damage_log if d.checklist_item
 	]
+	header["fittings"] = _fitting_payload(doc)
 	# Both albums travel as one list: the PWA hangs a photo on its damage card when the
 	# card exists and drops the rest into Foto Cepat, which is the same rule the split on
 	# the way in uses. Nothing in the client has to know there are two tables.
@@ -1217,6 +1346,7 @@ def save_draft(
 	lines=None,
 	photos=None,
 	seals=None,
+	fittings=None,
 	tank=None,
 	submit=False,
 ) -> dict:
@@ -1289,6 +1419,10 @@ def save_draft(
 	# EIR-In save (which never carries seals) cannot wipe a Desk-entered list.
 	if seals is not None:
 		doc.set("out_seals", _build_seal_rows(_coerce_lines(seals)))
+	# Kelengkapan tank. Same "only when the key is sent" rule as the seals above, so a
+	# client that does not know about fittings cannot wipe a list entered on the Desk.
+	if fittings is not None:
+		doc.set("fittings", _build_fitting_rows(_coerce_lines(fittings), _fitting_items()))
 
 	if submit:
 		# Field operator "submits" from the PWA → this does NOT finalize the EIR. It moves
@@ -1807,6 +1941,18 @@ def view_eir(inspection: str) -> dict:
 		"finding_count": sum(1 for d in damages if d["is_finding"]),
 		"photos": photos,
 		"photo_count": len(photos),
+		"fittings": [
+			{
+				"fitting_item": f.fitting_item,
+				"compartment": f.compartment,
+				"printed_no": f.printed_no,
+				"item_label": f.item_label,
+				"slot_label": f.slot_label,
+				"value": f.value,
+				"uom": f.uom,
+			}
+			for f in doc.get("fittings") or []
+		],
 	}
 
 

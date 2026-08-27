@@ -184,13 +184,16 @@ def eir_save_draft(
 	lines=None,
 	photos=None,
 	seals=None,
+	fittings=None,
 	tank=None,
 	submit=False,
 	request_id=None,
 ):
 	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR.
 
-	``seals`` is EIR-Out only: the seal numbers fitted at load-out. ``tank`` completes the
+	``seals`` is EIR-Out only: the seal numbers fitted at load-out. ``fittings`` is the
+	kelengkapan tank (kotak isian pada form EIR cetak) and is recorded on BOTH directions,
+	so what came in can be compared with what left. ``tank`` completes the
 	Container master (serial / type / size / build date / capacity / tare / MGW) from the
 	tank the surveyor is standing at — see ``eir.TANK_MASTER_FIELDS``.
 
@@ -200,6 +203,7 @@ def eir_save_draft(
 	require_menu("eir")
 	return guarded(request_id, lambda: eir.save_draft(
 		seals=seals,
+		fittings=fittings,
 		inspection=inspection,
 		inspection_type=inspection_type,
 		tank_status=tank_status,

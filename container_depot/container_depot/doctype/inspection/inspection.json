@@ -34,6 +34,8 @@
   "voucher_section",
   "referred_voucher",
   "voucher_doctype",
+  "fittings_section",
+  "fittings",
   "eir_out_section",
   "out_seals",
   "signoff_section",
@@ -296,6 +298,18 @@
    "label": "Voucher DocType",
    "options": "DocType",
    "read_only": 1
+  },
+  {
+   "description": "Kelengkapan tank sebagaimana kotak isian pada form EIR cetak \u2014 bukan temuan kerusakan. Dicatat di EIR-In DAN EIR-Out supaya selisihnya (mis. strap masuk 2 pcs keluar 1) terlihat.",
+   "fieldname": "fittings_section",
+   "fieldtype": "Section Break",
+   "label": "Kelengkapan Tank"
+  },
+  {
+   "fieldname": "fittings",
+   "fieldtype": "Table",
+   "label": "Kelengkapan",
+   "options": "Inspection Fitting"
   },
   {
    "depends_on": "eval:doc.inspection_type=='EIR-Out'",
@@ -693,7 +707,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-26 11:00:00.000000",
+ "modified": "2026-08-27 09:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

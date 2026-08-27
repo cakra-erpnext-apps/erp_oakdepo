@@ -198,6 +198,10 @@
 				:title="labels.checklist"
 			/>
 
+			<!-- Step 4b — kelengkapan tank: the fill-in boxes of the printed EIR sheet.
+			     Separate from the damage checklist on purpose — see TankFittings.vue. -->
+			<TankFittings v-if="fittings.length" :rows="fittings" />
+
 			<!-- Follow-up orders (Cleaning / M&R) are created automatically on submit
 			     when applicable — the opt-out toggles are intentionally not shown. -->
 
@@ -295,6 +299,7 @@ import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
+import TankFittings from "@/components/TankFittings.vue"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
@@ -342,6 +347,9 @@ const suppressSave = ref(false)
 let saveTimer = null
 
 const rows = ref([])
+// Kelengkapan tank — one reactive row per master slot (see TankFittings.vue). Built from
+// the masters, then filled in from the draft by applyDraftToRows.
+const fittings = ref([])
 const damageCodes = ref([])
 const repairCodes = ref([])
 
@@ -388,6 +396,7 @@ const mastersRes = cachedResource({
 		rows.value = (data.checklist || []).map((i) =>
 			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "", added: false })
 		)
+		fittings.value = (data.fittings || []).map((f) => reactive({ ...f, value: "", baseline: "", otherMode: false }))
 		if (header.value) applyDraftToRows(header.value)
 	},
 })
@@ -522,6 +531,7 @@ function applyDraftToRows(data) {
 	})
 	bulkPhotos.value = bulk
 	bulkMeta.value = meta
+	applyDraftToFittings(data)
 	rows.value.forEach((r) => {
 		const l = lineMap[r.item_code]
 		r.damage_code = (l && l.damage_code) || ACCEPTABLE_DAMAGE
@@ -532,6 +542,32 @@ function applyDraftToRows(data) {
 		// Saved line = the card stays open, even one that only says "acceptable".
 		r.added = Boolean(l) || rowHasFinding(r)
 	})
+}
+
+// Kelengkapan: the server sends back only the slots that carry a value (plus, on an
+// EIR-Out, the EIR-In baseline). Every other slot resets to blank — a box nobody filled
+// must read as "not recorded", not keep whatever the previous draft happened to show.
+function applyDraftToFittings(data) {
+	const saved = {}
+	;(data.fittings || []).forEach((f) => {
+		if (f.fitting_item) saved[f.fitting_item] = f
+	})
+	fittings.value.forEach((r) => {
+		const f = saved[r.fitting_item]
+		r.value = (f && f.value) || ""
+		r.baseline = (f && f.baseline) || ""
+		// A saved value the master no longer offers is a write-in ("Other ..." on paper):
+		// keep the text box open so it stays visible instead of silently vanishing.
+		r.otherMode = r.value_type === "Choice" && Boolean(r.value) && !(r.options || []).includes(r.value)
+	})
+}
+
+// Only the boxes that were actually filled travel. Unlike the checklist there is no
+// "opened but empty" state to preserve — a blank box carries no fact.
+function buildFittings() {
+	return fittings.value
+		.filter((r) => String(r.value ?? "").trim())
+		.map((r) => ({ fitting_item: r.fitting_item, value: String(r.value).trim() }))
 }
 
 // Every card the operator has OPENED travels, not only the ones that already say
@@ -714,6 +750,8 @@ function eirPayload(submit) {
 		// find the `local:` photo references and swap them for real file_urls.
 		lines: buildLines(),
 		photos: buildPhotos(),
+		// No photo references in here, so it can go up as a plain JSON blob like `tank`.
+		fittings: JSON.stringify(buildFittings()),
 		// One JSON blob rather than seven params: the server takes only the keys it knows
 		// (eir.TANK_MASTER_FIELDS) and writes nothing when none of them changed.
 		tank: JSON.stringify(tank),
@@ -814,6 +852,7 @@ function scheduleSave() {
 watch([tanggal, tankStatus, cargo, remarks, reffDoc, signatureUrl], scheduleSave)
 watch(tank, scheduleSave, { deep: true })
 watch(rows, scheduleSave, { deep: true })
+watch(fittings, scheduleSave, { deep: true })
 watch(bulkPhotos, scheduleSave, { deep: true })
 
 onMounted(() => {

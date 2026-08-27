@@ -123,7 +123,12 @@
 				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
 			</section>
 
-			<!-- Seal numbers — one row per seal, added as the surveyor fits them -->
+			<!-- Kelengkapan tank — the same fill-in boxes as EIR-In, shown beside what the
+			     tank arrived with, so a strap that never left is a visible difference. -->
+			<TankFittings v-if="fittings.length" :rows="fittings" :hint="labels.fittingsHintOut" show-baseline />
+
+			<!-- Seal numbers — one row per seal, added as the surveyor fits them. Kept LAST
+			     of the input blocks: seals are fitted after everything else is checked. -->
 			<section class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
 					<Icon name="lock" :size="16" class="text-gray-400" />
@@ -240,6 +245,7 @@ import { session } from "@/data/session"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
+import TankFittings from "@/components/TankFittings.vue"
 
 // Form-only EIR-Out view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -269,6 +275,9 @@ const suppressSave = ref(false)
 let saveTimer = null
 
 const seals = ref([])
+// Kelengkapan tank — one reactive row per master slot (see TankFittings.vue). Carries the
+// EIR-In value as `baseline` so the surveyor checks against what came in.
+const fittings = ref([])
 
 const bulkPhotos = ref([])
 // foto cepat URL → the checklist item Admin sorted it into ("" = unsorted). Keeps sorting
@@ -298,6 +307,23 @@ const headerCells = computed(() => {
 	]
 })
 
+// Kelengkapan master. Same endpoint the EIR-In form uses, so the two share one cached
+// response; only the fittings half is read here (EIR-Out has no damage checklist).
+const mastersRes = cachedResource({
+	url: "container_depot.ess.inspections.eir_masters",
+	method: "GET",
+	auto: true,
+	onSuccess(data) {
+		// Masters can land after the draft. Applying them fills the boxes from the EIR-In
+		// baseline, and that must NOT trip the autosave: a prefill nobody has looked at yet
+		// is a suggestion, not a reading the surveyor took.
+		suppressSave.value = true
+		fittings.value = (data.fittings || []).map((f) => reactive({ ...f, value: "", baseline: "", otherMode: false }))
+		if (header.value) applyDraftToFittings(header.value)
+		nextTick(() => { suppressSave.value = false })
+	},
+})
+
 // ---- open a draft EIR-Out ----
 const openRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_out_open",
@@ -318,6 +344,7 @@ const openRes = cachedResource({
 		signing.value = false
 		savedOk.value = false
 		seals.value = (data.seals || []).map((s) => reactive({ seal_no: s.seal_no || "", remarks: s.remarks || "" }))
+		applyDraftToFittings(data)
 		applyDraftPhotos(data)
 				nextTick(() => { suppressSave.value = false })
 	},
@@ -368,6 +395,30 @@ function applyDraftPhotos(data) {
 function buildPhotos() {
 	return bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
 }
+
+// The server sends only the slots that carry a value, each with the EIR-In baseline beside
+// it. On a draft that has recorded nothing yet the baseline arrives pre-filled as `value` —
+// the surveyor confirms or corrects rather than retyping 24 boxes.
+function applyDraftToFittings(data) {
+	if (!fittings.value.length) return
+	const saved = {}
+	;(data.fittings || []).forEach((f) => {
+		if (f.fitting_item) saved[f.fitting_item] = f
+	})
+	fittings.value.forEach((r) => {
+		const f = saved[r.fitting_item]
+		r.value = (f && f.value) || ""
+		r.baseline = (f && f.baseline) || ""
+		r.otherMode = r.value_type === "Choice" && Boolean(r.value) && !(r.options || []).includes(r.value)
+	})
+}
+
+function buildFittings() {
+	return fittings.value
+		.filter((r) => String(r.value ?? "").trim())
+		.map((r) => ({ fitting_item: r.fitting_item, value: String(r.value).trim() }))
+}
+
 function buildSeals() {
 	return filledSeals.value.map((s) => ({
 		seal_no: s.seal_no.trim(),
@@ -529,6 +580,7 @@ function eirPayload(submit) {
 		signature: signatureUrl.value || undefined,
 		photos: buildPhotos(),
 		seals: buildSeals(),
+		fittings: JSON.stringify(buildFittings()),
 		submit: submit ? 1 : 0,
 	}
 }
@@ -602,7 +654,7 @@ function scheduleSave() {
 		doSave(false)
 	}, 1200)
 }
-watch([remarks, cargo, seals, bulkPhotos], scheduleSave, { deep: true })
+watch([remarks, cargo, seals, bulkPhotos, fittings], scheduleSave, { deep: true })
 
 async function confirmSubmit() {
 	// Surface the seal count here rather than blocking submit on it: a tank can legitimately

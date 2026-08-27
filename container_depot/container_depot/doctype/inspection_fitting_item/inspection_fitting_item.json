@@ -1,0 +1,128 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:fitting_code",
+ "creation": "2026-08-27 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "fitting_code",
+  "compartment",
+  "printed_no",
+  "sequence",
+  "column_break_1",
+  "item_label",
+  "slot_label",
+  "is_active",
+  "input_section",
+  "value_type",
+  "uom",
+  "column_break_2",
+  "options"
+ ],
+ "fields": [
+  {
+   "description": "Canonical identity, e.g. BDC-09-IN — compartment, nomor pada form cetak, dan slot isiannya.",
+   "fieldname": "fitting_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Fitting Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Compartment pada form EIR cetak: Bottom Discharge / Top Discharge / Manlid / Side.",
+   "fieldname": "compartment",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Compartment",
+   "reqd": 1
+  },
+  {
+   "description": "Nomor item sebagaimana tercetak di form EIR, supaya surveyor bisa mencocokkan dengan kertas.",
+   "fieldname": "printed_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Printed No"
+  },
+  {
+   "fieldname": "sequence",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sequence",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Nama item. Satu item boleh punya beberapa baris (kotak isian) — mis. Airline Valve punya Tipe, pcs, Ukuran, Cap.",
+   "fieldname": "item_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item",
+   "reqd": 1
+  },
+  {
+   "description": "Nama kotak isiannya (IN, OUT, Cap, Bolts, LEFT, RIGHT, LONG, SHORT, Tipe). Kosongkan kalau item ini hanya punya satu kotak.",
+   "fieldname": "slot_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Slot"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
+  },
+  {
+   "fieldname": "input_section",
+   "fieldtype": "Section Break",
+   "label": "Bentuk Isian"
+  },
+  {
+   "default": "Number",
+   "description": "Number = angka bebas. Choice = pilih dari Options (nilai di luar daftar tetap boleh disimpan sebagai teks, sesuai \"Other ...\" di form kertas).",
+   "fieldname": "value_type",
+   "fieldtype": "Select",
+   "label": "Value Type",
+   "options": "Number\nChoice",
+   "reqd": 1
+  },
+  {
+   "description": "Satuan yang ditampilkan di sebelah kotak isian: inch, pcs, bolts, °C.",
+   "fieldname": "uom",
+   "fieldtype": "Data",
+   "label": "UOM"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Pilihan untuk Value Type = Choice, satu per baris.",
+   "depends_on": "eval:doc.value_type == 'Choice'",
+   "fieldname": "options",
+   "fieldtype": "Small Text",
+   "label": "Options"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-27 09:00:00.000000",
+ "module": "Container Depot",
+ "name": "Inspection Fitting Item",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [],
+ "search_fields": "compartment,item_label,slot_label",
+ "show_title_field_in_link": 1,
+ "sort_field": "sequence",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "item_label"
+}

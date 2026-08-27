@@ -1481,6 +1481,7 @@ MASTER_DOCTYPES = {
 	"Depot Service Menu",
 	"Inspection Checklist Item",
 	"Inspection Damage Code",
+	"Inspection Fitting Item",
 	"Inspection Repair Code",
 	"Self Service Terminal",
 	"Shipping Line",

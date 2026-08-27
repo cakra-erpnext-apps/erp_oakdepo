@@ -43,6 +43,10 @@
 {%- set legacy = [] -%}
 {%- for d in doc.damage_log -%}{%- if d.checklist_item and d.checklist_item not in active_codes -%}{%- set _ = legacy.append(d) -%}{%- endif -%}{%- endfor -%}
 {%- set half = ((checklist | length) + 1) // 2 -%}
+{#- Kelengkapan tank: the printed sheet's fill-in boxes. Recorded rows only — a slot the
+    surveyor left blank means "not checked", so printing a 0 for it would be a lie. -#}
+{%- set fittings = doc.get("fittings") or [] -%}
+{%- set fhalf = ((fittings | length) + 1) // 2 -%}
 
 <div class="oak-doc">
   {{ oak.head("EQUIPMENT INTERCHANGE RECEIPT", doc.get("inspection_type") or "", logo_h=52, title_size=13, title_wrap=true) }}
@@ -115,6 +119,36 @@
         <td class="cd">{{ d.damage_type or "" }}</td>
         <td class="cd">{{ d.repair_code or "" }}</td>
         <td colspan="2" class="rm">{{ d.damage_description or "" }}</td>
+      </tr>
+      {%- endfor -%}
+    </tbody>
+  </table>
+  {%- endif -%}
+
+  {%- if fittings -%}
+  <table class="eir" style="margin-top:6px;">
+    <thead>
+      <tr><th colspan="10" style="text-align:left;">KELENGKAPAN TANK</th></tr>
+      <tr>
+        <th class="no">#</th><th class="it">ITEM</th><th class="rm">SLOT</th><th class="cd">NILAI</th><th class="cd">SAT</th>
+        <th class="no">#</th><th class="it">ITEM</th><th class="rm">SLOT</th><th class="cd">NILAI</th><th class="cd">SAT</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for i in range(fhalf) -%}
+      {%- set FL = fittings[i] if i < fittings | length else None -%}
+      {%- set FR = fittings[i + fhalf] if (i + fhalf) < fittings | length else None -%}
+      <tr>
+        <td class="no">{{ FL.printed_no if FL else "" }}</td>
+        <td class="it">{{ FL.item_label if FL else "" }}</td>
+        <td class="rm">{{ FL.slot_label if FL and FL.slot_label else "" }}</td>
+        <td class="cd">{{ FL.value if FL else "" }}</td>
+        <td class="cd">{{ FL.uom if FL and FL.uom else "" }}</td>
+        <td class="no">{{ FR.printed_no if FR else "" }}</td>
+        <td class="it">{{ FR.item_label if FR else "" }}</td>
+        <td class="rm">{{ FR.slot_label if FR and FR.slot_label else "" }}</td>
+        <td class="cd">{{ FR.value if FR else "" }}</td>
+        <td class="cd">{{ FR.uom if FR and FR.uom else "" }}</td>
       </tr>
       {%- endfor -%}
     </tbody>

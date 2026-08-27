@@ -12,27 +12,41 @@
 		<div class="border-b border-gray-100 px-4 py-2.5">
 			<div class="relative">
 				<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><Icon name="search" :size="15" /></span>
-				<input v-model.trim="query" type="text" :placeholder="labels.checklistSearchDamaged" class="oak-input pl-9 pr-9" />
+				<input
+					v-model.trim="query"
+					type="text"
+					:placeholder="labels.checklistSearchDamaged"
+					class="oak-input pl-9 pr-9"
+					@focus="openPicker"
+					@blur="closePicker"
+				/>
 				<button
 					v-if="query"
 					type="button"
 					class="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
 					:aria-label="labels.clear"
+					@mousedown.prevent
 					@click="query = ''"
 				>
 					<Icon name="x" :size="15" />
 				</button>
 			</div>
-			<!-- Live results while typing; pick one to add its fill-in card below. -->
-			<div v-if="query" class="mt-2 overflow-hidden rounded-xl border border-gray-200">
-				<p v-if="!pickerGroups.length" class="px-3 py-3 text-center text-sm text-gray-400">{{ labels.sectionSearchEmpty }}</p>
+			<!-- Opens on focus with the WHOLE list, before a single character is typed: a
+			     surveyor who does not know the part's name here can still browse to it, and
+			     typing just narrows the same list. Scrolls in place so 138 parts cannot push
+			     the rest of the form off screen; area headers stick while it scrolls. -->
+			<div v-if="pickerOpen || query" class="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200">
+				<p v-if="!pickerGroups.length" class="px-3 py-3 text-center text-sm text-gray-400">
+					{{ query ? labels.sectionSearchEmpty : labels.checklistAllAdded }}
+				</p>
 				<div v-for="g in pickerGroups" :key="g.area">
-					<p class="bg-gray-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500">{{ g.area }}</p>
+					<p class="sticky top-0 z-10 bg-gray-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500">{{ g.area }}</p>
 					<button
 						v-for="item in g.items"
 						:key="item.item_code"
 						type="button"
 						class="flex w-full items-center justify-between gap-2 border-t border-gray-100 px-3 py-2 text-left text-sm text-gray-700 hover:bg-brand-50"
+						@mousedown.prevent
 						@click="addRow(item)"
 					>
 						<span class="truncate">{{ item.printed_no }}. {{ item.item_name }}</span>
@@ -105,7 +119,7 @@
 // Operates on the parent's reactive `rows` array in place (each row is a reactive object),
 // so the parent's existing buildLines()/buildPhotos()/applyDraftToRows() and autosave watcher
 // keep working unchanged — we only flip `added` and edit fields on those same rows.
-import { computed, ref } from "vue"
+import { computed, onBeforeUnmount, ref } from "vue"
 import { labels } from "@/utils/labels"
 import { openLightbox } from "@/utils/lightbox"
 import { photoSrc } from "@/data/send"
@@ -124,6 +138,33 @@ const props = defineProps({
 })
 
 const query = ref("")
+// The picker opens on focus, not on the first keystroke. `mousedown.prevent` on every row
+// keeps the input focused when one is tapped, so the list survives the tap and several
+// parts can be added in a row; tapping anywhere else blurs and closes it.
+const pickerOpen = ref(false)
+let closeTimer = null
+
+function openPicker() {
+	if (closeTimer) {
+		clearTimeout(closeTimer)
+		closeTimer = null
+	}
+	pickerOpen.value = true
+}
+
+// Closing is DELAYED on purpose. `mousedown.prevent` normally stops the tap from blurring
+// the input at all, but not every mobile browser honours it — and a list that unmounts on
+// blur swallows the very tap that was meant to add a part. The delay lets the click land
+// first, which is the difference between "works" and "silently does nothing" in the yard.
+function closePicker() {
+	if (closeTimer) clearTimeout(closeTimer)
+	closeTimer = setTimeout(() => {
+		pickerOpen.value = false
+		closeTimer = null
+	}, 180)
+}
+
+onBeforeUnmount(() => clearTimeout(closeTimer))
 
 const addedRows = computed(() => props.rows.filter((r) => r.added))
 
@@ -164,7 +205,8 @@ const pickerGroups = computed(() => {
 
 function addRow(item) {
 	item.added = true
-	// Keep the query so several parts can be added from one search (each vanishes once added).
+	// Keep the query AND the open picker so several parts can be added in one go — each
+	// vanishes from the list the moment it is added.
 }
 
 function removeRow(r) {

@@ -83,6 +83,23 @@
 				</ul>
 			</section>
 
+			<!-- Kelengkapan tank: kotak isian form EIR cetak. Hanya yang benar-benar diisi —
+			     slot kosong berarti tidak diperiksa, bukan nol. -->
+			<section v-if="(data.fittings || []).length" class="oak-card space-y-2 p-4">
+				<p class="oak-section-title">{{ labels.fittingsTitle }} ({{ data.fittings.length }})</p>
+				<ul class="space-y-1 text-sm">
+					<li v-for="(f, i) in data.fittings" :key="i" class="flex items-baseline justify-between gap-2">
+						<span class="min-w-0 truncate text-gray-700">
+							{{ f.item_label }}
+							<span v-if="f.slot_label" class="text-gray-400"> · {{ f.slot_label }}</span>
+						</span>
+						<span class="shrink-0 font-semibold text-gray-900">
+							{{ f.value }}<span v-if="f.uom" class="font-normal text-gray-400"> {{ f.uom }}</span>
+						</span>
+					</li>
+				</ul>
+			</section>
+
 			<!-- Album inspeksi: foto keliling tank dan foto bagian yang diperiksa tapi tidak
 			     rusak — sama seperti tabel Foto per Item di Desk. -->
 			<section class="oak-card space-y-2 p-4">

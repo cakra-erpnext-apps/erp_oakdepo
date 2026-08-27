@@ -287,6 +287,7 @@ export const labels = {
 	// Search-to-add checklist (only damaged parts are added)
 	checklistSearchDamaged: "Cari section / part yang rusak…", // Search a section/part to add
 	checklistEmpty: "Belum ada kerusakan. Cari section / part di atas untuk menambah.", // No damage added yet
+	checklistAllAdded: "Semua part sudah ditambahkan.", // Picker open, nothing left to add
 	bookingCode: "Kode Booking", // Booking code (header)
 	// Mandatory-before-submit (EIR-In)
 	eirNeedComplete: "Lengkapi dulu sebelum submit:", // Complete before submitting
@@ -344,6 +345,16 @@ export const labels = {
 	eirOutPrevPhotos: "Foto EIR-In",
 	eirOutNoBaseline: "Tidak ada EIR-In sebelumnya untuk dibandingkan",
 	eirOutWillReady: "Setelah di-ACC Adm Ops, tank tercatat KELUAR DEPO",
+	// Kelengkapan tank — kotak isian pada form EIR cetak (bukan temuan kerusakan).
+	// Dicatat di EIR-In DAN EIR-Out supaya selisihnya kelihatan.
+	fittingsTitle: "Kelengkapan Tank",
+	fittingsHint: "Isi sesuai kotak isian di form EIR. Kosongkan kalau memang tidak diperiksa — kosong ≠ nol.",
+	fittingsHintOut: "Angka EIR-In sudah diisikan sebagai awalan. Cek fisiknya, koreksi kalau beda — selisihnya jadi dasar klaim.",
+	fittingValue: "Jumlah",
+	fittingOther: "Lainnya…",
+	fittingOtherPlaceholder: "Tulis sendiri",
+	fittingBackToList: "↺ Pilih dari daftar",
+	fittingBaseline: "EIR-In:",
 	// Seal numbers fitted at load-out — the one thing EIR-Out records beyond photos
 	eirOutSealsTitle: "No. Seal",
 	eirOutSealsHint: "Catat setiap segel yang terpasang. Tambah baris sebanyak segelnya.",

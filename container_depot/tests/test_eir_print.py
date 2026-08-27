@@ -41,13 +41,26 @@ class TestEirPrintFormat(FrappeTestCase):
 			"damage_description": "dent on underside",
 			"severity": "Minor",
 		})
+		# Kelengkapan tank — the printed sheet's fill-in boxes, not defects.
+		doc.append("fittings", {
+			"fitting_item": "BDC-09-IN",
+			"compartment": "Bottom Discharge",
+			"printed_no": "9",
+			"item_label": "Steam Pipe",
+			"slot_label": "IN",
+			"value": "3",
+			"uom": "inch",
+		})
 		doc.insert(ignore_permissions=True)
 
 		html = frappe.get_print("Inspection", doc.name, print_format="EIR Format")
 
 		self.assertIn("EQUIPMENT INTERCHANGE RECEIPT", html)  # kop
 		self.assertIn("EIRP", html)                            # ISO 6346 prefix derived
-		self.assertIn("Damage Codes", html)                    # legend from master
-		self.assertIn("Repair Codes", html)
+		# The legend headings are lower-cased in the template and upper-cased by CSS.
+		self.assertIn("Damage codes", html)                    # legend from master
+		self.assertIn("Repair codes", html)
 		self.assertIn("Underside", html)                       # 50-row checklist grid
 		self.assertIn("dent on underside", html)               # damage_log joined by checklist_item
+		self.assertIn("KELENGKAPAN TANK", html)                # fittings block
+		self.assertIn("Steam Pipe", html)

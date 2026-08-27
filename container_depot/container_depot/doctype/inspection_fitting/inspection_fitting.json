@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-08-27 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "fitting_item",
+  "compartment",
+  "printed_no",
+  "item_label",
+  "slot_label",
+  "value",
+  "uom"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "Kotak isian pada form EIR yang dicatat baris ini.",
+   "fieldname": "fitting_item",
+   "fieldtype": "Link",
+   "label": "Fitting",
+   "options": "Inspection Fitting Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "compartment",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Compartment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "printed_no",
+   "fieldtype": "Data",
+   "label": "No",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "item_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Item",
+   "read_only": 1
+  },
+  {
+   "columns": 1,
+   "fieldname": "slot_label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Slot",
+   "read_only": 1
+  },
+  {
+   "columns": 2,
+   "description": "Nilai yang dicatat surveyor: angka, atau pilihan tipe (teks bebas untuk \"Other\").",
+   "fieldname": "value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nilai"
+  },
+  {
+   "columns": 1,
+   "fieldname": "uom",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Satuan",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-27 09:00:00.000000",
+ "module": "Container Depot",
+ "name": "Inspection Fitting",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
