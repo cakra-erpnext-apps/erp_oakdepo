@@ -1,15 +1,23 @@
 {#-
   EQUIPMENT INTERCHANGE RECEIPT — the survey sheet.
 
-  This one keeps its dense two-column grid on purpose: it is a technical form a surveyor
-  fills in and both parties sign. What it adopts from the rest of the depot's paperwork is
-  the letterhead, the type scale and the palette.
+  Laid out after the OAK paper form (Rev. terbaru, compartment-based): one bordered header
+  block carrying the tank's identity, then the checklist, then the tank's kelengkapan, then
+  the two-party sign-off. What it takes from the rest of the depot's paperwork is the
+  letterhead, the type scale and the palette.
+
+  THREE COLUMNS, NOT TWO. The active taxonomy is 138 parts; at two columns that is 69 rows
+  and three A4 pages of mostly empty cells. Three columns halves it. The per-row remarks
+  column went with it — on the paper form the codes live in the grid and the words live in
+  the REMARKS box, so notes are collected underneath as "CATATAN TEMUAN" and only for the
+  parts that actually carry one. Nothing is dropped; it is just not given a column that is
+  blank 130 times out of 138.
 
   PORTRAIT, deliberately. The old template asked for landscape via `@page`, which
   wkhtmltopdf ignores — Frappe builds its page flags from declarations on `.print-format`
   — so this sheet has always printed portrait. Honouring the request turns out to cost
   paper rather than save it: A4 landscape is 87mm shorter, and with a checklist this long
-  that is two extra pages. Portrait it stays; `oak.styles(landscape=true)` is there for a
+  that is extra pages. Portrait it stays; `oak.styles(landscape=true)` is there for a
   format that genuinely needs the width.
 
   Design system: container_depot/templates/print/oak_print.html
@@ -17,139 +25,193 @@
 {%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
 {{ oak.styles(base=10) }}
 <style>
-  /* The checklist is long; landscape gives it width but costs page height, so rows are
-     kept to a single tight line. */
-  .oak-doc .eir th, .oak-doc .eir td { border: 1px solid #cfdac2; padding: 1px 4px; font-size: 8px; line-height: 1.25; }
-  .oak-doc .eir th { background-color: #f0f3ed; color: #4a5a3a; font-weight: 700; text-align: center; letter-spacing: .4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .oak-doc .eir .no { width: 3.5%; text-align: center; }
-  .oak-doc .eir .it { width: 21%; }
+  /* `!important` is not decoration here. Frappe's own print stylesheet ships
+       .print-format td, .print-format th { padding: 10px !important; }
+     which outranks every padding the OAK print design system declares — so a checklist row
+     asking for 12px has always rendered at 32px, and 138 parts spilled over three pages.
+     Only this sheet opts out; the shared macros are left alone deliberately, since undoing
+     that padding app-wide would resize every other document at the same time. */
+
+  /* Header block — the paper form's bordered field grid: tiny caption over the value. */
+  .oak-doc .hdr { margin-top: 10px; }
+  .oak-doc .hdr td { border: 1px solid #cfdac2; padding: 2px 5px 3px !important; vertical-align: top; }
+  .oak-doc .hdr .k { font-size: 6.5px; letter-spacing: .5px; color: #8a949d; text-transform: uppercase; line-height: 1.3; }
+  .oak-doc .hdr .v { font-size: 9px; font-weight: 700; line-height: 1.3; }
+  .oak-doc .hdr .v.sm { font-size: 8px; font-weight: 600; }
+
+  /* Checklist grid — kept to a single tight line per part so 138 of them stay on one page. */
+  .oak-doc .eir th, .oak-doc .eir td { border: 1px solid #cfdac2; padding: 0 3px !important; font-size: 7px; line-height: 1.75; }
+  .oak-doc .eir th { background-color: #f0f3ed; color: #4a5a3a; font-weight: 700; text-align: center; letter-spacing: .3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .eir .no { width: 3%; text-align: center; color: #8a949d; }
+  .oak-doc .eir .it { width: 20.3%; }
   .oak-doc .eir .cd { width: 5%; text-align: center; font-family: 'Courier New', Courier, monospace; font-weight: 700; }
-  .oak-doc .eir .rm { width: 15.5%; }
-  .oak-doc .spec td { border: 1px solid #e3e7ea; padding: 4px 7px; vertical-align: top; }
-  .oak-doc .spec .k { font-size: 7.5px; letter-spacing: .8px; color: #8a949d; text-transform: uppercase; }
-  .oak-doc .spec .v { font-size: 10px; font-weight: 700; margin-top: 1px; }
-  .oak-doc .legend { font-size: 7.5px; color: #45505a; line-height: 1.5; }
-  .oak-doc .signbox td { border: 1px solid #cfdac2; height: 54px; vertical-align: top; padding: 4px 7px; text-align: center; }
+  /* A part with a finding is what the reader is looking for — let it carry weight. */
+  .oak-doc .eir tr.hit .it { font-weight: 700; }
+  .oak-doc .eir tr.hit .cd { background-color: #fbf3e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .eir .val { width: 9%; text-align: center; font-weight: 700; }
+  .oak-doc .eir .slot { width: 7%; color: #6b7580; }
+  .oak-doc .legend { font-size: 7px; color: #45505a; line-height: 1.5; }
+  .oak-doc .notes { font-size: 8px; line-height: 1.55; }
+  .oak-doc .notes .part { font-weight: 700; }
+  .oak-doc .signbox td { border: 1px solid #cfdac2; height: 54px; vertical-align: top; padding: 4px 7px !important; text-align: center; }
+  .oak-doc .kv td { padding: 1px 0 !important; }
+  .oak-doc .signbox .cap { font-size: 7.5px; letter-spacing: .8px; color: #8a949d; text-transform: uppercase; }
 </style>
 
 {%- set cn = (doc.get("container_no") or "") | upper -%}
 {%- set io_date = doc.get("eir_date") or doc.get("gate_in_timestamp") or doc.get("gate_out_timestamp") or doc.creation -%}
+{%- set direction = "OUT" if doc.get("inspection_type") == "EIR-Out" else "IN" -%}
 {%- set checklist = frappe.get_all("Inspection Checklist Item", filters={"is_active": 1}, fields=["item_code", "printed_no", "area", "item_name", "sequence"], order_by="sequence asc") -%}
 {%- set damage_codes = frappe.get_all("Inspection Damage Code", filters={"is_active": 1}, fields=["name", "description"], order_by="name asc") -%}
 {%- set repair_codes = frappe.get_all("Inspection Repair Code", filters={"is_active": 1}, fields=["name", "description"], order_by="name asc") -%}
 {%- set dmap = {} -%}
 {%- for d in doc.damage_log -%}{%- if d.checklist_item -%}{%- set _ = dmap.update({d.checklist_item: d}) -%}{%- endif -%}{%- endfor -%}
 {%- set active_codes = checklist | map(attribute="item_code") | list -%}
+{#- Damage recorded against a part that has since been retired still happened to this tank;
+    it just cannot be placed in the grid, so it gets its own table. -#}
 {%- set legacy = [] -%}
 {%- for d in doc.damage_log -%}{%- if d.checklist_item and d.checklist_item not in active_codes -%}{%- set _ = legacy.append(d) -%}{%- endif -%}{%- endfor -%}
-{%- set half = ((checklist | length) + 1) // 2 -%}
-{#- Kelengkapan tank: the printed sheet's fill-in boxes. Recorded rows only — a slot the
+{%- set third = ((checklist | length) + 2) // 3 -%}
+{#- The words behind the codes, collected out of the grid (see the header note). -#}
+{%- set notes = [] -%}
+{%- for c in checklist -%}
+  {%- set d = dmap.get(c.item_code) -%}
+  {%- if d and d.damage_description -%}{%- set _ = notes.append({"item": c.item_name, "no": c.printed_no, "d": d}) -%}{%- endif -%}
+{%- endfor -%}
+{#- Kelengkapan tank: the paper form's fill-in boxes. Recorded rows only — a slot the
     surveyor left blank means "not checked", so printing a 0 for it would be a lie. -#}
 {%- set fittings = doc.get("fittings") or [] -%}
+{%- set fit_areas = [] -%}
+{%- for f in fittings -%}{%- if f.compartment not in fit_areas -%}{%- set _ = fit_areas.append(f.compartment) -%}{%- endif -%}{%- endfor -%}
 {%- set fhalf = ((fittings | length) + 1) // 2 -%}
+{%- set seals = doc.get("out_seals") or [] -%}
 
 <div class="oak-doc">
-  {{ oak.head("EQUIPMENT INTERCHANGE RECEIPT", doc.get("inspection_type") or "", logo_h=52, title_size=13, title_wrap=true) }}
+  {{ oak.head("EQUIPMENT INTERCHANGE RECEIPT", "", logo_h=52, title_size=13, title_wrap=true) }}
 
-  {{ oak.strip([
-    {"k": "No. EIR", "v": doc.name, "w": "24%"},
-    {"k": "Container", "v": cn or "&mdash;", "w": "22%"},
-    {"k": "In / Out Date", "v": oak.tgl(io_date), "w": "20%"},
-    {"k": "Location", "v": doc.get("depot") or "&mdash;", "w": "16%"},
-    {"k": "Tank Status", "v": oak.cond_pill(doc.get("tank_status")), "w": "18%"},
-  ]) }}
-
-  <table class="spec">
+  {#- The paper form carries a pre-printed serial top-right; ours is the EIR number, and it
+      is the one thing on the sheet a reader looks up first. -#}
+  <table class="hdr">
     <tr>
-      <td><div class="k">Prefix</div><div class="v mono">{{ cn[:4] or "&mdash;" }}</div></td>
-      <td><div class="k">Number</div><div class="v mono">{{ cn[4:10] or "&mdash;" }}</div></td>
-      <td><div class="k">Cd</div><div class="v mono">{{ cn[10:11] or "&mdash;" }}</div></td>
-      <td><div class="k">Serial No</div><div class="v">{{ doc.get("serial_no") or "&mdash;" }}</div></td>
-      <td><div class="k">Ex Vessel</div><div class="v">{{ doc.get("ex_vessel") or "&mdash;" }}</div></td>
-      <td><div class="k">Date Manufacture</div><div class="v">{{ oak.tgl(doc.get("manufacture_date")) }}</div></td>
-      <td><div class="k">Last Test</div><div class="v">{{ oak.tgl(doc.get("last_test_date")) }}</div></td>
-      <td><div class="k">Capacity (L)</div><div class="v">{{ doc.get("capacity") or "&mdash;" }}</div></td>
-      <td><div class="k">Tare (kg)</div><div class="v">{{ doc.get("tare_weight") or "&mdash;" }}</div></td>
-      <td><div class="k">MGW (kg)</div><div class="v">{{ doc.get("max_gross_weight") or "&mdash;" }}</div></td>
-      <td><div class="k">Last Cargo</div><div class="v">{{ doc.get("last_cargo") or "&mdash;" }}</div></td>
+      <td style="width:14%;"><div class="k">No. EIR</div><div class="v mono">{{ doc.get("inspection_id") or doc.name }}</div></td>
+      <td style="width:12%;"><div class="k">Date of Inspection</div><div class="v">{{ oak.tgl(io_date) }}</div></td>
+      <td style="width:15%;"><div class="k">Tank No</div><div class="v mono">{{ cn or "&mdash;" }}</div></td>
+      <td style="width:11%;"><div class="k">Tare Weight</div><div class="v">{{ doc.get("tare_weight") or "&mdash;" }}</div></td>
+      <td style="width:12%;"><div class="k">Max Gross Weight</div><div class="v">{{ doc.get("max_gross_weight") or "&mdash;" }}</div></td>
+      <td style="width:11%;"><div class="k">Capacity</div><div class="v">{{ doc.get("capacity") or "&mdash;" }}</div></td>
+      <td style="width:8%;"><div class="k">Tank</div><div class="v">{{ direction }}</div></td>
+      <td><div class="k">Tank Status</div><div class="v">{{ oak.cond_pill(doc.get("tank_status")) }}</div></td>
+    </tr>
+    <tr>
+      <td colspan="2"><div class="k">Shipper / Consignee</div><div class="v sm">{{ doc.get("container_principal") or "&mdash;" }}</div></td>
+      <td><div class="k">Truck No</div><div class="v sm">{{ doc.get("truck_no") or "&mdash;" }}</div></td>
+      <td colspan="2"><div class="k">Vessel / Voy</div><div class="v sm">{{ doc.get("ex_vessel") or doc.get("vessel") or "&mdash;" }}</div></td>
+      <td><div class="k">EMKL</div><div class="v sm">{{ doc.get("shipper") or "&mdash;" }}</div></td>
+      <td colspan="2"><div class="k">Inspect Location</div><div class="v sm">{{ doc.get("depot") or "&mdash;" }}</div></td>
+    </tr>
+    <tr>
+      <td colspan="2"><div class="k">Last Cargo</div><div class="v sm">{{ doc.get("last_cargo") or "&mdash;" }}</div></td>
+      <td><div class="k">Serial No</div><div class="v sm">{{ doc.get("serial_no") or "&mdash;" }}</div></td>
+      <td colspan="2"><div class="k">Manufacture Date</div><div class="v sm">{{ oak.tgl(doc.get("manufacture_date")) }}</div></td>
+      <td><div class="k">Last Test</div><div class="v sm">{{ oak.tgl(doc.get("last_test_date")) }}</div></td>
+      <td colspan="2"><div class="k">Reference No.</div><div class="v sm">{{ doc.get("reff_doc") or "&mdash;" }}</div></td>
+    </tr>
+    <tr>
+      <td colspan="8">
+        <div class="k">Seal</div>
+        <div class="v sm">
+          {%- if seals %}{% for s in seals %}<span class="mono">{{ s.seal_no }}</span>{% if s.remarks %} ({{ s.remarks }}){% endif %}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+          {%- else %}&mdash;{% endif -%}
+        </div>
+      </td>
     </tr>
   </table>
 
   <table class="eir" style="margin-top:8px;">
     <thead>
       <tr>
-        <th class="no">#</th><th class="it">ITEM</th><th class="cd">D</th><th class="cd">R</th><th class="rm">KETERANGAN</th>
-        <th class="no">#</th><th class="it">ITEM</th><th class="cd">D</th><th class="cd">R</th><th class="rm">KETERANGAN</th>
+        {%- for _ in range(3) %}
+        <th class="no">#</th><th class="it">ITEM</th><th class="cd">D</th><th class="cd">R</th>
+        {%- endfor %}
       </tr>
     </thead>
     <tbody>
-      {%- for i in range(half) -%}
-      {%- set L = checklist[i] if i < checklist | length else None -%}
-      {%- set R = checklist[i + half] if (i + half) < checklist | length else None -%}
-      {%- set dl = dmap.get(L.item_code) if L else None -%}
-      {%- set dr = dmap.get(R.item_code) if R else None -%}
+      {%- for i in range(third) -%}
       <tr>
-        <td class="no">{{ L.printed_no if L else "" }}</td>
-        <td class="it">{{ L.item_name if L else "" }}</td>
-        <td class="cd">{{ dl.damage_type if dl and dl.damage_type else "" }}</td>
-        <td class="cd">{{ dl.repair_code if dl and dl.repair_code else "" }}</td>
-        <td class="rm">{{ dl.damage_description if dl and dl.damage_description else "" }}</td>
-        <td class="no">{{ R.printed_no if R else "" }}</td>
-        <td class="it">{{ R.item_name if R else "" }}</td>
-        <td class="cd">{{ dr.damage_type if dr and dr.damage_type else "" }}</td>
-        <td class="cd">{{ dr.repair_code if dr and dr.repair_code else "" }}</td>
-        <td class="rm">{{ dr.damage_description if dr and dr.damage_description else "" }}</td>
+        {%- for col in range(3) -%}
+        {%- set idx = i + (third * col) -%}
+        {%- set C = checklist[idx] if idx < checklist | length else None -%}
+        {%- set d = dmap.get(C.item_code) if C else None -%}
+        {%- set hit = d and (d.damage_type or d.repair_code) -%}
+        <td class="no">{{ C.printed_no if C else "" }}</td>
+        <td class="it{% if hit %} b{% endif %}" {% if hit %}style="font-weight:700;"{% endif %}>{{ C.item_name if C else "" }}</td>
+        <td class="cd"{% if hit and d.damage_type %} style="background-color:#fbf3e6;"{% endif %}>{{ d.damage_type if d and d.damage_type else "" }}</td>
+        <td class="cd"{% if hit and d.repair_code %} style="background-color:#fbf3e6;"{% endif %}>{{ d.repair_code if d and d.repair_code else "" }}</td>
+        {%- endfor -%}
       </tr>
       {%- endfor -%}
     </tbody>
   </table>
 
-  {#- Damage recorded against a checklist item that has since been retired still belongs on
-      the sheet — it happened to this tank. It just cannot be placed in the grid above. -#}
-  {%- if legacy -%}
+  {%- if notes -%}
   <table class="eir" style="margin-top:6px;">
-    <thead>
-      <tr><th colspan="5" style="text-align:left;">CATATAN KERUSAKAN LAIN &mdash; item di luar checklist aktif</th></tr>
-      <tr><th class="it">ITEM</th><th class="cd">D</th><th class="cd">R</th><th colspan="2" class="rm">KETERANGAN</th></tr>
-    </thead>
+    <thead><tr><th colspan="4" style="text-align:left;">CATATAN TEMUAN</th></tr></thead>
     <tbody>
-      {%- for d in legacy -%}
+      {%- for n in notes -%}
       <tr>
-        <td class="it">{{ d.component or d.checklist_item }}</td>
-        <td class="cd">{{ d.damage_type or "" }}</td>
-        <td class="cd">{{ d.repair_code or "" }}</td>
-        <td colspan="2" class="rm">{{ d.damage_description or "" }}</td>
+        <td class="no">{{ n.no }}</td>
+        <td class="it" style="width:24%;">{{ n.item }}</td>
+        <td class="cd" style="width:9%; white-space:nowrap;">{{ n.d.damage_type or "&mdash;" }} / {{ n.d.repair_code or "&mdash;" }}</td>
+        <td>{{ n.d.damage_description }}</td>
       </tr>
       {%- endfor -%}
     </tbody>
   </table>
   {%- endif -%}
 
+  {%- if legacy -%}
+  <table class="eir" style="margin-top:6px;">
+    <thead>
+      <tr><th colspan="4" style="text-align:left;">CATATAN KERUSAKAN LAIN &mdash; item di luar checklist aktif</th></tr>
+    </thead>
+    <tbody>
+      {%- for d in legacy -%}
+      <tr>
+        <td class="it" style="width:24%;">{{ d.component or d.checklist_item }}</td>
+        <td class="cd" style="width:5%;">{{ d.damage_type or "" }}</td>
+        <td class="cd" style="width:5%;">{{ d.repair_code or "" }}</td>
+        <td>{{ d.damage_description or "" }}</td>
+      </tr>
+      {%- endfor -%}
+    </tbody>
+  </table>
+  {%- endif -%}
+
+  {#- Kelengkapan tank, grouped by compartment exactly as the paper form groups it. -#}
   {%- if fittings -%}
   <table class="eir" style="margin-top:6px;">
     <thead>
-      <tr><th colspan="10" style="text-align:left;">KELENGKAPAN TANK</th></tr>
-      <tr>
-        <th class="no">#</th><th class="it">ITEM</th><th class="rm">SLOT</th><th class="cd">NILAI</th><th class="cd">SAT</th>
-        <th class="no">#</th><th class="it">ITEM</th><th class="rm">SLOT</th><th class="cd">NILAI</th><th class="cd">SAT</th>
-      </tr>
+      <tr><th colspan="8" style="text-align:left;">KELENGKAPAN TANK</th></tr>
     </thead>
     <tbody>
-      {%- for i in range(fhalf) -%}
-      {%- set FL = fittings[i] if i < fittings | length else None -%}
-      {%- set FR = fittings[i + fhalf] if (i + fhalf) < fittings | length else None -%}
+      {%- for area in fit_areas -%}
+      {%- set rows = fittings | selectattr("compartment", "equalto", area) | list -%}
+      {%- set rhalf = ((rows | length) + 1) // 2 -%}
+      <tr><td colspan="8" style="background-color:#f7f9f5; font-weight:700; letter-spacing:.4px;">{{ area | upper }}</td></tr>
+      {%- for i in range(rhalf) -%}
+      {%- set L = rows[i] if i < rows | length else None -%}
+      {%- set R = rows[i + rhalf] if (i + rhalf) < rows | length else None -%}
       <tr>
-        <td class="no">{{ FL.printed_no if FL else "" }}</td>
-        <td class="it">{{ FL.item_label if FL else "" }}</td>
-        <td class="rm">{{ FL.slot_label if FL and FL.slot_label else "" }}</td>
-        <td class="cd">{{ FL.value if FL else "" }}</td>
-        <td class="cd">{{ FL.uom if FL and FL.uom else "" }}</td>
-        <td class="no">{{ FR.printed_no if FR else "" }}</td>
-        <td class="it">{{ FR.item_label if FR else "" }}</td>
-        <td class="rm">{{ FR.slot_label if FR and FR.slot_label else "" }}</td>
-        <td class="cd">{{ FR.value if FR else "" }}</td>
-        <td class="cd">{{ FR.uom if FR and FR.uom else "" }}</td>
+        <td class="it" style="width:22%;">{{ L.item_label if L else "" }}</td>
+        <td class="slot">{{ L.slot_label if L and L.slot_label else "" }}</td>
+        <td class="val">{{ L.value if L else "" }}</td>
+        <td class="slot">{{ L.uom if L and L.uom else "" }}</td>
+        <td class="it" style="width:22%;">{{ R.item_label if R else "" }}</td>
+        <td class="slot">{{ R.slot_label if R and R.slot_label else "" }}</td>
+        <td class="val">{{ R.value if R else "" }}</td>
+        <td class="slot">{{ R.uom if R and R.uom else "" }}</td>
       </tr>
+      {%- endfor -%}
       {%- endfor -%}
     </tbody>
   </table>
@@ -170,53 +232,39 @@
   </table>
 
   <div class="band">
-  <table class="boxrow" style="margin-top:8px;">
-    <tr>
-      <td class="box" style="width:44%;">
-        <div class="box-h">Remarks</div>
-        <div style="font-size:9px; white-space:pre-line;">{{ doc.get("remarks") or "&mdash;" }}</div>
-        {%- if doc.get("out_seals") %}
-        <div class="k lbl" style="margin-top:6px;">Seal No</div>
-        <div style="font-size:9px;">{% for s in doc.out_seals %}<span class="mono">{{ s.seal_no }}</span>{% if s.remarks %} ({{ s.remarks }}){% endif %}{% if not loop.last %} &middot; {% endif %}{% endfor %}</div>
-        {%- endif %}
-      </td>
-      <td class="gut"></td>
-      <td class="box" style="width:27%;">
-        <div class="box-h">Truck &amp; Driver</div>
-        <table class="kv">
-          <tr><td class="k">Truck No</td><td class="v mono">{{ doc.get("truck_no") or "&mdash;" }}</td></tr>
-          <tr><td class="k">Driver</td><td class="v">{{ doc.get("driver") or "&mdash;" }}{% if doc.get("driver_phone") %} <span class="sub" style="font-weight:400;">&middot; {{ doc.driver_phone }}</span>{% endif %}</td></tr>
-        </table>
-      </td>
-      <td class="gut"></td>
-      <td class="box" style="width:27%;">
-        <div class="box-h">Shipper / EMKL</div>
-        <div style="font-size:10px; font-weight:600;">{{ doc.get("shipper") or "&mdash;" }}</div>
-      </td>
-    </tr>
-  </table>
+    <table class="boxrow" style="margin-top:8px;">
+      <tr>
+        <td class="box" style="width:62%;">
+          <div class="box-h">Remarks</div>
+          <div style="font-size:9px; white-space:pre-line;">{{ doc.get("remarks") or "&mdash;" }}</div>
+        </td>
+        <td class="gut"></td>
+        <td class="box" style="width:36%;">
+          <div class="box-h">Driver</div>
+          <table class="kv">
+            <tr><td class="k">Nama</td><td class="v">{{ doc.get("driver") or "&mdash;" }}</td></tr>
+            <tr><td class="k">Telp</td><td class="v">{{ doc.get("driver_phone") or "&mdash;" }}</td></tr>
+          </table>
+        </td>
+      </tr>
+    </table>
 
-  <p style="font-size:9px; color:#45505a; margin:8px 0 6px;">
-    This equipment was delivered / received in good condition, except as noted above.
-  </p>
+    <p style="font-size:8.5px; color:#45505a; margin:8px 0 4px;">
+      This equipment was delivered / received in good condition, except as noted above.
+    </p>
 
-  <table class="signbox">
-    <tr>
-      <td style="width:33%;"><div class="lbl">Delivered by</div></td>
-      <td style="width:33%;"><div class="lbl">Received by</div></td>
-      <td style="width:34%;">
-        <div class="lbl">Inspector</div>
-        {%- if doc.get("inspector_signature") %}
-        <img src="{{ doc.inspector_signature }}" style="max-height:34px; object-fit:contain;">
-        <div style="font-size:9px;">{{ doc.get("inspector") or "" }}</div>
-        {%- else %}
-        <div style="margin-top:22px; font-size:9px;">{{ doc.get("inspector") or "" }}</div>
-        {%- endif %}
-      </td>
-    </tr>
-  </table>
-
-  {{ oak.foot("FM-OPS-EIR-01") }}
+    <table class="signbox">
+      <tr>
+        <td style="width:33.4%;">
+          <div class="cap">EIR fill / inspect by</div>
+          {%- if doc.get("inspector_signature") %}<img src="{{ doc.inspector_signature }}" style="max-height:34px; margin-top:2px;">{% endif %}
+          <div style="font-size:9px; margin-top:2px;">{{ doc.get("inspector") or "&mdash;" }}</div>
+        </td>
+        <td style="width:33.3%;"><div class="cap">Delivered by</div></td>
+        <td style="width:33.3%;"><div class="cap">Received by</div></td>
+      </tr>
+    </table>
   </div>
 
+  {{ oak.foot("FM-OPS-EIR-01") }}
 </div>
