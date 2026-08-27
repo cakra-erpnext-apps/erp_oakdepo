@@ -1488,10 +1488,18 @@ MASTER_DOCTYPES = {
 	"Surveyor Company",
 }
 
-# Compact permission grammar, one letter per flag. `r` carries report+export with it
-# because a role that may read a doctype has no reason to be barred from listing it.
+# Compact permission grammar, one letter per flag. `r` carries report+export+print with it
+# because a role that may read a doctype has no reason to be barred from listing it — or
+# from printing it. `print` is its own Frappe flag and was missing here, which is why the
+# Desk showed no Print action on ANY Container Depot document: the first Custom DocPerm on
+# a doctype makes Frappe ignore its shipped permissions wholesale, so a flag this seeder
+# never sets is a flag nobody has. Note `export` was always granted, and export hands over
+# strictly more than a printed copy does — print was the odd one out, not the risky one.
+#
+# `email` is deliberately NOT in the bundle: printing produces a copy for the person
+# already allowed to read the document, emailing sends it to someone who is not.
 _PERM_LETTERS = {
-	"r": ("read", "report", "export"),
+	"r": ("read", "report", "export", "print"),
 	"w": ("write",),
 	"c": ("create",),
 	"s": ("submit",),
