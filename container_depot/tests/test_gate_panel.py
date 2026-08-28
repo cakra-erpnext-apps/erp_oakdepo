@@ -16,7 +16,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
 
-from container_depot import api, finance
+from container_depot import api
 from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 
@@ -113,8 +113,11 @@ class TestGatePanel(FrappeTestCase):
 		self.assertTrue(self._detail()["finance_enabled"])
 
 	def test_detail_reports_finance_off(self):
-		frappe.db.set_single_value("Depot Finance Settings", "enable_finance", 0)
-		finance.clear_cache()
+		# Flipped through the fixture, never by hand: it commits the change AND registers the
+		# restore. A bare set_single_value here is undone by nothing — tearDown's _cleanup()
+		# commits, and FrappeTestCase rolls back once per class, so the site was left with
+		# invoicing switched off for good after every suite run.
+		require_finance(self, enabled=False)
 		self.assertFalse(self._detail()["finance_enabled"])
 
 	# --- open orders -------------------------------------------------------------

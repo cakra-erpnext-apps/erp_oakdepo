@@ -53,19 +53,43 @@ def _cleanup():
 	frappe.db.commit()
 
 
+def _pin_storage(case, **overrides):
+	"""Pin the storage half of Depot Finance Settings for one test, then put it back.
+
+	All three inputs a day count depends on — free days, the counting convention, the
+	billing mode — are SITE settings, so a class that pins only the ones it names inherits
+	the rest from however this particular site happens to be configured. Setting ``Cara
+	Hitung Hari`` to "Hari keluar tidak dihitung" — a legitimate choice — is on its own
+	enough to fail the ledger tests on an otherwise untouched checkout. Pin all three.
+
+	Restored through ``addCleanup``, not ``tearDown``: ``_cleanup()`` commits, so a restore
+	has to run after it or the site keeps whatever the test set.
+	"""
+	wanted = {
+		"storage_free_days": 0,
+		"storage_day_count": storage.COUNT_BOTH,
+		"storage_billing_mode": storage.MODE_ON_EXIT,
+	}
+	wanted.update(overrides)
+	before = {field: frappe.db.get_single_value(storage.SETTINGS, field) for field in wanted}
+
+	def restore():
+		for field, value in before.items():
+			frappe.db.set_single_value(storage.SETTINGS, field, value)
+		frappe.db.commit()
+
+	# Registered before the first write, so a failure halfway through still puts it back.
+	case.addCleanup(restore)
+	for field, value in wanted.items():
+		frappe.db.set_single_value(storage.SETTINGS, field, value)
+
+
 class TestStorageCharges(FrappeTestCase):
 	def setUp(self):
 		self.customer = ensure_test_customer("Storage Charge Owner")
-		self._prev_free = frappe.db.get_single_value("Depot Finance Settings", "storage_free_days")
-		self._prev_mode = frappe.db.get_single_value("Depot Finance Settings", "storage_day_count")
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", 0)
-		frappe.db.set_single_value("Depot Finance Settings", "storage_day_count", storage.COUNT_BOTH)
+		_pin_storage(self)
 
 	def tearDown(self):
-		"""Restore the site to its pre-test state — the settings singleton included, or the
-		next run inherits this run's free days."""
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", self._prev_free)
-		frappe.db.set_single_value("Depot Finance Settings", "storage_day_count", self._prev_mode)
 		_cleanup()
 
 	def _row(self, cno, **extra):
@@ -197,8 +221,7 @@ class TestNewestVisitOnly(FrappeTestCase):
 
 	def setUp(self):
 		self.customer = ensure_test_customer("Storage Newest Owner")
-		self._prev_free = frappe.db.get_single_value("Depot Finance Settings", "storage_free_days")
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", 0)
+		_pin_storage(self)
 		self.cno = f"{PREFIX}TWICE"
 		self.doc = _container(self.cno, "In_Depot", self.customer)
 		_gate_entry(self.cno, add_days(today(), -20), add_days(today(), -18))   # visit 1
@@ -206,7 +229,6 @@ class TestNewestVisitOnly(FrappeTestCase):
 		storage_charge.sync(self.doc.name, self.cno)
 
 	def tearDown(self):
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", self._prev_free)
 		_cleanup()
 
 	def test_unfiltered_shows_only_the_newest_visit(self):
@@ -250,15 +272,10 @@ class TestStorageBillingMode(FrappeTestCase):
 
 	def setUp(self):
 		self.customer = ensure_test_customer("Storage Mode Owner")
-		self._prev_mode = frappe.db.get_single_value("Depot Finance Settings", "storage_billing_mode")
-		self._prev_free = frappe.db.get_single_value("Depot Finance Settings", "storage_free_days")
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", 0)
-		frappe.db.set_single_value("Depot Finance Settings", "storage_billing_mode", storage.MODE_RUNNING)
+		_pin_storage(self, storage_billing_mode=storage.MODE_RUNNING)
 		self.contract = None
 
 	def tearDown(self):
-		frappe.db.set_single_value("Depot Finance Settings", "storage_billing_mode", self._prev_mode)
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", self._prev_free)
 		if self.contract:
 			# Only a Draft contract may be deleted (Void/Amend is the real-world path for the
 			# rest), and activating one publishes a customer Price List — both have to go, or
@@ -330,14 +347,9 @@ class TestStorageChargeLedger(FrappeTestCase):
 
 	def setUp(self):
 		self.customer = ensure_test_customer("Storage Ledger Owner")
-		self._prev_free = frappe.db.get_single_value("Depot Finance Settings", "storage_free_days")
-		self._prev_mode = frappe.db.get_single_value("Depot Finance Settings", "storage_billing_mode")
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", 0)
-		frappe.db.set_single_value("Depot Finance Settings", "storage_billing_mode", storage.MODE_ON_EXIT)
+		_pin_storage(self)
 
 	def tearDown(self):
-		frappe.db.set_single_value("Depot Finance Settings", "storage_free_days", self._prev_free)
-		frappe.db.set_single_value("Depot Finance Settings", "storage_billing_mode", self._prev_mode)
 		_cleanup()
 
 	def _visits(self, container):
