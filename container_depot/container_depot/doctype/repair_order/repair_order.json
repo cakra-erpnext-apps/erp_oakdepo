@@ -8,6 +8,7 @@
   "header_section",
   "container",
   "depot",
+  "job_type",
   "column_break_1",
   "technician",
   "reff_doc",
@@ -65,6 +66,17 @@
    "label": "Depot",
    "options": "Depot",
    "description": "Opsional."
+  },
+  {
+   "default": "Repair",
+   "description": "Repair = perbaikan biasa. Periodic Test = uji berkala 2,5 / 5 tahun — tetap dibukukan sebagai M&R (v0_66), yang dibatasi hanya katalog item di pickernya.",
+   "fieldname": "job_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Jenis Pekerjaan",
+   "options": "Repair\nPeriodic Test",
+   "reqd": 1
   },
   {
    "fieldname": "column_break_1",
@@ -339,7 +351,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-26 10:00:00.000000",
+ "modified": "2026-08-31 09:30:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

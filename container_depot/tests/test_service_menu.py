@@ -201,7 +201,7 @@ class TestDepotServiceMenu(FrappeTestCase):
 	def test_a_menu_exists_for_every_price_list_picker(self):
 		"""One menu per flow whose item picker is scoped by a price list. A flow missing from
 		here means its filter lives in code, where no operator can see or change it."""
-		expected = {"Booking", "Cleaning", "Maintenance"}
+		expected = {"Booking", "Cleaning", "Maintenance", "Periodic Test"}
 		self.assertEqual(set(service_menu.DEFAULT_MENUS), expected)
 		# The dev seeder must cover exactly the same flows, or dev and production drift.
 		self.assertEqual({name for name, _seq, _groups in seed_dev.MENUS}, expected)
@@ -278,3 +278,171 @@ class TestDepotServiceMenu(FrappeTestCase):
 		self._ensure_item_price(f"{_PREFIX}-CLEAN", 70.0, 0.0)
 		got = {ln["item"] for ln in depot_contract.base_price_list_lines_for_menu(_PL, _MENU)}
 		self.assertEqual(got, {f"{_PREFIX}-A", f"{_PREFIX}-B", f"{_PREFIX}-C"})
+
+
+_PT_MENU = "Periodic Test"
+_PT_PREFIX = "ZZ-PT-TEST"
+_PT_GROUP = "ZZ PT Test Group"
+_PT_OTHER_GROUP = "ZZ PT Other Group"
+_PT_CUST = "ZZ PT Test Customer"
+_PT_PL = "ZZ PT Test PL"
+
+
+class TestPeriodicTestMenu(FrappeTestCase):
+	"""Picker M&R mengikuti ``Repair Order.job_type``.
+
+	Uji berkala tetap M&R (v0_66) — yang dipisah cuma katalog itemnya. Yang dikunci di
+	sini: menu yang belum dipetakan operator TIDAK BOLEH menyembunyikan apa pun (kalau ia
+	memfilter saat kosong, picker uji berkala akan kosong melompong di setiap install baru),
+	dan ``job_type = Repair`` harus tetap memakai menu Maintenance seperti sebelumnya.
+
+	Semua fixture berawalan ``ZZ-PT-TEST`` / ``ZZ PT`` dan dihapus di tearDown.
+	"""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		if not frappe.db.exists("Depot Service Menu", _PT_MENU):
+			self.skipTest("Periodic Test menu not seeded in this site")
+		self._mr_group = frappe.db.get_value(
+			"Depot Service Menu Group", {"parent": mr.MR_MENU}, "item_group"
+		)
+		if not self._mr_group:
+			self.skipTest("Maintenance menu not mapped in this site")
+		for name, group in ((_PT_GROUP, "All Item Groups"), (_PT_OTHER_GROUP, "All Item Groups")):
+			if not frappe.db.exists("Item Group", name):
+				frappe.get_doc({
+					"doctype": "Item Group", "item_group_name": name,
+					"parent_item_group": group, "is_group": 0,
+				}).insert(ignore_permissions=True)
+		self._item(f"{_PT_PREFIX}-TEST", _PT_GROUP)      # item uji berkala
+		self._item(f"{_PT_PREFIX}-OTHER", _PT_OTHER_GROUP)  # bukan anggota menu mana pun
+		self._item(f"{_PT_PREFIX}-MR", self._mr_group)   # anggota menu Maintenance
+		# Menu Periodic Test lahir kosong dari patch v0_85; test memaksanya kosong dulu supaya
+		# tidak bergantung pada pemetaan yang mungkin sudah dibuat operator — dan MENGEMBALIKAN
+		# pemetaan itu di tearDown. tearDown di sini commit (fixture-nya menyentuh Item /
+		# Item Group yang di-cache), jadi tanpa pengembalian ini test akan menulis ulang menu
+		# milik site secara permanen.
+		self._menu_groups_before = frappe.get_all(
+			"Depot Service Menu Group", filters={"parent": _PT_MENU}, pluck="item_group"
+		)
+		frappe.db.delete("Depot Service Menu Group", {"parent": _PT_MENU})
+		frappe.clear_cache(doctype="Depot Service Menu")
+		self._orders = []
+		self._containers = []
+
+	def tearDown(self):
+		for o in self._orders:
+			frappe.db.delete("Repair Order", {"name": o})
+		for c in self._containers:
+			frappe.db.delete("Container", {"name": c})
+		for code in (f"{_PT_PREFIX}-TEST", f"{_PT_PREFIX}-OTHER", f"{_PT_PREFIX}-MR"):
+			frappe.db.delete("Item", {"name": code})
+		frappe.db.delete("Depot Service Menu Group", {"parent": _PT_MENU})
+		if self._menu_groups_before:
+			menu = frappe.get_doc("Depot Service Menu", _PT_MENU)
+			menu.set("item_groups", [{"item_group": g} for g in self._menu_groups_before])
+			menu.save(ignore_permissions=True)
+		for g in (_PT_GROUP, _PT_OTHER_GROUP):
+			frappe.db.delete("Item Group", {"name": g})
+		frappe.db.delete("Customer", {"name": _PT_CUST})
+		frappe.db.delete("Item Price", {"price_list": _PT_PL})
+		frappe.db.delete("Price List", {"name": _PT_PL})
+		frappe.clear_cache(doctype="Depot Service Menu")
+		frappe.db.commit()
+		super().tearDown()
+
+	# --- fixtures ---------------------------------------------------------------
+	def _customer(self):
+		"""Owner dengan rate card sendiri berisi TIGA item test.
+
+		Picker selalu memotong dengan himpunan item ber-harga milik owner (kalau owner tidak
+		punya price list sendiri, ia jatuh ke default Selling Settings dan tidak satu pun item
+		test ikut). Dengan ketiganya ber-harga di sini, yang membedakan hasil hanyalah MENU —
+		yang memang jadi pokok test ini.
+		"""
+		if not frappe.db.exists("Price List", _PT_PL):
+			frappe.get_doc({
+				"doctype": "Price List", "price_list_name": _PT_PL,
+				"currency": "USD", "selling": 1, "enabled": 1,
+			}).insert(ignore_permissions=True)
+		for code in (f"{_PT_PREFIX}-TEST", f"{_PT_PREFIX}-OTHER", f"{_PT_PREFIX}-MR"):
+			if not frappe.db.exists("Item Price", {"item_code": code, "price_list": _PT_PL, "selling": 1}):
+				frappe.get_doc({
+					"doctype": "Item Price", "item_code": code, "price_list": _PT_PL,
+					"selling": 1, "price_list_rate": 10.0,
+				}).insert(ignore_permissions=True)
+		if not frappe.db.exists("Customer", _PT_CUST):
+			frappe.get_doc({
+				"doctype": "Customer", "customer_name": _PT_CUST, "customer_type": "Company",
+				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name")
+				or "All Customer Groups",
+				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name")
+				or "All Territories",
+				"default_price_list": _PT_PL,
+			}).insert(ignore_permissions=True)
+		return _PT_CUST
+
+	def _item(self, code, group):
+		if frappe.db.exists("Item", code):
+			frappe.db.set_value("Item", code, "item_group", group)
+			return code
+		frappe.get_doc({
+			"doctype": "Item", "item_code": code, "item_name": code, "item_group": group,
+			"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+		}).insert(ignore_permissions=True)
+		return code
+
+	def _repair_order(self, job_type):
+		container = frappe.get_doc({
+			"doctype": "Container", "container_no": f"{_PT_PREFIX}{len(self._containers)}",
+			"container_type": "ISO Tank", "status": "In_Depot", "principal": self._customer(),
+		}).insert(ignore_permissions=True).name
+		self._containers.append(container)
+		ro = frappe.get_doc({
+			"doctype": "Repair Order", "container": container,
+			"job_type": job_type, "status": "Draft",
+		}).insert(ignore_permissions=True).name
+		self._orders.append(ro)
+		return ro
+
+	def _picker(self, job_type):
+		ro = self._repair_order(job_type)
+		return {it["item_code"] for it in mr.mr_item_search(search=_PT_PREFIX, repair_order=ro)["items"]}
+
+	def _map_groups(self, *groups):
+		menu = frappe.get_doc("Depot Service Menu", _PT_MENU)
+		menu.set("item_groups", [{"item_group": g} for g in groups])
+		menu.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Depot Service Menu")
+
+	# --- AC-9 -------------------------------------------------------------------
+	def test_empty_menu_hides_nothing(self):
+		"""Menu tanpa Item Group tidak memfilter — picker tetap terbuka sampai operator
+		memetakannya di Desk. Ini yang membuat menu boleh lahir kosong di production."""
+		self.assertFalse(service_menu.is_real_menu(_PT_MENU))
+		codes = self._picker("Periodic Test")
+		self.assertIn(f"{_PT_PREFIX}-TEST", codes)
+		self.assertIn(f"{_PT_PREFIX}-OTHER", codes)
+
+	# --- AC-10 ------------------------------------------------------------------
+	def test_mapped_menu_narrows_to_the_testing_catalogue(self):
+		self._map_groups(_PT_GROUP)
+		codes = self._picker("Periodic Test")
+		self.assertIn(f"{_PT_PREFIX}-TEST", codes)
+		self.assertNotIn(f"{_PT_PREFIX}-OTHER", codes)
+		self.assertNotIn(f"{_PT_PREFIX}-MR", codes)  # katalog repair tidak ikut terbawa
+
+	# --- AC-11 ------------------------------------------------------------------
+	def test_repair_job_still_uses_the_maintenance_menu(self):
+		"""Perilaku lama tidak berubah: job_type Repair tetap dibatasi menu Maintenance."""
+		self._map_groups(_PT_GROUP)
+		codes = self._picker("Repair")
+		self.assertIn(f"{_PT_PREFIX}-MR", codes)
+		self.assertNotIn(f"{_PT_PREFIX}-TEST", codes)
+
+	def test_legacy_order_without_job_type_falls_back_to_maintenance(self):
+		"""Dokumen lama (job_type kosong, sebelum patch v0_85) tidak boleh berubah diam-diam."""
+		ro = self._repair_order("Repair")
+		frappe.db.set_value("Repair Order", ro, "job_type", "", update_modified=False)
+		codes = {it["item_code"] for it in mr.mr_item_search(search=_PT_PREFIX, repair_order=ro)["items"]}
+		self.assertIn(f"{_PT_PREFIX}-MR", codes)

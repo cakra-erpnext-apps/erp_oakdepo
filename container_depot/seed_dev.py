@@ -74,6 +74,9 @@ MENUS = [
         "Frame & Metal Work",
         "Others (Bertschi)",
     ]),
+    # Uji berkala tetap dibukukan sebagai M&R (v0_66) — yang dipisah hanya katalog
+    # itemnya, supaya picker uji berkala tidak menampilkan seluruh katalog sparepart.
+    ("Periodic Test", 4, ["Testing Charges", "Survey Fee"]),
 ]
 
 CUSTOMERS = ["Stolt", "Bertschi"]

@@ -34,9 +34,18 @@ from container_depot.container_depot.service_menu import filter_items_by_menu, i
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots, get_user_warehouses
 from container_depot.pricing_model import price_list_for_customer, resolve_price
 
-# The Depot Service Menu the M&R item picker is scoped to. When this menu is
-# missing / inactive / empty, the picker falls back to all owner-priced items.
-MR_MENU = "Maintenance"
+# The Depot Service Menu the M&R item picker is scoped to, per jenis pekerjaan. When the
+# menu is missing / inactive / empty, the picker falls back to all owner-priced items
+# (see service_menu.is_real_menu) — a menu yang belum dipetakan operator tidak pernah
+# menyembunyikan item.
+#
+# Periodic test tetap dibukukan sebagai M&R (keputusan patch v0_66: tidak ada doctype
+# Periodic Test Order). Yang dipisah hanya katalog itemnya, supaya picker uji berkala
+# tidak menampilkan seluruh katalog sparepart dan sebaliknya.
+MR_MENU_BY_JOB = {"Repair": "Maintenance", "Periodic Test": "Periodic Test"}
+
+# Dipertahankan: pemanggil lama (dan test) masih mengimpor konstanta tunggal ini.
+MR_MENU = MR_MENU_BY_JOB["Repair"]
 
 # Owner-approval status machine (single source of truth — shared by the controller,
 # the ESS/PWA endpoints, and the Desk workflow buttons). The owner must approve the
@@ -214,9 +223,14 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 	when the row has none does the container's branch default stand in.
 	"""
 	pl = None
+	menu = MR_MENU
 	warehouse = _clean(warehouse) or None
 	if repair_order:
-		ro = frappe.db.get_value("Repair Order", repair_order, ["principal", "container"], as_dict=True) or frappe._dict()
+		ro = frappe.db.get_value(
+			"Repair Order", repair_order, ["principal", "container", "job_type"], as_dict=True
+		) or frappe._dict()
+		# Dokumen lama tidak punya job_type → jatuh ke menu Maintenance, perilaku lama.
+		menu = MR_MENU_BY_JOB.get(ro.job_type or "", MR_MENU)
 		principal = ro.principal or (frappe.db.get_value("Container", ro.container, "principal") if ro.container else None)
 		pl = _owner_price_list(principal)
 		warehouse = warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
@@ -239,12 +253,12 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 		filters["is_stock_item"] = 0
 	elif line_type == "Part":
 		filters["is_stock_item"] = 1
-	# Scope to the Maintenance menu (group-derived) when it's configured, intersecting
+	# Scope to the menu of this job type (group-derived) when it's configured, intersecting
 	# with the owner-priced set; otherwise keep the owner-priced filter (or none).
 	names = priced
-	if is_real_menu(MR_MENU):
+	if is_real_menu(menu):
 		base = priced if priced is not None else frappe.get_all("Item", filters={"disabled": 0}, pluck="name")
-		names = filter_items_by_menu(base, MR_MENU)
+		names = filter_items_by_menu(base, menu)
 	# A part that the source warehouse does not hold cannot be used, so it is dropped from
 	# the picker; services are untouched. Filtered BEFORE the query so pagination stays
 	# honest (a page of 20 never comes back short).

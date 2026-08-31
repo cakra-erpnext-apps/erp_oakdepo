@@ -32,9 +32,9 @@ from frappe.utils.nestedset import get_descendants_of
 # An empty menu does not filter (``is_real_menu`` -> False), so each picker stays open until
 # an operator maps the groups in Desk. Dev sites get a realistic mapping from
 # ``seed_dev.MENUS`` instead of a migration.
-DEFAULT_MENUS = ("Booking", "Cleaning", "Maintenance")
+DEFAULT_MENUS = ("Booking", "Cleaning", "Maintenance", "Periodic Test")
 
-DEFAULT_SEQUENCE = {"Booking": 1, "Cleaning": 2, "Maintenance": 3}
+DEFAULT_SEQUENCE = {"Booking": 1, "Cleaning": 2, "Maintenance": 3, "Periodic Test": 4}
 
 
 def seed_default_menus() -> int:
