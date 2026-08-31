@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Depot Service Menu Items",
+  "ref_doctype": "Depot Service Menu",
+  "report_type": "Script Report",
+  "is_standard": "Yes",
+  "module": "Container Depot",
+  "disabled": 0
+}

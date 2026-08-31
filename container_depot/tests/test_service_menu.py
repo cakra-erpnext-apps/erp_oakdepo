@@ -446,3 +446,115 @@ class TestPeriodicTestMenu(FrappeTestCase):
 		frappe.db.set_value("Repair Order", ro, "job_type", "", update_modified=False)
 		codes = {it["item_code"] for it in mr.mr_item_search(search=_PT_PREFIX, repair_order=ro)["items"]}
 		self.assertIn(f"{_PT_PREFIX}-MR", codes)
+
+
+class TestDepotServiceMenuItemsReport(FrappeTestCase):
+	"""Laporan "Isi Service Menu" — apa yang sebenarnya dijaring tiap picker.
+
+	Yang dikunci di sini justru baris-baris yang TIDAK berisi item: menu yang belum
+	dipetakan atau non-aktif harus tetap muncul sebagai satu baris berisi alasannya.
+	Menu kosong yang hilang dari laporan adalah persis kegagalan yang mau ditangkap —
+	yang tidak muncul tidak akan diperbaiki siapa pun.
+
+	Fixture memakai awalan ``ZZ-RPT-TEST`` / ``ZZ Rpt`` dan dihapus di tearDown.
+	"""
+
+	MENU = "ZZ Rpt Test Menu"
+	GROUP = "ZZ Rpt Test Group"
+	ITEM = "ZZ-RPT-TEST-A"
+	PINNED = "ZZ-RPT-TEST-PIN"
+	OUT_GROUP = "ZZ Rpt Other Group"
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		for name in (self.GROUP, self.OUT_GROUP):
+			if not frappe.db.exists("Item Group", name):
+				frappe.get_doc({
+					"doctype": "Item Group", "item_group_name": name,
+					"parent_item_group": "All Item Groups", "is_group": 0,
+				}).insert(ignore_permissions=True)
+		for code, group in ((self.ITEM, self.GROUP), (self.PINNED, self.OUT_GROUP)):
+			if not frappe.db.exists("Item", code):
+				frappe.get_doc({
+					"doctype": "Item", "item_code": code, "item_name": code, "item_group": group,
+					"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+				}).insert(ignore_permissions=True)
+
+	def tearDown(self):
+		# Baris anak ikut dihapus: sebuah menu yang dihapus mentah lewat db.delete
+		# meninggalkan baris anaknya, dan menu BARU dengan nama yang sama akan memungutnya
+		# kembali saat dimuat — test berikutnya lalu membaca isi menu milik test sebelumnya.
+		for child in ("Depot Service Menu Group", "Depot Service Menu Item"):
+			frappe.db.delete(child, {"parent": self.MENU})
+		frappe.db.delete("Depot Service Menu", {"name": self.MENU})
+		for code in (self.ITEM, self.PINNED):
+			frappe.db.delete("Item", {"name": code})
+		for g in (self.GROUP, self.OUT_GROUP):
+			frappe.db.delete("Item Group", {"name": g})
+		frappe.clear_cache(doctype="Depot Service Menu")
+		frappe.db.commit()
+		super().tearDown()
+
+	def _menu(self, *, groups=(), extras=(), is_active=1):
+		if frappe.db.exists("Depot Service Menu", self.MENU):
+			frappe.delete_doc("Depot Service Menu", self.MENU, force=True, ignore_permissions=True)
+		for child in ("Depot Service Menu Group", "Depot Service Menu Item"):
+			frappe.db.delete(child, {"parent": self.MENU})
+		frappe.get_doc({
+			"doctype": "Depot Service Menu", "menu_name": self.MENU, "is_active": is_active,
+			"item_groups": [{"item_group": g} for g in groups],
+			"extra_items": [{"item": i} for i in extras],
+		}).insert(ignore_permissions=True)
+		# service_menu membaca menunya lewat get_cached_doc. Menghapus lalu MEMBUAT ULANG
+		# nama yang sama tidak membatalkan cache dokumen itu (save biasa yang melakukannya),
+		# jadi tanpa baris ini test berikutnya membaca isi menu milik test sebelumnya.
+		frappe.clear_document_cache("Depot Service Menu", self.MENU)
+		frappe.clear_cache(doctype="Depot Service Menu")
+
+	def _run(self):
+		from container_depot.container_depot.report.depot_service_menu_items import (
+			depot_service_menu_items as report,
+		)
+
+		_cols, rows, _msg, _chart, summary = report.execute({"menu": self.MENU})
+		return rows, summary
+
+	def test_unmapped_menu_still_gets_a_row(self):
+		self._menu()
+		rows, summary = self._run()
+		self.assertEqual([r["status"] for r in rows], ["Belum dipetakan"])
+		self.assertEqual(summary[0]["value"], 0)
+		self.assertEqual(summary[0]["indicator"], "Red")
+
+	def test_inactive_menu_still_gets_a_row(self):
+		self._menu(groups=[self.GROUP], is_active=0)
+		rows, _summary = self._run()
+		self.assertEqual([r["status"] for r in rows], ["Non-aktif"])
+
+	def test_mapped_menu_lists_its_items(self):
+		self._menu(groups=[self.GROUP])
+		rows, summary = self._run()
+		self.assertEqual([r["item_code"] for r in rows], [self.ITEM])
+		self.assertEqual(rows[0]["via"], "Item Group")
+		self.assertEqual(summary[0]["value"], 1)
+		self.assertEqual(summary[0]["indicator"], "Green")
+
+	def test_pinned_item_is_marked_as_such(self):
+		"""Item yang dipin gampang terlupa saat memangkas group — ia tidak ikut hilang
+		bersama groupnya, jadi laporannya harus menyebut lewat mana ia masuk."""
+		self._menu(groups=[self.GROUP], extras=[self.PINNED])
+		rows, _summary = self._run()
+		via = {r["item_code"]: r["via"] for r in rows}
+		self.assertEqual(via[self.PINNED], "Item (pinned)")
+		self.assertEqual(via[self.ITEM], "Item Group")
+
+	def test_every_menu_appears_when_no_filter_is_given(self):
+		self._menu(groups=[self.GROUP])
+		from container_depot.container_depot.report.depot_service_menu_items import (
+			depot_service_menu_items as report,
+		)
+
+		_cols, rows, _msg, _chart, summary = report.execute({})
+		listed = {s["label"] for s in summary}
+		self.assertEqual(listed, set(frappe.get_all("Depot Service Menu", pluck="name")))
+		self.assertTrue({r["menu"] for r in rows} <= listed)

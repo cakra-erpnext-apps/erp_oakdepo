@@ -365,6 +365,18 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "Isi Service Menu",
+   "link_to": "Depot Service Menu Items",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-list"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Price List",
    "link_to": "Price List",
    "link_type": "DocType",
@@ -778,7 +790,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-31 11:30:00.000000",
+ "modified": "2026-08-31 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
