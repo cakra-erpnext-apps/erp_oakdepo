@@ -21,6 +21,18 @@
   {
    "child": 0,
    "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Dashboard",
+   "link_to": "Container Inventory",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "es-line-dashboard"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
    "icon": "mail",
    "indent": 0,
    "keep_closed": 0,
@@ -47,18 +59,6 @@
    "keep_closed": 0,
    "label": "Container Inventory",
    "type": "Section Break"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Dashboard",
-   "link_to": "Container Inventory",
-   "link_type": "Workspace",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-dashboard"
   },
   {
    "child": 1,
@@ -778,7 +778,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-26 14:00:00.000000",
+ "modified": "2026-08-31 11:30:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
