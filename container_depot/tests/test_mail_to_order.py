@@ -167,6 +167,37 @@ class TestMailToOrder(FrappeTestCase):
 		self.assertEqual(len(res["errors"]), 1)
 		self.assertIn("Tidak Ada Cargo Ini", res["errors"][0])
 
+	def test_file_import_refuses_another_principals_tank(self):
+		"""The import is the one door into the grid that never passes the picker's owner
+		filter, so the owner the operator answered for is what the file is judged against.
+		A tank owned by somebody else comes back named; a tank the master left unowned is
+		not contradicted by anything, so it rides along."""
+		other = ensure_test_customer("MailToOrder Other Principal")
+		self._container(_A)                    # owned by self._principal
+		self._container(_B, principal=other)   # owned by someone else
+		url = self._xlsx([["Container", "Last Cargo"], [_A, ""], [_B, ""]])
+
+		res = parse_container_file(url, principal=self._principal)
+
+		self.assertEqual([r["container_no"] for r in res["rows"]], [_A])
+		self.assertEqual(len(res["refused"]), 1)
+		self.assertIn(_B, res["refused"][0])
+		self.assertIn(other, res["refused"][0])
+		self.assertEqual(res["skipped"], [])
+
+	def test_file_import_without_a_principal_judges_nobody(self):
+		"""Scripted callers and the older two-argument call still read the whole file —
+		the ownership gate is the dialog's answer, not a rule of the parser."""
+		other = ensure_test_customer("MailToOrder Other Principal")
+		self._container(_A)
+		self._container(_B, principal=other)
+		url = self._xlsx([["Container", "Last Cargo"], [_A, ""], [_B, ""]])
+
+		res = parse_container_file(url)
+
+		self.assertEqual([r["container_no"] for r in res["rows"]], [_A, _B])
+		self.assertEqual(res["refused"], [])
+
 	def test_file_import_needs_a_file(self):
 		with self.assertRaises(frappe.ValidationError):
 			parse_container_file("")

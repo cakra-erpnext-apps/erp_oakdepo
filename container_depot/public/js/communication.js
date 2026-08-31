@@ -449,6 +449,27 @@ function open_order_dialog(frm, preset_key) {
 							"Kolom: Container, Last Cargo (opsional). Baris header dilewati. Pakai Download Template kalau belum punya filenya."
 						)}</p>`,
 					},
+					// Asked here and not only in the header, because a file bypasses the grid's
+					// Container picker: imported rows never pass the owner filter the picker
+					// applies, so without this the import is the one door another principal's
+					// tank can walk through. Answering it first turns that into a named,
+					// refused row. Editing it writes straight back to the header, so the two
+					// cannot drift — and the header's own onchange rescopes the picker.
+					{
+						fieldtype: "Link",
+						fieldname: "principal",
+						options: "Customer",
+						label: __("Principal / Tank Owner"),
+						reqd: 1,
+						default: dialog.get_value("principal") || "",
+						description: __("Container milik principal lain dilewati."),
+						onchange() {
+							const picked = this.get_value();
+							if (picked && picked !== dialog.get_value("principal")) {
+								dialog.set_value("principal", picked);
+							}
+						},
+					},
 					{ fieldtype: "Attach", fieldname: "file", label: __("File Excel (.xlsx)"), reqd: 1 },
 					{ fieldtype: "Check", fieldname: "replace", label: __("Ganti baris yang ada") },
 				],
@@ -456,7 +477,7 @@ function open_order_dialog(frm, preset_key) {
 				primary_action(values) {
 					frappe.call({
 						method: "container_depot.container_depot.mail_to_order.parse_container_file",
-						args: { file_url: values.file },
+						args: { file_url: values.file, principal: values.principal },
 						freeze: true,
 						freeze_message: __("Membaca file…"),
 					}).then((r) => {
@@ -466,7 +487,7 @@ function open_order_dialog(frm, preset_key) {
 						note_missing(unknown);
 						const counts = add_rows(rows, { replace: values.replace });
 						importer.hide();
-						report_import(unknown, res.errors || [], counts);
+						report_import(unknown, res.errors || [], counts, res.refused || []);
 					});
 				},
 			});
@@ -475,18 +496,20 @@ function open_order_dialog(frm, preset_key) {
 	}
 
 	// An import creates no master, ever: an unknown tank comes in as a bare number (the
-	// grid's Status column then says what becomes of it) and an unknown cargo is dropped
-	// rather than invented — Cargo drives the cleaning method and its price, so a
-	// spreadsheet typo must not be able to mint one.
+	// grid's Status column then says what becomes of it), a tank the master says belongs to
+	// another principal is dropped, and an unknown cargo is dropped rather than invented —
+	// Cargo drives the cleaning method and its price, so a spreadsheet typo must not be able
+	// to mint one.
 	//
-	// Both are listed here in a report that stays on screen. A toast is fine for "12 rows
-	// added"; it is not how you tell someone that eight of their cargo cells are wrong.
-	function report_import(unknown, errors, counts) {
+	// All three are listed here in a report that stays on screen. A toast is fine for "12
+	// rows added"; it is not how you tell someone that eight of their cargo cells are wrong.
+	function report_import(unknown, errors, counts, refused) {
 		const esc = frappe.utils.escape_html;
 		const summary = `${__("{0} baris ditambahkan.", [counts.added])}${
 			counts.skipped ? " " + __("{0} dilewati (duplikat).", [counts.skipped]) : ""
 		}`;
-		if (!unknown.length && !errors.length) {
+		refused = refused || [];
+		if (!unknown.length && !errors.length && !refused.length) {
 			frappe.show_alert({ message: summary, indicator: counts.added ? "green" : "orange" });
 			return;
 		}
@@ -498,6 +521,14 @@ function open_order_dialog(frm, preset_key) {
 					"Nomornya dicatat di bawah grid. Buat masternya dulu, barisnya ikut menyusul sendiri."
 				)}</div>
 				<div>${unknown.map(esc).join(", ")}</div>`);
+		}
+		if (refused.length) {
+			blocks.push(`
+				<div class="bold mt-3">${__("Dilewati — milik principal lain")} (${refused.length})</div>
+				<div class="text-muted small">${__(
+					"Ganti Principal / Tank Owner lalu import ulang, atau buat order terpisah untuk pemilik itu."
+				)}</div>
+				<ul>${refused.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>`);
 		}
 		if (errors.length) {
 			blocks.push(`

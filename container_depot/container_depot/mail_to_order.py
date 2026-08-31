@@ -332,7 +332,7 @@ def download_container_template():
 
 
 @frappe.whitelist()
-def parse_container_file(file_url: str) -> dict:
+def parse_container_file(file_url: str, principal: str | None = None) -> dict:
 	"""Read an uploaded .xlsx into dialog grid rows: ``Container`` , ``Last Cargo``.
 
 	Deliberately its own parser rather than the booking grid's ``parse_container_xlsx``:
@@ -347,6 +347,16 @@ def parse_container_file(file_url: str) -> dict:
 	is a deliberate step taken in Container (or "+ Create New" on the picker) — never a
 	side effect of reading a file.
 
+	``principal`` is the owner the operator answered for in the dialog, and it is what the
+	file is judged against: a tank the master says belongs to somebody else is not this
+	job's to move, so it comes back in ``refused`` — named, with the owner — instead of
+	landing on the order for the save to reject. The check mirrors
+	``container_booking._import_block``, ownership half: a **blank** owner on the master
+	passes (nothing to contradict), and a blank ``principal`` here checks nothing at all,
+	which is what keeps scripted callers and the mail scan working unchanged. The desk
+	dialog makes it mandatory, because an import is the one door into the grid that never
+	passes the Container picker's owner filter.
+
 	Pure read, like everything else in the prefill path. An unknown cargo is milder: the
 	tank is real, so the row is kept with the cargo left blank and the spelling reported in
 	``errors``.
@@ -356,7 +366,7 @@ def parse_container_file(file_url: str) -> dict:
 	if not file_url:
 		frappe.throw(_("Belum ada file yang dipilih."))
 
-	rows, skipped, errors, seen = [], [], [], set()
+	rows, skipped, errors, refused, seen = [], [], [], [], set()
 	for cells in read_xlsx_file_from_attached_file(file_url=file_url) or []:
 		if not cells:
 			continue
@@ -366,9 +376,16 @@ def parse_container_file(file_url: str) -> dict:
 		if number in seen:
 			continue
 		seen.add(number)
-		container = frappe.db.get_value("Container", {"container_no": number})
-		if not container:
+		master = frappe.db.get_value(
+			"Container", {"container_no": number}, ["name", "principal"], as_dict=True
+		)
+		if not master:
 			skipped.append(number)
+			continue
+		if principal and master.principal and master.principal != principal:
+			refused.append(
+				_("{0}: milik principal lain ({1})").format(number, master.principal)
+			)
 			continue
 		raw_cargo = str(cells[1]).strip() if len(cells) > 1 and cells[1] is not None else ""
 		cargo = None
@@ -376,8 +393,8 @@ def parse_container_file(file_url: str) -> dict:
 			cargo = frappe.db.get_value("Cargo", {"cargo_name": raw_cargo})
 			if not cargo:
 				errors.append(_("{0}: cargo tidak dikenal ({1})").format(number, raw_cargo))
-		rows.append({"container_no": number, "container": container, "cargo": cargo})
-	return {"rows": rows, "skipped": skipped, "errors": errors}
+		rows.append({"container_no": number, "container": master.name, "cargo": cargo})
+	return {"rows": rows, "skipped": skipped, "errors": errors, "refused": refused}
 
 
 def _unanimous(rows: list[dict], key: str) -> str | None:
