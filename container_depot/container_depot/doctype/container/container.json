@@ -9,6 +9,7 @@
   "container_no",
   "container_type",
   "size",
+  "equipment_type",
   "column_break_1",
   "principal",
   "is_active",
@@ -81,6 +82,13 @@
    "fieldtype": "Select",
    "label": "Size",
    "options": "20'\n40'\n45'\nOther"
+  },
+  {
+   "description": "FOO = Food Grade, CHM = Chemical. Boleh dikosongkan \u2014 tank yang peruntukannya belum ditetapkan tidak dicap.",
+   "fieldname": "equipment_type",
+   "fieldtype": "Select",
+   "label": "Equipment Type",
+   "options": "\nFOO\nCHM"
   },
   {
    "fieldname": "column_break_1",
@@ -367,7 +375,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-21 11:00:00.000000",
+ "modified": "2026-08-31 11:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",
