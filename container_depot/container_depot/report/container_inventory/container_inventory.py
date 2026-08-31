@@ -25,6 +25,7 @@ def _columns():
 		{"fieldname": "container_no", "label": "Container", "fieldtype": "Link", "options": "Container", "width": 140},
 		{"fieldname": "principal", "label": "Principal", "fieldtype": "Link", "options": "Customer", "width": 160},
 		{"fieldname": "container_type", "label": "Type", "fieldtype": "Data", "width": 90},
+		{"fieldname": "equipment_type", "label": "Equip", "fieldtype": "Data", "width": 70},
 		{"fieldname": "size", "label": "Size", "fieldtype": "Data", "width": 70},
 		{"fieldname": "inventory_stage", "label": "Stage", "fieldtype": "Data", "width": 110},
 		{"fieldname": "status", "label": "Raw Status", "fieldtype": "Data", "width": 150},
@@ -50,7 +51,7 @@ def _data(filters):
 	clause = (" WHERE " + " AND ".join(where)) if where else ""
 	rows = frappe.db.sql(
 		f"""
-		SELECT c.container_no, c.principal, c.container_type, c.size, c.inventory_stage,
+		SELECT c.container_no, c.principal, c.container_type, c.equipment_type, c.size, c.inventory_stage,
 		       c.status, c.last_cargo, c.eir_in_date
 		FROM `tabContainer` c{clause}
 		ORDER BY c.principal, c.container_no
@@ -69,6 +70,7 @@ def _data(filters):
 			"container_no": r.container_no,
 			"principal": r.principal,
 			"container_type": r.container_type,
+			"equipment_type": r.equipment_type,
 			"size": r.size,
 			"inventory_stage": r.inventory_stage,
 			"status": r.status,

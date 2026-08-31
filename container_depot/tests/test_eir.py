@@ -414,6 +414,8 @@ class TestEirDraft(FrappeTestCase):
 				"tare_weight": 3800,
 				"max_gross_weight": 36000,
 				"size": "20'",
+				# Peruntukan tank (FOO / CHM) is read off the tank like the rest of them.
+				"equipment_type": "FOO",
 				# Not in TANK_MASTER_FIELDS — the depot owns these.
 				"last_cargo": "Palm Oil",
 				"principal": "Somebody Else",
@@ -430,10 +432,15 @@ class TestEirDraft(FrappeTestCase):
 		self.assertEqual(master.capacity, 24000)
 		self.assertEqual(master.tare_weight, 3800)
 		self.assertEqual(master.max_gross_weight, 36000)
+		self.assertEqual(master.equipment_type, "FOO")
 		self.assertNotEqual(master.last_cargo, "Palm Oil")
 		self.assertNotEqual(master.status, "Available")
 		# The header the PWA reopens with reads back off the master it just completed.
-		self.assertEqual(eir.open_draft(container_no="EIRD1000010")["serial_no"], "SER-9911")
+		reopened = eir.open_draft(container_no="EIRD1000010")
+		self.assertEqual(reopened["serial_no"], "SER-9911")
+		self.assertEqual(reopened["equipment_type"], "FOO")
+		# ...and the picker offering FOO / CHM is driven by the master, not a copy in the PWA.
+		self.assertEqual(eir.get_eir_masters()["tank_options"]["equipment_type"], ["FOO", "CHM"])
 
 	def test_save_draft_tank_unchanged_writes_nothing(self):
 		# Every keystroke auto-saves, so an unchanged tank block must not touch the master.

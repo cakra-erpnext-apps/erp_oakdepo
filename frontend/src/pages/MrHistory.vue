@@ -328,6 +328,7 @@ function tankCells(d) {
 	return [
 		{ label: labels.cleaningClient, value: d.client },
 		{ label: labels.cleaningTankType, value: d.tank_type },
+		{ label: labels.equipmentType, value: d.equipment_type },
 		{ label: labels.cleaningCapacity, value: d.capacity },
 		{ label: labels.cleaningPrevCargo, value: d.previous_cargo },
 		{ label: labels.cleaningTare, value: d.tare },

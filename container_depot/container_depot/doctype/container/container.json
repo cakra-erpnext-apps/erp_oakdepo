@@ -87,6 +87,7 @@
    "description": "FOO = Food Grade, CHM = Chemical. Boleh dikosongkan \u2014 tank yang peruntukannya belum ditetapkan tidak dicap.",
    "fieldname": "equipment_type",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Equipment Type",
    "options": "\nFOO\nCHM"
   },
@@ -375,7 +376,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-31 11:00:00.000000",
+ "modified": "2026-08-31 12:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

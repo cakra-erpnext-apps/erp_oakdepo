@@ -89,6 +89,13 @@
 						</select>
 					</div>
 					<div>
+						<label class="oak-label">{{ labels.equipmentType }}</label>
+						<select v-model="tank.equipment_type" class="oak-input">
+							<option value="">—</option>
+							<option v-for="o in tankOptions.equipment_type" :key="o" :value="o">{{ o }}</option>
+						</select>
+					</div>
+					<div>
 						<label class="oak-label">{{ labels.serialNo }}</label>
 						<input v-model.trim="tank.serial_no" class="oak-input" />
 					</div>
@@ -321,6 +328,7 @@ const workStartedShort = computed(() => {
 // (eir.TANK_MASTER_FIELDS). Everything the depot fills in by itself stays out.
 const tank = reactive({
 	container_type: "",
+	equipment_type: "",
 	size: "",
 	serial_no: "",
 	manufacture_date: "",
@@ -328,7 +336,7 @@ const tank = reactive({
 	tare_weight: "",
 	max_gross_weight: "",
 })
-const tankOptions = ref({ container_type: [], size: [] })
+const tankOptions = ref({ container_type: [], equipment_type: [], size: [] })
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
 const remarks = ref("")
@@ -392,7 +400,7 @@ const mastersRes = cachedResource({
 		damageCodes.value = data.damage_codes || []
 		repairCodes.value = data.repair_codes || []
 		cargos.value = data.cargos || []
-		tankOptions.value = { container_type: [], size: [], ...(data.tank_options || {}) }
+		tankOptions.value = { container_type: [], equipment_type: [], size: [], ...(data.tank_options || {}) }
 		rows.value = (data.checklist || []).map((i) =>
 			reactive({ ...i, damage_code: ACCEPTABLE_DAMAGE, repair_code: NO_ACTION_REPAIR, remarks: "", photos: [], uploading: false, photoErr: "", added: false })
 		)

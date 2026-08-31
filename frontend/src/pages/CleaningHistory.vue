@@ -206,6 +206,7 @@ function cells(d) {
 		{ label: labels.cleaningClient, value: d.client },
 		{ label: labels.cleaningPrevCargo, value: d.previous_cargo },
 		{ label: labels.cleaningTankType, value: d.tank_type },
+		{ label: labels.equipmentType, value: d.equipment_type },
 		{ label: labels.cleaningRefEir, value: d.inspection },
 		{ label: labels.cleaningDateIssue, value: fmtDate(d.date_of_issue) },
 	]

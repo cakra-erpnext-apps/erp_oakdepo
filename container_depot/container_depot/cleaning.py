@@ -24,7 +24,7 @@ from container_depot.container_depot.user_branch import assert_in_user_branch, g
 
 # Tank-spec fields read from the Container master for the form header + print.
 _CONTAINER_FIELDS = [
-	"name", "container_no", "container_type", "manufacture_date", "last_test_date",
+	"name", "container_no", "container_type", "equipment_type", "manufacture_date", "last_test_date",
 	"tare_weight", "max_gross_weight", "capacity", "principal", "last_cargo",
 	"depot",
 ]
@@ -454,6 +454,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"place_of_issue": co.place_of_issue or _default_place_of_issue(user, c.depot),
 		# Tank spec (read-only, from the Container master).
 		"tank_type": c.container_type,
+		"equipment_type": c.equipment_type,
 		"date_of_manufacture": c.manufacture_date,
 		"last_test_date": c.last_test_date,
 		"tare": c.tare_weight,

@@ -97,7 +97,7 @@ MR_CUSTOMER_VISIBLE_STATUSES = (
 
 # Tank-spec fields read from the Container master for the form header.
 _CONTAINER_FIELDS = [
-	"name", "container_no", "container_type", "principal", "last_cargo", "depot",
+	"name", "container_no", "container_type", "equipment_type", "principal", "last_cargo", "depot",
 	"capacity", "tare_weight", "max_gross_weight", "manufacture_date", "last_test_date",
 ]
 
@@ -504,6 +504,7 @@ def get_mr_order_detail(repair_order) -> dict:
 		"billing_status": ro.billing_status,
 		# Tank spec (read-only).
 		"tank_type": c.container_type,
+		"equipment_type": c.equipment_type,
 		"client": c.principal,
 		"capacity": c.capacity,
 		"tare": c.tare_weight,

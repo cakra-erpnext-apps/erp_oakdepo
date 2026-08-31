@@ -2181,15 +2181,15 @@ def download_container_master(principal: str | None = None):
 	containers = frappe.get_all(
 		"Container",
 		filters=filters,
-		fields=["container_no", "container_type", "size", "status", "last_cargo", "principal"],
+		fields=["container_no", "container_type", "equipment_type", "size", "status", "last_cargo", "principal"],
 		order_by="principal asc, container_no asc",
 	)
 	grouped = {}
 	for c in containers:
 		grouped.setdefault(c.principal or _("(no owner)"), []).append(c)
 
-	headers = ["Container", "Type", "Size", "Status", "Last Cargo"]
-	output, wb, ws, fmts = new_sheet("Containers", headers, [24, 14, 10, 14, 28])
+	headers = ["Container", "Type", "Equip", "Size", "Status", "Last Cargo"]
+	output, wb, ws, fmts = new_sheet("Containers", headers, [24, 14, 10, 10, 14, 28])
 	row = 1
 	for owner in sorted(grouped):
 		# Banner spans the full width so the section reads as one band.
@@ -2198,7 +2198,7 @@ def download_container_master(principal: str | None = None):
 			ws.write(row, col, "", fmts["group"])
 		row += 1
 		for c in grouped[owner]:
-			ws.write_row(row, 0, [c.container_no, c.container_type, c.size, c.status, c.last_cargo])
+			ws.write_row(row, 0, [c.container_no, c.container_type, c.equipment_type, c.size, c.status, c.last_cargo])
 			row += 1
 	# The Cargo master rides along on a second sheet: it is what the template's Last Cargo
 	# column has to be spelled from.

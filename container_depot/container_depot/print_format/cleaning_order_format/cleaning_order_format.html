@@ -35,6 +35,7 @@
           <tr><td class="k">Tank No.</td><td class="v mono">{{ doc.get("container_no") or doc.get("container") or "&mdash;" }}</td></tr>
           <tr><td class="k">Client / Principal</td><td class="v">{{ doc.get("container_principal") or c.get("principal") or "&mdash;" }}</td></tr>
           <tr><td class="k">Tank Type</td><td class="v">{{ c.get("container_type") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Equipment Type</td><td class="v">{{ c.get("equipment_type") or "&mdash;" }}</td></tr>
           <tr><td class="k">Previous Cargo</td><td class="v">{{ doc.get("last_cargo") or c.get("last_cargo") or "&mdash;" }}</td></tr>
           <tr><td class="k">Reference EIR</td><td class="v">{{ doc.get("inspection") or "&mdash;" }}</td></tr>
         </table>

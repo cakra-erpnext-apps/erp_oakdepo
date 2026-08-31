@@ -524,6 +524,7 @@ const headerCells = computed(() => {
 	const h = order.value || {}
 	return [
 		{ label: labels.cleaningTankType, value: h.tank_type },
+		{ label: labels.equipmentType, value: h.equipment_type },
 		{ label: labels.cleaningClient, value: h.client },
 		{ label: labels.cleaningCapacity, value: h.capacity },
 		{ label: labels.cleaningPrevCargo, value: h.previous_cargo },

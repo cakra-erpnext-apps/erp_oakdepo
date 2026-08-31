@@ -116,7 +116,7 @@ def get_eir_masters() -> dict:
 	meta = frappe.get_meta("Container")
 	tank_options = {
 		f: [o for o in (meta.get_field(f).options or "").split("\n") if o]
-		for f in ("container_type", "size")
+		for f in ("container_type", "equipment_type", "size")
 	}
 	return {
 		"checklist": checklist,
@@ -676,7 +676,7 @@ def prefill(
 
 	c = frappe.db.get_value(
 		"Container", name,
-		["name", "container_no", "container_type", "size", "serial_no", "manufacture_date",
+		["name", "container_no", "container_type", "equipment_type", "size", "serial_no", "manufacture_date",
 		 "capacity", "tare_weight", "max_gross_weight", "last_test_date", "last_cargo",
 		 "ex_vessel", "depot", "principal", "eir_in_date", "eir_out_date"],
 		as_dict=True,
@@ -699,6 +699,7 @@ def prefill(
 		"container": c.name,
 		"container_no": c.container_no,
 		"container_type": c.container_type,
+		"equipment_type": c.equipment_type,
 		"size": c.size,
 		"serial_no": c.serial_no,
 		"manufacture_date": c.manufacture_date,
@@ -1267,6 +1268,10 @@ def start_eir(inspection: str) -> dict:
 # data plate in front of them, so a half-empty Container master gets filled in there rather
 # than in a separate Desk trip that never happens.
 #
+# ``equipment_type`` (FOO / CHM) belongs here for the same reason: foodgrade service is
+# declared on the tank itself — the old EIR workbook literally had the surveyor check for a
+# "Sticker FOO" — so it is something seen, not something looked up.
+#
 # What is deliberately NOT here: everything the depot writes by itself — status, inventory
 # stage, depot, last cargo, ex vessel, the gate dates, ``last_test_date`` — plus
 # ``principal``, because who owns a tank is a commercial fact that decides billing, not
@@ -1274,6 +1279,7 @@ def start_eir(inspection: str) -> dict:
 # be edited from anywhere.
 TANK_MASTER_FIELDS = {
 	"container_type": "data",
+	"equipment_type": "data",
 	"size": "data",
 	"serial_no": "data",
 	"manufacture_date": "date",
