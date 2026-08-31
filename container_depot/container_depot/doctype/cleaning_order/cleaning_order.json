@@ -9,6 +9,7 @@
   "header_section",
   "container",
   "depot",
+  "cleaning_type",
   "column_break_1",
   "reff_doc",
   "service_section",
@@ -50,8 +51,7 @@
   "completed_by",
   "sales_invoice",
   "cleaning_item",
-  "cleaning_rate",
-  "cleaning_type"
+  "cleaning_rate"
  ],
  "fields": [
   {
@@ -419,17 +419,19 @@
    "read_only": 1
   },
   {
-   "description": "Deprecated — diganti tabel Metode Cleaning (Service).",
+   "default": "Standard Cleaning",
+   "description": "Semua order lahir sebagai Standard Cleaning. Tiga jenis wash khusus = permintaan principal, disetel Admin Ops di tahap Service Setup.",
    "fieldname": "cleaning_type",
    "fieldtype": "Select",
-   "hidden": 1,
-   "label": "Cleaning Type (lama)",
-   "options": "PP Wash\nMethanol Rinse\nSteam Wash\nHot Water\nChemical\nDetergent\nNitrogen Purge"
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Jenis Cleaning",
+   "options": "Standard Cleaning\nPP Wash\nMethanol Rinse\nSteam Wash\nOther"
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-21 11:00:00.000000",
+ "modified": "2026-08-31 10:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

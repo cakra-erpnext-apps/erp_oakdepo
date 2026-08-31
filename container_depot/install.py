@@ -6,6 +6,9 @@ from container_depot.container_depot.container_status import (
 	DONE_CLEANING,
 	DONE_REPAIR,
 )
+from container_depot.container_depot.doctype.cleaning_order.cleaning_order import (
+	SPECIAL_WASH_TYPES,
+)
 from container_depot.state_machine import IN_DEPO_STAGES
 
 # Roles that get a blanket DocPerm on EVERY Container Depot doctype, including ones added
@@ -803,6 +806,14 @@ ORDER_NUMBER_CARDS = [
 	{"label": "Booking Belum Dibayar",
 	 "document_type": "Container Booking",
 	 "filters_json": [["payment_status", "=", "Unpaid"], ["docstatus", "=", 1]]},
+	# Backlog wash khusus — pekerjaan yang diminta principal lewat email atas tank yang
+	# sudah bersih, dan yang paling gampang tenggelam justru karena tidak lahir dari EIR:
+	# di register manual, 512 dari 537 Steam Wash tidak pernah punya tanggal selesai.
+	# "Cleaning Order Aktif" menghitung semuanya jadi satu angka dan menyembunyikan ini.
+	{"label": "Wash Khusus Belum Selesai",
+	 "document_type": "Cleaning Order",
+	 "filters_json": [["cleaning_type", "in", list(SPECIAL_WASH_TYPES)],
+			  ["status", "not in", list(DONE_CLEANING)], ["docstatus", "<", 2]]},
 ]
 
 INVENTORY_CHARTS = [
@@ -832,6 +843,13 @@ INVENTORY_CHARTS = [
 	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "status", "type": "Bar",
 	 "filters_json": [["status", "!=", "Cancelled"]]},
+	# Sebaran Jenis Cleaning: berapa banyak cuci standar (lahir dari EIR-In tank kotor)
+	# dibanding tiga wash khusus yang diminta principal. Cancelled dibuang supaya bar-nya
+	# membaca beban kerja, bukan buku besar.
+	{"chart_name": "Cleaning by Type (Last Month)",
+	 "document_type": "Cleaning Order", "chart_type": "Group By", "group_by_type": "Count",
+	 "group_by_based_on": "cleaning_type", "type": "Bar",
+	 "filters_json": [["docstatus", "<", 2], ["order_created", "Timespan", "last month"]]},
 ]
 
 

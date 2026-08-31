@@ -8,6 +8,21 @@ import hashlib
 
 from container_depot.container_depot.booking_link import apply_booking_link
 
+# Item code -> Jenis Cleaning. Dikunci ke item CODE, bukan item_name: nama item bisa
+# diedit finance kapan saja, dan itu persis bug yang membuat kolom PP / Methanol / Steam
+# di report Inventory KPI per Principal selalu nol (matching lama pakai item_name LIKE).
+_WASH_TYPE_BY_ITEM = {
+	"INT-PP-WASH": "PP Wash",
+	"INT-METHANOL": "Methanol Rinse",
+	"INT-STEAM": "Steam Wash",
+}
+
+# Tiga wash yang diminta principal lewat email atas tank yang SUDAH bersih — lawan dari
+# "Standard Cleaning" yang lahir otomatis dari EIR-In tank kotor. Diturunkan dari peta di
+# atas supaya menambah satu wash khusus cukup di satu tempat.
+SPECIAL_WASH_TYPES = tuple(_WASH_TYPE_BY_ITEM.values())
+
+
 class CleaningOrder(Document):
 	def before_insert(self):
 		"""Generate cleaning order ID"""
@@ -40,6 +55,31 @@ class CleaningOrder(Document):
 		# has no parent booking to belong to.
 		apply_booking_link(self)
 		self._resolve_cleaning_services()
+		self._derive_cleaning_type()
+
+	def _derive_cleaning_type(self):
+		"""Jaring pengaman untuk order yang jenisnya KOSONG. Order baru tidak pernah lewat
+		sini: field-nya sudah ber-default ``Standard Cleaning``, dan semua order memang lahir
+		sebagai cuci standar — wash khusus adalah keputusan Admin Ops di tahap Service Setup,
+		bukan sesuatu yang disimpulkan sistem dari isi tabel service.
+
+		Yang tersisa untuk fungsi ini hanyalah dokumen lama yang kolomnya masih kosong
+		(field ini sempat dipensiunkan): begitu disimpan ulang, jenisnya disimpulkan dari
+		item service — aturan yang sama dengan patch v0_84 — dan jatuh ke Standard Cleaning
+		kalau tidak ada wash khusus di sana. Pilihan manusia tidak pernah ditimpa.
+
+		Tidak ada validasi yang menolak simpan saat jenis dan service tidak sejalan: satu
+		order boleh punya beberapa service sekaligus (mis. Standard Clean + Steam Wash),
+		dan sebuah blocker di sini akan menghentikan pekerjaan lapangan yang sah.
+		"""
+		if self.cleaning_type:
+			return
+		for row in self.cleaning_services or []:
+			found = _WASH_TYPE_BY_ITEM.get(row.cleaning_item)
+			if found:
+				self.cleaning_type = found
+				return
+		self.cleaning_type = "Standard Cleaning"
 
 	def _resolve_cleaning_services(self):
 		"""Seed every chosen cleaning Service (one or more) from the contract that owns the

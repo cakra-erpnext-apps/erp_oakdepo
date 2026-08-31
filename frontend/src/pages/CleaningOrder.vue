@@ -117,10 +117,13 @@
 										<span v-if="o.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(o.target_lift_on)">
 											Lift-on {{ hMinus(o.target_lift_on) }}
 										</span>
+										<span v-if="o.cleaning_type" class="oak-chip shrink-0 bg-brand-100 text-brand-700">
+											{{ o.cleaning_type }}
+										</span>
 										<span class="truncate text-gray-400">
 											<template v-if="o.service_count">{{ o.service_count }} {{ labels.cleaningServicesCount }}</template>
-											<template v-else-if="o.cleaning_type">{{ o.cleaning_type }}</template>
-											<template v-if="o.last_cargo"> · {{ o.last_cargo }}</template>
+											<template v-if="o.service_count && o.last_cargo"> · </template>
+											<template v-if="o.last_cargo">{{ o.last_cargo }}</template>
 										</span>
 									</p>
 								</div>

@@ -111,3 +111,4 @@ container_depot.patches.v0_80.backfill_storage_charges
 container_depot.patches.v0_81.lock_storage_charge_perms
 container_depot.patches.v0_82.seed_eir_fittings
 container_depot.patches.v0_83.grant_print_permission
+container_depot.patches.v0_84.backfill_cleaning_type

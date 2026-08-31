@@ -7,7 +7,8 @@ KPIs, optionally scoped to a single depot via the ``depot`` filter:
 - Dirty / Clean   — in-depo tanks with / without an open Cleaning Order
 - Total IN / OUT  — submitted Container Booking items by direction
 - Total Cleaned   — submitted, Completed Cleaning Orders
-- PP Wash / Methanol / Steam — Cleaning Orders by chosen service / legacy type
+- PP Wash / Methanol / Steam — Cleaning Orders by header Jenis Cleaning or by
+  the item code of the service chosen (never by item name — see ``_cleaned_counts``)
 
 All activity counts are attributed to the principal that owns the container the
 activity is against. Cleaning sub-types (§2) and depot (§3) are the upstream
@@ -58,10 +59,10 @@ def _data(depot):
 	# Activity metrics, attributed via the container's principal.
 	total_in = _booking_counts(depot, "Tank In")
 	total_out = _booking_counts(depot, "Tank Out")
-	total_cleaned = _cleaned_counts(depot, None)
-	pp_wash = _cleaned_counts(depot, "PP Wash")
-	methanol = _cleaned_counts(depot, "Methanol Rinse")
-	steam = _cleaned_counts(depot, "Steam Wash")
+	total_cleaned = _cleaned_counts(depot)
+	pp_wash = _cleaned_counts(depot, "PP Wash", "INT-PP-WASH")
+	methanol = _cleaned_counts(depot, "Methanol Rinse", "INT-METHANOL")
+	steam = _cleaned_counts(depot, "Steam Wash", "INT-STEAM")
 
 	principals = set()
 	for d in (stock, dirty, clean, total_in, total_out, total_cleaned, pp_wash, methanol, steam):
@@ -136,19 +137,29 @@ def _booking_counts(depot, direction):
 	return {r["principal"]: r["c"] for r in rows}
 
 
-def _cleaned_counts(depot, method):
-	"""Finished cleanings per principal. ``method`` narrows to a cleaning kind, matched
-	against the chosen Service item names (the current mechanism) or the legacy
-	``cleaning_type`` free-text kept on older orders."""
+def _cleaned_counts(depot, wash_type=None, item_code=None):
+	"""Finished cleanings per principal, optionally narrowed to one wash kind.
+
+	Dua jalur pencocokan, keduanya lewat NILAI TETAP, tidak pernah lewat nama item:
+
+	* ``wash_type``  — ``Cleaning Order.cleaning_type``, jenis di header. Terisi untuk
+	  semua order sejak patch v0_84.
+	* ``item_code``  — item code service yang dipilih, untuk order yang header-nya
+	  ``Other`` / jenis lain tapi jelas memuat service tersebut.
+
+	Sebelumnya jalur kedua mencocokkan ``cos.item_name LIKE '%<jenis>%'``, dan itu tidak
+	pernah kena satu baris pun: item-nya bernama "P&P Wash", "Methanol Wash / Rinse",
+	"Steam Cleaning / Wash" — bukan "PP Wash" / "Methanol Rinse" / "Steam Wash". Nama item
+	milik finance dan bisa berubah kapan saja; item code tidak. Jangan dikembalikan ke
+	pencocokan nama."""
 	params = []
 	method_clause = ""
-	if method:
-		like = f"%{method}%"
-		params.extend([method, like])
+	if wash_type or item_code:
+		params.extend([wash_type, item_code])
 		method_clause = (
 			" AND (co.cleaning_type = %s OR EXISTS ("
 			"   SELECT 1 FROM `tabCleaning Order Service` cos"
-			"   WHERE cos.parent = co.name AND cos.item_name LIKE %s))"
+			"   WHERE cos.parent = co.name AND cos.cleaning_item = %s))"
 		)
 	clause = _depot_clause("c", depot, params)
 	rows = frappe.db.sql(

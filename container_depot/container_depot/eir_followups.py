@@ -127,6 +127,12 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
 	co.container = insp.container
 	co.inspection = inspection  # EIR -> Cleaning Order
 	co.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
+	# Order yang lahir dari EIR-In tank kotor SELALU cleaning standar. Tiga jenis khusus
+	# (PP Wash / Methanol Rinse / Steam Wash) adalah permintaan principal atas tank yang
+	# sudah bersih dan parkir di yard — tidak pernah punya EIR-In kotor sebagai pemicu.
+	# Jadi jenis di sini sekaligus menandai ASAL order, yang dibaca dashboard dan register
+	# per jenis. Admin Ops tetap bebas mengubahnya di Service Setup kalau principal minta.
+	co.cleaning_type = "Standard Cleaning"
 	# Land in Admin Ops' queue first (Service Setup); Admin Ops picks the cleaning method(s)
 	# and forwards it to the depot operator (-> Pending) from the Desk Cleaning Order.
 	co.status = "Service Setup"
