@@ -824,6 +824,19 @@ ORDER_NUMBER_CARDS = [
 			  ["status", "not in", list(DONE_CLEANING)], ["docstatus", "<", 2]]},
 ]
 
+# Watcher setup — bukan beban kerja harian, melainkan konfigurasi yang diam-diam belum
+# selesai. Satu-satunya kartu bertipe "Custom" di sini: "menu tanpa baris anak sama sekali"
+# tidak bisa dinyatakan sebagai filter list Frappe, jadi angkanya dihitung di Python
+# (lihat depot_service_menu.unmapped_menu_count, yang juga menjelaskan kenapa ini penting:
+# menu kosong TIDAK memfilter apa pun, jadi kegagalannya senyap).
+SETUP_NUMBER_CARDS = [
+	{"label": "Menu Belum Dipetakan",
+	 "document_type": "Depot Service Menu",
+	 "type": "Custom",
+	 "function": None,
+	 "method": "container_depot.container_depot.doctype.depot_service_menu.depot_service_menu.unmapped_menu_count"},
+]
+
 INVENTORY_CHARTS = [
 	{"chart_name": "Tanks by Stage",
 	 "document_type": "Container", "chart_type": "Group By", "group_by_type": "Count",
@@ -915,7 +928,7 @@ def setup_inventory_dashboard():
 	doctype that lands in the same release can never break the migrate."""
 	if not frappe.db.has_column("Container", "inventory_stage"):
 		return
-	for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS:
+	for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS + SETUP_NUMBER_CARDS:
 		if not frappe.db.exists("DocType", card["document_type"]):
 			continue
 		# Number Card autonames from label → that is the record name.

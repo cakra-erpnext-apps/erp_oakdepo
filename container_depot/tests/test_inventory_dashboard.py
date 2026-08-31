@@ -15,7 +15,11 @@ from container_depot.install import (
 	INVENTORY_CHARTS,
 	INVENTORY_NUMBER_CARDS,
 	ORDER_NUMBER_CARDS,
+	SETUP_NUMBER_CARDS,
 	_qualify_filters,
+)
+from container_depot.container_depot.doctype.depot_service_menu.depot_service_menu import (
+	unmapped_menu_count,
 )
 
 
@@ -33,7 +37,7 @@ class TestInventoryDashboardFilters(FrappeTestCase):
 		self.assertEqual(_qualify_filters([], "Container"), [])
 
 	def test_every_card_spec_qualifies_to_widget_shape(self):
-		for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS:
+		for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS + SETUP_NUMBER_CARDS:
 			for f in _qualify_filters(card.get("filters_json"), card["document_type"]):
 				self.assertGreaterEqual(len(f), 4, f"{card['label']}: {f}")
 				self.assertEqual(f[0], card["document_type"], f"{card['label']}: {f}")
@@ -62,7 +66,7 @@ class TestInventoryDashboardSpecsAreValid(FrappeTestCase):
 	VALUE_OPS = {"=", "!=", "in", "not in"}
 
 	def _specs(self):
-		for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS:
+		for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS + SETUP_NUMBER_CARDS:
 			yield card["label"], card
 		for chart in INVENTORY_CHARTS:
 			yield chart["chart_name"], chart
@@ -125,7 +129,7 @@ class TestInventoryWorkspaceMatchesSeeder(FrappeTestCase):
 		return {b["data"][key] for b in self.content if b["type"] == block_type}
 
 	def test_number_cards_match_the_seeder_exactly(self):
-		seeded = {c["label"] for c in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS}
+		seeded = {c["label"] for c in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS + SETUP_NUMBER_CARDS}
 		self.assertEqual({c["number_card_name"] for c in self.ws["number_cards"]}, seeded)
 		self.assertEqual(self._content_names("number_card", "number_card_name"), seeded)
 
@@ -137,3 +141,62 @@ class TestInventoryWorkspaceMatchesSeeder(FrappeTestCase):
 	def test_every_shortcut_block_has_a_shortcut_row(self):
 		declared = {s["label"] for s in self.ws["shortcuts"]}
 		self.assertEqual(self._content_names("shortcut", "shortcut_name"), declared)
+
+
+_WATCH_MENU = "ZZ Watch Test Menu"
+_WATCH_GROUP = "ZZ Watch Test Group"
+
+
+class TestUnmappedMenuWatcher(FrappeTestCase):
+	"""Kartu "Menu Belum Dipetakan" — satu-satunya yang tahu menu itu menganggur.
+
+	Menu tanpa Item Group tidak memfilter apa pun, jadi pickernya tetap terlihat wajar dan
+	tidak ada error di mana pun; menu yang dikirim kosong oleh patch (kontraknya memang
+	begitu) bisa menganggur berbulan-bulan tanpa ada yang sadar. Yang dikunci di sini:
+	menu kosong terhitung, menu yang sudah dipetakan tidak, dan menu non-aktif tidak
+	(itu dimatikan dengan sengaja, bukan pekerjaan yang tertinggal).
+	"""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		if not frappe.db.exists("Item Group", _WATCH_GROUP):
+			frappe.get_doc({
+				"doctype": "Item Group", "item_group_name": _WATCH_GROUP,
+				"parent_item_group": "All Item Groups", "is_group": 0,
+			}).insert(ignore_permissions=True)
+
+	def tearDown(self):
+		frappe.db.delete("Depot Service Menu Group", {"parent": _WATCH_MENU})
+		frappe.db.delete("Depot Service Menu", {"name": _WATCH_MENU})
+		frappe.db.delete("Item Group", {"name": _WATCH_GROUP})
+		frappe.clear_cache(doctype="Depot Service Menu")
+		super().tearDown()
+
+	def _menu(self, *, groups=(), is_active=1):
+		if frappe.db.exists("Depot Service Menu", _WATCH_MENU):
+			frappe.delete_doc("Depot Service Menu", _WATCH_MENU, force=True, ignore_permissions=True)
+		frappe.get_doc({
+			"doctype": "Depot Service Menu", "menu_name": _WATCH_MENU, "is_active": is_active,
+			"item_groups": [{"item_group": g} for g in groups],
+		}).insert(ignore_permissions=True)
+		frappe.clear_cache(doctype="Depot Service Menu")
+
+	def test_empty_active_menu_is_counted(self):
+		before = unmapped_menu_count()["value"]
+		self._menu()
+		self.assertEqual(unmapped_menu_count()["value"], before + 1)
+
+	def test_mapped_menu_is_not_counted(self):
+		self._menu()
+		with_empty = unmapped_menu_count()["value"]
+		self._menu(groups=[_WATCH_GROUP])
+		self.assertEqual(unmapped_menu_count()["value"], with_empty - 1)
+
+	def test_inactive_menu_is_not_counted(self):
+		self._menu()
+		with_empty = unmapped_menu_count()["value"]
+		self._menu(is_active=0)
+		self.assertEqual(unmapped_menu_count()["value"], with_empty - 1)
+
+	def test_payload_carries_a_route_for_the_card_click(self):
+		self.assertEqual(unmapped_menu_count()["route"], ["List", "Depot Service Menu"])
