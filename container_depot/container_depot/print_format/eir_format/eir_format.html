@@ -6,12 +6,30 @@
   the two-party sign-off. What it takes from the rest of the depot's paperwork is the
   letterhead, the type scale and the palette.
 
+  GROUPED BY AREA, the way the paper form groups its compartments: a full-width band names
+  the area, the parts belonging to it follow underneath, and each area restarts its own
+  numbering — which is what `printed_no` has always held (A01 and B01 are both "1").
+  A flat 1..138 run reads as one undifferentiated wall; banded, a surveyor finds "Bottom
+  Discharge" by scanning bands instead of counting rows.
+
+  ONE TABLE PER AREA, with the band living in its <thead>. A single table cannot repeat a
+  mid-table row, so an area straddling the page break carried on unlabelled overleaf —
+  which is exactly the context the banding exists to give. A <thead> repeats, so each
+  area's band comes back at the top of the next page. The price is that column widths are
+  no longer negotiated across the whole checklist: `table-layout: fixed` plus an explicit
+  <colgroup> pins them, so the eight tables stack into one continuous grid.
+
   THREE COLUMNS, NOT TWO. The active taxonomy is 138 parts; at two columns that is 69 rows
-  and three A4 pages of mostly empty cells. Three columns halves it. The per-row remarks
-  column went with it — on the paper form the codes live in the grid and the words live in
-  the REMARKS box, so notes are collected underneath as "CATATAN TEMUAN" and only for the
+  and three A4 pages of mostly empty cells. Three columns halves it. Within a band the
+  fill is column-major, so the numbers still read downwards. The per-row remarks column
+  went with it — on the paper form the codes live in the grid and the words live in the
+  REMARKS box, so notes are collected underneath as "CATATAN TEMUAN" and only for the
   parts that actually carry one. Nothing is dropped; it is just not given a column that is
   blank 130 times out of 138.
+
+  THE CODE KEY COMES FIRST. D and R print as bare numbers; the key that decodes them sits
+  above the grid — as on the paper form — laid out as an aligned code/word grid rather
+  than the run-on sentence it used to be, so a reader can find "17" by scanning a column.
 
   PORTRAIT, deliberately. The old template asked for landscape via `@page`, which
   wkhtmltopdf ignores — Frappe builds its page flags from declarations on `.print-format`
@@ -58,7 +76,20 @@
      system's bordered-panel class, and a span wearing it grows a border. */
   .oak-doc .eir td.fitv .fitbox { white-space: nowrap; }
   .oak-doc .eir td.comp { background-color: #f7f9f5; font-weight: 700; letter-spacing: .4px; color: #4a5a3a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* One table per area, so their columns are pinned rather than each negotiating its own. */
+  .oak-doc .eir.chk { table-layout: fixed; }
+  /* The area band. Darker than the kelengkapan sub-header above on purpose: this one has
+     to survive being repeated eight times inside a 138-row grid and still read as a break. */
+  .oak-doc .eir td.sec, .oak-doc .eir th.sec { background-color: #e6ece0; font-weight: 700; font-size: 7px; letter-spacing: 1.2px; color: #3f4d31; text-align: center; padding: 1px 3px !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .eir .sec .cnt { font-weight: 400; letter-spacing: .3px; color: #77855f; }
+
+  /* Code key — code and word in their own cells so every column lines up. */
   .oak-doc .legend { font-size: 7px; color: #45505a; line-height: 1.5; }
+  .oak-doc .codes td { border: none; padding: 0 6px 0 0 !important; font-size: 6.8px; line-height: 1.6; vertical-align: top; }
+  .oak-doc .codes td.cc { width: 16px; text-align: right; font-family: 'Courier New', Courier, monospace; font-weight: 700; color: #1f2328; white-space: nowrap; padding-right: 4px !important; }
+  .oak-doc .codes td.cw { color: #45505a; }
+  /* Word next to a code inside running text — the findings tables under the grid. */
+  .oak-doc .cwd { color: #7b858e; font-weight: 400; }
   .oak-doc .notes { font-size: 8px; line-height: 1.55; }
   .oak-doc .notes .part { font-weight: 700; }
   .oak-doc .signbox td { border: 1px solid #cfdac2; height: 54px; vertical-align: top; padding: 4px 7px !important; text-align: center; }
@@ -78,12 +109,56 @@
   {%- endfor -%}
 {%- endmacro -%}
 
+{#- Pins the checklist's twelve columns; every area's table carries the same one so the
+    stack reads as a single grid (see the header note on `table-layout: fixed`). -#}
+{%- macro chk_cols() -%}
+  <colgroup>{% for _ in range(3) %}<col style="width:3%"><col style="width:20.3%"><col style="width:5%"><col style="width:5%">{% endfor %}</colgroup>
+{%- endmacro -%}
+
+{#- The code key: `cols` columns of code/word, filled column-major so the codes read down. -#}
+{%- macro code_grid(codes, cols) -%}
+  {%- set rows = ((codes | length) + cols - 1) // cols -%}
+  <table class="codes">
+    {%- for i in range(rows) -%}
+    <tr>
+      {%- for col in range(cols) -%}
+      {%- set idx = i + (rows * col) -%}
+      {%- set c = codes[idx] if idx < codes | length else None -%}
+      <td class="cc">{{ c.name if c else "" }}</td><td class="cw">{{ c.description if c else "" }}</td>
+      {%- endfor -%}
+    </tr>
+    {%- endfor -%}
+  </table>
+{%- endmacro -%}
+
+{#- Under a FRONT band, "Front Top Rail" says Front twice — 79 of the 138 part names carry
+    their area as a prefix. The band already says it, so the cell does not have to; the
+    names that do not start with their area (Anti Slip Surface) are left alone. -#}
+{%- macro short(name, area) -%}
+  {%- if name and area and name | lower | trim == area | lower | trim -%}{{ name }}
+  {%- elif name and area and (name | lower).startswith((area | lower) ~ " ") -%}{{ name[area | length + 1:] }}
+  {%- else -%}{{ name or "" }}{%- endif -%}
+{%- endmacro -%}
+
+{#- A code where there is room for its meaning: "17 Rusted". -#}
+{%- macro code_word(code, words) -%}
+  {%- if code -%}<span class="mono">{{ code }}</span>{% if words.get(code) %} <span class="cwd">{{ words.get(code) }}</span>{% endif %}
+  {%- else -%}&mdash;{%- endif -%}
+{%- endmacro -%}
+
 {%- set cn = (doc.get("container_no") or "") | upper -%}
 {%- set io_date = doc.get("eir_date") or doc.get("gate_in_timestamp") or doc.get("gate_out_timestamp") or doc.creation -%}
 {%- set direction = "OUT" if doc.get("inspection_type") == "EIR-Out" else "IN" -%}
 {%- set checklist = frappe.get_all("Inspection Checklist Item", filters={"is_active": 1}, fields=["item_code", "printed_no", "area", "item_name", "sequence"], order_by="sequence asc") -%}
 {%- set damage_codes = frappe.get_all("Inspection Damage Code", filters={"is_active": 1}, fields=["name", "description"], order_by="name asc") -%}
 {%- set repair_codes = frappe.get_all("Inspection Repair Code", filters={"is_active": 1}, fields=["name", "description"], order_by="name asc") -%}
+{%- set dwords = {} -%}
+{%- for c in damage_codes -%}{%- set _ = dwords.update({c.name: c.description}) -%}{%- endfor -%}
+{%- set rwords = {} -%}
+{%- for c in repair_codes -%}{%- set _ = rwords.update({c.name: c.description}) -%}{%- endfor -%}
+{#- Areas in checklist sequence — the order the surveyor walks the tank, not alphabetical. -#}
+{%- set areas = [] -%}
+{%- for c in checklist -%}{%- if c.area not in areas -%}{%- set _ = areas.append(c.area) -%}{%- endif -%}{%- endfor -%}
 {%- set dmap = {} -%}
 {%- for d in doc.damage_log -%}{%- if d.checklist_item -%}{%- set _ = dmap.update({d.checklist_item: d}) -%}{%- endif -%}{%- endfor -%}
 {%- set active_codes = checklist | map(attribute="item_code") | list -%}
@@ -91,7 +166,6 @@
     it just cannot be placed in the grid, so it gets its own table. -#}
 {%- set legacy = [] -%}
 {%- for d in doc.damage_log -%}{%- if d.checklist_item and d.checklist_item not in active_codes -%}{%- set _ = legacy.append(d) -%}{%- endif -%}{%- endfor -%}
-{%- set third = ((checklist | length) + 2) // 3 -%}
 {#- The words behind the codes, collected out of the grid (see the header note). -#}
 {%- set notes = [] -%}
 {%- for c in checklist -%}
@@ -160,24 +234,48 @@
     </tr>
   </table>
 
-  <table class="eir" style="margin-top:8px;">
+  {#- The key to the D / R columns below. On the paper form it is pre-printed above the
+      grid, and that is the useful place for it: the reader meets the codes already
+      decoded instead of hunting for a footnote after 138 rows. -#}
+  <table class="boxrow band" style="margin-top:8px;">
+    <tr>
+      <td class="box legend" style="width:57%;">
+        <div class="box-h">Damage codes &mdash; kolom D</div>
+        {{ code_grid(damage_codes, 3) }}
+      </td>
+      <td class="gut"></td>
+      <td class="box legend" style="width:41%;">
+        <div class="box-h">Repair codes &mdash; kolom R</div>
+        {{ code_grid(repair_codes, 2) }}
+      </td>
+    </tr>
+  </table>
+
+  {%- for area in areas -%}
+  {%- set parts = checklist | selectattr("area", "equalto", area) | list -%}
+  {%- set rows = ((parts | length) + 2) // 3 -%}
+  <table class="eir chk" style="margin-top:{{ 8 if loop.first else 0 }}px;">
+    {{ chk_cols() }}
     <thead>
+      {%- if loop.first %}
       <tr>
         {%- for _ in range(3) %}
         <th class="no">#</th><th class="it">ITEM</th><th class="cd">D</th><th class="cd">R</th>
         {%- endfor %}
       </tr>
+      {%- endif %}
+      <tr><th class="sec" colspan="12">{{ area | upper }} <span class="cnt">&middot; {{ parts | length }} item</span></th></tr>
     </thead>
     <tbody>
-      {%- for i in range(third) -%}
+      {%- for i in range(rows) -%}
       <tr>
         {%- for col in range(3) -%}
-        {%- set idx = i + (third * col) -%}
-        {%- set C = checklist[idx] if idx < checklist | length else None -%}
+        {%- set idx = i + (rows * col) -%}
+        {%- set C = parts[idx] if idx < parts | length else None -%}
         {%- set d = dmap.get(C.item_code) if C else None -%}
         {%- set hit = d and (d.damage_type or d.repair_code) -%}
         <td class="no">{{ C.printed_no if C else "" }}</td>
-        <td class="it{% if hit %} b{% endif %}" {% if hit %}style="font-weight:700;"{% endif %}>{{ C.item_name if C else "" }}</td>
+        <td class="it{% if hit %} b{% endif %}" {% if hit %}style="font-weight:700;"{% endif %}>{{ short(C.item_name, area) if C else "" }}</td>
         <td class="cd"{% if hit and d.damage_type %} style="background-color:#fbf3e6;"{% endif %}>{{ d.damage_type if d and d.damage_type else "" }}</td>
         <td class="cd"{% if hit and d.repair_code %} style="background-color:#fbf3e6;"{% endif %}>{{ d.repair_code if d and d.repair_code else "" }}</td>
         {%- endfor -%}
@@ -185,16 +283,27 @@
       {%- endfor -%}
     </tbody>
   </table>
+  {%- endfor -%}
 
   {%- if notes -%}
   <table class="eir" style="margin-top:6px;">
-    <thead><tr><th colspan="4" style="text-align:left;">CATATAN TEMUAN</th></tr></thead>
+    <thead>
+      <tr>
+        <th colspan="5" style="text-align:left;">CATATAN TEMUAN</th>
+      </tr>
+      <tr>
+        <th class="no">#</th><th class="it" style="text-align:left;">ITEM</th>
+        <th style="width:16%;">DAMAGE</th><th style="width:16%;">REPAIR</th>
+        <th style="text-align:left;">KETERANGAN</th>
+      </tr>
+    </thead>
     <tbody>
       {%- for n in notes -%}
       <tr>
         <td class="no">{{ n.no }}</td>
         <td class="it" style="width:24%;">{{ n.item }}</td>
-        <td class="cd" style="width:9%; white-space:nowrap;">{{ n.d.damage_type or "&mdash;" }} / {{ n.d.repair_code or "&mdash;" }}</td>
+        <td style="text-align:center;">{{ code_word(n.d.damage_type, dwords) }}</td>
+        <td style="text-align:center;">{{ code_word(n.d.repair_code, rwords) }}</td>
         <td>{{ n.d.damage_description }}</td>
       </tr>
       {%- endfor -%}
@@ -211,8 +320,8 @@
       {%- for d in legacy -%}
       <tr>
         <td class="it" style="width:24%;">{{ d.component or d.checklist_item }}</td>
-        <td class="cd" style="width:5%;">{{ d.damage_type or "" }}</td>
-        <td class="cd" style="width:5%;">{{ d.repair_code or "" }}</td>
+        <td style="width:16%; text-align:center;">{{ code_word(d.damage_type, dwords) }}</td>
+        <td style="width:16%; text-align:center;">{{ code_word(d.repair_code, rwords) }}</td>
         <td>{{ d.damage_description or "" }}</td>
       </tr>
       {%- endfor -%}
@@ -245,20 +354,6 @@
     </tbody>
   </table>
   {%- endif -%}
-
-  <table class="boxrow" style="margin-top:8px;">
-    <tr>
-      <td class="box legend" style="width:49%;">
-        <div class="box-h">Damage codes</div>
-        {% for c in damage_codes %}<span class="mono">{{ c.name }}</span> {{ c.description }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
-      </td>
-      <td class="gut"></td>
-      <td class="box legend" style="width:49%;">
-        <div class="box-h">Repair codes</div>
-        {% for c in repair_codes %}<span class="mono">{{ c.name }}</span> {{ c.description }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
-      </td>
-    </tr>
-  </table>
 
   <div class="band">
     <table class="boxrow" style="margin-top:8px;">

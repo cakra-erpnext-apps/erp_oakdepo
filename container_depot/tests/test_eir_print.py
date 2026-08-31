@@ -1,9 +1,13 @@
 """Render guard for the EIR print format (container_depot/print_format/eir).
 
-The template is pure Jinja with master-driven legends + a 50-row grid joined to
+The template is pure Jinja with master-driven legends + a checklist grid joined to
 damage_log; this test catches template breakage and confirms the derived ISO 6346
 prefix, the code legend and the checklist grid all render for a Desk- or PWA-built
 Inspection (both share the same checklist_item linkage).
+
+The grid is banded per area, so the assertions below also pin the two things that
+banding buys and can silently regress: the band itself, and the item name printed
+without the area prefix the band already carries.
 """
 
 from __future__ import annotations
@@ -81,8 +85,9 @@ class TestEirPrintFormat(FrappeTestCase):
 		# One row per item, both boxes on it — "Steam Pipe IN 3 inch · OUT 4 inch" is how the
 		# paper reads, not two rows both captioned Steam Pipe. Counted inside the kelengkapan
 		# block only: the checklist above it has four parts of its own with Steam Pipe in the
-		# name (Front Steam Pipe Cap, Left/Right Side Steam Pipe, Underframe Steam Pipe).
-		block = html.split("KELENGKAPAN TANK", 1)[1].split("Damage codes", 1)[0]
+		# name (Front Steam Pipe Cap, Left/Right Side Steam Pipe, Underframe Steam Pipe), and
+		# the block ends at the Remarks panel that follows it.
+		block = html.split("KELENGKAPAN TANK", 1)[1].split("Remarks", 1)[0]
 		self.assertEqual(block.count("Steam Pipe"), 1)
 		for box in (">IN<", ">OUT<", ">3<", ">4<", ">inch<"):
 			self.assertIn(box, block)
@@ -95,4 +100,21 @@ class TestEirPrintFormat(FrappeTestCase):
 		# be blank for 130 of 138 parts.
 		self.assertIn("CATATAN TEMUAN", html)
 		self.assertIn("penyok 12cm sisi kiri", html)
-		self.assertNotIn("KETERANGAN", html)
+		# ...and the words are there under a KETERANGAN heading of their own, which is the
+		# ONLY place that heading may appear: a remarks column back in the checklist grid
+		# would be blank for 130 of 138 parts.
+		self.assertEqual(html.count("KETERANGAN"), 1)
+		# A code is printed next to its meaning wherever there is room for both.
+		self.assertIn("Dented", html)                          # 11, decoded under CATATAN TEMUAN
+
+		# The code key is the reader's way into the D / R columns, so it precedes the grid.
+		self.assertLess(html.index("Damage codes"), html.index("FRONT"))
+		# Banded per area, and the band carries the area so the cell need not repeat it:
+		# "Front Top Rail" prints as "Top Rail" under the FRONT band.
+		for band in ("FRONT", "REAR", "BOTTOM DISCHARGE"):
+			self.assertIn(f'class="sec" colspan="12">{band} ', html)
+		grid = html.split("CATATAN TEMUAN", 1)[0]
+		self.assertIn(">Top Rail</td>", grid)
+		self.assertNotIn("Front Top Rail", grid)
+		# The notes table has no band above it, so there the part keeps its full name.
+		self.assertIn("Front Top Rail", html)
