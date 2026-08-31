@@ -790,6 +790,14 @@ ORDER_NUMBER_CARDS = [
 	 "document_type": "Repair Order", "filters_json": [["status", "not in", list(DONE_REPAIR)]]},
 	{"label": "M&R Menunggu Approval",
 	 "document_type": "Repair Order", "filters_json": [["status", "=", "Pending Approval"]]},
+	# Uji berkala dibukukan sebagai M&R (v0_66), jadi ia SUDAH ikut terhitung di "M&R Aktif"
+	# — kartu ini himpunan bagiannya, bukan angka di sebelahnya, dan "M&R Aktif" sengaja
+	# tidak dikurangi supaya angka yang sudah dibaca orang tiap hari tidak berubah diam-diam.
+	# Yang dijawab kartu ini: dari sekian M&R terbuka, berapa yang sebenarnya uji berkala —
+	# pekerjaan yang punya tenggat kelas dan tidak boleh ikut antre di belakang repair.
+	{"label": "Periodic Test Aktif",
+	 "document_type": "Repair Order",
+	 "filters_json": [["job_type", "=", "Periodic Test"], ["status", "not in", list(DONE_REPAIR)]]},
 	{"label": "Survey Posisi Pending",
 	 "document_type": "Container Position Survey",
 	 # "In Survey" too: somebody has picked it up, but the tank is still un-located, so it is
@@ -842,6 +850,12 @@ INVENTORY_CHARTS = [
 	{"chart_name": "M&R by Status",
 	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "status", "type": "Bar",
+	 "filters_json": [["status", "!=", "Cancelled"]]},
+	# Komposisi beban M&R: repair versus uji berkala. Dibaca berdampingan dengan "M&R by
+	# Status" — yang satu bilang di mana pekerjaan tersangkut, yang ini bilang pekerjaan apa.
+	{"chart_name": "M&R by Jenis Pekerjaan",
+	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
+	 "group_by_based_on": "job_type", "type": "Bar",
 	 "filters_json": [["status", "!=", "Cancelled"]]},
 	# Sebaran Jenis Cleaning: berapa banyak cuci standar (lahir dari EIR-In tank kotor)
 	# dibanding tiga wash khusus yang diminta principal. Cancelled dibuang supaya bar-nya
