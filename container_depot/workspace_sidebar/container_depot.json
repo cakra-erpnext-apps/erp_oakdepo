@@ -33,6 +33,63 @@
   {
    "child": 0,
    "collapsible": 1,
+   "icon": "clipboard-list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Register",
+   "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Steam Wash",
+   "link_to": "Steam Wash Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "wind"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "PP Wash",
+   "link_to": "PP Wash Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "droplets"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Methanol Rinse",
+   "link_to": "Methanol Rinse Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "flask-conical"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Periodic Test",
+   "link_to": "Periodic Test Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "calendar-check"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
    "icon": "mail",
    "indent": 0,
    "keep_closed": 0,
@@ -249,63 +306,6 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "es-line-list",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Register",
-   "type": "Section Break"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Steam Wash",
-   "link_to": "Steam Wash Register",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-list"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "PP Wash",
-   "link_to": "PP Wash Register",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-list"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Methanol Rinse",
-   "link_to": "Methanol Rinse Register",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-list"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Periodic Test",
-   "link_to": "Periodic Test Register",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-list"
-  },
-  {
-   "child": 0,
-   "collapsible": 1,
    "icon": "receipt",
    "indent": 0,
    "keep_closed": 0,
@@ -427,7 +427,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-list"
+   "icon": "list"
   },
   {
    "child": 1,
@@ -847,7 +847,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-31 12:30:00.000000",
+ "modified": "2026-08-31 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
