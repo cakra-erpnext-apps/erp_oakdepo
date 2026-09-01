@@ -12,8 +12,10 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.install import (
+	DASHBOARD_CHART_DEFAULTS,
 	INVENTORY_CHARTS,
 	INVENTORY_NUMBER_CARDS,
+	NUMBER_CARD_DEFAULTS,
 	ORDER_NUMBER_CARDS,
 	SETUP_NUMBER_CARDS,
 	_qualify_filters,
@@ -200,3 +202,41 @@ class TestUnmappedMenuWatcher(FrappeTestCase):
 
 	def test_payload_carries_a_route_for_the_card_click(self):
 		self.assertEqual(unmapped_menu_count()["route"], ["List", "Depot Service Menu"])
+
+
+class TestNumberCardsAreNotMoney(FrappeTestCase):
+	"""Kartu di dashboard menghitung DOKUMEN, bukan uang.
+
+	Number Card memformat angkanya sebagai mata uang begitu field ``currency`` terisi —
+	widgetnya mengeceknya paling awal, sebelum fieldtype apa pun. Empat kartu tertua di
+	site produksi terisi INR entah dari mana, jadi "5 tank di depo" tampil sebagai "₹ 5",
+	dan tidak ada yang error: cuma angka yang salah baca. Seeder mengosongkannya di tiap
+	migrate; test ini yang menjaga hasilnya.
+	"""
+
+	def test_seeder_never_stamps_a_currency(self):
+		self.assertIsNone(NUMBER_CARD_DEFAULTS["currency"])
+		self.assertIsNone(DASHBOARD_CHART_DEFAULTS["currency"])
+		for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS + SETUP_NUMBER_CARDS:
+			self.assertNotIn("currency", card, f"{card['label']}: kartu cacah tidak punya mata uang")
+		for chart in INVENTORY_CHARTS:
+			self.assertNotIn("currency", chart, f"{chart['chart_name']}: chart cacah tidak punya mata uang")
+
+	def test_no_seeded_card_on_this_site_carries_a_currency(self):
+		for card in INVENTORY_NUMBER_CARDS + ORDER_NUMBER_CARDS + SETUP_NUMBER_CARDS:
+			if not frappe.db.exists("Number Card", card["label"]):
+				continue  # belum di-migrate di site ini
+			self.assertFalse(
+				frappe.db.get_value("Number Card", card["label"], "currency"),
+				f"{card['label']}: masih memformat cacah sebagai mata uang",
+			)
+
+	def test_no_seeded_chart_on_this_site_carries_a_currency(self):
+		"""Tooltip chart ikut jadi mata uang lewat jalur yang sama (chart_widget)."""
+		for chart in INVENTORY_CHARTS:
+			if not frappe.db.exists("Dashboard Chart", chart["chart_name"]):
+				continue
+			self.assertFalse(
+				frappe.db.get_value("Dashboard Chart", chart["chart_name"], "currency"),
+				f"{chart['chart_name']}: tooltipnya masih mata uang",
+			)

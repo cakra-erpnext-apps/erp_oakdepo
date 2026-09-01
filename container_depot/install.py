@@ -765,13 +765,13 @@ _IN_DEPO_FILTER = [["inventory_stage", "in", IN_DEPO_STAGES]]
 # so those fields ARE the record name — keep them unique + readable; the
 # Container Inventory workspace references them by exactly these strings.
 INVENTORY_NUMBER_CARDS = [
-	{"label": "Stock In Depo",
+	{"label": "Stock In Depo", "color": "#318AD8",
 	 "document_type": "Container", "filters_json": _IN_DEPO_FILTER},
-	{"label": "Tanks Ready for Release",
+	{"label": "Tanks Ready for Release", "color": "#29CD42",
 	 "document_type": "Container", "filters_json": [["inventory_stage", "=", "Ready"]]},
-	{"label": "Tank In Today",
+	{"label": "Tank In Today", "color": "#00BCD4",
 	 "document_type": "Gate Entry", "filters_json": [["gate_in_timestamp", "Timespan", "today"]]},
-	{"label": "Tank Out Today",
+	{"label": "Tank Out Today", "color": "#7575FF",
 	 "document_type": "Container Movement",
 	 "filters_json": [["to_status", "=", "Gate_Out"], ["movement_timestamp", "Timespan", "today"]]},
 ]
@@ -781,44 +781,44 @@ INVENTORY_NUMBER_CARDS = [
 # Submittable doctypes get an explicit ``docstatus`` filter where a cancelled document
 # keeps its last status (Order Bongkar / Order Muat have no "Cancelled" option at all).
 ORDER_NUMBER_CARDS = [
-	{"label": "EIR Menunggu Review",
+	{"label": "EIR Menunggu Review", "color": "#F5A623",
 	 "document_type": "Inspection", "filters_json": [["status", "=", "Pending Review"]]},
-	{"label": "Cleaning Order Aktif",
+	{"label": "Cleaning Order Aktif", "color": "#318AD8",
 	 "document_type": "Cleaning Order",
 	 "filters_json": [["status", "not in", list(DONE_CLEANING)], ["docstatus", "<", 2]]},
-	{"label": "M&R Aktif",
+	{"label": "M&R Aktif", "color": "#F5A623",
 	 "document_type": "Repair Order", "filters_json": [["status", "not in", list(DONE_REPAIR)]]},
-	{"label": "M&R Menunggu Approval",
+	{"label": "M&R Menunggu Approval", "color": "#E24C4C",
 	 "document_type": "Repair Order", "filters_json": [["status", "=", "Pending Approval"]]},
 	# Uji berkala dibukukan sebagai M&R (v0_66), jadi ia SUDAH ikut terhitung di "M&R Aktif"
 	# — kartu ini himpunan bagiannya, bukan angka di sebelahnya, dan "M&R Aktif" sengaja
 	# tidak dikurangi supaya angka yang sudah dibaca orang tiap hari tidak berubah diam-diam.
 	# Yang dijawab kartu ini: dari sekian M&R terbuka, berapa yang sebenarnya uji berkala —
 	# pekerjaan yang punya tenggat kelas dan tidak boleh ikut antre di belakang repair.
-	{"label": "Periodic Test Aktif",
+	{"label": "Periodic Test Aktif", "color": "#7575FF",
 	 "document_type": "Repair Order",
 	 "filters_json": [["job_type", "=", "Periodic Test"], ["status", "not in", list(DONE_REPAIR)]]},
-	{"label": "Survey Posisi Pending",
+	{"label": "Survey Posisi Pending", "color": "#F5A623",
 	 "document_type": "Container Position Survey",
 	 # "In Survey" too: somebody has picked it up, but the tank is still un-located, so it is
 	 # every bit as outstanding as one nobody has started.
 	 "filters_json": [["status", "in", ["Pending Survey", "In Survey"]], ["docstatus", "<", 2]]},
-	{"label": "Order Bongkar Aktif",
+	{"label": "Order Bongkar Aktif", "color": "#00BCD4",
 	 "document_type": "Order Bongkar",
 	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},
-	{"label": "Order Muat Aktif",
+	{"label": "Order Muat Aktif", "color": "#00BCD4",
 	 "document_type": "Order Muat",
 	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},
-	{"label": "Gate Out Plan Open",
+	{"label": "Gate Out Plan Open", "color": "#29CD42",
 	 "document_type": "Gate Out Plan", "filters_json": [["status", "=", "Open"]]},
-	{"label": "Booking Belum Dibayar",
+	{"label": "Booking Belum Dibayar", "color": "#E24C4C",
 	 "document_type": "Container Booking",
 	 "filters_json": [["payment_status", "=", "Unpaid"], ["docstatus", "=", 1]]},
 	# Backlog wash khusus — pekerjaan yang diminta principal lewat email atas tank yang
 	# sudah bersih, dan yang paling gampang tenggelam justru karena tidak lahir dari EIR:
 	# di register manual, 512 dari 537 Steam Wash tidak pernah punya tanggal selesai.
 	# "Cleaning Order Aktif" menghitung semuanya jadi satu angka dan menyembunyikan ini.
-	{"label": "Wash Khusus Belum Selesai",
+	{"label": "Wash Khusus Belum Selesai", "color": "#E24C4C",
 	 "document_type": "Cleaning Order",
 	 "filters_json": [["cleaning_type", "in", list(SPECIAL_WASH_TYPES)],
 			  ["status", "not in", list(DONE_CLEANING)], ["docstatus", "<", 2]]},
@@ -830,7 +830,7 @@ ORDER_NUMBER_CARDS = [
 # (lihat depot_service_menu.unmapped_menu_count, yang juga menjelaskan kenapa ini penting:
 # menu kosong TIDAK memfilter apa pun, jadi kegagalannya senyap).
 SETUP_NUMBER_CARDS = [
-	{"label": "Menu Belum Dipetakan",
+	{"label": "Menu Belum Dipetakan", "color": "#E24C4C",
 	 "document_type": "Depot Service Menu",
 	 "type": "Custom",
 	 "function": None,
@@ -838,46 +838,75 @@ SETUP_NUMBER_CARDS = [
 ]
 
 INVENTORY_CHARTS = [
-	{"chart_name": "Tanks by Stage",
+	{"chart_name": "Tanks by Stage", "color": "#318AD8",
 	 "document_type": "Container", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "inventory_stage", "type": "Bar", "filters_json": _IN_DEPO_FILTER},
 	{"chart_name": "Tanks by Principal",
 	 "document_type": "Container", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "principal", "type": "Donut", "number_of_groups": 10, "filters_json": _IN_DEPO_FILTER},
-	{"chart_name": "Tank IN (Last Month)",
+	{"chart_name": "Tank IN (Last Month)", "color": "#29CD42",
 	 "document_type": "Gate Entry", "chart_type": "Count", "based_on": "gate_in_timestamp",
 	 "timespan": "Last Month", "time_interval": "Daily", "type": "Line", "timeseries": 1},
-	{"chart_name": "Tank OUT (Last Month)",
+	{"chart_name": "Tank OUT (Last Month)", "color": "#7575FF",
 	 "document_type": "Container Movement", "chart_type": "Count", "based_on": "movement_timestamp",
 	 "timespan": "Last Month", "time_interval": "Daily", "type": "Line", "timeseries": 1,
 	 "filters_json": [["to_status", "=", "Gate_Out"]]},
-	{"chart_name": "Activity by Type (Last Month)",
+	{"chart_name": "Activity by Type (Last Month)", "color": "#00BCD4",
 	 "document_type": "Container Activity", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "activity_type", "type": "Bar",
 	 "filters_json": [["activity_time", "Timespan", "last month"]]},
 	# Order watch, the distribution behind the counters: where the open work is stuck.
 	# Cancelled documents are filtered out so the bar chart is a worklist, not a ledger.
-	{"chart_name": "Cleaning Order by Status",
+	{"chart_name": "Cleaning Order by Status", "color": "#318AD8",
 	 "document_type": "Cleaning Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "status", "type": "Bar", "filters_json": [["docstatus", "<", 2]]},
-	{"chart_name": "M&R by Status",
+	{"chart_name": "M&R by Status", "color": "#F5A623",
 	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "status", "type": "Bar",
 	 "filters_json": [["status", "!=", "Cancelled"]]},
 	# Komposisi beban M&R: repair versus uji berkala. Dibaca berdampingan dengan "M&R by
 	# Status" — yang satu bilang di mana pekerjaan tersangkut, yang ini bilang pekerjaan apa.
-	{"chart_name": "M&R by Jenis Pekerjaan",
+	{"chart_name": "M&R by Jenis Pekerjaan", "color": "#7575FF",
 	 "document_type": "Repair Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "job_type", "type": "Bar",
 	 "filters_json": [["status", "!=", "Cancelled"]]},
 	# Sebaran Jenis Cleaning: berapa banyak cuci standar (lahir dari EIR-In tank kotor)
 	# dibanding tiga wash khusus yang diminta principal. Cancelled dibuang supaya bar-nya
 	# membaca beban kerja, bukan buku besar.
-	{"chart_name": "Cleaning by Type (Last Month)",
+	{"chart_name": "Cleaning by Type (Last Month)", "color": "#00BCD4",
 	 "document_type": "Cleaning Order", "chart_type": "Group By", "group_by_type": "Count",
 	 "group_by_based_on": "cleaning_type", "type": "Bar",
 	 "filters_json": [["docstatus", "<", 2], ["order_created", "Timespan", "last month"]]},
 ]
+
+
+# Dipasang ke SETIAP Number Card yang diseed, dan sengaja tidak bisa diubah per kartu
+# tanpa terlihat di daftar spesifikasinya.
+NUMBER_CARD_DEFAULTS = {
+	"is_public": 1,
+	"function": "Count",
+	"type": "Document Type",
+	# Kartu di sini menghitung DOKUMEN, bukan uang. Widget Number Card memformat angkanya
+	# sebagai mata uang begitu field ``currency`` terisi — number_card_widget
+	# .set_formatted_number mengeceknya paling awal, sebelum fieldtype apa pun — dan empat
+	# kartu tertua di site ini terisi INR, jadi "5 tank di depo" tampil sebagai "₹ 5".
+	# Dikosongkan di sini, pada setiap migrate, supaya tidak bisa kembali diam-diam.
+	"currency": None,
+	# Chip "naik x% sejak kemarin" membandingkan cacah hari ini dengan cacah kemarin. Untuk
+	# angka KEADAAN (berapa tank di depo, berapa order masih terbuka) itu bukan tren yang
+	# berarti, cuma dua angka yang kebetulan berdekatan.
+	"show_percentage_stats": 0,
+}
+
+
+# Sama untuk chart: setiap chart di sini mencacah dokumen. chart_widget memakai
+# ``format_currency`` untuk tooltip-nya begitu ``currency`` terisi — dan empat chart tertua
+# di site ini terisi INR, jadi "5 tank" muncul sebagai "₹ 5" saat kursor lewat.
+DASHBOARD_CHART_DEFAULTS = {
+	"is_public": 1,
+	"chart_type": "Group By",
+	"currency": None,
+}
 
 
 def _qualify_filters(filters, document_type):
@@ -932,12 +961,7 @@ def setup_inventory_dashboard():
 		if not frappe.db.exists("DocType", card["document_type"]):
 			continue
 		# Number Card autonames from label → that is the record name.
-		_ensure_dashboard_doc("Number Card", card["label"], {
-			"is_public": 1,
-			"function": "Count",
-			"type": "Document Type",
-			**card,
-		})
+		_ensure_dashboard_doc("Number Card", card["label"], {**NUMBER_CARD_DEFAULTS, **card})
 	for chart in INVENTORY_CHARTS:
 		if not frappe.db.exists("DocType", chart["document_type"]):
 			continue
@@ -945,9 +969,7 @@ def setup_inventory_dashboard():
 		spec.setdefault("filters_json", [])  # Dashboard Chart requires filters_json.
 		# Dashboard Chart autonames from chart_name → that is the record name.
 		_ensure_dashboard_doc("Dashboard Chart", chart["chart_name"], {
-			"is_public": 1,
-			"chart_type": "Group By",
-			**spec,
+			**DASHBOARD_CHART_DEFAULTS, **spec,
 		})
 	frappe.db.commit()
 
