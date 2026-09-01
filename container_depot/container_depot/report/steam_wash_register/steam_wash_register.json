@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Steam Wash Register",
+  "ref_doctype": "Cleaning Order",
+  "report_type": "Script Report",
+  "is_standard": "Yes",
+  "module": "Container Depot",
+  "disabled": 0
+}
