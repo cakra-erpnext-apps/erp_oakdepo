@@ -26,11 +26,13 @@ from container_depot.container_depot.report.periodic_test_register import (
 from container_depot.container_depot.report.steam_wash_register import (
 	steam_wash_register as steam_report,
 )
-from container_depot.tests.test_api import ensure_test_customer
+from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
 from container_depot.tests.test_cleaning_type import ensure_item
 
 _PREFIX = "REGT"
 _PRINCIPAL = "Register Test Principal"
+_DEPOT = "REGT-D1"
+_OTHER_DEPOT = "REGT-D2"
 
 
 class _RegisterCase(FrappeTestCase):
@@ -38,6 +40,12 @@ class _RegisterCase(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self.principal = ensure_test_customer(_PRINCIPAL)
 		self._containers = []
+		for name in (_DEPOT, _OTHER_DEPOT):
+			if not frappe.db.exists("Depot", name):
+				frappe.get_doc({
+					"doctype": "Depot", "depot_code": name, "depot_name": name,
+					"branch": ensure_test_branch(),
+				}).insert(ignore_permissions=True)
 
 	def tearDown(self):
 		for c in self._containers:
@@ -49,6 +57,8 @@ class _RegisterCase(FrappeTestCase):
 				frappe.db.delete(dt, {"container": c})
 			frappe.db.delete("Container Activity", {"container": c})
 			frappe.db.delete("Container", {"name": c})
+		for name in (_DEPOT, _OTHER_DEPOT):
+			frappe.db.delete("Depot", {"name": name})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -377,3 +387,49 @@ class TestTankHistory(_RegisterCase):
 	def test_unknown_register_is_refused(self):
 		with self.assertRaises(frappe.ValidationError):
 			register_history.tank_history(self._container("H7"), "Bukan Register")
+
+
+class TestDepotFollowsTheContainer(_RegisterCase):
+	"""Depot order terisi sendiri dari master Container.
+
+	Container.depot adalah lokasi tank saat ini, dan depot pada order itulah yang
+	men-scope notifikasi serta data per cabang (user_branch). Mengetiknya ulang di tiap
+	order berarti dua sumber kebenaran untuk satu fakta yang sudah ada di master.
+
+	Diisi hanya kalau MASIH KOSONG (fetch_if_empty): order yang sudah menyebut depotnya
+	tidak boleh ditulis ulang belakangan ketika tanknya pindah — depot pada order adalah
+	tempat pekerjaan itu dikerjakan, bukan posisi tank hari ini.
+	"""
+
+	def test_cleaning_order_takes_the_depot_of_its_container(self):
+		c = self._container("F1", depot=_DEPOT)
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": c, "status": "Service Setup",
+		}).insert(ignore_permissions=True)
+		self.assertEqual(co.depot, _DEPOT)
+
+	def test_repair_order_takes_the_depot_of_its_container(self):
+		c = self._container("F2", depot=_DEPOT)
+		ro = frappe.get_doc({
+			"doctype": "Repair Order", "container": c, "job_type": "Repair",
+			"status": "Draft", "billing_status": "Unbilled",
+		}).insert(ignore_permissions=True)
+		self.assertEqual(ro.depot, _DEPOT)
+
+	def test_a_depot_already_chosen_is_not_overwritten(self):
+		c = self._container("F3", depot=_DEPOT)
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": c, "status": "Service Setup",
+			"depot": _OTHER_DEPOT,
+		}).insert(ignore_permissions=True)
+		self.assertEqual(co.depot, _OTHER_DEPOT)
+		co.save(ignore_permissions=True)  # simpan ulang: tetap pilihan manusia
+		self.assertEqual(co.depot, _OTHER_DEPOT)
+
+	def test_container_without_a_depot_leaves_the_field_empty(self):
+		""""Jika ada" — tank yang belum punya lokasi tidak memaksa order menebaknya."""
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": self._container("F4"),
+			"status": "Service Setup",
+		}).insert(ignore_permissions=True)
+		self.assertFalse(co.depot)

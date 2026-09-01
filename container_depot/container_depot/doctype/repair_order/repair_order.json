@@ -61,13 +61,15 @@
    "description": "Wajib."
   },
   {
+   "fetch_from": "container.depot",
+   "fetch_if_empty": 1,
    "fieldname": "depot",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Depot",
    "options": "Depot",
-   "description": "Opsional."
+   "description": "Terisi dari master Container; masih bisa diubah."
   },
   {
    "description": "Rencana tanggal pengerjaan. Realisasinya di Completion Date.",
@@ -364,7 +366,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-31 14:30:00.000000",
+ "modified": "2026-08-31 15:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

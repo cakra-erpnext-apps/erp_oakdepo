@@ -76,7 +76,9 @@
    "reqd": 1
   },
   {
-   "description": "Opsional.",
+   "description": "Terisi dari master Container; masih bisa diubah.",
+   "fetch_from": "container.depot",
+   "fetch_if_empty": 1,
    "fieldname": "depot",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -435,7 +437,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-31 14:00:00.000000",
+ "modified": "2026-08-31 15:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",
