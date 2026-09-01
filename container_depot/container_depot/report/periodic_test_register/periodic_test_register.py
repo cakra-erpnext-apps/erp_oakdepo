@@ -66,6 +66,7 @@ def execute(filters=None):
 			"tank_no": o["tank_no"],
 			"principal": o["principal"],
 			"order_date": getdate(o["order_created"]) if o["order_created"] else None,
+			"plan_date": o["plan_date"],
 			"type_pt": pt_type,
 			"periodic_date": periodic_date,
 			"last_pt_type": last_type,
@@ -105,7 +106,7 @@ def _orders(filters) -> list:
 			ro.name AS repair_order,
 			ro.container AS tank_no,
 			COALESCE(NULLIF(ro.principal, ''), c.principal) AS principal,
-			ro.order_created, ro.completion_date, ro.status, ro.billing_status
+			ro.order_created, ro.plan_date, ro.completion_date, ro.status, ro.billing_status
 		FROM `tabRepair Order` ro
 		LEFT JOIN `tabContainer` c ON ro.container = c.name
 		WHERE {' AND '.join(where)}
@@ -190,6 +191,7 @@ def _columns() -> list:
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 160},
 		{"fieldname": "order_date", "label": "Order Date", "fieldtype": "Date", "width": 105},
+		{"fieldname": "plan_date", "label": "Plan Date", "fieldtype": "Date", "width": 105},
 		{"fieldname": "type_pt", "label": "Type PT", "fieldtype": "Data", "width": 80},
 		{"fieldname": "periodic_date", "label": "Periodic Date", "fieldtype": "Date", "width": 115},
 		{"fieldname": "last_pt_type", "label": "Last PT Type", "fieldtype": "Data", "width": 105},

@@ -215,3 +215,75 @@ class TestPeriodicTestRegister(_RegisterCase):
 		overdue = next(s for s in summary if s["label"] == "Lewat Due Date")
 		self.assertGreaterEqual(overdue["value"], 1)
 		self.assertEqual(overdue["indicator"], "Red")
+
+
+class TestPlanAndActualDates(_RegisterCase):
+	"""Tanggal rencana vs tanggal realisasi, dan siapa yang boleh menggesernya.
+
+	Order sekarang bisa dibuat lebih dulu sebagai rencana (``plan_date``), dan tanggal
+	realisasinya bisa diisi tangan — untuk pekerjaan yang dikerjakan kemarin tapi baru
+	diinput hari ini, atau baris register lama yang dipindahkan dari sheet. Dua hal yang
+	dikunci di sini: stempel otomatis tidak boleh menimpa tanggal yang sudah diisi, dan
+	tanggal yang menentukan periode tagihan tidak boleh digeser setelah order ditagih.
+	"""
+
+	def test_supplied_order_date_survives_insert(self):
+		"""Tanpa ini, stempel di before_insert menimpa tanggal aslinya diam-diam."""
+		backdated = add_months(now_datetime(), -6)
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": self._container("D1"),
+			"status": "Service Setup", "order_created": backdated,
+		}).insert(ignore_permissions=True)
+		self.assertEqual(getdate(co.order_created), getdate(backdated))
+
+	def test_plan_date_is_kept_apart_from_the_actual_date(self):
+		c = self._container("D2")
+		plan = add_months(getdate(), 1)
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": c, "status": "Service Setup",
+			"plan_date": plan,
+		}).insert(ignore_permissions=True)
+		self.assertEqual(getdate(co.plan_date), getdate(plan))
+		# Rencana bukan realisasi: register dan penagihan membaca cleaning_end, yang masih
+		# kosong sampai pekerjaannya benar-benar selesai.
+		self.assertIsNone(co.cleaning_end)
+
+	def test_billing_dates_are_locked_once_the_order_is_invoiced(self):
+		c = self._container("D3")
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": c, "status": "Service Setup",
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Cleaning Order", co.name, "sales_invoice", "SINV-TEST-REGT",
+				    update_modified=False)
+		co.reload()
+		co.cleaning_end = now_datetime()
+		# Nomor invoicenya sengaja tidak ada: yang diuji penjaga tanggalnya, bukan link-nya.
+		co.flags.ignore_links = True
+		with self.assertRaises(frappe.ValidationError):
+			co.save(ignore_permissions=True)
+
+	def test_plan_date_stays_editable_after_invoicing(self):
+		"""plan_date tidak dibaca penagihan, jadi ia tidak ikut dikunci."""
+		c = self._container("D4")
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": c, "status": "Service Setup",
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Cleaning Order", co.name, "sales_invoice", "SINV-TEST-REGT",
+				    update_modified=False)
+		co.reload()
+		co.plan_date = getdate()
+		co.flags.ignore_links = True
+		co.save(ignore_permissions=True)
+		self.assertEqual(getdate(co.plan_date), getdate())
+
+	def test_repair_billing_dates_are_locked_once_billed(self):
+		ro = frappe.get_doc({
+			"doctype": "Repair Order", "container": self._container("D5"),
+			"job_type": "Repair", "status": "Draft", "billing_status": "Unbilled",
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Repair Order", ro.name, "billing_status", "Principal Billed",
+				    update_modified=False)
+		ro.reload()
+		ro.completion_date = now_datetime()
+		with self.assertRaises(frappe.ValidationError):
+			ro.save(ignore_permissions=True)

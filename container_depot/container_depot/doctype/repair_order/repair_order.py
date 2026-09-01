@@ -29,6 +29,25 @@ class RepairOrder(Document):
 		self._validate_status_transition()
 		self._validate_stock_available()
 		self._bind_work_photos()
+		self._guard_dates_after_billing()
+
+	# Tanggal yang menentukan PERIODE TAGIHAN: consolidated_billing / monthly_invoicing
+	# memilih order lewat rentang ``completion_date``, jadi menggesernya setelah order
+	# ditagih memindahkan pekerjaan itu ke bulan lain — atau membuatnya hilang dari kedua
+	# bulan sekaligus. ``plan_date`` tidak ikut dikunci: ia rencana, tidak dibaca penagihan.
+	_BILLING_DATES = ("order_created", "completion_date")
+
+	def _guard_dates_after_billing(self):
+		if self.is_new() or (self.billing_status or "Unbilled") == "Unbilled":
+			return
+		changed = [f for f in self._BILLING_DATES if self.has_value_changed(f)]
+		if changed:
+			frappe.throw(
+				frappe._("M&R ini sudah ditagih ({0}). Tanggalnya ({1}) tidak bisa diubah — "
+					 "batalkan dulu tagihannya kalau tanggalnya memang salah.").format(
+					self.billing_status, ", ".join(changed)
+				)
+			)
 
 	def _bind_work_photos(self):
 		"""Tie every evidence photo to a Service & Parts line it can actually belong to.

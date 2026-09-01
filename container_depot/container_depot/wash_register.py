@@ -66,6 +66,7 @@ def _rows(filters, wash_type, item_code) -> list:
 			co.container AS tank_no,
 			COALESCE(NULLIF(co.container_principal, ''), c.principal) AS principal,
 			DATE(co.order_created) AS order_date,
+			co.plan_date AS plan_date,
 			DATE(co.cleaning_end) AS wash_date,
 			co.status AS status,
 			co.name AS cleaning_order,
@@ -87,6 +88,9 @@ def _columns(date_label) -> list:
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 180},
 		{"fieldname": "order_date", "label": "Order Date", "fieldtype": "Date", "width": 110},
+		# Rencana, di sebelah realisasinya: baris tanpa tanggal cuci tapi punya rencana
+		# adalah pekerjaan yang sudah dijadwalkan; yang tidak punya keduanya belum.
+		{"fieldname": "plan_date", "label": "Plan Date", "fieldtype": "Date", "width": 110},
 		# Label kolom mengikuti jenisnya ("Steam Wash Date" dst.) supaya halamannya terbaca
 		# sama seperti sheet yang digantikannya.
 		{"fieldname": "wash_date", "label": date_label, "fieldtype": "Date", "width": 130},

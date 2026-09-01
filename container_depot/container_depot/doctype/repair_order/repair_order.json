@@ -9,9 +9,13 @@
   "container",
   "depot",
   "job_type",
+  "plan_date",
   "column_break_1",
   "technician",
   "reff_doc",
+  "order_created",
+  "start_date",
+  "completion_date",
   "damage_section",
   "damages",
   "estimate_section",
@@ -24,14 +28,11 @@
   "status",
   "principal",
   "container_no",
-  "order_created",
   "target_lift_on",
   "inspection",
   "container_booking",
   "reff_email",
-  "start_date",
   "started_by",
-  "completion_date",
   "requested_on",
   "decided_on",
   "decided_by",
@@ -66,6 +67,13 @@
    "label": "Depot",
    "options": "Depot",
    "description": "Opsional."
+  },
+  {
+   "description": "Rencana tanggal pengerjaan — diisi saat order masih Draft. Tidak menggantikan Completion Date: yang itu tanggal pekerjaan BENAR-BENAR selesai, dan itulah yang dibaca register serta penagihan.",
+   "fieldname": "plan_date",
+   "fieldtype": "Date",
+   "in_standard_filter": 1,
+   "label": "Repair Plan Date"
   },
   {
    "default": "Repair",
@@ -186,10 +194,8 @@
    "fieldname": "order_created",
    "fieldtype": "Datetime",
    "in_list_view": 1,
-   "label": "Order Created",
-   "read_only": 1,
-   "description": "Waktu order dibuat.",
-   "hidden": 1
+   "label": "Order Date",
+   "description": "Waktu order dibuat."
   },
   {
    "description": "Rencana lift-on, dari container.",
@@ -234,8 +240,7 @@
    "fieldname": "start_date",
    "fieldtype": "Datetime",
    "label": "Start Date",
-   "description": "Distempel saat repair dimulai.",
-   "hidden": 1
+   "description": "Distempel saat repair dimulai."
   },
   {
    "description": "Otomatis: petugas yang menekan “Mulai” di PWA depot — bukan pembuat dokumen. Selama dia memegangnya, M&R ini hilang dari worklist PWA operator lain.",
@@ -250,8 +255,7 @@
    "fieldname": "completion_date",
    "fieldtype": "Datetime",
    "label": "Completion Date",
-   "description": "Distempel saat M&R selesai.",
-   "hidden": 1
+   "description": "Distempel saat M&R selesai."
   },
   {
    "description": "Distempel saat estimasi diajukan ke owner.",
@@ -351,7 +355,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-31 09:30:00.000000",
+ "modified": "2026-08-31 13:30:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

@@ -27,7 +27,11 @@ class CleaningOrder(Document):
 	def before_insert(self):
 		"""Generate cleaning order ID"""
 		self.order_id = self.generate_order_id()
-		self.order_created = datetime.datetime.now()
+		# Nilai yang sudah diisi dihormati — order lama yang dicatat belakangan (register
+		# manual dari sheet, atau cuci kemarin yang baru diinput hari ini) harus bisa membawa
+		# tanggal aslinya. Tanpa cek ini, stempel di sini menimpanya diam-diam.
+		if not self.order_created:
+			self.order_created = datetime.datetime.now()
 		self.created_by = frappe.session.user
 
 	def generate_order_id(self):
@@ -42,6 +46,25 @@ class CleaningOrder(Document):
 		# after its tank leaves the fleet.
 		if self.container and self.has_value_changed("container"):
 			assert_container_active(self.container)
+		self._guard_dates_after_invoice()
+
+	# Tanggal yang menentukan PERIODE TAGIHAN. consolidated_billing / monthly_invoicing
+	# memilih order lewat rentang ``cleaning_end``, jadi menggesernya setelah order masuk
+	# invoice memindahkan pekerjaan itu ke bulan lain — atau membuatnya hilang dari kedua
+	# bulan sekaligus. ``plan_date`` tidak ikut dikunci: ia rencana, tidak dibaca penagihan.
+	_BILLING_DATES = ("order_created", "cleaning_end")
+
+	def _guard_dates_after_invoice(self):
+		if self.is_new() or not self.sales_invoice:
+			return
+		changed = [f for f in self._BILLING_DATES if self.has_value_changed(f)]
+		if changed:
+			frappe.throw(
+				_("Order ini sudah masuk invoice {0}. Tanggalnya ({1}) tidak bisa diubah — "
+				  "batalkan dulu invoicenya kalau tanggalnya memang salah.").format(
+					self.sales_invoice, ", ".join(changed)
+				)
+			)
 
 	def before_save(self):
 		"""Auto-populate container info + price the owner's chosen cleaning services."""

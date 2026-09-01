@@ -10,8 +10,12 @@
   "container",
   "depot",
   "cleaning_type",
+  "plan_date",
   "column_break_1",
   "reff_doc",
+  "order_created",
+  "cleaning_start",
+  "cleaning_end",
   "service_section",
   "cleaning_services",
   "cleaning_instructions",
@@ -43,9 +47,6 @@
   "cleaning_total",
   "manhour_charge_total",
   "currency",
-  "cleaning_start",
-  "cleaning_end",
-  "order_created",
   "created_by",
   "assigned_to",
   "completed_by",
@@ -347,23 +348,19 @@
    "description": "Distempel saat operator mulai mencuci.",
    "fieldname": "cleaning_start",
    "fieldtype": "Datetime",
-   "hidden": 1,
    "label": "Cleaning Start"
   },
   {
    "description": "Distempel saat cleaning selesai / submit.",
    "fieldname": "cleaning_end",
    "fieldtype": "Datetime",
-   "hidden": 1,
    "label": "Cleaning End"
   },
   {
    "description": "Waktu order dibuat.",
    "fieldname": "order_created",
    "fieldtype": "Datetime",
-   "hidden": 1,
-   "label": "Order Created",
-   "read_only": 1
+   "label": "Order Date"
   },
   {
    "description": "Pembuat order.",
@@ -419,6 +416,13 @@
    "read_only": 1
   },
   {
+   "description": "Rencana tanggal cuci — diisi saat order masih Service Setup, sebelum ada yang mengerjakannya. Tidak menggantikan Cleaning End: yang itu tanggal pekerjaan BENAR-BENAR selesai, dan itulah yang dibaca register serta penagihan.",
+   "fieldname": "plan_date",
+   "fieldtype": "Date",
+   "in_standard_filter": 1,
+   "label": "Cleaning Plan Date"
+  },
+  {
    "default": "Standard Cleaning",
    "description": "Semua order lahir sebagai Standard Cleaning. Tiga jenis wash khusus = permintaan principal, disetel Admin Ops di tahap Service Setup.",
    "fieldname": "cleaning_type",
@@ -431,7 +435,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-31 10:00:00.000000",
+ "modified": "2026-08-31 13:30:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",
