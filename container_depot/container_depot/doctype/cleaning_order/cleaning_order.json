@@ -416,7 +416,7 @@
    "read_only": 1
   },
   {
-   "description": "Rencana tanggal cuci — diisi saat order masih Service Setup, sebelum ada yang mengerjakannya. Tidak menggantikan Cleaning End: yang itu tanggal pekerjaan BENAR-BENAR selesai, dan itulah yang dibaca register serta penagihan.",
+   "description": "Rencana tanggal cuci. Realisasinya di Cleaning End.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
    "in_standard_filter": 1,
@@ -424,7 +424,7 @@
   },
   {
    "default": "Standard Cleaning",
-   "description": "Semua order lahir sebagai Standard Cleaning. Tiga jenis wash khusus = permintaan principal, disetel Admin Ops di tahap Service Setup.",
+   "description": "Standard Cleaning, kecuali principal minta wash khusus.",
    "fieldname": "cleaning_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -435,7 +435,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-31 13:30:00.000000",
+ "modified": "2026-08-31 14:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",
