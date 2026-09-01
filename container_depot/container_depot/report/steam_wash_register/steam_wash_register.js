@@ -12,6 +12,11 @@ frappe.query_reports["Steam Wash Register"] = {
 
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
+		// Nomor tank membuka riwayat tank itu di register ini — pertanyaan berikutnya
+		// setelah "order ini bagaimana" hampir selalu "sebelumnya bagaimana".
+		if (column.fieldname === "tank_no" && data && data.tank_no) {
+			return container_depot.tank_history_cell("Steam Wash", data.tank_no);
+		}
 		if (column.fieldname === "status" && data && data.status) {
 			const colour = data.status === "Completed" ? "green" : "orange";
 			value = `<span class="indicator-pill ${colour}">${data.status}</span>`;

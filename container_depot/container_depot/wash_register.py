@@ -45,6 +45,11 @@ def _rows(filters, wash_type, item_code) -> list:
 	]
 	params = {"wash_type": wash_type, "item_code": item_code}
 
+	# Dipakai dialog riwayat per tank (register_history.tank_history), bukan oleh filter
+	# di layar: register itu sendiri selalu dibaca per depo, bukan per tank.
+	if filters.get("container"):
+		where.append("co.container = %(container)s")
+		params["container"] = filters["container"]
 	if filters.get("principal"):
 		where.append("COALESCE(NULLIF(co.container_principal, ''), c.principal) = %(principal)s")
 		params["principal"] = filters["principal"]

@@ -19,6 +19,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_months, getdate, now_datetime
 
+from container_depot.container_depot import register_history
 from container_depot.container_depot.report.periodic_test_register import (
 	periodic_test_register as pt_report,
 )
@@ -297,3 +298,82 @@ class TestPlanAndActualDates(_RegisterCase):
 		ro.completion_date = now_datetime()
 		with self.assertRaises(frappe.ValidationError):
 			ro.save(ignore_permissions=True)
+
+
+class TestTankHistory(_RegisterCase):
+	"""Dialog riwayat di balik tiap baris register.
+
+	Isinya diambil dari report registernya sendiri dengan filter container, jadi yang
+	dikunci di sini terutama SATU hal: aturan "order mana milik jenis ini" tidak boleh
+	punya salinan kedua — riwayat harus memuat order yang sama dengan yang tampil di
+	tabel, termasuk yang dikenali lewat item code, dan tidak memuat tank lain.
+	"""
+
+	def _cleaning(self, container, item, *, completed=None, invoice=None):
+		co = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": container, "status": "Service Setup",
+			"cleaning_services": [{"cleaning_item": item}],
+		}).insert(ignore_permissions=True)
+		values = {}
+		if completed:
+			values.update({"status": "Completed", "cleaning_end": completed, "docstatus": 1})
+		if invoice:
+			values["sales_invoice"] = invoice
+		if values:
+			frappe.db.set_value("Cleaning Order", co.name, values, update_modified=False)
+		return co.name
+
+	def test_history_lists_every_wash_of_that_tank_newest_first(self):
+		ensure_item("INT-STEAM", "Steam Cleaning / Wash", uom="Hour")
+		c = self._container("H1")
+		old = self._cleaning(c, "INT-STEAM", completed=add_months(now_datetime(), -2))
+		frappe.db.set_value("Cleaning Order", old, "order_created", add_months(now_datetime(), -2),
+				    update_modified=False)
+		new = self._cleaning(c, "INT-STEAM")
+
+		got = register_history.tank_history(c, "Steam Wash")
+		self.assertEqual([r["cleaning_order"] for r in got["rows"]], [new, old])
+
+	def test_history_carries_the_invoice_when_there_is_one(self):
+		ensure_item("INT-STEAM", "Steam Cleaning / Wash", uom="Hour")
+		c = self._container("H2")
+		self._cleaning(c, "INT-STEAM", completed=now_datetime(), invoice="SINV-HIST-REGT")
+		got = register_history.tank_history(c, "Steam Wash")
+		self.assertEqual(got["rows"][0]["sales_invoice"], "SINV-HIST-REGT")
+		self.assertIn("sales_invoice", {c2["fieldname"] for c2 in got["columns"]})
+
+	def test_history_is_scoped_to_the_tank_that_was_clicked(self):
+		ensure_item("INT-STEAM", "Steam Cleaning / Wash", uom="Hour")
+		mine = self._container("H3")
+		other = self._container("H4")
+		self._cleaning(mine, "INT-STEAM")
+		self._cleaning(other, "INT-STEAM")
+		got = register_history.tank_history(mine, "Steam Wash")
+		self.assertEqual(len(got["rows"]), 1)
+
+	def test_periodic_test_history_carries_type_and_invoice(self):
+		ensure_item("TEST-5-0YR", "5.0 Years Periodic Test")
+		c = self._container("H5")
+		ro = frappe.get_doc({
+			"doctype": "Repair Order", "container": c, "job_type": "Periodic Test",
+			"pt_type": "5Y", "status": "Draft", "billing_status": "Unbilled",
+			"used_items": [{"line_type": "Jasa", "item": "TEST-5-0YR", "quantity": 1}],
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Repair Order", ro.name, "sales_invoice", "SINV-HIST-REGT",
+				    update_modified=False)
+		got = register_history.tank_history(c, "Periodic Test")
+		self.assertEqual(got["rows"][0]["type_pt"], "5Y")
+		self.assertEqual(got["rows"][0]["sales_invoice"], "SINV-HIST-REGT")
+
+	def test_tank_no_and_principal_are_dropped_from_the_dialog(self):
+		"""Nomor tank sudah jadi judul dialognya, dan principal tidak berubah antar baris."""
+		ensure_item("INT-STEAM", "Steam Cleaning / Wash", uom="Hour")
+		c = self._container("H6")
+		self._cleaning(c, "INT-STEAM")
+		fields = {c2["fieldname"] for c2 in register_history.tank_history(c, "Steam Wash")["columns"]}
+		self.assertNotIn("tank_no", fields)
+		self.assertNotIn("principal", fields)
+
+	def test_unknown_register_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			register_history.tank_history(self._container("H7"), "Bukan Register")

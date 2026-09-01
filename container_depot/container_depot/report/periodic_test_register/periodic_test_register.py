@@ -82,6 +82,7 @@ def execute(filters=None):
 			"code": f"{o['principal'] or ''}{pt_type}" if pt_type else "",
 			"due_date": _due(periodic_date or last_date, pt_type or last_type),
 			"billed_to": _BILLED_TO.get(o["billing_status"], ""),
+			"sales_invoice": o["sales_invoice"],
 			"status": o["status"],
 			"repair_order": o["repair_order"],
 		})
@@ -91,6 +92,9 @@ def execute(filters=None):
 def _orders(filters) -> list:
 	where = ["ro.job_type = 'Periodic Test'", "ro.status != 'Cancelled'"]
 	params = {}
+	if filters.get("container"):
+		where.append("ro.container = %(container)s")
+		params["container"] = filters["container"]
 	if filters.get("principal"):
 		where.append("COALESCE(NULLIF(ro.principal, ''), c.principal) = %(principal)s")
 		params["principal"] = filters["principal"]
@@ -114,7 +118,7 @@ def _orders(filters) -> list:
 			ro.container AS tank_no,
 			COALESCE(NULLIF(ro.principal, ''), c.principal) AS principal,
 			ro.pt_type, ro.order_created, ro.plan_date, ro.completion_date,
-			ro.status, ro.billing_status
+			ro.status, ro.billing_status, ro.sales_invoice
 		FROM `tabRepair Order` ro
 		LEFT JOIN `tabContainer` c ON ro.container = c.name
 		WHERE {' AND '.join(where)}
@@ -207,6 +211,10 @@ def _columns() -> list:
 		{"fieldname": "code", "label": "Code", "fieldtype": "Data", "width": 140},
 		{"fieldname": "due_date", "label": "Due Date", "fieldtype": "Date", "width": 105},
 		{"fieldname": "billed_to", "label": "Billed To", "fieldtype": "Data", "width": 100},
+		# Repair Order tidak punya link invoice bawaan — ini Custom Field yang diisi
+		# consolidated_billing saat Generate dan dikosongkan saat rollback (install.py).
+		{"fieldname": "sales_invoice", "label": "Invoice", "fieldtype": "Link",
+		 "options": "Sales Invoice", "width": 150},
 		{"fieldname": "status", "label": "Status", "fieldtype": "Data", "width": 130},
 		{"fieldname": "repair_order", "label": "M&R", "fieldtype": "Link",
 		 "options": "Repair Order", "width": 150},

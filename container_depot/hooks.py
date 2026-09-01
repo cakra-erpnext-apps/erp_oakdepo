@@ -328,6 +328,9 @@ app_include_js = [
 	# container_depot.rate_card_notice — warns on an order whose tank owner has no live
 	# Depot Contract, so the work is not done at rate 0 and then never billed.
 	"/assets/container_depot/js/rate_card_notice.js",
+	# container_depot.show_tank_history — dialog riwayat satu tank di balik keempat
+	# register (Steam / PP / Methanol / Periodic Test). Dipakai formatter report-nya.
+	"/assets/container_depot/js/register_history.js",
 ]
 
 # include js, css files in header of web template

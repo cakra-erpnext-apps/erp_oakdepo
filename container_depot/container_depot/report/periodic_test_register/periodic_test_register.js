@@ -11,6 +11,11 @@ frappe.query_reports["Periodic Test Register"] = {
 
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
+		// Nomor tank membuka riwayat uji berkala tank itu — termasuk uji sebelumnya dan
+		// invoice yang menagihnya.
+		if (column.fieldname === "tank_no" && data && data.tank_no) {
+			return container_depot.tank_history_cell("Periodic Test", data.tank_no);
+		}
 		// Jatuh tempo yang sudah lewat sementara ujinya belum dikerjakan bukan tanggal
 		// biasa: tank itu tidak boleh dipakai sampai diuji.
 		if (column.fieldname === "due_date" && data && data.due_date && !data.periodic_date) {
