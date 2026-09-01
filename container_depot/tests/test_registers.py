@@ -433,3 +433,141 @@ class TestDepotFollowsTheContainer(_RegisterCase):
 			"status": "Service Setup",
 		}).insert(ignore_permissions=True)
 		self.assertFalse(co.depot)
+
+
+class TestOtherRegisters(_RegisterCase):
+	"""Tiga register sisanya: booking, gate out plan, survei posisi.
+
+	Ketiganya dibaca untuk pertanyaan yang sama bentuknya — "apa yang masih menggantung" —
+	jadi yang dikunci di sini angka ringkasannya, bukan sekadar bahwa reportnya jalan:
+	booking belum dibayar, rencana keluar yang tanggalnya sudah lewat, dan survei yang
+	belum disentuh siapa pun. Ketiganya hilang tanpa suara kalau querynya salah.
+
+	Fixture disaring ke customer/tank milik test ini karena site (dan CI) sudah memuat
+	dokumen lain dengan bentuk yang sama.
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self._bookings = []
+		self._plans = []
+		self._surveys = []
+
+	def tearDown(self):
+		for name in self._bookings:
+			frappe.db.delete("Container Booking Item", {"parent": name})
+			frappe.db.delete("Container Booking Charge", {"parent": name})
+			frappe.db.delete("Container Booking", {"name": name})
+		for name in self._plans:
+			frappe.db.delete("Gate Out Plan Item", {"parent": name})
+			frappe.db.delete("Gate Out Plan", {"name": name})
+		for name in self._surveys:
+			frappe.db.delete("Container Position Survey", {"name": name})
+		super().tearDown()
+
+	def _booking(self, direction, *, payment_status="Unpaid", booking_status="Draft"):
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": direction,
+			"customer": self.principal, "principal": self.principal,
+			"payment_type": "Cash", "payment_status": payment_status,
+			"booking_status": booking_status,
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+		return doc.name
+
+	def _plan(self, plan_date, status="Open"):
+		doc = frappe.get_doc({
+			"doctype": "Gate Out Plan", "principal": self.principal,
+			"customer": self.principal, "plan_date": plan_date, "status": status,
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._plans.append(doc.name)
+		return doc.name
+
+	def _survey(self, container, status="Pending Survey"):
+		doc = frappe.get_doc({
+			"doctype": "Container Position Survey", "container": container,
+			"container_no": container, "status": status,
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._surveys.append(doc.name)
+		return doc.name
+
+	# --- Container Booking ------------------------------------------------------
+	def test_booking_register_counts_unpaid_and_direction(self):
+		from container_depot.container_depot.report.container_booking_register import (
+			container_booking_register as report,
+		)
+
+		self._booking("Tank In")
+		self._booking("Tank Out", payment_status="Paid", booking_status="Confirmed")
+
+		_cols, rows, _msg, _chart, _summary = report.execute({"customer": self.principal})
+		self.assertEqual({r["direction"] for r in rows}, {"Tank In", "Tank Out"})
+
+		_cols, unpaid, _msg, _chart, summary = report.execute(
+			{"customer": self.principal, "only_unpaid": 1}
+		)
+		self.assertEqual([r["direction"] for r in unpaid], ["Tank In"])
+		self.assertEqual(dict((s["label"], s["value"]) for s in summary)["Belum Dibayar"], 1)
+
+	# --- Gate Out Plan ----------------------------------------------------------
+	def test_gate_out_plan_register_flags_an_overdue_plan(self):
+		"""Tanggal lewat sementara tanknya masih di yard: tempat terpakai, kerja tertunda."""
+		from container_depot.container_depot.report.gate_out_plan_register import (
+			gate_out_plan_register as report,
+		)
+
+		self._plan(add_months(getdate(), -1))
+		self._plan(add_months(getdate(), 1))
+
+		_cols, rows, _msg, _chart, summary = report.execute({"principal": self.principal})
+		self.assertEqual(len(rows), 2)
+		counts = dict((s["label"], s["value"]) for s in summary)
+		self.assertEqual(counts["Open"], 2)
+		self.assertEqual(counts["Lewat Tanggal"], 1)
+
+	def test_gate_out_plan_register_can_show_only_the_open_ones(self):
+		from container_depot.container_depot.report.gate_out_plan_register import (
+			gate_out_plan_register as report,
+		)
+
+		self._plan(getdate())
+		self._plan(getdate(), status="Fulfilled")
+		_cols, rows, _msg, _chart, _summary = report.execute(
+			{"principal": self.principal, "only_open": 1}
+		)
+		self.assertEqual([r["status"] for r in rows], ["Open"])
+
+	# --- Survei posisi ----------------------------------------------------------
+	def test_survey_register_counts_the_untouched_ones(self):
+		from container_depot.container_depot.report.container_survey_register import (
+			container_survey_register as report,
+		)
+
+		c1 = self._container("S1")
+		c2 = self._container("S2")
+		self._survey(c1)
+		self._survey(c2, status="Confirmed")
+
+		_cols, rows, _msg, _chart, summary = report.execute({"principal": self.principal})
+		mine = self._mine(rows)
+		self.assertEqual(len(mine), 2)
+		counts = dict((s["label"], s["value"]) for s in summary)
+		self.assertGreaterEqual(counts["Belum Disentuh"], 1)
+
+	def test_survey_register_only_outstanding_drops_the_confirmed(self):
+		from container_depot.container_depot.report.container_survey_register import (
+			container_survey_register as report,
+		)
+
+		self._survey(self._container("S3"))
+		self._survey(self._container("S4"), status="Confirmed")
+		_cols, rows, _msg, _chart, _summary = report.execute(
+			{"principal": self.principal, "only_outstanding": 1}
+		)
+		self.assertEqual([r["status"] for r in self._mine(rows)], ["Pending Survey"])

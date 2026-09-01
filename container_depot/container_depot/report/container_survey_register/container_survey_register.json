@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Container Survey Register",
+  "ref_doctype": "Container Position Survey",
+  "report_type": "Script Report",
+  "is_standard": "Yes",
+  "module": "Container Depot",
+  "disabled": 0
+}

@@ -88,6 +88,54 @@
    "icon": "calendar-check"
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Container Booking",
+   "link_to": "Container Booking Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "notebook-text"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Gate Out Plan",
+   "link_to": "Gate Out Plan Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "calendar-clock"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Survey Posisi",
+   "link_to": "Container Survey Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "clipboard-check"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Storage Charges",
+   "link_to": "Storage Charges",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "timer"
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "mail",
@@ -343,18 +391,6 @@
    "keep_closed": 0,
    "label": "Order Billing Status",
    "link_to": "Order Billing Status",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-reports"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Storage Charges",
-   "link_to": "Storage Charges",
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
@@ -847,7 +883,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-31 13:00:00.000000",
+ "modified": "2026-08-31 15:30:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

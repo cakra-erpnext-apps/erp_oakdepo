@@ -1,0 +1,9 @@
+{
+  "doctype": "Report",
+  "name": "Gate Out Plan Register",
+  "ref_doctype": "Gate Out Plan",
+  "report_type": "Script Report",
+  "is_standard": "Yes",
+  "module": "Container Depot",
+  "disabled": 0
+}
