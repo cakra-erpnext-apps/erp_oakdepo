@@ -9,6 +9,7 @@
   "container",
   "depot",
   "job_type",
+  "pt_type",
   "plan_date",
   "column_break_1",
   "technician",
@@ -77,7 +78,6 @@
   },
   {
    "default": "Repair",
-   "description": "Periodic Test = uji berkala 2,5 / 5 tahun; item pickernya ikut jenis ini.",
    "fieldname": "job_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -85,7 +85,16 @@
    "label": "Jenis Pekerjaan",
    "options": "Repair\nPeriodic Test",
    "reqd": 1
+  },  {
+   "depends_on": "eval:doc.job_type == \"Periodic Test\"",
+   "fieldname": "pt_type",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Type PT",
+   "mandatory_depends_on": "eval:doc.job_type == \"Periodic Test\"",
+   "options": "\n2,5Y\n5Y"
   },
+
   {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
@@ -355,7 +364,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-31 14:00:00.000000",
+ "modified": "2026-08-31 14:30:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

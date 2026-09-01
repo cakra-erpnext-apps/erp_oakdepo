@@ -4,9 +4,10 @@ Uji berkala dibukukan sebagai M&R (keputusan patch v0_66: tidak ada doctype Peri
 Order), jadi sumbernya Repair Order ber-``job_type = Periodic Test``. Kolomnya mengikuti
 sheet aslinya, dan tiga di antaranya DITURUNKAN, bukan disimpan:
 
-* **Type PT** — dari item yang dipakai di ordernya (``TEST-2-5YR`` / ``SVY-CLASS-2-5YR``
-  -> 2,5Y; ``TEST-5-0YR`` / ``SVY-CLASS-5-0YR`` -> 5Y). Dikunci ke item CODE, tidak pernah
-  ke nama item.
+* **Type PT** — dari field ``pt_type`` di header kalau Admin Ops sudah mengisinya; kalau
+  belum, disimpulkan dari item yang dipakai (``TEST-2-5YR`` / ``SVY-CLASS-2-5YR`` -> 2,5Y;
+  ``TEST-5-0YR`` / ``SVY-CLASS-5-0YR`` -> 5Y). Dikunci ke item CODE, tidak pernah ke nama
+  item.
 * **Last PT Type / Last PT Date** — dari uji berkala SEBELUMNYA atas tank yang sama yang
   sudah selesai. Kalau tank itu belum pernah diuji di dalam sistem, jatuh ke
   ``Container.last_test_date`` — tanggal plat tank yang memang sengaja dipertahankan v0_66
@@ -48,7 +49,13 @@ _BILLED_TO = {"Client Billed": "Client", "Principal Billed": "Principal"}
 def execute(filters=None):
 	filters = filters or {}
 	orders = _orders(filters)
-	types = _types_by_order([o["repair_order"] for o in orders])
+	# Header menang atas penyimpulan: kalau Admin Ops sudah menyatakan tipenya, tabel item
+	# tidak boleh membantahnya (satu order bisa memuat uji fisik dan sertifikat kelas).
+	derived = _types_by_order([o["repair_order"] for o in orders])
+	types = {
+		o["repair_order"]: (o["pt_type"] or derived.get(o["repair_order"], ""))
+		for o in orders
+	}
 	history = _history(orders, types)
 
 	rows = []
@@ -106,7 +113,8 @@ def _orders(filters) -> list:
 			ro.name AS repair_order,
 			ro.container AS tank_no,
 			COALESCE(NULLIF(ro.principal, ''), c.principal) AS principal,
-			ro.order_created, ro.plan_date, ro.completion_date, ro.status, ro.billing_status
+			ro.pt_type, ro.order_created, ro.plan_date, ro.completion_date,
+			ro.status, ro.billing_status
 		FROM `tabRepair Order` ro
 		LEFT JOIN `tabContainer` c ON ro.container = c.name
 		WHERE {' AND '.join(where)}

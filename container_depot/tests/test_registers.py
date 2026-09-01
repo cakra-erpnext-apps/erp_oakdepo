@@ -139,10 +139,10 @@ class TestWashRegister(_RegisterCase):
 
 
 class TestPeriodicTestRegister(_RegisterCase):
-	def _repair(self, container, *, items=(), job_type="Periodic Test", completed=None):
+	def _repair(self, container, *, items=(), job_type="Periodic Test", completed=None, pt_type=None):
 		ro = frappe.get_doc({
 			"doctype": "Repair Order", "container": container, "job_type": job_type,
-			"status": "Draft", "billing_status": "Unbilled",
+			"status": "Draft", "billing_status": "Unbilled", "pt_type": pt_type,
 			"used_items": [{"line_type": "Jasa", "item": i, "quantity": 1} for i in items],
 		}).insert(ignore_permissions=True)
 		if completed:
@@ -159,6 +159,16 @@ class TestPeriodicTestRegister(_RegisterCase):
 		ensure_item("TEST-5-0YR", "5.0 Years Periodic Test")
 		c = self._container("P1")
 		self._repair(c, items=["TEST-5-0YR"])
+		rows, _summary = self._rows()
+		self.assertEqual(rows[0]["type_pt"], "5Y")
+		self.assertEqual(rows[0]["code"], f"{self.principal}5Y")
+
+	def test_header_type_wins_over_the_items(self):
+		"""Kalau Admin Ops sudah menyatakan tipenya di header, tabel item tidak membantahnya
+		— satu order bisa memuat uji fisik dan sertifikat kelasnya sekaligus."""
+		ensure_item("TEST-2-5YR", "2.5 Years Periodic Test")
+		c = self._container("P7")
+		self._repair(c, items=["TEST-2-5YR"], pt_type="5Y")
 		rows, _summary = self._rows()
 		self.assertEqual(rows[0]["type_pt"], "5Y")
 		self.assertEqual(rows[0]["code"], f"{self.principal}5Y")
