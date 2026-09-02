@@ -494,8 +494,8 @@ CUSTOM_FIELDS = {
 			"label": "Branch",
 			"fieldtype": "Table MultiSelect",
 			"options": "Allowed Branch",
-			# Right below Role Profiles, so it also lands there in the New User quick-entry
-			# popup (that dialog lists fields in docfield order).
+			# Right below Role Profiles: one is the template the other is scoped by,
+			# so they are read together.
 			"insert_after": "role_profiles",
 			"allow_in_quick_entry": 1,
 			"description": "Opsional. Kosongkan = akses semua branch. Pilih satu atau beberapa branch untuk membatasi data (mis. order) hanya ke branch tersebut.",
@@ -637,10 +637,33 @@ PROPERTY_SETTERS = [
 	# Item Link fields show the item NAME (title field) instead of the bare code,
 	# so pickers (incl. the Item Price item selector) are human-readable.
 	("Item", None, "show_title_field_in_link", "1", "Check"),
-	# Item Price "New" opens the full form, not the cramped quick-entry modal — the
-	# modal has no `frm`, so manhour rate is hidden and the price-list→currency
-	# fetch_from never fires. The full form shows manhour and live-fetches currency.
+	# "Create a new …" from a Link field opens the master's REAL form, never the
+	# quick-entry modal. The modal is not a smaller form, it is a different one: it
+	# carries only the fields flagged reqd / allow_in_quick_entry — 2 of Customer's
+	# 54, 7 of Item's 86 — and, having no `frm`, it never fires a `fetch_from`
+	# (frappe/form/controls/base_input.js reads `this.frm?.doc`) and never runs the
+	# doctype's client script. So the operator saved a half-filled master and had to
+	# open the form to finish it anyway; Item Price was the first case caught (the
+	# modal hid manhour rate and never fetched currency from the price list).
+	#
+	# Routing away costs nothing: link.js stashes the calling field in
+	# `frappe._from_link`, and save.js calls `update_calling_link()` after every
+	# save — so saving the new master routes back to the document it was opened
+	# from, restores the scroll position, and fills the link in, grid rows included.
+	#
+	# Only doctypes whose modal actually differs from their form are listed. Branch
+	# is deliberately absent — its form is a single field, so the modal already IS
+	# the whole form and a page load would only slow it down. Sales Invoice needs no
+	# setter: its mandatory child table (`items`) already makes Frappe fall back to
+	# the form on its own. Every other master reached from this app (Container,
+	# Depot, Cargo, Shipping Line, Booking Code, the Inspection codes) ships with
+	# quick_entry off already.
+	("Customer", None, "quick_entry", "0", "Check"),
+	("Item", None, "quick_entry", "0", "Check"),
 	("Item Price", None, "quick_entry", "0", "Check"),
+	("Role", None, "quick_entry", "0", "Check"),
+	("UOM", None, "quick_entry", "0", "Check"),
+	("User", None, "quick_entry", "0", "Check"),
 	# A customer's rate card is the OUTPUT of their Depot Contract: going Active publishes
 	# a Price List named after the contract and mirrors it here
 	# (DepotContract._publish_price_list). Typing a different list on the Customer form
