@@ -99,7 +99,7 @@
             <tr><td class="k">Truck</td><td class="v">{{ row.truck_plate or "&mdash;" }}</td></tr>
             <tr><td class="k">Supir</td><td class="v">{{ row.driver or "&mdash;" }}{% if row.driver_phone %} <span style="font-weight:400; color:#7b858e;">&middot; {{ row.driver_phone }}</span>{% endif %}</td></tr>
             <tr><td class="k">R/O</td><td class="v">{{ row.ro or "&mdash;" }}</td></tr>
-            <tr><td class="k">Est. Tanggal Bongkar</td><td class="v">{{ frappe.utils.formatdate(row.tanggal_bongkar) if row.tanggal_bongkar else "&mdash;" }}</td></tr>
+            <tr><td class="k">Plan Date</td><td class="v">{{ frappe.utils.formatdate(doc.plan_date) if doc.plan_date else "&mdash;" }}</td></tr>
             <tr><td class="k">DO Reference</td><td class="v">{{ doc.do_reference or "&mdash;" }}</td></tr>
           </table>
       </td>

@@ -53,9 +53,10 @@
 
   {{ oak.strip([
     {"k": "Booking No.", "v": doc.name, "w": "30%"},
-    {"k": "Tanggal Booking", "v": oak.tanggal(doc.creation), "w": "24%"},
-    {"k": "Jenis", "v": _dir ~ ' <span style="font-weight:400; color:#5c6670;">· ' ~ _lift ~ '</span>', "w": "24%"},
-    {"k": "Status", "v": oak.status_pill(_status), "w": "22%"},
+    {"k": "Tanggal Booking", "v": oak.tanggal(doc.creation), "w": "20%"},
+    {"k": "Plan Date", "v": oak.tanggal(doc.plan_date), "w": "18%"},
+    {"k": "Jenis", "v": _dir ~ ' <span style="font-weight:400; color:#5c6670;">· ' ~ _lift ~ '</span>', "w": "18%"},
+    {"k": "Status", "v": oak.status_pill(_status), "w": "14%"},
   ]) }}
 
   <!-- ============ PARTIES + BOOKING DETAILS ============ -->
@@ -144,8 +145,8 @@
         </td>
         <td>
           {%- if row.ro %}{{ row.ro }}
-            {%- if row.tanggal_bongkar %}<div class="sub">{{ frappe.utils.formatdate(row.tanggal_bongkar) }}</div>{% endif %}
-          {%- elif row.tanggal_bongkar %}{{ frappe.utils.formatdate(row.tanggal_bongkar) }}
+            {%- if row.realisation_date %}<div class="sub">Bon {{ frappe.utils.formatdate(row.realisation_date) }}</div>{% endif %}
+          {%- elif row.realisation_date %}Bon {{ frappe.utils.formatdate(row.realisation_date) }}
           {%- else %}&mdash;{% endif %}
         </td>
       </tr>
