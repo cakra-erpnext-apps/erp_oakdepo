@@ -376,11 +376,12 @@
   }
  ],
  "links": [],
- "modified": "2026-09-02 15:00:00.000000",
+ "modified": "2026-09-02 16:30:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",
  "sort_field": "creation",
  "sort_order": "DESC",
- "title_field": "container_no"
+ "title_field": "container_no",
+ "track_changes": 1
 }
