@@ -182,7 +182,40 @@
 				<p v-if="!detail.containers.length" class="oak-card p-6 text-center text-sm text-gray-400">
 					{{ labels.gateNoContainers }}
 				</p>
-				<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
+				<!-- Outbound, nothing free to load: the container list is five disabled rows and
+				     the answer is underneath them. Lead with the work instead. -->
+				<div v-else-if="outAllHeld" class="oak-card overflow-hidden">
+					<div class="bg-red-50 px-4 py-3">
+						<p class="flex items-center gap-1.5 text-sm font-semibold text-red-800">
+							<Icon name="alert-triangle" :size="14" /> {{ labels.gateOutNoneReady }}
+						</p>
+						<p class="mt-1 text-xs text-red-700">{{ labels.gateOutNoneReadyHint }}</p>
+					</div>
+					<ul class="divide-y divide-gray-100">
+						<li v-for="c in outHeld" :key="c.booking_code" class="px-4 py-3">
+							<p class="truncate font-semibold text-gray-900">{{ c.container_no || c.container }}</p>
+							<ul class="mt-1 space-y-0.5">
+								<li v-for="o in holds(c)" :key="o.name" class="flex items-center gap-1.5 text-xs text-red-800">
+									<Icon name="alert-circle" :size="12" class="shrink-0" />
+									<span class="font-semibold">{{ o.label }}</span>
+									<span class="truncate">{{ o.name }}</span>
+									<span class="oak-chip bg-red-50 text-[10px] text-red-700">{{ o.status }}</span>
+								</li>
+							</ul>
+						</li>
+					</ul>
+				</div>
+				<template v-else>
+				<!-- Some are free, some are not: the count says so up front, and each held row
+				     is disabled and marked rather than quietly unticked. -->
+				<p
+					v-if="isOut && outHeld.length"
+					class="oak-card flex items-center gap-1.5 px-4 py-2 text-xs text-amber-800"
+				>
+					<Icon name="alert-triangle" :size="14" class="shrink-0" />
+					<span><b>{{ outReady.length }}</b> dari <b>{{ detail.containers.length }}</b> {{ labels.gateOutReadyCount }}</span>
+				</p>
+				<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
 					<li v-for="c in detail.containers" :key="c.booking_code" class="px-4 py-3">
 						<div class="flex items-center gap-3">
 							<input
@@ -206,7 +239,7 @@
 								v-if="isOut && !c.order && holds(c).length"
 								class="oak-chip shrink-0 bg-red-100 text-red-800"
 							>
-								<Icon name="alert-triangle" :size="12" /> {{ labels.gateHeldBy }}
+								<Icon name="alert-triangle" :size="12" /> {{ labels.gateOutUnready }}
 							</span>
 							<span
 								v-else-if="isOut && !c.order"
@@ -237,9 +270,10 @@
 						</div>
 					</li>
 				</ul>
+				</template>
 
 				<button
-					v-if="!detail.block_reason"
+					v-if="!detail.block_reason && !outAllHeld"
 					class="oak-btn oak-btn-primary w-full"
 					:disabled="!selected.length"
 					@click="openGenerate"
@@ -533,6 +567,22 @@ const generateError = computed(
 function holds(c) {
 	return isOut.value ? c.open_orders || [] : []
 }
+
+// A booking is routinely collected a couple of tanks at a time, and an outbound booking may
+// now be submitted while the yard is still working (the readiness gate moved to here and to
+// the bon). So "5 di booking, 3 bisa jalan sekarang" is the normal case, not the exception —
+// and it is the first thing the gate needs to know, before it starts ticking boxes.
+const outHeld = computed(() =>
+	isOut.value ? (detail.value?.containers || []).filter((c) => !c.order && holds(c).length) : [],
+)
+const outReady = computed(() =>
+	isOut.value ? (detail.value?.containers || []).filter((c) => selectable(c)) : [],
+)
+// Nothing to tick: the checkbox list would be a list of disabled rows with the real answer
+// buried under them. Show the work instead — that IS the answer.
+const outAllHeld = computed(
+    () => isOut.value && !!outHeld.value.length && !outReady.value.length,
+)
 
 // A container is selectable for a new bon when its code is still pending (Active), it
 // isn't already on a bon, and nothing is holding it. Order Muat refuses a held tank

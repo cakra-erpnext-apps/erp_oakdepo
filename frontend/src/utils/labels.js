@@ -203,6 +203,14 @@ export const labels = {
 	gateReadyOut: "Siap keluar", // no open work — free to leave
 	gateHeldBy: "Belum selesai", // container still held by open orders
 	gateHeldHint: "Container ini tidak bisa keluar sebelum order di bawah selesai.",
+	// Outbound readiness, said once for the whole booking. A bon may carry only the tanks
+	// that are actually free, so "how many of these can I load right now" is the first
+	// thing the gate needs to know — before it starts ticking boxes.
+	gateOutReadyCount: "container siap keluar", // rendered after "3 dari 5"
+	gateOutNoneReady: "Belum ada container yang siap keluar", // none ready
+	gateOutNoneReadyHint:
+		"Semua container di booking ini masih menunggu order berikut selesai. Bon baru bisa dibuat setelah order-nya beres.",
+	gateOutUnready: "Belum siap", // per-container marker on a held row
 	gateAlreadyOut: "Sudah keluar", // code already consumed by a bon
 	// Gate — Shipper picker (Customer master, EMKL first)
 	gateShipperEmkl: "EMKL / Transporter", // group header: customers flagged is_transporter

@@ -59,8 +59,14 @@ class OrderMuat(Document):
 		backwards: it made the absence of a cleaning a permanent blocker, so a tank that
 		arrived clean and needed no work could never be loaded out at all — there was no
 		order to finish and no way to produce one. What the yard actually owes is that
-		nothing is still in progress, so the check is now the open orders themselves (the
-		same source the Tank Out booking and the gate use), and it names them.
+		nothing is still in progress, so the check is the open orders themselves, and it
+		names them.
+
+		**This is now the FIRST hard refusal on the way out.** The Tank Out booking used to
+		apply the same test and no longer does — an outbound booking is how the depot learns
+		a pickup is coming, so it is accepted while the yard works and the work is
+		prioritised instead (:mod:`lift_on`). The bon is different: it is the paper a driver
+		is handed to take the tank away, so here the answer has to be no.
 		"""
 		from container_depot.container_depot.container_status import container_open_orders
 
