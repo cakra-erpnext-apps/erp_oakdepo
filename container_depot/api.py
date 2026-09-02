@@ -892,7 +892,7 @@ def get_booking_pending_containers(booking):
 		"""
 		SELECT bc.name AS booking_code, bc.container, bc.container_no, bc.status_tag, bc.direction,
 		       i.condition, i.cargo, i.truck_plate, i.driver, i.driver_phone, i.ro,
-		       i.tanggal_bongkar, i.remarks
+		       i.tanggal_bongkar, i.tanggal_muat, i.remarks
 		FROM `tabBooking Code` bc
 		LEFT JOIN `tabContainer Booking Item` i
 		       ON i.parent = bc.booking AND i.container_no = bc.container_no
@@ -1023,7 +1023,13 @@ def _booking_gate_detail(booking) -> dict:
 		line = frappe.db.get_value(
 			"Container Booking Item",
 			{"parent": booking, "container_no": c.container_no},
-			["condition", "cargo", "truck_plate", "driver", "driver_phone", "ro", "tanggal_bongkar"],
+			[
+				"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro",
+				# Both estimates: the gate form asks for the one its own direction uses
+				# (bongkar on the way in, muat on the way out) and would otherwise default
+				# an outbound bon to today on every scan.
+				"tanggal_bongkar", "tanggal_muat",
+			],
 			as_dict=True,
 		) or {}
 		containers.append({

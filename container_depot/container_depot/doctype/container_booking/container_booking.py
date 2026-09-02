@@ -122,6 +122,8 @@ class ContainerBooking(Document):
 		self._ensure_branch_and_principal()
 		self._validate_depot_in_branch()
 		self._sync_lift_type()
+		self._cascade_plan_date()
+		self._require_line_date()
 		self._resolve_pricing_context()
 		self._resolve_containers()
 		# After resolution, so a row that arrived as a bare number is judged on the master it
@@ -521,6 +523,74 @@ class ContainerBooking(Document):
 			) or frappe.db.get_value("Branch", {}, "name")
 
 	# ---- pricing context (customer contract / price list) ---------------
+	# The booking line's date field, per direction. A bon is single-direction and so is the
+	# work it describes: Tank In is unloaded (bongkar), Tank Out is loaded (muat). Keeping two
+	# fields rather than one "tanggal" is what lets a line say which of the two it means —
+	# the estimate travels onto the bon, and a Tank Out bon has no unload date to give.
+	PLAN_DATE_FIELD = {"Tank In": "tanggal_bongkar", "Tank Out": "tanggal_muat"}
+
+	def _cascade_plan_date(self):
+		"""Push the header's ``plan_date`` down onto each container line's estimate.
+
+		A booking is one job with one intended day, and typing that day into fifteen rows is
+		how a booking ends up with fourteen right dates and one wrong one. So the header asks
+		once and the rows follow — but only the rows that are still FOLLOWING:
+
+		* empty → filled;
+		* still carrying the previous header date → moved along with it;
+		* anything else → left alone, because someone typed it on purpose. A notice
+		  collected over two days is ordinary, and the whole point of keeping the estimate on
+		  the line is that it can differ per tank.
+
+		Which field it lands in is the direction's answer (:attr:`PLAN_DATE_FIELD`): an
+		inbound line estimates when the tank is unloaded, an outbound one when it is loaded.
+		The other field is left untouched rather than cleared — a booking reverted to draft
+		and flipped direction would otherwise silently drop a date the operator had typed.
+		"""
+		field = self.PLAN_DATE_FIELD.get(self.direction)
+		if not field or not self.plan_date:
+			return
+		before = None if self.is_new() else self.get_doc_before_save()
+		previous = before.get("plan_date") if before else None
+		# Compare as dates: the stored value is a date object and the form sends a string.
+		previous = getdate(previous) if previous else None
+		# Rows this save is ADDING. They cannot have been edited by anyone — what they carry
+		# is the field's own "Today" default, which must not be mistaken for an intention. A
+		# brand-new booking has no before-image at all, so every row of it is new.
+		existing = {r.name for r in ((before.get("items") if before else None) or [])}
+		for row in self.items or []:
+			if row.name not in existing:
+				row.set(field, getdate(self.plan_date))
+				continue
+			current = getdate(row.get(field)) if row.get(field) else None
+			if current is None or (previous is not None and current == previous):
+				row.set(field, getdate(self.plan_date))
+
+	def _require_line_date(self):
+		"""Each line must carry the estimate its own DIRECTION uses.
+
+		It used to be declared on the field (``tanggal_bongkar``, reqd) — which asked every
+		outbound booking for an unload date it has no business knowing, and asked nothing at
+		all about the load date it actually needs. A child field cannot say "mandatory when
+		the PARENT is Tank Out", so the rule lives here, where the direction is.
+		"""
+		field = self.PLAN_DATE_FIELD.get(self.direction)
+		if not field:
+			return
+		label = _("Est. Tanggal Bongkar") if field == "tanggal_bongkar" else _("Est. Tanggal Muat")
+		missing = [
+			r.container_no or r.container or _("baris {0}").format(r.idx)
+			for r in (self.items or [])
+			if not r.get(field)
+		]
+		if missing:
+			frappe.throw(
+				_("{0} wajib diisi untuk: {1}. Isi <b>Tanggal Rencana Kerja</b> di header untuk mengisi semuanya sekaligus.").format(
+					label, ", ".join(missing)
+				),
+				title=_("Tanggal Belum Lengkap"),
+			)
+
 	def _resolve_pricing_context(self):
 		"""Pricing follows the customer's *active* Price List — the one published by their
 		active contract and mirrored onto ``Customer.default_price_list``. It is resolved

@@ -11,6 +11,7 @@
   "column_break_1",
   "depot",
   "reff_doc",
+  "plan_date",
   "parties_section",
   "customer",
   "column_break_parties",
@@ -101,6 +102,12 @@
    "label": "Reff Doc",
    "allow_on_submit": 1,
    "in_list_view": 1
+  },
+  {
+   "description": "Opsional. Tanggal pekerjaan direncanakan. Turun ke Est. Tgl Bongkar (Tank In) / Est. Tgl Muat (Tank Out) tiap baris container, dan masih bisa diubah per baris.",
+   "fieldname": "plan_date",
+   "fieldtype": "Date",
+   "label": "Tanggal Rencana Kerja"
   },
   {
    "fieldname": "parties_section",
@@ -382,7 +389,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-02 11:00:00.000000",
+ "modified": "2026-09-02 12:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

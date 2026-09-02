@@ -69,6 +69,27 @@ def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 				frappe.db.set_value("Container Booking Item", item.name, writeback, update_modified=False)
 
 
+def _first_line_value(booking, codes, by_name, field):
+	"""The first selected container's booking-line value for ``field``.
+
+	A bon carries ONE header date for up to two containers, so "the first one that has an
+	answer" is the only rule that can be applied — and it is the same rule the Desk dialog
+	uses when it pre-fills itself from the first picked row.
+	"""
+	for c in codes:
+		container_no = by_name[c].container_no
+		if not container_no:
+			continue
+		value = frappe.db.get_value(
+			"Container Booking Item",
+			{"parent": booking, "parenttype": "Container Booking", "container_no": container_no},
+			field,
+		)
+		if value:
+			return value
+	return None
+
+
 def _as_code_list(value):
 	if value is None:
 		return []
@@ -169,7 +190,15 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 			order.driver_phone = vehicle_data.get("driver_phone")
 			order.ro = vehicle_data.get("ro")
 			order.destination = vehicle_data.get("destination")
-			order.tanggal_muat = vehicle_data.get("tanggal_muat") or vehicle_data.get("tanggal")
+			# The bon's load date: what the dialog / gate typed, else the estimate the
+			# booking line already carries (which the header's Tanggal Rencana Kerja put
+			# there). Falling straight through to today was how an outbound bon prepared a
+			# week ahead came out stamped with the day it was printed.
+			order.tanggal_muat = (
+				vehicle_data.get("tanggal_muat")
+				or vehicle_data.get("tanggal")
+				or _first_line_value(booking, codes, by_name, "tanggal_muat")
+			)
 			for c in codes:
 				r = by_name[c]
 				order.append("containers", {

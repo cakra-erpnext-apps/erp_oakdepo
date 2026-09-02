@@ -969,3 +969,62 @@ class TestBonCoverage(FrappeTestCase):
 		self.assertEqual(cov["status"], "Sebagian Dibon")
 		self.assertEqual(len(cov["pending"]), 2)
 		self.assertEqual(self._stored(booking).bon_status, "Sebagian Dibon")
+
+
+class TestPlanDateCascade(FrappeTestCase):
+	"""Tanggal Rencana Kerja on the header → the estimate on each container line.
+
+	Which line field it lands in is the direction's answer, and a line someone edited by
+	hand must survive a later change to the header.
+	"""
+
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		purge_mc_data()
+
+	def _booking(self, direction, prefix, plan_date=None, count=2):
+		customer = ensure_test_customer(MC_CUSTOMER)
+		contract = (
+			frappe.db.get_value("Depot Contract", {"customer": customer, "status": "Active"}, "name")
+			or _make_contract(customer)
+		)
+		doc = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": direction,
+			"customer": customer,
+			"contract": contract,
+			"plan_date": plan_date,
+			"items": [{"container_no": f"{prefix}{i:04d}"} for i in range(1, count + 1)],
+		})
+		doc.flags.ignore_validate = False
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		return doc
+
+	def test_tank_in_fills_tanggal_bongkar_and_tank_out_fills_tanggal_muat(self):
+		day = add_days(today(), 5)
+		bookin = self._booking("Tank In", "MCPLNA0", plan_date=day)
+		self.assertTrue(all(str(r.tanggal_bongkar) == day for r in bookin.items))
+		# The other direction's estimate is left on its own default — the cascade touches
+		# only the field the booking's direction actually uses.
+		self.assertTrue(all(str(r.tanggal_muat) == today() for r in bookin.items))
+
+		bookout = self._booking("Tank Out", "MCPLNB0", plan_date=day)
+		self.assertTrue(all(str(r.tanggal_muat) == day for r in bookout.items))
+		self.assertTrue(all(str(r.tanggal_bongkar) == today() for r in bookout.items))
+
+	def test_a_hand_typed_line_date_survives_a_header_change(self):
+		first, later = add_days(today(), 3), add_days(today(), 9)
+		doc = self._booking("Tank Out", "MCPLNC0", plan_date=first)
+		# One line is moved by hand; the other still follows the header.
+		doc.items[0].tanggal_muat = add_days(today(), 20)
+		doc.plan_date = later
+		doc.save(ignore_permissions=True)
+		self.assertEqual(str(doc.items[0].tanggal_muat), add_days(today(), 20))
+		self.assertEqual(str(doc.items[1].tanggal_muat), later)
+
+	def test_no_plan_date_leaves_the_lines_on_their_own_default(self):
+		"""An empty header cascades nothing — the line keeps the field's own Today default,
+		which is what every booking written before this feature carried."""
+		doc = self._booking("Tank Out", "MCPLND0")
+		self.assertTrue(all(str(r.tanggal_muat) == today() for r in doc.items))

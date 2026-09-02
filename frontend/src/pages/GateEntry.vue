@@ -572,7 +572,10 @@ function openGenerate() {
 		ex_vessel: "",
 		shipper: detail.value.customer || "",
 		tanggal_bongkar_actual: line.tanggal_bongkar || today,
-		tanggal_muat: today,
+		// The booking line's own estimate wins over today: an outbound booking prepared a
+		// week ahead already says which day it is for, and the gate is where that day
+		// arrives — not where it is decided again.
+		tanggal_muat: line.tanggal_muat || today,
 		remarks: "",
 	}
 	// One id per intended bon, minted when the form opens rather than when Generate is

@@ -27,6 +27,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_mark_new_containers');
+		frm.trigger('_toggle_date_column');
 		frm.trigger('_flag_open_conflicts');
 		frm.trigger('_apply_submit_lock');
 		frm.trigger('_apply_billing_lock');
@@ -184,6 +185,22 @@ frappe.ui.form.on('Container Booking', {
 				_bon_coverage_comment(frm, coverage);
 			},
 		});
+	},
+	direction(frm) {
+		frm.trigger('_toggle_date_column');
+	},
+	// One date column, not two. A booking line carries an estimate for each direction —
+	// bongkar on the way in, muat on the way out — because the bon it feeds only has the one
+	// its own direction uses. Showing both columns would put an always-empty column in every
+	// grid and invite someone to fill it; `set_column_disp_in_list_view` is a grid-local
+	// override, so hiding one here cannot leak onto Order Bongkar's grid, which shares this
+	// child doctype.
+	_toggle_date_column(frm) {
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (!grid || !grid.set_column_disp_in_list_view) return;
+		const out = frm.doc.direction === 'Tank Out';
+		grid.set_column_disp_in_list_view('tanggal_muat', out);
+		grid.set_column_disp_in_list_view('tanggal_bongkar', !out);
 	},
 	// Which tanks already have a bon. Nothing on a submitted booking is editable any more
 	// (_apply_submit_lock), so this is not about protecting the rows — it is about reading
@@ -1102,6 +1119,9 @@ function _fill_line_detail(d, p, fields, out) {
 	// Tank In only: default the actual unload date from the line's estimation Tgl. Bongkar.
 	// A pick-up has no such estimate on the line — Tgl. Muat defaults to today instead.
 	if (!out && p.tanggal_bongkar) d.set_value('tanggal_bongkar_actual', p.tanggal_bongkar);
+	// Same for the outbound half: the line's estimate is what the booking planned, so it
+	// beats today's date as the bon's Tgl. Muat.
+	if (out && p.tanggal_muat) d.set_value('tanggal_muat', p.tanggal_muat);
 }
 
 function submit_generation(frm, dialog, codes, vehicle_data) {
