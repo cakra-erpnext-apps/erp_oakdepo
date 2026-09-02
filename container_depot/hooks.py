@@ -330,6 +330,9 @@ app_include_js = [
 	# container_depot.show_tank_history — dialog riwayat satu tank di balik keempat
 	# register (Steam / PP / Methanol / Periodic Test). Dipakai formatter report-nya.
 	"/assets/container_depot/js/register_history.js",
+	# Jalan pulang dari form master yang dibuka lewat "Create a new …" di sebuah field
+	# Link — spanduk konteks + tombol batal (lihat file-nya).
+	"/assets/container_depot/js/link_return.js",
 ]
 
 # include js, css files in header of web template
