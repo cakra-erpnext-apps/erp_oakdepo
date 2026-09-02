@@ -22,8 +22,20 @@ const FILTER_ORDER = [
 	'customer',
 	'direction',
 	'booking_status', // the Status column is this field
+	'bon_status',
 	'payment_status',
 ];
+
+// "Sudah dibonkan belum?" is the other half of a booking's state, and it is invisible on the
+// booking itself — the bons live in another doctype and reach it only through Booking Codes.
+// A confirmed booking whose containers have no bon yet is work nobody has started; on a list
+// of forty bookings that is exactly what an operator is scanning for, so it is a pill, not a
+// word: amber = nothing issued, yellow = half done, green = every container on paper.
+const BON_COLOURS = {
+	'Belum Dibon': 'orange',
+	'Sebagian Dibon': 'yellow',
+	'Bon Lengkap': 'green',
+};
 
 // One Status column, not two. A submittable doctype gets Frappe's docstatus badge
 // (Draft / Submitted / Cancelled) for free, and Booking Status sat next to it repeating
@@ -46,7 +58,17 @@ const STATUS_COLOURS = {
 frappe.listview_settings['Container Booking'] = {
 	// booking_status is no longer a column of its own, so the list query would not fetch
 	// it — and `get_indicator` would read undefined on every row and paint them all Draft.
-	add_fields: ['booking_status'],
+	add_fields: ['booking_status', 'bon_status', 'bon_summary'],
+	formatters: {
+		// The count carries the message ("2/5"), the colour makes it findable, and a booking
+		// with no live codes at all (draft / cancelled) shows nothing — there is no bon owed.
+		bon_status(value, df, doc) {
+			if (!value) return '';
+			const colour = BON_COLOURS[value] || 'gray';
+			const count = doc.bon_summary ? ` ${frappe.utils.escape_html(doc.bon_summary)}` : '';
+			return `<span class="indicator-pill ${colour}" title="${__('Container yang sudah masuk bon')}">${__(value)}${count}</span>`;
+		},
+	},
 	// Container Booking is submittable, and frappe.get_indicator returns a blanket red
 	// "Draft" / "Cancelled" for docstatus 0 / 2 — bailing out BEFORE get_indicator below
 	// is ever called — unless these opt out of that default. Without them the booking_status

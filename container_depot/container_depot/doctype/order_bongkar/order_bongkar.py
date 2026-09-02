@@ -5,6 +5,7 @@ from frappe.utils import cint, now_datetime
 
 from container_depot.container_depot.doctype.container_booking.container_booking import (
 	build_container_summary,
+	refresh_bon_status,
 )
 
 # A single bon/voucher may carry at most this many containers.
@@ -422,6 +423,10 @@ def _reconcile_codes(doc: Document):
 	for code in previous - current:
 		if frappe.db.get_value("Booking Code", code, "state") == "Used":
 			frappe.db.set_value("Booking Code", code, "state", "Active", update_modified=False)
+	# Every flip above changes how much of the booking is still waiting for a bon. This and
+	# _release_codes are the only two places a code's state moves once it has been issued, so
+	# refreshing here keeps the booking's "Bon 3/5" marker honest without a scheduled job.
+	refresh_bon_status(doc.get("booking"))
 
 
 def _release_codes(doc: Document):
@@ -429,6 +434,9 @@ def _release_codes(doc: Document):
 	for r in _order_rows(doc):
 		if r.booking_code and frappe.db.get_value("Booking Code", r.booking_code, "state") == "Used":
 			frappe.db.set_value("Booking Code", r.booking_code, "state", "Active", update_modified=False)
+	# A voided bon hands its containers back to the booking — they need a new bon, and the
+	# booking's marker has to say so again.
+	refresh_bon_status(doc.get("booking"))
 
 
 @frappe.whitelist()

@@ -671,7 +671,9 @@ class TestBookingFrozenOnceBonRaised(FrappeTestCase):
 		from container_depot.container_depot.order_generation import void_order
 
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="MCFB0")
-		self.assertEqual(revision_state(booking), {"bons": [], "locked_containers": []})
+		state = revision_state(booking)
+		self.assertEqual(state["bons"], [])
+		self.assertEqual(state["locked_containers"], [])
 
 		name = make_order(booking, [codes[0]])
 		state = revision_state(booking)
@@ -903,3 +905,67 @@ class TestGate(FrappeTestCase):
 		self.assertEqual(row.truck_plate, "B-7788-XY")
 		self.assertEqual(row.driver, "Slamet")
 		self.assertEqual(row.driver_phone, "0812345")
+
+
+class TestBonCoverage(FrappeTestCase):
+	"""The "belum dibon" marker: how much of a booking is still waiting for paper.
+
+	Read off Booking Code state, so it must follow a bon through its whole life —
+	issued, and voided again — not just the moment it is created.
+	"""
+
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		purge_mc_data()
+
+	def _coverage(self, booking):
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			bon_coverage,
+		)
+		return bon_coverage(booking)
+
+	def _stored(self, booking):
+		return frappe.db.get_value(
+			"Container Booking", booking, ["bon_status", "bon_summary"], as_dict=True
+		)
+
+	def test_coverage_tracks_bons_issued_and_voided(self):
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			refresh_bon_status,
+		)
+		from container_depot.container_depot.order_generation import void_order
+
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCCOV0")
+		# The fixture writes its codes directly, bypassing on_submit — stamp the booking the
+		# way submit would, which is also what the backfill patch does.
+		refresh_bon_status(booking)
+		cov = self._coverage(booking)
+		self.assertEqual((cov["total"], cov["issued"]), (3, 0))
+		self.assertEqual(cov["status"], "Belum Dibon")
+		self.assertEqual(len(cov["pending"]), 3)
+		self.assertEqual(self._stored(booking).bon_status, "Belum Dibon")
+
+		# Two of three on a bon → partial, and the third is named as still pending.
+		first = make_order(booking, codes[:2])
+		cov = self._coverage(booking)
+		self.assertEqual((cov["total"], cov["issued"]), (3, 2))
+		self.assertEqual(cov["status"], "Sebagian Dibon")
+		self.assertEqual(len(cov["pending"]), 1)
+		stored = self._stored(booking)
+		self.assertEqual(stored.bon_status, "Sebagian Dibon")
+		self.assertEqual(stored.bon_summary, "2/3")
+
+		make_order(booking, codes[2:])
+		cov = self._coverage(booking)
+		self.assertEqual(cov["status"], "Bon Lengkap")
+		self.assertEqual(cov["pending"], [])
+		self.assertEqual(self._stored(booking).bon_status, "Bon Lengkap")
+
+		# Voiding a bon hands its containers back: they owe a bon again.
+		void_order(first, "Order Bongkar")
+		cov = self._coverage(booking)
+		self.assertEqual((cov["total"], cov["issued"]), (3, 1))
+		self.assertEqual(cov["status"], "Sebagian Dibon")
+		self.assertEqual(len(cov["pending"]), 2)
+		self.assertEqual(self._stored(booking).bon_status, "Sebagian Dibon")

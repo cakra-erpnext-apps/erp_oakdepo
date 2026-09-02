@@ -60,6 +60,7 @@ class TestGateOutPlan(FrappeTestCase):
 			frappe.db.delete("Inspection", {"name": e})
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Booking Code", {"booking": b})
 			frappe.db.delete("Container Booking", {"name": b})
 		for b in self._bons:
 			frappe.db.delete("Container Booking Item", {"parent": b})
@@ -316,6 +317,34 @@ class TestGateOutPlan(FrappeTestCase):
 		# A voided booking is history — neither unfinished work nor a clearance.
 		self.assertTrue(by_name[cancelled]["cancelled"])
 		self.assertFalse(by_name[cancelled]["open"])
+
+	def test_related_orders_flags_a_booking_whose_bon_is_not_out_yet(self):
+		"""A confirmed booking is not yet paper at the gate — say so on the line.
+
+		The bon is what the driver is handed, and it comes off the booking one or two tanks
+		at a time. A tank whose Booking Code is still Active is one nobody has issued for,
+		and that is invisible from the booking's own status.
+		"""
+		c = self._container("GOPBON0001")
+		booking = self._booking(c, booking_status="Confirmed", submitted=True)
+		code = frappe.get_doc({
+			"doctype": "Booking Code",
+			"code": "OAK-GOPBONTEST1",
+			"booking": booking,
+			"direction": "Tank Out",
+			"container": c,
+			"container_no": "GOPBON0001",
+			"state": "Active",
+		}).insert(ignore_permissions=True)
+		plan = self._plan([(c, add_days(today(), 5))])
+
+		line = {o["name"]: o for o in gate_out_plan.related_orders(plan.name)[0]["orders"]}[booking]
+		self.assertEqual(line["detail"], "Tank Out · belum ada bon")
+
+		# Once the bon takes the code, the line goes back to plain direction.
+		frappe.db.set_value("Booking Code", code.name, "state", "Used", update_modified=False)
+		line = {o["name"]: o for o in gate_out_plan.related_orders(plan.name)[0]["orders"]}[booking]
+		self.assertEqual(line["detail"], "Tank Out")
 
 	def test_a_confirmed_tank_in_is_still_open_until_the_tank_arrives(self):
 		"""Confirmed is where a booking STARTS being work, not where it stops.

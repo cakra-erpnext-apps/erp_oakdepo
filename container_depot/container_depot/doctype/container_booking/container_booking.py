@@ -164,6 +164,9 @@ class ContainerBooking(Document):
 
 	def on_submit(self):
 		self._issue_booking_codes()
+		# The codes just issued are all Active — i.e. "Belum Dibon". Stamp that now so the
+		# list view says so from the moment the booking is confirmed.
+		refresh_bon_status(self.name)
 		self.db_set("booking_status", "Confirmed", update_modified=False)
 		for item in (self.items or []):
 			if item.get("container"):
@@ -266,6 +269,9 @@ class ContainerBooking(Document):
 		self._cancel_invoice_keep_link()
 		self.db_set("payment_status", "Cancelled", update_modified=False)
 		self._release_pre_arrival_containers()
+		# Every live code was just voided above, so the bon marker has nothing left to
+		# count — clear it rather than leave a cancelled booking advertising "0/5 dibon".
+		refresh_bon_status(self.name)
 
 	def on_trash(self):
 		# A booking is never permanently deleted — it is voided/cancelled (Cancel) so its
@@ -1536,6 +1542,78 @@ def _codes_on_a_bon(booking: str) -> set[str]:
 	return out
 
 
+# --- bon coverage: how much of a booking is still waiting for a bon -----------
+# The three states a submitted booking can be in, as far as paper at the gate goes. A
+# booking with no live codes at all (a draft, or one that was cancelled) gets None: it is
+# not "belum dibon", there is simply nothing to bon yet.
+BON_NONE = "Belum Dibon"
+BON_PARTIAL = "Sebagian Dibon"
+BON_FULL = "Bon Lengkap"
+
+
+def bon_coverage(booking: str) -> dict:
+	"""Which of ``booking``'s containers already sit on a bon — ``{total, issued, pending,
+	status, summary}``.
+
+	Read off **Booking Code state**, not off the bons, because the question here is
+	operational: what still has to be issued? Voiding a bon puts its codes back to
+	``Active``, and those tanks do need a fresh bon. (``_codes_on_a_bon`` asks the other
+	question — "was one ever printed?" — which is what freezes the booking, and which a void
+	must NOT undo.)
+
+	Only ``Active`` + ``Used`` codes are counted. ``Cancelled`` / ``Expired`` / ``Reissued``
+	codes are not work anyone is waiting for, and counting them would leave a cancelled
+	booking reading "0/5 dibon" forever.
+	"""
+	rows = frappe.get_all(
+		"Booking Code",
+		filters={"booking": booking, "state": ["in", ("Active", "Used")]},
+		fields=["container_no", "state"],
+		order_by="creation asc",
+	)
+	pending = [r.container_no for r in rows if r.state == "Active"]
+	total = len(rows)
+	issued = total - len(pending)
+	if not total:
+		status = None
+	elif not issued:
+		status = BON_NONE
+	elif pending:
+		status = BON_PARTIAL
+	else:
+		status = BON_FULL
+	return {
+		"total": total,
+		"issued": issued,
+		"pending": pending,
+		"status": status,
+		"summary": "{0}/{1}".format(issued, total) if total else "",
+	}
+
+
+def refresh_bon_status(booking: str | None) -> None:
+	"""Write :func:`bon_coverage` onto the booking's stored ``bon_status`` / ``bon_summary``.
+
+	Stored rather than computed on read for one reason: the list view. "Which bookings still
+	owe a bon?" is a question asked ACROSS bookings — a column and a filter — and a list can
+	only sort and filter on a column that exists. Everything else (the form banner, Gate Out
+	Plan) reads the live helper.
+
+	Called from the two places a code's state can flip — ``_reconcile_codes`` /
+	``_release_codes`` in the bon controllers — plus the booking's own submit, which is where
+	the codes are born.
+	"""
+	if not booking or not frappe.db.exists("Container Booking", booking):
+		return
+	cov = bon_coverage(booking)
+	frappe.db.set_value(
+		"Container Booking",
+		booking,
+		{"bon_status": cov["status"] or "", "bon_summary": cov["summary"]},
+		update_modified=False,
+	)
+
+
 def _block_if_bon_raised(booking: str, action: str) -> None:
 	bons = _bons_raised(booking)
 	if bons:
@@ -1562,11 +1640,15 @@ def revision_state(booking: str) -> dict:
 	``locked_containers``
 	    the container numbers already carried on a bon, marked with a "Bon" pill on their
 	    row so "sudah dibonkan yang mana?" is answered where the operator is looking.
+	``coverage``
+	    :func:`bon_coverage` — how many containers still have no bon, and which. The banner
+	    says it in words ("3 dari 5"); the pills say it per row.
 	"""
 	frappe.has_permission("Container Booking", "read", doc=booking, throw=True)
 	codes = _codes_on_a_bon(booking)
 	return {
 		"bons": _bons_raised(booking),
+		"coverage": bon_coverage(booking),
 		"locked_containers": sorted(
 			frappe.get_all(
 				"Booking Code", filters={"name": ["in", list(codes)]}, pluck="container_no"

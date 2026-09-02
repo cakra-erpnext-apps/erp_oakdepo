@@ -30,10 +30,12 @@
   "system_section",
   "booking_status",
   "charges_total",
+  "bon_status",
   "payment_status",
   "sales_invoice",
   "block_reason",
   "container_summary",
+  "bon_summary",
   "gate_out_plan",
   "reff_email",
   "lift_type",
@@ -238,6 +240,18 @@
    "hidden": 1
   },
   {
+   "description": "Berapa container booking ini yang sudah masuk bon. Diisi otomatis dari Booking Code.",
+   "fieldname": "bon_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bon",
+   "no_copy": 1,
+   "options": "\nBelum Dibon\nSebagian Dibon\nBon Lengkap",
+   "read_only": 1,
+   "allow_on_submit": 1
+  },
+  {
    "default": "Unpaid",
    "depends_on": "eval:doc.payment_type=='Cash' || doc.booking_status=='Cancelled'",
    "description": "Dari Sales Invoice booking Cash.",
@@ -272,6 +286,16 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Containers",
+   "read_only": 1,
+   "allow_on_submit": 1,
+   "hidden": 1
+  },
+  {
+   "description": "Jumlah container yang sudah dibonkan, mis. 3/5.",
+   "fieldname": "bon_summary",
+   "fieldtype": "Data",
+   "label": "Bon (Jumlah)",
+   "no_copy": 1,
    "read_only": 1,
    "allow_on_submit": 1,
    "hidden": 1
@@ -358,7 +382,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-26 10:00:00.000000",
+ "modified": "2026-09-02 11:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

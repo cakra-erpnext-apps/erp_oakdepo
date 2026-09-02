@@ -140,6 +140,7 @@ frappe.ui.form.on('Container Booking', {
 		// otherwise the previous booking's frozen rows would tint this one until (or unless)
 		// the call below answers.
 		frm._bon_containers = new Set();
+		frm._pending_bon = new Set();
 		if (frm.is_new() || frm.doc.docstatus !== 1) return;
 		// (Frappe's own Cancel is already out of the Menu — see _lock_actions.)
 		const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
@@ -150,7 +151,13 @@ frappe.ui.form.on('Container Booking', {
 				const state = r.message || {};
 				const bons = state.bons || [];
 				const locked = state.locked_containers || [];
+				const coverage = state.coverage || {};
 				frm._bon_containers = new Set(locked);
+				// The other half of the same answer, and NOT the complement of `locked`:
+				// `locked` is "was a bon ever printed for this tank?" (what freezes the
+				// booking), `pending` is "does this tank still need one?" — a voided bon
+				// makes a row both at once, and each pill says its own true thing.
+				frm._pending_bon = new Set(coverage.pending || []);
 				frm.trigger('_freeze_bon_rows');
 				if (!bons.length && may_cancel) {
 					// The only door out of a submitted booking, so it leads.
@@ -174,6 +181,7 @@ frappe.ui.form.on('Container Booking', {
 					bons.length ? 'orange' : 'blue',
 					true
 				);
+				_bon_coverage_comment(frm, coverage);
 			},
 		});
 	},
@@ -341,6 +349,14 @@ frappe.ui.form.on('Container Booking', {
 				cell += ` <span class="indicator-pill orange" title="${__(
 					'Sudah masuk bon — baris ini terkunci'
 				)}">${__('Bon')}</span>`;
+			}
+			// Which rows the operator still has to issue. Drawn from the booking's live
+			// Booking Codes, so a voided bon puts its row back into this set — the tank is
+			// owed a new bon even though one was once printed for it.
+			if (frm._pending_bon && frm._pending_bon.has(row.container_no)) {
+				cell += ` <span class="indicator-pill orange" title="${__(
+					'Belum masuk bon — masih harus di-generate'
+				)}">${__('Belum dibon')}</span>`;
 			}
 			if (row.is_new_container) {
 				cell += ` <span class="indicator-pill green" title="${__(
@@ -1109,6 +1125,34 @@ function submit_generation(frm, dialog, codes, vehicle_data) {
 			}
 		}
 	});
+}
+
+// --- Bon coverage ----------------------------------------------------------
+// How many of this booking's containers are still waiting for a bon. Nothing on the booking
+// links to a bon (they are reachable only through the Connections tab), so a confirmed
+// booking with three of five containers issued looked exactly like one with all five —
+// the operator had to open the bons and count. Say it in one line, and name the tanks that
+// are left, because "which ones?" is the immediate next question.
+function _bon_coverage_comment(frm, coverage) {
+	if (!coverage || !coverage.status || !coverage.total) return;
+	const pending = coverage.pending || [];
+	if (!pending.length) {
+		frm.dashboard.add_comment(
+			__('Semua {0} container sudah masuk bon.', [coverage.total]),
+			'green',
+			true
+		);
+		return;
+	}
+	frm.dashboard.add_comment(
+		__('Bon baru terbit untuk {0} dari {1} container. Belum dibon: <b>{2}</b> — pakai <b>Generate Bon / Order</b>.', [
+			coverage.issued,
+			coverage.total,
+			pending.map((c) => frappe.utils.escape_html(c)).join(', '),
+		]),
+		'orange',
+		true
+	);
 }
 
 // --- Work per container ----------------------------------------------------

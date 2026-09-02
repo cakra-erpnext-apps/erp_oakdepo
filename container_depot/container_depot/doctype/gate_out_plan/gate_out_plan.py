@@ -365,15 +365,29 @@ def _tank_jobs(container: str, tank_status: str | None) -> list:
 			(container, doctype, parentfield),
 			as_dict=True,
 		)
+		# A booking is not work until a bon comes off it: the bon is the paper the driver is
+		# handed at the gate. Confirmed-but-unbonned is therefore the state an operator
+		# preparing a pickup most needs to spot, and it is invisible from the booking's own
+		# status (which stops at Confirmed either way).
+		awaiting = (
+			_bookings_awaiting_bon(container, [r.name for r in rows])
+			if doctype == "Container Booking"
+			else set()
+		)
 		for r in rows:
 			cancelled = r.docstatus == 2 or r.status == "Cancelled"
 			done = False if cancelled else _job_done(r, tank_status)
+			detail = None
+			if doctype == "Container Booking":
+				detail = r.direction
+				if not cancelled and r.name in awaiting:
+					detail = _("{0} · belum ada bon").format(r.direction or _("Booking"))
 			out.append({
 				"kind": kind,
 				# Which way the booking was going. Only one booking is shown per tank (the
 				# latest), so without this the line cannot say whether that last booking
 				# brought the tank in or took it out — the first thing asked of it.
-				"detail": r.direction if doctype == "Container Booking" else None,
+				"detail": detail,
 				"doctype": doctype,
 				"name": r.name,
 				"status": _("Cancelled") if cancelled else r.status,
@@ -383,6 +397,25 @@ def _tank_jobs(container: str, tank_status: str | None) -> list:
 				"cancelled": cancelled,
 			})
 	return out
+
+
+def _bookings_awaiting_bon(container: str, bookings: list) -> set:
+	"""Of ``bookings``, the ones that still owe THIS tank a bon.
+
+	The Booking Code is the answer: it is issued per container at booking submit and only
+	leaves ``Active`` when a bon picks it up (and comes back to ``Active`` when that bon is
+	voided). Asked per tank, not per booking, because a booking covering ten tanks is
+	routinely bonned two at a time.
+	"""
+	if not bookings or not container:
+		return set()
+	return set(
+		frappe.get_all(
+			"Booking Code",
+			filters={"booking": ["in", bookings], "container": container, "state": "Active"},
+			pluck="booking",
+		)
+	)
 
 
 def _job_done(job, tank_status: str | None) -> bool:
