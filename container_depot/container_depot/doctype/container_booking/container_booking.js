@@ -189,18 +189,31 @@ frappe.ui.form.on('Container Booking', {
 	direction(frm) {
 		frm.trigger('_toggle_date_column');
 	},
-	// One date column, not two. A booking line carries an estimate for each direction —
-	// bongkar on the way in, muat on the way out — because the bon it feeds only has the one
-	// its own direction uses. Showing both columns would put an always-empty column in every
-	// grid and invite someone to fill it; `set_column_disp_in_list_view` is a grid-local
-	// override, so hiding one here cannot leak onto Order Bongkar's grid, which shares this
-	// child doctype.
+	// ONE date per line, named for the direction. Two fields (bongkar / muat) meant one of
+	// them was always empty, showed up as a dead column in the grid, and needed a toggle to
+	// stay honest. A booking is single-direction, so the line already knows which day it
+	// means — only the WORD changes, and a label is the cheap thing to change.
+	//
+	// update_docfield_property writes to this form's own docfield copies
+	// (frappe.meta.get_docfields is keyed by docname), so Order Bongkar's grid — which shares
+	// this child doctype — keeps its own label.
 	_toggle_date_column(frm) {
 		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
-		if (!grid || !grid.set_column_disp_in_list_view) return;
+		if (!grid || !grid.get_docfield) return;
 		const out = frm.doc.direction === 'Tank Out';
-		grid.set_column_disp_in_list_view('tanggal_muat', out);
-		grid.set_column_disp_in_list_view('tanggal_bongkar', !out);
+		try {
+			grid.update_docfield_property(
+				'estimation_date', 'label', out ? __('Pickup Date') : __('Est. Tanggal Bongkar')
+			);
+		} catch (e) {
+			/* field not on this grid — nothing to relabel */
+		}
+		// The survey pair only means something on the way out. `depends_on` already hides it
+		// in the expanded row; this keeps the grid columns tidy too.
+		if (grid.set_column_disp_in_list_view) {
+			grid.set_column_disp_in_list_view(['survey_date', 'surveyor'], out);
+		}
+		grid.refresh();
 	},
 	// Which tanks already have a bon. Nothing on a submitted booking is editable any more
 	// (_apply_submit_lock), so this is not about protecting the rows — it is about reading
@@ -768,6 +781,13 @@ frappe.ui.form.on('Container Booking', {
 			query: 'container_depot.container_depot.doctype.container_booking.container_booking.charge_item_query',
 			filters: { customer: frm.doc.customer },
 		}));
+		// Surveyor is a party like Principal and Shipper, so it lives in the Customer master
+		// and is picked by its own role flag — same mechanism as the EMKL picker
+		// (`is_transporter`). Header and line share the filter: the line's value is a copy of
+		// the header's that the operator may override per tank.
+		const surveyors = () => ({ filters: { is_surveyor: 1, disabled: 0 } });
+		frm.set_query('surveyor', surveyors);
+		frm.set_query('surveyor', 'items', surveyors);
 	},
 	_apply_payment_modes(frm) {
 		// Payment Type is constrained to the customer's contract mode (Cash / TOP / Both).
@@ -1023,7 +1043,7 @@ const MAX_CONTAINERS_PER_ORDER = 2;
 // first picked container's booking line, and written back onto the booking lines on
 // Generate. Sent as vehicle_data to the server.
 const BONGKAR_DETAIL_FIELDS = [
-	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'tanggal_bongkar', 'remarks',
+	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'estimation_date', 'remarks',
 ];
 // A Tank Out voucher inherits only the vehicle trio + R/O from the line. Condition, cargo
 // and Tgl. Bongkar describe what was DROPPED OFF — they say nothing about a pick-up.
@@ -1048,7 +1068,7 @@ function open_generate_dialog(frm) {
 			// The server picks the bon type from the Booking Code's direction (Tank In →
 			// Order Bongkar, Tank Out → Order Muat). This dialog used to ask Tank In's
 			// questions either way: it announced "Order Bongkar" on an outbound booking and
-			// sent drop-off keys (ex_vessel / tanggal_bongkar / `driver`), so the Order Muat
+			// sent drop-off keys (ex_vessel / the line date / `driver`), so the Order Muat
 			// it produced came out with no angkutan, no destination, no Tgl. Muat and — since
 			// Muat reads `driver_name` — no driver either. Each direction now asks for what
 			// its own bon actually carries.
@@ -1097,7 +1117,7 @@ function open_generate_dialog(frm) {
 							{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
 							{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
 							// Estimation carried from the booking line (auto-filled, written back to the row) — hidden here.
-							{ fieldname: 'tanggal_bongkar', fieldtype: 'Date', label: __('Estimation Tanggal Bongkar'), hidden: 1 },
+							{ fieldname: 'estimation_date', fieldtype: 'Date', label: __('Tanggal Rencana Baris'), hidden: 1 },
 							// Actual unload date for the bon; defaults to the estimation above.
 							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
 						]),
@@ -1164,10 +1184,11 @@ function _fill_line_detail(d, p, fields, out) {
 	});
 	// Tank In only: default the actual unload date from the line's estimation Tgl. Bongkar.
 	// A pick-up has no such estimate on the line — Tgl. Muat defaults to today instead.
-	if (!out && p.tanggal_bongkar) d.set_value('tanggal_bongkar_actual', p.tanggal_bongkar);
-	// Same for the outbound half: the line's estimate is what the booking planned, so it
-	// beats today's date as the bon's Tgl. Muat.
-	if (out && p.tanggal_muat) d.set_value('tanggal_muat', p.tanggal_muat);
+	// The line's own planned day beats today's date on the bon, in BOTH directions: a bon
+	// prepared a week ahead used to come out stamped with the day it was printed.
+	if (p.estimation_date) {
+		d.set_value(out ? 'tanggal_muat' : 'tanggal_bongkar_actual', p.estimation_date);
+	}
 }
 
 function submit_generation(frm, dialog, codes, vehicle_data) {

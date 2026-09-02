@@ -32,8 +32,8 @@ CONTAINER_FIELD = "lift_on_booking"
 # pickup to prepare for.
 OUTBOUND = "Tank Out"
 
-# The line's estimate for the day the tank is loaded — the date the whole priority is about.
-LINE_DATE = "tanggal_muat"
+# The line's date for the day the tank is collected — what the whole priority is about.
+LINE_DATE = "estimation_date"
 
 
 def _booking_is_live(doc) -> bool:

@@ -49,11 +49,11 @@ class TestLiftOnPriority(FrappeTestCase):
 		return c
 
 	def _booking(self, rows, direction="Tank Out"):
-		"""Outbound draft carrying ``[(container, tanggal_muat)]``. Validation is bypassed —
+		"""Outbound draft carrying ``[(container, estimation_date)]``. Validation is bypassed —
 		pricing and the payment gate say nothing about the lift-on stamp."""
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": direction, "depot": DEPOT,
-			"items": [{"container": c, "tanggal_muat": d} for c, d in rows],
+			"items": [{"container": c, "estimation_date": d} for c, d in rows],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
@@ -98,7 +98,7 @@ class TestLiftOnPriority(FrappeTestCase):
 		doc = self._booking([(c, add_days(today(), 2))])
 
 		later = add_days(today(), 8)
-		doc.items[0].tanggal_muat = later
+		doc.items[0].estimation_date = later
 		doc.save(ignore_permissions=True)
 
 		self.assertEqual(str(self._stamp(c).target_lift_on), later)
@@ -185,7 +185,7 @@ class TestOutboundFulfilment(FrappeTestCase):
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
 			"booking_status": "Confirmed" if submitted else "Draft",
-			"items": [{"container": c, "tanggal_muat": today()} for c in containers],
+			"items": [{"container": c, "estimation_date": today()} for c in containers],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)

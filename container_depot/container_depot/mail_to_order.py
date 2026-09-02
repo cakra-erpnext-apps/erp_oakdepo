@@ -474,9 +474,14 @@ def _child_rows(doctype: str, direction: str, rows: list[dict], options: dict) -
 			# so every row starts Empty Dirty and is corrected on the booking form itself —
 			# which is why the dialog does not ask for it.
 			"condition": "EMPTY DIRTY",
-			"tanggal_bongkar": options.get("tanggal_bongkar"),
+			"estimation_date": options.get("estimation_date"),
 		},
-		"Tank Out": {"tanggal_muat": options.get("tanggal_muat")},
+		# The outbound half asks for the pickup day and who surveys the tank before it.
+		"Tank Out": {
+			"estimation_date": options.get("estimation_date"),
+			"survey_date": options.get("survey_date"),
+			"surveyor": options.get("surveyor"),
+		},
 	}[direction]
 
 	out = []

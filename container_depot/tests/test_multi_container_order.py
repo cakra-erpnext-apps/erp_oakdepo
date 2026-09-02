@@ -349,7 +349,7 @@ class TestMakeOrderMuat(FrappeTestCase):
 	def test_muat_carries_the_pickup_detail_it_is_asked_for(self):
 		"""A Tank Out bon must land the PICK-UP fields — hauler, destination, Tgl. Muat and
 		the driver. Order Muat's field is ``driver_name``; a payload built for Tank In sends
-		``driver`` (plus ex_vessel / tanggal_bongkar), so the bon came out blank where it
+		``driver`` (plus ex_vessel / the line date), so the bon came out blank where it
 		mattered even though the right doctype was created.
 
 		The hauler is ONE field (``shipper``). It used to be two — a free-text ``angkutan``
@@ -447,14 +447,14 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCAD0")
 		name = make_order(
 			booking, codes,
-			vehicle_data={"tanggal_bongkar": today(), "tanggal_bongkar_actual": "2026-07-01"},
+			vehicle_data={"estimation_date": today(), "tanggal_bongkar_actual": "2026-07-01"},
 		)
 		self.assertEqual(str(frappe.db.get_value("Order Bongkar", name, "tanggal_bongkar")), "2026-07-01")
 
 	def test_bongkar_actual_date_defaults_to_estimation(self):
 		# With no explicit actual date, the header falls back to the row's estimation.
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCAE0")
-		name = make_order(booking, codes, vehicle_data={"tanggal_bongkar": "2026-07-02"})
+		name = make_order(booking, codes, vehicle_data={"estimation_date": "2026-07-02"})
 		self.assertEqual(str(frappe.db.get_value("Order Bongkar", name, "tanggal_bongkar")), "2026-07-02")
 
 	def test_order_bongkar_carries_booking_principal(self):
@@ -763,7 +763,7 @@ class TestConfirmedBookingIsLocked(FrappeTestCase):
 		doc.append("items", {
 			"container_no": "MCRVF0X0009",
 			"condition": "EMPTY CLEAN",
-			"tanggal_bongkar": today(),
+			"estimation_date": today(),
 		})
 		self._refuses(doc)
 
@@ -994,7 +994,7 @@ class TestPlanDateCascade(FrappeTestCase):
 		super().tearDownClass()
 		purge_mc_data()
 
-	def _booking(self, direction, prefix, plan_date=None, count=2):
+	def _booking(self, direction, prefix, count=2, **header):
 		customer = ensure_test_customer(MC_CUSTOMER)
 		contract = (
 			frappe.db.get_value("Depot Contract", {"customer": customer, "status": "Active"}, "name")
@@ -1005,37 +1005,50 @@ class TestPlanDateCascade(FrappeTestCase):
 			"direction": direction,
 			"customer": customer,
 			"contract": contract,
-			"plan_date": plan_date,
 			"items": [{"container_no": f"{prefix}{i:04d}"} for i in range(1, count + 1)],
+			**header,
 		})
 		doc.flags.ignore_validate = False
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
 		return doc
 
-	def test_tank_in_fills_tanggal_bongkar_and_tank_out_fills_tanggal_muat(self):
+	def test_plan_date_fills_the_one_line_date_in_both_directions(self):
+		"""One date per line, not one per direction: the booking's direction already says
+		whether it means "unloaded" or "picked up", so a second field was only ever an
+		always-empty column."""
 		day = add_days(today(), 5)
-		bookin = self._booking("Tank In", "MCPLNA0", plan_date=day)
-		self.assertTrue(all(str(r.tanggal_bongkar) == day for r in bookin.items))
-		# The other direction's estimate is left on its own default — the cascade touches
-		# only the field the booking's direction actually uses.
-		self.assertTrue(all(str(r.tanggal_muat) == today() for r in bookin.items))
-
-		bookout = self._booking("Tank Out", "MCPLNB0", plan_date=day)
-		self.assertTrue(all(str(r.tanggal_muat) == day for r in bookout.items))
-		self.assertTrue(all(str(r.tanggal_bongkar) == today() for r in bookout.items))
+		for direction, prefix in (("Tank In", "MCPLNA0"), ("Tank Out", "MCPLNB0")):
+			doc = self._booking(direction, prefix, plan_date=day)
+			self.assertTrue(all(str(r.estimation_date) == day for r in doc.items), direction)
 
 	def test_a_hand_typed_line_date_survives_a_header_change(self):
 		first, later = add_days(today(), 3), add_days(today(), 9)
 		doc = self._booking("Tank Out", "MCPLNC0", plan_date=first)
 		# One line is moved by hand; the other still follows the header.
-		doc.items[0].tanggal_muat = add_days(today(), 20)
+		doc.items[0].estimation_date = add_days(today(), 20)
 		doc.plan_date = later
 		doc.save(ignore_permissions=True)
-		self.assertEqual(str(doc.items[0].tanggal_muat), add_days(today(), 20))
-		self.assertEqual(str(doc.items[1].tanggal_muat), later)
+		self.assertEqual(str(doc.items[0].estimation_date), add_days(today(), 20))
+		self.assertEqual(str(doc.items[1].estimation_date), later)
+
+	def test_the_survey_pair_rides_the_same_cascade_outbound_only(self):
+		"""Surveyor + survey date are asked once and copied onto every tank, because one
+		booking's tanks are routinely surveyed on different days by different parties."""
+		surveyor = ensure_test_customer("MultiContainer Test Surveyor")
+		frappe.db.set_value("Customer", surveyor, "is_surveyor", 1)
+		day = add_days(today(), 2)
+
+		out = self._booking("Tank Out", "MCPLNE0", survey_date=day, surveyor=surveyor)
+		self.assertTrue(all(str(r.survey_date) == day for r in out.items))
+		self.assertTrue(all(r.surveyor == surveyor for r in out.items))
+
+		# Meaningless on the way in — the tank is arriving, there is no pickup to survey for.
+		inbound = self._booking("Tank In", "MCPLNF0", survey_date=day, surveyor=surveyor)
+		self.assertTrue(all(not r.survey_date for r in inbound.items))
+		self.assertTrue(all(not r.surveyor for r in inbound.items))
 
 	def test_no_plan_date_leaves_the_lines_on_their_own_default(self):
 		"""An empty header cascades nothing — the line keeps the field's own Today default,
 		which is what every booking written before this feature carried."""
 		doc = self._booking("Tank Out", "MCPLND0")
-		self.assertTrue(all(str(r.tanggal_muat) == today() for r in doc.items))
+		self.assertTrue(all(str(r.estimation_date) == today() for r in doc.items))

@@ -291,6 +291,14 @@ CUSTOM_FIELDS = {
 			"in_standard_filter": 1,
 			"description": "Supplies reference numbers (PO / STC PO / WO) and survey / pickup schedules. Not a billed party.",
 		},
+		{
+			"fieldname": "is_surveyor",
+			"label": "Surveyor",
+			"fieldtype": "Check",
+			"insert_after": "is_agent",
+			"in_standard_filter": 1,
+			"description": "Inspects a tank before the customer lifts it on. Named on the outbound booking; not a billed party.",
+		},
 	],
 	# Depot-pricing fields (pricing spec §3.2). Repair services price as
 	# manhour × Item Price manhour_rate + material_cost; packages are flagged so

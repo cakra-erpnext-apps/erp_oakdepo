@@ -156,13 +156,13 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			"doctype": "Order Bongkar",
 			"booking": booking.name,
 			"order_status": "Issued",
-			"tanggal_bongkar": today(),
+			"estimation_date": today(),
 			"principal": self.customer,
 			"containers": [{
 				"container": row.container,
 				"container_no": row.container_no,
 				"condition": row.condition,
-				"tanggal_bongkar": today(),
+				"estimation_date": today(),
 				"booking_code": code,
 			} for row, code in zip(booking.items, codes)],
 		}).insert(ignore_permissions=True)

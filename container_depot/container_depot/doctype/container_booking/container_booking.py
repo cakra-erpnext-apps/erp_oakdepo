@@ -123,7 +123,7 @@ class ContainerBooking(Document):
 		self._ensure_branch_and_principal()
 		self._validate_depot_in_branch()
 		self._sync_lift_type()
-		self._cascade_plan_date()
+		self._cascade_header_defaults()
 		self._require_line_date()
 		self._resolve_pricing_context()
 		self._resolve_containers()
@@ -547,73 +547,92 @@ class ContainerBooking(Document):
 			) or frappe.db.get_value("Branch", {}, "name")
 
 	# ---- pricing context (customer contract / price list) ---------------
-	# The booking line's date field, per direction. A bon is single-direction and so is the
-	# work it describes: Tank In is unloaded (bongkar), Tank Out is loaded (muat). Keeping two
-	# fields rather than one "tanggal" is what lets a line say which of the two it means —
-	# the estimate travels onto the bon, and a Tank Out bon has no unload date to give.
-	PLAN_DATE_FIELD = {"Tank In": "tanggal_bongkar", "Tank Out": "tanggal_muat"}
+	# Header field -> the line field it fills in. One estimate per line, not one per
+	# direction: a booking IS single-direction, so the line already knows whether its date
+	# means "unloaded" or "picked up" — two fields only produced an always-empty column and a
+	# label that had to be toggled to stay honest. What the date is CALLED does change with
+	# the direction, and that is a label the form sets (see container_booking.js).
+	#
+	# The survey pair is outbound-only and rides the same mechanism: asked once in the
+	# header, copied down, still editable per tank because one booking's tanks are routinely
+	# surveyed on different days.
+	HEADER_TO_LINE = {
+		"plan_date": "estimation_date",
+		"survey_date": "survey_date",
+		"surveyor": "surveyor",
+	}
 
-	def _cascade_plan_date(self):
-		"""Push the header's ``plan_date`` down onto each container line's estimate.
+	# Outbound-only header fields: meaningless on a Tank In (the tank is arriving, there is
+	# no pickup to survey for) and never copied down there.
+	OUTBOUND_ONLY = ("survey_date", "surveyor")
 
-		A booking is one job with one intended day, and typing that day into fifteen rows is
-		how a booking ends up with fourteen right dates and one wrong one. So the header asks
-		once and the rows follow — but only the rows that are still FOLLOWING:
+	def _cascade_header_defaults(self):
+		"""Push the header's job fields down onto every container line.
+
+		A booking is one job with one intended day and one surveyor, and typing those into
+		fifteen rows is how a booking ends up with fourteen right values and one wrong one.
+		So the header asks once and the rows follow — but only the rows that are still
+		FOLLOWING:
 
 		* empty → filled;
-		* still carrying the previous header date → moved along with it;
-		* anything else → left alone, because someone typed it on purpose. A notice
-		  collected over two days is ordinary, and the whole point of keeping the estimate on
-		  the line is that it can differ per tank.
-
-		Which field it lands in is the direction's answer (:attr:`PLAN_DATE_FIELD`): an
-		inbound line estimates when the tank is unloaded, an outbound one when it is loaded.
-		The other field is left untouched rather than cleared — a booking reverted to draft
-		and flipped direction would otherwise silently drop a date the operator had typed.
+		* still carrying the previous header value → moved along with it;
+		* anything else → left alone, because someone typed it on purpose. A booking
+		  collected over two days, or surveyed by two parties, is ordinary — and that is the
+		  whole reason the value is kept on the line at all.
 		"""
-		field = self.PLAN_DATE_FIELD.get(self.direction)
-		if not field or not self.plan_date:
-			return
 		before = None if self.is_new() else self.get_doc_before_save()
-		previous = before.get("plan_date") if before else None
-		# Compare as dates: the stored value is a date object and the form sends a string.
-		previous = getdate(previous) if previous else None
 		# Rows this save is ADDING. They cannot have been edited by anyone — what they carry
-		# is the field's own "Today" default, which must not be mistaken for an intention. A
+		# is the field's own default, which must not be mistaken for an intention. A
 		# brand-new booking has no before-image at all, so every row of it is new.
 		existing = {r.name for r in ((before.get("items") if before else None) or [])}
-		for row in self.items or []:
-			if row.name not in existing:
-				row.set(field, getdate(self.plan_date))
+		for header_field, line_field in self.HEADER_TO_LINE.items():
+			if header_field in self.OUTBOUND_ONLY and self.direction != "Tank Out":
 				continue
-			current = getdate(row.get(field)) if row.get(field) else None
-			if current is None or (previous is not None and current == previous):
-				row.set(field, getdate(self.plan_date))
+			value = self.get(header_field)
+			if not value:
+				continue
+			is_date = header_field != "surveyor"
+			previous = before.get(header_field) if before else None
+			if is_date:
+				# Compare as dates: the stored value is a date object, the form sends a string.
+				value = getdate(value)
+				previous = getdate(previous) if previous else None
+			for row in self.items or []:
+				if row.name not in existing:
+					row.set(line_field, value)
+					continue
+				current = row.get(line_field)
+				if is_date and current:
+					current = getdate(current)
+				if not current or (previous and current == previous):
+					row.set(line_field, value)
 
 	def _require_line_date(self):
-		"""Each line must carry the estimate its own DIRECTION uses.
+		"""Every line must carry a date for the day its tank is worked.
 
 		It used to be declared on the field (``tanggal_bongkar``, reqd) — which asked every
-		outbound booking for an unload date it has no business knowing, and asked nothing at
-		all about the load date it actually needs. A child field cannot say "mandatory when
-		the PARENT is Tank Out", so the rule lives here, where the direction is.
+		outbound booking for an unload date it has no business knowing. A child field cannot
+		say "mandatory when the PARENT is Tank Out", so once the two dates became one the
+		rule moved here, where the direction is and where the message can point at the header
+		field that fills them all in at once.
 		"""
-		field = self.PLAN_DATE_FIELD.get(self.direction)
-		if not field:
-			return
-		label = _("Est. Tanggal Bongkar") if field == "tanggal_bongkar" else _("Est. Tanggal Muat")
 		missing = [
 			r.container_no or r.container or _("baris {0}").format(r.idx)
 			for r in (self.items or [])
-			if not r.get(field)
+			if not r.get("estimation_date")
 		]
 		if missing:
 			frappe.throw(
-				_("{0} wajib diisi untuk: {1}. Isi <b>Tanggal Rencana Kerja</b> di header untuk mengisi semuanya sekaligus.").format(
-					label, ", ".join(missing)
+				_("{0} wajib diisi untuk: {1}. Isi <b>Plan Date</b> di header untuk mengisi semuanya sekaligus.").format(
+					self.line_date_label(), ", ".join(missing)
 				),
 				title=_("Tanggal Belum Lengkap"),
 			)
+
+	def line_date_label(self) -> str:
+		"""What the line's single date is CALLED, which is the direction's answer: the day
+		the tank is unloaded on the way in, the day the customer collects it on the way out."""
+		return _("Pickup Date") if self.direction == "Tank Out" else _("Est. Tanggal Bongkar")
 
 	def _resolve_pricing_context(self):
 		"""Pricing follows the customer's *active* Price List — the one published by their
@@ -2697,14 +2716,14 @@ def related_orders(booking: str) -> list:
 	rows = frappe.get_all(
 		"Container Booking Item",
 		filters={"parent": booking, "parenttype": "Container Booking"},
-		fields=["container", "container_no", "tanggal_muat"],
+		fields=["container", "container_no", "estimation_date"],
 		order_by="idx asc",
 	)
 	return tank_documents.dossier([
 		{
 			"container": r.container,
 			"container_no": r.container_no,
-			"target_lift_on": r.tanggal_muat,
+			"target_lift_on": r.estimation_date,
 		}
 		for r in rows
 	])

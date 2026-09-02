@@ -26,11 +26,15 @@ const ORDER_TYPES = [
 // row-mandatory field left blank would only block the save later.
 // The outbound type does NOT offer a Direction picker: choosing "Gate Out" IS the choice.
 const TYPE_FIELDS = {
-	"Booking": ["direction", "reff_doc", "tanggal_bongkar"],
-	"Gate Out": ["reff_doc", "tanggal_muat"],
+	"Booking": ["direction", "reff_doc", "estimation_date"],
+	// The outbound half also asks who surveys the tanks and when — one answer for the whole
+	// mail, copied onto every row and still editable per tank on the booking form.
+	"Gate Out": ["reff_doc", "estimation_date", "survey_date", "surveyor"],
 };
-const ROW_REQUIRED = { "Booking": ["tanggal_bongkar"], "Gate Out": ["tanggal_muat"] };
-const ALL_TYPE_FIELDS = ["direction", "reff_doc", "tanggal_bongkar", "tanggal_muat"];
+const ROW_REQUIRED = { "Booking": ["estimation_date"], "Gate Out": ["estimation_date"] };
+const ALL_TYPE_FIELDS = [
+	"direction", "reff_doc", "estimation_date", "survey_date", "surveyor",
+];
 
 function type_by_key(key) {
 	return ORDER_TYPES.find((t) => t.key === key);
@@ -258,8 +262,15 @@ function open_order_dialog(frm, preset_key) {
 				label: __("No. Dokumen"),
 				description: __("Nomor dokumen pelanggan yang tertulis di email (opsional)."),
 			},
-			{ fieldtype: "Date", fieldname: "tanggal_bongkar", label: __("Est. Tanggal Bongkar") },
-			{ fieldtype: "Date", fieldname: "tanggal_muat", label: __("Est. Tanggal Muat") },
+			{ fieldtype: "Date", fieldname: "estimation_date", label: __("Tanggal Rencana") },
+			{ fieldtype: "Date", fieldname: "survey_date", label: __("Survey Date") },
+			{
+				fieldtype: "Link",
+				fieldname: "surveyor",
+				label: __("Surveyor"),
+				options: "Customer",
+				get_query: () => ({ filters: { is_surveyor: 1 } }),
+			},
 			{
 				fieldtype: "Table",
 				fieldname: "containers",
@@ -549,8 +560,9 @@ function open_order_dialog(frm, preset_key) {
 			principal: values.principal,
 			direction: values.direction,
 			reff_doc: values.reff_doc,
-			tanggal_bongkar: values.tanggal_bongkar,
-			tanggal_muat: values.tanggal_muat,
+			estimation_date: values.estimation_date,
+			survey_date: values.survey_date,
+			surveyor: values.surveyor,
 		};
 	}
 

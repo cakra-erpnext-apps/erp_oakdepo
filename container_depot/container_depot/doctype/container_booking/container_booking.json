@@ -12,6 +12,8 @@
   "depot",
   "reff_doc",
   "plan_date",
+  "survey_date",
+  "surveyor",
   "parties_section",
   "customer",
   "column_break_parties",
@@ -104,10 +106,25 @@
    "in_list_view": 1
   },
   {
-   "description": "Opsional. Tanggal pekerjaan direncanakan. Turun ke Est. Tgl Bongkar (Tank In) / Est. Tgl Muat (Tank Out) tiap baris container, dan masih bisa diubah per baris.",
+   "description": "Tanggal pekerjaan. Turun ke tiap baris container.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
-   "label": "Tanggal Rencana Kerja"
+   "label": "Plan Date"
+  },
+  {
+   "depends_on": "eval:doc.direction=='Tank Out'",
+   "description": "Tanggal survei sebelum tank diambil. Turun ke tiap baris container.",
+   "fieldname": "survey_date",
+   "fieldtype": "Date",
+   "label": "Survey Date"
+  },
+  {
+   "depends_on": "eval:doc.direction=='Tank Out'",
+   "description": "Pihak yang mensurvei. Turun ke tiap baris container.",
+   "fieldname": "surveyor",
+   "fieldtype": "Link",
+   "label": "Surveyor",
+   "options": "Customer"
   },
   {
    "fieldname": "parties_section",
@@ -390,7 +407,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-02 15:00:00.000000",
+ "modified": "2026-09-02 16:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

@@ -238,7 +238,7 @@ class Smoke:
 				"items": [{
 					"container_no": CNO,
 					"condition": TANK_CONDITION,
-					"tanggal_bongkar": today(),
+					"estimation_date": today(),
 				}],
 			}).insert(ignore_permissions=True)
 			self.booking = doc.name

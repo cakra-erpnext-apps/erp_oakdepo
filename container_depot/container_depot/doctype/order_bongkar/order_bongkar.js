@@ -64,7 +64,7 @@ const BON_GRID = {
 	driver: 2,
 	driver_phone: 1,
 	ro: 1,
-	tanggal_bongkar: 1,
+	estimation_date: 1,
 };
 
 // Everything this bon fills in by itself lives in the sidebar, above Last Edited By —

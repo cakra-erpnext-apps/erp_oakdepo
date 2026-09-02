@@ -33,6 +33,7 @@ class TestTankDossier(FrappeTestCase):
 				{"bookings": tuple(self._bookings)},
 			)
 			frappe.db.delete("Container Position Survey", {"booking": ["in", self._bookings]})
+			frappe.db.delete("Booking Code", {"booking": ["in", self._bookings]})
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
@@ -51,7 +52,7 @@ class TestTankDossier(FrappeTestCase):
 	def _booking(self, container):
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
-			"items": [{"container": container, "tanggal_muat": today()}],
+			"items": [{"container": container, "estimation_date": today()}],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
@@ -101,7 +102,6 @@ class TestTankDossier(FrappeTestCase):
 			"doctype": "Booking Code", "code": "OAK-TDOCTEST0001", "booking": bk,
 			"direction": "Tank Out", "container": c, "container_no": c, "state": "Active",
 		}).insert(ignore_permissions=True)
-		self.addCleanup(frappe.db.delete, "Booking Code", {"booking": bk})
 
 		_tank, by_name = self._by_name(bk)
 		self.assertEqual(by_name[bk]["kind"], "Booking")

@@ -29,7 +29,7 @@ MAX_CONTAINERS_PER_ORDER = 2
 # Container Booking Item child) and written back onto the booking's line when a bon is
 # generated, so the voucher and the booking stay in step.
 BONGKAR_ROW_DETAIL = (
-	"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro", "tanggal_bongkar", "remarks",
+	"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro", "estimation_date", "remarks",
 )
 
 
@@ -172,9 +172,11 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		if direction == "Tank In":
 			order.principal = frappe.db.get_value("Container Booking", booking, "principal")
 			order.ex_vessel = vehicle_data.get("ex_vessel")
-			# Actual unload date for the bon; defaults to the row's estimation Tgl. Bongkar.
+			# Actual unload date for the bon; defaults to the day the booking line planned.
 			order.tanggal_bongkar = (
-				vehicle_data.get("tanggal_bongkar_actual") or vehicle_data.get("tanggal_bongkar")
+				vehicle_data.get("tanggal_bongkar_actual")
+				or vehicle_data.get("estimation_date")
+				or _first_line_value(booking, codes, by_name, "estimation_date")
 			)
 			_build_bongkar_rows(order, booking, codes, by_name, vehicle_data)
 		else:
@@ -190,14 +192,14 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 			order.driver_phone = vehicle_data.get("driver_phone")
 			order.ro = vehicle_data.get("ro")
 			order.destination = vehicle_data.get("destination")
-			# The bon's load date: what the dialog / gate typed, else the estimate the
-			# booking line already carries (which the header's Tanggal Rencana Kerja put
-			# there). Falling straight through to today was how an outbound bon prepared a
-			# week ahead came out stamped with the day it was printed.
+			# The bon's load date: what the dialog / gate typed, else the date the booking
+			# line already carries (which the header's Plan Date put there). Falling straight
+			# through to today was how an outbound bon prepared a week ahead came out stamped
+			# with the day it was printed.
 			order.tanggal_muat = (
 				vehicle_data.get("tanggal_muat")
 				or vehicle_data.get("tanggal")
-				or _first_line_value(booking, codes, by_name, "tanggal_muat")
+				or _first_line_value(booking, codes, by_name, "estimation_date")
 			)
 			for c in codes:
 				r = by_name[c]
