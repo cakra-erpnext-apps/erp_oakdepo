@@ -32,8 +32,11 @@ CONTAINER_FIELD = "lift_on_booking"
 # pickup to prepare for.
 OUTBOUND = "Tank Out"
 
-# The line's date for the day the tank is collected — what the whole priority is about.
-LINE_DATE = "estimation_date"
+# The header's date for the day the tanks are collected — what the whole priority is about.
+# On the header, not per line: one booking is one job with one intended day, and the line
+# carries the realisation (the day its bon came out) instead — a date that only exists once
+# the preparation this deadline drives is already over.
+HEADER_DATE = "plan_date"
 
 
 def _booking_is_live(doc) -> bool:
@@ -59,11 +62,11 @@ def sync_booking_targets(doc) -> None:
 	"""
 	listed = set()
 	live = _booking_is_live(doc)
+	date = doc.get(HEADER_DATE)
 	for row in doc.get("items") or []:
 		if not row.get("container"):
 			continue
 		listed.add(row.container)
-		date = row.get(LINE_DATE)
 		if live and date:
 			set_target(row.container, date, doc.name)
 		else:

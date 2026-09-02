@@ -109,6 +109,8 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			"contract": self.contract,
 			"do_reference": "DO-DBG",
 			"do_document": "/files/do.pdf",
+			# Outbound bookings refuse to save without their plan date; inbound ignores it.
+			"plan_date": today(),
 			"items": [{"container_no": container_no}],
 		}).insert(ignore_permissions=True)
 		if submit:
@@ -156,13 +158,12 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			"doctype": "Order Bongkar",
 			"booking": booking.name,
 			"order_status": "Issued",
-			"estimation_date": today(),
+			"tanggal_bongkar": today(),
 			"principal": self.customer,
 			"containers": [{
 				"container": row.container,
 				"container_no": row.container_no,
 				"condition": row.condition,
-				"estimation_date": today(),
 				"booking_code": code,
 			} for row, code in zip(booking.items, codes)],
 		}).insert(ignore_permissions=True)

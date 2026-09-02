@@ -233,12 +233,14 @@ class Smoke:
 				"payment_type": pay_type,
 				"booking_status": "Draft",
 				"do_reference": f"{DO_PREFIX}{self.tag}",
+				# Tanggal rencana kerja ada di header; baris container cuma menyimpan
+				# realisasinya, yang terisi sendiri saat bon-nya digenerate.
+				"plan_date": today(),
 				# Charge = Lift Off, tarifnya diambil sendiri dari price list kontrak.
 				"charges": [{"item": "Lift Off"}],
 				"items": [{
 					"container_no": CNO,
 					"condition": TANK_CONDITION,
-					"estimation_date": today(),
 				}],
 			}).insert(ignore_permissions=True)
 			self.booking = doc.name

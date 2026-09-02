@@ -21,19 +21,20 @@ const ORDER_TYPES = [
 	{ key: "Gate Out", doctype: "Container Booking", label: __("Gate Out (Tank Out)") },
 ];
 
-// Extra dialog fields per order type, and which of them the order's *child rows* make
-// mandatory — asking once here beats typing the same date into twenty grid rows, and a
-// row-mandatory field left blank would only block the save later.
+// Extra dialog fields per order type, and which of them the booking itself makes mandatory
+// — asked here so the form does not open only to refuse the save.
 // The outbound type does NOT offer a Direction picker: choosing "Gate Out" IS the choice.
 const TYPE_FIELDS = {
-	"Booking": ["direction", "reff_doc", "estimation_date"],
+	"Booking": ["direction", "reff_doc", "plan_date"],
 	// The outbound half also asks who surveys the tanks and when — one answer for the whole
 	// mail, copied onto every row and still editable per tank on the booking form.
-	"Gate Out": ["reff_doc", "estimation_date", "survey_date", "surveyor"],
+	"Gate Out": ["reff_doc", "plan_date", "survey_date", "surveyor"],
 };
-const ROW_REQUIRED = { "Booking": ["estimation_date"], "Gate Out": ["estimation_date"] };
+// Plan Date is the yard's only deadline on the way out, so an outbound booking refuses to
+// save without it. Inbound leaves it optional, exactly as the form does.
+const HEADER_REQUIRED = { "Booking": [], "Gate Out": ["plan_date"] };
 const ALL_TYPE_FIELDS = [
-	"direction", "reff_doc", "estimation_date", "survey_date", "surveyor",
+	"direction", "reff_doc", "plan_date", "survey_date", "surveyor",
 ];
 
 function type_by_key(key) {
@@ -262,7 +263,7 @@ function open_order_dialog(frm, preset_key) {
 				label: __("No. Dokumen"),
 				description: __("Nomor dokumen pelanggan yang tertulis di email (opsional)."),
 			},
-			{ fieldtype: "Date", fieldname: "estimation_date", label: __("Tanggal Rencana") },
+			{ fieldtype: "Date", fieldname: "plan_date", label: __("Plan Date") },
 			{ fieldtype: "Date", fieldname: "survey_date", label: __("Survey Date") },
 			{
 				fieldtype: "Link",
@@ -295,7 +296,7 @@ function open_order_dialog(frm, preset_key) {
 		const type = current_type();
 		// A field the child rows make mandatory is only mandatory once there ARE rows —
 		// opening a blank form from an email must not be gated behind a date.
-		for (const field of ROW_REQUIRED[type.key] || []) {
+		for (const field of HEADER_REQUIRED[type.key] || []) {
 			dialog.set_df_property(field, "reqd", resolved.length ? 1 : 0);
 		}
 		dialog.fields_dict.containers_status.$wrapper.html(
@@ -560,7 +561,7 @@ function open_order_dialog(frm, preset_key) {
 			principal: values.principal,
 			direction: values.direction,
 			reff_doc: values.reff_doc,
-			estimation_date: values.estimation_date,
+			plan_date: values.plan_date,
 			survey_date: values.survey_date,
 			surveyor: values.surveyor,
 		};

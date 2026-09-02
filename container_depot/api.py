@@ -886,13 +886,13 @@ def get_booking_pending_containers(booking):
 	if not booking or not frappe.db.exists("Container Booking", booking):
 		frappe.throw(_("Booking {0} not found.").format(booking))
 	# Each pending container also carries its booking line's detail (condition / cargo /
-	# truck / driver / R-O / Tgl. Bongkar / remarks) so the Generate dialog can auto-fill
-	# the voucher from the first container picked.
+	# truck / driver / R-O / remarks) so the Generate dialog can auto-fill the voucher from
+	# the first container picked. No date among them: the bon's date comes from the
+	# booking's Plan Date, and the line's own date is the realisation this bon will write.
 	return frappe.db.sql(
 		"""
 		SELECT bc.name AS booking_code, bc.container, bc.container_no, bc.status_tag, bc.direction,
-		       i.condition, i.cargo, i.truck_plate, i.driver, i.driver_phone, i.ro,
-		       i.estimation_date, i.remarks
+		       i.condition, i.cargo, i.truck_plate, i.driver, i.driver_phone, i.ro, i.remarks
 		FROM `tabBooking Code` bc
 		LEFT JOIN `tabContainer Booking Item` i
 		       ON i.parent = bc.booking AND i.container_no = bc.container_no
@@ -991,6 +991,9 @@ def _booking_gate_detail(booking) -> dict:
 		[
 			"name", "branch", "depot", "booking_status", "docstatus", "direction", "customer", "principal",
 			"lift_type", "payment_type", "payment_status", "sales_invoice", "do_reference", "remarks",
+			# The day the booking planned. The gate form pre-fills its bon date from it, so a
+			# voucher prepared a week ahead is not stamped with the day it was printed.
+			"plan_date",
 		],
 		as_dict=True,
 	)
@@ -1023,12 +1026,7 @@ def _booking_gate_detail(booking) -> dict:
 		line = frappe.db.get_value(
 			"Container Booking Item",
 			{"parent": booking, "container_no": c.container_no},
-			[
-				"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro",
-				# The line's own date: what the booking planned for this tank. Without it the
-				# gate defaulted every bon to today, even one prepared a week ahead.
-				"estimation_date",
-			],
+			["condition", "cargo", "truck_plate", "driver", "driver_phone", "ro"],
 			as_dict=True,
 		) or {}
 		containers.append({
@@ -1071,6 +1069,7 @@ def _booking_gate_detail(booking) -> dict:
 		"sales_invoice": b.sales_invoice,
 		"do_reference": b.do_reference,
 		"remarks": b.remarks,
+		"plan_date": b.plan_date,
 		"booking_submitted": booking_submitted,
 		"payment_blocked": payment_blocked,
 		"block_reason": block_reason,

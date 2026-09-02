@@ -48,12 +48,14 @@ class TestLiftOnPriority(FrappeTestCase):
 		self._containers.append(c)
 		return c
 
-	def _booking(self, rows, direction="Tank Out"):
-		"""Outbound draft carrying ``[(container, estimation_date)]``. Validation is bypassed —
-		pricing and the payment gate say nothing about the lift-on stamp."""
+	def _booking(self, containers, day, direction="Tank Out"):
+		"""Outbound draft for ``containers``, planned for ``day``. One date for the whole
+		booking — that is where the deadline lives. Validation is bypassed: pricing and the
+		payment gate say nothing about the lift-on stamp."""
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": direction, "depot": DEPOT,
-			"items": [{"container": c, "estimation_date": d} for c, d in rows],
+			"plan_date": day,
+			"items": [{"container": c} for c in containers],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
@@ -76,7 +78,7 @@ class TestLiftOnPriority(FrappeTestCase):
 		deadline that only appears at Submit appears after the preparation time is spent."""
 		c = self._container("LIFTON00001")
 		day = add_days(today(), 4)
-		doc = self._booking([(c, day)])
+		doc = self._booking([c], day)
 
 		stamp = self._stamp(c)
 		self.assertEqual(str(stamp.target_lift_on), day)
@@ -89,16 +91,16 @@ class TestLiftOnPriority(FrappeTestCase):
 		c = self._container("LIFTON00002")
 		co = self._cleaning(c)
 		day = add_days(today(), 2)
-		self._booking([(c, day)])
+		self._booking([c], day)
 		self.assertEqual(str(frappe.db.get_value("Cleaning Order", co, "target_lift_on")), day)
 
 	def test_moving_the_date_moves_it_everywhere(self):
 		c = self._container("LIFTON00003")
 		co = self._cleaning(c)
-		doc = self._booking([(c, add_days(today(), 2))])
+		doc = self._booking([c], add_days(today(), 2))
 
 		later = add_days(today(), 8)
-		doc.items[0].estimation_date = later
+		doc.plan_date = later
 		doc.save(ignore_permissions=True)
 
 		self.assertEqual(str(self._stamp(c).target_lift_on), later)
@@ -108,7 +110,7 @@ class TestLiftOnPriority(FrappeTestCase):
 		c1 = self._container("LIFTON00004")
 		c2 = self._container("LIFTON00005")
 		day = add_days(today(), 3)
-		doc = self._booking([(c1, day), (c2, day)])
+		doc = self._booking([c1, c2], day)
 
 		doc.items = [r for r in doc.items if r.container == c1]
 		doc.save(ignore_permissions=True)
@@ -119,7 +121,7 @@ class TestLiftOnPriority(FrappeTestCase):
 
 	def test_a_voided_draft_owns_nothing(self):
 		c = self._container("LIFTON00006")
-		doc = self._booking([(c, add_days(today(), 3))])
+		doc = self._booking([c], add_days(today(), 3))
 		self.assertIsNotNone(self._stamp(c).target_lift_on)
 
 		from container_depot.container_depot.doctype.container_booking.container_booking import (
@@ -134,14 +136,14 @@ class TestLiftOnPriority(FrappeTestCase):
 		"""The pickup happened — a departed tank must stop leading worklists, and the
 		customer's next booking has to be able to claim it."""
 		c = self._container("LIFTON00007")
-		self._booking([(c, add_days(today(), 1))])
+		self._booking([c], add_days(today(), 1))
 		lift_on.release_on_gate_out(c)
 		self.assertIsNone(self._stamp(c).target_lift_on)
 
 	def test_an_inbound_booking_stamps_nothing(self):
 		"""A Tank In is the tank ARRIVING; there is no pickup to prepare for."""
 		c = self._container("LIFTON00008")
-		self._booking([(c, add_days(today(), 3))], direction="Tank In")
+		self._booking([c], add_days(today(), 3), direction="Tank In")
 		self.assertIsNone(self._stamp(c).target_lift_on)
 
 	def test_a_release_never_clobbers_another_bookings_stamp(self):
@@ -149,8 +151,8 @@ class TestLiftOnPriority(FrappeTestCase):
 		on older data both can exist). Whoever does NOT own the stamp must not clear it."""
 		c = self._container("LIFTON00009")
 		day = add_days(today(), 5)
-		owner = self._booking([(c, day)])
-		other = self._booking([(c, add_days(today(), 6))])
+		owner = self._booking([c], day)
+		other = self._booking([c], add_days(today(), 6))
 		# The second save took ownership; the first one releasing must leave it alone.
 		self.assertEqual(self._stamp(c).lift_on_booking, other.name)
 		lift_on.clear_target(c, owner.name)
@@ -185,7 +187,8 @@ class TestOutboundFulfilment(FrappeTestCase):
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
 			"booking_status": "Confirmed" if submitted else "Draft",
-			"items": [{"container": c, "estimation_date": today()} for c in containers],
+			"plan_date": today(),
+			"items": [{"container": c} for c in containers],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)

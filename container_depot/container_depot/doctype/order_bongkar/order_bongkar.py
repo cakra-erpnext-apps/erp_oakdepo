@@ -381,17 +381,17 @@ def _validate_booking_code(doc: Document, expected_direction: str):
 				frappe.throw(
 					_("Booking Code {0} state is {1}; must be Active.").format(row.booking_code, bc.state)
 				)
-		# Auto-populate the row's container + booking-line detail from the booking line.
-		# Order Bongkar reuses Container Booking Item, whose condition / cargo / date are
-		# required, so a manually added container inherits the booking's values (the generate
-		# path fills these too).
+		# Auto-populate the row's container + booking-line detail from the booking line, so a
+		# manually added container inherits the booking's values (the generate path fills these
+		# too). The line's date is NOT among them: it is the realisation this bon is about to
+		# produce, and the bon already states it once in its own header.
 		if not row.get("container_no") and bc.container_no:
 			row.container_no = bc.container_no
 		item = (
 			frappe.db.get_value(
 				"Container Booking Item",
 				{"parent": bc.booking, "container_no": row.get("container_no")},
-				["container", "condition", "cargo", "estimation_date", "truck_plate",
+				["container", "condition", "cargo", "truck_plate",
 				 "driver", "driver_phone", "ro", "remarks"],
 				as_dict=True,
 			)
@@ -402,7 +402,7 @@ def _validate_booking_code(doc: Document, expected_direction: str):
 			row.container = bc.container or (item.container if item else None)
 		if item:
 			for f in (
-				"condition", "cargo", "estimation_date", "truck_plate",
+				"condition", "cargo", "truck_plate",
 				"driver", "driver_phone", "ro", "remarks",
 			):
 				if not row.get(f) and item.get(f):

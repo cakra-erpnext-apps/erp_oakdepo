@@ -27,7 +27,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_mark_new_containers');
-		frm.trigger('_toggle_date_column');
+		frm.trigger('_toggle_out_columns');
 		frm.trigger('_flag_open_conflicts');
 		frm.trigger('_apply_submit_lock');
 		frm.trigger('_apply_billing_lock');
@@ -187,32 +187,21 @@ frappe.ui.form.on('Container Booking', {
 		});
 	},
 	direction(frm) {
-		frm.trigger('_toggle_date_column');
+		frm.trigger('_toggle_out_columns');
 	},
-	// ONE date per line, named for the direction. Two fields (bongkar / muat) meant one of
-	// them was always empty, showed up as a dead column in the grid, and needed a toggle to
-	// stay honest. A booking is single-direction, so the line already knows which day it
-	// means — only the WORD changes, and a label is the cheap thing to change.
+	// The survey pair only means something on the way out — the tank is arriving on the way
+	// in, and there is no pickup to survey for. `depends_on` already hides them in the
+	// expanded row; this keeps the grid COLUMNS tidy too.
 	//
-	// update_docfield_property writes to this form's own docfield copies
-	// (frappe.meta.get_docfields is keyed by docname), so Order Bongkar's grid — which shares
-	// this child doctype — keeps its own label.
-	_toggle_date_column(frm) {
+	// set_column_disp_in_list_view is a grid-local override, so Order Bongkar's grid — which
+	// shares this child doctype — is unaffected.
+	//
+	// The line's date needs no toggle any more: it is the realisation, which means the same
+	// thing in both directions (the day this container's bon came out).
+	_toggle_out_columns(frm) {
 		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
-		if (!grid || !grid.get_docfield) return;
-		const out = frm.doc.direction === 'Tank Out';
-		try {
-			grid.update_docfield_property(
-				'estimation_date', 'label', out ? __('Pickup Date') : __('Est. Tanggal Bongkar')
-			);
-		} catch (e) {
-			/* field not on this grid — nothing to relabel */
-		}
-		// The survey pair only means something on the way out. `depends_on` already hides it
-		// in the expanded row; this keeps the grid columns tidy too.
-		if (grid.set_column_disp_in_list_view) {
-			grid.set_column_disp_in_list_view(['survey_date', 'surveyor'], out);
-		}
+		if (!grid || !grid.set_column_disp_in_list_view) return;
+		grid.set_column_disp_in_list_view(['survey_date', 'surveyor'], frm.doc.direction === 'Tank Out');
 		grid.refresh();
 	},
 	// Which tanks already have a bon. Nothing on a submitted booking is editable any more
@@ -1043,10 +1032,10 @@ const MAX_CONTAINERS_PER_ORDER = 2;
 // first picked container's booking line, and written back onto the booking lines on
 // Generate. Sent as vehicle_data to the server.
 const BONGKAR_DETAIL_FIELDS = [
-	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'estimation_date', 'remarks',
+	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks',
 ];
-// A Tank Out voucher inherits only the vehicle trio + R/O from the line. Condition, cargo
-// and Tgl. Bongkar describe what was DROPPED OFF — they say nothing about a pick-up.
+// A Tank Out voucher inherits only the vehicle trio + R/O from the line. Condition and cargo
+// describe what was DROPPED OFF — they say nothing about a pick-up.
 const MUAT_DETAIL_FIELDS = ['truck_plate', 'driver', 'driver_phone', 'ro', 'remarks'];
 
 function open_generate_dialog(frm) {
@@ -1099,7 +1088,7 @@ function open_generate_dialog(frm) {
 							const first = picked[0];
 							if (first && first !== last_first) {
 								last_first = first;
-								_fill_line_detail(d, by_value[first], detail_fields, out);
+								_fill_line_detail(d, by_value[first], detail_fields);
 							}
 						},
 					},
@@ -1111,15 +1100,14 @@ function open_generate_dialog(frm) {
 					...(out
 						? [
 							{ fieldname: 'destination', fieldtype: 'Data', label: __('Destination') },
-							{ fieldname: 'tanggal_muat', fieldtype: 'Date', label: __('Tgl. Muat'), default: frappe.datetime.get_today() },
+							{ fieldname: 'tanggal_muat', fieldtype: 'Date', label: __('Tgl. Muat'), default: frm.doc.plan_date || frappe.datetime.get_today() },
 						]
 						: [
 							{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
 							{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
-							// Estimation carried from the booking line (auto-filled, written back to the row) — hidden here.
-							{ fieldname: 'estimation_date', fieldtype: 'Date', label: __('Tanggal Rencana Baris'), hidden: 1 },
-							// Actual unload date for the bon; defaults to the estimation above.
-							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
+							// Actual unload date for the bon. Defaults to the booking's own Plan Date so a
+							// voucher prepared a week ahead is not stamped with the day it was printed.
+							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frm.doc.plan_date || frappe.datetime.get_today() },
 						]),
 					{ fieldtype: 'Column Break' },
 					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('Truck Number'), reqd: 1 },
@@ -1176,19 +1164,15 @@ function open_generate_dialog(frm) {
 	});
 }
 
-function _fill_line_detail(d, p, fields, out) {
+function _fill_line_detail(d, p, fields) {
 	// Copy the booking line's detail into the voucher's shared fields.
 	if (!p) return;
 	fields.forEach((f) => {
 		if (p[f] != null && p[f] !== '') d.set_value(f, p[f]);
 	});
-	// Tank In only: default the actual unload date from the line's estimation Tgl. Bongkar.
-	// A pick-up has no such estimate on the line — Tgl. Muat defaults to today instead.
-	// The line's own planned day beats today's date on the bon, in BOTH directions: a bon
-	// prepared a week ahead used to come out stamped with the day it was printed.
-	if (p.estimation_date) {
-		d.set_value(out ? 'tanggal_muat' : 'tanggal_bongkar_actual', p.estimation_date);
-	}
+	// The bon's own date is NOT prefilled from the line any more: the planned day is one
+	// answer for the whole booking and already seeded the field from `plan_date` when the
+	// dialog was built. The line carries the realisation, which this bon is about to write.
 }
 
 function submit_generation(frm, dialog, codes, vehicle_data) {

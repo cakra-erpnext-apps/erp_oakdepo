@@ -292,7 +292,7 @@ class TestMailToOrder(FrappeTestCase):
 
 		res = get_order_prefill(
 			comm, "Booking", containers=f"{_A}\n{_GHOST}",
-			options={"direction": "Tank In", "estimation_date": today()},
+			options={"direction": "Tank In", "plan_date": today()},
 		)
 
 		self.assertEqual(res["doctype"], "Container Booking")
@@ -306,7 +306,10 @@ class TestMailToOrder(FrappeTestCase):
 		# Condition is not something an email states — every line starts Empty Dirty and is
 		# corrected on the booking form, which is why the dialog stopped asking.
 		self.assertEqual(rows[0]["condition"], "EMPTY DIRTY")
-		self.assertEqual(rows[0]["estimation_date"], today())
+		# The planned day is asked once and kept once, on the header — the rows carry the
+		# realisation, which no email can know yet.
+		self.assertNotIn("realisation_date", rows[0])
+		self.assertEqual(res["values"]["plan_date"], today())
 		self.assertEqual(res["values"]["direction"], "Tank In")
 		self.assertEqual(res["values"]["reff_email"], comm)
 		self.assertEqual(before, frappe.db.count("Container Booking"))
@@ -390,12 +393,13 @@ class TestMailToOrder(FrappeTestCase):
 		comm = self._email("Siap lift on")
 
 		res = get_order_prefill(comm, "Gate Out", containers=f"{_A}\n{_B}",
-							   options={"estimation_date": today()})
+							   options={"plan_date": today()})
 		self.assertEqual(res["doctype"], "Container Booking")
 		self.assertEqual(res["values"]["direction"], "Tank Out")
 		self.assertEqual(res["values"]["principal"], self._principal)
 		self.assertEqual(res["table"]["fieldname"], "items")
-		self.assertEqual([r["estimation_date"] for r in res["table"]["rows"]], [today(), today()])
+		# One pickup day for the whole mail, on the booking itself.
+		self.assertEqual(res["values"]["plan_date"], today())
 
 	def test_only_booking_and_gate_out_can_be_raised(self):
 		"""Cleaning / M&R / Survey are depot decisions, not something a mail books."""

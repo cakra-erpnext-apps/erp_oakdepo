@@ -123,8 +123,8 @@ class ContainerBooking(Document):
 		self._ensure_branch_and_principal()
 		self._validate_depot_in_branch()
 		self._sync_lift_type()
+		self._require_plan_date()
 		self._cascade_header_defaults()
-		self._require_line_date()
 		self._resolve_pricing_context()
 		self._resolve_containers()
 		# After resolution, so a row that arrived as a bare number is judged on the master it
@@ -547,17 +547,18 @@ class ContainerBooking(Document):
 			) or frappe.db.get_value("Branch", {}, "name")
 
 	# ---- pricing context (customer contract / price list) ---------------
-	# Header field -> the line field it fills in. One estimate per line, not one per
-	# direction: a booking IS single-direction, so the line already knows whether its date
-	# means "unloaded" or "picked up" — two fields only produced an always-empty column and a
-	# label that had to be toggled to stay honest. What the date is CALLED does change with
-	# the direction, and that is a label the form sets (see container_booking.js).
+	# Header field -> the line field it fills in.
 	#
-	# The survey pair is outbound-only and rides the same mechanism: asked once in the
-	# header, copied down, still editable per tank because one booking's tanks are routinely
-	# surveyed on different days.
+	# The plan date is NOT here, and that is the point: a booking has one intended day, and it
+	# lives in the header alone. The line's date is the realisation — the day its bon actually
+	# came out — which nobody types and which :func:`refresh_line_realisation` writes from the
+	# bon itself. Copying the plan down as a per-line estimate only produced a column that
+	# looked like a promise, and that a voided bon could not take back.
+	#
+	# The survey pair is outbound-only and does ride this mechanism: asked once in the header,
+	# copied down, still editable per tank because one booking's tanks are routinely surveyed
+	# on different days by different parties.
 	HEADER_TO_LINE = {
-		"plan_date": "estimation_date",
 		"survey_date": "survey_date",
 		"surveyor": "surveyor",
 	}
@@ -607,32 +608,25 @@ class ContainerBooking(Document):
 				if not current or (previous and current == previous):
 					row.set(line_field, value)
 
-	def _require_line_date(self):
-		"""Every line must carry a date for the day its tank is worked.
+	def _require_plan_date(self):
+		"""An outbound booking must say which day it is for.
 
-		It used to be declared on the field (``tanggal_bongkar``, reqd) — which asked every
-		outbound booking for an unload date it has no business knowing. A child field cannot
-		say "mandatory when the PARENT is Tank Out", so once the two dates became one the
-		rule moved here, where the direction is and where the message can point at the header
-		field that fills them all in at once.
+		``mandatory_depends_on`` on the field draws the red asterisk, but Frappe only applies
+		it in the form — an import, an API call or a script can still save without it. This is
+		the half that actually holds, and it holds from the DRAFT because that is when the
+		date starts working: :mod:`lift_on` stamps it onto every tank and onto the open work
+		holding them, and the worklists count down to it. A Tank Out with no plan date is a
+		pickup the yard has no deadline for.
+
+		Inbound is deliberately not covered: the tank is arriving, and a booking written the
+		morning the truck shows up is ordinary.
 		"""
-		missing = [
-			r.container_no or r.container or _("baris {0}").format(r.idx)
-			for r in (self.items or [])
-			if not r.get("estimation_date")
-		]
-		if missing:
+		if self.direction == "Tank Out" and not self.plan_date:
 			frappe.throw(
-				_("{0} wajib diisi untuk: {1}. Isi <b>Plan Date</b> di header untuk mengisi semuanya sekaligus.").format(
-					self.line_date_label(), ", ".join(missing)
-				),
-				title=_("Tanggal Belum Lengkap"),
+				_("<b>Plan Date</b> wajib diisi untuk booking Tank Out — tanggal ini yang dipakai "
+				  "yard untuk memprioritaskan pekerjaan tank sebelum diambil."),
+				title=_("Tanggal Rencana Belum Diisi"),
 			)
-
-	def line_date_label(self) -> str:
-		"""What the line's single date is CALLED, which is the direction's answer: the day
-		the tank is unloaded on the way in, the day the customer collects it on the way out."""
-		return _("Pickup Date") if self.direction == "Tank Out" else _("Est. Tanggal Bongkar")
 
 	def _resolve_pricing_context(self):
 		"""Pricing follows the customer's *active* Price List — the one published by their
@@ -1714,7 +1708,8 @@ def refresh_bon_status(booking: str | None) -> None:
 
 	Called from the two places a code's state can flip — ``_reconcile_codes`` /
 	``_release_codes`` in the bon controllers — plus the booking's own submit, which is where
-	the codes are born.
+	the codes are born. Those are exactly the moments each line's realisation date changes
+	too, so :func:`refresh_line_realisation` rides along at the end.
 	"""
 	if not booking or not frappe.db.exists("Container Booking", booking):
 		return
@@ -1725,6 +1720,64 @@ def refresh_bon_status(booking: str | None) -> None:
 		{"bon_status": cov["status"] or "", "bon_summary": cov["summary"]},
 		update_modified=False,
 	)
+	# One event moves both markers — how much of the booking is dibon, and the day each
+	# container's bon came out — so they are refreshed together and cannot drift apart.
+	refresh_line_realisation(booking)
+
+
+def refresh_line_realisation(booking: str) -> None:
+	"""Write each line's ``realisation_date``: the day the bon carrying that container came out.
+
+	Recomputed from the current state rather than stamped once when the bon is made, for the
+	same reason ``bon_status`` is: a bon can be voided, and a date left behind by a bon that
+	no longer exists is a lie the form would go on telling.
+
+	The signal is the Booking Code. ``Used`` means "sitting on a live bon" — the very state
+	:func:`bon_coverage` counts — so the date and the "Bon 3/5" marker can never disagree
+	about the same container. It also means this needs no hook of its own: the two places a
+	code's state moves already call :func:`refresh_bon_status`.
+
+	The bon's own header date is used, not today: an outbound bon prepared a week ahead
+	carries the load date it was written for, and that is the day the yard realised. Which
+	header field that is depends on the bon — ``tanggal_bongkar`` on the way in,
+	``tanggal_muat`` on the way out.
+	"""
+	if not booking or not frappe.db.exists("Container Booking", booking):
+		return
+	issued = {}
+	# Both bon shapes are asked, not the one the booking's direction implies. It is the
+	# CODE's direction that picks the doctype when a bon is made (``make_order``), and a
+	# single-use code can only sit on one live bon — so reading the booking's own direction
+	# would be an assumption with nothing holding it up. Order Bongkar reuses Container
+	# Booking Item as its child table; Order Muat has one of its own.
+	for child, parent_dt, date_field in (
+		("Container Booking Item", "Order Bongkar", "tanggal_bongkar"),
+		("Order Container Item", "Order Muat", "tanggal_muat"),
+	):
+		for container_no, issued_on in frappe.db.sql(
+			"""
+			SELECT bc.container_no, p.`{date_field}`
+			FROM `tabBooking Code` bc
+			JOIN `tab{child}` c ON c.booking_code = bc.name AND c.parenttype = %(parent_dt)s
+			JOIN `tab{parent_dt}` p ON p.name = c.parent
+			WHERE bc.booking = %(booking)s AND bc.state = 'Used'
+			""".format(date_field=date_field, child=child, parent_dt=parent_dt),
+			{"booking": booking, "parent_dt": parent_dt},
+		) or []:
+			if issued_on and container_no not in issued:
+				issued[container_no] = issued_on
+	for row in frappe.get_all(
+		"Container Booking Item",
+		filters={"parent": booking, "parenttype": "Container Booking"},
+		fields=["name", "container_no", "realisation_date"],
+	):
+		want = issued.get(row.container_no)
+		has = getdate(row.realisation_date) if row.realisation_date else None
+		if (getdate(want) if want else None) == has:
+			continue
+		frappe.db.set_value(
+			"Container Booking Item", row.name, "realisation_date", want, update_modified=False
+		)
 
 
 def _block_if_bon_raised(booking: str, action: str) -> None:
@@ -2713,17 +2766,21 @@ def related_orders(booking: str) -> list:
 	Ported from Gate Out Plan along with the rest of the lift-on preparation.
 	"""
 	frappe.has_permission("Container Booking", "read", doc=booking, throw=True)
+	# The deadline is the booking's own Plan Date — one job, one intended day. The lines
+	# carry the realisation instead, which is the wrong thing to count down to: it is only
+	# there once the bon has come out, by which time nothing is being prepared any more.
+	plan_date = frappe.db.get_value("Container Booking", booking, "plan_date")
 	rows = frappe.get_all(
 		"Container Booking Item",
 		filters={"parent": booking, "parenttype": "Container Booking"},
-		fields=["container", "container_no", "estimation_date"],
+		fields=["container", "container_no"],
 		order_by="idx asc",
 	)
 	return tank_documents.dossier([
 		{
 			"container": r.container,
 			"container_no": r.container_no,
-			"target_lift_on": r.estimation_date,
+			"target_lift_on": plan_date,
 		}
 		for r in rows
 	])

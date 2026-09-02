@@ -54,7 +54,8 @@ class TestTankDossier(FrappeTestCase):
 	def _booking(self, container):
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
-			"items": [{"container": container, "estimation_date": today()}],
+			"plan_date": today(),
+			"items": [{"container": container}],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)

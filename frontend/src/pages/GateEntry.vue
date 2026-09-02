@@ -621,11 +621,12 @@ function openGenerate() {
 		destination: "",
 		ex_vessel: "",
 		shipper: detail.value.customer || "",
-		// The booking line's own planned day wins over today, in both directions: a booking
-		// prepared a week ahead already says which day it is for, and the gate is where that
-		// day arrives — not where it is decided again.
-		tanggal_bongkar_actual: line.estimation_date || today,
-		tanggal_muat: line.estimation_date || today,
+		// The booking's own Plan Date wins over today, in both directions: a booking prepared
+		// a week ahead already says which day it is for, and the gate is where that day
+		// arrives — not where it is decided again. Read off the booking, not the line: the
+		// line carries the realisation, which is the date this bon is about to produce.
+		tanggal_bongkar_actual: detail.value.plan_date || today,
+		tanggal_muat: detail.value.plan_date || today,
 		remarks: "",
 	}
 	// One id per intended bon, minted when the form opens rather than when Generate is

@@ -21,7 +21,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
+from frappe.utils import now_datetime, today
 
 MAX_CONTAINERS_PER_ORDER = 2
 
@@ -29,7 +29,7 @@ MAX_CONTAINERS_PER_ORDER = 2
 # Container Booking Item child) and written back onto the booking's line when a bon is
 # generated, so the voucher and the booking stay in step.
 BONGKAR_ROW_DETAIL = (
-	"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro", "estimation_date", "remarks",
+	"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro", "remarks",
 )
 
 
@@ -67,27 +67,6 @@ def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 			writeback = {f: v for f, v in detail.items() if v not in (None, "")}
 			if writeback:
 				frappe.db.set_value("Container Booking Item", item.name, writeback, update_modified=False)
-
-
-def _first_line_value(booking, codes, by_name, field):
-	"""The first selected container's booking-line value for ``field``.
-
-	A bon carries ONE header date for up to two containers, so "the first one that has an
-	answer" is the only rule that can be applied — and it is the same rule the Desk dialog
-	uses when it pre-fills itself from the first picked row.
-	"""
-	for c in codes:
-		container_no = by_name[c].container_no
-		if not container_no:
-			continue
-		value = frappe.db.get_value(
-			"Container Booking Item",
-			{"parent": booking, "parenttype": "Container Booking", "container_no": container_no},
-			field,
-		)
-		if value:
-			return value
-	return None
 
 
 def _as_code_list(value):
@@ -161,7 +140,10 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 					_("Container {0} is no longer pending (state {1}).").format(label, r.state)
 				)
 
-		customer = frappe.db.get_value("Container Booking", booking, "customer")
+		head = frappe.db.get_value(
+			"Container Booking", booking, ["customer", "principal", "plan_date"], as_dict=True
+		) or frappe._dict()
+		customer = head.customer
 		order = frappe.new_doc(order_doctype)
 		order.booking = booking
 		order.order_status = "Issued"
@@ -170,13 +152,15 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		order.shipper = _resolve_shipper(vehicle_data, customer)
 
 		if direction == "Tank In":
-			order.principal = frappe.db.get_value("Container Booking", booking, "principal")
+			order.principal = head.principal
 			order.ex_vessel = vehicle_data.get("ex_vessel")
-			# Actual unload date for the bon; defaults to the day the booking line planned.
+			# Actual unload date for the bon: what the gate typed, else the day the booking
+			# planned, else today. Read off the HEADER now — the booking line holds the
+			# realisation, which is the date this very bon is about to write there.
 			order.tanggal_bongkar = (
 				vehicle_data.get("tanggal_bongkar_actual")
-				or vehicle_data.get("estimation_date")
-				or _first_line_value(booking, codes, by_name, "estimation_date")
+				or head.plan_date
+				or today()
 			)
 			_build_bongkar_rows(order, booking, codes, by_name, vehicle_data)
 		else:
@@ -192,14 +176,15 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 			order.driver_phone = vehicle_data.get("driver_phone")
 			order.ro = vehicle_data.get("ro")
 			order.destination = vehicle_data.get("destination")
-			# The bon's load date: what the dialog / gate typed, else the date the booking
-			# line already carries (which the header's Plan Date put there). Falling straight
-			# through to today was how an outbound bon prepared a week ahead came out stamped
-			# with the day it was printed.
+			# The bon's load date: what the dialog / gate typed, else the booking's own Plan
+			# Date. Falling straight through to today was how an outbound bon prepared a week
+			# ahead came out stamped with the day it was printed — so today is the last
+			# resort, not the second one.
 			order.tanggal_muat = (
 				vehicle_data.get("tanggal_muat")
 				or vehicle_data.get("tanggal")
-				or _first_line_value(booking, codes, by_name, "estimation_date")
+				or head.plan_date
+				or today()
 			)
 			for c in codes:
 				r = by_name[c]

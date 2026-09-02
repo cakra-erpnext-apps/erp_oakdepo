@@ -106,10 +106,11 @@
    "in_list_view": 1
   },
   {
-   "description": "Tanggal pekerjaan. Turun ke tiap baris container.",
+   "description": "Tanggal rencana pekerjaan. Wajib untuk Tank Out — ini satu-satunya deadline yang dipakai yard untuk memprioritaskan pekerjaan tank.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
-   "label": "Plan Date"
+   "label": "Plan Date",
+   "mandatory_depends_on": "eval:doc.direction=='Tank Out'"
   },
   {
    "depends_on": "eval:doc.direction=='Tank Out'",
@@ -407,7 +408,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-02 16:00:00.000000",
+ "modified": "2026-09-02 17:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

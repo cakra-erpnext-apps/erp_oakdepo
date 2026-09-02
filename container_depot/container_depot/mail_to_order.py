@@ -460,25 +460,22 @@ def _child_rows(doctype: str, direction: str, rows: list[dict], options: dict) -
 
 	A row carries the ``container`` link when the master exists and always carries
 	``container_no``; a Tank In booking turns a bare number into a pre-arrival master on
-	save. The direction-level extras (condition, unload date, load date) are the row's own
-	*mandatory* fields — asking for them once in the dialog beats filling the same value into
-	twenty grid rows by hand.
+	save.
+
+	The planned day is NOT here — it is one value for the whole job and goes on the header
+	(``plan_date``). What is left per row is what genuinely differs between tanks.
 	"""
 	# Keyed by DIRECTION, not by doctype: both order types are a Container Booking now, and
-	# what a line needs is exactly what its direction is about — the day the tank is unloaded
-	# or the day it is loaded. Asking for it once in the dialog beats typing the same date
-	# into twenty grid rows.
+	# what a line needs is what its direction is about.
 	defaults: dict[str, dict] = {
 		"Tank In": {
 			# Condition is mandatory on a booking line but is not something an email states,
 			# so every row starts Empty Dirty and is corrected on the booking form itself —
 			# which is why the dialog does not ask for it.
 			"condition": "EMPTY DIRTY",
-			"estimation_date": options.get("estimation_date"),
 		},
-		# The outbound half asks for the pickup day and who surveys the tank before it.
+		# The outbound half asks who surveys the tank before it is collected, and when.
 		"Tank Out": {
-			"estimation_date": options.get("estimation_date"),
 			"survey_date": options.get("survey_date"),
 			"surveyor": options.get("surveyor"),
 		},
@@ -557,6 +554,12 @@ def get_order_prefill(communication: str, order_type: str, containers=None, opti
 	# email link itself still lives in the read-only `reff_email`.
 	if options.get("reff_doc") and frappe.get_meta(doctype).has_field("reff_doc"):
 		values["reff_doc"] = options["reff_doc"]
+
+	# The day the job is planned for — asked once in the dialog and kept once, on the header.
+	# It is what the yard's lift-on priority counts down to and what the bon dates itself
+	# from; the container lines carry the realisation instead, which no dialog can know yet.
+	if options.get("plan_date") and frappe.get_meta(doctype).has_field("plan_date"):
+		values["plan_date"] = options["plan_date"]
 
 	table = None
 	fieldname = _CONTAINER_TABLE.get(doctype)

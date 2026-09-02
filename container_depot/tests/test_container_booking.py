@@ -1021,6 +1021,9 @@ class TestTankOutGating(FrappeTestCase):
 			"direction": "Tank Out",
 			"customer": self.customer,
 			"contract": self.contract,
+			# An outbound booking must say which day it is for — that date is the yard's only
+			# deadline, and it works from the draft (_require_plan_date / lift_on).
+			"plan_date": today(),
 			"items": [{"container": self.container}],
 		})
 
@@ -1192,6 +1195,7 @@ class TestTankOutDepotDerivation(FrappeTestCase):
 			"customer": self.customer,
 			"principal": self.customer,
 			"contract": self.contract,
+			"plan_date": today(),
 			"branch": kwargs.pop("branch", self.IN_BRANCH),
 			"items": [{"container": c} for c in containers],
 		})
