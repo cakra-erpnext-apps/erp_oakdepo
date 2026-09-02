@@ -809,8 +809,13 @@ ORDER_NUMBER_CARDS = [
 	{"label": "Order Muat Aktif", "color": "#00BCD4",
 	 "document_type": "Order Muat",
 	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},
-	{"label": "Gate Out Plan Open", "color": "#29CD42",
-	 "document_type": "Gate Out Plan", "filters_json": [["status", "=", "Open"]]},
+	# Lift-on yang belum tuntas: booking keluar yang sudah dikonfirmasi tapi tanknya belum
+	# semua lewat gate. Dulu dihitung dari Gate Out Plan, dokumen pemberitahuan terpisah yang
+	# sudah dihapus (v0_87) — sekarang booking keluarnya sendiri yang menjawab.
+	{"label": "Lift-On Belum Selesai", "color": "#29CD42",
+	 "document_type": "Container Booking",
+	 "filters_json": [["direction", "=", "Tank Out"], ["booking_status", "=", "Confirmed"],
+					  ["docstatus", "=", 1]]},
 	{"label": "Booking Belum Dibayar", "color": "#E24C4C",
 	 "document_type": "Container Booking",
 	 "filters_json": [["payment_status", "=", "Unpaid"], ["docstatus", "=", 1]]},

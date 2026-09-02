@@ -4,7 +4,7 @@ Deliberately free of ``@frappe.whitelist`` so the exact same functions back both
 PWA wrappers (``ess/position_survey.py``) and any Desk / automation caller — the endpoint
 layer only adds auth + whitelisting.
 
-Flow (per outbound container): a Container Booking (Tank Out) submit provisions one
+Flow (per outbound container): saving a Container Booking (Tank Out) provisions one
 ``Container Position Survey`` (status ``Pending Survey``). A Surveyor presses Mulai
 (→ ``In Survey``, which claims the job) and writes a free-text note of where the container
 physically sits (+ photos) → ``Surveyed``. An Operator Kalmar presses Mulai (→ ``In Fix``)
@@ -89,15 +89,19 @@ def _coerce_photos(photos) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Provisioning — Container Booking (Tank Out) submit hook
+# Provisioning — Container Booking (Tank Out) save hook
 # ---------------------------------------------------------------------------
 def provision_position_survey_for_booking(booking_name: str) -> list:
-	"""Submit-time hook for an outbound (Tank Out) Container Booking: create one
+	"""Save-time hook for an outbound (Tank Out) Container Booking: create one
 	``Container Position Survey`` (Pending Survey) per container so a Surveyor is tasked with
 	locating it before it is pulled.
 
+	Runs from the DRAFT, not from submit: finding a tank in a full yard is preparation, and
+	preparation that starts at Submit starts too late — an outbound booking is written days
+	ahead precisely so the yard can get ready.
+
 	Idempotent per container (skips when an open survey already exists); best-effort per row —
-	one failure is logged and never blocks the booking submit. Mirrors
+	one failure is logged and never blocks saving the booking. Mirrors
 	``eir.provision_eir_out_for_order_muat``.
 	"""
 	# Per row, not off the booking header: an outbound booking may collect from two depots
@@ -264,7 +268,7 @@ def get_survey_detail(name: str) -> dict:
 		"fix_started_on": doc.fix_started_on,
 		# Why it came back, for the operator who now has to redo it.
 		"reopen_note": doc.reopen_note,
-		# The customer's lift-on date, from the Gate Out Plan via the container.
+		# The customer's lift-on date, from the outbound booking via the container.
 		"target_lift_on": doc.target_lift_on,
 		"photos": [p.photo for p in doc.position_photos],
 	}

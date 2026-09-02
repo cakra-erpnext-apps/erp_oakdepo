@@ -51,6 +51,9 @@ const STATUS_COLOURS = {
 	'Pending Payment': 'orange',
 	'Pending Confirmation': 'yellow',
 	Confirmed: 'blue',
+	// Every tank on it has left. Green rather than blue: Confirmed is where a booking starts
+	// being work, this is where it stops being work at all.
+	Completed: 'green',
 	Cancelled: 'red',
 	Blocked: 'pink',
 };
@@ -58,8 +61,25 @@ const STATUS_COLOURS = {
 frappe.listview_settings['Container Booking'] = {
 	// booking_status is no longer a column of its own, so the list query would not fetch
 	// it — and `get_indicator` would read undefined on every row and paint them all Draft.
-	add_fields: ['booking_status', 'bon_status', 'bon_summary'],
+	add_fields: ['booking_status', 'bon_status', 'bon_summary', 'direction', 'per_fulfilled'],
 	formatters: {
+		// How much of an outbound booking has actually left the depot. A lift-on is
+		// routinely collected over several visits (a bon carries at most two tanks), so a
+		// five-tank booking spends most of its life part-collected — and used to look
+		// exactly like one nobody had touched. Inbound has no such measure: the tanks
+		// arriving is what the EIR records, not what this column counts.
+		per_fulfilled(value, df, doc) {
+			if (doc.direction !== 'Tank Out') return '';
+			const per = Math.min(100, Math.max(0, flt(value, 2)));
+			const colour = per >= 100 ? 'bg-green-500' : per > 0 ? 'bg-yellow-500' : 'bg-gray-300';
+			return `
+				<div class="d-flex align-items-center" style="gap:6px">
+					<span class="progress" style="height:6px;width:60px;margin:0">
+						<span class="progress-bar ${colour}" style="width:${per}%"></span>
+					</span>
+					<span class="text-muted">${per}%</span>
+				</div>`;
+		},
 		// The count carries the message ("2/5"), the colour makes it findable, and a booking
 		// with no live codes at all (draft / cancelled) shows nothing — there is no bon owed.
 		bon_status(value, df, doc) {

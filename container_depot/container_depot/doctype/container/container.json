@@ -43,7 +43,6 @@
   "last_repair_order",
   "last_eir_in",
   "last_eir_out",
-  "gate_out_plan",
   "lift_on_booking",
   "column_break_ref",
   "target_lift_on",
@@ -261,15 +260,6 @@
    "read_only": 1
   },
   {
-   "description": "Gate Out Plan yang menandai target lift-on ini (jejak).",
-   "fieldname": "gate_out_plan",
-   "fieldtype": "Link",
-   "label": "Gate Out Plan",
-   "no_copy": 1,
-   "options": "Gate Out Plan",
-   "read_only": 1
-  },
-  {
    "description": "Container Booking (Tank Out) yang menandai target lift-on ini (jejak).",
    "fieldname": "lift_on_booking",
    "fieldtype": "Link",
@@ -283,7 +273,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Rencana lift-on (gate out) dari Gate Out Plan aktif. Mendorong prioritas urutan kerja cleaning / M&R. Diisi otomatis oleh Gate Out Plan — bukan isian manual.",
+   "description": "Rencana lift-on (gate out) dari booking keluar yang aktif. Mendorong prioritas urutan kerja cleaning / M&R. Diisi otomatis — bukan isian manual.",
    "fieldname": "target_lift_on",
    "fieldtype": "Date",
    "in_standard_filter": 1,
@@ -386,7 +376,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-02 13:00:00.000000",
+ "modified": "2026-09-02 15:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

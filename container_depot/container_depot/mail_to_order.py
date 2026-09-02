@@ -3,7 +3,7 @@
 An incoming email (a ``Communication`` of medium Email, ``Received``) is the paper trail
 behind the two things a customer books by mail: tanks coming in or going out ("mohon
 dibooking 5 tank berikut", "kami ambil tank ini minggu depan"). This module lets an
-operator turn that email into a **Container Booking** or a **Gate Out Plan** straight from
+operator turn that email into a **Container Booking** — inbound or outbound — straight from
 the Communication form, and pull new mail on demand — the desk mirror of the Email Account
 "Pull Emails" button, but scoped to the accounts set on the user.
 
@@ -35,20 +35,25 @@ import frappe
 from frappe import _
 from frappe.utils import strip_html_tags
 
-# order_type (as sent by the client) -> (target doctype, customer field or None).
-# The customer field is where the sender-resolved Customer lands; None means the
-# doctype has no party field (repair / cleaning are container-centric).
+# order_type (as sent by the client) -> (target doctype, customer field, direction).
+#
+# BOTH are a Container Booking now; the direction is what tells them apart. The lift-on half
+# used to raise a Gate Out Plan — a separate notice document that authorised nothing and
+# whose only real effect was stamping a pickup date on the tank. That is now the outbound
+# booking's own job, so an email announcing a pickup becomes the document the tanks actually
+# leave on, instead of a note somebody had to turn into one later.
+#
+# The party field differs with the direction, and deliberately: an inbound mail comes from
+# whoever is being billed, an outbound one from the tank's OWNER. Bill-to on a lift-on is a
+# separate question the operator answers on the booking form.
 ORDER_MAP = {
-	"Booking": ("Container Booking", "customer"),
-	# Lift-on (gate-out) prep priority — the customer emails which tanks they'll pick up.
-	# The sender resolves to the tank owner (principal); no pricing, no invoice.
-	"Gate Out": ("Gate Out Plan", "principal"),
+	"Booking": ("Container Booking", "customer", "Tank In"),
+	"Gate Out": ("Container Booking", "principal", "Tank Out"),
 }
 
-# Where the email body lands. Gate Out Plan has no `remarks` — it uses `notes`.
+# Where the email body lands.
 _NOTE_FIELD = {
 	"Container Booking": "remarks",
-	"Gate Out Plan": "notes",
 }
 
 # The link back to the source email. Deliberately NOT `reff_doc`: that field is the
@@ -74,14 +79,12 @@ _ORDER_SUMMARY = {
 	"Container Booking": ("booking_status", "customer"),
 	"Repair Order": ("status", "container_no"),
 	"Cleaning Order": ("status", "container_no"),
-	"Gate Out Plan": ("status", "principal"),
 }
 
 # Where each order keeps its containers. Both orders raised from here are table-shaped —
 # one order carries the whole email's list. Maps doctype -> the Table fieldname.
 _CONTAINER_TABLE = {
 	"Container Booking": "items",
-	"Gate Out Plan": "containers",
 }
 
 
@@ -241,18 +244,20 @@ def resolve_containers(containers, order_type: str | None = None, direction: str
 	  unknown number is refused outright here; a known one is judged by the booking's own
 	  gate, so the dialog and the submit can never disagree.
 
-	That gate is ``status_direction_warnings`` (→ ``_find_status_mismatches``), deliberately
-	not a plain ``status == "Available"`` test: readiness is the ABSENCE of open work, so a
-	tank sitting at ``In_Depot`` with nothing left to finish is free to go, while an
-	``Available`` one with a reopened order is not.
+	That gate is ``status_direction_warnings`` (→ ``_find_status_mismatches``), and for a
+	Tank Out it asks only whether the tank is HERE. Unfinished work does not disqualify it
+	any more: the booking is how the depot learns a pickup is coming, and the work is
+	prioritised off the booking's own load date instead.
 	"""
 	rows = _resolve_rows(parse_container_input(containers))
-	is_booking = order_type == "Booking"
-	direction = direction or "Tank In"
+	target = ORDER_MAP.get(order_type or "")
+	# Both order types raise a Container Booking now, so both are checked. The direction is
+	# the type's own unless the dialog picked one.
+	direction = direction or (target[2] if target else "Tank In")
 	for row in rows:
-		row["will_create"] = bool(is_booking and direction == "Tank In" and not row["known"])
+		row["will_create"] = bool(target and direction == "Tank In" and not row["known"])
 		row["blocked"] = None
-	if not is_booking:
+	if not target:
 		return rows
 
 	if direction == "Tank Out":
@@ -450,25 +455,29 @@ def _email_reference(comm) -> str:
 	return "\n".join(lines)
 
 
-def _child_rows(doctype: str, rows: list[dict], options: dict) -> list[dict]:
-	"""Build the container child rows for a table-shaped order.
+def _child_rows(doctype: str, direction: str, rows: list[dict], options: dict) -> list[dict]:
+	"""Build the container child rows for the booking.
 
 	A row carries the ``container`` link when the master exists and always carries
 	``container_no``; a Tank In booking turns a bare number into a pre-arrival master on
-	save. The per-doctype extras (condition, unload date, lift-on date, survey date) are
-	the row-level *mandatory* fields — asking for them once in the dialog beats filling
-	the same value into twenty grid rows by hand.
+	save. The direction-level extras (condition, unload date, load date) are the row's own
+	*mandatory* fields — asking for them once in the dialog beats filling the same value into
+	twenty grid rows by hand.
 	"""
+	# Keyed by DIRECTION, not by doctype: both order types are a Container Booking now, and
+	# what a line needs is exactly what its direction is about — the day the tank is unloaded
+	# or the day it is loaded. Asking for it once in the dialog beats typing the same date
+	# into twenty grid rows.
 	defaults: dict[str, dict] = {
-		"Container Booking": {
+		"Tank In": {
 			# Condition is mandatory on a booking line but is not something an email states,
 			# so every row starts Empty Dirty and is corrected on the booking form itself —
 			# which is why the dialog does not ask for it.
 			"condition": "EMPTY DIRTY",
 			"tanggal_bongkar": options.get("tanggal_bongkar"),
 		},
-		"Gate Out Plan": {"target_lift_on": options.get("target_lift_on")},
-	}[doctype]
+		"Tank Out": {"tanggal_muat": options.get("tanggal_muat")},
+	}[direction]
 
 	out = []
 	for row in rows:
@@ -498,7 +507,7 @@ def get_order_prefill(communication: str, order_type: str, containers=None, opti
 	target = ORDER_MAP.get(order_type)
 	if not target:
 		frappe.throw(_("Tipe order tidak dikenal: {0}").format(order_type))
-	doctype, customer_field = target
+	doctype, customer_field, direction = target
 
 	frappe.has_permission("Communication", "read", doc=communication, throw=True)
 	if not frappe.has_permission(doctype, "create"):
@@ -532,8 +541,11 @@ def get_order_prefill(communication: str, order_type: str, containers=None, opti
 	depot = _unanimous(rows, "depot")
 	if depot and frappe.get_meta(doctype).has_field("depot"):
 		values["depot"] = depot
-	if doctype == "Container Booking" and options.get("direction"):
-		values["direction"] = options["direction"]
+	# The order type already decides the direction (Booking = Tank In, Gate Out = Tank Out).
+	# The dialog may still override it for the inbound type, which is where the operator
+	# picks between the two by hand.
+	values["direction"] = options.get("direction") or direction
+	direction = values["direction"]
 	# The customer's own document number for this job, as printed on the mail. This is the
 	# one place it may be written from here: `reff_doc` is hand-entered by design (it
 	# propagates booking → bon → EIR → Cleaning / M&R), and the operator is typing it — the
@@ -547,7 +559,7 @@ def get_order_prefill(communication: str, order_type: str, containers=None, opti
 		table = {
 			"fieldname": fieldname,
 			"doctype": frappe.get_meta(doctype).get_field(fieldname).options,
-			"rows": _child_rows(doctype, rows, options),
+			"rows": _child_rows(doctype, direction, rows, options),
 		}
 
 	return {"doctype": doctype, "values": values, "table": table}

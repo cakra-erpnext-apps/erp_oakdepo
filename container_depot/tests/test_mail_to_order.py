@@ -1,4 +1,4 @@
-"""Email → Order bridge: container list in, a prefilled Booking / Gate Out Plan out.
+"""Email → Order bridge: container list in, a prefilled Container Booking out.
 
 One customer mail names several tanks, so the bridge is list-shaped end to end. What is
 covered here is the part an operator would notice if it broke:
@@ -250,8 +250,13 @@ class TestMailToOrder(FrappeTestCase):
 		row = resolve_containers(_A, order_type="Booking", direction="Tank Out")[0]
 		self.assertIn("tidak ada di depo", row["blocked"])
 
-	def test_tank_out_blocks_a_tank_with_work_still_open(self):
-		"""Readiness is the absence of open work — not the cached Available status."""
+	def test_tank_out_accepts_a_tank_with_work_still_open(self):
+		"""Unfinished work is not a refusal on the way out any more.
+
+		The booking is how the depot learns a pickup is coming; the work is prioritised off
+		its load date instead. Only "not here" still blocks — the dialog and the booking's
+		own submit read the same helper, so they cannot disagree.
+		"""
 		self._container(_A, status="Available")
 		self.assertIsNone(resolve_containers(_A, order_type="Booking", direction="Tank Out")[0]["blocked"])
 
@@ -260,8 +265,11 @@ class TestMailToOrder(FrappeTestCase):
 		}).insert(ignore_permissions=True)
 		self.addCleanup(frappe.db.delete, "Cleaning Order", {"name": order.name})
 
+		self.assertIsNone(resolve_containers(_A, order_type="Booking", direction="Tank Out")[0]["blocked"])
+
+		frappe.db.set_value("Container", _A, "status", "Gate_Out")
 		row = resolve_containers(_A, order_type="Booking", direction="Tank Out")[0]
-		self.assertIn("order belum selesai", row["blocked"])
+		self.assertIn("tidak ada di depo", row["blocked"])
 
 	def test_tank_in_may_name_a_new_tank_but_not_one_already_here(self):
 		self.assertTrue(
@@ -324,13 +332,16 @@ class TestMailToOrder(FrappeTestCase):
 		self.assertEqual(rows[0]["cargo"], cargo)
 		self.assertNotIn("cargo", rows[1])
 
-	def test_cargo_never_lands_on_an_order_whose_lines_have_none(self):
-		"""Gate Out lines have no cargo field; the grid column is context there, not data."""
+	def test_cargo_rides_along_on_both_directions(self):
+		"""Both order types are a Container Booking now, so both carry the grid's Cargo."""
 		cargo = _ensure_cargo("MailToOrder Test Cargo")
 		self._container(_A)
 		comm = self._email("Lift on")
-		res = get_order_prefill(comm, "Gate Out", containers=[{"container_no": _A, "cargo": cargo}])
-		self.assertNotIn("cargo", res["table"]["rows"][0])
+		for order_type in ("Booking", "Gate Out"):
+			res = get_order_prefill(
+				comm, order_type, containers=[{"container_no": _A, "cargo": cargo}]
+			)
+			self.assertEqual(res["table"]["rows"][0]["cargo"], cargo, order_type)
 
 	def test_resolve_reports_the_masters_last_cargo(self):
 		"""The grid prefills its Last Cargo column from this."""
@@ -353,9 +364,8 @@ class TestMailToOrder(FrappeTestCase):
 		self.assertEqual(gate_out["values"]["principal"], owner)
 
 	def test_prefill_seeds_depot_only_when_unanimous(self):
-		"""Depot is seeded on the doctypes that HAVE one — Container Booking. A Gate Out Plan
-		has no header depot at all (an outbound notice reads it off each tank), so the seeder
-		simply passes it by."""
+		"""The depot is the same for every tank in a normal email; a mixed list is left
+		blank for the operator to answer on the booking form."""
 		self._container(_A)
 		self._container(_B)
 		comm = self._email("Booking")
@@ -368,17 +378,24 @@ class TestMailToOrder(FrappeTestCase):
 		mixed = get_order_prefill(comm, "Booking", containers=f"{_A}\n{other}")
 		self.assertNotIn("depot", mixed["values"])
 
-	def test_gate_out_prefill_seeds_principal_and_the_container_table(self):
+	def test_gate_out_prefill_builds_an_outbound_booking(self):
+		"""A lift-on email now becomes the document the tanks actually leave on.
+
+		It used to raise a Gate Out Plan — a separate notice that authorised nothing and had
+		to be turned into a booking by hand later. The sender still resolves to the tank
+		OWNER (principal); bill-to stays the operator's to answer on the booking form.
+		"""
 		self._container(_A)
 		self._container(_B)
 		comm = self._email("Siap lift on")
 
 		res = get_order_prefill(comm, "Gate Out", containers=f"{_A}\n{_B}",
-							   options={"target_lift_on": today()})
+							   options={"tanggal_muat": today()})
+		self.assertEqual(res["doctype"], "Container Booking")
+		self.assertEqual(res["values"]["direction"], "Tank Out")
 		self.assertEqual(res["values"]["principal"], self._principal)
-		self.assertNotIn("depot", res["values"])
-		self.assertEqual(res["table"]["fieldname"], "containers")
-		self.assertEqual([r["target_lift_on"] for r in res["table"]["rows"]], [today(), today()])
+		self.assertEqual(res["table"]["fieldname"], "items")
+		self.assertEqual([r["tanggal_muat"] for r in res["table"]["rows"]], [today(), today()])
 
 	def test_only_booking_and_gate_out_can_be_raised(self):
 		"""Cleaning / M&R / Survey are depot decisions, not something a mail books."""

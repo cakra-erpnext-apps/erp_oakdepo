@@ -1,9 +1,11 @@
 // Email → Order.
 //
 // An incoming email (Communication, medium Email, Received) is the reference behind the two
-// things a customer books by mail — tanks coming in (Container Booking) or going out (Gate
-// Out Plan) — and it almost never names one tank. So "Buat Order" opens a dialog, not a
-// form: the email body stays on screen on the left while the container list is built on the
+// things a customer books by mail — tanks coming in or going out — and it almost never names
+// one tank. Both become a Container Booking; the direction is what tells them apart (the
+// outbound half used to raise a Gate Out Plan, a separate notice that authorised nothing).
+// So "Buat Order" opens a dialog, not a form: the email body stays on screen on the left
+// while the container list is built on the
 // right in the same grid shape Container Booking uses (Container picker + the tank's last
 // cargo), filled from the mail, from an .xlsx, or by pasting a block straight out of Excel.
 // Every row is a real Container master: a number with none is reported, never carried along
@@ -15,19 +17,20 @@
 // See container_depot/mail_to_order.py for everything the server does here.
 
 const ORDER_TYPES = [
-	{ key: "Booking", doctype: "Container Booking", label: __("Booking") },
-	{ key: "Gate Out", doctype: "Gate Out Plan", label: __("Gate Out") },
+	{ key: "Booking", doctype: "Container Booking", label: __("Booking (Tank In)") },
+	{ key: "Gate Out", doctype: "Container Booking", label: __("Gate Out (Tank Out)") },
 ];
 
 // Extra dialog fields per order type, and which of them the order's *child rows* make
 // mandatory — asking once here beats typing the same date into twenty grid rows, and a
 // row-mandatory field left blank would only block the save later.
+// The outbound type does NOT offer a Direction picker: choosing "Gate Out" IS the choice.
 const TYPE_FIELDS = {
 	"Booking": ["direction", "reff_doc", "tanggal_bongkar"],
-	"Gate Out": ["target_lift_on"],
+	"Gate Out": ["reff_doc", "tanggal_muat"],
 };
-const ROW_REQUIRED = { "Booking": ["tanggal_bongkar"], "Gate Out": ["target_lift_on"] };
-const ALL_TYPE_FIELDS = ["direction", "reff_doc", "tanggal_bongkar", "target_lift_on"];
+const ROW_REQUIRED = { "Booking": ["tanggal_bongkar"], "Gate Out": ["tanggal_muat"] };
+const ALL_TYPE_FIELDS = ["direction", "reff_doc", "tanggal_bongkar", "tanggal_muat"];
 
 function type_by_key(key) {
 	return ORDER_TYPES.find((t) => t.key === key);
@@ -256,7 +259,7 @@ function open_order_dialog(frm, preset_key) {
 				description: __("Nomor dokumen pelanggan yang tertulis di email (opsional)."),
 			},
 			{ fieldtype: "Date", fieldname: "tanggal_bongkar", label: __("Est. Tanggal Bongkar") },
-			{ fieldtype: "Date", fieldname: "target_lift_on", label: __("Target Lift On") },
+			{ fieldtype: "Date", fieldname: "tanggal_muat", label: __("Est. Tanggal Muat") },
 			{
 				fieldtype: "Table",
 				fieldname: "containers",
@@ -547,7 +550,7 @@ function open_order_dialog(frm, preset_key) {
 			direction: values.direction,
 			reff_doc: values.reff_doc,
 			tanggal_bongkar: values.tanggal_bongkar,
-			target_lift_on: values.target_lift_on,
+			tanggal_muat: values.tanggal_muat,
 		};
 	}
 

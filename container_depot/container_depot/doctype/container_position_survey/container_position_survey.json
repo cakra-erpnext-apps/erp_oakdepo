@@ -1,235 +1,235 @@
 {
-  "actions": [],
-  "allow_import": 1,
-  "autoname": "CPS-.YYYY.-.#####",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "header_section",
-    "container",
-    "container_no",
-    "depot",
-    "column_break_1",
-    "status",
-    "reopen_note",
-    "booking",
-    "booking_code",
-    "target_lift_on",
-    "survey_section",
-    "location_note",
-    "survey_meta_section",
-    "surveyed_by",
-    "surveyed_on",
-    "survey_started_by",
-    "survey_started_on",
-    "column_break_3",
-    "survey_notes",
-    "photos_section",
-    "position_photos",
-    "photos_preview",
-    "approval_section",
-    "approved_by",
-    "approved_on",
-    "fix_started_by",
-    "fix_started_on",
-    "column_break_4",
-    "approval_note"
-  ],
-  "fields": [
-    {
-      "fieldname": "header_section",
-      "fieldtype": "Section Break",
-      "label": "Container Position Survey"
-    },
-    {
-      "fieldname": "container",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Container",
-      "options": "Container",
-      "reqd": 1
-    },
-    {
-      "fetch_from": "container.container_no",
-      "fieldname": "container_no",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Container No",
-      "read_only": 1
-    },
-    {
-      "fieldname": "depot",
-      "fieldtype": "Link",
-      "in_standard_filter": 1,
-      "label": "Depot",
-      "options": "Depot"
-    },
-    {
-      "fieldname": "column_break_1",
-      "fieldtype": "Column Break"
-    },
-    {
-      "default": "Pending Survey",
-      "fieldname": "status",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "in_standard_filter": 1,
-      "label": "Status",
-      "options": "Pending Survey\nIn Survey\nSurveyed\nIn Fix\nConfirmed\nCancelled",
-      "reqd": 1
-    },
-    {
-      "depends_on": "eval:doc.reopen_note",
-      "description": "Diisi saat survey yang sudah selesai dikembalikan ke pekerjaan (revisi). Dikosongkan begitu langkahnya diselesaikan ulang.",
-      "fieldname": "reopen_note",
-      "fieldtype": "Small Text",
-      "label": "Alasan Dibuka Lagi",
-      "read_only": 1
-    },
-    {
-      "description": "The Container Booking (Tank Out) that generated this survey task.",
-      "fieldname": "booking",
-      "fieldtype": "Link",
-      "label": "Booking",
-      "options": "Container Booking",
-      "read_only": 1
-    },
-    {
-      "fieldname": "booking_code",
-      "fieldtype": "Link",
-      "label": "Booking Code",
-      "options": "Booking Code",
-      "read_only": 1
-    },
-    {
-      "description": "Rencana lift-on, dari container. Distempel Gate Out Plan — dipakai worklist Survey Posisi / Fix Posisi untuk mengurutkan prioritas.",
-      "fetch_from": "container.target_lift_on",
-      "fieldname": "target_lift_on",
-      "fieldtype": "Date",
-      "hidden": 1,
-      "label": "Target Lift-On",
-      "no_copy": 1,
-      "read_only": 1
-    },
-    {
-      "fieldname": "survey_section",
-      "fieldtype": "Section Break",
-      "label": "Lokasi Container (Hasil Survey)"
-    },
-    {
-      "description": "Catatan bebas letak container di depo (mis. \"blok kanan dekat pos, tumpukan 2\").",
-      "fieldname": "location_note",
-      "fieldtype": "Small Text",
-      "in_list_view": 1,
-      "label": "Letak Container"
-    },
-    {
-      "fieldname": "survey_meta_section",
-      "fieldtype": "Section Break"
-    },
-    {
-      "fieldname": "surveyed_by",
-      "fieldtype": "Link",
-      "label": "Surveyed By",
-      "options": "User",
-      "read_only": 1
-    },
-    {
-      "fieldname": "surveyed_on",
-      "fieldtype": "Datetime",
-      "label": "Surveyed On",
-      "read_only": 1
-    },
-    {
-      "description": "Surveyor yang menekan Mulai. Selama survey berjalan, order ini hilang dari worklist operator lain (work_claim).",
-      "fieldname": "survey_started_by",
-      "fieldtype": "Link",
-      "label": "Survey Started By",
-      "options": "User",
-      "read_only": 1
-    },
-    {
-      "fieldname": "survey_started_on",
-      "fieldtype": "Datetime",
-      "label": "Survey Started On",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_3",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "survey_notes",
-      "fieldtype": "Small Text",
-      "label": "Survey Notes"
-    },
-    {
-      "fieldname": "photos_section",
-      "fieldtype": "Section Break",
-      "label": "Foto Posisi"
-    },
-    {
-      "fieldname": "position_photos",
-      "fieldtype": "Table",
-      "label": "Foto",
-      "options": "Container Position Survey Photo"
-    },
-    {
-      "depends_on": "eval:(doc.position_photos || []).length",
-      "fieldname": "photos_preview",
-      "fieldtype": "HTML",
-      "label": "Pratinjau Foto"
-    },
-    {
-      "fieldname": "approval_section",
-      "fieldtype": "Section Break",
-      "label": "Approval Kalmar (Position Fix)"
-    },
-    {
-      "fieldname": "approved_by",
-      "fieldtype": "Link",
-      "label": "Approved By",
-      "options": "User",
-      "read_only": 1
-    },
-    {
-      "fieldname": "approved_on",
-      "fieldtype": "Datetime",
-      "label": "Approved On",
-      "read_only": 1
-    },
-    {
-      "description": "Operator Kalmar yang menekan Mulai di menu Fix Posisi.",
-      "fieldname": "fix_started_by",
-      "fieldtype": "Link",
-      "label": "Fix Started By",
-      "options": "User",
-      "read_only": 1
-    },
-    {
-      "fieldname": "fix_started_on",
-      "fieldtype": "Datetime",
-      "label": "Fix Started On",
-      "read_only": 1
-    },
-    {
-      "fieldname": "column_break_4",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "approval_note",
-      "fieldtype": "Small Text",
-      "label": "Approval Note"
-    }
-  ],
-  "is_submittable": 1,
-  "links": [],
-  "modified": "2026-08-26 11:00:00.000000",
-  "module": "Container Depot",
-  "name": "Container Position Survey",
-  "search_fields": "container_no, status, depot",
-  "sort_field": "creation",
-  "sort_order": "DESC",
-  "title_field": "container_no",
-  "track_changes": 1
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "CPS-.YYYY.-.#####",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "header_section",
+  "container",
+  "container_no",
+  "depot",
+  "column_break_1",
+  "status",
+  "reopen_note",
+  "booking",
+  "booking_code",
+  "target_lift_on",
+  "survey_section",
+  "location_note",
+  "survey_meta_section",
+  "surveyed_by",
+  "surveyed_on",
+  "survey_started_by",
+  "survey_started_on",
+  "column_break_3",
+  "survey_notes",
+  "photos_section",
+  "position_photos",
+  "photos_preview",
+  "approval_section",
+  "approved_by",
+  "approved_on",
+  "fix_started_by",
+  "fix_started_on",
+  "column_break_4",
+  "approval_note"
+ ],
+ "fields": [
+  {
+   "fieldname": "header_section",
+   "fieldtype": "Section Break",
+   "label": "Container Position Survey"
+  },
+  {
+   "fieldname": "container",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Container",
+   "options": "Container",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "container.container_no",
+   "fieldname": "container_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Container No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Pending Survey",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Pending Survey\nIn Survey\nSurveyed\nIn Fix\nConfirmed\nCancelled",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.reopen_note",
+   "description": "Diisi saat survey yang sudah selesai dikembalikan ke pekerjaan (revisi). Dikosongkan begitu langkahnya diselesaikan ulang.",
+   "fieldname": "reopen_note",
+   "fieldtype": "Small Text",
+   "label": "Alasan Dibuka Lagi",
+   "read_only": 1
+  },
+  {
+   "description": "The Container Booking (Tank Out) that generated this survey task.",
+   "fieldname": "booking",
+   "fieldtype": "Link",
+   "label": "Booking",
+   "options": "Container Booking",
+   "read_only": 1
+  },
+  {
+   "fieldname": "booking_code",
+   "fieldtype": "Link",
+   "label": "Booking Code",
+   "options": "Booking Code",
+   "read_only": 1
+  },
+  {
+   "description": "Rencana lift-on, dari container. Distempel booking keluar (Tank Out) — dipakai worklist Survey Posisi / Fix Posisi untuk mengurutkan prioritas.",
+   "fetch_from": "container.target_lift_on",
+   "fieldname": "target_lift_on",
+   "fieldtype": "Date",
+   "hidden": 1,
+   "label": "Target Lift-On",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "survey_section",
+   "fieldtype": "Section Break",
+   "label": "Lokasi Container (Hasil Survey)"
+  },
+  {
+   "description": "Catatan bebas letak container di depo (mis. \"blok kanan dekat pos, tumpukan 2\").",
+   "fieldname": "location_note",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Letak Container"
+  },
+  {
+   "fieldname": "survey_meta_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "surveyed_by",
+   "fieldtype": "Link",
+   "label": "Surveyed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "surveyed_on",
+   "fieldtype": "Datetime",
+   "label": "Surveyed On",
+   "read_only": 1
+  },
+  {
+   "description": "Surveyor yang menekan Mulai. Selama survey berjalan, order ini hilang dari worklist operator lain (work_claim).",
+   "fieldname": "survey_started_by",
+   "fieldtype": "Link",
+   "label": "Survey Started By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "survey_started_on",
+   "fieldtype": "Datetime",
+   "label": "Survey Started On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "survey_notes",
+   "fieldtype": "Small Text",
+   "label": "Survey Notes"
+  },
+  {
+   "fieldname": "photos_section",
+   "fieldtype": "Section Break",
+   "label": "Foto Posisi"
+  },
+  {
+   "fieldname": "position_photos",
+   "fieldtype": "Table",
+   "label": "Foto",
+   "options": "Container Position Survey Photo"
+  },
+  {
+   "depends_on": "eval:(doc.position_photos || []).length",
+   "fieldname": "photos_preview",
+   "fieldtype": "HTML",
+   "label": "Pratinjau Foto"
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Approval Kalmar (Position Fix)"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approved_on",
+   "fieldtype": "Datetime",
+   "label": "Approved On",
+   "read_only": 1
+  },
+  {
+   "description": "Operator Kalmar yang menekan Mulai di menu Fix Posisi.",
+   "fieldname": "fix_started_by",
+   "fieldtype": "Link",
+   "label": "Fix Started By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fix_started_on",
+   "fieldtype": "Datetime",
+   "label": "Fix Started On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approval_note",
+   "fieldtype": "Small Text",
+   "label": "Approval Note"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-09-02 15:00:00.000000",
+ "module": "Container Depot",
+ "name": "Container Position Survey",
+ "search_fields": "container_no, status, depot",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "title_field": "container_no",
+ "track_changes": 1
 }

@@ -84,7 +84,7 @@ def readiness_label(status: str | None, blockers: list[str]) -> str:
     """Can this tank leave? — one vocabulary, for every screen that asks.
 
     Readiness is NOT the same question as "is there open work", and conflating the two is
-    how a Gate Out Plan came to read *11/11 siap* while nine of its tanks were still
+    how a lift-on notice came to read *11/11 siap* while nine of its tanks were still
     ``Booked`` and one had already left: a tank that was never here has no work to finish
     either, so "no open work" answered yes for all of them.
 

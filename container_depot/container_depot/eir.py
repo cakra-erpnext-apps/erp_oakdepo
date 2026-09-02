@@ -1638,7 +1638,7 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			# the PWA worklist's belum / dikerjakan split; work_started_by scopes the
 			# next/prev EIR navigator to the account that is working them.
 			"work_started_on", "work_started_by",
-			# Gate Out Plan's stamp — sorts and badges this worklist by pickup urgency.
+			# The outbound booking's stamp — sorts and badges this worklist by pickup urgency.
 			"target_lift_on",
 		],
 		order_by="creation desc",

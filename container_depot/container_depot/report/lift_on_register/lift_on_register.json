@@ -1,7 +1,7 @@
 {
   "doctype": "Report",
-  "name": "Gate Out Plan Register",
-  "ref_doctype": "Gate Out Plan",
+  "name": "Lift On Register",
+  "ref_doctype": "Container Booking",
   "report_type": "Script Report",
   "is_standard": "Yes",
   "module": "Container Depot",

@@ -44,7 +44,7 @@ from container_depot.container_depot.doctype.booking_code.booking_code import (
 from container_depot.container_depot.doctype.depot_contract.depot_contract import (
 	get_active_contract,
 )
-from container_depot.container_depot import lift_on
+from container_depot.container_depot import lift_on, tank_documents
 from container_depot.container_depot.container_activity import log_container_activity
 from container_depot.container_depot.container_status import GATE_OUT, PRESENT, assert_rows_active
 from container_depot.state_machine import stage_for_status
@@ -2680,6 +2680,34 @@ def orders_by_container(booking: str):
 			"unlinked": _unlinked_count(row.container),
 		})
 	return out
+
+
+@frappe.whitelist()
+def related_orders(booking: str) -> list:
+	"""Per listed tank, EVERY document open against it — plus the finished ones as history.
+
+	The question a Tank Out booking is opened to ask once a truck is on its way: what still
+	has to happen to these tanks? :func:`orders_by_container` answers a different one —
+	which work was raised UNDER this booking (attribution) — and is what an inbound booking
+	shows, because on the way in there is no pickup to get ready for.
+
+	Ported from Gate Out Plan along with the rest of the lift-on preparation.
+	"""
+	frappe.has_permission("Container Booking", "read", doc=booking, throw=True)
+	rows = frappe.get_all(
+		"Container Booking Item",
+		filters={"parent": booking, "parenttype": "Container Booking"},
+		fields=["container", "container_no", "tanggal_muat"],
+		order_by="idx asc",
+	)
+	return tank_documents.dossier([
+		{
+			"container": r.container,
+			"container_no": r.container_no,
+			"target_lift_on": r.tanggal_muat,
+		}
+		for r in rows
+	])
 
 
 def _work_for(booking: str, container: str) -> list:

@@ -258,6 +258,38 @@ frappe.ui.form.on('Container Booking', {
 		}
 	},
 	_render_work_per_container(frm) {
+		// Two different questions, and which one this booking is asking depends on its
+		// direction. OUTBOUND: what still has to happen to these tanks before the truck
+		// comes — the whole dossier, live, with the blockers counted. INBOUND: what work was
+		// raised UNDER this booking, which is attribution, not readiness. Showing both would
+		// be two panels answering almost the same thing, which is exactly what the split
+		// avoids.
+		if (frm.doc.direction === 'Tank Out') {
+			frm.trigger('_render_tank_dossier');
+			return;
+		}
+		frm.trigger('_render_booking_work');
+	},
+	_render_tank_dossier(frm) {
+		const wrapper = frm.get_field('orders_by_container_html')?.$wrapper;
+		if (!wrapper) return;
+		if (frm.is_new()) {
+			wrapper.empty();
+			return;
+		}
+		// Placeholder while the call is in flight: an empty box reads as "no orders", which
+		// is a different answer from "not loaded yet".
+		wrapper.html(`<div class="text-muted">${__('Memuat…')}</div>`);
+		const shown_for = frm.doc.name;
+		frappe.call({
+			method: 'container_depot.container_depot.doctype.container_booking.container_booking.related_orders',
+			args: { booking: frm.doc.name },
+		}).then((r) => {
+			if (frm.doc.name !== shown_for) return; // reply landed after the form moved on
+			wrapper.html(_dossier_html(r.message || []));
+		});
+	},
+	_render_booking_work(frm) {
 		// "What happened to these tanks?" — the question a booking is opened to answer once
 		// the tanks are in the yard. The Connections tab has the same records but as four
 		// flat lists, which stops being readable the moment a booking carries more than one
@@ -679,7 +711,8 @@ frappe.ui.form.on('Container Booking', {
 			[__('Payment'), frm.doc.payment_status && esc(frm.doc.payment_status)],
 			[__('Sales Invoice'), link('Sales Invoice', frm.doc.sales_invoice)],
 			[__('Containers'), frm.doc.container_summary && esc(frm.doc.container_summary)],
-			[__('Gate Out Plan'), link('Gate Out Plan', frm.doc.gate_out_plan)],
+			[__('% Keluar'), frm.doc.direction === 'Tank Out' && frm.doc.container_summary
+				? `${flt(frm.doc.per_fulfilled, 2)}%` : null],
 			[__('Ref Email'), link('Communication', frm.doc.reff_email)],
 			[__('Block Reason'), frm.doc.block_reason && esc(frm.doc.block_reason)],
 		]);
@@ -1158,6 +1191,88 @@ function submit_generation(frm, dialog, codes, vehicle_data) {
 			}
 		}
 	});
+}
+
+// --- Tank dossier (outbound) -----------------------------------------------
+// Ported from Gate Out Plan, which used to be a separate notice document in front of the
+// booking. Same shape as the inbound "Pekerjaan per Container" block — the tank as a link to
+// its master, then one flush row per document, pill first — because two panels answering
+// nearly the same question should not look like two different features.
+function _dossier_html(tanks) {
+	const esc = frappe.utils.escape_html;
+	if (!tanks.length) return `<div class="text-muted">${__('Booking ini belum punya baris container.')}</div>`;
+	return tanks
+		.map((t) => {
+			const title = frappe.utils.get_form_link('Container', t.container, true, esc(t.container_no));
+			// Available is the state a tank leaves from cleanly; everything else is stated
+			// plainly rather than dressed up — the booking no longer refuses the others.
+			const status = t.status
+				? `<span class="indicator-pill ${
+						t.status === 'Available' ? 'green' : 'gray'
+				  } no-indicator-dot">${esc(t.status)}</span>`
+				: '';
+			const target = t.target_lift_on
+				? `<span class="text-muted small">${__('Target')}: ${esc(t.target_lift_on)}</span>`
+				: '';
+			const counts = t.blocking_count
+				? `<span class="text-danger small">${__('{0} menahan gate-out', [t.blocking_count])}</span>`
+				: t.open_count
+				  ? `<span class="text-muted small">${__('{0} belum selesai', [t.open_count])}</span>`
+				  : '';
+			// Every tank is listed even when it has nothing open — "this one is clear" is an
+			// answer the operator came for, and a tank that silently vanished would read as
+			// one nobody had looked at.
+			const rows = _dossier_rows(t.orders);
+			const body = rows.length
+				? `<div class="mt-2">${rows.map(_dossier_line).join('')}</div>`
+				: `<div class="text-muted mt-2">${__('Belum ada dokumen yang tercatat pada tank ini.')}</div>`;
+			return `<div class="mb-4">
+				<div class="d-flex align-items-center" style="gap: .5rem;">
+					<b>${title}</b>${status}${target}
+					<span class="ml-auto">${counts}</span>
+				</div>
+				${body}
+			</div>`;
+		})
+		.join('');
+}
+
+// One line per kind: the tank's LAST cleaning, last M&R, last EIR-In, last EIR-Out, last
+// booking, last bon. On a tank that has been through the depot twenty times the full history
+// is dozens of rows and none of it is news.
+//
+// The one exception is an OLDER document still unfinished — rare (a cleaning left at Pending
+// while a newer one was raised and finished), and precisely the thing that must not be
+// hidden: this panel exists to surface outstanding work.
+//
+// A voided document is never the representative of its kind: "the last thing that happened"
+// being a cancellation says nothing about the tank. Each producer returns its kind
+// newest-first, so the first surviving row of a kind IS the latest one.
+function _dossier_rows(orders) {
+	const shown_kind = new Set();
+	return (orders || []).filter((o) => {
+		if (o.cancelled) return false;
+		if (!shown_kind.has(o.kind)) {
+			shown_kind.add(o.kind);
+			return true;
+		}
+		return o.open;
+	});
+}
+
+function _dossier_line(o) {
+	const esc = frappe.utils.escape_html;
+	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
+	// Orange = unfinished AND holding the gate-out back (only Cleaning / M&R can). Blue =
+	// unfinished but not in the way: a draft EIR, a booking still being prepared. Green =
+	// finished. Grey = cancelled — history, neither a warning nor a clearance.
+	const tone = o.blocks ? 'orange' : o.cancelled ? 'gray' : o.open ? 'blue' : 'green';
+	const kind = o.detail ? `${o.kind} · ${o.detail}` : o.kind;
+	return `<div class="d-flex align-items-center" style="gap: .5rem; padding: 2px 0;">
+		<span class="indicator-pill ${tone}">${esc(o.status || '—')}</span>
+		<span style="min-width: 11rem;">${link}</span>
+		<span class="text-muted">${esc(kind)}</span>
+	</div>`;
 }
 
 // --- Bon coverage ----------------------------------------------------------

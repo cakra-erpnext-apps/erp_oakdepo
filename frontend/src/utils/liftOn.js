@@ -1,4 +1,4 @@
-// Gate Out Plan target lift-on → the countdown badge every worklist shows.
+// The outbound booking's target lift-on → the countdown badge every worklist shows.
 //
 // One definition for every worklist (EIR, Cleaning, M&R, Survey Posisi, Fix Posisi): the
 // badge is a vocabulary an operator learns once — "H-3" is three days to pickup, "Hari-H" is

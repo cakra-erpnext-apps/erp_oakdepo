@@ -450,7 +450,6 @@ class TestOtherRegisters(_RegisterCase):
 	def setUp(self):
 		super().setUp()
 		self._bookings = []
-		self._plans = []
 		self._surveys = []
 
 	def tearDown(self):
@@ -458,9 +457,6 @@ class TestOtherRegisters(_RegisterCase):
 			frappe.db.delete("Container Booking Item", {"parent": name})
 			frappe.db.delete("Container Booking Charge", {"parent": name})
 			frappe.db.delete("Container Booking", {"name": name})
-		for name in self._plans:
-			frappe.db.delete("Gate Out Plan Item", {"parent": name})
-			frappe.db.delete("Gate Out Plan", {"name": name})
 		for name in self._surveys:
 			frappe.db.delete("Container Position Survey", {"name": name})
 		super().tearDown()
@@ -477,14 +473,16 @@ class TestOtherRegisters(_RegisterCase):
 		self._bookings.append(doc.name)
 		return doc.name
 
-	def _plan(self, plan_date, status="Open"):
+	def _lift_on(self, plan_date, booking_status="Confirmed"):
+		"""An outbound booking with a planned work date — what a lift-on notice is now."""
 		doc = frappe.get_doc({
-			"doctype": "Gate Out Plan", "principal": self.principal,
-			"customer": self.principal, "plan_date": plan_date, "status": status,
+			"doctype": "Container Booking", "direction": "Tank Out",
+			"customer": self.principal, "principal": self.principal,
+			"payment_type": "Cash", "plan_date": plan_date, "booking_status": booking_status,
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
-		self._plans.append(doc.name)
+		self._bookings.append(doc.name)
 		return doc.name
 
 	def _survey(self, container, status="Pending Survey"):
@@ -515,33 +513,44 @@ class TestOtherRegisters(_RegisterCase):
 		self.assertEqual([r["direction"] for r in unpaid], ["Tank In"])
 		self.assertEqual(dict((s["label"], s["value"]) for s in summary)["Belum Dibayar"], 1)
 
-	# --- Gate Out Plan ----------------------------------------------------------
-	def test_gate_out_plan_register_flags_an_overdue_plan(self):
+	# --- Lift On (outbound bookings) --------------------------------------------
+	def test_lift_on_register_flags_an_overdue_booking(self):
 		"""Tanggal lewat sementara tanknya masih di yard: tempat terpakai, kerja tertunda."""
-		from container_depot.container_depot.report.gate_out_plan_register import (
-			gate_out_plan_register as report,
+		from container_depot.container_depot.report.lift_on_register import (
+			lift_on_register as report,
 		)
 
-		self._plan(add_months(getdate(), -1))
-		self._plan(add_months(getdate(), 1))
+		self._lift_on(add_months(getdate(), -1))
+		self._lift_on(add_months(getdate(), 1))
 
 		_cols, rows, _msg, _chart, summary = report.execute({"principal": self.principal})
 		self.assertEqual(len(rows), 2)
 		counts = dict((s["label"], s["value"]) for s in summary)
-		self.assertEqual(counts["Open"], 2)
+		self.assertEqual(counts["Belum Selesai"], 2)
 		self.assertEqual(counts["Lewat Tanggal"], 1)
 
-	def test_gate_out_plan_register_can_show_only_the_open_ones(self):
-		from container_depot.container_depot.report.gate_out_plan_register import (
-			gate_out_plan_register as report,
+	def test_lift_on_register_can_show_only_the_unfinished_ones(self):
+		from container_depot.container_depot.report.lift_on_register import (
+			lift_on_register as report,
 		)
 
-		self._plan(getdate())
-		self._plan(getdate(), status="Fulfilled")
+		self._lift_on(getdate())
+		self._lift_on(getdate(), booking_status="Completed")
 		_cols, rows, _msg, _chart, _summary = report.execute(
 			{"principal": self.principal, "only_open": 1}
 		)
-		self.assertEqual([r["status"] for r in rows], ["Open"])
+		self.assertEqual([r["status"] for r in rows], ["Confirmed"])
+
+	def test_lift_on_register_ignores_inbound_bookings(self):
+		"""An arriving tank has no pickup to be late for."""
+		from container_depot.container_depot.report.lift_on_register import (
+			lift_on_register as report,
+		)
+
+		self._booking("Tank In")
+		self._lift_on(getdate())
+		_cols, rows, _msg, _chart, _summary = report.execute({"principal": self.principal})
+		self.assertEqual(len(rows), 1)
 
 	# --- Survei posisi ----------------------------------------------------------
 	def test_survey_register_counts_the_untouched_ones(self):

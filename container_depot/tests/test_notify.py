@@ -147,6 +147,12 @@ class TestDepotNotify(FrappeTestCase):
 			)
 		finally:
 			frappe.db.delete("Inspection", {"container": "NOTIFC00011"})
+			# A submitted EIR-In on a dirty tank raises a Cleaning Order — delete it too, or
+			# it outlives the container it points at and every later full test run starts
+			# with one more orphan.
+			for co in frappe.get_all("Cleaning Order", {"container": "NOTIFC00011"}, pluck="name"):
+				frappe.db.delete("Cleaning Order Service", {"parent": co})
+				frappe.db.delete("Cleaning Order", {"name": co})
 			frappe.db.delete("Notification Log", {"document_type": "Inspection"})
 			frappe.db.delete("Container", {"name": "NOTIFC00011"})
 			frappe.db.commit()

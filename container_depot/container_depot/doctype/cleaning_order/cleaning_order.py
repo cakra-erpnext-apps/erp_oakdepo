@@ -161,7 +161,7 @@ class CleaningOrder(Document):
 		score = 0
 
 		# Factor 1: Release date urgency — nearer the customer's target lift-on (stamped by the
-		# Gate Out Plan), higher priority. Read live off the container so the score never lags a
+		# the outbound booking), higher priority. Read live off the container so the score never lags a
 		# stamp that landed after this order was last saved. H-0 / overdue gets the big boost.
 		from frappe.utils import getdate, nowdate
 

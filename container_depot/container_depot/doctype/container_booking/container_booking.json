@@ -37,7 +37,7 @@
   "block_reason",
   "container_summary",
   "bon_summary",
-  "gate_out_plan",
+  "per_fulfilled",
   "reff_email",
   "lift_type",
   "price_list",
@@ -226,12 +226,12 @@
   },
   {
    "default": "Draft",
-   "description": "Diatur alur booking.",
+   "description": "Diatur alur booking. Completed = semua container-nya sudah keluar gate.",
    "fieldname": "booking_status",
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Booking Status",
-   "options": "Draft\nPending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
+   "options": "Draft\nPending Payment\nPending Confirmation\nConfirmed\nCompleted\nCancelled\nBlocked",
    "read_only": 1,
    "reqd": 1,
    "hidden": 1
@@ -308,15 +308,16 @@
    "hidden": 1
   },
   {
-   "depends_on": "eval:doc.gate_out_plan",
-   "description": "Plan asal booking ini.",
-   "fieldname": "gate_out_plan",
-   "fieldtype": "Link",
-   "label": "Gate Out Plan",
+   "default": "0",
+   "depends_on": "eval:doc.direction=='Tank Out'",
+   "description": "Persentase container booking ini yang sudah Gate-Out.",
+   "fieldname": "per_fulfilled",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "% Keluar",
    "no_copy": 1,
-   "options": "Gate Out Plan",
    "read_only": 1,
-   "hidden": 1
+   "allow_on_submit": 1
   },
   {
    "depends_on": "eval:doc.reff_email",
@@ -389,7 +390,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-02 12:00:00.000000",
+ "modified": "2026-09-02 15:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

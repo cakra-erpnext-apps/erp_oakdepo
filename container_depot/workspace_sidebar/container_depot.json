@@ -104,8 +104,8 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Gate Out Plan",
-   "link_to": "Gate Out Plan Register",
+   "label": "Lift On Register",
+   "link_to": "Lift On Register",
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
@@ -245,18 +245,6 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "es-line-book"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Gate Out Plan",
-   "link_to": "Gate Out Plan",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "es-line-calender"
   },
   {
    "child": 1,
@@ -883,7 +871,7 @@
    "icon": "es-line-users"
   }
  ],
- "modified": "2026-08-31 15:30:00.000000",
+ "modified": "2026-09-02 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

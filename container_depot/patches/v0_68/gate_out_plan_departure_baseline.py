@@ -21,6 +21,11 @@ from container_depot.container_depot.doctype.gate_out_plan.gate_out_plan import 
 
 
 def execute():
+	# Gate Out Plan dihapus total di v0_87 (fungsinya pindah ke Container Booking Tank Out).
+	# Di site baru doctype-nya tidak pernah ada, dan di site lama patch ini sudah jalan jauh
+	# sebelum penghapusan — jadi tidak ada yang tersisa untuk dikerjakan.
+	if not frappe.db.exists("DocType", "Gate Out Plan Item"):
+		return
 	frappe.reload_doc("container_depot", "doctype", "gate_out_plan_item")
 
 	booked = {

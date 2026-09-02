@@ -154,3 +154,66 @@ def release_on_gate_out(container: str) -> None:
 	booking = frappe.db.get_value("Container", container, CONTAINER_FIELD)
 	if booking:
 		clear_target(container, booking)
+
+
+# --- how much of an outbound booking has actually left ------------------------
+FULFILLED_STATUS = "Completed"
+
+
+def refresh_fulfilment(booking: str) -> bool:
+	"""Rewrite one outbound booking's ``% Keluar`` from the live Container statuses, and
+	close it at 100%. Returns whether this call closed it.
+
+	Modelled on Purchase Receipt's ``% Amount Billed``: a stored percentage saying how much
+	of the document is done, so a partly-collected booking reads as progress rather than as
+	an open/closed flag. A lift-on is routinely collected over several visits — the bon
+	carries at most two tanks — so a five-tank booking spends most of its life somewhere in
+	between, and looked exactly like one nobody had started.
+
+	No "was already out" baseline is needed here, unlike the Gate Out Plan this came from: a
+	Tank Out booking can only be submitted for tanks that are PRESENT, so a row that reads
+	``Gate_Out`` left on this booking's watch.
+
+	Deliberately ``db.set_value`` and never ``doc.save()``: this runs from inside an
+	unrelated document's save (the gate-out), where re-running the booking's validation
+	could throw on a state that has nothing to do with the tank leaving.
+	"""
+	row = frappe.db.get_value(
+		"Container Booking", booking, ["direction", "booking_status", "docstatus"], as_dict=True
+	)
+	if not row or row.direction != OUTBOUND:
+		return False
+	containers = frappe.get_all(
+		"Container Booking Item",
+		filters={"parent": booking, "parenttype": "Container Booking"},
+		pluck="container",
+	)
+	listed = [c for c in containers if c]
+	if not listed:
+		frappe.db.set_value("Container Booking", booking, "per_fulfilled", 0, update_modified=False)
+		return False
+	away = frappe.db.count("Container", {"name": ["in", listed], "status": "Gate_Out"})
+	per = round(away * 100.0 / len(listed), 2)
+	updates = {"per_fulfilled": per}
+	# Only a live, submitted booking closes. A draft has not started, and Cancelled /
+	# Completed are already terminal — re-closing would rewrite history on every gate-out of
+	# a tank that came back for another visit.
+	close = per >= 100 and row.docstatus == 1 and row.booking_status == "Confirmed"
+	if close:
+		updates["booking_status"] = FULFILLED_STATUS
+	frappe.db.set_value("Container Booking", booking, updates, update_modified=False)
+	return close
+
+
+def refresh_bookings_for_container(container: str) -> list:
+	"""Recompute ``% Keluar`` on every outbound booking listing this tank; returns those it
+	closed. Called from ``gate.mark_gate_out`` — the only moment it can change."""
+	if not container:
+		return []
+	bookings = frappe.get_all(
+		"Container Booking Item",
+		filters={"container": container, "parenttype": "Container Booking"},
+		pluck="parent",
+		distinct=True,
+	)
+	return [b for b in bookings if refresh_fulfilment(b)]

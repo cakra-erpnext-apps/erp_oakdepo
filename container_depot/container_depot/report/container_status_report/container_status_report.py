@@ -10,7 +10,9 @@ Every order type that can name a container is therefore a column here:
 
 * raised directly on the tank — EIR-In, EIR-Out, Cleaning, M&R, Survey Posisi;
 * raised on a document that LISTS the tank — Container Booking, Order Bongkar, Order
-  Muat, Gate Out Plan (each via its container child table).
+  Muat (each via its container child table). The outbound Container Booking is where a
+  planned lift-on now lives; Gate Out Plan was a separate notice document, removed in
+  v0_87.
 
 Each cell holds the most recent non-cancelled document of that type, as a Link, so the
 row is a jumping-off point rather than a summary to be re-searched.
@@ -75,7 +77,6 @@ _ORDER_COLUMNS = (
 	("repair_order", "M&R", "Repair Order"),
 	("position_survey", "Survey Posisi", "Container Position Survey"),
 	("order_muat", "Order Muat", "Order Muat"),
-	("gate_out_plan", "Gate Out Plan", "Gate Out Plan"),
 )
 
 
@@ -191,9 +192,6 @@ def _related_orders(names: list[str]) -> dict[str, dict[str, str]]:
 		# shared with the booking itself. Hence the parenttype pin in _via_child.
 		"order_bongkar": _via_child("Container Booking Item", "Order Bongkar", names),
 		"order_muat": _via_child("Order Container Item", "Order Muat", names),
-		"gate_out_plan": _via_child(
-			"Gate Out Plan Item", "Gate Out Plan", names, "p.status != 'Cancelled'"
-		),
 	}
 
 

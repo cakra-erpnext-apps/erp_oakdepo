@@ -317,21 +317,17 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 		# filters `order_status NOT IN ('Completed', 'Hold')`).
 		order_completed = _complete_order_muat_if_done(order_muat)
 
-		# Same idea one level up: the customer's lift-on notice (Gate Out Plan) advances its
-		# "% Keluar" and closes at 100%, releasing this tank's target_lift_on stamp so the
-		# customer's NEXT notice can list it again.
-		from container_depot.container_depot.doctype.gate_out_plan.gate_out_plan import (
-			refresh_plans_for_container,
-		)
-
-		plans_fulfilled = refresh_plans_for_container(doc.name)
-
 		# The tank has left, so the lift-on date its outbound booking stamped on it has been
 		# met — drop it, or a departed tank keeps sitting at the top of every worklist and
 		# the customer's next booking cannot claim it.
 		from container_depot.container_depot import lift_on
 
 		lift_on.release_on_gate_out(doc.name)
+
+		# ...and the booking it left on advances its "% Keluar", closing at 100% so a fully
+		# collected lift-on stops reading as work in progress. (Both of these used to be one
+		# level up, on the Gate Out Plan — a separate notice document, now removed.)
+		bookings_completed = lift_on.refresh_bookings_for_container(doc.name)
 
 		from container_depot.container_depot.notify import notify_gate_out
 
@@ -347,7 +343,8 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 		"gate_out_timestamp": str(ts),
 		"order_muat": order_muat,
 		"order_completed": order_completed,
-		"plans_fulfilled": plans_fulfilled,
+		# Outbound bookings this departure completed (every tank on them has now left).
+		"bookings_completed": bookings_completed,
 	}
 
 

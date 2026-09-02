@@ -155,3 +155,92 @@ class TestLiftOnPriority(FrappeTestCase):
 		self.assertEqual(self._stamp(c).lift_on_booking, other.name)
 		lift_on.clear_target(c, owner.name)
 		self.assertEqual(self._stamp(c).lift_on_booking, other.name)
+
+
+class TestOutboundFulfilment(FrappeTestCase):
+	"""% Keluar on an outbound booking: how much of it has actually left."""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._containers = []
+		self._bookings = []
+
+	def tearDown(self):
+		if self._bookings:
+			frappe.db.sql(
+				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL
+				   WHERE lift_on_booking IN %(bookings)s""",
+				{"bookings": tuple(self._bookings)},
+			)
+		for b in self._bookings:
+			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Container Booking", {"name": b})
+		if self._containers:
+			frappe.db.delete("Container Position Survey", {"container": ["in", self._containers]})
+			frappe.db.delete("Container", {"name": ["in", self._containers]})
+		frappe.db.commit()
+		super().tearDown()
+
+	def _booking(self, containers, *, submitted=True):
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
+			"booking_status": "Confirmed" if submitted else "Draft",
+			"items": [{"container": c, "tanggal_muat": today()} for c in containers],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+		if submitted:
+			frappe.db.set_value("Container Booking", doc.name, "docstatus", 1, update_modified=False)
+		return doc.name
+
+	def _container(self, cno):
+		c = _make_container(cno, depot=DEPOT)
+		self._containers.append(c)
+		return c
+
+	def _per(self, booking):
+		return frappe.db.get_value(
+			"Container Booking", booking, ["per_fulfilled", "booking_status"], as_dict=True
+		)
+
+	def test_part_collected_reads_as_progress_and_closes_at_100(self):
+		"""A bon carries at most two tanks, so a five-tank lift-on spends most of its life
+		part-collected — and used to look exactly like one nobody had started."""
+		a, b = self._container("LIFTFUL0001"), self._container("LIFTFUL0002")
+		bk = self._booking([a, b])
+
+		lift_on.refresh_fulfilment(bk)
+		self.assertEqual(self._per(bk).per_fulfilled, 0)
+
+		frappe.db.set_value("Container", a, "status", "Gate_Out")
+		self.assertFalse(lift_on.refresh_fulfilment(bk))
+		self.assertEqual(self._per(bk).per_fulfilled, 50)
+		self.assertEqual(self._per(bk).booking_status, "Confirmed")
+
+		frappe.db.set_value("Container", b, "status", "Gate_Out")
+		self.assertTrue(lift_on.refresh_fulfilment(bk), "reaching 100% closes it")
+		state = self._per(bk)
+		self.assertEqual(state.per_fulfilled, 100)
+		self.assertEqual(state.booking_status, "Completed")
+
+	def test_a_draft_never_closes(self):
+		"""Closing is a thing that happens to a booking that started; a draft has not."""
+		c = self._container("LIFTFUL0003")
+		bk = self._booking([c], submitted=False)
+		frappe.db.set_value("Container", c, "status", "Gate_Out")
+		self.assertFalse(lift_on.refresh_fulfilment(bk))
+		self.assertEqual(self._per(bk).booking_status, "Draft")
+
+	def test_an_inbound_booking_has_no_percentage(self):
+		c = self._container("LIFTFUL0004")
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank In", "depot": DEPOT,
+			"items": [{"container": c}],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+		frappe.db.set_value("Container", c, "status", "Gate_Out")
+		self.assertFalse(lift_on.refresh_fulfilment(doc.name))
+		self.assertEqual(frappe.db.get_value("Container Booking", doc.name, "per_fulfilled"), 0)

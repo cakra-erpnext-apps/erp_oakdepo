@@ -39,7 +39,6 @@ def _cleanup():
 			("Container Booking", "Container Booking Item"),
 			("Order Bongkar", "Container Booking Item"),
 			("Order Muat", "Order Container Item"),
-			("Gate Out Plan", "Gate Out Plan Item"),
 		):
 			for p in set(
 				frappe.get_all(
@@ -136,11 +135,6 @@ class TestContainerStatusReport(FrappeTestCase):
 				"doctype": "Order Muat", "shipper": self.customer,
 				"containers": [{"container": TANK, "container_no": TANK}],
 			}, submit=True),
-			"gate_out_plan": self._insert({
-				"doctype": "Gate Out Plan", "principal": self.customer, "depot": DEPOT,
-				"source": "Email", "status": "Open",
-				"containers": [{"container": TANK, "target_lift_on": add_days(today(), 3)}],
-			}),
 		}
 
 		row = self._row()

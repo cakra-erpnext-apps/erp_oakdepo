@@ -19,7 +19,6 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot.doctype.container_booking import container_booking as cb
-from container_depot.container_depot.doctype.gate_out_plan import gate_out_plan as gop
 from container_depot.tests.test_api import ensure_test_customer
 
 CUSTOMER = "Tank Active Co"
@@ -232,18 +231,18 @@ class TestContainerActive(FrappeTestCase):
 		order.save(ignore_permissions=True)
 		self.assertEqual(frappe.db.get_value("Cleaning Order", order.name, "remarks"), "koreksi catatan")
 
-	def test_the_plan_import_skips_a_retired_tank(self):
-		from frappe.utils import add_days, today
+	def test_the_outbound_import_skips_a_retired_tank(self):
+		"""Same refusal on the way out as on the way in — a retired tank takes no new work.
 
+		(The lift-on half used to have an importer of its own, on Gate Out Plan; that notice
+		document is gone and the booking's own Import Excel does both directions.)
+		"""
 		c = self._container(f"{PREFIX}0000008", status="Available")
 		frappe.db.set_value("Container", c.name, "is_active", 0)
 
-		url = self._xlsx([["Container", "Target Lift-On"], [f"{PREFIX}0000008", add_days(today(), 5)]])
-		res = gop.parse_container_xlsx(
-			url, principal=self.customer, create_missing=1
-		)
+		url = self._xlsx([["Container", "Condition"], [f"{PREFIX}0000008", "EMPTY CLEAN"]])
+		res = cb.parse_container_xlsx(url, direction="Tank Out", principal=self.customer)
 
 		self.assertEqual(res["rows"], [])
-		self.assertEqual(res["created"], [])
 		self.assertTrue(any(f"{PREFIX}0000008" in e for e in res["errors"]))
 		self.assertEqual(frappe.db.count("Container", {"container_no": f"{PREFIX}0000008"}), 1)

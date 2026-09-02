@@ -178,7 +178,6 @@ FILE_BEARING_DOCTYPES = (
 	"Repair Order",
 	"Container Position Survey",
 	"Container Booking",
-	"Gate Out Plan",
 	"Depot Contract",
 )
 for _dt in FILE_BEARING_DOCTYPES:
