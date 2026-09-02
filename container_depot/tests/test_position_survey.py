@@ -74,18 +74,24 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		return doc.name
 
 	# --- tests ---------------------------------------------------------------
-	def test_provision_one_per_container_idempotent(self):
+	def test_saving_an_outbound_draft_already_tasks_the_surveyor(self):
+		"""Provisioning happens on the DRAFT, not at submit.
+
+		Finding a tank in a full yard is preparation, and preparation that starts at Submit
+		starts too late — the booking is written days ahead precisely so the yard can get
+		ready. So merely saving the outbound booking opens the survey.
+		"""
 		c = self._container("CPSPROV0001")
 		bk = self._tank_out_booking(c)
 
-		created = ps.provision_position_survey_for_booking(bk)
+		created = frappe.get_all("Container Position Survey", filters={"booking": bk}, pluck="name")
 		self.assertEqual(len(created), 1)
 		survey = frappe.get_doc("Container Position Survey", created[0])
 		self.assertEqual(survey.container, c)
 		self.assertEqual(survey.status, ps.PENDING)
 		self.assertEqual(survey.booking, bk)
 
-		# Idempotent: a second run does not open a duplicate.
+		# Idempotent: saving again (or calling the provisioner directly) opens no duplicate.
 		self.assertEqual(ps.provision_position_survey_for_booking(bk), [])
 
 	def test_a_resubmitted_booking_does_not_provision_a_second_survey(self):
@@ -95,7 +101,7 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		# and a duplicate used to be opened for the same booking.
 		c = self._container("CPSPROV0002")
 		bk = self._tank_out_booking(c)
-		created = ps.provision_position_survey_for_booking(bk)[0]
+		created = frappe.get_all("Container Position Survey", filters={"booking": bk}, pluck="name")[0]
 		frappe.db.set_value("Container Position Survey", created, {"docstatus": 1, "status": ps.CONFIRMED})
 
 		self.assertEqual(ps.provision_position_survey_for_booking(bk), [])
@@ -242,11 +248,14 @@ class TestContainerPositionSurvey(FrappeTestCase):
 		return [c.kwargs.get("event_key") for c in spy.call_args_list]
 
 	def test_provisioning_rings_the_survey_team(self):
+		# Saved through the booking, which is what provisions now — the notification has to
+		# survive the move from submit to the draft save.
 		c = self._container("CPSNOTIF001")
-		bk = self._tank_out_booking(c)
+		# Both notifications now come out of the same save: the booking announces itself
+		# (after_insert) and the survey it opens rings the surveyors (on_update).
 		self.assertEqual(
-			self._fired(ps.provision_position_survey_for_booking, bk),
-			["position_survey_pending"],
+			self._fired(self._tank_out_booking, c),
+			["booking_created", "position_survey_pending"],
 		)
 
 	def test_recording_a_position_rings_kalmar(self):

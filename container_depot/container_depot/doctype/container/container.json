@@ -44,6 +44,7 @@
   "last_eir_in",
   "last_eir_out",
   "gate_out_plan",
+  "lift_on_booking",
   "column_break_ref",
   "target_lift_on",
   "location_section",
@@ -84,7 +85,7 @@
    "options": "20'\n40'\n45'\nOther"
   },
   {
-   "description": "FOO = Food Grade, CHM = Chemical. Boleh dikosongkan \u2014 tank yang peruntukannya belum ditetapkan tidak dicap.",
+   "description": "FOO = Food Grade, CHM = Chemical. Boleh dikosongkan — tank yang peruntukannya belum ditetapkan tidak dicap.",
    "fieldname": "equipment_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -269,6 +270,15 @@
    "read_only": 1
   },
   {
+   "description": "Container Booking (Tank Out) yang menandai target lift-on ini (jejak).",
+   "fieldname": "lift_on_booking",
+   "fieldtype": "Link",
+   "label": "Booking Lift-On",
+   "no_copy": 1,
+   "options": "Container Booking",
+   "read_only": 1
+  },
+  {
    "fieldname": "column_break_ref",
    "fieldtype": "Column Break"
   },
@@ -376,7 +386,7 @@
   }
  ],
  "links": [],
- "modified": "2026-08-31 12:00:00.000000",
+ "modified": "2026-09-02 13:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

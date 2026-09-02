@@ -326,6 +326,13 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 
 		plans_fulfilled = refresh_plans_for_container(doc.name)
 
+		# The tank has left, so the lift-on date its outbound booking stamped on it has been
+		# met — drop it, or a departed tank keeps sitting at the top of every worklist and
+		# the customer's next booking cannot claim it.
+		from container_depot.container_depot import lift_on
+
+		lift_on.release_on_gate_out(doc.name)
+
 		from container_depot.container_depot.notify import notify_gate_out
 
 		notify_gate_out(doc.container_no, gate_entry=gate_entry_name, depot=doc.depot, when=ts)

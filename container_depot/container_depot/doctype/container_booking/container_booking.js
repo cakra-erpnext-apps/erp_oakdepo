@@ -297,14 +297,17 @@ frappe.ui.form.on('Container Booking', {
 		}
 		const payload = JSON.stringify(rows);
 		const base = 'container_depot.container_depot.doctype.container_booking.container_booking';
+		const outbound = frm.doc.direction === 'Tank Out';
 		Promise.all([
 			frappe.xcall(`${base}.open_booking_conflicts`, { booking: frm.doc.name, containers: payload }),
 			frappe.xcall(`${base}.status_direction_warnings`, {
 				direction: frm.doc.direction || null,
 				containers: payload,
 			}),
+			// Outbound only, and NOT a blocker — see below.
+			outbound ? frappe.xcall(`${base}.out_work_warnings`, { containers: payload }) : [],
 		])
-			.then(([conflicts, mismatches]) => {
+			.then(([conflicts, mismatches, pending]) => {
 				const lines = [];
 				(conflicts || []).forEach((c) => {
 					// A bon that exists but has not been submitted holds the tank just as
@@ -319,26 +322,36 @@ frappe.ui.form.on('Container Booking', {
 				(mismatches || []).forEach((m) => {
 					if (m.direction === 'Tank In') {
 						lines.push(__('Container {0} is already in the depot (status {1}) — a Tank In (Lift Off) will be refused.', [m.container_no, m.status]));
-					} else if ((m.open_orders || []).length) {
-						// Name the work holding the tank. "Not ready" alone sends the operator
-						// hunting; the order number is what they can actually go and finish.
-						const orders = m.open_orders
-							.map((o) => `${o.label} <b>${frappe.utils.escape_html(o.name)}</b> (${frappe.utils.escape_html(o.status || '-')})`)
-							.join(', ');
-						lines.push(
-							__('Container {0} masih punya order belum selesai: {1}', [m.container_no, orders])
-						);
 					} else {
 						lines.push(
 							__('Container {0} tidak ada di depo (status {1}) — booking keluar akan ditolak.', [m.container_no, m.status])
 						);
 					}
 				});
-				if (!lines.length) {
+				// Unfinished work is NOT one of the lines above any more. An outbound booking
+				// is how the depot learns a pickup is coming, so it is accepted and the work
+				// is prioritised instead — the tank's target lift-on floats it to the top of
+				// the cleaning / M&R / survey worklists. Said in its own banner, in its own
+				// colour, because "yang akan dikebut" and "yang akan ditolak" are opposite
+				// messages and one list of orange lines made them read as the same one.
+				const prep = (pending || []).map((p) => {
+					const orders = (p.open_orders || [])
+						.map((o) => `${o.label} <b>${frappe.utils.escape_html(o.name)}</b> (${frappe.utils.escape_html(o.status || '-')})`)
+						.join(', ');
+					return __('Container {0}: {1}', [p.container_no, orders]);
+				});
+				if (!lines.length && !prep.length) {
 					frm.set_intro('');
 					return;
 				}
-				frm.set_intro(__('Akan ditolak saat Submit:') + '<br>' + lines.join('<br>'), 'orange');
+				const blocks = [];
+				if (lines.length) blocks.push(`<b>${__('Akan ditolak saat Submit:')}</b><br>${lines.join('<br>')}`);
+				if (prep.length) {
+					blocks.push(
+						`<b>${__('Belum selesai — akan diprioritaskan untuk tanggal muat booking ini:')}</b><br>${prep.join('<br>')}`
+					);
+				}
+				frm.set_intro(blocks.join('<br><br>'), lines.length ? 'orange' : 'blue');
 			})
 			.catch(() => {
 				/* non-blocking — a failed warning must never get in the operator's way */

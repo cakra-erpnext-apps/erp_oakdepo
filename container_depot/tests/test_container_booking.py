@@ -21,11 +21,31 @@ CUSTOMER_TOP = "Phase3 TOP Customer"
 CONTAINER_NO = "TSTU3334440"
 
 
+def _release_lift_on(bookings):
+	"""Drop the lift-on stamp an outbound booking left on its tanks, before the booking row
+	itself is deleted.
+
+	These purges are raw ``db.delete`` (a Container Booking refuses ordinary deletion), so
+	nothing unwinds the ``Container.lift_on_booking`` back-link the way cancelling would.
+	Left behind, it is a Link pointing at a row that no longer exists — and the NEXT save of
+	that container, or of anything that saves it, dies on link validation somewhere entirely
+	unrelated to the test that caused it.
+	"""
+	frappe.db.sql(
+		"""
+		UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL
+		WHERE lift_on_booking IN %(bookings)s
+		""",
+		{"bookings": tuple(bookings)},
+	)
+
+
 def _cleanup_customer_world(customer: str):
 	bookings = frappe.get_all("Container Booking", filters={"customer": customer}, pluck="name")
 	if bookings:
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
 		frappe.db.delete("Container Booking Item", {"parent": ("in", bookings)})
+		_release_lift_on(bookings)
 		frappe.db.delete("Container Booking", {"name": ("in", bookings)})
 	contracts = frappe.get_all("Depot Contract", filters={"customer": customer}, pluck="name")
 	if contracts:
@@ -62,6 +82,7 @@ def _purge_bookings(customer: str):
 	if bookings:
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
 		frappe.db.delete("Container Booking Item", {"parent": ("in", bookings)})
+		_release_lift_on(bookings)
 		frappe.db.delete("Container Booking", {"name": ("in", bookings)})
 	frappe.db.commit()
 
@@ -1014,17 +1035,17 @@ class TestTankOutGating(FrappeTestCase):
 		finally:
 			frappe.delete_doc("Cleaning Order", co.name, force=True, ignore_permissions=True)
 
-	def test_tank_out_submit_blocked_by_open_order_and_says_which(self):
-		"""Blocked by unfinished WORK, and the message names it — "not ready" alone leaves
-		the operator hunting for what to finish."""
+	def test_tank_out_submit_is_allowed_while_work_is_open(self):
+		"""Unfinished work does NOT hold an outbound booking back any more.
+
+		The booking is how the depot learns a pickup is coming; refusing it until the yard
+		had finished meant the cleaning queue heard about the deadline only after it had
+		passed. The work is prioritised instead (the tank's target lift-on floats it up every
+		worklist) and is still refused where the tank actually moves — the bon and the gate.
+		"""
 		co = self._open_cleaning()
 		try:
-			b = self._booking()
-			with self.assertRaises(frappe.ValidationError) as ctx:
-				b._validate_out_ready()
-			msg = str(ctx.exception)
-			self.assertIn("belum selesai", msg)
-			self.assertIn(co.name, msg, "the blocking order must be named")
+			self._booking()._validate_out_ready()  # must NOT raise
 		finally:
 			frappe.delete_doc("Cleaning Order", co.name, force=True, ignore_permissions=True)
 
@@ -1054,22 +1075,28 @@ class TestTankOutGating(FrappeTestCase):
 		finally:
 			frappe.db.set_value("Container", self.container, "status", "Available")
 
-	def test_draft_warning_carries_the_open_orders(self):
-		"""The form banner and the submit block read the same helper, so they can never
-		disagree about what is holding the tank."""
+	def test_open_work_is_reported_as_priority_not_as_a_refusal(self):
+		"""Two questions, two helpers, and the split is the point.
+
+		``status_direction_warnings`` answers "what will Submit refuse" and no longer counts
+		unfinished work; ``out_work_warnings`` answers "what does the yard still owe on these
+		tanks", which is what the booking's lift-on date is about to prioritise. The form
+		shows them as two banners because they are opposite messages.
+		"""
 		co = self._open_cleaning()
 		try:
 			from container_depot.container_depot.doctype.container_booking.container_booking import (
+				out_work_warnings,
 				status_direction_warnings,
 			)
 
-			warnings = status_direction_warnings(
-				"Tank Out", [{"container": self.container, "container_no": self.container}]
-			)
-			self.assertEqual(len(warnings), 1)
-			names = [o["name"] for o in warnings[0]["open_orders"]]
-			self.assertEqual(names, [co.name])
-			self.assertEqual(warnings[0]["open_orders"][0]["label"], "Cleaning")
+			rows = [{"container": self.container, "container_no": self.container}]
+			self.assertEqual(status_direction_warnings("Tank Out", rows), [])
+
+			pending = out_work_warnings(rows)
+			self.assertEqual(len(pending), 1)
+			self.assertEqual([o["name"] for o in pending[0]["open_orders"]], [co.name])
+			self.assertEqual(pending[0]["open_orders"][0]["label"], "Cleaning")
 		finally:
 			frappe.delete_doc("Cleaning Order", co.name, force=True, ignore_permissions=True)
 

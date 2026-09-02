@@ -44,6 +44,7 @@ from container_depot.container_depot.doctype.booking_code.booking_code import (
 from container_depot.container_depot.doctype.depot_contract.depot_contract import (
 	get_active_contract,
 )
+from container_depot.container_depot import lift_on
 from container_depot.container_depot.container_activity import log_container_activity
 from container_depot.container_depot.container_status import GATE_OUT, PRESENT, assert_rows_active
 from container_depot.state_machine import stage_for_status
@@ -185,14 +186,9 @@ class ContainerBooking(Document):
 			update_modified=False,
 		)
 		self._auto_invoice()
-		# Outbound (Lift On / Tank Out): task a Surveyor to locate each container's yard
-		# position before it is pulled. Best-effort — never block the booking submit.
-		if self.direction == "Tank Out":
-			try:
-				from container_depot.container_depot.position_survey import provision_position_survey_for_booking
-				provision_position_survey_for_booking(self.name)
-			except Exception:
-				frappe.log_error(frappe.get_traceback(), f"provision position survey for {self.name}")
+		# The outbound position survey is NOT raised here any more — the draft already did
+		# it (:meth:`_provision_position_surveys`). on_update runs on the submit save too, so
+		# a booking that somehow reached Submit without one still gets it.
 		from container_depot.container_depot.notify import notify_booking_submitted
 		notify_booking_submitted(self)
 
@@ -229,6 +225,31 @@ class ContainerBooking(Document):
 		# reserved behind it — release it here, not in validate: nothing may be deleted
 		# while the save is still in flight.
 		self._release_dropped_containers()
+		# Lift-on priority, from the DRAFT: the booking is written days ahead precisely so
+		# the yard can get the tank ready, and waiting for Submit would hand the cleaning
+		# queue its deadline only after the preparation time had been spent. Total and
+		# idempotent, so one call covers a row added, a date moved, or the whole booking
+		# voided (see lift_on.sync_booking_targets).
+		lift_on.sync_booking_targets(self)
+		self._provision_position_surveys()
+
+	def _provision_position_surveys(self):
+		"""Task a Surveyor with locating each outbound tank — also from the draft.
+
+		Same reason as the lift-on stamp: finding a tank in a full yard is preparation, and
+		preparation that starts at Submit starts too late. Idempotent per container (the
+		provisioner skips a tank that already has an open or a booking-linked survey) and
+		best-effort — a survey hiccup must never block saving a booking.
+		"""
+		if self.direction != "Tank Out" or self.booking_status == "Cancelled" or self.docstatus == 2:
+			return
+		try:
+			from container_depot.container_depot.position_survey import (
+				provision_position_survey_for_booking,
+			)
+			provision_position_survey_for_booking(self.name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"provision position survey for {self.name}")
 
 	def before_cancel(self):
 		# Before, not on_cancel: on_cancel has already voided the codes and reversed the
@@ -274,6 +295,9 @@ class ContainerBooking(Document):
 		# Every live code was just voided above, so the bon marker has nothing left to
 		# count — clear it rather than leave a cancelled booking advertising "0/5 dibon".
 		refresh_bon_status(self.name)
+		# ...and a cancelled booking owns no lift-on priority: the pickup it was preparing
+		# for is off, so its tanks must stop crowding the top of the yard's worklists.
+		lift_on.sync_booking_targets(self)
 
 	def on_trash(self):
 		# A booking is never permanently deleted — it is voided/cancelled (Cancel) so its
@@ -1757,6 +1781,9 @@ def void_draft(booking):
 	# this path keep the cancelled invoice linked & visible, as the docstring promises.
 	doc.db_set("booking_status", "Cancelled", update_modified=False)
 	doc.db_set("payment_status", "Cancelled", update_modified=False)
+	# A voided draft owns no lift-on priority either — same unwinding `on_cancel` does, and
+	# it has to happen here too because a draft never passes through that hook.
+	lift_on.sync_booking_targets(doc)
 	# A draft that was never submitted holds no codes, but a booking brought back by
 	# `revert_booking_to_draft` keeps the ones Submit issued — and since that is now the only
 	# road to cancelling a confirmed booking, this is where they are taken out of
@@ -2176,25 +2203,48 @@ def _describe_booking_conflict(conflict) -> str:
 
 
 def _describe_out_block(mismatch) -> str:
-	"""Why one container cannot leave, in the words the operator needs to act on.
+	"""Why one container cannot be booked out: it is not in the depot.
 
-	Two different problems wear the same "not ready" label, and the fix for each is
-	different: work still open (go finish these orders) versus the tank not being in the
-	depot at all (nothing to finish — it is elsewhere). So they are said separately, and
-	the open ones are listed by name.
+	The only reason left. Unfinished work used to be the other one and is not a refusal any
+	more — it is what the booking exists to prioritise (:mod:`lift_on`); it is named to the
+	operator as a heads-up (:func:`out_work_warnings`), and it still stops the tank at the
+	bon and at the gate, which is where "not ready to move" actually belongs.
 	"""
-	open_orders = mismatch.get("open_orders") or []
-	if not open_orders:
-		return _(
-			"Container {0} tidak ada di depo (status {1}) — tidak bisa dibuat booking keluar."
-		).format(mismatch["container_no"], mismatch["status"])
-	items = "".join(
-		"<li>{0} <b>{1}</b> — {2}</li>".format(o["label"], o["name"], o.get("status") or "-")
-		for o in open_orders
-	)
-	return _("Container {0} masih punya order yang belum selesai:").format(
-		mismatch["container_no"]
-	) + f"<ul>{items}</ul>" + _("Selesaikan order di atas dulu sebelum submit booking keluar.")
+	return _(
+		"Container {0} tidak ada di depo (status {1}) — tidak bisa dibuat booking keluar."
+	).format(mismatch["container_no"], mismatch["status"])
+
+
+@frappe.whitelist()
+def out_work_warnings(containers=None) -> list[dict]:
+	"""Per container, the work still unfinished on it — a heads-up, never a refusal.
+
+	The counterpart to :func:`status_direction_warnings` now that open work no longer blocks
+	an outbound booking. The operator is told what the yard still owes on these tanks (and
+	so what the booking's lift-on date has just been put at the front of the queue), rather
+	than the booking being turned away.
+	"""
+	from container_depot.container_depot.container_status import PRESENT, container_open_orders
+
+	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
+	out = []
+	for row in rows:
+		name = row.get("container") or (
+			frappe.db.get_value("Container", {"container_no": row.get("container_no")})
+			if row.get("container_no") else None
+		)
+		if not name:
+			continue
+		status = frappe.db.get_value("Container", name, "status")
+		if status not in PRESENT:
+			continue  # the mismatch list already speaks for a tank that is not here
+		orders = container_open_orders(name)
+		if orders:
+			out.append({
+				"container_no": row.get("container_no") or name,
+				"open_orders": orders,
+			})
+	return out
 
 
 def _find_status_mismatches(direction, containers) -> list[dict]:
@@ -2204,20 +2254,21 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 
 	* Lift Off / Tank In — the tank must NOT already be in the depot (status not in
 	  ``PRESENT``); one that is present cannot be brought in again.
-	* Lift On / Tank Out — the tank must be present with NO open order left. Judged from
-	  the orders themselves (``container_open_orders``), not from the cached ``Available``
-	  status: the status is a derived convenience that only moves when an order's hook
-	  fires, so a tank that never needed work could sit at ``In_Depot`` with nothing to
-	  finish and be refused forever. Readiness is the absence of open work — never the
-	  presence of a completed cleaning.
+	* Lift On / Tank Out — the tank must simply be PRESENT. Unfinished work does not
+	  disqualify it: an outbound booking is how the depot learns a pickup is coming, so
+	  refusing it until the yard had finished told the cleaning queue about the deadline
+	  only after it had passed. The work is prioritised instead (:mod:`lift_on`) and is
+	  still refused where the tank actually moves — the bon and the gate.
 
 	Only containers that actually EXIST are judged: a Tank In may name a not-yet-created
 	tank (born ``Booked`` on save), which is fine and skipped. ``containers``: iterable of
 	``(container, container_no)`` pairs. Returns
-	``[{container_no, status, direction, open_orders}]``, where ``open_orders`` lists the
-	work still holding a Tank Out back (empty for a Tank In mismatch).
+	``[{container_no, status, direction, open_orders}]``. ``open_orders`` is always empty
+	now that unfinished work is not a mismatch; it is kept so the shape of the answer (and
+	every caller reading it) stays the same. What the yard still owes is asked separately,
+	of :func:`out_work_warnings`.
 	"""
-	from container_depot.container_depot.container_status import PRESENT, container_open_orders
+	from container_depot.container_depot.container_status import PRESENT
 
 	out = []
 	for container, container_no in containers:
@@ -2233,9 +2284,14 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 		if direction == "Tank In":
 			bad = status in PRESENT
 		else:
-			# Not here = cannot leave; here = may leave once nothing is open.
-			open_orders = container_open_orders(name) if status in PRESENT else []
-			bad = status not in PRESENT or bool(open_orders)
+			# PRESENCE is the whole Tank Out gate. A tank that is here can be booked out,
+			# whatever is still open on it: the booking is how the depot LEARNS a pickup is
+			# coming, and refusing it until the yard had finished meant the cleaning queue
+			# only heard about the deadline after the work was already late. Open work is
+			# now a priority signal (the tank's target_lift_on floats it up every worklist —
+			# see lift_on.py), and the refusal moved to where the tank actually leaves: the
+			# bon (Order Muat._validate_no_open_work) and the gate.
+			bad = status not in PRESENT
 		if bad:
 			out.append({
 				"container_no": container_no or name,

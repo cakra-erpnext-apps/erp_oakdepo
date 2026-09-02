@@ -114,6 +114,14 @@ def purge_mc_data():
 		("Container", {"principal": MC_CUSTOMER}),
 		("Depot Contract", {"customer": MC_CUSTOMER}),
 	]
+	# Same reason the booking purge above is raw: nothing unwinds Container.lift_on_booking,
+	# and a Link left pointing at a deleted booking blows up the next save of that tank.
+	if bookings:
+		frappe.db.sql(
+			"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL
+			   WHERE lift_on_booking IN %(bookings)s""",
+			{"bookings": tuple(bookings)},
+		)
 	for doctype, filters in scope:
 		if filters is None:
 			continue
