@@ -98,9 +98,14 @@
 					</button>
 				</div>
 				<label class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
-					<input type="file" accept="image/*" capture="environment" class="hidden" :disabled="r.uploading" @change="onPhotoPick(r, $event)" />
+					<input type="file" accept="image/*" capture="environment" multiple class="hidden" :disabled="r.uploading" @change="onPhotoPick(r, $event)" />
 					<span v-if="r.uploading" class="text-xs">…</span>
-					<template v-else><Icon name="camera" :size="18" /><span class="text-[9px] font-medium">{{ labels.photo }}</span></template>
+					<template v-else><Icon name="camera" :size="18" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
+				</label>
+				<label class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
+					<input type="file" accept="image/*" multiple class="hidden" :disabled="r.uploading" @change="onPhotoPick(r, $event)" />
+					<span v-if="r.uploading" class="text-xs">…</span>
+					<template v-else><Icon name="image" :size="18" /><span class="text-[9px] font-medium">{{ labels.photoGallery }}</span></template>
 				</label>
 			</div>
 			<p v-if="r.photoErr" class="mt-1 text-xs text-red-600">{{ r.photoErr }}</p>

@@ -318,19 +318,33 @@
 								</button>
 							</div>
 						</div>
-						<label class="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
-							<input
-								type="file"
-								accept="image/*"
-								capture="environment"
-								multiple
-								class="hidden"
-								:disabled="g.uploading"
-								@change="onPickPhotos(g, $event)"
-							/>
-							<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
-							<template v-else><Icon name="camera" :size="16" /> {{ labels.mrAddPhoto }}</template>
-						</label>
+						<div class="flex w-full gap-2">
+							<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
+								<input
+									type="file"
+									accept="image/*"
+									capture="environment"
+									multiple
+									class="hidden"
+									:disabled="g.uploading"
+									@change="onPickPhotos(g, $event)"
+								/>
+								<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
+								<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
+							</label>
+							<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
+								<input
+									type="file"
+									accept="image/*"
+									multiple
+									class="hidden"
+									:disabled="g.uploading"
+									@change="onPickPhotos(g, $event)"
+								/>
+								<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
+								<template v-else><Icon name="image" :size="16" /> {{ labels.photoGallery }}</template>
+							</label>
+						</div>
 					</div>
 					<p v-if="photoErr" class="text-xs text-red-600">{{ photoErr }}</p>
 					<p class="flex items-center gap-1.5 text-xs">

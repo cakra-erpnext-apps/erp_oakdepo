@@ -291,6 +291,8 @@ export const labels = {
 	colRemarks: "Keterangan", // Remarks
 	colRemarksManual: "Keterangan (isi manual, opsional)", // Note: manual only, never auto-filled
 	photo: "Foto", // Photo
+	photoCamera: "Kamera", // take a photo now (one tap straight to the camera)
+	photoGallery: "Galeri", // pick existing photos, several at once
 	addPhoto: "Tambah Foto", // Add photo
 	photoError: "Gagal mengunggah foto", // Photo upload failed
 	acceptableHint: "Kosongkan baris yang kondisinya baik (Acceptable).", // Leave good rows blank

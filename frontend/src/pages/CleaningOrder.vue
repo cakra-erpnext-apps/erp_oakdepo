@@ -305,19 +305,36 @@
 						</button>
 					</div>
 
-					<!-- Add tile — a full-size tap target that opens the camera on mobile -->
+					<!-- Two add tiles — the camera straight away, or the gallery for several at once -->
 					<label
 						class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
 					>
 						<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
 						<template v-else>
 							<Icon name="camera" :size="22" />
-							<span class="text-xs font-medium">{{ labels.cleaningQcPhotoAdd }}</span>
+							<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
 						</template>
 						<input
 							type="file"
 							accept="image/*"
 							capture="environment"
+							multiple
+							class="hidden"
+							:disabled="photoUploading"
+							@change="onQcPhotos"
+						/>
+					</label>
+					<label
+						class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+					>
+						<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
+						<template v-else>
+							<Icon name="image" :size="22" />
+							<span class="text-xs font-medium">{{ labels.photoGallery }}</span>
+						</template>
+						<input
+							type="file"
+							accept="image/*"
 							multiple
 							class="hidden"
 							:disabled="photoUploading"
