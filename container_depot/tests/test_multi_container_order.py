@@ -23,6 +23,10 @@ from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 
 MC_CUSTOMER = "MultiContainer Test Customer"
+# The other party a booking names: a Customer flagged is_surveyor. Kept beside
+# MC_CUSTOMER so purge_mc_data sweeps it too — it is not reachable through any
+# booking/container filter, so it would otherwise survive every run.
+MC_SURVEYOR = "MultiContainer Test Surveyor"
 # The hauler on a bon is a Customer link, so the test hauler must be a real one.
 _MC_SHIPPER = MC_CUSTOMER
 
@@ -140,7 +144,7 @@ def purge_mc_data():
 	for price_list in frappe.get_all("Price List", filters={"customer": MC_CUSTOMER}, pluck="name"):
 		frappe.db.delete("Item Price", {"price_list": price_list})
 		frappe.db.delete("Price List", {"name": price_list})
-	frappe.db.delete("Customer", {"customer_name": MC_CUSTOMER})
+	frappe.db.delete("Customer", {"customer_name": ["in", (MC_CUSTOMER, MC_SURVEYOR)]})
 	frappe.db.commit()
 
 
@@ -1034,7 +1038,7 @@ class TestPlanDateCascade(FrappeTestCase):
 	def test_the_survey_pair_rides_the_same_cascade_outbound_only(self):
 		"""Surveyor + survey date are asked once and copied onto every tank, because one
 		booking's tanks are routinely surveyed on different days by different parties."""
-		surveyor = ensure_test_customer("MultiContainer Test Surveyor")
+		surveyor = ensure_test_customer(MC_SURVEYOR)
 		frappe.db.set_value("Customer", surveyor, "is_surveyor", 1)
 		day = add_days(today(), 2)
 

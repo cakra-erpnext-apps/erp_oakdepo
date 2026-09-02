@@ -38,7 +38,9 @@ class TestTankDossier(FrappeTestCase):
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
 		if self._containers:
-			for dt in ("Cleaning Order", "Repair Order", "Inspection"):
+			# Storage Charge included: creating a tank opens its storage visit, and the
+			# row outlives the tank it bills for unless it goes in the same sweep.
+			for dt in ("Cleaning Order", "Repair Order", "Inspection", "Storage Charge"):
 				frappe.db.delete(dt, {"container": ["in", self._containers]})
 			frappe.db.delete("Container", {"name": ["in", self._containers]})
 		frappe.db.commit()
