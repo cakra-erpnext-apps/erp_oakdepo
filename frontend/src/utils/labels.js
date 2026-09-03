@@ -12,8 +12,10 @@ export const labels = {
 	navMonitor: "Monitor", // Monitor Container tab
 	navProfile: "Profil", // Profile tab
 	navHistory: "Riwayat", // History tab (reachable from Home tile + EIR checklist)
-	navSurveyPos: "Survey", // bottom-nav label — Survey Posisi
-	navPosFix: "Fix", // bottom-nav label — Fix Posisi
+	navSchedule: "Jadwal", // bottom-nav label — kalender universal (semua rencana kerja)
+	navSurveyList: "Survey", // bottom-nav label — daftar Survey Order
+	navPosFix: "Lowering", // bottom-nav label — antrean lowering Kalmar
+	navTankPos: "Letak", // bottom-nav label — menu Letak Tank
 	// --- Profil (account + access overview) ---
 	profileTitle: "Profil",
 	profileBranchTitle: "Cakupan Branch",
@@ -125,7 +127,8 @@ export const labels = {
 	grpInspeksi: "Inspeksi", // workflow group: EIR / EIR Out
 	grpPerawatan: "Perawatan", // workflow group: Cleaning / M&R
 	grpYard: "Yard & Monitor", // workflow group: Storage / Monitor
-	grpSurvey: "Survey Posisi", // workflow group: Container Position Survey (Lift On)
+	grpSurvey: "Survey Tank Out", // workflow group: Survey Order + Letak Tank
+	grpJadwal: "Rencana Kerja", // workflow group: kalender universal, di atas semuanya
 	// In-PWA notification bell
 	notifications: "Notifikasi", // Notifications
 	notifEmpty: "Belum ada notifikasi", // No notifications yet
@@ -748,73 +751,162 @@ export const labels = {
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle
-	// --- Container Position Survey (Lift On) ---
-	surveyPosTitle: "Survey Posisi", // Surveyor menu/screen
-	surveyPosDesc: "Catat letak tank yang mau keluar", // tile subtitle
-	surveyPosHint: "Tank booking Tank Out yang harus dicari posisinya", // header subtitle
-	surveyPosList: "Antrean Survey", // worklist section title
+	// --- Jadwal (kalender universal) ---
+	//
+	// Satu kalender untuk SEMUA rencana kerja depo, bukan hanya survey. Isinya disaring per
+	// izin: tim cuci melihat rencana cuci, tim repair melihat rencana perbaikan, SPV melihat
+	// keempat-empatnya. Lihat container_depot/container_depot/schedule.py.
+	scheduleTitle: "Jadwal",
+	scheduleDesc: "Semua rencana kerja depo dalam satu kalender",
+	scheduleHint: "Pilih tanggal untuk melihat rencana kerjanya",
+	scheduleToday: "Hari ini",
+	scheduleCount: "agenda",
+	scheduleEmptyDay: "Tidak ada rencana kerja pada tanggal ini.",
+	scheduleError: "Gagal memuat jadwal. Periksa koneksi internet Anda.",
+	scheduleFilterAll: "Semua",
+	scheduleOpen: "terbuka",
+	// Nama tiap jenis agenda. Sengaja kata kerja lapangan, bukan nama doctype.
+	kindSurvey: "Survey",
+	kindCleaning: "Cuci",
+	kindRepair: "Perbaikan",
+	kindBooking: "Booking",
+	// Kartu booking tidak bisa dibuka — belum ada layar booking di PWA (lihat schedule.py).
+	scheduleInfoOnly: "Info rencana truk",
+	// --- Daftar Survey Order (menu berdiri sendiri) ---
+	surveyListTitle: "Survey Order",
+	surveyListDesc: "Cari & buka jadwal survey tank out",
+	surveyListHint: "Semua jadwal survey, termasuk yang sudah selesai",
+	surveyListSearch: "Cari no. tank, principal, atau no. jadwal…",
+	surveyListEmpty: "Tidak ada jadwal survey yang cocok.",
+	surveyListCount: "jadwal",
+	surveyListFilterAll: "Semua",
+	surveyListFrom: "Dari tanggal",
+	surveyListTo: "Sampai tanggal",
+	surveyListReset: "Reset filter",
+	surveyListMore: "Muat lagi",
+	surveyListFilterTitle: "Filter",
+	// --- Survey Order / Container Position Survey (Tank Out) ---
+	//
+	// Alurnya: booking Tank Out menjadwalkan satu hari survey (Survey Order), tiap tank di
+	// dalamnya mulai dari Waiting Lowering, diturunkan Kalmar/Surveyor (Lowered), lalu
+	// ditutup surveyor (Survey Done) — dan penutupan itulah yang menerbitkan EIR-Out.
+	surveyPosTitle: "Jadwal Survey Lapangan", // Surveyor menu/screen (kalender)
+	surveyPosDesc: "Jadwal & survey tank yang mau keluar", // tile subtitle
+	surveyPosHint: "Pilih tanggal untuk melihat jadwal surveynya", // header subtitle
 	surveyPosSearch: "Cari no. container / CPS…",
-	surveyPosEmpty: "Tidak ada container untuk disurvei.",
-	surveyPosCount: "container",
 	surveyPosBack: "Kembali",
-	surveyPosSection: "Letak Container",
-	surveyPosLocation: "Letak container di mana?",
-	surveyPosLocationHint: "mis. blok kanan dekat pos, tumpukan 2",
-	surveyPosPhotos: "Foto Posisi",
-	surveyPosNotes: "Catatan Tambahan",
-	surveyPosSave: "Simpan Posisi",
-	surveyPosSaved: "Posisi tersimpan",
-	surveyPosStart: "Mulai", // start button on a worklist row
-	surveyPosStartFull: "Mulai Survey", // start button inside the detail gate
-	surveyPosStartGate: "Survey ini belum dimulai. Tekan Mulai untuk mengambilnya.",
-	surveyPosStarted: "Survey dimulai",
-	surveyPosInProgress: "Dikerjakan", // chip on a row this surveyor already started
-	surveyPosFilterAll: "Semua",
-	surveyPosFilterTodo: "Belum",
-	surveyPosFilterStarted: "Dikerjakan",
-	surveyPosFilterEmptyTodo: "Semua survey sudah mulai dikerjakan. 🎉",
-	surveyPosFilterEmptyStarted: "Belum ada survey yang sedang dikerjakan.",
-	// Operator Kalmar approval
-	posFixTitle: "Fix Posisi", // Kalmar menu/screen
-	posFixDesc: "Approve tank 'udah turun'", // tile subtitle
-	posFixHint: "Hasil survey yang menunggu konfirmasi Kalmar", // header subtitle
-	posFixList: "Menunggu Approval", // worklist section title
-	posFixEmpty: "Tidak ada posisi menunggu approval.",
+	surveyPosCount: "container",
+	// Kalender
+	surveyCalToday: "Hari ini",
+	surveyCalEmptyDay: "Tidak ada jadwal survey pada tanggal ini.",
+	surveyCalLoading: "Memuat jadwal survey…",
+	surveyCalError: "Gagal memuat jadwal survey. Periksa koneksi internet Anda.",
+	surveyCalScheduleCount: "Jadwal Survey",
+	// Kartu jadwal + detail jadwal
+	surveyOrderTitle: "Detail Jadwal",
+	surveyOrderTanksTitle: "Daftar Tank",
+	surveyOrderSurveyor: "Surveyor",
+	surveyOrderPrincipal: "Principal",
+	surveyOrderPickup: "Pickup",
+	surveyOrderTankTotal: "tank total",
+	surveyOrderTankUnit: "tank",
+	surveyOrderEmptyTanks: "Belum ada tank pada jadwal ini.",
+	surveyOrderStatusScheduled: "Scheduled",
+	surveyOrderStatusProgress: "Berjalan",
+	surveyOrderStatusCompleted: "Selesai",
+	surveyOrderStatusCancelled: "Batal",
+	// Status tank — dipakai kalender, worklist Kalmar, riwayat. Tiga status, satu kosakata.
+	surveyPosStatusWaiting: "Menunggu Lowering",
+	surveyPosStatusLowered: "Lowered",
+	surveyPosStatusDone: "Survey Done",
+	surveyPosStatusCancelled: "Batal",
+	// --- Letak Tank (Container Position) — menu berdiri sendiri, semua tim lapangan ---
+	tankPosTitle: "Letak Tank",
+	tankPosDesc: "Catat & cari letak tank di yard",
+	tankPosHint: "Cari nomor tank untuk melihat & memperbarui letaknya",
+	tankPosSearch: "Cari nomor tank…",
+	tankPosEmpty: "Tidak ada tank yang cocok.",
+	tankPosCount: "tank",
+	tankPosFilterAll: "Semua",
+	tankPosFilterUnlocated: "Belum Terdata",
+	tankPosUnlocated: "Lokasi belum terdata",
+	tankPosUnlocatedHint: "Tank ini belum pernah dicatat letaknya.",
+	tankPosCurrent: "Lokasi Saat Ini",
+	tankPosUpdate: "Update Lokasi",
+	tankPosInput: "Input Lokasi",
+	tankPosSave: "Simpan Lokasi",
+	tankPosSaved: "Letak tank tersimpan",
+	tankPosNewLabel: "Letak baru",
+	tankPosNote: "Catatan (opsional)",
+	tankPosNoteHint: "mis. dipindah karena bay dipakai truk",
+	tankPosHistory: "Riwayat Letak",
+	// Foto letak — bukan bukti kerja, tapi patokan visual. Kalimat "blok kanan tumpukan 2"
+	// itu deskripsi seseorang; fotonya yang dicocokkan orang berikutnya dengan tumpukan di
+	// depannya, dan itu juga yang menyelesaikan tank yang dilaporkan di dua tempat.
+	tankPosPhotos: "Foto Letak (opsional)",
+	tankPosPhotoHint: "Foto tumpukan/bay-nya biar gampang dicari orang berikutnya.",
+	tankPosPhotoEmpty: "Belum ada foto",
+	tankPosPhotoCount: "foto",
+	tankPosStale: "Perlu dicek ulang",
+	tankPosFresh: "Baru diperbarui",
+	tankPosBy: "oleh",
+	tankPosOpenFinder: "Buka menu Letak Tank",
+	// Detail tank (di dalam jadwal survey)
+	tankDetailTitle: "Detail Tank",
+	tankDetailLocation: "Lokasi",
+	tankDetailStatus: "Status Tank",
+	tankDetailHistory: "Riwayat Update",
+	tankDetailEirOut: "EIR-Out",
+	tankDetailWaitingMsg: "Tank belum diturunkan ke ground level.",
+	tankDetailLoweredMsg: "Tank sudah berada di ground level, siap untuk survey.",
+	tankDetailDoneMsg: "Survey untuk tank ini telah selesai.",
+	// Langkah 1 — Tandai Lowered
+	posLoweredAction: "Tandai Lowered",
+	posLoweredConfirmMsg:
+		"Pastikan tank sudah berada di ground level dan aman untuk diperiksa. Status ini bisa diupdate Surveyor maupun Operator Kalmar.",
+	posLoweredConfirmYes: "Ya, Sudah Lowered",
+	posLoweredDone: "Tank ditandai lowered",
+	posLocationLabel: "Sekalian perbarui letaknya? (opsional)",
+	posLocationHint: "mis. blok kanan dekat pos, tumpukan 2",
+	posLocationRequired: "Tank ini belum pernah didata letaknya — isi letaknya sekalian.",
+	posLocationWrites: "Disimpan sebagai catatan letak tank, bukan di jadwal ini — jadi semua menu langsung ikut.",
+	posLoweredNote: "Catatan Lowering (opsional)",
+	posLoweredNoteHint: "mis. diturunkan ke ground slot depan pos",
+	posLoweredBy: "Ditandai lowered oleh",
+	posLoweredOn: "Lowering selesai",
+	// Langkah 2 — Selesai Survey
+	surveyFinishAction: "Lakukan Survey",
+	surveyFinishConfirmTitle: "Selesaikan survey?",
+	surveyFinishConfirmYes: "Selesai Survey",
+	surveyFinishDone: "Survey selesai",
+	surveyFinishGate: "Tank harus ditandai lowered dulu sebelum surveynya bisa ditutup.",
+	surveyFinishEirHint: "Menutup survey otomatis menerbitkan draft EIR-Out untuk tank ini.",
+	surveyPosNotes: "Catatan Survey (opsional)",
+	surveyPosNotesHint: "Tambah catatan (opsional)…",
+	surveyPosPhotos: "Foto (opsional)",
+	surveyPosPhotoHint: "Foto dan catatan bersifat opsional.",
+	surveyPosSurveyedBy: "Disurvei oleh",
+	surveyPosSurveyedOn: "Survey selesai",
+	// Worklist Kalmar (menu posFix) — antrean lowering
+	posFixTitle: "Lowering Tank", // Kalmar menu/screen
+	posFixDesc: "Turunkan tank yang mau disurvey", // tile subtitle
+	posFixHint: "Tank booking Tank Out yang masih di atas", // header subtitle
+	posFixList: "Menunggu Lowering", // worklist section title
+	posFixEmpty: "Tidak ada tank yang menunggu lowering. 🎉",
 	posFixCount: "menunggu",
-	posFixSurveyed: "Posisi Hasil Survey",
-	posFixNote: "Catatan (opsional)",
-	posFixNoteHint: "mis. sudah diturunkan ke ground slot",
-	posFixApprove: "Approve (Udah Turun)",
-	posFixApproved: "Posisi di-approve",
-	posFixConfirmTitle: "Approve posisi?",
-	posFixConfirmMsg: "Konfirmasi container sudah turun & posisinya benar. Setelah di-approve, survey difinalisasi.",
-	posFixStart: "Mulai",
-	posFixStartFull: "Mulai Fix Posisi",
-	posFixStartGate: "Belum dimulai. Tekan Mulai untuk mengambil pekerjaan ini.",
-	posFixStarted: "Fix posisi dimulai",
-	// --- Buka lagi (revisi / rollback ke pekerjaan) ---
-	// Tidak ada langkah review di alur ini, jadi yang salah dibetulkan sendiri oleh yang
-	// mengerjakan — bukan lewat permintaan ke Admin Ops seperti cleaning / M&R.
-	posReopenSurvey: "Kembalikan ke Survey",
-	posReopenSurveyHint: "Posisinya salah — surveyor mengulang pencarian tank.",
-	posReopenFix: "Buka Lagi Approval",
-	posReopenFixHint: "Approval-nya kecepetan — hasil survey tetap dipakai.",
+	// Buka lagi (undo) — dua arah, dua akibat berbeda
+	posReopenLowering: "Kembalikan ke Lowering",
+	posReopenLoweringHint: "Tanknya belum benar-benar turun, atau letaknya salah — Kalmar mengulang.",
+	posReopenSurvey: "Buka Lagi Survey",
+	posReopenSurveyHint: "Surveynya kecepetan ditutup — lowering & letaknya tetap dipakai.",
 	posReopenReason: "Alasan (opsional)",
 	posReopenSend: "Kembalikan",
 	posReopenDone: "Dikembalikan ke pekerjaan",
 	posReopenNote: "Dibuka lagi", // banner label on a survey that came back
-	// Survey Posisi history (finished surveys — Confirmed / Cancelled)
+	// Riwayat
 	surveyPosHistoryTitle: "Riwayat Survey Posisi",
 	surveyPosHistoryDesc: "Survey posisi selesai / batal",
 	surveyPosHistoryCount: "survey",
-	surveyPosStatusConfirmed: "Selesai", // Confirmed
-	surveyPosStatusSurveyed: "Disurvei", // Surveyed
-	surveyPosStatusInSurvey: "Sedang disurvei", // In Survey (a surveyor is on it)
-	surveyPosStatusInFix: "Diproses Kalmar", // In Fix
-	surveyPosStatusPending: "Menunggu", // Pending Survey
-	surveyPosStatusCancelled: "Batal", // Cancelled
-	surveyPosApprovedBy: "Di-approve oleh",
-	surveyPosSurveyedBy: "Disurvei oleh",
 	// Monitor Container (inventory list, filter by status + principal)
 	monitorTitle: "Monitor Container", // page title
 	monitorDesc: "Pantau container per status & prinsipal", // Home tile subtitle

@@ -45,10 +45,9 @@ def _cleanup():
 		# paperwork (gate log + auto-provisioned EIR) along with it. Raw deletes on
 		# purpose — Order Bongkar refuses ``on_trash`` by design.
 		_purge("Order Bongkar", {"booking": ("in", bookings)}, ("Container Booking Item",))
-		# Saving an outbound booking opens one Container Position Survey per tank
+		# Saving an outbound booking schedules one Survey Order, with a row per tank
 		# (provisioning happens on the draft), so they belong to this purge too.
-		_purge("Container Position Survey", {"booking": ("in", bookings)},
-			   ("Container Position Survey Photo",))
+		_purge("Survey Order", {"booking": ("in", bookings)}, ("Survey Order Tank",))
 	_purge("Gate Entry", {"container_no": ("in", CONTAINERS)})
 	_purge("Inspection", {"container": ("in", CONTAINERS)},
 		   ("Inspection Item Photo", "Inspection Damage Entry", "Inspection Damage Photo",

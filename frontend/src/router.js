@@ -88,19 +88,58 @@ const routes = [
 		component: () => import("@/pages/MonitorHistory.vue"),
 	},
 	{
-		path: "/survey-position",
-		name: "SurveyPosition",
-		meta: { menuKey: "surveyPos" },
-		component: () => import("@/pages/SurveyPosition.vue"),
+		// Jadwal — the ONE calendar over every kind of planned work. Not part of the survey
+		// family any more: it is gated on its own menu key, which is an any-of over the four
+		// scheduled doctypes, and it shows each account only the kinds they may read.
+		path: "/schedule",
+		name: "SchedulePage",
+		meta: { menuKey: "schedule" },
+		component: () => import("@/pages/SchedulePage.vue"),
 	},
 	{
-		path: "/survey-position/history",
+		// The Survey Order list that used to be the calendar's job. Gated on `surveyList`
+		// (READ), which is wider than the two action menus underneath it — see
+		// ess/tank_survey.py for why reading the schedule and working it are separate rights.
+		path: "/survey-orders",
+		name: "SurveyOrderList",
+		meta: { menuKey: "surveyList" },
+		component: () => import("@/pages/SurveyOrderList.vue"),
+	},
+	{
+		// One day's field job: the tanks of one Tank Out booking. Both menus, because the
+		// Kalmar operator dropping tanks and the surveyor closing them are working the same
+		// card and each needs to see what the other has done.
+		path: "/survey-orders/order/:name",
+		name: "SurveyOrderDetail",
+		meta: { menuKeys: ["surveyList", "surveyPos", "posFix"] },
+		component: () => import("@/pages/SurveyOrderDetail.vue"),
+	},
+	{
+		// ONE tank screen for both teams — the lowering press and the closing press live on
+		// it side by side, each gated on the menu that owns it (see SurveyTank.vue). Two
+		// screens would have meant two copies of the same tank's history.
+		path: "/survey-orders/tank/:name",
+		name: "SurveyTank",
+		meta: { menuKeys: ["surveyList", "surveyPos", "posFix"] },
+		component: () => import("@/pages/SurveyTank.vue"),
+	},
+	{
+		path: "/survey-orders/history",
 		name: "SurveyPositionHistory",
-		// Two owners, unlike every other route: this Riwayat lists both halves of the
-		// position-survey workflow and is where either one is reopened, so a Kalmar-only
-		// operator must be able to open it (see ess.position_survey.position_history).
-		meta: { menuKeys: ["surveyPos", "posFix"] },
+		// Two owners, unlike every other route: this Riwayat lists the whole workflow and is
+		// where either step is reopened, so a Kalmar-only operator must be able to open it
+		// (see ess.tank_survey.survey_history).
+		meta: { menuKeys: ["surveyList", "surveyPos", "posFix"] },
 		component: () => import("@/pages/SurveyPositionHistory.vue"),
+	},
+	{
+		// Letak Tank — a menu of its own, open to every field team. It is NOT part of the
+		// survey: where a tank stands is a fact about the tank, corrected by whoever finds it,
+		// and it outlives every booking. See ess/container_position.py.
+		path: "/tank-position",
+		name: "TankPosition",
+		meta: { menuKey: "tankPos" },
+		component: () => import("@/pages/TankPosition.vue"),
 	},
 	{
 		path: "/position-fix",

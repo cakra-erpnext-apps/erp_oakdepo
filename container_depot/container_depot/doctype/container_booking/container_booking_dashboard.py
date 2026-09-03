@@ -3,7 +3,9 @@
 Two kinds of link end up here, and the grouping keeps them apart:
 
 * **Bon & Gate** — documents that reference the booking directly and always have since the
-  booking was designed: the bons raised from it, the codes it issued, the position surveys.
+  booking was designed: the bons raised from it, the codes it issued, and the field survey it
+  scheduled (Survey Order — its tanks are child rows on that document, not documents of their
+  own, so there is nothing separate to link here).
 * **Pekerjaan Depo** — the work orders. These reference the booking through
   ``container_booking``, which is stamped from the EIR that raised them (see
   ``container_depot.booking_link``). An order raised without an EIR is standalone and will
@@ -29,7 +31,7 @@ def get_data():
 		"transactions": [
 			{
 				"label": "Bon & Gate",
-				"items": ["Order Bongkar", "Order Muat", "Booking Code", "Container Position Survey"],
+				"items": ["Order Bongkar", "Order Muat", "Booking Code", "Survey Order"],
 			},
 			{
 				"label": "Pekerjaan Depo",

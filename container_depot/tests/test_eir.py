@@ -743,6 +743,9 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 	def test_eir_out_submit_writes_eir_out_date(self):
 		# EIR-Out submit now records the container's gate-out date (was never written).
 		c = _make_container("EIRV2000021", status="Available")
+		# ...and since 2026-09-03 it cannot be submitted at all until a loading bon carries
+		# the tank (Inspection.before_submit) — a clean EIR-Out sends it through the gate.
+		_make_order_muat(ensure_test_customer("EIR Voucher Cust"), c)
 		d = eir.open_draft(container_no="EIRV2000021", inspection_type="EIR-Out")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",

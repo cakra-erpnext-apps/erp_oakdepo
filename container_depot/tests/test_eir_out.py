@@ -1,9 +1,14 @@
 """Tests for FASE G — EIR OUT Digital (surveyor load-out inspection vs last EIR-In).
 
-Covers: latest EIR-In baseline, auto-provision of EIR-Out drafts from an Order Muat
-(with its EIR-In reference), the comparison payload, the submit outcome (Ready To Load vs
-Hold + Order Muat status) and the open-draft per-type separation. The departure that a clean
-submit triggers lives in ``test_gate_out.py``.
+Covers: latest EIR-In baseline, the EIR-Out draft being raised when a position survey is
+CLOSED (with its EIR-In reference), the bon adopting that draft instead of raising a second
+one, the comparison payload, the submit outcome (Ready To Load vs Hold + Order Muat status)
+and the open-draft per-type separation. The departure that a clean submit triggers lives in
+``test_gate_out.py``.
+
+Since 2026-09-03 an EIR-Out is born at the survey, not at the bon — see
+``tank_survey.finish_survey`` — and it cannot be SUBMITTED until a bon exists
+(``Inspection.before_submit``), which is why every submit below is given one.
 
 FrappeTestCase rolls back per test; tearDown also deletes throwaway rows by prefix.
 """
@@ -20,6 +25,37 @@ from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _make_order_muat
 
 PREFIX = "EOUT"
+
+
+def _survey_row(container):
+	"""A throwaway Survey Order carrying ``container``, and the tank row's name.
+
+	Built by hand rather than through a booking: these tests are about the INSPECTION, and
+	``test_tank_survey`` owns how a schedule really comes into being.
+	"""
+	doc = frappe.get_doc({
+		"doctype": "Survey Order",
+		"booking": None,
+		"survey_date": today(),
+		"depot": frappe.db.get_value("Container", container, "depot"),
+		"status": "Scheduled",
+		"tanks": [{"container": container, "status": "Lowered"}],
+	})
+	doc.flags.ignore_validate = True
+	doc.insert(ignore_permissions=True, ignore_mandatory=True)
+	return doc.tanks[0].name
+
+
+def _eir_out_draft(container, order_muat=None):
+	"""Raise an EIR-Out the way production now does — by closing a tank's survey row — and
+	optionally hand it the bon afterwards, which is what an Order Muat submit does.
+
+	Returns the EIR-Out's name.
+	"""
+	name = eir.provision_eir_out_for_survey(_survey_row(container))
+	if order_muat:
+		eir.attach_order_muat_to_eirs(order_muat)
+	return name
 
 
 def _container(no, status="Available"):
@@ -58,7 +94,15 @@ def _eir_in(container, *, damage=False):
 
 
 def _submit_eir_out(container, *, has_damage=False, order_muat=None):
-	"""Create + submit an EIR-Out directly (bypasses the worklist) and return its name."""
+	"""Create + submit an EIR-Out directly (bypasses the worklist) and return its name.
+
+	A bon is ALWAYS ensured, even when the test does not care which one: since 2026-09-03 an
+	EIR-Out cannot be submitted until an Order Muat carries its tank
+	(``Inspection.before_submit``), because a clean submit sends the tank through the gate in
+	the same breath. Tests that are about something else should not have to say so.
+	"""
+	if not order_muat and not eir.latest_voucher_for_container(container, "EIR-Out"):
+		_make_order_muat(ensure_test_customer("EIR-Out Shipper"), container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
@@ -89,6 +133,13 @@ class TestEirOut(FrappeTestCase):
 		frappe.db.delete("Container Movement", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
+		orders = frappe.get_all(
+			"Survey Order Tank",
+			filters={"container": ["like", f"{PREFIX}%"]}, pluck="parent", distinct=True,
+		)
+		frappe.db.delete("Survey Order Tank", {"container": ["like", f"{PREFIX}%"]})
+		if orders:
+			frappe.db.delete("Survey Order", {"name": ["in", orders]})
 		frappe.db.delete("Repair Order", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Cleaning Order", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
@@ -100,48 +151,93 @@ class TestEirOut(FrappeTestCase):
 		self.assertEqual(eir.latest_eir_in(c), second)
 		self.assertNotEqual(first, second)
 
-	def test_provision_eir_out_from_order_muat(self):
+	def test_closing_a_survey_raises_the_eir_out_with_no_bon(self):
+		"""The draft is born days before anybody cuts a bon — that is the whole point of
+		moving it earlier — so it carries the EIR-In baseline and nothing from a voucher."""
 		c = _container(f"{PREFIX}0000004")
 		ein = _eir_in(c, damage=True)
 		_finish_cleaning(c)
-		shipper = ensure_test_customer("EIR-Out Shipper")
-		om = _make_order_muat(shipper, c)
 
-		created = eir.provision_eir_out_for_order_muat(om)
-		self.assertEqual(len(created), 1)
-		eo = frappe.get_doc("Inspection", created[0])
+		eo = frappe.get_doc("Inspection", _eir_out_draft(c))
 		self.assertEqual(eo.inspection_type, "EIR-Out")
 		self.assertEqual(eo.reference_eir_in, ein)
-		self.assertEqual(eo.referred_voucher, om)
-
-		# Idempotent — a second provision creates no duplicate.
-		again = eir.provision_eir_out_for_order_muat(om)
-		self.assertEqual(again, [])
+		self.assertIsNone(eo.referred_voucher)
+		self.assertTrue(eo.survey_tank)
 		self.assertEqual(
-			frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out", "docstatus": 0}), 1
+			frappe.db.get_value("Survey Order Tank", eo.survey_tank, "container"), c
 		)
 
-	def test_a_resubmitted_bon_does_not_provision_a_second_eir_out(self):
+	def test_the_bon_adopts_that_draft_instead_of_raising_another(self):
+		"""Everything typed on the Generate Bon screen has to land on the document the survey
+		already opened — a second EIR-Out beside it is exactly what this rework removed."""
+		c = _container(f"{PREFIX}0000008")
+		_eir_in(c)
+		_finish_cleaning(c)
+		eo = _eir_out_draft(c)
+		om = _make_order_muat(
+			ensure_test_customer("EIR-Out Shipper"), c,
+			truck="B-9001-XY", driver="Budi", phone="08110001",
+		)
+
+		result = eir.attach_order_muat_to_eirs(om)
+		self.assertEqual(result["attached"], [eo])
+		self.assertEqual(result["missing"], [])
+
+		after = frappe.get_doc("Inspection", eo)
+		self.assertEqual(after.referred_voucher, om)
+		self.assertEqual(after.voucher_doctype, "Order Muat")
+		self.assertEqual(
+			frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out", "docstatus": ["!=", 2]}),
+			1,
+		)
+
+	def test_a_bon_for_a_tank_with_no_survey_reports_it_rather_than_inventing_one(self):
+		"""The deliberate consequence of a single birthplace. The operator who just cut the
+		bon is told, because they are the one who can go and close the survey."""
+		c = _container(f"{PREFIX}0000010")
+		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+
+		result = eir.attach_order_muat_to_eirs(om)
+		self.assertEqual(result["attached"], [])
+		self.assertEqual(result["missing"], [c])
+		self.assertEqual(frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out"}), 0)
+
+	def test_a_resubmitted_bon_does_not_raise_a_second_eir_out(self):
 		# A bon can go back to draft for a correction (order_generation.revert_order_to_draft)
 		# and be submitted again. By then the surveyor may already have SUBMITTED the EIR-Out
-		# the first submit provisioned — invisible to the open-draft check, which used to open
-		# a second, empty EIR-Out for the same departure.
+		# — invisible to the open-draft check — so the re-attach must recognise its own work
+		# rather than report the tank as missing an EIR.
 		c = _container(f"{PREFIX}0000009")
 		_eir_in(c, damage=True)
 		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
-		eo = eir.provision_eir_out_for_order_muat(om)[0]
+		eo = _eir_out_draft(c, order_muat=om)
 		frappe.db.set_value("Inspection", eo, {"docstatus": 1, "status": "Submitted"})
 
-		self.assertEqual(eir.provision_eir_out_for_order_muat(om), [])
+		self.assertEqual(eir.attach_order_muat_to_eirs(om), {"attached": [], "missing": []})
 		self.assertEqual(frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out"}), 1)
+
+	def test_an_eir_out_cannot_be_submitted_before_the_bon_is_out(self):
+		"""Submitting is not a filing step here — a clean EIR-Out sends the tank through the
+		gate in the same submit. Doing that with no bon behind it would release a tank on no
+		loading paperwork at all: no truck, no driver, no booking code surrendered."""
+		c = _container(f"{PREFIX}0000012")
+		_eir_in(c)
+		_finish_cleaning(c)
+		eo = frappe.get_doc("Inspection", _eir_out_draft(c))
+		with self.assertRaises(frappe.ValidationError):
+			eo.submit()
+
+		_make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+		frappe.get_doc("Inspection", eo.name).submit()
+		self.assertEqual(frappe.db.get_value("Inspection", eo.name, "docstatus"), 1)
 
 	def test_open_eir_out_reference(self):
 		c = _container(f"{PREFIX}0000005")
 		_eir_in(c, damage=True)
 		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
-		eo = eir.provision_eir_out_for_order_muat(om)[0]
+		eo = _eir_out_draft(c, order_muat=om)
 
 		payload = eir.open_eir_out(eo)
 		ref = payload["reference"]
@@ -156,7 +252,7 @@ class TestEirOut(FrappeTestCase):
 		_eir_in(c)
 		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
-		eo = eir.provision_eir_out_for_order_muat(om)[0]
+		eo = _eir_out_draft(c, order_muat=om)
 		eir.start_eir(eo)
 		eir.save_draft(inspection=eo, inspection_type="EIR-Out", seals=seals)
 		return eo

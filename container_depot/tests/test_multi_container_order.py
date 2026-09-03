@@ -118,7 +118,10 @@ def purge_mc_data():
 		("Booking Code", {"booking": ["in", bookings]} if bookings else None),
 		# Saving an outbound booking opens one of these per tank (provisioning happens on
 		# the draft now), so they go with the booking that raised them.
-		("Container Position Survey", {"booking": ["in", bookings]} if bookings else None),
+		("Survey Order Tank", {"parent": ["in", frappe.get_all(
+			"Survey Order", filters={"booking": ["in", bookings]}, pluck="name") or [""]]}
+			if bookings else None),
+		("Survey Order", {"booking": ["in", bookings]} if bookings else None),
 		("Container Booking", {"customer": MC_CUSTOMER}),
 		("Container", {"principal": MC_CUSTOMER}),
 		("Depot Contract", {"customer": MC_CUSTOMER}),

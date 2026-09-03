@@ -6,7 +6,7 @@ Two failure modes to keep out of the depot:
     resolver reads the wrong doctype resolves to None every single time while looking
     perfectly reasonable in the source. That bug shipped once during development
     (``order_muat_survey`` fires on an Order Muat and was pointed at a resolver that reads a
-    Container Position Survey); ``test_no_resolver_reads_a_doctype_it_was_not_given`` is what
+    Survey Order); ``test_no_resolver_reads_a_doctype_it_was_not_given`` is what
     caught it. Its sequel was quieter and lived longer: the replacement resolver read nothing
     at all, so this test passed while the event still pointed at ``/survey-position`` — the
     wrong menu, worked by a different team, for an event about an EIR-Out. A resolver reading
@@ -62,9 +62,10 @@ EVENT_DOCTYPES = [
 	("order_muat_survey", "Order Muat"),
 	("eir_out_hold", "Order Muat"),
 	("eir_out_hold", "Container"),
-	("position_survey_pending", "Container Position Survey"),
-	("position_surveyed", "Container Position Survey"),
-	("position_confirmed", "Container Position Survey"),
+	("survey_order_scheduled", "Survey Order"),
+	("position_survey_pending", "Survey Order"),
+	("position_surveyed", "Survey Order"),
+	("position_confirmed", "Survey Order"),
 	("gate_out", "Gate Entry"),
 	("booking_created", "Container Booking"),
 	("booking_submitted", "Container Booking"),
@@ -171,8 +172,8 @@ class TestNotificationRouteTable(FrappeTestCase):
 			"/cleaning/history?open=X",
 			"/mr?o=X",
 			"/mr/history?open=X",
-			"/survey-position?s=X",
-			"/survey-position/history?open=X",
+			"/survey-orders?s=X",
+			"/survey-orders/history?open=X",
 			"/position-fix?s=X",
 			"/gate",
 			"/gate/history?open=X",
@@ -220,14 +221,10 @@ class TestNotificationRouteTable(FrappeTestCase):
 					)
 
 	# Events whose menu depends on the document's STATUS, with the state the event fires in.
-	# Container Position Survey is one doctype behind two menus (`surveyPos` records, `posFix`
-	# approves), so a generic stand-in would answer for the wrong half of the workflow and
-	# report Team Kalmar as routed to a menu they cannot open.
-	STANDIN_STATE = {
-		"position_survey_pending": {"status": "Pending Survey"},
-		"position_surveyed": {"status": "Surveyed"},
-		"position_confirmed": {"status": "Confirmed", "docstatus": 1},
-	}
+	# Since the tank rows became CHILD rows, the survey events no longer resolve by document
+	# state at all — each one routes to the screen its own audience works from (see
+	# ess/notification_routes). So there is nothing left for a stand-in to say.
+	STANDIN_STATE = {}
 
 	def _menu_of(self, event_key, doctype):
 		"""The PWA menu an event's route belongs to, or None for a Desk-only event.
@@ -249,8 +246,13 @@ class TestNotificationRouteTable(FrappeTestCase):
 		return nr.menu_for_route(route)[0] if route else None
 
 	def test_longest_prefix_wins(self):
-		"""`/survey-position/history` is surveyPos, not a near-miss on some shorter route."""
-		self.assertEqual(nr.menu_for_route("/survey-position/history?open=X")[0], "surveyPos")
+		"""`/survey-orders/history` finds its owner, not a near-miss on some shorter route.
+
+		Resolves to `surveyList` rather than `surveyPos`: two _MENU entries claim
+		`/survey-orders` and the sort is stable, so the wider READ key wins. A notification
+		pointing at the survey list must not demand the right to CLOSE a survey.
+		"""
+		self.assertEqual(nr.menu_for_route("/survey-orders/history?open=X")[0], "surveyList")
 		self.assertEqual(nr.menu_for_route("/position-fix")[0], "posFix")
 		self.assertEqual(nr.menu_for_route("/gate/history")[0], "gate")
 

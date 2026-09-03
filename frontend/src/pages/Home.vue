@@ -145,15 +145,20 @@ const tiles = {
 	cleaning: { key: "cleaning", to: "/cleaning", icon: "droplet", title: labels.cleaningTitle, desc: labels.cleaningDesc, tile: "bg-brand-50 text-brand-600" },
 	mr: { key: "mr", to: "/mr", icon: "tool", title: labels.mrTitleFull, desc: labels.mrDesc, tile: "bg-leaf-50 text-leaf-600" },
 	monitor: { key: "monitor", to: "/monitor", icon: "grid", title: labels.monitorTitle, desc: labels.monitorDesc, tile: "bg-brand-50 text-brand-600" },
-	surveyPos: { key: "surveyPos", to: "/survey-position", icon: "map-pin", title: labels.surveyPosTitle, desc: labels.surveyPosDesc, tile: "bg-amber-50 text-amber-600" },
-	posFix: { key: "posFix", to: "/position-fix", icon: "check-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
+	schedule: { key: "schedule", to: "/schedule", icon: "calendar", title: labels.scheduleTitle, desc: labels.scheduleDesc, tile: "bg-brand-50 text-brand-600", wide: true },
+	surveyList: { key: "surveyList", to: "/survey-orders", icon: "list", title: labels.surveyListTitle, desc: labels.surveyListDesc, tile: "bg-amber-50 text-amber-600" },
+	posFix: { key: "posFix", to: "/position-fix", icon: "arrow-down-circle", title: labels.posFixTitle, desc: labels.posFixDesc, tile: "bg-leaf-50 text-leaf-600" },
+	tankPos: { key: "tankPos", to: "/tank-position", icon: "map-pin", title: labels.tankPosTitle, desc: labels.tankPosDesc, tile: "bg-brand-50 text-brand-600" },
 }
 const allMenuGroups = [
+	// Jadwal sits above every workflow group on purpose: it is the only tile that answers
+	// "what is happening today" across all of them, and it is the screen a shift starts on.
+	{ title: labels.grpJadwal, items: [tiles.schedule] },
 	{ title: labels.grpGate, items: [tiles.gate] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
 	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr] },
 	{ title: labels.grpYard, items: [tiles.monitor] },
-	{ title: labels.grpSurvey, items: [tiles.surveyPos, tiles.posFix] },
+	{ title: labels.grpSurvey, items: [tiles.surveyList, tiles.posFix, tiles.tankPos] },
 ]
 
 // Drop tiles the account may not open, then drop groups left with nothing in them — a
@@ -173,7 +178,7 @@ const allHistory = [
 	{ key: "mr", to: "/mr/history", icon: "tool", title: labels.mrHistoryTitle },
 	// The only Riwayat with two owners: it lists both halves of the position-survey workflow
 	// and is where either one is reopened, so it is offered to whichever menu the account has.
-	{ keys: ["surveyPos", "posFix"], to: "/survey-position/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
+	{ keys: ["surveyList", "surveyPos", "posFix"], to: "/survey-orders/history", icon: "map-pin", title: labels.surveyPosHistoryTitle },
 	{ key: "monitor", to: "/monitor/history", icon: "activity", title: labels.monitorHistoryTitle },
 ]
 const history = computed(() =>

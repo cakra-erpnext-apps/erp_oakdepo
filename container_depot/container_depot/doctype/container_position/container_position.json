@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "CPOS-.YYYY.-.#####",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "header_section",
+  "container",
+  "container_no",
+  "column_break_1",
+  "depot",
+  "recorded_by",
+  "recorded_on",
+  "position_section",
+  "location_note",
+  "notes",
+  "photos_section",
+  "position_photos",
+  "photos_preview"
+ ],
+ "fields": [
+  {
+   "fieldname": "header_section",
+   "fieldtype": "Section Break",
+   "label": "Letak Tank"
+  },
+  {
+   "fieldname": "container",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Container",
+   "options": "Container",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "container.container_no",
+   "fieldname": "container_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Container No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "container.depot",
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot"
+  },
+  {
+   "fieldname": "recorded_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Dicatat Oleh",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "recorded_on",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Dicatat",
+   "read_only": 1
+  },
+  {
+   "fieldname": "position_section",
+   "fieldtype": "Section Break",
+   "label": "Letak"
+  },
+  {
+   "description": "Catatan bebas letak container di depo (mis. \"blok kanan dekat pos, tumpukan 2\").",
+   "fieldname": "location_note",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Letak Container",
+   "reqd": 1
+  },
+  {
+   "description": "Keterangan tambahan yang bukan letaknya (mis. \"dipindah karena bay dipakai truk\").",
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Catatan"
+  },
+  {
+   "fieldname": "photos_section",
+   "fieldtype": "Section Break",
+   "label": "Foto"
+  },
+  {
+   "fieldname": "position_photos",
+   "fieldtype": "Table",
+   "label": "Foto",
+   "options": "Container Position Photo"
+  },
+  {
+   "depends_on": "eval:(doc.position_photos || []).length",
+   "fieldname": "photos_preview",
+   "fieldtype": "HTML",
+   "label": "Pratinjau Foto"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-03 12:00:00.000000",
+ "module": "Container Depot",
+ "name": "Container Position",
+ "search_fields": "container_no, location_note, depot",
+ "sort_field": "recorded_on",
+ "sort_order": "DESC",
+ "title_field": "container_no",
+ "track_changes": 0
+}

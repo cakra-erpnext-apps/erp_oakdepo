@@ -307,8 +307,11 @@ const MENU_LABELS = {
 	cleaning: labels.cleaningTitle,
 	mr: labels.mrTitleFull,
 	monitor: labels.monitorTitle,
+	schedule: labels.scheduleTitle,
+	surveyList: labels.surveyListTitle,
 	surveyPos: labels.surveyPosTitle,
 	posFix: labels.posFixTitle,
+	tankPos: labels.tankPosTitle,
 }
 const accessLabels = computed(() => menu.keys.map((k) => MENU_LABELS[k] || k))
 

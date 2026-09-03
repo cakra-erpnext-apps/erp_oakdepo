@@ -1,8 +1,8 @@
-// Container Position Survey — Desk form.
+// Container Position — Desk form.
 // Render the position photos (an "Attach Image" child table that only shows file
 // links in the grid) as an inline, click-to-enlarge thumbnail gallery.
 
-frappe.ui.form.on("Container Position Survey", {
+frappe.ui.form.on("Container Position", {
 	refresh(frm) {
 		// Retired tanks (Active off) are out of the fleet and never offered.
 		frm.set_query("container", () => ({ filters: { is_active: 1 } }));
@@ -10,7 +10,7 @@ frappe.ui.form.on("Container Position Survey", {
 	},
 });
 
-frappe.ui.form.on("Container Position Survey Photo", {
+frappe.ui.form.on("Container Position Photo", {
 	photo(frm) {
 		render_photo_gallery(frm);
 	},

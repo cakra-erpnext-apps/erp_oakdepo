@@ -12,7 +12,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.ess import gate as ess_gate
-from container_depot.ess import position_survey as ess_position
+from container_depot.ess import tank_survey as ess_survey
 from container_depot.ess import repairs as ess_repairs
 from container_depot.ess.guard import require_menu
 
@@ -21,6 +21,7 @@ USERS = {
 	"Team Cleaning": "guard-cleaning@example.com",
 	"Cashier": "guard-cashier@example.com",
 	"Team Survey": "guard-survey@example.com",
+	"Team Kalmar": "guard-kalmar@example.com",
 }
 
 
@@ -78,13 +79,15 @@ class TestEssGuard(FrappeTestCase):
 		require_menu("gate")  # does not raise
 		self.assertIn("items", ess_gate.gate_history())
 
-	def test_survey_cannot_approve_position(self):
-		# The write/submit split, enforced at the endpoint: Team Survey records surveys
-		# but does not sign them off.
-		frappe.set_user(USERS["Team Survey"])
-		require_menu("surveyPos")  # does not raise
+	def test_kalmar_cannot_close_a_survey(self):
+		# The write/submit split, enforced at the endpoint — and since the flow was reversed
+		# (2026-09-03) it runs the other way round: Team Kalmar drops tanks and records where
+		# they stand, but closing the survey is the surveyor's, because closing it is what
+		# raises the tank's EIR-Out.
+		frappe.set_user(USERS["Team Kalmar"])
+		require_menu("posFix")  # does not raise
 		with self.assertRaises(frappe.PermissionError):
-			ess_position.position_approve(name="NOPE")
+			ess_survey.survey_finish(name="NOPE")
 
 	def test_unknown_menu_key_is_refused(self):
 		# Fail closed: a typo in a guard call must not silently grant access.

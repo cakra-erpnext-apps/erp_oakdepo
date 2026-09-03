@@ -110,12 +110,18 @@ REPLAYED_ENDPOINTS = [
 	("container_depot.ess.repairs", "mr_start", "container_depot.container_depot.mr", "start_repair"),
 	("container_depot.ess.repairs", "mr_order_save", "container_depot.container_depot.mr", "save_mr_order"),
 	(
-		"container_depot.ess.position_survey", "position_record",
-		"container_depot.container_depot.position_survey", "record_survey_position",
+		# Letak tank INSERTS a reading rather than updating one, so a replay on a bad signal
+		# would leave two identical readings minutes apart and make the tank look re-checked.
+		"container_depot.ess.container_position", "position_record",
+		"container_depot.container_depot.container_position", "record_position",
 	),
 	(
-		"container_depot.ess.position_survey", "position_approve",
-		"container_depot.container_depot.position_survey", "approve_position",
+		"container_depot.ess.tank_survey", "survey_lowered",
+		"container_depot.container_depot.tank_survey", "mark_lowered",
+	),
+	(
+		"container_depot.ess.tank_survey", "survey_finish",
+		"container_depot.container_depot.tank_survey", "finish_survey",
 	),
 ]
 

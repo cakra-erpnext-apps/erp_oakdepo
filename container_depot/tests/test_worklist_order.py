@@ -103,7 +103,7 @@ class TestWorklistOrder(FrappeTestCase):
 		("container_depot", "eir.py", "_by_lift_on"),
 		("container_depot", "cleaning.py", "list_open_cleaning_orders"),
 		("container_depot", "mr.py", "list_open_mr_orders"),
-		("container_depot", "position_survey.py", "_list_by_status"),
+		("container_depot", "tank_survey.py", "_list_rows"),
 	]
 
 	def test_every_worklist_sorts_through_the_shared_rule(self):

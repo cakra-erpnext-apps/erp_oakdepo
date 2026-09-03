@@ -195,7 +195,7 @@ class TestContainerActive(FrappeTestCase):
 			("Cleaning Order", {"customer": self.customer}),
 			("Repair Order", {}),
 			("Inspection", {"inspection_type": "EIR-In"}),
-			("Container Position Survey", {}),
+			("Container Position", {}),
 		):
 			with self.subTest(doctype=doctype), self.assertRaises(frappe.ValidationError):
 				frappe.get_doc({"doctype": doctype, "container": tank, **extra}).insert(

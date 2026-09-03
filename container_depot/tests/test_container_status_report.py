@@ -52,7 +52,7 @@ def _cleanup():
 			frappe.db.delete("Booking Code", {"booking": ("in", [])})
 		for dt in (
 			"Inspection", "Cleaning Order", "Repair Order",
-			"Container Position Survey", "Container Movement", "Container Activity",
+			"Container Position", "Container Movement", "Container Activity",
 		):
 			frappe.db.delete(dt, {"container": ("in", names)})
 		frappe.db.delete("Container", {"name": ("in", names)})
@@ -116,8 +116,11 @@ class TestContainerStatusReport(FrappeTestCase):
 				"customer": self.customer, "status": "Pending",
 			}),
 			"repair_order": self._insert({"doctype": "Repair Order", "container": TANK}),
-			"position_survey": self._insert({
-				"doctype": "Container Position Survey", "container": TANK,
+			# The field survey reaches the tank through a child row now (Survey Order Tank),
+			# so it is created like the bons below rather than as a document of its own.
+			"survey_order": self._insert({
+				"doctype": "Survey Order", "survey_date": today(),
+				"tanks": [{"container": TANK, "status": "Waiting Lowering"}],
 			}),
 			"booking": self._insert({
 				"doctype": "Container Booking", "direction": "Tank In",

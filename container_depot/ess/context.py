@@ -15,25 +15,61 @@ from container_depot.container_depot.user_branch import get_user_branches
 # Adding a *menu* always needs a new Vue page anyway, so a config doctype would buy
 # nothing here — unlike notification routing, which is data (Depot Notification Rule).
 #
-# `surveyPos` and `posFix` share one doctype and split on ptype. The discriminator for
-# surveyPos is CREATE, not write, and that is not an accident: Frappe's Document.submit()
-# calls save(), which checks the "write" permission, so anyone who may submit necessarily
-# also has write. Splitting on write would have handed Team Kalmar the survey-recording
-# menu too. Against §8.1 the create flag lands exactly right —
-#   Team Survey  rwc  -> create yes, submit no  -> surveyPos only
-#   Team Kalmar  rws  -> create no,  submit yes -> posFix only
-#   SPV Lapangan rwcs -> both                   -> both menus
+# `surveyPos` and `posFix` share one doctype and split on ptype, and since the workflow was
+# reversed (lowering first, survey second — see ``tank_survey``) the split runs the other way
+# round from how it used to.
+#
+# `posFix` is the LOWERING queue and keys on WRITE, because marking a tank lowered is a save.
+# `surveyPos` is the surveyor's calendar and keys on SUBMIT, because closing the last tank on a
+# day submits its Survey Order (``survey_order.refresh_progress``).
+#
+# Frappe's Document.submit() calls save(), so anyone holding submit necessarily holds write —
+# which means the submit key is strictly the narrower of the two and the overlap falls exactly
+# where it should. Against the §8.1 matrix —
+#   Team Kalmar  rw   -> write yes, submit no  -> posFix only
+#   Team Survey  rws  -> both                  -> both menus
+#   SPV Lapangan rwcs -> both                  -> both menus
+#
+# Team Survey holding BOTH is the deliberate part: a surveyor already standing at a tank that
+# is plainly on the ground marks it down themselves rather than waiting for an operator to open
+# their phone. Only the closing is theirs alone.
+#
+# `tankPos` is a THIRD menu over a different doctype entirely, and it is open to every field
+# team on purpose — see ``ess/container_position.py``. Where a tank stands is not the survey's
+# private business: it is the one fact every crew in the yard needs and every crew can correct.
+#
+# `schedule` is the one entry whose doctype slot holds a TUPLE, and it is an ANY-OF: the
+# universal Jadwal calendar opens for anyone who can read at least one kind of planned work,
+# and then shows only the kinds they can actually read (container_depot.schedule._visible_sources).
+# Written as a tuple rather than as four menu keys because it is one screen — four keys would
+# mean four tiles racing to render the same calendar.
+SCHEDULE_DOCTYPES = ("Survey Order", "Cleaning Order", "Repair Order", "Container Booking")
+
 _MENU = [
-	("gate",         "/gate",            "Order Bongkar",             "create"),
-	("eir",          "/eir",             "Inspection",                "write"),
-	("cleaning",     "/cleaning",        "Cleaning Order",            "write"),
-	("mr",           "/mr",              "Repair Order",              "write"),
-	("monitor",      "/monitor",         "Container",                 "read"),
-	("surveyPos",    "/survey-position", "Container Position Survey", "create"),
-	("posFix",       "/position-fix",    "Container Position Survey", "submit"),
+	("gate",         "/gate",            "Order Bongkar",      "create"),
+	("eir",          "/eir",             "Inspection",         "write"),
+	("cleaning",     "/cleaning",        "Cleaning Order",     "write"),
+	("mr",           "/mr",              "Repair Order",       "write"),
+	("monitor",      "/monitor",         "Container",          "read"),
+	("schedule",     "/schedule",        SCHEDULE_DOCTYPES,    "read"),
+	("surveyList",   "/survey-orders",   "Survey Order",       "read"),
+	("surveyPos",    "/survey-orders",   "Survey Order",       "submit"),
+	("posFix",       "/position-fix",    "Survey Order",       "write"),
+	("tankPos",      "/tank-position",   "Container Position", "create"),
 ]
 
 MENU_KEYS = [key for key, _route, _dt, _ptype in _MENU]
+
+
+def _may(dt, ptype, user=None) -> bool:
+	"""Permission for one menu entry, where the doctype slot may be one name or several.
+
+	Several means ANY of them is enough — the only entry that uses it is the universal
+	calendar, and "you may see the schedule" there means "you may see at least one thing on
+	it". Filtering WHAT you see is a separate job done per source, one layer down.
+	"""
+	names = dt if isinstance(dt, (tuple, list)) else (dt,)
+	return any(frappe.has_permission(name, ptype, user=user) for name in names)
 
 
 def _field_roles() -> set:
@@ -90,7 +126,7 @@ def allowed_menu(user: str = None) -> list:
 	"""Menu keys this user may open. Empty for anyone without a field role."""
 	if not has_field_role(user):
 		return []
-	return [key for key, _route, dt, ptype in _MENU if frappe.has_permission(dt, ptype, user=user)]
+	return [key for key, _route, dt, ptype in _MENU if _may(dt, ptype, user=user)]
 
 
 def depot_roles(user: str = None) -> list:

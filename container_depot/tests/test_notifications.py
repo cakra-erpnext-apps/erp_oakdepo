@@ -243,12 +243,19 @@ class TestNotificationRouting(FrappeTestCase):
 		allowed = {
 			"Team Cleaning": {"cleaning_order_forwarded"},
 			"Team Repair": {"repair_order_forwarded"},
-			"Team EIR": {"eir_created"},
-			# Survey posisi splits one doctype across two menus, so it has two handoffs — the
-			# survey arriving for Team Survey, the recorded position arriving for Team Kalmar.
-			# Neither is on `position_confirmed`: by then both are done.
-			"Team Survey": {"position_survey_pending"},
-			"Team Kalmar": {"position_surveyed", "order_gate_out", "gate_out"},
+			# `position_confirmed` too, and that is the one genuinely new handoff: closing a
+			# survey is what RAISES the EIR-Out draft, so the document it announces is Team
+			# EIR's next job rather than a finished-work notice.
+			"Team EIR": {"eir_created", "position_confirmed"},
+			# Survey posisi splits one doctype across two menus, so it has two handoffs — and
+			# since the flow was reversed (2026-09-03) they belong to the opposite teams: the
+			# tank arriving in the LOWERING queue is Team Kalmar's, the lowered tank arriving
+			# for survey is Team Survey's. `survey_order_scheduled` — the day's whole job
+			# arriving — is Team Survey's too, because the calendar it points at is their
+			# screen; Kalmar learns about the same day one tank at a time, through a route
+			# they can actually open.
+			"Team Survey": {"survey_order_scheduled", "position_surveyed"},
+			"Team Kalmar": {"position_survey_pending", "order_gate_out", "gate_out"},
 		}
 		for event_key, _label, _desc, roles in NOTIFICATION_RULES:
 			for role in roles:

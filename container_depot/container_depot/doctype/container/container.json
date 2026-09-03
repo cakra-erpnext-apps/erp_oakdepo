@@ -48,6 +48,8 @@
   "target_lift_on",
   "location_section",
   "current_location",
+  "location_updated_on",
+  "location_updated_by",
   "row",
   "bay",
   "tier",
@@ -281,16 +283,33 @@
    "read_only": 1
   },
   {
-   "collapsible": 1,
-   "description": "Penempatan yard sudah tidak dipakai lagi sejak zona/placement dihapus. Isian di sini hanya catatan bebas, tidak dipakai proses manapun.",
+   "collapsible": 0,
+   "description": "Letak terakhir tank, dicatat lewat menu Letak Tank di PWA (doctype Container Position). Read-only di sini: yang menulis adalah catatan letaknya, bukan sebaliknya — supaya \"kapan \" dan \"oleh siapa\" selalu punya dokumen di belakangnya.",
    "fieldname": "location_section",
    "fieldtype": "Section Break",
-   "label": "Lokasi di Yard (opsional)"
+   "label": "Letak Tank di Yard"
   },
   {
    "fieldname": "current_location",
-   "fieldtype": "Data",
-   "label": "Current Location (Yard)"
+   "fieldtype": "Small Text",
+   "label": "Letak Terakhir",
+   "read_only": 1,
+   "in_standard_filter": 0,
+   "description": "Catatan bebas letak tank (mis. \"blok kanan dekat pos, tumpukan 2\"). Ditulis oleh Container Position; kosong = belum pernah didata."
+  },
+  {
+   "description": "Kapan letak itu terakhir dicatat. Ini yang dibaca Survey Order untuk bilang seberapa segar posisinya.",
+   "fieldname": "location_updated_on",
+   "fieldtype": "Datetime",
+   "label": "Letak Diperbarui",
+   "read_only": 1
+  },
+  {
+   "fieldname": "location_updated_by",
+   "fieldtype": "Link",
+   "label": "Dicatat Oleh",
+   "options": "User",
+   "read_only": 1
   },
   {
    "fieldname": "row",
@@ -376,7 +395,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-02 16:30:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

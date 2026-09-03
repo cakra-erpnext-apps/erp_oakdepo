@@ -32,7 +32,10 @@ class TestTankDossier(FrappeTestCase):
 				   WHERE lift_on_booking IN %(bookings)s""",
 				{"bookings": tuple(self._bookings)},
 			)
-			frappe.db.delete("Container Position Survey", {"booking": ["in", self._bookings]})
+			_orders = frappe.get_all("Survey Order", filters={"booking": ["in", self._bookings]}, pluck="name")
+			if _orders:
+				frappe.db.delete("Survey Order Tank", {"parent": ["in", _orders]})
+				frappe.db.delete("Survey Order", {"name": ["in", _orders]})
 			frappe.db.delete("Booking Code", {"booking": ["in", self._bookings]})
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})

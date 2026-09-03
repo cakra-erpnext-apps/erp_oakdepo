@@ -345,57 +345,140 @@ def latest_eir_in(container: str | None) -> str | None:
 	)
 
 
-def provision_eir_out_for_order_muat(order_name: str) -> list:
-	"""Submit-time hook for an Order Muat: create one DRAFT EIR-Out per container, each
-	referencing the container's latest submitted EIR-In (the load-out baseline) and the
-	row's container.
+def provision_eir_out_for_survey(survey_tank: str) -> str | None:
+	"""Raise the tank's DRAFT EIR-Out the moment its survey row is CLOSED.
 
-	Mirrors :func:`provision_eirs_for_order_bongkar` (EIR-In): the surveyor never types a
-	container — the EIR-Out is born from the loading bon. The surveyor opens the draft from
-	the EIR-Out worklist, verifies exterior / seals vs the referenced EIR-In, then submits.
-	Idempotent per container (skips when an open EIR-Out draft already exists); best-effort
-	per row — one failure is logged and never blocks the bon submit.
+	``survey_tank`` is a ``Survey Order Tank`` row name — one tank on one day's schedule. This
+	is where an EIR-Out is born. It used to be born at the loading bon (Order Muat) instead,
+	and that was too late in the day to be useful: the bon is cut when the truck is effectively
+	already there, so the one inspection standing between a tank and the gate was only handed
+	to a surveyor at the last minute. The survey is the moment somebody has actually looked the
+	tank over, which is the moment the outbound record should start.
+
+	**The draft is deliberately born WITHOUT a bon.** No Order Muat exists yet — that is the
+	whole point of moving this earlier — so ``referred_voucher`` stays empty and the truck /
+	driver / shipper boxes stay blank until the bon is cut and adopts it
+	(:func:`attach_order_muat_to_eirs`). Until then the EIR-Out can be filled in but NOT
+	submitted; ``Inspection.before_submit`` refuses it, because an EIR-Out with no bon behind it
+	would let a tank through the gate on no paperwork at all.
+
+	(A bon that somehow already exists for this tank IS picked up straight away — a yard that
+	worked out of order should not be punished with a document it then has to re-link by hand.)
+
+	Idempotent: returns the existing draft, claiming it for this survey row when it is unclaimed.
+	Returns the EIR-Out's name, or ``None`` when there is nothing to raise one for.
+	"""
+	row = frappe.db.get_value(
+		"Survey Order Tank", survey_tank, ["name", "parent", "container", "depot"], as_dict=True
+	)
+	if not row or not row.container:
+		return None
+	container = row.container
+
+	# Dedup, in the order the two questions actually differ. First: has this very survey row
+	# already raised one (including a SUBMITTED one — a reopened-then-reclosed survey must not
+	# raise a second EIR for a tank that has already been through the gate)?
+	mine = frappe.db.get_value(
+		"Inspection", {"survey_tank": survey_tank, "docstatus": ["!=", 2]}, "name"
+	)
+	if mine:
+		return mine
+	# Second: is there an unrelated open EIR-Out draft for this tank? Adopt it rather than
+	# opening a rival — the PWA fetches THE single draft for a container, and two would hand the
+	# surveyor a coin flip.
+	existing = frappe.db.get_value(
+		"Inspection",
+		{"container": container, "docstatus": 0, "inspection_type": "EIR-Out"},
+		"name",
+	)
+	if existing:
+		frappe.db.set_value(
+			"Inspection", existing,
+			{"survey_tank": survey_tank, "survey_order": row.parent},
+			update_modified=False,
+		)
+		return existing
+
+	eir = frappe.new_doc("Inspection")
+	eir.inspection_type = "EIR-Out"
+	eir.container = container
+	eir.inspector = frappe.session.user
+	cdepot, ccargo = frappe.db.get_value("Container", container, ["depot", "last_cargo"]) or (None, None)
+	eir.depot = row.depot or cdepot
+	eir.cargo = ccargo
+	eir.survey_tank = survey_tank
+	eir.survey_order = row.parent
+	# Baseline EIR-In for the comparison panel.
+	eir.reference_eir_in = latest_eir_in(container)
+	# Only if the yard ran out of order and the bon is already out; normally None.
+	voucher = latest_voucher_for_container(container, "EIR-Out")
+	if voucher:
+		_apply_voucher(eir, voucher)
+		snap = fetch_voucher(voucher, "EIR-Out", container=container)
+		eir.tank_status = snap.get("tank_status") or eir.tank_status
+		eir.cargo = snap.get("cargo") or eir.cargo
+	eir.insert(ignore_permissions=True)  # system automation on survey close
+	return eir.name
+
+
+def attach_order_muat_to_eirs(order_name: str) -> dict:
+	"""Submit-time hook for an Order Muat: point each tank's EXISTING EIR-Out draft at this
+	bon and stamp the shipment detail onto it. **Creates nothing.**
+
+	The EIR-Out is raised by the position survey now (:func:`provision_eir_out_for_survey`),
+	so by the time a bon is cut the document is already sitting in the surveyor's worklist,
+	half filled in. What the bon adds is the half only it knows — truck, driver, driver phone,
+	shipper, reff doc — and, crucially, the reference that makes the EIR submittable at all
+	(``Inspection.before_submit``). So everything typed on the Generate Bon screen lands
+	straight on the EIR the survey opened, instead of on a second one raised beside it.
+
+	A tank with NO open EIR-Out draft is reported back rather than given one. That is the
+	deliberate consequence of a single birthplace: no survey, no EIR-Out, and inventing one
+	here would put the old duplicate right back. The caller warns the operator, who can close
+	the tank's survey and have the bon adopt it on the next pass.
+
+	Best-effort per row — one failure is logged and never blocks the bon submit. Returns
+	``{"attached": [...], "missing": [container_no, ...]}``.
 	"""
 	rows = frappe.get_all(
 		"Order Container Item",
 		filters={"parent": order_name, "parenttype": "Order Muat"},
-		fields=["container"],
+		fields=["container", "container_no"],
 	)
-	created = []
+	out = {"attached": [], "missing": []}
 	for row in rows:
 		container = row.get("container")
 		if not container:
 			continue
-		# Dedup: never open a second EIR-Out draft for a container (scoped to EIR-Out so an
-		# unrelated EIR-In draft never blocks it).
-		if frappe.db.exists(
+		draft = frappe.db.get_value(
 			"Inspection",
 			{"container": container, "docstatus": 0, "inspection_type": "EIR-Out"},
-		):
-			continue
-		# ... nor a second one for a bon that has been through submit before.
-		if _already_provisioned(container, "EIR-Out", order_name):
+			"name",
+		)
+		if not draft:
+			# Already submitted against this very bon? Then there is nothing missing — this is
+			# a re-submit of a bon that was reverted to draft (order_generation), and the EIR
+			# it stamped is done.
+			if not frappe.db.exists(
+				"Inspection",
+				{"container": container, "inspection_type": "EIR-Out", "referred_voucher": order_name},
+			):
+				out["missing"].append(row.get("container_no") or container)
 			continue
 		try:
-			doc = frappe.new_doc("Inspection")
-			doc.inspection_type = "EIR-Out"
-			doc.container = container
-			doc.inspector = frappe.session.user
-			cdepot, ccargo = frappe.db.get_value("Container", container, ["depot", "last_cargo"]) or (None, None)
-			doc.depot = cdepot
-			doc.cargo = ccargo
-			# Reference THIS Order Muat: truck / driver / driver phone / shipper / booking depot.
+			doc = frappe.get_doc("Inspection", draft)
 			_apply_voucher(doc, order_name)
 			snap = fetch_voucher(order_name, "EIR-Out", container=container)
-			doc.tank_status = snap.get("tank_status") or doc.tank_status
-			doc.cargo = snap.get("cargo") or doc.cargo
-			# Baseline EIR-In for the comparison panel.
-			doc.reference_eir_in = latest_eir_in(container)
-			doc.insert(ignore_permissions=True)  # system automation on bon submit
-			created.append(doc.name)
+			# Defaults, not overwrites: the surveyor has had this draft open since the survey
+			# closed, and a condition they corrected on the tank in front of them beats the
+			# condition the booking was written with days ago.
+			doc.tank_status = doc.tank_status or snap.get("tank_status")
+			doc.cargo = doc.cargo or snap.get("cargo")
+			doc.save(ignore_permissions=True)  # system automation on bon submit
+			out["attached"].append(draft)
 		except Exception:
-			frappe.log_error(frappe.get_traceback(), f"auto EIR-Out for {container} on {order_name}")
-	return created
+			frappe.log_error(frappe.get_traceback(), f"attach EIR-Out for {container} on {order_name}")
+	return out
 
 
 def get_eir_out_reference(inspection) -> dict:
@@ -566,7 +649,7 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
 	drafts = frappe.get_all(
 		"Inspection",
 		filters={"referred_voucher": order_name, "docstatus": 0, "inspection_type": inspection_type},
-		fields=["name", "container", "work_started_on"],
+		fields=["name", "container", "work_started_on", "survey_tank"],
 	)
 	out = {"repointed": [], "deleted": [], "detached": []}
 	for d in drafts:
@@ -579,7 +662,12 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
 				_apply_voucher(doc, replacement)
 				doc.save(ignore_permissions=True)
 				out["repointed"].append(d.name)
-			elif not d.work_started_on:
+			# An EIR-Out raised by a position survey is NOT this bon's to delete. The bon only
+			# ever adopted it (``attach_order_muat_to_eirs``); the document belongs to the
+			# survey that closed, and deleting it would silently retract a finished field
+			# inspection because an unrelated piece of paperwork was voided. It is detached
+			# instead, and the next bon for the same tank adopts it again.
+			elif not d.work_started_on and not d.survey_tank:
 				frappe.delete_doc("Inspection", d.name, ignore_permissions=True)
 				out["deleted"].append(d.name)
 			else:
@@ -1787,10 +1875,11 @@ def list_unsorted_eirs(search=None, start=0, page_length=20) -> dict:
 def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 	"""Open (draft) EIR-Out inspections in the user's branch — the PWA EIR-Out worklist.
 
-	Auto-provisioned (one per container) when an Order Muat is submitted
-	(``provision_eir_out_for_order_muat``), so the surveyor works from this list instead of
-	creating one by hand. Branch-scoped by the Inspection depot; newest first; searchable by
-	container number / EIR id / referred Order Muat; paginated.
+	Auto-provisioned (one per container) when a position survey is CLOSED
+	(``provision_eir_out_for_survey``), so the surveyor works from this list instead of
+	creating one by hand. A draft here may still have no bon against it — the Order Muat
+	adopts it later and only then can it be submitted. Branch-scoped by the Inspection depot;
+	newest first; searchable by container number / EIR id / referred Order Muat; paginated.
 	"""
 	start = max(0, cint(start))
 	page_length = min(max(1, cint(page_length or 20)), 50)

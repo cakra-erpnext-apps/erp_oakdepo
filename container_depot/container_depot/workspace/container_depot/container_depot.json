@@ -101,9 +101,20 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Container Position Survey",
+   "label": "Survey Order (Jadwal Survey)",
    "link_count": 0,
-   "link_to": "Container Position Survey",
+   "link_to": "Survey Order",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link",
+   "name": "Survey Order"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Letak Tank (Container Position)",
+   "link_count": 0,
+   "link_to": "Container Position",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -611,7 +622,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-09-02 15:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

@@ -420,7 +420,7 @@ def get_dashboard_summary(depot=None):
 	if not menu:
 		return {"success": True, "menu": []}
 
-	from container_depot.container_depot import cleaning, eir, mr, position_survey
+	from container_depot.container_depot import cleaning, container_position, eir, mr, tank_survey
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot access
 	out = {"success": True, "menu": sorted(menu)}
@@ -465,10 +465,21 @@ def get_dashboard_summary(depot=None):
 			mr_appr_filters["depot"] = ["in", allowed or [""]]
 		pending["mr_open"] = mr.list_open_mr_orders(page_length=1)["total"]
 		pending["mr_approval"] = frappe.db.count("Repair Order", mr_appr_filters)
+	# The two halves swapped teams when the flow was reversed (lowering first, survey second),
+	# so the keys keep their names but not their contents: `position_survey` is now the tanks
+	# READY to be surveyed, and `position_fix` the ones still waiting to come down. The names
+	# stay because they are what the PWA's dashboard tiles already read.
 	if "surveyPos" in menu:
-		pending["position_survey"] = position_survey.list_pending_surveys(page_length=1)["total"]
+		pending["position_survey"] = tank_survey.list_ready_to_survey(page_length=1)["total"]
 	if "posFix" in menu:
-		pending["position_fix"] = position_survey.list_surveyed(page_length=1)["total"]
+		pending["position_fix"] = tank_survey.list_waiting_lowering(page_length=1)["total"]
+	# Tanks nobody has ever located. Not "work" in the order sense — no document is waiting on
+	# it — but it is the one number that says how blind the yard currently is, and it is the
+	# thing the Letak Tank menu exists to drive to zero.
+	if "tankPos" in menu:
+		pending["unlocated"] = container_position.search_containers(
+			page_length=1, only_unlocated=1
+		)["total"]
 	if pending:
 		out["pending"] = pending
 

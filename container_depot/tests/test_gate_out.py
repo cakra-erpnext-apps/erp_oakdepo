@@ -37,7 +37,15 @@ def _eir_out(container, *, damage=False):
 	"""Submit an EIR-Out for the tank — the approval that gates it out when it is clean.
 
 	``damage`` scores it ``Hold Pending Clearance`` instead, which must NOT release the tank.
+
+	A loading bon is ensured first when the tank has none: since 2026-09-03 an EIR-Out cannot
+	be submitted until one carries its tank (``Inspection.before_submit``), because a clean
+	submit sends the tank through the gate in the same breath. Tests that already made a bon
+	keep theirs — the EIR is deliberately left UNlinked, so ``_apply_eir_out_outcome`` does
+	not stamp Ready To Load over a status the test set by hand.
 	"""
+	if not eir.latest_voucher_for_container(container, "EIR-Out"):
+		_make_order_muat(ensure_test_customer("Gate Out Test Principal"), container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container

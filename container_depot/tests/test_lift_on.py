@@ -37,7 +37,8 @@ class TestLiftOnPriority(FrappeTestCase):
 			frappe.db.delete("Container Booking", {"name": b})
 		if self._containers:
 			frappe.db.delete("Cleaning Order", {"container": ["in", self._containers]})
-			frappe.db.delete("Container Position Survey", {"container": ["in", self._containers]})
+			frappe.db.delete("Survey Order Tank", {"container": ["in", self._containers]})
+			frappe.db.delete("Container Position", {"container": ["in", self._containers]})
 			frappe.db.delete("Container", {"name": ["in", self._containers]})
 		frappe.db.commit()
 		super().tearDown()
@@ -178,7 +179,8 @@ class TestOutboundFulfilment(FrappeTestCase):
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
 		if self._containers:
-			frappe.db.delete("Container Position Survey", {"container": ["in", self._containers]})
+			frappe.db.delete("Survey Order Tank", {"container": ["in", self._containers]})
+			frappe.db.delete("Container Position", {"container": ["in", self._containers]})
 			frappe.db.delete("Container", {"name": ["in", self._containers]})
 		frappe.db.commit()
 		super().tearDown()

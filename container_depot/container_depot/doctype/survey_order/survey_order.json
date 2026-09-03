@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "autoname": "SVO-.YYYY.-.#####",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "header_section",
+  "booking",
+  "principal",
+  "surveyor",
+  "column_break_1",
+  "status",
+  "survey_date",
+  "plan_date",
+  "scope_section",
+  "branch",
+  "column_break_2",
+  "depot",
+  "progress_section",
+  "tank_count",
+  "lowered_count",
+  "column_break_3",
+  "survey_done_count",
+  "per_surveyed",
+  "summary_section",
+  "container_summary",
+  "tanks"
+ ],
+ "fields": [
+  {
+   "fieldname": "header_section",
+   "fieldtype": "Section Break",
+   "label": "Jadwal Survey"
+  },
+  {
+   "description": "Booking Tank Out yang menjadwalkan survey ini. Satu booking keluar = satu jadwal survey.",
+   "fieldname": "booking",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Booking (Tank Out)",
+   "options": "Container Booking",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fetch_from": "booking.principal",
+   "fieldname": "principal",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Principal / Tank Owner",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "description": "Perusahaan surveyor yang ditunjuk di booking (mis. Bureau Veritas). Kosong = belum ditunjuk.",
+   "fetch_from": "booking.surveyor",
+   "fieldname": "surveyor",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Surveyor",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Scheduled",
+   "description": "Diturunkan dari tank-nya, bukan diketik: Scheduled selama belum ada yang turun, In Progress begitu tank pertama Lowered, Completed saat semua tank Survey Done.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Scheduled\nIn Progress\nCompleted\nCancelled",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "description": "Tanggal survey lapangan yang ditetapkan di booking. Ini yang dibaca kalender Jadwal Survey di PWA.",
+   "fieldname": "survey_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tanggal Survey",
+   "reqd": 1
+  },
+  {
+   "description": "Rencana pickup dari booking — tenggat sebenarnya di belakang survey ini.",
+   "fetch_from": "booking.plan_date",
+   "fieldname": "plan_date",
+   "fieldtype": "Date",
+   "label": "Rencana Pickup",
+   "read_only": 1
+  },
+  {
+   "fieldname": "scope_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fetch_from": "booking.branch",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot",
+   "read_only": 1
+  },
+  {
+   "fieldname": "progress_section",
+   "fieldtype": "Section Break",
+   "label": "Progress"
+  },
+  {
+   "fieldname": "tank_count",
+   "fieldtype": "Int",
+   "label": "Jumlah Tank",
+   "read_only": 1
+  },
+  {
+   "description": "Tank yang sudah diturunkan ke ground level (Lowered + Survey Done).",
+   "fieldname": "lowered_count",
+   "fieldtype": "Int",
+   "label": "Sudah Lowered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "survey_done_count",
+   "fieldtype": "Int",
+   "label": "Survey Selesai",
+   "read_only": 1
+  },
+  {
+   "fieldname": "per_surveyed",
+   "fieldtype": "Percent",
+   "label": "% Survey Selesai",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "container_summary",
+   "fieldtype": "Data",
+   "label": "Containers",
+   "read_only": 1
+  },
+  {
+   "description": "Tank pada jadwal ini, dengan status lowering + survey-nya. Letak tank TIDAK disimpan di sini — dibaca live dari master Container (lihat Survey Order Tank).",
+   "fieldname": "tanks",
+   "fieldtype": "Table",
+   "label": "Tank",
+   "options": "Survey Order Tank"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-03 12:00:00.000000",
+ "module": "Container Depot",
+ "name": "Survey Order",
+ "search_fields": "booking, principal, survey_date, status",
+ "sort_field": "survey_date",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "is_submittable": 1
+}

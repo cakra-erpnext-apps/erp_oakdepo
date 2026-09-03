@@ -105,7 +105,16 @@ def _drop_provisioned_eir_in(container):
 
 def _clean_eir_out(container):
 	"""Submit a clean EIR-Out — which IS the departure: ``Inspection.on_submit`` runs the
-	gate-out, so there is nothing else for these tests to press."""
+	gate-out, so there is nothing else for these tests to press.
+
+	A loading bon is ensured first when the tank has none: since 2026-09-03 an EIR-Out cannot
+	be submitted until one carries its tank (``Inspection.before_submit``). This suite is
+	about the gate LOG, so the bon is setup rather than subject matter.
+	"""
+	from container_depot.container_depot import eir as _eir
+
+	if not _eir.latest_voucher_for_container(container, "EIR-Out"):
+		_make_order_muat(ensure_test_customer("Gate Log Shipper"), container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container

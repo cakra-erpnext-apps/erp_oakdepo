@@ -111,7 +111,7 @@ def eir_out_pending(search=None, start=0, page_length=20):
 	"""GET /api/v1/ess/eir-out-pending — open (draft) EIR-Out worklist in the user's branch.
 
 	EIR-Out drafts are auto-created per container when an Order Muat is submitted
-	(``provision_eir_out_for_order_muat``); the surveyor works from this list. See
+	(``provision_eir_out_for_survey``); the surveyor works from this list. See
 	``eir.list_pending_eir_out``."""
 	require_menu("eir")
 	return eir.list_pending_eir_out(search=search, start=start, page_length=page_length)

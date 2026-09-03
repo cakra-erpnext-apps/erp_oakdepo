@@ -458,7 +458,8 @@ class TestOtherRegisters(_RegisterCase):
 			frappe.db.delete("Container Booking Charge", {"parent": name})
 			frappe.db.delete("Container Booking", {"name": name})
 		for name in self._surveys:
-			frappe.db.delete("Container Position Survey", {"name": name})
+			frappe.db.delete("Survey Order Tank", {"parent": name})
+			frappe.db.delete("Survey Order", {"name": name})
 		super().tearDown()
 
 	def _booking(self, direction, *, payment_status="Unpaid", booking_status="Draft"):
@@ -485,10 +486,11 @@ class TestOtherRegisters(_RegisterCase):
 		self._bookings.append(doc.name)
 		return doc.name
 
-	def _survey(self, container, status="Pending Survey"):
+	def _survey(self, container, status="Waiting Lowering"):
+		"""A one-tank Survey Order — the register reads the tank ROWS, joined to their day."""
 		doc = frappe.get_doc({
-			"doctype": "Container Position Survey", "container": container,
-			"container_no": container, "status": status,
+			"doctype": "Survey Order", "survey_date": getdate(), "status": "Scheduled",
+			"tanks": [{"container": container, "container_no": container, "status": status}],
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
@@ -561,13 +563,13 @@ class TestOtherRegisters(_RegisterCase):
 		c1 = self._container("S1")
 		c2 = self._container("S2")
 		self._survey(c1)
-		self._survey(c2, status="Confirmed")
+		self._survey(c2, status="Survey Done")
 
 		_cols, rows, _msg, _chart, summary = report.execute({"principal": self.principal})
 		mine = self._mine(rows)
 		self.assertEqual(len(mine), 2)
 		counts = dict((s["label"], s["value"]) for s in summary)
-		self.assertGreaterEqual(counts["Belum Disentuh"], 1)
+		self.assertGreaterEqual(counts["Belum Turun"], 1)
 
 	def test_survey_register_only_outstanding_drops_the_confirmed(self):
 		from container_depot.container_depot.report.container_survey_register import (
@@ -575,8 +577,8 @@ class TestOtherRegisters(_RegisterCase):
 		)
 
 		self._survey(self._container("S3"))
-		self._survey(self._container("S4"), status="Confirmed")
+		self._survey(self._container("S4"), status="Survey Done")
 		_cols, rows, _msg, _chart, _summary = report.execute(
 			{"principal": self.principal, "only_outstanding": 1}
 		)
-		self.assertEqual([r["status"] for r in self._mine(rows)], ["Pending Survey"])
+		self.assertEqual([r["status"] for r in self._mine(rows)], ["Waiting Lowering"])

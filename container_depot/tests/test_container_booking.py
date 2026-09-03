@@ -46,10 +46,13 @@ def _cleanup_customer_world(customer: str):
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
 		frappe.db.delete("Container Booking Item", {"parent": ("in", bookings)})
 		_release_lift_on(bookings)
-		# An outbound booking opens a Container Position Survey per tank the moment it is
+		# An outbound booking schedules a Survey Order the moment it is
 		# SAVED (provisioning moved to the draft), so a purge that only drops bookings now
 		# leaves a survey behind pointing at a container that is about to go too.
-		frappe.db.delete("Container Position Survey", {"booking": ("in", bookings)})
+		_orders = frappe.get_all("Survey Order", filters={"booking": ("in", bookings)}, pluck="name")
+		if _orders:
+			frappe.db.delete("Survey Order Tank", {"parent": ("in", _orders)})
+			frappe.db.delete("Survey Order", {"name": ("in", _orders)})
 		frappe.db.delete("Container Booking", {"name": ("in", bookings)})
 	contracts = frappe.get_all("Depot Contract", filters={"customer": customer}, pluck="name")
 	if contracts:
@@ -87,10 +90,13 @@ def _purge_bookings(customer: str):
 		frappe.db.delete("Booking Code", {"booking": ("in", bookings)})
 		frappe.db.delete("Container Booking Item", {"parent": ("in", bookings)})
 		_release_lift_on(bookings)
-		# An outbound booking opens a Container Position Survey per tank the moment it is
+		# An outbound booking schedules a Survey Order the moment it is
 		# SAVED (provisioning moved to the draft), so a purge that only drops bookings now
 		# leaves a survey behind pointing at a container that is about to go too.
-		frappe.db.delete("Container Position Survey", {"booking": ("in", bookings)})
+		_orders = frappe.get_all("Survey Order", filters={"booking": ("in", bookings)}, pluck="name")
+		if _orders:
+			frappe.db.delete("Survey Order Tank", {"parent": ("in", _orders)})
+			frappe.db.delete("Survey Order", {"name": ("in", _orders)})
 		frappe.db.delete("Container Booking", {"name": ("in", bookings)})
 	frappe.db.commit()
 

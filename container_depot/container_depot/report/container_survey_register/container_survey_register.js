@@ -7,10 +7,10 @@ frappe.query_reports["Container Survey Register"] = {
 			fieldname: "status",
 			label: __("Status"),
 			fieldtype: "Select",
-			options: "\nPending Survey\nIn Survey\nSurveyed\nIn Fix\nConfirmed",
+			options: "\nWaiting Lowering\nLowered\nSurvey Done",
 		},
-		{ fieldname: "from_date", label: __("Diminta Dari"), fieldtype: "Date" },
-		{ fieldname: "to_date", label: __("Diminta Sampai"), fieldtype: "Date" },
+		{ fieldname: "from_date", label: __("Jadwal Survei Dari"), fieldtype: "Date" },
+		{ fieldname: "to_date", label: __("Jadwal Survei Sampai"), fieldtype: "Date" },
 		{ fieldname: "only_outstanding", label: __("Hanya yang belum selesai"), fieldtype: "Check", default: 0 },
 	],
 
@@ -18,11 +18,11 @@ frappe.query_reports["Container Survey Register"] = {
 		value = default_formatter(value, row, column, data);
 		if (column.fieldname === "status" && data && data.status) {
 			const colour = {
-				Confirmed: "green",
-				Surveyed: "blue",
-				"In Survey": "orange",
-				"In Fix": "orange",
-				"Pending Survey": "red",
+				// Hijau = selesai. Biru = sudah turun, tinggal disurvei. Merah = masih
+				// ditumpuk, yaitu satu-satunya keadaan yang benar-benar menahan tank.
+				"Survey Done": "green",
+				Lowered: "blue",
+				"Waiting Lowering": "red",
 			}[data.status];
 			if (colour) value = `<span class="indicator-pill ${colour}">${data.status}</span>`;
 		}

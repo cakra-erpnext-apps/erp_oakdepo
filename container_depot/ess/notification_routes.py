@@ -33,10 +33,15 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from container_depot.ess.context import _MENU, has_field_role
+from container_depot.ess.context import _MENU, _may, has_field_role
 
-# Longest-prefix wins, so `/survey-position/history` resolves to surveyPos and never collides
+# Longest-prefix wins, so `/survey-orders/history` resolves to its owner and never collides
 # with `/position-fix`. Built from _MENU so a new menu needs no second registration here.
+#
+# `/survey-orders` is claimed by TWO entries (surveyList on read, surveyPos on submit) because
+# the list and the closing press share an entry point. `sorted` is stable, so the _MENU order
+# decides and surveyList — the WIDER of the two — wins. That is the right way round: a
+# notification pointing at the list must not demand the right to close a survey.
 _MENU_BY_ROUTE = sorted(
 	((route, key, dt, ptype) for key, route, dt, ptype in _MENU),
 	key=lambda r: -len(r[0]),
@@ -108,32 +113,37 @@ def _repair(doctype, name):
 	return f"/mr?o={name}"
 
 
-def _survey(doctype, name):
-	"""Only valid when the notified document IS a Container Position Survey."""
-	st = _state("Container Position Survey", name, ["status"])
-	if not st:
-		return None
-	# The two halves of this workflow are two different menus held by two different teams.
-	# Deep-linked (`?s=`) the way cleaning and M&R are: the worklist can be long, and a bell
-	# that only opens the list still leaves the operator hunting for the tank it just named.
-	# Each half owns two statuses: the one waiting to be picked up and the one somebody is
-	# already working. Both belong on the same screen — the operator holding it needs to get
-	# back in, and a reopened survey lands in exactly these states.
-	if st.status in ("Pending Survey", "In Survey"):
-		return f"/survey-position?s={name}"
-	if st.status in ("Surveyed", "In Fix"):
-		return f"/position-fix?s={name}"
-	return f"/survey-position/history?open={name}"
+def _lowering_queue(doctype, name):
+	"""Team Kalmar's flat queue. A tank waiting to come down is worked from the queue, not from
+	a schedule — the operator takes whatever is nearest its pickup date, which is exactly the
+	order that screen is already in."""
+	return "/position-fix"
+
+
+def _schedule(doctype, name):
+	"""The day's field job — the tanks hang off the screen this lands on.
+
+	Deep-linked to the SCHEDULE and not to a tank, because a tank on a Survey Order is a child
+	row: Frappe's Notification Log points at a real doctype + name, and a child row is neither.
+	The tank is named in the subject instead.
+	"""
+	return f"/survey-orders/order/{name}"
 
 
 def _eir_pending(doctype, name):
 	"""The EIR worklist (open drafts), for events whose document is NOT an Inspection.
 
-	`order_muat_survey` fires on an **Order Muat**: EIR-Out drafts have just been provisioned
-	for its tanks and there is no single Inspection to deep-link to. It used to resolve to
-	`/survey-position` — the Container Position Survey menu, a different feature worked by a
-	different team — so the one event that says "EIR-Out wajib sebelum tank boleh dimuat"
+	`order_muat_survey` fires on an **Order Muat**: the bon has just adopted its tanks' EIR-Out
+	drafts and there is no single Inspection to deep-link to. It used to resolve to
+	`/survey-position` — the old Container Position Survey menu, a different feature worked
+	by a different team — so the one event that says "EIR-Out wajib sebelum tank boleh dimuat"
 	pointed away from the EIR screen. `/eir` is where those drafts are.
+
+	`position_confirmed` fires on a **Container Position Survey**, and lands here for the same
+	reason rather than on the survey's own Riwayat: closing the survey is what RAISES the
+	EIR-Out draft, and that draft — not the finished survey — is what its audience (Team EIR)
+	has to go and work. Routing it to the survey would send them to a menu they hold no
+	permission on at all.
 	"""
 	return "/eir"
 
@@ -176,9 +186,10 @@ _BY_EVENT = {
 	"order_gate_in": _gate,
 	"order_gate_out": _gate,
 	"order_muat_survey": _eir_pending,
-	"position_survey_pending": _survey,
-	"position_surveyed": _survey,
-	"position_confirmed": _survey,
+	"survey_order_scheduled": _schedule,
+	"position_survey_pending": _lowering_queue,
+	"position_surveyed": _schedule,
+	"position_confirmed": _eir_pending,
 	"eir_out_hold": _eir_worklist,
 	"gate_out": _gate_history,
 	"booking_created": _none,
@@ -195,7 +206,7 @@ _BY_DOCTYPE = {
 	"Inspection": _eir,
 	"Cleaning Order": _cleaning,
 	"Repair Order": _repair,
-	"Container Position Survey": _survey,
+	"Survey Order": _schedule,
 	"Gate Entry": _gate_history,
 	"Order Bongkar": _gate,
 	"Container": _monitor,
@@ -242,7 +253,9 @@ def can_open_menu(route: str, user: str = None) -> bool:
 	if not entry:
 		return False
 	_key, doctype, ptype = entry
-	return has_field_role(user) and frappe.has_permission(doctype, ptype, user=user)
+	# `_may`, not `has_permission`: one _MENU entry (the universal Jadwal) names several
+	# doctypes and is satisfied by any of them.
+	return has_field_role(user) and _may(doctype, ptype, user=user)
 
 
 def can_read_doc(doctype: str, name: str, user: str = None) -> bool:

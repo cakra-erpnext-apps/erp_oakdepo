@@ -31,14 +31,41 @@ class OrderMuat(Document):
 		_ensure_order_qr(self)
 		from container_depot.container_depot.notify import notify_order_gate, notify_order_muat_survey
 		notify_order_gate(self, "out")
-		# Fase G: auto-create one DRAFT EIR-Out per container (referencing the latest EIR-In)
-		# and tell the surveyor. Best-effort — an EIR-Out hiccup never blocks the bon submit.
-		try:
-			from container_depot.container_depot.eir import provision_eir_out_for_order_muat
-			provision_eir_out_for_order_muat(self.name)
-		except Exception:
-			frappe.log_error(frappe.get_traceback(), f"provision EIR-Out for {self.name}")
+		self._attach_eir_out()
 		notify_order_muat_survey(self)
+
+	def _attach_eir_out(self):
+		"""Point each tank's EIR-Out at this bon and stamp the truck / driver / shipper onto it.
+
+		The bon no longer CREATES an EIR-Out. Since 2026-09-03 the EIR-Out is raised when the
+		tank's position survey is closed, days earlier, so everything typed on this screen
+		lands on that document instead of on a second one beside it — and the reference is
+		what finally makes it submittable (``Inspection.before_submit``).
+
+		A tank whose survey has not been closed therefore has nothing to attach to. That is
+		said out loud here, on the screen of the person who just cut the bon and can do
+		something about it, rather than being discovered at the gate — a tank cannot leave
+		without a submitted EIR-Out (``gate.mark_gate_out``).
+
+		Best-effort: an EIR hiccup never blocks the bon submit.
+		"""
+		try:
+			from container_depot.container_depot.eir import attach_order_muat_to_eirs
+			result = attach_order_muat_to_eirs(self.name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"attach EIR-Out for {self.name}")
+			return
+		if result.get("missing"):
+			frappe.msgprint(
+				_(
+					"Tank berikut belum punya EIR-Out: <b>{0}</b>.<br>"
+					"EIR-Out terbit saat survey posisi ditutup — selesaikan surveynya dulu, "
+					"lalu bon ini bisa menyusul menautkannya. Tanpa EIR-Out yang disubmit, "
+					"tank tidak bisa keluar gate."
+				).format(", ".join(result["missing"])),
+				title=_("EIR-Out belum ada"),
+				indicator="orange",
+			)
 
 	def on_cancel(self):
 		_release_codes(self)

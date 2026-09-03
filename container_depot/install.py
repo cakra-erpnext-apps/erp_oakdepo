@@ -829,11 +829,23 @@ ORDER_NUMBER_CARDS = [
 	{"label": "Periodic Test Aktif", "color": "#7575FF",
 	 "document_type": "Repair Order",
 	 "filters_json": [["job_type", "=", "Periodic Test"], ["status", "not in", list(DONE_REPAIR)]]},
-	{"label": "Survey Posisi Pending", "color": "#F5A623",
-	 "document_type": "Container Position Survey",
-	 # "In Survey" too: somebody has picked it up, but the tank is still un-located, so it is
-	 # every bit as outstanding as one nobody has started.
-	 "filters_json": [["status", "in", ["Pending Survey", "In Survey"]], ["docstatus", "<", 2]]},
+	# Survey Tank Out, dihitung per HARI KERJA dan bukan per tank. Statusnya sendiri hidup di
+	# baris tank (Survey Order Tank), dan number card tidak bisa menghitung child table dengan
+	# cara yang masih bisa diklik — jadi pertanyaannya digeser ke granularitas yang memang punya
+	# dokumen: "Belum Ada yang Turun" = hari kerja yang belum disentuh Kalmar sama sekali, yang
+	# persis backlog mereka. Angka per tank ada di PWA, di antrean yang mengerjakannya.
+	{"label": "Jadwal Survey Belum Mulai", "color": "#F5A623",
+	 "document_type": "Survey Order",
+	 "filters_json": [["status", "=", "Scheduled"]]},
+	{"label": "Jadwal Survey Terbuka", "color": "#00BCD4",
+	 "document_type": "Survey Order",
+	 "filters_json": [["status", "in", ["Scheduled", "In Progress"]]]},
+	# Tank yang letaknya tidak pernah didata sama sekali. Bukan "pekerjaan" dalam arti ada
+	# dokumen yang menunggu — ini ukuran seberapa buta yard-nya saat ini, dan satu-satunya angka
+	# yang dikejar menu Letak Tank sampai nol.
+	{"label": "Tank Belum Terdata Letaknya", "color": "#E24C4C",
+	 "document_type": "Container",
+	 "filters_json": [["current_location", "in", [None, ""]], ["is_active", "=", 1]]},
 	{"label": "Order Bongkar Aktif", "color": "#00BCD4",
 	 "document_type": "Order Bongkar",
 	 "filters_json": [["order_status", "!=", "Completed"], ["docstatus", "=", 1]]},
@@ -1614,9 +1626,11 @@ _PERM_LETTERS = {
 # §8.1 — field-role matrix, transcribed column-for-column from the handoff table.
 # "" = no DocPerm at all for that role on that doctype.
 #
-# Note the `Container Position Survey` row: Team Survey gets rwc (record the survey),
-# Team Kalmar gets rws (approve "udah turun"). That write/submit split on ONE doctype
-# is exactly what separates the `surveyPos` and `posFix` menus — see ess.context._MENU.
+# Note the `Survey Order` row: Team Kalmar gets rw (mark a tank lowered), Team Survey gets rws
+# (close a tank, which submits the day once the last one is done). That write/submit split on
+# ONE doctype is exactly what separates the `posFix` and `surveyPos` menus — see
+# ess.context._MENU. `Container Position` is the opposite shape on purpose: one grant, every
+# field role, because where a tank stands is everybody's problem.
 _FIELD_ROLE_ORDER = FIELD_ROLES
 FIELD_ROLE_MATRIX = [
 	#  DocType                       Security  TeamEIR  Kalmar  Cleaning  Repair  Survey  SPV
@@ -1644,7 +1658,20 @@ FIELD_ROLE_MATRIX = [
 	("Inspection",                  ("",      "rwcs",  "r",    "r",      "r",    "r",    "rwcs")),
 	("Cleaning Order",              ("",      "r",     "r",    "rwcs",   "",     "",     "rwcs")),
 	("Repair Order",                ("",      "r",     "r",    "",       "rwc",  "",     "rwc")),
-	("Container Position Survey",   ("",      "",      "rws",  "",       "",     "rwc",  "rwcs")),
+	# ALUR DIBALIK (2026-09-03): lowering dulu (Kalmar), baru survey ditutup (Surveyor). Semua
+	# statusnya ada di Survey Order (per baris tank), jadi izinnya juga di situ. Kalmar `rw` —
+	# menandai lowered adalah sebuah save; Team Survey `rws` — menutup tank terakhir di satu hari
+	# men-SUBMIT jadwalnya. Pemisah menunya ikut: `posFix` bertumpu pada WRITE dan `surveyPos`
+	# pada SUBMIT (lihat ess.context._MENU). Konsekuensinya disengaja: Team Survey memegang
+	# keduanya, jadi surveyor yang sudah berdiri di depan tank yang jelas sudah di bawah tidak
+	# perlu menunggu operator membuka HP-nya (jawaban user 2026-09-03).
+	("Survey Order",                ("",      "",      "rw",   "",       "",     "rws",  "rwcs")),
+	# Letak tank TERBUKA untuk semua tim lapangan, dan itu inti fiturnya — bukan kelalaian.
+	# Letak yang salah merugikan siapa pun yang berjalan ke tumpukan yang salah berikutnya:
+	# tukang cuci, mekanik, surveyor, satpam. Jadi siapa pun yang menemukan tank di suatu tempat
+	# boleh mencatatnya. `c` (create) adalah kuncinya — tiap pencatatan itu dokumen baru, bukan
+	# suntingan yang lama — dan itu juga diskriminator menu `tankPos`.
+	("Container Position",          ("rc",    "rc",    "rc",   "rc",     "rc",   "rc",   "rc")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 ]
@@ -2095,17 +2122,26 @@ NOTIFICATION_RULES = [
 		["SPV Lapangan", "Admin Ops"]),
 	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
 		["SPV Lapangan", "Admin Ops"]),
-	# Survey posisi (Lift On). One doctype, two menus, so two handoffs: the survey lands in
-	# Team Survey's worklist, then the recorded position lands in Team Kalmar's. Each team is
-	# on its own handoff and nothing else — the same rule the cleaning / M&R crews follow.
-	("position_survey_pending", "Survey posisi dibuat", "Booking Tank Out disubmit — posisi tank harus disurvei sebelum bisa ditarik.",
+	# Jadwal survey lapangan: satu Survey Order per booking Tank Out. Team Survey saja di sisi
+	# lapangan — kalendernya memang layar mereka (`surveyPos`), dan Team Kalmar tidak bisa
+	# membukanya. Kalmar tetap dapat kabar, tapi lewat handoff mereka sendiri
+	# (`position_survey_pending`, per tank), yang mengarah ke antrean lowering — sinyal yang
+	# bisa mereka kerjakan, bukan halaman yang akan menolak mereka.
+	("survey_order_scheduled", "Jadwal survey terbit", "Booking Tank Out menetapkan tanggal survey — satu hari kerja lapangan masuk kalender.",
 		["Team Survey", "SPV Lapangan", "Admin Ops"]),
-	("position_surveyed", "Posisi menunggu approval Kalmar", "Surveyor sudah mencatat letak tank — menunggu konfirmasi \"udah turun\" dari Team Kalmar.",
+	# Survey posisi (Tank Out). One doctype, two menus, so two handoffs — and sejak alurnya
+	# dibalik (lowering dulu, baru survey) kedua penerimanya ikut bertukar: yang pertama jatuh
+	# ke Team Kalmar, yang kedua ke Team Survey. Each team is on its own handoff and nothing
+	# else — the same rule the cleaning / M&R crews follow.
+	("position_survey_pending", "Tank menunggu lowering", "Booking Tank Out menjadwalkan tank ini — Kalmar harus menurunkannya ke ground level dulu.",
 		["Team Kalmar", "SPV Lapangan", "Admin Ops"]),
-	# Oversight only: both field teams are finished by the time this fires, and the route
-	# behind it is Riwayat — a bell about work nobody may pick up is the kind that gets muted.
-	("position_confirmed", "Posisi dikonfirmasi", "Team Kalmar sudah approve \"udah turun\" — survey posisi selesai.",
-		["SPV Lapangan", "Admin Ops"]),
+	("position_surveyed", "Tank siap disurvey", "Tank sudah turun ke ground level dan letaknya dicatat — menunggu surveyor menutup survey.",
+		["Team Survey", "SPV Lapangan", "Admin Ops"]),
+	# Bukan sekadar pengawasan, tidak seperti versi lamanya: penutupan survey inilah yang
+	# menerbitkan draft EIR-Out, dan draft itu pekerjaan orang berikutnya. Karena itu Team EIR
+	# ikut dipanggil — merekalah yang harus mengisinya.
+	("position_confirmed", "Survey selesai — EIR-Out terbit", "Surveyor menutup survey posisi; draft EIR-Out untuk tank ini otomatis dibuat.",
+		["Team EIR", "SPV Lapangan", "Admin Ops"]),
 	("gate_out", "Isotank keluar depo", "Gate-out / load-complete selesai untuk sebuah tank.",
 		["Security", "Team Kalmar", "Admin Ops", "Cashier"]),
 	("booking_created", "Booking baru", "Container Booking dibuat (masih draft).",

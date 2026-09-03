@@ -238,25 +238,30 @@ class ContainerBooking(Document):
 		# idempotent, so one call covers a row added, a date moved, or the whole booking
 		# voided (see lift_on.sync_booking_targets).
 		lift_on.sync_booking_targets(self)
-		self._provision_position_surveys()
+		self._provision_survey_order()
 
-	def _provision_position_surveys(self):
-		"""Task a Surveyor with locating each outbound tank — also from the draft.
+	def _provision_survey_order(self):
+		"""Put this outbound booking's field survey on the calendar — also from the draft.
 
-		Same reason as the lift-on stamp: finding a tank in a full yard is preparation, and
-		preparation that starts at Submit starts too late. Idempotent per container (the
-		provisioner skips a tank that already has an open or a booking-linked survey) and
-		best-effort — a survey hiccup must never block saving a booking.
+		Creates (or updates) one ``Survey Order`` for the booking's ``survey_date``, with one
+		tank row underneath it per container, each starting at Waiting Lowering. Same reason as
+		the lift-on stamp: getting a tank down out of a full stack is preparation, and
+		preparation that starts at Submit starts too late.
+
+		Run on EVERY save, including a cancel, because the schedule has to follow the booking
+		both ways — a moved survey date moves the whole day's job, and a voided booking marks
+		its day called off. Idempotent throughout, and best-effort: a schedule hiccup must
+		never block saving a booking.
 		"""
-		if self.direction != "Tank Out" or self.booking_status == "Cancelled" or self.docstatus == 2:
+		if self.direction != "Tank Out":
 			return
 		try:
-			from container_depot.container_depot.position_survey import (
-				provision_position_survey_for_booking,
+			from container_depot.container_depot.tank_survey import (
+				provision_survey_order_for_booking,
 			)
-			provision_position_survey_for_booking(self.name)
+			provision_survey_order_for_booking(self.name)
 		except Exception:
-			frappe.log_error(frappe.get_traceback(), f"provision position survey for {self.name}")
+			frappe.log_error(frappe.get_traceback(), f"provision survey order for {self.name}")
 
 	def before_cancel(self):
 		# Before, not on_cancel: on_cancel has already voided the codes and reversed the

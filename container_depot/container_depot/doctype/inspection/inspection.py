@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
@@ -24,7 +25,7 @@ class Inspection(Document):
 		"""Tell Team EIR a tank is waiting to be inspected.
 
 		Here rather than at the two provisioning call sites (``eir.provision_eirs_for_order_bongkar``
-		/ ``provision_eir_out_for_order_muat``) so that EVERY way an EIR is born rings the same
+		/ ``provision_eir_out_for_survey``) so that EVERY way an EIR is born rings the same
 		bell — the two bons, the Desk "new Inspection", the legacy REST create. A notification
 		wired per call site is one that a future creation path silently skips.
 
@@ -229,6 +230,51 @@ class Inspection(Document):
 		from container_depot.container_depot.container_status import recompute_availability
 
 		recompute_availability(self.container)
+
+	def before_submit(self):
+		"""An EIR-Out may only be submitted once the loading bon for its tank is out.
+
+		This is the second half of moving the EIR-Out's birth forward. It is now raised when
+		the position survey closes (``eir.provision_eir_out_for_survey``), which is days before
+		anybody cuts an Order Muat — so the document exists, and can be filled in, long before
+		it is allowed to become final.
+
+		Submitting is not a filing step here: ``on_submit`` sends a clean EIR-Out straight
+		through ``gate.mark_gate_out`` and the tank is out of the depot. Letting that happen
+		with no bon behind it would release a tank on no loading paperwork at all — no truck,
+		no driver, no booking code surrendered at the gate. The bon is exactly the document
+		that says a real truck has come for this tank, so it is what the submit waits for.
+
+		Checked against ``referred_voucher`` — the link ``attach_order_muat_to_eirs`` stamps
+		when the bon is submitted — and re-verified against the bon's own state, so a link
+		left behind by a since-voided bon does not quietly count. When the link is missing
+		the question is asked directly instead: is there a submitted Order Muat carrying this
+		tank? The link may simply never have been stamped (the EIR was raised by hand, or the
+		attach hook logged an error), and refusing on a missing pointer rather than on the
+		missing BON would block a tank whose paperwork is in perfect order.
+
+		Deliberately a check and nothing else — it does not stamp the link it just looked for.
+		``referred_voucher`` is what ``_apply_eir_out_outcome`` reads to decide whether to
+		write Ready To Load / Hold onto a bon, so quietly filling it in here would give this
+		guard a side effect on a document it was only ever asked about.
+		"""
+		if self.inspection_type != "EIR-Out":
+			return
+		voucher = self.get("referred_voucher")
+		if voucher and frappe.db.get_value("Order Muat", voucher, "docstatus") == 1:
+			return
+		from container_depot.container_depot.eir import latest_voucher_for_container
+
+		if latest_voucher_for_container(self.container, "EIR-Out"):
+			return
+		frappe.throw(
+			_(
+				"EIR-Out {0} belum bisa disubmit: bon muat untuk tank <b>{1}</b> belum terbit.<br>"
+				"Generate Bon dulu dari booking Tank Out-nya — bon itu yang mengisi truk, sopir "
+				"dan shipper ke EIR ini, sekaligus membuka submit-nya."
+			).format(self.name, self.container_no or self.container),
+			title=_("Bon muat belum ada"),
+		)
 
 	def on_submit(self):
 		"""Update container status + last cargo when inspection is submitted"""

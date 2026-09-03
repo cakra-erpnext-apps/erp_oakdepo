@@ -323,7 +323,10 @@ def sweep_stale_notifications() -> int:
 	return removed
 
 
-DOCTYPE_SURVEY = "Container Position Survey"
+# One doctype for the whole Tank Out survey, because a tank row is a CHILD row: Frappe's
+# Notification Log points at a real doctype + name, and a child row is neither. The tank is
+# named in the subject instead, and the route lands on the screen that lists it.
+DOCTYPE_SURVEY = "Survey Order"
 
 
 def _depot_branch(depot):
@@ -692,73 +695,102 @@ def notify_order_muat_survey(order):
 	)
 
 
-def notify_position_survey_pending(survey, *, reopened=False):
-	"""Fire when a Container Position Survey lands in the surveyor's worklist — provisioned
-	from an outbound (Tank Out) booking, or sent back for a redo (`reopened`).
+def notify_survey_order_scheduled(order):
+	"""Fire when a Survey Order is raised — an outbound booking has put a day's field survey
+	on the calendar.
 
-	Team Survey's handoff, and the same exception `notify_eir_created` is: nothing stands
-	between this document and the work. Admin Ops does not release it, no method has to be
-	picked — the survey landing in `/survey-position` IS the job arriving. So creation and
-	handoff are one moment here too.
+	Rung at CREATION, which for this document is also the handoff: nothing stands between a
+	schedule and the crew that works it. Admin Ops does not release it and no method has to be
+	picked — the job appearing on the Jadwal Survey calendar IS the work arriving.
+
+	The date travels in the subject because it is the only thing that decides whether this is
+	news for today or something to plan around.
+	"""
+	when = order.get("survey_date")
+	who = order.get("principal") or ""
+	subject = f"Jadwal Survey • {when} — {who}".rstrip(" —")
+	notify(
+		doctype=DOCTYPE_SURVEY,
+		name=order.get("name"),
+		subject=subject,
+		branch=order.get("branch") or _depot_branch(order.get("depot")),
+		event_key="survey_order_scheduled",
+	)
+
+
+def notify_waiting_lowering(survey, *, reopened=False):
+	"""Fire when a tank lands in the LOWERING queue — provisioned from an outbound (Tank Out)
+	booking, or pushed back for a redo (`reopened`).
+
+	Team Kalmar's handoff, and the same exception ``notify_eir_created`` is: nothing stands
+	between this document and the work, so creation and handoff are one moment here too.
 
 	A reopen rides the SAME event key rather than getting its own. The audience is identical
-	(whoever works that queue) and the routing is identical, so a second rule would be one
-	more row for an admin to keep in step with this one for no gain — only the wording of the
-	subject differs, because "kerjakan lagi" and "kerjakan" are not the same news.
+	(whoever works that queue) and the routing is identical, so a second rule would be one more
+	row for an admin to keep in step with this one for no gain — only the wording of the
+	subject differs, because "turunkan lagi" and "turunkan" are not the same news.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
 	if reopened:
-		subject = f"Survey Posisi • {cno} — dibuka lagi, posisinya perlu disurvei ulang"
+		subject = f"Lowering • {cno} — dibuka lagi, tank perlu diturunkan ulang"
 	else:
-		subject = f"Survey Posisi • {cno} — cari posisi tank (booking Tank Out)"
+		subject = f"Lowering • {cno} — turunkan tank (booking Tank Out)"
 	notify(
 		doctype=DOCTYPE_SURVEY,
-		name=survey.get("name"),
+		# The schedule, not the tank row — see DOCTYPE_SURVEY. `survey_order` is what the tank
+		# payload carries; `name` is the fallback for a caller that already passes a schedule.
+		name=survey.get("survey_order") or survey.get("name"),
 		subject=subject,
 		branch=_depot_branch(survey.get("depot")),
 		event_key="position_survey_pending",
 	)
 
 
-def notify_position_surveyed(survey, *, reopened=False):
-	"""Fire when a survey lands in the Kalmar worklist — the surveyor recorded a position
-	(Pending Survey -> Surveyed), or a confirmed one was sent back for a redo (`reopened`).
+def notify_position_lowered(survey, *, reopened=False):
+	"""Fire when a tank reaches the surveyor's queue — it has been dropped to ground level
+	(Waiting Lowering -> Lowered), or a closed survey was sent back for a redo (`reopened`).
 
-	The location note travels in the subject, trimmed. It is the one thing that decides
-	whether the operator walks to the right stack, and reading it from the bell saves the
-	tap that would otherwise be needed just to know where to go.
+	The location note travels in the subject, trimmed. It is the one thing that decides whether
+	the surveyor walks to the right stack, and reading it from the bell saves the tap that
+	would otherwise be needed just to know where to go.
 
 	Shares its event key with the reopen for the reason given on
-	:func:`notify_position_survey_pending`.
+	:func:`notify_waiting_lowering`.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
 	note = (survey.get("location_note") or "").strip().replace("\n", " ")
 	if len(note) > 60:
 		note = note[:57] + "…"
 	tail = f" • {note}" if note else ""
-	head = "dibuka lagi, approval diulang" if reopened else "menunggu approval Kalmar"
-	subject = f"Fix Posisi • {cno} — {head}{tail}"
+	head = "dibuka lagi, survey diulang" if reopened else "sudah turun, siap disurvey"
+	subject = f"Survey Posisi • {cno} — {head}{tail}"
 	notify(
 		doctype=DOCTYPE_SURVEY,
-		name=survey.get("name"),
+		# The schedule, not the tank row — see DOCTYPE_SURVEY. `survey_order` is what the tank
+		# payload carries; `name` is the fallback for a caller that already passes a schedule.
+		name=survey.get("survey_order") or survey.get("name"),
 		subject=subject,
 		branch=_depot_branch(survey.get("depot")),
 		event_key="position_surveyed",
 	)
 
 
-def notify_position_confirmed(survey):
-	"""Fire when Team Kalmar approves ("udah turun") — the survey is finished and the tank is
-	standing where the release crew expects it.
+def notify_survey_done(survey, *, eir_out=None):
+	"""Fire when the surveyor closes a survey — the tank is checked and its EIR-Out now exists.
 
-	Oversight only. The two field teams are both done by now: telling them again would ring a
-	bell about work nobody has to pick up, which is exactly what trains a crew to ignore it.
+	NOT oversight-only, unlike the confirmation this replaced. Closing the survey is what
+	raises the EIR-Out draft, and that draft is the next person's job: it has to be filled in
+	and it cannot be submitted until the bon is out. So the bell names it — the alternative is
+	a document that appears in a worklist with nothing having announced it.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
-	subject = f"Fix Posisi • {cno} — sudah turun & dikonfirmasi"
+	tail = f" • EIR-Out {eir_out}" if eir_out else ""
+	subject = f"Survey Posisi • {cno} — survey selesai{tail}"
 	notify(
 		doctype=DOCTYPE_SURVEY,
-		name=survey.get("name"),
+		# The schedule, not the tank row — see DOCTYPE_SURVEY. `survey_order` is what the tank
+		# payload carries; `name` is the fallback for a caller that already passes a schedule.
+		name=survey.get("survey_order") or survey.get("name"),
 		subject=subject,
 		branch=_depot_branch(survey.get("depot")),
 		event_key="position_confirmed",

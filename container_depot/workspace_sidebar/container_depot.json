@@ -332,8 +332,20 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Container Position Survey",
-   "link_to": "Container Position Survey",
+   "label": "Survey Order (Jadwal)",
+   "link_to": "Survey Order",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "calendar"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Letak Tank",
+   "link_to": "Container Position",
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
@@ -871,7 +883,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-03 10:00:00.000000",
+ "modified": "2026-09-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

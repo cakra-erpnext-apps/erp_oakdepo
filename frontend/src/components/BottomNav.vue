@@ -46,10 +46,15 @@ const allTabs = [
 	{ key: "cleaning", to: "/cleaning", icon: "droplet", label: labels.navCleaning },
 	{ key: "mr", to: "/mr", icon: "tool", label: labels.navMr },
 	{ key: "monitor", to: "/monitor", icon: "grid", label: labels.navMonitor || labels.monitorTitle },
-	// The two halves of the position-survey workflow. One doctype, two menu keys, and almost
-	// nobody holds both — Team Survey sees "Survey", Team Kalmar sees "Fix".
-	{ key: "surveyPos", to: "/survey-position", icon: "map-pin", label: labels.navSurveyPos },
-	{ key: "posFix", to: "/position-fix", icon: "check-circle", label: labels.navPosFix },
+	// Jadwal is first of the planning tabs and the widest: it is the one tab that is not
+	// about a single doctype, so almost every field account has it.
+	{ key: "schedule", to: "/schedule", icon: "calendar", label: labels.navSchedule },
+	// The survey family. `surveyList` (read) carries the list; `posFix` (write) the lowering
+	// queue. Almost nobody holds only one — Team Survey and Kalmar both see both, and each
+	// screen decides for itself which presses to render.
+	{ key: "surveyList", to: "/survey-orders", icon: "list", label: labels.navSurveyList },
+	{ key: "posFix", to: "/position-fix", icon: "arrow-down-circle", label: labels.navPosFix },
+	{ key: "tankPos", to: "/tank-position", icon: "map-pin", label: labels.navTankPos },
 	{ to: "/profile", icon: "user", label: labels.navProfile },
 ]
 
@@ -68,8 +73,8 @@ function isActive(t) {
 	if (t.to === "/") return p === "/"
 	if (t.to === "/eir") return p === "/eir" // not /eir/history
 	// Same reason as /eir: Riwayat Survey Posisi is its own screen, reached from the header,
-	// and lighting the Survey tab there would claim the operator is in the worklist.
-	if (t.to === "/survey-position") return p === "/survey-position"
+	// and lighting the Survey tab there would claim the operator is in the list.
+	if (t.to === "/survey-orders") return p === "/survey-orders"
 	return p === t.to || p.startsWith(t.to + "/")
 }
 </script>

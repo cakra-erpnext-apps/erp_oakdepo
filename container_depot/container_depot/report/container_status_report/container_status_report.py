@@ -75,7 +75,7 @@ _ORDER_COLUMNS = (
 	("eir_out", "EIR-Out", "Inspection"),
 	("cleaning_order", "Cleaning Order", "Cleaning Order"),
 	("repair_order", "M&R", "Repair Order"),
-	("position_survey", "Survey Posisi", "Container Position Survey"),
+	("survey_order", "Jadwal Survey", "Survey Order"),
 	("order_muat", "Order Muat", "Order Muat"),
 )
 
@@ -181,7 +181,6 @@ def _related_orders(names: list[str]) -> dict[str, dict[str, str]]:
 		"eir_out": _direct("Inspection", names, {"inspection_type": "EIR-Out"}),
 		"cleaning_order": _direct("Cleaning Order", names),
 		"repair_order": _direct("Repair Order", names, {"status": ["!=", "Cancelled"]}),
-		"position_survey": _direct("Container Position Survey", names),
 		# Raised on a parent document that lists the container.
 		"booking": _via_child(
 			"Container Booking Item", "Container Booking", names,
@@ -192,6 +191,11 @@ def _related_orders(names: list[str]) -> dict[str, dict[str, str]]:
 		# shared with the booking itself. Hence the parenttype pin in _via_child.
 		"order_bongkar": _via_child("Container Booking Item", "Order Bongkar", names),
 		"order_muat": _via_child("Order Container Item", "Order Muat", names),
+		# The field survey reaches the tank through a child row too, since the schedule is per
+		# BOOKING and lists its tanks — see Survey Order Tank.
+		"survey_order": _via_child(
+			"Survey Order Tank", "Survey Order", names, "p.status != 'Cancelled'",
+		),
 	}
 
 

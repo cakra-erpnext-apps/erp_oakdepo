@@ -96,14 +96,30 @@ class TestRoleMenu(FrappeTestCase):
 		# container data — so the Monitor tile follows. Withholding it would mean taking
 		# Container read away, which breaks the doc-level has_permission checks in
 		# ess/repairs.py and ess/documents.py. Cosmetics are not worth that.
-		self.assertEqual(self._menu_as(USERS["Team Cleaning"]), {"cleaning", "monitor"})
-		# What matters is the negative: no gate, no EIR, no M&R, no survey.
-		for forbidden in ("gate", "eir", "mr", "surveyPos", "posFix"):
+		# `tankPos` is on EVERY field role and that is the design: where a tank stands is the one
+		# fact every crew in the yard needs and every crew can correct (see the Container
+		# Position row in install.FIELD_ROLE_MATRIX).
+		# `schedule` is on it too, and for the same kind of reason: the universal Jadwal opens
+		# for anyone who can read at least one KIND of planned work, and Team Cleaning can read
+		# Cleaning Order. What they get inside is their wash plan and nothing else — the
+		# filtering is per source (container_depot.schedule), not per menu.
+		self.assertEqual(
+			self._menu_as(USERS["Team Cleaning"]),
+			{"cleaning", "monitor", "tankPos", "schedule"},
+		)
+		# What matters is the negative: no gate, no EIR, no M&R, and nothing from the survey
+		# family — including its LIST, which keys on Survey Order read that Cleaning lacks.
+		for forbidden in ("gate", "eir", "mr", "surveyList", "surveyPos", "posFix"):
 			self.assertNotIn(forbidden, self._menu_as(USERS["Team Cleaning"]))
 
 	def test_spv_gets_all_menus(self):
 		self.assertEqual(self._menu_as(USERS["SPV Lapangan"]), set(MENU_KEYS))
-		self.assertEqual(len(MENU_KEYS), 7)
+		# Ten. Eight when Letak Tank (`tankPos`) became a menu of its own, then two more when
+		# the calendar was made universal (2026-09-03): `schedule` is the one entry keyed on
+		# SEVERAL doctypes at once, and `surveyList` is the Survey Order list the calendar used
+		# to be. A count assertion rather than a set comparison on purpose — it fails loudly
+		# when a menu is added without anyone deciding who should hold it.
+		self.assertEqual(len(MENU_KEYS), 10)
 
 	def test_office_role_gets_empty_menu(self):
 		# Cashier holds real DocPerms (Container read, Gate Entry read) but no field role,
@@ -335,13 +351,27 @@ class TestRoleMenu(FrappeTestCase):
 		self.assertNotIn(PARKED_DOMAIN, frappe.get_active_domains())
 
 	def test_survey_vs_posfix_split(self):
-		# One doctype, two menus, split on write vs submit.
+		"""One doctype, two menus, split on write vs submit — and the overlap is deliberate.
+
+		`posFix` is the lowering queue (write) and `surveyPos` the closing press (submit).
+		Frappe's Document.submit() calls save(), so submit is strictly the narrower grant:
+		Team Survey necessarily holds both, which is the point — a surveyor already standing
+		at a tank that is plainly on the ground marks it down themselves rather than waiting
+		for an operator to open their phone (answered 2026-09-03).
+
+		What must NOT leak is the other direction: closing a survey submits the document and
+		raises the tank's EIR-Out, and that stays out of Kalmar's hands.
+		"""
 		survey = self._menu_as(USERS["Team Survey"])
 		kalmar = self._menu_as(USERS["Team Kalmar"])
 		self.assertIn("surveyPos", survey)
-		self.assertNotIn("posFix", survey)
+		self.assertIn("posFix", survey)
 		self.assertIn("posFix", kalmar)
 		self.assertNotIn("surveyPos", kalmar)
+		# The third key over the same doctype is plain READ, so BOTH hold it: a Kalmar operator
+		# may look up which day a tank is scheduled on without gaining the right to close it.
+		self.assertIn("surveyList", survey)
+		self.assertIn("surveyList", kalmar)
 
 	def test_new_role_needs_no_code_change(self):
 		# The whole point of the checkbox: an admin adds a role in the UI, grants it a
@@ -367,4 +397,7 @@ class TestRoleMenu(FrappeTestCase):
 		frappe.clear_cache()
 
 		# Only Cleaning Order was granted, so no Container read and hence no monitor tile.
-		self.assertEqual(self._menu_as(AD_HOC_USER), {"cleaning"})
+		# `schedule` comes along and that is the same point made twice: the universal calendar
+		# is an any-of over the scheduled doctypes, so granting read on ONE of them lights it
+		# up — showing that role exactly the wash plan it was granted and nothing else.
+		self.assertEqual(self._menu_as(AD_HOC_USER), {"cleaning", "schedule"})

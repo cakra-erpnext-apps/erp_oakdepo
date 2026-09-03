@@ -117,3 +117,4 @@ container_depot.patches.v0_86.backfill_bon_status
 container_depot.patches.v0_87.drop_gate_out_plan
 container_depot.patches.v0_88.merge_line_estimation_date
 container_depot.patches.v0_89.line_date_becomes_realisation
+container_depot.patches.v0_90.tank_out_survey_rework
