@@ -181,7 +181,10 @@ class TestContainerActivityBookingToOrderBongkar(FrappeTestCase):
 		self.assertTrue(code, "booking submit should issue a Booking Code")
 
 		# 2) Generate the Order Bongkar from that booking and submit it — logs an
-		#    "Order Bongkar" activity for the same container.
+		#    "Order Bongkar" activity for the same container. Marked paid first: a bon is
+		#    refused for a booking whose payment does not allow one, finance off or on
+		#    (order_generation.payment_block_reason).
+		frappe.db.set_value("Container Booking", booking.name, "payment_status", "Paid")
 		order = frappe.get_doc("Order Bongkar", make_order(booking.name, [code]))
 		order.submit()
 

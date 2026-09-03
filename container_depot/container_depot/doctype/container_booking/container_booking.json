@@ -408,7 +408,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-03 09:00:00.000000",
+ "modified": "2026-09-03 11:35:51.419220",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

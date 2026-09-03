@@ -192,6 +192,10 @@ export const labels = {
 	gateContainers: "Daftar Container", // Container list
 	gatePayBlocked: "Pembayaran harus dibayar cash terlebih dahulu di kasir.", // Cash unpaid
 	gateNotSubmitted: "Booking sudah dibayar tapi belum dikonfirmasi/disubmit — hubungi admin.", // paid but draft
+	// Booking TOP (termin) yang belum ditagih sama sekali. Bukan soal lunas — pelanggan
+	// kredit memang bayar belakangan — tapi booking yang belum di-invoice berarti belum ada
+	// tagihan di belakang tank yang mau keluar.
+	gateNotInvoiced: "Booking termin (TOP) ini belum ditagih — minta admin terbitkan invoice dulu.",
 	gateBlockedTitle: "Belum bisa diproses di gate", // gate blocked heading
 	gateInvoiceNo: "No. Invoice", // Invoice no
 	gateGenerate: "Generate Bon", // Generate bon

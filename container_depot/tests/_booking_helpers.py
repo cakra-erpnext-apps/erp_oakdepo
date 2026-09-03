@@ -70,6 +70,7 @@ def make_booking_code(
 		"customer": customer,
 		"contract": contract_name,
 		"booking_status": "Confirmed",
+		"payment_status": "Paid",
 		"items": [{"container_no": _PLACEHOLDER_TANK}],
 	}).insert(ignore_permissions=True)
 	return frappe.get_doc({

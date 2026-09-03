@@ -30,6 +30,7 @@ from frappe.utils import cint, now_datetime
 
 from container_depot import finance
 from container_depot.container_depot.container_status import container_open_orders
+from container_depot.container_depot.order_generation import BLOCK_MESSAGES, payment_block_reason
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
 # ---------------------------------------------------------------------------
@@ -247,9 +248,15 @@ def register_gate_entry(booking_code, container_no, security_guard=None, truck_p
 	Requires Gate Entry **create** — or a registered SST terminal. See
 	:func:`_require_device_or_perm`; it used to require only a session.
 
-	The Booking Code must be ``Active`` or ``Used`` — an Active code already
-	encodes payment status, so no separate payment check is needed. The Gate
-	Entry's own ``validate`` re-checks the code and the container match.
+	The Booking Code must be ``Active`` or ``Used``, and the booking behind it must be paid
+	for. That last check used to be absent on the reasoning that "an Active code already
+	encodes payment status" — it does not: a code is issued when the booking is CONFIRMED, and
+	a booking can be confirmed and then have its invoice cancelled, or be confirmed with
+	finance off and never marked paid at all. So the payment is read straight from the booking,
+	through the same rule that refuses the bon
+	(``order_generation.payment_block_reason``).
+
+	The Gate Entry's own ``validate`` re-checks the code and the container match.
 
 	POST /api/v1/gate/entry
 	"""
@@ -270,6 +277,12 @@ def register_gate_entry(booking_code, container_no, security_guard=None, truck_p
 			return {"success": False, "error": f"Booking Code state is {bc.state}; cannot pass the gate"}
 		if bc.container_no and bc.container_no.upper() != container_no:
 			return {"success": False, "error": f"Container {container_no} does not match Booking Code container {bc.container_no}"}
+		# Payment, before the truck is let in and before a Container is created for it below.
+		# Returned rather than thrown, matching the two refusals above: this endpoint answers
+		# an SST kiosk and a chat bot, and both render `error` to the person at the barrier.
+		pay_block = payment_block_reason(bc.booking)
+		if pay_block:
+			return {"success": False, "error": BLOCK_MESSAGES[pay_block], "block_reason": pay_block}
 
 		container_name = frappe.db.get_value("Container", {"container_no": container_no})
 		if not container_name:
@@ -997,23 +1010,23 @@ def _booking_gate_detail(booking) -> dict:
 		],
 		as_dict=True,
 	)
-	# Gate actions need a SUBMITTED (confirmed) booking. Until then the gate is blocked
-	# with a reason the operator can act on: pay at the cashier (Cash unpaid) or contact
-	# admin (paid/TOP but the booking isn't confirmed yet).
+	# Two independent reasons the gate can be shut, and the panel names whichever the
+	# operator can act on FIRST.
+	#
+	# The payment rule is the same object the bon itself is refused by
+	# (``order_generation.payment_block_reason``), not a second copy of it — the panel used to
+	# carry its own inline expression, which is how it came to say "Cash unpaid" while the
+	# server had grown a wider rule. With finance off it returns None: no invoicing means no
+	# payment state worth holding a tank over.
+	#
+	# Payment is reported ahead of "not confirmed yet" because for a Cash booking the unpaid
+	# state is the CAUSE of the unconfirmed one — "bayar ke kasir dulu" is something the
+	# driver in front of the operator can go and do, "hubungi admin" is not. And it is checked
+	# even for a submitted booking, which the old ordering skipped: an invoice cancelled after
+	# confirmation puts a live booking back to Unpaid, and the gate must notice.
 	booking_submitted = b.docstatus == 1
-	# With finance off there is no invoice to pay, so payment can never be the reason the
-	# gate is shut — only "not confirmed yet" remains.
-	payment_blocked = (
-		finance.is_enabled()
-		and (b.payment_type == "Cash")
-		and ((b.payment_status or "Unpaid") != "Paid")
-	)
-	if booking_submitted:
-		block_reason = None
-	elif payment_blocked:
-		block_reason = "cash_unpaid"
-	else:
-		block_reason = "not_submitted"
+	block_reason = payment_block_reason(booking) or (None if booking_submitted else "not_submitted")
+	payment_blocked = block_reason in ("cash_unpaid", "not_invoiced")
 	containers = []
 	for c in frappe.get_all(
 		"Booking Code",
@@ -1199,8 +1212,8 @@ def gate_lookup(code):
 
 @frappe.whitelist(methods=["POST"])
 def gate_generate_order(booking, selected_codes, vehicle_data=None, request_id=None):
-	"""Gate PWA: issue a submitted bon for up to 2 of a booking's containers. Refuses
-	when a Cash booking isn't Paid (pay at the cashier first).
+	"""Gate PWA: issue a submitted bon for up to 2 of a booking's containers. Refuses when
+	the booking's payment does not allow one — see ``order_generation.payment_block_reason``.
 
 	``request_id`` is the one piece of offline plumbing this endpoint has, and it is the
 	piece that matters. The gate screen cannot work offline at all — it needs a live lookup
@@ -1228,12 +1241,9 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None, request_id=N
 	)
 	if not b:
 		frappe.throw(_("Booking {0} not found.").format(booking))
-	if (
-		finance.is_enabled()
-		and (b.payment_type == "Cash")
-		and ((b.payment_status or "Unpaid") != "Paid")
-	):
-		frappe.throw(_("Booking Cash belum dibayar — bayar ke kasir dulu sebelum generate bon."))
+	# The payment rule is NOT repeated here. ``make_order`` refuses before it spends a single
+	# Booking Code, and it refuses for the Desk and the SST kiosk too — a copy in this endpoint
+	# would only be a second rule to keep in step.
 	if b.docstatus != 1:
 		frappe.throw(_("Booking belum disubmit / dikonfirmasi — hubungi admin sebelum generate bon."))
 

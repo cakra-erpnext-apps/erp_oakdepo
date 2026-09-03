@@ -156,7 +156,8 @@
 				</dl>
 			</section>
 
-			<!-- Gate blocked: booking not yet confirmed. Reason-specific guidance. -->
+			<!-- Gate blocked. Three reasons, three different things to do about it — a single
+			     "tidak bisa" would send every one of them to the same wrong person. -->
 			<section
 				v-if="detail.block_reason"
 				class="animate-slide-up rounded-2xl border border-red-200 bg-red-50 p-4"
@@ -165,9 +166,9 @@
 					<Icon name="alert-triangle" :size="18" /> {{ labels.gateBlockedTitle }}
 				</p>
 				<p class="mt-1 pl-7 text-sm text-red-700">
-					{{ detail.block_reason === "cash_unpaid" ? labels.gatePayBlocked : labels.gateNotSubmitted }}
+					{{ BLOCK_TEXT[detail.block_reason] || labels.gateNotSubmitted }}
 				</p>
-				<p v-if="detail.block_reason === 'cash_unpaid' && detail.sales_invoice" class="mt-1 pl-7 text-sm text-red-700">
+				<p v-if="detail.payment_blocked && detail.sales_invoice" class="mt-1 pl-7 text-sm text-red-700">
 					{{ labels.gateInvoiceNo }}: <span class="font-semibold">{{ detail.sales_invoice }}</span>
 				</p>
 			</section>
@@ -385,6 +386,16 @@ import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { link } from "@/data/link"
 import { uid } from "@/utils/idb"
 import { useDismissOnBack } from "@/utils/backstack"
+
+// Keyed by the server's `block_reason` (container_depot.order_generation.payment_block_reason
+// plus the gate's own "not_submitted"). A map rather than a ternary because there are three
+// reasons now and each sends the operator to a different person: the cashier, admin-to-invoice,
+// admin-to-confirm.
+const BLOCK_TEXT = {
+	cash_unpaid: labels.gatePayBlocked,
+	not_invoiced: labels.gateNotInvoiced,
+	not_submitted: labels.gateNotSubmitted,
+}
 
 const code = ref("")
 const scanInput = ref(null)

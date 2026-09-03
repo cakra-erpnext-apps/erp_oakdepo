@@ -7,6 +7,7 @@ validation rules live in exactly one place (PRO-OPS-08: "dua entry point, satu
 logika").
 
 Rules enforced here:
+- **the booking's payment must allow it** (:func:`assert_payment_allows_bon`).
 - 1..3 containers per bon (``MAX_CONTAINERS_PER_ORDER``).
 - every selected Booking Code must belong to ``booking``, be ``Active``, and share
   one direction (a bon is single-direction).
@@ -24,6 +25,85 @@ from frappe import _
 from frappe.utils import now_datetime, today
 
 MAX_CONTAINERS_PER_ORDER = 2
+
+# ---------------------------------------------------------------------------
+# Payment — may this booking issue a bon at all?
+# ---------------------------------------------------------------------------
+# Which payment states let a bon out, per payment type. The two types mean different things
+# and so get different bars:
+#
+#   Cash — the customer pays before they collect. Nothing but `Paid` will do, which is the
+#          rule the gate has always applied.
+#   TOP  — term of payment: paying later IS the arrangement, so demanding `Paid` would stop
+#          every credit customer at the gate. What must have happened is that the booking has
+#          been BILLED — an un-invoiced booking is one nobody has priced or committed to, and
+#          letting the tank leave against it is how a movement ends up with no receivable
+#          behind it at all.
+#
+# `Cancelled` is in neither list on purpose: it is what a cancelled invoice leaves behind, and
+# a booking whose invoice was voided is back to owing nothing to anyone.
+BON_ALLOWED_PAYMENT = {
+	"Cash": ("Paid",),
+	"TOP": ("Invoiced", "Paid"),
+}
+
+BLOCK_MESSAGES = {
+	"cash_unpaid": "Booking Cash belum dibayar — bayar ke kasir dulu sebelum generate bon.",
+	"not_invoiced": "Booking TOP ini belum ditagih — terbitkan invoice dulu sebelum generate bon.",
+}
+
+
+def payment_block_reason(booking) -> str | None:
+	"""Why ``booking`` may not issue a bon yet, as a machine key — or ``None`` when it may.
+
+	A key rather than a sentence because four surfaces need the same answer in four shapes:
+	:func:`assert_payment_allows_bon` turns it into a refusal, the Gate PWA turns it into a
+	red panel with the invoice number on it, the Desk turns it into the reason the "Generate
+	Bon / Order" button is not there, and the gate turns it into a truck that is not let in.
+
+	APPLIES WITH FINANCE OFF TOO, and that is a deliberate reversal. The carve-out used to
+	return None whenever invoicing was off, on the reasoning that with no Sales Invoice there
+	is no payment state worth holding a tank over. That stopped being true the moment
+	``container_booking.set_payment_status`` gave an admin a manual Paid / Unpaid switch for
+	exactly that mode: the field is no longer derived-or-meaningless, it is somebody's
+	deliberate statement that the money did or did not arrive. Ignoring it would be ignoring
+	the one answer the depot has.
+
+	The two modes need no special-casing, because the rule collapses on its own: with finance
+	off only Paid and Unpaid are reachable (``set_payment_status`` refuses the other two), so
+	TOP's ``Invoiced`` simply never occurs and both types end up requiring Paid. A booking left
+	at ``Invoiced`` from before the switch was turned off keeps its pass — it really was billed.
+	"""
+	b = frappe.db.get_value(
+		"Container Booking", booking, ["payment_type", "payment_status"], as_dict=True
+	)
+	if not b:
+		return None  # a booking that does not exist is somebody else's error to raise
+	ptype = b.payment_type or "Cash"
+	status = b.payment_status or "Unpaid"
+	# An unrecognised payment type falls back to the STRICTER rule. A new type added in the
+	# doctype without being considered here must not silently become a way past the gate.
+	allowed = BON_ALLOWED_PAYMENT.get(ptype, BON_ALLOWED_PAYMENT["Cash"])
+	if status in allowed:
+		return None
+	# The reason names the bar that was actually applied, not the type. Reading it off the
+	# type would tell someone on an unknown type to "terbitkan invoice dulu" while the rule
+	# holding them is the Cash one — sending them to the wrong desk.
+	return "not_invoiced" if allowed is BON_ALLOWED_PAYMENT["TOP"] else "cash_unpaid"
+
+
+def assert_payment_allows_bon(booking) -> None:
+	"""Refuse to issue a bon for a booking whose payment does not allow one.
+
+	Called from :func:`make_order`, which is the single place a bon is born — so this covers
+	the Desk dialog, the Gate PWA and the SST kiosk with one rule instead of three copies that
+	drift. It used to live only in ``api.gate_generate_order``, which meant the Desk's
+	"Generate Bon / Order" button issued a submitted bon for an unpaid booking without asking
+	anybody anything.
+	"""
+	reason = payment_block_reason(booking)
+	if reason:
+		frappe.throw(_(BLOCK_MESSAGES[reason]))
 
 # Booking-line detail carried per container on an Order Bongkar row (it reuses the
 # Container Booking Item child) and written back onto the booking's line when a bon is
@@ -103,6 +183,10 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		frappe.throw(_("The same container was selected more than once."))
 	if not booking or not frappe.db.exists("Container Booking", booking):
 		frappe.throw(_("Booking {0} not found.").format(booking))
+	# Before the row locks and before a single code is spent: a refusal that happens after the
+	# transaction has started is a rollback the operator watches, and one that happens after
+	# the codes are flipped is a bug.
+	assert_payment_allows_bon(booking)
 
 	vehicle_data = vehicle_data or {}
 

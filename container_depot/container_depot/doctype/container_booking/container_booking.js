@@ -15,6 +15,41 @@ function _finance_on() {
 	return frappe.boot.depot_finance_enabled !== 0;
 }
 
+// Which payment states let a bon out, per payment type — a mirror of
+// `order_generation.BON_ALLOWED_PAYMENT`. The SERVER is the rule: `make_order` refuses
+// whatever this decides, from the Desk, the Gate PWA and the SST kiosk alike. This copy
+// exists only so the button is not offered for an action that would bounce, with the reason
+// written where the button would have been.
+//
+// Cash pays before collecting, so nothing but Paid will do. TOP is credit — paying later IS
+// the arrangement — so what must have happened is that the booking has been BILLED; letting a
+// tank out against a booking nobody has invoiced is how a movement ends up with no receivable
+// behind it.
+//
+// With finance OFF only Paid and Unpaid are reachable at all, so TOP's `Invoiced` never occurs
+// and both types collapse to "must be marked Paid by hand". No special case needed.
+const BON_ALLOWED_PAYMENT = { Cash: ['Paid'], TOP: ['Invoiced', 'Paid'] };
+
+function _bon_payment_block(frm) {
+	// Applies with finance OFF too: there the status is an admin's hand-set label
+	// (`set_payment_status`), which is the only answer the depot has about the money.
+	const ptype = frm.doc.payment_type || 'Cash';
+	const status = frm.doc.payment_status || 'Unpaid';
+	// An unknown payment type falls back to the STRICTER rule, same as the server — and the
+	// message names the bar that was applied, not the type, so nobody is sent to the wrong desk.
+	const allowed = BON_ALLOWED_PAYMENT[ptype] || BON_ALLOWED_PAYMENT.Cash;
+	if (allowed.includes(status)) return null;
+	return allowed !== BON_ALLOWED_PAYMENT.TOP
+		? __(
+				'<b>Generate Bon / Order</b> belum tersedia: booking <b>Cash</b> ini masih <b>{0}</b>. Bayar ke kasir dulu.',
+				[status]
+		  )
+		: __(
+				'<b>Generate Bon / Order</b> belum tersedia: booking <b>TOP</b> ini masih <b>{0}</b> — terbitkan invoice dulu.',
+				[status]
+		  );
+}
+
 frappe.ui.form.on('Container Booking', {
 	onload(frm) {
 		frm.trigger('_set_queries');
@@ -89,7 +124,14 @@ frappe.ui.form.on('Container Booking', {
 			frm.doc.booking_status === 'Confirmed' &&
 			frappe.model.can_create(order_dt)
 		) {
-			frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
+			// The payment gate, which used to exist only in the Gate PWA: the Desk button
+			// issued a SUBMITTED bon for an unpaid booking without asking anybody anything.
+			// Shown as a banner rather than a disabled button — a greyed-out control makes
+			// people hunt for the permission they are missing, a sentence tells them where
+			// to go.
+			const pay_block = _bon_payment_block(frm);
+			if (pay_block) frm.dashboard.add_comment(pay_block, 'orange', true);
+			else frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
 		}
 		// A submitted (Confirmed) booking can be reopened for a data correction WITHOUT
 		// reversing its payment — handy for a paid Cash booking that auto-confirmed. Both

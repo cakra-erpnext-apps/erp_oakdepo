@@ -65,6 +65,7 @@ def _booking_with_codes(*, code_direction, count, prefix, state="Active", offset
 		"customer": customer,
 		"contract": contract,
 		"booking_status": "Confirmed",
+		"payment_status": "Paid",
 		"plan_date": plan_date,
 		"items": [{"container_no": cno(i)} for i in range(1, count + 1)],
 	}).insert(ignore_permissions=True)
@@ -428,6 +429,194 @@ class TestMakeOrderMuat(FrappeTestCase):
 		for c in self.CONTAINERS:
 			self._drop_cleaning(c)
 
+
+
+class TestBonPaymentGate(FrappeTestCase):
+	"""No bon for a booking whose payment does not allow one — from ANY surface.
+
+	This used to be a gate-only rule living inline in ``api.gate_generate_order``, which meant
+	the Desk's "Generate Bon / Order" button issued a SUBMITTED bon against an unpaid booking
+	without asking anybody anything. The rule now lives in ``make_order``, the one place a bon
+	is born, so the Desk, the Gate PWA and the SST kiosk share it.
+
+	The two payment types get different bars, and that difference is the whole design:
+
+	* **Cash** — pay before you collect. Nothing but ``Paid``.
+	* **TOP** — paying later IS the arrangement, so demanding ``Paid`` would stop every credit
+	  customer at the gate. What must have happened is that the booking has been BILLED.
+	"""
+
+	@classmethod
+	def tearDownClass(cls):
+		super().tearDownClass()
+		purge_mc_data()
+
+	def setUp(self):
+		# Every assertion here is about money, so they only mean anything on a site that
+		# invoices at all. The finance-off case has its own test below.
+		require_finance(self)
+
+	def _booking(self, prefix, ptype, status):
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix=prefix)
+		frappe.db.set_value(
+			"Container Booking", booking, {"payment_type": ptype, "payment_status": status}
+		)
+		return booking, codes
+
+	def _reason(self, booking):
+		from container_depot.container_depot.order_generation import payment_block_reason
+
+		return payment_block_reason(booking)
+
+	# --- the rule itself ---
+	def test_cash_must_be_paid(self):
+		for status in ("Unpaid", "Invoiced", "Cancelled"):
+			booking, _codes = self._booking(f"CB{status[:3]}", "Cash", status)
+			self.assertEqual(self._reason(booking), "cash_unpaid", f"Cash/{status}")
+
+	def test_cash_paid_may_issue(self):
+		booking, _codes = self._booking("CBPAID", "Cash", "Paid")
+		self.assertIsNone(self._reason(booking))
+
+	def test_top_must_at_least_be_invoiced(self):
+		"""The new half of the rule. A TOP booking nobody has billed is a tank leaving with no
+		receivable behind it."""
+		booking, _codes = self._booking("TPUNP", "TOP", "Unpaid")
+		self.assertEqual(self._reason(booking), "not_invoiced")
+
+	def test_top_invoiced_or_paid_may_issue(self):
+		"""Credit customers must keep working — that is what a term of payment means."""
+		for status in ("Invoiced", "Paid"):
+			booking, _codes = self._booking(f"TP{status[:3]}", "TOP", status)
+			self.assertIsNone(self._reason(booking), f"TOP/{status}")
+
+	def test_a_cancelled_invoice_puts_a_top_booking_back_behind_the_gate(self):
+		"""``Cancelled`` is what a voided invoice leaves behind, and it is in neither allow
+		list: a booking whose invoice was cancelled owes nothing to anybody again."""
+		booking, _codes = self._booking("TPCAN", "TOP", "Cancelled")
+		self.assertEqual(self._reason(booking), "not_invoiced")
+
+	def test_an_unknown_payment_type_falls_back_to_the_stricter_rule(self):
+		"""A type added to the doctype without being considered here must not become a way
+		past the gate."""
+		booking, _codes = self._booking("UNKWN", "Cash", "Invoiced")
+		frappe.db.set_value("Container Booking", booking, "payment_type", "Barter")
+		self.assertEqual(self._reason(booking), "cash_unpaid")
+
+	def test_finance_off_still_reads_the_manual_paid_label(self):
+		"""With invoicing off the field is not meaningless — it is an admin's hand-set answer
+		(``container_booking.set_payment_status``), and it is the only answer the depot has.
+		So Unpaid still holds the bon, and marking it Paid still releases it."""
+		booking, codes = self._booking("FINOF", "Cash", "Unpaid")
+		require_finance(self, enabled=False)
+		self.assertEqual(self._reason(booking), "cash_unpaid")
+		frappe.db.set_value("Container Booking", booking, "payment_status", "Paid")
+		self.assertIsNone(self._reason(booking))
+		self.assertTrue(make_order(booking, codes, submit=True))
+
+	def test_a_top_booking_with_finance_off_needs_the_paid_label_too(self):
+		"""The two modes need no special-casing: with finance off only Paid / Unpaid are
+		reachable, so TOP's ``Invoiced`` never occurs and the rule collapses to Paid."""
+		booking, _codes = self._booking("FINTP", "TOP", "Unpaid")
+		require_finance(self, enabled=False)
+		self.assertEqual(self._reason(booking), "not_invoiced")
+		frappe.db.set_value("Container Booking", booking, "payment_status", "Paid")
+		self.assertIsNone(self._reason(booking))
+
+	# --- every surface ---
+	def test_the_desk_button_is_refused(self):
+		"""The hole this was written to close."""
+		from container_depot.api import generate_order_from_booking
+
+		booking, codes = self._booking("DSKUP", "Cash", "Unpaid")
+		with self.assertRaises(frappe.ValidationError):
+			generate_order_from_booking(booking, json.dumps(codes))
+
+	def test_the_gate_is_refused(self):
+		from container_depot.api import gate_generate_order
+
+		booking, codes = self._booking("GTEUP", "TOP", "Unpaid")
+		with self.assertRaises(frappe.ValidationError):
+			gate_generate_order(booking, json.dumps(codes))
+
+	def test_the_atomic_core_is_refused(self):
+		"""Guarded in ``make_order`` rather than in each endpoint, so a caller added later
+		inherits the rule instead of forgetting it."""
+		booking, codes = self._booking("COREU", "Cash", "Unpaid")
+		with self.assertRaises(frappe.ValidationError):
+			make_order(booking, codes, submit=True)
+
+	def test_a_refused_bon_spends_no_booking_code(self):
+		"""The refusal happens before the row locks. A code flipped to Used by an attempt that
+		then threw would strand the container: no bon, and no way to issue one either."""
+		booking, codes = self._booking("NOSPD", "Cash", "Unpaid")
+		with self.assertRaises(frappe.ValidationError):
+			make_order(booking, codes, submit=True)
+		self.assertEqual(frappe.db.get_value("Booking Code", codes[0], "state"), "Active")
+
+	# --- scan in / scan out ---
+	def test_scan_in_turns_an_unpaid_truck_away(self):
+		"""The gate-in used to wave anything through on the reasoning that "an Active code
+		already encodes payment status". It does not: a code is issued when the booking is
+		CONFIRMED, and a booking can be confirmed and then have its invoice cancelled, or be
+		confirmed with finance off and never marked paid at all."""
+		from container_depot.api import register_gate_entry
+
+		booking, codes = self._booking("SCNIN", "Cash", "Unpaid")
+		cno = frappe.db.get_value("Booking Code", codes[0], "container_no")
+		res = register_gate_entry(booking_code=codes[0], container_no=cno)
+		self.assertFalse(res["success"])
+		self.assertEqual(res["block_reason"], "cash_unpaid")
+
+	def test_scan_in_lets_a_paid_truck_through(self):
+		from container_depot.api import register_gate_entry
+
+		booking, codes = self._booking("SCNOK", "Cash", "Paid")
+		cno = frappe.db.get_value("Booking Code", codes[0], "container_no")
+		self.assertTrue(register_gate_entry(booking_code=codes[0], container_no=cno)["success"])
+
+	def test_scan_in_creates_no_container_for_a_truck_it_turns_away(self):
+		"""The refusal comes before the Container is auto-created for an unknown number.
+		A rejected arrival that still minted a tank record would leave the yard holding a
+		container that was never let in."""
+		from container_depot.api import register_gate_entry
+
+		booking, codes = self._booking("SCNNC", "Cash", "Unpaid")
+		cno = frappe.db.get_value("Booking Code", codes[0], "container_no")
+		frappe.db.delete("Container", {"container_no": cno})
+		register_gate_entry(booking_code=codes[0], container_no=cno)
+		self.assertFalse(frappe.db.exists("Container", {"container_no": cno}))
+
+	# --- what the screens are told ---
+	def test_the_gate_panel_names_the_reason_it_can_act_on(self):
+		"""Payment is reported ahead of "not confirmed yet": for a Cash booking the unpaid
+		state is the CAUSE of the unconfirmed one, and "bayar ke kasir dulu" is something the
+		driver standing there can go and do."""
+		from container_depot.api import gate_lookup
+
+		booking, codes = self._booking("PNLCA", "Cash", "Unpaid")
+		res = gate_lookup(codes[0])
+		self.assertEqual(res["block_reason"], "cash_unpaid")
+		self.assertTrue(res["payment_blocked"])
+
+	def test_the_gate_panel_reports_the_top_reason_separately(self):
+		"""Three reasons, three different people to go to — the panel must not collapse them."""
+		from container_depot.api import gate_lookup
+
+		booking, codes = self._booking("PNLTP", "TOP", "Unpaid")
+		res = gate_lookup(codes[0])
+		self.assertEqual(res["block_reason"], "not_invoiced")
+		self.assertTrue(res["payment_blocked"])
+
+	def test_a_submitted_booking_is_still_checked_for_payment(self):
+		"""The old ordering skipped this: it reported no block at all once the booking was
+		submitted. An invoice cancelled after confirmation puts a live booking back to Unpaid,
+		and the gate has to notice."""
+		from container_depot.api import gate_lookup
+
+		booking, codes = self._booking("SUBUP", "Cash", "Unpaid")
+		self.assertEqual(frappe.db.get_value("Container Booking", booking, "docstatus"), 1)
+		self.assertEqual(gate_lookup(codes[0])["block_reason"], "cash_unpaid")
 
 class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 	@classmethod
@@ -892,6 +1081,9 @@ class TestGate(FrappeTestCase):
 	def test_lookup_by_order_code_resolves_to_booking(self):
 		from container_depot.api import gate_lookup
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTOR0")
+		# Paid, because since 2026-09-03 `make_order` refuses a booking whose payment does not
+		# allow a bon — from every caller, not just the gate. See TestBonPaymentGate.
+		frappe.db.set_value("Container Booking", booking, "payment_status", "Paid")
 		order = make_order(booking, codes, submit=True)
 		res = gate_lookup(order)  # scan/type the bon's own code
 		self.assertTrue(res["valid"])
@@ -918,7 +1110,11 @@ class TestGate(FrappeTestCase):
 	def test_generate_tank_in_issues_submitted_bon(self):
 		from container_depot.api import gate_generate_order, gate_lookup
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTGN0")
-		frappe.db.set_value("Container Booking", booking, "payment_type", "TOP")  # not Cash → not blocked
+		# A billed TOP booking — what a credit customer's booking actually looks like at the
+		# gate. TOP alone is no longer enough: an UNINVOICED booking is blocked too.
+		frappe.db.set_value(
+			"Container Booking", booking, {"payment_type": "TOP", "payment_status": "Invoiced"}
+		)
 		res = gate_generate_order(booking, json.dumps(codes))
 		self.assertTrue(res["success"])
 		self.assertEqual(res["order_doctype"], "Order Bongkar")
@@ -930,7 +1126,9 @@ class TestGate(FrappeTestCase):
 		"""The gate form's truck/driver detail must land on the generated bon's row."""
 		from container_depot.api import gate_generate_order, gate_lookup
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="GTVD0")
-		frappe.db.set_value("Container Booking", booking, "payment_type", "TOP")
+		frappe.db.set_value(
+			"Container Booking", booking, {"payment_type": "TOP", "payment_status": "Invoiced"}
+		)
 		# Booking-line detail is surfaced for the gate form to auto-fill from.
 		self.assertIn("line", gate_lookup(codes[0])["containers"][0])
 		res = gate_generate_order(

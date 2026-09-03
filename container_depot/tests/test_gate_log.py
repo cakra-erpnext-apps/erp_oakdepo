@@ -77,6 +77,7 @@ def _tank_in_bon(container_no, *, submit=True, vehicle=None):
 		"contract": _contract(customer),
 		"depot": _depot(),
 		"booking_status": "Confirmed",
+		"payment_status": "Paid",
 		"items": [{"container_no": container_no}],
 	}).insert(ignore_permissions=True)
 	# Confirmed == submitted. Set docstatus directly rather than calling submit(), which

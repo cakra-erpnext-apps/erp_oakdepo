@@ -260,6 +260,23 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 	ts = now_datetime()
 	order_muat = _latest_order_muat(doc.name, doc.container_no)
 
+	# Payment, last of the readiness checks and deliberately not first: "belum dibayar" is
+	# only useful once the tank is actually here, has no open work and has a clean EIR-Out —
+	# telling a customer to pay for a departure that could not happen anyway is worse than
+	# saying nothing.
+	#
+	# Strictly this is already unreachable by the normal route: the EIR-Out that calls this
+	# cannot be submitted without a bon (``Inspection.before_submit``) and the bon cannot be
+	# issued unpaid. It is here anyway because "unreachable" depends on a chain of three other
+	# guards, and the message it would otherwise produce would name the bon rather than the
+	# money — sending the operator to the wrong desk.
+	if order_muat:
+		booking = frappe.db.get_value("Order Muat", order_muat, "booking")
+		if booking:
+			from container_depot.container_depot.order_generation import assert_payment_allows_bon
+
+			assert_payment_allows_bon(booking)
+
 	frappe.db.savepoint("mark_gate_out")
 	try:
 		# Move the tank through the guarded transition (auto-logs the Container Movement).

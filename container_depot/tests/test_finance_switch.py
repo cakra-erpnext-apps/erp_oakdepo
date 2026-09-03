@@ -138,14 +138,29 @@ class TestFinanceSwitch(FrappeTestCase):
 		# Confirmation still issues the gate codes — the operational half is unaffected.
 		self.assertTrue(frappe.get_all("Booking Code", filters={"booking": b.name}, pluck="name"))
 
-	def test_gate_is_never_blocked_for_payment(self):
+	def test_the_gate_reads_the_manual_paid_label(self):
+		"""REVERSED on 2026-09-03, and the reversal is the point.
+
+		This used to assert that money can NEVER shut the gate while finance is off — the
+		reasoning being that with no Sales Invoice there is no payment state worth holding a
+		tank over. That stopped being true the moment :func:`set_payment_status` gave an admin
+		a manual Paid / Unpaid switch for exactly this mode: the field became somebody's
+		deliberate statement that the money did or did not arrive, and ignoring it would be
+		ignoring the only answer the depot has.
+
+		So with finance off the gate reads the label — Unpaid shuts it, and marking it Paid by
+		hand is what opens it.
+		"""
 		_set_finance(False)
 		b = self._booking("FINSW0003")
-		detail = _booking_gate_detail(b.name)
-		# Still not submitted, so still blocked — but never *because of money*.
-		self.assertNotEqual(detail["block_reason"], "cash_unpaid")
 		b.flags.ignore_permissions = True
 		b.submit()
+		self.assertEqual(_booking_gate_detail(b.name)["block_reason"], "cash_unpaid")
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
+		set_payment_status(b.name, "Paid")
 		self.assertIsNone(_booking_gate_detail(b.name)["block_reason"])
 
 	# --- the manual paid/unpaid label -----------------------------------------

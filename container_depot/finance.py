@@ -8,8 +8,16 @@ meet is listed here so it can be turned off in one move:
   :func:`invoicing.create_draft_sales_invoice` (there is no other ``new_doc("Sales
   Invoice")`` anywhere), so refusing there covers per-transaction invoices, consolidated
   billing and the monthly scheduler alike.
-* **nothing is blocked.** The three places money can stop an operation — a Cash booking's
-  submit, the gate's ``cash_unpaid``, and generating a bon from the gate — step aside.
+* **no SUBMIT is blocked.** A Cash booking's submit no longer waits on an invoice that will
+  never exist, so a booking can be confirmed and its gate codes issued with nobody billed.
+
+What deliberately does NOT step aside any more (changed 2026-09-03): **the payment gate on a
+bon, a gate-in and a gate-out**. It used to, on the reasoning that with no Sales Invoice the
+``payment_status`` field is derived from nothing and means nothing. That stopped being true
+when :func:`container_booking.set_payment_status` gave an admin a manual Paid / Unpaid switch
+for exactly this mode — the field became somebody's deliberate statement that the money did or
+did not arrive, and a depot running without invoicing has no other answer to read. See
+``order_generation.payment_block_reason``.
 
 What deliberately does NOT change when finance is off:
 
