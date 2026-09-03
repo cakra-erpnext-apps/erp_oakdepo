@@ -16,7 +16,7 @@
    "link_type": "Workspace",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-home"
+   "icon": "house"
   },
   {
    "child": 0,
@@ -28,7 +28,7 @@
    "link_type": "Workspace",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-dashboard"
+   "icon": "layout-dashboard"
   },
   {
    "child": 0,
@@ -154,7 +154,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-email"
+   "icon": "mail"
   },
   {
    "child": 0,
@@ -175,7 +175,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-storage"
+   "icon": "boxes"
   },
   {
    "child": 1,
@@ -187,7 +187,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-chart"
+   "icon": "chart-pie"
   },
   {
    "child": 1,
@@ -199,7 +199,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-time"
+   "icon": "history"
   },
   {
    "child": 1,
@@ -211,7 +211,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-chart"
+   "icon": "target"
   },
   {
    "child": 1,
@@ -223,7 +223,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-reports"
+   "icon": "calendar-days"
   },
   {
    "child": 0,
@@ -244,7 +244,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-book"
+   "icon": "book-marked"
   },
   {
    "child": 1,
@@ -256,7 +256,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-ticket"
+   "icon": "ticket"
   },
   {
    "child": 1,
@@ -268,7 +268,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-download"
+   "icon": "arrow-down-to-line"
   },
   {
    "child": 1,
@@ -280,7 +280,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-upload"
+   "icon": "arrow-up-from-line"
   },
   {
    "child": 0,
@@ -301,7 +301,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-details"
+   "icon": "search-check"
   },
   {
    "child": 1,
@@ -313,7 +313,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-sparkle"
+   "icon": "sparkles"
   },
   {
    "child": 1,
@@ -325,7 +325,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-settings"
+   "icon": "wrench"
   },
   {
    "child": 1,
@@ -337,7 +337,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-pin"
+   "icon": "map-pin"
   },
   {
    "child": 0,
@@ -358,7 +358,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-payments"
+   "icon": "receipt-text"
   },
   {
    "child": 1,
@@ -370,7 +370,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-payments"
+   "icon": "hand-coins"
   },
   {
    "child": 1,
@@ -382,7 +382,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-reports"
+   "icon": "circle-dollar-sign"
   },
   {
    "child": 1,
@@ -394,7 +394,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-calender"
+   "icon": "coins"
   },
   {
    "child": 1,
@@ -406,7 +406,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-settings"
+   "icon": "settings"
   },
   {
    "child": 0,
@@ -427,7 +427,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-article"
+   "icon": "handshake"
   },
   {
    "child": 1,
@@ -439,7 +439,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-filter"
+   "icon": "square-menu"
   },
   {
    "child": 1,
@@ -463,7 +463,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-bullet-list"
+   "icon": "tags"
   },
   {
    "child": 1,
@@ -475,7 +475,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-payments"
+   "icon": "badge-dollar-sign"
   },
   {
    "child": 1,
@@ -487,7 +487,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-pages"
+   "icon": "package-check"
   },
   {
    "child": 1,
@@ -499,7 +499,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-tag"
+   "icon": "hand-platter"
   },
   {
    "child": 1,
@@ -511,7 +511,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-folder-alt"
+   "icon": "folder-cog"
   },
   {
    "child": 0,
@@ -532,7 +532,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-notes"
+   "icon": "shopping-cart"
   },
   {
    "child": 1,
@@ -544,7 +544,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-download"
+   "icon": "package-open"
   },
   {
    "child": 1,
@@ -556,7 +556,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-customer"
+   "icon": "truck"
   },
   {
    "child": 1,
@@ -568,7 +568,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-move"
+   "icon": "arrow-left-right"
   },
   {
    "child": 1,
@@ -580,7 +580,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-details"
+   "icon": "scale"
   },
   {
    "child": 1,
@@ -592,7 +592,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-chart"
+   "icon": "layers"
   },
   {
    "child": 1,
@@ -604,7 +604,7 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-bullet-list"
+   "icon": "scroll-text"
   },
   {
    "child": 0,
@@ -625,7 +625,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-square"
+   "icon": "container"
   },
   {
    "child": 1,
@@ -637,7 +637,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-archive"
+   "icon": "package"
   },
   {
    "child": 1,
@@ -649,7 +649,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-customer"
+   "icon": "users-round"
   },
   {
    "child": 1,
@@ -661,7 +661,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-storage"
+   "icon": "factory"
   },
   {
    "child": 1,
@@ -673,7 +673,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-group"
+   "icon": "building-2"
   },
   {
    "child": 1,
@@ -685,7 +685,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-tag"
+   "icon": "tag"
   },
   {
    "child": 1,
@@ -697,7 +697,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-folder-alt"
+   "icon": "folder-tree"
   },
   {
    "child": 1,
@@ -709,7 +709,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-storage"
+   "icon": "warehouse"
   },
   {
    "child": 1,
@@ -721,7 +721,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-people"
+   "icon": "user-round"
   },
   {
    "child": 0,
@@ -742,7 +742,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-tiles"
+   "icon": "list-checks"
   },
   {
    "child": 1,
@@ -754,7 +754,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-tiles"
+   "icon": "triangle-alert"
   },
   {
    "child": 1,
@@ -766,7 +766,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-tiles"
+   "icon": "hammer"
   },
   {
    "child": 1,
@@ -778,7 +778,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-tiles"
+   "icon": "spray-can"
   },
   {
    "child": 0,
@@ -799,7 +799,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-location"
+   "icon": "door-open"
   },
   {
    "child": 1,
@@ -811,7 +811,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-move"
+   "icon": "route"
   },
   {
    "child": 1,
@@ -823,7 +823,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-time"
+   "icon": "activity"
   },
   {
    "child": 0,
@@ -844,7 +844,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-bell"
+   "icon": "bell-ring"
   },
   {
    "child": 1,
@@ -856,7 +856,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-settings"
+   "icon": "sliders-horizontal"
   },
   {
    "child": 1,
@@ -868,10 +868,10 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "icon": "es-line-users"
+   "icon": "shield-user"
   }
  ],
- "modified": "2026-09-02 15:00:00.000000",
+ "modified": "2026-09-03 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
