@@ -180,14 +180,21 @@ class ContainerBooking(Document):
 				)
 		# Cash bookings clear their (Paid) invoice at submit; TOP accrues Unpaid
 		# until swept by consolidated billing.
-		self.db_set(
-			"payment_status",
-			"Paid" if self.payment_type == "Cash" else "Unpaid",
-			update_modified=False,
-		)
+		#
+		# Only when finance is ON, and the condition is the whole point: with it off submit
+		# is not gated on payment at all (``_enforce_payment_rules`` steps aside), so this
+		# stamp would mark EVERY confirmed Cash booking settled whether or not anyone
+		# collected — a "Paid" nobody wrote and no invoice backs. In that mode the field is
+		# the admin's to set by hand (:func:`set_payment_status`), so it is left alone.
+		if finance.is_enabled():
+			self.db_set(
+				"payment_status",
+				"Paid" if self.payment_type == "Cash" else "Unpaid",
+				update_modified=False,
+			)
 		self._auto_invoice()
 		# The outbound position survey is NOT raised here any more — the draft already did
-		# it (:meth:`_provision_position_surveys`). on_update runs on the submit save too, so
+		# it (:meth:`_provision_survey_order`). on_update runs on the submit save too, so
 		# a booking that somehow reached Submit without one still gets it.
 		from container_depot.container_depot.notify import notify_booking_submitted
 		notify_booking_submitted(self)
@@ -1948,6 +1955,46 @@ def _invoice_settlement(sales_invoice):
 	if si.status in ("Paid", "Credit Note Issued") or (si.outstanding_amount or 0) <= 0:
 		return "Paid"
 	return "Invoiced"
+
+
+@frappe.whitelist()
+def set_payment_status(booking, status):
+	"""Set a booking's ``payment_status`` by hand — the stand-in while finance is OFF.
+
+	With invoicing off no Sales Invoice is ever raised, so the field has nothing to be
+	derived from and becomes a plain label: the admin who took the money (or is still
+	waiting on it) says so. Only Paid / Unpaid are offered — Invoiced and Cancelled
+	describe an invoice's life, and there is no invoice.
+
+	**Refused once finance is on.** From that moment the Sales Invoice owns the field and
+	both the gate and the bon read it (``api._booking_gate_detail``), so a hand-set "Paid"
+	over an unpaid invoice would open the gate on money nobody collected. Record a Payment
+	Entry there instead — the hooks push it onto the booking by themselves.
+
+	``db_set``, not a save: a submitted booking is locked shut
+	(``before_update_after_submit``), and this is deliberately still allowed on one — the
+	money usually arrives after the booking is confirmed. The change is left as a comment
+	so "who marked this paid, and when" has an answer."""
+	frappe.has_permission("Container Booking", ptype="write", throw=True)
+	if finance.is_enabled():
+		frappe.throw(
+			_(
+				"Finance sudah aktif — status bayar mengikuti Sales Invoice-nya. "
+				"Catat Payment Entry di invoice itu, jangan diubah manual di sini."
+			),
+			title=_("Tidak bisa diubah manual"),
+		)
+	if status not in ("Paid", "Unpaid"):
+		frappe.throw(_("Status bayar hanya bisa Paid atau Unpaid."))
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.docstatus == 2 or doc.booking_status == "Cancelled":
+		frappe.throw(_("Booking ini sudah dibatalkan."))
+	before = doc.payment_status or "Unpaid"
+	if before == status:
+		return status
+	doc.db_set("payment_status", status, update_modified=False)
+	doc.add_comment("Comment", _("Status bayar diubah manual: {0} → {1}").format(before, status))
+	return status
 
 
 # --- Sales Invoice → Container Booking bridge -------------------------------------

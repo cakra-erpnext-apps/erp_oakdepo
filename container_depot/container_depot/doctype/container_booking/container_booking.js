@@ -124,6 +124,28 @@ frappe.ui.form.on('Container Booking', {
 				'btn-primary'
 			);
 		}
+		// Finance OFF: no invoice exists, so nothing can derive "sudah dibayar?" — the admin
+		// answers it. A toggle rather than a picker: the booking's current answer is already
+		// on the sidebar (Payment), so the button only has to say what pressing it does.
+		// Still offered on a SUBMITTED booking, which is the point — the money usually
+		// arrives after the booking is confirmed, and the form itself is locked by then.
+		// Cash only, matching the field's own depends_on: TOP is billed later by definition,
+		// so Unpaid is its correct resting state, not something to mark off.
+		// Gone the moment finance is on — from there the invoice owns the field and the
+		// server refuses a hand-set anyway.
+		if (
+			!frm.is_new() &&
+			may_write &&
+			!_finance_on() &&
+			frm.doc.docstatus !== 2 &&
+			frm.doc.booking_status !== 'Cancelled' &&
+			frm.doc.payment_type === 'Cash'
+		) {
+			const paid = frm.doc.payment_status === 'Paid';
+			frm.add_custom_button(paid ? __('Tandai Belum Lunas') : __('Tandai Lunas'), () =>
+				_set_payment_status(frm, paid ? 'Unpaid' : 'Paid')
+			);
+		}
 	},
 	// A bon is the point of no return. Once one has been raised from this booking the two
 	// undos are gone — no Kembali ke Draft, no Cancel — because the bon is paper a driver
@@ -1005,6 +1027,33 @@ function _confirm_regenerate(frm) {
 							indicator: 'green',
 						});
 					}
+				},
+			});
+		}
+	);
+}
+
+// The manual paid/unpaid label, live only while finance is off (see set_payment_status).
+// Confirmed rather than one-click: it is a money statement, and the confirmation is where
+// "no invoice is created by this" gets said out loud.
+function _set_payment_status(frm, status) {
+	frappe.confirm(
+		status === 'Paid'
+			? __(
+					'Tandai booking ini <b>sudah dibayar</b>? Tidak ada invoice atau jurnal yang dibuat — ini catatan manual selama finance belum aktif.'
+			  )
+			: __('Tandai booking ini <b>belum dibayar</b>?'),
+		() => {
+			frappe.call({
+				method: 'container_depot.container_depot.doctype.container_booking.container_booking.set_payment_status',
+				args: { booking: frm.doc.name, status },
+				freeze: true,
+				callback() {
+					frm.reload_doc();
+					frappe.show_alert({
+						message: __('Status bayar: {0}', [__(status)]),
+						indicator: status === 'Paid' ? 'green' : 'orange',
+					});
 				},
 			});
 		}

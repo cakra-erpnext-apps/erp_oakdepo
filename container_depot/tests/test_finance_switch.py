@@ -148,6 +148,50 @@ class TestFinanceSwitch(FrappeTestCase):
 		b.submit()
 		self.assertIsNone(_booking_gate_detail(b.name)["block_reason"])
 
+	# --- the manual paid/unpaid label -----------------------------------------
+	def test_confirming_does_not_stamp_paid_by_itself(self):
+		"""Submit is not gated on payment while finance is off, so it must not claim one
+		was made: an automatic "Paid" on every confirmed Cash booking would read as
+		collected money on a site where nobody has billed anything yet."""
+		_set_finance(False)
+		b = self._booking("FINSW0005")
+		b.flags.ignore_permissions = True
+		b.submit()
+		b.reload()
+		self.assertEqual(b.payment_type, "Cash")
+		self.assertEqual(b.payment_status, "Unpaid")
+
+	def test_admin_sets_the_label_by_hand_on_a_submitted_booking(self):
+		"""The label is a human's answer while there is no invoice to derive it from — and
+		it has to work AFTER submit, which is when the cash actually arrives (the form
+		itself is locked shut by then)."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
+		_set_finance(False)
+		b = self._booking("FINSW0006")
+		b.flags.ignore_permissions = True
+		b.submit()
+		set_payment_status(b.name, "Paid")
+		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Paid")
+		# …and back, for the mis-click.
+		set_payment_status(b.name, "Unpaid")
+		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Unpaid")
+
+	def test_hand_setting_is_refused_once_finance_is_on(self):
+		"""With invoicing live the Sales Invoice owns the field — the gate and the bon read
+		it, so a hand-set Paid over an unpaid invoice would open the gate on money nobody
+		collected."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
+		_set_finance(True)
+		b = self._booking("FINSW0007")
+		with self.assertRaises(frappe.ValidationError):
+			set_payment_status(b.name, "Paid")
+
 	def test_charges_are_still_priced_and_recorded(self):
 		"""Operations now, invoices later — only possible if the money is still on record."""
 		_set_finance(False)
