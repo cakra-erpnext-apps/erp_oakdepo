@@ -37,7 +37,11 @@ frappe.ui.form.on('Order Bongkar', {
 		_default_shipper(frm);
 		_default_principal(frm);
 	},
+	containers_remove(frm) {
+		_enforce_max_rows(frm);
+	},
 	containers_add(frm, cdt, cdn) {
+		_enforce_max_rows(frm);
 		// A second container mirrors the first row's truck / driver / R-O as an
 		// editable default; the rest comes from its own container's booking line.
 		const rows = frm.doc.containers || [];
@@ -187,9 +191,19 @@ function _strip_row_buttons(frm) {
 
 // Cap the grid at MAX_CONTAINERS_PER_ORDER: block the Add Row button past the cap
 // (the server validate enforces the same 1..MAX as the hard guarantee).
+//
+// Must run on every row add AND remove, not just on `refresh`: `cannot_add_rows` is state
+// on the long-lived grid object, and Frappe fires no form-level refresh when a grid row
+// comes or goes. Recomputed only on load, a voucher opened already at the cap kept the flag
+// true after the operator deleted a row — Add Row stayed gone until the form was reloaded.
 function _enforce_max_rows(frm) {
 	const grid = frm.fields_dict.containers.grid;
-	grid.cannot_add_rows = (frm.doc.containers || []).length >= MAX_CONTAINERS_PER_ORDER;
+	const capped = (frm.doc.containers || []).length >= MAX_CONTAINERS_PER_ORDER;
+	if (grid.cannot_add_rows !== capped) {
+		grid.cannot_add_rows = capped;
+		// setup_toolbar() is what puts the button back; the flag alone changes nothing.
+		grid.refresh();
+	}
 	if (!grid._max_patched) {
 		const orig = grid.add_new_row.bind(grid);
 		grid.add_new_row = function (...args) {
