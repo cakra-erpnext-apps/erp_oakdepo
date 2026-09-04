@@ -738,14 +738,14 @@ function eirPayload(submit) {
 		reff_doc: reffDoc.value,
 		remarks: remarks.value || undefined,
 		signature: signatureUrl.value || undefined,
-		// "Kerjakan kalau memang perlu" — the PWA has no opt-out for either follow-up, so it
-		// asks for both on every save and Inspection.sync_followup_flags clears the one that
-		// is not due (tank not Empty Dirty / no finding on the checklist). Reading the flags
-		// back off the draft instead would freeze that clearing in: a tank marked Empty Dirty
-		// AFTER the first autosave would keep sending the 0 the server had just written, and
-		// the Cleaning Order would never be filed.
-		create_cleaning_order: 1,
-		create_repair_order: 1,
+		// The two follow-up flags are deliberately NOT sent. The PWA has no opt-out for
+		// either one, and the server no longer clears a box that is not due — a hand-ticked
+		// box is now honoured on submit — so asking for both on every save would file a
+		// Cleaning Order for every clean tank and an empty M&R for every undamaged one.
+		// Omitted, eir.save_eir leaves them alone and Inspection.sync_followup_flags ticks
+		// each one the moment its evidence appears (tank turns Empty Dirty, first finding
+		// lands), which is exactly what this field operator's screen means by them.
+
 		// Sent as arrays, not JSON strings: `send` has to be able to walk the payload to
 		// find the `local:` photo references and swap them for real file_urls.
 		lines: buildLines(),

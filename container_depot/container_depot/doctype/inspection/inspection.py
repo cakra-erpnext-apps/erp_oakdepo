@@ -90,26 +90,26 @@ class Inspection(Document):
 		) else 0
 
 	def sync_followup_flags(self):
-		"""Keep the two "Tindak Lanjut" boxes on what submit will ACTUALLY do.
+		"""Suggest the two "Tindak Lanjut" boxes from the evidence — never overrule them.
 
-		Both are opt-OUTs: ``on_submit`` only files the follow-up when the box is ticked, and
-		the create call itself no-ops when the condition is not met. Ticked-by-default they
-		promised a Cleaning Order for a clean tank and an M&R for an undamaged one — work the
-		user then went off waiting for and that never appeared.
+		Both are opt-OUTs: ``on_submit`` only files the follow-up when the box is ticked.
+		Ticked-by-default they promised a Cleaning Order for a clean tank and an M&R for an
+		undamaged one — work the user then went off waiting for and that never appeared. So
+		the evidence still drives the DEFAULT, on every save and whatever wrote it (Desk,
+		PWA, API):
 
-		So each box answers to its evidence, on every save and whatever wrote it (Desk, PWA,
-		API):
-
-		* not due  → cleared. Nothing may stand as a promise of work that will not be filed.
 		* newly due → ticked, because that is the default answer to "shall I file it?" — the
-		  tank turned Empty Dirty / the first finding landed, typically on a save well after
-		  the draft was opened (``eir.open_draft`` creates it blank, so the doctype default
-		  never survives to see the condition come true).
-		* due, and was already due on the last save → left exactly as it is. This is where an
-		  operator's deliberate untick lives, and re-ticking it would be arguing with them.
+		  tank turned Empty Dirty / the first finding landed. A brand-new doc that is already
+		  due counts as newly due: ``eir.open_draft`` inserts the draft with tank_status
+		  copied off the bon, so Empty Dirty is there before any "before" exists.
+		* anything else → left exactly as it is. This is where the operator's own answer
+		  lives, both directions: a deliberate untick on a due follow-up, and a deliberate
+		  tick on one the EIR has no evidence for. The box used to be force-cleared and
+		  locked in that second case; it is the operator's call, and ``on_submit`` passes
+		  ``force`` so a hand-ticked box really does file the order.
 
-		A brand-new doc has no "last save" to compare against: whatever the caller passed —
-		or the doctype default of 1 — is their answer, and only the not-due clearing applies.
+		The doctype default is 0: with nothing force-clearing the boxes any more, a default
+		of 1 would have every fresh EIR-In promise a Cleaning Order and an empty M&R.
 		``inspection.js`` mirrors the same rule live in the Desk form so the surveyor watches
 		the box follow the tank instead of finding out at submit.
 		"""
@@ -137,10 +137,13 @@ class Inspection(Document):
 		)
 
 	def _followup_flag(self, fieldname, due, was_due, had_last_save) -> int:
-		if not due:
-			return 0
-		if had_last_save and not was_due:
-			return 1  # just became due — offer to file it
+		# Newly due — including a brand-new doc that arrives already due (``eir.open_draft``
+		# inserts the draft with tank_status copied off the bon, so the very first save is
+		# where Empty Dirty first appears and there is no "before" to compare against).
+		# The doctype default is 0 precisely so this is the only thing that ticks a box the
+		# operator did not tick themselves.
+		if due and not (had_last_save and was_due):
+			return 1
 		return 1 if self.get(fieldname) else 0
 
 	def stamp_inspector(self):
@@ -331,16 +334,18 @@ class Inspection(Document):
 
 		# Empty-Dirty (undamaged) EIR-In → auto-create a Cleaning Order so the cleaning
 		# team knows a tank is waiting, and notify them — but ONLY when the surveyor left
-		# "Buat Cleaning Order" checked. (create_cleaning_order_from_eir itself no-ops for a
-		# non-dirty tank, so the checkbox is the operator's opt-out.) The finished Cleaning
+		# "Buat Cleaning Order" checked. The checkbox is the whole decision: ticked by
+		# default for a dirty tank (the opt-out), and honoured with ``force`` when the
+		# surveyor ticks it for a tank the EIR does not call dirty. The finished Cleaning
 		# Order is itself the TANK OUT proof — see container_depot/cleaning.py.
 		if self.inspection_type == "EIR-In" and self.get("create_cleaning_order"):
 			self._ensure_cleaning_order(container)
 
 		# Damaged EIR-In → auto-create a Draft M&R (Repair Order) so the M&R team can pick
 		# the inventory parts to repair/replace, and notify them — but ONLY when the surveyor
-		# left "Buat M&R" checked. The create call is a no-op when the EIR carries no real
-		# damage finding, so the checkbox is the operator's opt-out.
+		# left "Buat M&R" checked. Same rule as the Cleaning Order: the box is ticked by
+		# default once a finding lands, and a hand-ticked box on a findings-free EIR files
+		# the Draft anyway (``force``) for the team to fill in.
 		if self.inspection_type == "EIR-In" and self.get("create_repair_order"):
 			self._ensure_repair_order_draft(container)
 
@@ -366,8 +371,10 @@ class Inspection(Document):
 			)
 
 	def _ensure_cleaning_order(self, container):
-		"""Create (idempotently) a Pending Cleaning Order for this dirty tank and notify
-		the cleaning team — only the first time, so re-submits don't spam."""
+		"""Create (idempotently) a Pending Cleaning Order for this tank and notify the
+		cleaning team — only the first time, so re-submits don't spam. Reached only with
+		"Buat Cleaning Order" ticked, which is the decision — so it passes ``force`` and
+		does not re-test tank_status."""
 		from container_depot.container_depot import eir_followups
 		from container_depot.container_depot.container_activity import log_container_activity
 		from container_depot.container_depot.notify import notify_cleaning_order_created
@@ -378,9 +385,9 @@ class Inspection(Document):
 		# cleaning team. Comparing against what was there beforehand is the one test that
 		# covers both without asking which kind it was.
 		before = set(frappe.get_all("Cleaning Order", filters={"container": container.name}, pluck="name"))
-		order = eir_followups.create_cleaning_order_from_eir(self.name)
+		order = eir_followups.create_cleaning_order_from_eir(self.name, force=True)
 		if not order or order in before:
-			return  # nothing created (not dirty / already filed) — don't re-notify
+			return  # nothing created (already filed) — don't re-notify
 		log_container_activity(
 			container.name, "Cleaning",
 			reference_doctype="Cleaning Order", reference_name=order,
@@ -392,17 +399,17 @@ class Inspection(Document):
 
 	def _ensure_repair_order_draft(self, container):
 		"""Create (idempotently) a Draft M&R for a damaged tank and notify the M&R team —
-		only the first time, so re-submits don't spam. No-op when the EIR has no real
-		damage finding (``create_repair_order_from_eir`` returns ``None``)."""
+		only the first time, so re-submits don't spam. Reached only with "Buat M&R" ticked,
+		which is the decision — so it passes ``force`` and does not re-test the findings."""
 		from container_depot.container_depot import eir_followups
 		from container_depot.container_depot.container_activity import log_container_activity
 		from container_depot.container_depot.notify import notify_repair_order_created
 
 		# New order only — same reasoning as _ensure_cleaning_order above.
 		before = set(frappe.get_all("Repair Order", filters={"container": container.name}, pluck="name"))
-		order = eir_followups.create_repair_order_from_eir(self.name)
+		order = eir_followups.create_repair_order_from_eir(self.name, force=True)
 		if not order or order in before:
-			return  # nothing to repair / already filed — don't re-notify
+			return  # already filed — don't re-notify
 		log_container_activity(
 			container.name, "Repair",
 			reference_doctype="Repair Order", reference_name=order,

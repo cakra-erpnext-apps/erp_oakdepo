@@ -662,15 +662,10 @@ function scheduleSave() {
 watch([remarks, cargo, seals, bulkPhotos, fittings], scheduleSave, { deep: true })
 
 async function confirmSubmit() {
-	// Surface the seal count here rather than blocking submit on it: a tank can legitimately
-	// leave unsealed, but forgetting to record a seal that IS fitted must not pass quietly.
-	const n = filledSeals.value.length
+	// Ya / Batal, nothing else: what happens after the hand-off is Adm Ops' business, not
+	// something the field operator has to read past on every submit.
 	const ok = await confirm({
 		title: labels.eirOutConfirmReadyTitle,
-		message:
-			labels.eirOutConfirmReadyMsg +
-			"\n\n" +
-			(n ? `${labels.eirOutSealsRecorded}: ${n}` : labels.eirOutNoSealWarn),
 		confirmLabel: labels.eirSendReview,
 		cancelLabel: labels.confirmCancel,
 	})

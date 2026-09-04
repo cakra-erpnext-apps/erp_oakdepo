@@ -266,15 +266,15 @@
    "label": "Tindak Lanjut"
   },
   {
-   "default": "1",
-   "description": "Tercentang sendiri saat Tank Status = Empty Dirty. Hilangkan centang untuk melewati.",
+   "default": "0",
+   "description": "Tercentang sendiri saat Tank Status = Empty Dirty. Bisa dicentang / dihilangkan sendiri kapan saja.",
    "fieldname": "create_cleaning_order",
    "fieldtype": "Check",
    "label": "Buat Cleaning Order"
   },
   {
-   "default": "1",
-   "description": "Tercentang sendiri saat ada temuan di Checklist Kerusakan. Hilangkan centang untuk melewati.",
+   "default": "0",
+   "description": "Tercentang sendiri saat ada temuan di Checklist Kerusakan. Bisa dicentang / dihilangkan sendiri kapan saja.",
    "fieldname": "create_repair_order",
    "fieldtype": "Check",
    "label": "Buat M&R (Repair Order)"
@@ -729,7 +729,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-04 11:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

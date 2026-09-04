@@ -381,12 +381,10 @@ export const labels = {
 	eirOutSealRemarkPlaceholder: "Keterangan (posisi segel, dll) — opsional",
 	eirOutSealAdd: "Tambah Seal",
 	// Field submit is a HAND-OFF, not a finalisation: it parks the EIR-Out on Pending
-	// Review for Adm Ops. Ready To Load — and the Kalmar notification — only happen
-	// when Adm Ops submits it on the Desk, so the wording must not promise them now.
+	// Review for Adm Ops. The title asks; the dialog carries no body text on purpose —
+	// what happens downstream is Adm Ops' business, not a paragraph the operator has to
+	// read past on every submit.
 	eirOutConfirmReadyTitle: "Kirim EIR-Out untuk review?",
-	eirOutConfirmReadyMsg: "EIR-Out dikirim ke Adm Ops. Begitu mereka submit, tank langsung tercatat KELUAR DEPO (gate-out) — tidak ada ACC terpisah lagi.",
-	eirOutSealsRecorded: "Seal tercatat",
-	eirOutNoSealWarn: "⚠ Belum ada nomor seal yang dicatat.",
 	eirOutBackToList: "Kembali ke daftar",
 	savingDraft: "Menyimpan…", // Saving…
 	draftSaved: "Tersimpan", // Saved

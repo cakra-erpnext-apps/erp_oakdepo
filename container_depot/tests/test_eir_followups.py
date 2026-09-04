@@ -196,14 +196,34 @@ class TestFollowupFlags(FrappeTestCase):
 		doc.save()
 		self.assertEqual(doc.create_cleaning_order, 0)
 
-	def test_a_box_is_cleared_when_its_condition_goes_away(self):
+	def test_a_tick_survives_its_condition_going_away(self):
+		# The box suggests, it does not decide. Once the operator is looking at a ticked box,
+		# clearing it behind their back is the server picking an argument: a surveyor who
+		# corrects the status to Empty Clean and STILL wants the tank washed says so by
+		# leaving the tick, and on_submit files the order (force=True).
 		doc = self._draft("FUPFLAG0004")
 		doc.tank_status = "Empty Dirty"
 		doc.save()
 		self.assertEqual(doc.create_cleaning_order, 1)
 		doc.tank_status = "Empty Clean"  # surveyor corrects the reading
 		doc.save()
+		self.assertEqual(doc.create_cleaning_order, 1)
+		doc.create_cleaning_order = 0  # ...and unticks it themselves if they meant to
+		doc.save()
 		self.assertEqual(doc.create_cleaning_order, 0)
+
+	def test_a_hand_ticked_box_is_kept_without_any_evidence(self):
+		# The point of the unlock: an operator may know the tank needs washing / a look from
+		# M&R for a reason the checklist does not spell out. Neither box is cleared.
+		doc = self._draft("FUPFLAG0006", tank_status="Empty Clean")
+		doc.reload()
+		doc.create_cleaning_order = 1
+		doc.create_repair_order = 1
+		doc.save()
+		doc.remarks = "minta cuci ulang"
+		doc.save()
+		self.assertEqual(doc.create_cleaning_order, 1)
+		self.assertEqual(doc.create_repair_order, 1)
 
 	def test_only_an_eir_in_carries_follow_ups(self):
 		doc = self._draft("FUPFLAG0005", inspection_type="EIR-Out", tank_status="Empty Dirty")

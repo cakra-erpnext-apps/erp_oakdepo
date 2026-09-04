@@ -110,13 +110,17 @@ frappe.ui.form.on('Inspection', {
 });
 
 // --- Tindak Lanjut: the boxes may only promise work that submit will really file --------
-// Both checkboxes are opt-OUTs — on_submit skips the follow-up when unticked — and both
-// creations no-op when their condition is not met. Left ticked by default (they used to be)
-// they announced a Cleaning Order for a clean tank and an M&R for an undamaged one, and the
-// user went off waiting for a job nobody would ever see. So the box now tracks the tank in
-// front of the surveyor: ticked the moment the status turns Empty Dirty or a finding lands
-// on the Checklist Kerusakan, cleared and locked (with the reason written on the field)
-// while the follow-up is not due.
+// Both checkboxes are opt-OUTs — on_submit skips the follow-up when unticked. Left ticked
+// by default (they used to be) they announced a Cleaning Order for a clean tank and an M&R
+// for an undamaged one, and the user went off waiting for a job nobody would ever see. So
+// the box tracks the tank in front of the surveyor: ticked the moment the status turns
+// Empty Dirty or a finding lands on the Checklist Kerusakan, and starting from 0 otherwise.
+//
+// It SUGGESTS, it does not decide. The box is never disabled and never cleared behind the
+// operator's back — a surveyor who ticks "Buat M&R" on an EIR whose checklist is still empty
+// knows something the checklist does not yet say, and on_submit files the order for real
+// (Inspection._ensure_* call the creators with force=True). The field description says which
+// case the operator is in.
 //
 // Ticking happens only on the TRANSITION into "due", never on a plain refresh: an operator
 // who unticks a box that is legitimately due means it, and re-rendering the form must not
@@ -140,7 +144,7 @@ function sync_followup_flags(frm, on_change) {
 	const eir_in = frm.doc.inspection_type === 'EIR-In';
 	apply_followup_flag(frm, 'create_cleaning_order', eir_in && frm.doc.tank_status === EMPTY_DIRTY, on_change, {
 		due: __('Tank Empty Dirty — Cleaning Order dibuat saat submit. Hilangkan centang untuk melewati.'),
-		not_due: __('Tidak berlaku: Cleaning Order hanya dibuat untuk tank Empty Dirty.'),
+		not_due: __('Tank tidak Empty Dirty. Centang tetap bisa diisi kalau tank ini memang perlu dicuci — Cleaning Order akan dibuat saat submit.'),
 	});
 	apply_followup_flag(
 		frm,
@@ -149,7 +153,7 @@ function sync_followup_flags(frm, on_change) {
 		on_change,
 		{
 			due: __('Ada temuan kerusakan — draft M&R dibuat saat submit. Hilangkan centang untuk melewati.'),
-			not_due: __('Tidak berlaku: belum ada temuan di Checklist Kerusakan.'),
+			not_due: __('Belum ada temuan di Checklist Kerusakan. Centang tetap bisa diisi — draft M&R kosong dibuat saat submit untuk diisi tim M&R.'),
 		},
 	);
 }
@@ -158,17 +162,16 @@ function apply_followup_flag(frm, fieldname, due, on_change, hints) {
 	// The reason reads on a submitted EIR too — that is where somebody comes looking for the
 	// Cleaning Order / M&R that never appeared.
 	frm.set_df_property(fieldname, 'description', due ? hints.due : hints.not_due);
-	frm.set_df_property(fieldname, 'read_only', due ? 0 : 1);
 	const was = (frm.__followup_due || {})[fieldname];
 	frm.__followup_due = Object.assign({}, frm.__followup_due, { [fieldname]: due });
 	if (frm.doc.docstatus !== 0) return; // submitted: what happened, happened
-	if (!due) {
-		if (frm.doc[fieldname]) frm.set_value(fieldname, 0);
-		return;
-	}
+	// Only the "just became due" nudge is automatic. The box is never locked and never
+	// cleared behind the operator's back: the evidence answers "shall I file it?" by
+	// default, but a surveyor who ticks it for a tank the checklist says nothing about has
+	// a reason, and on_submit honours that tick (Inspection._ensure_* pass force=True).
 	// `was === false` — the follow-up just BECAME due. `undefined` is the first render of a
 	// form that was already due, where the stored answer is the operator's and stands.
-	if (on_change && was === false) frm.set_value(fieldname, 1);
+	if (due && on_change && was === false) frm.set_value(fieldname, 1);
 }
 
 // Frappe's Attach Image control renders as a file LINK and only reveals the picture in a

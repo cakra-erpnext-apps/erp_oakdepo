@@ -94,14 +94,21 @@ def eir_needs_mr(inspection) -> bool:
 
 
 # --- creation (idempotent; NOT auto-called) ----------------------------------
-def create_cleaning_order_from_eir(inspection, ignore_permissions=True):
+def create_cleaning_order_from_eir(inspection, ignore_permissions=True, force=False):
 	"""Create a Pending Cleaning Order for an Empty-Dirty EIR's container. Idempotent:
 	returns the existing open order (Pending / In_Progress) if one already exists.
-	Returns the Cleaning Order name, or ``None`` when no cleaning is due."""
+	Returns the Cleaning Order name, or ``None`` when no cleaning is due.
+
+	``force`` skips the Empty-Dirty test. The "Buat Cleaning Order" checkbox is the
+	operator's own call — they may know the tank needs washing for a reason the EIR's
+	tank_status does not spell out — so a ticked box files the order whatever the status
+	says. Automatic callers leave ``force`` off and keep the evidence test."""
 	insp = frappe.db.get_value(
 		"Inspection", inspection, ["container", "tank_status", "depot", "reff_doc"], as_dict=True
 	)
-	if not insp or not insp.container or insp.tank_status != EMPTY_DIRTY:
+	if not insp or not insp.container:
+		return None
+	if not force and insp.tank_status != EMPTY_DIRTY:
 		return None
 	# This EIR already filed a Cleaning Order once — hand back the same one whatever state
 	# it has reached, instead of filing a second order for the same visit. An EIR can be
@@ -211,16 +218,20 @@ def seed_damages_from_eir(ro, inspection) -> None:
 		})
 
 
-def create_repair_order_from_eir(inspection, ignore_permissions=True):
+def create_repair_order_from_eir(inspection, ignore_permissions=True, force=False):
 	"""Create a **Draft** M&R (Repair Order) for an EIR with real damage findings — the
 	team then edits it (picks inventory parts to replace/repair) before completing it.
 
 	Idempotent **per container**: returns the container's existing open M&R if one is
 	already in play (so an EIR-In draft and a later Detailed Survey don't double up).
 	Seeds one estimation line per real damage finding (component + description) as a
-	starting worklist. Returns the Repair Order name, or ``None`` when nothing is due."""
+	starting worklist. Returns the Repair Order name, or ``None`` when nothing is due.
+
+	``force`` skips the damage-finding test — same reasoning as the Cleaning Order above:
+	a ticked "Buat M&R" box is a decision, not a guess, and the M&R is born a Draft the
+	team fills in anyway. Forced without findings it simply seeds no damage lines."""
 	rows = eir_real_damage_rows(inspection)
-	if not rows:
+	if not rows and not force:
 		return None
 	insp = frappe.db.get_value(
 		"Inspection", inspection, ["container", "depot", "reff_doc"], as_dict=True
