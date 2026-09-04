@@ -416,3 +416,26 @@ class TestStorageChargeLedger(FrappeTestCase):
 		for _ in range(3):
 			storage_charge.sync(doc.name, cno)
 		self.assertEqual(len(self._visits(doc.name)), 1)
+
+	def test_two_visits_on_the_same_day_each_get_a_row(self):
+		"""A tank that leaves and comes back the same day has TWO visits, not a name clash.
+
+		The row is named after the container and the day it arrived, so before this the
+		second visit tried to reuse the first one's name and the whole sync died with
+		``Duplicate entry ... for key 'PRIMARY'`` — taking the gate move down with it.
+		"""
+		cno = f"{PREFIX}LEDGSAMEDAY"
+		day = add_days(today(), -2)
+		doc = _container(cno, "In_Depot", self.customer)
+		_gate_entry(cno, day, day)   # masuk pagi, keluar sore
+		_gate_entry(cno, day)        # masuk lagi hari itu juga, masih di dalam
+		storage_charge.sync(doc.name, cno)
+
+		visits = self._visits(doc.name)
+		self.assertEqual(len(visits), 2)
+		self.assertEqual(len({v.name for v in visits}), 2)
+		self.assertEqual({v.status for v in visits}, {storage_charge.UNPAID, storage_charge.RUNNING})
+
+		# And re-running still finds both by key rather than opening a third.
+		storage_charge.sync(doc.name, cno)
+		self.assertEqual(len(self._visits(doc.name)), 2)

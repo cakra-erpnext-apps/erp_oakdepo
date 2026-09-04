@@ -1,7 +1,7 @@
 {
   "actions": [],
   "allow_import": 0,
-  "autoname": "format:STG-{container}-{date_in_key}",
+  "autoname": "",
   "creation": "2026-08-26 14:00:00.000000",
   "doctype": "DocType",
   "engine": "InnoDB",
@@ -186,7 +186,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-08-26 14:00:00.000000",
+  "modified": "2026-09-04 09:00:00.000000",
   "module": "Container Depot",
   "name": "Storage Charge",
   "owner": "Administrator",
