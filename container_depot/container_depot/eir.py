@@ -434,8 +434,10 @@ def attach_order_muat_to_eirs(order_name: str) -> dict:
 
 	A tank with NO open EIR-Out draft is reported back rather than given one. That is the
 	deliberate consequence of a single birthplace: no survey, no EIR-Out, and inventing one
-	here would put the old duplicate right back. The caller warns the operator, who can close
-	the tank's survey and have the bon adopt it on the next pass.
+	here would put the old duplicate right back. ``missing`` is returned for callers and
+	tests to read; the bon does NOT put it on screen (see ``OrderMuat._attach_eir_out``) —
+	closing the survey raises the EIR and the next pass of this function adopts it, and the
+	gate is what refuses a tank that never got one.
 
 	Best-effort per row — one failure is logged and never blocks the bon submit. Returns
 	``{"attached": [...], "missing": [container_no, ...]}``.

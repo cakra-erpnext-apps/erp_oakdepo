@@ -42,30 +42,24 @@ class OrderMuat(Document):
 		lands on that document instead of on a second one beside it — and the reference is
 		what finally makes it submittable (``Inspection.before_submit``).
 
-		A tank whose survey has not been closed therefore has nothing to attach to. That is
-		said out loud here, on the screen of the person who just cut the bon and can do
-		something about it, rather than being discovered at the gate — a tank cannot leave
-		without a submitted EIR-Out (``gate.mark_gate_out``).
+		A tank whose survey has not been closed has nothing to attach to yet, and that passes
+		in silence. It used to raise a popup here, and the popup was wrong twice over: it did
+		not refuse anything (the bon submits either way), and it landed on a screen that
+		already carries the readiness dossier and the open-order refusal — a third notice
+		about a fourth document is what turns a working screen into a wall of text nobody
+		reads. The fact is not lost: the survey is on the calendar, the surveyor is notified
+		an EIR-Out is due (``notify_order_muat_survey``, fired right after this), the bon
+		adopts the EIR on the next pass once the survey closes, and the gate refuses the tank
+		outright without a submitted one (``gate.mark_gate_out``). That last refusal is where
+		"no EIR-Out" actually has to stop somebody.
 
 		Best-effort: an EIR hiccup never blocks the bon submit.
 		"""
 		try:
 			from container_depot.container_depot.eir import attach_order_muat_to_eirs
-			result = attach_order_muat_to_eirs(self.name)
+			attach_order_muat_to_eirs(self.name)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"attach EIR-Out for {self.name}")
-			return
-		if result.get("missing"):
-			frappe.msgprint(
-				_(
-					"Tank berikut belum punya EIR-Out: <b>{0}</b>.<br>"
-					"EIR-Out terbit saat survey posisi ditutup — selesaikan surveynya dulu, "
-					"lalu bon ini bisa menyusul menautkannya. Tanpa EIR-Out yang disubmit, "
-					"tank tidak bisa keluar gate."
-				).format(", ".join(result["missing"])),
-				title=_("EIR-Out belum ada"),
-				indicator="orange",
-			)
 
 	def on_cancel(self):
 		_release_codes(self)
