@@ -53,6 +53,14 @@ function _bon_payment_block(frm) {
 frappe.ui.form.on('Container Booking', {
 	onload(frm) {
 		frm.trigger('_set_queries');
+		// Plan Date defaults to today on a NEW booking only, and only in the form. It is a
+		// form convenience, not a doctype default: a `default: Today` in the JSON would fire
+		// on every insert path (mail-to-order, API), and that would both fill the field on
+		// inbound bookings that legitimately have no plan and make the Tank Out
+		// mandatory_depends_on guard unreachable — the field could never arrive blank.
+		if (frm.is_new() && !frm.doc.plan_date) {
+			frm.set_value('plan_date', frappe.datetime.get_today());
+		}
 	},
 	refresh(frm) {
 		frm._prev_customer = frm.doc.customer;
