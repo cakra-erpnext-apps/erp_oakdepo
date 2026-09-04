@@ -302,6 +302,24 @@ export const labels = {
 	photoGallery: "Galeri", // pick existing photos, several at once
 	addPhoto: "Tambah Foto", // Add photo
 	photoError: "Gagal mengunggah foto", // Photo upload failed
+	// In-app viewfinder (components/CameraHost.vue). The shutter IS the decision — there is
+	// no "pakai foto ini?" step, because every shot lands as a thumbnail in the form behind
+	// and can be deleted there.
+	camTitle: "Ambil Foto", // Take photo
+	camShutter: "Ambil foto", // aria-label on the shutter button
+	camDone: "Selesai", // close the viewfinder
+	camClose: "Tutup kamera", // aria-label on the X
+	camTorch: "Senter", // torch / flashlight toggle
+	camStarting: "Menyalakan kamera…", // Starting camera…
+	camCount: "foto diambil", // follows a number: "3 foto diambil"
+	// Per-photo state, drawn as a small badge on the thumbnail itself. A photo is evidence;
+	// "did it actually get out of my hand?" is the question the operator has, and a toast
+	// that has already faded cannot answer it about THIS photo.
+	photoMarkUploading: "Mengunggah…", // in flight
+	photoMarkSent: "Terkirim ke server", // a real file_url
+	photoMarkParked: "Tersimpan di HP — terkirim saat Kirim", // a local: ref, link was down
+	photoMarkFailed: "Gagal", // could not even be parked on the handset — take it again
+	photoMarkFailedHint: "Foto gagal disimpan — silakan foto ulang.",
 	acceptableHint: "Kosongkan baris yang kondisinya baik (Acceptable).", // Leave good rows blank
 	// Search-to-add checklist (only damaged parts are added)
 	checklistSearchDamaged: "Cari section / part yang rusak…", // Search a section/part to add

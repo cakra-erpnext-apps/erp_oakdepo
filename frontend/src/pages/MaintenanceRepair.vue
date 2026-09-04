@@ -298,8 +298,9 @@
 						     Thumbnail left, keterangan filling the rest, delete on the right. -->
 						<div v-if="g.photos.length" class="space-y-2">
 							<div v-for="(ph, pi) in g.photos" :key="ph.photo" class="flex items-center gap-2">
-								<button type="button" class="oak-press shrink-0" @click="openLightbox(g.photos.map((x) => photoSrc(x.photo)), pi)">
+								<button type="button" class="oak-press relative shrink-0" @click="openLightbox(g.photos.map((x) => photoSrc(x.photo)), pi)">
 									<img :src="photoSrc(ph.photo)" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
+									<PhotoMark :photo="ph.photo" />
 								</button>
 								<input
 									v-model="ph.caption"
@@ -318,20 +319,23 @@
 								</button>
 							</div>
 						</div>
+						<!-- Same row shape as a landed photo, so the list does not jump when it
+						     lands — the thumbnail simply replaces the spinner in place. -->
+						<div v-if="queueFor(g.key).items.length" class="space-y-2">
+							<div v-for="it in queueFor(g.key).items" :key="it.id" class="flex items-center gap-2">
+								<PhotoTile :item="it" tile="h-14 w-14" />
+							</div>
+						</div>
 						<div class="flex w-full gap-2">
-							<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
-								<input
-									type="file"
-									accept="image/*"
-									capture="environment"
-									multiple
-									class="hidden"
-									:disabled="g.uploading"
-									@change="onPickPhotos(g, $event)"
-								/>
+							<button
+								type="button"
+								class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100"
+								:disabled="g.uploading"
+								@click="openCameraOrFallback(g)"
+							>
 								<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
 								<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
-							</label>
+							</button>
 							<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
 								<input
 									type="file"
@@ -370,6 +374,19 @@
 				<p class="text-center text-xs text-gray-400">{{ labels.mrSubmitReviewHint }}</p>
 			</template>
 		</template>
+
+		<!-- One hidden fallback for the whole page: only reached when the in-app viewfinder
+		     cannot run, with `fallbackGroup` remembering which line asked. See
+		     utils/camera.js. -->
+		<input
+			ref="camInput"
+			type="file"
+			accept="image/*"
+			capture="environment"
+			multiple
+			class="hidden"
+			@change="onFallbackPick($event)"
+		/>
 	</div>
 </template>
 
@@ -383,8 +400,12 @@ import { hMinus, liftClass } from "@/utils/liftOn"
 import { toast } from "@/utils/toast"
 import { claimMessage, isClaimed } from "@/utils/claim"
 import { openLightbox } from "@/utils/lightbox"
+import { shootOrFallback } from "@/utils/camera"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
@@ -426,6 +447,19 @@ const repairLines = computed(() => used.value.filter((u) => u.decision !== "Reje
 // Which group is mid-upload — one at a time is enough, and it keeps the flag off the photo
 // rows themselves (which are sent to the server verbatim).
 const uploading = ref(null)
+
+// How many photos are still going up, per group key. Kept OUT of `photoGroups` (a computed
+// — anything written onto its objects is thrown away on the next recompute) and out of the
+// photo rows, which are sent to the server verbatim.
+// One queue per group key, so a photo shows itself under the line it belongs to while it
+// goes up. Kept OUT of `photoGroups` (a computed — anything written onto its objects is
+// thrown away on the next recompute) and out of the photo rows, which go to the server
+// verbatim.
+const queues = new Map()
+function queueFor(key) {
+	if (!queues.has(key)) queues.set(key, usePhotoQueue())
+	return queues.get(key)
+}
 
 // One group per line that was actually approved. A photo belongs to the group whose ROW it
 // names; the fallback on `item` catches rows attached from the Desk, where a human picks the
@@ -663,24 +697,53 @@ async function startCurrent() {
 async function onPickPhotos(group, event) {
 	const files = Array.from(event.target.files || [])
 	event.target.value = "" // allow re-picking the same file
+	await addPhotos(group, files)
+}
+
+// In-app viewfinder: shutter -> upload, no camera-app confirm screen in between. A repair
+// is photographed step by step, so staying open between shots is the whole point.
+const camInput = ref(null)
+let fallbackGroup = null
+function openCameraOrFallback(group) {
+	fallbackGroup = group
+	return shootOrFallback(camInput, (file) => addPhotos(group, [file]))
+}
+
+async function onFallbackPick(event) {
+	const files = Array.from(event.target.files || [])
+	event.target.value = ""
+	const group = fallbackGroup
+	fallbackGroup = null
+	if (group) await addPhotos(group, files)
+}
+
+async function addPhotos(group, files) {
 	if (!files.length) return
+	const queue = queueFor(group.key)
+	queue.clearFailed()
 	photoErr.value = ""
 	uploading.value = group.key
 	try {
+		// Per photo: one picture that cannot be stored must not take the others with it.
 		for (const f of files) {
-			workPhotos.value.push({
-				photo: await uploadPhoto(f),
-				// Both halves of the link: the ROW for precision (the same item can be on the
-				// order twice) and the ITEM because that is what a human — and the owner
-				// reading the print — actually recognises.
-				used_item: group.line.name || null,
-				item: group.line.item,
-				caption: "",
-			})
+			const id = queue.add(f)
+			try {
+				workPhotos.value.push({
+					photo: await uploadPhoto(f),
+					// Both halves of the link: the ROW for precision (the same item can be on
+					// the order twice) and the ITEM because that is what a human — and the
+					// owner reading the print — actually recognises.
+					used_item: group.line.name || null,
+					item: group.line.item,
+					caption: "",
+				})
+				queue.done(id)
+			} catch (e) {
+				photoErr.value = labels.mrPhotoError
+				queue.fail(id)
+			}
 		}
 		scheduleSave()
-	} catch (e) {
-		photoErr.value = labels.mrPhotoError
 	} finally {
 		uploading.value = null
 	}

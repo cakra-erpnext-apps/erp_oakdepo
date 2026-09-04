@@ -113,12 +113,29 @@
 						<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="removeBulkPhoto(idx)">
 							<Icon name="x" :size="12" />
 						</button>
+						<PhotoMark :photo="url" />
 					</div>
-					<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
-						<input type="file" accept="image/*" capture="environment" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
+					<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="h-20 w-20" />
+					<!-- The phone's own camera app, only ever reached as the fallback — see
+					     utils/camera.js. -->
+					<input
+						ref="bulkCamInput"
+						type="file"
+						accept="image/*"
+						capture="environment"
+						multiple
+						class="hidden"
+						@change="onBulkPhotoPick($event)"
+					/>
+					<button
+						type="button"
+						class="flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+						:disabled="bulkUploading"
+						@click="openCameraOrFallback"
+					>
 						<span v-if="bulkUploading" class="text-xs">…</span>
 						<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
-					</label>
+					</button>
 					<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
 						<input type="file" accept="image/*" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
 						<span v-if="bulkUploading" class="text-xs">…</span>
@@ -246,9 +263,13 @@ import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { openLightbox } from "@/utils/lightbox"
+import { shootOrFallback } from "@/utils/camera"
 import { session } from "@/data/session"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import Icon from "@/components/Icon.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import TankFittings from "@/components/TankFittings.vue"
 
@@ -439,17 +460,37 @@ async function uploadFile(file) {
 async function onBulkPhotoPick(event) {
 	const files = Array.from(event.target.files || [])
 	event.target.value = ""
+	await addBulkPhotos(files)
+}
+
+// In-app viewfinder: shutter -> upload, one shot at a time, no camera-app confirm screen
+// in between (utils/camera.js).
+const bulkCamInput = ref(null)
+function openCameraOrFallback() {
+	return shootOrFallback(bulkCamInput, (file) => addBulkPhotos([file]))
+}
+
+// Each photo shows itself while it goes up — see EirInForm for why.
+const photoQueue = usePhotoQueue()
+
+async function addBulkPhotos(files) {
 	if (!files.length) return
 	bulkErr.value = ""
+	photoQueue.clearFailed()
 	bulkUploading.value = true
 	try {
 		for (const f of files) {
-			const url = await uploadFile(f)
-			bulkPhotos.value.push(url)
-			bulkMeta.value[url] = "" // freshly taken → not sorted yet
+			const id = photoQueue.add(f)
+			try {
+				const url = await uploadFile(f)
+				bulkPhotos.value.push(url)
+				bulkMeta.value[url] = "" // freshly taken → not sorted yet
+				photoQueue.done(id)
+			} catch (e) {
+				bulkErr.value = labels.photoError
+				photoQueue.fail(id)
+			}
 		}
-	} catch (e) {
-		bulkErr.value = labels.photoError
 	} finally {
 		bulkUploading.value = false
 	}

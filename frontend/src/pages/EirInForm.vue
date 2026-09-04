@@ -173,12 +173,29 @@
 						>
 							<Icon name="x" :size="12" />
 						</button>
+						<PhotoMark :photo="url" />
 					</div>
-					<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
-						<input type="file" accept="image/*" capture="environment" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
+					<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="h-20 w-20" />
+					<!-- The phone's own camera app, kept only as the fallback: never reached by a
+					     tap, only by openCameraOrFallback when the in-app viewfinder cannot run. -->
+					<input
+						ref="bulkCamInput"
+						type="file"
+						accept="image/*"
+						capture="environment"
+						multiple
+						class="hidden"
+						@change="onBulkPhotoPick($event)"
+					/>
+					<button
+						type="button"
+						class="flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+						:disabled="bulkUploading"
+						@click="openCameraOrFallback"
+					>
 						<span v-if="bulkUploading" class="text-xs">…</span>
 						<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
-					</label>
+					</button>
 					<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
 						<input type="file" accept="image/*" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
 						<span v-if="bulkUploading" class="text-xs">…</span>
@@ -292,9 +309,13 @@ import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { claimMessage, isClaimed } from "@/utils/claim"
 import { confirm } from "@/utils/confirm"
+import { shootOrFallback } from "@/utils/camera"
 import { openLightbox } from "@/utils/lightbox"
 import { session } from "@/data/session"
 import Icon from "@/components/Icon.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
@@ -608,17 +629,41 @@ async function uploadFile(file) {
 async function onBulkPhotoPick(event) {
 	const files = Array.from(event.target.files || [])
 	event.target.value = ""
+	await addBulkPhotos(files)
+}
+
+// The in-app viewfinder: shutter -> here -> upload, with no "pakai foto ini?" in between
+// (see utils/camera.js for why the phone's camera app is not used). It hands over one shot
+// at a time and keeps the viewfinder up, so this is called once per photo.
+const bulkCamInput = ref(null)
+function openCameraOrFallback() {
+	return shootOrFallback(bulkCamInput, (file) => addBulkPhotos([file]))
+}
+
+// Each photo shows itself in the grid while it goes up (utils/photoQueue), so the shutter
+// is answered by the picture rather than by an empty grid for the length of a 3G upload.
+const photoQueue = usePhotoQueue()
+
+async function addBulkPhotos(files) {
 	if (!files.length) return
 	bulkErr.value = ""
+	photoQueue.clearFailed()
 	bulkUploading.value = true
 	try {
+		// Per photo, not per batch: one picture that cannot be stored must not take the
+		// other three down with it.
 		for (const f of files) {
-			const url = await uploadFile(f)
-			bulkPhotos.value.push(url)
-			bulkMeta.value[url] = "" // freshly taken → not sorted into a checklist item yet
+			const id = photoQueue.add(f)
+			try {
+				const url = await uploadFile(f)
+				bulkPhotos.value.push(url)
+				bulkMeta.value[url] = "" // freshly taken → not sorted into a checklist item yet
+				photoQueue.done(id)
+			} catch (e) {
+				bulkErr.value = labels.photoError
+				photoQueue.fail(id)
+			}
 		}
-	} catch (e) {
-		bulkErr.value = labels.photoError
 	} finally {
 		bulkUploading.value = false
 	}

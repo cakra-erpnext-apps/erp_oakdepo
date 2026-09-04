@@ -165,28 +165,35 @@
 							>
 								<Icon name="x" :size="16" />
 							</button>
+							<PhotoMark :photo="url" />
 						</div>
+						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
 
 						<!-- Two tiles, not one: the camera for the shot being taken right now,
 						     the gallery for several already on the phone. -->
-						<label
-							class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+						<!-- The phone's own camera app, only ever reached as the fallback — see
+						     utils/camera.js. -->
+						<input
+							ref="camInput"
+							type="file"
+							accept="image/*"
+							capture="environment"
+							multiple
+							class="hidden"
+							@change="onPhotos"
+						/>
+						<button
+							type="button"
+							class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+							:disabled="photoUploading"
+							@click="openCameraOrFallback"
 						>
 							<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
 							<template v-else>
 								<Icon name="camera" :size="22" />
 								<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
 							</template>
-							<input
-								type="file"
-								accept="image/*"
-								capture="environment"
-								multiple
-								class="hidden"
-								:disabled="photoUploading"
-								@change="onPhotos"
-							/>
-						</label>
+						</button>
 						<label
 							class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
 						>
@@ -263,11 +270,15 @@ import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
 import { photoSrc, send, uploadPhoto } from "@/data/send"
 import { openLightbox } from "@/utils/lightbox"
+import { shootOrFallback } from "@/utils/camera"
 import { fmtDateTime, since } from "@/utils/surveyStatus"
 
 const route = useRoute()
@@ -395,14 +406,36 @@ function removePhoto(i) {
 async function onPhotos(e) {
 	const files = Array.from(e.target.files || [])
 	e.target.value = "" // so the same file can be picked again
+	await addPhotos(files)
+}
+
+// In-app viewfinder: shutter -> upload, no camera-app confirm screen in between
+// (utils/camera.js).
+const camInput = ref(null)
+function openCameraOrFallback() {
+	return shootOrFallback(camInput, (file) => addPhotos([file]))
+}
+
+// Each photo shows itself while it goes up — see EirInForm for why.
+const photoQueue = usePhotoQueue()
+
+async function addPhotos(files) {
 	if (!files.length) return
+	photoQueue.clearFailed()
 	photoUploading.value = true
 	try {
 		// One at a time and appended as they land, so the grid fills in while the rest are
 		// still going up — on the yard's 3G a batch of four is a real wait.
-		for (const f of files) form.photos.push(await uploadPhoto(f))
-	} catch {
-		toast.error(labels.error)
+		for (const f of files) {
+			const id = photoQueue.add(f)
+			try {
+				form.photos.push(await uploadPhoto(f))
+				photoQueue.done(id)
+			} catch {
+				toast.error(labels.error)
+				photoQueue.fail(id)
+			}
+		}
 	} finally {
 		photoUploading.value = false
 	}

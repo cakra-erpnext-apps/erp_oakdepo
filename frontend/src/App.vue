@@ -49,6 +49,7 @@
 		<ToastHost />
 		<LightboxHost />
 		<ConfirmHost />
+		<CameraHost />
 	</div>
 </template>
 
@@ -65,6 +66,7 @@ import NotificationBell from "@/components/NotificationBell.vue"
 import ToastHost from "@/components/ToastHost.vue"
 import LightboxHost from "@/components/LightboxHost.vue"
 import ConfirmHost from "@/components/ConfirmHost.vue"
+import CameraHost from "@/components/CameraHost.vue"
 import emblem from "@/assets/oak-emblem.png"
 
 // Read once at boot, and never again: the only way out of this screen is relaunching

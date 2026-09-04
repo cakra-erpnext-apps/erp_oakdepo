@@ -96,12 +96,18 @@
 					<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="r.photos.splice(idx, 1)">
 						<Icon name="x" :size="12" />
 					</button>
+					<PhotoMark :photo="url" />
 				</div>
-				<label class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
-					<input type="file" accept="image/*" capture="environment" multiple class="hidden" :disabled="r.uploading" @change="onPhotoPick(r, $event)" />
+				<PhotoTile v-for="it in queueFor(r).items" :key="it.id" :item="it" tile="h-16 w-16" />
+				<button
+					type="button"
+					class="flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+					:disabled="r.uploading"
+					@click="openCameraOrFallback(r)"
+				>
 					<span v-if="r.uploading" class="text-xs">…</span>
 					<template v-else><Icon name="camera" :size="18" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
-				</label>
+				</button>
 				<label class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
 					<input type="file" accept="image/*" multiple class="hidden" :disabled="r.uploading" @change="onPhotoPick(r, $event)" />
 					<span v-if="r.uploading" class="text-xs">…</span>
@@ -113,6 +119,19 @@
 			     damage/repair code (the server derives the stored description separately). -->
 			<input v-model.trim="r.remarks" type="text" :placeholder="labels.colRemarksManual" class="oak-input mt-2 px-2.5 py-2" />
 		</div>
+
+		<!-- One hidden fallback for the whole list rather than one per row: it is only ever
+		     reached when the in-app viewfinder cannot run, and `fallbackRow` remembers which
+		     row asked for it. See utils/camera.js. -->
+		<input
+			ref="camInput"
+			type="file"
+			accept="image/*"
+			capture="environment"
+			multiple
+			class="hidden"
+			@change="onFallbackPick($event)"
+		/>
 	</section>
 </template>
 
@@ -127,8 +146,12 @@
 import { computed, onBeforeUnmount, ref } from "vue"
 import { labels } from "@/utils/labels"
 import { openLightbox } from "@/utils/lightbox"
+import { shootOrFallback } from "@/utils/camera"
 import { photoSrc } from "@/data/send"
 import Icon from "@/components/Icon.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import SearchSelect from "@/components/SearchSelect.vue"
 
 const ACCEPTABLE_DAMAGE = "v"
@@ -226,13 +249,54 @@ function removeRow(r) {
 async function onPhotoPick(item, event) {
 	const files = Array.from(event.target.files || [])
 	event.target.value = ""
+	await addPhotos(item, files)
+}
+
+// The in-app viewfinder: shutter -> upload, no camera-app confirm screen in between. It
+// hands over one shot at a time and stays open, so a surveyor photographing a dent from
+// four angles taps four times and nothing else.
+const camInput = ref(null)
+let fallbackRow = null
+function openCameraOrFallback(item) {
+	fallbackRow = item
+	return shootOrFallback(camInput, (file) => addPhotos(item, [file]))
+}
+
+async function onFallbackPick(event) {
+	const files = Array.from(event.target.files || [])
+	event.target.value = ""
+	const item = fallbackRow
+	fallbackRow = null
+	if (item) await addPhotos(item, files)
+}
+
+// One queue PER ROW, not per component: two parts can be photographed one after the other
+// and each grid must show only its own pictures. Keyed on item_code, which is what the row
+// list is keyed on too, so a queue can never end up under the wrong part.
+const queues = new Map()
+function queueFor(item) {
+	if (!queues.has(item.item_code)) queues.set(item.item_code, usePhotoQueue())
+	return queues.get(item.item_code)
+}
+
+async function addPhotos(item, files) {
 	if (!files.length) return
+	const queue = queueFor(item)
 	item.photoErr = ""
+	queue.clearFailed()
 	item.uploading = true
 	try {
-		for (const f of files) item.photos.push(await props.upload(f))
-	} catch (e) {
-		item.photoErr = labels.photoError
+		// Per photo: one picture that cannot be stored must not take the others with it.
+		for (const f of files) {
+			const id = queue.add(f)
+			try {
+				item.photos.push(await props.upload(f))
+				queue.done(id)
+			} catch (e) {
+				item.photoErr = labels.photoError
+				queue.fail(id)
+			}
+		}
 	} finally {
 		item.uploading = false
 	}

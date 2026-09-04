@@ -303,27 +303,34 @@
 						>
 							<Icon name="x" :size="16" />
 						</button>
+						<PhotoMark :photo="p.photo" />
 					</div>
+					<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
 
 					<!-- Two add tiles — the camera straight away, or the gallery for several at once -->
-					<label
-						class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+					<!-- The phone's own camera app, only ever reached as the fallback — see
+					     utils/camera.js. -->
+					<input
+						ref="camInput"
+						type="file"
+						accept="image/*"
+						capture="environment"
+						multiple
+						class="hidden"
+						@change="onQcPhotos"
+					/>
+					<button
+						type="button"
+						class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+						:disabled="photoUploading"
+						@click="openCameraOrFallback"
 					>
 						<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
 						<template v-else>
 							<Icon name="camera" :size="22" />
 							<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
 						</template>
-						<input
-							type="file"
-							accept="image/*"
-							capture="environment"
-							multiple
-							class="hidden"
-							:disabled="photoUploading"
-							@change="onQcPhotos"
-						/>
-					</label>
+					</button>
 					<label
 						class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
 					>
@@ -413,7 +420,11 @@ import { hMinus, liftClass } from "@/utils/liftOn"
 import { saveToast, toast } from "@/utils/toast"
 import { claimMessage, isClaimed } from "@/utils/claim"
 import { confirm } from "@/utils/confirm"
+import { shootOrFallback } from "@/utils/camera"
 import Icon from "@/components/Icon.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
@@ -805,15 +816,35 @@ function removeQcPhoto(i) {
 async function onQcPhotos(e) {
 	const files = Array.from(e.target.files || [])
 	e.target.value = "" // allow re-picking the same file
+	await addQcPhotos(files)
+}
+
+// In-app viewfinder: shutter -> upload, no camera-app confirm screen in between
+// (utils/camera.js). QC evidence is shot in a run of several, so it stays open between them.
+const camInput = ref(null)
+function openCameraOrFallback() {
+	return shootOrFallback(camInput, (file) => addQcPhotos([file]))
+}
+
+// Each photo shows itself while it goes up — see EirInForm for why.
+const photoQueue = usePhotoQueue()
+
+async function addQcPhotos(files) {
 	if (!files.length) return
+	photoQueue.clearFailed()
 	photoUploading.value = true
 	try {
 		for (const f of files) {
-			const url = await uploadFile(f)
-			qcPhotos.value.push({ photo: url, caption: "" })
+			const id = photoQueue.add(f)
+			try {
+				const url = await uploadFile(f)
+				qcPhotos.value.push({ photo: url, caption: "" })
+				photoQueue.done(id)
+			} catch (err) {
+				toast.error(labels.error)
+				photoQueue.fail(id)
+			}
 		}
-	} catch (err) {
-		toast.error(labels.error)
 	} finally {
 		photoUploading.value = false
 	}
