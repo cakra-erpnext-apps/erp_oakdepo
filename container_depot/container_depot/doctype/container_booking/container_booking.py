@@ -1819,8 +1819,9 @@ def revision_state(booking: str) -> dict:
 	    the container numbers already carried on a bon, marked with a "Bon" pill on their
 	    row so "sudah dibonkan yang mana?" is answered where the operator is looking.
 	``coverage``
-	    :func:`bon_coverage` — how many containers still have no bon, and which. The banner
-	    says it in words ("3 dari 5"); the pills say it per row.
+	    :func:`bon_coverage` — how many containers still have no bon, and which. The lock
+	    banner names the ones still waiting and says nothing when none are; the pills say it
+	    per row.
 	"""
 	frappe.has_permission("Container Booking", "read", doc=booking, throw=True)
 	codes = _codes_on_a_bon(booking)
@@ -1977,9 +1978,13 @@ def set_payment_status(booking, status):
 	Entry there instead — the hooks push it onto the booking by themselves.
 
 	``db_set``, not a save: a submitted booking is locked shut
-	(``before_update_after_submit``), and this is deliberately still allowed on one — the
-	money usually arrives after the booking is confirmed. The change is left as a comment
-	so "who marked this paid, and when" has an answer."""
+	(``before_update_after_submit``), and this call is deliberately still allowed on one.
+	The DESK no longer offers it there — the toggle is a draft-only button now, because Cash
+	is collected before the tank moves and a confirmed booking should not still be asking
+	about the money (see ``container_booking.js``). This stays permissive as the back-office
+	correction: a booking already carried past submit with the wrong answer can be fixed from
+	the console without reopening it. The change is left as a comment so "who marked this
+	paid, and when" has an answer."""
 	frappe.has_permission("Container Booking", ptype="write", throw=True)
 	if finance.is_enabled():
 		frappe.throw(
@@ -2168,13 +2173,41 @@ def on_payment_entry_change(doc, method=None):
 
 # --- Open-booking conflict (submit block + draft early warning) ---------------
 
-def _draft_booking_holders(exclude_booking, keys) -> list[dict]:
+def _draft_still_holds(direction, status) -> bool:
+	"""Does an unsubmitted booking still lay claim to the tank, given where the tank is?
+
+	A draft is a claim on a MOVE, and a claim survives only while the move it describes can
+	still happen. Read without that test, a draft went on refusing the tank forever: an
+	inbound draft that somebody prepared and abandoned kept the tank from ever being booked
+	out again, even though the tank was standing in the depot — the arrival that draft
+	describes had already happened, by some other route, and there was nothing left in it
+	to reserve.
+
+	So each direction is asked its own question, the same two the submitted codes are asked
+	in :func:`_code_still_holds`:
+
+	* **Tank In** — spent once the tank is PRESENT. It is here; nothing about bringing it
+	  here is still pending.
+	* **Tank Out** — spent once the tank is gone. Paperwork does not move a tank, the gate
+	  does, and leaving is exactly what takes it out of PRESENT.
+
+	Two drafts in the SAME direction still collide, which is what this guard was built for:
+	a tank that has not arrived is not PRESENT, so two inbound drafts both hold it, and a
+	tank still standing here is PRESENT, so two outbound drafts both hold it.
+	"""
+	if direction == "Tank Out":
+		return status in PRESENT
+	return status not in PRESENT
+
+
+def _draft_booking_holders(exclude_booking, keys, status=None) -> list[dict]:
 	"""Live DRAFT bookings carrying one of ``keys`` (container name / number).
 
 	A draft has no Booking Code yet — those are issued at submit — so the code-based test
 	below cannot see it, and two operators could each prepare a booking for the same tank
 	and only find out at submit. A draft that is not Cancelled is a real claim on the tank,
-	so it counts from the moment it is saved.
+	so it counts from the moment it is saved — for as long as its move is still ahead of
+	the tank (``_draft_still_holds``).
 	"""
 	if not keys:
 		return []
@@ -2191,7 +2224,7 @@ def _draft_booking_holders(exclude_booking, keys) -> list[dict]:
 		{"exclude": exclude_booking or "", "keys": tuple(keys)},
 		as_dict=True,
 	)
-	return rows
+	return [r for r in rows if _draft_still_holds(r.direction, status)]
 
 
 def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
@@ -2203,8 +2236,8 @@ def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
 	  goes on a bon, voided on cancel — so ``Active`` means "confirmed, no bon yet");
 	* a ``Used`` code whose tank has not moved yet — the bon exists but is still a draft
 	  (see :func:`_code_still_holds`);
-	* a live **draft** that simply has the container on a row (see
-	  :func:`_draft_booking_holders`).
+	* a live **draft** that has the container on a row and whose move is still ahead of the
+	  tank (see :func:`_draft_booking_holders` / :func:`_draft_still_holds`).
 
 	``containers``: iterable of ``(container, container_no)`` pairs (either may be None).
 	Returns ``[{container_no, booking, direction, state}]``, one entry per (container,
@@ -2233,7 +2266,7 @@ def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
 			)
 			if r.state == "Active" or _code_still_holds(r, status)
 		]
-		rows += _draft_booking_holders(exclude_booking, keys)
+		rows += _draft_booking_holders(exclude_booking, keys, status)
 		for r in rows:
 			label = container_no or container
 			key = (label, r.booking)

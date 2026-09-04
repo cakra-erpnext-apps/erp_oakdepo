@@ -177,8 +177,18 @@ frappe.ui.form.on('Container Booking', {
 		// Finance OFF: no invoice exists, so nothing can derive "sudah dibayar?" — the admin
 		// answers it. A toggle rather than a picker: the booking's current answer is already
 		// on the sidebar (Payment), so the button only has to say what pressing it does.
-		// Still offered on a SUBMITTED booking, which is the point — the money usually
-		// arrives after the booking is confirmed, and the form itself is locked by then.
+		//
+		// DRAFT ONLY. Cash is collected before the tank moves, so the money is settled while
+		// the booking is still being prepared — and a confirmed booking is meant to read as
+		// an operational fact, not a screen still asking questions about it. Offering the
+		// toggle there put a "Tandai Belum Lunas" on a booking that had already been paid and
+		// confirmed, which undoes nothing anybody wants undone.
+		//
+		// Not a dead end for a Cash booking confirmed while still Unpaid: the bon refuses
+		// Cash that is not Paid (``order_generation.BON_ALLOWED_PAYMENT``), so no bon can
+		// exist yet, so **Kembali ke Draft** is on the screen — mark it there and submit
+		// again. The one situation that needs the button always has the way back to it.
+		//
 		// Cash only, matching the field's own depends_on: TOP is billed later by definition,
 		// so Unpaid is its correct resting state, not something to mark off.
 		// Gone the moment finance is on — from there the invoice owns the field and the
@@ -187,7 +197,7 @@ frappe.ui.form.on('Container Booking', {
 			!frm.is_new() &&
 			may_write &&
 			!_finance_on() &&
-			frm.doc.docstatus !== 2 &&
+			frm.doc.docstatus === 0 &&
 			frm.doc.booking_status !== 'Cancelled' &&
 			frm.doc.payment_type === 'Cash'
 		) {
@@ -238,23 +248,18 @@ frappe.ui.form.on('Container Booking', {
 						_confirm_revert(frm)
 					).addClass('btn-primary');
 				}
-				// ONE banner saying where this booking stands. Which containers are already
-				// on a bon is NOT spelled out here any more — that is a per-row fact and it
-				// is now drawn on the rows themselves (the orange "Bon" pill), where the
-				// operator is actually looking.
+				// ONE line for where this booking stands, lock and bon coverage together.
+				// They used to be two comments that said the same thing twice on a fully
+				// bonned booking — "terkunci karena bon sudah terbit", then "semua
+				// container sudah masuk bon" — and stacked banners are how a two-fact
+				// screen reads like a wall. Which containers are already on a bon stays a
+				// per-row fact, drawn on the rows themselves (the orange "Bon" pill), where
+				// the operator is actually looking.
 				frm.dashboard.add_comment(
-					bons.length
-						? __(
-								'Booking terkunci. Bon sudah terbit ({0}) — tidak bisa dikembalikan ke draft ataupun dibatalkan.',
-								[bons.join(', ')]
-						  )
-						: __(
-								'Booking sudah disubmit — isinya terkunci. Untuk mengoreksi atau membatalkan, pakai <b>Kembali ke Draft</b> dulu.'
-						  ),
+					_lock_summary(bons, coverage),
 					bons.length ? 'orange' : 'blue',
 					true
 				);
-				_bon_coverage_comment(frm, coverage);
 			},
 		});
 	},
@@ -1379,32 +1384,24 @@ function _dossier_line(o) {
 	</div>`;
 }
 
-// --- Bon coverage ----------------------------------------------------------
-// How many of this booking's containers are still waiting for a bon. Nothing on the booking
-// links to a bon (they are reachable only through the Connections tab), so a confirmed
-// booking with three of five containers issued looked exactly like one with all five —
-// the operator had to open the bons and count. Say it in one line, and name the tanks that
-// are left, because "which ones?" is the immediate next question.
-function _bon_coverage_comment(frm, coverage) {
-	if (!coverage || !coverage.status || !coverage.total) return;
-	const pending = coverage.pending || [];
-	if (!pending.length) {
-		frm.dashboard.add_comment(
-			__('Semua {0} container sudah masuk bon.', [coverage.total]),
-			'green',
-			true
-		);
-		return;
+// --- Where a submitted booking stands, in one sentence ----------------------
+// Two facts, and only one of them ever needs saying: the booking is locked, and by what.
+// Nothing on the booking links to a bon (they are reachable only through the Connections
+// tab), so a confirmed booking with three of five containers issued looked exactly like one
+// with all five — hence the bon names and the list of tanks still waiting. "Semua N sudah
+// masuk bon" is NOT said: it is what the absence of a pending list already means, and an
+// extra green banner to say nothing is outstanding is the kind of line that trains an
+// operator to stop reading banners.
+function _lock_summary(bons, coverage) {
+	if (!bons.length) {
+		return __('Terkunci — pakai <b>Kembali ke Draft</b> untuk mengoreksi atau membatalkan.');
 	}
-	frm.dashboard.add_comment(
-		__('Bon baru terbit untuk {0} dari {1} container. Belum dibon: <b>{2}</b> — pakai <b>Generate Bon / Order</b>.', [
-			coverage.issued,
-			coverage.total,
-			pending.map((c) => frappe.utils.escape_html(c)).join(', '),
-		]),
-		'orange',
-		true
-	);
+	const issued = __('Terkunci karena bon sudah terbit: {0}.', [bons.join(', ')]);
+	const pending = (coverage && coverage.status && coverage.total && coverage.pending) || [];
+	if (!pending.length) return issued;
+	return `${issued} ${__('Belum dibon: <b>{0}</b> — pakai <b>Generate Bon / Order</b>.', [
+		pending.map((c) => frappe.utils.escape_html(c)).join(', '),
+	])}`;
 }
 
 // --- Work per container ----------------------------------------------------

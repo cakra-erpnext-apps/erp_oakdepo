@@ -125,6 +125,17 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			"principal": self.customer,
 		}).insert(ignore_permissions=True).name
 
+	def _arrived_container(self, cno):
+		"""A tank that really came in through the gate. ``eir_in_date`` is the difference
+		that matters here: it is what stops ``_mark_pre_arrival`` flipping the tank to
+		``Booked`` when an inbound booking names it, so the status stays the truth about
+		where the tank is."""
+		name = self._available_container(cno)
+		frappe.db.set_value(
+			"Container", name, {"status": "In_Depot", "eir_in_date": today()}, update_modified=False
+		)
+		return name
+
 	def test_second_tank_in_booking_is_blocked(self):
 		first = self._book(C_IN)
 		# The tank sits at Booked, which the presence gate lets through — this guard is
@@ -214,6 +225,34 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		self._book(C_IN, submit=False)
 		with self.assertRaises(frappe.ValidationError):
 			self._book(C_IN)
+
+	def test_an_abandoned_inbound_draft_does_not_block_the_tank_leaving(self):
+		"""The tank is HERE. Whatever an unsubmitted Tank In draft was going to do about
+		bringing it in, that already happened — so it has nothing left to reserve and must
+		not stand in the way of booking the tank out.
+
+		Left unguarded this was a dead end with no exit on the booking screen: the outbound
+		booking was refused, and the draft holding it was somebody else's half-finished
+		paperwork that the operator had no reason to look for."""
+		self._arrived_container(C_OUT)
+		self._book(C_OUT, direction="Tank In", submit=False)
+		self._book(C_OUT, direction="Tank Out")  # must not raise
+
+	def test_a_spent_outbound_draft_does_not_block_the_tank_coming_back(self):
+		"""The mirror image: the tank has left, so an unsubmitted Tank Out draft describes
+		a departure that is already done and cannot refuse the tank's return."""
+		name = self._available_container(C_OUT)
+		self._book(C_OUT, direction="Tank Out", submit=False)
+		frappe.db.set_value("Container", name, "status", "Gate_Out", update_modified=False)
+		self._book(C_OUT, direction="Tank In")  # must not raise
+
+	def test_two_outbound_drafts_on_a_present_tank_still_collide(self):
+		"""The guard the direction test must not cost: while the tank is still standing in
+		the depot, both outbound drafts are live claims on the same move."""
+		self._available_container(C_OUT)
+		self._book(C_OUT, direction="Tank Out", submit=False)
+		with self.assertRaises(frappe.ValidationError):
+			self._book(C_OUT, direction="Tank Out")
 
 	# --- draft-time early warning (open_booking_conflicts) ---------------
 	def test_warning_names_the_clashing_booking(self):
