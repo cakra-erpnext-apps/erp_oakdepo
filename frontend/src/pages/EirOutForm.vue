@@ -79,6 +79,28 @@
 							<Icon name="check" :size="14" /> {{ labels.eirOutPrevClean }}
 						</p>
 
+						<!-- Kelengkapan saat EIR-In. The damage list above says what was broken
+						     when the tank came in; this says what it CARRIED — the only thing a
+						     strap that never left shows up against. Read-only here on purpose:
+						     the boxes to fill are the ones further down, which carry the same
+						     numbers per slot as their baseline. -->
+						<div v-if="prevFittings.length" class="mt-3">
+							<p class="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">{{ labels.eirOutPrevFittings }}</p>
+							<div class="overflow-hidden rounded-lg border border-gray-100">
+								<template v-for="g in prevFittings" :key="g.compartment">
+									<p v-if="g.compartment" class="bg-gray-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">{{ g.compartment }}</p>
+									<div v-for="(f, i) in g.items" :key="i" class="flex items-baseline justify-between gap-3 border-t border-gray-100 px-3 py-1.5 first:border-t-0">
+										<p class="min-w-0 truncate text-xs text-gray-600">
+											{{ f.item_label }}<span v-if="f.slot_label" class="text-gray-400"> · {{ f.slot_label }}</span>
+										</p>
+										<p class="shrink-0 text-xs font-semibold text-gray-800">
+											{{ f.value }}<span v-if="f.uom" class="font-normal text-gray-400"> {{ f.uom }}</span>
+										</p>
+									</div>
+								</template>
+							</div>
+						</div>
+
 						<div v-if="refEirIn.photos && refEirIn.photos.length" class="mt-3">
 							<p class="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">{{ labels.eirOutPrevPhotos }}</p>
 							<div class="flex flex-wrap gap-1.5">
@@ -262,6 +284,7 @@ import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
+import { groupByCompartment } from "@/utils/fittings"
 import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
 import { session } from "@/data/session"
@@ -289,6 +312,8 @@ const workStartedOn = ref("") // set once the operator presses Mulai; gates edit
 const reference = ref(null)
 const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
 const refEirIn = computed(() => reference.value?.eir_in || null)
+// Kelengkapan saat EIR-In, dikelompokkan seperti lembar cetaknya (lihat utils/fittings.js).
+const prevFittings = computed(() => groupByCompartment(refEirIn.value?.fittings))
 
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")

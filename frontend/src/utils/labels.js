@@ -287,7 +287,7 @@ export const labels = {
 	selectPlaceholder: "Pilih…", // Generic searchable-select placeholder
 	selectSearch: "Cari…", // Generic searchable-select search box
 	cargoHint: "Mengubah Last Cargo container — tersimpan saat EIR disubmit.",
-	checklist: "Checklist Pemeriksaan", // Inspection checklist
+	checklist: "Checklist Kerusakan", // Inspection damage checklist
 	colItem: "Item",
 	colDamage: "Kode Kerusakan", // Damage code
 	colRepair: "Kode Perbaikan", // Repair code
@@ -374,6 +374,8 @@ export const labels = {
 	eirOutNoOrder: "Tanpa Order Muat",
 	eirOutCompare: "Banding EIR-In Terakhir",
 	eirOutPrevDamage: "Temuan saat EIR-In",
+	// Kelengkapan yang tercatat saat tank masuk — pembanding untuk kotak isian di bawah.
+	eirOutPrevFittings: "Kelengkapan saat EIR-In",
 	eirOutPrevClean: "EIR-In: tidak ada temuan",
 	eirOutPrevPhotos: "Foto EIR-In",
 	eirOutNoBaseline: "Tidak ada EIR-In sebelumnya untuk dibandingkan",

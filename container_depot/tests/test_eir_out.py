@@ -78,8 +78,8 @@ def _finish_cleaning(container):
 	return doc.name
 
 
-def _eir_in(container, *, damage=False):
-	"""A submitted EIR-In baseline (optionally with one damage finding)."""
+def _eir_in(container, *, damage=False, fittings=None):
+	"""A submitted EIR-In baseline (optionally with one damage finding / kelengkapan)."""
 	lines = None
 	if damage:
 		masters = eir.get_eir_masters()
@@ -88,7 +88,8 @@ def _eir_in(container, *, damage=False):
 		lines = [{"item_code": item, "damage_code": dmg, "remarks": "dent at gate-in"}]
 	res = eir.create_eir(
 		inspection_type="EIR-In", container=container, tank_status="Empty Clean",
-		lines=lines, create_cleaning_order=0, create_repair_order=0, submit=True,
+		lines=lines, fittings=fittings, create_cleaning_order=0, create_repair_order=0,
+		submit=True,
 	)
 	return res["name"]
 
@@ -243,6 +244,27 @@ class TestEirOut(FrappeTestCase):
 		ref = payload["reference"]
 		self.assertIsNotNone(ref["eir_in"])
 		self.assertTrue(ref["eir_in"]["damages"])  # baseline had a finding
+
+	def test_the_reference_carries_what_the_tank_came_in_carrying(self):
+		"""Kelengkapan belongs in the comparison panel next to the damage findings: the
+		checklist says what was broken, this says what was FITTED, and a strap that arrived
+		and is not on the tank now shows up against nothing else.
+
+		Read off the EIR-In's own rows, labels included, so it reads back the way the
+		surveyor wrote it even if the master slot is renamed later.
+		"""
+		c = _container(f"{PREFIX}0000012")
+		slot = next(iter(eir._fitting_items()), None)
+		if not slot:
+			self.skipTest("site has no active Inspection Fitting Item")
+		_eir_in(c, fittings=[{"fitting_item": slot, "value": "2"}])
+		_finish_cleaning(c)
+		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+		eo = _eir_out_draft(c, order_muat=om)
+
+		rows = eir.open_eir_out(eo)["reference"]["eir_in"]["fittings"]
+		self.assertEqual([r["value"] for r in rows], ["2"])
+		self.assertTrue(rows[0]["item_label"])
 
 	# --- seal numbers (the load-out record: what the tank leaves WITH) ---------
 

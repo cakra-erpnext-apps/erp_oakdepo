@@ -78,11 +78,16 @@
 				</li>
 			</ul>
 
-			<!-- Pagination -->
+			<!-- Pagination. The numbered jumps are a POINTER affordance: eleven 40 px targets
+			     side by side need ~440 px, so on a 360 px handset they wrapped to three rows of
+			     chips under the list, each one a small target next to its neighbours. They stay
+			     from `sm:` up, where there is room and a mouse to aim with; on a phone the two
+			     arrows grow to half the width each and the counter underneath says where you
+			     are — the same navigation, walked one page at a time with the thumb. -->
 			<div v-if="total > 0" class="space-y-1.5">
-				<div class="flex flex-wrap items-center justify-center gap-1.5">
+				<div class="flex items-center justify-center gap-1.5">
 					<button
-						class="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+						class="oak-btn oak-btn-secondary flex-1 py-2.5 sm:flex-none sm:px-3 sm:py-1.5"
 						:disabled="page <= 1 || listRes.loading"
 						@click="goTo(page - 1)"
 					>
@@ -91,7 +96,7 @@
 					<button
 						v-for="p in pageWindow"
 						:key="p"
-						class="min-w-[2.5rem] rounded-lg border px-3 py-1.5 text-sm font-semibold transition"
+						class="hidden min-w-[2.5rem] rounded-lg border px-3 py-1.5 text-sm font-semibold transition sm:block"
 						:class="p === page ? 'border-brand-600 bg-brand-600 text-white shadow-sm' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'"
 						:disabled="listRes.loading"
 						@click="goTo(p)"
@@ -99,7 +104,7 @@
 						{{ p }}
 					</button>
 					<button
-						class="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+						class="oak-btn oak-btn-secondary flex-1 py-2.5 sm:flex-none sm:px-3 sm:py-1.5"
 						:disabled="page >= totalPages || listRes.loading"
 						@click="goTo(page + 1)"
 					>

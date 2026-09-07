@@ -82,6 +82,16 @@ export function fmtDate(v) {
 	return `${d} ${MONTHS[m - 1]} ${y}`
 }
 
+/** `2026-09-04` -> `4 Sep 2026`. The list-row form of {@link fmtDate}: the same date at
+ *  half the width, which on a 360 px row decides whether it fits beside the tank number or
+ *  pushes it into an ellipsis. Long form stays for detail screens, where there is room. */
+export function fmtDateShort(v) {
+	if (!v) return "—"
+	const [y, m, d] = String(v).slice(0, 10).split("-").map(Number)
+	if (!y || !m) return String(v)
+	return `${d} ${MONTHS[m - 1]?.slice(0, 3)} ${y}`
+}
+
 /**
  * "2 jam lalu" / "Sejak 08:35" — how OLD a reading is, in the words an operator thinks in.
  *

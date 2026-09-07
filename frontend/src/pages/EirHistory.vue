@@ -10,37 +10,56 @@
 		:search-placeholder="labels.eirHistorySearch"
 		:count-label="labels.eirHistoryCount"
 	>
+		<!-- Three lines, and which fact sits on which line is the whole design. A phone row is
+		     ~250 px wide once the tile and the chevron are paid for; the old layout put the
+		     tank number and a chip reading "Menunggu Review" on that one line, so the number —
+		     the only thing anybody scans this list for — was the half that got the ellipsis.
+		     Now the number owns its line with just the date beside it, and the status chip
+		     drops to the bottom where it has room to say what it means. The tile carries the
+		     direction (masuk / keluar) instead of a clipboard that was the same on every row. -->
 		<template #row="{ item }">
-			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="16" /></span>
+			<span class="oak-icon-tile h-10 w-10 shrink-0" :class="typeTile(item)">
+				<Icon :name="item.inspection_type === 'EIR-Out' ? 'log-out' : 'log-in'" :size="18" />
+			</span>
 			<div class="min-w-0 flex-1">
-				<div class="flex items-center justify-between gap-2">
-					<p class="truncate font-semibold text-gray-900">{{ item.container_no || item.container }}</p>
+				<div class="flex items-baseline justify-between gap-2">
+					<p class="truncate text-[15px] font-extrabold tracking-tight text-gray-900">{{ item.container_no || item.container }}</p>
+					<span class="shrink-0 text-[11px] font-medium text-gray-400">{{ fmtDateShort(item.eir_date || item.creation) }}</span>
+				</div>
+				<p class="mt-0.5 truncate text-xs text-gray-500">
+					{{ item.inspection_type }}<span v-if="item.tank_status"> · {{ item.tank_status }}</span>
+				</p>
+				<div class="mt-1.5 flex items-center gap-1.5">
 					<span class="oak-chip shrink-0" :class="statusClass(item)">{{ statusText(item) }}</span>
+					<span class="min-w-0 truncate font-mono text-[10px] text-gray-400">{{ item.inspection_id || item.name }}</span>
 				</div>
-				<div class="mt-0.5 flex items-center justify-between gap-2 text-xs text-gray-500">
-					<span class="truncate">{{ item.inspection_type }}<span v-if="item.tank_status"> · {{ item.tank_status }}</span></span>
-					<span class="shrink-0">{{ fmtDate(item.eir_date || item.creation) }}</span>
-				</div>
-				<p class="truncate text-[11px] text-gray-400">{{ item.inspection_id || item.name }}</p>
 			</div>
 		</template>
 
 		<template #detail="{ data }">
 			<section class="oak-card space-y-3 p-4">
-				<div class="flex items-start justify-between gap-2">
-					<div class="min-w-0">
-						<p class="font-mono text-xs text-gray-400">{{ data.inspection_id || data.name }}</p>
-						<h2 class="truncate text-lg font-extrabold text-gray-900">{{ data.container_no }}</h2>
+				<div class="flex items-start gap-3">
+					<span class="oak-icon-tile h-11 w-11 shrink-0" :class="typeTile(data)">
+						<Icon :name="data.inspection_type === 'EIR-Out' ? 'log-out' : 'log-in'" :size="20" />
+					</span>
+					<div class="min-w-0 flex-1">
+						<h2 class="truncate text-lg font-extrabold leading-tight text-gray-900">{{ data.container_no }}</h2>
+						<p class="truncate font-mono text-[11px] text-gray-400">{{ data.inspection_id || data.name }}</p>
+						<span class="oak-chip mt-1.5" :class="statusClass(data)">{{ statusText(data) }}</span>
 					</div>
-					<span class="oak-chip shrink-0" :class="statusClass(data)">{{ statusText(data) }}</span>
 				</div>
-				<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+				<!-- Only the fields this EIR actually carries. A phone shows eight rows in the
+				     space a desk shows two, so eight labels over em-dashes is most of the
+				     screen spent saying nothing — and it buries the four that do say
+				     something. `break-words`, not `truncate`: an EMKL name cut off with no
+				     way to see the rest is a field that is not really on the screen. -->
+				<dl v-if="cells(data).length" class="grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
 					<div v-for="c in cells(data)" :key="c.label" class="min-w-0">
-						<dt class="text-xs text-gray-400">{{ c.label }}</dt>
-						<dd class="truncate font-medium text-gray-800">{{ c.value || "—" }}</dd>
+						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ c.label }}</dt>
+						<dd class="break-words font-medium text-gray-800">{{ c.value }}</dd>
 					</div>
 				</dl>
-				<p v-if="data.remarks" class="rounded-lg bg-gray-50 p-2 text-xs text-gray-600">{{ data.remarks }}</p>
+				<p v-if="data.remarks" class="rounded-lg bg-gray-50 p-2.5 text-xs leading-relaxed text-gray-600">{{ data.remarks }}</p>
 			</section>
 
 			<section class="oak-card space-y-2 p-4">
@@ -84,20 +103,40 @@
 			</section>
 
 			<!-- Kelengkapan tank: kotak isian form EIR cetak. Hanya yang benar-benar diisi —
-			     slot kosong berarti tidak diperiksa, bukan nol. -->
-			<section v-if="(data.fittings || []).length" class="oak-card space-y-2 p-4">
-				<p class="oak-section-title">{{ labels.fittingsTitle }} ({{ data.fittings.length }})</p>
-				<ul class="space-y-1 text-sm">
-					<li v-for="(f, i) in data.fittings" :key="i" class="flex items-baseline justify-between gap-2">
-						<span class="min-w-0 truncate text-gray-700">
-							{{ f.item_label }}
-							<span v-if="f.slot_label" class="text-gray-400"> · {{ f.slot_label }}</span>
-						</span>
-						<span class="shrink-0 font-semibold text-gray-900">
-							{{ f.value }}<span v-if="f.uom" class="font-normal text-gray-400"> {{ f.uom }}</span>
-						</span>
-					</li>
-				</ul>
+			     slot kosong berarti tidak diperiksa, bukan nol.
+			     Dibentuk seperti blok isiannya di form (TankFittings.vue): kepala dengan
+			     jumlah, kompartemen sebagai pemisah, satu garis per baris. Dua puluh empat
+			     baris "label ... angka" tanpa garis dan tanpa kompartemen adalah dinding teks
+			     — mata kehilangan jejak barisnya di tengah lompatan ke kolom angka, dan tank
+			     dua kompartemen menyebut slot yang sama dua kali tanpa keterangan ujung mana.
+			     No. cetaknya ikut ditampilkan supaya baris di layar bisa dicocokkan dengan
+			     kotak di kertas yang dipegang. -->
+			<section v-if="(data.fittings || []).length" class="oak-card overflow-hidden">
+				<div class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
+					<div class="flex min-w-0 items-center gap-2">
+						<Icon name="clipboard" :size="16" class="shrink-0 text-gray-400" />
+						<p class="oak-section-title truncate">{{ labels.fittingsTitle }}</p>
+					</div>
+					<span class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ data.fittings.length }}</span>
+				</div>
+				<template v-for="g in groupByCompartment(data.fittings)" :key="g.compartment">
+					<p v-if="g.compartment" class="bg-gray-50 px-4 py-1 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+						{{ g.compartment }}
+					</p>
+					<div
+						v-for="(f, i) in g.items"
+						:key="i"
+						class="flex items-baseline justify-between gap-3 border-t border-gray-100 px-4 py-2"
+					>
+						<p class="min-w-0 text-sm text-gray-700">
+							<span v-if="f.printed_no" class="mr-1 font-mono text-[10px] text-gray-400">{{ f.printed_no }}</span>
+							{{ f.item_label }}<span v-if="f.slot_label" class="text-gray-400"> · {{ f.slot_label }}</span>
+						</p>
+						<p class="shrink-0 text-sm font-bold tabular-nums text-gray-900">
+							{{ f.value }}<span v-if="f.uom" class="ml-0.5 text-xs font-normal text-gray-400">{{ f.uom }}</span>
+						</p>
+					</div>
+				</template>
 			</section>
 
 			<!-- Album inspeksi: foto keliling tank dan foto bagian yang diperiksa tapi tidak
@@ -105,15 +144,18 @@
 			<section class="oak-card space-y-2 p-4">
 				<p class="oak-section-title">{{ labels.eirPhotosTitle }} ({{ data.photo_count || 0 }})</p>
 				<p v-if="!(data.photos || []).length" class="text-sm text-gray-400">{{ labels.eirNoPhotos }}</p>
-				<div v-else class="flex flex-wrap gap-2">
+				<!-- A grid, not wrapped fixed-width tiles: 104 px squares leave a ragged strip of
+				     dead space down the right of a 360 px screen and go to two-per-row anyway.
+				     Three equal columns fill whatever width the phone has. -->
+				<div v-else class="grid grid-cols-3 gap-2">
 					<button
 						v-for="(p, i) in data.photos"
 						:key="p.photo"
 						type="button"
-						class="oak-press w-[104px] text-left"
+						class="oak-press min-w-0 text-left"
 						@click="openLightbox((data.photos || []).map((x) => photoSrc(x.photo)), i)"
 					>
-						<img :src="photoSrc(p.photo)" class="h-24 w-[104px] rounded-lg border border-gray-200 object-cover" />
+						<img :src="photoSrc(p.photo)" class="aspect-square w-full rounded-lg border border-gray-200 object-cover" />
 						<span class="mt-0.5 block truncate text-[11px]" :class="p.item_name ? 'text-gray-500' : 'text-gray-400'">
 							{{ p.item_name || labels.eirPhotoUnsorted }}
 						</span>
@@ -121,11 +163,14 @@
 				</div>
 			</section>
 
+			<!-- Full width on a phone (`flex-1`), natural width from `sm:` up: these are the
+			     only two actions on the screen, and a 120 px button in the corner of a handset
+			     is a target the operator has to aim at with a glove on. -->
 			<div class="flex flex-wrap items-center gap-2">
 				<button
 					v-if="data.docstatus === 1 && revisionFor !== data.name"
 					type="button"
-					class="oak-btn oak-btn-secondary inline-flex px-3 py-2"
+					class="oak-btn oak-btn-secondary flex-1 px-3 py-2.5 sm:flex-none"
 					@click="openRevision(data.name)"
 				>
 					<Icon name="rotate-ccw" :size="16" /> {{ labels.eirReqRevision }}
@@ -135,7 +180,7 @@
 				<button
 					v-if="data.docstatus === 0 && data.status === 'Pending Review'"
 					type="button"
-					class="oak-btn oak-btn-primary inline-flex px-3 py-2"
+					class="oak-btn oak-btn-primary flex-1 px-3 py-2.5 sm:flex-none"
 					:disabled="withdrawRes.loading"
 					@click="withdrawReview(data)"
 				>
@@ -173,11 +218,18 @@ import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { photoSrc } from "@/data/send"
+import { groupByCompartment } from "@/utils/fittings"
+import { fmtDate, fmtDateShort } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 
 const router = useRouter()
-const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
+
+// EIR-In arrives, EIR-Out leaves — the one fact a row of otherwise identical clipboard tiles
+// never carried. Sky for in / brand for out, matching the direction pills used elsewhere.
+function typeTile(r) {
+	return r?.inspection_type === "EIR-Out" ? "bg-brand-50 text-brand-600" : "bg-sky-50 text-sky-600"
+}
 
 // Withdraw a "Pending Review" EIR back to an editable Draft, then open the form so the
 // operator can fix it and re-send for review.
@@ -236,16 +288,18 @@ function statusClass(r) {
 	if (r.status === "Pending Review") return "bg-sky-100 text-sky-800"
 	return "bg-amber-100 text-amber-800"
 }
+// Header facts, EMPTY ONES DROPPED — see the grid's own comment for why a phone cannot
+// afford a row that only says "—".
 function cells(d) {
 	return [
 		{ label: labels.eirType, value: d.inspection_type },
 		{ label: labels.eirTankStatus, value: d.tank_status },
-		{ label: labels.eirDate, value: fmtDate(d.eir_date) },
+		{ label: labels.eirDate, value: d.eir_date ? fmtDate(d.eir_date) : "" },
 		{ label: labels.depotLabel, value: d.depot },
 		{ label: labels.eirVoucher, value: d.referred_voucher },
 		{ label: labels.eirTruck, value: d.truck_no },
 		{ label: labels.eirDriver, value: d.driver },
 		{ label: labels.eirEmkl, value: d.shipper },
-	]
+	].filter((c) => c.value)
 }
 </script>

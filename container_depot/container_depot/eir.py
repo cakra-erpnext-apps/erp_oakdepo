@@ -485,8 +485,15 @@ def attach_order_muat_to_eirs(order_name: str) -> dict:
 
 def get_eir_out_reference(inspection) -> dict:
 	"""Comparison payload for an EIR-Out: the referenced EIR-In's summary (date, tank
-	status, remarks, damage findings + photos). Best-effort — sections come back ``None``
-	when there is no baseline EIR-In.
+	status, remarks, damage findings + photos, kelengkapan tank). Best-effort — sections
+	come back ``None`` when there is no baseline EIR-In.
+
+	The kelengkapan half answers a different question from the damage half, which is why
+	both are here: the checklist says what was BROKEN on the way in, the fittings say what
+	the tank CARRIED. A strap that arrived and is not on the tank now is neither a damage
+	nor an empty box — it only shows up as a difference against this list. The same numbers
+	also reach the form per-box (``_fitting_payload``'s ``baseline``); this is the whole
+	sheet in one place, for a surveyor reading before touching anything.
 	"""
 	doc = inspection if hasattr(inspection, "doctype") else frappe.get_doc("Inspection", inspection)
 	out = {"reference_eir_in": doc.get("reference_eir_in"), "eir_in": None}
@@ -532,6 +539,25 @@ def get_eir_out_reference(inspection) -> dict:
 					"damage_description": d.damage_description,
 					"photos": list(photos_by_item.get(d.checklist_item, [])),
 				})
+			# Labels off the ROW, not the master: they were stamped when the EIR-In was
+			# written (``_build_fitting_rows``), so a slot renamed since then still reads
+			# back the way the surveyor saw it. Blank values never reach the table at all —
+			# an unanswered box is not a recorded zero.
+			fittings = [
+				{
+					"compartment": r.compartment,
+					"item_label": r.item_label,
+					"slot_label": r.slot_label,
+					"uom": r.uom,
+					"value": r.value,
+				}
+				for r in frappe.get_all(
+					"Inspection Fitting",
+					filters={"parent": ref, "parenttype": "Inspection"},
+					fields=["compartment", "item_label", "slot_label", "uom", "value"],
+					order_by="idx asc",
+				)
+			]
 			out["eir_in"] = {
 				"name": ein.name,
 				"inspection_id": ein.inspection_id,
@@ -540,6 +566,7 @@ def get_eir_out_reference(inspection) -> dict:
 				"remarks": ein.remarks,
 				"has_damage": ein.has_damage,
 				"damages": damages,
+				"fittings": fittings,
 				"photos": [u for lst in photos_by_item.values() for u in lst],
 			}
 	return out
