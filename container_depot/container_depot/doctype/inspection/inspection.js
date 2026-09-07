@@ -61,6 +61,13 @@ frappe.ui.form.on('Inspection', {
 		if (!frm.is_new() && photo_slides(frm).length) {
 			frm.add_custom_button(__('Lihat Semua Foto'), () => open_photo_carousel(frm, photo_slides(frm), 0));
 		}
+		// A submitted EIR is closed to hand-editing, and the way back in is Kembalikan ke Draft.
+		// `item_photos` is the one field Frappe would still leave typeable — it has to stay
+		// allow_on_submit, because sorting the bulk photos into sections is precisely what
+		// happens after submit — so lock the GRID instead: no Add Row, no delete, no typing in a
+		// cell. The sorter is untouched: it writes through frappe.model.set_value and saves with
+		// frm.save('Update'), neither of which consults the UI flag.
+		frm.set_df_property('item_photos', 'read_only', frm.doc.docstatus === 1 ? 1 : 0);
 		install_photo_thumbnails(frm);
 		bind_photo_grid_clicks(frm);
 		bind_damage_grid_clicks(frm);
