@@ -38,11 +38,11 @@
 				</button>
 			</div>
 
-			<div class="grid grid-cols-2 gap-2">
+			<div class="grid grid-cols-3 gap-2">
 				<button
 					v-for="f in FILTERS"
 					:key="f.key"
-					class="oak-toggle flex items-center justify-center gap-1.5"
+					class="oak-toggle flex items-center justify-center gap-1.5 px-2 text-xs"
 					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
 					@click="setFilter(f.key)"
 				>
@@ -50,9 +50,18 @@
 				</button>
 			</div>
 
-			<SkeletonList v-if="listRes.loading && !items.length" :action="false" />
+			<!-- Antrean "cek letak tank": tank yang hari surveinya sudah dijadwalkan tapi
+			     letaknya belum pernah dicatat — atau catatannya lebih tua dari booking yang
+			     menjadwalkannya, yang artinya sama saja: tidak ada yang benar-benar melihat
+			     tank itu sejak ada alasan untuk mencarinya. Diurut memakai tenggat yang sama
+			     dengan worklist lain, jadi yang surveinya paling dekat berdiri paling atas. -->
+			<p v-if="filter === 'orders'" class="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+				{{ labels.tankPosOrdersHint }}
+			</p>
+
+			<SkeletonList v-if="loading && !items.length" :action="false" />
 			<p v-else-if="!items.length" class="py-6 text-center text-sm text-gray-400">
-				{{ labels.tankPosEmpty }}
+				{{ filter === "orders" ? labels.tankPosOrdersEmpty : labels.tankPosEmpty }}
 			</p>
 			<ul v-else class="divide-y divide-gray-100">
 				<li v-for="r in items" :key="r.name">
@@ -64,6 +73,9 @@
 							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.name }}</p>
 							<p class="truncate text-[11px]" :class="r.located ? 'text-gray-600' : 'text-red-500'">
 								{{ r.located ? r.current_location : labels.tankPosUnlocated }}
+							</p>
+							<p v-if="r.target_survey_on || r.target_lift_on" class="mt-1 flex items-center">
+								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
 							</p>
 						</div>
 						<!-- The age of the answer, not just the answer. A position recorded in June
@@ -273,6 +285,7 @@ import Icon from "@/components/Icon.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
@@ -293,7 +306,13 @@ const filter = ref("all")
 const FILTERS = computed(() => [
 	{ key: "all", label: labels.tankPosFilterAll },
 	{ key: "unlocated", label: labels.tankPosFilterUnlocated },
+	{ key: "orders", label: labels.tankPosFilterOrders },
 ])
+
+function takeList(data) {
+	items.value = data.items || []
+	total.value = data.total || 0
+}
 
 const listRes = cachedResource({
 	url: "container_depot.ess.container_position.tank_search",
@@ -304,23 +323,39 @@ const listRes = cachedResource({
 		page_length: 50,
 	}),
 	auto: true,
-	onSuccess(data) {
-		items.value = data.items || []
-		total.value = data.total || 0
-	},
+	onSuccess: takeList,
 })
+
+// Sumber kedua, bukan parameter ketiga pada yang pertama: antrean ini menjawab pertanyaan
+// yang berbeda ("tank mana yang ditunggu jawabannya") dan sudah diurut server memakai
+// prioritas yang sama dengan worklist lain, sementara pencarian tank diurut dari yang paling
+// basi. Menggabungkannya berarti satu endpoint dengan dua urutan dan satu pencarian yang
+// diam-diam tidak berlaku.
+const orderRes = cachedResource({
+	url: "container_depot.ess.container_position.position_orders",
+	method: "GET",
+	makeParams: () => ({ page_length: 50 }),
+	onSuccess: takeList,
+})
+
+const activeRes = () => (filter.value === "orders" ? orderRes : listRes)
+const loading = computed(() => activeRes().loading)
 
 let searchTimer = null
 function reload() {
 	clearTimeout(searchTimer)
-	listRes.reload()
+	activeRes().reload()
 }
 function onSearchInput() {
 	clearTimeout(searchTimer)
+	// Pencarian hanya berlaku untuk daftar tank; antrean adalah daftar tertutup yang isinya
+	// ditentukan jadwal, bukan ketikan.
+	if (filter.value === "orders") return
 	searchTimer = setTimeout(() => listRes.reload(), 300)
 }
 function setFilter(key) {
 	filter.value = key
+	items.value = []
 	reload()
 }
 

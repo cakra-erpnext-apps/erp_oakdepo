@@ -37,6 +37,29 @@ const MAX_ENTRIES = 300
 const keyFor = (name, params) => `${sessionUser() || "?"}|${name}|${JSON.stringify(params || {})}`
 
 /**
+ * Drop the params a page meant to leave OUT of the request.
+ *
+ * `{ from_date: fromDate.value || undefined }` is how every screen here says "no filter", and
+ * for a POST it works — JSON.stringify omits the key. A GET does not go through
+ * JSON.stringify: frappe-ui builds the query string with
+ * `URLSearchParams.append(key, value)` (utils/request.js), and that stringifies `undefined`
+ * into the six letters `undefined`. The server then receives a filter that is present and
+ * junk, which is worse than one that is absent — a search silently matches `%undefined%`,
+ * and a DATE filter throws outright ("undefined is not a valid date string").
+ *
+ * Fixed here, once, rather than at each call site: the app has accumulated a dozen
+ * `search.lower() != "undefined"` guards on the server working around exactly this, and they
+ * only ever cover the param somebody happened to hit the bug on.
+ *
+ * `null` goes too, for the same reason and the same intent. `""` and `0` stay — a page that
+ * sends an empty string is sending one.
+ */
+function withoutBlanks(params) {
+	if (!params || typeof params !== "object" || Array.isArray(params)) return params
+	return Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null))
+}
+
+/**
  * Did this request fail without ever reaching the application?
  *
  * frappe-ui hands back a bare fetch TypeError when the transport failed, and an error with
@@ -83,7 +106,7 @@ export async function writeCached(name, params, data) {
  */
 export function cachedResource(options) {
 	const name = options.offlineKey || options.url
-	const { onSuccess, onError, onFetch, ...rest } = options
+	const { onSuccess, onError, onFetch, makeParams, ...rest } = options
 	// frappe-ui runs onSuccess INSIDE the same try/catch as the request, so an exception
 	// thrown by page code while rendering the response arrives at onError looking exactly
 	// like a transport failure. Without this flag the cache would answer a bug in our own
@@ -95,6 +118,12 @@ export function cachedResource(options) {
 
 	res = createResource({
 		...rest,
+		// Runs before the request is built and before `res.params` is set, so the stripped
+		// set is what goes on the wire AND what keys the offline cache. Defined even when the
+		// page passed no `makeParams`, to catch a static `params` too.
+		makeParams(params) {
+			return withoutBlanks(makeParams ? makeParams.call(this, params) : params)
+		},
 		onFetch(params) {
 			responded = false
 			onFetch?.call(this, params)

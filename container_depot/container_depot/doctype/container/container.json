@@ -46,6 +46,7 @@
   "lift_on_booking",
   "column_break_ref",
   "target_lift_on",
+  "target_survey_on",
   "location_section",
   "current_location",
   "location_updated_on",
@@ -283,6 +284,14 @@
    "read_only": 1
   },
   {
+   "description": "Tanggal survey dari booking keluar yang aktif. Inilah tanggal yang mengurutkan prioritas semua worklist; target_lift_on tetap tanggal pickup-nya. Diisi otomatis — bukan isian manual.",
+   "fieldname": "target_survey_on",
+   "fieldtype": "Date",
+   "label": "Tanggal Survey",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "collapsible": 0,
    "description": "Letak terakhir tank, dicatat lewat menu Letak Tank di PWA (doctype Container Position). Read-only di sini: yang menulis adalah catatan letaknya, bukan sebaliknya — supaya \"kapan \" dan \"oleh siapa\" selalu punya dokumen di belakangnya.",
    "fieldname": "location_section",
@@ -395,7 +404,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-07 15:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

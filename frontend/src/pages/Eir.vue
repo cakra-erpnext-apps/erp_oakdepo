@@ -87,61 +87,81 @@
 						{{ selectMode ? labels.eirSelectCancel : labels.eirSelect }}
 					</button>
 				</div>
-				<div class="flex gap-2">
-					<input
-						v-model.trim="search"
-						type="text"
-						:placeholder="labels.eirPendingSearch"
-						class="oak-input uppercase"
-						@input="onSearchInput"
-					/>
-					<button class="oak-btn oak-btn-secondary shrink-0 px-4" :disabled="loadingPending" @click="reloadPending">
-						<Icon name="search" :size="16" />
-					</button>
+				<!-- Dua baris kontrol, bukan tiga. Sebelumnya: kotak cari + tombol cari, lalu
+				     satu grid tombol tebal untuk status, lalu satu grid tombol tebal lagi untuk
+				     arah — tiga baris penuh sebelum satu pun data terlihat, yang di layar HP
+				     berarti daftarnya mulai di bawah lipatan. Ikon cari masuk ke dalam
+				     kotaknya (tombol terpisah itu tidak pernah perlu: pencariannya sudah jalan
+				     sendiri 300 ms setelah ketikan berhenti), dan arah jadi segmented ringkas
+				     di sebelahnya. -->
+				<div class="flex items-center gap-2">
+					<div class="relative min-w-0 flex-1">
+						<Icon name="search" :size="16" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+						<input
+							v-model.trim="search"
+							type="text"
+							:placeholder="labels.eirPendingSearch"
+							class="oak-input pl-8 uppercase"
+							@input="onSearchInput"
+						/>
+					</div>
+					<!-- Masuk / Keluar: pekerjaan yang berbeda (tank datang vs pergi), sering
+					     dikerjakan berkelompok. Tanpa angka — pil status di bawahnya sudah
+					     menghitung ulang untuk arah yang sedang dipilih, jadi "Semua 3" di sana
+					     adalah jumlah untuk arah ini; dua tempat menampilkan angka yang sama
+					     hanya menambah yang harus dibaca. -->
+					<div class="flex shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+						<button
+							v-for="f in DIR_FILTERS"
+							:key="f.key"
+							class="rounded-md px-2.5 py-1.5 text-[11px] font-bold transition"
+							:class="dirFilter === f.key ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500'"
+							@click="dirFilter = f.key"
+						>
+							{{ f.label }}
+						</button>
+					</div>
 				</div>
 
-				<!-- Belum / Dikerjakan split. A draft EIR is "belum" until Mulai stamps
-				     work_started_on; submitted ones move to the Selesai section below. -->
-				<div class="grid grid-cols-3 gap-2">
+				<!-- Belum / Dikerjakan. A draft EIR is "belum" until Mulai stamps
+				     work_started_on; submitted ones move to the Selesai section below. Pil,
+				     bukan tombol selebar sepertiga layar: ini saringan, bukan aksi utama
+				     halaman, dan berat visualnya dulu menyaingi daftarnya sendiri. -->
+				<div class="flex flex-wrap items-center gap-1.5">
+					<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ labels.eirFilterStatus }}</span>
 					<button
 						v-for="f in FILTERS"
 						:key="f.key"
-						class="oak-toggle flex items-center justify-center gap-1.5"
-						:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
+						class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition active:scale-[0.97]"
+						:class="filter === f.key ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-600'"
 						@click="filter = f.key"
 					>
 						{{ f.label }}
-						<span class="oak-chip" :class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
-					</button>
-				</div>
-
-				<!-- Masuk / Keluar split, on top of the row above: the two directions are
-				     different jobs (tank arriving vs leaving) and are often worked in
-				     batches. Each row's counts are for the list the OTHER row has already
-				     narrowed, so the two read together. -->
-				<div class="grid grid-cols-3 gap-2">
-					<button
-						v-for="f in DIR_FILTERS"
-						:key="f.key"
-						class="oak-toggle flex items-center justify-center gap-1.5"
-						:class="dirFilter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
-						@click="dirFilter = f.key"
-					>
-						{{ f.label }}
-						<span class="oak-chip" :class="dirFilter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
+						<span
+							class="rounded-full px-1.5 text-[10px] font-bold"
+							:class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'"
+						>{{ f.count }}</span>
 					</button>
 				</div>
 
 				<ul v-if="loadingPending && !pendingItems.length" class="space-y-2">
 					<li v-for="n in 4" :key="n" class="oak-skeleton h-14 rounded-xl"></li>
 				</ul>
-				<p v-else-if="!visibleItems.length" class="py-4 text-center text-sm text-gray-400">{{ emptyText }}</p>
-				<!-- Every draft is listed; the scroller reveals exactly 5 rows (fixed 60px each)
-			     and the rest scroll. -->
-				<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
+				<div v-else-if="!visibleItems.length" class="flex flex-col items-center gap-1 py-6 text-center">
+					<span class="oak-icon-tile h-11 w-11 bg-gray-100 text-gray-300"><Icon name="inbox" :size="22" /></span>
+					<p class="text-sm font-semibold text-gray-500">{{ emptyText }}</p>
+					<!-- Kalimat kedua hanya untuk kosong yang sebenar-benarnya: kalau daftarnya
+					     kosong karena saringan, "dibuat otomatis dari bon" menjawab pertanyaan
+					     yang tidak sedang ditanya. -->
+					<p v-if="!pendingItems.length" class="text-xs text-gray-400">{{ labels.eirPendingEmptyHint }}</p>
+				</div>
+				<!-- Every draft is listed; the scroller reveals about 5 rows and the rest
+			     scroll. Rows are no longer a fixed 60px: the EIR number moved onto the row
+			     (see below), so the height follows the content instead of clipping it. -->
+				<div v-else class="max-h-[340px] overflow-y-auto overscroll-contain">
 					<ul class="divide-y divide-gray-100">
 						<li v-for="r in visibleItems" :key="r.name">
-							<button class="flex h-[60px] w-full items-center gap-3 text-left" @click="rowClick(r)">
+							<button class="flex min-h-[64px] w-full items-center gap-3 py-2 text-left" @click="rowClick(r)">
 								<!-- Select-mode tick box (replaces navigation while picking a batch). -->
 								<span
 									v-if="selectMode"
@@ -154,26 +174,31 @@
 									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'clipboard'" :size="16" />
 								</span>
 								<div class="min-w-0 flex-1">
-									<p class="truncate font-semibold text-gray-900">
-										{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+									<!-- Nomor tank memiliki barisnya sendiri, nomor EIR-nya menepi ke
+									     kanan: keduanya identitas, tapi yang di-scan mata cuma yang
+									     kiri — dan nomor EIR yang dulu tidak ada di baris ini adalah
+									     satu-satunya cara mencocokkan layar dengan kertas. -->
+									<div class="flex items-baseline justify-between gap-2">
+										<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
+										<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
+									</div>
+									<p v-if="r.container_principal || r.tank_status" class="truncate text-[11px] text-gray-500">
+										{{ [r.container_principal, r.tank_status].filter(Boolean).join(" · ") }}
 									</p>
-									<!-- The in-progress badge shares the subtitle line so the row keeps a
-									     single right-hand chip and stays readable on a narrow phone. -->
-									<p class="flex items-center gap-1.5 text-[11px]">
+									<!-- Baris chip: apa yang mendesak dan siapa yang sudah memegangnya. -->
+									<p class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
 										<span v-if="r.work_started_on" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
 											<Icon name="clock" :size="11" /> {{ labels.eirChipStarted }}
 										</span>
-										<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
-											Lift-on {{ hMinus(r.target_lift_on) }}
-										</span>
+										<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
 										<span v-if="r.referred_voucher" class="truncate font-mono text-gray-500">{{ r.referred_voucher }}</span>
-										<span v-else-if="r.tank_status" class="truncate text-gray-400">{{ r.tank_status }}</span>
 									</p>
 								</div>
 								<span
 									class="oak-chip shrink-0"
 									:class="r._type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'"
 								>
+									<Icon :name="r._type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="11" />
 									{{ r._type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
 								</span>
 							</button>
@@ -210,20 +235,34 @@
 				<ul v-else class="divide-y divide-gray-100">
 					<li v-for="r in reviewItems" :key="r.name">
 						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
+							<!-- Inisial orangnya, bukan ikon jam yang sama di setiap baris. Daftar
+							     ini branch-scoped: barisnya bisa milik siapa saja, dan "punya siapa
+							     yang ini" adalah hal pertama yang ditanya sebelum menariknya
+							     kembali. Jatuh balik ke ikon kalau EIR-nya belum berpemilik. -->
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-[11px] font-extrabold text-sky-700">
+								<template v-if="initials(r.inspector_name)">{{ initials(r.inspector_name) }}</template>
+								<Icon v-else name="clock" :size="16" />
+							</span>
 							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">
-									{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+								<div class="flex items-baseline justify-between gap-2">
+									<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
+									<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
+								</div>
+								<p class="truncate text-[11px] text-gray-500">
+									{{ [r.container_principal, r.inspection_type, r.tank_status].filter(Boolean).join(" · ") }}
 								</p>
-								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
-								<p class="flex items-center gap-1.5 text-[11px]">
-									<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
-										Lift-on {{ hMinus(r.target_lift_on) }}
-									</span>
-									<span class="truncate text-gray-400">{{ r.inspection_id || r.name }}</span>
+								<p class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+									<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.eirStatusPendingReview }}</span>
+									<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
+								</p>
+								<!-- Sudah berapa lama menunggu, dan pada siapa. Sebuah antrean review
+								     tanpa umur tidak bisa dibedakan mana yang baru masuk dan mana yang
+								     tertinggal sejak kemarin. -->
+								<p v-if="r.inspector_name || r.modified" class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400">
+									<Icon name="clock" :size="11" class="shrink-0" />
+									{{ [since(r.modified), r.inspector_name].filter(Boolean).join(" · ") }}
 								</p>
 							</div>
-							<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.eirStatusPendingReview }}</span>
 							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
 						</button>
 					</li>
@@ -246,16 +285,25 @@
 				<ul v-else class="divide-y divide-gray-100">
 					<li v-for="r in doneItems" :key="r.name">
 						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="16" /></span>
+							<span class="oak-icon-tile h-9 w-9 shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-leaf-50 text-leaf-600'">
+								<Icon :name="r.inspection_type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="16" />
+							</span>
 							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">
-									{{ r.container_no || r.container }}<span v-if="r.container_principal" class="font-normal text-gray-500"> · {{ r.container_principal }}</span>
+								<div class="flex items-baseline justify-between gap-2">
+									<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
+									<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
+								</div>
+								<p class="truncate text-[11px] text-gray-500">
+									{{ [r.container_principal, r.inspection_type, r.tank_status].filter(Boolean).join(" · ") }}
 								</p>
-								<p class="truncate text-xs text-gray-500">{{ r.inspection_type }}<span v-if="r.tank_status"> · {{ r.tank_status }}</span></p>
-								<p class="truncate text-[11px] text-gray-400">{{ r.inspection_id || r.name }}</p>
+								<p v-if="r.inspector_name || r.modified" class="mt-0.5 flex items-center gap-1 truncate text-[11px] text-gray-400">
+									<Icon name="clock" :size="11" class="shrink-0" />
+									{{ [since(r.modified), r.inspector_name].filter(Boolean).join(" · ") }}
+								</p>
 							</div>
 							<span v-if="r.revision_requested" class="oak-chip shrink-0 bg-orange-100 text-orange-800">{{ labels.eirStatusRevision }}</span>
 							<span class="oak-chip shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'">
+								<Icon :name="r.inspection_type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="11" />
 								{{ r.inspection_type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
 							</span>
 							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
@@ -271,8 +319,9 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
-import { hMinus, liftClass } from "@/utils/liftOn"
+import { since } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import { cachedResource } from "@/data/cache"
 import { keepScrollForNextNavigation } from "@/router"
 import EirInForm from "@/pages/EirInForm.vue"
@@ -280,6 +329,16 @@ import EirOutForm from "@/pages/EirOutForm.vue"
 
 const route = useRoute()
 const router = useRouter()
+
+// "Budi Santoso" -> "BS". Dipakai sebagai penanda baris, bukan sebagai identitas: nama
+// lengkapnya tetap tertulis di baris waktu tepat di bawahnya, jadi inisial yang bertabrakan
+// antar dua orang tidak menyesatkan siapa pun — ia cuma membuat baris milik orang yang sama
+// terlihat berkelompok saat daftar di-scroll.
+function initials(name) {
+	const parts = String(name || "").trim().split(/\s+/).filter(Boolean)
+	if (!parts.length) return ""
+	return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase()
+}
 
 // One EIR menu for both directions. The worklist below merges pending EIR-In and EIR-Out
 // (each row badged by type); tapping opens the matching form component.
@@ -396,9 +455,12 @@ const pendingItems = computed(() => {
 	// list is only refreshed when there is a link, so without this the surveyor sees the tank
 	// they just finished sitting there untouched and inspects it again.
 	const all = [...inItems.value, ...outItems.value]
-	const NO_LIFT_ON = "9999-12-31" // sorts after every real date, same as the server's sentinel
+	const NO_DATE = "9999-12-31" // sorts after every real date, same as the server's sentinel
+	// Tanggal survey dulu, baru rencana pickup — cermin `worklist.priority_date`. Kalau
+	// keduanya berselisih, layar ini yang salah: server yang memutuskan urutan.
+	const due = (r) => String(r.target_survey_on || r.target_lift_on || NO_DATE)
 	all.sort((a, b) => {
-		const lift = String(a.target_lift_on || NO_LIFT_ON).localeCompare(String(b.target_lift_on || NO_LIFT_ON))
+		const lift = due(a).localeCompare(due(b))
 		if (lift) return lift
 		const started = Number(!!b.work_started_on) - Number(!!a.work_started_on)
 		return started || String(b.creation || "").localeCompare(String(a.creation || ""))

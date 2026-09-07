@@ -255,7 +255,14 @@ class TestNotificationRouting(FrappeTestCase):
 			# screen; Kalmar learns about the same day one tank at a time, through a route
 			# they can actually open.
 			"Team Survey": {"survey_order_scheduled", "position_surveyed"},
-			"Team Kalmar": {"position_survey_pending", "order_gate_out", "gate_out"},
+			# `position_order_pending` is the step BEFORE `position_survey_pending` and
+			# belongs to the same crew: the tank has to be found before it can be brought
+			# down, and the finding is theirs. Every other field team may correct a position
+			# they walk past (the `tankPos` menu is open to all of them) — being allowed to
+			# answer is not the same as being asked, which is the whole rule this test pins.
+			"Team Kalmar": {
+				"position_survey_pending", "position_order_pending", "order_gate_out", "gate_out",
+			},
 		}
 		for event_key, _label, _desc, roles in NOTIFICATION_RULES:
 			for role in roles:

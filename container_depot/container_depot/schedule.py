@@ -76,7 +76,7 @@ SOURCES = [
 		"skip": ("Cancelled",),
 		"done": ("Completed",),
 		"fields": ["name", "container", "container_no", "container_principal", "status",
-				   "cleaning_type", "target_lift_on"],
+				   "cleaning_type", "target_lift_on", "target_survey_on"],
 		"route": "/cleaning?o={name}",
 	},
 	{
@@ -89,7 +89,7 @@ SOURCES = [
 		"skip": ("Cancelled", "Rejected"),
 		"done": ("Completed",),
 		"fields": ["name", "container", "container_no", "principal", "status", "job_type",
-				   "target_lift_on"],
+				   "target_lift_on", "target_survey_on"],
 		"route": "/mr?o={name}",
 	},
 	{

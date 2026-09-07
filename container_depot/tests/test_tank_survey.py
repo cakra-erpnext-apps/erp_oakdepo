@@ -487,6 +487,31 @@ class TestTheStandaloneList(_Base):
 		self.assertIn(self._order(bk_soon), names)
 		self.assertNotIn(self._order(bk_late), names)
 
+	def test_a_filter_that_arrives_as_the_string_undefined_is_no_filter(self):
+		"""A GET param the caller left out reaches us as the six letters ``undefined``.
+
+		frappe-ui builds the query string with ``URLSearchParams.append``, which stringifies an
+		``undefined`` value instead of dropping the key — so "no filter" arrives as a filter
+		that is present and junk. ``search`` had always shrugged it off; the DATES did not, and
+		``getdate("undefined")`` threw, which is how the whole Jadwal Survey menu 500'd on
+		first open. The client now strips them (``frontend/src/data/cache.js``), but a handset
+		on an already-installed build keeps sending them until its service worker updates.
+		"""
+		c = self._container("TSVLIST00008")
+		bk = self._booking(c)
+		for junk in ("undefined", "null", "none", ""):
+			with self.subTest(junk=junk):
+				out = ts.list_all_survey_orders(
+					status=junk, from_date=junk, to_date=junk, search=junk
+				)
+				self.assertIn(self._order(bk), [i["name"] for i in out["items"]])
+
+	def test_a_date_that_is_merely_wrong_is_still_refused(self):
+		"""The placeholder guard must not turn into "ignore any date I cannot parse" — that
+		would answer a typo'd filter with a full list and call it a match."""
+		with self.assertRaises(frappe.ValidationError):
+			ts.list_all_survey_orders(from_date="32 Februari")
+
 	def test_each_row_carries_what_is_still_waiting(self):
 		"""The one number that says whether a day needs somebody to go out."""
 		c = self._container("TSVLIST00007")
@@ -518,17 +543,38 @@ class TestWorklists(_Base):
 		self.assertEqual(item["location_note"], "blok kanan B9")
 		self.assertTrue(item["located"])
 
-	def test_the_queue_leads_with_the_customers_pickup_date(self):
-		"""A wash finished a day late on a tank nobody is coming for costs nothing; the same day
-		lost on a tank on a truck's schedule costs a truck."""
+	def test_the_queue_leads_with_the_survey_day(self):
+		"""A tank lowered a day late for a survey nobody is coming to costs nothing; the same
+		day lost on a tank whose survey crew arrives tomorrow costs the day.
+
+		The SURVEY day, not the pickup (changed 2026-09-07): getting the tank down is
+		preparation FOR the survey, so a queue ordered by the truck's date was working days
+		behind the crew that actually turns up. Both bookings below are collected on the same
+		day precisely so nothing but the survey can be deciding the order.
+		"""
 		far = self._container("TSVSORT00001")
 		soon = self._container("TSVSORT00002")
-		bk_far = self._booking(far, plan_date=add_days(today(), 9))
-		bk_soon = self._booking(soon, plan_date=add_days(today(), 1))
+		pickup = add_days(today(), 9)
+		bk_far = self._booking(far, survey_date=add_days(today(), 8), plan_date=pickup)
+		bk_soon = self._booking(soon, survey_date=add_days(today(), 1), plan_date=pickup)
 		a, b = self._row(bk_far), self._row(bk_soon)
 
 		order = [i["name"] for i in ts.list_waiting_lowering()["items"] if i["name"] in (a, b)]
 		self.assertEqual(order, [b, a])
+
+	def test_a_booking_with_no_survey_day_falls_back_to_the_pickup(self):
+		"""The fallback is not a leftover: a booking whose survey nobody has scheduled still
+		has a truck coming, and sinking it to the bottom of the queue would hide it.
+
+		(A tank with no survey date has no schedule at all, so the ordering is asserted on the
+		rule itself — the queue below it is what routes through that rule.)
+		"""
+		from container_depot.container_depot.worklist import priority_date
+
+		self.assertEqual(
+			priority_date({"target_survey_on": None, "target_lift_on": "2026-09-09"}),
+			"2026-09-09",
+		)
 
 	def test_a_cancelled_day_leaves_the_queue(self):
 		c = self._container("TSVLIST00004")

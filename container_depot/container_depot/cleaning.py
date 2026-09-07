@@ -113,7 +113,8 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		# assigned_to: who pressed "Mulai". Not shown on the row — it is what hides an order
 		# already being washed from everyone else's worklist (see work_claim).
 		fields=["name", "order_id", "container", "container_no", "container_principal", "status",
-			"cleaning_type", "last_cargo", "depot", "target_lift_on", "order_created", "assigned_to"],
+			"cleaning_type", "last_cargo", "depot", "target_lift_on", "target_survey_on",
+			"order_created", "assigned_to"],
 		order_by="order_created asc",
 		limit_page_length=0,
 	)

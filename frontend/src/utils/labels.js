@@ -536,10 +536,14 @@ export const labels = {
 	eirResume: "Lanjutkan", // Resume (open a draft)
 	// Pending EIR worklist (auto-created per container when an Order Bongkar is submitted)
 	eirPendingList: "Eir List", // EIRs awaiting inspection
-	eirPendingEmpty: "Belum ada EIR menunggu. EIR otomatis dibuat saat Order Bongkar di-submit.", // none pending
+	eirPendingEmpty: "Belum ada EIR menunggu dikerjakan", // none pending
+	// Kalimat kedua kosong-state: bukan sekadar hiburan, ini menjawab "lalu saya harus apa?"
+	// — jawabannya tidak ada, daftarnya terisi sendiri dari bon.
+	eirPendingEmptyHint: "Dibuat otomatis dari Order Bongkar / Order Muat",
 	eirPendingSearch: "Cari no. container / voucher…", // search container no / voucher
 	// Worklist status split — a draft EIR is "belum" until Mulai stamps work_started_on,
 	// then "dikerjakan"; submitted ones live in the Selesai section below.
+	eirFilterStatus: "Status", // label baris filter status
 	eirFilterAll: "Semua", // All
 	eirFilterNotStarted: "Belum", // Not started
 	eirFilterStarted: "Dikerjakan", // In progress
@@ -847,6 +851,9 @@ export const labels = {
 	tankPosCount: "tank",
 	tankPosFilterAll: "Semua",
 	tankPosFilterUnlocated: "Belum Terdata",
+	tankPosFilterOrders: "Perlu Dicek",
+	tankPosOrdersHint: "Tank yang surveinya sudah dijadwalkan tapi letaknya belum dicatat — atau catatannya lebih tua dari booking-nya. Catat letaknya dan tank keluar dari daftar ini sendiri.",
+	tankPosOrdersEmpty: "Semua tank yang menunggu survey sudah ada letaknya.",
 	tankPosUnlocated: "Lokasi belum terdata",
 	tankPosUnlocatedHint: "Tank ini belum pernah dicatat letaknya.",
 	tankPosCurrent: "Lokasi Saat Ini",

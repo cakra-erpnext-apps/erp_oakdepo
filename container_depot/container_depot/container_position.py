@@ -165,7 +165,8 @@ def get_container_position(container, history_length=5) -> dict:
 	tank = frappe.db.get_value(
 		"Container", container,
 		["name", "container_no", "depot", "status", "principal", "container_type",
-		 "current_location", "location_updated_on", "location_updated_by", "target_lift_on"],
+		 "current_location", "location_updated_on", "location_updated_by", "target_lift_on",
+		 "target_survey_on"],
 		as_dict=True,
 	)
 	if not tank:
@@ -190,6 +191,7 @@ def get_container_position(container, history_length=5) -> dict:
 		"container_type": tank.container_type,
 		"status": tank.status,
 		"target_lift_on": str(tank.target_lift_on) if tank.target_lift_on else None,
+		"target_survey_on": str(tank.target_survey_on) if tank.target_survey_on else None,
 		"location_note": tank.current_location,
 		"location_updated_on": str(tank.location_updated_on) if tank.location_updated_on else None,
 		"location_updated_by": tank.location_updated_by,
@@ -199,6 +201,72 @@ def get_container_position(container, history_length=5) -> dict:
 		**_age(tank.location_updated_on),
 		"history": history,
 	}
+
+
+# ---------------------------------------------------------------------------
+# The queue — tanks whose place has to be known before their survey day
+# ---------------------------------------------------------------------------
+def needs_position(container) -> bool:
+	"""Does this tank still owe an answer about where it is?
+
+	True when nobody has ever recorded it, or when the last reading is OLDER THAN the booking
+	that scheduled it. The second half is the whole point: a place written down in June is not
+	a wrong answer, it is an answer to a question nobody was asking then — the tank has been
+	moved by three reachstackers since, and the survey crew arriving on the day would be
+	walking to a memory. Once anybody files a fresh reading the tank leaves the queue by
+	itself, which is why the queue needs no document to close.
+	"""
+	tank = frappe.db.get_value(
+		"Container", container,
+		["current_location", "location_updated_on", "lift_on_booking"],
+		as_dict=True,
+	)
+	if not tank or not tank.current_location:
+		return True
+	if not tank.lift_on_booking:
+		return False
+	since = frappe.db.get_value("Container Booking", tank.lift_on_booking, "creation")
+	return bool(since and tank.location_updated_on and tank.location_updated_on < since)
+
+
+def open_position_orders(start=0, page_length=20) -> dict:
+	"""The "cek letak tank" queue: tanks with a survey coming whose place is unknown or stale.
+
+	Derived, not stored — see ``tank_survey._raise_position_orders`` for why there is no order
+	document behind this. A tank qualifies when a live outbound booking has stamped a deadline
+	on it (``lift_on_booking``) and :func:`needs_position` still says yes; filing one reading
+	is what closes it.
+
+	Ordered by the same rule as every other worklist (``worklist.priority_date``): survey day
+	first, pickup day when no survey has been set. Branch-scoped like everything else here.
+	"""
+	from container_depot.container_depot.worklist import sort_by_priority
+
+	filters = {"is_active": 1, "lift_on_booking": ["is", "set"]}
+	depots = get_user_depots()
+	if depots is not None:
+		filters["depot"] = ["in", depots or [""]]
+
+	rows = frappe.get_all(
+		"Container",
+		filters=filters,
+		fields=["name", "container_no", "principal", "depot", "status", "target_lift_on",
+				"target_survey_on", "current_location", "location_updated_on",
+				"location_updated_by", "lift_on_booking"],
+		order_by="container_no asc",
+		limit_page_length=0,
+	)
+	rows = [r for r in rows if needs_position(r.name)]
+	total = len(rows)
+	# `started` is never true here: there is no half-done state — a tank either has a fresh
+	# reading (and has left this list) or it does not.
+	rows = sort_by_priority(rows, lambda r: False, cint(start), cint(page_length))
+	for it in rows:
+		it["located"] = bool(it.get("current_location"))
+		for k in ("target_lift_on", "target_survey_on", "location_updated_on"):
+			it[k] = str(it[k]) if it.get(k) else None
+		it.update(_age(it.get("location_updated_on")))
+	return {"items": rows, "total": total}
 
 
 def search_containers(search=None, start=0, page_length=20, only_unlocated=0) -> dict:
@@ -224,7 +292,8 @@ def search_containers(search=None, start=0, page_length=20, only_unlocated=0) ->
 		"Container",
 		filters=filters,
 		fields=["name", "container_no", "principal", "depot", "status", "target_lift_on",
-				"current_location", "location_updated_on", "location_updated_by"],
+				"target_survey_on", "current_location", "location_updated_on",
+				"location_updated_by"],
 		# Un-located tanks first, then the stalest — which is the order somebody clearing the
 		# yard would walk it. Ties fall back to the number so the list does not shuffle.
 		order_by="location_updated_on asc, container_no asc",
@@ -234,6 +303,7 @@ def search_containers(search=None, start=0, page_length=20, only_unlocated=0) ->
 	for it in items:
 		it["located"] = bool(it.get("current_location"))
 		it["target_lift_on"] = str(it["target_lift_on"]) if it.get("target_lift_on") else None
+		it["target_survey_on"] = str(it["target_survey_on"]) if it.get("target_survey_on") else None
 		it.update(_age(it.get("location_updated_on")))
 		it["location_updated_on"] = str(it["location_updated_on"]) if it.get("location_updated_on") else None
 	return {"items": items, "total": frappe.db.count("Container", filters)}

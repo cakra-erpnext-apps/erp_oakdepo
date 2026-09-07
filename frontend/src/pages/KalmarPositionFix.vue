@@ -63,13 +63,11 @@
 							<!-- One subtitle line, ordered by urgency so truncation eats the least
 							     important half: sent back for a redo, the lift-on countdown, then
 							     the day it is scheduled for. -->
-							<p class="flex items-center gap-1.5 text-[11px]">
+							<p class="flex flex-wrap items-center gap-1.5 text-[11px]">
 								<span v-if="r.reopen_note" class="oak-chip shrink-0 bg-orange-100 text-orange-800">
 									<Icon name="rotate-ccw" :size="11" /> {{ labels.posReopenNote }}
 								</span>
-								<span v-if="r.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(r.target_lift_on)">
-									Lift-on {{ hMinus(r.target_lift_on) }}
-								</span>
+								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
 								<!-- Where to walk, and how stale that answer is. The operator picking
 								     the next tank needs both — see utils/surveyStatus.since(). -->
 								<span class="truncate" :class="r.located ? 'text-gray-500' : 'text-red-500'">
@@ -95,9 +93,9 @@
 import { onMounted, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
-import { hMinus, liftClass } from "@/utils/liftOn"
 import { since } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import { cachedResource } from "@/data/cache"
 

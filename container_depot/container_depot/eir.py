@@ -1687,13 +1687,13 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 		fields=[
 			"name", "inspection_id", "container", "container_no", "container_principal",
 			"inspection_type", "status", "tank_status", "docstatus", "revision_requested",
-			"eir_date", "creation",
+			"eir_date", "creation", "inspector", "modified",
 		],
 		order_by="creation desc",
 		limit_start=start,
 		limit_page_length=page_length,
 	)
-	return {"items": items, "total": total, "start": start, "page_length": page_length}
+	return {"items": _stamp_who(items), "total": total, "start": start, "page_length": page_length}
 
 
 def _by_lift_on(items: list, start: int, page_length: int) -> list:
@@ -1756,7 +1756,7 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			# next/prev EIR navigator to the account that is working them.
 			"work_started_on", "work_started_by",
 			# The outbound booking's stamp — sorts and badges this worklist by pickup urgency.
-			"target_lift_on",
+			"target_lift_on", "target_survey_on",
 		],
 		order_by="creation desc",
 		limit_page_length=0,
@@ -1770,6 +1770,29 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 	total = len(items)
 	items = _by_lift_on(items, start, page_length)
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
+
+
+def _stamp_who(items: list[dict]) -> list[dict]:
+	"""Attach ``inspector_name`` — the person, not their login.
+
+	The worklist is branch-scoped, so every row can belong to somebody else and "who is
+	holding this one" / "who finished it" are the questions a shift lead asks first. An email
+	address answers neither at arm's length on a phone; a name (and the initials a row can be
+	tagged with) does. One query for the whole page, not one per row.
+	"""
+	users = {i.get("inspector") for i in items if i.get("inspector")}
+	if not users:
+		return items
+	names = {
+		u.name: (u.full_name or u.name)
+		for u in frappe.get_all(
+			"User", filters={"name": ("in", list(users))}, fields=["name", "full_name"]
+		)
+	}
+	for i in items:
+		if i.get("inspector"):
+			i["inspector_name"] = names.get(i["inspector"]) or i["inspector"]
+	return items
 
 
 def list_review_eirs(search=None, start=0, page_length=20) -> dict:
@@ -1807,7 +1830,7 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "container_principal",
 			"inspection_type", "status", "tank_status", "docstatus", "eir_date", "creation",
-			"target_lift_on",
+			"target_lift_on", "target_survey_on", "inspector", "modified",
 		],
 		order_by="creation desc",
 		limit_page_length=0,
@@ -1817,7 +1840,7 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 	# yard, which is what makes that affordable.
 	total = len(items)
 	items = _by_lift_on(items, start, page_length)
-	return {"items": items, "total": total, "start": start, "page_length": page_length}
+	return {"items": _stamp_who(items), "total": total, "start": start, "page_length": page_length}
 
 
 def withdraw_review(inspection: str) -> dict:
@@ -1944,7 +1967,7 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 			# scopes the next/prev EIR navigator to the account working them.
 			"work_started_on", "work_started_by",
 			# The tank is on its way out — the plan's stamp says whether that is today.
-			"target_lift_on",
+			"target_lift_on", "target_survey_on",
 		],
 		order_by="creation desc",
 		limit_page_length=0,

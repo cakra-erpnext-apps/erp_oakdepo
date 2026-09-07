@@ -746,6 +746,35 @@ def notify_waiting_lowering(survey, *, reopened=False):
 	)
 
 
+def notify_position_order(tank):
+	"""Fire when a tank joins a survey schedule with no usable answer about where it stands.
+
+	The one job this bell asks for is a walk and a note — see
+	``container_position.open_position_orders``, which is the queue it points at. It goes to
+	the LOWERING crew and nobody else: finding the tank is the first half of getting it down,
+	so this is the same handoff as ``position_survey_pending`` arriving a step earlier. Every
+	other field team may still correct a position they walk past — the menu is open to all of
+	them — but being allowed to answer is not the same as being asked. Rung per
+	TANK rather than per booking because that is the unit of the walk: three tanks on one
+	booking are three stacks, often in three different corners, and a single "booking X perlu
+	dicek" would have to be opened before it said anything actionable.
+
+	The survey date rides in the subject for the same reason it does on the schedule's own
+	bell: it is what decides whether this is a walk for this afternoon or something to fold
+	into tomorrow's round.
+	"""
+	cno = tank.get("container_no") or tank.get("container")
+	when = tank.get("survey_date")
+	subject = f"Cek letak tank • {cno}" + (f" — survey {when}" if when else "")
+	notify(
+		doctype="Container",
+		name=tank.get("container"),
+		subject=subject,
+		branch=_depot_branch(tank.get("depot")),
+		event_key="position_order_pending",
+	)
+
+
 def notify_position_lowered(survey, *, reopened=False):
 	"""Fire when a tank reaches the surveyor's queue — it has been dropped to ground level
 	(Waiting Lowering -> Lowered), or a closed survey was sent back for a redo (`reopened`).

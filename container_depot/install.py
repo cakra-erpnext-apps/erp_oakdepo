@@ -2135,6 +2135,15 @@ NOTIFICATION_RULES = [
 	# else — the same rule the cleaning / M&R crews follow.
 	("position_survey_pending", "Tank menunggu lowering", "Booking Tank Out menjadwalkan tank ini — Kalmar harus menurunkannya ke ground level dulu.",
 		["Team Kalmar", "SPV Lapangan", "Admin Ops"]),
+	# Cek letak tank — handoff Team Kalmar, dan hanya mereka. Menu `tankPos` memang dipegang
+	# SETIAP peran lapangan (FIELD_ROLE_MATRIX), tapi itu soal siapa yang BOLEH membetulkan
+	# letak tank yang kebetulan dilewati, bukan soal siapa yang ditugasi mencarinya. Antrean
+	# ini adalah langkah pertama menurunkan tank — pekerjaan yang tidak bisa dimulai sebelum
+	# tanknya ketemu — jadi ia milik kru yang sama dengan `position_survey_pending`.
+	# Membunyikannya ke semua tim akan melatih sisanya mengabaikan lonceng yang justru
+	# pekerjaan mereka; lihat test_field_teams_are_only_told_on_handoff.
+	("position_order_pending", "Cek letak tank", "Tank masuk jadwal survey tapi letaknya belum pernah dicatat (atau catatannya lebih tua dari booking-nya).",
+		["Team Kalmar", "SPV Lapangan", "Admin Ops"]),
 	("position_surveyed", "Tank siap disurvey", "Tank sudah turun ke ground level dan letaknya dicatat — menunggu surveyor menutup survey.",
 		["Team Survey", "SPV Lapangan", "Admin Ops"]),
 	# Bukan sekadar pengawasan, tidak seperti versi lamanya: penutupan survey inilah yang

@@ -64,6 +64,9 @@ EVENT_DOCTYPES = [
 	("eir_out_hold", "Container"),
 	("survey_order_scheduled", "Survey Order"),
 	("position_survey_pending", "Survey Order"),
+	# Per TANK, and so on the Container: the walk this asks for is per tank, and the bell
+	# deep-links to that tank's own record form.
+	("position_order_pending", "Container"),
 	("position_surveyed", "Survey Order"),
 	("position_confirmed", "Survey Order"),
 	("gate_out", "Gate Entry"),

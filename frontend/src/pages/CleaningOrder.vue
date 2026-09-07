@@ -110,13 +110,11 @@
 									<!-- One subtitle line: what state it is in, when it has to be out, and
 									     what it is. Ordered by urgency so the truncation eats the least
 									     important half first. -->
-									<p class="flex items-center gap-1.5 text-[11px]">
+									<p class="flex flex-wrap items-center gap-1.5 text-[11px]">
 										<span v-if="o.status === 'In_Progress'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
 											<Icon name="clock" :size="11" /> {{ labels.cleaningInProgress }}
 										</span>
-										<span v-if="o.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(o.target_lift_on)">
-											Lift-on {{ hMinus(o.target_lift_on) }}
-										</span>
+										<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" />
 										<span v-if="o.cleaning_type" class="oak-chip shrink-0 bg-brand-100 text-brand-700">
 											{{ o.cleaning_type }}
 										</span>
@@ -416,12 +414,12 @@ import { computed, nextTick, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
-import { hMinus, liftClass } from "@/utils/liftOn"
 import { saveToast, toast } from "@/utils/toast"
 import { claimMessage, isClaimed } from "@/utils/claim"
 import { confirm } from "@/utils/confirm"
 import { shootOrFallback } from "@/utils/camera"
 import Icon from "@/components/Icon.vue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"

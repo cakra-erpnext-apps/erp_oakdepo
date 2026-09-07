@@ -32,11 +32,20 @@ CONTAINER_FIELD = "lift_on_booking"
 # pickup to prepare for.
 OUTBOUND = "Tank Out"
 
-# The header's date for the day the tanks are collected — what the whole priority is about.
+# The two header dates a booking carries, and the order the depot works to.
+#
+# ``survey_date`` is when the tank is inspected on the ground; ``plan_date`` is when the truck
+# comes for it. Preparation — cleaning, M&R, getting the tank down, the EIR-Out — has to be
+# finished by the SURVEY, not by the pickup, so the survey date is the deadline every worklist
+# sorts by (``worklist.sort_by_priority``). The pickup date stays stamped beside it because it
+# is a different fact and the gate and the customer both ask about it; it is also the fallback
+# for a booking whose survey day nobody has set yet.
+#
 # On the header, not per line: one booking is one job with one intended day, and the line
 # carries the realisation (the day its bon came out) instead — a date that only exists once
-# the preparation this deadline drives is already over.
+# the preparation these deadlines drive is already over.
 HEADER_DATE = "plan_date"
+SURVEY_DATE = "survey_date"
 
 
 def _booking_is_live(doc) -> bool:
@@ -63,12 +72,15 @@ def sync_booking_targets(doc) -> None:
 	listed = set()
 	live = _booking_is_live(doc)
 	date = doc.get(HEADER_DATE)
+	survey = doc.get(SURVEY_DATE)
 	for row in doc.get("items") or []:
 		if not row.get("container"):
 			continue
 		listed.add(row.container)
-		if live and date:
-			set_target(row.container, date, doc.name)
+		# Either date is enough to be worth stamping: a booking with only a survey day still
+		# has a deadline, and one with only a pickup day still has the fallback.
+		if live and (date or survey):
+			set_target(row.container, date, survey, doc.name)
 		else:
 			clear_target(row.container, doc.name)
 	for container in containers_pointing_to(doc.name):
@@ -76,14 +88,15 @@ def sync_booking_targets(doc) -> None:
 			clear_target(container, doc.name)
 
 
-def set_target(container: str, date, booking: str) -> None:
-	d = getdate(date)
+def set_target(container: str, date, survey, booking: str) -> None:
+	d = getdate(date) if date else None
+	sd = getdate(survey) if survey else None
 	frappe.db.set_value(
 		"Container", container,
-		{"target_lift_on": d, CONTAINER_FIELD: booking},
+		{"target_lift_on": d, "target_survey_on": sd, CONTAINER_FIELD: booking},
 		update_modified=False,
 	)
-	push_to_open_orders(container, d)
+	push_to_open_orders(container, d, sd)
 
 
 def clear_target(container: str, booking: str) -> None:
@@ -93,15 +106,15 @@ def clear_target(container: str, booking: str) -> None:
 		return
 	frappe.db.set_value(
 		"Container", container,
-		{"target_lift_on": None, CONTAINER_FIELD: None},
+		{"target_lift_on": None, "target_survey_on": None, CONTAINER_FIELD: None},
 		update_modified=False,
 	)
-	push_to_open_orders(container, None)
+	push_to_open_orders(container, None, None)
 
 
-def push_to_open_orders(container: str, date) -> None:
-	"""Mirror the container's ``target_lift_on`` onto every order still holding it, so the
-	PWA + Desk worklists can sort and badge by it across pagination.
+def push_to_open_orders(container: str, date, survey=None) -> None:
+	"""Mirror the container's two dates onto every order still holding it, so the PWA + Desk
+	worklists can sort and badge by them across pagination.
 
 	New orders inherit it through ``fetch_from``; this keeps ALREADY-open ones in step when
 	the booking changes or closes.
@@ -127,8 +140,14 @@ def push_to_open_orders(container: str, date) -> None:
 		)
 	]
 	for doctype, name in targets:
-		if frappe.get_meta(doctype).has_field("target_lift_on"):
-			frappe.db.set_value(doctype, name, "target_lift_on", date, update_modified=False)
+		meta = frappe.get_meta(doctype)
+		stamp = {}
+		if meta.has_field("target_lift_on"):
+			stamp["target_lift_on"] = date
+		if meta.has_field("target_survey_on"):
+			stamp["target_survey_on"] = survey
+		if stamp:
+			frappe.db.set_value(doctype, name, stamp, update_modified=False)
 	# ...and the open survey rows, for the same reason as the EIR-Out: getting the tank down and
 	# checked is part of getting it OUT, not something standing in the way of it. Those two
 	# worklists are arguably the ones that want the date most — an operator with ten tanks to
@@ -137,7 +156,7 @@ def push_to_open_orders(container: str, date) -> None:
 	frappe.db.set_value(
 		"Survey Order Tank",
 		{"container": container, "parenttype": "Survey Order", "status": ["!=", "Cancelled"]},
-		"target_lift_on", date, update_modified=False,
+		{"target_lift_on": date, "target_survey_on": survey}, update_modified=False,
 	)
 
 

@@ -30,6 +30,7 @@
   "principal",
   "container_no",
   "target_lift_on",
+  "target_survey_on",
   "inspection",
   "container_booking",
   "reff_email",
@@ -87,7 +88,8 @@
    "label": "Jenis Pekerjaan",
    "options": "Repair\nPeriodic Test",
    "reqd": 1
-  },  {
+  },
+  {
    "depends_on": "eval:doc.job_type == \"Periodic Test\"",
    "fieldname": "pt_type",
    "fieldtype": "Select",
@@ -96,7 +98,6 @@
    "mandatory_depends_on": "eval:doc.job_type == \"Periodic Test\"",
    "options": "\n2,5Y\n5Y"
   },
-
   {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
@@ -218,6 +219,16 @@
    "no_copy": 1,
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "description": "Tanggal survey dari booking keluar, lewat container. Dipakai worklist untuk prioritas.",
+   "fetch_from": "container.target_survey_on",
+   "fieldname": "target_survey_on",
+   "fieldtype": "Date",
+   "hidden": 1,
+   "label": "Tanggal Survey",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "inspection",
@@ -366,7 +377,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-04 09:35:00.000000",
+ "modified": "2026-09-07 15:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

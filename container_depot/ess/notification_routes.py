@@ -161,6 +161,16 @@ def _monitor(doctype, name):
 	return "/monitor"
 
 
+def _tank_position(doctype, name):
+	"""The tank whose place is being asked about, opened straight onto its record form.
+
+	Deep-linked by container: the bell is per tank precisely because the walk is per tank, so
+	landing on the finder and making the operator retype the number they were just shown would
+	throw away the only thing the notification knew.
+	"""
+	return f"/tank-position?c={name}"
+
+
 def _none(doctype, name):
 	"""Documents the PWA has no screen for. Desk-only, and honest about it."""
 	return None
@@ -188,6 +198,7 @@ _BY_EVENT = {
 	"order_muat_survey": _eir_pending,
 	"survey_order_scheduled": _schedule,
 	"position_survey_pending": _lowering_queue,
+	"position_order_pending": _tank_position,
 	"position_surveyed": _schedule,
 	"position_confirmed": _eir_pending,
 	"eir_out_hold": _eir_worklist,

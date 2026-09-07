@@ -119,7 +119,7 @@ def _attach_positions(rows) -> list:
 		r["location_updated_by"] = t.get("location_updated_by")
 		r.update(_age(t.get("location_updated_on")))
 		r["location_updated_on"] = str(t["location_updated_on"]) if t.get("location_updated_on") else None
-		for k in ("target_lift_on", "lowered_on", "surveyed_on"):
+		for k in ("target_lift_on", "target_survey_on", "lowered_on", "surveyed_on"):
 			if r.get(k):
 				r[k] = str(r[k])
 	return rows
@@ -200,6 +200,8 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 				# default even for one already on the ground, because nobody has yet said so.
 				"depot": frappe.db.get_value("Container", container, "depot") or booking.depot,
 				"target_lift_on": booking.plan_date,
+				# The date this row is actually worked to — see worklist.priority_date.
+				"target_survey_on": booking.survey_date,
 			})
 			added.append(container)
 
@@ -218,6 +220,7 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 					"container": container, "status": WAITING,
 					"depot": frappe.db.get_value("Container", container, "depot") or booking.depot,
 					"target_lift_on": booking.plan_date,
+					"target_survey_on": booking.survey_date,
 				})
 
 		is_new = doc.is_new()
@@ -225,10 +228,50 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		refresh_progress(doc.name)
 		if is_new:
 			notify_survey_order_scheduled(doc)
+		# Letak tank: satu panggilan untuk tank yang BARU masuk jadwal ini. Surveyornya
+		# datang ke hari yang sudah punya tanggal, dan yang menentukan hari itu berjalan
+		# lancar atau habis buat berkeliling yard adalah apakah letak tiap tank sudah dicatat
+		# — lihat container_position.open_position_orders. Dipanggil hanya untuk `added`,
+		# bukan tiap penyimpanan booking: booking disimpan berkali-kali, dan lonceng yang
+		# berbunyi tiap kali orang mengetik remarks adalah lonceng yang berhenti dibaca.
+		_raise_position_orders(added, doc)
 		return {"survey_order": doc.name, "tanks": added}
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), f"provision survey order for {booking_name}")
 		return {"survey_order": existing, "tanks": []}
+
+
+def _raise_position_orders(containers: list, schedule) -> None:
+	"""Ring "cek letak tank" for the tanks on this schedule whose place nobody knows yet.
+
+	Not a document of its own, deliberately. The task is "go and tell us where this tank is",
+	and the depot already has exactly one channel for that answer — a ``Container Position``
+	reading, which any field crew may file (``ess/container_position``). An order document
+	beside it would need creating, cancelling when the booking moves, and cleaning up when the
+	tank leaves, and all it could ever say is what the tank's own emptiness already says. So
+	the queue is DERIVED (``container_position.open_position_orders``) and this only raises the
+	bell that puts somebody on it.
+
+	Best-effort: a schedule that cannot ring must still be a schedule.
+	"""
+	from container_depot.container_depot.container_position import needs_position
+	from container_depot.container_depot.notify import notify_position_order
+
+	for container in containers or []:
+		try:
+			if not needs_position(container):
+				continue
+			row = frappe.db.get_value(
+				"Container", container, ["container_no", "depot"], as_dict=True
+			) or frappe._dict()
+			notify_position_order({
+				"container": container,
+				"container_no": row.get("container_no") or container,
+				"depot": row.get("depot") or schedule.get("depot"),
+				"survey_date": schedule.get("survey_date"),
+			})
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"position order for {container}")
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +353,22 @@ def list_survey_orders(date: str | None = None, start=0, page_length=20) -> dict
 
 SCHEDULE_STATUSES = (SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED)
 
+# The strings a GET param arrives as when the caller meant to send nothing. frappe-ui builds a
+# query string with `URLSearchParams.append`, which turns an `undefined` value into these six
+# letters rather than dropping the key — so "no filter" reaches us as a filter that is present
+# and junk. The frontend now strips them before the request (`data/cache.js`), but a handset
+# running an already-installed build keeps sending them until its service worker updates, and
+# this endpoint is whitelisted for other callers besides.
+_NOT_A_VALUE = ("undefined", "null", "none")
+
+
+def _filter_value(value):
+	"""``value`` unless it is one of the placeholder strings above, or blank."""
+	value = (value or "").strip() if isinstance(value, str) else value
+	if isinstance(value, str) and value.lower() in _NOT_A_VALUE:
+		return None
+	return value or None
+
 
 def list_all_survey_orders(status=None, from_date=None, to_date=None, search=None,
 						   start=0, page_length=20) -> dict:
@@ -330,6 +389,10 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 	Hence the child-table pass.
 	"""
 	filters = _depot_filter({})
+	# A date filter is the one that cannot shrug off a placeholder: `getdate("undefined")`
+	# throws, and the whole list 500s instead of simply coming back unfiltered.
+	from_date = _filter_value(from_date)
+	to_date = _filter_value(to_date)
 	if status and status in SCHEDULE_STATUSES:
 		filters["status"] = status
 	if from_date:
@@ -342,8 +405,8 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 		)
 
 	or_filters = None
-	search = (search or "").strip()
-	if search and search.lower() not in ("undefined", "null", "none"):
+	search = _filter_value(search)
+	if search:
 		like = f"%{search}%"
 		or_filters = [
 			[SCHEDULE, "name", "like", like],
@@ -425,6 +488,7 @@ def get_survey_order_detail(name: str) -> dict:
 		{
 			"name": r.name, "container": r.container, "container_no": r.container_no,
 			"status": r.status, "depot": r.depot, "target_lift_on": r.target_lift_on,
+			"target_survey_on": r.target_survey_on,
 			"lowered_by": r.lowered_by, "lowered_on": r.lowered_on,
 			"surveyed_by": r.surveyed_by, "surveyed_on": r.surveyed_on,
 			"reopen_note": r.reopen_note, "eir_out": r.eir_out, "idx": r.idx,
@@ -465,15 +529,16 @@ def _list_rows(status, start=0, page_length=20, search=None) -> dict:
 	"""
 	filters = _depot_filter({"status": status, "parenttype": SCHEDULE})
 	or_filters = None
-	search = (search or "").strip()
-	if search and search.lower() not in ("undefined", "null", "none"):
+	search = _filter_value(search)
+	if search:
 		or_filters = {"container_no": ["like", f"%{search}%"], "parent": ["like", f"%{search}%"]}
 	rows = frappe.get_all(
 		ROW,
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "parent", "container", "container_no", "status", "depot",
-				"target_lift_on", "lowered_by", "lowered_on", "reopen_note", "creation"],
+				"target_lift_on", "target_survey_on", "lowered_by", "lowered_on", "reopen_note",
+				"creation"],
 		# Whole list, then sort, then slice: the priority order is decided in Python, so SQL
 		# cannot page it. Bounded by the tanks actually standing in the yard.
 		order_by="creation asc",
@@ -509,15 +574,16 @@ def list_survey_history(start=0, page_length=10, search=None) -> dict:
 	"""Finished tanks (Survey Done / Cancelled) — the PWA "Riwayat" feed, newest first."""
 	filters = _depot_filter({"status": ["in", [DONE, CANCELLED]], "parenttype": SCHEDULE})
 	or_filters = None
-	search = (search or "").strip()
-	if search and search.lower() not in ("undefined", "null", "none"):
+	search = _filter_value(search)
+	if search:
 		or_filters = {"container_no": ["like", f"%{search}%"], "parent": ["like", f"%{search}%"]}
 	rows = frappe.get_all(
 		ROW,
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "parent", "container", "container_no", "status", "depot",
-				"target_lift_on", "lowered_by", "lowered_on", "surveyed_by", "surveyed_on",
+				"target_lift_on", "target_survey_on", "lowered_by", "lowered_on", "surveyed_by",
+				"surveyed_on",
 				"survey_notes", "eir_out", "reopen_note", "creation"],
 		order_by="surveyed_on desc, creation desc",
 		limit_start=cint(start),
@@ -534,6 +600,7 @@ def get_tank_detail(name: str) -> dict:
 	row = frappe.db.get_value(
 		ROW, name,
 		["name", "parent", "container", "container_no", "status", "depot", "target_lift_on",
+		 "target_survey_on",
 		 "lowered_by", "lowered_on", "lowering_note", "surveyed_by", "surveyed_on",
 		 "survey_notes", "eir_out", "reopen_note"],
 		as_dict=True,

@@ -100,13 +100,11 @@
 									<!-- One subtitle line: what state it is in, when it has to be out, and
 									     how big the job is. Ordered by urgency so the truncation eats the
 									     least important half first. -->
-									<p class="flex items-center gap-1.5 text-[11px]">
+									<p class="flex flex-wrap items-center gap-1.5 text-[11px]">
 										<span v-if="o.status === 'In Progress'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
 											<Icon name="clock" :size="11" /> {{ labels.mrInProgress }}
 										</span>
-										<span v-if="o.target_lift_on" class="shrink-0 font-semibold" :class="liftClass(o.target_lift_on)">
-											Lift-on {{ hMinus(o.target_lift_on) }}
-										</span>
+										<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" />
 										<span class="truncate text-gray-400">
 											<template v-if="o.item_count">{{ o.item_count }} {{ labels.mrItemsCount }}</template>
 											<template v-else>{{ o.repair_order_id }}</template>
@@ -396,13 +394,13 @@ import { createResource } from "frappe-ui"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
-import { hMinus, liftClass } from "@/utils/liftOn"
 import { toast } from "@/utils/toast"
 import { claimMessage, isClaimed } from "@/utils/claim"
 import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
 import { confirm } from "@/utils/confirm"
 import Icon from "@/components/Icon.vue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"

@@ -23,10 +23,30 @@ export const hMinus = (v) => {
 	return `H-${d}`
 }
 
-export const liftClass = (v) => {
+/**
+ * Warna badge-nya — satu tanjakan mendesak, bukan sekadar teks berwarna.
+ *
+ * Dulu ini cuma `text-*`: tulisan berwarna di antara tulisan berwarna lain, satu-satunya
+ * pembeda dari nomor EIR abu-abu di sebelahnya adalah rona. Di baris worklist yang sudah
+ * memuat chip "Sedang dikerjakan" dan chip jenis cleaning, prioritas justru jadi hal paling
+ * tidak kelihatan padahal dialah yang menentukan tank mana dikerjakan duluan. Sekarang
+ * berlatar, sejajar dengan chip lain di baris yang sama (lihat LiftOnBadge.vue).
+ *
+ * Ambangnya persis seperti sebelumnya (<=1 hari merah, <=3 kuning) supaya kosakata yang
+ * sudah dihafal operator tidak bergeser. Yang berubah cuma ujung jauhnya: dulu oranye
+ * brand — tetangga dekat kuning, jadi H-7 dan H-3 nyaris tak terbedakan sekilas, dan di
+ * baris Cleaning ia bertabrakan dengan chip jenis cleaning yang juga brand. Abu-abu
+ * membuat tanjakannya terbaca sebagai tanjakan: diam → kuning → merah → merah penuh.
+ */
+export const liftChipClass = (v) => {
 	const d = liftDays(v)
 	if (d === null) return ""
-	if (d <= 1) return "text-red-600"
-	if (d <= 3) return "text-amber-600"
-	return "text-brand-600"
+	if (d < 0) return "bg-red-600 text-white"
+	if (d <= 1) return "bg-red-100 text-red-700 ring-1 ring-red-200"
+	if (d <= 3) return "bg-amber-100 text-amber-800"
+	return "bg-gray-100 text-gray-600"
 }
+
+/** Lewat tenggat pantas dapat ikonnya sendiri: warna saja menuntut perbandingan dengan
+ *  baris lain, bentuk tidak. */
+export const liftIcon = (v) => (liftDays(v) < 0 ? "alert-triangle" : "calendar")

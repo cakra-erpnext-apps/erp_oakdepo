@@ -92,6 +92,16 @@ export function fmtDateShort(v) {
 	return `${d} ${MONTHS[m - 1]?.slice(0, 3)} ${y}`
 }
 
+/** `2026-09-04` -> `4 Sep`. Tahunnya dibuang karena bentuk ini hanya dipakai berdampingan
+ *  dengan hitung mundurnya (H-2, Lewat 3 hr): jaraknya sudah dinyatakan di sebelahnya, jadi
+ *  tahun cuma menambah lebar pada badge yang harus muat di samping chip lain. */
+export function fmtDayMonth(v) {
+	if (!v) return ""
+	const [y, m, d] = String(v).slice(0, 10).split("-").map(Number)
+	if (!y || !m) return String(v)
+	return `${d} ${MONTHS[m - 1]?.slice(0, 3)}`
+}
+
 /**
  * "2 jam lalu" / "Sejak 08:35" — how OLD a reading is, in the words an operator thinks in.
  *

@@ -39,6 +39,18 @@ def tank_search(search=None, start=0, page_length=20, only_unlocated=0):
 
 
 @frappe.whitelist(methods=["GET"])
+def position_orders(start=0, page_length=20):
+	"""GET /api/v1/ess/position-orders — antrean "cek letak tank": tank yang surveinya sudah
+	dijadwalkan tapi letaknya belum/basi dicatat. Lihat ``container_position.open_position_orders``.
+
+	Menu yang sama dengan pencatatannya (``tankPos``), dan itu memang jawabannya soal
+	permission: yang boleh mencatat letak tank boleh melihat tank mana yang menunggu dicatat.
+	"""
+	require_menu(MENU)
+	return container_position.open_position_orders(start=start, page_length=page_length)
+
+
+@frappe.whitelist(methods=["GET"])
 def tank_position(container=None):
 	"""GET /api/v1/ess/tank-position — one tank's current location, its age, and the readings
 	behind it."""

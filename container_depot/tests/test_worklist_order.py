@@ -25,8 +25,8 @@ from frappe.utils import add_days, today
 from container_depot.container_depot.worklist import sort_by_priority
 
 
-def _row(name, lift=None, started=False):
-	return {"name": name, "target_lift_on": lift, "started": started}
+def _row(name, lift=None, started=False, survey=None):
+	return {"name": name, "target_lift_on": lift, "target_survey_on": survey, "started": started}
 
 
 class TestWorklistOrder(FrappeTestCase):
@@ -75,6 +75,26 @@ class TestWorklistOrder(FrappeTestCase):
 		in the sort key exists to prevent."""
 		rows = [_row("no-date"), _row("dated", lift=add_days(today(), 30))]
 		self.assertEqual(self._order(rows), ["dated", "no-date"])
+
+	def test_the_survey_day_is_the_deadline_not_the_pickup(self):
+		"""Changed 2026-09-07. Preparation is finished at the SURVEY — that is the morning the
+		tank has to be down, clean, repaired and inspectable — so a queue sorted by the pickup
+		was working to a deadline days later than the real one."""
+		rows = [
+			_row("pickup-sooner", lift=add_days(today(), 1), survey=add_days(today(), 8)),
+			_row("survey-sooner", lift=add_days(today(), 9), survey=add_days(today(), 2)),
+		]
+		self.assertEqual(self._order(rows), ["survey-sooner", "pickup-sooner"])
+
+	def test_a_booking_with_no_survey_day_still_has_its_pickup(self):
+		"""The fallback matters as much as the rule: a booking whose survey nobody has
+		scheduled yet still has a truck coming, and dropping it to the bottom would hide it."""
+		rows = [
+			_row("no-survey", lift=add_days(today(), 1)),
+			_row("surveyed", survey=add_days(today(), 3)),
+			_row("nothing"),
+		]
+		self.assertEqual(self._order(rows), ["no-survey", "surveyed", "nothing"])
 
 	def test_the_querys_own_order_settles_the_rest(self):
 		"""Python's sort is stable, so "oldest first" keeps coming from the SQL order_by and

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_days, add_to_date, now_datetime, today
 
 from container_depot.container_depot import container_position as cp
 from container_depot.tests.test_eir import _make_container
@@ -50,6 +50,78 @@ class _Base(FrappeTestCase):
 			["current_location", "location_updated_on", "location_updated_by"],
 			as_dict=True,
 		)
+
+
+class TestThePositionQueue(_Base):
+	"""Antrean "cek letak tank" — turunan, tanpa dokumen order (lihat
+	``container_position.open_position_orders``)."""
+
+	def setUp(self):
+		super().setUp()
+		self._bookings = []
+
+	def tearDown(self):
+		for b in self._bookings:
+			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Container Booking", {"name": b})
+		super().tearDown()
+
+	def _scheduled(self, cno):
+		"""Tank yang sudah dipegang booking keluar, distempel persis seperti ``lift_on``.
+
+		Validasi booking dilewati: harga dan gerbang pembayaran tidak mengatakan apa pun soal
+		letak tank — yang dibaca antrean ini cuma tanggal pembuatan booking-nya.
+		"""
+		c = self._container(cno)
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
+			"survey_date": add_days(today(), 3),
+			"items": [{"container": c}],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+		frappe.db.set_value(
+			"Container", c,
+			{"lift_on_booking": doc.name, "target_survey_on": add_days(today(), 3)},
+			update_modified=False,
+		)
+		return c
+
+	def _queued(self):
+		return [r["name"] for r in cp.open_position_orders()["items"]]
+
+	def test_a_tank_nobody_has_located_is_in_the_queue(self):
+		c = self._scheduled("CPOS00000030")
+		self.assertIn(c, self._queued())
+
+	def test_filing_a_reading_takes_it_out_again(self):
+		"""Yang menutup antrean ini adalah jawabannya sendiri — tidak ada dokumen yang harus
+		ditutup, dan karena itulah antrean ini tidak butuh dokumen."""
+		c = self._scheduled("CPOS00000031")
+		cp.record_position(c, "blok B baris 2")
+		self.assertNotIn(c, self._queued())
+
+	def test_a_tank_with_no_booking_is_not_asked_about(self):
+		"""Antrean ini soal tank yang sedang ditunggu, bukan seluruh isi yard — daftar
+		"Belum Terdata" yang menjawab pertanyaan itu."""
+		c = self._container("CPOS00000032")
+		self.assertNotIn(c, self._queued())
+
+	def test_a_reading_older_than_the_booking_still_counts_as_unanswered(self):
+		"""Letak yang dicatat sebelum ada alasan untuk mencari tank ini bukan jawaban yang
+		salah — ia jawaban atas pertanyaan yang waktu itu belum ditanyakan. Tank sudah
+		dipindah tiga reachstacker sejak itu."""
+		c = self._scheduled("CPOS00000033")
+		cp.record_position(c, "blok lama")
+		self.assertNotIn(c, self._queued())  # baru dicatat: terjawab
+		# Mundurkan pembacaannya ke sebelum booking-nya ada, dan pertanyaannya terbuka lagi.
+		frappe.db.set_value(
+			"Container", c, "location_updated_on", add_to_date(now_datetime(), days=-30),
+			update_modified=False,
+		)
+		self.assertTrue(cp.needs_position(c))
+		self.assertIn(c, self._queued())
 
 
 class TestRecordingAPosition(_Base):
