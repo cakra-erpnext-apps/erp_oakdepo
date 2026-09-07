@@ -619,20 +619,18 @@ def get_tank_detail(name: str) -> dict:
 	if out["schedule"]:
 		for k in ("survey_date", "plan_date"):
 			out["schedule"][k] = str(out["schedule"][k]) if out["schedule"][k] else None
-	# The readings behind the current position, so the operator can see whether the tank has
-	# been reported in three different blocks this morning.
-	out["position_history"] = frappe.get_all(
+	# The pictures of the position shown above — the newest reading only, because that reading
+	# IS the position on the master. A surveyor deciding which stack to walk to is the reader
+	# who most needs the picture; the older readings are a Letak Tank question, and this screen
+	# deliberately does not repeat them.
+	latest = frappe.get_all(
 		"Container Position",
 		filters={"container": row.container},
-		fields=["name", "location_note", "recorded_by", "recorded_on"],
+		fields=["name"],
 		order_by="recorded_on desc, creation desc",
-		limit_page_length=3,
+		limit_page_length=1,
 	)
-	for h in out["position_history"]:
-		h["recorded_on"] = str(h["recorded_on"]) if h["recorded_on"] else None
-	# With their photos: a surveyor deciding which stack to walk to is the reader who most
-	# needs the picture, and this is the same history the Letak Tank screen shows.
-	_attach_photos(out["position_history"])
+	out["position_photos"] = _attach_photos(latest)[0]["photos"] if latest else []
 	return out
 
 

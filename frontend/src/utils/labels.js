@@ -875,7 +875,6 @@ export const labels = {
 	tankPosStale: "Perlu dicek ulang",
 	tankPosFresh: "Baru diperbarui",
 	tankPosBy: "oleh",
-	tankPosOpenFinder: "Buka menu Letak Tank",
 	// Detail tank (di dalam jadwal survey)
 	tankDetailTitle: "Detail Tank",
 	tankDetailLocation: "Lokasi",

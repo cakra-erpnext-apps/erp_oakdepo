@@ -52,8 +52,14 @@
 			<!-- The location is READ from the Container master, never stored on this row — it is
 			     a fact about the tank, kept current by the Letak Tank menu that anyone in the
 			     yard can use. The age comes with it, because "blok kanan, 20 menit lalu" and
-			     "blok kanan, 3 bulan lalu" are not the same instruction. -->
-			<section class="oak-card space-y-2 p-4" :class="tank.located ? '' : 'border-red-200 bg-red-50'">
+			     "blok kanan, 3 bulan lalu" are not the same instruction.
+
+			     The photos of that reading sit in this same card, not in a section of their own
+			     further down: the picture is what the operator matches against the stack in front
+			     of them, and a picture below the survey buttons is a picture nobody scrolls to.
+			     The earlier readings are not repeated here — that history is a Letak Tank
+			     question, and the link above goes there. -->
+			<section class="oak-card space-y-3 p-4" :class="tank.located ? '' : 'border-red-200 bg-red-50'">
 				<div class="flex items-center justify-between gap-2">
 					<p class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.tankDetailLocation }}</p>
 					<router-link :to="`/tank-position?c=${tank.container}`" class="oak-link text-[11px]">
@@ -77,6 +83,21 @@
 						<Icon name="alert-triangle" :size="15" /> {{ labels.tankPosUnlocated }}
 					</p>
 				</template>
+
+				<!-- Bigger than a thumbnail on purpose: this is the answer, not a decoration.
+				     Same readings, same photos as the Letak Tank screen — one source
+				     (container_position._attach_photos), never a copy. -->
+				<div v-if="latestPhotos.length" class="flex flex-wrap gap-2">
+					<img
+						v-for="(url, j) in latestPhotos"
+						:key="url"
+						:src="url"
+						class="h-20 w-20 cursor-pointer rounded-lg border border-gray-200 object-cover"
+						loading="lazy"
+						@click="openLightbox(latestPhotos, j)"
+					/>
+				</div>
+
 			</section>
 
 			<section class="oak-card grid grid-cols-2 gap-x-3 gap-y-2 p-4">
@@ -187,46 +208,6 @@
 				<p class="text-sm text-gray-500">{{ labels.surveyFinishGate }}</p>
 			</section>
 
-			<!-- The last few readings of where this tank is, so the operator can see whether it
-			     has been reported in three different blocks this morning — which is what a tank
-			     nobody has actually found looks like. -->
-			<section v-if="(tank.position_history || []).length" class="oak-section space-y-2">
-				<div class="flex items-center justify-between gap-2">
-					<div class="flex items-center gap-2">
-						<Icon name="map-pin" :size="16" class="text-brand-500" />
-						<p class="oak-section-title">{{ labels.tankPosHistory }}</p>
-					</div>
-					<router-link :to="`/tank-position?c=${tank.container}`" class="oak-link text-[11px]">
-						{{ labels.tankPosOpenFinder }}
-					</router-link>
-				</div>
-				<ul class="space-y-2 text-[13px]">
-					<li v-for="(h, i) in tank.position_history" :key="h.name" class="flex items-start gap-2">
-						<span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="i === 0 ? 'bg-brand-500' : 'bg-gray-300'" />
-						<div class="min-w-0 flex-1">
-							<p class="whitespace-pre-line font-medium text-gray-800">{{ h.location_note }}</p>
-							<p class="text-xs text-gray-400">
-								{{ fmtDateTime(h.recorded_on) }}
-								<template v-if="h.recorded_by"> · {{ h.recorded_by }}</template>
-							</p>
-							<!-- The picture of the stack, on the screen where somebody is deciding
-							     which stack to walk to. Same readings, same photos as Letak Tank —
-							     one source (container_position._attach_photos), never a copy. -->
-							<div v-if="h.photos && h.photos.length" class="mt-1.5 flex flex-wrap gap-1.5">
-								<img
-									v-for="(url, j) in h.photos"
-									:key="url"
-									:src="url"
-									class="h-14 w-14 cursor-pointer rounded-md border border-gray-200 object-cover"
-									loading="lazy"
-									@click="openLightbox(h.photos, j)"
-								/>
-							</div>
-						</div>
-					</li>
-				</ul>
-			</section>
-
 			<!-- Who did what, when — the audit trail the two teams read to settle "I already
 			     dropped that one". -->
 			<section class="oak-section space-y-2">
@@ -315,7 +296,6 @@ import {
 	WAITING,
 	chipClass,
 	fmtDate,
-	fmtDateTime,
 	since,
 	stamp,
 	statusIcon,
@@ -331,6 +311,10 @@ const failed = ref(false)
 const error = ref("")
 
 const form = reactive({ location_note: "", lowering_note: "", notes: "" })
+
+// The pictures of the position shown at the top. Only the newest reading's — the older ones
+// belong to the Letak Tank screen, not to a surveyor asking where to walk.
+const latestPhotos = computed(() => tank.value?.position_photos || [])
 
 const res = cachedResource({
 	url: "container_depot.ess.tank_survey.survey_tank_detail",
