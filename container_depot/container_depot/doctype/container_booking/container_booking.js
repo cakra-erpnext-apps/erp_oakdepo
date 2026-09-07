@@ -331,6 +331,21 @@ frappe.ui.form.on('Container Booking', {
 			);
 		}
 	},
+	_hoist_work_section(frm) {
+		// Frappe prepends the connections dashboard to whichever tab carries `show_dashboard`
+		// (form.js), so a section declared on that tab always lands UNDERNEATH it — which put
+		// the panel this tab exists for below eight mostly-empty per-doctype counters. The
+		// connections stay as the flat backup; the work panel goes on top. Done in JS because
+		// the placement is frappe's, not the doctype JSON's, so there is nothing to reorder.
+		const $section = frm.get_field('orders_by_container_html')?.$wrapper?.closest('.form-section');
+		if (!$section?.length) return;
+		const $dashboard = frm.dashboard?.parent;
+		// Sections and the dashboard are siblings inside the tab pane (layout.js puts both on
+		// `tab.wrapper`), so this is a plain move. Skipped once it is already in place: a
+		// re-insert on every refresh would tear the panel out of the DOM and back in.
+		if (!$dashboard?.length || $dashboard.prev().is($section)) return;
+		$section.insertBefore($dashboard);
+	},
 	_render_work_per_container(frm) {
 		// Two different questions, and which one this booking is asking depends on its
 		// direction. OUTBOUND: what still has to happen to these tanks before the truck
@@ -338,6 +353,7 @@ frappe.ui.form.on('Container Booking', {
 		// raised UNDER this booking, which is attribution, not readiness. Showing both would
 		// be two panels answering almost the same thing, which is exactly what the split
 		// avoids.
+		frm.trigger('_hoist_work_section');
 		if (frm.doc.direction === 'Tank Out') {
 			frm.trigger('_render_tank_dossier');
 			return;
@@ -361,6 +377,15 @@ frappe.ui.form.on('Container Booking', {
 		}).then((r) => {
 			if (frm.doc.name !== shown_for) return; // reply landed after the form moved on
 			wrapper.html(_dossier_html(r.message || []));
+			// Delegated once per render, namespaced so re-rendering cannot stack handlers:
+			// the rows are rebuilt on every refresh, so binding them individually would
+			// leave the old ones behind.
+			wrapper.off('click.dossier').on('click.dossier', '.dossier-more', function (e) {
+				e.preventDefault();
+				const $link = $(this);
+				const hidden = $link.siblings('.dossier-extra').toggleClass('hide').hasClass('hide');
+				$link.text($link.data(hidden ? 'more' : 'less'));
+			});
 		});
 	},
 	_render_booking_work(frm) {
@@ -1326,11 +1351,8 @@ function _dossier_html(tanks) {
 			// Every tank is listed even when it has nothing open — "this one is clear" is an
 			// answer the operator came for, and a tank that silently vanished would read as
 			// one nobody had looked at.
-			const rows = _dossier_rows(t.orders);
-			const body = rows.length
-				? `<div class="mt-2">${rows.map(_dossier_line).join('')}</div>`
-				: `<div class="text-muted mt-2">${__('Belum ada dokumen yang tercatat pada tank ini.')}</div>`;
-			return `<div class="mb-4">
+			const body = _dossier_body(t.orders);
+			return `<div class="mb-4 dossier-tank">
 				<div class="d-flex align-items-center" style="gap: .5rem;">
 					<b>${title}</b>${status}${target}
 					<span class="ml-auto">${counts}</span>
@@ -1341,13 +1363,18 @@ function _dossier_html(tanks) {
 		.join('');
 }
 
-// One line per kind: the tank's LAST cleaning, last M&R, last EIR-In, last EIR-Out, last
-// booking, last bon. On a tank that has been through the depot twenty times the full history
-// is dozens of rows and none of it is news.
+// EVERY document the server found is rendered; what the lead answers is which ones are worth
+// reading first. Up front: the tank's LAST cleaning, last M&R, last EIR-In, last EIR-Out,
+// last survey, last booking of each direction, last bon — plus any older one still
+// unfinished, which is rare (a cleaning left at Pending while a newer one was raised and
+// finished) and precisely what this panel exists to surface. The rest — superseded history
+// and voided paperwork — sits one click away rather than being dropped, because "sudah
+// pernah dicuci dua kali" is a real question and a document that is nowhere on the page
+// cannot be found from it.
 //
-// The one exception is an OLDER document still unfinished — rare (a cleaning left at Pending
-// while a newer one was raised and finished), and precisely the thing that must not be
-// hidden: this panel exists to surface outstanding work.
+// The lead is keyed on kind AND direction: a tank's inbound and outbound bookings are two
+// different events, and collapsing them into one "Booking" slot hid the arrival that every
+// order of the visit hangs off — the bug this panel was reported for.
 //
 // A voided document is never the representative of its kind: "the last thing that happened"
 // being a cancellation says nothing about the tank. Each producer returns its kind
@@ -1356,12 +1383,32 @@ function _dossier_rows(orders) {
 	const shown_kind = new Set();
 	return (orders || []).filter((o) => {
 		if (o.cancelled) return false;
-		if (!shown_kind.has(o.kind)) {
-			shown_kind.add(o.kind);
+		const key = `${o.kind}\u0000${o.direction || ''}`;
+		if (!shown_kind.has(key)) {
+			shown_kind.add(key);
 			return true;
 		}
 		return o.open;
 	});
+}
+
+function _dossier_body(orders) {
+	const lead = _dossier_rows(orders);
+	// Identity, not a re-filter: `lead` is a subset of the very same objects, so the rest is
+	// whatever _dossier_rows did not keep — no second copy of its rules to drift.
+	const rest = (orders || []).filter((o) => !lead.includes(o));
+	if (!lead.length && !rest.length) {
+		return `<div class="text-muted mt-2">${__('Belum ada dokumen yang tercatat pada tank ini.')}</div>`;
+	}
+	const more = __('Tampilkan {0} dokumen lama', [rest.length]);
+	const less = __('Sembunyikan dokumen lama');
+	const tail = rest.length
+		? `<div class="dossier-extra hide">${rest.map(_dossier_line).join('')}</div>
+			<a class="dossier-more text-muted small" href="#"
+				data-more="${frappe.utils.escape_html(more)}"
+				data-less="${frappe.utils.escape_html(less)}">${more}</a>`
+		: '';
+	return `<div class="mt-2">${lead.map(_dossier_line).join('')}${tail}</div>`;
 }
 
 function _dossier_line(o) {

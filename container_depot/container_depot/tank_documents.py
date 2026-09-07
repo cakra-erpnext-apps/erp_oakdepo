@@ -4,9 +4,9 @@
 it can be opened instead of hunted for, and it answers the question a Tank Out booking is
 opened to ask once the truck is on its way: what still has to happen to these tanks?
 
-Six kinds, in the order an operator thinks about them: the Cleaning / M&R work behind
-readiness, the EIRs recording the tank's condition, and the Booking / Bongkar / Muat
-paperwork it moves under.
+Seven kinds, in the order an operator thinks about them: the Cleaning / M&R work behind
+readiness, the EIRs recording the tank's condition, the Survey Order that goes and finds it
+in the yard, and the Booking / Bongkar / Muat paperwork it moves under.
 
 Two different questions are answered side by side and must not be confused:
 
@@ -104,6 +104,53 @@ def _tank_eirs(container: str) -> list:
 	return out
 
 
+# The Survey Order Tank status that means the surveyor is finished with this tank. Unlike the
+# order tables there is no second one for "cancelled" — that row status is read as a voided
+# line, not a finished one, the same way a docstatus 2 parent is.
+_SURVEY_DONE = "Survey Done"
+
+
+def _tank_surveys(container: str) -> list:
+	"""The Survey Orders this tank is listed on, newest first — status read off ITS row.
+
+	A Survey Order covers a whole pickup, so the parent's status says nothing about one tank:
+	the row carries the tank's own progress (Waiting Lowering → Lowered → Survey Done), which
+	is also what the field screens write. Reached through the child table for the same reason
+	the bons are — one join, on an indexed ``container``.
+
+	Never ``blocks``: the survey is what PRODUCES the EIR-Out at the gate, not a gate of its
+	own, and a lift-on has been allowed to go ahead without one since the readiness model was
+	cut back to "the tank is present". An unfinished survey is still exactly what an operator
+	preparing a pickup came to this panel to see, which is why it is tracked as ``open``.
+	"""
+	rows = frappe.db.sql(
+		"""
+		select p.name, p.docstatus, r.status
+		  from `tabSurvey Order Tank` r
+		  join `tabSurvey Order` p on p.name = r.parent
+		 where r.container = %s and r.parenttype = 'Survey Order' and r.parentfield = 'tanks'
+		 order by p.creation desc
+		""",
+		(container,),
+		as_dict=True,
+	)
+	out = []
+	for r in rows:
+		cancelled = r.docstatus == 2 or r.status == "Cancelled"
+		done = not cancelled and r.status == _SURVEY_DONE
+		out.append({
+			"kind": "Survey",
+			"doctype": "Survey Order",
+			"name": r.name,
+			"status": _("Cancelled") if cancelled else r.status,
+			"blocks": False,
+			"open": not cancelled and not done,
+			"done": done,
+			"cancelled": cancelled,
+		})
+	return out
+
+
 # The paperwork a tank moves under: the booking that authorises the visit and the bons that
 # work it. None of these hold a lift-on back — a Tank Out booking IS the way out, not an
 # obstacle — but an unfinished one is exactly what an operator preparing a pickup needs to
@@ -164,10 +211,15 @@ def _tank_jobs(container: str, tank_status: str | None) -> list:
 					detail = _("{0} · belum ada bon").format(r.direction or _("Booking"))
 			out.append({
 				"kind": kind,
-				# Which way the booking was going. Only one booking is shown per tank (the
-				# latest), so without this the line cannot say whether that last booking
-				# brought the tank in or took it out — the first thing asked of it.
+				# Which way the booking was going. The panel shows the latest of each kind,
+				# so without this the line cannot say whether that booking brought the tank
+				# in or took it out — the first thing asked of it.
 				"detail": detail,
+				# The same fact without the "belum ada bon" annotation, because the panel
+				# groups on it: an inbound and an outbound booking are two different things
+				# that happened to a tank, and collapsing them into one "Booking" slot hid
+				# the arrival that the whole visit — and all its work — hangs off.
+				"direction": r.direction,
 				"doctype": doctype,
 				"name": r.name,
 				"status": _("Cancelled") if cancelled else r.status,
@@ -241,13 +293,16 @@ def documents_for(container: str, tank_status: str | None = None) -> list:
 		tank_status = frappe.db.get_value("Container", container, "status")
 	readable = {
 		dt
-		for dt in ("Cleaning Order", "Repair Order", "Inspection",
+		for dt in ("Cleaning Order", "Repair Order", "Inspection", "Survey Order",
 				   "Container Booking", "Order Bongkar", "Order Muat")
 		if frappe.has_permission(dt, "read")
 	}
 	return [
 		o
-		for o in _tank_orders(container) + _tank_eirs(container) + _tank_jobs(container, tank_status)
+		for o in _tank_orders(container)
+		+ _tank_eirs(container)
+		+ _tank_surveys(container)
+		+ _tank_jobs(container, tank_status)
 		if o["doctype"] in readable
 	]
 

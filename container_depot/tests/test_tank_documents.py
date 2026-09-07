@@ -115,6 +115,37 @@ class TestTankDossier(FrappeTestCase):
 		# Paperwork is tracked, never a blocker: an outbound booking IS the way out.
 		self.assertFalse(by_name[bk]["blocks"])
 
+	def test_the_survey_order_is_listed_with_this_tank_s_own_progress(self):
+		"""A survey covers a whole pickup, so the tank's line reads its ROW, not the parent.
+
+		It was missing from the panel entirely, which is how a booking could show "belum
+		selesai" without naming the one document that was actually holding it up.
+		"""
+		c = self._container("TDOC000005")
+		bk = self._booking(c)
+		svo = frappe.get_doc({
+			"doctype": "Survey Order", "booking": bk, "depot": DEPOT, "survey_date": today(),
+			"tanks": [{"container": c, "container_no": c, "status": "Lowered"}],
+		})
+		svo.flags.ignore_validate = True
+		svo.insert(ignore_permissions=True, ignore_mandatory=True)
+
+		_tank, by_name = self._by_name(bk)
+		self.assertEqual(by_name[svo.name]["kind"], "Survey")
+		self.assertEqual(by_name[svo.name]["status"], "Lowered")
+		self.assertTrue(by_name[svo.name]["open"])
+		# The survey PRODUCES the EIR-Out at the gate; it is not a gate of its own.
+		self.assertFalse(by_name[svo.name]["blocks"])
+
+	def test_a_booking_line_carries_the_direction_it_is_grouped_by(self):
+		"""The panel keeps the latest of each kind, and a tank's inbound and outbound
+		bookings are two different events — without ``direction`` they shared one slot and
+		the arrival that every order of the visit hangs off was dropped."""
+		c = self._container("TDOC000006")
+		bk = self._booking(c)
+		_tank, by_name = self._by_name(bk)
+		self.assertEqual(by_name[bk]["direction"], "Tank Out")
+
 	def test_a_tank_with_nothing_open_still_gets_a_row(self):
 		""""This one is clear" is an answer the operator came for; a tank that silently
 		vanished from the panel would read as one nobody had looked at."""
