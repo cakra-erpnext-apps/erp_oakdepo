@@ -20,7 +20,13 @@ class RepairOrder(Document):
 		unique = hashlib.md5(f"{timestamp}{frappe.generate_hash()[:10]}".encode()).hexdigest()[:8].upper()
 		return f"RO-{unique}"
 
+	# Where an M&R stops. Mirrors the dead ends of ``mr.MR_STATUS_FLOW``: Cancelled has no
+	# edge out at all, Completed only -> In Progress (``mr.reopen_completed``), Rejected only
+	# -> Draft (``mr.reopen_to_draft``).
+	_FINAL_STATUSES = ("Completed", "Rejected", "Cancelled")
+
 	def validate(self):
+		self._guard_final_status()
 		# A retired tank takes no new work (container_status.assert_container_active);
 		# only checked when the link is set or moved, so a finished order stays editable
 		# after its tank leaves the fleet.
@@ -30,6 +36,37 @@ class RepairOrder(Document):
 		self._validate_stock_available()
 		self._bind_work_photos()
 		self._guard_dates_after_billing()
+
+	def _guard_final_status(self):
+		"""A finished M&R is history — the only writes left are the edges back out of it.
+
+		This doctype is not submittable, so Frappe locks nothing by itself: without this,
+		``frappe.get_doc(...).save()`` would happily rewrite the tank, the job type or the
+		completion date of an order that is already Completed, Rejected or Cancelled, and
+		none of it would pass the reopen buttons' own checks (billed? parts back in stock?
+		logged?). The Desk form is locked to match in ``_apply_final_lock``.
+
+		Walking OUT of a final status is what ``reopen_completed`` / ``reopen_to_draft`` /
+		``set_repair_status`` do, and every one of them sets ``status`` before saving — so a
+		changed status is let through and ``_validate_status_transition`` decides whether
+		that particular edge is legal. Nothing else saves a settled order: ``request_revision``
+		and consolidated billing both write with ``frappe.db.set_value``, which never reaches
+		validate, and ``mr.save_mr_order`` refuses these three statuses outright.
+		"""
+		if self.is_new() or frappe.flags.in_migrate or frappe.flags.in_patch:
+			return
+		before = self.get_doc_before_save()
+		if not before or before.status not in self._FINAL_STATUSES:
+			return
+		if self.status != before.status:
+			return
+		frappe.throw(
+			frappe._(
+				"M&R {0} sudah {1} — isinya tidak bisa diubah lagi. "
+				"Buka dulu ordernya kalau memang harus dikoreksi."
+			).format(self.repair_order_id or self.name, before.status),
+			title=frappe._("M&R terkunci"),
+		)
 
 	# Tanggal yang menentukan PERIODE TAGIHAN: consolidated_billing / monthly_invoicing
 	# memilih order lewat rentang ``completion_date``, jadi menggesernya setelah order

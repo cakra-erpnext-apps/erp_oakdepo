@@ -123,6 +123,11 @@ function mr_bypass_button(frm, group) {
 	);
 }
 
+// Where an M&R stops. Each is terminal in mr.MR_STATUS_FLOW: Cancelled has no edge out at
+// all, Completed only -> In Progress, Rejected only -> Draft, and both of those run through
+// a server call rather than a form save.
+const MR_FINAL_STATUSES = ['Completed', 'Rejected', 'Cancelled'];
+
 // SUBMIT — the primary button, in the very slot Frappe would otherwise fill with "Save" on
 // an already-saved form. Repair Order has no docstatus, so what a submittable Cleaning Order
 // gets for free is done by hand here: one press closes the order from wherever it stands,
@@ -135,7 +140,7 @@ function mr_bypass_button(frm, group) {
 // refresh_header, which run_serially runs BEFORE the refresh script trigger: this wins.
 function mr_submit_primary(frm) {
 	if (frm.is_new() || frm.is_dirty()) return;
-	if (['Completed', 'Cancelled', 'Rejected'].includes(frm.doc.status)) return;
+	if (MR_FINAL_STATUSES.includes(frm.doc.status)) return;
 	// Same gate as the server (ess/repairs._require_admin_ops): submitting approves on the
 	// owner's behalf, so it stays with the bypass roles.
 	if (!is_admin_ops() || !frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
@@ -283,6 +288,7 @@ frappe.ui.form.on('Repair Order', {
 		};
 		if (intros[frm.doc.status]) frm.set_intro(intros[frm.doc.status][0], intros[frm.doc.status][1]);
 
+		frm.trigger('_apply_final_lock');
 		frm.trigger('_mr_buttons');
 		mr_submit_primary(frm);
 		frm.trigger('_lock_estimate_grid');
@@ -465,6 +471,31 @@ frappe.ui.form.on('Repair Order', {
 				group,
 			});
 		}
+	},
+	// Completed / Rejected / Cancelled are the end of the line, and each has exactly one way
+	// out — "Buka Lagi ke In Progress" (mr_reopen_completed) from Completed, "Kembalikan ke
+	// Draft" (reopen_to_draft) from Rejected, nothing from Cancelled. Those are server calls
+	// that check whether the order was billed, put the parts back, and log what happened.
+	// The form itself must not be a second, unguarded way in: this doctype is not submittable,
+	// so without this every header field stays typeable on a finished order and Save would
+	// rewrite the tank, the job type or the completion date of work that is already history.
+	//
+	// Reversible on purpose: one form object serves every order the user opens, and the reopen
+	// buttons bring this very document back to an in-flight status, so the unlocked branch has
+	// to hand every field back.
+	//
+	// The two grids are NOT listed — _lock_estimate_grid already locks them per status, on a
+	// finer rule than this one (the estimate closes at Pending Approval, long before the end).
+	_apply_final_lock(frm) {
+		const locked = !frm.is_new() && MR_FINAL_STATUSES.includes(frm.doc.status);
+		[
+			'container', 'depot', 'plan_date', 'job_type', 'pt_type', 'technician', 'reff_doc',
+			'remarks', 'order_created', 'start_date', 'completion_date',
+		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
+		// Nothing left to change means nothing to Save — Frappe would otherwise keep offering
+		// the button on any non-submittable doc. Re-armed the moment the order is reopened.
+		if (locked) frm.disable_save();
+		else frm.save_disabled = false;
 	},
 	_lock_estimate_grid(frm) {
 		const grid = frm.fields_dict.used_items && frm.fields_dict.used_items.grid;

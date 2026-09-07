@@ -428,6 +428,34 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		# The reason reaches the Desk on the order itself, not only in a bell notification.
 		self.assertEqual(mr.get_mr_order_detail(ro)["reopen_note"], doc.reopen_note)
 
+	def test_a_settled_order_refuses_a_plain_save(self):
+		"""Completed / Rejected / Cancelled are history. The doctype is not submittable, so
+		nothing in Frappe stops a bare save from rewriting a finished order behind the reopen
+		buttons' back — which is what would let someone move a completion date, swap the tank
+		or retype the remarks of work that is already closed and possibly billed."""
+		_, ro = self._completed("MRLOCK00001")
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.remarks = "diketik ulang setelah selesai"
+		# Matched on the message: a bare assertRaises here would also pass on some unrelated
+		# validation error and quietly stop testing the lock.
+		with self.assertRaisesRegex(frappe.ValidationError, "sudah Completed"):
+			doc.save()
+		self.assertNotEqual(
+			frappe.db.get_value("Repair Order", ro, "remarks"), "diketik ulang setelah selesai"
+		)
+
+	def test_an_order_still_in_flight_saves_normally(self):
+		"""The guard keys on the status STAYING final, so it must not touch an ordinary edit —
+		otherwise every Draft correction would bounce with it."""
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRLOCK00002")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.remarks = "catatan draft"
+		doc.save()
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "remarks"), "catatan draft")
+
 	def test_asking_is_only_for_a_closed_order(self):
 		"""While the job is still theirs the team pulls it back themselves — offering both
 		would make the free route look like the one that needs permission."""
