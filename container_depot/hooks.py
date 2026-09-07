@@ -333,6 +333,9 @@ app_include_js = [
 	# Jalan pulang dari form master yang dibuka lewat "Create a new …" di sebuah field
 	# Link — spanduk konteks + tombol batal (lihat file-nya).
 	"/assets/container_depot/js/link_return.js",
+	# Matikan tombol "Edit" (pensil rename) di judul form + item menu "Rename" untuk semua
+	# doctype — nomor dokumen datang dari naming series, bukan diketik ulang.
+	"/assets/container_depot/js/no_rename.js",
 ]
 
 # include js, css files in header of web template
