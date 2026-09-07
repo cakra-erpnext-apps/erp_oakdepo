@@ -1229,32 +1229,60 @@ class ContainerBooking(Document):
 			frappe.throw("<br>".join(failures))
 
 	def _enforce_payment_rules(self):
-		"""TOP (postpaid / accrual): submit freely — the charge accrues Unpaid and
-		is swept later by on-demand consolidated billing (``consolidated_billing.
-		bill_customer``); no per-transaction credit gate. Cash / walk-in (no
-		contract): linked Sales Invoice must be Paid — the Cashier's confirmation
-		that releases the booking code.
+		"""**Cash / walk-in (no contract): the money is in before the booking is
+		confirmed.** One rule for the operator; the finance switch only decides where the
+		answer is read from — the linked Sales Invoice's own status while invoicing is on
+		(``_enforce_cash_paid_invoice``), the admin's hand-set label behind *Tandai Lunas*
+		while it is off (``_require_manual_paid``).
 
-		``_enforce_top_credit`` is retained (unused) in case credit gating is
-		reinstated as a setting later.
+		**TOP (postpaid / accrual): submit freely** — the charge accrues Unpaid and is
+		swept later by on-demand consolidated billing (``consolidated_billing.
+		bill_customer``); no per-transaction credit gate. ``_enforce_top_credit`` is
+		retained (unused) in case credit gating is reinstated as a setting later.
 		"""
-		# With finance off no invoice is ever raised, so waiting for one to be paid would
-		# park every Cash booking in Pending Payment permanently — the depot could not
-		# confirm a single booking. The charges stay on the record either way.
+		# self.payment_type is the booking's effective mode (synced from the contract in
+		# validate; a Both contract leaves the operator's Cash/TOP choice intact).
+		payment_type = self.payment_type or "Cash"
+		if payment_type == "TOP":
+			return  # accrual: free submit, billed later via consolidated billing
+		# Cash, or walk-in without a contract.
 		if not finance.is_enabled():
+			# Asked of EVERY Cash booking, charges or none. The exemption below is about an
+			# invoice that would be raised for nothing; here no invoice is raised either
+			# way, so it does not apply — what is left is the depot's own rule, and the
+			# form offers the button that answers it on every Cash draft.
+			self._require_manual_paid()
 			return
 		# A booking that bills nothing has nothing to collect — the Cash gate would
 		# otherwise park a free booking in Pending Payment forever, waiting on an invoice
 		# that is deliberately never raised.
 		if not self._billable_lines():
 			return
-		# self.payment_type is the booking's effective mode (synced from the contract in
-		# validate; a Both contract leaves the operator's Cash/TOP choice intact).
-		payment_type = self.payment_type or "Cash"
-		if payment_type == "TOP":
-			return  # accrual: free submit, billed later via consolidated billing
-		# Cash, or walk-in without a contract
 		self._enforce_cash_paid_invoice()
+
+	def _require_manual_paid(self):
+		"""Finance OFF: the Cash gate, read off the hand-set label.
+
+		:func:`set_payment_status` (*Tandai Lunas* on the form) is the only answer the depot
+		has about the money in this mode, and the bon already refuses to print while it says
+		Unpaid (``order_generation.BON_ALLOWED_PAYMENT``). So a booking confirmed Unpaid was
+		confirmed into a dead end — codes issued, tanks expected, and no paper that can be
+		handed to a driver. Refusing at submit moves that refusal to the one screen still
+		showing the button that clears it.
+
+		Nothing is parked in ``Pending Payment`` (contrast ``_enforce_cash_paid_invoice``):
+		that status means "invoice raised, waiting on the Cashier", and there is no invoice
+		here. The same operator marks it and submits again, so the draft stays a draft.
+		"""
+		if self.payment_status == "Paid":
+			return
+		frappe.throw(
+			_(
+				"Booking <b>Cash</b> ini masih <b>{0}</b>. Tekan <b>Tandai Lunas</b> dulu "
+				"setelah pembayarannya diterima, baru submit."
+			).format(self.payment_status or "Unpaid"),
+			title=_("Belum Lunas"),
+		)
 
 	def _enforce_cash_paid_invoice(self):
 		if not self.sales_invoice:

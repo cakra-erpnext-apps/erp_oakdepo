@@ -17,7 +17,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot.doctype.container_booking import container_booking as cb
 from container_depot.tests.test_api import ensure_test_customer
-from container_depot.tests._booking_helpers import cancel_submitted_booking
+from container_depot.tests._booking_helpers import cancel_submitted_booking, submit_booking
 
 CUSTOMER = "Cont Import Co"
 EXISTING = "CIMU1112223"
@@ -231,7 +231,8 @@ class TestContainerImport(FrappeTestCase):
 		booking = self._tank_in(
 			[{"container": imported, "condition": "EMPTY CLEAN", "is_new_container": 1}]
 		)
-		booking.submit()
+		# Cash, and Cash is settled before a booking is confirmed — not this test's subject.
+		submit_booking(booking)
 
 		self.assertEqual(booking.docstatus, 1)
 		self.assertEqual(booking.booking_status, "Confirmed")
@@ -243,7 +244,7 @@ class TestContainerImport(FrappeTestCase):
 		booking = self._tank_in(
 			[{"container": imported, "condition": "EMPTY CLEAN", "is_new_container": 1}]
 		)
-		booking.submit()
+		submit_booking(booking)
 		cancel_submitted_booking(booking.name)
 
 		self.assertFalse(frappe.db.exists("Container", imported))

@@ -2,10 +2,13 @@
 
 Two halves are asserted here, and they are the whole point of the switch:
 
-1. **Nothing financial is created or blocks anything.** No Sales Invoice is raised on any
-   path, and the three places money can stop an operation — a Cash booking's submit, the
-   gate's ``cash_unpaid``, generating a bon — step aside. A Cash booking goes straight to
-   Confirmed and its gate codes are issued.
+1. **Nothing financial is created, and nothing waits on an invoice.** No Sales Invoice is
+   raised on any path. What does NOT step aside is the depot's own Cash rule: the three
+   places money can stop an operation — a Cash booking's submit, the gate's ``cash_unpaid``,
+   generating a bon — all still refuse an Unpaid booking, they just read the admin's manual
+   label instead of an invoice, because with invoicing off that label is the only answer the
+   depot has (``container_booking.set_payment_status`` /
+   ``container_booking.ContainerBooking._require_manual_paid``).
 2. **Everything else is untouched.** Charges are still priced and stored, so the work can
    be billed later; invoices raised while finance was on keep their links and keep syncing.
    Switching finance off is not a way to void receivables.
@@ -123,12 +126,35 @@ class TestFinanceSwitch(FrappeTestCase):
 		_set_finance(False)
 		self.assertEqual(generate_monthly_invoices(), 0)
 
-	# --- nothing is blocked ---------------------------------------------------
-	def test_cash_booking_confirms_without_an_invoice(self):
-		"""The core of it: with no invoice to pay, waiting for payment would strand every
-		Cash booking in Pending Payment forever."""
+	# --- nothing waits on an invoice ------------------------------------------
+	def test_cash_booking_is_refused_until_it_is_marked_paid(self):
+		"""The Cash rule survives the switch; only where the answer is read from changes.
+
+		Waiting on an invoice that will never be raised would strand every Cash booking, so
+		submit reads the manual label instead (``_require_manual_paid``) — the same answer
+		the gate and the bon already read in this mode. Nothing is parked in Pending
+		Payment: the draft stays a draft, with the button that clears it on screen.
+		"""
 		_set_finance(False)
 		b = self._booking("FINSW0002")
+		b.flags.ignore_permissions = True
+		with self.assertRaises(frappe.ValidationError):
+			b.submit()
+		b.reload()
+		self.assertEqual(b.docstatus, 0)
+		self.assertEqual(b.booking_status, "Draft")
+
+	def test_cash_booking_confirms_once_marked_paid_without_an_invoice(self):
+		"""…and once the admin says the money arrived it confirms with nothing billed — no
+		invoice anywhere, and the operational half (the gate codes) issued as always."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
+		_set_finance(False)
+		b = self._booking("FINSW0002")
+		set_payment_status(b.name, "Paid")
+		b.reload()
 		b.flags.ignore_permissions = True
 		b.submit()
 		b.reload()
@@ -150,31 +176,53 @@ class TestFinanceSwitch(FrappeTestCase):
 
 		So with finance off the gate reads the label — Unpaid shuts it, and marking it Paid by
 		hand is what opens it.
+
+		A confirmed booking has to be marked Paid to have been confirmed at all now, so the
+		Unpaid state under test is reached the only way it still occurs: the back-office
+		correction ``set_payment_status`` deliberately still allows after submit.
 		"""
-		_set_finance(False)
-		b = self._booking("FINSW0003")
-		b.flags.ignore_permissions = True
-		b.submit()
-		self.assertEqual(_booking_gate_detail(b.name)["block_reason"], "cash_unpaid")
 		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			set_payment_status,
 		)
 
+		_set_finance(False)
+		b = self._booking("FINSW0003")
+		set_payment_status(b.name, "Paid")
+		b.reload()
+		b.flags.ignore_permissions = True
+		b.submit()
+		set_payment_status(b.name, "Unpaid")
+		self.assertEqual(_booking_gate_detail(b.name)["block_reason"], "cash_unpaid")
 		set_payment_status(b.name, "Paid")
 		self.assertIsNone(_booking_gate_detail(b.name)["block_reason"])
 
 	# --- the manual paid/unpaid label -----------------------------------------
-	def test_confirming_does_not_stamp_paid_by_itself(self):
-		"""Submit is not gated on payment while finance is off, so it must not claim one
-		was made: an automatic "Paid" on every confirmed Cash booking would read as
-		collected money on a site where nobody has billed anything yet."""
+	def test_confirming_does_not_write_the_label_by_itself(self):
+		"""``on_submit``'s payment stamp is finance-ON only, and must stay that way: with the
+		switch off the label is a person's statement, not something submit derives.
+
+		Asserted on a TOP booking — the type that still submits freely here — carrying a
+		hand-set Paid. The finance-on formula writes TOP's "Unpaid", so anything but Paid on
+		the far side means submit overwrote somebody's answer about real money.
+		"""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
 		_set_finance(False)
+		# A Both contract is what leaves the choice with the operator — under a Cash one
+		# `_sync_payment_type_from_contract` would put the booking straight back to Cash.
+		frappe.db.set_value("Depot Contract", self.contract, "payment_type", "Both")
 		b = self._booking("FINSW0005")
+		b.payment_type = "TOP"
+		b.save(ignore_permissions=True)
+		set_payment_status(b.name, "Paid")
+		b.reload()
 		b.flags.ignore_permissions = True
 		b.submit()
 		b.reload()
-		self.assertEqual(b.payment_type, "Cash")
-		self.assertEqual(b.payment_status, "Unpaid")
+		self.assertEqual(b.payment_type, "TOP")
+		self.assertEqual(b.payment_status, "Paid")
 
 	def test_admin_sets_the_label_by_hand_on_a_submitted_booking(self):
 		"""The label is a human's answer while there is no invoice to derive it from — and
@@ -186,13 +234,18 @@ class TestFinanceSwitch(FrappeTestCase):
 
 		_set_finance(False)
 		b = self._booking("FINSW0006")
+		# Marked before submit because submit now insists on it; the point here is what
+		# happens AFTER, where the form itself is locked shut.
+		set_payment_status(b.name, "Paid")
+		b.reload()
 		b.flags.ignore_permissions = True
 		b.submit()
-		set_payment_status(b.name, "Paid")
 		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Paid")
 		# …and back, for the mis-click.
 		set_payment_status(b.name, "Unpaid")
 		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Unpaid")
+		set_payment_status(b.name, "Paid")
+		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Paid")
 
 	def test_hand_setting_is_refused_once_finance_is_on(self):
 		"""With invoicing live the Sales Invoice owns the field — the gate and the bon read

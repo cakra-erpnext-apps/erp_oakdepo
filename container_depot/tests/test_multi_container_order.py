@@ -478,23 +478,25 @@ class TestBonPaymentGate(FrappeTestCase):
 		booking, _codes = self._booking("CBPAID", "Cash", "Paid")
 		self.assertIsNone(self._reason(booking))
 
-	def test_top_must_at_least_be_invoiced(self):
-		"""The new half of the rule. A TOP booking nobody has billed is a tank leaving with no
-		receivable behind it."""
-		booking, _codes = self._booking("TPUNP", "TOP", "Unpaid")
-		self.assertEqual(self._reason(booking), "not_invoiced")
+	def test_top_passes_whatever_its_payment_says(self):
+		"""Credit customers must keep working — that is what a term of payment means, and the
+		gate asks them nothing.
 
-	def test_top_invoiced_or_paid_may_issue(self):
-		"""Credit customers must keep working — that is what a term of payment means."""
-		for status in ("Invoiced", "Paid"):
+		It used to demand at least ``Invoiced`` (REVERSED 2026-09-07). The receivable lives on
+		the booking, not on the invoice: the charges are priced at save and consolidated
+		billing sweeps them whenever it runs — weeks later for a monthly customer, never on an
+		operations-only site. So the bar held credit customers at the gate without protecting
+		anything. ``Cancelled``, what a voided invoice leaves behind, is no different: the
+		booking still carries the charge to be billed again.
+		"""
+		for status in ("Unpaid", "Invoiced", "Paid", "Cancelled"):
 			booking, _codes = self._booking(f"TP{status[:3]}", "TOP", status)
 			self.assertIsNone(self._reason(booking), f"TOP/{status}")
 
-	def test_a_cancelled_invoice_puts_a_top_booking_back_behind_the_gate(self):
-		"""``Cancelled`` is what a voided invoice leaves behind, and it is in neither allow
-		list: a booking whose invoice was cancelled owes nothing to anybody again."""
-		booking, _codes = self._booking("TPCAN", "TOP", "Cancelled")
-		self.assertEqual(self._reason(booking), "not_invoiced")
+	def test_a_top_booking_may_actually_issue_its_bon(self):
+		"""The reason above, spent: an unbilled credit booking makes paper at the gate."""
+		booking, codes = self._booking("TPBON", "TOP", "Unpaid")
+		self.assertTrue(make_order(booking, codes, submit=True))
 
 	def test_an_unknown_payment_type_falls_back_to_the_stricter_rule(self):
 		"""A type added to the doctype without being considered here must not become a way
@@ -514,13 +516,12 @@ class TestBonPaymentGate(FrappeTestCase):
 		self.assertIsNone(self._reason(booking))
 		self.assertTrue(make_order(booking, codes, submit=True))
 
-	def test_a_top_booking_with_finance_off_needs_the_paid_label_too(self):
-		"""The two modes need no special-casing: with finance off only Paid / Unpaid are
-		reachable, so TOP's ``Invoiced`` never occurs and the rule collapses to Paid."""
+	def test_a_top_booking_with_finance_off_is_not_held_either(self):
+		"""The mode that made the old TOP bar unsurvivable: with invoicing off no booking is
+		ever ``Invoiced``, and the Desk offers the manual Paid toggle on Cash bookings only —
+		so a credit booking could never be cleared by anybody, from anywhere."""
 		booking, _codes = self._booking("FINTP", "TOP", "Unpaid")
 		require_finance(self, enabled=False)
-		self.assertEqual(self._reason(booking), "not_invoiced")
-		frappe.db.set_value("Container Booking", booking, "payment_status", "Paid")
 		self.assertIsNone(self._reason(booking))
 
 	# --- every surface ---
@@ -533,9 +534,11 @@ class TestBonPaymentGate(FrappeTestCase):
 			generate_order_from_booking(booking, json.dumps(codes))
 
 	def test_the_gate_is_refused(self):
+		# Cash, like every other surface here: the type is not the subject — that the PWA's
+		# endpoint goes through the same guard is. TOP no longer refuses anywhere.
 		from container_depot.api import gate_generate_order
 
-		booking, codes = self._booking("GTEUP", "TOP", "Unpaid")
+		booking, codes = self._booking("GTEUP", "Cash", "Unpaid")
 		with self.assertRaises(frappe.ValidationError):
 			gate_generate_order(booking, json.dumps(codes))
 
@@ -599,14 +602,15 @@ class TestBonPaymentGate(FrappeTestCase):
 		self.assertEqual(res["block_reason"], "cash_unpaid")
 		self.assertTrue(res["payment_blocked"])
 
-	def test_the_gate_panel_reports_the_top_reason_separately(self):
-		"""Three reasons, three different people to go to — the panel must not collapse them."""
+	def test_the_gate_panel_does_not_hold_a_credit_booking(self):
+		"""The panel's own copy of the rule has to have come off with the rule: an unbilled
+		TOP booking must reach the gate with no red panel and no payment flag."""
 		from container_depot.api import gate_lookup
 
 		booking, codes = self._booking("PNLTP", "TOP", "Unpaid")
 		res = gate_lookup(codes[0])
-		self.assertEqual(res["block_reason"], "not_invoiced")
-		self.assertTrue(res["payment_blocked"])
+		self.assertIsNone(res["block_reason"])
+		self.assertFalse(res["payment_blocked"])
 
 	def test_a_submitted_booking_is_still_checked_for_payment(self):
 		"""The old ordering skipped this: it reported no block at all once the booking was

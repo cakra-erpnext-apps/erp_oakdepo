@@ -29,27 +29,32 @@ MAX_CONTAINERS_PER_ORDER = 2
 # ---------------------------------------------------------------------------
 # Payment — may this booking issue a bon at all?
 # ---------------------------------------------------------------------------
-# Which payment states let a bon out, per payment type. The two types mean different things
-# and so get different bars:
+# Which payment states let a bon out, per payment type. ``None`` means the gate does not hold
+# that type at all.
 #
 #   Cash — the customer pays before they collect. Nothing but `Paid` will do, which is the
-#          rule the gate has always applied.
-#   TOP  — term of payment: paying later IS the arrangement, so demanding `Paid` would stop
-#          every credit customer at the gate. What must have happened is that the booking has
-#          been BILLED — an un-invoiced booking is one nobody has priced or committed to, and
-#          letting the tank leave against it is how a movement ends up with no receivable
-#          behind it at all.
+#          rule the gate has always applied. `Cancelled` (what a voided invoice leaves
+#          behind) and `Invoiced` are not enough: a raised invoice is not a collected one.
+#   TOP  — term of payment: paying later IS the arrangement, so the gate does not ask about
+#          money at all.
 #
-# `Cancelled` is in neither list on purpose: it is what a cancelled invoice leaves behind, and
-# a booking whose invoice was voided is back to owing nothing to anyone.
+# TOP used to have to be at least `Invoiced`, on the reasoning that a tank leaving against an
+# un-invoiced booking is a movement with no receivable behind it. Removed 2026-09-07: the
+# receivable is on the BOOKING, not on the invoice — the charges are priced and stored at save
+# and ``consolidated_billing.bill_customer`` bills them from there whenever it is run, which
+# for a monthly customer is routinely weeks after the tank moved, and while finance is off is
+# never. So the bar did not protect anything; it just held every credit customer at the gate
+# until the monthly run, and held them forever on an operations-only site (where `Invoiced` is
+# not even reachable — ``set_payment_status`` offers Paid / Unpaid only, and the Desk offers
+# the toggle on Cash bookings alone). Billing a TOP booking late is the arrangement; that is
+# what "termin" means.
 BON_ALLOWED_PAYMENT = {
 	"Cash": ("Paid",),
-	"TOP": ("Invoiced", "Paid"),
+	"TOP": None,
 }
 
 BLOCK_MESSAGES = {
 	"cash_unpaid": "Booking Cash belum dibayar — bayar ke kasir dulu sebelum generate bon.",
-	"not_invoiced": "Booking TOP ini belum ditagih — terbitkan invoice dulu sebelum generate bon.",
 }
 
 
@@ -69,10 +74,9 @@ def payment_block_reason(booking) -> str | None:
 	deliberate statement that the money did or did not arrive. Ignoring it would be ignoring
 	the one answer the depot has.
 
-	The two modes need no special-casing, because the rule collapses on its own: with finance
-	off only Paid and Unpaid are reachable (``set_payment_status`` refuses the other two), so
-	TOP's ``Invoiced`` simply never occurs and both types end up requiring Paid. A booking left
-	at ``Invoiced`` from before the switch was turned off keeps its pass — it really was billed.
+	The two modes need no special-casing: the only type the gate holds is Cash, and Cash's
+	answer — Paid or not — is reachable in both, from the invoice while finance is on and from
+	the admin's toggle while it is off.
 	"""
 	b = frappe.db.get_value(
 		"Container Booking", booking, ["payment_type", "payment_status"], as_dict=True
@@ -84,12 +88,12 @@ def payment_block_reason(booking) -> str | None:
 	# An unrecognised payment type falls back to the STRICTER rule. A new type added in the
 	# doctype without being considered here must not silently become a way past the gate.
 	allowed = BON_ALLOWED_PAYMENT.get(ptype, BON_ALLOWED_PAYMENT["Cash"])
-	if status in allowed:
+	if allowed is None or status in allowed:
 		return None
-	# The reason names the bar that was actually applied, not the type. Reading it off the
-	# type would tell someone on an unknown type to "terbitkan invoice dulu" while the rule
-	# holding them is the Cash one — sending them to the wrong desk.
-	return "not_invoiced" if allowed is BON_ALLOWED_PAYMENT["TOP"] else "cash_unpaid"
+	# Only the Cash bar can still refuse, including for an unknown type — which is the point
+	# of falling back to it: the reason names the bar that was actually applied, so nobody is
+	# sent to a desk that is not holding them.
+	return "cash_unpaid"
 
 
 def assert_payment_allows_bon(booking) -> None:

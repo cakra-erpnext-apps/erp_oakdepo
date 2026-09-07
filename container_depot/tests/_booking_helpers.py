@@ -86,6 +86,26 @@ def make_booking_code(
 	}).insert(ignore_permissions=True)
 
 
+def submit_booking(doc):
+	"""Submit a Container Booking past the Cash payment gate.
+
+	A Cash booking is not confirmed until somebody says the money arrived — the hand-set
+	label with invoicing off (``ContainerBooking._require_manual_paid``), the linked Sales
+	Invoice's own status with it on. A test whose subject is something else says so in one
+	line here instead of growing a payment fixture it does not care about; a test that IS
+	about the gate should set the label itself and assert what happens.
+
+	``db_set``, not a field assignment: this is exactly what the *Tandai Lunas* button does
+	(``container_booking.set_payment_status``), so the booking reaches submit the same way a
+	real one does.
+	"""
+	if (doc.payment_type or "Cash") == "Cash" and doc.payment_status != "Paid":
+		doc.db_set("payment_status", "Paid", update_modified=False)
+	doc.flags.ignore_permissions = True
+	doc.submit()
+	return doc
+
+
 def cancel_submitted_booking(booking: str) -> str:
 	"""Cancel a SUBMITTED Container Booking the only way the app still allows.
 

@@ -388,12 +388,12 @@ import { uid } from "@/utils/idb"
 import { useDismissOnBack } from "@/utils/backstack"
 
 // Keyed by the server's `block_reason` (container_depot.order_generation.payment_block_reason
-// plus the gate's own "not_submitted"). A map rather than a ternary because there are three
-// reasons now and each sends the operator to a different person: the cashier, admin-to-invoice,
-// admin-to-confirm.
+// plus the gate's own "not_submitted"). A map rather than a ternary because each reason sends
+// the operator to a different person: the cashier, or the admin who confirms the booking.
+// `not_invoiced` (TOP belum ditagih) was a third one until 2026-09-07 — the server does not
+// hold a credit booking for its invoice any more, so it can no longer arrive.
 const BLOCK_TEXT = {
 	cash_unpaid: labels.gatePayBlocked,
-	not_invoiced: labels.gateNotInvoiced,
 	not_submitted: labels.gateNotSubmitted,
 }
 

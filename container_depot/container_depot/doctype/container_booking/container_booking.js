@@ -22,32 +22,24 @@ function _finance_on() {
 // written where the button would have been.
 //
 // Cash pays before collecting, so nothing but Paid will do. TOP is credit — paying later IS
-// the arrangement — so what must have happened is that the booking has been BILLED; letting a
-// tank out against a booking nobody has invoiced is how a movement ends up with no receivable
-// behind it.
+// the arrangement — so the gate does not ask about money at all (`null` = no bar). It used to
+// demand at least `Invoiced`; the server carries why that came off.
 //
-// With finance OFF only Paid and Unpaid are reachable at all, so TOP's `Invoiced` never occurs
-// and both types collapse to "must be marked Paid by hand". No special case needed.
-const BON_ALLOWED_PAYMENT = { Cash: ['Paid'], TOP: ['Invoiced', 'Paid'] };
+// Applies with finance OFF too: there Cash's answer is an admin's hand-set label
+// (`set_payment_status`), which is the only answer the depot has about the money.
+const BON_ALLOWED_PAYMENT = { Cash: ['Paid'], TOP: null };
 
 function _bon_payment_block(frm) {
-	// Applies with finance OFF too: there the status is an admin's hand-set label
-	// (`set_payment_status`), which is the only answer the depot has about the money.
 	const ptype = frm.doc.payment_type || 'Cash';
 	const status = frm.doc.payment_status || 'Unpaid';
 	// An unknown payment type falls back to the STRICTER rule, same as the server — and the
 	// message names the bar that was applied, not the type, so nobody is sent to the wrong desk.
 	const allowed = BON_ALLOWED_PAYMENT[ptype] || BON_ALLOWED_PAYMENT.Cash;
-	if (allowed.includes(status)) return null;
-	return allowed !== BON_ALLOWED_PAYMENT.TOP
-		? __(
-				'<b>Generate Bon / Order</b> belum tersedia: booking <b>Cash</b> ini masih <b>{0}</b>. Bayar ke kasir dulu.',
-				[status]
-		  )
-		: __(
-				'<b>Generate Bon / Order</b> belum tersedia: booking <b>TOP</b> ini masih <b>{0}</b> — terbitkan invoice dulu.',
-				[status]
-		  );
+	if (!allowed || allowed.includes(status)) return null;
+	return __(
+		'<b>Generate Bon / Order</b> belum tersedia: booking <b>Cash</b> ini masih <b>{0}</b>. Bayar ke kasir dulu.',
+		[status]
+	);
 }
 
 frappe.ui.form.on('Container Booking', {
@@ -184,10 +176,13 @@ frappe.ui.form.on('Container Booking', {
 		// toggle there put a "Tandai Belum Lunas" on a booking that had already been paid and
 		// confirmed, which undoes nothing anybody wants undone.
 		//
-		// Not a dead end for a Cash booking confirmed while still Unpaid: the bon refuses
-		// Cash that is not Paid (``order_generation.BON_ALLOWED_PAYMENT``), so no bon can
-		// exist yet, so **Kembali ke Draft** is on the screen — mark it there and submit
-		// again. The one situation that needs the button always has the way back to it.
+		// Draft-only costs nothing now that submit itself asks: a Cash booking cannot be
+		// confirmed while Unpaid any more (`container_booking._require_manual_paid`), so
+		// the button is on screen for exactly as long as the answer is still needed. An
+		// older booking carried past submit before that rule — or corrected from the
+		// console — still has **Kembali ke Draft** while no bon has been raised, and the
+		// bon itself refuses Cash that is not Paid
+		// (`order_generation.BON_ALLOWED_PAYMENT`), so it cannot have gone further.
 		//
 		// Cash only, matching the field's own depends_on: TOP is billed later by definition,
 		// so Unpaid is its correct resting state, not something to mark off.

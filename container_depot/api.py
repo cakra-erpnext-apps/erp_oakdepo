@@ -1026,7 +1026,7 @@ def _booking_gate_detail(booking) -> dict:
 	# confirmation puts a live booking back to Unpaid, and the gate must notice.
 	booking_submitted = b.docstatus == 1
 	block_reason = payment_block_reason(booking) or (None if booking_submitted else "not_submitted")
-	payment_blocked = block_reason in ("cash_unpaid", "not_invoiced")
+	payment_blocked = block_reason == "cash_unpaid"
 	containers = []
 	for c in frappe.get_all(
 		"Booking Code",

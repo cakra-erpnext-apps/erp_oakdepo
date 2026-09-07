@@ -8,16 +8,29 @@ meet is listed here so it can be turned off in one move:
   :func:`invoicing.create_draft_sales_invoice` (there is no other ``new_doc("Sales
   Invoice")`` anywhere), so refusing there covers per-transaction invoices, consolidated
   billing and the monthly scheduler alike.
-* **no SUBMIT is blocked.** A Cash booking's submit no longer waits on an invoice that will
-  never exist, so a booking can be confirmed and its gate codes issued with nobody billed.
+* **no submit waits on an INVOICE.** A Cash booking's submit no longer waits on an invoice
+  that will never exist — it reads the manual Paid / Unpaid label instead (see below), so
+  the gate is answered by a person rather than by accounting.
 
-What deliberately does NOT step aside any more (changed 2026-09-03): **the payment gate on a
-bon, a gate-in and a gate-out**. It used to, on the reasoning that with no Sales Invoice the
+What deliberately does NOT step aside any more (changed 2026-09-03): **the CASH payment gate
+on a bon, a gate-in and a gate-out**. It used to, on the reasoning that with no Sales Invoice the
 ``payment_status`` field is derived from nothing and means nothing. That stopped being true
 when :func:`container_booking.set_payment_status` gave an admin a manual Paid / Unpaid switch
 for exactly this mode — the field became somebody's deliberate statement that the money did or
 did not arrive, and a depot running without invoicing has no other answer to read. See
 ``order_generation.payment_block_reason``.
+
+Cash is the only type any of that holds, and since 2026-09-07 that is true in both modes: a
+TOP booking is no longer stopped for not having been invoiced (see
+``order_generation.BON_ALLOWED_PAYMENT``). Here it mattered most — with no invoicing there is
+no ``Invoiced`` to reach and no manual toggle offered for TOP, so the old bar was a credit
+customer's tank stuck at the gate with nobody able to release it.
+
+**Nor does the Cash gate on a booking's SUBMIT** (changed 2026-09-07,
+:meth:`container_booking.ContainerBooking._require_manual_paid`), for the same reason and one
+more: those downstream gates already refused an Unpaid Cash booking, so confirming one only
+issued codes for tanks no bon could ever be printed for. The question is now asked where the
+button that answers it is — on the draft. Cash only; TOP accrues Unpaid by definition.
 
 What deliberately does NOT change when finance is off:
 
