@@ -46,6 +46,15 @@ def _purge(containers, bookings=()):
 		frappe.db.delete("Notification Log", {"document_type": SCHEDULE, "document_name": ["in", orders]})
 		frappe.db.delete("Comment", {"reference_doctype": SCHEDULE, "reference_name": ["in", orders]})
 		frappe.db.delete(ROW, {"parent": ["in", orders]})
+	# Bel — SEMUA yang bisa dibangkitkan modul ini, satu per doctype yang ditunjuknya. Ini yang
+	# dulu tertinggal: fixture-nya terhapus, lonceng operator tetap menyimpan barisnya, dan
+	# yang menekannya sampai ke dokumen yang sudah tidak ada. Dihapus sebelum dokumennya,
+	# karena daftar nama inilah satu-satunya cara menemukannya lagi.
+	frappe.db.delete("Notification Log", {"document_type": "Container", "document_name": ["in", containers]})
+	frappe.db.delete("Notification Log", {"document_type": "Container Booking", "document_name": ["in", bookings]})
+	inspections = frappe.get_all("Inspection", filters={"container": ["in", containers]}, pluck="name")
+	if inspections:
+		frappe.db.delete("Notification Log", {"document_type": "Inspection", "document_name": ["in", inspections]})
 	frappe.db.delete("Inspection", {"container": ["in", containers]})
 	frappe.db.delete("Container Position", {"container": ["in", containers]})
 	frappe.db.delete(SCHEDULE, {"booking": ["in", bookings]})

@@ -35,6 +35,10 @@ class _Base(FrappeTestCase):
 		if readings:
 			frappe.db.delete("Container Position Photo", {"parent": ["in", readings]})
 		frappe.db.delete(DOCTYPE, {"container": ["in", containers]})
+		# Bel antrean letak ("Cek letak tank") menunjuk ke tank-nya dan hidup lebih lama dari
+		# tank itu sendiri, jadi ia dihapus DULU — kalau tidak, lonceng operator berisi tank
+		# yang sudah tidak ada dan tidak bisa dibuka dari mana pun.
+		frappe.db.delete("Notification Log", {"document_type": "Container", "document_name": ["in", containers]})
 		frappe.db.delete("Container", {"name": ["in", containers]})
 		frappe.db.commit()
 		super().tearDown()
@@ -61,6 +65,22 @@ class TestThePositionQueue(_Base):
 		self._bookings = []
 
 	def tearDown(self):
+		bookings = self._bookings or [""]
+		# Menyimpan sebuah booking Tank Out MEMBUAT Survey Order-nya sendiri
+		# (`provision_survey_order_for_booking`), jadi fixture ini melahirkan dokumen yang tidak
+		# pernah disebut namanya di sini — beserta baris tank dan belnya. Semuanya ikut dihapus,
+		# kalau tidak jadwal survey palsu menumpuk di layar orang.
+		orders = frappe.get_all("Survey Order", filters={"booking": ["in", bookings]}, pluck="name")
+		if orders:
+			frappe.db.delete("Notification Log", {"document_type": "Survey Order", "document_name": ["in", orders]})
+			frappe.db.delete("Survey Order Tank", {"parent": ["in", orders]})
+			frappe.db.delete("Survey Order", {"name": ["in", orders]})
+		# Bel booking ikut turun bersama booking-nya: sebuah lonceng yang menunjuk ke booking
+		# yang sudah tidak ada tidak bisa dibuka dari mana pun.
+		frappe.db.delete(
+			"Notification Log",
+			{"document_type": "Container Booking", "document_name": ["in", bookings]},
+		)
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
