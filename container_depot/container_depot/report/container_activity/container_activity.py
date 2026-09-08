@@ -21,6 +21,9 @@ def _columns():
 		{"fieldname": "activity_time", "label": "Time", "fieldtype": "Datetime", "width": 160},
 		{"fieldname": "container", "label": "Container", "fieldtype": "Link", "options": "Container", "width": 140},
 		{"fieldname": "activity_type", "label": "Activity", "fieldtype": "Data", "width": 130},
+		# Not a column anybody filters on — it is the warning that the row above it describes
+		# something that was taken back. See container_activity.annotate_voided.
+		{"fieldname": "voided_label", "label": "Batal", "fieldtype": "Data", "width": 80},
 		{"fieldname": "from_status", "label": "From", "fieldtype": "Data", "width": 130},
 		{"fieldname": "to_status", "label": "To", "fieldtype": "Data", "width": 150},
 		{"fieldname": "summary", "label": "Summary", "fieldtype": "Data", "width": 240},
@@ -46,7 +49,7 @@ def _data(filters):
 		params["to_date"] = filters["to_date"]
 
 	clause = (" WHERE " + " AND ".join(where)) if where else ""
-	return frappe.db.sql(
+	rows = frappe.db.sql(
 		f"""
 		SELECT activity_time, container, activity_type, from_status, to_status,
 		       summary, reference_doctype, reference_name, principal, performed_by
@@ -56,3 +59,11 @@ def _data(filters):
 		params,
 		as_dict=True,
 	)
+	# The source document may have been cancelled since — say so on the row rather than
+	# leaving the feed asserting an action that was undone. The log itself is append-only,
+	# so this is read from the source every time and never stored here.
+	from container_depot.container_depot.container_activity import annotate_voided
+
+	for row in annotate_voided(rows):
+		row["voided_label"] = "DIBATALKAN" if row.get("voided") else None
+	return rows

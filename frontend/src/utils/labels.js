@@ -486,6 +486,10 @@ export const labels = {
 	monitorHistorySearch: "Cari no. container / aktivitas…",
 	monitorHistoryCount: "aktivitas",
 	monitorRefDoc: "Dokumen",
+	// Baris riwayat yang dokumen sumbernya sudah dibatalkan. Barisnya tetap ada — log ini
+	// append-only — tapi harus terbaca sebagai aksi yang ditarik kembali, bukan fakta.
+	activityVoided: "Dibatalkan",
+	activityVoidedNote: "Dokumen sumbernya sudah dibatalkan — aksi ini tidak jadi.",
 	monitorPerformedBy: "Oleh",
 
 	// EIR history detail

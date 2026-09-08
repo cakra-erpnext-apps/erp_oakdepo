@@ -222,17 +222,57 @@ class Inspection(Document):
 		recompute_availability(self.container)
 
 	def on_cancel(self):
-		"""Keep the ``status`` field in step with the docstatus so Desk + PWA never disagree.
+		"""Void an EIR: put back everything submitting it set in motion, then close the record.
 
-		Cancelling (Void) leaves docstatus 2 but the status Select would otherwise still read
-		"Submitted" — the record then looks live in the Desk form while the badge says
-		cancelled. (``revert_to_draft`` writes docstatus/status raw, so it never fires this.)"""
+		Cancelling used to do almost nothing — flip the status badge and recompute the tank —
+		while ``eir.revert_to_draft``, the *softer* undo, unwound the whole submit. So the
+		stronger action rolled back less: a voided EIR-Out left the tank reading ``Gate_Out``
+		with the gate log closed and its bon completed, i.e. a tank that had "left the depot"
+		on an inspection that no longer existed — and ``recompute_availability`` cannot bring
+		it back, because it only ever moves a tank that is still present. Both now go through
+		the same :func:`eir.unwind_submitted_eir`; the void additionally drops the untouched
+		Cleaning Order / M&R the submit filed, since it is saying the inspection never
+		happened at all.
+
+		The ``status`` field is kept in step with the docstatus for the same reason it always
+		was: it is what the Desk form, the PWA badge and the worklists read, and a cancelled
+		record that still says "Submitted" reads as live. (``revert_to_draft`` writes
+		docstatus/status raw, so it never fires this hook.)"""
+		from container_depot.container_depot.eir import unwind_submitted_eir
+
+		unwind_submitted_eir(self, drop_followups=True)
 		self.db_set("status", "Cancelled", update_modified=False)
+		# A revision request asked for this EIR to be reopened; voiding it IS the answer, so
+		# the flag (and the "Revisi Diminta" badge it drives) comes off — same as
+		# ``CleaningOrder.on_cancel``.
+		if self.get("revision_requested"):
+			frappe.db.set_value(
+				"Inspection", self.name,
+				{"revision_requested": 0, "revision_note": None},
+				update_modified=False,
+			)
 		# Cancelled (docstatus 2) drops out of `container_open_orders`, so the tank it was
-		# holding In_Depot has to be recomputed.
+		# holding In_Depot has to be recomputed. Last: the restore above may have just put
+		# the tank back into the depot, and this is what settles In_Depot vs Available.
 		from container_depot.container_depot.container_status import recompute_availability
 
+		before_status = frappe.db.get_value("Container", self.container, "status")
 		recompute_availability(self.container)
+		# An inverse entry on the tank's timeline, exactly as `eir.revert_to_draft` writes one:
+		# the log is append-only, so the void is recorded as its own event rather than by
+		# rewriting the submit that it undoes. The submit's row stays — it did happen — and
+		# every reader marks it void off this EIR's docstatus (see
+		# `container_activity.annotate_voided`).
+		from container_depot.container_depot.container_activity import log_container_activity
+
+		log_container_activity(
+			self.container, "Inspection (EIR)",
+			reference_doctype=self.doctype, reference_name=self.name,
+			from_status=before_status,
+			to_status=frappe.db.get_value("Container", self.container, "status"),
+			performed_by=self.get("inspector"),
+			summary=_("{0} dibatalkan").format(self.inspection_id or self.name),
+		)
 
 	def before_submit(self):
 		"""An EIR-Out may only be submitted once the loading bon for its tank is out.

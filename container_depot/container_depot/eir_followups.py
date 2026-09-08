@@ -278,3 +278,69 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True, force=Fals
 	seed_damages_from_eir(ro, inspection)
 	ro.insert(ignore_permissions=ignore_permissions)
 	return ro.name
+
+
+# --- the inverse: unwinding what a submit filed ------------------------------
+def release_followups_for_eir(inspection) -> dict:
+	"""Cancel the Cleaning Order / M&R that submitting this EIR filed, when nobody has
+	touched them yet — the counterpart of the two ``create_*_from_eir`` calls above.
+
+	Voiding an EIR is saying the inspection never happened, so the work it ordered off the
+	back of it must not stay on the depot's queues: an untouched auto-order left behind is a
+	wash nobody asked for sitting in Admin Ops' Service Setup list, or an empty M&R draft the
+	team keeps opening to find nothing in it.
+
+	Deliberately narrow — an order is only dropped while it is still exactly as it was born:
+
+	* **Cleaning Order** — still a draft in ``Service Setup`` / ``Pending`` and never started.
+	  The link is exact: ``create_cleaning_order_from_eir`` only stamps ``inspection`` on an
+	  order it CREATED (the branch that adopts an already-open order deliberately does not).
+	* **M&R** — still ``Draft``, no estimate line, no parts issued, and raised after this EIR
+	  existed. That last test is what keeps an M&R the depot raised by hand — which the
+	  creation call may have adopted and stamped — out of it.
+
+	Anything past those states is real work: the wash may be half done, the estimate may
+	already be with the owner. That stays, and the depot closes it itself. Cancelled, never
+	deleted: the queues read ``status``, and an order somebody saw is worth being able to
+	find.
+	"""
+	from container_depot.container_depot.notify import revoke
+
+	out = {"cleaning": [], "repair": []}
+	if not inspection:
+		return out
+	created = frappe.db.get_value("Inspection", inspection, "creation")
+
+	for name in frappe.get_all(
+		"Cleaning Order",
+		filters={
+			"inspection": inspection,
+			"docstatus": 0,
+			"status": ["in", ["Service Setup", "Pending"]],
+			"cleaning_start": ["is", "not set"],
+		},
+		pluck="name",
+	):
+		frappe.db.set_value("Cleaning Order", name, "status", "Cancelled", update_modified=False)
+		# Raw write, so the controller's own revoke never runs — the "tank kotor, siap
+		# dicuci" prompt has to be taken out of the bell by hand.
+		revoke("Cleaning Order", name)
+		out["cleaning"].append(name)
+
+	for name in frappe.get_all(
+		"Repair Order",
+		filters={
+			"inspection": inspection,
+			"status": "Draft",
+			"stock_entry": ["is", "not set"],
+			"creation": [">=", created],
+		},
+		pluck="name",
+	):
+		if frappe.db.count("Repair Used Item", {"parent": name, "parenttype": "Repair Order"}):
+			continue  # somebody has started estimating — that is work, not a phantom
+		frappe.db.set_value("Repair Order", name, "status", "Cancelled", update_modified=False)
+		revoke("Repair Order", name)
+		out["repair"].append(name)
+
+	return out

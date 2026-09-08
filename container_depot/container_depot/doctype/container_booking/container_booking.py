@@ -303,6 +303,10 @@ class ContainerBooking(Document):
 		# ...and a cancelled booking owns no lift-on priority: the pickup it was preparing
 		# for is off, so its tanks must stop crowding the top of the yard's worklists.
 		lift_on.sync_booking_targets(self)
+		# The outbound survey the DRAFT put on the calendar is called off with it. Called
+		# explicitly because `on_update` does not run on a cancel (Frappe runs `on_cancel`
+		# instead), so the hook that normally keeps the schedule in step never fires here.
+		self._provision_survey_order()
 
 	def on_trash(self):
 		# A booking is never permanently deleted — it is voided/cancelled (Cancel) so its
@@ -1875,6 +1879,14 @@ def void_draft(booking):
 		frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
 	doc._cancel_invoice_keep_link()
 	doc._release_pre_arrival_containers()
+	# The field survey this booking put on the calendar is called off with it — the schedule
+	# and every tank row still open on it are marked Cancelled
+	# (`tank_survey.provision_survey_order_for_booking` reads the status set above). Here for
+	# the same reason as the lift-on release: a draft never passes through `on_cancel`, and
+	# this path writes with db_set, so the `on_update` hook that keeps the schedule in step
+	# never fires. Without it a voided booking left its survey day live on the calendar, with
+	# tanks queued for lowering for a pickup nobody was coming for.
+	doc._provision_survey_order()
 	# A draft can't go through native submit→cancel, so mark Cancelled (docstatus 2)
 	# directly; child rows mirror the parent docstatus.
 	frappe.db.set_value("Container Booking", doc.name, "docstatus", 2, update_modified=False)

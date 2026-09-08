@@ -336,12 +336,16 @@ def void_order(name, doctype="Order Bongkar"):
 	``on_trash`` blocks real deletion — and voided bons drop out of the active
 	(docstatus=1) views.
 
-	Works on a draft (release codes, set Cancelled directly on parent + child rows)
-	and on a submitted bon (``doc.cancel()`` → ``on_cancel`` releases the codes)."""
+	Both roads run the SAME unwinding — a submitted bon through ``doc.cancel()``, a draft
+	through ``on_cancel`` called by hand (a draft cannot go through submit→cancel, exactly as
+	``ContainerBooking.void_draft`` cannot). That matters because a draft here is not always a
+	bon that never happened: ``revert_order_to_draft`` brings a SUBMITTED bon back to draft
+	with everything its submit produced still standing — the EIRs, the gate-in log, the tanks
+	it arrived. Releasing only the Booking Codes on that road left all of it pointing at a
+	voided bon. Every step of ``on_cancel`` is a no-op on a bon that really was never
+	submitted, so one path serves both."""
 	if doctype not in ("Order Bongkar", "Order Muat"):
 		frappe.throw(_("Unsupported order doctype: {0}").format(doctype))
-	from container_depot.container_depot.doctype.order_bongkar.order_bongkar import _release_codes
-
 	doc = frappe.get_doc(doctype, name)
 	# Voiding IS cancelling — it lands the bon on docstatus 2 — so it needs the cancel
 	# permission, exactly like the native Cancel it replaces. Without this line the
@@ -356,8 +360,10 @@ def void_order(name, doctype="Order Bongkar"):
 	if doc.docstatus == 1:
 		doc.cancel()  # submitted: on_cancel releases the codes
 		return doc.name
-	# Draft: free the codes, then mark Cancelled directly (parent + child rows).
-	_release_codes(doc)
+	# Draft: unwind exactly what a cancel unwinds, then mark Cancelled directly (parent +
+	# child rows). Written before the docstatus flip, like the submitted path: `on_cancel`
+	# reads the bon's own rows, and they are the same either way.
+	doc.run_method("on_cancel")
 	child = _order_child_doctype(doc)
 	frappe.db.set_value(doctype, doc.name, "docstatus", 2, update_modified=False)
 	frappe.db.sql(

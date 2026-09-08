@@ -89,6 +89,67 @@ class GateEntry(Document):
 		# Generate and log UN/EDIFACT CODECO message
 		self.generate_codeco_message()
 
+	def on_cancel(self):
+		"""Void a gate entry: take back the arrival it stamped, and say so on the record.
+
+		``on_submit`` is what puts a tank inside — ``In_Depot`` plus an ``eir_in_date`` — so
+		cancelling has to give both back, or a tank let in on a gate entry that no longer
+		exists stands in the yard for good. Only the arrival THIS record made is undone: a
+		tank that has since gated out, or that is busy with open work, is on a later chapter
+		of its visit and is left exactly as it is (same rule as
+		``order_bongkar._release_container_arrival``).
+
+		The status Select is moved to ``Cancelled`` for the same reason as the EIR's: Riwayat
+		Gate reads ``status``, not docstatus, so a cancelled record would otherwise keep
+		reading as a live visit.
+		"""
+		from frappe.utils import get_datetime
+
+		from container_depot.container_depot.container_activity import log_container_activity
+		from container_depot.container_depot.container_status import (
+			PRESENT,
+			container_open_orders,
+		)
+
+		self.db_set("status", "Cancelled", update_modified=False)
+		container_ref = self.get("container") or frappe.db.get_value(
+			"Container", {"container_no": self.container_no}
+		)
+		if not container_ref or not frappe.db.exists("Container", container_ref):
+			return
+		cur = frappe.db.get_value(
+			"Container", container_ref, ["status", "eir_in_date"], as_dict=True
+		)
+		if not cur or cur.status not in PRESENT or container_open_orders(container_ref):
+			return
+		# ...and the arrival on the tank has to be the one THIS record wrote. A tank arrived
+		# by a bon (`order_bongkar._sync_container_arrival`) carries that document's stamp,
+		# and voiding a gate log beside it is no reason to send the tank back out.
+		if self.gate_in_timestamp and (
+			not cur.eir_in_date
+			or get_datetime(cur.eir_in_date) != get_datetime(self.gate_in_timestamp)
+		):
+			return
+		# Through the ORM under the automation flag, never a raw write: `Container.on_update`
+		# is what logs the Status Movement and re-derives the storage visit, so an arrival
+		# taken back underneath it would leave the tank's audit trail ending at a status it
+		# no longer has. The flag only bypasses the manual-transition guard.
+		frappe.flags.in_status_automation = True
+		try:
+			tank = frappe.get_doc("Container", container_ref)
+			tank.status = "Gate_Out"
+			tank.eir_in_date = None
+			tank.save(ignore_permissions=True)
+		finally:
+			frappe.flags.in_status_automation = False
+		log_container_activity(
+			container_ref, "Status Change",
+			reference_doctype=self.doctype, reference_name=self.name,
+			from_status=cur.status, to_status="Gate_Out",
+			performed_by=self.get("security_guard"),
+			summary="Gate Entry dibatalkan — kedatangan tank dibatalkan",
+		)
+
 	def generate_codeco_message(self):
 		"""Generate a standard UN/EDIFACT CODECO Gate-In message segment text"""
 		timestamp = (self.gate_in_timestamp or datetime.datetime.now()).strftime("%Y%m%d%H%M")

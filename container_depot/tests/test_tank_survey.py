@@ -226,6 +226,27 @@ class TestProvisioning(_Base):
 		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(bk), "status"), "Cancelled")
 		self.assertEqual(self._val(row, "status").status, ts.CANCELLED)
 
+	def test_the_void_button_is_what_calls_the_day_off(self):
+		"""The test above sets the status by hand and calls the provisioner itself; this is
+		the same thing through the button the operator actually presses.
+
+		``void_draft`` writes with ``db_set``, so the ``on_update`` hook that keeps the
+		schedule in step never fires on that road — the survey day used to stay live on the
+		calendar, with tanks queued for lowering for a pickup nobody was coming for.
+		"""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			void_draft,
+		)
+
+		c = self._container("TSVPROV00009")
+		bk = self._booking(c)
+		row = self._row(bk)
+
+		void_draft(bk)
+
+		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(bk), "status"), "Cancelled")
+		self.assertEqual(self._val(row, "status").status, ts.CANCELLED)
+
 
 # ---------------------------------------------------------------------------
 class TestScheduleProgress(_Base):

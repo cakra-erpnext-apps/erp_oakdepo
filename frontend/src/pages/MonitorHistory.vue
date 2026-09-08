@@ -14,8 +14,9 @@
 			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600"><Icon :name="actIcon(item.activity_type)" :size="16" /></span>
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center justify-between gap-2">
-					<p class="truncate font-semibold text-gray-900">{{ item.container }}</p>
-					<span class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ item.activity_type }}</span>
+					<p class="truncate font-semibold" :class="item.voided ? 'text-gray-400 line-through' : 'text-gray-900'">{{ item.container }}</p>
+					<span v-if="item.voided" class="oak-chip shrink-0 bg-red-50 text-red-600">{{ labels.activityVoided }}</span>
+					<span v-else class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ item.activity_type }}</span>
 				</div>
 				<div class="mt-0.5 flex items-center justify-between gap-2 text-xs text-gray-500">
 					<span class="truncate">{{ item.summary || statusMove(item) || "—" }}</span>
@@ -31,8 +32,15 @@
 						<p class="text-xs text-gray-400">{{ fmtDateTime(data.activity_time) }}</p>
 						<h2 class="truncate text-lg font-extrabold text-gray-900">{{ data.container }}</h2>
 					</div>
-					<span class="oak-chip shrink-0 bg-brand-50 text-brand-600">{{ data.activity_type }}</span>
+					<span
+						class="oak-chip shrink-0"
+						:class="data.voided ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'"
+					>{{ data.voided ? labels.activityVoided : data.activity_type }}</span>
 				</div>
+
+				<p v-if="data.voided" class="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+					{{ labels.activityVoidedNote }}
+				</p>
 
 				<p v-if="data.summary" class="text-sm text-gray-800">{{ data.summary }}</p>
 

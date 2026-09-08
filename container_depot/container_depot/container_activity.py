@@ -83,6 +83,86 @@ def log_doc_note(doctype, name, message) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Voided rows: an action whose source document was later cancelled.
+# ---------------------------------------------------------------------------
+# The timeline is APPEND-ONLY, and it has to stay that way — it is the depot's record of
+# what was done, and "the EIR says X but somebody voided it afterwards" is exactly the
+# argument the depot cannot win without one. So a cancel never deletes or rewrites the row
+# it undoes.
+#
+# But an unmarked row reads as a fact: a voided EIR-Out still says "Gate-out / load
+# complete", and a reader scrolling the feed has no way to know the tank never went. So the
+# void is shown ON the row instead — DERIVED from the source document every time it is read,
+# never stored here.
+#
+# Derived rather than stamped for the same reason ``last_orders`` recomputes its pointers
+# from source: a flag written at cancel time has to be written from every cancel path
+# (there are eight), backfilled for everything already logged, and can silently drift. A
+# question answered from the source document cannot go stale, and needs no migration.
+#
+# How a source says "I am void", per doctype. Submittable ones answer with docstatus 2; the
+# two that are not submittable (and the ones that carry a terminal status alongside their
+# docstatus) answer with a status field.
+_VOID_STATUS_FIELD = {
+	"Inspection": "status",
+	"Cleaning Order": "status",
+	"Repair Order": "status",
+	"Gate Entry": "status",
+	"Container Booking": "booking_status",
+}
+_VOID_STATUS = "Cancelled"
+
+
+def _voided_names(doctype: str, names: list[str]) -> set:
+	"""Which of ``names`` are cancelled — one query per doctype, whatever the row count.
+
+	A name that no longer resolves is NOT counted: the app refuses to delete the documents
+	that log activity (``on_trash`` throws on bons and bookings), so a missing row means
+	maintenance or a purged test fixture, and reading that as "cancelled" would put a badge
+	on history nobody voided.
+	"""
+	if not names:
+		return set()
+	try:
+		meta = frappe.get_meta(doctype)
+	except Exception:
+		return set()
+	or_filters = {}
+	if meta.is_submittable:
+		or_filters["docstatus"] = 2
+	field = _VOID_STATUS_FIELD.get(doctype)
+	if field and meta.has_field(field):
+		or_filters[field] = _VOID_STATUS
+	if not or_filters:
+		return set()
+	return set(
+		frappe.get_all(
+			doctype, filters={"name": ["in", names]}, or_filters=or_filters, pluck="name"
+		)
+	)
+
+
+def annotate_voided(rows) -> list:
+	"""Stamp ``voided`` on every row whose source document has been cancelled.
+
+	Mutates and returns ``rows`` (dicts). Rows with no source document — a bare status
+	change — are never void: there is nothing that could have been undone.
+	"""
+	rows = rows or []
+	by_doctype: dict[str, set] = {}
+	for row in rows:
+		doctype, name = row.get("reference_doctype"), row.get("reference_name")
+		if doctype and name:
+			by_doctype.setdefault(doctype, set()).add(name)
+	voided = {dt: _voided_names(dt, list(names)) for dt, names in by_doctype.items()}
+	for row in rows:
+		row["voided"] = bool(
+			row.get("reference_name") in voided.get(row.get("reference_doctype"), ())
+		)
+	return rows
+
+
+# ---------------------------------------------------------------------------
 # Riwayat (history): read the Container Activity timeline.
 # ---------------------------------------------------------------------------
 def list_activity_history(start=0, page_length=10, search=None) -> dict:
@@ -108,7 +188,10 @@ def list_activity_history(start=0, page_length=10, search=None) -> dict:
 		order_by="activity_time desc",
 		limit_start=cint(start), limit_page_length=cint(page_length),
 	)
-	return {"items": items, "total": frappe.db.count("Container Activity", filters)}
+	return {
+		"items": annotate_voided(items),
+		"total": frappe.db.count("Container Activity", filters),
+	}
 
 
 def get_activity_detail(name) -> dict:
@@ -119,7 +202,7 @@ def get_activity_detail(name) -> dict:
 		frappe.throw("name is required.")
 	a = frappe.get_doc("Container Activity", name)
 	assert_in_user_branch(depot=a.depot)
-	return {
+	return annotate_voided([{
 		"name": a.name,
 		"container": a.container,
 		"activity_type": a.activity_type,
@@ -132,4 +215,4 @@ def get_activity_detail(name) -> dict:
 		"activity_time": str(a.activity_time) if a.activity_time else None,
 		"depot": a.depot,
 		"principal": a.principal,
-	}
+	}])[0]

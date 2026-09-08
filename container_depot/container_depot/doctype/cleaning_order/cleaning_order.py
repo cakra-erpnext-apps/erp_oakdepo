@@ -251,13 +251,50 @@ class CleaningOrder(Document):
 
 			notify_cleaning_forwarded_to_team(self.name)
 
+	def before_cancel(self):
+		"""Billed work cannot be un-done from here — the same refusal :func:`cleaning.revert_to_draft`
+		makes, for the same reason.
+
+		A cancelled order is meant to read as work that never happened, and that is a claim
+		the invoice already sent to the customer contradicts. Cancelling it here would also
+		leave the invoice line pointing at a voided order with nothing left to reverse it:
+		the rollback lives on the invoice side (``consolidated_billing.rollback_billed_sources``),
+		so the invoice is what has to be cancelled first.
+		"""
+		if self.get("sales_invoice"):
+			frappe.throw(
+				_("Cleaning order ini sudah masuk invoice {0}. Batalkan invoice-nya dulu "
+				  "sebelum order ini dibatalkan.").format(self.sales_invoice),
+				title=_("Sudah Ditagih"),
+			)
+
 	def on_cancel(self):
+		# The status field is what the rest of the app reads — `container_open_orders`
+		# (Cancelled is terminal), the Desk/PWA badge, and consolidated billing, which
+		# sweeps on `status == "Completed"` and does NOT look at docstatus. Left alone, a
+		# cancelled order still read "Completed" and was billed on the next run as if it
+		# had never been voided. Mirrors `Inspection.on_cancel`.
+		self.db_set("status", "Cancelled", update_modified=False)
 		# Cancelling (docstatus 2) takes the order out of `container_open_orders` — the
 		# tank it was holding In_Depot has to be recomputed, exactly as a delete does.
 		# The status-field route (status -> Cancelled) already goes through on_update.
 		from container_depot.container_depot.container_status import recompute_availability
 
 		recompute_availability(self.container)
+		# An inverse entry on the tank's timeline, the same one `cleaning.revert_to_draft`
+		# writes: the log is append-only, so a void is its own event. The submitted order's
+		# own row stays and is marked void by every reader off this docstatus (see
+		# `container_activity.annotate_voided`).
+		if self.container:
+			from container_depot.container_depot.container_activity import log_container_activity
+
+			log_container_activity(
+				self.container, "Cleaning",
+				reference_doctype=self.doctype, reference_name=self.name,
+				to_status=frappe.db.get_value("Container", self.container, "status"),
+				performed_by=self.get("completed_by"),
+				summary=_("Cleaning {0} dibatalkan").format(self.order_id or self.name),
+			)
 		# A revision request asked for exactly this; it has been actioned, so the flag (and
 		# the "Revisi Diminta" badge it drives) comes off. The amended copy starts clean —
 		# both fields are no_copy.

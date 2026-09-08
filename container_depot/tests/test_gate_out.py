@@ -147,6 +147,26 @@ class TestGateOut(FrappeTestCase):
 		self.assertFalse(row.gate_out_timestamp)
 		self.assertFalse(row.eir_reference)
 
+	def test_voiding_the_eir_out_brings_the_tank_back_too(self):
+		"""Cancel is the HARDER undo of the two, so it must not roll back less than the
+		revert above. It used to: voiding only flipped the badge to Cancelled, leaving the
+		tank ``Gate_Out`` on an inspection that no longer existed — departed for good, since
+		``recompute_availability`` only ever moves a tank that is still present."""
+		c = _container(f"{PREFIX}9990006", "Available")
+		name = _eir_out(c)
+		ge = frappe.db.get_value("Gate Entry", {"container_no": c}, "name")
+
+		frappe.get_doc("Inspection", name).cancel()
+
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+		self.assertEqual(frappe.db.get_value("Inspection", name, "status"), "Cancelled")
+		row = frappe.db.get_value(
+			"Gate Entry", ge, ["status", "gate_out_timestamp", "eir_reference"], as_dict=True
+		)
+		self.assertNotEqual(row.status, "Gate_Out_Completed")
+		self.assertFalse(row.gate_out_timestamp)
+		self.assertFalse(row.eir_reference)
+
 
 class TestBonCompletion(FrappeTestCase):
 	"""The bon a departure closes — a load is only finished when its LAST tank is out."""
@@ -185,6 +205,23 @@ class TestBonCompletion(FrappeTestCase):
 		_eir_out(b)
 		self.assertEqual(frappe.db.get_value("Order Muat", bon.name, "order_status"), "Completed")
 		frappe.db.delete("Order Muat", {"name": bon.name})
+
+	def test_taking_the_departure_back_reopens_the_bon(self):
+		"""A bon closed by the last tank leaving is not finished once that tank is standing
+		in the yard again — it has a load left to give. Back to ``Issued``, not Ready To
+		Load: the EIR-Out that declared it ready is the document being undone."""
+		shipper = ensure_test_customer("Gate Out Test Principal")
+		c = _container(f"{PREFIX}9991008", "Available")
+		bon = _make_order_muat(shipper, c)
+		frappe.db.set_value("Order Muat", bon, "order_status", "Ready To Load", update_modified=False)
+
+		name = _eir_out(c)
+		self.assertEqual(frappe.db.get_value("Order Muat", bon, "order_status"), "Completed")
+
+		frappe.get_doc("Inspection", name).cancel()
+		self.assertEqual(frappe.db.get_value("Order Muat", bon, "order_status"), "Issued")
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+		frappe.db.delete("Order Muat", {"name": bon})
 
 	def test_a_bon_on_hold_is_never_auto_completed(self):
 		shipper = ensure_test_customer("Gate Out Test Principal")

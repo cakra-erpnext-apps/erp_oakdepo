@@ -398,6 +398,48 @@ def _complete_order_muat_if_done(order_muat) -> bool:
 	return True
 
 
+def reverse_gate_out(eir_out, container=None) -> dict:
+	"""Undo a departure — everything :func:`mark_gate_out` set in motion for one tank.
+
+	Submitting a clean EIR-Out IS the departure, so both ways back from that submit come
+	through here: ``eir.revert_to_draft`` (reopen it for correction) and
+	``Inspection.on_cancel`` (void it outright). The container status itself is NOT touched
+	here — the EIR restores that from its own pre-submit snapshot, and this reverses what the
+	gate-out did to the documents AROUND the tank:
+
+	* the Gate Entry stamp (see :func:`reopen_gate_entry_for_eir`);
+	* the Order Muat that closed because this was its last tank out — a bon whose tank is
+	  standing in the yard again is not a finished load. Back to ``Issued`` rather than
+	  ``Ready To Load``: the EIR-Out that declared it ready is the very document being
+	  undone, so re-asserting readiness here would put back the one fact this is retracting;
+	* the outbound booking's ``% Keluar``, which counted this tank as collected.
+
+	The caller restores the container FIRST — every figure below is recomputed from the live
+	container statuses, so a tank still reading ``Gate_Out`` would simply be counted out
+	again. Best-effort per step: this runs inside a cancel, and a stale percentage must never
+	be what blocks it.
+	"""
+	out = {"gate_entry": None, "order_muat": None, "bookings": []}
+	if not eir_out:
+		return out
+	out["gate_entry"] = reopen_gate_entry_for_eir(eir_out)
+
+	container = container or frappe.db.get_value("Inspection", eir_out, "container")
+	if not container:
+		return out
+	container_no = frappe.db.get_value("Container", container, "container_no")
+
+	order_muat = _latest_order_muat(container, container_no)
+	if order_muat and frappe.db.get_value("Order Muat", order_muat, "order_status") == "Completed":
+		frappe.db.set_value("Order Muat", order_muat, "order_status", "Issued", update_modified=False)
+		out["order_muat"] = order_muat
+
+	from container_depot.container_depot import lift_on
+
+	out["bookings"] = lift_on.refresh_bookings_for_container(container)
+	return out
+
+
 def reopen_gate_entry_for_eir(eir_out) -> str | None:
 	"""Undo the gate-out stamp an EIR-Out left on its Gate Entry — the inverse of the
 	stamping inside :func:`mark_gate_out`.

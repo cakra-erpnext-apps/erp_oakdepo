@@ -2175,16 +2175,7 @@ def revert_to_draft(name: str) -> dict:
 			"sebelum mengembalikan EIR ini ke draft."
 		).format(doc.container, ", ".join(others)))
 
-	_restore_container_on_revert(doc)
-
-	# An EIR-Out submit IS the departure (Inspection.on_submit -> gate.mark_gate_out), so
-	# undoing it has to un-stamp the Gate Entry too — otherwise the visit reads as finished
-	# while the tank is standing in the yard again, and the corrected EIR-Out would file a
-	# second record for the same visit.
-	if doc.inspection_type == "EIR-Out":
-		from container_depot.container_depot.gate import reopen_gate_entry_for_eir
-
-		reopen_gate_entry_for_eir(doc.name)
+	unwind_submitted_eir(doc)
 
 	# Flip back to an editable draft (same record — editable in the PWA + Desk). Clear any
 	# pending revision request now that it has been actioned.
@@ -2219,6 +2210,51 @@ def revert_to_draft(name: str) -> dict:
 		frappe.log_error(frappe.get_traceback(), "revert_to_draft activity log")
 
 	return {"name": doc.name, "docstatus": 0, "status": "Draft"}
+
+
+def unwind_submitted_eir(doc, drop_followups: bool = False) -> None:
+	"""Undo what submitting this EIR did to the world around it.
+
+	The single unwind for BOTH ways back out of a submitted EIR — :func:`revert_to_draft`
+	(reopen it for correction) and ``Inspection.on_cancel`` (void it). They differ in what
+	they leave behind on the EIR itself, not in what they owe the rest of the depot, and
+	keeping that in one place is what stops the void half quietly rolling back less than the
+	revert half — which is exactly what it used to do.
+
+	Three things come off, in this order:
+
+	1. the Container status / last cargo this EIR wrote, from the pre-submit snapshot
+	   ``Inspection.on_submit`` captured;
+	2. for an EIR-Out, the DEPARTURE itself — submitting a clean one gates the tank out, so
+	   the Gate Entry, the bon it closed and the booking's ``% Keluar`` are all put back
+	   (:func:`gate.reverse_gate_out`). The container is restored first on purpose: every
+	   figure there is recomputed from the live status;
+	3. with ``drop_followups``, the Cleaning Order / M&R the submit filed off an EIR-In,
+	   while they are still untouched (:func:`eir_followups.release_followups_for_eir`).
+	   Only the VOID asks for that. A revert is on its way back to a re-submit, and the
+	   order it filed the first time is deliberately kept and re-adopted
+	   (``create_cleaning_order_from_eir``) rather than dropped and filed again — which
+	   would re-ring the cleaning team for a wash they were already told about.
+
+	What is deliberately NOT undone is ``eir_in_date`` / ``eir_out_date``: the tank's arrival
+	is a fact about the VISIT, stamped by whichever document got there first (the bon does it
+	too — ``order_bongkar._sync_container_arrival``), so an EIR is not entitled to erase it.
+	The gate dates are cleared by the bon's own cancel, which is the document that owns them.
+	"""
+	_restore_container_on_revert(doc)
+
+	# An EIR-Out submit IS the departure (Inspection.on_submit -> gate.mark_gate_out), so
+	# undoing it has to un-stamp the Gate Entry too — otherwise the visit reads as finished
+	# while the tank is standing in the yard again, and the corrected EIR-Out would file a
+	# second record for the same visit.
+	if doc.inspection_type == "EIR-Out":
+		from container_depot.container_depot.gate import reverse_gate_out
+
+		reverse_gate_out(doc.name, doc.container)
+	elif doc.inspection_type == "EIR-In" and drop_followups:
+		from container_depot.container_depot import eir_followups
+
+		eir_followups.release_followups_for_eir(doc.name)
 
 
 def _restore_container_on_revert(doc) -> None:
