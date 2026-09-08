@@ -1973,13 +1973,18 @@ def set_payment_status(booking, status):
 	Entry there instead — the hooks push it onto the booking by themselves.
 
 	``db_set``, not a save: a submitted booking is locked shut
-	(``before_update_after_submit``), and this call is deliberately still allowed on one.
-	The DESK no longer offers it there — the toggle is a draft-only button now, because Cash
-	is collected before the tank moves and a confirmed booking should not still be asking
-	about the money (see ``container_booking.js``). This stays permissive as the back-office
-	correction: a booking already carried past submit with the wrong answer can be fixed from
-	the console without reopening it. The change is left as a comment so "who marked this
-	paid, and when" has an answer."""
+	(``before_update_after_submit``), and marking one **Paid** is deliberately still allowed —
+	that is when the money usually arrives, and the depot's only record of it must be able to
+	catch up.
+
+	One direction only once confirmed. Un-paying a submitted booking withdraws a statement
+	about real money that both the gate and the bon read
+	(``order_generation.BON_ALLOWED_PAYMENT``), so it is refused here and not merely hidden on
+	the form: a screen rule that the API does not share is not a rule. The way back is
+	**Kembali ke Draft (pembayaran tetap)**, still offered while no bon has been raised — and a
+	draft may be toggled either way.
+
+	Every change is left as a comment so "who marked this paid, and when" has an answer."""
 	frappe.has_permission("Container Booking", ptype="write", throw=True)
 	if finance.is_enabled():
 		frappe.throw(
@@ -1997,6 +2002,15 @@ def set_payment_status(booking, status):
 	before = doc.payment_status or "Unpaid"
 	if before == status:
 		return status
+	if status == "Unpaid" and doc.docstatus == 1:
+		frappe.throw(
+			_(
+				"Booking yang sudah disetujui tidak bisa dikembalikan ke <b>belum lunas</b>. "
+				"Kalau memang salah tandai, kembalikan dulu ke draft lewat "
+				"<b>Kembali ke Draft (pembayaran tetap)</b>."
+			),
+			title=_("Tidak bisa dibatalkan lunasnya"),
+		)
 	doc.db_set("payment_status", status, update_modified=False)
 	doc.add_comment("Comment", _("Status bayar diubah manual: {0} → {1}").format(before, status))
 	return status

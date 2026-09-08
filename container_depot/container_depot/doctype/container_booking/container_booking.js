@@ -170,33 +170,39 @@ frappe.ui.form.on('Container Booking', {
 		// answers it. A toggle rather than a picker: the booking's current answer is already
 		// on the sidebar (Payment), so the button only has to say what pressing it does.
 		//
-		// DRAFT ONLY. Cash is collected before the tank moves, so the money is settled while
-		// the booking is still being prepared — and a confirmed booking is meant to read as
-		// an operational fact, not a screen still asking questions about it. Offering the
-		// toggle there put a "Tandai Belum Lunas" on a booking that had already been paid and
-		// confirmed, which undoes nothing anybody wants undone.
+		// WHEN IT IS OFFERED, and it is not symmetric:
 		//
-		// Draft-only costs nothing now that submit itself asks: a Cash booking cannot be
-		// confirmed while Unpaid any more (`container_booking._require_manual_paid`), so
-		// the button is on screen for exactly as long as the answer is still needed. An
-		// older booking carried past submit before that rule — or corrected from the
-		// console — still has **Kembali ke Draft** while no bon has been raised, and the
-		// bon itself refuses Cash that is not Paid
-		// (`order_generation.BON_ALLOWED_PAYMENT`), so it cannot have gone further.
+		//   draft            → both ways. Nothing has been confirmed yet, so a mis-click is
+		//                      just a mis-click and the answer is still being prepared.
+		//   submitted+Unpaid → "Tandai Lunas" only. This is when the money usually arrives —
+		//                      the truck came, the customer paid, and the form itself is
+		//                      locked shut by then. A confirmed booking with no way to say
+		//                      "it has been paid" leaves the depot's only record of the money
+		//                      permanently wrong.
+		//   submitted+Paid   → nothing. Un-paying a confirmed booking undoes a statement about
+		//                      real money that the gate and the bon both read
+		//                      (`order_generation.BON_ALLOWED_PAYMENT`), and the server
+		//                      refuses it too. The way back is **Kembali ke Draft (pembayaran
+		//                      tetap)**, which is still there while no bon has been raised.
 		//
-		// Cash only, matching the field's own depends_on: TOP is billed later by definition,
-		// so Unpaid is its correct resting state, not something to mark off.
+		// Cash only, matching the field's own depends_on. TOP is billed later, and with
+		// finance off there is no invoice to bill it WITH — so "belum lunas" on a TOP booking
+		// is not a debt anybody is chasing on this screen, it is just the resting state of a
+		// question nobody asked here. Nothing operational reads it either (TOP passes the bon
+		// and the gate regardless, `order_generation.BON_ALLOWED_PAYMENT`), so a label on it
+		// would be a switch with nothing behind it.
+		//
 		// Gone the moment finance is on — from there the invoice owns the field and the
 		// server refuses a hand-set anyway.
+		const paid = frm.doc.payment_status === 'Paid';
 		if (
 			!frm.is_new() &&
 			may_write &&
 			!_finance_on() &&
-			frm.doc.docstatus === 0 &&
 			frm.doc.booking_status !== 'Cancelled' &&
-			frm.doc.payment_type === 'Cash'
+			frm.doc.payment_type === 'Cash' &&
+			(frm.doc.docstatus === 0 || (frm.doc.docstatus === 1 && !paid))
 		) {
-			const paid = frm.doc.payment_status === 'Paid';
 			frm.add_custom_button(paid ? __('Tandai Belum Lunas') : __('Tandai Lunas'), () =>
 				_set_payment_status(frm, paid ? 'Unpaid' : 'Paid')
 			);

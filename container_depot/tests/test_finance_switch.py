@@ -177,9 +177,11 @@ class TestFinanceSwitch(FrappeTestCase):
 		So with finance off the gate reads the label — Unpaid shuts it, and marking it Paid by
 		hand is what opens it.
 
-		A confirmed booking has to be marked Paid to have been confirmed at all now, so the
-		Unpaid state under test is reached the only way it still occurs: the back-office
-		correction ``set_payment_status`` deliberately still allows after submit.
+		A confirmed booking has to be marked Paid to have been confirmed at all now, and
+		un-paying one is refused (see :func:`test_a_confirmed_booking_cannot_be_un_paid`), so
+		the Unpaid state under test is written straight to the row — the shape of a booking
+		carried past submit before either rule existed, which is exactly what the gate still
+		has to cope with.
 		"""
 		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			set_payment_status,
@@ -191,7 +193,7 @@ class TestFinanceSwitch(FrappeTestCase):
 		b.reload()
 		b.flags.ignore_permissions = True
 		b.submit()
-		set_payment_status(b.name, "Unpaid")
+		frappe.db.set_value("Container Booking", b.name, "payment_status", "Unpaid")
 		self.assertEqual(_booking_gate_detail(b.name)["block_reason"], "cash_unpaid")
 		set_payment_status(b.name, "Paid")
 		self.assertIsNone(_booking_gate_detail(b.name)["block_reason"])
@@ -241,11 +243,38 @@ class TestFinanceSwitch(FrappeTestCase):
 		b.flags.ignore_permissions = True
 		b.submit()
 		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Paid")
-		# …and back, for the mis-click.
+
+	def test_a_confirmed_booking_cannot_be_un_paid(self):
+		"""Marking a confirmed booking Paid is a statement about money that arrived; taking it
+		back is not a mis-click's business, because the gate and the bon both read it.
+
+		The undo that remains is Kembali ke Draft — the draft may then be toggled either way.
+		"""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
+		_set_finance(False)
+		b = self._booking("FINSW0009")
+		set_payment_status(b.name, "Paid")
+		b.reload()
+		b.flags.ignore_permissions = True
+		b.submit()
+		with self.assertRaises(frappe.ValidationError):
+			set_payment_status(b.name, "Unpaid")
+		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Paid")
+
+	def test_a_draft_may_be_toggled_either_way(self):
+		"""Nothing is confirmed yet, so a mis-click is just a mis-click."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			set_payment_status,
+		)
+
+		_set_finance(False)
+		b = self._booking("FINSW0011")
+		set_payment_status(b.name, "Paid")
 		set_payment_status(b.name, "Unpaid")
 		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Unpaid")
-		set_payment_status(b.name, "Paid")
-		self.assertEqual(frappe.db.get_value("Container Booking", b.name, "payment_status"), "Paid")
 
 	def test_hand_setting_is_refused_once_finance_is_on(self):
 		"""With invoicing live the Sales Invoice owns the field — the gate and the bon read

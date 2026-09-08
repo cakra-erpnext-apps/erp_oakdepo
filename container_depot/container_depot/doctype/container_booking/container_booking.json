@@ -278,7 +278,7 @@
   {
    "default": "Unpaid",
    "depends_on": "eval:doc.payment_type=='Cash' || doc.booking_status=='Cancelled'",
-   "description": "Dari Sales Invoice booking Cash.",
+   "description": "Hanya untuk booking Cash. Ditandai manual selama finance mati, dari Sales Invoice-nya saat finance aktif.",
    "fieldname": "payment_status",
    "fieldtype": "Select",
    "in_standard_filter": 1,
@@ -406,7 +406,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-07 14:30:00.000000",
+ "modified": "2026-09-08 15:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",
