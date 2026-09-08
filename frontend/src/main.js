@@ -2,6 +2,7 @@ import { createApp } from "vue"
 import App from "./App.vue"
 import router from "./router"
 import { pruneReads } from "@/data/cache"
+import { initTheme } from "@/utils/theme"
 
 import {
 	Button,
@@ -12,6 +13,11 @@ import {
 } from "frappe-ui"
 
 import "./main.css"
+
+// Before anything renders: the inline snippet in index.html already stamped the theme
+// onto <html> so the boot splash paints in it; this takes the same state over and keeps
+// tracking the OS setting from here on.
+initTheme()
 
 const app = createApp(App)
 

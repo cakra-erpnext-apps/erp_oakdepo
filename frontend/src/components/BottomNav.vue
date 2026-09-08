@@ -1,17 +1,17 @@
 <template>
 	<nav
-		class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pb-safe-bottom backdrop-blur-md"
+		class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-paper/95 pb-safe-bottom backdrop-blur-md"
 	>
-		<!-- `overflow-x-auto` + a per-tab floor rather than a hard cap on how many tabs may
-		     show: SPV Lapangan holds every menu, and squeezing nine tabs into a handset width
-		     turns the labels into unreadable slivers. Everyone else holds three or four and
-		     never sees a scrollbar, because `flex-1` still spreads them edge to edge. -->
-		<div class="mx-auto flex max-w-2xl items-stretch justify-around overflow-x-auto px-1">
+		<!-- Exactly five slots, always: Beranda, up to three of this account's own screens,
+		     and Lainnya. The bar used to grow a tab per menu, which meant SPV Lapangan (who
+		     holds every menu) got nine slivers of unreadable text across a handset. Anything
+		     that does not fit lives one tap away in the sheet, whole. -->
+		<div class="mx-auto flex max-w-2xl items-stretch justify-around px-1">
 			<router-link
 				v-for="t in tabs"
 				:key="t.to"
 				:to="t.to"
-				class="group flex min-w-[3.75rem] flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
+				class="group flex flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
 				:class="isActive(t) ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'"
 			>
 				<span
@@ -20,52 +20,59 @@
 				>
 					<Icon :name="t.icon" :size="20" :stroke="isActive(t) ? 2.4 : 2" />
 				</span>
-				<span class="text-center text-[11px] font-semibold leading-tight">{{ t.label }}</span>
+				<span class="text-center text-[11px] font-semibold leading-tight">{{ t.title }}</span>
 			</router-link>
+
+			<button
+				class="flex flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
+				:class="moreActive ? 'text-brand-600' : 'text-gray-400'"
+				:aria-expanded="moreOpen"
+				@click="moreOpen = true"
+			>
+				<span
+					class="oak-icon-tile h-8 w-10 transition-colors"
+					:class="moreActive ? 'bg-brand-50' : 'bg-transparent'"
+				>
+					<Icon name="more-horizontal" :size="20" :stroke="moreActive ? 2.4 : 2" />
+				</span>
+				<span class="text-center text-[11px] font-semibold leading-tight">{{ labels.navMore }}</span>
+			</button>
 		</div>
 	</nav>
+
+	<MoreSheet :open="moreOpen" :exclude="tabKeys" @close="moreOpen = false" />
 </template>
 
 <script setup>
-import { computed, onMounted } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import Icon from "@/components/Icon.vue"
+import MoreSheet from "@/components/MoreSheet.vue"
 import { fetchMenu, menu } from "@/data/menu"
+import { TAB_ORDER, modulesFor } from "@/data/modules"
 import { labels } from "@/utils/labels"
 
 const route = useRoute()
+const moreOpen = ref(false)
 
-// `key` is the server's menu key (container_depot.ess.context._MENU), exactly as Home's
-// tiles use it — the two surfaces must agree, or the bar offers a tab the router guard
-// then bounces back to Home. A tab with no key is unconditional: Beranda and Profil are
-// the two pages every logged-in account may open, menu or no menu.
-const allTabs = [
-	{ to: "/", icon: "home", label: labels.navHome },
-	{ key: "gate", to: "/gate", icon: "log-in", label: labels.navGate },
-	{ key: "eir", to: "/eir", icon: "clipboard", label: labels.navEir },
-	{ key: "cleaning", to: "/cleaning", icon: "droplet", label: labels.navCleaning },
-	{ key: "mr", to: "/mr", icon: "tool", label: labels.navMr },
-	{ key: "monitor", to: "/monitor", icon: "grid", label: labels.navMonitor || labels.monitorTitle },
-	// Jadwal is first of the planning tabs and the widest: it is the one tab that is not
-	// about a single doctype, so almost every field account has it.
-	{ key: "schedule", to: "/schedule", icon: "calendar", label: labels.navSchedule },
-	// The survey family. `surveyList` (read) carries the list; `posFix` (write) the lowering
-	// queue. Almost nobody holds only one — Team Survey and Kalmar both see both, and each
-	// screen decides for itself which presses to render.
-	{ key: "surveyList", to: "/survey-orders", icon: "list", label: labels.navSurveyList },
-	{ key: "posFix", to: "/position-fix", icon: "arrow-down-circle", label: labels.navPosFix },
-	// Letak Tank berdiri sendiri: satu-satunya menu yang menulis lokasi terkini di master,
-	// dipakai kapan saja, ada job atau tidak.
-	{ key: "tankPos", to: "/tank-position", icon: "map-pin", label: labels.navTankPos },
-	{ to: "/profile", icon: "user", label: labels.navProfile },
-]
+// Tapping a tab from inside the sheet has to leave the sheet behind.
+watch(() => route.fullPath, () => (moreOpen.value = false))
 
-// Until the menu resolves, `menu.has` is false for everything and the bar shows just the
-// two unconditional tabs. Fail-closed, same call as data/menu.js: a tab that appears and
-// then vanishes is better than one that 403s on tap.
-const tabs = computed(() => allTabs.filter((t) => !t.key || menu.has(t.key)))
+// How many of the account's own screens sit in the bar, next to Beranda and Lainnya.
+const WORK_TABS = 3
 
-// The bar outlives any single page, so it cannot rely on Home or the router guard having
+// Beranda is unconditional: it is the one page every logged-in account may open, menu or no
+// menu, and the empty state lives there.
+const home = { to: "/", icon: "home", title: labels.navHome }
+
+// Until the menu resolves, `menu.has` is false for everything and the bar is just Beranda +
+// Lainnya. Fail-closed, same call as data/menu.js: a tab that appears and then vanishes is
+// better than one that 403s on tap.
+const workTabs = computed(() => modulesFor(TAB_ORDER, menu).slice(0, WORK_TABS))
+const tabs = computed(() => [home, ...workTabs.value])
+const tabKeys = computed(() => workTabs.value.map((t) => t.key))
+
+// The bar outlives any single page, so it cannot rely on Beranda or the router guard having
 // fetched the menu — landing straight on /profile runs neither. Cached, so this is free
 // whenever one of them got there first.
 onMounted(fetchMenu)
@@ -79,4 +86,11 @@ function isActive(t) {
 	if (t.to === "/survey-orders") return p === "/survey-orders"
 	return p === t.to || p.startsWith(t.to + "/")
 }
+
+// Lainnya lights up while the sheet is open AND whenever the operator is on a screen the bar
+// has no tab for (Profil, Jadwal, a module that did not fit) — that is where they came in
+// from, so the bar should not read as if they were nowhere.
+const moreActive = computed(
+	() => moreOpen.value || (menu.ready && !tabs.value.some((t) => isActive(t)))
+)
 </script>

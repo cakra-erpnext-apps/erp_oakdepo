@@ -96,7 +96,6 @@ export const labels = {
 	installWhyBody:
 		"Notifikasi pekerjaan hanya bisa masuk ke aplikasi yang terpasang. Kalau dibuka lewat browser, notifikasi tidak akan sampai saat HP terkunci.",
 	greeting: "Halo", // "Halo, {name}"
-	homeHint: "Pilih menu untuk mulai bekerja", // Pick a menu to start
 	// Shown when the server grants this account no PWA menu at all (office staff, or a
 	// field user whose roles have not been assigned yet).
 	menuEmptyTitle: "Belum ada menu untuk akun ini",
@@ -119,16 +118,95 @@ export const labels = {
 	offlineBanner: "Mode offline — data dari koneksi terakhir. Simpanan belum bisa masuk sistem; sambungkan internet dulu.",
 	// The gate is the one screen that genuinely cannot work offline — it has to read the
 	// booking's live payment/block status before a bon may be issued.
+	// --- Gate: alur 3 langkah (redesain 2026-09-08) ---------------------------
+	// Arah (masuk/keluar) TIDAK pernah dipilih operator: ia dibaca dari booking yang
+	// ketemu lewat kode atau nomor tank. Chip arah di layar cuma memberitahu hasilnya.
+	gateStepContainer: "Container",
+	gateStepVehicle: "Truk dan sopir",
+	gateStepDone: "Konfirmasi",
+	gateStepOf: "Langkah {n} dari 3",
+	gateNext: "Lanjut: data truk dan sopir",
+	gateRescan: "Scan lagi",
+	gateSelectedCount: "{n} / {max} dipilih",
+	gateNoNumber: "— tanpa nomor",
+	gateNoNumberHint: "Lengkapi nomor container di booking",
+	gateNoNumberChip: "Data kurang",
+	gateAutofill: "Cargo dan shipper terisi otomatis dari booking",
+	gateFromBooking: "dari booking",
+	gateExtra: "Detail tambahan",
+	gateDoneTitle: "Bon berhasil dibuat",
+	gateDoneHint: "Serahkan bon ke sopir. Truk berikutnya bisa langsung discan.",
+	gateDoneNext: "Scan truk berikutnya",
 	gateNeedsOnline: "Gate butuh internet",
 	gateNeedsOnlineHint:
 		"Status bayar dan blokir booking harus dicek langsung ke server sebelum bon dibuat, jadi layar ini tidak bisa dipakai offline. Sambungkan internet dulu.",
-	dashMenuTitle: "Menu", // menu section heading
-	grpGate: "Gate", // workflow group: gate
-	grpInspeksi: "Inspeksi", // workflow group: EIR / EIR Out
-	grpPerawatan: "Perawatan", // workflow group: Cleaning / M&R
-	grpYard: "Yard & Monitor", // workflow group: Storage / Monitor
-	grpSurvey: "Survey Tank Out", // workflow group: Survey Order + Letak Tank
-	grpJadwal: "Rencana Kerja", // workflow group: kalender universal, di atas semuanya
+	// --- Beranda (redesain 2026-09-08) ---------------------------------------
+	// Sapaan + kartu identitas di puncak layar.
+	homeShiftMorning: "Shift pagi",
+	homeShiftDay: "Shift siang",
+	homeShiftNight: "Shift malam",
+	homeRoles: "{n} peran", // chip di kartu sapaan -> Profil
+	// Kotak cari. Ini BUKAN pencarian global: yang dicari operator dari beranda selalu
+	// berujung di Gate (kode booking OAK-…, kode order ORD-…, atau nomor tank), jadi
+	// mengetik di sini membuka Gate dengan kodenya sudah terisi dan hasilnya tampil di sana.
+	homeSearchPlaceholder: "Cari no. container, booking, atau voucher",
+	homeScanAria: "Pindai kode booking",
+	// Kartu angka "Hari ini". Sub-teks tiap kartu sengaja menyebut sisa pekerjaan, bukan
+	// mengulang angka besarnya — itu satu-satunya alasan angka hari ini perlu dilihat.
+	homeToday: "Hari ini",
+	homeTodayMonitor: "Lihat monitor",
+	homeTileGateIn: "Tank masuk",
+	homeTileGateInSub: "{n} belum EIR",
+	homeTileGateOut: "Tank keluar",
+	homeTileGateOutSub: "{n} booking pending",
+	homeTileEirReview: "EIR review",
+	homeTileEirReviewSub: "tertua {age}",
+	homeTileCleaning: "Cleaning aktif",
+	homeTileCleaningSub: "{n} belum mulai",
+	homeTileClear: "beres semua",
+	// "Menunggu Anda" — antrean yang sudah menunggu, tertua di atas. Baris dengan satu
+	// item menyebut tanknya; lebih dari satu menyebut jumlahnya.
+	homeWaiting: "Menunggu Anda",
+	homeWaitingCount: "{n} item",
+	homeWaitingEmpty: "Tidak ada yang menunggu. Antrean Anda bersih.",
+	waitEirReviewOne: "EIR {ref} menunggu review",
+	waitEirReviewMany: "{n} EIR menunggu review",
+	waitEirOpenOne: "EIR {ref} belum dikerjakan",
+	waitEirOpenMany: "{n} EIR belum dikerjakan",
+	waitEirOutMany: "{n} EIR-Out menunggu",
+	waitCleaningIdleOne: "Cleaning {ref} belum dimulai",
+	waitCleaningIdleMany: "{n} cleaning order belum dimulai",
+	waitMrApprovalOne: "M&R {ref} menunggu approval",
+	waitMrApprovalMany: "{n} M&R menunggu approval",
+	waitBookingGateOne: "Booking {ref} menunggu di gate",
+	waitBookingGateMany: "{n} booking menunggu di gate",
+	waitLoweringMany: "{n} tank menunggu diturunkan",
+	waitSurveyReadyMany: "{n} tank siap disurvey",
+	waitUnlocatedMany: "{n} tank belum ada letaknya",
+	// Umur antrean, dibulatkan ke satuan yang masih terbaca sekilas.
+	ageNow: "baru saja",
+	ageMinutes: "{n} mnt",
+	ageHours: "{n} jam",
+	ageDays: "{n} hari",
+	// Kelompok pintasan di bawah kartu angka.
+	homeGroupOps: "Operasional",
+	homeGroupYard: "Yard",
+	homeGroupHistory: "Riwayat",
+	// --- Sheet "Lainnya" (tab terakhir bottom nav) ---------------------------
+	navMore: "Lainnya",
+	moreModules: "Modul lain",
+	moreAccount: "Akun dan sistem",
+	moreRoles: "Peran aktif",
+	moreRolesRest: "+{n} lainnya", // "Admin Ops, SPV Lapangan, +8 lainnya"
+	moreTheme: "Tampilan",
+	themeSystem: "Otomatis",
+	themeLight: "Terang",
+	themeDark: "Gelap",
+	themeSystemHint: "Ikut pengaturan HP",
+	moreSettings: "Pengaturan",
+	moreSettingsHint: "Notifikasi, foto, dan kata sandi",
+	moreDeskHint: "Tampilan lengkap ERPNext",
+	moreClose: "Tutup",
 	// In-PWA notification bell
 	notifications: "Notifikasi", // Notifications
 	notifEmpty: "Belum ada notifikasi", // No notifications yet
@@ -220,8 +298,6 @@ export const labels = {
 	gateShipperOther: "Customer", // group header: everyone else
 	gateShipperEmpty: "Customer tidak ditemukan",
 	// Gate — vehicle / driver form before generating a bon (mirrors the Desk dialog)
-	gateVehicleTitle: "Data Kendaraan & Sopir", // Vehicle & driver data
-	gateVehicleHint: "Auto-isi dari container pertama — lengkapi bila perlu.",
 	optional: "opsional", // optional-field tag on the vehicle/driver form
 	gateRequiredMissing: "Lengkapi field wajib", // required field(s) still empty
 	vCondition: "Kondisi", // Condition
@@ -231,6 +307,7 @@ export const labels = {
 	vDateBongkar: "Tanggal Bongkar",
 	vDateMuat: "Tanggal Muat",
 	cancelBtn: "Batal", // Cancel
+	backBtn: "Kembali", // one step back in a multi-step flow (Gate)
 	truckPlate: "Nopol Truk", // Truck plate
 	driverName: "Nama Sopir", // Driver name
 	registerGate: "Catat Gate-In", // Register gate-in
@@ -239,7 +316,6 @@ export const labels = {
 	reset: "Ulangi", // Reset/again
 	// EIR (Equipment Interchange Receipt) checklist
 	eir: "EIR",
-	eirDesc: "Buat laporan kondisi kontainer (EIR)", // Create container condition report
 	eirTitle: "Checklist EIR",
 	eirCombinedSubtitle: "Pemeriksaan masuk & keluar dalam satu daftar", // In & Out in one worklist
 	eirStartTitle: "Mulai Pemeriksaan", // start-work gate title
@@ -424,7 +500,6 @@ export const labels = {
 	eirHistorySearch: "Cari no. container / EIR…", // Search container no / EIR id
 
 	// --- Riwayat (history) menus — shared ---
-	historySection: "Riwayat", // Home section heading for all history menus
 	depotLabel: "Depot", // generic depot field label (detail grids)
 
 	// Gate history
@@ -499,7 +574,7 @@ export const labels = {
 	eirVoucher: "Voucher",
 	eirTruck: "No. Truk",
 	eirDriver: "Sopir",
-	eirEmkl: "Shipper / EMKL", // one hauling party — the EIR's own emkl field was merged into shipper
+	eirEmkl: "EMKL", // the transporter, snapshotted from the bon (see labels.shipper for the factory)
 	eirDamages: "Kerusakan",
 	eirNoDamage: "Tidak ada kerusakan dicatat.",
 	// Riwayat detail: album inspeksi + bukti per temuan, supaya EIR bisa diperiksa dari HP
@@ -574,13 +649,23 @@ export const labels = {
 	signatureError: "Gagal mengunggah tanda tangan", // Signature upload failed
 	// Cleaning Order (ISO tank cleanliness — cleaning team)
 	cleaningTitle: "Cleaning Order", // page + Home tile + nav title
-	cleaningDesc: "Kerjakan cleaning order & terbitkan sertifikat", // Home tile subtitle
 	cleaningOrdersHint: "Pilih cleaning order untuk dikerjakan", // worklist hint
 	cleaningCargoHistory: "Riwayat Cargo", // cargo history (from submitted EIRs)
 	cleaningNoCargoHistory: "Belum ada riwayat cargo.", // no cargo history
 	cleaningStartFull: "Mulai Cleaning", // start button (in form)
 	cleaningStartFirst: "Mulai cleaning dulu sebelum bisa diselesaikan.", // gate hint
 	cleaningStartGate: "Order ini belum dimulai. Mulai dulu untuk mengisi detail cleaning.", // detail-access gate
+	// --- Cleaning: redesain layar (2026-09-08) --------------------------------
+	cleaningNotStarted: "Belum mulai", // chip di header order yang belum dijalankan
+	cleaningRequested: "Layanan diminta", // apa yang diminta Admin Ops (read-only bagi petugas)
+	cleaningStartAuto: "Waktu mulai dicatat otomatis",
+	// Tiga langkah pengisian, ditampilkan sebagai chip centang di puncak form. Bukan alur
+	// baru: ketiganya sudah ada, chipnya hanya menyebut mana yang belum diisi tanpa harus
+	// menggulir sampai bawah untuk tahu.
+	cleaningStepMethod: "Metode",
+	cleaningStepSign: "Tanda tangan",
+	cleaningDurationMin: "{n} mnt",
+	cleaningWorkWindow: "Mulai {start} – {end}",
 	cleaningSave: "Simpan", // save draft
 	cleaningComplete: "Kirim untuk Review", // field sign-off -> Admin Ops review (NOT the finish)
 	cleaningCompleteHint: "Admin Ops memeriksa dulu sebelum order benar-benar selesai.",
@@ -647,7 +732,6 @@ export const labels = {
 	cleaningResign: "Tanda tangan ulang", // re-sign
 	cleaningUploading: "Mengunggah…", // uploading
 	cleaningSubmitted: "Cleaning dikirim untuk review Admin Ops", // sent-for-review toast
-	cleaningPrint: "Cetak / Unduh PDF", // print / download
 	cleaningTankType: "Tipe Tank",
 	cleaningClient: "Client / Prinsipal",
 	cleaningCapacity: "Kapasitas (L)",
@@ -659,7 +743,6 @@ export const labels = {
 	// M&R (Maintenance & Repair — workshop team; auto-created from EIRs with damage)
 	mrTitle: "M&R", // page + Home tile + nav title
 	mrTitleFull: "M&R (Maintenance & Repair)",
-	mrDesc: "Perbaikan/ganti part container dari temuan EIR", // Home tile subtitle
 	navMr: "M&R", // bottom-nav label
 	mrOrdersHint: "Pilih M&R untuk dikerjakan", // worklist hint
 	mrOrdersSearch: "Cari no. container / M&R…",
@@ -783,7 +866,6 @@ export const labels = {
 	// izin: tim cuci melihat rencana cuci, tim repair melihat rencana perbaikan, SPV melihat
 	// keempat-empatnya. Lihat container_depot/container_depot/schedule.py.
 	scheduleTitle: "Jadwal",
-	scheduleDesc: "Semua rencana kerja depo dalam satu kalender",
 	scheduleHint: "Pilih tanggal untuk melihat rencana kerjanya",
 	scheduleToday: "Hari ini",
 	scheduleCount: "agenda",
@@ -796,11 +878,37 @@ export const labels = {
 	kindCleaning: "Cuci",
 	kindRepair: "Perbaikan",
 	kindBooking: "Booking",
+	// Booking rows name their direction: "Booking in" and "Booking out" are different jobs
+	// for the yard (a truck dropping off vs one collecting), and the calendar is where that
+	// is planned around.
+	kindBookingIn: "Booking in",
+	kindBookingOut: "Booking out",
+	// --- Jadwal: redesain jadi garis waktu harian (2026-09-08) ---------------
+	scheduleWeek: "minggu {n}", // "September 2026 · minggu 37" — ISO week
+	scheduleMonthOpen: "Lihat sebulan",
+	scheduleMonthClose: "Tampilkan sepekan",
+	scheduleDone: "selesai",
+	// Status pendek untuk chip di garis waktu Jadwal (peta lengkapnya di utils/scheduleKind.js)
+	statusQueued: "Antre",
+	statusRunning: "Berlangsung",
+	statusPlanned: "Dijadwalkan",
+	statusSetup: "Set layanan",
+	statusNoBon: "Belum dibon",
+	statusUnpaid: "Belum bayar",
+	statusArrived: "Sudah masuk",
+	statusLeft: "Sudah keluar",
+	scheduleNoTime: "—", // belum dimulai: tidak ada jam yang benar untuk ditulis
+	// Spanduk "yang tertinggal". Satu kalimat, dan kalimatnya menyebut jenisnya kalau semua
+	// yang tertinggal memang satu jenis — "1 booking belum beres" bisa langsung ditindak,
+	// "1 agenda belum beres" masih harus dibuka dulu.
+	scheduleOverdueOne: "{n} {kind} dari {when} belum selesai",
+	scheduleOverdueMixed: "{n} agenda dari {when} belum selesai",
+	scheduleOverdueYesterday: "kemarin",
+	scheduleOverdueMore: "+{n} lagi di hari lain",
 	// Kartu booking tidak bisa dibuka — belum ada layar booking di PWA (lihat schedule.py).
 	scheduleInfoOnly: "Info rencana truk",
 	// --- Daftar Survey Order (menu berdiri sendiri) ---
 	surveyListTitle: "Survey Order",
-	surveyListDesc: "Cari & buka jadwal survey tank out",
 	surveyListHint: "Semua jadwal survey, termasuk yang sudah selesai",
 	surveyListSearch: "Cari no. tank, principal, atau no. jadwal…",
 	surveyListEmpty: "Tidak ada jadwal survey yang cocok.",
@@ -848,7 +956,6 @@ export const labels = {
 	surveyPosStatusCancelled: "Batal",
 	// --- Letak Tank (Container Position) — menu berdiri sendiri, semua tim lapangan ---
 	tankPosTitle: "Letak Tank",
-	tankPosDesc: "Catat & cari letak tank di yard",
 	tankPosHint: "Cari nomor tank untuk melihat & memperbarui letaknya",
 	tankPosSearch: "Cari nomor tank…",
 	tankPosEmpty: "Tidak ada tank yang cocok.",
@@ -919,7 +1026,6 @@ export const labels = {
 	surveyPosSurveyedOn: "Survey selesai",
 	// Worklist Kalmar (menu posFix) — antrean lowering
 	posFixTitle: "Lowering Tank", // Kalmar menu/screen
-	posFixDesc: "Turunkan tank yang mau disurvey", // tile subtitle
 	posFixHint: "Tank booking Tank Out yang masih di atas", // header subtitle
 	posFixList: "Menunggu Lowering", // worklist section title
 	posFixEmpty: "Tidak ada tank yang menunggu lowering. 🎉",
@@ -939,7 +1045,6 @@ export const labels = {
 	surveyPosHistoryCount: "survey",
 	// Monitor Container (inventory list, filter by status + principal)
 	monitorTitle: "Monitor Container", // page title
-	monitorDesc: "Pantau container per status & prinsipal", // Home tile subtitle
 	monitorSearch: "Cari nomor container…", // search placeholder
 	monitorAll: "Semua", // all statuses
 	monitorAllPrincipals: "Semua Prinsipal", // principal filter default

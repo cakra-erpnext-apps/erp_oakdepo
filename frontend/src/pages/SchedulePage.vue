@@ -1,152 +1,174 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<div class="flex items-center justify-between">
+		<div class="flex items-start justify-between gap-2">
 			<div class="min-w-0">
 				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">
 					{{ labels.scheduleTitle }}
 				</h1>
-				<p class="text-sm text-gray-500">{{ labels.scheduleHint }}</p>
+				<!-- Month AND week number: the depot plans in weeks ("minggu 37" is what a
+				     shipping instruction says), and a calendar that only names the month leaves
+				     the operator counting rows to find out which week they are looking at. -->
+				<p class="truncate text-sm text-gray-500">{{ periodLabel }}</p>
 			</div>
-			<button class="oak-btn oak-btn-secondary shrink-0 px-3 py-2" :disabled="calRes.loading" @click="reload">
-				<Icon name="refresh-cw" :size="16" />
-			</button>
+			<div class="flex shrink-0 gap-2">
+				<button
+					v-if="selected !== todayIso"
+					class="oak-btn oak-btn-secondary px-3 py-2"
+					@click="goToday"
+				>
+					<Icon name="calendar" :size="15" /> {{ labels.scheduleToday }}
+				</button>
+				<button class="oak-btn oak-btn-secondary px-3 py-2" :disabled="calRes.loading" @click="reload">
+					<Icon name="refresh-cw" :size="16" />
+				</button>
+			</div>
 		</div>
 
-		<!-- =================== KIND FILTER ===================
-		     Built from what the SERVER says this account can read, never from a fixed list:
-		     offering Team Cleaning a "Perbaikan" chip that can only ever return nothing is a
-		     worse lie than not offering it. One source and the row collapses to nothing worth
-		     tapping, so it is hidden entirely. -->
-		<section v-if="sources.length > 1" class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-			<button
-				type="button"
-				class="oak-chip shrink-0 px-3 py-1.5"
-				:class="!active.size ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'"
-				@click="active.clear()"
-			>
-				{{ labels.scheduleFilterAll }}
-			</button>
-			<button
-				v-for="s in sources"
-				:key="s.kind"
-				type="button"
-				class="oak-chip shrink-0 gap-1 px-3 py-1.5"
-				:class="active.has(s.kind) ? KIND[s.kind].chipOn : 'bg-gray-100 text-gray-600'"
-				@click="toggle(s.kind)"
-			>
-				<Icon :name="KIND[s.kind].icon" :size="12" />
-				{{ KIND[s.kind].label }}
-			</button>
-		</section>
+		<!-- =================== THE STRIP ===================
+		     A week, not a month, by default: the yard works this week, and a 6×7 grid spends
+		     most of its height on days nobody is going to tap. The month is one tap away for
+		     the times somebody is planning ahead, and picking a day there drops straight back
+		     to the week that day sits in.
 
-		<!-- =================== CALENDAR ===================
-		     The dot answers "which days have work", which is the only question a month grid can
-		     usefully answer at 40px. Amber while anything on the day is still open, green once
-		     the whole day is done — the split is about whether somebody still has to go out,
-		     not about how much there is. -->
-		<section class="oak-section space-y-3">
-			<div class="flex items-center justify-between">
-				<button class="oak-btn oak-btn-ghost px-2 py-1.5" @click="shiftMonth(-1)">
-					<Icon name="chevron-left" :size="18" />
-				</button>
-				<p class="font-bold tracking-tight text-gray-900">{{ monthLabel }}</p>
-				<button class="oak-btn oak-btn-ghost px-2 py-1.5" @click="shiftMonth(1)">
-					<Icon name="chevron-right" :size="18" />
-				</button>
-			</div>
-
+		     Dots are per KIND, not one dot per day: "there is something on Thursday" is worth
+		     much less than "Thursday is two washes and a truck", and at this size colour is
+		     the only channel that can carry it. -->
+		<section class="oak-section space-y-2 p-3">
 			<div class="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-gray-400">
 				<span v-for="d in DOW" :key="d">{{ d }}</span>
 			</div>
-			<div class="grid grid-cols-7 gap-1">
-				<span v-for="n in leadingBlanks" :key="`b${n}`" />
+
+			<div v-if="!monthOpen" class="grid grid-cols-7 gap-1">
 				<button
-					v-for="cell in cells"
+					v-for="cell in weekCells"
 					:key="cell.date"
-					class="oak-press relative flex h-10 flex-col items-center justify-center rounded-lg text-sm"
+					class="oak-press flex flex-col items-center gap-1 rounded-xl py-1.5"
 					:class="dayClass(cell)"
 					@click="selected = cell.date"
 				>
-					{{ cell.day }}
-					<span
-						v-if="cell.stats"
-						class="absolute bottom-1 h-1 w-1 rounded-full"
-						:class="cell.stats.open ? 'bg-amber-500' : 'bg-leaf-500'"
-					/>
+					<span class="text-sm font-bold">{{ cell.day }}</span>
+					<span class="flex h-1.5 items-center gap-0.5">
+						<!-- On the selected day the pill is brand orange, and a brand-coloured dot on
+						     it is invisible — so the dots there go plain white and the kinds are read
+						     off the chips underneath instead. -->
+						<span
+							v-for="(dot, i) in cell.dots"
+							:key="i"
+							class="h-1.5 w-1.5 rounded-full"
+							:class="cell.date === selected ? 'bg-white/85' : dot"
+						/>
+					</span>
 				</button>
 			</div>
 
-			<button v-if="selected !== todayIso" class="oak-btn oak-btn-secondary w-full py-2" @click="selected = todayIso">
-				<Icon name="calendar" :size="15" /> {{ labels.scheduleToday }}
+			<template v-else>
+				<div class="grid grid-cols-7 gap-1">
+					<span v-for="n in leadingBlanks" :key="`b${n}`" />
+					<button
+						v-for="cell in monthCells"
+						:key="cell.date"
+						class="oak-press flex flex-col items-center gap-1 rounded-xl py-1.5"
+						:class="dayClass(cell)"
+						@click="pickFromMonth(cell.date)"
+					>
+						<span class="text-sm font-semibold">{{ cell.day }}</span>
+						<span class="flex h-1.5 items-center gap-0.5">
+							<span
+								v-for="(dot, i) in cell.dots"
+								:key="i"
+								class="h-1 w-1 rounded-full"
+								:class="cell.date === selected ? 'bg-white/85' : dot"
+							/>
+						</span>
+					</button>
+				</div>
+				<div class="flex items-center justify-between pt-1">
+					<button class="oak-btn oak-btn-ghost px-2 py-1.5" @click="shiftMonth(-1)">
+						<Icon name="chevron-left" :size="18" />
+					</button>
+					<p class="text-sm font-bold tracking-tight text-gray-900">{{ monthLabel }}</p>
+					<button class="oak-btn oak-btn-ghost px-2 py-1.5" @click="shiftMonth(1)">
+						<Icon name="chevron-right" :size="18" />
+					</button>
+				</div>
+			</template>
+
+			<button
+				class="flex w-full items-center justify-center gap-1 pt-1 text-xs font-semibold text-gray-500"
+				@click="monthOpen = !monthOpen"
+			>
+				<Icon :name="monthOpen ? 'chevron-up' : 'chevron-down'" :size="14" />
+				{{ monthOpen ? labels.scheduleMonthClose : labels.scheduleMonthOpen }}
 			</button>
 		</section>
 
-		<!-- =================== THE SELECTED DAY ===================
-		     Four kinds of document, one card shape — the normalising happens on the server
-		     (schedule._card) so the four never drift into four layouts. -->
-		<section class="oak-section space-y-3">
-			<div class="flex items-center justify-between gap-2">
-				<div class="flex min-w-0 items-center gap-2">
-					<Icon name="calendar" :size="16" class="text-brand-500" />
-					<p class="oak-section-title truncate">{{ fmtDate(selected) }}</p>
-				</div>
-				<span v-if="items.length" class="oak-chip bg-brand-50 text-brand-700">
-					{{ items.length }} {{ labels.scheduleCount }}
-				</span>
-			</div>
-
-			<SkeletonList v-if="dayRes.loading && !items.length" :action="false" />
-			<section v-else-if="dayFailed" class="oak-card space-y-3 p-6 text-center">
-				<span class="oak-icon-tile mx-auto h-12 w-12 bg-red-50 text-red-500">
-					<Icon name="cloud-off" :size="24" />
-				</span>
-				<p class="text-sm text-gray-600">{{ labels.scheduleError }}</p>
-				<button class="oak-btn oak-btn-primary w-full" @click="reload">{{ labels.retry }}</button>
-			</section>
-			<p v-else-if="!items.length" class="py-6 text-center text-sm text-gray-400">
-				{{ labels.scheduleEmptyDay }}
-			</p>
-
-			<ul v-else class="space-y-2">
-				<li v-for="it in items" :key="`${it.kind}:${it.name}`">
-					<!-- A booking has no screen of its own in the PWA, so its card is a plain
-					     div with no chevron. Rendering it as a link that goes nowhere would
-					     teach the crew that half the calendar is broken. -->
-					<component
-						:is="it.route ? 'router-link' : 'div'"
-						v-bind="it.route ? { to: it.route } : {}"
-						class="oak-card flex items-center gap-3 p-3"
-						:class="[it.route ? 'oak-press' : '', it.done ? 'opacity-60' : '']"
-					>
-						<span class="oak-icon-tile h-10 w-10 shrink-0" :class="KIND[it.kind].tile">
-							<Icon :name="KIND[it.kind].icon" :size="18" />
-						</span>
-						<div class="min-w-0 flex-1 space-y-0.5">
-							<div class="flex items-center gap-1.5">
-								<span class="oak-chip shrink-0 px-1.5 py-0 text-[10px]" :class="KIND[it.kind].chipOn">
-									{{ KIND[it.kind].label }}
-								</span>
-								<p class="truncate font-bold text-gray-900">{{ it.title || it.name }}</p>
-							</div>
-							<p v-if="it.subtitle" class="truncate text-[11px] text-gray-500">{{ it.subtitle }}</p>
-							<p class="truncate text-[11px] text-gray-400">
-								<span v-if="it.meta">{{ it.meta }} · </span>{{ it.status }}
-							</p>
-						</div>
-						<div class="shrink-0 space-y-0.5 text-right">
-							<p v-if="it.count" class="text-sm font-extrabold text-gray-900">
-								{{ it.count }} {{ labels.surveyOrderTankUnit }}
-							</p>
-							<p v-if="it.count && it.count_done < it.count" class="text-[11px] font-semibold text-amber-600">
-								{{ it.count - it.count_done }} {{ labels.scheduleOpen }}
-							</p>
-							<p v-if="!it.route" class="text-[10px] text-gray-300">{{ labels.scheduleInfoOnly }}</p>
-						</div>
-						<Icon v-if="it.route" name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
-					</component>
-				</li>
-			</ul>
+		<!-- =================== KIND FILTER ===================
+		     Chips carry their COUNT for the selected day, and only kinds that actually have
+		     something on it are offered — a "Perbaikan 0" chip is a tap that empties the
+		     screen. Filtering happens here rather than on the server precisely so the counts
+		     stay honest: asking the server for one kind would leave nothing to count the
+		     others with. -->
+		<section v-if="chips.length > 1" class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+			<button
+				v-for="c in chips"
+				:key="c.kind || 'all'"
+				type="button"
+				class="oak-chip shrink-0 gap-1.5 px-3 py-1.5"
+				:class="c.on ? c.toneOn : 'bg-gray-100 text-gray-600'"
+				@click="c.kind ? toggle(c.kind) : active.clear()"
+			>
+				<span v-if="c.kind" class="h-1.5 w-1.5 rounded-full" :class="c.dot"></span>
+				{{ c.label }}
+				<span class="font-extrabold">{{ c.count }}</span>
+			</button>
 		</section>
+
+		<!-- =================== THE DAY =================== -->
+		<div class="flex items-end justify-between gap-2 px-1">
+			<p class="min-w-0 truncate font-bold tracking-tight text-gray-900">{{ dayLabel }}</p>
+			<p v-if="visible.length" class="shrink-0 text-xs text-gray-400">
+				{{ visible.length }} {{ labels.scheduleCount }}
+				<template v-if="doneCount"> · {{ doneCount }} {{ labels.scheduleDone }}</template>
+			</p>
+		</div>
+
+		<!-- What the day view cannot say on its own: the truck that never came yesterday is
+		     still not here, and nothing on today's list mentions it. Tapping opens the list
+		     rather than navigating away — the operator is deciding whether to chase it, and
+		     that decision is made against today's plan, not instead of it. -->
+		<template v-if="overdueVisible.count">
+			<button
+				class="oak-card flex w-full items-center gap-2 border-amber-200 bg-amber-50 px-3 py-2.5 text-left"
+				@click="overdueOpen = !overdueOpen"
+			>
+				<Icon name="alert-triangle" :size="16" class="shrink-0 text-amber-600" />
+				<span class="min-w-0 flex-1 text-sm font-semibold text-amber-900">{{ overdueText }}</span>
+				<Icon :name="overdueOpen ? 'chevron-up' : 'chevron-right'" :size="16" class="shrink-0 text-amber-600" />
+			</button>
+			<div v-if="overdueOpen" class="oak-card divide-y divide-gray-100 overflow-hidden">
+				<ScheduleRow v-for="it in overdueVisible.items" :key="`o:${it.kind}:${it.name}`" :item="it" show-date />
+				<p v-if="overdueVisible.hidden" class="px-3 py-2 text-center text-[11px] text-gray-400">
+					{{ fill(labels.scheduleOverdueMore, { n: overdueVisible.hidden }) }}
+				</p>
+			</div>
+		</template>
+
+		<SkeletonList v-if="dayRes.loading && !items.length" :action="false" />
+		<section v-else-if="dayFailed" class="oak-card space-y-3 p-6 text-center">
+			<span class="oak-icon-tile mx-auto h-12 w-12 bg-red-50 text-red-500">
+				<Icon name="cloud-off" :size="24" />
+			</span>
+			<p class="text-sm text-gray-600">{{ labels.scheduleError }}</p>
+			<button class="oak-btn oak-btn-primary w-full" @click="reload">{{ labels.retry }}</button>
+		</section>
+		<p v-else-if="!visible.length" class="oak-card py-8 text-center text-sm text-gray-400">
+			{{ labels.scheduleEmptyDay }}
+		</p>
+		<ul v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
+			<li v-for="it in visible" :key="`${it.kind}:${it.name}`">
+				<ScheduleRow :item="it" />
+			</li>
+		</ul>
 	</div>
 </template>
 
@@ -155,16 +177,9 @@ import { computed, reactive, ref, watch } from "vue"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
+import ScheduleRow from "@/components/ScheduleRow.vue"
+import { KIND, KIND_ORDER } from "@/utils/scheduleKind"
 import { cachedResource } from "@/data/cache"
-
-// Presentation for the four kinds the server may return. Keyed by the SERVER's kind string
-// (container_depot.schedule.SOURCES) so a kind added there needs exactly one entry here.
-const KIND = {
-	survey: { label: labels.kindSurvey, icon: "clipboard", tile: "bg-amber-50 text-amber-600", chipOn: "bg-amber-100 text-amber-800" },
-	cleaning: { label: labels.kindCleaning, icon: "droplet", tile: "bg-brand-50 text-brand-600", chipOn: "bg-brand-100 text-brand-700" },
-	repair: { label: labels.kindRepair, icon: "tool", tile: "bg-leaf-50 text-leaf-600", chipOn: "bg-leaf-100 text-leaf-700" },
-	booking: { label: labels.kindBooking, icon: "truck", tile: "bg-gray-100 text-gray-500", chipOn: "bg-gray-200 text-gray-700" },
-}
 
 const DOW = ["Sn", "Sl", "Rb", "Km", "Jm", "Sb", "Mg"]
 const MONTHS = [
@@ -178,33 +193,83 @@ function iso(d) {
 	const p = (n) => String(n).padStart(2, "0")
 	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
-const todayIso = iso(new Date())
+function parse(v) {
+	const [y, m, d] = String(v).split("-").map(Number)
+	return new Date(y, m - 1, d)
+}
+function fill(tpl, vars) {
+	return Object.entries(vars).reduce((acc, [k, v]) => acc.replace(`{${k}}`, v), tpl)
+}
 
-const anchor = ref(new Date())
+const todayIso = iso(new Date())
 const selected = ref(todayIso)
+const anchor = ref(new Date()) // which month the grid is showing
+const monthOpen = ref(false)
+const overdueOpen = ref(false)
 const active = reactive(new Set()) // empty = every kind this account may read
 
-const monthLabel = computed(() => `${MONTHS[anchor.value.getMonth()]} ${anchor.value.getFullYear()}`)
-const leadingBlanks = computed(() => {
-	const first = new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1)
-	return (first.getDay() + 6) % 7 // Monday = 0, because the depot's week starts on Monday
+// --- the strip -------------------------------------------------------------------
+const weekStart = computed(() => {
+	const d = parse(selected.value)
+	d.setDate(d.getDate() - ((d.getDay() + 6) % 7)) // Monday, because the depot's week does
+	return d
 })
 
-const cells = computed(() => {
+/** ISO-8601 week number — the one every shipping instruction and plan sheet counts in. */
+function isoWeek(d) {
+	const t = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+	// Thursday of this week decides the year the week belongs to.
+	t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7))
+	const first = new Date(t.getFullYear(), 0, 4)
+	return 1 + Math.round(((t - first) / 86400000 - 3 + ((first.getDay() + 6) % 7)) / 7)
+}
+
+const periodLabel = computed(() => {
+	const d = parse(selected.value)
+	return `${MONTHS[d.getMonth()]} ${d.getFullYear()} · ${fill(labels.scheduleWeek, { n: isoWeek(d) })}`
+})
+const monthLabel = computed(() => `${MONTHS[anchor.value.getMonth()]} ${anchor.value.getFullYear()}`)
+const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
+const dayLabel = computed(() => {
+	const d = parse(selected.value)
+	return `${DAY_NAMES[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`
+})
+
+/** Up to four dots for one day, one per kind that has something on it, in work order. */
+function dotsFor(date) {
+	const day = calendar.value[date]
+	if (!day) return []
+	return KIND_ORDER.filter(
+		(k) => day.kinds?.[k] && (!active.size || active.has(k))
+	).map((k) => KIND[k].dot)
+}
+
+const weekCells = computed(() =>
+	Array.from({ length: 7 }, (_, i) => {
+		const d = new Date(weekStart.value)
+		d.setDate(d.getDate() + i)
+		const date = iso(d)
+		return { day: d.getDate(), date, dots: dotsFor(date) }
+	})
+)
+
+const leadingBlanks = computed(() => {
+	const first = new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1)
+	return (first.getDay() + 6) % 7
+})
+const monthCells = computed(() => {
 	const y = anchor.value.getFullYear()
 	const m = anchor.value.getMonth()
-	const out = []
-	for (let day = 1; day <= new Date(y, m + 1, 0).getDate(); day++) {
-		const date = iso(new Date(y, m, day))
-		out.push({ day, date, stats: calendar.value[date] || null })
-	}
-	return out
+	return Array.from({ length: new Date(y, m + 1, 0).getDate() }, (_, i) => {
+		const date = iso(new Date(y, m, i + 1))
+		return { day: i + 1, date, dots: dotsFor(date) }
+	})
 })
 
 function dayClass(cell) {
-	if (cell.date === selected.value) return "bg-brand-600 font-bold text-white"
-	if (cell.date === todayIso) return "bg-brand-50 font-bold text-brand-700"
-	return cell.stats ? "font-semibold text-gray-900" : "text-gray-400"
+	if (cell.date === selected.value) return "bg-brand-600 text-white"
+	if (cell.date === todayIso) return "bg-brand-50 text-brand-700"
+	return cell.dots.length ? "text-gray-900" : "text-gray-400"
 }
 
 function shiftMonth(delta) {
@@ -215,71 +280,130 @@ function shiftMonth(delta) {
 	d.setMonth(d.getMonth() + delta)
 	anchor.value = d
 }
-
-function fmtDate(v) {
-	if (!v) return "—"
-	const [y, m, d] = String(v).split("-").map(Number)
-	return y ? `${d} ${MONTHS[m - 1]} ${y}` : String(v)
+function pickFromMonth(date) {
+	selected.value = date
+	// Collapse back to the week the picked day sits in: the month grid is for FINDING a day,
+	// and once one is found the list underneath is what the operator came for.
+	monthOpen.value = false
+}
+function goToday() {
+	selected.value = todayIso
+	anchor.value = new Date()
 }
 
+// --- filter ----------------------------------------------------------------------
 function toggle(kind) {
 	if (active.has(kind)) active.delete(kind)
 	else active.add(kind)
 }
 
-// Sent as a comma list, or omitted entirely when nothing is selected. Omitting rather than
-// listing everything matters: the server then answers with what the ACCOUNT may read, which
-// is also how `sources` gets populated in the first place.
-const kindsParam = computed(() => (active.size ? [...active].join(",") : undefined))
+const counts = computed(() => {
+	const out = {}
+	for (const it of items.value) out[it.kind] = (out[it.kind] || 0) + 1
+	return out
+})
+const chips = computed(() => {
+	const present = KIND_ORDER.filter((k) => counts.value[k])
+	if (present.length < 2) return []
+	return [
+		{ kind: null, label: labels.scheduleFilterAll, count: items.value.length, on: !active.size, toneOn: "bg-brand-600 text-white" },
+		...present.map((k) => ({
+			kind: k,
+			label: KIND[k].label,
+			count: counts.value[k],
+			dot: KIND[k].dot,
+			on: active.has(k),
+			toneOn: KIND[k].chip,
+		})),
+	]
+})
 
-// ---- month counts (the dots) ----
+const visible = computed(() =>
+	active.size ? items.value.filter((it) => active.has(it.kind)) : items.value
+)
+const doneCount = computed(() => visible.value.filter((it) => it.done).length)
+
+// --- overdue ---------------------------------------------------------------------
+const overdueVisible = computed(() => {
+	const o = overdue.value
+	if (!o?.count) return { count: 0, items: [], hidden: 0 }
+	// The filter applies here too, and the COUNT has to follow it: "3 belum selesai" over a
+	// list showing one is the kind of small lie that makes a banner stop being read.
+	if (!active.size) {
+		return { count: o.count, items: o.items || [], hidden: o.count - (o.items || []).length }
+	}
+	const shown = (o.items || []).filter((it) => active.has(it.kind))
+	const count = [...active].reduce((n, k) => n + (o.kinds?.[k] || 0), 0)
+	return { count, items: shown, hidden: Math.max(0, count - shown.length) }
+})
+
+const overdueText = computed(() => {
+	const o = overdueVisible.value
+	const kindsIn = Object.keys(overdue.value?.kinds || {}).filter((k) => !active.size || active.has(k))
+	// "dari kemarin" reads very differently from "dari 2 Sep" — and only one of them is
+	// something the operator can picture without doing arithmetic.
+	const since = overdue.value?.since
+	const yesterday = iso(new Date(parse(selected.value).getTime() - 86400000))
+	const when = since === yesterday ? labels.scheduleOverdueYesterday : fmtSince(since)
+	if (kindsIn.length === 1) {
+		return fill(labels.scheduleOverdueOne, { n: o.count, kind: KIND[kindsIn[0]].label.toLowerCase(), when })
+	}
+	return fill(labels.scheduleOverdueMixed, { n: o.count, when })
+})
+function fmtSince(v) {
+	if (!v) return "—"
+	const d = parse(v)
+	return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`
+}
+
+// --- data ------------------------------------------------------------------------
+// Neither call is filtered server-side any more: one unfiltered answer per day feeds the
+// list, the chip counts AND the dots, where a filtered one could only feed the first.
 const calendar = ref({})
-const sources = ref([])
 const calRes = cachedResource({
 	url: "container_depot.ess.schedule.schedule_calendar",
 	method: "GET",
-	makeParams: () => ({
-		month: iso(new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1)),
-		kinds: kindsParam.value,
-	}),
+	makeParams: () => ({ month: iso(new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1)) }),
 	auto: true,
 	onSuccess(data) {
 		calendar.value = data?.days || {}
-		// Only ever grows the chip row from an UNFILTERED answer: asking for one kind returns
-		// one source, and letting that overwrite the list would delete the other chips the
-		// moment one was tapped — leaving no way back.
-		if (!active.size) sources.value = data?.sources || []
 	},
 })
 
-// ---- the selected day ----
 const items = ref([])
+const overdue = ref(null)
 const dayFailed = ref(false)
 const dayRes = cachedResource({
 	url: "container_depot.ess.schedule.schedule_day",
 	method: "GET",
-	makeParams: () => ({ date: selected.value, kinds: kindsParam.value }),
+	makeParams: () => ({ date: selected.value }),
 	auto: true,
 	onSuccess(data) {
 		dayFailed.value = false
 		items.value = data?.items || []
+		overdue.value = data?.overdue || null
+		overdueOpen.value = false
 	},
 	onError() {
 		dayFailed.value = true
 	},
 })
 
-// Three watches, kept apart on purpose: moving between days inside a month must not re-fetch
-// a month of counts that has not changed, and changing the filter has to reload both.
-watch(anchor, () => calRes.reload())
-watch(selected, () => dayRes.reload())
-watch(
-	() => kindsParam.value,
-	() => {
-		calRes.reload()
-		dayRes.reload()
+// The week strip can walk into a month the dots were never fetched for; follow it, so a day
+// in next month is not silently drawn as empty.
+watch(selected, (v) => {
+	const d = parse(v)
+	if (d.getMonth() !== anchor.value.getMonth() || d.getFullYear() !== anchor.value.getFullYear()) {
+		anchor.value = d
 	}
-)
+	dayRes.reload()
+})
+watch(anchor, () => calRes.reload())
+// A kind that had rows yesterday may have none today, and leaving it selected would show an
+// empty day that is not actually empty.
+watch(items, () => {
+	for (const k of [...active]) if (!counts.value[k]) active.delete(k)
+})
 
 function reload() {
 	calRes.reload()

@@ -62,10 +62,23 @@
 			</section>
 
 			<!-- Who worked it and when — the same facts the Desk form keeps, so the Riwayat
-			     entry stands on its own as the record of the job. -->
-			<section class="oak-card space-y-2 p-4">
-				<p class="oak-section-title">{{ labels.cleaningTankDetails }}</p>
-				<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+			     entry stands on its own as the record of the job. The window leads and carries
+			     its own duration: "14:56 – 15:22 · 26 mnt" is the line anyone checking a wash
+			     actually reads, and it is arithmetic nobody should have to do off two
+			     timestamps in a table. -->
+			<section class="oak-card space-y-3 p-4">
+				<div v-if="workWindow(data)" class="flex items-center gap-3">
+					<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
+						<Icon name="clock" :size="16" />
+					</span>
+					<div class="min-w-0">
+						<p class="truncate text-sm font-bold text-gray-900">{{ workWindow(data) }}</p>
+						<p v-if="data.assigned_to" class="truncate text-[11px] text-gray-500">
+							{{ labels.cleaningWorkedBy }}: {{ data.assigned_to }}
+						</p>
+					</div>
+				</div>
+				<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm" :class="workWindow(data) ? 'border-t border-gray-100 pt-3' : ''">
 					<div v-for="c in workCells(data)" :key="c.label" class="min-w-0">
 						<dt class="text-xs text-gray-400">{{ c.label }}</dt>
 						<dd class="truncate font-medium text-gray-800">{{ c.value || "—" }}</dd>
@@ -100,7 +113,7 @@
 
 			<section v-if="data.signature" class="oak-card space-y-2 p-4">
 				<p class="oak-section-title">{{ labels.cleaningSignature }}</p>
-				<img :src="photoSrc(data.signature)" class="h-24 rounded-lg border border-gray-200 bg-white object-contain p-1" />
+				<img :src="photoSrc(data.signature)" class="h-24 rounded-lg border border-gray-200 bg-paper object-contain p-1" />
 				<p v-if="data.signed_by" class="text-xs text-gray-500">{{ data.signed_by }}</p>
 			</section>
 
@@ -137,6 +150,18 @@
 				</div>
 			</section>
 
+			<!-- Pulling an order back out of review: the same withdraw the worklist offers on
+			     its review rows, repeated here because this detail is where an operator ends up
+			     when they go looking for the order afterwards. -->
+			<button
+				v-if="data.status === 'Pending Review'"
+				type="button"
+				class="oak-btn oak-btn-secondary w-full py-2.5"
+				:disabled="withdrawRes.loading"
+				@click="withdraw(data.name)"
+			>
+				<Icon name="rotate-ccw" :size="16" /> {{ labels.cleaningWithdrawReview }}
+			</button>
 		</template>
 	</HistoryPage>
 </template>
@@ -177,16 +202,52 @@ function sendRevision(name) {
 	revisionRes.submit({ cleaning_order: name, reason: revisionReason.value || undefined })
 }
 
+// Pending Review is reachable here even though the history LIST only carries finished
+// orders: the worklist links its review rows straight to this detail, and a raw
+// "Pending Review" in the chip is the one status a reader would have to translate themselves.
 function statusText(s) {
 	if (s === "Completed") return labels.cleaningStatusCompleted
 	if (s === "Cancelled") return labels.cleaningStatusCancelled
+	if (s === "Pending Review") return labels.cleaningStatusPendingReview
 	return s || "—"
 }
 function statusClass(s) {
 	if (s === "Completed") return "bg-leaf-100 text-leaf-800"
 	if (s === "Cancelled") return "bg-red-100 text-red-700"
+	if (s === "Pending Review") return "bg-sky-100 text-sky-800"
 	return "bg-gray-200 text-gray-600"
 }
+
+/** `Mulai 14:56 – 15:22 · 26 mnt`, or just the start when the wash has no end yet. */
+function workWindow(d) {
+	if (!d.cleaning_start) return ""
+	const start = fmtDateTime(d.cleaning_start).slice(11)
+	if (!d.cleaning_end) return labels.cleaningWorkWindow.replace("{start}", start).replace(" – {end}", "")
+	const end = fmtDateTime(d.cleaning_end).slice(11)
+	const line = labels.cleaningWorkWindow.replace("{start}", start).replace("{end}", end)
+	// Parsed as local time (the "T" form), never `new Date("YYYY-MM-DD HH:MM")`, which Safari
+	// rejects outright and would leave the duration as NaN on exactly half the handsets.
+	const mins = Math.round(
+		(new Date(String(d.cleaning_end).slice(0, 19).replace(" ", "T")) -
+			new Date(String(d.cleaning_start).slice(0, 19).replace(" ", "T"))) / 60000
+	)
+	return Number.isFinite(mins) && mins >= 0
+		? `${line} · ${labels.cleaningDurationMin.replace("{n}", mins)}`
+		: line
+}
+
+// Pulling an order back out of review — the operator's own fix, no Admin Ops needed. Same
+// endpoint the worklist calls; offered here only while the order is actually in review.
+const withdrawRes = createResource({
+	url: "container_depot.ess.cleaning.cleaning_withdraw_review",
+	method: "POST",
+	onSuccess: () => toast.success(labels.cleaningWithdrawReviewDone),
+	onError: (e) => toast.error(e?.messages?.[0] || e?.message || labels.error),
+})
+function withdraw(name) {
+	withdrawRes.submit({ cleaning_order: name })
+}
+
 // The job itself: who, where, when. Kept apart from the tank spec above so the two read as
 // two different things.
 function workCells(d) {

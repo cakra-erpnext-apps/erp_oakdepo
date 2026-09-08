@@ -14,7 +14,7 @@
 			<div
 				v-if="open"
 				ref="panel"
-				class="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card"
+				class="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-paper shadow-card"
 				:style="panelStyle"
 			>
 				<div class="border-b border-gray-100 p-2">

@@ -249,6 +249,87 @@ class TestPermissionIsTheFilter(_Base):
 
 
 # ---------------------------------------------------------------------------
+class TestWhatSlippedFromBefore(_Base):
+	"""The banner above the day list: work planned BEFORE this day that is still open.
+
+	It is the one thing a day view cannot say on its own — yesterday's truck never came, and
+	nothing on today's list mentions it — so what is pinned here is the boundary: only OPEN,
+	only BEFORE, and only within the lookback.
+	"""
+
+	def _overdue(self, date=None):
+		od = sched.schedule_day(date or self.day)["overdue"]
+		mine = self._mine(od["items"])
+		return od, mine
+
+	def test_open_work_from_a_previous_day_is_reported(self):
+		c = self._container("SCHEDOVD00001")
+		self._cleaning(c, plan_date=add_days(self.day, -1))
+		_od, mine = self._overdue()
+		self.assertEqual([i["kind"] for i in mine], ["cleaning"])
+		self.assertEqual(mine[0]["date"], str(add_days(self.day, -1)))
+
+	def test_finished_work_from_a_previous_day_is_not_overdue(self):
+		"""Done is done. A calendar that nags about completed work stops being read."""
+		c = self._container("SCHEDOVD00002")
+		self._cleaning(c, plan_date=add_days(self.day, -1), status="Completed")
+		_od, mine = self._overdue()
+		self.assertEqual(mine, [])
+
+	def test_todays_own_work_is_not_overdue_however_open_it_is(self):
+		c = self._container("SCHEDOVD00003")
+		self._cleaning(c)
+		_od, mine = self._overdue()
+		self.assertEqual(mine, [])
+
+	def test_work_older_than_the_lookback_is_left_alone(self):
+		"""Beyond the window it is an office data-hygiene problem, not this morning's work —
+		and scanning a year of four doctypes on every day-change costs more than it tells."""
+		c = self._container("SCHEDOVD00004")
+		self._cleaning(c, plan_date=add_days(self.day, -(sched.OVERDUE_LOOKBACK_DAYS + 1)))
+		_od, mine = self._overdue()
+		self.assertEqual(mine, [])
+
+	def test_the_oldest_day_leads_and_is_reported_as_since(self):
+		c = self._container("SCHEDOVD00005")
+		self._cleaning(c, plan_date=add_days(self.day, -3))
+		self._repair(c, plan_date=add_days(self.day, -1))
+		od, mine = self._overdue()
+		self.assertEqual([i["kind"] for i in mine], ["cleaning", "repair"])
+		# `since` is instance-wide (the site is shared), so it can only be asserted as a bound.
+		self.assertLessEqual(od["since"], str(add_days(self.day, -3)))
+
+
+# ---------------------------------------------------------------------------
+class TestTheClockColumn(_Base):
+	"""No source in the depot schedules to the HOUR — every date field is a Date. The time a
+	card carries is therefore the moment work actually started, and its absence means "not
+	started", never "we lost the appointment"."""
+
+	def test_a_card_carries_the_day_it_was_planned_for(self):
+		c = self._container("SCHEDTIME0001")
+		self._cleaning(c)
+		self.assertEqual(self._items()[0]["date"], str(self.day))
+
+	def test_unstarted_work_has_no_time(self):
+		c = self._container("SCHEDTIME0002")
+		self._cleaning(c)
+		self.assertIsNone(self._items()[0]["time"])
+
+	def test_a_started_job_reports_the_hour_it_started(self):
+		c = self._container("SCHEDTIME0003")
+		name = self._cleaning(c, status="In_Progress")
+		frappe.db.set_value("Cleaning Order", name, "cleaning_start", f"{self.day} 08:05:00")
+		self.assertEqual(self._items()[0]["time"], "08:05")
+
+	def test_a_booking_never_claims_a_time(self):
+		"""Container Booking has no time field at all; the card must say so with None rather
+		than with a confident midnight."""
+		self._booking()
+		self.assertIsNone(self._items()[0]["time"])
+
+
+# ---------------------------------------------------------------------------
 class TestTheMenuGate(FrappeTestCase):
 	def test_the_calendar_opens_for_anyone_who_can_read_one_kind(self):
 		"""`schedule` is the only _MENU entry keyed on SEVERAL doctypes, and it is an any-of.

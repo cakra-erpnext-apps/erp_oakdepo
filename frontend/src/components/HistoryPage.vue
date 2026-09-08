@@ -97,7 +97,7 @@
 						v-for="p in pageWindow"
 						:key="p"
 						class="hidden min-w-[2.5rem] rounded-lg border px-3 py-1.5 text-sm font-semibold transition sm:block"
-						:class="p === page ? 'border-brand-600 bg-brand-600 text-white shadow-sm' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'"
+						:class="p === page ? 'border-brand-600 bg-brand-600 text-white shadow-sm' : 'border-gray-300 bg-paper text-gray-700 hover:bg-gray-50'"
 						:disabled="listRes.loading"
 						@click="goTo(p)"
 					>

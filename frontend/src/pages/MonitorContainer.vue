@@ -33,7 +33,7 @@
 				v-for="s in statusChips"
 				:key="s.key"
 				class="shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
-				:class="statusFilter === s.key ? 'border-brand-600 bg-brand-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'"
+				:class="statusFilter === s.key ? 'border-brand-600 bg-brand-600 text-white' : 'border-gray-200 bg-paper text-gray-600 hover:border-gray-300'"
 				@click="setStatus(s.key)"
 			>
 				{{ s.label }}
@@ -44,7 +44,7 @@
 		<div class="flex gap-1.5">
 			<button
 				class="flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition"
-				:class="todayOnly ? 'border-brand-600 bg-brand-600 text-white' : 'border-gray-200 bg-white text-gray-600'"
+				:class="todayOnly ? 'border-brand-600 bg-brand-600 text-white' : 'border-gray-200 bg-paper text-gray-600'"
 				@click="toggleToday"
 			>
 				<Icon name="calendar" :size="13" /> {{ labels.monitorToday }}

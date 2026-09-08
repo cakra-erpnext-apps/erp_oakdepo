@@ -17,7 +17,7 @@
 		<template v-if="open">
 			<div class="fixed inset-0 z-40" @click="open = false"></div>
 			<div
-				class="fixed right-2 z-50 flex max-h-[70vh] w-[min(22rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-soft animate-slide-up md:right-4"
+				class="fixed right-2 z-50 flex max-h-[70vh] w-[min(22rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-paper shadow-soft animate-slide-up md:right-4"
 				style="top: calc(env(safe-area-inset-top) + 3.5rem)"
 			>
 				<div class="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
@@ -70,7 +70,7 @@
 						:class="soundOn ? 'bg-brand-600' : 'bg-gray-300'"
 					>
 						<span
-							class="h-4 w-4 rounded-full bg-white shadow transition"
+							class="h-4 w-4 rounded-full bg-paper shadow transition"
 							:class="soundOn ? 'translate-x-4' : 'translate-x-0'"
 						></span>
 					</span>

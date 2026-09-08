@@ -87,8 +87,9 @@
 		</section>
 
 		<!-- Which menus this account may open. Straight off the same menu keys the bottom
-		     bar and Home filter on, so what it lists is exactly what is reachable. -->
-		<section class="space-y-2">
+		     bar and Home filter on, so what it lists is exactly what is reachable.
+		     `id` is the landing spot for "Peran aktif" in the Lainnya sheet. -->
+		<section id="akses" class="scroll-mt-24 space-y-2">
 			<p class="oak-eyebrow flex items-center gap-1.5 px-1">
 				<Icon name="grid" :size="14" /> {{ labels.profileAccessTitle }}
 			</p>
@@ -111,8 +112,9 @@
 		     open?"), in menu names rather than role names. -->
 
 		<!-- Notifikasi HP — the only place a browser may ask for permission is a real tap,
-		     so this cannot be turned on for the operator automatically. -->
-		<section class="space-y-2">
+		     so this cannot be turned on for the operator automatically. `id` is where
+		     "Pengaturan" in the Lainnya sheet lands. -->
+		<section id="pengaturan" class="scroll-mt-24 space-y-2">
 			<p class="oak-eyebrow flex items-center gap-1.5 px-1">
 				<Icon name="bell" :size="14" /> {{ labels.pushTitle }}
 			</p>

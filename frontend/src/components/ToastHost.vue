@@ -38,9 +38,9 @@ function toneClass(type) {
 		case "error":
 			return "border-red-200 bg-red-50/95 text-red-700"
 		case "busy":
-			return "border-gray-200 bg-white/95 text-gray-600"
+			return "border-gray-200 bg-paper/95 text-gray-600"
 		default:
-			return "border-gray-200 bg-white/95 text-gray-800"
+			return "border-gray-200 bg-paper/95 text-gray-800"
 	}
 }
 function toneIcon(type) {

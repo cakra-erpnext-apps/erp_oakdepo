@@ -40,7 +40,7 @@ never widens what a branch-scoped account can see.
 from __future__ import annotations
 
 import frappe
-from frappe.utils import cint, get_first_day, get_last_day, getdate, today
+from frappe.utils import add_days, cint, get_first_day, get_last_day, getdate, today
 
 from container_depot.container_depot.user_branch import get_user_depots
 
@@ -76,7 +76,12 @@ SOURCES = [
 		"skip": ("Cancelled",),
 		"done": ("Completed",),
 		"fields": ["name", "container", "container_no", "container_principal", "status",
-				   "cleaning_type", "target_lift_on", "target_survey_on"],
+				   "cleaning_type", "target_lift_on", "target_survey_on", "cleaning_start"],
+		# When the job actually started. There is no PLANNED hour anywhere in the depot's
+		# scheduling — every source is a date — so the calendar's time column shows the real
+		# clock reading once work begins and stays empty before that, rather than inventing
+		# an appointment nobody made.
+		"time_field": "cleaning_start",
 		"route": "/cleaning?o={name}",
 	},
 	{
@@ -89,7 +94,8 @@ SOURCES = [
 		"skip": ("Cancelled", "Rejected"),
 		"done": ("Completed",),
 		"fields": ["name", "container", "container_no", "principal", "status", "job_type",
-				   "target_lift_on", "target_survey_on"],
+				   "target_lift_on", "target_survey_on", "start_date"],
+		"time_field": "start_date",
 		"route": "/mr?o={name}",
 	},
 	{
@@ -203,26 +209,126 @@ def schedule_day(date=None, kinds=None) -> dict:
 	still outstanding, so finished cards sinking to the bottom is the whole ordering.
 	"""
 	day = getdate(date or today())
-	items = []
-
-	for order, source in enumerate(_visible_sources(kinds)):
-		rows = frappe.get_all(
-			source["doctype"],
-			filters=_filters(source, day, day),
-			fields=source["fields"],
-			order_by="modified desc",
-			limit_page_length=0,
-		)
-		for r in rows:
-			items.append(_card(source, r, order))
-
+	items = _cards_between(day, day, kinds)
 	items.sort(key=lambda c: (c["done"], c["_order"], (c["title"] or "").lower()))
 	for c in items:
 		c.pop("_order", None)
-	return {"date": str(day), "items": items, "sources": _source_meta(kinds)}
+	return {
+		"date": str(day),
+		"items": items,
+		"overdue": _overdue(day, kinds),
+		"sources": _source_meta(kinds),
+	}
 
 
-def _card(source, row, order) -> dict:
+def _cards_between(start, end, kinds=None, open_only=False) -> list:
+	"""Every visible source's rows in a date window, as cards.
+
+	``open_only`` drops anything already finished as well as anything cancelled — that is
+	what makes a card OVERDUE rather than merely past.
+	"""
+	out = []
+	for order, source in enumerate(_visible_sources(kinds)):
+		filters = _filters(source, start, end)
+		if open_only:
+			# Widen the status exclusion the base filter already applies: skipped states are
+			# not planned work, and done ones are not outstanding.
+			filters[source["status_field"]] = ["not in", list(source["skip"]) + list(source["done"])]
+		# The planned day is FILTERED on but was never selected, so the card had nothing to
+		# report its own date with — which the overdue banner ("dari kemarin") depends on.
+		fields = list(source["fields"])
+		if source["date_field"] not in fields:
+			fields.append(source["date_field"])
+		rows = frappe.get_all(
+			source["doctype"],
+			filters=filters,
+			fields=fields,
+			order_by="modified desc",
+			limit_page_length=0,
+		)
+		extras = _booking_extras(rows) if source["kind"] == "booking" else {}
+		for r in rows:
+			out.append(_card(source, r, order, extras.get(r.get("name")) or {}))
+	return out
+
+
+# How far back the "still not done" banner looks. A booking whose truck never came three
+# months ago is a data-hygiene problem for the office, not something the yard can act on
+# this morning — and scanning a year of four doctypes on every day-change is a cost with
+# nobody to spend it on.
+OVERDUE_LOOKBACK_DAYS = 30
+# The banner is a nudge, not a worklist. It says how many and shows the oldest few; the rest
+# are reached by going to their day.
+OVERDUE_SHOWN = 10
+
+
+def _overdue(day, kinds=None) -> dict:
+	"""Planned work from BEFORE this day that is still open.
+
+	The one thing a day view cannot show on its own and the yard most needs told: the truck
+	that never came yesterday is still not here, and nothing on today's list says so.
+
+	Counted relative to the SELECTED day rather than to today, so browsing forward answers
+	"what will still be hanging over us by Thursday" with the same rule.
+	"""
+	items = _cards_between(add_days(day, -OVERDUE_LOOKBACK_DAYS), add_days(day, -1), kinds, open_only=True)
+	if not items:
+		return {"count": 0, "items": [], "kinds": {}, "since": None}
+	items.sort(key=lambda c: (c["date"] or "", c["_order"]))
+	kinds_count: dict = {}
+	for c in items:
+		kinds_count[c["kind"]] = kinds_count.get(c["kind"], 0) + 1
+	shown = items[:OVERDUE_SHOWN]
+	for c in shown:
+		c.pop("_order", None)
+	return {
+		"count": len(items),
+		"kinds": kinds_count,
+		# The oldest one's day — "dari kemarin" reads very differently from "dari 3 minggu lalu".
+		"since": items[0]["date"],
+		"items": shown,
+	}
+
+
+def _booking_extras(rows) -> dict:
+	"""Cargo and truck per booking, in ONE query for the whole day.
+
+	Both live on the booking's lines, and the calendar row is the place an operator decides
+	whether they are ready for this truck — "1,3-Dioxolane, truk L 9021 UT" is what they
+	check the yard against. Fetched in a batch rather than per card: a busy day is a dozen
+	bookings, and a dozen round-trips for two strings is how a list view gets slow.
+	"""
+	names = [r.get("name") for r in rows if r.get("name")]
+	if not names:
+		return {}
+	out: dict = {}
+	for line in frappe.get_all(
+		"Container Booking Item",
+		filters={"parent": ["in", names], "parenttype": "Container Booking"},
+		fields=["parent", "cargo", "truck_plate"],
+		limit_page_length=0,
+	):
+		slot = out.setdefault(line.parent, {"cargo": [], "truck": []})
+		for key, value in (("cargo", line.cargo), ("truck", line.truck_plate)):
+			if value and value not in slot[key]:
+				slot[key].append(value)
+	return {k: {"cargo": ", ".join(v["cargo"]), "truck": ", ".join(v["truck"])} for k, v in out.items()}
+
+
+def _clock(value) -> str | None:
+	"""A Datetime -> ``"08:00"``, or None when there is nothing to show.
+
+	String-sliced rather than formatted through ``get_datetime``: the value arrives from the
+	database already in ``YYYY-MM-DD HH:MM:SS``, and a Date field (no time at all) must come
+	back as None rather than as a confident "00:00".
+	"""
+	if not value:
+		return None
+	text = str(value)
+	return text[11:16] if len(text) >= 16 else None
+
+
+def _card(source, row, order, extras=None) -> dict:
 	"""One source row -> the single card shape every kind renders through.
 
 	The normalising is the point. Four doctypes name the same idea four ways (`principal` vs
@@ -231,12 +337,20 @@ def _card(source, row, order) -> dict:
 	"""
 	kind = source["kind"]
 	status = row.get(source["status_field"])
+	planned = row.get(source["date_field"])
 	card = {
 		"kind": kind,
 		"name": row.get("name"),
 		"status": status,
 		"done": 1 if status in source["done"] else 0,
 		"route": source["route"].format(name=row.get("name")) if source["route"] else None,
+		# The day this was planned for. Carried on every card because the same card shape is
+		# reused by the overdue banner, where the date is the whole point.
+		"date": str(planned) if planned else None,
+		# Clock time, only where one genuinely exists — the moment the crew started. Nothing
+		# in the depot is scheduled to the hour, so an empty slot here means "not started",
+		# never "we forgot to write the appointment down".
+		"time": _clock(row.get(source.get("time_field"))) if source.get("time_field") else None,
 		"_order": order,
 	}
 
@@ -264,9 +378,20 @@ def _card(source, row, order) -> dict:
 			"container": row.get("container"),
 		})
 	else:  # booking
+		extras = extras or {}
+		# The TANK leads, not the customer: a booking row is read against what is standing in
+		# the yard (or about to be), and every other kind on this calendar is titled by its
+		# container too. Whose booking it is moves into the line underneath, next to the two
+		# things the crew checks before the truck arrives — what is in it, and which truck.
 		card.update({
-			"title": row.get("principal") or row.get("customer"),
-			"subtitle": row.get("container_summary"),
+			"title": row.get("container_summary") or row.get("principal") or row.get("customer"),
+			"subtitle": " · ".join(
+				x for x in (
+					row.get("principal") or row.get("customer"),
+					extras.get("cargo"),
+					f"truk {extras['truck']}" if extras.get("truck") else None,
+				) if x
+			),
 			# The direction IS the instruction here — "Tank Out" means trucks are coming to
 			# collect, "Tank In" means they are coming to drop off, and the yard preps
 			# differently for each.

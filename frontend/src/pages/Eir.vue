@@ -115,7 +115,7 @@
 							v-for="f in DIR_FILTERS"
 							:key="f.key"
 							class="rounded-md px-2.5 py-1.5 text-[11px] font-bold transition"
-							:class="dirFilter === f.key ? 'bg-white text-brand-700 shadow-sm' : 'text-gray-500'"
+							:class="dirFilter === f.key ? 'bg-paper text-brand-700 shadow-sm' : 'text-gray-500'"
 							@click="dirFilter = f.key"
 						>
 							{{ f.label }}
@@ -133,7 +133,7 @@
 						v-for="f in FILTERS"
 						:key="f.key"
 						class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition active:scale-[0.97]"
-						:class="filter === f.key ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-white text-gray-600'"
+						:class="filter === f.key ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
 						@click="filter = f.key"
 					>
 						{{ f.label }}

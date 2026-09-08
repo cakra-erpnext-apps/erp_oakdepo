@@ -13,6 +13,27 @@
 		<meta name="apple-mobile-web-app-status-bar-style" content="white" />
 		<meta name="theme-color" content="#ffffff" />
 
+		<!--
+			Theme, stamped BEFORE the first pixel.
+
+			The boot splash below is inline-styled precisely so it paints on the frame the HTML
+			lands, which means it paints before any bundle runs — so if the theme were applied by
+			the app, a dark-mode operator would get a white flash on every cold start, which is
+			exactly the moment a phone is being held up to a face in a dark yard.
+
+			Deliberately duplicated from utils/theme.js (same key, same resolution of "system")
+			rather than imported: an import is a network round-trip, and this has to be neither
+			async nor deferred. Keep the two in step.
+		-->
+		<script>
+			try {
+				var m = localStorage.getItem("oak-theme")
+				var dark = m === "dark" || (m !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+				document.documentElement.dataset.theme = dark ? "dark" : "light"
+				if (dark) document.querySelector('meta[name="theme-color"]').content = "#17191d"
+			} catch (e) {}
+		</script>
+
 		<!-- PWA: static manifest (see public/manifest.json) -->
 		<link rel="manifest" href="/assets/container_depot/ess/manifest.json" />
 		<link
@@ -66,6 +87,18 @@
 			}
 			#oak-splash .oak-splash-word span {
 				color: #ea6614;
+			}
+			/* The splash is the one screen that cannot use the Tailwind tokens (it paints
+			   before the stylesheet), so it carries its own two-line dark variant. Values
+			   mirror --c-gray-50 / --c-gray-900 / --c-brand-100 in main.css. */
+			[data-theme="dark"] #oak-splash {
+				background: #0f1115;
+			}
+			[data-theme="dark"] #oak-splash .oak-splash-word {
+				color: #f5f6f8;
+			}
+			[data-theme="dark"] #oak-splash .oak-splash-bar {
+				background: #3c1c0b;
 			}
 			/* An indeterminate bar, not a percentage: we genuinely do not know how long the
 			   bundle and the menu call will take, and a fake percentage that stalls at 90%

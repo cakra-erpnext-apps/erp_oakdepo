@@ -4,6 +4,232 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   Every colour in the app resolves through one of these (tailwind.config.js maps the
+   whole palette onto them), so a theme is a value swap and nothing else — no `dark:`
+   variant on a single element, and no screen that can be forgotten.
+
+   The ramps INVERT across themes rather than darkening uniformly, because that is how
+   they are used: the low shades are surfaces and tints (`bg-gray-50` the page,
+   `bg-brand-50` an icon tile) and the high ones are ink (`text-gray-900` a heading,
+   `text-amber-800` on an amber tint). Flipping the ends keeps every existing pairing
+   legible instead of turning tinted chips into glowing blocks.
+
+   `--c-paper` is the card/sheet/header colour — what `bg-white` used to mean. Literal white
+   stays literal (`text-white` on a coloured button), which is why it is a separate name;
+   it is not called `surface` because frappe-ui already owns that word as a namespace.
+
+   `data-theme` is set on <html> before first paint by the inline script in index.html and
+   maintained by utils/theme.js; frappe-ui's own components key off the same attribute.
+   --------------------------------------------------------------------------- */
+:root {
+	--c-paper: 255 255 255;
+	--c-gray-50: 248 248 248;
+	--c-gray-100: 243 243 243;
+	--c-gray-200: 237 237 237;
+	--c-gray-300: 226 226 226;
+	--c-gray-400: 199 199 199;
+	--c-gray-500: 153 153 153;
+	--c-gray-600: 124 124 124;
+	--c-gray-700: 82 82 82;
+	--c-gray-800: 56 56 56;
+	--c-gray-900: 23 23 23;
+
+	--c-brand-50: 255 245 237;
+	--c-brand-100: 255 231 212;
+	--c-brand-200: 254 203 166;
+	--c-brand-300: 253 170 110;
+	--c-brand-400: 251 138 63;
+	--c-brand-500: 249 120 40;
+	--c-brand-600: 234 102 20;
+	--c-brand-700: 194 83 15;
+	--c-brand-800: 154 67 19;
+	--c-brand-900: 124 57 19;
+
+	--c-leaf-50: 236 253 243;
+	--c-leaf-100: 210 245 223;
+	--c-leaf-200: 166 236 194;
+	--c-leaf-300: 109 221 157;
+	--c-leaf-400: 51 196 118;
+	--c-leaf-500: 18 169 87;
+	--c-leaf-600: 7 128 68;
+	--c-leaf-700: 7 104 56;
+	--c-leaf-800: 8 82 47;
+	--c-leaf-900: 7 63 39;
+
+	--c-amber-50: 253 250 237;
+	--c-amber-100: 255 247 211;
+	--c-amber-200: 254 237 169;
+	--c-amber-300: 251 219 115;
+	--c-amber-400: 251 204 85;
+	--c-amber-500: 231 153 19;
+	--c-amber-600: 219 119 6;
+	--c-amber-700: 179 83 9;
+	--c-amber-800: 145 64 13;
+	--c-amber-900: 118 56 19;
+
+	--c-red-50: 255 247 247;
+	--c-red-100: 255 231 231;
+	--c-red-200: 255 216 216;
+	--c-red-300: 253 194 194;
+	--c-red-400: 247 149 150;
+	--c-red-500: 224 54 54;
+	--c-red-600: 204 41 41;
+	--c-red-700: 181 42 42;
+	--c-red-800: 148 31 31;
+	--c-red-900: 107 21 21;
+
+	--c-orange-50: 255 249 245;
+	--c-orange-100: 255 239 228;
+	--c-orange-200: 255 222 197;
+	--c-orange-300: 255 203 163;
+	--c-orange-400: 244 176 127;
+	--c-orange-500: 232 108 19;
+	--c-orange-600: 212 90 8;
+	--c-orange-700: 189 62 12;
+	--c-orange-800: 158 53 19;
+	--c-orange-900: 107 39 17;
+
+	--c-blue-50: 242 249 255;
+	--c-blue-100: 230 244 255;
+	--c-blue-200: 200 230 255;
+	--c-blue-300: 167 215 253;
+	--c-blue-400: 115 187 246;
+	--c-blue-500: 2 137 247;
+	--c-blue-600: 0 123 224;
+	--c-blue-700: 0 112 204;
+	--c-blue-800: 0 92 163;
+	--c-blue-900: 0 72 128;
+
+	--c-sky-50: 240 249 255;
+	--c-sky-100: 224 242 254;
+	--c-sky-200: 186 230 253;
+	--c-sky-300: 125 211 252;
+	--c-sky-400: 56 189 248;
+	--c-sky-500: 14 165 233;
+	--c-sky-600: 2 132 199;
+	--c-sky-700: 3 105 161;
+	--c-sky-800: 7 89 133;
+	--c-sky-900: 12 74 110;
+
+	--c-indigo-50: 238 242 255;
+	--c-indigo-100: 224 231 255;
+	--c-indigo-200: 199 210 254;
+	--c-indigo-300: 165 180 252;
+	--c-indigo-400: 129 140 248;
+	--c-indigo-500: 99 102 241;
+	--c-indigo-600: 79 70 229;
+	--c-indigo-700: 67 56 202;
+	--c-indigo-800: 55 48 163;
+	--c-indigo-900: 49 46 129;
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	--c-paper: 23 25 29;
+	--c-gray-50: 15 17 21;
+	--c-gray-100: 31 34 40;
+	--c-gray-200: 42 46 53;
+	--c-gray-300: 59 64 72;
+	--c-gray-400: 134 141 151;
+	--c-gray-500: 155 162 172;
+	--c-gray-600: 181 187 195;
+	--c-gray-700: 207 212 218;
+	--c-gray-800: 227 230 234;
+	--c-gray-900: 245 246 248;
+
+	--c-brand-50: 43 20 8;
+	--c-brand-100: 60 28 11;
+	--c-brand-200: 86 41 15;
+	--c-brand-300: 124 61 21;
+	--c-brand-400: 251 138 63;
+	--c-brand-500: 249 120 40;
+	--c-brand-600: 249 120 40;
+	--c-brand-700: 253 170 110;
+	--c-brand-800: 254 203 166;
+	--c-brand-900: 255 231 212;
+
+	--c-leaf-50: 12 42 26;
+	--c-leaf-100: 17 54 32;
+	--c-leaf-200: 26 80 48;
+	--c-leaf-300: 39 111 68;
+	--c-leaf-400: 51 196 118;
+	--c-leaf-500: 18 169 87;
+	--c-leaf-600: 31 190 104;
+	--c-leaf-700: 109 221 157;
+	--c-leaf-800: 166 236 194;
+	--c-leaf-900: 210 245 223;
+
+	--c-amber-50: 44 32 7;
+	--c-amber-100: 59 43 8;
+	--c-amber-200: 79 58 12;
+	--c-amber-300: 107 80 16;
+	--c-amber-400: 251 204 85;
+	--c-amber-500: 231 153 19;
+	--c-amber-600: 240 172 51;
+	--c-amber-700: 246 194 88;
+	--c-amber-800: 251 217 141;
+	--c-amber-900: 253 233 184;
+
+	--c-red-50: 46 18 20;
+	--c-red-100: 62 23 25;
+	--c-red-200: 86 32 31;
+	--c-red-300: 123 44 43;
+	--c-red-400: 247 149 150;
+	--c-red-500: 232 93 93;
+	--c-red-600: 242 110 110;
+	--c-red-700: 245 139 139;
+	--c-red-800: 251 192 192;
+	--c-red-900: 254 224 224;
+
+	--c-orange-50: 43 22 8;
+	--c-orange-100: 59 30 11;
+	--c-orange-200: 86 48 15;
+	--c-orange-300: 122 68 21;
+	--c-orange-400: 244 176 127;
+	--c-orange-500: 238 122 36;
+	--c-orange-600: 242 140 62;
+	--c-orange-700: 245 164 104;
+	--c-orange-800: 248 195 155;
+	--c-orange-900: 251 220 196;
+
+	--c-blue-50: 11 29 46;
+	--c-blue-100: 16 40 60;
+	--c-blue-200: 23 57 91;
+	--c-blue-300: 31 77 121;
+	--c-blue-400: 115 187 246;
+	--c-blue-500: 46 155 247;
+	--c-blue-600: 79 170 248;
+	--c-blue-700: 124 194 250;
+	--c-blue-800: 169 215 252;
+	--c-blue-900: 207 233 254;
+
+	--c-sky-50: 10 31 43;
+	--c-sky-100: 14 43 58;
+	--c-sky-200: 20 61 83;
+	--c-sky-300: 28 85 112;
+	--c-sky-400: 56 189 248;
+	--c-sky-500: 34 171 235;
+	--c-sky-600: 69 189 246;
+	--c-sky-700: 122 210 250;
+	--c-sky-800: 173 228 252;
+	--c-sky-900: 214 241 254;
+
+	--c-indigo-50: 25 27 51;
+	--c-indigo-100: 33 36 69;
+	--c-indigo-200: 46 51 99;
+	--c-indigo-300: 65 71 133;
+	--c-indigo-400: 129 140 248;
+	--c-indigo-500: 110 118 245;
+	--c-indigo-600: 139 146 248;
+	--c-indigo-700: 169 174 250;
+	--c-indigo-800: 199 202 252;
+	--c-indigo-900: 226 228 254;
+	color-scheme: dark;
+}
+
 @layer base {
 	html,
 	body {
@@ -31,10 +257,10 @@
 @layer components {
 	/* Surfaces ----------------------------------------------------------- */
 	.oak-card {
-		@apply rounded-2xl border border-gray-100 bg-white shadow-card;
+		@apply rounded-2xl border border-gray-100 bg-paper shadow-card;
 	}
 	.oak-section {
-		@apply rounded-2xl border border-gray-100 bg-white p-4 shadow-card;
+		@apply rounded-2xl border border-gray-100 bg-paper p-4 shadow-card;
 	}
 	.oak-press {
 		@apply transition active:scale-[0.99];
@@ -73,7 +299,7 @@
 
 	/* Form controls ------------------------------------------------------ */
 	.oak-input {
-		@apply w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition
+		@apply w-full rounded-lg border border-gray-300 bg-paper px-3 py-2.5 text-sm text-gray-900 outline-none transition
 			placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25
 			disabled:cursor-not-allowed disabled:bg-gray-50;
 	}
@@ -92,7 +318,7 @@
 		@apply bg-leaf-600 text-white shadow-sm hover:bg-leaf-700 focus-visible:ring-leaf-500/50;
 	}
 	.oak-btn-secondary {
-		@apply border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-300;
+		@apply border border-gray-300 bg-paper text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-300;
 	}
 	.oak-btn-ghost {
 		@apply text-gray-600 hover:bg-gray-100 focus-visible:ring-gray-300;
@@ -106,7 +332,7 @@
 		@apply border-brand-500 bg-brand-50 text-brand-700 shadow-sm;
 	}
 	.oak-toggle-off {
-		@apply border-gray-200 bg-white text-gray-600 hover:bg-gray-50;
+		@apply border-gray-200 bg-paper text-gray-600 hover:bg-gray-50;
 	}
 
 	/* Status pill -------------------------------------------------------- */
@@ -137,4 +363,27 @@
 .page-leave-to {
 	opacity: 0;
 	transform: translateY(-4px);
+}
+
+/* Dark-theme corrections — the two places a token swap alone gets wrong.
+
+   Written as flat selectors rather than nested ones: CSS nesting is only understood by
+   fairly recent browsers, and a depot handset that does not parse the block would drop
+   BOTH rules with it. There are two of them; the nesting bought nothing.
+   ------------------------------------------------------------------- */
+
+/* The filled buttons keep their brand colour, so their LABEL has to flip: white on a
+   bright orange reads at 2.7:1, near-black on it at 8:1. Every other `text-white` in the
+   app sits on a small badge and stays as it is. */
+:root[data-theme="dark"] .oak-btn-primary,
+:root[data-theme="dark"] .oak-btn-accent {
+	@apply text-gray-50;
+}
+
+/* frappe-ui's tailwind plugin dims every <img> in dark mode
+   (`brightness(.8) contrast(1.2)`). That is fine for a logo and wrong for this app: the
+   images here are EIR damage photos, and a surveyor judging rust must see the pixels the
+   camera recorded, not a dimmed version of them. */
+:root[data-theme="dark"] img {
+	filter: none;
 }

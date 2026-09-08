@@ -248,6 +248,8 @@ website_route_rules = [
 	# ESS PWA read endpoints (F1 — Tank Inventory & Live Status)
 	{"from_route": "/api/v1/ess/inventory-summary", "to_route": "container_depot.ess.inventory.get_inventory_summary"},
 	{"from_route": "/api/v1/ess/dashboard-summary", "to_route": "container_depot.ess.inventory.get_dashboard_summary"},
+	# Beranda (PWA home) — tiles "Hari ini" + the "Menunggu Anda" queue, one lean GET.
+	{"from_route": "/api/v1/ess/home-summary", "to_route": "container_depot.ess.home.get_home_summary"},
 	{"from_route": "/api/v1/ess/tank-list", "to_route": "container_depot.ess.inventory.get_tank_list"},
 	{"from_route": "/api/v1/ess/tank-detail", "to_route": "container_depot.ess.inventory.get_tank_detail"},
 	# ESS PWA EIR (Equipment Interchange Receipt) checklist endpoints

@@ -7,7 +7,7 @@
 	<div v-else class="flex min-h-screen flex-col bg-gray-50 text-gray-900">
 		<header
 			ref="appHeader"
-			class="sticky top-0 z-20 border-b border-gray-200/80 bg-white/90 pt-safe-top shadow-header backdrop-blur"
+			class="sticky top-0 z-20 border-b border-gray-200/80 bg-paper/90 pt-safe-top shadow-header backdrop-blur"
 		>
 			<div class="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-2.5">
 				<router-link to="/" class="flex items-center gap-2.5">
@@ -18,13 +18,27 @@
 				</router-link>
 				<div v-if="session.isLoggedIn" class="flex items-center gap-1">
 					<NotificationBell />
-					<button
-						class="oak-btn oak-btn-ghost -mr-1.5 h-9 gap-1.5 px-2.5 text-xs text-gray-500"
-						@click="session.logout()"
+					<!-- The account, not the exit. Keluar moved into the "Lainnya" sheet when the
+					     header shrank to two controls: logging out is a once-a-shift action, and
+					     it sat one mis-tap away from the notification bell on every screen. -->
+					<router-link
+						to="/profile"
+						class="oak-press ml-0.5"
+						:aria-label="labels.profileTitle"
 					>
-						<Icon name="log-out" :size="16" />
-						<span>{{ labels.logout }}</span>
-					</button>
+						<img
+							v-if="photoUrl"
+							:src="photoUrl"
+							alt=""
+							class="h-8 w-8 rounded-full object-cover"
+						/>
+						<span
+							v-else
+							class="oak-icon-tile h-8 w-8 rounded-full bg-brand-50 text-[11px] font-extrabold text-brand-700"
+						>
+							{{ initials }}
+						</span>
+					</router-link>
 				</div>
 			</div>
 			<!-- One banner for the whole app rather than a badge per list. Every screen is
@@ -54,12 +68,12 @@
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount, ref } from "vue"
+import { computed, onMounted, onBeforeUnmount, ref } from "vue"
 import { session } from "@/data/session"
+import { userContext } from "@/data/context"
 import { labels } from "@/utils/labels"
 import { link } from "@/data/link"
 import { clearBrowserVisits, mustInstall } from "@/utils/install"
-import Icon from "@/components/Icon.vue"
 import InstallGate from "@/components/InstallGate.vue"
 import BottomNav from "@/components/BottomNav.vue"
 import NotificationBell from "@/components/NotificationBell.vue"
@@ -68,6 +82,17 @@ import LightboxHost from "@/components/LightboxHost.vue"
 import ConfirmHost from "@/components/ConfirmHost.vue"
 import CameraHost from "@/components/CameraHost.vue"
 import emblem from "@/assets/oak-emblem.png"
+
+// Avatar in the header. `userContext` is one cached call per session (shared with Beranda
+// and Profil); until it lands, initials are derived from the login itself, so the circle is
+// never empty and never a spinner.
+const photoUrl = computed(() => userContext.data?.user_image || "")
+const initials = computed(() => {
+	const name = userContext.data?.full_name || session.user || ""
+	const parts = String(name).trim().split(/\s+/).filter(Boolean)
+	if (!parts.length) return "?"
+	return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase()
+})
 
 // Read once at boot, and never again: the only way out of this screen is relaunching
 // from the home screen, which is a fresh load anyway. Nothing in the session can clear it.
@@ -83,6 +108,10 @@ if (!needsInstall) clearBrowserVisits()
 const appHeader = ref(null)
 let headerWatcher = null
 onMounted(() => {
+	// The avatar is on every screen, so the account has to be known even when the operator
+	// landed straight on /gate and never opened Beranda or Profil. Cached for the session;
+	// the `loading` check keeps it from racing Beranda's identical call on a cold start.
+	if (session.isLoggedIn && !userContext.data && !userContext.loading) userContext.reload()
 	if (!appHeader.value || typeof ResizeObserver === "undefined") return
 	// Border box, not contentRect: the bar's notch allowance is PADDING (pt-safe-top), and
 	// a content-box measurement would park everything below it too high on a notched phone.

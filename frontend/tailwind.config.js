@@ -1,6 +1,14 @@
 import frappeUIPreset from "frappe-ui/src/tailwind/preset"
 import defaultTheme from "tailwindcss/defaultTheme"
 
+// Every colour resolves through a CSS variable holding "R G B" channels, so one attribute
+// on <html> repaints the app. Shades are the full 50-900 ramp: a shade nobody uses today
+// costs one unused variable, while a shade that is MISSING renders as no colour at all
+// (which is exactly how sky-* went unnoticed).
+const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900]
+const withVar = (name) => `rgb(var(--c-${name}) / <alpha-value>)`
+const ramp = (name) => Object.fromEntries(SHADES.map((s) => [s, withVar(`${name}-${s}`)]))
+
 export default {
 	presets: [frappeUIPreset],
 	content: [
@@ -11,34 +19,40 @@ export default {
 	],
 	theme: {
 		extend: {
-			// OAK brand. `brand` = the orange sun (primary / identity), `leaf` = the
-			// green island + wordmark (secondary / confirm). Anchored on the exact
-			// logo hexes: brand-500 #F97828, leaf-600 #078044.
+			// The whole palette is CSS-variable driven (values in main.css, one block per
+			// theme). That is what makes dark mode a token swap instead of a rewrite: every
+			// `bg-white` / `text-gray-900` / `bg-brand-50` already written across the app —
+			// and the ones inside frappe-ui's own components, compiled by this same build —
+			// resolves through a variable, so flipping `data-theme` on <html> re-colours the
+			// entire PWA without touching a single template.
+			//
+			// `<alpha-value>` keeps the opacity modifiers working (`bg-paper/90` in the
+			// sticky header, `bg-gray-900/40` behind a sheet), which a plain `var(--x)` colour
+			// would silently break.
+			//
+			// `brand` = the orange sun (primary / identity), `leaf` = the green island +
+			// wordmark (secondary / confirm), anchored on the exact logo hexes in light mode:
+			// brand-500 #F97828, leaf-600 #078044.
+			//
+			// `paper` is the one NEW name: it is what `bg-white` used to mean — a card, a sheet,
+			// the header — as opposed to literal white, which still exists and is still literal
+			// (text on a coloured button, a ring around an avatar). Not called `surface`:
+			// frappe-ui already owns that word as a namespace (`bg-surface-gray-2`), and a bare
+			// `bg-surface` on top of it resolves to nothing at all.
 			colors: {
-				brand: {
-					50: "#FFF5ED",
-					100: "#FFE7D4",
-					200: "#FECBA6",
-					300: "#FDAA6E",
-					400: "#FB8A3F",
-					500: "#F97828",
-					600: "#EA6614",
-					700: "#C2530F",
-					800: "#9A4313",
-					900: "#7C3913",
-				},
-				leaf: {
-					50: "#ECFDF3",
-					100: "#D2F5DF",
-					200: "#A6ECC2",
-					300: "#6DDD9D",
-					400: "#33C476",
-					500: "#12A957",
-					600: "#078044",
-					700: "#076838",
-					800: "#08522F",
-					900: "#073F27",
-				},
+				paper: withVar("paper"),
+				gray: ramp("gray"),
+				brand: ramp("brand"),
+				leaf: ramp("leaf"),
+				amber: ramp("amber"),
+				red: ramp("red"),
+				orange: ramp("orange"),
+				blue: ramp("blue"),
+				// `sky` and `indigo` are not in frappe-ui's palette at all, so the "Pending
+				// Review" chips written in them across EIR / Cleaning / M&R were rendering with
+				// no colour whatsoever. Defined here, they finally paint.
+				sky: ramp("sky"),
+				indigo: ramp("indigo"),
 			},
 			fontFamily: {
 				sans: ['"Plus Jakarta Sans Variable"', ...defaultTheme.fontFamily.sans],

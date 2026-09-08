@@ -171,6 +171,10 @@ const router = createRouter({
 			keepScrollOnce = false
 			return false
 		}
+		// A link that names a section (the "Lainnya" sheet points at /profile#akses and
+		// #pengaturan) has to land ON it. `scroll-mt-*` on the target keeps it clear of the
+		// sticky header rather than tucked underneath it.
+		if (to.hash) return { el: to.hash, behavior: "smooth" }
 		return savedPosition || { top: 0 }
 	},
 })

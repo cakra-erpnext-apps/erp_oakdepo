@@ -1,3 +1,6 @@
+<!-- Literal white / black throughout, not theme tokens: the viewfinder chrome sits over a
+     live camera feed, which is dark whatever the app's theme is. A shutter button that
+     followed the surface colour would be a black circle on a black bar. -->
 <template>
 	<transition name="cam">
 		<div v-if="cameraState.open" class="fixed inset-0 z-[70] flex flex-col bg-black" role="dialog" aria-modal="true">
@@ -37,7 +40,7 @@
 						v-if="hasTorch"
 						type="button"
 						class="rounded-full p-2 backdrop-blur transition active:scale-95"
-						:class="torchOn ? 'bg-white text-gray-900' : 'bg-black/40 text-white'"
+						:class="torchOn ? 'bg-white text-black' : 'bg-black/40 text-white'"
 						:aria-label="labels.camTorch"
 						@click="toggleTorch"
 					>
