@@ -125,11 +125,14 @@ class CleaningOrder(Document):
 
 		from container_depot import pricing
 
+		from container_depot.pricing_model import currency_for_customer
+
 		price_list = price_list_for_container(self.container)
-		# Tarif ditampilkan dalam mata uang Price List kontrak (bisa beda dari mata uang company).
-		self.currency = (
-			(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
-			or frappe.defaults.get_global_default("currency")
+		# Tarif ditampilkan dalam mata uang Price List kontrak (bisa beda dari mata uang
+		# company); tanpa kontrak ikut mata uang customer, lalu default site / IDR.
+		self.currency = currency_for_customer(
+			frappe.db.get_value("Container", self.container, "principal") if self.container else None,
+			price_list,
 		)
 		service_total = manhour_total = 0.0
 		for row in self.cleaning_services:
@@ -350,27 +353,22 @@ def base_rate_for(item_code, price_list) -> float:
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def cleaning_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Items for the Cleaning Order's "Metode Cleaning (Service)" field: the members of the
-	Depot Service Menu "Cleaning" that ALSO have a selling Item Price in the Price List of
-	the contract owning the container. The contract is resolved from the container's
-	principal — never picked by hand — so the surveyor only sees services the owner is
-	billable for. No contract / no price list → no options.
+	"""Items for the Cleaning Order's "Metode Cleaning (Service)" field: SELURUH katalog item.
+
+	Dulu disaring dua kali — anggota menu item "Cleaning" ∩ item yang punya Item Price di
+	price list kontrak pemilik tank — sehingga tank yang pemiliknya belum punya kontrak
+	tidak menawarkan metode apa pun. Sejak 2026-09-07 penyaringan itu dilepas: apa
+	pun boleh dipilih, yang di luar kontrak masuk dengan tarif 0 untuk diisi Admin Ops
+	(``service_pricing``). Urutannya yang menggantikan: metode yang paling sering dipakai
+	muncul lebih dulu.
 	"""
-	from container_depot.container_depot import service_menu
+	from container_depot.container_depot import item_catalog
 
-	flt = filters or {}
-	container = flt.get("container")
-	price_list = price_list_for_container(container) if container else None
-	if not price_list and flt.get("principal"):
-		from container_depot import pricing_model
-
-		price_list = pricing_model.price_list_for_customer(flt.get("principal"))
-	if not price_list:
-		return []
-	items = service_menu.items_in_menu(
-		"Cleaning", txt=txt, base_price_list=price_list, limit=frappe.utils.cint(page_len) or 20
+	rows = item_catalog.search_items(
+		txt=txt, context="cleaning", start=start, page_length=page_len,
+		fields=["name as item_code", "item_name"],
 	)
-	return [[i["item_code"], i.get("item_name")] for i in items]
+	return [[r["item_code"], r.get("item_name")] for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -388,10 +386,12 @@ def service_pricing(container=None, item_code=None) -> dict:
 	"""
 	from container_depot import pricing
 
+	from container_depot.pricing_model import currency_for_customer
+
 	price_list = price_list_for_container(container)
-	currency = (
-		(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
-		or frappe.defaults.get_global_default("currency")
+	currency = currency_for_customer(
+		frappe.db.get_value("Container", container, "principal") if container else None,
+		price_list,
 	)
 	return {
 		"rate": base_rate_for(item_code, price_list),

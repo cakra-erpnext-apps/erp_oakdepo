@@ -1,10 +1,9 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
-// The "Metode Cleaning (Service)" table picks one OR MORE cleaning services the container
-// Owner (Principal) is priced for: members of the Depot Service Menu "Cleaning" that have a
-// selling Item Price in the owner's active Price List (resolved server-side from the
-// container).
+// The "Metode Cleaning (Service)" table picks one OR MORE cleaning services from the whole
+// item catalogue, most-used first (no contract narrowing — a service the owner's rate card
+// does not price comes in at 0 for Admin Ops to fill in).
 //
 // Each row carries the two PRICES the rate card states, side by side and never merged:
 //   Tarif         — what the service itself costs

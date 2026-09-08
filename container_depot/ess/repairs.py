@@ -202,7 +202,8 @@ def mr_order_detail(repair_order=None):
 
 @frappe.whitelist(methods=["GET"])
 def mr_items(search=None, repair_order=None, start=0, page_length=20):
-	"""GET /api/v1/ess/mr-items — Item picker (service or part) priced in the owner's list."""
+	"""GET /api/v1/ess/mr-items — Item picker (service or part): seluruh katalog, yang paling
+	sering dipakai lebih dulu. Tidak dibatasi rate card pemilik tank."""
 	require_menu("mr")
 	return mr.mr_item_search(search=search, repair_order=repair_order, start=start, page_length=page_length)
 

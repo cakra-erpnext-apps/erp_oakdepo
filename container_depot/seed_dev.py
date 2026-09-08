@@ -16,9 +16,6 @@ What it seeds
                            patches.v0_39 (Inspection Checklist Item, 138 rows)
 * Item Group + Item      — from reference/seed/{Item_Group,Item}.csv (embedded below);
                            item_code == item_name (the descriptive name is the identity)
-* Depot Service Menu     — Booking / Cleaning / Maintenance,
-                           WITH dummy group filters (production seeds them empty — see
-                           container_depot/service_menu.DEFAULT_MENUS)
 * Customer               — Stolt, Bertschi
 
 Items are created as non-stock sales items (``is_stock_item=0``) so the seeder needs
@@ -51,32 +48,6 @@ DEPOTS = [
     ("OAK1", "OAK 1", "Oak Medan"),
     ("OAK2", "OAK 2", "Oak Medan"),
     ("OAKSBY", "OAK SBY", "Oak Surabaya"),
-]
-
-# Depot Service Menu → the Item Groups it filters. (name, sequence, [item groups])
-MENUS = [
-    ("Booking", 1, ["LOLO"]),
-    ("Cleaning", 2, ["Testing Charges", "Survey Fee", "Exterior Cleaning", "Interior Cleaning"]),
-    ("Maintenance", 3, [
-        "Manlid Seal",
-        'Butterfly Valve (3.0")',
-        'Footvalve (3.0")',
-        'Spigot / Bottom Outlet (3.0")',
-        'Airline Ball Valve (1.5")',
-        "Safety Relief Valve",
-        "Gasket (Bertschi)",
-        "Cladding & Insulation",
-        "Retainer Strap",
-        "Thermometer & Gauge",
-        "Document Holder",
-        "Emergency Cable Assembly",
-        "Swingbolt",
-        "Frame & Metal Work",
-        "Others (Bertschi)",
-    ]),
-    # Uji berkala tetap dibukukan sebagai M&R (v0_66) — yang dipisah hanya katalog
-    # itemnya, supaya picker uji berkala tidak menampilkan seluruh katalog sparepart.
-    ("Periodic Test", 4, ["Testing Charges", "Survey Fee"]),
 ]
 
 CUSTOMERS = ["Stolt", "Bertschi"]
@@ -363,34 +334,6 @@ def _seed_item_manhours():
     print(f"[seed_dev] Item.manhour: {filled}")
 
 
-def _ensure_menu(name, sequence, groups):
-    """Create the menu, or fill in group rows it is missing.
-
-    Add-only rather than skip-if-exists: ``patches.v0_34`` already creates these menus EMPTY
-    (production has no Item Prices to map yet), so skipping an existing menu would leave a dev
-    site with five menus that filter nothing. Groups are only ever added, so pruning one in
-    Desk survives a re-run.
-    """
-    valid = [g for g in groups if frappe.db.exists("Item Group", g)]
-    if not frappe.db.exists("Depot Service Menu", name):
-        doc = frappe.get_doc({
-            "doctype": "Depot Service Menu", "menu_name": name,
-            "is_active": 1, "sequence": sequence,
-        })
-        for g in valid:
-            doc.append("item_groups", {"item_group": g})
-        doc.insert(ignore_permissions=True)
-        return
-    doc = frappe.get_doc("Depot Service Menu", name)
-    have = {row.item_group for row in (doc.get("item_groups") or [])}
-    missing = [g for g in valid if g not in have]
-    if not missing:
-        return
-    for g in missing:
-        doc.append("item_groups", {"item_group": g})
-    doc.save(ignore_permissions=True)
-
-
 def _ensure_contract():
     """Satu Depot Contract Active untuk CONTRACT_CUSTOMER. Idempoten.
 
@@ -506,10 +449,6 @@ def run():
     print(f"[seed_dev] Item: {len(ITEMS)}")
     _seed_item_manhours()
 
-    for name, sequence, groups in MENUS:
-        _ensure_menu(name, sequence, groups)
-    print(f"[seed_dev] Depot Service Menu: {len(MENUS)}")
-
     for name in CUSTOMERS:
         _ensure_customer(name)
     print(f"[seed_dev] Customer: {len(CUSTOMERS)}")
@@ -539,8 +478,6 @@ def clear():
         except Exception as exc:  # noqa: BLE001 — best-effort dev cleanup
             print(f"  skip {dt} {name}: {exc}")
 
-    for name, _seq, _groups in MENUS:
-        _del("Depot Service Menu", name)
     for _code, _group, _uom, name in ITEMS:
         _del("Item", name)
     for name in ITEM_GROUPS:

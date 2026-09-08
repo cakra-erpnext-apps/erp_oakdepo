@@ -381,23 +381,27 @@ def request_revision(cleaning_order, reason: str | None = None) -> dict:
 	return {"success": True, "notified": sent, "cleaning_order": doc.name}
 
 
-def _cleaning_item_options(container) -> list:
-	"""Cleaning Service items the container's Owner (Principal) is priced for: members of the
-	Depot Service Menu "Cleaning" that have a selling Item Price in the owner's active Price
-	List. Drives the PWA "Metode Cleaning" picker. The owner's RATE is deliberately NOT
-	exposed to the depot PWA (it's resolved + stored server-side for billing only). Empty
-	when there is no principal / no price list."""
-	from container_depot import pricing_model
-	from container_depot.container_depot import service_menu
+# Katalog "Metode Cleaning" yang ikut di payload detail order. Dibatasi jumlahnya karena
+# dikirim utuh dalam satu response: yang paling sering dipakai lebih dari cukup untuk sebuah
+# picker di HP, dan pencarian ke seluruh katalog punya endpoint sendiri (Desk:
+# ``cleaning_item_query``) kalau nanti PWA benar-benar memakainya.
+_PWA_CLEANING_ITEM_LIMIT = 200
 
-	principal = frappe.db.get_value("Container", container, "principal") if container else None
-	price_list = pricing_model.price_list_for_customer(principal) if principal else None
-	if not price_list:
-		return []
-	return [
-		{"item_code": i["item_code"], "item_name": i.get("item_name")}
-		for i in service_menu.items_in_menu("Cleaning", base_price_list=price_list)
-	]
+
+def _cleaning_item_options() -> list:
+	"""Cleaning Service items yang boleh dipilih — SELURUH katalog, urut dari yang paling
+	sering dipakai. Tidak lagi bergantung pada tank/pemiliknya.
+
+	Dulu disaring "anggota menu Cleaning ∩ punya Item Price di price list pemilik tank",
+	jadi tank milik customer tanpa kontrak tidak menawarkan metode apa pun.
+	Sejak 2026-09-07 saringan itu dilepas; yang di luar kontrak tetap boleh dipilih dan
+	tarifnya diisi Admin Ops. Owner's RATE tetap TIDAK dikirim ke PWA depot (dihitung dan
+	disimpan server-side untuk billing saja)."""
+	from container_depot.container_depot import item_catalog
+
+	return item_catalog.search_items(
+		context="cleaning", page_length=_PWA_CLEANING_ITEM_LIMIT
+	)
 
 
 def get_cleaning_order_detail(cleaning_order) -> dict:
@@ -433,7 +437,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 			{"item_code": r.cleaning_item, "item_name": r.item_name}
 			for r in co.cleaning_services
 		],
-		"cleaning_items": _cleaning_item_options(co.container),
+		"cleaning_items": _cleaning_item_options(),
 		# Free-text instruction Admin Ops leaves on the order — read-only for the operator.
 		"cleaning_instructions": co.cleaning_instructions or "",
 		"reff_doc": co.reff_doc,

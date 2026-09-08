@@ -46,7 +46,6 @@ container_depot.patches.v0_29.backfill_depot_branch_by_city
 container_depot.patches.v0_30.revive_expired_booking_codes
 container_depot.patches.v0_31.seed_cleaning_checklist
 container_depot.patches.v0_32.seed_yard_placement_rules
-container_depot.patches.v0_34.seed_depot_service_menus
 container_depot.patches.v0_35.collapse_container_statuses
 container_depot.patches.v0_36.drop_yard_zones_and_placement_rules
 container_depot.patches.v0_37.split_used_item_labour_and_item_cost
@@ -67,7 +66,6 @@ container_depot.patches.v0_43.backfill_inspection_container_principal
 container_depot.patches.v0_44.backfill_list_columns
 container_depot.patches.v0_45.backfill_used_item_line_type
 container_depot.patches.v0_47.drop_periodic_test
-container_depot.patches.v0_48.seed_survey_and_periodic_menus
 container_depot.patches.v0_48.drop_release_do
 container_depot.patches.v0_49.backfill_booking_item_shipper
 container_depot.patches.v0_49.customer_type_to_role_flags
@@ -119,3 +117,4 @@ container_depot.patches.v0_88.merge_line_estimation_date
 container_depot.patches.v0_89.line_date_becomes_realisation
 container_depot.patches.v0_90.tank_out_survey_rework
 container_depot.patches.v0_91.priority_by_survey_date
+container_depot.patches.v0_92.drop_depot_service_menu

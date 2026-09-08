@@ -30,22 +30,16 @@ from container_depot.container_depot.exceptions import AlreadySettled
 from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
-from container_depot.container_depot.service_menu import filter_items_by_menu, is_real_menu
+from container_depot.container_depot import item_catalog
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots, get_user_warehouses
 from container_depot.pricing_model import price_list_for_customer, resolve_price
 
-# The Depot Service Menu the M&R item picker is scoped to, per jenis pekerjaan. When the
-# menu is missing / inactive / empty, the picker falls back to all owner-priced items
-# (see service_menu.is_real_menu) — a menu yang belum dipetakan operator tidak pernah
-# menyembunyikan item.
-#
-# Periodic test tetap dibukukan sebagai M&R (keputusan patch v0_66: tidak ada doctype
-# Periodic Test Order). Yang dipisah hanya katalog itemnya, supaya picker uji berkala
-# tidak menampilkan seluruh katalog sparepart dan sebaliknya.
-MR_MENU_BY_JOB = {"Repair": "Maintenance", "Periodic Test": "Periodic Test"}
-
-# Dipertahankan: pemanggil lama (dan test) masih mengimpor konstanta tunggal ini.
-MR_MENU = MR_MENU_BY_JOB["Repair"]
+# Picker item M&R tidak disaring: seluruh katalog boleh dipilih, baik untuk Repair maupun
+# Periodic Test, tanpa peduli item itu ada di kontrak pemilik tank atau tidak (lihat
+# container_depot.item_catalog). Penyaringan lama — katalog per jenis pekerjaan ∩ item yang
+# punya Item Price di price list pemilik — dihapus 2026-09-07 karena menyembunyikan
+# pekerjaan yang nyata: item yang belum sempat dinegosiasikan ke kontrak tetap harus bisa
+# dicatat, lalu tarifnya diisi manual.
 
 # Owner-approval status machine (single source of truth — shared by the controller,
 # the ESS/PWA endpoints, and the Desk workflow buttons). The owner must approve the
@@ -212,35 +206,32 @@ def list_warehouses(repair_order=None, container=None) -> dict:
 	return {"warehouses": rows, "branch": branch}
 
 
-# --- item picker (priced by owner; service or part) --------------------------
+# --- item picker (seluruh katalog; service or part) ---------------------------
 def mr_item_search(search=None, repair_order=None, start=0, page_length=20, warehouse=None, line_type=None) -> dict:
-	"""Item picker for the Used-Items section — services AND parts that have a selling
-	Item Price in the owner's price list. Stock items carry their on-hand qty (at the gudang
-	the row draws from). When the owner has no price list, falls back to all items.
+	"""Item picker for the Used-Items section — SELURUH katalog item (jasa maupun part),
+	tidak disaring kontrak pemilik tank. Yang paling sering dipakai muncul di halaman
+	pertama (container_depot.item_catalog). Stock items carry their on-hand qty (at the
+	gudang the row draws from).
+
+	Item yang tidak ada di price list pemilik tetap boleh dipilih; ``rate``-nya 0 dan diisi
+	manual oleh operator/kasir.
 
 	``warehouse`` is the gudang picked on the *row*, read off the live form: the stock shown
 	belongs to the warehouse the user is actually looking at, not the one last saved. Only
 	when the row has none does the container's branch default stand in.
 	"""
 	pl = None
-	menu = MR_MENU
 	warehouse = _clean(warehouse) or None
 	if repair_order:
 		ro = frappe.db.get_value(
-			"Repair Order", repair_order, ["principal", "container", "job_type"], as_dict=True
+			"Repair Order", repair_order, ["principal", "container"], as_dict=True
 		) or frappe._dict()
-		# Dokumen lama tidak punya job_type → jatuh ke menu Maintenance, perilaku lama.
-		menu = MR_MENU_BY_JOB.get(ro.job_type or "", MR_MENU)
 		principal = ro.principal or (frappe.db.get_value("Container", ro.container, "principal") if ro.container else None)
+		# Price list pemilik tetap dipakai untuk MENGHARGAI item, bukan untuk menyaringnya.
 		pl = _owner_price_list(principal)
 		warehouse = warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
 
-	priced = (
-		frappe.get_all("Item Price", filters={"price_list": pl, "selling": 1}, pluck="item_code", distinct=True)
-		if pl
-		else None
-	)
-	filters = {"disabled": 0}
+	filters = {}
 	# The row's Jenis narrows the catalogue before anything else: pick "Jasa" and no part can
 	# turn up, pick "Part" and no service can. Blank keeps both (the PWA / API callers).
 	#
@@ -253,31 +244,17 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 		filters["is_stock_item"] = 0
 	elif line_type == "Part":
 		filters["is_stock_item"] = 1
-	# Scope to the menu of this job type (group-derived) when it's configured, intersecting
-	# with the owner-priced set; otherwise keep the owner-priced filter (or none).
-	names = priced
-	if is_real_menu(menu):
-		base = priced if priced is not None else frappe.get_all("Item", filters={"disabled": 0}, pluck="name")
-		names = filter_items_by_menu(base, menu)
 	# A part that the source warehouse does not hold cannot be used, so it is dropped from
 	# the picker; services are untouched. Filtered BEFORE the query so pagination stays
-	# honest (a page of 20 never comes back short).
+	# honest (a page of 20 never comes back short). Ini SATU-SATUNYA penyempitan yang
+	# tersisa, dan alasannya stok — bukan kontrak.
 	empty = _out_of_stock_items(warehouse)
 	if empty:
-		if names is None:
-			names = frappe.get_all("Item", filters={"disabled": 0}, pluck="name")
-		names = [n for n in names if n not in empty]
-	if names is not None:
-		filters["name"] = ["in", names or [""]]
-	or_filters = None
-	search = (search or "").strip()
-	if search and search.lower() != "undefined":
-		or_filters = {"item_code": ["like", f"%{search}%"], "item_name": ["like", f"%{search}%"]}
+		filters["name"] = ["not in", list(empty)]
 
-	items = frappe.get_all(
-		"Item", filters=filters, or_filters=or_filters,
+	items = item_catalog.search_items(
+		txt=search, filters=filters, context="mr", start=start, page_length=page_length,
 		fields=["name as item_code", "item_name", "stock_uom", "is_stock_item"],
-		order_by="item_name asc", limit_start=cint(start), limit_page_length=cint(page_length),
 	)
 	for it in items:
 		it["rate"] = resolve_price(it["item_code"], pl)  # computed, hidden in the PWA
@@ -327,15 +304,16 @@ MR_EXECUTION_STATUSES = ["Pending", "In Progress"]
 def item_pricing(repair_order, item) -> dict:
 	"""Cost inputs (manhour / manhour_rate / item_rate / currency) for one item under the
 	Repair Order's owner price list — the Desk grid uses it to default a newly-picked line."""
-	from container_depot.pricing_model import item_rate_breakdown
+	from container_depot.pricing_model import currency_for_customer, item_rate_breakdown
 
-	price_list = frappe.get_doc("Repair Order", repair_order).owner_price_list()
+	ro = frappe.get_doc("Repair Order", repair_order)
+	price_list = ro.owner_price_list()
 	breakdown = item_rate_breakdown(item, price_list)
 	# An item with no Item Price still bills in the owner's currency (the contract currency,
-	# e.g. USD) — not the site default — so the grid never falls back to IDR. Mirrors the
-	# fallback in RepairOrder.calculate_totals.
-	if not breakdown.get("currency") and price_list:
-		breakdown["currency"] = frappe.db.get_value("Price List", price_list, "currency")
+	# e.g. USD) — turun ke default site / IDR hanya kalau pemiliknya memang tidak punya
+	# mata uang. Mirrors the fallback in RepairOrder.calculate_totals.
+	if not breakdown.get("currency"):
+		breakdown["currency"] = currency_for_customer(_principal(ro), price_list)
 	return breakdown
 
 

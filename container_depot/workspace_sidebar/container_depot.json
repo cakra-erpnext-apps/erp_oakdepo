@@ -446,30 +446,6 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Depot Service Menu",
-   "link_to": "Depot Service Menu",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "square-menu"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Isi Service Menu",
-   "link_to": "Depot Service Menu Items",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "list"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
    "label": "Price List",
    "link_to": "Price List",
    "link_type": "DocType",
@@ -883,7 +859,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

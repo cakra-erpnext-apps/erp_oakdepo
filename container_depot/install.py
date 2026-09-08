@@ -872,18 +872,11 @@ ORDER_NUMBER_CARDS = [
 			  ["status", "not in", list(DONE_CLEANING)], ["docstatus", "<", 2]]},
 ]
 
-# Watcher setup — bukan beban kerja harian, melainkan konfigurasi yang diam-diam belum
-# selesai. Satu-satunya kartu bertipe "Custom" di sini: "menu tanpa baris anak sama sekali"
-# tidak bisa dinyatakan sebagai filter list Frappe, jadi angkanya dihitung di Python
-# (lihat depot_service_menu.unmapped_menu_count, yang juga menjelaskan kenapa ini penting:
-# menu kosong TIDAK memfilter apa pun, jadi kegagalannya senyap).
-SETUP_NUMBER_CARDS = [
-	{"label": "Menu Belum Dipetakan", "color": "#E24C4C",
-	 "document_type": "Depot Service Menu",
-	 "type": "Custom",
-	 "function": None,
-	 "method": "container_depot.container_depot.doctype.depot_service_menu.depot_service_menu.unmapped_menu_count"},
-]
+# Watcher setup — kartu untuk konfigurasi yang diam-diam belum selesai. Kosong sejak
+# 2026-09-07: satu-satunya penghuninya, "Menu Belum Dipetakan", ikut turun bersama fitur
+# Depot Service Menu (patch v0_92). Daftarnya dipertahankan karena inilah tempat kartu
+# jenis ini didaftarkan berikutnya.
+SETUP_NUMBER_CARDS = []
 
 INVENTORY_CHARTS = [
 	{"chart_name": "Tanks by Stage", "color": "#318AD8",
@@ -1593,7 +1586,6 @@ MASTER_DOCTYPES = {
 	"Cleaning Checklist Item",
 	"Customer Portal User",
 	"Depot",
-	"Depot Service Menu",
 	"Inspection Checklist Item",
 	"Inspection Damage Code",
 	"Inspection Fitting Item",
@@ -1702,7 +1694,6 @@ OFFICE_ROLE_MATRIX = {
 	"Commercial": {
 		"Storage Charge": "r",
 		"Depot Contract": "rwcsxa",
-		"Depot Service Menu": "rwc",
 		"Container": "r",
 		"Container Booking": "r",
 	},

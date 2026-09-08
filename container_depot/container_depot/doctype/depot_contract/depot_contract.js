@@ -19,9 +19,9 @@
 // anything past Draft (the server refuses it too, see on_trash).
 //
 // Bulk line entry lives on the grid itself ("Import Excel", next to Add Row), not
-// in a toolbar group. The server methods the old toolbar group used
-// (import_tariff_lines, base_price_list_lines_for_menu) are still whitelisted and
-// covered by tests / seed_prod — only their buttons were removed.
+// in a toolbar group. The server method it uses (import_tariff_lines) stays
+// whitelisted and covered by tests — only its old toolbar button was removed.
+// ("Add from Menu" went with the Depot Service Menu feature itself, patch v0_92.)
 
 function container_depot_transition(frm, target) {
 	const go = () =>

@@ -226,16 +226,6 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Depot Service Menu",
-   "link_count": 0,
-   "link_to": "Depot Service Menu",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "Price List",
    "link_count": 0,
    "link_to": "Price List",
@@ -622,7 +612,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

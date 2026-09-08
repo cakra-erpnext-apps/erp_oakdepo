@@ -670,9 +670,9 @@ export const labels = {
 	mrNoDamages: "Tidak ada temuan kerusakan dari EIR.",
 	mrCodeDamage: "Kerusakan",
 	mrCodeRepair: "Perbaikan",
-	// Section 2 — services & parts used (from the owner's Item Price)
+	// Section 2 — services & parts used (seluruh katalog item, bukan hanya rate card owner)
 	mrUsedTitle: "Service & Part Terpakai",
-	mrUsedHint: "Pilih service/part dari Item Price owner. Stok part berkurang saat selesai.",
+	mrUsedHint: "Pilih service/part dari katalog. Stok part berkurang saat selesai.",
 	mrAddUsed: "Tambah Item",
 	mrNoUsed: "Belum ada item.",
 	mrItem: "Item (Service / Part)",
@@ -686,7 +686,7 @@ export const labels = {
 	mrRemark: "Catatan",
 	mrRemarks: "Catatan Umum",
 	mrSearchItem: "Cari item…",
-	mrItemsEmpty: "Item tidak ditemukan (cek Item Price owner).",
+	mrItemsEmpty: "Item tidak ditemukan.",
 	mrStartFull: "Mulai Perbaikan", // start repair (in form)
 	mrStartFirst: "Mulai perbaikan dulu sebelum bisa diselesaikan.", // gate hint
 	mrStart: "Mulai", // start (worklist)

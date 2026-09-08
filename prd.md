@@ -135,7 +135,7 @@ seeding + assignment procedure in `STRUCTURE.md § Role model`.
 | Admin Ops | Staff Adm Ops | Seluruh transaksi Operations (rwcs + cancel/amend), master data (rw), audit (r) |
 | Cashier | Cashier | Sales Invoice / Payment Entry (via `Accounts User`), Order Billing Status |
 | Finance | — | Cakupan Cashier + OAK Monthly Invoice + Depot Finance Settings |
-| Commercial | Commercial | Depot Contract, Depot Service Menu, tarif & harga |
+| Commercial | Commercial | Depot Contract, tarif & harga |
 | Warehouse | — | Sparepart & stock (via `Stock User` / `Purchase User`) |
 | Management | Depot Manager | **Read-only** pada seluruh DocType container_depot |
 

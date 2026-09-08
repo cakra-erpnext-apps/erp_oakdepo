@@ -288,17 +288,19 @@ class RepairOrder(Document):
 		billing report that still read a single figure). The copied ``damages`` carry no cost."""
 		from frappe.utils import flt
 
-		from container_depot.pricing_model import item_rate_breakdown
+		from container_depot.pricing_model import currency_for_customer, item_rate_breakdown
 
 		price_list = self.owner_price_list()
 		# Fallback currency for a line whose item has no Item Price = the OWNER'S price-list
 		# currency (i.e. the contract currency, e.g. USD for Bertschi), NOT the site default
 		# (IDR). Otherwise an item missing from the price list silently drags the line — and
 		# the empty grid — back to IDR even though the whole M&R is priced in the owner's
-		# currency. Falls back to the site default only when the owner has no price list.
-		default_currency = (
-			(frappe.db.get_value("Price List", price_list, "currency") if price_list else None)
-			or frappe.db.get_default("currency")
+		# currency. Baris tanpa Item Price kini hal biasa (picker item tidak lagi dibatasi
+		# kontrak), jadi jalur ini yang menjaga mata uangnya: price list pemilik → mata uang
+		# customer → default site → IDR.
+		default_currency = currency_for_customer(
+			self.principal or frappe.db.get_value("Container", self.container, "principal"),
+			price_list,
 		)
 		numeric_total = 0.0
 		by_currency = {}
@@ -388,12 +390,10 @@ class RepairOrder(Document):
 def used_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Link-field query for the Repair Order "Used Items" item picker.
 
-	Restricts the catalogue to exactly what the PWA M&R picker shows: members of the Depot
-	Service Menu "Maintenance" that ALSO have a selling Item Price in the container owner's
-	price list (the owner's contract rate card). So Desk and the PWA never offer different
-	items, and Admin Ops can't pick a service the owner isn't priced/contracted for.
-	Delegates to ``container_depot.mr.mr_item_search`` (same menu ∩ price-list logic); it falls
-	back safely to all items only when the owner has no price list / the menu is unset.
+	Menawarkan persis apa yang picker M&R di PWA tawarkan — SELURUH katalog item, tanpa
+	saringan kontrak pemilik tank, dengan yang paling sering dipakai di halaman pertama. Delegates to ``container_depot.mr.mr_item_search``, jadi Desk
+	dan PWA tidak pernah menampilkan daftar yang berbeda. Item di luar rate card pemilik
+	boleh dipilih dan datang dengan tarif 0 untuk diisi tangan.
 
 	Each option carries a third column telling the two kinds apart at a glance — "Jasa" for
 	a service (nothing to run out of) or the on-hand qty for a part, so the picker answers

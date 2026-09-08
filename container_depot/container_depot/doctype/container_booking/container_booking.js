@@ -6,7 +6,7 @@
 // type and the BKG-IN/BKG-OUT number. Branch scopes the depot; Customer drives the payment
 // modes and resolves the active Price List server-side (its currency — USD / IDR — formats
 // every charge, no exchange rate). Charges are a free table: any number of services from
-// the "Booking" Depot Service Menu, or none at all. Principal (Tank Owner) scopes the
+// the item catalogue, or none at all. Principal (Tank Owner) scopes the
 // container picker on each line.
 // Whether this site raises invoices at all (Depot Finance Settings, published at boot).
 // With finance off the depot runs operationally — charges are still priced and stored, but
@@ -861,8 +861,8 @@ frappe.ui.form.on('Container Booking', {
 				branch: frm.doc.branch || '',
 			},
 		}));
-		// Charge services: the "Booking" Depot Service Menu ∩ the customer's active price
-		// list (both resolved server-side).
+		// Charge services: the whole item catalogue, most-billed first (resolved server-side).
+		// An item outside the customer's price list comes in at rate 0, filled in by hand.
 		frm.set_query('item', 'charges', () => ({
 			query: 'container_depot.container_depot.doctype.container_booking.container_booking.charge_item_query',
 			filters: { customer: frm.doc.customer },

@@ -1,4 +1,4 @@
-// The Item pickers of the depot's service menus only PICK — they never create.
+// The depot's Item pickers only PICK — they never create.
 //
 // A Frappe Link dropdown ends with "Create a new Item", which drops a bare Item into the
 // catalogue from inside an order: no item group, no UOM, and above all no Item Price. Such
@@ -6,17 +6,18 @@
 // Pricing -> Item, where the tariff is set next to them.
 //
 // `only_select` is the framework's own flag for this (see link.js). It also drops the
-// dropdown's "Advanced Search" link, which is acceptable here: every one of these pickers is
-// already narrowed by a server query (price list / contract / warehouse), and a raw search
-// would only offer items the order cannot legally use.
+// dropdown's "Advanced Search" link, which is acceptable here: each picker runs a server
+// query that already searches the whole catalogue by code and name, with the most-used
+// items first (container_depot.item_catalog) — Advanced Search only adds a second, worse
+// way to reach the same rows.
 //
 // This file is loaded per doctype via hooks.doctype_js, so it binds once for all of them.
 frappe.provide("oak");
 
 // doctype -> [[grid fieldname or null for a header field, link fieldname], ...]
 const ITEM_PICKERS = {
-	"Container Booking": [[null, "lift_item"]], // Lift Service (contract price list)
-	"Cleaning Order": [["cleaning_services", "cleaning_item"]], // Service (owner price list)
+	"Container Booking": [[null, "lift_item"]], // Lift Service
+	"Cleaning Order": [["cleaning_services", "cleaning_item"]], // Metode Cleaning (Service)
 	"Repair Order": [["used_items", "item"]], // Item (Service / Part)
 	"Sales Invoice": [["items", "item_code"]],
 };

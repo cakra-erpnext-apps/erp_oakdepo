@@ -44,7 +44,7 @@ from container_depot.container_depot.doctype.booking_code.booking_code import (
 from container_depot.container_depot.doctype.depot_contract.depot_contract import (
 	get_active_contract,
 )
-from container_depot.container_depot import lift_on, tank_documents
+from container_depot.container_depot import item_catalog, lift_on, tank_documents
 from container_depot.container_depot.container_activity import log_container_activity
 from container_depot.container_depot.container_status import GATE_OUT, PRESENT, assert_rows_active
 from container_depot.state_machine import stage_for_status
@@ -73,13 +73,6 @@ def build_container_summary(container_nos) -> str:
 			break
 		out.append(n)
 	return ", ".join(out) + " (+{0})".format(len(nums) - len(out))
-
-# Depot Service Menu that scopes the booking's charge picker — the same mechanism M&R /
-# Cleaning / Survey use, so *which* items a booking may bill is decided by an operator in
-# Desk instead of being buried in code. An empty / inactive menu does not filter: the
-# picker then offers everything priced in the customer's list.
-BOOKING_MENU = "Booking"
-
 
 def _billing_signature(doc) -> tuple:
 	"""Everything about a booking that a raised Sales Invoice depends on: the party, the
@@ -654,8 +647,9 @@ class ContainerBooking(Document):
 		# The customer's active price list — auto-resolved, not shown or picked. Empty only
 		# for a walk-in with no default list (charge rates then stay whatever was typed).
 		self.price_list = pricing_model.price_list_for_customer(self.customer) if self.customer else None
-		if self.price_list:
-			self.currency = frappe.db.get_value("Price List", self.price_list, "currency") or self.currency
+		# Mata uang selalu terisi, juga untuk baris yang tidak ada di rate card customer
+		# (picker item terbuka ke seluruh katalog): price list → mata uang customer → IDR.
+		self.currency = pricing_model.currency_for_customer(self.customer, self.price_list) or self.currency
 
 	def _reset_charges_on_customer_change(self):
 		"""Drop every charge line when the customer changes.
@@ -1471,51 +1465,22 @@ def booking_container_query(doctype, txt, searchfield, start, page_len, filters)
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def charge_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Options for a booking charge line: the Depot Service Menu "Booking" ∩ the items
-	priced in the customer's *active* Price List.
+	"""Options for a booking charge line: SELURUH katalog item.
 
-	Same two-step narrowing the M&R picker uses, so *which* services a
-	booking may bill is maintained by an operator in Desk rather than pinned to one Item
-	Group in code.
+	Dulu dua saringan: menu item "Booking" ∩ item yang punya Item Price di price list
+	customer — dan tanpa customer pickernya kosong sama sekali. Keduanya dilepas
+	(2026-09-07) karena menyembunyikan jasa yang nyata ditagihkan: jasa insidentil yang
+	belum masuk kontrak si customer tetap harus bisa dibaris-kan, lalu tarifnya diisi
+	tangan. Item di luar price list customer datang dengan rate 0 (lihat ``charge_pricing``).
 
-	**No customer / no price list -> no options.** One booking must never mix rate cards, so
-	the picker stays empty until a customer is chosen (the form also clears the charge rows
-	when the customer changes). The menu narrowing does fall back open — a menu that is
-	missing, inactive or empty simply applies no group filter — so a half-configured site is
-	still workable.
+	Yang menggantikan penyaringan itu adalah urutan: item yang paling sering ditagihkan
+	muncul lebih dulu (``item_catalog``), dan pencarian menjangkau seluruh katalog.
 	"""
-	from container_depot.container_depot.service_menu import filter_items_by_menu, is_real_menu
-
-	customer = (filters or {}).get("customer")
-	price_list = pricing_model.price_list_for_customer(customer) if customer else None
-	if not price_list:
-		return []
-	candidate = frappe.get_all(
-		"Item Price",
-		filters={"price_list": price_list, "selling": 1},
-		pluck="item_code",
-		distinct=True,
+	rows = item_catalog.search_items(
+		txt=txt, context="booking", start=start, page_length=page_len,
+		fields=["name as item_code", "item_name"],
 	)
-	if is_real_menu(BOOKING_MENU):
-		candidate = filter_items_by_menu(candidate, BOOKING_MENU)
-	if not candidate:
-		return []
-
-	or_filters = None
-	txt = (txt or "").strip()
-	if txt and txt.lower() != "undefined":
-		or_filters = {"item_code": ["like", f"%{txt}%"], "item_name": ["like", f"%{txt}%"]}
-	# Narrowed BEFORE the limit so a page of 20 never comes back short.
-	return frappe.get_all(
-		"Item",
-		filters={"name": ["in", candidate], "disabled": 0},
-		or_filters=or_filters,
-		fields=["name", "item_name"],
-		order_by="item_name asc",
-		limit_start=cint(start),
-		limit_page_length=cint(page_len),
-		as_list=True,
-	)
+	return [[r["item_code"], r.get("item_name")] for r in rows]
 
 
 @frappe.whitelist()
@@ -1525,11 +1490,13 @@ def charge_pricing(customer, item):
 	The Desk form calls this the moment a Service is picked so the row's Tarif fills in
 	immediately instead of only after a save. It is a starting point only — the rate stays
 	editable and is never re-applied once filled (see ``_price_charges``). An item the list
-	does not price returns rate 0, which is a valid free line rather than an error."""
+	does not price returns rate 0, which is a valid free line rather than an error — sejak
+	picker dibuka ke seluruh katalog, baris seperti itu memang jalur normalnya, dan
+	mata uangnya tetap mengikuti customer (default IDR) supaya tidak pernah kosong."""
 	price_list = pricing_model.price_list_for_customer(customer) if customer else None
 	return {
 		"rate": (pricing_model.resolve_price(item, price_list) or 0) if (price_list and item) else 0,
-		"currency": frappe.db.get_value("Price List", price_list, "currency") if price_list else None,
+		"currency": pricing_model.currency_for_customer(customer, price_list),
 		"item_name": frappe.db.get_value("Item", item, "item_name") if item else None,
 	}
 

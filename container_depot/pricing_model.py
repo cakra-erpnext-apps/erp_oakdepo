@@ -102,3 +102,24 @@ def price_list_for_customer(customer: str | None) -> str | None:
 		if pl:
 			return pl
 	return frappe.db.get_single_value("Selling Settings", "selling_price_list") or None
+
+
+# Mata uang terakhir yang dipakai saat sebuah baris tidak punya Item Price sendiri. Sejak
+# picker item dibuka ke seluruh katalog (lihat container_depot.item_catalog), baris seperti
+# itu jadi hal biasa: item di luar kontrak masuk dengan rate 0 untuk diisi manual — tapi
+# mata uangnya tidak boleh ikut kosong, atau invoice tercampur mata uang.
+DEFAULT_CURRENCY = "IDR"
+
+
+def currency_for_customer(customer: str | None = None, price_list: str | None = None) -> str:
+	"""Mata uang customer: currency price list-nya, lalu ``Customer.default_currency``,
+	lalu default site, dan terakhir IDR. Tidak pernah mengembalikan None."""
+	if price_list:
+		cur = frappe.db.get_value("Price List", price_list, "currency")
+		if cur:
+			return cur
+	if customer:
+		cur = frappe.db.get_value("Customer", customer, "default_currency")
+		if cur:
+			return cur
+	return frappe.defaults.get_global_default("currency") or DEFAULT_CURRENCY

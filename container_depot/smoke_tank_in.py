@@ -16,7 +16,7 @@ container yang sama; tidak ada container atau booking sampingan yang dibuat hany
 menguji satu cabang.
 
 MASTERS TIDAK PERNAH DIBUAT DI SINI. Script ini memakai data seeder apa adanya
-(``container_depot.seed_dev``): company, branch, depot, item, Depot Service Menu, customer
+(``container_depot.seed_dev``): company, branch, depot, item, customer
 dan Depot Contract. Yang dibuat hanya dokumen transaksi, semuanya ditandai ``SMOKE`` dan
 dihapus lagi di akhir — termasuk kalau di tengah jalan gagal.
 
@@ -154,8 +154,6 @@ class Smoke:
 	# =======================================================================
 	def ensure_masters(self):
 		"""Pastikan data seeder ada. Tidak membuat apa pun — kalau kurang, run dihentikan."""
-		from container_depot.container_depot import service_menu
-
 		self.company = frappe.defaults.get_global_default("company") or frappe.db.get_value("Company", {}, "name")
 		self.check("Seeder · Company ada", bool(self.company))
 
@@ -164,10 +162,6 @@ class Smoke:
 		self.branch = frappe.db.get_value("Depot", self.depot, "branch") if self.depot else None
 		self.check("Seeder · Depot aktif + Branch-nya ada", bool(self.depot and self.branch),
 			f"depot={self.depot} branch={self.branch}")
-
-		# Service Menu yang dipakai picker Cleaning / Maintenance.
-		for menu in ("Cleaning", "Maintenance"):
-			self.check(f"Seeder · Depot Service Menu '{menu}' aktif", service_menu.is_real_menu(menu))
 
 		# Item LOLO yang jadi charge booking.
 		self.check("Seeder · item 'Lift Off' ada", bool(frappe.db.exists("Item", "Lift Off")))
@@ -529,8 +523,8 @@ class Smoke:
 			frappe.db.get_value("Cleaning Order", self.cleaning_order, "status") == "Service Setup")
 
 		# Admin Ops memilih metode cleaning-nya di Desk lalu meneruskan ke operator.
-		# Servicenya hanya boleh yang ada di Service Menu "Cleaning" DAN berharga di
-		# price list kontrak pemilik tank — itu isi picker-nya.
+		# Pickernya menawarkan seluruh katalog item (yang tersering di depan); yang di luar
+		# kontrak pemilik tank masuk dengan tarif 0 untuk diisi tangan.
 		self.step("Cleaning · pilih 1 service + teruskan ke operator (Desk)", self._forward_cleaning)
 		self.check("Cleaning Order · masuk worklist operator (Pending)",
 			frappe.db.get_value("Cleaning Order", self.cleaning_order, "status") == "Pending")
@@ -593,16 +587,16 @@ class Smoke:
 		self.check("M&R · kerusakan dari EIR ikut terbawa",
 			bool((detail or {}).get("damages")) if isinstance(detail, dict) else False)
 
-		# Picker item M&R = Service Menu "Maintenance" ∩ price list kontrak — sama
-		# aturannya dengan cleaning, jadi tarifnya selalu yang disepakati di kontrak.
-		items = self.step("M&R · daftar service dari kontrak (PWA)",
+		# Picker item M&R = seluruh katalog, sama aturannya dengan cleaning. Tarif yang
+		# ikut adalah tarif kontrak pemilik tank kalau itemnya memang ada di sana.
+		items = self.step("M&R · daftar service dari katalog (PWA)",
 			lambda: ess_mr.mr_items(repair_order=self.repair_order))
 		rows = (items or {}).get("items") if isinstance(items, dict) else None
-		if not self.check("M&R · ada service kontrak yang bisa dipakai", bool(rows), f"items={items}"):
+		if not self.check("M&R · ada service yang bisa dipakai", bool(rows), f"items={items}"):
 			return False
 		service = rows[0].get("item_code") or rows[0].get("name")
 
-		self.step("M&R · isi 1 service dari kontrak (PWA)",
+		self.step("M&R · isi 1 service dari katalog (PWA)",
 			lambda: ess_mr.mr_order_save(repair_order=self.repair_order,
 				used_items=[{"item": service, "quantity": 1}]))
 		# Draft IS Admin Ops' desk — the estimate goes straight from there to the owner.

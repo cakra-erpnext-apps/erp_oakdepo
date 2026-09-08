@@ -419,37 +419,20 @@ def rate_card_status(customer: str | None = None) -> dict:
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def tariff_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Link query for a Price List line's Item: only Items that have a selling Item
-	Price in the contract's Base Price List. When NO Base Price List is set, fall back
-	to the full service catalog (every enabled, sellable Item) so a contract can still
-	be built from scratch and priced manually."""
-	base_pl = (filters or {}).get("base_price_list")
-	like = f"%{txt or ''}%"
-	if not base_pl:
-		return frappe.db.sql(
-			"""
-			SELECT it.name, it.item_name
-			FROM `tabItem` it
-			WHERE it.is_sales_item = 1 AND it.disabled = 0
-			  AND (it.name LIKE %(like)s OR it.item_name LIKE %(like)s)
-			ORDER BY it.item_name
-			LIMIT {start}, {page_len}
-			""".format(start=cint(start), page_len=cint(page_len)),
-			{"like": like},
-		)
-	return frappe.db.sql(
-		"""
-		SELECT DISTINCT ip.item_code, it.item_name
-		FROM `tabItem Price` ip
-		JOIN `tabItem` it ON it.name = ip.item_code
-		WHERE ip.selling = 1
-		  AND ip.price_list = %(pl)s
-		  AND (ip.item_code LIKE %(like)s OR it.item_name LIKE %(like)s)
-		ORDER BY ip.item_code
-		LIMIT {start}, {page_len}
-		""".format(start=cint(start), page_len=cint(page_len)),
-		{"pl": base_pl, "like": like},
+	"""Link query for a Price List line's Item: SELURUH katalog item, urut dari yang paling
+	sering dipakai.
+
+	Dulu dibatasi item yang punya selling Item Price di Base Price List kontrak. Batas itu
+	dilepas bersama semua picker item lain (2026-09-07): sebuah kontrak justru sering perlu
+	memuat jasa yang belum ada di rate card standar, dan tarifnya memang diketik tangan di
+	baris itu. Base Price List tetap dipakai untuk MENGISI default (``item_price_defaults``)
+	dan untuk tombol bulk-add, bukan lagi untuk menyembunyikan pilihan."""
+	from container_depot.container_depot import item_catalog
+
+	rows = item_catalog.search_items(
+		txt=txt, start=start, page_length=page_len, fields=["name as item_code", "item_name"]
 	)
+	return [[r["item_code"], r.get("item_name")] for r in rows]
 
 
 @frappe.whitelist()
@@ -515,21 +498,7 @@ def item_price_defaults(base_price_list: str, item: str) -> dict:
 	return {"uom": row.uom, "rate": row.price_list_rate, "manhour_rate": row.manhour_rate}
 
 
-# --- bulk fill: add by menu / paste from Excel ----------------------------------
-
-@frappe.whitelist()
-def base_price_list_lines_for_menu(base_price_list: str, menu: str) -> list:
-	"""Tariff line dicts for the items of ``menu`` (a Depot Service Menu) that are
-	priced in the Base Price List. Powers the "Add from Menu" button — bulk-add only
-	the items that belong to a given menu (e.g. all Maintenance items)."""
-	if not base_price_list or not menu:
-		return []
-	from container_depot.container_depot.service_menu import filter_items_by_menu
-
-	lines = base_price_list_lines(base_price_list)
-	codes = set(filter_items_by_menu([ln["item"] for ln in lines], menu))
-	return [ln for ln in lines if ln["item"] in codes]
-
+# --- bulk fill: paste from Excel ------------------------------------------------
 
 # First-cell values that mark a header row rather than an item, so an imported sheet
 # keeps working whichever column title the user typed. "Item Name" is what our own
