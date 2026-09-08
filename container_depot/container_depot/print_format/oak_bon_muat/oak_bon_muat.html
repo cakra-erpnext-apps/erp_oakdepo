@@ -25,7 +25,8 @@
       <td class="box" style="width:38%;">
         <div class="box-h">Pengangkutan</div>
         <table class="kv">
-          <tr><td class="k">Shipper / EMKL</td><td class="v">{{ doc.get("shipper") or "&mdash;" }}</td></tr>
+          <tr><td class="k">EMKL / Angkutan</td><td class="v">{{ doc.get("emkl") or "&mdash;" }}</td></tr>
+          <tr><td class="k">Shipper</td><td class="v">{{ doc.get("shipper") or "&mdash;" }}</td></tr>
           <tr><td class="k">Tujuan</td><td class="v">{{ doc.get("destination") or "&mdash;" }}</td></tr>
           <tr><td class="k">R/O</td><td class="v">{{ doc.get("ro") or "&mdash;" }}</td></tr>
         </table>

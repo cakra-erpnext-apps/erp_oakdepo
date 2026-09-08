@@ -11,9 +11,11 @@ frappe.ui.form.on('Order Muat', {
 		_render_system_facts(frm);
 	},
 	booking(frm) {
-		if (frm.doc.booking && !frm.doc.shipper) {
+		// Only the EMKL follows the booking's Bill To. Shipper is the factory that ordered
+		// the haul — a different party, and one Bill To cannot stand in for it.
+		if (frm.doc.booking && !frm.doc.emkl) {
 			frappe.db.get_value('Container Booking', frm.doc.booking, 'customer', (r) => {
-				if (r && r.customer) frm.set_value('shipper', r.customer);
+				if (r && r.customer) frm.set_value('emkl', r.customer);
 			});
 		}
 	}

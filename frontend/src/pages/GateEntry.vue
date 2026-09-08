@@ -598,9 +598,11 @@ const cargoRes = createResource({
 })
 const cargoOptions = computed(() => cargoRes.data?.cargos || [])
 
-// Shipper / Angkutan / EMKL picker. `shipper` is a Link to Customer on both bon
-// doctypes, so a typed name that isn't in the master is refused at insert — the gate
-// picks from the master instead. EMKL-flagged customers are grouped first.
+// EMKL / Angkutan and Shipper pickers. Both are Links to Customer on both bon doctypes,
+// so a typed name that isn't in the master is refused at insert — the gate picks from the
+// master instead. One request feeds both: they name different parties (the EMKL trucks the
+// tank, the Shipper is the factory that ordered it) but choose from the same Customer list,
+// and EMKL-flagged customers are grouped first so the two are easy to tell apart.
 const shipperRes = createResource({
 	url: "container_depot.api.gate_shipper_options",
 	method: "GET",
@@ -625,16 +627,18 @@ function pickChoice(booking) {
 
 // Vehicle/driver form fields — mirrors the Desk "Generate" dialog, adapted to the
 // booking direction. Keys are the exact make_order vehicle_data keys.
-const shipperField = computed(() => ({
-	key: "shipper",
-	label: labels.vShipper,
+const partyField = (key, label) => ({
+	key,
+	label,
 	type: "select",
 	options: shipperOptions.value,
 	optionValue: shipperValue,
 	optionLabel: shipperLabel,
 	groupBy: shipperGroup,
 	emptyLabel: labels.gateShipperEmpty,
-}))
+})
+const emklField = computed(() => partyField("emkl", labels.vEmkl))
+const shipperField = computed(() => partyField("shipper", labels.vShipper))
 
 const vehicleFields = computed(() => {
 	if (!detail.value) return []
@@ -647,6 +651,7 @@ const vehicleFields = computed(() => {
 			{ key: "condition", label: labels.vCondition, type: "select", options: ["EMPTY CLEAN", "EMPTY DIRTY", "LADEN"], required: true },
 			{ key: "cargo", label: labels.cargo, type: "datalist", options: cargoOptions.value },
 			{ key: "tanggal_bongkar_actual", label: labels.vDateBongkar, inputType: "date" },
+			emklField.value,
 			shipperField.value,
 			{ key: "ex_vessel", label: labels.exVessel, inputType: "text" },
 			{ key: "remarks", label: labels.eirRemarks, type: "textarea", wide: true },
@@ -658,6 +663,7 @@ const vehicleFields = computed(() => {
 		{ key: "ro", label: labels.vRo, inputType: "text" },
 		{ key: "destination", label: labels.vDestination, inputType: "text" },
 		{ key: "tanggal_muat", label: labels.vDateMuat, inputType: "date" },
+		emklField.value,
 		shipperField.value,
 		{ key: "remarks", label: labels.eirRemarks, type: "textarea", wide: true },
 	]
@@ -860,7 +866,11 @@ function openGenerate() {
 		cargo: line.cargo || "",
 		destination: "",
 		ex_vessel: "",
-		shipper: detail.value.customer || "",
+		// Only the EMKL falls back to the booking's Customer (Bill To). The Shipper is the
+		// factory that ordered the haul — a different party, so it comes from the booking
+		// line or stays blank rather than inheriting the payer's name.
+		emkl: line.emkl || detail.value.customer || "",
+		shipper: line.shipper || "",
 		// The booking's own Plan Date wins over today, in both directions: a booking prepared
 		// a week ahead already says which day it is for, and the gate is where that day
 		// arrives — not where it is decided again. Read off the booking, not the line: the

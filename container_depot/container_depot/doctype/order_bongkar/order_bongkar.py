@@ -26,6 +26,7 @@ class OrderBongkar(Document):
 		# Sync depot/status first so the activity log + ex_vessel see the arrived tank.
 		_sync_container_arrival(self)
 		_log_order_activity(self, "Order Bongkar")
+		_stamp_container_parties(self)
 		_update_container_ex_vessel(self)
 		_ensure_order_qr(self)
 		# Open the gate log for this visit (the IN half of Riwayat Gate).
@@ -105,8 +106,32 @@ def _log_order_activity(order: Document, activity_type: str):
 			log_container_activity(
 				row.container, activity_type,
 				reference_doctype=order.doctype, reference_name=order.name,
-				summary=f"{activity_type} issued" + (f" (shipper {order.get('shipper')})" if order.get("shipper") else ""),
+				summary=f"{activity_type} issued" + (f" (EMKL {order.get('emkl')})" if order.get("emkl") else ""),
 			)
+
+
+def _stamp_container_parties(order: Document):
+	"""Copy the bon's EMKL / Shipper onto each Container master it moves.
+
+	The two fields on the master answer "who last hauled this tank, and for which factory" —
+	a question the yard asks of the TANK, not of a document, and which otherwise costs a walk
+	back through the bons. They are read-only there for that reason: this is the only writer,
+	and it runs on submit, when the bon is final.
+
+	An Order Bongkar keeps both per row (its rows are Container Booking Item, so one bon can
+	carry two tanks for two different factories); an Order Muat keeps them on the header. Row
+	first, header second. A blank is skipped rather than written, so a bon that names neither
+	leaves the previous cycle's stamp alone instead of erasing it."""
+	for row in _order_rows(order):
+		if not row.get("container"):
+			continue
+		values = {}
+		for field in ("emkl", "shipper"):
+			value = row.get(field) or order.get(field)
+			if value:
+				values[field] = value
+		if values:
+			frappe.db.set_value("Container", row.container, values, update_modified=False)
 
 
 def _ensure_order_qr(order: Document):

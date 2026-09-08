@@ -70,3 +70,25 @@ class TestBongkarContainerSync(FrappeTestCase):
 		c = frappe.get_doc("Container", cname)
 		self.assertEqual(c.depot, depot)  # depot still synced
 		self.assertIn(c.status, PRESENT)  # and the tank is still in the depot
+
+	def test_bon_stamps_the_hauling_parties_onto_the_master(self):
+		"""The master answers "who last hauled this tank, and for which factory" without a
+		walk back through the bons.
+
+		It also pins the precedence the two parties are resolved with. The booking LINE wins
+		over the bon form for both: the form is one header input, and letting it win would
+		flatten a booking deliberately split across several transporters back onto one. So
+		the EMKL that lands is the line's own (defaulted from Bill To at save), while the
+		Shipper — which has no default, on purpose — is the one the form supplied."""
+		cname = _container("BKRSYNCC001", "Booked")
+		factory = ensure_test_customer("Bongkar Sync Test Factory")
+		hauler = ensure_test_customer("Bongkar Sync Test Hauler")
+		booking, codes = _booking_with_codes(
+			code_direction="Tank In", count=1, prefix="BKRSC0", containers=[cname]
+		)
+		bill_to = frappe.db.get_value("Container Booking", booking, "customer")
+		make_order(booking, codes, vehicle_data={"emkl": hauler, "shipper": factory}, submit=True)
+
+		c = frappe.db.get_value("Container", cname, ["emkl", "shipper"], as_dict=True)
+		self.assertEqual(c.emkl, bill_to, "the booking line's EMKL wins over the bon form")
+		self.assertEqual(c.shipper, factory, "the line has no shipper, so the form's fills it")

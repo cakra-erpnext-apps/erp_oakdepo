@@ -6,7 +6,7 @@ Three things the panel is built from beyond the booking header:
   disappear rather than display a "Unpaid" that means nothing.
 * ``open_orders`` per container — the work still holding the tank, i.e. the reason a
   gate-out would be refused, named so the operator can go and close it.
-* the Shipper / Angkutan / EMKL picker options — ``shipper`` is a Link to Customer on
+* the EMKL / Angkutan and Shipper picker options — both are Links to Customer on
   both bon doctypes, so the gate must offer the master, not free text.
 """
 
@@ -137,7 +137,7 @@ class TestGatePanel(FrappeTestCase):
 		finally:
 			frappe.delete_doc("Cleaning Order", co.name, force=True, ignore_permissions=True)
 
-	# --- shipper picker ----------------------------------------------------------
+	# --- EMKL / shipper picker ---------------------------------------------------
 
 	def _shippers(self) -> list[dict]:
 		return api.gate_shipper_options()["shippers"]
@@ -152,7 +152,7 @@ class TestGatePanel(FrappeTestCase):
 		self.assertEqual(rows[: len(flagged)], flagged)
 
 	def test_shipper_options_keep_the_unflagged_customers(self):
-		"""A booking line's shipper defaults to the booking's own Customer, which is
+		"""A booking line's EMKL defaults to the booking's own Customer, which is
 		usually a tank owner and not flagged. Filtering those out would make the
 		pre-filled value unselectable — and a depot that has ticked nobody would meet an
 		empty picker at the gate."""

@@ -130,12 +130,12 @@ class TestContainerStatusReport(FrappeTestCase):
 			# Order Bongkar's container grid is Container Booking Item, not Order
 			# Container Item — the pairing this test exists to pin.
 			"order_bongkar": self._insert({
-				"doctype": "Order Bongkar", "shipper": self.customer,
+				"doctype": "Order Bongkar", "emkl": self.customer,
 				"ex_vessel": "MV STATUS REPORT",
 				"containers": [{"container": TANK, "container_no": TANK}],
 			}, submit=True),
 			"order_muat": self._insert({
-				"doctype": "Order Muat", "shipper": self.customer,
+				"doctype": "Order Muat", "emkl": self.customer,
 				"containers": [{"container": TANK, "container_no": TANK}],
 			}, submit=True),
 		}

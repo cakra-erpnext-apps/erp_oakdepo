@@ -118,12 +118,13 @@ class ContainerBooking(Document):
 		self._sync_lift_type()
 		self._require_plan_date()
 		self._cascade_header_defaults()
+		self._validate_survey_before_plan()
 		self._resolve_pricing_context()
 		self._resolve_containers()
 		# After resolution, so a row that arrived as a bare number is judged on the master it
 		# resolved to. Rows already on the booking are untouched — see assert_rows_active.
 		assert_rows_active(self, "items")
-		self._default_row_shipper()
+		self._default_row_emkl()
 		self._validate_row_principal()
 		self._validate_unique_containers()
 		self._validate_no_open_booking()
@@ -637,6 +638,40 @@ class ContainerBooking(Document):
 				title=_("Tanggal Rencana Belum Diisi"),
 			)
 
+	def _validate_survey_before_plan(self):
+		"""Survey comes BEFORE the truck: ``survey_date`` may never fall after ``plan_date``.
+
+		On a Tank Out the survey is what clears the tank for release — the surveyor walks it,
+		closes the position survey, and that is what raises the EIR-Out the bon later attaches
+		to. A survey booked for the day AFTER the pickup is not a tight schedule, it is an
+		impossible one: the truck would arrive at a tank nobody has looked at.
+
+		Checked on the header and on every line, because the pair rides
+		:attr:`HEADER_TO_LINE` down onto the rows and a line may legitimately carry its own
+		day (one booking's tanks are routinely surveyed by different parties on different
+		days). Each of those days still has to land on or before the one pickup date.
+
+		Tank In is not covered: there is no pickup to be early for.
+		"""
+		if self.direction != "Tank Out" or not self.plan_date:
+			return
+		plan = getdate(self.plan_date)
+		late = []
+		if self.survey_date and getdate(self.survey_date) > plan:
+			late.append(_("Header"))
+		for idx, item in enumerate(self.items or [], start=1):
+			if item.survey_date and getdate(item.survey_date) > plan:
+				late.append(_("Baris {0} ({1})").format(idx, item.container_no or item.container or "-"))
+		if not late:
+			return
+		frappe.throw(
+			_("<b>Survey Date</b> tidak boleh lewat dari <b>Plan Date</b> ({0}) — survey dikerjakan "
+			  "sebelum tank diambil.<br>Perbaiki: {1}").format(
+				frappe.utils.formatdate(plan), ", ".join(late)
+			),
+			title=_("Tanggal Survey Melewati Rencana Ambil"),
+		)
+
 	def _resolve_pricing_context(self):
 		"""Pricing follows the customer's *active* Price List — the one published by their
 		active contract and mirrored onto ``Customer.default_price_list``. It is resolved
@@ -852,8 +887,8 @@ class ContainerBooking(Document):
 			if self.direction == "Tank In" and item.container:
 				self._mark_pre_arrival(item.container)
 
-	def _default_row_shipper(self):
-		"""Each container line carries its own EMKL / angkutan (``shipper``) — one booking
+	def _default_row_emkl(self):
+		"""Each container line carries its own EMKL / angkutan (``emkl``) — one booking
 		may be split across several transporters, and the tank owner (Principal) is often
 		not the one who trucks it.
 
@@ -861,10 +896,15 @@ class ContainerBooking(Document):
 		here, and the form fills the rows the moment Bill To is set or changed. A row the
 		operator pointed at a different transporter is never touched — this only ever
 		fills a BLANK. Nothing financial reads the field: pricing, contract and the Sales
-		Invoice all key off ``customer``."""
+		Invoice all key off ``customer``.
+
+		``shipper`` — the factory that ordered the haul — is deliberately NOT defaulted from
+		Bill To. The two are different parties (the shipper is who tells the EMKL to collect
+		the tank), and seeding it from the payer would put a plausible wrong name on every
+		row: a blank that someone fills is honest, a wrong default is not."""
 		for item in self.items or []:
-			if not item.shipper:
-				item.shipper = self.customer
+			if not item.emkl:
+				item.emkl = self.customer
 
 	def _create_pre_arrival_container(self, container_no):
 		"""Create a Container master for a pre-announced (not-yet-arrived) tank.

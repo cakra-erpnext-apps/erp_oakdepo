@@ -358,6 +358,7 @@ const referredVoucher = ref("")
 const truckNo = ref("")
 const driver = ref("")
 const driverPhone = ref("")
+const emkl = ref("")
 const shipper = ref("")
 const cargo = ref("")
 const cargos = ref([])
@@ -429,6 +430,7 @@ const voucherCells = computed(() => [
 	{ label: labels.bookingCode, value: bookingCode.value, mono: true },
 	{ label: labels.referredVoucher, value: referredVoucher.value, mono: true },
 	{ label: labels.depot, value: header.value?.depot },
+	{ label: labels.emkl, value: emkl.value },
 	{ label: labels.shipper, value: shipper.value },
 	{ label: labels.truckNo, value: truckNo.value },
 	{ label: labels.driverName, value: driver.value },
@@ -453,6 +455,7 @@ const openRes = cachedResource({
 		truckNo.value = data.truck_no || ""
 		driver.value = data.driver || ""
 		driverPhone.value = data.driver_phone || ""
+		emkl.value = data.emkl || ""
 		shipper.value = data.shipper || ""
 		cargo.value = data.cargo || data.last_cargo || ""
 		bookingCode.value = data.booking_code || ""

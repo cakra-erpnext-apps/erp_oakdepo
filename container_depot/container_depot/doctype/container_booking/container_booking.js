@@ -627,7 +627,8 @@ frappe.ui.form.on('Container Booking', {
 								// Straight from the master, like the picker — nobody types a depot.
 								row.depot = ln.depot;
 								// add_child doesn't fire items_add — default the EMKL here too.
-								row.shipper = frm.doc.customer;
+								// Shipper is left blank on purpose: see _sync_row_emkl.
+								row.emkl = frm.doc.customer;
 								if (ln.container) row.container = ln.container;
 								if (ln.cargo) row.cargo = ln.cargo;
 								// Set here, re-derived from the Container's own created_by_booking
@@ -760,22 +761,26 @@ frappe.ui.form.on('Container Booking', {
 		}
 		frm.set_value('charges_total', 0);
 		frm.set_value('currency', null);
-		frm.trigger('_sync_row_shipper');
+		frm.trigger('_sync_row_emkl');
 		frm.trigger('_set_queries');
 		frm.trigger('_apply_payment_modes');
 	},
-	// EMKL / Shipper follows Bill To: every container line that is still blank, or still
-	// carrying the PREVIOUS Bill To, is refreshed to the new one. A row the operator
-	// pointed at a real transporter is left exactly as typed — that is the whole point of
-	// the field being per container. `_prev_customer` is stashed because a field trigger
-	// only ever sees the new value, and `doc_before_save` does not exist on a fresh draft.
-	_sync_row_shipper(frm) {
+	// EMKL follows Bill To: every container line that is still blank, or still carrying the
+	// PREVIOUS Bill To, is refreshed to the new one. A row the operator pointed at a real
+	// transporter is left exactly as typed — that is the whole point of the field being per
+	// container. `_prev_customer` is stashed because a field trigger only ever sees the new
+	// value, and `doc_before_save` does not exist on a fresh draft.
+	//
+	// Shipper — the factory that told the EMKL to collect the tank — is NOT touched here.
+	// It is a different party from the payer, so seeding it from Bill To would put a
+	// plausible wrong name on every row; a blank someone fills is the honest default.
+	_sync_row_emkl(frm) {
 		const prev = frm._prev_customer;
 		frm._prev_customer = frm.doc.customer;
 		if (!frm.doc.customer) return;
 		(frm.doc.items || []).forEach((row) => {
-			if (!row.shipper || (prev && row.shipper === prev)) {
-				frappe.model.set_value(row.doctype, row.name, 'shipper', frm.doc.customer);
+			if (!row.emkl || (prev && row.emkl === prev)) {
+				frappe.model.set_value(row.doctype, row.name, 'emkl', frm.doc.customer);
 			}
 		});
 	},
@@ -926,10 +931,10 @@ frappe.ui.form.on('Container Booking', {
 	},
 	// Grid row add / remove events fire on the PARENT form.
 	items_add(frm, cdt, cdn) {
-		// EMKL / Shipper starts at the booking's Customer (Bill To) so the common case —
-		// one transporter for the whole booking — costs no typing; the row stays editable
-		// for a booking split across several EMKL.
-		if (frm.doc.customer) frappe.model.set_value(cdt, cdn, 'shipper', frm.doc.customer);
+		// EMKL starts at the booking's Customer (Bill To) so the common case — one
+		// transporter for the whole booking — costs no typing; the row stays editable for a
+		// booking split across several EMKL. Shipper stays blank (see _sync_row_emkl).
+		if (frm.doc.customer) frappe.model.set_value(cdt, cdn, 'emkl', frm.doc.customer);
 		frm.trigger('_sync_charge_qty');
 	},
 	items_remove(frm) {
@@ -1162,11 +1167,11 @@ const MAX_CONTAINERS_PER_ORDER = 2;
 // first picked container's booking line, and written back onto the booking lines on
 // Generate. Sent as vehicle_data to the server.
 const BONGKAR_DETAIL_FIELDS = [
-	'condition', 'cargo', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks',
+	'condition', 'cargo', 'emkl', 'shipper', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks',
 ];
-// A Tank Out voucher inherits only the vehicle trio + R/O from the line. Condition and cargo
-// describe what was DROPPED OFF — they say nothing about a pick-up.
-const MUAT_DETAIL_FIELDS = ['truck_plate', 'driver', 'driver_phone', 'ro', 'remarks'];
+// A Tank Out voucher inherits only the parties + vehicle trio + R/O from the line. Condition
+// and cargo describe what was DROPPED OFF — they say nothing about a pick-up.
+const MUAT_DETAIL_FIELDS = ['emkl', 'shipper', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks'];
 
 function open_generate_dialog(frm) {
 	frappe.call({
@@ -1245,10 +1250,15 @@ function open_generate_dialog(frm) {
 					{ fieldname: 'driver_phone', fieldtype: 'Data', label: __('No. HP Driver'), reqd: 1 },
 					{ fieldname: 'ro', fieldtype: 'Data', label: __('RO') },
 					{ fieldtype: 'Section Break', label: __('Order') },
-					// One party under three names — the hauler. Tank Out used to ask for it twice
-					// (a free-text "Angkutan" beside this link), so the same company could land
-					// in two places with nothing tying them together.
-					{ fieldname: 'shipper', fieldtype: 'Link', label: __('Shipper / Angkutan / EMKL'), options: 'Customer', default: frm.doc.customer },
+					// Two parties, not one. EMKL / angkutan is the hauler — one company under
+					// several names, which Tank Out used to ask for twice (a free-text "Angkutan"
+					// beside this link) so the same company could land in two places with nothing
+					// tying them together. Shipper is the factory that ordered the haul: no
+					// default, because Bill To is the payer and standing it in here would print a
+					// plausible wrong name on the bon. Both are auto-filled from the first picked
+					// container's booking line (see the detail field lists above).
+					{ fieldname: 'emkl', fieldtype: 'Link', label: __('EMKL / Angkutan'), options: 'Customer', default: frm.doc.customer },
+					{ fieldname: 'shipper', fieldtype: 'Link', label: __('Shipper'), options: 'Customer' },
 					...(out ? [] : [{ fieldname: 'ex_vessel', fieldtype: 'Data', label: __('Ex Vessel') }]),
 					{ fieldname: 'remarks', fieldtype: 'Small Text', label: __('Remarks') },
 				],
@@ -1264,6 +1274,7 @@ function open_generate_dialog(frm) {
 					let vehicle_data;
 					if (out) {
 						vehicle_data = {
+							emkl: values.emkl,
 							shipper: values.shipper,
 							destination: values.destination,
 							tanggal_muat: values.tanggal_muat,
@@ -1280,6 +1291,7 @@ function open_generate_dialog(frm) {
 						};
 					} else {
 						vehicle_data = {
+							emkl: values.emkl,
 							shipper: values.shipper,
 							ex_vessel: values.ex_vessel,
 							tanggal_bongkar_actual: values.tanggal_bongkar_actual,

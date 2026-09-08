@@ -34,7 +34,7 @@ frappe.ui.form.on('Order Bongkar', {
 		grid.refresh();
 	},
 	booking(frm) {
-		_default_shipper(frm);
+		_default_emkl(frm);
 		_default_principal(frm);
 	},
 	containers_remove(frm) {
@@ -156,10 +156,12 @@ function _confirm_void(frm) {
 	);
 }
 
-function _default_shipper(frm) {
-	if (frm.doc.booking && !frm.doc.shipper) {
+// Only the EMKL follows the booking's Bill To. Shipper is the factory that ordered the
+// haul — a different party, and one Bill To cannot stand in for it.
+function _default_emkl(frm) {
+	if (frm.doc.booking && !frm.doc.emkl) {
 		frappe.db.get_value('Container Booking', frm.doc.booking, 'customer', (r) => {
-			if (r && r.customer) frm.set_value('shipper', r.customer);
+			if (r && r.customer) frm.set_value('emkl', r.customer);
 		});
 	}
 }

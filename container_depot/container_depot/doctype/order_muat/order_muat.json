@@ -10,6 +10,7 @@
   "order_status",
   "branch",
   "column_break_1",
+  "emkl",
   "shipper",
   "destination",
   "tanggal_muat",
@@ -77,12 +78,20 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Pihak yang mengangkut / EMKL. Pilih dari master Customer.",
-   "fieldname": "shipper",
+   "description": "Pihak yang mengangkut / angkutan / EMKL. Pilih dari master Customer.",
+   "fieldname": "emkl",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Shipper / Angkutan / EMKL",
+   "label": "EMKL / Angkutan",
+   "options": "Customer"
+  },
+  {
+   "description": "Pabrik / pemilik muatan yang memerintah EMKL. Dari baris booking; boleh diubah.",
+   "fieldname": "shipper",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Shipper",
    "options": "Customer"
   },
   {
@@ -183,10 +192,10 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-21 11:00:00.000000",
+ "modified": "2026-09-08 10:00:00.000000",
  "module": "Container Depot",
  "name": "Order Muat",
- "search_fields": "booking, container_summary, truck_plate, shipper, destination",
+ "search_fields": "booking, container_summary, truck_plate, emkl, destination",
  "sort_field": "creation",
  "sort_order": "DESC",
  "title_field": "booking",

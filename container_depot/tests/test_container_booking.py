@@ -1478,3 +1478,134 @@ class TestContainerReservation(FrappeTestCase):
 		self.assertFalse(
 			frappe.db.exists("Container", phantom), "the phantom master goes with its row"
 		)
+
+
+class TestSurveyBeforePlanDate(FrappeTestCase):
+	"""Tank Out: the survey happens BEFORE the truck, so ``survey_date`` may never fall
+	after ``plan_date`` — on the header or on any line."""
+
+	CUSTOMER = "Phase3 SurveyDate Customer"
+	TANK = "SVDT0000010"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.customer = ensure_test_customer(cls.CUSTOMER)
+		_cleanup_customer_world(cls.customer)
+		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
+		if not frappe.db.exists("Container", cls.TANK):
+			frappe.get_doc({
+				"doctype": "Container", "container_no": cls.TANK, "container_type": "ISO Tank",
+				"status": "Available", "principal": cls.customer,
+			}).insert(ignore_permissions=True)
+
+	@classmethod
+	def tearDownClass(cls):
+		_cleanup_customer_world(cls.customer)
+		frappe.db.delete("Container", {"container_no": cls.TANK})
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
+
+	def _booking(self, **over):
+		doc = {
+			"doctype": "Container Booking",
+			"direction": "Tank Out",
+			"customer": self.customer,
+			"contract": self.contract,
+			"plan_date": today(),
+			"items": [{"container": self.TANK}],
+		}
+		doc.update(over)
+		return frappe.get_doc(doc)
+
+	def test_survey_after_plan_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			self._booking(survey_date=add_days(today(), 1)).insert(ignore_permissions=True)
+
+	def test_survey_before_or_on_plan_is_allowed(self):
+		# Same day is ordinary: the surveyor walks the tank in the morning, the truck comes
+		# in the afternoon.
+		self._booking(survey_date=today()).insert(ignore_permissions=True)
+		_purge_bookings(self.customer)
+		self._booking(
+			plan_date=add_days(today(), 3), survey_date=today()
+		).insert(ignore_permissions=True)
+
+	def test_a_line_may_not_outrun_the_plan_date_either(self):
+		"""The pair rides the header down onto the rows but stays editable per tank, so the
+		rule has to hold on the line too — otherwise it is bypassed by typing."""
+		b = self._booking(survey_date=today())
+		b.insert(ignore_permissions=True)
+		b.items[0].survey_date = add_days(today(), 2)
+		with self.assertRaises(frappe.ValidationError):
+			b.save(ignore_permissions=True)
+
+	def test_tank_in_is_not_covered(self):
+		"""Inbound has no pickup to be early for — the tank is arriving."""
+		b = self._booking(direction="Tank In", survey_date=add_days(today(), 5))
+		b.insert(ignore_permissions=True)  # must NOT raise
+		self.assertEqual(b.direction, "Tank In")
+
+
+class TestRowPartyDefaults(FrappeTestCase):
+	"""EMKL (the trucking company) follows Customer (Bill To); Shipper (the factory that
+	ordered the haul) is a different party and is deliberately left blank."""
+
+	CUSTOMER = "Phase3 Party Customer"
+	TANK = "PRTY0000010"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.customer = ensure_test_customer(cls.CUSTOMER)
+		cls.factory = ensure_test_customer("Phase3 Party Factory")
+		_cleanup_customer_world(cls.customer)
+		cls.contract = _make_active_contract(cls.customer, payment_type="Cash")
+		if not frappe.db.exists("Container", cls.TANK):
+			frappe.get_doc({
+				"doctype": "Container", "container_no": cls.TANK, "container_type": "ISO Tank",
+				"status": "Available", "principal": cls.customer,
+			}).insert(ignore_permissions=True)
+
+	@classmethod
+	def tearDownClass(cls):
+		_cleanup_customer_world(cls.customer)
+		frappe.db.delete("Container", {"container_no": cls.TANK})
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		_purge_bookings(self.customer)
+
+	def _booking(self, **row):
+		items = [{"container": self.TANK, **row}]
+		return frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank In",
+			"customer": self.customer,
+			"contract": self.contract,
+			"items": items,
+		})
+
+	def test_emkl_defaults_to_bill_to_and_shipper_stays_blank(self):
+		b = self._booking()
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.items[0].emkl, self.customer)
+		self.assertFalse(b.items[0].shipper, "Bill To is the payer, not the factory")
+
+	def test_a_typed_emkl_is_never_overwritten(self):
+		hauler = ensure_test_customer("Phase3 Party Hauler")
+		b = self._booking(emkl=hauler)
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.items[0].emkl, hauler)
+
+	def test_shipper_is_kept_exactly_as_entered(self):
+		b = self._booking(shipper=self.factory)
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.items[0].shipper, self.factory)
+		self.assertEqual(b.items[0].emkl, self.customer)

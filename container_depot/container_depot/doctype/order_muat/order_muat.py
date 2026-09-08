@@ -11,6 +11,7 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 	_release_codes,
 	_release_eirs,
 	_sync_booking,
+	_stamp_container_parties,
 	_sync_container_summary,
 	_validate_booking_code,
 )
@@ -28,6 +29,7 @@ class OrderMuat(Document):
 
 	def on_submit(self):
 		_log_order_activity(self, "Order Muat")
+		_stamp_container_parties(self)
 		_ensure_order_qr(self)
 		from container_depot.container_depot.notify import notify_order_gate, notify_order_muat_survey
 		notify_order_gate(self, "out")
@@ -35,7 +37,7 @@ class OrderMuat(Document):
 		notify_order_muat_survey(self)
 
 	def _attach_eir_out(self):
-		"""Point each tank's EIR-Out at this bon and stamp the truck / driver / shipper onto it.
+		"""Point each tank's EIR-Out at this bon and stamp the truck / driver / EMKL / shipper onto it.
 
 		The bon no longer CREATES an EIR-Out. Since 2026-09-03 the EIR-Out is raised when the
 		tank's position survey is closed, days earlier, so everything typed on this screen

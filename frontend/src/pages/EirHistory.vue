@@ -299,7 +299,8 @@ function cells(d) {
 		{ label: labels.eirVoucher, value: d.referred_voucher },
 		{ label: labels.eirTruck, value: d.truck_no },
 		{ label: labels.eirDriver, value: d.driver },
-		{ label: labels.eirEmkl, value: d.shipper },
+		{ label: labels.eirEmkl, value: d.emkl },
+		{ label: labels.shipper, value: d.shipper },
 	].filter((c) => c.value)
 }
 </script>

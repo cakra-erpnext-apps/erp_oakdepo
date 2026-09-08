@@ -313,8 +313,8 @@ class Inspection(Document):
 		frappe.throw(
 			_(
 				"EIR-Out {0} belum bisa disubmit: bon muat untuk tank <b>{1}</b> belum terbit.<br>"
-				"Generate Bon dulu dari booking Tank Out-nya — bon itu yang mengisi truk, sopir "
-				"dan shipper ke EIR ini, sekaligus membuka submit-nya."
+				"Generate Bon dulu dari booking Tank Out-nya — bon itu yang mengisi truk, sopir, "
+				"EMKL dan shipper ke EIR ini, sekaligus membuka submit-nya."
 			).format(self.name, self.container_no or self.container),
 			title=_("Bon muat belum ada"),
 		)

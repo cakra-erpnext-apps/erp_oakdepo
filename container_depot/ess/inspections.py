@@ -148,8 +148,8 @@ def eir_request_revision(inspection=None, reason=None, request_id=None):
 def eir_voucher(voucher=None, inspection_type="EIR-In", container=None):
 	"""GET /api/v1/ess/eir-voucher — read-only shipment snapshot from a referred voucher.
 
-	EIR-In resolves an Order Bongkar (shipper), EIR-Out an Order Muat (truck / driver /
-	driver phone / shipper). The voucher must be submitted and carry ``container``.
+	EIR-In resolves an Order Bongkar (EMKL / shipper), EIR-Out an Order Muat (truck / driver /
+	driver phone / EMKL / shipper). The voucher must be submitted and carry ``container``.
 	See ``container_depot.eir.fetch_voucher``.
 	"""
 	require_menu("eir")

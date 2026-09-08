@@ -138,7 +138,10 @@
         </td>
         <td>{{ oak.cond_pill(row.condition) }}</td>
         <td>{{ row.cargo or "&mdash;" }}</td>
-        <td>{{ row.shipper or "&mdash;" }}</td>
+        <td>
+          {{ row.emkl or "&mdash;" }}
+          {%- if row.shipper %}<div class="sub">Shipper: {{ row.shipper }}</div>{% endif %}
+        </td>
         <td>
           {{ row.truck_plate or "&mdash;" }}
           {%- if row.driver %}<div class="sub">{{ row.driver }}{% if row.driver_phone %} &middot; {{ row.driver_phone }}{% endif %}</div>{% endif %}

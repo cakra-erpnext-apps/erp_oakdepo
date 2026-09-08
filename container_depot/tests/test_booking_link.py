@@ -55,7 +55,7 @@ def _bon(customer: str, booking: str, container: str, container_no: str) -> str:
 	"""A submitted Order Bongkar raised from ``booking``."""
 	doc = frappe.get_doc({
 		"doctype": "Order Bongkar",
-		"shipper": customer,
+		"emkl": customer,
 		"booking": booking,
 		"ex_vessel": "MV BOOKING LINK",
 		"containers": [{"container": container, "container_no": container_no}],

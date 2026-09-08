@@ -244,7 +244,7 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 	The per-container detail (truck no, driver, driver phone, tank status, cargo) comes
 	from **Container Booking Item**: for EIR-In the Order Bongkar's own rows carry it; for
 	EIR-Out the Order Muat keeps truck/driver on its header and the condition/cargo come
-	from the booking line. ``shipper`` is the bon header. truck/driver/phone are stored
+	from the booking line. ``emkl`` and ``shipper`` are the bon header. truck/driver/phone are stored
 	read-only on the EIR; tank_status/cargo are returned as editable defaults. Missing
 	fields come back ``None``; ``voucher=None`` yields an all-None snapshot.
 
@@ -258,6 +258,7 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 		"truck_no": None,
 		"driver": None,
 		"driver_phone": None,
+		"emkl": None,
 		"shipper": None,
 		"tank_status": None,
 		"cargo": None,
@@ -274,7 +275,7 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 	if container and not _voucher_has_container(doctype, voucher, container):
 		frappe.throw(_("Container {0} is not on {1} {2}.").format(container, doctype, voucher))
 	snap["referred_voucher"] = voucher
-	snap["shipper"] = frappe.db.get_value(doctype, voucher, "shipper")
+	snap["emkl"], snap["shipper"] = frappe.db.get_value(doctype, voucher, ["emkl", "shipper"])
 	snap["depot"] = _voucher_depot(doctype, voucher, container)
 	snap["reff_doc"] = _voucher_reff_doc(doctype, voucher)
 	detail = _voucher_detail(doctype, voucher, container)
@@ -295,6 +296,7 @@ def _apply_voucher(doc, referred_voucher: str | None) -> None:
 	doc.truck_no = snap["truck_no"]
 	doc.driver = snap["driver"]
 	doc.driver_phone = snap["driver_phone"]
+	doc.emkl = snap["emkl"]
 	doc.shipper = snap["shipper"]
 	# Depot follows the bon's booking when one is referenced; left untouched when the
 	# voucher is cleared (so it falls back to the Container master depot set at creation).
@@ -357,7 +359,7 @@ def provision_eir_out_for_survey(survey_tank: str) -> str | None:
 
 	**The draft is deliberately born WITHOUT a bon.** No Order Muat exists yet — that is the
 	whole point of moving this earlier — so ``referred_voucher`` stays empty and the truck /
-	driver / shipper boxes stay blank until the bon is cut and adopts it
+	driver / EMKL boxes stay blank until the bon is cut and adopts it
 	(:func:`attach_order_muat_to_eirs`). Until then the EIR-Out can be filled in but NOT
 	submitted; ``Inspection.before_submit`` refuses it, because an EIR-Out with no bon behind it
 	would let a tank through the gate on no paperwork at all.
@@ -428,7 +430,7 @@ def attach_order_muat_to_eirs(order_name: str) -> dict:
 	The EIR-Out is raised by the position survey now (:func:`provision_eir_out_for_survey`),
 	so by the time a bon is cut the document is already sitting in the surveyor's worklist,
 	half filled in. What the bon adds is the half only it knows — truck, driver, driver phone,
-	shipper, reff doc — and, crucially, the reference that makes the EIR submittable at all
+	EMKL, reff doc — and, crucially, the reference that makes the EIR submittable at all
 	(``Inspection.before_submit``). So everything typed on the Generate Bon screen lands
 	straight on the EIR the survey opened, instead of on a second one raised beside it.
 
@@ -600,7 +602,7 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 	/ Container lists).
 
 	Each draft references this bon and pre-fills tank_status / cargo / truck / driver /
-	shipper from its booking line, so the surveyor only fills the checklist. This is the
+	EMKL from its booking line, so the surveyor only fills the checklist. This is the
 	ONLY way an EIR is born in the PWA flow — the operator no longer types a container to
 	create one.
 
@@ -641,7 +643,7 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 			) or (None, None)
 			doc.depot = cdepot
 			doc.cargo = ccargo
-			# Reference THIS bon: truck / driver / driver phone / shipper / booking depot.
+			# Reference THIS bon: truck / driver / driver phone / EMKL / shipper / booking depot.
 			_apply_voucher(doc, order_name)
 			snap = fetch_voucher(order_name, "EIR-In", container=container)
 			doc.tank_status = snap.get("tank_status") or doc.tank_status
@@ -669,7 +671,7 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
       an EIR with no ``work_started_on`` provably holds no work; it only existed because
       of this bon, exactly like the phantom containers a cancelled booking deletes;
     * else → keep the work and just drop the dangling link. The stamped truck / driver /
-      shipper stay: they record the truck that really showed up, which the surveyor may
+      EMKL stay: they record the truck that really showed up, which the surveyor may
       still be relying on.
 
 	Best-effort per draft — mirrors ``provision_eirs_for_order_bongkar``: one failure is
@@ -1142,7 +1144,7 @@ def create_eir(
 	if create_repair_order is not None:
 		doc.create_repair_order = 1 if _as_bool(create_repair_order) else 0
 	if referred_voucher:
-		_apply_voucher(doc, referred_voucher)  # overrides truck_no; sets driver / driver_phone / shipper
+		_apply_voucher(doc, referred_voucher)  # overrides truck_no; sets driver / driver_phone / EMKL / shipper
 	doc.has_damage = 1 if has_damage else 0
 	if order_ref:
 		doc.order_doctype = order_doctype or "Order Bongkar"
@@ -1252,6 +1254,7 @@ def _draft_payload(doc, header: dict) -> dict:
 	header["truck_no"] = doc.truck_no
 	header["driver"] = doc.driver
 	header["driver_phone"] = doc.driver_phone
+	header["emkl"] = doc.emkl
 	header["shipper"] = doc.shipper
 	header["doc_remarks"] = doc.remarks
 	header["inspector_signature"] = doc.inspector_signature
@@ -1319,7 +1322,7 @@ def open_draft(container=None, container_no=None, inspection_type="EIR-In") -> d
 		try:
 			voucher = latest_voucher_for_container(name, inspection_type)
 			if voucher:
-				_apply_voucher(doc, voucher)  # truck / driver / driver phone / shipper
+				_apply_voucher(doc, voucher)  # truck / driver / driver phone / EMKL / shipper
 				snap = fetch_voucher(voucher, inspection_type, container=name)
 				# tank_status / cargo come from the bon line as editable defaults.
 				doc.tank_status = snap.get("tank_status") or doc.tank_status
@@ -1477,7 +1480,7 @@ def save_draft(
 
 	The PWA owns the draft's checklist state, so ``damage_log`` + ``item_photos`` (and
 	the EIR-creator ``inspector_signature``) are replaced wholesale from the payload. The
-	truck/driver/shipper snapshot is re-resolved from ``referred_voucher``; ``cargo`` is
+	truck/driver/EMKL snapshot is re-resolved from ``referred_voucher``; ``cargo`` is
 	recorded on the draft but only written back to ``Container.last_cargo`` on submit.
 	``submit`` finalizes the EIR: the Inspection is submitted and its ``on_submit`` drives
 	the container's status + cargo writeback (we never set status here). Permissions are
@@ -1522,7 +1525,7 @@ def save_draft(
 		doc.create_cleaning_order = 1 if _as_bool(create_cleaning_order) else 0
 	if create_repair_order is not None:
 		doc.create_repair_order = 1 if _as_bool(create_repair_order) else 0
-	# The voucher owns truck_no / driver / driver_phone / shipper (read-only snapshot);
+	# The voucher owns truck_no / driver / driver_phone / emkl / shipper (read-only snapshot);
 	# the legacy ``truck_no`` arg is ignored. No voucher -> these are cleared.
 	#
 	# Only re-resolved when it actually CHANGES. The PWA echoes back the voucher it was
@@ -2081,6 +2084,7 @@ def view_eir(inspection: str) -> dict:
 		"truck_no": doc.get("truck_no"),
 		"driver": doc.get("driver"),
 		"driver_phone": doc.get("driver_phone"),
+		"emkl": doc.get("emkl"),
 		"shipper": doc.get("shipper"),
 		"remarks": doc.get("remarks"),
 		"damages": damages,

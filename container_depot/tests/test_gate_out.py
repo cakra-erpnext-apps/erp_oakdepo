@@ -184,7 +184,7 @@ class TestBonCompletion(FrappeTestCase):
 		a = _container(f"{PREFIX}9991005", "Available")
 		b = _container(f"{PREFIX}9991006", "Available")
 		bon = frappe.get_doc({
-			"doctype": "Order Muat", "shipper": shipper,
+			"doctype": "Order Muat", "emkl": shipper,
 			"containers": [
 				{"container": a, "container_no": a},
 				{"container": b, "container_no": b},

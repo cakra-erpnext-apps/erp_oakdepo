@@ -210,11 +210,12 @@
       <td><div class="k">Tank Status</div><div class="v">{{ oak.cond_pill(doc.get("tank_status")) }}</div></td>
     </tr>
     <tr>
-      <td colspan="2"><div class="k">Shipper / Consignee</div><div class="v sm">{{ doc.get("container_principal") or "&mdash;" }}</div></td>
+      <td colspan="2"><div class="k">Tank Owner / Consignee</div><div class="v sm">{{ doc.get("container_principal") or "&mdash;" }}</div></td>
       <td><div class="k">Truck No</div><div class="v sm">{{ doc.get("truck_no") or "&mdash;" }}</div></td>
       <td colspan="2"><div class="k">Vessel / Voy</div><div class="v sm">{{ doc.get("ex_vessel") or doc.get("vessel") or "&mdash;" }}</div></td>
-      <td><div class="k">EMKL</div><div class="v sm">{{ doc.get("shipper") or "&mdash;" }}</div></td>
-      <td colspan="2"><div class="k">Inspect Location</div><div class="v sm">{{ doc.get("depot") or "&mdash;" }}</div></td>
+      <td><div class="k">EMKL</div><div class="v sm">{{ doc.get("emkl") or "&mdash;" }}</div></td>
+      <td><div class="k">Shipper</div><div class="v sm">{{ doc.get("shipper") or "&mdash;" }}</div></td>
+      <td><div class="k">Inspect Location</div><div class="v sm">{{ doc.get("depot") or "&mdash;" }}</div></td>
     </tr>
     <tr>
       <td colspan="2"><div class="k">Last Cargo</div><div class="v sm">{{ doc.get("last_cargo") or "&mdash;" }}</div></td>

@@ -25,6 +25,7 @@
       <td class="box" style="width:38%;">
         <div class="box-h">Pihak</div>
         <table class="kv">
+          <tr><td class="k">EMKL / Angkutan</td><td class="v">{{ doc.get("emkl") or "&mdash;" }}</td></tr>
           <tr><td class="k">Shipper</td><td class="v">{{ doc.get("shipper") or "&mdash;" }}</td></tr>
           <tr><td class="k">Tank Owner</td><td class="v">{{ doc.get("principal") or "&mdash;" }}</td></tr>
           <tr><td class="k">Ex Vessel</td><td class="v">{{ doc.get("ex_vessel") or "&mdash;" }}</td></tr>

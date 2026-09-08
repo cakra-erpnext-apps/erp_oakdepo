@@ -899,13 +899,14 @@ def get_booking_pending_containers(booking):
 	if not booking or not frappe.db.exists("Container Booking", booking):
 		frappe.throw(_("Booking {0} not found.").format(booking))
 	# Each pending container also carries its booking line's detail (condition / cargo /
-	# truck / driver / R-O / remarks) so the Generate dialog can auto-fill the voucher from
-	# the first container picked. No date among them: the bon's date comes from the
-	# booking's Plan Date, and the line's own date is the realisation this bon will write.
+	# EMKL / shipper / truck / driver / R-O / remarks) so the Generate dialog can auto-fill
+	# the voucher from the first container picked. No date among them: the bon's date comes
+	# from the booking's Plan Date, and the line's own date is the realisation this bon writes.
 	return frappe.db.sql(
 		"""
 		SELECT bc.name AS booking_code, bc.container, bc.container_no, bc.status_tag, bc.direction,
-		       i.condition, i.cargo, i.truck_plate, i.driver, i.driver_phone, i.ro, i.remarks
+		       i.condition, i.cargo, i.emkl, i.shipper,
+		       i.truck_plate, i.driver, i.driver_phone, i.ro, i.remarks
 		FROM `tabBooking Code` bc
 		LEFT JOIN `tabContainer Booking Item` i
 		       ON i.parent = bc.booking AND i.container_no = bc.container_no
@@ -1039,7 +1040,7 @@ def _booking_gate_detail(booking) -> dict:
 		line = frappe.db.get_value(
 			"Container Booking Item",
 			{"parent": booking, "container_no": c.container_no},
-			["condition", "cargo", "truck_plate", "driver", "driver_phone", "ro"],
+			["condition", "cargo", "emkl", "shipper", "truck_plate", "driver", "driver_phone", "ro"],
 			as_dict=True,
 		) or {}
 		containers.append({
@@ -1103,17 +1104,23 @@ def gate_cargo_options():
 
 @frappe.whitelist(methods=["GET"])
 def gate_shipper_options():
-	"""Customers offerable as a bon's Shipper / Angkutan / EMKL.
+	"""Customers offerable as a bon's EMKL / Angkutan — and as its Shipper.
 
-	``shipper`` is a Link to Customer on both Order Bongkar and Order Muat, so the gate
-	must pick from the master: a hand-typed name that is not a Customer is rejected at
-	insert time, after the operator has filled in the whole form.
+	Both are Links to Customer on Order Bongkar and Order Muat, so the gate must pick from
+	the master: a hand-typed name that is not a Customer is rejected at insert time, after
+	the operator has filled in the whole form. One endpoint feeds both pickers — the two
+	fields name different parties but draw from the same list, and the grouping below is
+	exactly what tells them apart on screen.
 
 	Transporters (``is_transporter`` — the EMKL flag) are returned first and tagged so the
 	picker can group them. The remaining customers follow rather than being filtered away:
-	a booking line's shipper defaults to the booking's own Customer, which is usually a
-	tank owner and not flagged, and a depot that has ticked nobody would otherwise meet an
-	empty picker at the gate."""
+	a booking line's EMKL defaults to the booking's own Customer, which is usually a tank
+	owner and not flagged; the Shipper is a factory and is never flagged at all; and a depot
+	that has ticked nobody would otherwise meet an empty picker at the gate.
+
+	The endpoint keeps its ``gate_shipper_options`` name after the v0_93 field split: a PWA
+	build cached on a gate tablet still calls it, and renaming a whitelisted method breaks
+	those silently."""
 	_require_authenticated_user()
 	rows = frappe.get_all(
 		"Customer",
@@ -1225,11 +1232,13 @@ def gate_generate_order(booking, selected_codes, vehicle_data=None, request_id=N
 	``vehicle_data`` (JSON string or dict) carries the truck/driver/voucher detail
 	entered in the gate form — the same shape the Desk "Generate" dialog sends to
 	``make_order`` (Tank In: ``truck_plate``/``driver``/``driver_phone``/``ro``/
-	``condition``/``cargo``/``tanggal_bongkar_actual``/``shipper``/``ex_vessel``/
+	``condition``/``cargo``/``tanggal_bongkar_actual``/``emkl``/``shipper``/``ex_vessel``/
 	``remarks``; Tank Out: ``truck_plate``/``driver_name``/``driver_phone``/``ro``/
-	``destination``/``tanggal_muat``/``shipper``/``remarks``). ``shipper`` is the one
-	hauler field — angkutan / EMKL are the same party under other names. For Tank Out,
-	Order Muat itself refuses any container that still has unfinished work on it."""
+	``destination``/``tanggal_muat``/``emkl``/``shipper``/``remarks``). ``emkl`` is the
+	hauler — angkutan / transporter are the same party under other names, and a pre-v0_93
+	caller sending it as ``shipper`` is still understood (``order_generation._resolve_emkl``).
+	``shipper`` is the factory that ordered the haul. For Tank Out, Order Muat itself refuses
+	any container that still has unfinished work on it."""
 	from container_depot.ess.idempotency import replayed, remember
 
 	_require_order_create(booking)

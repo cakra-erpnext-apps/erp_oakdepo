@@ -116,6 +116,12 @@ BONGKAR_ROW_DETAIL = (
 	"condition", "cargo", "truck_plate", "driver", "driver_phone", "ro", "remarks",
 )
 
+# The two hauling parties, both Links to Customer and both carried per booking line:
+#   emkl    — the transporter (trucking) that physically moves the tank;
+#   shipper — the factory that ordered them to.
+# They used to be one field called ``shipper``; see patch v0_93.
+PARTY_FIELDS = ("emkl", "shipper")
+
 
 def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 	"""Append one Container Booking Item row per selected container to an Order Bongkar,
@@ -126,15 +132,16 @@ def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 		item = frappe.db.get_value(
 			"Container Booking Item",
 			{"parent": booking, "container_no": r.container_no},
-			["name", "container", *BONGKAR_ROW_DETAIL],
+			["name", "container", *BONGKAR_ROW_DETAIL, *PARTY_FIELDS],
 			as_dict=True,
 		) or frappe._dict()
 		detail = {f: (vehicle_data.get(f) or item.get(f)) for f in BONGKAR_ROW_DETAIL}
-		# Per-row EMKL: the booking line's own shipper wins, the bon dialog's Shipper is
+		# Per-row parties: the booking line's own EMKL / Shipper wins, the bon dialog's is
 		# only the fallback. Reversed from the fields above because that dialog value is a
 		# single header input — letting it win would flatten a booking deliberately split
-		# across several transporters back onto one.
-		detail["shipper"] = item.get("shipper") or vehicle_data.get("shipper")
+		# across several transporters (or several factories) back onto one.
+		for party in PARTY_FIELDS:
+			detail[party] = item.get(party) or vehicle_data.get(party)
 		container = (
 			r.container
 			or item.get("container")
@@ -237,7 +244,11 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		order.order_status = "Issued"
 		order.sst = sst
 		order.gate_in_time = now_datetime()
-		order.shipper = _resolve_shipper(vehicle_data, customer)
+		order.emkl = _resolve_emkl(vehicle_data, customer)
+		# The factory has no header-level default to fall back on — Bill To is the payer, not
+		# the shipper — so it is what the bon form typed, else what the booking already named
+		# for the first selected tank.
+		order.shipper = vehicle_data.get("shipper") or _line_shipper(booking, by_name, codes)
 
 		if direction == "Tank In":
 			order.principal = head.principal
@@ -303,24 +314,48 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 	return order.name
 
 
-def _resolve_shipper(vehicle_data, fallback):
-	"""The hauling party for a bon — one field under three names.
+def _resolve_emkl(vehicle_data, fallback):
+	"""The hauling party for a bon — one field under several names.
 
-	The yard calls it *angkutan*, the customer calls it *EMKL*, the document says *shipper*.
-	Order Muat used to carry ``angkutan`` as free text ALONGSIDE the ``shipper`` link, so the
+	The yard calls it *angkutan*, the customer calls it *EMKL*, the document used to call it
+	*shipper*. Order Muat once carried ``angkutan`` as free text ALONGSIDE the link, so the
 	same company could be typed into one and looked up in the other with nothing tying them
-	together. There is now only ``shipper``, and the old key is still accepted so an older
-	caller (or a cached PWA build) does not silently lose what the operator typed — but only
-	when it names a real Customer, since the field is a Link.
+	together. There is now only ``emkl``, and the older keys are still accepted so an older
+	caller (or a cached PWA build) does not silently lose what the operator typed.
+
+	``shipper`` is among those aliases *only* because that is what this field was called
+	before v0_93 — a build from before the split sends the transporter under that key. A
+	caller that sends BOTH is on the new shape and means them as two different parties, so
+	the alias is read only when ``emkl`` is absent. Aliases must name a real Customer, since
+	the field is a Link.
 	"""
-	direct = vehicle_data.get("shipper")
+	direct = vehicle_data.get("emkl")
 	if direct:
 		return direct
-	for alias in ("angkutan", "transporter"):
+	for alias in ("angkutan", "transporter", "shipper"):
 		value = vehicle_data.get(alias)
 		if value and frappe.db.exists("Customer", value):
 			return value
 	return fallback
+
+
+def _line_shipper(booking, by_name, codes):
+	"""The factory (``shipper``) the booking already named for the first selected tank.
+
+	The bon header holds one shipper for the whole voucher, and a bon is at most two tanks
+	from the same booking, so the first row that names one is the answer for the voucher.
+	Per-tank differences survive where they matter: an Order Bongkar's rows keep their own
+	``shipper`` (see :func:`_build_bongkar_rows`)."""
+	for c in codes:
+		container_no = (by_name.get(c) or frappe._dict()).get("container_no")
+		if not container_no:
+			continue
+		value = frappe.db.get_value(
+			"Container Booking Item", {"parent": booking, "container_no": container_no}, "shipper"
+		)
+		if value:
+			return value
+	return None
 
 
 def _order_child_doctype(doc):

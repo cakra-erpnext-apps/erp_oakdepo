@@ -120,3 +120,4 @@ container_depot.patches.v0_91.priority_by_survey_date
 container_depot.patches.v0_92.drop_depot_service_menu
 container_depot.patches.v0_92.release_departed_tank_targets
 container_depot.patches.v0_92.booking_list_payment_type_column
+container_depot.patches.v0_93.split_emkl_and_shipper

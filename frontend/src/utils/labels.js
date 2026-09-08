@@ -131,7 +131,7 @@ export const labels = {
 	gateNoNumber: "— tanpa nomor",
 	gateNoNumberHint: "Lengkapi nomor container di booking",
 	gateNoNumberChip: "Data kurang",
-	gateAutofill: "Cargo dan shipper terisi otomatis dari booking",
+	gateAutofill: "Cargo dan EMKL terisi otomatis dari booking",
 	gateFromBooking: "dari booking",
 	gateExtra: "Detail tambahan",
 	gateDoneTitle: "Bon berhasil dibuat",
@@ -262,7 +262,7 @@ export const labels = {
 	gateLookup: "Cari", // Look up
 	branch: "Cabang", // Branch
 	bookingStatus: "Status Booking", // Booking status
-	customer: "Customer", // the booking's party — the hauler is its own `shipper` field now
+	customer: "Customer", // the booking's party — the hauler is its own `emkl` field now
 	liftService: "Lift Service",
 	paymentType: "Tipe Bayar", // Payment type
 	paymentStatus: "Status Bayar", // Payment status
@@ -293,7 +293,7 @@ export const labels = {
 		"Semua container di booking ini masih menunggu order berikut selesai. Bon baru bisa dibuat setelah order-nya beres.",
 	gateOutUnready: "Belum siap", // per-container marker on a held row
 	gateAlreadyOut: "Sudah keluar", // code already consumed by a bon
-	// Gate — Shipper picker (Customer master, EMKL first)
+	// Gate — EMKL / Shipper pickers (one Customer master list, EMKL-flagged first)
 	gateShipperEmkl: "EMKL / Transporter", // group header: customers flagged is_transporter
 	gateShipperOther: "Customer", // group header: everyone else
 	gateShipperEmpty: "Customer tidak ditemukan",
@@ -302,7 +302,8 @@ export const labels = {
 	gateRequiredMissing: "Lengkapi field wajib", // required field(s) still empty
 	vCondition: "Kondisi", // Condition
 	vRo: "R/O",
-	vShipper: "Shipper / Angkutan / EMKL", // one hauler field, three names in daily use
+	vEmkl: "EMKL / Angkutan", // the transporter that trucks the tank
+	vShipper: "Shipper (Pabrik)", // the factory that ordered the haul — a different party
 	vDestination: "Tujuan", // Destination
 	vDateBongkar: "Tanggal Bongkar",
 	vDateMuat: "Tanggal Muat",
@@ -421,7 +422,7 @@ export const labels = {
 	truckNo: "No. Truk", // Truck no
 	emkl: "EMKL",
 	driverPhone: "Nomor Driver", // Driver phone (from voucher)
-	shipper: "EMKL", // read-only display (EIR detail) — kept short for the 2-col grid
+	shipper: "Shipper", // read-only display (EIR detail) — kept short for the 2-col grid
 	referredVoucher: "Voucher Referensi", // Referred voucher (bon)
 	voucherHintIn: "EIR-In: data diambil dari Order Bongkar.",
 	voucherHintOut: "EIR-Out: data diambil dari Order Muat.",

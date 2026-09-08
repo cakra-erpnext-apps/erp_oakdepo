@@ -166,8 +166,9 @@ class TestMakeOrderCore(FrappeTestCase):
 		order = frappe.get_doc("Order Bongkar", name)
 		self.assertEqual(len(order.containers), 2)
 		self.assertEqual(order.booking, booking)
-		# Shipper defaults to the booking customer.
-		self.assertEqual(order.shipper, frappe.db.get_value("Container Booking", booking, "customer"))
+		# EMKL defaults to the booking customer (Bill To); Shipper deliberately does not.
+		self.assertEqual(order.emkl, frappe.db.get_value("Container Booking", booking, "customer"))
+		self.assertFalse(order.shipper)
 		# Containers carry exactly the selected codes.
 		self.assertEqual(sorted(r.booking_code for r in order.containers), sorted(codes))
 		# All codes consumed.
@@ -384,9 +385,10 @@ class TestMakeOrderMuat(FrappeTestCase):
 		``driver`` (plus ex_vessel / the line date), so the bon came out blank where it
 		mattered even though the right doctype was created.
 
-		The hauler is ONE field (``shipper``). It used to be two — a free-text ``angkutan``
+		The hauler is ONE field (``emkl``). It used to be two — a free-text ``angkutan``
 		beside the Customer link — so the same company could be typed into one and looked up
-		in the other. The old key is still accepted, but only when it names a real Customer.
+		in the other. The old keys (``angkutan``, and ``shipper`` from before the v0_93 split)
+		are still accepted, but only when they name a real Customer.
 		"""
 		for c in self.CONTAINERS:
 			self._drop_cleaning(c)
@@ -394,7 +396,7 @@ class TestMakeOrderMuat(FrappeTestCase):
 			code_direction="Tank Out", count=1, prefix="MCMD0", containers=self.CONTAINERS[:1]
 		)
 		name = make_order(booking, codes, vehicle_data={
-			"shipper": _MC_SHIPPER,
+			"emkl": _MC_SHIPPER,
 			"destination": "Gresik",
 			"tanggal_muat": frappe.utils.today(),
 			"truck_plate": "L 1234 XY",
@@ -405,8 +407,8 @@ class TestMakeOrderMuat(FrappeTestCase):
 			"remarks": "catatan gate",
 		})
 		doc = frappe.get_doc("Order Muat", name)
-		self.assertEqual(doc.shipper, _MC_SHIPPER)
-		self.assertFalse(doc.meta.get_field("angkutan"), "angkutan is merged into shipper")
+		self.assertEqual(doc.emkl, _MC_SHIPPER)
+		self.assertFalse(doc.meta.get_field("angkutan"), "angkutan is merged into emkl")
 		self.assertEqual(doc.destination, "Gresik")
 		self.assertEqual(str(doc.tanggal_muat), frappe.utils.today())
 		self.assertEqual(doc.driver_name, "Budi")

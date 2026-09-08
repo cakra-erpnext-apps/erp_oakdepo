@@ -431,6 +431,7 @@ class Smoke:
 				"driver_phone": "081234567890",
 				"condition": TANK_CONDITION,
 				"tanggal_bongkar_actual": today(),
+				"emkl": self.customer,
 				"shipper": self.customer,
 				"ex_vessel": "MV SMOKE TEST",
 				"remarks": "smoke tank in",

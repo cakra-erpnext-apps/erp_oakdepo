@@ -23,6 +23,7 @@
   "last_test_date",
   "status_section",
   "depot",
+  "emkl",
   "shipper",
   "column_break_status",
   "status",
@@ -172,11 +173,20 @@
    "options": "Depot"
   },
   {
-   "description": "Shipper for the current release cycle.",
+   "description": "EMKL / angkutan pada bon terakhir tank ini. Distempel otomatis saat bon terbit.",
+   "fieldname": "emkl",
+   "fieldtype": "Link",
+   "label": "EMKL",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "description": "Pabrik / pemilik muatan pada bon terakhir tank ini. Distempel otomatis saat bon terbit.",
    "fieldname": "shipper",
    "fieldtype": "Link",
    "label": "Shipper",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_status",
@@ -404,7 +414,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-07 15:00:00.000000",
+ "modified": "2026-09-08 10:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

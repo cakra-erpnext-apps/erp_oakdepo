@@ -29,11 +29,12 @@ def _ensure_cargo(name):
 	return name
 
 
-def _make_order_muat(shipper, container, *, truck="B-9001-XY", driver="Budi", phone="08110001", submit=True):
+def _make_order_muat(emkl, container, *, truck="B-9001-XY", driver="Budi", phone="08110001",
+					 shipper=None, submit=True):
 	"""Minimal Order Muat (loading bon) carrying ``container`` — validation + mandatory
 	are bypassed; ``submit`` forces docstatus=1 so fetch_voucher accepts it."""
 	doc = frappe.get_doc({
-		"doctype": "Order Muat", "shipper": shipper,
+		"doctype": "Order Muat", "emkl": emkl, "shipper": shipper,
 		"truck_plate": truck, "driver_name": driver, "driver_phone": phone,
 		"containers": [{"container": container, "container_no": container}],
 	})
@@ -44,7 +45,7 @@ def _make_order_muat(shipper, container, *, truck="B-9001-XY", driver="Budi", ph
 	return doc.name
 
 
-def _make_order_bongkar(shipper, container, *, ex_vessel="MV TEST", truck="B-2", driver="Andi",
+def _make_order_bongkar(emkl, container, *, ex_vessel="MV TEST", truck="B-2", driver="Andi",
 						phone="0833", condition="EMPTY DIRTY", cargo=None, submit=True):
 	"""Order Bongkar (unloading bon) carrying ``container`` with its per-container detail
 	(truck / driver / driver phone / condition / cargo) on the Container Booking Item row."""
@@ -55,7 +56,7 @@ def _make_order_bongkar(shipper, container, *, ex_vessel="MV TEST", truck="B-2",
 	if cargo:
 		row["cargo"] = cargo
 	doc = frappe.get_doc({
-		"doctype": "Order Bongkar", "shipper": shipper, "ex_vessel": ex_vessel,
+		"doctype": "Order Bongkar", "emkl": emkl, "ex_vessel": ex_vessel,
 		"containers": [row],
 	})
 	doc.flags.ignore_validate = True
@@ -174,7 +175,6 @@ class TestEirCreate(FrappeTestCase):
 		self.assertEqual(doc.docstatus, 1)
 		self.assertEqual(doc.has_damage, 1)
 		self.assertEqual(doc.truck_no, "B-1234-XY")
-		self.assertFalse(doc.meta.get_field("emkl"), "emkl is merged into shipper")
 		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
 		self.assertEqual(cont.status, "In_Depot")
 		self.assertTrue(cont.eir_in_date)
@@ -563,7 +563,7 @@ class TestEirVoucher(FrappeTestCase):
 		self.assertEqual(snap["truck_no"], "B-9001-XY")
 		self.assertEqual(snap["driver"], "Budi")
 		self.assertEqual(snap["driver_phone"], "08110001")
-		self.assertEqual(snap["shipper"], cust)
+		self.assertEqual(snap["emkl"], cust)
 
 	def test_fetch_voucher_order_bongkar_for_eir_in(self):
 		# EIR-In: per-container detail comes from the Order Bongkar's Container Booking Item.
@@ -574,7 +574,7 @@ class TestEirVoucher(FrappeTestCase):
 								 condition="EMPTY DIRTY", cargo="Acetone")
 		snap = eir.fetch_voucher(ob, "EIR-In", container=c)
 		self.assertEqual(snap["voucher_doctype"], "Order Bongkar")
-		self.assertEqual(snap["shipper"], cust)
+		self.assertEqual(snap["emkl"], cust)
 		self.assertEqual(snap["truck_no"], "B-2")
 		self.assertEqual(snap["driver"], "Andi")
 		self.assertEqual(snap["driver_phone"], "0833")
@@ -585,6 +585,7 @@ class TestEirVoucher(FrappeTestCase):
 		snap = eir.fetch_voucher(None, "EIR-Out")
 		self.assertEqual(snap["voucher_doctype"], "Order Muat")
 		self.assertIsNone(snap["referred_voucher"])
+		self.assertIsNone(snap["emkl"])
 		self.assertIsNone(snap["shipper"])
 
 	def test_fetch_voucher_not_found_raises(self):
@@ -609,7 +610,7 @@ class TestEirVoucher(FrappeTestCase):
 			eir.fetch_voucher(om, "EIR-Out", container=c2)
 
 	def test_save_draft_applies_muat_voucher(self):
-		# Saving a draft with a referred voucher snapshots truck/driver/shipper onto it.
+		# Saving a draft with a referred voucher snapshots truck/driver/EMKL onto it.
 		cust = ensure_test_customer("EIR Voucher Cust")
 		c = _make_container("EIRV1000001")
 		om = _make_order_muat(cust, c, truck="B-7", driver="Sari", phone="0822")
@@ -622,7 +623,7 @@ class TestEirVoucher(FrappeTestCase):
 		self.assertEqual(d2["truck_no"], "B-7")
 		self.assertEqual(d2["driver"], "Sari")
 		self.assertEqual(d2["driver_phone"], "0822")
-		self.assertEqual(d2["shipper"], cust)
+		self.assertEqual(d2["emkl"], cust)
 
 
 class TestEirAutoVoucher(FrappeTestCase):
@@ -640,7 +641,7 @@ class TestEirAutoVoucher(FrappeTestCase):
 		self.assertEqual(d["truck_no"], "B-AUTO")
 		self.assertEqual(d["driver"], "Dewi")
 		self.assertEqual(d["driver_phone"], "0855")
-		self.assertEqual(d["shipper"], cust)
+		self.assertEqual(d["emkl"], cust)
 		self.assertEqual(d["tank_status"], "Empty Dirty")
 		self.assertEqual(d["cargo"], "Toluene")
 

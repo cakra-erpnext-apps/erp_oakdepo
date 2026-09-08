@@ -93,7 +93,7 @@ class TestEirPrintFormat(FrappeTestCase):
 			self.assertIn(box, block)
 		# Header block mirrors the OAK paper form's field grid.
 		for caption in ("Date of Inspection", "Tank No", "Max Gross Weight", "Inspect Location",
-						"Shipper / Consignee", "EMKL", "Reference No.", "Seal"):
+						"Tank Owner / Consignee", "EMKL", "Shipper", "Reference No.", "Seal"):
 			self.assertIn(caption, html)
 		self.assertIn("EIR fill / inspect by", html)           # sign-off per the paper form
 		# The words behind a code live under CATATAN TEMUAN, not in a grid column that would
