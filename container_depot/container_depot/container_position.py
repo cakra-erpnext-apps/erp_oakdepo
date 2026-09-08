@@ -277,36 +277,59 @@ def search_containers(search=None, start=0, page_length=20, only_unlocated=0) ->
 	clear, and the reason the finder exists at all.
 
 	Retired tanks are out: they are not in the yard to be found.
+
+	ORDER — the tanks with a day against them come first, nearest day at the top. A yard has
+	hundreds of tanks and only a handful are being waited for; those are the ones whose
+	position somebody is about to walk on, so a list that opens on the stalest reading opens
+	on the least urgent thing in the depot. The survey day wins over the pickup day, the same
+	tie-break every other worklist uses (``worklist.priority_date``). Everything with no day
+	at all keeps the old order underneath: never-recorded first, then stalest.
+
+	Raw SQL because that ordering cannot be expressed through ``frappe.get_all`` — it refuses
+	any function in ``order_by`` ("Invalid field format in Order By"), and ``target_survey_on
+	asc`` alone would sort the NULLs (i.e. every tank nobody is waiting for) to the top, which
+	is exactly backwards.
 	"""
-	filters = {"is_active": 1}
+	where = ["c.is_active = 1"]
+	args: dict = {}
 	depots = get_user_depots()
-	if depots is not None:
-		filters["depot"] = ["in", depots or [""]]  # restricted user: only their depots
+	if depots is not None:  # restricted user: only their depots
+		where.append("c.depot in %(depots)s")
+		args["depots"] = tuple(depots or [""])
 	if cint(only_unlocated):
-		filters["current_location"] = ["in", [None, ""]]
+		where.append("ifnull(c.current_location, '') = ''")
 	search = (search or "").strip()
 	if search and search.lower() not in ("undefined", "null", "none"):
-		filters["container_no"] = ["like", f"%{search}%"]
+		where.append("c.container_no like %(search)s")
+		args["search"] = f"%{search}%"
+	clause = " and ".join(where)
 
-	items = frappe.get_all(
-		"Container",
-		filters=filters,
-		fields=["name", "container_no", "principal", "depot", "status", "target_lift_on",
-				"target_survey_on", "current_location", "location_updated_on",
-				"location_updated_by"],
-		# Un-located tanks first, then the stalest — which is the order somebody clearing the
-		# yard would walk it. Ties fall back to the number so the list does not shuffle.
-		order_by="location_updated_on asc, container_no asc",
-		limit_start=cint(start),
-		limit_page_length=cint(page_length),
+	# One expression, written once: the day this tank is wanted, or NULL when nobody is
+	# waiting for it.
+	due = "coalesce(c.target_survey_on, c.target_lift_on)"
+	items = frappe.db.sql(
+		f"""
+		select c.name, c.container_no, c.principal, c.depot, c.status,
+		       c.target_lift_on, c.target_survey_on, c.current_location,
+		       c.location_updated_on, c.location_updated_by
+		  from `tabContainer` c
+		 where {clause}
+		 order by ({due} is null) asc, {due} asc, c.location_updated_on asc, c.container_no asc
+		 limit %(page_length)s offset %(start)s
+		""",
+		{**args, "page_length": cint(page_length), "start": cint(start)},
+		as_dict=True,
 	)
+	total = frappe.db.sql(
+		f"select count(*) from `tabContainer` c where {clause}", args
+	)[0][0]
 	for it in items:
 		it["located"] = bool(it.get("current_location"))
 		it["target_lift_on"] = str(it["target_lift_on"]) if it.get("target_lift_on") else None
 		it["target_survey_on"] = str(it["target_survey_on"]) if it.get("target_survey_on") else None
 		it.update(_age(it.get("location_updated_on")))
 		it["location_updated_on"] = str(it["location_updated_on"]) if it.get("location_updated_on") else None
-	return {"items": items, "total": frappe.db.count("Container", filters)}
+	return {"items": items, "total": total}
 
 
 def list_position_history(container=None, start=0, page_length=20, search=None) -> dict:

@@ -27,7 +27,13 @@ def execute():
 
 	bookings = frappe.get_all(
 		"Container Booking",
-		filters={"direction": "Tank Out", "docstatus": ["!=", 2], "booking_status": ["!=", "Cancelled"]},
+		# "Completed" ikut dikecualikan: tank-tanknya sudah lewat gerbang dan stempelnya sudah
+		# dilepas satu per satu, jadi menstempelnya lagi mengembalikan tenggat ke tank yang
+		# tidak ada di yard.
+		filters={
+			"direction": "Tank Out", "docstatus": ["!=", 2],
+			"booking_status": ["not in", ["Cancelled", "Completed"]],
+		},
 		pluck="name",
 	)
 	for name in bookings:

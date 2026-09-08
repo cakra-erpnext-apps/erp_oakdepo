@@ -48,16 +48,24 @@ HEADER_DATE = "plan_date"
 SURVEY_DATE = "survey_date"
 
 
+# A booking that no longer expects anything to leave: cancelled either way — ``booking_status``
+# (set by ``void_draft`` on a draft) or ``docstatus`` 2 — and COMPLETED, which means every tank
+# on it has already gone through the gate. Completed matters as much as cancelled: the stamps
+# were released tank by tank on the way out (``release_on_gate_out``), so anything that stamps
+# from a completed booking hands a deadline back to a tank that is not in the yard any more —
+# and the worklists, which now lead with the nearest day, would put it at the very top.
+_DEAD_STATUS = ("Cancelled", "Completed")
+
+
 def _booking_is_live(doc) -> bool:
 	"""Does this booking still expect its tanks to leave?
 
-	Cancelled either way — ``booking_status`` (set by ``void_draft`` on a draft) or
-	``docstatus`` 2 — owns nothing any more. Everything else does, including a plain draft:
-	see the module docstring.
+	Everything that is neither cancelled nor completed does, including a plain draft: see the
+	module docstring.
 	"""
 	return (
 		doc.get("direction") == OUTBOUND
-		and doc.get("booking_status") != "Cancelled"
+		and doc.get("booking_status") not in _DEAD_STATUS
 		and int(doc.get("docstatus") or 0) != 2
 	)
 

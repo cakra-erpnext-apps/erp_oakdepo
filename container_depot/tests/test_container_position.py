@@ -234,6 +234,45 @@ class TestReadingItBack(_Base):
 		self.assertIn(blank, found)
 		self.assertNotIn(known, found)
 
+	def _due(self, container, **days):
+		"""Stempel hari yang ditunggu pada tank, persis seperti yang dilakukan ``lift_on``."""
+		frappe.db.set_value(
+			"Container", container,
+			{k: add_days(today(), v) for k, v in days.items()},
+			update_modified=False,
+		)
+
+	def test_the_finder_leads_with_the_nearest_day(self):
+		"""Yard punya ratusan tank dan cuma segelintir yang sedang ditunggu; itu yang di atas.
+
+		Urutan lama (bacaan paling basi dulu) membuka daftar pada hal paling tidak mendesak di
+		depot — dan tank yang harinya paling dekat justru yang letaknya sebentar lagi dipakai
+		orang untuk berjalan.
+		"""
+		far = self._container("CPOS00000040")
+		near = self._container("CPOS00000041")
+		plain = self._container("CPOS00000042")
+		self._due(far, target_survey_on=9)
+		self._due(near, target_survey_on=1)
+		# Bacaan terbaru justru milik yang paling dekat harinya: di urutan lama ia malah jatuh
+		# ke bawah, jadi tes ini gagal kalau urutannya kembali ke "paling basi dulu".
+		cp.record_position(near, "baru dicatat")
+
+		names = [r["name"] for r in cp.search_containers(page_length=200)["items"]]
+		self.assertLess(names.index(near), names.index(far))
+		self.assertLess(names.index(far), names.index(plain))
+
+	def test_the_survey_day_is_the_one_that_orders(self):
+		"""Hari survey yang menentukan, bukan hari lift-on — sama seperti worklist yang lain."""
+		late_survey = self._container("CPOS00000043")
+		early_survey = self._container("CPOS00000044")
+		# Lift-on-nya besok, tapi surveinya masih sembilan hari lagi: bukan ini yang di atas.
+		self._due(late_survey, target_lift_on=1, target_survey_on=9)
+		self._due(early_survey, target_survey_on=5)
+
+		names = [r["name"] for r in cp.search_containers(page_length=200)["items"]]
+		self.assertLess(names.index(early_survey), names.index(late_survey))
+
 	def test_the_finder_matches_on_the_tank_number(self):
 		"""The only thing anyone standing in a yard has to hand."""
 		c = self._container("CPOS00000015")
