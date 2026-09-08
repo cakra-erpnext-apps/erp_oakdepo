@@ -96,38 +96,40 @@
 				{{ labels.surveyListEmpty }}
 			</p>
 
-			<ul v-else class="space-y-2">
+			<!-- Satu baris = satu Survey Order (satu booking), bukan satu tank. Jadi yang
+			     dibaca dari atas ke bawah adalah urutan orang menyebut jadwalnya: nomornya,
+			     punya siapa, tank apa saja, lalu kapan dan oleh siapa disurvey. Baris
+			     ber-garis tipis seperti daftar EIR — daftar ini di-scan, bukan dibaca satu per
+			     satu, dan kartu bertumpuk cuma memuat separuhnya di satu layar. -->
+			<ul v-else class="divide-y divide-gray-100">
 				<li v-for="o in items" :key="o.name">
 					<router-link
 						:to="`/survey-orders/order/${o.name}`"
-						class="oak-press oak-card flex items-center gap-3 p-3"
+						class="oak-press flex w-full items-center gap-3 py-2.5 text-left"
 						:class="o.status === 'Cancelled' ? 'opacity-60' : ''"
 					>
-						<span class="oak-icon-tile h-10 w-10 shrink-0" :class="tile(o.status)">
-							<Icon name="clipboard" :size="18" />
+						<span class="oak-icon-tile h-9 w-9 shrink-0" :class="tile(o.status)">
+							<Icon name="clipboard" :size="16" />
 						</span>
 						<div class="min-w-0 flex-1 space-y-0.5">
-							<div class="flex items-center gap-1.5">
-								<p class="truncate font-bold text-gray-900">{{ o.principal || o.booking }}</p>
-							</div>
-							<p class="truncate text-[11px] text-gray-500">
-								<Icon name="calendar" :size="11" class="mr-0.5 inline-block align-[-1px]" />
-								{{ fmtDate(o.survey_date) }}
-								<template v-if="o.surveyor"> · {{ o.surveyor }}</template>
+							<p class="truncate font-mono text-[13px] font-bold text-gray-900">{{ o.name }}</p>
+							<p class="truncate text-[13px] font-semibold text-gray-700">
+								{{ o.principal || o.booking || "—" }}
 							</p>
-							<p v-if="o.container_summary" class="truncate text-[11px] text-gray-400">
+							<!-- Nomor tank-nya sendiri, bukan cuma jumlahnya: "3 tank" tidak bisa
+							     dicocokkan dengan apa pun, nomornya bisa. Ekor "(+N)" datang dari
+							     server saat daftarnya kepanjangan untuk satu baris. -->
+							<p v-if="o.container_summary" class="truncate font-mono text-[11px] text-gray-500">
 								{{ o.container_summary }}
 							</p>
-						</div>
-						<div class="shrink-0 space-y-1 text-right">
-							<span class="oak-chip" :class="chip(o.status)">{{ statusLabel(o.status) }}</span>
-							<p class="text-[11px] font-semibold text-gray-700">
-								{{ o.tank_count || 0 }} {{ labels.surveyOrderTankUnit }}
-							</p>
-							<p v-if="o.waiting_count" class="text-[11px] font-semibold text-amber-600">
-								{{ o.waiting_count }} {{ labels.surveyPosStatusWaiting }}
+							<p class="flex items-center gap-1 truncate text-[11px] text-gray-400">
+								<Icon name="calendar" :size="11" class="shrink-0" />
+								{{ [fmtDate(o.survey_date), o.surveyor].filter(Boolean).join(" · ") }}
 							</p>
 						</div>
+						<span class="oak-chip shrink-0" :class="chip(o.status)">
+							<Icon :name="statusIcon(o.status)" :size="11" /> {{ statusLabel(o.status) }}
+						</span>
 						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
 					</router-link>
 				</li>
@@ -171,14 +173,17 @@ const FILTERS = [
 	{ key: "Cancelled", label: labels.surveyOrderStatusCancelled, on: "bg-red-600 text-white" },
 ]
 
+// Warna DAN bentuk: sebuah chip yang hanya berbeda warna tidak terbaca di bawah matahari,
+// dan itu kondisi normal buat layar yang dipakai di yard.
 const STATUS_STYLE = {
-	Scheduled: { chip: "bg-gray-100 text-gray-600", tile: "bg-gray-100 text-gray-500" },
-	"In Progress": { chip: "bg-amber-100 text-amber-800", tile: "bg-amber-50 text-amber-600" },
-	Completed: { chip: "bg-leaf-100 text-leaf-700", tile: "bg-leaf-50 text-leaf-600" },
-	Cancelled: { chip: "bg-red-100 text-red-700", tile: "bg-red-50 text-red-500" },
+	Scheduled: { chip: "bg-gray-100 text-gray-600", tile: "bg-gray-100 text-gray-500", icon: "calendar" },
+	"In Progress": { chip: "bg-amber-100 text-amber-800", tile: "bg-amber-50 text-amber-600", icon: "loader" },
+	Completed: { chip: "bg-leaf-100 text-leaf-700", tile: "bg-leaf-50 text-leaf-600", icon: "check-circle" },
+	Cancelled: { chip: "bg-red-100 text-red-700", tile: "bg-red-50 text-red-500", icon: "x-circle" },
 }
 const chip = (s) => STATUS_STYLE[s]?.chip || "bg-gray-100 text-gray-600"
 const tile = (s) => STATUS_STYLE[s]?.tile || "bg-gray-100 text-gray-400"
+const statusIcon = (s) => STATUS_STYLE[s]?.icon || "clipboard"
 const statusLabel = (s) =>
 	FILTERS.find((f) => f.key === s)?.label || s || "—"
 
