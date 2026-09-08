@@ -54,6 +54,8 @@ const allTabs = [
 	// screen decides for itself which presses to render.
 	{ key: "surveyList", to: "/survey-orders", icon: "list", label: labels.navSurveyList },
 	{ key: "posFix", to: "/position-fix", icon: "arrow-down-circle", label: labels.navPosFix },
+	// Letak Tank berdiri sendiri: satu-satunya menu yang menulis lokasi terkini di master,
+	// dipakai kapan saja, ada job atau tidak.
 	{ key: "tankPos", to: "/tank-position", icon: "map-pin", label: labels.navTankPos },
 	{ to: "/profile", icon: "user", label: labels.navProfile },
 ]

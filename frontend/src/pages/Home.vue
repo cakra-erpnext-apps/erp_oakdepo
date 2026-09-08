@@ -157,8 +157,13 @@ const allMenuGroups = [
 	{ title: labels.grpGate, items: [tiles.gate] },
 	{ title: labels.grpInspeksi, items: [tiles.eir] },
 	{ title: labels.grpPerawatan, items: [tiles.cleaning, tiles.mr] },
-	{ title: labels.grpYard, items: [tiles.monitor] },
-	{ title: labels.grpSurvey, items: [tiles.surveyList, tiles.posFix, tiles.tankPos] },
+	// Letak Tank duduk di Yard, bukan di Survey: ia SATU-SATUNYA yang menulis lokasi terkini
+	// di master Container (Container Position -> Container.current_location), dipakai kapan
+	// saja tanpa perlu ada job — dan justru itu yang membuat Survey Order bisa
+	// mempercayainya. Lowering tetap menu tersendiri di grup Survey: pekerjaannya menurunkan
+	// tank, dan letak yang ikut dicatat di situ mengalir lewat saluran yang sama.
+	{ title: labels.grpYard, items: [tiles.monitor, tiles.tankPos] },
+	{ title: labels.grpSurvey, items: [tiles.surveyList, tiles.posFix] },
 ]
 
 // Drop tiles the account may not open, then drop groups left with nothing in them — a

@@ -38,11 +38,13 @@
 				</button>
 			</div>
 
-			<div class="grid grid-cols-3 gap-2">
+			<!-- Empat tab tidak muat dibagi rata di layar HP tanpa memotong "Belum Terdata",
+			     jadi barisnya menggeser ke samping seperti baris status di daftar lain. -->
+			<div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
 				<button
 					v-for="f in FILTERS"
 					:key="f.key"
-					class="oak-toggle flex items-center justify-center gap-1.5 px-2 text-xs"
+					class="oak-toggle flex shrink-0 items-center justify-center gap-1.5 px-3 text-xs"
 					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
 					@click="setFilter(f.key)"
 				>
@@ -61,8 +63,42 @@
 
 			<SkeletonList v-if="loading && !items.length" :action="false" />
 			<p v-else-if="!items.length" class="py-6 text-center text-sm text-gray-400">
-				{{ filter === "orders" ? labels.tankPosOrdersEmpty : labels.tankPosEmpty }}
+				{{ EMPTY_TEXT[filter] || labels.tankPosEmpty }}
 			</p>
+			<!-- Tab Riwayat: satu baris = satu pencatatan, bukan satu tank. Nomor tank tetap di
+			     depan karena itu yang dicari mata, tapi yang dijawab baris ini adalah "apa yang
+			     dilaporkan, kapan, oleh siapa" — dan fotonya langsung terlihat, karena riwayat
+			     berisi kalimat-kalimat telanjang memaksa orang membuka satu per satu untuk tahu
+			     ada gambarnya atau tidak. -->
+			<ul v-else-if="filter === 'history'" class="divide-y divide-gray-100">
+				<li v-for="h in items" :key="h.name">
+					<button class="oak-press w-full py-2.5 text-left" @click="open(h.container)">
+						<div class="flex items-baseline justify-between gap-2">
+							<p class="truncate font-bold text-gray-900">{{ h.container_no || h.container }}</p>
+							<span class="shrink-0 text-[11px] text-gray-400">{{ since(h.recorded_on) }}</span>
+						</div>
+						<p class="mt-0.5 flex items-start gap-1.5 whitespace-pre-line text-[13px] text-gray-700">
+							<Icon name="map-pin" :size="13" class="mt-0.5 shrink-0 text-brand-500" />
+							{{ h.location_note }}
+						</p>
+						<p v-if="h.notes" class="truncate text-[11px] text-gray-400">{{ h.notes }}</p>
+						<p class="mt-0.5 flex items-center gap-1 truncate text-[11px] text-gray-400">
+							<Icon name="clock" :size="11" class="shrink-0" />
+							{{ [fmtDateTime(h.recorded_on), h.recorded_by].filter(Boolean).join(" · ") }}
+						</p>
+						<div v-if="h.photos && h.photos.length" class="mt-1.5 flex flex-wrap gap-1.5">
+							<img
+								v-for="(url, j) in h.photos"
+								:key="url"
+								:src="url"
+								class="h-14 w-14 rounded-md border border-gray-200 object-cover"
+								loading="lazy"
+								@click.stop="openLightbox(h.photos, j)"
+							/>
+						</div>
+					</button>
+				</li>
+			</ul>
 			<ul v-else class="divide-y divide-gray-100">
 				<li v-for="r in items" :key="r.name">
 					<button class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="open(r.name)">
@@ -87,8 +123,18 @@
 					</button>
 				</li>
 			</ul>
+			<!-- Ditambahkan ke bawah, bukan pindah halaman: orang yang meng-scroll daftar tank
+			     tidak memegang nomor halaman di kepalanya. -->
+			<button
+				v-if="items.length && items.length < total"
+				class="oak-btn oak-btn-secondary w-full py-2.5"
+				:disabled="loading"
+				@click="loadMore"
+			>
+				{{ loading ? "…" : labels.surveyListMore }}
+			</button>
 			<p v-if="items.length" class="text-center text-xs text-gray-400">
-				{{ total }} {{ labels.tankPosCount }}
+				{{ items.length }} / {{ total }} {{ labels.tankPosCount }}
 			</p>
 		</section>
 
@@ -302,15 +348,29 @@ const items = ref([])
 const total = ref(0)
 const search = ref("")
 const filter = ref("all")
+// Daftar ini adalah SELURUH tank aktif di depot, bukan hasil pencarian: layar ini tempat
+// letak tank dibetulkan, jadi yang sudah ada letaknya pun harus bisa dibuka tanpa mengetik
+// apa pun. Satu depot punya ratusan tank, maka halaman berikutnya ditambahkan ke bawah —
+// tanpa ini footer menyebut "312 tank" sementara cuma 50 yang bisa disentuh.
+const PAGE = 50
+const start = ref(0)
 
 const FILTERS = computed(() => [
 	{ key: "all", label: labels.tankPosFilterAll },
 	{ key: "unlocated", label: labels.tankPosFilterUnlocated },
 	{ key: "orders", label: labels.tankPosFilterOrders },
+	{ key: "history", label: labels.tankPosFilterHistory },
 ])
 
+const EMPTY_TEXT = computed(() => ({
+	orders: labels.tankPosOrdersEmpty,
+	history: labels.tankPosHistoryEmpty,
+}))
+
 function takeList(data) {
-	items.value = data.items || []
+	// `start > 0` satu-satunya penanda bahwa ini "muat lagi", bukan kueri baru — resource-nya
+	// sendiri tidak membedakan keduanya.
+	items.value = start.value ? [...items.value, ...(data.items || [])] : data.items || []
 	total.value = data.total || 0
 }
 
@@ -320,7 +380,8 @@ const listRes = cachedResource({
 	makeParams: () => ({
 		search: search.value || "",
 		only_unlocated: filter.value === "unlocated" ? 1 : 0,
-		page_length: 50,
+		start: start.value,
+		page_length: PAGE,
 	}),
 	auto: true,
 	onSuccess: takeList,
@@ -334,24 +395,41 @@ const listRes = cachedResource({
 const orderRes = cachedResource({
 	url: "container_depot.ess.container_position.position_orders",
 	method: "GET",
-	makeParams: () => ({ page_length: 50 }),
+	makeParams: () => ({ start: start.value, page_length: PAGE }),
 	onSuccess: takeList,
 })
 
-const activeRes = () => (filter.value === "orders" ? orderRes : listRes)
+// Riwayat SELURUH tank, bukan riwayat satu tank. Inilah "history dan foto history" dari
+// letak: setiap pencatatan berdiri sebagai baris tersendiri karena koreksi sepuluh menit
+// kemudian adalah bacaan kedua, bukan penghapusan yang pertama — dan foto tiap bacaan ikut,
+// dari sumber yang sama dengan layar tank-nya (container_position._attach_photos).
+const historyRes = cachedResource({
+	url: "container_depot.ess.container_position.position_history",
+	method: "GET",
+	makeParams: () => ({ search: search.value || "", start: start.value, page_length: PAGE }),
+	onSuccess: takeList,
+})
+
+const activeRes = () =>
+	({ orders: orderRes, history: historyRes })[filter.value] || listRes
 const loading = computed(() => activeRes().loading)
 
 let searchTimer = null
 function reload() {
 	clearTimeout(searchTimer)
+	start.value = 0
+	activeRes().reload()
+}
+function loadMore() {
+	start.value = items.value.length
 	activeRes().reload()
 }
 function onSearchInput() {
 	clearTimeout(searchTimer)
-	// Pencarian hanya berlaku untuk daftar tank; antrean adalah daftar tertutup yang isinya
-	// ditentukan jadwal, bukan ketikan.
+	// Pencarian berlaku untuk daftar tank dan riwayatnya (keduanya dicari lewat nomor tank);
+	// antrean adalah daftar tertutup yang isinya ditentukan jadwal, bukan ketikan.
 	if (filter.value === "orders") return
-	searchTimer = setTimeout(() => listRes.reload(), 300)
+	searchTimer = setTimeout(reload, 300)
 }
 function setFilter(key) {
 	filter.value = key
@@ -397,6 +475,7 @@ function open(container) {
 function backToList() {
 	tank.value = null
 	pending.value = false
+	start.value = 0
 	listRes.reload()
 }
 
