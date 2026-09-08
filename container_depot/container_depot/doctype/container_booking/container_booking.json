@@ -192,6 +192,7 @@
    "description": "Wajib. Cash harus lunas sebelum disetujui; TOP ditagih belakangan.",
    "fieldname": "payment_type",
    "fieldtype": "Select",
+   "in_list_view": 1,
    "label": "Payment Type",
    "options": "Cash\nTOP",
    "reqd": 1,
