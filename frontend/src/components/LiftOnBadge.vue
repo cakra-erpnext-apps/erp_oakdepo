@@ -1,7 +1,7 @@
 <template>
-	<span v-if="due" class="oak-chip shrink-0 whitespace-nowrap" :class="liftChipClass(due)">
-		<Icon :name="liftIcon(due)" :size="11" />
-		{{ hMinus(due) }} · {{ fmtDayMonth(due) }}
+	<span v-if="due" class="oak-chip shrink-0 whitespace-nowrap" :class="chipClass">
+		<Icon :name="urgent ? 'alert-triangle' : liftIcon(due)" :size="11" />
+		<template v-if="urgent">MENDESAK · </template>{{ hMinus(due) }} · {{ fmtDayMonth(due) }}
 	</span>
 </template>
 
@@ -39,10 +39,27 @@ const props = defineProps({
 	survey: { type: String, default: "" },
 	// Rencana pickup (`target_lift_on`), dipakai kalau hari survey-nya belum ditentukan.
 	target: { type: String, default: "" },
+	// Tanggal mendesak (`target_urgent_on`) — dipasang manual oleh SPV / Admin Ops di booking,
+	// dan mengalahkan kedua tanggal di atas. Terisi = baris ini ada di tier teratas semua
+	// worklist (`worklist.sort_by_priority`).
+	urgent: { type: String, default: "" },
 })
+
+// Mendesak MENGGANTIKAN chip-nya, bukan menambah chip kedua: begitu ada tanggal mendesak,
+// dialah tenggat yang dipakai server mengurutkan baris ini, jadi memajang tanggal survey di
+// sebelahnya berarti memajang tanggal yang bukan lagi penentu urutannya. Baris chip di HP
+// juga cuma muat sedikit, dan ia sudah berbagi dengan status dan voucher.
+const urgent = computed(() => !!props.urgent)
+
+// Merah penuh, bukan sekadar satu tingkat lagi di tanjakan warna biasa: mendesak bukan "H-1
+// sekali lagi", ia kategori lain — satu-satunya hal yang boleh mendahului pekerjaan yang
+// harinya sudah tiba. Diberi ring supaya tetap terbaca sebagai chip di atas kartu putih.
+const chipClass = computed(() =>
+	urgent.value ? "bg-red-600 text-white ring-1 ring-red-700" : liftChipClass(props.survey || props.target),
+)
 
 // Satu tanggal yang ditampilkan, dan ia harus tanggal yang sama dengan yang dipakai server
 // mengurutkan daftarnya (`worklist.priority_date`) — antrean yang diurutkan tanggal A tapi
 // setiap barisnya menampilkan tanggal B lebih membingungkan daripada dua-duanya sendirian.
-const due = computed(() => props.survey || props.target)
+const due = computed(() => props.urgent || props.survey || props.target)
 </script>

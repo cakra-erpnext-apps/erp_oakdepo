@@ -21,7 +21,20 @@
 // drove off this morning.
 frappe.listview_settings["Container"] = {
 	// Pull both explicitly so the indicator still works when the columns are customised.
-	add_fields: ["status", "is_active"],
+	add_fields: ["status", "is_active", "target_urgent_on"],
+	// Penanda MENDESAK — dua tempat sekaligus (lihat public/js/urgency_mark.js): pill merah
+	// berisi tanggalnya di kolom Tanggal Mendesak, bisa diklik untuk menyaring daftar jadi
+	// yang mendesak saja, plus awalan pada kolom subject yang tidak pernah terpotong sesempit
+	// apa pun layarnya. Pill status sengaja tidak diganggu: merah di daftar ini sudah berarti
+	// dibatalkan.
+	formatters: {
+		container_no(value, df, doc) {
+			return container_depot.urgency_subject(value, doc, "target_urgent_on");
+		},
+		target_urgent_on(value) {
+			return container_depot.urgency_pill(value, "target_urgent_on");
+		},
+	},
 
 	get_indicator(doc) {
 		if (!doc.is_active) return [__("Non-Aktif"), "red", "is_active,=,0"];

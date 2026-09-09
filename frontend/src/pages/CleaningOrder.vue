@@ -118,7 +118,7 @@
 								<template v-if="o.last_cargo">ex {{ o.last_cargo }}</template>
 							</p>
 							<div class="mt-1 flex items-center gap-1.5">
-								<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" />
+								<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
 							</div>
 						</div>
 						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />

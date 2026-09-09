@@ -127,6 +127,10 @@
 								{{ [fmtDate(o.survey_date), o.surveyor].filter(Boolean).join(" · ") }}
 							</p>
 						</div>
+						<!-- Mendesak duluan, status sesudahnya: yang menentukan jadwal mana
+						     dikerjakan lebih dulu adalah tandanya, bukan statusnya. Kosong kalau
+						     tak ada tank mendesak di jadwal ini (`survey_order.refresh_urgency`). -->
+						<LiftOnBadge :urgent="o.target_urgent_on" />
 						<span class="oak-chip shrink-0" :class="chip(o.status)">
 							<Icon :name="statusIcon(o.status)" :size="11" /> {{ statusLabel(o.status) }}
 						</span>
@@ -156,6 +160,7 @@
 import { computed, onBeforeUnmount, ref } from "vue"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import { cachedResource } from "@/data/cache"
 import { fmtDate } from "@/utils/surveyStatus"

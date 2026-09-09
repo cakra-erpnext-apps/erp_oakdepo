@@ -61,8 +61,18 @@ const STATUS_COLOURS = {
 frappe.listview_settings['Container Booking'] = {
 	// booking_status is no longer a column of its own, so the list query would not fetch
 	// it — and `get_indicator` would read undefined on every row and paint them all Draft.
-	add_fields: ['booking_status', 'bon_status', 'bon_summary', 'direction', 'per_fulfilled'],
+	add_fields: ['booking_status', 'bon_status', 'bon_summary', 'direction', 'per_fulfilled', 'urgent_date'],
 	formatters: {
+		// Penanda MENDESAK (lihat public/js/urgency_mark.js). Di sinilah urgensinya dipasang,
+		// jadi di sinilah paling penting terlihat siapa yang sudah ditandai: pill merah berisi
+		// tanggalnya di kolom Prioritas Mendesak — klik untuk menyaring yang mendesak saja —
+		// plus awalan pada kolom subject (customer), yang tidak pernah terpotong.
+		customer(value, df, doc) {
+			return container_depot.urgency_subject(value, doc, 'urgent_date');
+		},
+		urgent_date(value) {
+			return container_depot.urgency_pill(value, 'urgent_date');
+		},
 		// How much of an outbound booking has actually left the depot. A lift-on is
 		// routinely collected over several visits (a bon carries at most two tanks), so a
 		// five-tank booking spends most of its life part-collected — and used to look

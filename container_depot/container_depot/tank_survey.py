@@ -119,7 +119,7 @@ def _attach_positions(rows) -> list:
 		r["location_updated_by"] = t.get("location_updated_by")
 		r.update(_age(t.get("location_updated_on")))
 		r["location_updated_on"] = str(t["location_updated_on"]) if t.get("location_updated_on") else None
-		for k in ("target_lift_on", "target_survey_on", "lowered_on", "surveyed_on"):
+		for k in ("target_lift_on", "target_survey_on", "target_urgent_on", "lowered_on", "surveyed_on"):
 			if r.get(k):
 				r[k] = str(r[k])
 	return rows
@@ -276,6 +276,8 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 				"target_lift_on": booking.plan_date,
 				# The date this row is actually worked to — see worklist.priority_date.
 				"target_survey_on": booking.survey_date,
+				# ...and the override that outranks it, when the booking carries one.
+				"target_urgent_on": booking.urgent_date,
 			})
 			added.append(container)
 
@@ -295,6 +297,7 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 					"depot": frappe.db.get_value("Container", container, "depot") or booking.depot,
 					"target_lift_on": booking.plan_date,
 					"target_survey_on": booking.survey_date,
+					"target_urgent_on": booking.urgent_date,
 				})
 
 		# After the reload above, so the pruning lands on the rows that are actually saved.
@@ -413,6 +416,7 @@ def list_survey_orders(date: str | None = None, start=0, page_length=20) -> dict
 		filters=filters,
 		fields=[
 			"name", "booking", "principal", "surveyor", "status", "survey_date", "plan_date",
+			"target_urgent_on",
 			"depot", "branch", "tank_count", "lowered_count", "survey_done_count",
 			"per_surveyed", "container_summary",
 		],
@@ -425,6 +429,7 @@ def list_survey_orders(date: str | None = None, start=0, page_length=20) -> dict
 		it["waiting_count"] = max((it.get("tank_count") or 0) - (it.get("lowered_count") or 0), 0)
 		it["survey_date"] = str(it["survey_date"]) if it.get("survey_date") else None
 		it["plan_date"] = str(it["plan_date"]) if it.get("plan_date") else None
+		it["target_urgent_on"] = str(it["target_urgent_on"]) if it.get("target_urgent_on") else None
 	return {"items": items, "total": frappe.db.count(SCHEDULE, filters), "date": str(day)}
 
 
@@ -507,6 +512,7 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 		or_filters=or_filters,
 		fields=[
 			"name", "booking", "principal", "surveyor", "status", "survey_date", "plan_date",
+			"target_urgent_on",
 			"depot", "branch", "tank_count", "lowered_count", "survey_done_count",
 			"per_surveyed", "container_summary", "docstatus",
 		],
@@ -518,7 +524,7 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 	)
 	for it in items:
 		it["waiting_count"] = max((it.get("tank_count") or 0) - (it.get("lowered_count") or 0), 0)
-		for k in ("survey_date", "plan_date"):
+		for k in ("survey_date", "plan_date", "target_urgent_on"):
 			it[k] = str(it[k]) if it.get(k) else None
 
 	# `frappe.db.count` takes no or_filters, and faking the total from the page size breaks the
@@ -565,7 +571,7 @@ def get_survey_order_detail(name: str) -> dict:
 		{
 			"name": r.name, "container": r.container, "container_no": r.container_no,
 			"status": r.status, "depot": r.depot, "target_lift_on": r.target_lift_on,
-			"target_survey_on": r.target_survey_on,
+			"target_survey_on": r.target_survey_on, "target_urgent_on": r.target_urgent_on,
 			"lowered_by": r.lowered_by, "lowered_on": r.lowered_on,
 			"surveyed_by": r.surveyed_by, "surveyed_on": r.surveyed_on,
 			"reopen_note": r.reopen_note, "eir_out": r.eir_out, "idx": r.idx,
@@ -614,7 +620,8 @@ def _list_rows(status, start=0, page_length=20, search=None) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "parent", "container", "container_no", "status", "depot",
-				"target_lift_on", "target_survey_on", "lowered_by", "lowered_on", "reopen_note",
+				"target_lift_on", "target_survey_on", "target_urgent_on",
+				"lowered_by", "lowered_on", "reopen_note",
 				"creation"],
 		# Whole list, then sort, then slice: the priority order is decided in Python, so SQL
 		# cannot page it. Bounded by the tanks actually standing in the yard.
@@ -659,7 +666,8 @@ def list_survey_history(start=0, page_length=10, search=None) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "parent", "container", "container_no", "status", "depot",
-				"target_lift_on", "target_survey_on", "lowered_by", "lowered_on", "surveyed_by",
+				"target_lift_on", "target_survey_on", "target_urgent_on",
+				"lowered_by", "lowered_on", "surveyed_by",
 				"surveyed_on",
 				"survey_notes", "eir_out", "reopen_note", "creation"],
 		order_by="surveyed_on desc, creation desc",
@@ -677,7 +685,7 @@ def get_tank_detail(name: str) -> dict:
 	row = frappe.db.get_value(
 		ROW, name,
 		["name", "parent", "container", "container_no", "status", "depot", "target_lift_on",
-		 "target_survey_on",
+		 "target_survey_on", "target_urgent_on",
 		 "lowered_by", "lowered_on", "lowering_note", "surveyed_by", "surveyed_on",
 		 "survey_notes", "eir_out", "reopen_note"],
 		as_dict=True,

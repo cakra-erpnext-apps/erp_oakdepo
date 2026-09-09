@@ -289,7 +289,8 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 		# started_by: who pressed "Mulai" — what hides a job already in someone's hands from
 		# everyone else's worklist (see work_claim).
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on", "creation",
+			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on",
+			"target_urgent_on", "creation",
 			 "started_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
@@ -400,7 +401,8 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 		"Repair Order", filters=filters, or_filters=or_filters,
 		# See list_open_mr_orders: started_by is the claim, not a displayed column.
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on", "creation",
+			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on",
+			"target_urgent_on", "creation",
 			 "started_by", "inspection", "start_date", "decided_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
@@ -437,7 +439,8 @@ def list_review_mr_orders(start=0, page_length=20, search=None) -> dict:
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on", "creation",
+			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on",
+			"target_urgent_on", "creation",
 			"start_date", "technician", "modified"],
 		order_by="modified desc, creation desc",
 		limit_start=cint(start), limit_page_length=cint(page_length),

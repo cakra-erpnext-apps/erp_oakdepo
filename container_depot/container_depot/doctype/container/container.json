@@ -48,6 +48,7 @@
   "column_break_ref",
   "target_lift_on",
   "target_survey_on",
+  "target_urgent_on",
   "location_section",
   "current_location",
   "location_updated_on",
@@ -302,6 +303,16 @@
    "read_only": 1
   },
   {
+   "description": "Tanggal prioritas mendesak dari booking keluar yang aktif. Kalau terisi, tank ini didahulukan di semua worklist — di atas tanggal survey. Diisi otomatis lewat tombol Prioritas Mendesak di booking — bukan isian manual.",
+   "fieldname": "target_urgent_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Tanggal Mendesak",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "collapsible": 0,
    "description": "Letak terakhir tank, dicatat lewat menu Letak Tank di PWA (doctype Container Position). Read-only di sini: yang menulis adalah catatan letaknya, bukan sebaliknya — supaya \"kapan \" dan \"oleh siapa\" selalu punya dokumen di belakangnya.",
    "fieldname": "location_section",
@@ -414,7 +425,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-08 10:00:00.000000",
+ "modified": "2026-09-09 19:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

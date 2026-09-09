@@ -3,8 +3,16 @@
 
 """The order every PWA worklist is shown in.
 
-Three tiers, and they answer three different questions in the order an operator asks them:
+Four tiers, and they answer four different questions in the order an operator asks them:
 
+0. **Mendesak** — a job somebody with the authority to say so has declared urgent, nearest
+   urgent day first. It sits above the plan dates because that is the whole point of it: two
+   bookings, one for the 1st and one for the 9th, and the one on the 9th is the one that has
+   to be finished first. Without a tier of its own the only way to say that was to falsify the
+   survey date — the date the gate, the bon and the customer all read.
+
+   Kept scarce on purpose (``lift_on.URGENCY_ROLES``): a queue where everything is first is
+   sorted by nothing at all.
 1. **Prioritas tanggal survey** — tanks with a date on them, nearest first. This is the only
    tier with a deadline attached to it, so it outranks everything else: a wash finished a day
    late on a tank nobody is coming for costs nothing, the same day lost on a tank on a truck's
@@ -41,6 +49,14 @@ from frappe.utils import cint, getdate
 _NO_DATE = "2999-12-31"
 
 
+def urgent_date(row):
+	"""Tanggal mendesak baris ini, kalau ada — stamped by ``lift_on`` from its booking.
+
+	Its presence is the flag; there is no separate checkbox to fall out of step with it.
+	"""
+	return row.get("target_urgent_on")
+
+
 def priority_date(row):
 	"""The deadline this row is worked to: its survey day, else its pickup day.
 
@@ -53,7 +69,10 @@ def priority_date(row):
 
 
 def sort_by_priority(items: list, started, start=0, page_length=None) -> list:
-	"""Order ``items`` by the three tiers above, then slice one page out of them.
+	"""Order ``items`` by the four tiers above, then slice one page out of them.
+
+	Urgent rows are ordered among themselves by their urgent day — the tier lifts them above
+	everything else, it does not flatten them into one heap.
 
 	``started`` is a predicate over a row — each worklist passes its own test for "sedang
 	dikerjakan" (a status, or the stamp its Mulai writes), so the order always agrees with
@@ -62,6 +81,10 @@ def sort_by_priority(items: list, started, start=0, page_length=None) -> list:
 	Python's sort is stable, so whatever the query's own ``order_by`` decided still settles
 	ties inside a tier — that is where "oldest first" comes from, not from this function.
 	"""
-	items.sort(key=lambda r: (getdate(priority_date(r) or _NO_DATE), 0 if started(r) else 1))
+	items.sort(key=lambda r: (
+		0 if urgent_date(r) else 1,
+		getdate(urgent_date(r) or priority_date(r) or _NO_DATE),
+		0 if started(r) else 1,
+	))
 	pl = cint(page_length or 0)
 	return items[cint(start):cint(start) + pl] if pl else items[cint(start):]

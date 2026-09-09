@@ -5,12 +5,21 @@
 // worklist reads at a glance, including the "Revisi Diminta" flag the PWA raises
 // (container_depot.container_depot.eir.request_revision) which otherwise left no mark.
 frappe.listview_settings['Inspection'] = {
-	add_fields: ['revision_requested', 'docstatus', 'status', 'work_started_on'],
+	add_fields: ['revision_requested', 'docstatus', 'status', 'work_started_on', 'target_urgent_on'],
 
 	// Direction as a colour, not a word to read: green In / orange Out, matching the gate
 	// PWA's GATE IN / GATE OUT so one habit covers both screens. The stored value stays
 	// "EIR-In"/"EIR-Out" — the "EIR-" half is noise in a column headed "Tipe EIR".
 	formatters: {
+		// Penanda MENDESAK — lihat public/js/urgency_mark.js. Awalan pada subject karena
+		// kolom tanggalnya bisa terpotong di layar sempit; pill status tidak diganggu, merah
+		// di daftar ini sudah berarti batal.
+		title(value, df, doc) {
+			return container_depot.urgency_subject(value, doc, 'target_urgent_on');
+		},
+		target_urgent_on(value) {
+			return container_depot.urgency_pill(value, 'target_urgent_on');
+		},
 		inspection_type(value) {
 			const pill = (colour, text) =>
 				`<span class="indicator-pill no-indicator-dot ${colour}">${__(text)}</span>`;

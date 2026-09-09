@@ -15,7 +15,20 @@
 // in cleaning_order.json).
 frappe.listview_settings["Cleaning Order"] = {
 	// Pull status so get_indicator always has it even when columns are customised.
-	add_fields: ["status", "revision_requested"],
+	add_fields: ["status", "revision_requested", "target_urgent_on"],
+	// Penanda MENDESAK — dua tempat sekaligus (lihat public/js/urgency_mark.js): pill merah
+	// berisi tanggalnya di kolom Tanggal Mendesak, bisa diklik untuk menyaring daftar jadi
+	// yang mendesak saja, plus awalan pada kolom subject yang tidak pernah terpotong sesempit
+	// apa pun layarnya. Pill status sengaja tidak diganggu: merah di daftar ini sudah berarti
+	// dibatalkan.
+	formatters: {
+		container_no(value, df, doc) {
+			return container_depot.urgency_subject(value, doc, "target_urgent_on");
+		},
+		target_urgent_on(value) {
+			return container_depot.urgency_pill(value, "target_urgent_on");
+		},
+	},
 	has_indicator_for_draft: 1,
 	has_indicator_for_cancelled: 1,
 	get_indicator(doc) {

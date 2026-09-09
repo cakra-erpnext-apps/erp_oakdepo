@@ -28,7 +28,8 @@ class TestLiftOnPriority(FrappeTestCase):
 		# it before the booking row goes or the next save of the tank dies on link validation.
 		if self._bookings:
 			frappe.db.sql(
-				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL
+				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL,
+				          target_survey_on = NULL, target_urgent_on = NULL
 				   WHERE lift_on_booking IN %(bookings)s""",
 				{"bookings": tuple(self._bookings)},
 			)
@@ -171,7 +172,8 @@ class TestOutboundFulfilment(FrappeTestCase):
 	def tearDown(self):
 		if self._bookings:
 			frappe.db.sql(
-				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL
+				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL,
+				          target_survey_on = NULL, target_urgent_on = NULL
 				   WHERE lift_on_booking IN %(bookings)s""",
 				{"bookings": tuple(self._bookings)},
 			)
@@ -249,3 +251,306 @@ class TestOutboundFulfilment(FrappeTestCase):
 		frappe.db.set_value("Container", c, "status", "Gate_Out")
 		self.assertFalse(lift_on.refresh_fulfilment(doc.name))
 		self.assertEqual(frappe.db.get_value("Container Booking", doc.name, "per_fulfilled"), 0)
+
+
+class TestUrgentPriority(FrappeTestCase):
+	"""Prioritas mendesak: satu booking dinaikkan ke atas semua worklist, dan dicabut lagi.
+
+	The sort itself is tested on the pure function in ``test_worklist_order``. What is tested
+	here is the other half: that the day reaches the tank and the work already open on it,
+	that letting go of it lets go everywhere, and that not everyone may declare one.
+	"""
+
+	# Field roles work the yard; they do not decide whose job jumps the queue.
+	OUTSIDER = "urgency-outsider@oakdepo.test"
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._containers = []
+		self._bookings = []
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		if self._bookings:
+			frappe.db.sql(
+				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL,
+				          target_survey_on = NULL, target_urgent_on = NULL
+				   WHERE lift_on_booking IN %(bookings)s""",
+				{"bookings": tuple(self._bookings)},
+			)
+			# set_urgent writes its audit line on the booking's timeline; the raw deletes
+			# below would leave it orphaned.
+			frappe.db.delete("Comment", {
+				"reference_doctype": "Container Booking",
+				"reference_name": ["in", self._bookings],
+			})
+		for b in self._bookings:
+			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Container Booking", {"name": b})
+		if self._containers:
+			frappe.db.delete("Cleaning Order", {"container": ["in", self._containers]})
+			frappe.db.delete("Survey Order Tank", {"container": ["in", self._containers]})
+			frappe.db.delete("Container", {"name": ["in", self._containers]})
+		if frappe.db.exists("User", self.OUTSIDER):
+			frappe.delete_doc("User", self.OUTSIDER, force=True, ignore_permissions=True)
+		frappe.db.commit()
+		super().tearDown()
+
+	# --- fixtures -------------------------------------------------------------
+	def _container(self, cno):
+		c = _make_container(cno, depot=DEPOT)
+		self._containers.append(c)
+		return c
+
+	def _booking(self, containers, day, survey=None):
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
+			"plan_date": day, "survey_date": survey,
+			"items": [{"container": c} for c in containers],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+		return doc
+
+	def _cleaning(self, container):
+		return frappe.get_doc({
+			"doctype": "Cleaning Order", "container": container, "status": "Service Setup",
+		}).insert(ignore_permissions=True).name
+
+	def _urgent(self, container):
+		return frappe.db.get_value("Container", container, "target_urgent_on")
+
+	def _make_outsider(self):
+		frappe.get_doc({
+			"doctype": "User", "email": self.OUTSIDER, "first_name": "Urgency Outsider",
+			"send_welcome_email": 0, "roles": [{"role": "Team Cleaning"}],
+		}).insert(ignore_permissions=True)
+
+	# --- tests ----------------------------------------------------------------
+	def test_the_urgent_day_reaches_the_tank_and_the_work_already_open_on_it(self):
+		"""Same road as the plan dates: a cleaning raised before anyone declared the job
+		urgent cannot inherit the day through fetch_from, so it is pushed onto it."""
+		c = self._container("URGENT00001")
+		co = self._cleaning(c)
+		doc = self._booking([c], add_days(today(), 9))
+
+		day = today()
+		lift_on.set_urgent(doc.name, urgent_date=day)
+
+		self.assertEqual(str(self._urgent(c)), day)
+		self.assertEqual(str(frappe.db.get_value("Cleaning Order", co, "target_urgent_on")), day)
+		self.assertEqual(
+			str(frappe.db.get_value("Container Booking", doc.name, "urgent_date")), day
+		)
+
+	def test_the_offered_day_is_the_survey_day(self):
+		"""Marking a job urgent is rarely about moving its day — it is about saying this day
+		matters more than another job's earlier one."""
+		c = self._container("URGENT00002")
+		survey = add_days(today(), 9)
+		doc = self._booking([c], add_days(today(), 10), survey=survey)
+
+		lift_on.set_urgent(doc.name)
+
+		self.assertEqual(str(self._urgent(c)), survey)
+
+	def test_the_reason_lands_on_the_timeline(self):
+		"""Whoever is holding the tank will ask why it jumped the queue."""
+		c = self._container("URGENT00003")
+		doc = self._booking([c], add_days(today(), 4))
+
+		lift_on.set_urgent(doc.name, reason="Kapal maju sehari")
+
+		self.assertEqual(
+			frappe.db.get_value("Container Booking", doc.name, "urgent_reason"),
+			"Kapal maju sehari",
+		)
+		self.assertTrue(frappe.db.exists("Comment", {
+			"reference_doctype": "Container Booking", "reference_name": doc.name,
+			"content": ["like", "%Kapal maju sehari%"],
+		}))
+
+	def test_cabut_releases_every_stamp(self):
+		"""Total, and that is why the release goes back through the same sync: the orders
+		opened while it was urgent have to stop reading urgent too."""
+		c = self._container("URGENT00004")
+		co = self._cleaning(c)
+		doc = self._booking([c], add_days(today(), 3))
+		lift_on.set_urgent(doc.name)
+		self.assertIsNotNone(self._urgent(c))
+
+		lift_on.clear_urgent(doc.name)
+
+		self.assertIsNone(self._urgent(c))
+		self.assertIsNone(frappe.db.get_value("Cleaning Order", co, "target_urgent_on"))
+		self.assertIsNone(frappe.db.get_value("Container Booking", doc.name, "urgent_date"))
+
+	def test_the_tank_leaving_drops_the_urgency_with_everything_else(self):
+		"""A departed tank at the top of a worklist is worse than one at the bottom."""
+		c = self._container("URGENT00005")
+		doc = self._booking([c], add_days(today(), 1))
+		lift_on.set_urgent(doc.name)
+
+		lift_on.release_on_gate_out(c)
+
+		self.assertIsNone(self._urgent(c))
+
+	def test_a_field_role_may_not_declare_urgency(self):
+		"""An urgency every role can grant is one every role will grant, and a queue where
+		everything is first is sorted by nothing at all."""
+		c = self._container("URGENT00006")
+		doc = self._booking([c], add_days(today(), 2))
+		self._make_outsider()
+
+		frappe.set_user(self.OUTSIDER)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				lift_on.set_urgent(doc.name)
+			with self.assertRaises(frappe.PermissionError):
+				lift_on.clear_urgent(doc.name)
+		finally:
+			frappe.set_user("Administrator")
+		self.assertIsNone(self._urgent(c))
+
+	def test_an_inbound_booking_has_nothing_to_hurry(self):
+		"""A Tank In is the tank ARRIVING; the queue this reorders is the one preparing tanks
+		to LEAVE."""
+		c = self._container("URGENT00007")
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank In", "depot": DEPOT,
+			"plan_date": today(), "items": [{"container": c}],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+
+		with self.assertRaises(frappe.ValidationError):
+			lift_on.set_urgent(doc.name)
+
+
+class TestSurveyOrderUrgencyRollup(FrappeTestCase):
+	"""Header Survey Order meringkas urgensi tank-tanknya.
+
+	Urgensi hidup di booking dan turun ke BARIS tank. Daftar Jadwal Survey — Desk maupun PWA —
+	membaca headernya, jadi tanpa ringkasan ini satu-satunya tempat urgensinya terbaca adalah
+	sesudah jadwalnya dibuka, dan daftar itu justru yang paling sering dibaca.
+	"""
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._containers = []
+		self._bookings = []
+		self._schedules = []
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		for so in self._schedules:
+			frappe.db.delete("Survey Order Tank", {"parent": so})
+			frappe.db.delete("Survey Order", {"name": so})
+		if self._bookings:
+			frappe.db.sql(
+				"""UPDATE `tabContainer` SET lift_on_booking = NULL, target_lift_on = NULL,
+				          target_survey_on = NULL, target_urgent_on = NULL
+				   WHERE lift_on_booking IN %(bookings)s""",
+				{"bookings": tuple(self._bookings)},
+			)
+			frappe.db.delete("Comment", {
+				"reference_doctype": "Container Booking",
+				"reference_name": ["in", self._bookings],
+			})
+		for b in self._bookings:
+			frappe.db.delete("Container Booking Item", {"parent": b})
+			frappe.db.delete("Container Booking", {"name": b})
+		if self._containers:
+			frappe.db.delete("Survey Order Tank", {"container": ["in", self._containers]})
+			frappe.db.delete("Container", {"name": ["in", self._containers]})
+		frappe.db.commit()
+		super().tearDown()
+
+	# --- fixtures -------------------------------------------------------------
+	def _container(self, cno):
+		c = _make_container(cno, depot=DEPOT)
+		self._containers.append(c)
+		return c
+
+	def _booking(self, containers, day):
+		doc = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
+			"plan_date": day,
+			"items": [{"container": c} for c in containers],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._bookings.append(doc.name)
+		return doc
+
+	def _schedule(self, booking, containers, day):
+		doc = frappe.get_doc({
+			"doctype": "Survey Order", "booking": booking, "depot": DEPOT,
+			"status": "Scheduled", "survey_date": day,
+			"tanks": [{"container": c, "status": "Waiting Lowering"} for c in containers],
+		})
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._schedules.append(doc.name)
+		return doc
+
+	def _header(self, schedule):
+		return frappe.db.get_value("Survey Order", schedule, "target_urgent_on")
+
+	def _rows(self, schedule):
+		return frappe.get_all(
+			"Survey Order Tank", filters={"parent": schedule}, fields=["name", "container"],
+		)
+
+	# --- tests ----------------------------------------------------------------
+	def test_the_header_learns_it_from_its_tanks_and_lets_go_with_them(self):
+		c = self._container("URGSO00001")
+		day = add_days(today(), 2)
+		bk = self._booking([c], add_days(today(), 6))
+		so = self._schedule(bk.name, [c], add_days(today(), 5))
+
+		lift_on.set_urgent(bk.name, urgent_date=day)
+		self.assertEqual(str(self._header(so.name)), day)
+
+		lift_on.clear_urgent(bk.name)
+		self.assertIsNone(self._header(so.name))
+
+	def test_the_nearest_day_sets_the_pace(self):
+		"""One tank mendesak sudah cukup membuat harinya mendesak, dan hari yang dihitung
+		adalah yang paling dekat — bukan yang terakhir ditulis."""
+		from container_depot.container_depot.doctype.survey_order.survey_order import (
+			refresh_urgency,
+		)
+
+		c1 = self._container("URGSO00002")
+		c2 = self._container("URGSO00003")
+		bk = self._booking([c1, c2], add_days(today(), 9))
+		so = self._schedule(bk.name, [c1, c2], add_days(today(), 8))
+
+		rows = {r.container: r.name for r in self._rows(so.name)}
+		frappe.db.set_value("Survey Order Tank", rows[c1], "target_urgent_on", add_days(today(), 4))
+		frappe.db.set_value("Survey Order Tank", rows[c2], "target_urgent_on", add_days(today(), 1))
+		refresh_urgency(so.name)
+
+		self.assertEqual(str(self._header(so.name)), add_days(today(), 1))
+
+	def test_a_cancelled_tank_no_longer_sets_the_pace(self):
+		"""Tank yang dibatalkan bukan pekerjaan, dan tenggatnya tidak lagi mengikat."""
+		from container_depot.container_depot.doctype.survey_order.survey_order import (
+			refresh_urgency,
+		)
+
+		c1 = self._container("URGSO00004")
+		c2 = self._container("URGSO00005")
+		bk = self._booking([c1, c2], add_days(today(), 9))
+		so = self._schedule(bk.name, [c1, c2], add_days(today(), 8))
+
+		rows = {r.container: r.name for r in self._rows(so.name)}
+		frappe.db.set_value("Survey Order Tank", rows[c1], "target_urgent_on", add_days(today(), 5))
+		frappe.db.set_value("Survey Order Tank", rows[c2], {
+			"target_urgent_on": today(), "status": "Cancelled",
+		})
+		refresh_urgency(so.name)
+
+		self.assertEqual(str(self._header(so.name)), add_days(today(), 5))

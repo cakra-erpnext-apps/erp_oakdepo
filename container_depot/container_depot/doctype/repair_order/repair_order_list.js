@@ -15,7 +15,20 @@ frappe.listview_settings["Repair Order"] = {
 
 	// status is not a column here, so the list query would not fetch it and get_indicator
 	// would read undefined on every row.
-	add_fields: ["status"],
+	add_fields: ["status", "target_urgent_on"],
+	// Penanda MENDESAK — dua tempat sekaligus (lihat public/js/urgency_mark.js): pill merah
+	// berisi tanggalnya di kolom Tanggal Mendesak, bisa diklik untuk menyaring daftar jadi
+	// yang mendesak saja, plus awalan pada kolom subject yang tidak pernah terpotong sesempit
+	// apa pun layarnya. Pill status sengaja tidak diganggu: merah di daftar ini sudah berarti
+	// dibatalkan.
+	formatters: {
+		container_no(value, df, doc) {
+			return container_depot.urgency_subject(value, doc, "target_urgent_on");
+		},
+		target_urgent_on(value) {
+			return container_depot.urgency_pill(value, "target_urgent_on");
+		},
+	},
 
 	// Ten statuses, and without this map Frappe falls back to `guess_colour`, which paints
 	// most of them the same grey and gives "Rejected" the same red as "Cancelled" but also

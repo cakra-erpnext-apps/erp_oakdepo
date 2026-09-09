@@ -36,6 +36,10 @@
 			</p>
 		</div>
 		<div class="flex shrink-0 items-start gap-1">
+			<!-- Mendesak sebelum status, di keempat jenis pekerjaan: kalender ini daftar
+			     rencana, dan yang paling sering ditanyakan ke rencana adalah mana yang harus
+			     didahulukan. Kosong kalau tidak ditandai. -->
+			<LiftOnBadge :urgent="item.urgent" />
 			<span class="oak-chip" :class="chip.tone">{{ chip.label }}</span>
 			<Icon v-if="item.route" name="chevron-right" :size="15" class="mt-1 text-gray-300" />
 		</div>
@@ -45,6 +49,7 @@
 <script setup>
 import { computed } from "vue"
 import Icon from "@/components/Icon.vue"
+import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import { KIND, kindLabel, statusChip } from "@/utils/scheduleKind"
 import { fmtDateShort } from "@/utils/surveyStatus"
 import { labels } from "@/utils/labels"

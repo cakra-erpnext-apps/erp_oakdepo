@@ -73,6 +73,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_apply_submit_lock');
 		frm.trigger('_apply_billing_lock');
 		frm.trigger('_render_work_per_container');
+		frm.trigger('_urgency_actions');
 		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
 		// operator can get the booking right before it reaches the Cashier's queue.
 		// Each button below mirrors the permission its endpoint enforces, so nobody is
@@ -739,6 +740,44 @@ frappe.ui.form.on('Container Booking', {
 			frm.add_custom_button(__('Cancel'), () => _confirm_void(frm)).addClass('btn-danger');
 		}
 	},
+	// --- prioritas mendesak ------------------------------------------------
+	//
+	// Naikkan satu booking ke atas SEMUA worklist, di atas urutan tanggal survey. Kasusnya
+	// selalu sama: dua job, yang satu tanggal 1 dan yang satu tanggal 9, dan yang tanggal 9
+	// justru harus jadi duluan. Sebelum ini satu-satunya cara mengatakannya adalah memalsukan
+	// Survey Date — tanggal yang juga dibaca gate, bon dan pelanggan.
+	//
+	// Sebuah menu, bukan field yang bisa diketik: tanggalnya read-only dan hanya lahir dari
+	// tombol ini, supaya setiap kali ada yang didahulukan selalu ada jejak siapa dan kenapa
+	// di timeline (lihat lift_on.set_urgent).
+	_urgency_actions(frm) {
+		if (frm.is_new() || frm.doc.direction !== 'Tank Out') return;
+		if (frm.doc.urgent_date) {
+			// Ditampilkan untuk semua yang boleh membuka booking ini, bukan hanya yang boleh
+			// mengubahnya: yang mengerjakan tank-nya perlu tahu kenapa job ini tiba-tiba ada
+			// di puncak daftarnya.
+			container_depot.form_message(
+				frm, 'urgency',
+				__('MENDESAK — didahulukan sampai {0}.{1}', [
+					frappe.datetime.str_to_user(frm.doc.urgent_date),
+					frm.doc.urgent_reason ? ' ' + frappe.utils.escape_html(frm.doc.urgent_reason) : '',
+				]),
+				'red'
+			);
+		} else {
+			container_depot.form_message(frm, 'urgency', '');
+		}
+		// Selesai / batal tidak punya apa-apa lagi untuk didahulukan.
+		if (['Cancelled', 'Completed'].includes(frm.doc.booking_status) || frm.doc.docstatus === 2) return;
+		// Cermin dari pemeriksaan server (lift_on.URGENCY_ROLES): jangan tawarkan aksi yang
+		// akan ditolak. Administrator lolos lewat System Manager.
+		if (!URGENCY_ROLES.some((role) => frappe.user.has_role(role))) return;
+		const set_label = frm.doc.urgent_date ? __('Ubah Tanggal Mendesak') : __('Tandai Mendesak');
+		frm.add_custom_button(set_label, () => _open_urgency_dialog(frm), __('Prioritas'));
+		if (frm.doc.urgent_date) {
+			frm.add_custom_button(__('Cabut Tanda Mendesak'), () => _clear_urgency(frm), __('Prioritas'));
+		}
+	},
 	branch(frm) {
 		// Depot is scoped to the branch; drop a now-mismatched depot.
 		if (frm.doc.depot) frm.set_value('depot', null);
@@ -1070,6 +1109,64 @@ function _lock_grid(frm, fieldname, locked) {
 	grid.cannot_add_rows = locked;
 	frm.set_df_property(fieldname, 'cannot_delete_rows', locked);
 	grid.refresh();
+}
+
+// Sama persis dengan lift_on.URGENCY_ROLES di server. Sengaja pendek: prioritas yang semua
+// orang boleh berikan akan diberikan semua orang, dan antrean yang semuanya nomor satu sama
+// saja dengan antrean yang tidak diurutkan.
+const URGENCY_ROLES = ['SPV Lapangan', 'Admin Ops', 'Management', 'Container Depot', 'System Manager'];
+
+function _open_urgency_dialog(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __('Prioritas Mendesak'),
+		fields: [
+			{
+				fieldname: 'urgent_date',
+				fieldtype: 'Date',
+				label: __('Didahulukan sampai'),
+				reqd: 1,
+				// Tanggal survey dulu, baru rencana pickup — hari yang memang sudah jadi
+				// tenggat job ini. Menandai mendesak biasanya bukan soal memindah harinya,
+				// melainkan soal menyatakan hari ini lebih penting daripada hari job lain
+				// yang lebih awal; jadi hari itulah yang ditawarkan.
+				default: frm.doc.urgent_date || frm.doc.survey_date || frm.doc.plan_date || frappe.datetime.get_today(),
+				description: __('Antar-job mendesak tetap diurut tanggal ini; terhadap job lain, yang mendesak selalu di atas.'),
+			},
+			{
+				fieldname: 'reason',
+				fieldtype: 'Small Text',
+				label: __('Alasan'),
+				default: frm.doc.urgent_reason || '',
+				description: __('Dicatat di timeline booking — yang di lapangan akan bertanya kenapa.'),
+			},
+		],
+		primary_action_label: __('Tandai Mendesak'),
+		primary_action(values) {
+			d.hide();
+			frappe.call({
+				method: 'container_depot.container_depot.lift_on.set_urgent',
+				args: { booking: frm.doc.name, urgent_date: values.urgent_date, reason: values.reason },
+				freeze: true,
+				freeze_message: __('Menandai …'),
+				callback: () => frm.reload_doc(),
+			});
+		},
+	});
+	d.show();
+}
+
+function _clear_urgency(frm) {
+	frappe.confirm(
+		__('Cabut tanda mendesak? Booking ini kembali diurut oleh tanggal survey / pickup-nya sendiri.'),
+		() => {
+			frappe.call({
+				method: 'container_depot.container_depot.lift_on.clear_urgent',
+				args: { booking: frm.doc.name },
+				freeze: true,
+				callback: () => frm.reload_doc(),
+			});
+		}
+	);
 }
 
 function _confirm_void(frm) {

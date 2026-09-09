@@ -65,7 +65,7 @@ SOURCES = [
 		"skip": ("Cancelled",),
 		"done": ("Completed",),
 		"fields": ["name", "principal", "booking", "surveyor", "status", "tank_count",
-				   "survey_done_count", "container_summary", "plan_date"],
+				   "survey_done_count", "container_summary", "plan_date", "target_urgent_on"],
 		"route": "/survey-orders/order/{name}",
 	},
 	{
@@ -76,7 +76,8 @@ SOURCES = [
 		"skip": ("Cancelled",),
 		"done": ("Completed",),
 		"fields": ["name", "container", "container_no", "container_principal", "status",
-				   "cleaning_type", "target_lift_on", "target_survey_on", "cleaning_start"],
+				   "cleaning_type", "target_lift_on", "target_survey_on", "target_urgent_on",
+				   "cleaning_start"],
 		# When the job actually started. There is no PLANNED hour anywhere in the depot's
 		# scheduling — every source is a date — so the calendar's time column shows the real
 		# clock reading once work begins and stays empty before that, rather than inventing
@@ -94,7 +95,7 @@ SOURCES = [
 		"skip": ("Cancelled", "Rejected"),
 		"done": ("Completed",),
 		"fields": ["name", "container", "container_no", "principal", "status", "job_type",
-				   "target_lift_on", "target_survey_on", "start_date"],
+				   "target_lift_on", "target_survey_on", "target_urgent_on", "start_date"],
 		"time_field": "start_date",
 		"route": "/mr?o={name}",
 	},
@@ -106,7 +107,7 @@ SOURCES = [
 		"skip": ("Cancelled",),
 		"done": ("Completed",),
 		"fields": ["name", "direction", "principal", "customer", "booking_status",
-				   "container_summary", "bon_status", "per_fulfilled"],
+				   "container_summary", "bon_status", "per_fulfilled", "urgent_date"],
 		# No PWA screen owns a booking — see the module docstring.
 		"route": None,
 	},
@@ -329,6 +330,11 @@ def _booking_extras(rows) -> dict:
 	return {k: {"cargo": ", ".join(v["cargo"]), "truck": ", ".join(v["truck"])} for k, v in out.items()}
 
 
+def _str_date(value) -> str | None:
+	"""Tanggal sebagai string, atau None — JSON tidak punya tipe tanggal sendiri."""
+	return str(value) if value else None
+
+
 def _clock(value) -> str | None:
 	"""A Datetime -> ``"08:00"``, or None when there is nothing to show.
 
@@ -361,6 +367,11 @@ def _card(source, row, order, extras=None) -> dict:
 		# The day this was planned for. Carried on every card because the same card shape is
 		# reused by the overdue banner, where the date is the whole point.
 		"date": str(planned) if planned else None,
+		# Ditandai MENDESAK? Satu nama untuk keempat sumber, karena kartunya satu bentuk:
+		# booking menyimpannya sebagai `urgent_date`, yang lain sebagai `target_urgent_on`
+		# (stempel turunan dari booking itu). Kalender adalah daftar rencana, dan yang paling
+		# sering ditanyakan ke rencana adalah mana yang harus didahulukan.
+		"urgent": _str_date(row.get("urgent_date") or row.get("target_urgent_on")),
 		# Clock time, only where one genuinely exists — the moment the crew started. Nothing
 		# in the depot is scheduled to the hour, so an empty slot here means "not started",
 		# never "we forgot to write the appointment down".

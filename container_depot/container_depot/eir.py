@@ -1771,7 +1771,7 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			# next/prev EIR navigator to the account that is working them.
 			"work_started_on", "work_started_by",
 			# The outbound booking's stamp — sorts and badges this worklist by pickup urgency.
-			"target_lift_on", "target_survey_on",
+			"target_lift_on", "target_survey_on", "target_urgent_on",
 		],
 		order_by="creation desc",
 		limit_page_length=0,
@@ -1845,7 +1845,7 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 		fields=[
 			"name", "inspection_id", "container", "container_no", "container_principal",
 			"inspection_type", "status", "tank_status", "docstatus", "eir_date", "creation",
-			"target_lift_on", "target_survey_on", "inspector", "modified",
+			"target_lift_on", "target_survey_on", "target_urgent_on", "inspector", "modified",
 		],
 		order_by="creation desc",
 		limit_page_length=0,
@@ -1982,7 +1982,7 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 			# scopes the next/prev EIR navigator to the account working them.
 			"work_started_on", "work_started_by",
 			# The tank is on its way out — the plan's stamp says whether that is today.
-			"target_lift_on", "target_survey_on",
+			"target_lift_on", "target_survey_on", "target_urgent_on",
 		],
 		order_by="creation desc",
 		limit_page_length=0,

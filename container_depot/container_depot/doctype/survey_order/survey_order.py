@@ -72,6 +72,36 @@ class SurveyOrder(Document):
 				row.db_set("status", CANCELLED, update_modified=False)
 
 
+def refresh_urgency(name: str) -> None:
+	"""Ringkas tanggal mendesak tank-tank jadwal ini ke headernya: yang paling dekat.
+
+	Urgensi dipasang di booking dan turun ke BARIS tank (``lift_on.push_to_open_orders``), jadi
+	header-nya tidak punya apa-apa untuk ditunjukkan — dan daftar Jadwal Survey di Desk maupun
+	di PWA membaca header, bukan tabel anaknya. Tanpa ringkasan ini satu-satunya tempat
+	urgensinya terbaca adalah sesudah jadwalnya dibuka.
+
+	Yang paling dekat, bukan jumlahnya: pertanyaan yang dijawab daftar adalah "kapan hari ini
+	harus beres", dan satu tank mendesak sudah cukup membuat harinya mendesak.
+
+	Baris Cancelled diabaikan — tank yang dibatalkan bukan pekerjaan, dan tenggatnya tidak lagi
+	mengikat. ``db.set_value`` dan bukan ``doc.save()`` karena ini ikut jalan di tengah save
+	dokumen lain, sama alasannya dengan :func:`refresh_progress`.
+	"""
+	if not name or not frappe.db.exists("Survey Order", name):
+		return
+	days = [
+		d for d in frappe.get_all(
+			"Survey Order Tank",
+			filters={"parent": name, "parenttype": "Survey Order", "status": ["!=", CANCELLED]},
+			pluck="target_urgent_on",
+		) if d
+	]
+	frappe.db.set_value(
+		"Survey Order", name, "target_urgent_on", min(days) if days else None,
+		update_modified=False,
+	)
+
+
 def refresh_progress(name: str) -> dict:
 	"""Recompute one schedule's counts + status from its tank rows. Idempotent.
 
@@ -95,6 +125,10 @@ def refresh_progress(name: str) -> dict:
 
 	if not name or not frappe.db.exists("Survey Order", name):
 		return {}
+	# Before the Cancelled bail-out below, and deliberately: a called-off day must also stop
+	# advertising an urgency, and its rows have been cancelled with it — so recomputing clears
+	# the header instead of leaving the old day stamped on a day nobody is working.
+	refresh_urgency(name)
 	current = frappe.db.get_value("Survey Order", name, ["status", "docstatus"], as_dict=True)
 	if current.status == CANCELLED:
 		return {}

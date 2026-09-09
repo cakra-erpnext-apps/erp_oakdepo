@@ -13,6 +13,8 @@
   "reff_doc",
   "plan_date",
   "survey_date",
+  "urgent_date",
+  "urgent_reason",
   "surveyor",
   "parties_section",
   "customer",
@@ -119,6 +121,25 @@
    "fieldname": "survey_date",
    "fieldtype": "Date",
    "label": "Survey Date"
+  },
+  {
+   "depends_on": "urgent_date",
+   "description": "Tenggat mendesak — dipasang lewat tombol Prioritas Mendesak, bukan diketik. Selama terisi, semua pekerjaan booking ini (cleaning, M&R, survey, EIR) naik ke paling atas worklist, di atas booking lain yang tanggal survey-nya lebih awal.",
+   "fieldname": "urgent_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Prioritas Mendesak",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "urgent_reason",
+   "description": "Kenapa booking ini didahulukan.",
+   "fieldname": "urgent_reason",
+   "fieldtype": "Small Text",
+   "label": "Alasan Mendesak",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "depends_on": "eval:doc.direction=='Tank Out'",
@@ -417,7 +438,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 16:00:00.000000",
+ "modified": "2026-09-09 19:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

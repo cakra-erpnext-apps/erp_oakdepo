@@ -67,7 +67,7 @@
 								<span v-if="r.reopen_note" class="oak-chip shrink-0 bg-orange-100 text-orange-800">
 									<Icon name="rotate-ccw" :size="11" /> {{ labels.posReopenNote }}
 								</span>
-								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
+								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
 								<!-- Where to walk, and how stale that answer is. The operator picking
 								     the next tank needs both — see utils/surveyStatus.since(). -->
 								<span class="truncate" :class="r.located ? 'text-gray-500' : 'text-red-500'">

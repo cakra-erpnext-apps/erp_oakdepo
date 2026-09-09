@@ -46,6 +46,7 @@
   "reff_email",
   "target_lift_on",
   "target_survey_on",
+  "target_urgent_on",
   "priority_score",
   "cleaning_total",
   "manhour_charge_total",
@@ -324,6 +325,17 @@
    "read_only": 1
   },
   {
+   "depends_on": "target_urgent_on",
+   "description": "Tanggal prioritas mendesak, lewat container. Kalau terisi, baris ini naik ke paling atas worklist — di atas tanggal survey. Lihat lift_on.py.",
+   "fetch_from": "container.target_urgent_on",
+   "fieldname": "target_urgent_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Tanggal Mendesak",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "default": "0",
    "description": "Skor urutan antrean cuci.",
    "fieldname": "priority_score",
@@ -459,7 +471,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 14:00:00.000000",
+ "modified": "2026-09-09 19:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

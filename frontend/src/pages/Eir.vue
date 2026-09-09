@@ -270,7 +270,7 @@
 											{{ r._type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
 										</span>
 										<span class="oak-chip shrink-0" :class="progressChip(r).tone">{{ progressChip(r).label }}</span>
-										<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
+										<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
 									</p>
 								</div>
 							</button>
@@ -334,7 +334,7 @@
 								</p>
 								<p class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
 									<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.eirStatusPendingReview }}</span>
-									<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
+									<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
 								</p>
 								<!-- Sudah berapa lama menunggu, dan pada siapa. Sebuah antrean review
 								     tanpa umur tidak bisa dibedakan mana yang baru masuk dan mana yang
@@ -545,7 +545,16 @@ const pendingItems = computed(() => {
 	// Tanggal survey dulu, baru rencana pickup — cermin `worklist.priority_date`. Kalau
 	// keduanya berselisih, layar ini yang salah: server yang memutuskan urutan.
 	const due = (r) => String(r.target_survey_on || r.target_lift_on || NO_DATE)
+	// ...dan di atas keduanya tanda mendesak — tier 0 di `worklist.sort_by_priority`, diurut
+	// memakai tanggal mendesaknya sendiri persis seperti server.
+	const urgent = (r) => (r.target_urgent_on ? String(r.target_urgent_on) : "")
 	all.sort((a, b) => {
+		const flag = Number(!urgent(a)) - Number(!urgent(b))
+		if (flag) return flag
+		if (urgent(a) && urgent(b)) {
+			const u = urgent(a).localeCompare(urgent(b))
+			if (u) return u
+		}
 		const lift = due(a).localeCompare(due(b))
 		if (lift) return lift
 		const started = Number(!!b.work_started_on) - Number(!!a.work_started_on)

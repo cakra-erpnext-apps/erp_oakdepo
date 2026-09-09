@@ -100,7 +100,7 @@
 							     share one, so "1 pekerjaan · 3 temuan" is not a rounding of itself. -->
 							<p class="truncate text-[11px] text-gray-500">{{ rowSubtitle(o) }}</p>
 							<div class="mt-1 flex flex-wrap items-center gap-1.5">
-								<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" />
+								<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
 								<span
 									v-if="o.status === 'In Progress'"
 									class="oak-chip bg-brand-100 text-brand-700"

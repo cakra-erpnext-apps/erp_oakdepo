@@ -1,8 +1,9 @@
 """The order every PWA worklist puts its rows in.
 
-Three tiers, in the order an operator asks for them (see
+Four tiers, in the order an operator asks for them (see
 ``container_depot.container_depot.worklist``):
 
+0. jobs somebody has declared MENDESAK, nearest urgent day first;
 1. tanks the customer has given a lift-on date for, nearest first;
 2. the job already in this operator's hands;
 3. everything else, oldest first.
@@ -25,8 +26,11 @@ from frappe.utils import add_days, today
 from container_depot.container_depot.worklist import sort_by_priority
 
 
-def _row(name, lift=None, started=False, survey=None):
-	return {"name": name, "target_lift_on": lift, "target_survey_on": survey, "started": started}
+def _row(name, lift=None, started=False, survey=None, urgent=None):
+	return {
+		"name": name, "target_lift_on": lift, "target_survey_on": survey,
+		"target_urgent_on": urgent, "started": started,
+	}
 
 
 class TestWorklistOrder(FrappeTestCase):
@@ -95,6 +99,43 @@ class TestWorklistOrder(FrappeTestCase):
 			_row("nothing"),
 		]
 		self.assertEqual(self._order(rows), ["no-survey", "surveyed", "nothing"])
+
+	# --- tier 0: mendesak ------------------------------------------------------
+	def test_urgent_outranks_an_earlier_survey_day(self):
+		"""The case the tier exists for. Two bookings, the 1st and the 9th, and the one on
+		the 9th is the one that has to be done first — said without falsifying the survey
+		date the gate, the bon and the customer all read."""
+		rows = [
+			_row("tgl-1", survey=add_days(today(), 1)),
+			_row("tgl-9-mendesak", survey=add_days(today(), 9), urgent=add_days(today(), 9)),
+		]
+		self.assertEqual(self._order(rows), ["tgl-9-mendesak", "tgl-1"])
+
+	def test_urgent_rows_are_ordered_among_themselves_by_their_urgent_day(self):
+		"""The tier lifts them above everything else; it does not flatten them into one
+		heap. Two urgent jobs are still worked nearest-day-first."""
+		rows = [
+			_row("mendesak-nanti", urgent=add_days(today(), 3)),
+			_row("mendesak-hari-ini", urgent=today()),
+			_row("biasa", survey=today()),
+		]
+		self.assertEqual(
+			self._order(rows), ["mendesak-hari-ini", "mendesak-nanti", "biasa"]
+		)
+
+	def test_an_urgent_day_far_away_still_leads_a_pickup_today(self):
+		"""Urgency is a tier, not a date comparison — otherwise it would only ever win for
+		jobs that were already at the top."""
+		rows = [
+			_row("hari-ini", survey=today()),
+			_row("mendesak-minggu-depan", urgent=add_days(today(), 7)),
+		]
+		self.assertEqual(self._order(rows), ["mendesak-minggu-depan", "hari-ini"])
+
+	def test_in_hand_still_settles_ties_inside_the_urgent_tier(self):
+		d = add_days(today(), 1)
+		rows = [_row("belum", urgent=d), _row("dikerjakan", urgent=d, started=True)]
+		self.assertEqual(self._order(rows), ["dikerjakan", "belum"])
 
 	def test_the_querys_own_order_settles_the_rest(self):
 		"""Python's sort is stable, so "oldest first" keeps coming from the SQL order_by and

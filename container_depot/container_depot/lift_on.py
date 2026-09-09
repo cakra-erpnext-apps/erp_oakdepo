@@ -20,7 +20,7 @@ effect was this stamp — so it moved to the document that actually authorises t
 from __future__ import annotations
 
 import frappe
-from frappe.utils import getdate
+from frappe.utils import getdate, nowdate
 
 from container_depot.container_depot.container_status import container_open_orders
 
@@ -46,6 +46,25 @@ OUTBOUND = "Tank Out"
 # the preparation these deadlines drive is already over.
 HEADER_DATE = "plan_date"
 SURVEY_DATE = "survey_date"
+
+# Prioritas mendesak — a day the depot has been TOLD to finish this job by, set by hand and
+# outranking both dates above.
+#
+# The two dates say when the customer is coming; they do not say which of two trucks matters
+# more. A booking for the 9th can become the job that has to be done first while a booking for
+# the 1st can wait, and until now the only way to say so was to falsify ``survey_date`` — which
+# is also what the gate, the bon and the customer read. So urgency is its own field: the plan
+# dates keep telling the truth, and this one carries the override.
+#
+# Stamped down the same path as the other two (:func:`push_to_open_orders`) because it has to
+# reach the same place: an operator's worklist, sorted by it (``worklist.sort_by_priority``).
+URGENT_DATE = "urgent_date"
+URGENT_REASON = "urgent_reason"
+
+# Who may declare a job urgent. Not everyone, deliberately: an urgency every role can grant is
+# one every role will grant, and a queue where everything is first is sorted by nothing again.
+# SPV and above, plus the ops backstop — the same shape as the role model in ``install.py``.
+URGENCY_ROLES = ("SPV Lapangan", "Admin Ops", "Management", "Container Depot", "System Manager")
 
 
 # A booking that no longer expects anything to leave: cancelled either way — ``booking_status``
@@ -81,14 +100,16 @@ def sync_booking_targets(doc) -> None:
 	live = _booking_is_live(doc)
 	date = doc.get(HEADER_DATE)
 	survey = doc.get(SURVEY_DATE)
+	urgent = doc.get(URGENT_DATE)
 	for row in doc.get("items") or []:
 		if not row.get("container"):
 			continue
 		listed.add(row.container)
-		# Either date is enough to be worth stamping: a booking with only a survey day still
-		# has a deadline, and one with only a pickup day still has the fallback.
-		if live and (date or survey):
-			set_target(row.container, date, survey, doc.name)
+		# Any one of the three is enough to be worth stamping: a booking with only a survey day
+		# still has a deadline, one with only a pickup day still has the fallback, and one
+		# marked urgent still has to reach the top of the queue.
+		if live and (date or survey or urgent):
+			set_target(row.container, date, survey, urgent, doc.name)
 		else:
 			clear_target(row.container, doc.name)
 	for container in containers_pointing_to(doc.name):
@@ -96,15 +117,16 @@ def sync_booking_targets(doc) -> None:
 			clear_target(container, doc.name)
 
 
-def set_target(container: str, date, survey, booking: str) -> None:
+def set_target(container: str, date, survey, urgent, booking: str) -> None:
 	d = getdate(date) if date else None
 	sd = getdate(survey) if survey else None
+	ud = getdate(urgent) if urgent else None
 	frappe.db.set_value(
 		"Container", container,
-		{"target_lift_on": d, "target_survey_on": sd, CONTAINER_FIELD: booking},
+		{"target_lift_on": d, "target_survey_on": sd, "target_urgent_on": ud, CONTAINER_FIELD: booking},
 		update_modified=False,
 	)
-	push_to_open_orders(container, d, sd)
+	push_to_open_orders(container, d, sd, ud)
 
 
 def clear_target(container: str, booking: str) -> None:
@@ -114,14 +136,15 @@ def clear_target(container: str, booking: str) -> None:
 		return
 	frappe.db.set_value(
 		"Container", container,
-		{"target_lift_on": None, "target_survey_on": None, CONTAINER_FIELD: None},
+		{"target_lift_on": None, "target_survey_on": None, "target_urgent_on": None,
+		 CONTAINER_FIELD: None},
 		update_modified=False,
 	)
-	push_to_open_orders(container, None, None)
+	push_to_open_orders(container, None, None, None)
 
 
-def push_to_open_orders(container: str, date, survey=None) -> None:
-	"""Mirror the container's two dates onto every order still holding it, so the PWA + Desk
+def push_to_open_orders(container: str, date, survey=None, urgent=None) -> None:
+	"""Mirror the container's three dates onto every order still holding it, so the PWA + Desk
 	worklists can sort and badge by them across pagination.
 
 	New orders inherit it through ``fetch_from``; this keeps ALREADY-open ones in step when
@@ -154,6 +177,8 @@ def push_to_open_orders(container: str, date, survey=None) -> None:
 			stamp["target_lift_on"] = date
 		if meta.has_field("target_survey_on"):
 			stamp["target_survey_on"] = survey
+		if meta.has_field("target_urgent_on"):
+			stamp["target_urgent_on"] = urgent
 		if stamp:
 			frappe.db.set_value(doctype, name, stamp, update_modified=False)
 	# ...and the open survey rows, for the same reason as the EIR-Out: getting the tank down and
@@ -164,8 +189,25 @@ def push_to_open_orders(container: str, date, survey=None) -> None:
 	frappe.db.set_value(
 		"Survey Order Tank",
 		{"container": container, "parenttype": "Survey Order", "status": ["!=", "Cancelled"]},
-		{"target_lift_on": date, "target_survey_on": survey}, update_modified=False,
+		{"target_lift_on": date, "target_survey_on": survey, "target_urgent_on": urgent},
+		update_modified=False,
 	)
+	# ...and roll the urgency up onto the schedules those rows belong to. The child rows were
+	# written raw above, so nothing else would: a Survey Order header that does not know one of
+	# its tanks is urgent cannot say so in the Jadwal Survey list, in Desk or in the PWA, and
+	# that list is read far more often than the tanks inside one schedule.
+	#
+	# Every schedule holding this tank, cancelled rows included — a schedule whose row for THIS
+	# container is cancelled may still hold other urgent tanks, and recomputing it is both
+	# cheap and the correct answer either way.
+	from container_depot.container_depot.doctype.survey_order.survey_order import refresh_urgency
+
+	for parent in set(frappe.get_all(
+		"Survey Order Tank",
+		filters={"container": container, "parenttype": "Survey Order"},
+		pluck="parent",
+	)):
+		refresh_urgency(parent)
 
 
 def containers_pointing_to(booking: str) -> list:
@@ -182,6 +224,85 @@ def release_on_gate_out(container: str) -> None:
 	booking = frappe.db.get_value("Container", container, CONTAINER_FIELD)
 	if booking:
 		clear_target(container, booking)
+
+
+
+# --- prioritas mendesak (urgent) ---------------------------------------------
+
+
+def _may_set_urgency() -> bool:
+	return bool(set(frappe.get_roles()) & set(URGENCY_ROLES))
+
+
+def _require_urgency_permission() -> None:
+	if not _may_set_urgency():
+		frappe.throw(
+			frappe._("Hanya SPV ke atas dan Admin Ops yang boleh mengatur prioritas mendesak."),
+			frappe.PermissionError,
+		)
+
+
+def default_urgent_date(doc) -> str | None:
+	"""Tanggal yang diusulkan waktu tombolnya dibuka: hari survey, lalu hari pickup.
+
+	Marking a job urgent is almost never about moving its day — it is about saying this day
+	matters more than another job's earlier one. So the day it is already worked to is the
+	right thing to offer, and typing a date is left to the case that really does want one.
+	"""
+	return doc.get(SURVEY_DATE) or doc.get(HEADER_DATE)
+
+
+@frappe.whitelist()
+def set_urgent(booking: str, urgent_date=None, reason: str | None = None) -> dict:
+	"""Tandai satu booking mendesak, dan turunkan tanggalnya ke semua pekerjaannya.
+
+	The date is a deadline like the other two, not a rank: two urgent jobs are still worked
+	nearest-day-first (``worklist.sort_by_priority``). What urgency buys is the tier above
+	every job that is not urgent — which is exactly the case it exists for, a booking on the
+	9th that has to be finished before one on the 1st.
+	"""
+	# Sebelum dokumennya dibaca: yang tidak berhak tidak perlu tahu booking-nya ada.
+	_require_urgency_permission()
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.get("direction") != OUTBOUND:
+		frappe.throw(frappe._("Prioritas mendesak hanya berlaku untuk booking Tank Out."))
+	if not _booking_is_live(doc):
+		frappe.throw(frappe._("Booking ini sudah batal / selesai — tidak ada lagi yang bisa didahulukan."))
+	d = getdate(urgent_date or default_urgent_date(doc) or nowdate())
+	reason = (reason or "").strip() or None
+	frappe.db.set_value("Container Booking", booking, {URGENT_DATE: d, URGENT_REASON: reason})
+	doc.set(URGENT_DATE, d)
+	doc.set(URGENT_REASON, reason)
+	sync_booking_targets(doc)
+	# The timeline is the audit trail: who declared it, when, and why. Written as a comment
+	# rather than as more read-only header fields because it is history — the answer to "who
+	# put this on top of my list" — and history belongs where every other change to this
+	# booking is already read.
+	doc.add_comment(
+		"Comment",
+		frappe._("Ditandai MENDESAK untuk {0}.").format(frappe.format(d, {"fieldtype": "Date"}))
+		+ (frappe._(" Alasan: {0}").format(reason) if reason else ""),
+	)
+	return {"urgent_date": str(d), "urgent_reason": reason}
+
+
+@frappe.whitelist()
+def clear_urgent(booking: str) -> dict:
+	"""Cabut urgensi: booking-nya kembali diurut oleh tanggal survey / pickup-nya sendiri."""
+	# Sebelum dokumennya dibaca: yang tidak berhak tidak perlu tahu booking-nya ada.
+	_require_urgency_permission()
+	doc = frappe.get_doc("Container Booking", booking)
+	if not doc.get(URGENT_DATE):
+		return {"urgent_date": None, "urgent_reason": None}
+	frappe.db.set_value("Container Booking", booking, {URGENT_DATE: None, URGENT_REASON: None})
+	doc.set(URGENT_DATE, None)
+	doc.set(URGENT_REASON, None)
+	# Total, and that is the point of routing the release through the same sync: a booking
+	# that is no longer urgent must also stop stamping its tanks, including the ones whose
+	# orders were opened while it was.
+	sync_booking_targets(doc)
+	doc.add_comment("Comment", frappe._("Tanda MENDESAK dicabut."))
+	return {"urgent_date": None, "urgent_reason": None}
 
 
 # --- how much of an outbound booking has actually left ------------------------

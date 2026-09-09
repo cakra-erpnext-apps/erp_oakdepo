@@ -1502,6 +1502,11 @@ OFFICE_ROLES = [
 # PWA menu is DocPerm-driven, Admin Ops sees EVERY tile, not a subset.
 PWA_OFFICE_ROLES = {"Admin Ops"}
 
+# Aksi yang dijaga daftar role, bukan DocPerm: menandai satu booking MENDESAK
+# (``lift_on.URGENCY_ROLES`` — SPV Lapangan, Admin Ops, Management, + kedua super-role).
+# Bukan flag DocPerm karena bukan soal boleh-tidaknya menulis dokumennya: yang menyunting
+# booking ada banyak, yang boleh menaikkannya ke atas antrean semua orang sedikit.
+
 # Standard ERPNext roles to assign ALONGSIDE the office role when creating a user.
 # Deliberately not automated: granting these means writing Custom DocPerm rows on
 # standard doctypes (Sales Invoice, Item, Purchase Order…), and the first Custom

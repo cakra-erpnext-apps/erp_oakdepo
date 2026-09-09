@@ -114,6 +114,7 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		# already being washed from everyone else's worklist (see work_claim).
 		fields=["name", "order_id", "container", "container_no", "container_principal", "status",
 			"cleaning_type", "last_cargo", "depot", "target_lift_on", "target_survey_on",
+			"target_urgent_on",
 			"order_created", "assigned_to"],
 		order_by="order_created asc",
 		limit_page_length=0,

@@ -166,7 +166,7 @@ def get_container_position(container, history_length=5) -> dict:
 		"Container", container,
 		["name", "container_no", "depot", "status", "principal", "container_type",
 		 "current_location", "location_updated_on", "location_updated_by", "target_lift_on",
-		 "target_survey_on"],
+		 "target_survey_on", "target_urgent_on"],
 		as_dict=True,
 	)
 	if not tank:
@@ -192,6 +192,7 @@ def get_container_position(container, history_length=5) -> dict:
 		"status": tank.status,
 		"target_lift_on": str(tank.target_lift_on) if tank.target_lift_on else None,
 		"target_survey_on": str(tank.target_survey_on) if tank.target_survey_on else None,
+		"target_urgent_on": str(tank.target_urgent_on) if tank.target_urgent_on else None,
 		"location_note": tank.current_location,
 		"location_updated_on": str(tank.location_updated_on) if tank.location_updated_on else None,
 		"location_updated_by": tank.location_updated_by,
@@ -264,7 +265,7 @@ def open_position_orders(start=0, page_length=20) -> dict:
 		"Container",
 		filters=filters,
 		fields=["name", "container_no", "principal", "depot", "status", "target_lift_on",
-				"target_survey_on", "current_location", "location_updated_on",
+				"target_survey_on", "target_urgent_on", "current_location", "location_updated_on",
 				"location_updated_by", "lift_on_booking"],
 		order_by="container_no asc",
 		limit_page_length=0,
@@ -289,7 +290,7 @@ def open_position_orders(start=0, page_length=20) -> dict:
 	rows = sort_by_priority(rows, lambda r: False, cint(start), cint(page_length))
 	for it in rows:
 		it["located"] = bool(it.get("current_location"))
-		for k in ("target_lift_on", "target_survey_on", "location_updated_on"):
+		for k in ("target_lift_on", "target_survey_on", "target_urgent_on", "location_updated_on"):
 			it[k] = str(it[k]) if it.get(k) else None
 		it.update(_age(it.get("location_updated_on")))
 	return {"items": rows, "total": total}
@@ -333,14 +334,19 @@ def search_containers(search=None, start=0, page_length=20, only_unlocated=0) ->
 	# One expression, written once: the day this tank is wanted, or NULL when nobody is
 	# waiting for it.
 	due = "coalesce(c.target_survey_on, c.target_lift_on)"
+	# An urgent tank comes first whatever its own two dates say — the same tier the Python
+	# worklists apply (``worklist.sort_by_priority``), written again here because this list is
+	# paged in SQL and never passes through them.
+	urgent = "c.target_urgent_on"
 	items = frappe.db.sql(
 		f"""
 		select c.name, c.container_no, c.principal, c.depot, c.status,
-		       c.target_lift_on, c.target_survey_on, c.current_location,
+		       c.target_lift_on, c.target_survey_on, c.target_urgent_on, c.current_location,
 		       c.location_updated_on, c.location_updated_by
 		  from `tabContainer` c
 		 where {clause}
-		 order by ({due} is null) asc, {due} asc, c.location_updated_on asc, c.container_no asc
+		 order by ({urgent} is null) asc, {urgent} asc,
+		          ({due} is null) asc, {due} asc, c.location_updated_on asc, c.container_no asc
 		 limit %(page_length)s offset %(start)s
 		""",
 		{**args, "page_length": cint(page_length), "start": cint(start)},
@@ -353,6 +359,7 @@ def search_containers(search=None, start=0, page_length=20, only_unlocated=0) ->
 		it["located"] = bool(it.get("current_location"))
 		it["target_lift_on"] = str(it["target_lift_on"]) if it.get("target_lift_on") else None
 		it["target_survey_on"] = str(it["target_survey_on"]) if it.get("target_survey_on") else None
+		it["target_urgent_on"] = str(it["target_urgent_on"]) if it.get("target_urgent_on") else None
 		it.update(_age(it.get("location_updated_on")))
 		it["location_updated_on"] = str(it["location_updated_on"]) if it.get("location_updated_on") else None
 	return {"items": items, "total": total}

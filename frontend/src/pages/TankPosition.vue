@@ -111,7 +111,7 @@
 								{{ r.located ? r.current_location : labels.tankPosUnlocated }}
 							</p>
 							<p v-if="r.target_survey_on || r.target_lift_on" class="mt-1 flex items-center">
-								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
+								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
 							</p>
 						</div>
 						<!-- The age of the answer, not just the answer. A position recorded in June
