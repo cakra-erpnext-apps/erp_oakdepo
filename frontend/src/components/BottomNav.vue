@@ -12,7 +12,7 @@
 				v-for="t in tabs"
 				:key="t.to"
 				:to="t.to"
-				class="group flex flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
+				class="group flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-1.5 transition-colors"
 				:class="isActive(t) ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'"
 			>
 				<span
@@ -25,7 +25,7 @@
 			</router-link>
 
 			<button
-				class="flex flex-1 flex-col items-center gap-1 py-1.5 transition-colors"
+				class="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-1.5 transition-colors"
 				:class="moreActive ? 'text-brand-600' : 'text-gray-400'"
 				:aria-expanded="moreOpen"
 				@click="moreOpen = true"
@@ -50,7 +50,9 @@ import { useRoute } from "vue-router"
 import Icon from "@/components/Icon.vue"
 import MoreSheet from "@/components/MoreSheet.vue"
 import { fetchMenu, menu } from "@/data/menu"
+import { session } from "@/data/session"
 import { TAB_ORDER, modulesFor } from "@/data/modules"
+import { MAX_TABS, pickedTabs } from "@/utils/navTabs"
 import { labels } from "@/utils/labels"
 
 const route = useRoute()
@@ -78,8 +80,11 @@ onBeforeUnmount(() => {
 	document.documentElement.style.removeProperty("--oak-bottom-h")
 })
 
-// How many of the account's own screens sit in the bar, next to Beranda and Lainnya.
-const WORK_TABS = 3
+// Berapa layar milik akun ini yang duduk di bar, di samping Beranda dan Lainnya. Tiga
+// adalah BATAS ATAS, bukan target: lima slot pada HP 320 px berarti 64 px per tab, sudah
+// pas-pasan untuk jempol, dan menambah satu lagi membuat semuanya menyempit. Operator yang
+// memilih satu atau dua modul justru mendapat tab yang lebih lebar — itu bonus, bukan
+// kekurangan, dan sebabnya `flex-1` dibiarkan membagi rata apa pun jumlahnya.
 
 // Beranda is unconditional: it is the one page every logged-in account may open, menu or no
 // menu, and the empty state lives there.
@@ -88,7 +93,14 @@ const home = { to: "/", icon: "home", title: labels.navHome }
 // Until the menu resolves, `menu.has` is false for everything and the bar is just Beranda +
 // Lainnya. Fail-closed, same call as data/menu.js: a tab that appears and then vanishes is
 // better than one that 403s on tap.
-const workTabs = computed(() => modulesFor(TAB_ORDER, menu).slice(0, WORK_TABS))
+//
+// Pilihan operator (utils/navTabs) menggantikan urutan bawaan, tapi tidak pernah menembus
+// permission: `modulesFor` tetap menyaringnya lewat `menu.has`, jadi modul yang haknya
+// dicabut hilang sendiri dari bar tanpa meninggalkan tab yang 403 saat ditekan.
+const workTabs = computed(() => {
+	const picked = pickedTabs(session.user)
+	return modulesFor(picked || TAB_ORDER, menu).slice(0, MAX_TABS)
+})
 const tabs = computed(() => [home, ...workTabs.value])
 const tabKeys = computed(() => workTabs.value.map((t) => t.key))
 

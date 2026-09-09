@@ -49,13 +49,70 @@
 				<!-- Every module this account holds that the bottom bar had no room for. The bar
 				     shows the few screens a shift is spent inside; this is the rest of the app,
 				     and it is the only way to reach them without typing a URL. -->
-				<div v-if="modules.length">
-					<p class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
-						{{ labels.moreModules }}
+				<div v-if="modules.length || editTabs">
+					<div class="mb-2 flex items-center justify-between gap-2 px-1">
+						<p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+							{{ editTabs ? labels.navTabsTitle : labels.moreModules }}
+						</p>
+						<!-- Pengaturannya tinggal di sini, bukan di Profil: sheet inilah yang
+						     dibuka justru pada saat modul yang dicari TIDAK ada di bar — momen
+						     paling wajar untuk memindahkannya ke sana. -->
+						<button
+							v-if="!editTabs"
+							class="oak-btn oak-btn-ghost px-2 py-1 text-xs"
+							@click="startEditTabs"
+						>
+							<Icon name="sliders" :size="14" /> {{ labels.navTabsEdit }}
+						</button>
+						<span v-else class="text-[11px] font-bold" :class="draft.length ? 'text-brand-600' : 'text-gray-400'">
+							{{ draft.length }}/{{ MAX_TABS }}
+						</span>
+					</div>
+
+					<p v-if="editTabs" class="mb-3 px-1 text-[11px] leading-snug text-gray-500">
+						{{ labels.navTabsHint }}
 					</p>
+
+					<!-- Mode pilih memakai grid yang SAMA, dan menampilkan seluruh modul akun ini —
+					     termasuk yang sedang jadi tab. Kalau yang sudah terpasang disembunyikan
+					     (seperti di mode biasa), tidak ada cara melepasnya lagi. Dua cabang, bukan
+					     satu <component :is>: yang satu menavigasi, yang satu mencentang, dan
+					     keduanya tidak berbagi apa pun selain tampilannya. -->
 					<div class="grid grid-cols-4 gap-x-2 gap-y-4">
+						<template v-if="editTabs">
+							<button
+								v-for="m in allModules"
+								:key="m.key"
+								type="button"
+								class="oak-press flex flex-col items-center gap-1.5"
+								:aria-pressed="draft.includes(m.key)"
+								@click="toggleTab(m.key)"
+							>
+								<span class="relative">
+									<span
+										class="oak-icon-tile h-14 w-14 transition"
+										:class="[m.tone, draft.includes(m.key) ? 'ring-2 ring-brand-500' : 'opacity-45']"
+									>
+										<Icon :name="m.icon" :size="22" />
+									</span>
+									<span
+										v-if="draft.includes(m.key)"
+										class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white shadow"
+									>
+										<Icon name="check" :size="12" />
+									</span>
+								</span>
+								<span
+									class="text-center text-[11px] font-semibold leading-tight"
+									:class="draft.includes(m.key) ? 'text-brand-700' : 'text-gray-500'"
+								>
+									{{ m.title }}
+								</span>
+							</button>
+						</template>
 						<router-link
 							v-for="m in modules"
+							v-else
 							:key="m.to"
 							:to="m.to"
 							class="oak-press flex flex-col items-center gap-1.5"
@@ -68,6 +125,18 @@
 								{{ m.title }}
 							</span>
 						</router-link>
+					</div>
+
+					<div v-if="editTabs" class="mt-4 flex items-center gap-2">
+						<button class="oak-btn oak-btn-secondary flex-1 py-2.5" @click="editTabs = false">
+							{{ labels.navTabsCancel }}
+						</button>
+						<button class="oak-btn oak-btn-ghost shrink-0 px-3 py-2.5 text-xs" @click="resetDraft">
+							{{ labels.navTabsReset }}
+						</button>
+						<button class="oak-btn oak-btn-primary flex-1 py-2.5" @click="saveTabs">
+							{{ labels.navTabsSave }}
+						</button>
 					</div>
 				</div>
 
@@ -165,11 +234,13 @@
 </template>
 
 <script setup>
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 import { session } from "@/data/session"
 import { userContext } from "@/data/context"
 import { menu } from "@/data/menu"
 import { MODULES, modulesFor } from "@/data/modules"
+import { MAX_TABS, pickedTabs, resetTabs, setTabs } from "@/utils/navTabs"
+import { toast } from "@/utils/toast"
 import { useDismissOnBack } from "@/utils/backstack"
 import { setTheme, theme } from "@/utils/theme"
 import { labels } from "@/utils/labels"
@@ -230,6 +301,63 @@ const modules = computed(() =>
 		Object.keys(MODULES).filter((k) => !props.exclude.includes(k)),
 		menu
 	)
+)
+
+// --- Atur tab bawah -----------------------------------------------------------
+// Yang dipilih hanya tiga slot tengah; Beranda dan Lainnya tidak pernah ikut daftar ini
+// (lihat utils/navTabs.js). Pilihannya disunting sebagai draft supaya "Batal" benar-benar
+// membatalkan — bar tidak berubah di belakang sheet setiap kali sebuah ikon diketuk.
+const editTabs = ref(false)
+const draft = ref([])
+const allModules = computed(() => modulesFor(Object.keys(MODULES), menu))
+
+function startEditTabs() {
+	// Titik awalnya adalah bar yang sedang terlihat: `exclude` justru berisi kunci tab yang
+	// sedang dipasang, jadi tidak perlu menebak apa pun.
+	// Disalin, bukan dipakai langsung: draft harus bisa diubah tanpa menyentuh yang tersimpan.
+	draft.value = [...(pickedTabs(session.user) || props.exclude.slice(0, MAX_TABS))]
+	editTabs.value = true
+}
+
+function toggleTab(key) {
+	const i = draft.value.indexOf(key)
+	if (i !== -1) {
+		draft.value = draft.value.filter((k) => k !== key)
+		return
+	}
+	// Penuh: yang paling lama dipilih keluar, bukan ketukannya yang ditolak diam-diam.
+	// Menolak tanpa penjelasan membuat layar terasa rusak; menggeser membuatnya terasa
+	// seperti tiga kantong yang bisa diisi bergantian.
+	draft.value = [...draft.value, key].slice(-MAX_TABS)
+}
+
+function resetDraft() {
+	resetTabs(session.user)
+	editTabs.value = false
+	toast.success(labels.navTabsResetDone)
+}
+
+function saveTabs() {
+	setTabs(session.user, draft.value)
+	editTabs.value = false
+	toast.success(labels.navTabsSaved)
+}
+
+// Sheet ditutup dengan mode pilih masih menyala → buka lagi harus bersih, bukan setengah
+// jalan di draft kemarin.
+watch(
+	() => props.open,
+	(open) => {
+		if (!open) editTabs.value = false
+	}
+)
+
+// Back keluar dari mode pilih dulu, baru menutup sheet. Didaftarkan BELAKANGAN dari
+// dismisser sheet-nya, jadi ia yang di atas tumpukan selama mode pilih menyala — satu
+// gesture, satu lapisan, sama seperti lapisan lain di aplikasi ini (utils/backstack.js).
+useDismissOnBack(
+	computed(() => props.open && editTabs.value),
+	() => (editTabs.value = false)
 )
 
 // No version string: the app has no release number worth printing (package.json is 0.0.0),

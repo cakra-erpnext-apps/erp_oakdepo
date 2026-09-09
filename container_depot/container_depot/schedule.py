@@ -198,6 +198,20 @@ def _source_meta(kinds=None) -> list:
 	return [{"kind": s["kind"], "doctype": s["doctype"]} for s in _visible_sources(kinds)]
 
 
+def overdue_summary(date=None, kinds=None) -> dict:
+	"""Berapa pekerjaan terencana yang tanggalnya sudah lewat dan belum beres, plus hari
+	tertuanya — tanpa kartu-kartunya.
+
+	Pintu publik ke aturan yang sama yang menggambar spanduk "dari kemarin" di kalender,
+	untuk pemanggil yang cuma butuh angkanya: Beranda memakainya sebagai satu baris di
+	"Menunggu Anda" (``ess/home.py``). Satu aturan, dua layar — kalau keduanya menghitung
+	sendiri-sendiri, cepat atau lambat angkanya berselisih dan tidak ada yang tahu mana
+	yang benar.
+	"""
+	over = _overdue(getdate(date or today()), kinds)
+	return {"count": over["count"], "since": over["since"], "kinds": over["kinds"]}
+
+
 # ---------------------------------------------------------------------------
 # One day — the list under the grid
 # ---------------------------------------------------------------------------

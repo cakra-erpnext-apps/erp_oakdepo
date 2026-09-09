@@ -154,7 +154,29 @@ export const labels = {
 	// Kartu angka "Hari ini". Sub-teks tiap kartu sengaja menyebut sisa pekerjaan, bukan
 	// mengulang angka besarnya — itu satu-satunya alasan angka hari ini perlu dilihat.
 	homeToday: "Hari ini",
+	// Atur kartu "Hari ini" — maksimal empat, dipilih dari kartu yang menunya dipegang akun
+	// ini (utils/homeTiles.js). Tombol Simpan/Batal/Bawaan-nya berbagi label dengan pengatur
+	// tab bar bawah: dua panel, satu bahasa.
+	homeTilesEdit: "Atur",
+	homeTilesTitle: "Atur kartu",
+	homeTilesHint: "Pilih sampai 4 kartu yang paling sering Anda lihat. Angkanya sudah yang sebenarnya, jadi bisa dibandingkan sebelum memilih.",
+	homeTilesSaved: "Kartu beranda diperbarui",
+	homeTilesResetDone: "Kartu beranda kembali ke bawaan",
 	homeTodayMonitor: "Lihat monitor",
+	// Kartu tambahan — satu per menu yang sebelumnya tidak punya angka di beranda.
+	homeTileEirOpen: "EIR belum dikerjakan",
+	homeTileEirOpenSub: "{n} EIR keluar menunggu",
+	homeTileMr: "M&R aktif",
+	homeTileMrSub: "{n} menunggu persetujuan",
+	homeTileMonitor: "Tank di depo",
+	homeTileMonitorSub: "semua tank aktif",
+	homeTileSchedule: "Jadwal hari ini",
+	homeTileScheduleSub: "{n} belum beres",
+	homeTileSurvey: "Survey hari ini",
+	homeTileLowering: "Antre lowering",
+	homeTileLoweringSub: "{n} tank menunggu",
+	homeTileUnlocated: "Tank tanpa letak",
+	homeTileUnlocatedSub: "{n} belum dicatat",
 	homeTileGateIn: "Tank masuk",
 	homeTileGateInSub: "{n} belum EIR",
 	homeTileGateOut: "Tank keluar",
@@ -183,6 +205,15 @@ export const labels = {
 	waitLoweringMany: "{n} tank menunggu diturunkan",
 	waitSurveyReadyMany: "{n} tank siap disurvey",
 	waitUnlocatedMany: "{n} tank belum ada letaknya",
+	// Antrean review Cleaning & M&R — sebangun dengan waitEirReview di atas: sudah selesai
+	// di lapangan, menunggu Adm Ops menutupnya.
+	waitCleaningReviewOne: "Cleaning {ref} menunggu review",
+	waitCleaningReviewMany: "{n} cleaning order menunggu review",
+	waitMrReviewOne: "M&R {ref} menunggu review",
+	waitMrReviewMany: "{n} M&R menunggu review",
+	// Pekerjaan terencana yang tanggalnya sudah lewat dan belum beres. Tanpa "{n} " di depan
+	// kalimatnya karena angka itu selalu jamak di sini — satu pun sudah terlambat.
+	waitScheduleOverdueMany: "{n} jadwal lewat tanggal belum beres",
 	// Umur antrean, dibulatkan ke satuan yang masih terbaca sekilas.
 	ageNow: "baru saja",
 	ageMinutes: "{n} mnt",
@@ -194,6 +225,16 @@ export const labels = {
 	homeGroupHistory: "Riwayat",
 	// --- Sheet "Lainnya" (tab terakhir bottom nav) ---------------------------
 	navMore: "Lainnya",
+	// Atur tab bar bawah (sheet Lainnya). Beranda & Lainnya tidak pernah masuk pilihan —
+	// lihat utils/navTabs.js.
+	navTabsEdit: "Atur tab",
+	navTabsTitle: "Tab bar bawah",
+	navTabsHint: "Pilih sampai 3 modul untuk bar bawah. Beranda dan Lainnya selalu ada; sisanya tetap bisa dibuka dari sini.",
+	navTabsSave: "Simpan",
+	navTabsCancel: "Batal",
+	navTabsReset: "Bawaan",
+	navTabsSaved: "Tab bar bawah diperbarui",
+	navTabsResetDone: "Tab bar bawah kembali ke bawaan",
 	moreModules: "Modul lain",
 	moreAccount: "Akun dan sistem",
 	moreRoles: "Peran aktif",

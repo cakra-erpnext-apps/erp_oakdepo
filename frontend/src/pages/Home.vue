@@ -78,37 +78,98 @@
 			<!-- "Hari ini" — angka besar = yang sudah terjadi, sub-teks = sisa pekerjaan yang
 			     menempel padanya. Sub-teks itulah alasan kartu ini ada; angka besarnya sendiri
 			     tidak menyuruh siapa pun berbuat apa-apa. -->
-			<section v-if="todayTiles.length || summaryRes.loading">
-				<div class="mb-2 flex items-end justify-between px-1">
-					<p class="oak-eyebrow">{{ labels.homeToday }}</p>
-					<router-link v-if="menu.has('monitor')" to="/monitor" class="oak-link text-xs">
-						{{ labels.homeTodayMonitor }}
-					</router-link>
-				</div>
-				<div v-if="summaryRes.loading && !summary" class="grid grid-cols-2 gap-3">
-					<div v-for="i in 4" :key="i" class="oak-card h-[86px] p-3.5">
-						<div class="oak-skeleton h-3 w-20"></div>
-						<div class="oak-skeleton mt-2 h-6 w-10"></div>
-						<div class="oak-skeleton mt-2 h-3 w-16"></div>
+			<section v-if="todayTiles.length || summaryRes.loading || editTiles">
+				<div class="mb-2 flex items-end justify-between gap-2 px-1">
+					<p class="oak-eyebrow">{{ editTiles ? labels.homeTilesTitle : labels.homeToday }}</p>
+					<div class="flex shrink-0 items-center gap-3">
+						<span
+							v-if="editTiles"
+							class="text-[11px] font-bold"
+							:class="tileDraft.length ? 'text-brand-600' : 'text-gray-400'"
+						>
+							{{ tileDraft.length }}/{{ MAX_TILES }}
+						</span>
+						<template v-else>
+							<!-- "Atur" hanya berarti sesuatu kalau memang ada yang bisa ditukar:
+							     akun dengan satu kartu tidak punya pilihan untuk dibuat. -->
+							<button v-if="availableTiles.length > 1" class="oak-link text-xs" @click="startEditTiles">
+								{{ labels.homeTilesEdit }}
+							</button>
+							<router-link v-if="menu.has('monitor')" to="/monitor" class="oak-link text-xs">
+								{{ labels.homeTodayMonitor }}
+							</router-link>
+						</template>
 					</div>
 				</div>
-				<div v-else class="grid grid-cols-2 gap-3">
-					<router-link
-						v-for="t in todayTiles"
-						:key="t.key"
-						:to="t.to"
-						class="oak-card oak-press p-3.5"
-					>
-						<p class="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
-							<Icon :name="t.icon" :size="13" :class="t.text" />
-							<span class="truncate">{{ t.label }}</span>
-						</p>
-						<p class="mt-0.5 text-2xl font-extrabold leading-tight text-gray-900">{{ t.value }}</p>
-						<p v-if="t.sub" class="truncate text-[11px] font-semibold" :class="t.subTone">
-							{{ t.sub }}
-						</p>
-					</router-link>
-				</div>
+
+				<!-- Mode atur: SELURUH kartu yang boleh dilihat akun ini, dengan angkanya yang
+				     sebenarnya (server diminta menghitung semuanya selama panel ini terbuka).
+				     Memilih kartu tanpa melihat angkanya berarti memilih nama, dan nama tidak
+				     memberitahu siapa pun angka mana yang penting buat pekerjaannya. -->
+				<template v-if="editTiles">
+					<p class="mb-2 px-1 text-[11px] leading-snug text-gray-500">{{ labels.homeTilesHint }}</p>
+					<div class="grid grid-cols-2 gap-3">
+						<button
+							v-for="c in availableTiles"
+							:key="c.key"
+							type="button"
+							class="oak-card oak-press relative p-3.5 text-left transition"
+							:class="tileDraft.includes(c.key) ? 'border-brand-300 ring-2 ring-brand-500' : 'opacity-55'"
+							:aria-pressed="tileDraft.includes(c.key)"
+							@click="toggleTile(c.key)"
+						>
+							<p class="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
+								<Icon :name="c.icon" :size="13" :class="c.text" />
+								<span class="truncate">{{ c.label }}</span>
+							</p>
+							<p class="mt-0.5 text-2xl font-extrabold leading-tight text-gray-900">{{ tileValue(c) }}</p>
+							<span
+								v-if="tileDraft.includes(c.key)"
+								class="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white shadow"
+							>
+								<Icon name="check" :size="12" />
+							</span>
+						</button>
+					</div>
+					<div class="mt-3 flex items-center gap-2">
+						<button class="oak-btn oak-btn-secondary flex-1 py-2.5" @click="editTiles = false">
+							{{ labels.navTabsCancel }}
+						</button>
+						<button class="oak-btn oak-btn-ghost shrink-0 px-3 py-2.5 text-xs" @click="resetTilesToDefault">
+							{{ labels.navTabsReset }}
+						</button>
+						<button class="oak-btn oak-btn-primary flex-1 py-2.5" @click="saveTiles">
+							{{ labels.navTabsSave }}
+						</button>
+					</div>
+				</template>
+
+				<template v-else>
+					<div v-if="summaryRes.loading && !summary" class="grid grid-cols-2 gap-3">
+						<div v-for="i in tileKeys.length || 4" :key="i" class="oak-card h-[86px] p-3.5">
+							<div class="oak-skeleton h-3 w-20"></div>
+							<div class="oak-skeleton mt-2 h-6 w-10"></div>
+							<div class="oak-skeleton mt-2 h-3 w-16"></div>
+						</div>
+					</div>
+					<div v-else class="grid grid-cols-2 gap-3">
+						<router-link
+							v-for="t in todayTiles"
+							:key="t.key"
+							:to="t.to"
+							class="oak-card oak-press p-3.5"
+						>
+							<p class="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
+								<Icon :name="t.icon" :size="13" :class="t.text" />
+								<span class="truncate">{{ t.label }}</span>
+							</p>
+							<p class="mt-0.5 text-2xl font-extrabold leading-tight text-gray-900">{{ t.value }}</p>
+							<p v-if="t.sub" class="truncate text-[11px] font-semibold" :class="t.subTone">
+								{{ t.sub }}
+							</p>
+						</router-link>
+					</div>
+				</template>
 			</section>
 
 			<!-- "Menunggu Anda" — antrean yang sudah menunggu, tertua di atas. Umurnya yang
@@ -190,7 +251,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { session } from "@/data/session"
 import { userContext } from "@/data/context"
@@ -198,6 +259,14 @@ import { cachedResource } from "@/data/cache"
 import { fetchMenu, menu } from "@/data/menu"
 import { GROUP_OPS, GROUP_YARD, modulesFor } from "@/data/modules"
 import { labels } from "@/utils/labels"
+import { toast } from "@/utils/toast"
+import {
+	DEFAULT_TILES,
+	MAX_TILES,
+	pickedTiles,
+	resetTiles,
+	setTiles,
+} from "@/utils/homeTiles"
 import Icon from "@/components/Icon.vue"
 
 const router = useRouter()
@@ -248,16 +317,6 @@ function goSearch() {
 	query.value = ""
 }
 
-// --- Ringkasan beranda -------------------------------------------------------------
-// Satu GET untuk kartu "Hari ini" + antrean "Menunggu Anda" (ess/home.py). Lewat
-// cachedResource, jadi di titik mati sinyal beranda masih menampilkan angka terakhir
-// alih-alih layar kosong — sama seperti setiap worklist di app ini.
-const summaryRes = cachedResource({
-	url: "container_depot.ess.home.get_home_summary",
-	method: "GET",
-	auto: true,
-})
-const summary = computed(() => summaryRes.data || null)
 
 function ageText(min) {
 	if (min === null || min === undefined) return ""
@@ -275,56 +334,172 @@ function sub(count, tpl) {
 	return { sub: fill(tpl, { n: count }), subTone: "text-brand-600" }
 }
 
+// Katalog kartu "Hari ini" — satu-dua per menu, semuanya tersedia untuk dipilih. `menu`
+// adalah kunci permission yang menjaganya (sama dengan yang dipakai bar bawah), `value`
+// membaca angka yang dikirim ess/home.py, dan `sub` kalimat kecil di bawahnya: sisa
+// pekerjaan yang menempel pada angka besar itu. Sub-teks itulah alasan kartunya ada —
+// angka besarnya sendiri tidak menyuruh siapa pun berbuat apa-apa.
+//
+// Urutan di sini adalah urutan yang tampil di pengaturan, dan sengaja mengikuti urutan
+// modul di data/modules.js supaya operator menemukannya di tempat yang sama.
+const TILE_CATALOG = [
+	{
+		key: "gateIn", menu: "gate", icon: "log-in", text: "text-brand-500",
+		label: labels.homeTileGateIn, to: "/gate/history",
+		value: (t) => t.gate_in, sub: (t) => sub(t.eir_open, labels.homeTileGateInSub),
+	},
+	{
+		key: "gateOut", menu: "gate", icon: "log-out", text: "text-leaf-500",
+		label: labels.homeTileGateOut, to: "/gate/history",
+		value: (t) => t.gate_out, sub: (t) => sub(t.booking_out, labels.homeTileGateOutSub),
+	},
+	{
+		key: "eirOpen", menu: "eir", icon: "clipboard", text: "text-brand-500",
+		label: labels.homeTileEirOpen, to: "/eir",
+		value: (t) => t.eir_open, sub: (t) => sub(t.eir_out, labels.homeTileEirOpenSub),
+	},
+	{
+		key: "eirReview", menu: "eir", icon: "clipboard", text: "text-amber-500",
+		label: labels.homeTileEirReview, to: "/eir",
+		value: (t) => t.eir_review,
+		// Umur yang tertua, bukan jumlahnya: satu EIR yang menunggu sejak awal shift lebih
+		// mendesak daripada tiga yang baru dikirim semenit lalu.
+		sub: (t) => {
+			const age = ageText(t.eir_review_age)
+			return {
+				sub: t.eir_review ? (age ? fill(labels.homeTileEirReviewSub, { age }) : null) : labels.homeTileClear,
+				subTone: t.eir_review ? "text-amber-600" : "text-gray-400",
+			}
+		},
+	},
+	{
+		key: "cleaning", menu: "cleaning", icon: "droplet", text: "text-leaf-500",
+		label: labels.homeTileCleaning, to: "/cleaning",
+		value: (t) => t.cleaning_open, sub: (t) => sub(t.cleaning_idle, labels.homeTileCleaningSub),
+	},
+	{
+		key: "mr", menu: "mr", icon: "tool", text: "text-amber-500",
+		label: labels.homeTileMr, to: "/mr",
+		value: (t) => t.mr_open, sub: (t) => sub(t.mr_approval, labels.homeTileMrSub),
+	},
+	{
+		key: "monitor", menu: "monitor", icon: "grid", text: "text-brand-500",
+		label: labels.homeTileMonitor, to: "/monitor",
+		value: (t) => t.depot_total, sub: () => ({ sub: labels.homeTileMonitorSub, subTone: "text-gray-400" }),
+	},
+	{
+		key: "schedule", menu: "schedule", icon: "calendar", text: "text-brand-500",
+		label: labels.homeTileSchedule, to: "/schedule",
+		value: (t) => t.schedule_today, sub: (t) => sub(t.schedule_open, labels.homeTileScheduleSub),
+	},
+	{
+		key: "survey", menu: "surveyList", icon: "list", text: "text-brand-500",
+		label: labels.homeTileSurvey, to: "/survey-orders",
+		value: (t) => t.survey_today, sub: () => ({ sub: null, subTone: "" }),
+	},
+	{
+		key: "lowering", menu: "posFix", icon: "arrow-down-circle", text: "text-leaf-500",
+		label: labels.homeTileLowering, to: "/position-fix",
+		value: (t) => t.lowering, sub: (t) => sub(t.lowering, labels.homeTileLoweringSub),
+	},
+	{
+		key: "unlocated", menu: "tankPos", icon: "map-pin", text: "text-amber-500",
+		label: labels.homeTileUnlocated, to: "/tank-position",
+		value: (t) => t.unlocated, sub: (t) => sub(t.unlocated, labels.homeTileUnlocatedSub),
+	},
+]
+
+// Kartu yang boleh dilihat akun ini. Permission tetap yang berkuasa: pilihan operator hanya
+// menentukan urutan dan jumlah, tidak pernah membuka kartu yang menunya tidak dipegang.
+const availableTiles = computed(() => TILE_CATALOG.filter((c) => menu.has(c.menu)))
+
+// Kunci kartu yang aktif — pilihan operator, atau empat bawaan kalau ia belum pernah
+// memilih. Inilah yang dikirim ke server sebagai `tiles`, jadi yang tidak tampil tidak
+// pernah dihitung.
+const tileKeys = computed(() => {
+	const picked = pickedTiles(session.user) || DEFAULT_TILES
+	const allowed = new Set(availableTiles.value.map((c) => c.key))
+	return picked.filter((k) => allowed.has(k)).slice(0, MAX_TILES)
+})
+
+// Panel "atur kartu". Disunting sebagai draft supaya "Batal" benar-benar membatalkan, dan
+// supaya beranda tidak memuat ulang angkanya setiap satu ikon diketuk. Dideklarasikan DI
+// ATAS resource di bawah: `auto: true` menembakkan GET pertamanya saat resource dibuat, dan
+// makeParams-nya membaca keduanya.
+const editTiles = ref(false)
+const tileDraft = ref([])
+
+// Angka mana yang diminta ke server. Selama panel atur terbuka: semuanya, supaya tiap kartu
+// bisa dipilih sambil melihat angkanya. Selebihnya: hanya yang tampil.
+const wantedTiles = computed(() =>
+	editTiles.value ? availableTiles.value.map((c) => c.key) : tileKeys.value
+)
+
+// --- Ringkasan beranda -------------------------------------------------------------
+// Satu GET untuk kartu "Hari ini" + antrean "Menunggu Anda" (ess/home.py). Lewat
+// cachedResource, jadi di titik mati sinyal beranda masih menampilkan angka terakhir
+// alih-alih layar kosong — sama seperti setiap worklist di app ini.
+const summaryRes = cachedResource({
+	url: "container_depot.ess.home.get_home_summary",
+	method: "GET",
+	// Kartu yang dipilih operator ikut ke server: yang tidak tampil tidak dihitung sama
+	// sekali (lihat _wanted_tiles di ess/home.py). Ia juga jadi bagian kunci cache, jadi
+	// mengubah pilihan tidak menampilkan angka milik susunan yang lama.
+	makeParams: () => ({ tiles: wantedTiles.value.join(",") || undefined }),
+	auto: true,
+})
+const summary = computed(() => summaryRes.data || null)
+
 const todayTiles = computed(() => {
 	const t = summary.value?.today
 	if (!t) return []
-	const out = []
-	if (t.gate_in !== undefined) {
-		out.push({
-			key: "gateIn",
-			icon: "log-in",
-			text: "text-brand-500",
-			label: labels.homeTileGateIn,
-			value: t.gate_in,
-			to: "/gate/history",
-			...sub(t.eir_open, labels.homeTileGateInSub),
+	return tileKeys.value
+		.map((key) => {
+			const c = availableTiles.value.find((x) => x.key === key)
+			if (!c) return null
+			const value = c.value(t)
+			// Angka yang tidak dikirim server = kartu yang tidak boleh digambar. Terjadi
+			// sesaat setelah pilihan berubah, sebelum GET berikutnya mendarat.
+			if (value === undefined) return null
+			return { key: c.key, icon: c.icon, text: c.text, label: c.label, to: c.to, value, ...c.sub(t) }
 		})
-		out.push({
-			key: "gateOut",
-			icon: "log-out",
-			text: "text-leaf-500",
-			label: labels.homeTileGateOut,
-			value: t.gate_out,
-			to: "/gate/history",
-			...sub(t.booking_out, labels.homeTileGateOutSub),
-		})
-	}
-	if (t.eir_review !== undefined) {
-		const age = ageText(t.eir_review_age)
-		out.push({
-			key: "eirReview",
-			icon: "clipboard",
-			text: "text-amber-500",
-			label: labels.homeTileEirReview,
-			value: t.eir_review,
-			to: "/eir",
-			sub: t.eir_review ? (age ? fill(labels.homeTileEirReviewSub, { age }) : null) : labels.homeTileClear,
-			subTone: t.eir_review ? "text-amber-600" : "text-gray-400",
-		})
-	}
-	if (t.cleaning_open !== undefined) {
-		out.push({
-			key: "cleaning",
-			icon: "droplet",
-			text: "text-leaf-500",
-			label: labels.homeTileCleaning,
-			value: t.cleaning_open,
-			to: "/cleaning",
-			...sub(t.cleaning_idle, labels.homeTileCleaningSub),
-		})
-	}
-	return out
+		.filter(Boolean)
 })
+
+// --- Atur kartu ---------------------------------------------------------------------
+function startEditTiles() {
+	tileDraft.value = [...tileKeys.value]
+	editTiles.value = true
+}
+function toggleTile(key) {
+	if (tileDraft.value.includes(key)) {
+		tileDraft.value = tileDraft.value.filter((k) => k !== key)
+		return
+	}
+	// Penuh: yang paling lama dipilih keluar, bukan ketukannya yang ditolak diam-diam.
+	tileDraft.value = [...tileDraft.value, key].slice(-MAX_TILES)
+}
+function saveTiles() {
+	setTiles(session.user, tileDraft.value)
+	editTiles.value = false
+	toast.success(labels.homeTilesSaved)
+}
+function resetTilesToDefault() {
+	resetTiles(session.user)
+	editTiles.value = false
+	toast.success(labels.homeTilesResetDone)
+}
+
+watch(wantedTiles, (now, before) => {
+	if (now.join(",") !== (before || []).join(",")) summaryRes.reload()
+})
+
+/** Angka satu kartu di panel atur — "—" selagi GET yang lebih lengkap belum mendarat. */
+function tileValue(c) {
+	const t = summary.value?.today
+	const v = t ? c.value(t) : undefined
+	return v === undefined || v === null ? "—" : v
+}
 
 // Satu entri per kunci antrean yang dikirim ess/home.py. Kalimatnya dua versi: yang
 // menyebut tank (antrean berisi satu) dan yang menyebut jumlah — server hanya mengirim
@@ -339,6 +514,10 @@ const WAIT = {
 	lowering: { icon: "arrow-down-circle", tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
 	surveyReady: { icon: "list", tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
 	unlocated: { icon: "map-pin", tone: "bg-gray-100 text-gray-500", to: "/tank-position", many: labels.waitUnlocatedMany },
+	cleaningReview: { icon: "droplet", tone: "bg-sky-50 text-sky-600", to: "/cleaning", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
+	mrReview: { icon: "tool", tone: "bg-sky-50 text-sky-600", to: "/mr", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
+	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
+	scheduleOverdue: { icon: "calendar", tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
 }
 const waiting = computed(() =>
 	(summary.value?.waiting || [])
