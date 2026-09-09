@@ -1388,12 +1388,23 @@ class TestContainerReservation(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
 		_purge_bookings(self.customer)
+		# Every tank this class reuses, not just the first: a test that leaves one Booked
+		# (or arrived) hands the next one a tank that behaves differently.
+		for no in (self.TANK, "RSVU0000002", "RSVU0000003"):
+			if frappe.db.exists("Container", no):
+				self._tank(no)
 		self._tank(self.TANK)
 
 	def _tank(self, no):
 		if frappe.db.exists("Container", no):
+			# Back to a never-arrived tank, ``eir_in_date`` included: that stamp is what
+			# every release guard reads ("has this tank ever been through a gate"), so a
+			# test that sets it would otherwise leave every later test holding a tank the
+			# booking is not allowed to reserve OR release.
 			frappe.db.set_value(
-				"Container", no, {"status": GATE_OUT, "created_by_booking": None}, update_modified=False
+				"Container", no,
+				{"status": GATE_OUT, "created_by_booking": None, "eir_in_date": None},
+				update_modified=False,
 			)
 			return no
 		return frappe.get_doc({
@@ -1624,6 +1635,69 @@ class TestContainerReservation(FrappeTestCase):
 			),
 			[],
 		)
+
+	def test_voiding_the_draft_gives_every_tank_back(self):
+		"""The other road a booking dies by. A draft never passes through ``on_cancel``, so
+		``void_draft`` has to do the unwinding itself."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			void_draft,
+		)
+
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), "Booked")
+
+		void_draft(b.name)
+
+		for tank in (self.TANK, other):
+			self.assertEqual(frappe.db.get_value("Container", tank, "status"), GATE_OUT)
+			self.assertEqual(
+				frappe.db.get_value("Container", tank, "inventory_stage"),
+				stage_for_status(GATE_OUT),
+			)
+
+	def test_a_cancelled_booking_says_so_on_every_tank_it_confirmed(self):
+		"""Same counter-entry as a dropped row, on the other road out: a feed that only
+		ever records the confirmation tells half the story."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			void_draft,
+		)
+
+		b = self._booking(self.TANK)
+		b.insert(ignore_permissions=True)
+		log_container_activity(
+			self.TANK, "Booking", reference_doctype="Container Booking",
+			reference_name=b.name, summary="Booking confirmed (Tank In)",
+		)
+
+		void_draft(b.name)
+
+		summaries = frappe.get_all(
+			"Container Activity",
+			filters={"container": self.TANK, "reference_name": b.name},
+			pluck="summary",
+		)
+		self.assertTrue(any("Booking dibatalkan" in (x or "") for x in summaries), summaries)
+
+	def test_a_tank_that_has_already_arrived_is_never_released(self):
+		"""The reservation is undone; a tank standing in the yard is not. Dropping the row
+		of a tank that gated in must not pull it out of inventory."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+
+		# It arrived: the gate stamps the date and the tank is in the depot.
+		frappe.db.set_value(
+			"Container", self.TANK,
+			{"status": "In_Depot", "eir_in_date": today()},
+			update_modified=False,
+		)
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), "In_Depot")
 
 	def test_dropping_a_row_deletes_the_master_it_minted(self):
 		"""A phantom exists only because of this booking, so a dropped row takes it with

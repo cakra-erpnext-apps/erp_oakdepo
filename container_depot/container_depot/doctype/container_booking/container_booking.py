@@ -320,9 +320,18 @@ class ContainerBooking(Document):
 		frappe.throw(_("A Container Booking cannot be deleted — use Cancel to void it instead."))
 
 	def _release_pre_arrival_containers(self):
-		"""Unwind every Tank-In container reservation this booking made (cancel)."""
+		"""Unwind every Tank-In container reservation this booking made (cancel).
+
+		Reached from both roads a booking dies by — ``on_cancel`` for a submitted one and
+		``void_draft`` for a draft — so the tank's feed says the pickup is off whichever was
+		taken."""
 		for item in self.items or []:
+			if not item.container:
+				continue
 			self._release_reserved_container(item.container, item=item)
+			self._log_booking_release(
+				item.container, f"Booking dibatalkan ({self.get('direction') or 'Tank In'})"
+			)
 
 	def _row_container_changes(self) -> tuple[list, list]:
 		"""``(dropped, added)`` containers for the save that just landed.
@@ -368,23 +377,40 @@ class ContainerBooking(Document):
 		log_doc_note(
 			self.doctype, self.name, _("Baris container diubah — {0}").format("; ".join(parts))
 		)
-		# ...and on the tank's own feed, so the change is visible from the container side
-		# too. Only for a booking that had actually been confirmed against it: a draft that
-		# is still being typed has promised the tank nothing, and every keystroke of a
-		# correction would otherwise land in the audit trail as an event.
+		# ...and on the tank's own feed, so the change is visible from the container side too.
 		for container in dropped:
-			if not frappe.db.exists("Container Activity", {
-				"container": container,
-				"reference_doctype": self.doctype,
-				"reference_name": self.name,
-				"activity_type": "Booking",
-			}):
-				continue
-			log_container_activity(
-				container, "Booking",
-				reference_doctype=self.doctype, reference_name=self.name,
-				summary=f"Dikeluarkan dari booking ({self.get('direction') or 'Tank In'})",
+			self._log_booking_release(
+				container, f"Dikeluarkan dari booking ({self.get('direction') or 'Tank In'})"
 			)
+
+	def _log_booking_release(self, container, summary) -> None:
+		"""Counter-entry on one tank's own feed for a booking that has let it go.
+
+		Append-only: the ``Booking confirmed`` entry stays — it did happen — and this says
+		what happened next. The container feed is the one chronological place the yard reads
+		a tank's life from, and a booking that only ever writes its confirmation there tells
+		half a story.
+
+		Written only where there is something to counter, i.e. this booking actually reached
+		the tank's feed (it was confirmed). A draft still being typed has promised the tank
+		nothing, and every keystroke of a correction would otherwise land in the audit trail
+		as an event. And only while the master is still there: a phantom is DELETED with the
+		row that minted it (:meth:`_release_reserved_container`), and an activity pointing at
+		a tank that no longer exists is a dangling link, not a record."""
+		if not frappe.db.exists("Container", container):
+			return
+		if not frappe.db.exists("Container Activity", {
+			"container": container,
+			"reference_doctype": self.doctype,
+			"reference_name": self.name,
+			"activity_type": "Booking",
+		}):
+			return
+		log_container_activity(
+			container, "Booking",
+			reference_doctype=self.doctype, reference_name=self.name,
+			summary=summary,
+		)
 
 	def _release_dropped_containers(self, dropped):
 		"""Release the tanks a save just took off the booking.
@@ -395,9 +421,10 @@ class ContainerBooking(Document):
 		forever: invisible on the booking, yet refused by every later booking as
 		"already spoken for", and counted as a tank the depot was expecting.
 
-		Runs in ``on_update`` / ``on_update_after_submit``, after the write: a phantom
-		master may have to be deleted, and nothing may be deleted while the parent save is
-		still in flight.
+		Runs in ``on_update``, after the write: a phantom master may have to be deleted, and
+		nothing may be deleted while the parent save is still in flight. Draft only in
+		practice — ``before_update_after_submit`` refuses every edit to a submitted booking,
+		so rows can only move while it is a draft.
 		"""
 		for container in dropped:
 			self._release_reserved_container(container)
