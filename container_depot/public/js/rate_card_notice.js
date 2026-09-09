@@ -28,7 +28,9 @@ container_depot.rate_card_notice = function (frm, customer) {
 };
 
 container_depot._paint_rate_card_notice = function (frm, status) {
-	if (!status || status.ok) return;
+	// Kontraknya sudah ada / sudah bertarif: buang spanduknya, jangan cuma diam — form yang
+	// sama bisa dipakai lagi untuk order milik owner lain.
+	if (!status || status.ok) return container_depot.form_message(frm, 'rate-card', '');
 	const esc = frappe.utils.escape_html;
 	const who = esc(status.customer);
 	let msg;
@@ -50,7 +52,7 @@ container_depot._paint_rate_card_notice = function (frm, status) {
 			__('Isi Tariff Lines-nya, lalu simpan — tanpa itu setiap baris order harganya 0.') +
 			` <a href="${href}">${__('Buka kontrak')}</a>`;
 	}
-	// Replaces whatever headline was set before it: a missing rate card is the most
-	// actionable thing on the form, and the layout shows one message at a time.
-	frm.dashboard.add_comment(msg, 'red', true);
+	// Berkunci: `refresh` boleh jalan berkali-kali (dan jawaban call ini boleh mendarat
+	// belakangan) tanpa membuat spanduk merahnya bertumpuk — lihat form_message.js.
+	container_depot.form_message(frm, 'rate-card', msg, 'red');
 };

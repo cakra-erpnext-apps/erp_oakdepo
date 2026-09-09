@@ -102,8 +102,9 @@ function is_admin_ops() {
 }
 
 // Admin-Ops bypass: approve directly without ever showing it to the owner. Offered wherever
-// the estimate is still in depot hands (Draft / Revision Requested / Service Setup).
-function mr_bypass_button(frm, group) {
+// the estimate is still in depot hands (Draft / Revision Requested). A flat toolbar button,
+// never a dropdown item: skipping the owner is a decision the user has to SEE before taking.
+function mr_bypass_button(frm) {
 	frm.add_custom_button(
 		__('Setujui Tanpa Owner'),
 		() =>
@@ -118,8 +119,7 @@ function mr_bypass_button(frm, group) {
 					),
 				__('Setujui Tanpa Owner'),
 				__('Setujui')
-			),
-		group
+			)
 	);
 }
 
@@ -173,7 +173,7 @@ function mr_decision_with_note(frm, decision, title) {
 // what it undoes, then call. Cancelling used to be the one destructive action that asked for
 // nothing at all.
 function mr_step_back(frm, opts) {
-	frm.add_custom_button(
+	const btn = frm.add_custom_button(
 		__(opts.label),
 		() =>
 			frappe.prompt(
@@ -184,6 +184,7 @@ function mr_step_back(frm, opts) {
 			),
 		opts.group
 	);
+	if (btn && opts.cls) $(btn).addClass(opts.cls);
 }
 
 frappe.ui.form.on('Repair Order', {
@@ -260,18 +261,16 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_set_queries');
 		frm.trigger('_refresh_on_hand');
 		frm.trigger('_render_system_facts');
-		// Rates on this order come from the tank OWNER's contract price list, not the
-		// depot's — with no live contract every line prices at 0 and the invoice bills 0.
-		container_depot.rate_card_notice(frm, frm.doc.principal);
 		// A "buka lagi" request raised from the PWA, with its reason — otherwise it reaches
 		// Admin Ops as a bell notification and leaves no trace on the order itself.
-		if (frm.doc.reopen_requested) {
-			frm.dashboard.add_comment(
-				__('Team minta M&R ini dibuka lagi') + (frm.doc.reopen_note ? ': ' + frm.doc.reopen_note : ''),
-				'orange',
-				true
-			);
-		}
+		container_depot.form_message(
+			frm,
+			'reopen',
+			frm.doc.reopen_requested
+				? __('Team minta M&R ini dibuka lagi') + (frm.doc.reopen_note ? ': ' + frm.doc.reopen_note : '')
+				: '',
+			'orange'
+		);
 		// Status intro banner — says where the M&R stands AND names the button that moves it,
 		// so the label on screen and the sentence above it are the same words.
 		const intros = {
@@ -286,7 +285,15 @@ frappe.ui.form.on('Repair Order', {
 			Completed: [__('Selesai dan siap ditagih. Tank siap dilayani.'), 'green'],
 			Cancelled: [__('M&R ini dibatalkan.'), 'red'],
 		};
-		if (intros[frm.doc.status]) frm.set_intro(intros[frm.doc.status][0], intros[frm.doc.status][1]);
+		// Keyed, never frm.set_intro: Frappe v16 APPENDS every banner (see form_message.js),
+		// so the plain set_intro painted a second copy of this line on each extra refresh —
+		// which is how the form ended up showing the intro and the rate-card warning twice.
+		const intro = intros[frm.doc.status];
+		container_depot.form_message(frm, 'status', intro ? intro[0] : '', intro && intro[1], false);
+		// Rates on this order come from the tank OWNER's contract price list, not the
+		// depot's — with no live contract every line prices at 0 and the invoice bills 0.
+		// Painted after the intro so the red warning always sits below it, cached or not.
+		container_depot.rate_card_notice(frm, frm.doc.principal);
 
 		frm.trigger('_apply_final_lock');
 		frm.trigger('_mr_buttons');
@@ -309,12 +316,13 @@ frappe.ui.form.on('Repair Order', {
 			[__('Status'), frm.doc.status && esc(frm.doc.status)],
 			[__('Principal (Owner)'), frm.doc.principal && esc(frm.doc.principal)],
 			[__('Container No'), frm.doc.container_no && esc(frm.doc.container_no)],
-			[__('Order Created'), frm.doc.order_created && esc(frappe.datetime.str_to_user(frm.doc.order_created))],
+			// Order Date / Start Date / Completion Date are NOT repeated here: they stand on
+			// the form itself, read-only and behind a depends_on, so each one appears in
+			// place the moment the system stamps it (Container Booking's block_reason /
+			// reff_email idiom). Printing the same timestamp twice on one screen is noise.
 			[__('Inspection Reference'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],
 			[__('Dikerjakan Oleh'), link('User', frm.doc.started_by)],
-			[__('Start Date'), frm.doc.start_date && esc(frappe.datetime.str_to_user(frm.doc.start_date))],
-			[__('Completion Date'), frm.doc.completion_date && esc(frappe.datetime.str_to_user(frm.doc.completion_date))],
 			// One line per currency: an M&R can mix them (each Item Price carries its own),
 			// so a single number would be adding rupiah to dollars.
 			[
@@ -349,13 +357,14 @@ frappe.ui.form.on('Repair Order', {
 		// Warehouse, Team EIR — gets none of them, so SAY why instead of leaving them staring
 		// at a form that looks broken. The Admin-Ops-only ones keep their own is_admin_ops().
 		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) {
-			if (!['Completed', 'Cancelled'].includes(s)) {
-				frm.dashboard.add_comment(
-					__('Anda hanya bisa melihat M&R ini — tanpa izin ubah, tidak ada tombol tindakan.'),
-					'gray',
-					true
-				);
-			}
+			container_depot.form_message(
+				frm,
+				'no-write',
+				['Completed', 'Cancelled'].includes(s)
+					? ''
+					: __('Anda hanya bisa melihat M&R ini — tanpa izin ubah, tidak ada tombol tindakan.'),
+				'gray'
+			);
 			return;
 		}
 
@@ -417,12 +426,16 @@ frappe.ui.form.on('Repair Order', {
 			frm.add_custom_button(__('Selesaikan Langsung'), () => mr_finalize_direct(frm));
 		}
 
-		// Everything that steps BACKWARD or around the flow lives in one dropdown, so the
-		// happy path is never buried among escape hatches.
+		// The REWIND steps live in one dropdown, so the happy path is never buried among
+		// escape hatches. Only rewinds: the two actions that end the round differently —
+		// approving without the owner, and cancelling outright — sit flat in the toolbar
+		// beside it, because a user has to see those before choosing them.
 		const group = __('Tindakan Lain');
 
+		// Kept OUT of "Tindakan Lain": skipping the owner is a decision someone has to see
+		// before they take it, and a bypass hidden behind a dropdown is one nobody reads.
 		if (is_admin_ops() && ['Draft', 'Revision Requested'].includes(s)) {
-			mr_bypass_button(frm, group);
+			mr_bypass_button(frm);
 		}
 		// The team's own correction, before Desk finalises it — nothing has left the
 		// warehouse yet, so this costs nothing to undo.
@@ -448,7 +461,7 @@ frappe.ui.form.on('Repair Order', {
 		}
 		// Human-error recovery: rewind to an editable Draft to fix a wrong / missing input,
 		// then run approval again. Adm Ops only; not from Draft (already editable) or after
-		// Completed (parts issued → Batalkan instead).
+		// Completed (parts issued → Cancel instead).
 		if (
 			is_admin_ops() &&
 			['Pending Approval', 'Revision Requested', 'Approved', 'Pending', 'In Progress', 'Pending Review', 'Rejected'].includes(s)
@@ -461,14 +474,17 @@ frappe.ui.form.on('Repair Order', {
 				group,
 			});
 		}
+		// Cancel also stands on its own, red, next to the bypass — it is the one button here
+		// that ENDS the order, and burying it among the rewind steps made it read like just
+		// another one of them.
 		if (['Draft', 'Revision Requested', 'Pending Approval', 'Approved', 'Pending', 'In Progress', 'Pending Review'].includes(s)) {
 			mr_step_back(frm, {
-				label: 'Batalkan M&R',
+				label: 'Cancel',
 				method: 'container_depot.ess.repairs.set_repair_status',
 				args: { status: 'Cancelled' },
 				confirm: 'Batalkan M&R ini? Pekerjaan dianggap tidak jadi, part yang sudah keluar DIKEMBALIKAN ke stok, dan tank dilepas dari order ini.',
 				primary: 'Batalkan',
-				group,
+				cls: 'btn-danger',
 			});
 		}
 	},
@@ -488,9 +504,12 @@ frappe.ui.form.on('Repair Order', {
 	// finer rule than this one (the estimate closes at Pending Approval, long before the end).
 	_apply_final_lock(frm) {
 		const locked = !frm.is_new() && MR_FINAL_STATUSES.includes(frm.doc.status);
+		// The three auto-stamped dates are NOT here: they are read_only on the doctype
+		// itself (and only shown at all once stamped, via depends_on), so handing them back
+		// on reopen would be the one thing that makes them typeable.
 		[
 			'container', 'depot', 'plan_date', 'job_type', 'pt_type', 'technician', 'reff_doc',
-			'remarks', 'order_created', 'start_date', 'completion_date',
+			'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
 		// Nothing left to change means nothing to Save — Frappe would otherwise keep offering
 		// the button on any non-submittable doc. Re-armed the moment the order is reopened.

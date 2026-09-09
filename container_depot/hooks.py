@@ -326,6 +326,9 @@ app_include_js = [
 	# container_depot.render_system_facts — the shared sidebar block every depot document
 	# shows its system-filled facts in (see the file).
 	"/assets/container_depot/js/system_facts.js",
+	# container_depot.form_message — spanduk berkunci di atas form, supaya pesan yang sama
+	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
+	"/assets/container_depot/js/form_message.js",
 	# container_depot.rate_card_notice — warns on an order whose tank owner has no live
 	# Depot Contract, so the work is not done at rate 0 and then never billed.
 	"/assets/container_depot/js/rate_card_notice.js",

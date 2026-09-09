@@ -74,6 +74,7 @@
    "description": "Terisi dari master Container; masih bisa diubah."
   },
   {
+   "default": "Today",
    "description": "Rencana tanggal pengerjaan. Realisasinya di Completion Date.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
@@ -204,11 +205,13 @@
    "hidden": 1
   },
   {
+   "description": "Waktu order dibuat.",
+   "depends_on": "eval:doc.order_created",
    "fieldname": "order_created",
    "fieldtype": "Datetime",
    "in_list_view": 1,
    "label": "Order Date",
-   "description": "Waktu order dibuat."
+   "read_only": 1
   },
   {
    "description": "Rencana lift-on, dari container.",
@@ -260,10 +263,12 @@
    "hidden": 1
   },
   {
+   "description": "Distempel saat repair dimulai.",
+   "depends_on": "eval:doc.start_date",
    "fieldname": "start_date",
    "fieldtype": "Datetime",
    "label": "Start Date",
-   "description": "Distempel saat repair dimulai."
+   "read_only": 1
   },
   {
    "description": "Otomatis: petugas yang menekan “Mulai” di PWA depot — bukan pembuat dokumen. Selama dia memegangnya, M&R ini hilang dari worklist PWA operator lain.",
@@ -275,10 +280,12 @@
    "hidden": 1
   },
   {
+   "description": "Distempel saat M&R selesai.",
+   "depends_on": "eval:doc.completion_date",
    "fieldname": "completion_date",
    "fieldtype": "Datetime",
    "label": "Completion Date",
-   "description": "Distempel saat M&R selesai."
+   "read_only": 1
   },
   {
    "description": "Distempel saat estimasi diajukan ke owner.",
@@ -378,7 +385,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-09 14:00:00.000000",
+ "modified": "2026-09-09 16:10:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",
