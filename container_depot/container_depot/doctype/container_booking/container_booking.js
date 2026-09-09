@@ -1349,14 +1349,42 @@ function submit_generation(frm, dialog, codes, vehicle_data) {
 		freeze: true,
 		freeze_message: __('Generating bon …'),
 		callback(r) {
-			if (r.message && r.message.success) {
-				dialog.hide();
-				frappe.show_alert({
-					message: __('Created {0} {1}', [r.message.order_doctype, r.message.order_name]),
-					indicator: 'green'
-				});
-				frappe.set_route('Form', r.message.order_doctype, r.message.order_name);
-			}
+			if (!r.message || !r.message.success) return;
+			dialog.hide();
+			// Stay on the booking. Issuing a bon is rarely the last thing the operator does
+			// here — a booking is routinely emptied two tanks at a time, which is the cap —
+			// so routing away to the bon meant walking back to this form for every trip. And
+			// there is nothing waiting on the bon's own form: everything it carries (truck,
+			// driver, tanggal) was just typed into the dialog that produced it.
+			//
+			// The link moves into the alert rather than disappearing. "Nothing happened" and
+			// "the bon was issued" must not look the same, and the operator still has to be
+			// able to reach it to print. Given longer than the default few seconds, because
+			// it is now the only way back to a document we no longer navigate to.
+			frappe.show_alert(
+				{
+					message: __('{0} {1} dibuat', [
+						__(r.message.order_doctype),
+						frappe.utils.get_form_link(
+							r.message.order_doctype,
+							r.message.order_name,
+							true
+						),
+					]),
+					indicator: 'green',
+				},
+				15
+			);
+			// Reload, not refresh: `make_order` spent the Booking Codes and wrote
+			// `bon_status` / `bon_summary` and each line's `realisation_date` straight to the
+			// database (`refresh_bon_status`, with update_modified=False), so what is on
+			// screen is now stale in ways the form cannot work out for itself.
+			//
+			// This is also what drops the generated tanks out of the way: the picker is
+			// rebuilt from `get_booking_pending_containers` every time the dialog opens and
+			// that returns Active codes only, while the reload repaints their grid rows as
+			// "sudah dibon" (_gate_undo_actions -> _freeze_bon_rows).
+			frm.reload_doc();
 		}
 	});
 }
