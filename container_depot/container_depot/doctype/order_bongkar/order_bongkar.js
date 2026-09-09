@@ -103,10 +103,14 @@ function _bon_grid_columns(grid) {
 }
 
 function _lock_actions(frm) {
-	// A bon is never deleted, duplicated, or used as a template for a New one —
-	// it is Voided to release its containers. Strip those menu items (server also
+	// A bon is never deleted, duplicated, or used as a template for a New one — it is Voided
+	// to release its containers. Strip those menu items (server also
 	// hard-blocks delete in on_trash).
-	['Delete', 'Duplicate', __('New {0}', [__('Order Bongkar')])].forEach((label) => {
+	// Duplicate is not in this list because it is never ADDED: `allow_copy` on the doctype
+	// turns it off at the source. (Frappe labels that field "Hide Copy" — the name reads
+	// backwards, 1 means hidden.) Stripping it from the DOM as well would be a line that
+	// looks like it does something and does not.
+	['Delete', __('New {0}', [__('Order Bongkar')])].forEach((label) => {
 		frm.page.menu.find(`a[data-label="${encodeURIComponent(__(label))}"]`).parent().remove();
 	});
 	// Submitted bon → Cancel returns it to an editable Draft; Void soft-deletes it

@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_copy": 1,
  "autoname": "ORD-MT-.YYYY.-.#####",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -192,7 +193,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 09:00:00.000000",
+ "modified": "2026-09-09 10:00:00.000000",
  "module": "Container Depot",
  "name": "Order Muat",
  "search_fields": "booking, container_summary, truck_plate, emkl, destination",

@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_copy": 1,
  "allow_import": 1,
  "autoname": "RO-.YYYY.-.#####",
  "doctype": "DocType",
@@ -377,7 +378,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-07 15:00:00.000000",
+ "modified": "2026-09-09 10:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",
