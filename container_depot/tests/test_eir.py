@@ -410,6 +410,9 @@ class TestEirDraft(FrappeTestCase):
 			tank={
 				"serial_no": "SER-9911",
 				"manufacture_date": "2019-05-01",
+				# Tanggal uji berkala juga terbaca di pelat. Sejak Periodic Test dihapus
+				# (v0_66) EIR-lah satu-satunya layar yang bisa mengisinya.
+				"last_test_date": "2024-03-11",
 				"capacity": 24000,
 				"tare_weight": 3800,
 				"max_gross_weight": 36000,
@@ -429,6 +432,7 @@ class TestEirDraft(FrappeTestCase):
 		master = frappe.get_doc("Container", c)
 		self.assertEqual(master.serial_no, "SER-9911")
 		self.assertEqual(str(master.manufacture_date), "2019-05-01")
+		self.assertEqual(str(master.last_test_date), "2024-03-11")
 		self.assertEqual(master.capacity, 24000)
 		self.assertEqual(master.tare_weight, 3800)
 		self.assertEqual(master.max_gross_weight, 36000)

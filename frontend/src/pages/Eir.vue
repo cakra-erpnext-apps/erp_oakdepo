@@ -2,42 +2,33 @@
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
 		<!-- =================== FORM (In or Out) =================== -->
 		<template v-if="activeInspection && activeType">
-			<!-- Queue navigator: only when this account is working more than one EIR. Lets the
-			     surveyor jump ◀ / ▶ between the EIRs they started without going back to the list;
-			     submitting one auto-advances to the next (see onSubmitted / onBack). -->
-			<!-- Sticky so the ◀ / ▶ controls stay reachable while scrolling a long EIR form.
-			     Pinned just below the app header, whose real height App.vue publishes as
-			     --oak-header-h. Its OWN height goes out as --oak-nav-h so the EIR form's
-			     header parks under it instead of landing on the same strip. -->
-			<div
-				v-if="navQueue.length > 1 && activeIndex !== -1"
-				ref="navBar"
-				class="oak-card oak-subheader space-y-2 p-2"
-			>
-				<div class="flex items-center justify-between gap-2">
-					<button class="oak-btn oak-btn-secondary px-3 py-2" @click="goRel(-1)">
-						<Icon name="chevron-left" :size="16" /> {{ labels.eirNavPrev }}
-					</button>
-					<div class="flex min-w-0 flex-col items-center leading-tight">
-						<span class="text-[11px] font-semibold text-gray-400">
-							{{ labels.eirBadge }} {{ activeIndex + 1 }} / {{ navQueue.length }}
-						</span>
-						<span class="max-w-[9rem] truncate text-sm font-bold text-gray-800">
-							{{ activeItem?.container_no || activeItem?.container || "—" }}
-						</span>
-					</div>
-					<button class="oak-btn oak-btn-secondary px-3 py-2" @click="goRel(1)">
-						{{ labels.eirNavNext }} <Icon name="chevron-right" :size="16" />
-					</button>
-				</div>
-				<button class="oak-link mx-auto block text-xs" @click="clearBatch">{{ labels.eirBatchExit }}</button>
-			</div>
+			<!-- Bar batch: hanya muncul kalau memang ada lebih dari satu EIR yang dibuka
+			     bersama. Ia yang mengumumkan --oak-nav-h, jadi header form di bawahnya
+			     otomatis turun satu bar (lihat EirBatchBar.vue). -->
+			<EirBatchBar
+				v-if="batchRows.length > 1 && activeIndex !== -1"
+				:queue="batchRows"
+				:active-index="activeIndex"
+				:voucher="batch.voucher"
+				@prev="goRel(-1)"
+				@next="goRel(1)"
+				@open="sheetOpen = true"
+			/>
 			<component
 				:is="activeType === 'EIR-Out' ? EirOutForm : EirInForm"
 				:key="activeInspection + activeType"
 				:inspection="activeInspection"
 				@back="onBack"
 				@submitted="onSubmitted"
+			/>
+			<EirBatchSheet
+				:open="sheetOpen"
+				:rows="batchRows"
+				:active-name="activeInspection || ''"
+				:voucher="batch.voucher"
+				@close="sheetOpen = false"
+				@leave="clearBatch"
+				@pick="goItem"
 			/>
 		</template>
 		<!-- ?e= without ?t= (hand-typed / shared link): the worklist is still resolving
@@ -47,6 +38,47 @@
 			<div class="oak-skeleton h-6 w-1/2 rounded-md"></div>
 			<div class="oak-skeleton h-24 rounded-xl"></div>
 		</div>
+
+		<!-- =================== BATCH SELESAI =================== -->
+		<!-- Bon yang seluruh tanknya sudah dikirim. Bukan sekadar toast: sebuah batch adalah
+		     satu truk yang selesai dilayani, dan operator berhak melihat ringkasannya sekali
+		     — apa yang terkirim, berapa temuannya, berapa lama — sebelum daftar kembali
+		     penuh dengan pekerjaan berikutnya. -->
+		<template v-else-if="batchDone">
+			<section class="space-y-4 py-6 text-center">
+				<span class="oak-icon-tile mx-auto h-16 w-16 rounded-full bg-leaf-100 text-leaf-600">
+					<Icon name="check" :size="32" />
+				</span>
+				<div>
+					<h1 class="text-lg font-extrabold tracking-tight">
+						{{ labels.eirBatchDoneTitle }} · {{ doneRows.length }} {{ labels.eirBatchDoneSent }}
+					</h1>
+					<p v-if="batch.voucher" class="mt-0.5 font-mono text-xs text-gray-500">{{ batch.voucher }}</p>
+				</div>
+
+				<ul class="oak-card divide-y divide-gray-100 overflow-hidden text-left">
+					<li v-for="r in doneRows" :key="r.name" class="flex items-center gap-3 px-4 py-3">
+						<span class="oak-icon-tile h-7 w-7 bg-leaf-100 text-leaf-700"><Icon name="check" :size="15" /></span>
+						<span class="min-w-0 flex-1">
+							<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ r.container_no }}</span>
+							<span class="block truncate text-[11px] text-gray-500">{{ doneLine(r) }}</span>
+						</span>
+						<span class="oak-chip shrink-0 bg-sky-100 text-sky-700">{{ labels.eirStatusPendingReview }}</span>
+					</li>
+				</ul>
+
+				<p class="px-2 text-xs text-gray-400">{{ labels.eirBatchDoneNote }}</p>
+			</section>
+
+			<div class="oak-footer -mx-4 space-y-2 border-t border-gray-200/80 bg-gray-50/95 px-4 py-3 backdrop-blur">
+				<button class="oak-btn oak-btn-primary w-full py-3" @click="finishBatch(false)">
+					{{ labels.eirBatchDoneBack }}
+				</button>
+				<button class="oak-btn oak-btn-secondary w-full py-2.5" @click="finishBatch(true)">
+					{{ labels.eirBatchDoneNew }}
+				</button>
+			</div>
+		</template>
 
 		<!-- =================== WORKLIST + LANDING =================== -->
 		<template v-else>
@@ -58,7 +90,17 @@
 						<p class="truncate text-xs text-gray-500">{{ labels.eirCombinedSubtitle }}</p>
 					</div>
 				</div>
-				<div class="flex items-center gap-2">
+				<!-- Sedang memilih batch: satu-satunya jalan keluar berada di tempat yang sama
+				     dengan pintu masuknya. Sortir & Riwayat menepi — keduanya membawa operator
+				     ke layar lain, yang berarti pilihan yang sedang disusun hilang. -->
+				<button
+					v-if="selectMode"
+					class="oak-btn oak-btn-secondary border-brand-300 px-3 py-2 text-brand-700"
+					@click="toggleSelectMode"
+				>
+					<Icon name="x" :size="16" /> {{ labels.eirSelectCancel }}
+				</button>
+				<div v-else class="flex items-center gap-2">
 					<router-link to="/eir/sort" class="oak-btn oak-btn-secondary px-3 py-2">
 						<Icon name="layers" :size="16" /> {{ labels.eirSortOpen }}
 					</router-link>
@@ -68,23 +110,74 @@
 				</div>
 			</div>
 
+			<!-- Batch yang sedang terbuka. Tanpa baris ini batch adalah pekerjaan yang tidak
+			     terlihat di mana pun begitu operator menekan Kembali dari form: daftarnya
+			     kembali seperti semula, tidak ada jalan pulang selain memilih ulang, dan
+			     satu-satunya kesimpulan yang masuk akal adalah "batch-nya tidak tersimpan".
+			     Ia memang tersimpan — yang hilang cuma pintunya. -->
+			<div
+				v-if="openBatchRows.length > 1 && !selectMode"
+				class="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3"
+			>
+				<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-100 text-brand-700">
+					<Icon name="layers" :size="18" />
+				</span>
+				<div class="min-w-0 flex-1">
+					<p class="truncate text-sm font-bold text-gray-900">
+						{{ labels.eirBatchTitle }} <span v-if="batch.voucher" class="font-mono">{{ batch.voucher }}</span>
+					</p>
+					<p class="truncate text-[11px] text-gray-500">{{ openBatchLine }}</p>
+				</div>
+				<button class="oak-btn oak-btn-ghost shrink-0 px-2 py-2 text-xs" @click="clearBatch">
+					{{ labels.eirBatchExit }}
+				</button>
+				<button v-if="resumeRow" class="oak-btn oak-btn-primary shrink-0 px-3 py-2 text-xs" @click="goItem(resumeRow)">
+					{{ labels.eirBatchResume }}
+				</button>
+			</div>
+
+			<!-- Saringan tingkat halaman, bukan tingkat daftar: yang dipisahkan adalah "masih
+			     harus dikerjakan" dari "sudah lepas tangan", dan keduanya hidup di kartu yang
+			     berbeda. Sebelumnya pil ini menyaring di dalam daftar pending saja, sementara
+			     bagian Selesai di bawahnya tetap tampil apa pun yang ditekan. -->
+			<div class="flex flex-wrap items-center gap-1.5">
+				<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ labels.eirFilterStatus }}</span>
+				<button
+					v-for="f in FILTERS"
+					:key="f.key"
+					class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition active:scale-[0.97]"
+					:class="filter === f.key ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
+					@click="filter = f.key"
+				>
+					{{ f.label }}
+					<span
+						class="rounded-full px-1.5 text-[10px] font-bold"
+						:class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'"
+					>{{ f.count }}</span>
+				</button>
+			</div>
+
 			<!-- Pending worklist (In + Out combined, badge per row). Capped to ~5 rows tall,
 			     scrolls internally so a long queue never runs far down the page. -->
-			<section class="oak-section space-y-3">
+			<section v-if="filter !== 'done'" class="oak-section space-y-3">
 				<div class="flex items-center justify-between gap-2">
 					<div class="flex items-center gap-2">
 						<Icon name="clipboard" :size="16" class="text-amber-500" />
 						<p class="oak-section-title">{{ labels.eirPendingList }}</p>
+						<span v-if="visibleItems.length" class="oak-chip bg-amber-100 text-amber-800">{{ visibleItems.length }}</span>
 					</div>
-					<!-- Batch mode: pick several EIRs, then "Mulai" starts them all under this
-					     account so the navigator/auto-advance can walk them (started-by-me). -->
+					<!-- Batch mode: pilih beberapa EIR, lalu kerjakan berurutan tanpa kembali ke
+					     daftar. "Pilih semua" hanya berarti sesuatu setelah mode pilih menyala. -->
 					<button
-						class="oak-btn px-3 py-1.5 text-xs"
-						:class="selectMode ? 'oak-btn-primary' : 'oak-btn-secondary'"
-						@click="toggleSelectMode"
+						v-if="selectMode"
+						class="oak-btn oak-btn-accent px-3 py-1.5 text-xs"
+						:disabled="!visibleItems.length"
+						@click="selectAll"
 					>
-						<Icon :name="selectMode ? 'x' : 'check-square'" :size="14" />
-						{{ selectMode ? labels.eirSelectCancel : labels.eirSelect }}
+						{{ labels.eirBatchSelectAll }}
+					</button>
+					<button v-else class="oak-btn oak-btn-secondary px-3 py-1.5 text-xs" @click="toggleSelectMode">
+						<Icon name="check-square" :size="14" /> {{ labels.eirSelect }}
 					</button>
 				</div>
 				<!-- Dua baris kontrol, bukan tiga. Sebelumnya: kotak cari + tombol cari, lalu
@@ -93,8 +186,10 @@
 				     berarti daftarnya mulai di bawah lipatan. Ikon cari masuk ke dalam
 				     kotaknya (tombol terpisah itu tidak pernah perlu: pencariannya sudah jalan
 				     sendiri 300 ms setelah ketikan berhenti), dan arah jadi segmented ringkas
-				     di sebelahnya. -->
-				<div class="flex items-center gap-2">
+				     di sebelahnya. Keduanya menepi selama mode pilih: di sana layar dipakai
+				     untuk menyusun batch, dan mengetik pencarian justru membuang baris yang
+				     baru saja dicentang keluar dari daftar. -->
+				<div v-if="!selectMode" class="flex items-center gap-2">
 					<div class="relative min-w-0 flex-1">
 						<Icon name="search" :size="16" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
 						<input
@@ -106,10 +201,7 @@
 						/>
 					</div>
 					<!-- Masuk / Keluar: pekerjaan yang berbeda (tank datang vs pergi), sering
-					     dikerjakan berkelompok. Tanpa angka — pil status di bawahnya sudah
-					     menghitung ulang untuk arah yang sedang dipilih, jadi "Semua 3" di sana
-					     adalah jumlah untuk arah ini; dua tempat menampilkan angka yang sama
-					     hanya menambah yang harus dibaca. -->
+					     dikerjakan berkelompok. -->
 					<div class="flex shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
 						<button
 							v-for="f in DIR_FILTERS"
@@ -121,27 +213,6 @@
 							{{ f.label }}
 						</button>
 					</div>
-				</div>
-
-				<!-- Belum / Dikerjakan. A draft EIR is "belum" until Mulai stamps
-				     work_started_on; submitted ones move to the Selesai section below. Pil,
-				     bukan tombol selebar sepertiga layar: ini saringan, bukan aksi utama
-				     halaman, dan berat visualnya dulu menyaingi daftarnya sendiri. -->
-				<div class="flex flex-wrap items-center gap-1.5">
-					<span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ labels.eirFilterStatus }}</span>
-					<button
-						v-for="f in FILTERS"
-						:key="f.key"
-						class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition active:scale-[0.97]"
-						:class="filter === f.key ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
-						@click="filter = f.key"
-					>
-						{{ f.label }}
-						<span
-							class="rounded-full px-1.5 text-[10px] font-bold"
-							:class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'"
-						>{{ f.count }}</span>
-					</button>
 				</div>
 
 				<ul v-if="loadingPending && !pendingItems.length" class="space-y-2">
@@ -170,7 +241,7 @@
 								>
 									<Icon v-if="selected.has(r.name)" name="check" :size="14" />
 								</span>
-								<span class="oak-icon-tile h-9 w-9 shrink-0" :class="r._type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-amber-50 text-amber-600'">
+								<span v-else class="oak-icon-tile h-9 w-9 shrink-0" :class="r._type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-amber-50 text-amber-600'">
 									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'clipboard'" :size="16" />
 								</span>
 								<div class="min-w-0 flex-1">
@@ -182,47 +253,57 @@
 										<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
 										<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
 									</div>
-									<p v-if="r.container_principal || r.tank_status" class="truncate text-[11px] text-gray-500">
-										{{ [r.container_principal, r.tank_status].filter(Boolean).join(" · ") }}
+									<!-- Pemilik · status · bon. Nomor bon ikut ke baris ini karena dialah
+									     yang menentukan tank mana yang layak dikerjakan bersama: batch
+									     dipilih dengan mata, dari daftar ini. -->
+									<p class="truncate text-[11px] text-gray-500">
+										{{ [r.container_principal, r.tank_status, r.referred_voucher].filter(Boolean).join(" · ") || "—" }}
 									</p>
-									<!-- Baris chip: apa yang mendesak dan siapa yang sudah memegangnya. -->
+									<!-- Baris chip: arah, sejauh mana sudah dikerjakan, dan kapan tank
+									     ini ditunggu keluar. -->
 									<p class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-										<span v-if="r.work_started_on" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
-											<Icon name="clock" :size="11" /> {{ labels.eirChipStarted }}
+										<span
+											class="oak-chip shrink-0"
+											:class="r._type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'"
+										>
+											<Icon :name="r._type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="11" />
+											{{ r._type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
 										</span>
+										<span class="oak-chip shrink-0" :class="progressChip(r).tone">{{ progressChip(r).label }}</span>
 										<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" />
-										<span v-if="r.referred_voucher" class="truncate font-mono text-gray-500">{{ r.referred_voucher }}</span>
 									</p>
 								</div>
-								<span
-									class="oak-chip shrink-0"
-									:class="r._type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'"
-								>
-									<Icon :name="r._type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="11" />
-									{{ r._type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
-								</span>
 							</button>
 						</li>
 					</ul>
 				</div>
 				<p v-if="visibleItems.length && !selectMode" class="text-center text-xs text-gray-400">{{ visibleItems.length }} {{ labels.eirPendingCount }}</p>
-				<button
-					v-if="selectMode"
-					class="oak-btn oak-btn-primary w-full py-2.5"
-					:disabled="!selected.size"
-					@click="openBatch"
-				>
-					<Icon name="arrow-right" :size="16" /> {{ labels.eirBatchOpen }} <template v-if="selected.size">({{ selected.size }})</template>
-				</button>
 				<p v-if="fetchError" class="flex items-center gap-1.5 text-sm text-red-600">
 					<Icon name="alert-circle" :size="15" /> {{ fetchError }}
 				</p>
 			</section>
 
+			<!-- Satu bon, beberapa tank: data rujukan (kode booking, EMKL, truk, sopir) sama
+			     untuk semuanya, dan itulah yang membuat batch layak dibuka. Banner ini muncul
+			     hanya kalau yang dicentang memang satu bon — kalau campur, tidak ada yang
+			     boleh dijanjikan "diisi sekali untuk semua". -->
+			<div
+				v-if="selectMode && selected.size > 1 && sharedVoucher"
+				class="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-800"
+			>
+				<Icon name="info" :size="16" class="mt-0.5 shrink-0" />
+				<div class="min-w-0 text-[11px] leading-snug">
+					<p class="font-bold">{{ labels.eirBatchVoucherTitle.replace("{n}", selected.size) }}</p>
+					<p class="truncate opacity-80">
+						<span class="font-mono">{{ sharedVoucher }}</span> · {{ labels.eirBatchVoucherHint }}
+					</p>
+				</div>
+			</div>
+
 			<!-- Sent for review (Pending Review) — field operator submitted, awaiting Admin
 			     Ops's Desk Submit. Read-only detail, same as the completed list. Hidden when
 			     empty so the landing stays clean for accounts that don't send-for-review. -->
-			<section v-if="reviewRes.loading || reviewItems.length" class="oak-section space-y-3">
+			<section v-if="filter !== 'todo' && (reviewRes.loading || reviewItems.length)" class="oak-section space-y-3">
 				<div class="flex items-center gap-2">
 					<Icon name="clock" :size="16" class="text-sky-500" />
 					<p class="oak-section-title">{{ labels.eirReviewList }}</p>
@@ -270,7 +351,7 @@
 			</section>
 
 			<!-- Completed (submitted) EIRs — In & Out -->
-			<section class="oak-section space-y-3">
+			<section v-if="filter !== 'todo'" class="oak-section space-y-3">
 				<div class="flex items-center justify-between gap-2">
 					<div class="flex items-center gap-2">
 						<Icon name="check-circle" :size="16" class="text-leaf-600" />
@@ -311,21 +392,47 @@
 					</li>
 				</ul>
 			</section>
+
+			<!-- Aksi utama mode pilih, menempel di bawah: daftar pending bisa panjang, dan
+			     tombol yang ikut ter-scroll ke luar layar memaksa operator naik-turun untuk
+			     memastikan pilihannya sudah lengkap. -->
+			<div
+				v-if="selectMode && selected.size"
+				class="oak-footer -mx-4 border-t border-gray-200/80 bg-gray-50/95 px-4 py-3 backdrop-blur"
+			>
+				<button class="oak-btn oak-btn-primary w-full py-3" @click="openBatchNow">
+					{{ labels.eirBatchOpenBtn }} · {{ selected.size }} {{ labels.eirBadge }}
+				</button>
+				<p class="mt-1.5 text-center text-[11px] text-gray-400">{{ labels.eirBatchOpenHint }}</p>
+			</div>
 		</template>
 	</div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
+import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import { since } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
+import EirBatchBar from "@/components/EirBatchBar.vue"
+import EirBatchSheet from "@/components/EirBatchSheet.vue"
 import { cachedResource } from "@/data/cache"
 import { keepScrollForNextNavigation } from "@/router"
 import EirInForm from "@/pages/EirInForm.vue"
 import EirOutForm from "@/pages/EirOutForm.vue"
+import {
+	STEP_COUNT,
+	batch,
+	getStep,
+	hasPending,
+	hasStep,
+	leaveBatch,
+	openBatch,
+	sentRows,
+	tankNo,
+} from "@/utils/eirBatch"
 
 const route = useRoute()
 const router = useRouter()
@@ -377,63 +484,45 @@ const outRes = cachedResource({
 	onSuccess: (data) => (outItems.value = (data.items || []).map((x) => ({ ...x, _type: "EIR-Out" }))),
 })
 
-// How tall the batch navigator is, published for whatever floats beneath it (the EIR form
-// header). Zero — not "unset" — while there is no navigator, so the form header comes back
-// up flush against the app bar the moment the batch is left.
-const navBar = ref(null)
-let navWatcher = null
-function setNavHeight(px) {
-	document.documentElement.style.setProperty("--oak-nav-h", `${px}px`)
-}
-watch(
-	navBar,
-	(el) => {
-		navWatcher?.disconnect()
-		navWatcher = null
-		if (!el || typeof ResizeObserver === "undefined") {
-			setNavHeight(0)
-			return
-		}
-		navWatcher = new ResizeObserver(([entry]) => {
-			const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height
-			setNavHeight(Math.round(h))
-		})
-		navWatcher.observe(el)
-	},
-	{ flush: "post" },
-)
-onBeforeUnmount(() => {
-	navWatcher?.disconnect()
-	setNavHeight(0)
-})
-
-// --- queue navigator + batch selection --------------------------------------
-// "Pilih" (select mode) lets the surveyor tick several pending EIRs, then "Buka" opens
-// them as a batch. The navigator walks that picked set — no need to press Mulai and no
-// need to submit to move on; every edit already auto-saves. The batch persists (as names)
-// until it's cleared or every EIR in it leaves the pending list.
+// --- batch: memilih, membuka, berpindah ---------------------------------------
+// "Pilih" mencentang beberapa EIR pending; "Buka batch" menyerahkannya ke utils/eirBatch,
+// yang memegang urutan, langkah, papan salin, dan catatan kiriman sampai batch ditutup.
+// Tidak perlu Mulai dan tidak perlu submit untuk berpindah antar anggotanya — setiap
+// perubahan sudah tersimpan otomatis.
 const selectMode = ref(false)
 const selected = reactive(new Set())
-const autoAdvanceTo = ref(null) // next EIR to open after a submit (consumed by onBack)
+const sheetOpen = ref(false)
+const batchDone = ref(false)
+const autoAdvanceTo = ref(null) // EIR berikutnya yang dibuka setelah sebuah submit
 
-// Persist the batch so a page refresh on an open EIR keeps the navigator (the ?e= URL alone
-// only restores the single open EIR). sessionStorage = scoped to this tab/session.
-const BATCH_KEY = "eir_batch"
-try {
-	const saved = JSON.parse(sessionStorage.getItem(BATCH_KEY) || "[]")
-	if (Array.isArray(saved)) saved.forEach((n) => selected.add(n))
-} catch {
-	/* ignore malformed storage */
-}
-watch(
-	() => Array.from(selected),
-	(arr) => sessionStorage.setItem(BATCH_KEY, JSON.stringify(arr))
+// Anggota batch dengan barisnya masing-masing. Yang sudah dikirim tidak ada lagi di
+// worklist, jadi barisnya dirakit dari catatan kiriman — bar dan sheet tetap harus bisa
+// menunjukkan tank itu ada dan sudah beres.
+const batchRows = computed(() =>
+	batch.names
+		.map((n) => {
+			const sent = batch.sent[n]
+			const row = pendingItems.value.find((r) => r.name === n)
+			if (row) return { ...row, sent }
+			return sent ? { name: n, container_no: sent.container_no || tankNo(n), sent } : null
+		})
+		.filter(Boolean)
 )
-
-// The batch = the picked EIRs that are still pending, in worklist order.
-const navQueue = computed(() => pendingItems.value.filter((r) => selected.has(r.name)))
-const activeIndex = computed(() => navQueue.value.findIndex((r) => r.name === activeInspection.value))
-const activeItem = computed(() => navQueue.value[activeIndex.value] || null)
+const activeIndex = computed(() => batchRows.value.findIndex((r) => r.name === activeInspection.value))
+// Batch yang masih terbuka saat operator berdiri di daftar — bahan banner "lanjutkan".
+const openBatchRows = computed(() =>
+	activeInspection.value || batchDone.value || !hasPending() ? [] : batchRows.value
+)
+const resumeRow = computed(() => openBatchRows.value.find((r) => !r.sent && r._type) || null)
+const openBatchLine = computed(() => {
+	const rows = openBatchRows.value
+	const sent = rows.filter((r) => r.sent).length
+	const parts = [`${rows.length} ${labels.eirBadge}`]
+	if (sent) parts.push(`${sent} ${labels.eirBatchSentWord.toLowerCase()}`)
+	parts.push(`${rows.length - sent} ${labels.eirBatchTodoWord.toLowerCase()}`)
+	return parts.join(" · ")
+})
+const doneRows = computed(() => sentRows())
 
 const loadingPending = computed(() => inRes.loading || outRes.loading)
 const fetchError = computed(() => {
@@ -451,9 +540,6 @@ const fetchError = computed(() => {
 // the server's own rule is what used to happen here, and it quietly dropped gate-out
 // priority off the one screen that most needed it.
 const pendingItems = computed(() => {
-	// An EIR whose submit is queued has left this queue, whatever the server still says. The
-	// list is only refreshed when there is a link, so without this the surveyor sees the tank
-	// they just finished sitting there untouched and inspects it again.
 	const all = [...inItems.value, ...outItems.value]
 	const NO_DATE = "9999-12-31" // sorts after every real date, same as the server's sentinel
 	// Tanggal survey dulu, baru rencana pickup — cermin `worklist.priority_date`. Kalau
@@ -468,49 +554,52 @@ const pendingItems = computed(() => {
 	return all
 })
 
-// Worklist filters, two independent dimensions: how far along an EIR is (Belum /
-// Dikerjakan) and which direction it is (Masuk / Keluar). "Selesai" is not a choice on
-// either: a submitted EIR leaves the pending queue entirely and shows in its own section
-// below.
+// Dua saringan yang berdiri sendiri: bagian halaman mana yang ditampilkan (belum selesai vs
+// sudah lepas tangan), dan arah EIR-nya (masuk / keluar, hanya untuk daftar pending).
 const filter = ref("all")
 const dirFilter = ref("all")
-const byStatus = (list) =>
-	filter.value === "started"
-		? list.filter((r) => r.work_started_on)
-		: filter.value === "todo"
-			? list.filter((r) => !r.work_started_on)
-			: list
-const byDir = (list) =>
-	dirFilter.value === "all" ? list : list.filter((r) => r._type === dirFilter.value)
-
-// Each row counts the list the OTHER row has already narrowed, so the numbers always add
-// up to what tapping that button would actually show.
-const dirScoped = computed(() => byDir(pendingItems.value))
-const statusScoped = computed(() => byStatus(pendingItems.value))
-const visibleItems = computed(() => byStatus(dirScoped.value))
+const visibleItems = computed(() =>
+	dirFilter.value === "all" ? pendingItems.value : pendingItems.value.filter((r) => r._type === dirFilter.value)
+)
 const FILTERS = computed(() => {
-	const list = dirScoped.value
+	const done = reviewItems.value.length + doneItems.value.length
 	return [
-		{ key: "all", label: labels.eirFilterAll, count: list.length },
-		{ key: "todo", label: labels.eirFilterNotStarted, count: list.filter((r) => !r.work_started_on).length },
-		{ key: "started", label: labels.eirFilterStarted, count: list.filter((r) => r.work_started_on).length },
+		{ key: "all", label: labels.eirFilterAll, count: pendingItems.value.length + done },
+		{ key: "todo", label: labels.eirFilterNotStarted, count: pendingItems.value.length },
+		{ key: "done", label: labels.eirFilterDone, count: done },
 	]
 })
-const DIR_FILTERS = computed(() => {
-	const list = statusScoped.value
-	return [
-		{ key: "all", label: labels.eirFilterAll, count: list.length },
-		{ key: "EIR-In", label: labels.eirBadgeIn, count: list.filter((r) => r._type === "EIR-In").length },
-		{ key: "EIR-Out", label: labels.eirBadgeOut, count: list.filter((r) => r._type === "EIR-Out").length },
-	]
-})
+const DIR_FILTERS = computed(() => [
+	{ key: "all", label: labels.eirFilterAll },
+	{ key: "EIR-In", label: labels.eirBadgeIn },
+	{ key: "EIR-Out", label: labels.eirBadgeOut },
+])
 const emptyText = computed(() => {
 	if (!pendingItems.value.length) return labels.eirPendingEmpty
-	if (dirFilter.value === "EIR-In" && !dirScoped.value.length) return labels.eirFilterEmptyIn
-	if (dirFilter.value === "EIR-Out" && !dirScoped.value.length) return labels.eirFilterEmptyOut
-	if (filter.value === "started") return labels.eirFilterEmptyStarted
-	if (filter.value === "todo") return labels.eirFilterEmptyNotStarted
+	if (dirFilter.value === "EIR-In") return labels.eirFilterEmptyIn
+	if (dirFilter.value === "EIR-Out") return labels.eirFilterEmptyOut
 	return labels.eirPendingEmpty
+})
+
+// Sejauh mana satu EIR sudah dikerjakan. Langkahnya hanya dicetak untuk EIR yang memang
+// pernah dibuka di sesi ini — "Draft 1/4" untuk tank yang dimulai rekan kemarin adalah
+// tebakan, dan tebakan di worklist dibaca sebagai fakta.
+function progressChip(r) {
+	if (!r.work_started_on) return { label: labels.eirBatchNotStarted, tone: "bg-gray-100 text-gray-500" }
+	if (hasStep(r.name))
+		return {
+			label: `${labels.eirDraftStep} ${getStep(r.name) + 1}/${STEP_COUNT}`,
+			tone: "bg-brand-100 text-brand-700",
+		}
+	return { label: labels.eirChipStarted, tone: "bg-amber-100 text-amber-800" }
+}
+
+// Bon yang sama untuk semua yang dicentang — atau kosong kalau campur.
+const sharedVoucher = computed(() => {
+	const vouchers = new Set(
+		pendingItems.value.filter((r) => selected.has(r.name)).map((r) => r.referred_voucher || "")
+	)
+	return vouchers.size === 1 ? [...vouchers][0] : ""
 })
 
 let searchTimer = null
@@ -522,7 +611,6 @@ function reloadPending() {
 	inRes.reload()
 	outRes.reload()
 }
-
 
 // Landing "recently submitted" — the caller's own latest completed EIRs (In & Out),
 // newest first (no date filter). Tapping one opens its read-only detail (+ revision).
@@ -554,17 +642,20 @@ function goItem(r) {
 function goCompleted(r) {
 	router.push({ path: "/eir/history", query: { open: r.name } })
 }
-// Prev/next within the picked batch — keep the scroll position so moving between EIRs lands
+// Prev/next within the batch — keep the scroll position so moving between EIRs lands
 // on the SAME section (e.g. the photos) instead of jumping back to the top. The next form
 // re-mounts (collapsing height), so we re-apply the saved offset over a few frames until the
 // page is tall enough to reach it again.
 function goRel(delta) {
-	const len = navQueue.value.length
-	if (len < 2) return
+	// Yang sudah dikirim dilewati: ia masih anggota batch (dan masih punya setrip di bar),
+	// tapi tidak ada lagi yang bisa dikerjakan di sana.
+	const queue = batchRows.value.filter((r) => !r.sent)
+	if (queue.length < 2) return
+	const i = queue.findIndex((r) => r.name === activeInspection.value)
 	// Wrap around: Next on the last EIR loops back to the first (and Prev on the first to
 	// the last), so you can keep cycling the batch without hitting a dead end.
-	const target = navQueue.value[(activeIndex.value + delta + len) % len]
-	if (!target) return
+	const target = queue[(Math.max(0, i) + delta + queue.length) % queue.length]
+	if (!target || target.name === activeInspection.value) return
 	keepScrollForNextNavigation()
 	restoreScrollTo(window.scrollY)
 	goItem(target)
@@ -593,26 +684,49 @@ function rowClick(r) {
 		else selected.add(r.name)
 		return
 	}
+	// Menekan anggota batch yang sedang terbuka = melanjutkan batch itu, bukan
+	// membubarkannya. Hanya tank DI LUAR batch yang berarti operator sudah pindah
+	// pekerjaan, dan barulah batch lama ditutup.
+	if (!batch.names.includes(r.name)) leaveBatch()
 	goItem(r)
 }
 function toggleSelectMode() {
 	selectMode.value = !selectMode.value
 	selected.clear()
 }
-
-// Open the picked EIRs as a batch: just navigate to the first — no Mulai, no submit. The
-// selection stays as the batch so the ◀ / ▶ navigator can walk it. Each EIR still has its
-// own Mulai gate for editing; moving between them needs neither Mulai nor submit.
-function openBatch() {
-	const first = pendingItems.value.find((r) => selected.has(r.name)) // worklist order
-	if (!first) return
-	selectMode.value = false // keep `selected` — it IS the batch now
-	goItem(first)
+function selectAll() {
+	visibleItems.value.forEach((r) => selected.add(r.name))
 }
-// Leave the batch (clears the picked set) and drop back to the worklist.
-function clearBatch() {
+
+// Buka EIR yang dicentang sebagai satu batch, urut seperti di worklist, lalu mendarat di
+// yang pertama. Tidak ada Mulai dan tidak ada submit di sini: keduanya milik tiap EIR.
+function openBatchNow() {
+	const members = pendingItems.value.filter((r) => selected.has(r.name))
+	if (!members.length) return
+	openBatch(
+		members.map((r) => ({ name: r.name, container_no: r.container_no || r.container })),
+		sharedVoucher.value
+	)
+	selectMode.value = false
 	selected.clear()
+	goItem(members[0])
+}
+// Keluar dari batch (dari sheet) dan kembali ke daftar.
+function clearBatch() {
+	sheetOpen.value = false
+	leaveBatch()
 	if (route.query.e) router.push({ query: {} })
+}
+// Tombol di layar batch selesai: tutup batch, lalu diam di daftar atau langsung memilih
+// batch berikutnya (truk berikutnya biasanya sudah menunggu).
+function finishBatch(pickAnother) {
+	leaveBatch()
+	batchDone.value = false
+	selectMode.value = pickAnother
+	selected.clear()
+	reloadPending()
+	doneRes.reload()
+	reviewRes.reload()
 }
 
 function onBack() {
@@ -620,24 +734,39 @@ function onBack() {
 	const next = autoAdvanceTo.value
 	autoAdvanceTo.value = null
 	if (next) {
-		goItem(next) // auto-advance to the next EIR in this account's queue
+		goItem(next) // lanjut ke anggota batch berikutnya
 		reloadPending()
 		doneRes.reload()
 		reviewRes.reload()
 		return
 	}
+	// Batch yang seluruh anggotanya sudah terkirim berhenti di layar penutupnya, bukan di
+	// worklist: itu satu-satunya tempat ringkasan truk tadi masih ada.
+	if (batch.names.length && !hasPending()) batchDone.value = true
 	if (route.query.e) router.push({ query: {} })
 	reloadPending()
 	doneRes.reload()
 	reviewRes.reload()
 }
 function onSubmitted(name) {
-	// Capture the next EIR to jump to BEFORE the lists refresh (the just-submitted one is
-	// still in navQueue here). Prefer the following item, else the previous, else stop.
-	const q = navQueue.value
-	const i = q.findIndex((r) => r.name === name)
-	const next = i === -1 ? null : q[i + 1] || q[i - 1] || null
-	autoAdvanceTo.value = next && next.name !== name ? next : null
-	selected.delete(name) // the submitted EIR leaves the batch
+	// Anggota berikutnya yang belum dikirim — dihitung SEBELUM daftar disegarkan (form sudah
+	// mencatat kiriman ini ke batch, jadi ia sendiri sudah tidak masuk hitungan).
+	const queue = batchRows.value.filter((r) => !r.sent && r.name !== name)
+	autoAdvanceTo.value = queue[0] || null
+}
+
+// Nomor batch berganti (batch baru dibuka) — layar penutup yang lama tidak boleh tertinggal.
+watch(
+	() => batch.names.join(","),
+	() => (batchDone.value = false)
+)
+
+function doneLine(r) {
+	const parts = [
+		`${r.damages || 0} ${labels.eirReviewDamage}`,
+		`${r.photos || 0} ${labels.eirReviewPhotos}`,
+	]
+	if (r.minutes) parts.push(`${r.minutes} ${labels.eirMinutes}`)
+	return parts.join(" · ")
 }
 </script>

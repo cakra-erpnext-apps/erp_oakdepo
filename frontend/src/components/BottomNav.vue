@@ -1,5 +1,6 @@
 <template>
 	<nav
+		ref="bar"
 		class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-paper/95 pb-safe-bottom backdrop-blur-md"
 	>
 		<!-- Exactly five slots, always: Beranda, up to three of this account's own screens,
@@ -44,7 +45,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import Icon from "@/components/Icon.vue"
 import MoreSheet from "@/components/MoreSheet.vue"
@@ -57,6 +58,25 @@ const moreOpen = ref(false)
 
 // Tapping a tab from inside the sheet has to leave the sheet behind.
 watch(() => route.fullPath, () => (moreOpen.value = false))
+
+// Tinggi bar ini — termasuk safe-area handset — diumumkan ke seluruh aplikasi sebagai
+// --oak-bottom-h, supaya aksi yang menempel di bawah halaman (.oak-footer) duduk DI ATAS
+// bar, bukan di belakangnya. Diukur, bukan ditebak: tinggi safe area berbeda per HP, dan
+// label tab bisa membungkus jadi dua baris.
+const bar = ref(null)
+let ro = null
+onMounted(() => {
+	if (!bar.value || typeof ResizeObserver === "undefined") return
+	ro = new ResizeObserver(([entry]) => {
+		const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.target.getBoundingClientRect().height
+		document.documentElement.style.setProperty("--oak-bottom-h", `${Math.round(h)}px`)
+	})
+	ro.observe(bar.value)
+})
+onBeforeUnmount(() => {
+	ro?.disconnect()
+	document.documentElement.style.removeProperty("--oak-bottom-h")
+})
 
 // How many of the account's own screens sit in the bar, next to Beranda and Lainnya.
 const WORK_TABS = 3

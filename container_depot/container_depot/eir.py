@@ -1392,17 +1392,29 @@ def start_eir(inspection: str) -> dict:
 # declared on the tank itself — the old EIR workbook literally had the surveyor check for a
 # "Sticker FOO" — so it is something seen, not something looked up.
 #
+# ``last_test_date`` joined them on 2026-09-09. It used to be excluded as "something the
+# depot writes by itself", and it was: the Periodic Test feature stamped it. That feature
+# was deleted in v0_66, which kept the FIELD precisely because it is plate data ("the tank's
+# plate test date… tank master data that happened to be stamped by the periodic test") — and
+# left it with no writer at all outside the Desk. It is printed on the EIR, read by M&R and
+# cleaning, and drives the Periodic Test Register's fallback, so a blank one is a real gap;
+# the surveyor reading the plate is the only person who can close it.
+#
 # What is deliberately NOT here: everything the depot writes by itself — status, inventory
-# stage, depot, last cargo, ex vessel, the gate dates, ``last_test_date`` — plus
-# ``principal``, because who owns a tank is a commercial fact that decides billing, not
-# something read off its side. ``container_no`` is the Container's own name and can never
-# be edited from anywhere.
+# stage, depot, last cargo, ex vessel, the gate dates — plus ``principal``, because who owns
+# a tank is a commercial fact that decides billing, not something read off its side.
+# ``container_no`` is the Container's own name and can never be edited from anywhere.
+#
+# None of these is ever REQUIRED to send an EIR: they describe the tank, not the inspection,
+# and most arrive already filled from the master. The PWA states that outright — see the
+# "Data tank" step in EirInForm.vue.
 TANK_MASTER_FIELDS = {
 	"container_type": "data",
 	"equipment_type": "data",
 	"size": "data",
 	"serial_no": "data",
 	"manufacture_date": "date",
+	"last_test_date": "date",
 	"capacity": "float",
 	"tare_weight": "float",
 	"max_gross_weight": "float",

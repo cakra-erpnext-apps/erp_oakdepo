@@ -1,25 +1,16 @@
 <template>
 	<div class="space-y-4">
-		<!-- Form header (the page header + worklist live in Eir.vue). Floats under the app
-		     bar so the surveyor always knows which tank the checklist under their thumb
-		     belongs to — this form is long enough to scroll for a minute straight.
-		     Everything shown once elsewhere is gone from here: the booking code has its own
-		     row in Dokumen Rujukan, the container number is the title, and the start time is
-		     a stamp, not a sentence. -->
-		<div class="oak-subheader-stacked -mx-4 flex items-center gap-2 border-b border-gray-200/80 bg-gray-50/95 px-4 py-2 backdrop-blur">
-			<button class="oak-btn oak-btn-secondary px-2 py-2" @click="emit('back')">
-				<Icon name="arrow-left" :size="18" />
-			</button>
-			<div class="min-w-0 flex-1">
-				<h2 class="truncate text-base font-extrabold leading-tight tracking-tight">
-					{{ labels.eirBadgeIn }} · {{ header?.container_no || "" }}<span v-if="header?.principal" class="font-semibold text-gray-500"> · {{ header.principal }}</span>
-				</h2>
-				<p class="truncate text-[11px] text-gray-500">
-					<span v-if="eirCode" class="font-mono">{{ eirCode }}</span>
-					<span v-if="workStartedShort"> · {{ labels.eirStartedAt }} {{ workStartedShort }}</span>
-				</p>
-			</div>
-		</div>
+		<!-- Header form + bar langkah. Dipisah jadi komponen sendiri karena EIR-In dan EIR-Out
+		     memakai kerangka yang sama, dan bar batch di atasnya (Eir.vue) harus tahu tinggi
+		     keduanya. -->
+		<EirFormHeader
+			:title="headerTitle"
+			:steps="workStartedOn ? STEPS : []"
+			:step="step"
+			:started-ms="startedMs"
+			:status="saveStatus"
+			@back="emit('back')"
+		/>
 
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
@@ -30,28 +21,37 @@
 		<SkeletonDetail v-if="!header && !fetchError" :cells="6" :sections="3" />
 
 		<template v-if="header">
+			<!-- ============ SEBELUM MULAI ============ -->
 			<!-- Work-timing gate: the checklist stays locked until the operator presses Mulai,
-			     so Mulai → Submit measures how long the inspection actually took. -->
-			<section v-if="!workStartedOn" class="oak-card space-y-3 p-5 text-center">
-				<span class="oak-icon-tile mx-auto h-12 w-12 bg-leaf-50 text-leaf-600"><Icon name="play" :size="24" /></span>
-				<div>
-					<p class="text-base font-extrabold text-gray-900">{{ labels.eirStartTitle }}</p>
-					<p class="mt-1 text-sm text-gray-500">{{ labels.eirStartHint }}</p>
-				</div>
-				<button class="oak-btn oak-btn-primary w-full py-3" @click="startWork">
-					<Icon name="play" :size="18" />
-					{{ labels.eirStartBtn }}
-				</button>
-			</section>
+			     so Mulai → Submit measures how long the inspection actually took. Layar ini
+			     sengaja tidak menawarkan "salin dari tank sebelumnya" — lihat komentar di
+			     langkah Data tank. -->
+			<template v-if="!workStartedOn">
+				<section class="oak-section space-y-1">
+					<div class="flex items-baseline justify-between gap-2">
+						<p class="truncate font-mono text-base font-extrabold text-gray-900">{{ header.container_no }}</p>
+						<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ eirCode }}</span>
+					</div>
+					<p class="truncate text-xs text-gray-500">{{ identityLine }}</p>
+				</section>
+			</template>
 
-			<template v-else>
 			<!-- Step 1b — referred voucher: shipper / truck / driver, one read-only block.
 			     Was two grey cards stacked (bon codes, then the crew) which read as two
-			     different facts about the same bon. -->
-			<section class="oak-section space-y-2">
-				<div class="flex items-center gap-2">
-					<Icon name="file-text" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.referredVoucher }}</p>
+			     different facts about the same bon. Muncul di layar Mulai DAN di langkah 1:
+			     sebelum mulai ia yang menjawab "truk mana ini", sesudahnya ia rujukan yang
+			     dibaca sambil mengisi. -->
+			<section v-if="!workStartedOn || step === 0" class="oak-section space-y-2">
+				<div class="flex items-center justify-between gap-2">
+					<div class="flex items-center gap-2">
+						<Icon name="file-text" :size="16" class="text-gray-400" />
+						<p class="oak-section-title">{{ labels.referredVoucher }}</p>
+					</div>
+					<!-- Satu bon untuk beberapa tank: itu justru alasan batch ini dibuka, dan
+					     operator perlu tahu data ini tidak akan ditanyakan lagi di tank berikutnya. -->
+					<span v-if="batchMode" class="shrink-0 text-[11px] text-gray-400">
+						{{ workStartedOn ? labels.eirVoucherForCount.replace("{n}", batch.names.length) : labels.eirVoucherFromBatch }}
+					</span>
 				</div>
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl bg-gray-50 p-3 text-sm sm:grid-cols-3">
 					<div v-for="f in voucherCells" :key="f.label">
@@ -62,215 +62,284 @@
 				<p class="text-[11px] text-gray-400">{{ labels.eirVoucherLocked }}</p>
 			</section>
 
-			<!-- Step 2 — tank data. The tank's OWN facts are editable here and saved onto the
-			     Container master: the EIR is the one moment somebody is standing at the tank
-			     with its data plate in front of them, and a master left half empty stays that
-			     way for ever. What the depot fills in by itself (owner, depot, ex vessel)
-			     stays read-only underneath. -->
-			<section class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="package" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.eirHeader }}</p>
-				</div>
-				<p class="text-xs text-gray-400">{{ labels.eirTankHint }}</p>
-				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-					<div>
-						<label class="oak-label">{{ labels.type }}</label>
-						<select v-model="tank.container_type" class="oak-input">
-							<option value="">—</option>
-							<option v-for="o in tankOptions.container_type" :key="o" :value="o">{{ o }}</option>
-						</select>
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.tankSize }}</label>
-						<select v-model="tank.size" class="oak-input">
-							<option value="">—</option>
-							<option v-for="o in tankOptions.size" :key="o" :value="o">{{ o }}</option>
-						</select>
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.equipmentType }}</label>
-						<select v-model="tank.equipment_type" class="oak-input">
-							<option value="">—</option>
-							<option v-for="o in tankOptions.equipment_type" :key="o" :value="o">{{ o }}</option>
-						</select>
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.serialNo }}</label>
-						<input v-model.trim="tank.serial_no" class="oak-input" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.dateManufacture }}</label>
-						<input v-model="tank.manufacture_date" type="date" class="oak-input" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.capacity }}</label>
-						<input v-model="tank.capacity" type="number" inputmode="decimal" placeholder="L" class="oak-input" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.tare }}</label>
-						<input v-model="tank.tare_weight" type="number" inputmode="decimal" class="oak-input" />
-					</div>
-					<div>
-						<label class="oak-label">{{ labels.maxGross }}</label>
-						<input v-model="tank.max_gross_weight" type="number" inputmode="decimal" class="oak-input" />
-					</div>
-				</div>
-			</section>
-
-			<!-- Step 3 — tank status -->
-			<section class="oak-section space-y-2">
-				<label class="oak-label">{{ labels.tankStatus }}</label>
-				<div class="grid grid-cols-3 gap-2">
-					<button
-						v-for="s in [labels.emptyClean, labels.emptyDirty, labels.laden]"
-						:key="s"
-						class="oak-toggle px-2 py-3"
-						:class="tankStatus === s ? 'oak-toggle-on' : 'oak-toggle-off'"
-						@click="tankStatus = s"
-					>
-						{{ s }}
+			<template v-if="!workStartedOn">
+				<div class="oak-footer -mx-4 border-t border-gray-200/80 bg-gray-50/95 px-4 py-3 backdrop-blur">
+					<button class="oak-btn oak-btn-primary w-full py-3" @click="startWork">
+						<Icon name="play" :size="18" />
+						{{ labels.eirStartOne }} {{ header.container_no }}
 					</button>
+					<p class="mt-1.5 text-center text-[11px] text-gray-400">
+						{{ batchMode ? labels.eirStartBatchHint : labels.eirStartHint }}
+					</p>
 				</div>
-			</section>
+			</template>
 
-			<!-- Step 3b — cargo (updates the container's Last Cargo on submit) -->
-			<section class="oak-section space-y-2">
-				<label class="oak-label">{{ labels.cargo }}</label>
-				<SearchSelect
-					v-model="cargo"
-					:options="cargos"
-					:placeholder="labels.cargo"
-					:search-placeholder="labels.cargoSearch"
-					:empty-label="labels.sectionSearchEmpty"
-				/>
-				<p class="text-xs text-gray-400">{{ labels.cargoHint }}</p>
-			</section>
+			<!-- ============ LANGKAH 1 · DATA TANK ============ -->
+			<!-- v-show, bukan v-if: pindah langkah tidak boleh membongkar checklist dan grid
+			     fotonya. Yang sedang di-upload akan ikut mati bersama komponennya, dan sebuah
+			     langkah adalah tempat berpindah bolak-balik, bukan halaman baru. -->
+			<div v-show="workStartedOn && step === 0" class="space-y-4">
+				<!-- Data tank. Fakta milik TANK-nya, bukan milik EIR ini: EIR adalah satu-satunya
+				     saat ada orang berdiri di depan pelat tank, dan master yang setengah kosong
+				     akan tetap kosong selamanya kalau menunggu perjalanan terpisah ke Desk.
+				     Karena itu ia diisi SEKALI dan dipakai semua EIR berikutnya — bukan daftar
+				     sembilan kotak yang harus diketik ulang setiap tank datang. Chip "opsional"
+				     dan centang per kotak yang mengatakan itu; tidak ada satu pun field di sini
+				     yang menahan tombol kirim.
 
-			<!-- Foto Cepat (bulk): foto tanpa perlu pilih section; admin menyortir belakangan. -->
-			<section class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="camera" :size="16" class="text-brand-500" />
-					<p class="oak-section-title">{{ labels.bulkPhotoTitle }}</p>
-				</div>
-				<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
-				<div class="flex flex-wrap items-center gap-2">
-					<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
-						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
-							<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
-						</button>
-						<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
+				     Pernah ada tombol "Salin ke <tank berikutnya>" di sini, dan ia dibuang
+				     2026-09-09 atas keputusan pemilik alur: dua tank dari satu bon TIDAK
+				     dijamin sama, dan operator yang tidak menyadari salinannya akan
+				     menandatangani angka tank lain. Angka yang diketik sendiri di depan pelat
+				     lebih murah daripada master yang salah tanpa ada yang tahu. -->
+				<section class="oak-section space-y-3">
+					<div class="flex items-center justify-between gap-2">
+						<div class="flex min-w-0 items-center gap-2">
+							<Icon name="package" :size="16" class="text-gray-400" />
+							<p class="oak-section-title">{{ labels.eirHeader }}</p>
+							<span class="oak-chip shrink-0 bg-gray-100 text-gray-500">{{ labels.eirOptional }}</span>
+						</div>
 						<span
-							v-if="bulkMeta[url]"
-							class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
+							class="oak-chip shrink-0"
+							:class="tankFilled === TANK_FIELDS.length ? 'bg-leaf-100 text-leaf-700' : 'bg-gray-100 text-gray-500'"
 						>
-							<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
+							{{ tankFilled }}/{{ TANK_FIELDS.length }} {{ labels.eirTankFromMaster }}
 						</span>
+					</div>
+					<p class="text-xs text-gray-400">{{ labels.eirTankHint }}</p>
+					<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+						<div v-for="f in TANK_FIELDS" :key="f.key">
+							<label class="oak-label flex items-center gap-1">
+								{{ f.label }}
+								<!-- Centang = sudah ada di master. Yang tanpa centang adalah satu-satunya
+								     yang layak dilihat lagi di depan tank. -->
+								<Icon v-if="tankHas(f.key)" name="check" :size="12" class="text-leaf-500" />
+							</label>
+							<select v-if="f.options" v-model="tank[f.key]" class="oak-input">
+								<option value="">—</option>
+								<option v-for="o in tankOptions[f.options]" :key="o" :value="o">{{ o }}</option>
+							</select>
+							<input
+								v-else
+								v-model="tank[f.key]"
+								:type="f.type || 'text'"
+								:inputmode="f.type === 'number' ? 'decimal' : undefined"
+								:placeholder="f.placeholder || ''"
+								class="oak-input"
+							/>
+						</div>
+					</div>
+				</section>
+
+				<!-- Status tank + cargo terakhir. Satu kartu, bukan dua: status "Empty dirty"
+				     dan muatan terakhirnya adalah satu kalimat, dan yang kedua wajib justru
+				     karena yang pertama dipilih. -->
+				<section class="oak-section space-y-3">
+					<div class="flex items-baseline justify-between gap-2">
+						<label class="oak-label mb-0">{{ labels.tankStatus }}</label>
+						<span class="text-[11px] text-gray-400">{{ labels.eirRequired }}</span>
+					</div>
+					<div class="grid grid-cols-3 gap-2">
+						<button
+							v-for="s in [labels.emptyClean, labels.emptyDirty, labels.laden]"
+							:key="s"
+							class="oak-toggle px-2 py-3"
+							:class="tankStatus === s ? 'oak-toggle-on' : 'oak-toggle-off'"
+							@click="tankStatus = s"
+						>
+							{{ s }}
+						</button>
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.cargo }}</label>
+						<SearchSelect
+							v-model="cargo"
+							:options="cargos"
+							:placeholder="labels.cargo"
+							:search-placeholder="labels.cargoSearch"
+							:empty-label="labels.sectionSearchEmpty"
+						/>
+						<p class="mt-1 text-xs text-gray-400">{{ labels.cargoHint }}</p>
+					</div>
+				</section>
+			</div>
+
+			<!-- ============ LANGKAH 2 · KELENGKAPAN ============ -->
+			<!-- Kelengkapan tank: the fill-in boxes of the printed EIR sheet. Separate from the
+			     damage checklist on purpose — see TankFittings.vue. -->
+			<div v-show="workStartedOn && step === 1" class="space-y-4">
+				<TankFittings v-if="fittings.length" :rows="fittings" />
+				<p v-else class="oak-section text-center text-sm text-gray-400">{{ labels.eirNoFittings }}</p>
+			</div>
+
+			<!-- ============ LANGKAH 3 · KERUSAKAN & FOTO ============ -->
+			<div v-show="workStartedOn && step === 2" class="space-y-4">
+				<!-- Checklist: search a section/part, add only the damaged ones -->
+				<ChecklistDamage
+					:rows="rows"
+					:damage-codes="damageCodes"
+					:repair-codes="repairCodes"
+					:upload="uploadFile"
+					:title="labels.checklist"
+				/>
+
+				<!-- Foto Cepat (bulk): foto tanpa perlu pilih section; admin menyortir belakangan. -->
+				<section class="oak-section space-y-3">
+					<div class="flex items-center gap-2">
+						<Icon name="camera" :size="16" class="text-brand-500" />
+						<p class="oak-section-title">{{ labels.bulkPhotoTitle }}</p>
+					</div>
+					<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
+					<div class="flex flex-wrap items-center gap-2">
+						<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
+							<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+								<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
+							</button>
+							<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
+							<span
+								v-if="bulkMeta[url]"
+								class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
+							>
+								<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
+							</span>
+							<button
+								type="button"
+								class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
+								@click="removeBulkPhoto(idx)"
+							>
+								<Icon name="x" :size="12" />
+							</button>
+							<PhotoMark :photo="url" />
+						</div>
+						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="h-20 w-20" />
+						<!-- The phone's own camera app, kept only as the fallback: never reached by a
+						     tap, only by openCameraOrFallback when the in-app viewfinder cannot run. -->
+						<input
+							ref="bulkCamInput"
+							type="file"
+							accept="image/*"
+							capture="environment"
+							multiple
+							class="hidden"
+							@change="onBulkPhotoPick($event)"
+						/>
 						<button
 							type="button"
-							class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
-							@click="removeBulkPhoto(idx)"
+							class="flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+							:disabled="bulkUploading"
+							@click="openCameraOrFallback"
 						>
-							<Icon name="x" :size="12" />
+							<span v-if="bulkUploading" class="text-xs">…</span>
+							<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
 						</button>
-						<PhotoMark :photo="url" />
+						<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
+							<input type="file" accept="image/*" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
+							<span v-if="bulkUploading" class="text-xs">…</span>
+							<template v-else><Icon name="image" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoGallery }}</span></template>
+						</label>
 					</div>
-					<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="h-20 w-20" />
-					<!-- The phone's own camera app, kept only as the fallback: never reached by a
-					     tap, only by openCameraOrFallback when the in-app viewfinder cannot run. -->
-					<input
-						ref="bulkCamInput"
-						type="file"
-						accept="image/*"
-						capture="environment"
-						multiple
-						class="hidden"
-						@change="onBulkPhotoPick($event)"
-					/>
-					<button
-						type="button"
-						class="flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
-						:disabled="bulkUploading"
-						@click="openCameraOrFallback"
-					>
-						<span v-if="bulkUploading" class="text-xs">…</span>
-						<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
-					</button>
-					<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
-						<input type="file" accept="image/*" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
-						<span v-if="bulkUploading" class="text-xs">…</span>
-						<template v-else><Icon name="image" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoGallery }}</span></template>
-					</label>
-				</div>
-				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
-			</section>
+					<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
+				</section>
+			</div>
 
-			<!-- Step 4 — checklist: search a section/part, add only the damaged ones -->
-			<ChecklistDamage
-				:rows="rows"
-				:damage-codes="damageCodes"
-				:repair-codes="repairCodes"
-				:upload="uploadFile"
-				:title="labels.checklist"
-			/>
-
-			<!-- Step 4b — kelengkapan tank: the fill-in boxes of the printed EIR sheet.
-			     Separate from the damage checklist on purpose — see TankFittings.vue. -->
-			<TankFittings v-if="fittings.length" :rows="fittings" />
-
-			<!-- Follow-up orders (Cleaning / M&R) are created automatically on submit
-			     when applicable — the opt-out toggles are intentionally not shown. -->
-
-			<!-- Step 5 — sign-off -->
-			<section class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="edit-3" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.signOff }}</p>
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.eirRemarks }}</label>
-					<textarea v-model.trim="remarks" rows="2" class="oak-input"></textarea>
-				</div>
-				<p class="text-sm text-gray-500">{{ labels.officer }}: <span class="font-semibold text-gray-800">{{ session.user }}</span></p>
-			</section>
-
-			<!-- Step 5b — virtual signature of the EIR creator, directly above Submit -->
-			<section class="oak-section space-y-2">
-				<div class="flex items-center gap-2">
-					<Icon name="edit-2" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.signature }}</p>
-				</div>
-				<p class="text-xs text-gray-500">
-					{{ labels.signedBy }}: <span class="font-semibold text-gray-800">{{ session.user }}</span>
-				</p>
-				<div v-if="signatureUrl && !signing">
-					<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-paper object-contain" />
-					<button type="button" class="oak-link mt-1.5 inline-flex items-center gap-1 text-sm" @click="startResign">
-						<Icon name="rotate-ccw" :size="14" /> {{ labels.signAgain }}
-					</button>
-				</div>
-				<div v-else>
-					<canvas
-						ref="sigCanvas"
-						class="w-full touch-none rounded-xl border border-gray-200 bg-paper"
-						style="height: 150px"
-						@pointerdown="sigDown"
-						@pointermove="sigMove"
-						@pointerup="sigUp"
-						@pointercancel="sigUp"
-						@pointerleave="sigUp"
-					></canvas>
-					<div class="mt-1.5 flex items-center gap-3 text-sm">
-						<button type="button" class="text-gray-600 underline underline-offset-2" @click="clearSignature">{{ labels.clear }}</button>
-						<span v-if="sigUploading" class="text-gray-400">…</span>
-						<span v-else-if="sigErr" class="text-red-600">{{ sigErr }}</span>
-						<span v-else class="text-gray-400">{{ labels.signHint }}</span>
+			<!-- ============ LANGKAH 4 · REVIEW & KIRIM ============ -->
+			<div v-show="workStartedOn && step === 3" class="space-y-4">
+				<!-- Tiga angka yang menentukan apakah EIR ini layak dikirim, dihitung dari yang
+				     sudah diisi — bukan daftar panjang untuk dibaca ulang di ujung pekerjaan. -->
+				<section class="oak-section space-y-3">
+					<div class="flex items-center gap-2">
+						<Icon name="check-circle" :size="16" class="text-gray-400" />
+						<p class="oak-section-title">{{ labels.eirReviewSummary }} {{ header.container_no }}</p>
 					</div>
-				</div>
-			</section>
+					<div class="grid grid-cols-3 gap-2 text-center">
+						<div class="rounded-xl bg-leaf-50 py-3">
+							<p class="text-xl font-extrabold text-leaf-600">{{ fittingsFilled }}</p>
+							<p class="text-[11px] text-gray-500">{{ labels.eirReviewFilled }}</p>
+						</div>
+						<div class="rounded-xl py-3" :class="fittingsBlank ? 'bg-amber-50' : 'bg-gray-50'">
+							<p class="text-xl font-extrabold" :class="fittingsBlank ? 'text-amber-600' : 'text-gray-400'">{{ fittingsBlank }}</p>
+							<p class="text-[11px] text-gray-500">{{ labels.eirReviewBlank }}</p>
+						</div>
+						<div class="rounded-xl py-3" :class="damageCount ? 'bg-red-50' : 'bg-gray-50'">
+							<p class="text-xl font-extrabold" :class="damageCount ? 'text-red-600' : 'text-gray-400'">{{ damageCount }}</p>
+							<p class="text-[11px] text-gray-500">{{ labels.eirReviewDamage }}</p>
+						</div>
+					</div>
+					<p class="text-[11px] text-gray-400">{{ photoCount }} {{ labels.eirReviewPhotos }}</p>
+				</section>
 
-			<!-- Step 6 — auto-save status + finalize -->
-			<section class="space-y-2">
+				<!-- Status batch: satu-satunya tempat operator bisa memastikan tidak ada tank
+				     dari truk ini yang tertinggal sebelum ia menutup batch. -->
+				<section v-if="batchMode" class="oak-section space-y-2">
+					<div class="flex items-center justify-between gap-2">
+						<div class="flex items-center gap-2">
+							<Icon name="layers" :size="16" class="text-gray-400" />
+							<p class="oak-section-title">{{ labels.eirBatchStatusTitle }}</p>
+						</div>
+						<span class="shrink-0 text-[11px] text-gray-400">{{ batch.names.length }} {{ labels.eirBadge }}</span>
+					</div>
+					<ul class="divide-y divide-gray-100">
+						<li v-for="m in batchStatus" :key="m.name" class="flex items-center gap-2.5 py-2">
+							<span class="oak-icon-tile h-6 w-6 shrink-0" :class="m.done ? 'bg-leaf-100 text-leaf-700' : 'bg-gray-100 text-gray-400'">
+								<Icon :name="m.done ? 'check' : 'clock'" :size="13" />
+							</span>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ m.container_no }}</span>
+								<span class="block truncate text-[11px] text-gray-500">{{ m.line }}</span>
+							</span>
+							<span class="oak-chip shrink-0" :class="m.tone">{{ m.chip }}</span>
+						</li>
+					</ul>
+				</section>
+
+				<!-- Sign-off -->
+				<section class="oak-section space-y-3">
+					<div class="flex items-center gap-2">
+						<Icon name="edit-3" :size="16" class="text-gray-400" />
+						<p class="oak-section-title">{{ labels.signOff }}</p>
+					</div>
+					<div>
+						<label class="oak-label">{{ labels.eirRemarks }}</label>
+						<textarea v-model.trim="remarks" rows="2" class="oak-input"></textarea>
+					</div>
+					<p class="text-sm text-gray-500">{{ labels.officer }}: <span class="font-semibold text-gray-800">{{ session.user }}</span></p>
+				</section>
+
+				<!-- Virtual signature of the EIR creator, directly above Submit -->
+				<section class="oak-section space-y-2">
+					<div class="flex items-center gap-2">
+						<Icon name="edit-2" :size="16" class="text-gray-400" />
+						<p class="oak-section-title">{{ labels.signature }}</p>
+					</div>
+					<p class="text-xs text-gray-500">
+						{{ labels.signedBy }}: <span class="font-semibold text-gray-800">{{ session.user }}</span>
+					</p>
+					<div v-if="signatureUrl && !signing">
+						<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-paper object-contain" />
+						<button type="button" class="oak-link mt-1.5 inline-flex items-center gap-1 text-sm" @click="startResign">
+							<Icon name="rotate-ccw" :size="14" /> {{ labels.signAgain }}
+						</button>
+					</div>
+					<div v-else>
+						<canvas
+							ref="sigCanvas"
+							class="w-full touch-none rounded-xl border border-gray-200 bg-paper"
+							style="height: 150px"
+							@pointerdown="sigDown"
+							@pointermove="sigMove"
+							@pointerup="sigUp"
+							@pointercancel="sigUp"
+							@pointerleave="sigUp"
+						></canvas>
+						<div class="mt-1.5 flex items-center gap-3 text-sm">
+							<button type="button" class="text-gray-600 underline underline-offset-2" @click="clearSignature">{{ labels.clear }}</button>
+							<span v-if="sigUploading" class="text-gray-400">…</span>
+							<span v-else-if="sigErr" class="text-red-600">{{ sigErr }}</span>
+							<span v-else class="text-gray-400">{{ labels.signHint }}</span>
+						</div>
+					</div>
+				</section>
+
 				<!-- Required-before-submit: Cargo + Tank Status + Signature. -->
 				<div v-if="missingFields.length" class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
 					<p class="flex items-center gap-1.5 font-semibold text-amber-700">
@@ -278,25 +347,42 @@
 					</p>
 					<p class="mt-0.5 pl-6 text-xs text-amber-700">{{ missingFields.join(", ") }}</p>
 				</div>
-				<p class="flex items-center gap-1.5 text-xs">
-					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
-					<span v-else-if="saveError" class="text-red-600">{{ saveError }}</span>
-					<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600"><Icon name="check" :size="13" /> {{ labels.draftSaved }}</span>
-					<span v-else class="text-gray-400">{{ labels.eirAutosaveHint }}</span>
+			</div>
+
+			<!-- Aksi langkah, menempel di bawah. Kiri selalu jalan mundur (atau keluar dari
+			     langkah pertama), kanan selalu jalan maju — sampai langkah terakhir, di mana
+			     jalan maju berarti menyerahkan EIR ini ke Adm Ops.
+
+			     Tombol kirim sengaja TIDAK menunggu autosave: submit membangun dan mengirim
+			     seluruh EIR sendiri, jadi menunggu simpanan mendarat tidak membeli apa pun —
+			     dan di sinyal buruk itu membuat operator menekan tombol mati selama 20 detik. -->
+			<div v-if="workStartedOn" class="oak-footer -mx-4 border-t border-gray-200/80 bg-gray-50/95 px-4 py-3 backdrop-blur">
+				<div class="flex items-center gap-2">
+					<button class="oak-btn oak-btn-secondary flex-1 py-3" @click="step ? goStep(step - 1) : saveAndExit()">
+						{{ step ? labels.eirStepBack : labels.eirSaveDraftExit }}
+					</button>
+					<button
+						v-if="step < STEPS.length - 1"
+						class="oak-btn oak-btn-primary flex-[1.6] py-3"
+						@click="goStep(step + 1)"
+					>
+						{{ labels.eirStepNext }} · {{ STEPS[step + 1] }}
+						<Icon name="arrow-right" :size="16" />
+					</button>
+					<button
+						v-else
+						class="oak-btn oak-btn-primary flex-[1.6] py-3"
+						:disabled="submitting || missingFields.length > 0"
+						@click="confirmSubmit"
+					>
+						<Icon v-if="!submitting" name="check-circle" :size="18" />
+						{{ submitting ? "…" : submitLabel }}
+					</button>
+				</div>
+				<p v-if="step === STEPS.length - 1 && submitHint" class="mt-1.5 text-center text-[11px] text-gray-400">
+					{{ submitHint }}
 				</p>
-				<!-- Deliberately NOT gated on `saveRes.loading`. The submit builds and sends the
-				     whole EIR itself, so waiting for an autosave to land buys nothing — and on a
-				     weak link it left the operator tapping a dead button for twenty seconds. -->
-				<button
-					class="oak-btn oak-btn-primary w-full py-3"
-					:disabled="submitting || missingFields.length > 0"
-					@click="confirmSubmit"
-				>
-					<Icon v-if="!submitting" name="check-circle" :size="18" />
-					{{ submitting ? "…" : labels.eirSendReview }}
-				</button>
-			</section>
-			</template>
+			</div>
 		</template>
 	</div>
 </template>
@@ -317,10 +403,21 @@ import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
+import EirFormHeader from "@/components/EirFormHeader.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
 import TankFittings from "@/components/TankFittings.vue"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
+import {
+	batch,
+	getStep,
+	inBatch,
+	markSent,
+	markStarted,
+	setStep,
+	startMs,
+	tankNo,
+} from "@/utils/eirBatch"
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
@@ -328,15 +425,19 @@ const props = defineProps({ inspection: { type: String, required: true } })
 const emit = defineEmits(["back", "submitted"])
 
 const eirType = "EIR-In"
+
+// Empat langkah, bukan satu gulungan sepanjang dua layar. Urutannya adalah urutan orang
+// berjalan mengelilingi tank: bacaan pelat dan status dulu (masih di depan pintu), kotak
+// kelengkapan, baru kerusakan dengan fotonya, dan terakhir apa yang ditandatangani.
+// Nama langkah dipakai dua kali — di bar progres dan di tombol "Lanjut · <langkah>" —
+// supaya tombolnya menjanjikan tujuan, bukan arah.
+const STEPS = [labels.eirStepTank, labels.eirStepFittings, labels.eirStepDamage, labels.eirStepReview]
+const step = ref(0)
+
 const header = ref(null)
 const inspection = ref(null)
 const workStartedOn = ref("") // set once the operator presses Mulai; gates editing
 const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
-// "2026-08-19 22:14:53.627161" is a database row, not something to read on a phone.
-const workStartedShort = computed(() => {
-	const [d, t] = String(workStartedOn.value || "").split(" ")
-	return d ? `${d.slice(8, 10)}/${d.slice(5, 7)} ${(t || "").slice(0, 5)}` : ""
-})
 // The tank's own facts, editable here and written to the Container master on save
 // (eir.TANK_MASTER_FIELDS). Everything the depot fills in by itself stays out.
 const tank = reactive({
@@ -345,10 +446,31 @@ const tank = reactive({
 	size: "",
 	serial_no: "",
 	manufacture_date: "",
+	// Tanggal uji di pelat. Sejak fitur Periodic Test dihapus (v0_66) tidak ada satu pun
+	// layar yang bisa mengisinya lagi, padahal EIR mencetaknya dan Register Periodic Test
+	// memakainya sebagai jatuh-balik. Surveyor yang berdiri di depan pelat adalah satu-
+	// satunya orang yang bisa menutup lubang itu.
+	last_test_date: "",
 	capacity: "",
 	tare_weight: "",
 	max_gross_weight: "",
 })
+
+// Urutannya urutan membaca tank: identitasnya dulu, lalu apa yang tercetak di pelat, lalu
+// bobotnya. `options` menunjuk ke daftar pilihan dari master (eir_masters.tank_options).
+const TANK_FIELDS = [
+	{ key: "container_type", label: labels.type, options: "container_type" },
+	{ key: "size", label: labels.tankSize, options: "size" },
+	{ key: "equipment_type", label: labels.equipmentType, options: "equipment_type" },
+	{ key: "serial_no", label: labels.serialNo },
+	{ key: "manufacture_date", label: labels.dateManufacture, type: "date" },
+	{ key: "last_test_date", label: labels.lastTest, type: "date" },
+	{ key: "capacity", label: labels.capacity, type: "number", placeholder: "L" },
+	{ key: "tare_weight", label: labels.tare, type: "number" },
+	{ key: "max_gross_weight", label: labels.maxGross, type: "number" },
+]
+const tankHas = (key) => String(tank[key] ?? "").trim() !== ""
+const tankFilled = computed(() => TANK_FIELDS.filter((f) => tankHas(f.key)).length)
 const tankOptions = ref({ container_type: [], equipment_type: [], size: [] })
 const tanggal = ref(new Date().toISOString().slice(0, 10))
 const tankStatus = ref("")
@@ -406,6 +528,118 @@ const missingFields = computed(() => {
 	return out
 })
 
+// --- batch: judul, penghitung waktu, salin, dan status kiriman ----------------
+// Semua yang ada di sini hanya hidup selama beberapa EIR dibuka bersama; satu EIR yang
+// dibuka sendirian melewatinya tanpa satu pun elemen tambahan di layar.
+const batchMode = computed(() => inBatch(props.inspection))
+
+// "Masuk · FG01 · Coner" — arah, tank, pemiliknya. Nomor EIR-nya tidak ikut ke judul: ia
+// ada di kartu Voucher Referensi dan di layar Mulai, dan header ini harus tetap terbaca
+// sekali lirik di atas tank yang sedang dipegang.
+const headerTitle = computed(() =>
+	[labels.eirBadgeIn, header.value?.container_no, header.value?.principal].filter(Boolean).join(" · ")
+)
+
+// Baris identitas di layar Mulai: pemilik, ke mana tank ini masuk, dan — kalau batch ini
+// memang satu bon — bahwa datanya sudah diisi di tank sebelumnya.
+const identityLine = computed(() => {
+	const parts = [header.value?.principal]
+	if (header.value?.depot) parts.push(`${labels.eirBadgeIn.toLowerCase()} ${labels.depot.toLowerCase()} ${header.value.depot}`)
+	return parts.filter(Boolean).join(" · ")
+})
+
+// Titik nol penghitung waktu di header. Nol = belum dimulai (chip "Belum mulai").
+const startedMs = computed(() => (workStartedOn.value ? startMs(props.inspection, workStartedOn.value) : 0))
+
+const saveStatus = computed(() => {
+	if (saveRes.loading) return labels.eirSavingShort
+	if (saveError.value) return saveError.value
+	if (savedOk.value) return labels.eirSavedShort
+	return labels.eirAutosaveShort
+})
+
+// Anggota batch lain yang belum dikirim — yang membuat tombol kirim berbunyi
+// "& tutup batch" begitu daftar ini kosong.
+const unsentOthers = computed(() =>
+	batchMode.value ? batch.names.filter((n) => n !== props.inspection && !batch.sent[n]) : []
+)
+
+const fittingsFilled = computed(() => fittings.value.filter((r) => String(r.value ?? "").trim()).length)
+const fittingsBlank = computed(() => fittings.value.length - fittingsFilled.value)
+const damageCount = computed(() => rows.value.filter(rowHasFinding).length)
+const photoCount = computed(
+	() => bulkPhotos.value.length + rows.value.reduce((n, r) => n + (r.photos?.length || 0), 0)
+)
+
+// Kartu "Status batch" di langkah terakhir: tiga keadaan — sudah dikirim, yang sedang
+// dipegang, dan yang belum disentuh.
+const batchStatus = computed(() =>
+	batch.names.map((n) => {
+		const sent = batch.sent[n]
+		const container_no = tankNo(n) || sent?.container_no || n
+		if (sent)
+			return {
+				name: n,
+				container_no,
+				done: true,
+				line: `${labels.eirBatchSentAt} ${clock(sent.at)} · ${sent.damages || 0} ${labels.eirReviewDamage}`,
+				chip: labels.eirStatusPendingReview,
+				tone: "bg-sky-100 text-sky-700",
+			}
+		if (n === props.inspection)
+			return {
+				name: n,
+				container_no,
+				done: false,
+				line: `${labels.eirBatchReadyToSend} · ${damageCount.value} ${labels.eirReviewDamage}`,
+				chip: labels.eirBatchNotSentYet,
+				tone: "bg-amber-100 text-amber-800",
+			}
+		return {
+			name: n,
+			container_no,
+			done: false,
+			line: labels.eirBatchNotStarted,
+			chip: labels.eirBatchNotSentYet,
+			tone: "bg-gray-100 text-gray-500",
+		}
+	})
+)
+
+const submitLabel = computed(() => {
+	if (!batchMode.value) return labels.eirSendReview
+	const tail = unsentOthers.value.length ? "" : ` ${labels.eirSendClose}`
+	return `${labels.eirSendOne} ${header.value?.container_no || ""}${tail}`
+})
+
+// Apa yang terjadi SETELAH tombol kirim — pertanyaan terakhir sebelum menekannya.
+const submitHint = computed(() => {
+	if (!batchMode.value) return ""
+	const parts = []
+	const sent = batch.names.filter((n) => batch.sent[n])
+	if (sent.length === 1) parts.push(`${tankNo(sent[0])} ${labels.eirSendHintSent}`)
+	else if (sent.length > 1) parts.push(`${sent.length} ${labels.eirBadge} ${labels.eirSendHintSent}`)
+	const next = unsentOthers.value[0]
+	parts.push(next ? `${labels.eirSendHintNext} ${tankNo(next)}` : labels.eirSendHintLast)
+	return parts.join(" · ")
+})
+
+function clock(ms) {
+	const d = new Date(ms)
+	return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+}
+
+/** Catat EIR ini sebagai terkirim di batch — bahan layar penutup batch. */
+function noteSent() {
+	if (!batch.names.includes(props.inspection)) return
+	markSent(props.inspection, {
+		container_no: header.value?.container_no || "",
+		damages: damageCount.value,
+		photos: photoCount.value,
+		minutes: startedMs.value ? Math.max(1, Math.round((Date.now() - startedMs.value) / 60000)) : 0,
+	})
+}
+
 const mastersRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_masters",
 	method: "GET",
@@ -427,6 +661,9 @@ const mastersRes = cachedResource({
 // sits here too — it comes from the bon's booking, not off the tank. Owner and container
 // number are the screen title, and Last Cargo is the Cargo picker below; neither repeats.
 const voucherCells = computed(() => [
+	// Nomor EIR-nya duduk di sini sejak header form dipersempit jadi judul + penghitung
+	// waktu: ia satu-satunya cara mencocokkan layar ini dengan lembar kertas di tangan.
+	{ label: labels.eir, value: eirCode.value, mono: true },
 	{ label: labels.bookingCode, value: bookingCode.value, mono: true },
 	{ label: labels.referredVoucher, value: referredVoucher.value, mono: true },
 	{ label: labels.depot, value: header.value?.depot },
@@ -445,6 +682,11 @@ const openRes = cachedResource({
 		header.value = data
 		inspection.value = data.inspection
 		workStartedOn.value = data.work_started_on || ""
+		// Mendarat di langkah tempat tank ini ditinggalkan (0 untuk yang belum pernah dibuka).
+		step.value = getStep(props.inspection)
+		// Dicatat juga saat langkahnya kebetulan 0: tanpa ini watcher di bawah tidak pernah
+		// menyala, dan baris worklist kehilangan "Draft 1/4" untuk EIR yang baru dimulai.
+		if (data.work_started_on) setStep(props.inspection, step.value)
 		result.value = null
 		savedOk.value = false
 		tanggal.value = data.eir_date || new Date().toISOString().slice(0, 10)
@@ -491,6 +733,7 @@ const saveRes = createResource({
 			toast.success(data.pending_review ? labels.eirSentForReview : labels.eirSubmitted, {
 				title: data.inspection_id || data.inspection,
 			})
+			noteSent()
 			emit("submitted", data.inspection)
 			emit("back")
 		} else {
@@ -522,10 +765,39 @@ async function startWork() {
 			url: "container_depot.ess.inspections.eir_start",
 			payload: { inspection: inspection.value },
 		})
-		workStartedOn.value = new Date().toISOString().slice(0, 19).replace("T", " ")
+		// Jam LOKAL, bukan ISO/UTC: cap ini dibaca manusia di header ("Dimulai 09:41") dan
+		// dipakai menghitung durasi. Yang ditulis UTC membuat handset di Jakarta melaporkan
+		// pemeriksaan yang mulai tujuh jam lalu.
+		workStartedOn.value = localStamp()
+		markStarted(inspection.value)
+		setStep(props.inspection, 0)
+		step.value = 0
 	} catch (e) {
 		toast.error(e?.message || labels.error)
 	}
+}
+
+function localStamp() {
+	const d = new Date()
+	const p = (n) => String(n).padStart(2, "0")
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+// Langkah terakhir tiap EIR diingat di luar komponen ini: berpindah tank di dalam batch
+// membongkar form dan memasangnya lagi, dan mendarat di langkah 1 setiap kali adalah cara
+// tercepat kehilangan tempat pada tank yang baru setengah jalan.
+watch(step, (s) => setStep(props.inspection, s))
+
+function goStep(n) {
+	step.value = Math.min(STEPS.length - 1, Math.max(0, n))
+	window.scrollTo({ top: 0, behavior: "smooth" })
+}
+
+// "Simpan draft" di langkah pertama: satu simpanan paksa, lalu keluar. Autosave sudah
+// berjalan sendiri — yang dibeli tombol ini adalah kepastian sebelum layar ditinggalkan.
+function saveAndExit() {
+	doSave(false)
+	emit("back")
 }
 
 function applyDraftToRows(data) {
@@ -846,6 +1118,7 @@ async function submitEir() {
 		toast.success(labels.eirSentForReview, {
 			title: eirCode.value || inspection.value,
 		})
+		noteSent()
 		emit("submitted", inspection.value)
 		emit("back")
 	} catch (e) {

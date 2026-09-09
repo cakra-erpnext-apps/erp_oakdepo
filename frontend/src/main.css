@@ -297,6 +297,18 @@
 		z-index: 9;
 	}
 
+	/* Aksi utama yang menempel di bawah layar. Dipakai alur yang panjang (batch EIR):
+	   daftar pending dan form checklist sama-sama bisa lebih tinggi dari satu layar, dan
+	   tombol yang ikut ter-scroll keluar memaksa operator naik-turun cuma untuk menekannya.
+
+	   Duduknya di ATAS bottom bar, bukan di belakangnya: BottomNav mengumumkan tingginya
+	   sendiri sebagai --oak-bottom-h (fallback menutup frame pertama sebelum terukur). */
+	.oak-footer {
+		position: sticky;
+		bottom: calc(var(--oak-bottom-h, 64px) + 8px);
+		z-index: 10;
+	}
+
 	/* Form controls ------------------------------------------------------ */
 	.oak-input {
 		@apply w-full rounded-lg border border-gray-300 bg-paper px-3 py-2.5 text-sm text-gray-900 outline-none transition

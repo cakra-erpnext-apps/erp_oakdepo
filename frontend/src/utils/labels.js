@@ -233,7 +233,7 @@ export const labels = {
 	tare: "Tara (kg)", // Tare
 	maxGross: "Berat Kotor Maks (kg)", // Max gross weight
 	lastCargo: "Muatan Terakhir", // Last cargo
-	lastTest: "Tes Terakhir", // Last test date
+	lastTest: "Tgl. Tes Terakhir", // Last test date — tanggal uji berkala di pelat tank
 	eirInDate: "Last EIR-In Date", // last EIR-In date from the Container master
 	eirOutDate: "Last EIR-Out Date", // last EIR-Out date from the Container master
 	location: "Lokasi Yard", // Yard location
@@ -332,6 +332,65 @@ export const labels = {
 	eirSelectCancel: "Batal", // leave batch-select mode
 	eirBatchOpen: "Buka", // open the picked EIRs as a navigable batch (no Mulai/submit needed)
 	eirBatchExit: "Keluar dari batch", // leave the batch navigator
+	// Batch EIR — satu bon, beberapa tank, dikerjakan berurutan tanpa kembali ke daftar.
+	// Kata-kata di sini dipakai bar batch, sheet daftar batch, dan layar batch selesai.
+	eirBatchOf: "dari", // "EIR 2 dari 5" / "langkah 1 dari 4"
+	eirBatchWord: "batch", // "batch ORD-BKR-2026-09508"
+	eirBatchTitle: "Batch", // judul sheet
+	eirBatchOpenBtn: "Buka batch", // tombol utama di daftar: "Buka batch · 2 EIR"
+	eirBatchOpenHint: "Bisa pindah antar EIR tanpa kembali ke daftar.",
+	eirBatchResume: "Lanjutkan", // banner di daftar: kembali ke batch yang masih terbuka
+	eirBatchOpenOne: "Buka", // "Buka FG02" (satu EIR di dalam batch)
+	eirBatchSelectAll: "Pilih semua",
+	eirBatchNotStarted: "Belum mulai",
+	eirBatchTodoWord: "Belum", // chip baris di sheet
+	eirBatchSentWord: "Terkirim",
+	eirBatchSentAt: "Dikirim", // "Dikirim 09:41"
+	eirBatchOpenNow: "Sedang dibuka",
+	eirStepWord: "langkah",
+	eirBatchVoucherTitle: "{n} EIR dari voucher yang sama",
+	eirBatchVoucherHint: "data voucher diisi sekali untuk semua.",
+	eirVoucherForCount: "berlaku untuk {n} EIR",
+	eirVoucherFromBatch: "sudah terisi dari batch",
+	eirDraftStep: "Draft", // chip baris worklist: "Draft 2/4"
+	// Langkah form EIR — nama langkah dipakai bar progres DAN tombol "Lanjut · <langkah>"
+	eirRequired: "wajib", // penanda kecil di kartu yang tidak boleh dilewat
+	eirNoFittings: "Tidak ada kotak kelengkapan untuk tank ini.",
+	eirStepTank: "Data tank",
+	eirStepFittings: "Kelengkapan",
+	eirStepDamage: "Kerusakan",
+	eirStepPhotos: "Foto",
+	eirStepReview: "Review & kirim",
+	eirStepNext: "Lanjut",
+	eirStepBack: "Kembali",
+	eirSaveDraftExit: "Simpan draft", // simpan sekarang lalu keluar ke daftar
+	eirAutosaveShort: "Tersimpan otomatis",
+	eirSavingShort: "Menyimpan…",
+	eirSavedShort: "Tersimpan",
+	// Mulai pemeriksaan, per EIR (waktu kerja dihitung sendiri-sendiri)
+	eirStartOne: "Mulai pemeriksaan", // "Mulai pemeriksaan FG02"
+	eirStartBatchHint: "Waktu mulai dihitung terpisah per EIR.",
+	// Langkah terakhir: ringkasan + kirim
+	eirReviewSummary: "Ringkasan",
+	eirReviewFilled: "terisi",
+	eirReviewBlank: "kosong",
+	eirReviewDamage: "kerusakan",
+	eirReviewPhotos: "foto",
+	eirBatchStatusTitle: "Status batch",
+	eirBatchReadyToSend: "Siap dikirim",
+	eirBatchNotSentYet: "Belum dikirim",
+	eirSendOne: "Kirim", // "Kirim FG02" — kirim satu EIR dari dalam batch
+	eirSendClose: "& tutup batch", // ekor tombol kirim untuk EIR terakhir di batch
+	eirSendHintLast: "setelah ini kembali ke daftar",
+	eirSendHintNext: "setelah ini lanjut ke", // "… lanjut ke FG03"
+	eirSendHintSent: "sudah dikirim", // "FG01 sudah dikirim"
+	eirMinutes: "mnt",
+	// Layar penutup batch
+	eirBatchDoneTitle: "Batch selesai",
+	eirBatchDoneSent: "EIR dikirim",
+	eirBatchDoneNote: "Cleaning order dibuat otomatis untuk tank yang statusnya tetap Empty dirty.",
+	eirBatchDoneBack: "Kembali ke daftar",
+	eirBatchDoneNew: "Buka batch baru",
 	eirPendingCount: "menunggu", // pending count suffix
 	eirSource: "Sumber Data", // Source
 	eirFetch: "Ambil Data", // Fetch
@@ -350,7 +409,13 @@ export const labels = {
 	equipmentType: "Equipment Type",
 	// The EIR is where somebody is actually standing at the tank, so the Container master
 	// gets completed there instead of in a Desk trip that never happens.
-	eirTankHint: "Lengkapi data tank di sini — langsung tersimpan ke master container.",
+	// Data tank = milik master container, bukan milik EIR ini. Kalimatnya sengaja menyebut
+	// "sekali": operator yang mengira setiap EIR menuntut sembilan kotak ini akan mengetik
+	// ulang yang sudah ada, atau berhenti di langkah 1 karena merasa belum lengkap.
+	eirTankHint:
+		"Milik master tank, cukup diisi sekali — EIR berikutnya memakai yang sama. Yang bercentang sudah ada di master; isi yang kosong kalau terbaca di pelat, koreksi kalau beda.",
+	eirTankFromMaster: "dari master", // ekor chip hitungan: "6/9 dari master"
+	eirOptional: "opsional",
 	eirTankAuto: "Diisi sistem", // read-only facts under the editable tank fields
 	ownerPrincipal: "Prinsipal (Pemilik)", // Principal / owner (from Container master)
 	exVessel: "Ex Vessel", // Ex vessel (from Container master)
@@ -615,7 +680,7 @@ export const labels = {
 	eirCompleteEmpty: "Belum ada EIR selesai.", // No completed EIRs yet
 	eirResume: "Lanjutkan", // Resume (open a draft)
 	// Pending EIR worklist (auto-created per container when an Order Bongkar is submitted)
-	eirPendingList: "Eir List", // EIRs awaiting inspection
+	eirPendingList: "Menunggu dikerjakan", // EIRs awaiting inspection
 	eirPendingEmpty: "Belum ada EIR menunggu dikerjakan", // none pending
 	// Kalimat kedua kosong-state: bukan sekadar hiburan, ini menjawab "lalu saya harus apa?"
 	// — jawabannya tidak ada, daftarnya terisi sendiri dari bon.
@@ -627,6 +692,7 @@ export const labels = {
 	eirFilterAll: "Semua", // All
 	eirFilterNotStarted: "Belum", // Not started
 	eirFilterStarted: "Dikerjakan", // In progress
+	eirFilterDone: "Selesai", // sudah dikirim/di-ACC — bagian bawah halaman
 	eirChipStarted: "Dikerjakan", // row badge for an in-progress EIR
 	eirFilterEmptyStarted: "Belum ada EIR yang sedang dikerjakan.", // no in-progress EIRs
 	eirFilterEmptyNotStarted: "Semua EIR sudah mulai dikerjakan. 🎉", // nothing left unstarted
