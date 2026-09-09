@@ -131,16 +131,31 @@ class TestItemCatalog(FrappeTestCase):
 		self.assertEqual([r["item_code"] for r in second], [f"{_PREFIX}-A"])
 
 	# --- mata uang baris tanpa Item Price ---------------------------------------
-	def test_currency_follows_price_list_then_customer_then_idr(self):
+	def test_currency_follows_own_rate_card_then_customer_then_company(self):
+		"""Urutan mata uang baris tanpa Item Price, dari yang paling mengikat.
+
+		Rate card MILIK customer menang duluan — harganya memang tertulis dalam mata uang
+		itu. Price list yang bukan miliknya (katalog site, daftar customer lain) TIDAK:
+		dulu price list apa pun menang di langkah pertama, sehingga katalog site menutupi
+		``Customer.default_currency`` dan customer USD tanpa kontrak selamanya jatuh ke IDR.
+		"""
 		frappe.get_doc({
 			"doctype": "Price List", "price_list_name": _PL,
 			"currency": "USD", "selling": 1, "enabled": 1,
 		}).insert(ignore_permissions=True)
 		self._customer(_CUST, default_currency="SGD")
-		self.assertEqual(pricing_model.currency_for_customer(_CUST, _PL), "USD")
+
+		# Daftar asing: mata uang tagihan customer yang dipakai, bukan currency daftarnya.
+		self.assertEqual(pricing_model.currency_for_customer(_CUST, _PL), "SGD")
 		self.assertEqual(pricing_model.currency_for_customer(_CUST), "SGD")
-		site_default = frappe.defaults.get_global_default("currency") or "IDR"
-		self.assertEqual(pricing_model.currency_for_customer(None), site_default)
+
+		# Daftar yang sama, kini terpasang sebagai rate card customer: daftarnya yang menang.
+		frappe.db.set_value("Price List", _PL, "customer", _CUST, update_modified=False)
+		self.assertEqual(pricing_model.currency_for_customer(_CUST, _PL), "USD")
+
+		self.assertEqual(
+			pricing_model.currency_for_customer(None), pricing_model.company_currency()
+		)
 
 	def test_currency_is_never_empty(self):
 		self.assertTrue(pricing_model.currency_for_customer("No Such Customer", "No Such List"))

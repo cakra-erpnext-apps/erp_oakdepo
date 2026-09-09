@@ -45,9 +45,8 @@ from container_depot.container_depot.doctype.depot_contract.depot_contract impor
 	get_active_contract,
 )
 from container_depot.container_depot import item_catalog, lift_on, tank_documents
-from container_depot.container_depot.container_activity import log_container_activity
+from container_depot.container_depot.container_activity import log_container_activity, log_doc_note
 from container_depot.container_depot.container_status import GATE_OUT, PRESENT, assert_rows_active
-from container_depot.state_machine import stage_for_status
 
 
 CONTAINER_READY_STATUSES = {"Available"}
@@ -224,9 +223,13 @@ class ContainerBooking(Document):
 	def on_update(self):
 		# A row the operator deleted (or repointed at another tank) leaves its container
 		# reserved behind it — release it here, not in validate: nothing may be deleted
-		# while the save is still in flight.
-		self._release_dropped_containers()
-		self._void_dropped_booking_codes()
+		# while the save is still in flight. The delta is computed ONCE and handed round:
+		# every consequence of a changed row keys off the same two lists, so they cannot
+		# drift apart.
+		dropped, added = self._row_container_changes()
+		self._release_dropped_containers(dropped)
+		self._void_dropped_booking_codes(dropped)
+		self._log_row_changes(dropped, added)
 		# Lift-on priority, from the DRAFT: the booking is written days ahead precisely so
 		# the yard can get the tank ready, and waiting for Submit would hand the cleaning
 		# queue its deadline only after the preparation time had been spent. Total and
@@ -321,7 +324,69 @@ class ContainerBooking(Document):
 		for item in self.items or []:
 			self._release_reserved_container(item.container, item=item)
 
-	def _release_dropped_containers(self):
+	def _row_container_changes(self) -> tuple[list, list]:
+		"""``(dropped, added)`` containers for the save that just landed.
+
+		One reading of the change, shared by everything that has to follow it — the
+		reservation, the gate codes and the timeline note. A row repointed at another tank
+		shows up here as both: the tank it left is dropped, the tank it now names is added.
+		Empty on an insert (there is no previous version to compare against)."""
+		before = self.get_doc_before_save()
+		if not before:
+			return [], []
+		was = [row.container for row in (before.items or []) if row.container]
+		now = {row.container for row in (self.items or []) if row.container}
+		dropped = [c for c in was if c not in now]
+		added = [
+			row.container for row in (self.items or [])
+			if row.container and row.container not in set(was)
+		]
+		return dropped, added
+
+	def _container_nos(self, containers) -> list:
+		"""Container numbers for a list of masters — what a person reads, not the id."""
+		return [
+			frappe.db.get_value("Container", c, "container_no") or c for c in containers
+		]
+
+	def _log_row_changes(self, dropped, added) -> None:
+		"""Write what changed on the booking's own timeline, naming the tanks.
+
+		Frappe's ``track_changes`` already files a Version for the save, but all it can say
+		about a child table is "removed 1 row from Containers" — which tank left is exactly
+		the question anyone reading the history is asking. A booking is a promise about
+		named tanks, and "the booking says X but we agreed Y" is the argument the depot
+		cannot win without this line.
+		"""
+		if not (dropped or added):
+			return
+		parts = []
+		if dropped:
+			parts.append(_("keluar: {0}").format(", ".join(self._container_nos(dropped))))
+		if added:
+			parts.append(_("masuk: {0}").format(", ".join(self._container_nos(added))))
+		log_doc_note(
+			self.doctype, self.name, _("Baris container diubah — {0}").format("; ".join(parts))
+		)
+		# ...and on the tank's own feed, so the change is visible from the container side
+		# too. Only for a booking that had actually been confirmed against it: a draft that
+		# is still being typed has promised the tank nothing, and every keystroke of a
+		# correction would otherwise land in the audit trail as an event.
+		for container in dropped:
+			if not frappe.db.exists("Container Activity", {
+				"container": container,
+				"reference_doctype": self.doctype,
+				"reference_name": self.name,
+				"activity_type": "Booking",
+			}):
+				continue
+			log_container_activity(
+				container, "Booking",
+				reference_doctype=self.doctype, reference_name=self.name,
+				summary=f"Dikeluarkan dari booking ({self.get('direction') or 'Tank In'})",
+			)
+
+	def _release_dropped_containers(self, dropped):
 		"""Release the tanks a save just took off the booking.
 
 		A reservation is made by putting a container on a row (``_mark_pre_arrival``), so
@@ -334,15 +399,10 @@ class ContainerBooking(Document):
 		master may have to be deleted, and nothing may be deleted while the parent save is
 		still in flight.
 		"""
-		before = self.get_doc_before_save()
-		if not before:
-			return
-		kept = {row.container for row in (self.items or []) if row.container}
-		for row in before.items or []:
-			if row.container and row.container not in kept:
-				self._release_reserved_container(row.container)
+		for container in dropped:
+			self._release_reserved_container(container)
 
-	def _void_dropped_booking_codes(self):
+	def _void_dropped_booking_codes(self, dropped):
 		"""Void the gate codes of tanks a save just took off the booking.
 
 		Codes are issued at Submit and a submitted booking is frozen, so this only ever has
@@ -360,17 +420,11 @@ class ContainerBooking(Document):
 		A phantom container's codes are deleted outright by
 		:meth:`_release_reserved_container` along with the master they point at; this covers
 		every real tank, which that method leaves alone by design."""
-		before = self.get_doc_before_save()
-		if not before:
-			return
-		kept = {row.container for row in (self.items or []) if row.container}
 		voided = False
-		for row in before.items or []:
-			if not row.container or row.container in kept:
-				continue
+		for container in dropped:
 			for code in frappe.get_all(
 				"Booking Code",
-				filters={"booking": self.name, "container": row.container, "state": "Active"},
+				filters={"booking": self.name, "container": container, "state": "Active"},
 				pluck="name",
 			):
 				frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
@@ -414,13 +468,20 @@ class ContainerBooking(Document):
 			frappe.db.delete("Container Movement", {"container": container})
 			frappe.delete_doc("Container", container, ignore_permissions=True, force=True)
 		else:
-			# Direct set_value bypasses Container.before_save, so set the stage too.
-			frappe.db.set_value(
-				"Container",
-				container,
-				{"status": GATE_OUT, "inventory_stage": stage_for_status(GATE_OUT)},
-				update_modified=False,
-			)
+			# Released through the DOCUMENT, not db.set_value: the reserve half
+			# (``_mark_pre_arrival``) saves the doc, so ``Container.on_update`` files a
+			# Container Movement for the trip into ``Booked``. A raw write here left that
+			# trail saying the tank was booked and never that it was let go — a status
+			# history with one leg. Saving also keeps ``inventory_stage`` in step by itself
+			# (``Container.before_save``), which the raw write had to imitate by hand.
+			frappe.flags.in_status_automation = True
+			try:
+				tank = frappe.get_doc("Container", container)
+				tank.status = GATE_OUT
+				tank.flags.ignore_links = True
+				tank.save(ignore_permissions=True)
+			finally:
+				frappe.flags.in_status_automation = False
 
 	def _container_held_by_other_booking(self, container):
 		"""True if a *different* non-cancelled Container Booking still has this

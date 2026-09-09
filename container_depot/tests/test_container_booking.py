@@ -10,9 +10,11 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime, today
 
+from container_depot.container_depot.container_activity import log_container_activity
 from container_depot.container_depot.container_status import GATE_OUT
 from container_depot.tests._booking_helpers import cancel_submitted_booking
 from container_depot.tests.finance_fixture import require_finance
+from container_depot.state_machine import stage_for_status
 from container_depot.tests.test_api import ensure_test_customer
 
 
@@ -1531,6 +1533,97 @@ class TestContainerReservation(FrappeTestCase):
 		b.save(ignore_permissions=True)
 
 		self.assertEqual(b.charges[0].qty, 5)
+
+	def test_releasing_a_tank_leaves_a_movement_behind_it(self):
+		"""The reserve half saves the document, so ``Container.on_update`` files a Movement
+		into ``Booked``. The release used to be a raw write, leaving a status history with
+		one leg: booked, and never let go."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		moves = frappe.get_all(
+			"Container Movement", filters={"container": self.TANK},
+			fields=["from_status", "to_status"], order_by="creation asc",
+		)
+		self.assertIn(
+			("Booked", GATE_OUT), [(m.from_status, m.to_status) for m in moves],
+			"the release must be on the tank's movement trail, not only the reservation",
+		)
+		self.assertEqual(
+			frappe.db.get_value("Container", self.TANK, "inventory_stage"),
+			stage_for_status(GATE_OUT),
+			"saving the document keeps the monitoring stage in step by itself",
+		)
+
+	def test_the_booking_timeline_names_the_tank_that_left(self):
+		"""Frappe's own version row can only say "removed 1 row from Containers", and which
+		tank left is the whole question anyone reading the history is asking."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+
+		b.items[0].container = self._tank("RSVU0000003")
+		b.items[0].container_no = "RSVU0000003"
+		b.save(ignore_permissions=True)
+
+		notes = frappe.get_all(
+			"Comment",
+			filters={"reference_doctype": "Container Booking", "reference_name": b.name},
+			pluck="content",
+		)
+		hit = [n for n in notes if "Baris container diubah" in n]
+		self.assertTrue(hit, f"no row-change note on the booking timeline: {notes}")
+		self.assertIn(self.TANK, hit[0])
+		self.assertIn("RSVU0000003", hit[0])
+
+	def test_a_tank_dropped_from_a_confirmed_booking_says_so_on_its_own_feed(self):
+		"""A counter-entry, never a deletion: the container feed is append-only, so the
+		tank's history keeps both the booking and the fact it was taken off it."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+		# Stand in for the activity Submit writes — the point under test is the counter-entry.
+		log_container_activity(
+			self.TANK, "Booking", reference_doctype="Container Booking",
+			reference_name=b.name, summary="Booking confirmed (Tank In)",
+		)
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		summaries = frappe.get_all(
+			"Container Activity",
+			filters={"container": self.TANK, "reference_name": b.name},
+			pluck="summary",
+		)
+		self.assertTrue(
+			any("Dikeluarkan dari booking" in (s or "") for s in summaries), summaries
+		)
+		self.assertTrue(
+			any("Booking confirmed" in (s or "") for s in summaries),
+			"the original entry stays — the feed is append-only",
+		)
+
+	def test_a_draft_that_was_never_confirmed_leaves_the_feed_alone(self):
+		"""Every keystroke of a correction would otherwise land in the audit trail: a draft
+		still being typed has promised the tank nothing."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		self.assertEqual(
+			frappe.get_all(
+				"Container Activity", filters={"container": self.TANK, "reference_name": b.name}
+			),
+			[],
+		)
 
 	def test_dropping_a_row_deletes_the_master_it_minted(self):
 		"""A phantom exists only because of this booking, so a dropped row takes it with
