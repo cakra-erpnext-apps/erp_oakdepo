@@ -214,6 +214,104 @@ class TestProvisioning(_Base):
 
 		self.assertEqual(len(self._rows(bk)), 2)
 
+	def _drop_from_booking(self, booking, *containers):
+		"""Take rows off the booking the way a correction really lands, then re-run the
+		provisioner — exactly what ``Container Booking.on_update`` does."""
+		drop = set(containers)
+		doc = frappe.get_doc("Container Booking", booking)
+		doc.items = [r for r in doc.items if r.container not in drop]
+		doc.flags.ignore_validate = True
+		doc.flags.ignore_mandatory = True
+		doc.save(ignore_permissions=True)
+		ts.provision_survey_order_for_booking(booking)
+
+	def _listed(self, booking):
+		return frappe.get_all(
+			ROW, filters={"parent": self._order(booking)},
+			fields=["container", "status"], order_by="idx asc",
+		)
+
+	def _row_for(self, booking, container):
+		"""By container, never by index: the row a given tank owns is the point of every
+		test below, and an index silently follows whatever order the rows came back in."""
+		return frappe.db.get_value(ROW, {"parent": self._order(booking), "container": container})
+
+	def test_dropping_a_tank_takes_its_row_off_the_day(self):
+		"""The schedule used to only ever grow: a booking cut from three tanks to two still
+		sent the surveyor out for three, and its progress could never reach 100%."""
+		a = self._container("TSVDROP00001")
+		b = self._container("TSVDROP00002")
+		bk = self._booking(a, b)
+		self.assertEqual(len(self._rows(bk)), 2)
+
+		self._drop_from_booking(bk, b)
+
+		self.assertEqual([r.container for r in self._listed(bk)], [a])
+		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(bk), "tank_count"), 1)
+
+	def test_repointing_a_row_moves_the_day_to_the_new_tank(self):
+		a = self._container("TSVDROP00003")
+		b = self._container("TSVDROP00004")
+		bk = self._booking(a)
+
+		doc = frappe.get_doc("Container Booking", bk)
+		doc.items[0].container = b
+		doc.flags.ignore_validate = True
+		doc.flags.ignore_mandatory = True
+		doc.save(ignore_permissions=True)
+		ts.provision_survey_order_for_booking(bk)
+
+		self.assertEqual([r.container for r in self._listed(bk)], [b])
+
+	def test_a_tank_already_on_the_ground_is_cancelled_not_deleted(self):
+		"""Somebody walked the yard and put that tank down. Deleting the row would erase
+		the work; the row is marked off instead, the same choice a voided booking makes."""
+		a = self._container("TSVDROP00005")
+		b = self._container("TSVDROP00006")
+		bk = self._booking(a, b)
+		ts.mark_lowered(self._row_for(bk, b))
+
+		self._drop_from_booking(bk, b)
+
+		listed = {r.container: r.status for r in self._listed(bk)}
+		self.assertEqual(listed.get(b), ts.CANCELLED)
+
+	def test_a_finished_tank_survives_being_dropped(self):
+		"""A closed survey may have raised an EIR-Out. Cancelling the row that produced a
+		document would contradict the document."""
+		a = self._container("TSVDROP00007")
+		b = self._container("TSVDROP00008")
+		bk = self._booking(a, b)
+		row = self._row_for(bk, b)
+		ts.mark_lowered(row)
+		ts.finish_survey(row)
+
+		self._drop_from_booking(bk, b)
+
+		listed = {r.container: r.status for r in self._listed(bk)}
+		self.assertEqual(listed.get(b), ts.DONE)
+
+	def test_a_tank_that_comes_back_resumes_where_it_really_stood(self):
+		"""Its own stamps are the record, so a tank that was already on the ground is not
+		sent back to the lowering queue when the booking takes it again."""
+		a = self._container("TSVDROP00009")
+		b = self._container("TSVDROP00010")
+		bk = self._booking(a, b)
+		ts.mark_lowered(self._row_for(bk, b))
+		self._drop_from_booking(bk, b)
+		self.assertEqual({r.container: r.status for r in self._listed(bk)}.get(b), ts.CANCELLED)
+
+		booking = frappe.get_doc("Container Booking", bk)
+		booking.append("items", {"container": b})
+		booking.flags.ignore_validate = True
+		booking.flags.ignore_mandatory = True
+		booking.save(ignore_permissions=True)
+		ts.provision_survey_order_for_booking(bk)
+
+		listed = {r.container: r.status for r in self._listed(bk)}
+		self.assertEqual(listed.get(b), ts.LOWERED)
+		self.assertEqual(len([r for r in self._listed(bk) if r.container == b]), 1)
+
 	def test_a_cancelled_booking_calls_its_day_off_without_deleting_it(self):
 		"""The rows underneath are the record that somebody walked the yard, and a job that was
 		called off is worth being able to see."""

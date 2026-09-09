@@ -980,6 +980,13 @@ function _fetch_charge_rate(frm, cdt, cdn) {
 			frappe.model.set_value(cdt, cdn, 'currency', frm.doc.currency || d.currency || '');
 			frappe.model.set_value(cdt, cdn, 'item_name', d.item_name || row.item);
 			frappe.model.set_value(cdt, cdn, 'rate', d.rate || 0);
+			// The lift is billed per container, so a fresh line starts at the number of
+			// containers rather than at a blank the operator has to fill in. Server-side
+			// _price_charges lands the same figure on save; this is so the money is on
+			// screen before it.
+			if (!flt(row.qty)) {
+				frappe.model.set_value(cdt, cdn, 'qty', (frm.doc.items || []).length || 1);
+			}
 		},
 	});
 }

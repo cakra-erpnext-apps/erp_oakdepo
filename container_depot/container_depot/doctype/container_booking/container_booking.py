@@ -226,6 +226,7 @@ class ContainerBooking(Document):
 		# reserved behind it — release it here, not in validate: nothing may be deleted
 		# while the save is still in flight.
 		self._release_dropped_containers()
+		self._void_dropped_booking_codes()
 		# Lift-on priority, from the DRAFT: the booking is written days ahead precisely so
 		# the yard can get the tank ready, and waiting for Submit would hand the cleaning
 		# queue its deadline only after the preparation time had been spent. Total and
@@ -340,6 +341,43 @@ class ContainerBooking(Document):
 		for row in before.items or []:
 			if row.container and row.container not in kept:
 				self._release_reserved_container(row.container)
+
+	def _void_dropped_booking_codes(self):
+		"""Void the gate codes of tanks a save just took off the booking.
+
+		Codes are issued at Submit and a submitted booking is frozen, so this only ever has
+		work to do in one window: after **Kembali ke Draft (pembayaran tetap)**
+		(:func:`revert_booking_to_draft`), which deliberately keeps the issued codes so a
+		re-submit re-confirms them rather than minting new ones. A row dropped in that window
+		used to leave its code ``Active`` — a live 72h gate pass for a tank this booking no
+		longer expects, and one that ``_issue_booking_codes`` would never revisit because it
+		skips rows that already carry a code.
+
+		``Used`` codes are never touched: that tank is already through the gate, and its bon
+		names this booking. (``revert_booking_to_draft`` refuses outright while any code is
+		Used, so a Used code cannot reach this path from the normal road anyway.)
+
+		A phantom container's codes are deleted outright by
+		:meth:`_release_reserved_container` along with the master they point at; this covers
+		every real tank, which that method leaves alone by design."""
+		before = self.get_doc_before_save()
+		if not before:
+			return
+		kept = {row.container for row in (self.items or []) if row.container}
+		voided = False
+		for row in before.items or []:
+			if not row.container or row.container in kept:
+				continue
+			for code in frappe.get_all(
+				"Booking Code",
+				filters={"booking": self.name, "container": row.container, "state": "Active"},
+				pluck="name",
+			):
+				frappe.db.set_value("Booking Code", code, "state", "Cancelled", update_modified=False)
+				voided = True
+		if voided:
+			# The marker counts live codes, so it is stale the moment one is voided.
+			refresh_bon_status(self.name)
 
 	def _release_reserved_container(self, container, item=None):
 		"""Give one reserved tank back.
@@ -722,8 +760,14 @@ class ContainerBooking(Document):
 		forced every booking to have one.
 
 		Per line: ``item_name`` and ``currency`` are refreshed from the master, ``qty``
-		defaults to the number of containers (the lift is billed per container) and ``rate``
+		follows the number of containers (the lift is billed per container) and ``rate``
 		is seeded from the customer's active Price List.
+
+		The qty seed was dead code for as long as it existed: ``Container Booking Charge``
+		carried ``default: 1``, so a fresh row never arrived with an empty qty and the
+		container count never reached it. Every multi-container booking billed ONE lift
+		until somebody noticed and typed the number in. The default is gone, and the count
+		now follows the rows both ways — see the qty branch below.
 
 		The seed fires only on a rate that was never SET — ``None``, not ``0``. That
 		distinction is what lets a line be free: a typed 0 is a real answer and stays,
@@ -733,12 +777,27 @@ class ContainerBooking(Document):
 		list-priced — is never re-seeded on a later save."""
 		total = 0.0
 		container_qty = len(self.items or []) or 1
+		before = self.get_doc_before_save()
+		prev_qty = (len(before.items or []) or 1) if before else None
 		for row in self.charges or []:
 			if not row.item:
 				continue
 			row.item_name = frappe.db.get_value("Item", row.item, "item_name") or row.item
 			row.currency = self.currency
 			if not flt(row.qty):
+				row.qty = container_qty
+			elif (
+				self.docstatus == 0
+				and prev_qty is not None
+				and container_qty != prev_qty
+				and flt(row.qty) == prev_qty
+			):
+				# A qty that still equals the container count is the count — the seed above
+				# put it there — so it follows the rows in and out. A booking cut from five
+				# tanks to three used to keep billing five lifts, because the seed fires only
+				# on a rate that was never set and nothing re-read it afterwards. A qty typed
+				# to anything else is a decision and is left exactly as it stands, the same
+				# bargain ``rate`` strikes one line below.
 				row.qty = container_qty
 			if row.get("rate") is None and self.price_list:
 				row.rate = pricing_model.resolve_price(row.item, self.price_list) or 0

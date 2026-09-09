@@ -1459,6 +1459,79 @@ class TestContainerReservation(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Container", self.TANK, "status"), GATE_OUT)
 		self.assertEqual(frappe.db.get_value("Container", swapped, "status"), "Booked")
 
+	def _code(self, booking, container, *, state="Active", code="ZZTESTGATECODE"):
+		"""A gate code as Submit would have issued it. Written directly because the point
+		under test is what happens to an EXISTING code, not how it was minted."""
+		return frappe.get_doc({
+			"doctype": "Booking Code",
+			"code": code,
+			"booking": booking,
+			"direction": "Tank In",
+			"container": container,
+			"state": state,
+			"issued_at": now_datetime(),
+		}).insert(ignore_permissions=True).name
+
+	def test_dropping_a_row_voids_its_gate_code(self):
+		"""Kembali ke Draft keeps the issued codes on purpose, so a row dropped in that
+		window used to leave a live 72h gate pass behind — for a tank this booking no
+		longer expects, and one ``_issue_booking_codes`` would never revisit."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+		dropped = self._code(b.name, self.TANK)
+		kept = self._code(b.name, other, code="ZZTESTGATECODE2")
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		self.assertEqual(frappe.db.get_value("Booking Code", dropped, "state"), "Cancelled")
+		self.assertEqual(
+			frappe.db.get_value("Booking Code", kept, "state"), "Active",
+			"the row that stayed keeps its code",
+		)
+
+	def test_a_code_already_used_at_the_gate_is_left_alone(self):
+		"""That tank is through the gate and its bon names this booking — voiding the code
+		afterwards would rewrite what the paper says."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.insert(ignore_permissions=True)
+		used = self._code(b.name, self.TANK, state="Used")
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		self.assertEqual(frappe.db.get_value("Booking Code", used, "state"), "Used")
+
+	def test_dropping_a_row_re_prices_the_charge_that_counts_containers(self):
+		"""A booking cut from two tanks to one used to keep billing two lifts: the qty seed
+		fires only on a qty that was never set, and nothing re-read it afterwards."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.append("charges", {"item": "Lift Off"})
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.charges[0].qty, 2)
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		self.assertEqual(b.charges[0].qty, 1)
+		self.assertEqual(b.charges[0].amount, b.charges[0].rate)
+
+	def test_a_hand_typed_qty_is_not_dragged_along_by_the_rows(self):
+		"""The count is a default, not a rule: a qty typed to anything else is a decision
+		and survives the rows changing — the same bargain ``rate`` strikes."""
+		other = self._tank("RSVU0000002")
+		b = self._booking(self.TANK, other)
+		b.append("charges", {"item": "Lift Off", "qty": 5})
+		b.insert(ignore_permissions=True)
+
+		b.items = [row for row in b.items if row.container != self.TANK]
+		b.save(ignore_permissions=True)
+
+		self.assertEqual(b.charges[0].qty, 5)
+
 	def test_dropping_a_row_deletes_the_master_it_minted(self):
 		"""A phantom exists only because of this booking, so a dropped row takes it with
 		it — the same rule cancel applies."""

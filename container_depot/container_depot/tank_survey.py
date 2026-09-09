@@ -128,6 +128,71 @@ def _attach_positions(rows) -> list:
 # ---------------------------------------------------------------------------
 # Provisioning — Container Booking (Tank Out) save hook
 # ---------------------------------------------------------------------------
+def _true_status(row) -> str:
+	"""What a tank row's own stamps say happened to it, ignoring its current status.
+
+	The stamps are the record; ``status`` is a label that a cancel (or a booking that
+	dropped the tank and then took it back) can move away from them. Reading them back is
+	what lets a returning tank resume where it really stood instead of being told to queue
+	for a lowering it already had."""
+	if row.get("surveyed_on"):
+		return DONE
+	if row.get("lowered_on"):
+		return LOWERED
+	return WAITING
+
+
+def _membership_plan(doc, wanted: set) -> tuple[list, list, list]:
+	"""Compare a schedule's tank rows against the containers the booking still lists.
+
+	Returns ``(drop, cancel, restore)`` as container names — names, not row objects, so the
+	plan survives the reload a submitted schedule needs before it can be edited.
+
+	Three outcomes, because a dropped tank is not one situation:
+
+	* nobody has touched it yet -> **drop** the row outright. It is a queue entry for work
+	  that is not going to happen, and leaving it makes the surveyor's day list ask for a
+	  tank the booking no longer expects.
+	* somebody has already lowered it -> **cancel** the row. Work was done in the yard and
+	  deleting it would erase that; the same choice the whole schedule makes when its
+	  booking is voided.
+	* the survey is finished (``Survey Done``) -> **leave it alone**. It may have raised an
+	  EIR-Out, and cancelling a row that produced a document contradicts the document.
+
+	A container that comes BACK onto the booking is **restored** from its own stamps, so a
+	tank that was already on the ground is not sent back to Waiting Lowering."""
+	drop, cancel, restore = [], [], []
+	for row in doc.get("tanks") or []:
+		if not row.container:
+			continue
+		if row.container in wanted:
+			if row.status == CANCELLED:
+				restore.append(row.container)
+			continue
+		if row.status in (DONE, CANCELLED):
+			continue
+		if _true_status(row) == WAITING:
+			drop.append(row.container)
+		else:
+			cancel.append(row.container)
+	return drop, cancel, restore
+
+
+def _apply_membership(doc, drop: list, cancel: list, restore: list) -> None:
+	"""Carry out a :func:`_membership_plan` on the live schedule document."""
+	drop, cancel, restore = set(drop), set(cancel), set(restore)
+	if drop:
+		kept = [r for r in (doc.get("tanks") or []) if r.container not in drop]
+		for idx, row in enumerate(kept, start=1):
+			row.idx = idx
+		doc.tanks = kept
+	for row in doc.get("tanks") or []:
+		if row.container in cancel:
+			row.status = CANCELLED
+		elif row.container in restore:
+			row.status = _true_status(row)
+
+
 def provision_survey_order_for_booking(booking_name: str) -> dict:
 	"""Keep one ``Survey Order`` and one tank row per container in step with a Tank Out booking.
 
@@ -173,6 +238,10 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 			"Container Booking Item",
 			filters={"parent": booking.name, "parenttype": "Container Booking"},
 			fields=["container"],
+			# In the booking's own row order: without it the database is free to hand back
+			# any order it likes, and the surveyor's day then lists the same five tanks in a
+			# different sequence from the booking they were read off.
+			order_by="idx asc",
 		) if r.container
 	]
 
@@ -189,6 +258,11 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 			doc.status = "Scheduled"
 
 		listed = {r.container for r in (doc.tanks or [])}
+		# A booking is edited as much as it is written — a row repointed at another tank, two
+		# tanks taken off a five-tank pickup. The schedule used to only ever GROW: rows were
+		# added for new containers and nothing ever left, so a booking cut from five tanks to
+		# three still sent the surveyor out for five and its progress could never reach 100%.
+		plan = _membership_plan(doc, set(containers))
 		added = []
 		for container in containers:
 			if container in listed:
@@ -210,7 +284,7 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		# than forced through. Rows for genuinely new containers still have to land, and they
 		# do on the next reopen — a finished day that gains a tank is a corrected booking, and
 		# ``refresh_progress`` reopens it from the row that is not done.
-		if doc.docstatus == 1 and not added:
+		if doc.docstatus == 1 and not added and not any(plan):
 			return {"survey_order": doc.name, "tanks": []}
 		if doc.docstatus == 1:
 			frappe.db.set_value(SCHEDULE, doc.name, "docstatus", 0, update_modified=False)
@@ -222,6 +296,9 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 					"target_lift_on": booking.plan_date,
 					"target_survey_on": booking.survey_date,
 				})
+
+		# After the reload above, so the pruning lands on the rows that are actually saved.
+		_apply_membership(doc, *plan)
 
 		is_new = doc.is_new()
 		doc.save(ignore_permissions=True)  # system automation on booking save
