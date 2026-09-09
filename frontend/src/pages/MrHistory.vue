@@ -14,128 +14,86 @@
 			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="tool" :size="16" /></span>
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center justify-between gap-2">
-					<p class="truncate font-semibold text-gray-900">{{ item.container_no || item.container }}</p>
-					<span class="oak-chip shrink-0" :class="statusClass(item.status)">{{ statusText(item.status) }}</span>
+					<p class="truncate font-bold text-gray-900">
+						{{ item.container_no || item.container
+						}}<span v-if="item.principal" class="font-normal text-gray-500"> · {{ item.principal }}</span>
+					</p>
+					<span class="oak-chip shrink-0" :class="chip(item.status).tone">{{ chip(item.status).label }}</span>
 				</div>
-				<div class="mt-0.5 flex items-center justify-between gap-2 text-xs text-gray-500">
-					<span class="truncate">{{ item.repair_order_id }}</span>
+				<div class="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-gray-500">
+					<span class="truncate">{{ rowSubtitle(item) }}</span>
 					<span class="shrink-0">{{ fmtDate(item.completion_date || item.creation) }}</span>
 				</div>
-				<p v-if="item.principal" class="truncate text-[11px] text-gray-400">{{ item.principal }}</p>
 			</div>
 		</template>
 
 		<!-- The whole record, not a summary. This screen is where a finished M&R is read back
 		     — by the reviewer opening it out of "Diajukan Review", and by anyone asked later
 		     what was done to a tank — so it carries what the Desk form carries: the tank, who
-		     worked it and when, what the EIR found (with its photos), what was fitted, and the
-		     proof photos. Per-line prices stay out: the depot PWA has never shown them (see
-		     the module docstring in mr.py) and a Riwayat entry is not the place to start. -->
+		     worked it and when, how it got approved, what the EIR found (with its photos),
+		     what was fitted, and the proof photos. Per-line prices stay out: the depot PWA has
+		     never shown them (see the module docstring in mr.py) and a Riwayat entry is not
+		     the place to start. -->
 		<template #detail="{ data }">
+			<!-- Which tank, off which papers, and the three numbers the record is asked for:
+			     how much work, how long it took, and who did it. -->
 			<section class="oak-card space-y-3 p-4">
-				<div class="flex items-start justify-between gap-2">
+				<div class="flex items-start justify-between gap-3">
 					<div class="min-w-0">
-						<p class="font-mono text-xs text-gray-400">{{ data.repair_order_id }}</p>
-						<h2 class="truncate text-lg font-extrabold text-gray-900">{{ data.container_no }}</h2>
+						<p class="truncate text-lg font-extrabold text-gray-900">{{ data.container_no }}</p>
+						<p class="truncate text-xs text-gray-500">{{ subtitle(data) }}</p>
 					</div>
-					<span class="oak-chip shrink-0" :class="statusClass(data.status)">{{ statusText(data.status) }}</span>
+					<div class="flex shrink-0 flex-col items-end gap-1">
+						<span class="oak-chip" :class="chip(data.status).tone">{{ chip(data.status).label }}</span>
+						<p class="font-mono text-[11px] text-gray-400">{{ data.repair_order_id }}</p>
+					</div>
 				</div>
-				<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-					<div v-for="c in tankCells(data)" :key="c.label" class="min-w-0">
-						<dt class="text-xs text-gray-400">{{ c.label }}</dt>
-						<dd class="truncate font-medium text-gray-800">{{ c.value || "—" }}</dd>
-					</div>
-				</dl>
-				<p v-if="data.owner_note" class="rounded-lg bg-amber-50 p-2 text-xs text-amber-700">
-					<Icon name="message-square" :size="12" /> {{ data.owner_note }}
-				</p>
-			</section>
-
-			<!-- Who worked it and when, plus the papers it came from. -->
-			<section class="oak-card space-y-2 p-4">
-				<p class="oak-section-title">{{ labels.mrWorkRecord }}</p>
-				<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-					<div v-for="c in workCells(data)" :key="c.label" class="min-w-0">
-						<dt class="text-xs text-gray-400">{{ c.label }}</dt>
-						<dd class="truncate font-medium text-gray-800">{{ c.value || "—" }}</dd>
+				<dl class="grid grid-cols-3 gap-x-3 border-t border-gray-100 pt-3 text-sm">
+					<div v-for="c in factCells(data)" :key="c.label" class="min-w-0">
+						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ c.label }}</dt>
+						<dd class="truncate font-semibold text-gray-800">{{ c.value || "—" }}</dd>
 					</div>
 				</dl>
 			</section>
 
-			<!-- What the EIR found — with its photos, the same strip the execution screen shows.
-			     A damage list without pictures is the half of the record nobody can check. -->
-			<section v-if="(data.damages || []).length" class="oak-card space-y-3 p-4">
-				<p class="oak-section-title">{{ labels.mrDamagesTitle }}</p>
-				<div v-for="(d, i) in data.damages" :key="i" class="rounded-xl border border-gray-100 p-3 space-y-2">
-					<p class="font-semibold text-gray-900">{{ d.component || d.area || "—" }}</p>
-					<div class="flex flex-wrap gap-1.5 text-xs">
-						<span v-if="d.damage_code" class="oak-chip bg-red-50 text-red-700">
-							{{ labels.mrCodeDamage }}: {{ d.damage_code }}<span v-if="d.damage_desc"> — {{ d.damage_desc }}</span>
-						</span>
-						<span v-if="d.repair_code" class="oak-chip bg-blue-50 text-blue-700">
-							{{ labels.mrCodeRepair }}: {{ d.repair_code }}<span v-if="d.repair_desc"> — {{ d.repair_desc }}</span>
-						</span>
-					</div>
-					<p v-if="d.damage_description" class="text-sm text-gray-600">{{ d.damage_description }}</p>
-					<div v-if="(d.photos || []).length" class="flex flex-wrap gap-2">
-						<button
-							v-for="(ph, pi) in d.photos"
-							:key="pi"
-							type="button"
-							class="oak-press"
-							@click="openLightbox(d.photos, pi)"
-						>
-							<img :src="ph" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-						</button>
-					</div>
-				</div>
-			</section>
+			<!-- How this order got here — see MrTimeline.vue. -->
+			<MrTimeline :data="data" />
 
 			<!-- What was actually done, and the proof — one card per line, the same shape the
-			     execution screen uses, so a job reads the same after it closes as it did while
-			     it was open. -->
-			<section class="oak-card space-y-3 p-4">
-				<div>
-					<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
-					<p class="mt-0.5 text-xs text-gray-400">{{ labels.mrWorkPhotosHint }}</p>
-				</div>
-				<p v-if="!(data.used_items || []).length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
-				<div
-					v-for="(u, i) in data.used_items"
-					:key="i"
-					class="rounded-xl border p-3 space-y-2"
-					:class="u.decision === 'Rejected' ? 'border-red-100 bg-red-50/40' : 'border-gray-100'"
-				>
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0">
-							<p class="font-semibold text-gray-900">{{ u.item_name || u.item }}</p>
-							<p class="text-xs text-gray-500">
-								{{ labels.mrQty }} {{ u.quantity }}<span v-if="u.warehouse"> · {{ u.warehouse }}</span>
-							</p>
-							<p v-if="u.remark" class="text-xs text-gray-400">{{ u.remark }}</p>
-							<p v-if="u.owner_remark" class="text-xs text-amber-700">{{ u.owner_remark }}</p>
-						</div>
-						<span class="oak-chip shrink-0" :class="decisionClass(u.decision)">{{ statusText(u.decision) }}</span>
+			     work form uses, so a job reads the same after it closes as it did while it was
+			     open. -->
+			<section
+				v-for="(u, i) in data.used_items || []"
+				:key="i"
+				class="oak-card space-y-3 p-4"
+				:class="u.decision === 'Rejected' ? 'border-red-100 bg-red-50/40' : ''"
+			>
+				<div class="flex items-start justify-between gap-2">
+					<div class="min-w-0">
+						<p class="truncate font-bold text-gray-900">{{ u.item_name || u.item }}</p>
+						<p class="text-xs text-gray-500">
+							{{ labels.mrQty }} {{ u.quantity }}<span v-if="u.warehouse"> · {{ u.warehouse }}</span>
+						</p>
+						<p v-if="u.remark" class="text-xs text-gray-400">{{ u.remark }}</p>
+						<p v-if="u.owner_remark" class="text-xs text-amber-700">{{ u.owner_remark }}</p>
 					</div>
-					<!-- A line the owner struck out was never repaired, so it has no proof to
-					     show; the empty note below is for the ones that should have some. -->
-					<div v-if="photosFor(data, u).length" class="grid grid-cols-3 gap-2">
+					<span class="oak-chip shrink-0" :class="decisionClass(u.decision)">{{ statusText(u.decision) }}</span>
+				</div>
+				<!-- A line the owner struck out was never repaired, so it has no proof to show;
+				     the empty note below is for the ones that should have some. -->
+				<div v-if="photosFor(data, u).length" class="grid grid-cols-2 items-start gap-2">
+					<div v-for="(ph, pi) in photosFor(data, u)" :key="pi" class="space-y-1">
 						<button
-							v-for="(ph, pi) in photosFor(data, u)"
-							:key="pi"
 							type="button"
-							class="oak-press relative aspect-square"
+							class="oak-press block aspect-square w-full"
 							@click="openLightbox(photosFor(data, u).map((x) => x.photo), pi)"
 						>
 							<img :src="ph.photo" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
-							<span
-								v-if="ph.caption"
-								class="absolute inset-x-0 bottom-0 truncate rounded-b-lg bg-black/60 px-1 py-0.5 text-[10px] text-white"
-							>{{ ph.caption }}</span>
 						</button>
+						<p v-if="ph.caption" class="text-[11px] text-gray-600">{{ ph.caption }}</p>
 					</div>
-					<p v-else-if="u.decision !== 'Rejected'" class="text-xs text-gray-300">{{ labels.mrNoPhotos }}</p>
 				</div>
+				<p v-else-if="u.decision !== 'Rejected'" class="text-xs text-gray-300">{{ labels.mrNoPhotos }}</p>
 			</section>
 
 			<!-- Photos whose line is gone (the estimate was rewound and rebuilt after they were
@@ -159,6 +117,38 @@
 				</div>
 			</section>
 
+			<!-- What the EIR found, folded away: on a closed job it is the background to the
+			     work above, not the thing being read. The count stays on the summary line so
+			     nobody has to open it to learn there is nothing inside. -->
+			<section v-if="(data.damages || []).length" class="oak-card space-y-3 p-4">
+				<button
+					type="button"
+					class="flex w-full items-center justify-between gap-2 text-left"
+					@click="damagesOpen = !damagesOpen"
+				>
+					<p class="oak-section-title">{{ labels.mrDamagesTitle }}</p>
+					<span class="flex shrink-0 items-center gap-1 text-[11px] text-gray-400">
+						{{ labels.mrFindingsCount.replace("{n}", data.damages.length) }}
+						<Icon :name="damagesOpen ? 'chevron-up' : 'chevron-down'" :size="14" />
+					</span>
+				</button>
+				<div v-if="damagesOpen" class="space-y-2">
+					<MrDamageCard v-for="(d, i) in data.damages" :key="i" :damage="d" />
+				</div>
+			</section>
+
+			<!-- Tank spec, and the papers it came off. Dropped entirely when the container
+			     record carries none of it — a card holding one em dash is worse than no card. -->
+			<section v-if="tankCells(data).length" class="oak-card p-4">
+				<p class="oak-section-title mb-2">{{ labels.mrTankDetails }}</p>
+				<dl class="grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
+					<div v-for="c in tankCells(data)" :key="c.label" class="min-w-0">
+						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ c.label }}</dt>
+						<dd class="truncate font-semibold text-gray-800">{{ c.value || "—" }}</dd>
+					</div>
+				</dl>
+			</section>
+
 			<section v-if="data.remarks" class="oak-card space-y-2 p-4">
 				<p class="oak-section-title">{{ labels.mrRemarks }}</p>
 				<p class="whitespace-pre-line text-sm text-gray-800">{{ data.remarks }}</p>
@@ -168,11 +158,7 @@
 			     submission, and pulling it back is their own correction. The button lives on the
 			     worklist row too, but a row is where you TRIAGE; this is where you actually read
 			     what you sent, and finding no way to act on it from here means going back and
-			     hunting for the row again.
-
-			     This slot is also where "Ajukan Revisi" will go for a CLOSED order — same idea,
-			     different question: pulling back your own submission needs nobody's permission,
-			     re-opening a finished one needs Admin Ops. -->
+			     hunting for the row again. -->
 			<template v-if="data.status === 'Pending Review'">
 				<button
 					type="button"
@@ -247,10 +233,13 @@ import { ref } from "vue"
 import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels, repairStatusLabels } from "@/utils/labels"
+import { mrChip, workWindow } from "@/utils/mrStatus"
 import { openLightbox } from "@/utils/lightbox"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
+import MrDamageCard from "@/components/MrDamageCard.vue"
+import MrTimeline from "@/components/MrTimeline.vue"
 
 const router = useRouter()
 
@@ -302,55 +291,75 @@ function sendRevision(d) {
 	)
 }
 
+// Folded by default — on a closed job the findings are background, and the count on the
+// summary line already says whether opening them is worth it.
+const damagesOpen = ref(false)
+
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
-// Work timestamps carry the time of day: "started 08:12, finished 15:40" is the fact someone
-// is looking for, and a bare date cannot answer it.
-const fmtDateTime = (v) => (v ? String(v).slice(0, 16).replace("T", " ") : "")
+
+// "Mar 2019" — a tank's build date is read as a vintage, never as a day.
+function fmtMonthYear(v) {
+	if (!v) return ""
+	const d = new Date(String(v).slice(0, 10) + "T00:00:00")
+	return Number.isNaN(d.getTime())
+		? String(v).slice(0, 7)
+		: d.toLocaleDateString("id-ID", { month: "short", year: "numeric" })
+}
 
 function statusText(s) {
 	return repairStatusLabels[s] || s || "—"
 }
-function statusClass(s) {
-	if (s === "Completed") return "bg-leaf-100 text-leaf-800"
-	if (s === "Rejected") return "bg-red-100 text-red-700"
-	if (s === "Cancelled") return "bg-gray-200 text-gray-600"
-	return "bg-amber-100 text-amber-800"
-}
+const chip = mrChip
 function decisionClass(d) {
 	if (d === "Approved") return "bg-leaf-100 text-leaf-800"
 	if (d === "Rejected") return "bg-red-100 text-red-700"
 	return "bg-gray-100 text-gray-500"
 }
 
-// The tank as it stood — the same spec block the execution form shows, so the record does not
-// shrink the moment the job closes.
-function tankCells(d) {
+// The list row: how big the job was and how long it ran, falling back to the order id when
+// neither was recorded.
+function rowSubtitle(item) {
+	const parts = [
+		item.item_count ? labels.mrItemsN.replace("{n}", item.item_count) : "",
+		workWindow(item.start_date, item.completion_date),
+		item.technician || "",
+	].filter(Boolean)
+	return parts.length ? parts.join(" · ") : item.repair_order_id || ""
+}
+
+// Whose tank, what it is, what it last held, and which EIR it came off.
+function subtitle(d) {
 	return [
-		{ label: labels.cleaningClient, value: d.client },
-		{ label: labels.cleaningTankType, value: d.tank_type },
-		{ label: labels.equipmentType, value: d.equipment_type },
-		{ label: labels.cleaningCapacity, value: d.capacity },
-		{ label: labels.cleaningPrevCargo, value: d.previous_cargo },
-		{ label: labels.cleaningTare, value: d.tare },
-		{ label: labels.cleaningMgw, value: d.mgw },
-		{ label: labels.cleaningMfgDate, value: fmtDate(d.date_of_manufacture) },
-		{ label: labels.cleaningLastTest, value: fmtDate(d.last_test_date) },
+		d.client,
+		d.tank_type,
+		d.previous_cargo ? labels.mrExFmt.replace("{cargo}", d.previous_cargo) : "",
+		d.inspection ? labels.mrFromEir.replace("{ref}", d.inspection) : "",
+	]
+		.filter(Boolean)
+		.join(" · ")
+}
+
+// The three numbers a finished job is asked for. Not a table of every timestamp: the ones
+// that describe the ORDER's life moved into the approval timeline, where their order is the
+// point; these three describe the WORK.
+function factCells(d) {
+	return [
+		{ label: labels.mrWorkCount, value: labels.mrItemsN.replace("{n}", (d.used_items || []).length) },
+		{ label: labels.mrDuration, value: workWindow(d.start_date, d.completion_date) },
+		{ label: labels.mrTechnician, value: d.started_by_name || d.technician },
 	]
 }
 
-// Who, when, and off which paperwork. Blank cells are dropped rather than printed as "—":
-// an order approved without an owner round has no requested_on, and eight empty rows would
-// bury the four that say something.
-function workCells(d) {
+// The tank as it stood — the same spec block the work form shows, so the record does not
+// shrink the moment the job closes.
+function tankCells(d) {
 	return [
-		{ label: labels.mrTechnician, value: d.technician },
-		{ label: labels.cleaningRefEir, value: d.inspection },
+		{ label: labels.cleaningCapacity, value: d.capacity },
+		{ label: labels.mrTareMgw, value: [d.tare, d.mgw].filter(Boolean).join(" / ") },
+		{ label: labels.equipmentType, value: d.equipment_type },
+		{ label: labels.cleaningMfgDate, value: fmtMonthYear(d.date_of_manufacture) },
+		{ label: labels.cleaningLastTest, value: d.last_test_date ? fmtDate(d.last_test_date) : "" },
 		{ label: labels.reffDoc, value: d.reff_doc },
-		{ label: labels.mrStartDate, value: fmtDateTime(d.start_date) },
-		{ label: labels.mrDoneDate, value: fmtDateTime(d.completion_date) },
-		{ label: labels.mrRequestedOn, value: fmtDateTime(d.requested_on) },
-		{ label: labels.mrDecidedOn, value: fmtDateTime(d.decided_on) },
-		{ label: labels.mrRevisionNo, value: d.revision_no ? String(d.revision_no) : "" },
 	].filter((c) => c.value)
 }
 

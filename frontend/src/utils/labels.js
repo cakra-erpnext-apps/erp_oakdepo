@@ -750,12 +750,10 @@ export const labels = {
 	mrOrdersEmpty: "Tidak ada M&R terbuka.",
 	mrBack: "Kembali",
 	mrTankDetails: "Data Tank",
-	mrRefEir: "Referensi EIR",
 	// Source warehouse (top of form)
 	mrWarehouse: "Gudang", // the gudang a used-item row is issued from (read-only here)
 	// Section 1 — EIR damage entries (read-only copy, with photos)
 	mrDamagesTitle: "Temuan Kerusakan (EIR)",
-	mrNoDamages: "Tidak ada temuan kerusakan dari EIR.",
 	mrCodeDamage: "Kerusakan",
 	mrCodeRepair: "Perbaikan",
 	// Section 2 — services & parts used (seluruh katalog item, bukan hanya rate card owner)
@@ -811,37 +809,26 @@ export const labels = {
 	mrAwaitingDecision: "Menunggu keputusan owner.",
 	mrNeedItemFirst: "Tambahkan minimal satu item dulu.",
 	// PWA M&R = execution-only console (divisi lapangan): only approved work, start -> done.
-	mrExecInProgress: "Sedang dikerjakan.",
 	// One card per approved line on the PWA: what to do, how many, and the photos proving it
 	// was done. "Pekerjaan" and not "Part" because most of the list is services (painting,
 	// renewing a seal), which the old title quietly excluded.
 	mrExecPartsTitle: "Pekerjaan Disetujui",
-	mrWorkPhotosHint: "Foto tiap pekerjaan — jadi bukti untuk owner tank.",
-	mrPhotoCaption: "Keterangan (mis. sebelum / sesudah)", // per-photo caption input
+	mrPhotoCaption: "Keterangan…", // per-photo caption input (half-card wide)
 	// --- Riwayat detail: the finished record, read-only ---
 	mrWorkPhotos: "Foto Bukti Pekerjaan", // album section title (Riwayat)
 	mrNoPhotos: "Belum ada foto bukti.",
-	mrWorkRecord: "Catatan Pekerjaan", // who/when section
-	mrStartDate: "Mulai Dikerjakan",
-	mrDoneDate: "Selesai",
-	mrRequestedOn: "Diajukan ke Owner",
-	mrDecidedOn: "Keputusan Owner",
 	mrRevisionNo: "Revisi ke",
-	mrExecOrdersHint: "M&R siap dikerjakan", // worklist hint
+	mrExecOrdersHint: "Perbaikan siap dikerjakan", // worklist hint
 	mrExecEmpty: "Tidak ada M&R siap dikerjakan.",
 	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
-	mrExecStartGate: "Mulai perbaikan dulu untuk melihat detail pekerjaan.", // start-first gate
 	// --- landing sections (mirrors the cleaning screen: worklist, review queue, finished) ---
-	mrOrdersList: "M&R Order List", // worklist section title
-	mrOrdersCount: "menunggu", // worklist count suffix
-	mrItemsCount: "item", // worklist row: "<n> item" to be repaired
+	mrItemsCount: "pekerjaan", // worklist row: "<n> pekerjaan" to be done
 	mrFilterAll: "Semua", // All
 	mrFilterTodo: "Belum", // handed over but not started (status Pending)
 	mrFilterStarted: "Dikerjakan", // started (status In Progress)
 	mrFilterEmptyTodo: "Semua M&R sudah mulai dikerjakan. 🎉", // nothing left unstarted
 	mrFilterEmptyStarted: "Belum ada M&R yang sedang dikerjakan.", // none in progress
 	mrReviewList: "Diajukan Review", // sent for Admin Ops review (Pending Review)
-	mrReviewEmpty: "Tidak ada M&R menunggu review.", // none awaiting review
 	mrStatusPendingReview: "Menunggu Review", // Pending Review chip
 	mrCompleteList: "M&R Selesai", // completed orders
 	mrCompleteEmpty: "Belum ada M&R selesai.", // none completed yet
@@ -858,6 +845,37 @@ export const labels = {
 	mrReqRevisionSend: "Kirim Permintaan",
 	mrReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops",
 	mrReopenRequested: "Menunggu Admin Ops membuka order", // standing request banner
+	// --- M&R redesign (worklist -> order -> form kerja -> riwayat) ---
+	mrWorkTitle: "Perbaikan", // header of one order's screen
+	mrStatusNotStarted: "Belum mulai", // Pending chip on the order header
+	mrDamagesCount: "{n} temuan EIR", // worklist subtitle: how much the EIR found
+	mrFindingsCount: "{n} temuan", // section counter
+	mrApprovedBy: "disetujui {name}", // worklist subtitle: who let this job through
+	mrFromEir: "dari {ref}", // "dari EIR-2026-21344"
+	mrExFmt: "ex {cargo}", // last cargo carried
+	mrTankFromEir: "dari EIR", // caption on the tank-spec card
+	mrTareMgw: "Tare / MGW", // the two weights read as one pair
+	mrLocation: "Lokasi", // damage location / area code
+	mrPhotoCount: "{n} foto", // photos on one work line
+	mrStartAuto: "Waktu mulai dicatat otomatis.", // hint under "Mulai perbaikan"
+	mrProgressChip: "Pekerjaan {done}/{total} berfoto", // how much evidence is in
+	mrStartedAt: "mulai {time}", // header subtitle once running
+	mrTechnicianShort: "teknisi {name}",
+	mrSubmitAutosave: "Foto & keterangan tersimpan otomatis.",
+	mrWorkWindow: "{start} – {end}", // 15:33 – 16:20
+	mrDurationMin: "{n} mnt",
+	mrDuration: "Durasi",
+	mrWorkCount: "Pekerjaan",
+	mrItemsN: "{n} item",
+	// Approval timeline on the Riwayat detail — the order's whole life in four lines.
+	mrFlowTitle: "Alur persetujuan",
+	mrFlowRequested: "Diajukan ke owner",
+	mrFlowApproved: "Disetujui",
+	mrFlowStarted: "Mulai dikerjakan",
+	mrFlowReview: "Dikirim untuk review",
+	mrFlowReviewWait: "menunggu Admin Ops",
+	mrFlowDone: "Selesai",
+	mrFlowNoTime: "waktu tidak tercatat", // step happened, timestamp was never stamped
 	// Depot Storage (yard placement — Operator Kalmar)
 	storage: "Depot Storage", // Home tile title
 	storageDesc: "Susun & lacak isotank per zona", // tile subtitle

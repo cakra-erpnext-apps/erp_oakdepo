@@ -35,7 +35,14 @@ _SERVICE = "MR-TEST-LABOR"
 _WH_NAME = "MR Test Store"
 
 
-class TestMaintenanceRepairFlow(FrappeTestCase):
+class _MrFixture(FrappeTestCase):
+	"""Setup, teardown and factories only — no tests of its own.
+
+	Split out so a second test class can build the same world without also re-running every
+	test in the first one (which subclassing does, and which two orders cannot survive: the
+	container numbers collide).
+	"""
+
 	def setUp(self):
 		frappe.set_user("Administrator")
 		self._containers = []
@@ -168,6 +175,8 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		self._inspections.append(res["name"])
 		return c, res["name"]
 
+
+class TestMaintenanceRepairFlow(_MrFixture):
 	# --- auto-create from EIR -------------------------------------------------
 	def test_eir_damage_creates_draft_mr(self):
 		c, eir_name = self._eir_with_damage("MRDMG000001")
@@ -814,3 +823,91 @@ class TestMaintenanceRepairFlow(FrappeTestCase):
 		self.assertEqual(row.line_type, "Jasa")
 		self.assertIsNone(row.warehouse)
 		self.assertIn(row.on_hand, (None, ""))
+
+
+class TestWhatTheWorklistShows(_MrFixture):
+	"""The numbers and names the PWA prints on a row and in a header.
+
+	They are computed server-side because the alternative is a fetch per row: the worklist
+	says how big a job is and who let it through, and a phone on depot wifi cannot pay for
+	twenty round-trips to find out. Inherits the flow fixture above for its factories and
+	its teardown (see :class:`_MrFixture`) — these read the same orders, they do not build a
+	different world.
+	"""
+
+	def test_row_counts_findings_and_work_separately(self):
+		"""``damage_count`` is not a rounding of ``item_count``.
+
+		One EIR finding can take three repair lines and three findings can share one, so a
+		row that printed only one of the two would misdescribe the job in both directions.
+		"""
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRCOUNT0001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		# One finding, two things to do about it.
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[
+				{"item": _SERVICE, "quantity": 1},
+				{"item": _SERVICE, "quantity": 2},
+			],
+			submit=False,
+		)
+		mr.bypass_approval(ro)
+		mr.forward_to_team(ro)
+		row = next(i for i in mr.list_mr_execution(page_length=500)["items"] if i["name"] == ro)
+		self.assertEqual(row["item_count"], 2)
+		self.assertEqual(row["damage_count"], 1)
+
+	def test_row_names_whoever_approved_it(self):
+		"""A row says "disetujui <nama>", not "disetujui <login>" — and the lookup is batched.
+
+		Which is the point of stamping it server-side: the name is what the technician gets
+		asked about, and resolving it per row would be one User read per line of the queue.
+		"""
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRWHO000001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _SERVICE, "quantity": 1}], submit=False)
+		mr.bypass_approval(ro)
+		mr.forward_to_team(ro)
+		row = next(i for i in mr.list_mr_execution(page_length=500)["items"] if i["name"] == ro)
+		self.assertEqual(row["decided_by"], "Administrator")
+		self.assertEqual(
+			row["decided_by_name"], frappe.db.get_value("User", "Administrator", "full_name")
+		)
+		# The bypass note travels with it, so the PWA can say HOW it was approved.
+		self.assertIn("bypass", (frappe.db.get_value("Repair Order", ro, "owner_note") or "").lower())
+
+	def test_detail_names_the_decider_and_the_technician(self):
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRNAMES0001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		self._to_in_progress(ro, [{"item": _SERVICE, "quantity": 1}])
+		d = mr.get_mr_order_detail(ro)
+		full = frappe.db.get_value("User", "Administrator", "full_name")
+		self.assertEqual(d["decided_by_name"], full)
+		self.assertEqual(d["started_by_name"], full)
+
+	def test_submitted_on_only_exists_while_the_job_is_in_review(self):
+		"""There is no "sent for review" field — a Pending Review order is frozen, so its
+		``modified`` IS the moment it was submitted. The detail may only claim that while
+		the freeze holds; once it is pulled back, ``modified`` means something else."""
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRSENT00001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		self._to_in_progress(ro, [{"item": _SERVICE, "quantity": 1}])
+		self.assertIsNone(mr.get_mr_order_detail(ro)["submitted_on"])
+
+		mr.save_mr_order(repair_order=ro, submit=True)
+		self.assertEqual(
+			mr.get_mr_order_detail(ro)["submitted_on"],
+			str(frappe.db.get_value("Repair Order", ro, "modified")),
+		)
+
+		mr.withdraw_review(ro)
+		self.assertIsNone(mr.get_mr_order_detail(ro)["submitted_on"])

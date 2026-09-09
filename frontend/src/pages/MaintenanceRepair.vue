@@ -1,24 +1,24 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<!-- Header -->
-		<div class="flex items-center justify-between">
-			<div class="min-w-0">
-				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">
-					{{ labels.mrTitleFull }}
-				</h1>
-				<p v-if="order" class="truncate font-mono text-[11px] text-gray-500">
-					{{ order.repair_order_id }} · {{ order.container_no }}
-				</p>
-				<p v-else class="text-sm text-gray-500">{{ labels.mrExecOrdersHint }}</p>
+		<!-- HEADER — two headers in one, because the two modes are two screens. The worklist
+		     names the module and offers Riwayat; one open order names the JOB, puts its status
+		     where the eye already is, and gives back a plain chevron instead of a labelled
+		     button that competes with the action at the bottom. -->
+		<div class="flex items-center justify-between gap-2">
+			<div v-if="!order" class="min-w-0">
+				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">{{ labels.mrTitle }}</h1>
+				<p class="truncate text-sm text-gray-500">{{ labels.mrExecOrdersHint }}</p>
 			</div>
-			<div class="flex shrink-0 items-center gap-2">
-				<router-link v-if="!order" to="/mr/history" class="oak-btn oak-btn-secondary px-3 py-2">
-					<Icon name="clock" :size="16" /> {{ labels.navHistory }}
-				</router-link>
-				<button v-if="order" class="oak-btn oak-btn-secondary px-3 py-2" @click="backToList">
-					<Icon name="arrow-left" :size="16" /> {{ labels.mrBack }}
+			<div v-else class="flex min-w-0 items-center gap-2">
+				<button class="oak-press -ml-1 shrink-0 p-1 text-gray-500" :aria-label="labels.mrBack" @click="backToList">
+					<Icon name="chevron-left" :size="22" />
 				</button>
+				<h1 class="truncate text-lg font-extrabold tracking-tight text-gray-900">{{ labels.mrWorkTitle }}</h1>
 			</div>
+			<router-link v-if="!order" to="/mr/history" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
+				<Icon name="clock" :size="16" /> {{ labels.navHistory }}
+			</router-link>
+			<span v-else-if="orderChip" class="oak-chip shrink-0" :class="orderChip.tone">{{ orderChip.label }}</span>
 		</div>
 
 		<!-- OPENING AN ORDER — placeholder while its detail is fetched. Without this the
@@ -37,20 +37,21 @@
 			</div>
 		</section>
 
-		<!-- WORKLIST — same shape as the Cleaning worklist (/depot/cleaning): search, then
-		     Semua / Belum / Dikerjakan toggles with counts, then a capped scroller of
-		     fixed-height rows. M&R is triaged exactly the way cleaning is, so it reads the
-		     same way; each row leads with the tank and WHOSE it is, because that is what the
-		     operator sorts the queue by. -->
-		<section v-else-if="!order" class="oak-section space-y-3">
-			<div class="flex items-center gap-2">
-				<Icon name="tool" :size="16" class="text-brand-500" />
-				<p class="oak-section-title">{{ labels.mrOrdersList }}</p>
-			</div>
-			<div class="flex gap-2">
+		<!-- =================== WORKLIST ===================
+		     Search, then Semua / Belum / Dikerjakan with counts, then one card per order. The
+		     whole card is the tap target: the row used to carry its own "Mulai" shortcut, which
+		     started a repair from a list where neither the findings nor the approved work were
+		     on screen yet. Starting now happens on the job's own page, next to what it is. -->
+		<template v-else-if="!order">
+			<div class="relative">
+				<Icon
+					name="search"
+					:size="18"
+					class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+				/>
 				<input
 					v-model="search"
-					class="oak-input uppercase"
+					class="oak-input h-11 pl-10 uppercase"
 					:placeholder="labels.mrOrdersSearch"
 					autocapitalize="characters"
 					autocorrect="off"
@@ -60,311 +61,344 @@
 					@input="onSearchInput"
 					@keyup.enter="reloadOrders"
 				/>
-				<button class="oak-btn oak-btn-secondary shrink-0 px-3" @click="reloadOrders">
-					<Icon name="search" :size="16" />
-				</button>
 			</div>
 
-			<!-- Belum / Dikerjakan split: an order Admin Ops handed over is "belum" until
-			     Mulai moves it to In Progress; one sent for review leaves the worklist for
-			     the section below it. -->
-			<div class="grid grid-cols-3 gap-2">
+			<!-- Belum / Dikerjakan split: an order Admin Ops handed over is "belum" until Mulai
+			     moves it to In Progress; one sent for review leaves for the section below. -->
+			<div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
 				<button
 					v-for="f in FILTERS"
 					:key="f.key"
-					class="oak-toggle flex items-center justify-center gap-1.5"
-					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
+					class="oak-chip shrink-0 gap-1.5 px-3 py-1.5"
+					:class="filter === f.key ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'"
 					@click="filter = f.key"
 				>
-					{{ f.label }}
-					<span class="oak-chip" :class="filter === f.key ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-500'">{{ f.count }}</span>
+					{{ f.label }}<span class="font-extrabold">{{ f.count }}</span>
 				</button>
 			</div>
 
 			<SkeletonList v-if="ordersRes.loading && !orders.length" />
-			<p v-else-if="!visibleOrders.length" class="py-4 text-center text-sm text-gray-400">{{ emptyText }}</p>
-			<!-- The scroller reveals about 5 rows (fixed 60px each); the rest scroll, so a
-			     long queue never runs far down the page. -->
-			<div v-else class="max-h-[300px] overflow-y-auto overscroll-contain">
-				<ul class="divide-y divide-gray-100">
-					<li v-for="o in visibleOrders" :key="o.name">
-						<div class="flex h-[60px] items-center gap-3">
-							<button class="oak-press flex h-full min-w-0 flex-1 items-center gap-3 text-left" @click="openOrder(o)">
-								<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600">
-									<Icon name="tool" :size="16" />
-								</span>
-								<div class="min-w-0 flex-1">
-									<p class="truncate font-semibold text-gray-900">
-										{{ o.container_no || o.container }}<span v-if="o.principal" class="font-normal text-gray-500"> · {{ o.principal }}</span>
-									</p>
-									<!-- One subtitle line: what state it is in, when it has to be out, and
-									     how big the job is. Ordered by urgency so the truncation eats the
-									     least important half first. -->
-									<p class="flex flex-wrap items-center gap-1.5 text-[11px]">
-										<span v-if="o.status === 'In Progress'" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
-											<Icon name="clock" :size="11" /> {{ labels.mrInProgress }}
-										</span>
-										<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" />
-										<span class="truncate text-gray-400">
-											<template v-if="o.item_count">{{ o.item_count }} {{ labels.mrItemsCount }}</template>
-											<template v-else>{{ o.repair_order_id }}</template>
-										</span>
-									</p>
-								</div>
-							</button>
-							<button
-								v-if="o.status !== 'In Progress'"
-								class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
-								@click.stop="startOrder(o)"
-							>
-								{{ labels.mrStart }}
-							</button>
-						</div>
-					</li>
-				</ul>
-			</div>
-			<p v-if="visibleOrders.length" class="text-center text-xs text-gray-400">
-				{{ visibleOrders.length }} {{ labels.mrOrdersCount }}
+			<p v-else-if="!visibleOrders.length" class="oak-card py-8 text-center text-sm text-gray-400">
+				{{ emptyText }}
 			</p>
-		</section>
-
-		<!-- Sent for review (Pending Review) — the field is done, Desk still has to check the
-		     work and close it. Kept out of the worklist above: work waiting on somebody ELSE
-		     must not sit among work waiting on YOU. -->
-		<section v-if="!order && !detailPending && !detailFailed && (reviewRes.loading || reviewItems.length)" class="oak-section space-y-3">
-			<div class="flex items-center gap-2">
-				<Icon name="clock" :size="16" class="text-sky-500" />
-				<p class="oak-section-title">{{ labels.mrReviewList }}</p>
-				<span v-if="reviewItems.length" class="oak-chip bg-sky-100 text-sky-700">{{ reviewItems.length }}</span>
-			</div>
-			<ul v-if="reviewRes.loading && !reviewItems.length" class="space-y-2">
-				<li v-for="n in 2" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
-			</ul>
-			<p v-else-if="!reviewItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrReviewEmpty }}</p>
-			<ul v-else class="divide-y divide-gray-100">
-				<li v-for="r in reviewItems" :key="r.name">
-					<div class="flex items-center gap-3 py-2.5">
-						<button type="button" class="oak-press flex min-w-0 flex-1 items-center gap-3 text-left" @click="goFinished(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
-							<div class="min-w-0 flex-1">
-								<p class="truncate font-semibold text-gray-900">
-									{{ r.container_no || r.container }}<span v-if="r.principal" class="font-normal text-gray-500"> · {{ r.principal }}</span>
-								</p>
-								<p class="truncate text-[11px] text-gray-400">{{ r.repair_order_id || r.name }}</p>
-							</div>
-							<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.mrStatusPendingReview }}</span>
-						</button>
-						<!-- Pulling it back is the team's own fix — no Admin Ops needed, and nothing
-						     has left the warehouse since approval — so it sits on the row rather
-						     than behind the detail. -->
-						<button
-							type="button"
-							class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs"
-							:disabled="withdrawRes.loading"
-							@click.stop="withdrawReview(r)"
+			<ul v-else class="space-y-2">
+				<li v-for="o in visibleOrders" :key="o.name">
+					<button class="oak-card oak-press flex w-full items-center gap-3 p-3 text-left" @click="openOrder(o)">
+						<span
+							class="oak-icon-tile h-9 w-9 shrink-0"
+							:class="o.status === 'In Progress' ? 'bg-brand-50 text-brand-600' : 'bg-gray-100 text-gray-500'"
 						>
-							{{ labels.mrWithdrawReview }}
-						</button>
-					</div>
-				</li>
-			</ul>
-		</section>
-
-		<!-- Finished (Completed / Rejected / Cancelled) — the last few, full log behind Riwayat. -->
-		<section v-if="!order && !detailPending && !detailFailed" class="oak-section space-y-3">
-			<div class="flex items-center justify-between gap-2">
-				<div class="flex items-center gap-2">
-					<Icon name="check-circle" :size="16" class="text-leaf-600" />
-					<p class="oak-section-title">{{ labels.mrCompleteList }}</p>
-				</div>
-				<router-link to="/mr/history" class="oak-link text-sm">{{ labels.mrListMore }}</router-link>
-			</div>
-			<ul v-if="doneRes.loading && !doneItems.length" class="space-y-2">
-				<li v-for="n in 3" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
-			</ul>
-			<p v-else-if="!doneItems.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrCompleteEmpty }}</p>
-			<ul v-else class="divide-y divide-gray-100">
-				<li v-for="r in doneItems" :key="r.name">
-					<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goFinished(r)">
-						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="tool" :size="16" /></span>
+							<Icon name="tool" :size="16" />
+						</span>
 						<div class="min-w-0 flex-1">
-							<p class="truncate font-semibold text-gray-900">
-								{{ r.container_no || r.container }}<span v-if="r.principal" class="font-normal text-gray-500"> · {{ r.principal }}</span>
+							<p class="truncate font-bold text-gray-900">
+								{{ o.container_no || o.container
+								}}<span v-if="o.principal" class="font-normal text-gray-500"> · {{ o.principal }}</span>
 							</p>
-							<p class="truncate text-xs text-gray-500">
-								{{ r.repair_order_id }}<span v-if="r.completion_date"> · {{ fmtDate(r.completion_date) }}</span>
-							</p>
+							<!-- How big the job is, and who let it through. Two counts, not one: a
+							     single finding can take three repair lines and three findings can
+							     share one, so "1 pekerjaan · 3 temuan" is not a rounding of itself. -->
+							<p class="truncate text-[11px] text-gray-500">{{ rowSubtitle(o) }}</p>
+							<div class="mt-1 flex flex-wrap items-center gap-1.5">
+								<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" />
+								<span
+									v-if="o.status === 'In Progress'"
+									class="oak-chip bg-brand-100 text-brand-700"
+								>{{ labels.mrInProgress }}</span>
+							</div>
 						</div>
-						<span class="oak-chip shrink-0" :class="doneChipClass(r.status)">{{ repairStatusLabel(r.status) }}</span>
 						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
 					</button>
 				</li>
 			</ul>
-		</section>
 
-		<!-- DETAIL (execution, read-only estimate) -->
-		<template v-if="order">
-			<!-- GATE: a handed-over (Pending) order must be started before its work detail is
-			     shown — mirrors the Cleaning start gate. -->
-			<section v-if="isPending" class="oak-card space-y-4 p-5 text-center">
-				<span class="oak-icon-tile mx-auto h-14 w-14 bg-brand-50 text-brand-600"><Icon name="tool" :size="26" /></span>
-				<div class="space-y-1">
-					<p class="font-bold text-gray-900">{{ order.container_no || order.container }}</p>
-					<p class="font-mono text-xs text-gray-400">{{ order.repair_order_id }}</p>
-					<p class="text-sm text-gray-500">{{ labels.mrExecStartGate }}</p>
+			<!-- Sent for review (Pending Review) — the field is done, Desk still has to check the
+			     work and close it. Kept out of the worklist above: work waiting on somebody ELSE
+			     must not sit among work waiting on YOU. -->
+			<section v-if="reviewRes.loading || reviewItems.length" class="space-y-2">
+				<div class="flex items-center gap-2 px-1">
+					<Icon name="clock" :size="15" class="text-sky-500" />
+					<p class="oak-section-title">{{ labels.mrReviewList }}</p>
+					<span v-if="reviewItems.length" class="oak-chip bg-sky-100 text-sky-700">{{ reviewItems.length }}</span>
 				</div>
-				<button class="oak-btn oak-btn-primary w-full py-3 text-base" @click="startCurrent">
-					{{ labels.mrStartFull }}
-				</button>
+				<ul v-if="reviewRes.loading && !reviewItems.length" class="space-y-2">
+					<li v-for="n in 2" :key="n" class="oak-skeleton h-14 rounded-2xl"></li>
+				</ul>
+				<ul v-else class="space-y-2">
+					<li v-for="r in reviewItems" :key="r.name">
+						<div class="oak-card flex items-center gap-3 p-3">
+							<button type="button" class="oak-press flex min-w-0 flex-1 items-center gap-3 text-left" @click="goFinished(r)">
+								<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-sky-600"><Icon name="clock" :size="16" /></span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate font-bold text-gray-900">
+										{{ r.container_no || r.container
+										}}<span v-if="r.principal" class="font-normal text-gray-500"> · {{ r.principal }}</span>
+									</p>
+									<p class="truncate text-[11px] text-gray-500">{{ reviewSubtitle(r) }}</p>
+								</div>
+								<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.mrStatusPendingReview }}</span>
+							</button>
+							<!-- Pulling it back is the team's own fix — no Admin Ops needed, and nothing
+							     has left the warehouse since approval — so it sits on the row rather
+							     than behind the detail. -->
+							<button
+								type="button"
+								class="oak-btn oak-btn-secondary shrink-0 px-2.5 py-1.5 text-xs"
+								:disabled="withdrawRes.loading"
+								@click.stop="withdrawReview(r)"
+							>
+								{{ labels.mrWithdrawReview }}
+							</button>
+						</div>
+					</li>
+				</ul>
 			</section>
 
-			<!-- Non-execution order opened via deep-link — managed in ERP. -->
-			<section v-else-if="!isInProgress" class="oak-card border-amber-200 bg-amber-50 p-3">
+			<!-- Finished (Completed / Rejected / Cancelled) — the last few, full log behind Riwayat. -->
+			<section class="space-y-2">
+				<div class="flex items-center justify-between gap-2 px-1">
+					<div class="flex items-center gap-2">
+						<Icon name="check-circle" :size="15" class="text-leaf-600" />
+						<p class="oak-section-title">{{ labels.mrCompleteList }}</p>
+					</div>
+					<router-link to="/mr/history" class="oak-link text-xs">{{ labels.mrListMore }}</router-link>
+				</div>
+				<ul v-if="doneRes.loading && !doneItems.length" class="space-y-2">
+					<li v-for="n in 2" :key="n" class="oak-skeleton h-14 rounded-2xl"></li>
+				</ul>
+				<p v-else-if="!doneItems.length" class="oak-card py-4 text-center text-sm text-gray-400">
+					{{ labels.mrCompleteEmpty }}
+				</p>
+				<ul v-else class="space-y-2">
+					<li v-for="r in doneItems" :key="r.name">
+						<button type="button" class="oak-card oak-press flex w-full items-center gap-3 p-3 text-left" @click="goFinished(r)">
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="tool" :size="16" /></span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-bold text-gray-900">
+									{{ r.container_no || r.container
+									}}<span v-if="r.principal" class="font-normal text-gray-500"> · {{ r.principal }}</span>
+								</p>
+								<p class="truncate text-[11px] text-gray-500">
+									{{ r.repair_order_id }}<span v-if="r.completion_date"> · {{ fmtDate(r.completion_date) }}</span>
+								</p>
+							</div>
+							<span class="oak-chip shrink-0" :class="doneChipClass(r.status)">{{ repairStatusLabel(r.status) }}</span>
+							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
+						</button>
+					</li>
+				</ul>
+			</section>
+		</template>
+
+		<!-- =================== ONE ORDER ===================
+		     The same page before and after Mulai. What the job IS — which tank, what the EIR
+		     found, what was approved, what the tank's spec says — does not depend on whether
+		     anyone has pressed start, and it is exactly what the technician reads to decide
+		     whether to take it. Only the action at the bottom changes. -->
+		<template v-if="order">
+			<!-- Tank, papers, and how far along it is. -->
+			<section class="oak-card p-4">
+				<div class="flex items-start justify-between gap-3">
+					<div class="min-w-0">
+						<p class="truncate text-lg font-extrabold text-gray-900">{{ order.container_no || order.container }}</p>
+						<p class="truncate text-xs text-gray-500">{{ orderSubtitle }}</p>
+					</div>
+					<p class="shrink-0 font-mono text-[11px] text-gray-400">{{ order.repair_order_id }}</p>
+				</div>
+
+				<!-- Who let this job through, and on what note. An M&R the owner approved and one
+				     Admin Ops waved through cost the same and read the same on Desk; out here it
+				     is the first thing the technician gets asked about. -->
+				<div v-if="approval" class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+					<span class="oak-chip" :class="approval.tone">
+						<Icon :name="approval.icon" :size="12" />{{ approval.label }}
+					</span>
+					<span class="truncate text-[11px] text-gray-400">{{ approval.note }}</span>
+				</div>
+
+				<!-- Once it is running: when it started, who is on it, and how much of the
+				     evidence is in — the one thing that decides whether it can be sent. -->
+				<div v-if="isInProgress" class="mt-3 flex flex-wrap gap-1.5 border-t border-gray-100 pt-3">
+					<span class="oak-chip" :class="photoProgress.done >= photoProgress.total ? 'bg-leaf-100 text-leaf-800' : 'bg-amber-100 text-amber-800'">
+						<Icon name="camera" :size="12" />{{ photoProgress.label }}
+					</span>
+					<span v-if="runLine" class="oak-chip bg-gray-100 text-gray-600">
+						<Icon name="clock" :size="12" />{{ runLine }}
+					</span>
+				</div>
+			</section>
+
+			<!-- Non-execution order opened via deep-link — managed in ERP. Everything below it
+			     still shows: the record is readable, only the actions are not offered. -->
+			<section v-if="!isPending && !isInProgress" class="oak-card border-amber-200 bg-amber-50 p-3">
 				<p class="text-sm font-semibold text-amber-800">{{ labels.mrExecErpBanner }}</p>
 			</section>
 
-			<!-- WORK DETAIL — only once the order is In Progress (started). -->
-			<template v-else>
-				<section class="oak-card border-indigo-200 bg-indigo-50 p-3">
-					<p class="text-sm font-semibold text-indigo-700">{{ labels.mrExecInProgress }}</p>
-				</section>
-
-				<!-- Tank header -->
-				<section class="oak-card p-4">
-					<p class="oak-section-title mb-2">{{ labels.mrTankDetails }}</p>
-					<dl class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-						<div v-for="cell in headerCells" :key="cell.label" class="min-w-0">
-							<dt class="text-xs text-gray-400">{{ cell.label }}</dt>
-							<dd class="truncate font-medium text-gray-800">{{ cell.value || "—" }}</dd>
-						</div>
-					</dl>
-					<p v-if="order.inspection" class="mt-2 font-mono text-[11px] text-gray-400">
-						{{ labels.mrRefEir }}: {{ order.inspection }}
-					</p>
-				</section>
-
-				<!-- Damage findings (read-only, copied from EIR) -->
-				<section class="oak-card p-4 space-y-3">
-					<p class="oak-section-title">{{ labels.mrDamagesTitle }}</p>
-					<p v-if="!order.damages || !order.damages.length" class="py-2 text-center text-sm text-gray-400">
-						{{ labels.mrNoDamages }}
-					</p>
-					<div v-for="(d, i) in order.damages" :key="i" class="rounded-xl border border-gray-100 p-3 space-y-2">
-						<p class="font-semibold text-gray-900">{{ d.component || d.area || "—" }}</p>
-						<div class="flex flex-wrap gap-1.5 text-xs">
-							<span v-if="d.damage_code" class="oak-chip bg-red-50 text-red-700">
-								{{ labels.mrCodeDamage }}: {{ d.damage_code }}<span v-if="d.damage_desc"> — {{ d.damage_desc }}</span>
-							</span>
-							<span v-if="d.repair_code" class="oak-chip bg-blue-50 text-blue-700">
-								{{ labels.mrCodeRepair }}: {{ d.repair_code }}<span v-if="d.repair_desc"> — {{ d.repair_desc }}</span>
-							</span>
-						</div>
-						<p v-if="d.damage_description" class="text-sm text-gray-600">{{ d.damage_description }}</p>
-						<div v-if="d.photos && d.photos.length" class="flex flex-wrap gap-2">
-							<button v-for="(ph, pi) in d.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(d.photos, pi)">
-								<img :src="ph" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
-							</button>
-						</div>
+			<!-- What was approved. Read-only before Mulai — the estimate is the owner's, and the
+			     technician reading it is deciding whether to pick the job up, not editing it. -->
+			<section v-if="!isInProgress" class="oak-card space-y-2 p-4">
+				<div class="flex items-center justify-between gap-2">
+					<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
+					<span class="text-[11px] text-gray-400">{{ itemsCountText }}</span>
+				</div>
+				<p v-if="!photoGroups.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
+				<div
+					v-for="g in photoGroups"
+					:key="g.key"
+					class="flex items-start justify-between gap-2 rounded-xl border border-gray-100 p-3"
+				>
+					<div class="min-w-0">
+						<p class="truncate font-semibold text-gray-900">{{ g.label }}</p>
+						<p class="text-xs text-gray-500">{{ lineFacts(g.line) }}</p>
+						<p v-if="g.line.remark" class="text-xs text-gray-400">{{ g.line.remark }}</p>
 					</div>
-				</section>
+					<span class="oak-chip shrink-0" :class="g.photos.length ? 'bg-leaf-100 text-leaf-800' : 'bg-gray-100 text-gray-500'">
+						{{ labels.mrPhotoCount.replace("{n}", g.photos.length) }}
+					</span>
+				</div>
+			</section>
 
-				<!-- Pekerjaan + bukti, ONE card per line: nama, qty, lalu fotonya.
-				     They are two tables on the server (and two grids on the Desk) because their
-				     lifetimes differ — the estimate freezes, the evidence is gathered mid-repair. On a
-				     phone that split bought nothing and cost a lot: the same three item names were
-				     printed twice, one screen apart, so the operator had to scroll past the whole
-				     estimate to reach the camera for the line they were standing in front of.
-				     Storage stays split; the screen does not. -->
-				<section class="oak-card p-4 space-y-3">
-					<div>
-						<p class="oak-section-title">{{ labels.mrExecPartsTitle }}</p>
-						<p class="mt-0.5 text-xs text-gray-400">{{ labels.mrWorkPhotosHint }}</p>
-					</div>
-					<p v-if="!photoGroups.length" class="py-2 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
-					<div v-for="g in photoGroups" :key="g.key" class="rounded-xl border border-gray-100 p-3 space-y-2">
-						<div>
-							<p class="font-semibold text-gray-900">{{ g.label }}</p>
-							<p class="text-xs text-gray-500">
-								{{ labels.mrQty }} {{ g.line.quantity }}<span v-if="g.line.on_hand != null"> · {{ labels.mrOnHand }} {{ g.line.on_hand }}</span>
-								<!-- Each part names the gudang it was issued from when the owner approved. -->
-								<span v-if="g.line.warehouse"> · {{ g.line.warehouse }}</span>
-							</p>
+			<!-- WORK FORM — one card per approved line: what it is, its evidence, its caption.
+			     They are two tables on the server (and two grids on the Desk) because their
+			     lifetimes differ — the estimate freezes, the evidence is gathered mid-repair. On
+			     a phone that split bought nothing and cost a lot: the same three item names were
+			     printed twice, one screen apart, so the operator had to scroll past the whole
+			     estimate to reach the camera for the line they were standing in front of.
+			     Storage stays split; the screen does not. -->
+			<template v-if="isInProgress">
+				<section v-for="g in photoGroups" :key="g.key" class="oak-card space-y-3 p-4">
+					<div class="flex items-start justify-between gap-2">
+						<div class="min-w-0">
+							<p class="truncate font-bold text-gray-900">{{ g.label }}</p>
+							<p class="text-xs text-gray-500">{{ lineFacts(g.line) }}</p>
 							<p v-if="g.line.remark" class="text-xs text-gray-400">{{ g.line.remark }}</p>
 						</div>
-						<!-- One photo per ROW, not a wrapped strip of tiles: the caption has to be
-						     typeable on a phone, and a text box the width of a 64px thumbnail is not.
-						     Thumbnail left, keterangan filling the rest, delete on the right. -->
-						<div v-if="g.photos.length" class="space-y-2">
-							<div v-for="(ph, pi) in g.photos" :key="ph.photo" class="flex items-center gap-2">
-								<button type="button" class="oak-press relative shrink-0" @click="openLightbox(g.photos.map((x) => photoSrc(x.photo)), pi)">
-									<img :src="photoSrc(ph.photo)" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
-									<PhotoMark :photo="ph.photo" />
-								</button>
-								<input
-									v-model="ph.caption"
-									type="text"
-									class="oak-input min-w-0 flex-1 px-2.5 py-2 text-sm"
-									:placeholder="labels.mrPhotoCaption"
-									@input="scheduleSave"
-								/>
+						<span class="oak-chip shrink-0" :class="g.photos.length ? 'bg-leaf-100 text-leaf-800' : 'bg-gray-100 text-gray-500'">
+							<Icon v-if="g.photos.length" name="check" :size="12" />
+							{{ labels.mrPhotoCount.replace("{n}", g.photos.length) }}
+						</span>
+					</div>
+
+					<!-- Two up, each with its own caption underneath. A caption box the width of a
+					     64px thumbnail is not typeable on a phone; half the card is. -->
+					<div class="grid grid-cols-2 items-start gap-2">
+						<div v-for="(ph, pi) in g.photos" :key="ph.photo" class="space-y-1">
+							<div class="relative aspect-square">
 								<button
 									type="button"
-									class="oak-press shrink-0 p-2 text-gray-400"
+									class="oak-press h-full w-full"
+									@click="openLightbox(g.photos.map((x) => photoSrc(x.photo)), pi)"
+								>
+									<img :src="photoSrc(ph.photo)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
+								</button>
+								<button
+									type="button"
+									class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
 									:aria-label="labels.mrRemove"
 									@click="removePhoto(ph)"
 								>
-									<Icon name="trash-2" :size="16" />
+									<Icon name="x" :size="16" />
 								</button>
+								<PhotoMark :photo="ph.photo" />
 							</div>
+							<input
+								v-model="ph.caption"
+								type="text"
+								class="oak-input px-2 py-1.5 text-xs"
+								:placeholder="labels.mrPhotoCaption"
+								@input="scheduleSave"
+							/>
 						</div>
-						<!-- Same row shape as a landed photo, so the list does not jump when it
+						<!-- Same cell shape as a landed photo, so the grid does not jump when it
 						     lands — the thumbnail simply replaces the spinner in place. -->
-						<div v-if="queueFor(g.key).items.length" class="space-y-2">
-							<div v-for="it in queueFor(g.key).items" :key="it.id" class="flex items-center gap-2">
-								<PhotoTile :item="it" tile="h-14 w-14" />
-							</div>
-						</div>
-						<div class="flex w-full gap-2">
-							<button
-								type="button"
-								class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100"
-								:disabled="g.uploading"
-								@click="openCameraOrFallback(g)"
-							>
-								<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
-								<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
-							</button>
-							<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
-								<input
-									type="file"
-									accept="image/*"
-									multiple
-									class="hidden"
-									:disabled="g.uploading"
-									@change="onPickPhotos(g, $event)"
-								/>
-								<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
-								<template v-else><Icon name="image" :size="16" /> {{ labels.photoGallery }}</template>
-							</label>
-						</div>
+						<PhotoTile v-for="it in queueFor(g.key).items" :key="it.id" :item="it" tile="aspect-square w-full" />
 					</div>
-					<p v-if="photoErr" class="text-xs text-red-600">{{ photoErr }}</p>
-					<p class="flex items-center gap-1.5 text-xs">
-						<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
-						<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600">
-							<Icon name="check" :size="13" /> {{ labels.draftSaved }}
-						</span>
-						<span v-else class="text-gray-400">{{ labels.autosaveHint }}</span>
-					</p>
-				</section>
 
-				<!-- Remarks (read-only) -->
-				<section v-if="order.remarks" class="oak-card p-4">
-					<p class="oak-section-title mb-1">{{ labels.mrRemarks }}</p>
-					<p class="whitespace-pre-line text-sm text-gray-700">{{ order.remarks }}</p>
+					<div class="flex w-full gap-2">
+						<button
+							type="button"
+							class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100"
+							:disabled="g.uploading"
+							@click="openCameraOrFallback(g)"
+						>
+							<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
+							<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
+						</button>
+						<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
+							<input
+								type="file"
+								accept="image/*"
+								multiple
+								class="hidden"
+								:disabled="g.uploading"
+								@change="onPickPhotos(g, $event)"
+							/>
+							<Icon v-if="g.uploading" name="loader" :size="16" class="animate-spin" />
+							<template v-else><Icon name="image" :size="16" /> {{ labels.photoGallery }}</template>
+						</label>
+					</div>
 				</section>
+				<p v-if="!photoGroups.length" class="oak-card py-6 text-center text-sm text-gray-400">{{ labels.mrNoUsed }}</p>
+				<p v-if="photoErr" class="text-xs text-red-600">{{ photoErr }}</p>
+			</template>
 
-				<!-- Hand the finished job to Desk. This does NOT close the order. -->
+			<!-- What the EIR found. Open while the job has not started — it is half of what the
+			     technician is deciding on — and folded away once the work form is on screen,
+			     where it is a reference rather than the subject. -->
+			<section v-if="(order.damages || []).length" class="oak-card space-y-3 p-4">
+				<button
+					type="button"
+					class="flex w-full items-center justify-between gap-2 text-left"
+					@click="damagesOpen = !damagesOpen"
+				>
+					<p class="oak-section-title">{{ labels.mrDamagesTitle }}</p>
+					<span class="flex shrink-0 items-center gap-1 text-[11px] text-gray-400">
+						{{ labels.mrFindingsCount.replace("{n}", order.damages.length) }}
+						<Icon :name="damagesOpen ? 'chevron-up' : 'chevron-down'" :size="14" />
+					</span>
+				</button>
+				<div v-if="damagesOpen" class="space-y-2">
+					<MrDamageCard v-for="(d, i) in order.damages" :key="i" :damage="d" />
+				</div>
+			</section>
+
+			<!-- Tank spec, straight off the EIR. -->
+			<section class="oak-card p-4">
+				<div class="mb-2 flex items-center justify-between gap-2">
+					<p class="oak-section-title">{{ labels.mrTankDetails }}</p>
+					<span v-if="order.inspection" class="shrink-0 text-[11px] text-gray-400">{{ labels.mrTankFromEir }}</span>
+				</div>
+				<dl class="grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
+					<div v-for="cell in headerCells" :key="cell.label" class="min-w-0">
+						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ cell.label }}</dt>
+						<dd class="truncate font-semibold text-gray-800">{{ cell.value || "—" }}</dd>
+					</div>
+				</dl>
+			</section>
+
+			<!-- Catatan umum on the order (read-only — Admin Ops writes it). -->
+			<section v-if="order.remarks" class="oak-card p-4">
+				<p class="oak-section-title mb-1">{{ labels.mrRemarks }}</p>
+				<p class="whitespace-pre-line text-sm text-gray-700">{{ order.remarks }}</p>
+			</section>
+
+			<!-- NOT STARTED: one action, and what pressing it records. -->
+			<template v-if="isPending">
+				<button class="oak-btn oak-btn-primary w-full py-3 text-base" @click="startCurrent">
+					<Icon name="play" :size="18" /> {{ labels.mrStartFull }}
+				</button>
+				<p class="text-center text-xs text-gray-400">{{ labels.mrStartAuto }}</p>
+			</template>
+
+			<!-- STARTED: hand the finished job to Desk. This does NOT close the order. -->
+			<template v-else-if="isInProgress">
+				<p class="flex items-center justify-center gap-1.5 text-xs">
+					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
+					<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600">
+						<Icon name="check" :size="13" /> {{ labels.draftSaved }}
+					</span>
+					<span v-else class="text-gray-400">{{ labels.mrSubmitAutosave }}</span>
+				</p>
 				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="submitting" @click="confirmSubmit">
 					<Icon v-if="submitting" name="loader" :size="18" class="animate-spin" />
 					<span v-else>{{ labels.mrSubmitReview }}</span>
@@ -399,8 +433,10 @@ import { claimMessage, isClaimed } from "@/utils/claim"
 import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
 import { confirm } from "@/utils/confirm"
+import { clockOf, fmtStamp, mrChip, workWindow } from "@/utils/mrStatus"
 import Icon from "@/components/Icon.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
+import MrDamageCard from "@/components/MrDamageCard.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
@@ -473,6 +509,24 @@ const photoGroups = computed(() =>
 		),
 	}))
 )
+
+// "1 pekerjaan · 1 temuan EIR · disetujui Rudi" — how big the job is and who let it through.
+// The order id is the fallback rather than a fourth clause: it is what the row is identified
+// by when there is nothing more useful to say, not something anyone reads first.
+function rowSubtitle(o) {
+	const parts = [
+		o.item_count ? `${o.item_count} ${labels.mrItemsCount}` : "",
+		o.damage_count ? labels.mrDamagesCount.replace("{n}", o.damage_count) : "",
+		o.decided_by_name ? labels.mrApprovedBy.replace("{name}", o.decided_by_name) : "",
+	].filter(Boolean)
+	return parts.length ? parts.join(" · ") : o.repair_order_id || ""
+}
+
+// A job in review is read as "what did I send" — when it was worked, and by whom.
+function reviewSubtitle(r) {
+	const w = workWindow(r.start_date, r.modified)
+	return [r.repair_order_id || r.name, w, r.technician].filter(Boolean).join(" · ")
+}
 
 function doneChipClass(s) {
 	if (s === "Completed") return "bg-leaf-100 text-leaf-800"
@@ -566,18 +620,103 @@ const emptyText = computed(() => {
 	return labels.mrExecEmpty
 })
 
+// The tank in four facts. Whose it is, what type it is and what it last carried moved into
+// the header line above — they are how the technician recognises the tank, not how they work
+// on it — leaving this card for the numbers they actually look up mid-repair.
 const headerCells = computed(() => {
 	const h = order.value || {}
 	return [
-		{ label: labels.cleaningTankType, value: h.tank_type },
-		{ label: labels.equipmentType, value: h.equipment_type },
-		{ label: labels.cleaningClient, value: h.client },
 		{ label: labels.cleaningCapacity, value: h.capacity },
+		{ label: labels.mrTareMgw, value: [h.tare, h.mgw].filter(Boolean).join(" / ") },
 		{ label: labels.cleaningPrevCargo, value: h.previous_cargo },
-		{ label: labels.cleaningTare, value: h.tare },
-		{ label: labels.cleaningMgw, value: h.mgw },
+		{ label: labels.cleaningMfgDate, value: fmtMonthYear(h.date_of_manufacture) },
 	]
 })
+
+// "Mar 2019" — a tank's build date is read as a vintage, never as a day.
+function fmtMonthYear(v) {
+	if (!v) return ""
+	const d = new Date(String(v).slice(0, 10) + "T00:00:00")
+	return Number.isNaN(d.getTime())
+		? String(v).slice(0, 7)
+		: d.toLocaleDateString("id-ID", { month: "short", year: "numeric" })
+}
+
+// --- one order, in chips ----------------------------------------------------
+const orderChip = computed(() => (order.value ? mrChip(order.value.status) : null))
+
+// Whose tank, what it is, what it last held, and which EIR it came off — the line under the
+// container number, in the order those questions get asked.
+const orderSubtitle = computed(() => {
+	const o = order.value || {}
+	return [
+		o.client,
+		o.tank_type,
+		o.previous_cargo ? labels.mrExFmt.replace("{cargo}", o.previous_cargo) : "",
+		o.inspection ? labels.mrFromEir.replace("{ref}", o.inspection) : "",
+	]
+		.filter(Boolean)
+		.join(" · ")
+})
+
+// Who let the job through. A rejected estimate keeps the same shape so the reason is not
+// hidden behind a colour change nobody reads.
+const approval = computed(() => {
+	const o = order.value
+	if (!o || !o.decided_on) return null
+	const rejected = o.status === "Rejected"
+	return {
+		label: rejected
+			? labels.mrRejectedBanner
+			: [labels.mrFlowApproved, o.decided_by_name].filter(Boolean).join(" "),
+		tone: rejected ? "bg-red-100 text-red-700" : "bg-leaf-100 text-leaf-800",
+		icon: rejected ? "x-circle" : "check-circle",
+		note: [o.owner_note, fmtStamp(o.decided_on)].filter(Boolean).join(" · "),
+	}
+})
+
+// How much of the evidence is in — the only thing standing between a finished repair and
+// sending it. Counted in LINES with at least one photo, not in photos: five pictures of one
+// weld still leave the other job undocumented.
+const photoProgress = computed(() => {
+	const total = photoGroups.value.length
+	const done = photoGroups.value.filter((g) => g.photos.length).length
+	return {
+		done,
+		total,
+		label: labels.mrProgressChip.replace("{done}", done).replace("{total}", total),
+	}
+})
+
+// "mulai 15:33 · teknisi Rudi" — when it was picked up and by whom.
+const runLine = computed(() => {
+	const o = order.value || {}
+	const who = o.started_by_name || o.technician
+	return [
+		o.start_date ? labels.mrStartedAt.replace("{time}", clockOf(o.start_date)) : "",
+		who ? labels.mrTechnicianShort.replace("{name}", who) : "",
+	]
+		.filter(Boolean)
+		.join(" · ")
+})
+
+const itemsCountText = computed(() =>
+	labels.mrItemsN.replace("{n}", photoGroups.value.length)
+)
+
+// Qty, the gudang the part comes out of, and how much of it is on the shelf.
+function lineFacts(line) {
+	return [
+		`${labels.mrQty} ${line.quantity}`,
+		line.warehouse || "",
+		line.on_hand != null ? `${labels.mrOnHand} ${line.on_hand}` : "",
+	]
+		.filter(Boolean)
+		.join(" · ")
+}
+
+// Folded on the work form, open on a job that has not started yet — see the template.
+const damagesOpen = ref(true)
 
 // Whether a detail fetch is in flight, tracked explicitly rather than derived from
 // `route.query.o && !order`. The derived version flickers: submitting an order nulls `order`
@@ -598,6 +737,7 @@ const detailRes = cachedResource({
 		suppressSave.value = true
 		savedOk.value = false
 		order.value = data
+		damagesOpen.value = data.status !== "In Progress"
 		used.value = (data.used_items || []).map((u) => reactive({ ...u, decision: u.decision || "Pending" }))
 		workPhotos.value = (data.work_photos || []).map((p) => ({ ...p }))
 		photoErr.value = ""
@@ -660,8 +800,6 @@ watch(
 // The status is flipped locally rather than re-fetched. The response carried nothing the
 // screen needed except the new status, and waiting for it is what made "Mulai" impossible in
 // a dead spot — which locked the technician out of the rest of the form.
-//
-// No `ref` on this row: starting is not finishing, so the order must stay in the worklist.
 async function startRepair(name) {
 	try {
 		await send({
@@ -676,9 +814,6 @@ async function startRepair(name) {
 	}
 }
 
-async function startOrder(o) {
-	if (await startRepair(o.name)) o.status = "In Progress"
-}
 async function startCurrent() {
 	if (!order.value) return
 	if (await startRepair(order.value.name)) order.value = { ...order.value, status: "In Progress" }

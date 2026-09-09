@@ -183,6 +183,14 @@ def _out_of_stock_items(warehouse) -> set:
 	return stock_items - available
 
 
+def _fullname(user) -> str | None:
+	"""A user's display name, falling back to the login itself. ``None`` stays ``None`` so the
+	PWA can drop the row rather than print a name-shaped blank."""
+	if not user:
+		return None
+	return frappe.db.get_value("User", user, "full_name") or user
+
+
 def _photos_list(value) -> list:
 	"""Parse a Damage Entry ``photos`` JSON string into a list of file URLs."""
 	if not value:
@@ -317,12 +325,17 @@ def item_pricing(repair_order, item) -> dict:
 	return breakdown
 
 
-def _attach_item_counts(items) -> None:
-	"""Stamp ``item_count`` — how many lines the team actually has to work.
+def _attach_counts(items) -> None:
+	"""Stamp ``item_count`` and ``damage_count`` — how big the job is, in one glance.
 
-	Rejected lines are excluded because they are not work: an order the owner cut down to one
-	item would otherwise advertise five on the worklist, and the operator would open it
-	expecting a job four times the size. Mirrors the ``service_count`` on a Cleaning Order row.
+	``item_count`` counts the lines the team actually has to work. Rejected lines are excluded
+	because they are not work: an order the owner cut down to one item would otherwise
+	advertise five on the worklist, and the operator would open it expecting a job four times
+	the size. Mirrors the ``service_count`` on a Cleaning Order row.
+
+	``damage_count`` is what the EIR found. It is not the same number as ``item_count`` and
+	the worklist prints both: one finding can take three repair lines, and three findings can
+	share one. Two batched queries for the whole page, never one per row.
 	"""
 	names = [i["name"] for i in items]
 	if not names:
@@ -336,8 +349,34 @@ def _attach_item_counts(items) -> None:
 			pluck="parent",
 		)
 	)
+	damages = Counter(
+		frappe.get_all("Repair Damage Entry", filters={"parent": ["in", names]}, pluck="parent")
+	)
 	for i in items:
 		i["item_count"] = counts.get(i["name"], 0)
+		i["damage_count"] = damages.get(i["name"], 0)
+
+
+def _attach_decider_names(items) -> None:
+	"""Stamp ``decided_by_name`` — WHO approved the estimate, in a name a human recognises.
+
+	The worklist says "disetujui <nama>" rather than a bare "disetujui": an order approved by
+	Admin Ops and one approved by the tank's owner are the same status but not the same
+	situation, and the operator reading the queue is the one who gets asked about it. One
+	batched User lookup for the page, not one per row.
+	"""
+	emails = {i.get("decided_by") for i in items if i.get("decided_by")}
+	if not emails:
+		return
+	names = {
+		u.name: (u.full_name or u.name)
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", list(emails)]}, fields=["name", "full_name"]
+		)
+	}
+	for i in items:
+		if i.get("decided_by"):
+			i["decided_by_name"] = names.get(i["decided_by"], i["decided_by"])
 
 
 def list_mr_execution(start=0, page_length=20, search=None) -> dict:
@@ -359,7 +398,7 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 		# See list_open_mr_orders: started_by is the claim, not a displayed column.
 		fields=["name", "repair_order_id", "container", "container_no", "status",
 			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on", "creation",
-			 "started_by"],
+			 "started_by", "inspection", "start_date", "decided_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
 	items = filter_claimed(items, "started_by")
@@ -367,7 +406,8 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 	# Gate-out priority, then the job already in this operator's hands, then the rest —
 	# see ``worklist.sort_by_priority`` for why that order.
 	items = sort_by_priority(items, lambda r: r.get("status") == "In Progress", start, page_length)
-	_attach_item_counts(items)
+	_attach_counts(items)
+	_attach_decider_names(items)
 	return {"items": items, "total": total}
 
 
@@ -394,11 +434,12 @@ def list_review_mr_orders(start=0, page_length=20, search=None) -> dict:
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on", "creation"],
+			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on", "creation",
+			"start_date", "technician", "modified"],
 		order_by="modified desc, creation desc",
 		limit_start=cint(start), limit_page_length=cint(page_length),
 	)
-	_attach_item_counts(items)
+	_attach_counts(items)
 	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
 
 
@@ -416,9 +457,11 @@ def list_mr_history(start=0, page_length=10, search=None) -> dict:
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "completion_date", "creation"],
+			"principal", "depot", "total_cost", "completion_date", "creation",
+			"start_date", "technician"],
 		order_by="creation desc", limit_start=cint(start), limit_page_length=cint(page_length),
 	)
+	_attach_counts(items)
 	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
 
 
@@ -485,6 +528,19 @@ def get_mr_order_detail(repair_order) -> dict:
 		"requested_on": str(ro.requested_on) if ro.requested_on else None,
 		"decided_on": str(ro.decided_on) if ro.decided_on else None,
 		"revision_no": ro.revision_no,
+		# Who decided, and who is holding the spanner — as names, not logins. The PWA prints
+		# them in the approval timeline and the header chip, where "Administrator" answers a
+		# question that "administrator@example.com" does not.
+		"decided_by": ro.decided_by,
+		"decided_by_name": _fullname(ro.decided_by),
+		"started_by": ro.started_by,
+		"started_by_name": _fullname(ro.started_by),
+		"job_type": ro.job_type,
+		# When the team handed the job to Desk. There is no field for it — but a Pending
+		# Review order is frozen (``save_mr_order`` refuses every write in that state), so its
+		# ``modified`` IS the moment it was submitted. Only sent while that holds; once it is
+		# withdrawn or closed the timestamp would be something else entirely.
+		"submitted_on": str(ro.modified) if ro.status == "Pending Review" and ro.modified else None,
 		# When the work itself happened. The Riwayat entry has to stand on its own as the
 		# record of the job, and a repair with no dates reads as one that never happened.
 		"start_date": str(ro.start_date) if ro.start_date else None,
