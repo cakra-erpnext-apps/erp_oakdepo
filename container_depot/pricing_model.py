@@ -94,27 +94,79 @@ def price_list_for_customer(customer: str | None) -> str | None:
 	walk-in has none, so the rate card falls back to a Price List. Preference:
 
 	  1. the Customer's own ``default_price_list`` (per-principal rate card);
-	  2. the site Selling Settings default selling price list;
+	  2. the site Selling Settings default selling price list — but ONLY when it is
+	     denominated in the customer's own currency;
 	  3. ``None`` — caller then leaves the rate 0 for the Cashier to fill in.
+
+	Step 2's currency guard is what keeps a USD principal off the site's IDR catalog.
+	The generic list is a convenience, not an agreement: seeding a USD order from it
+	would stamp IDR figures (Lift Off 450000) onto a line labelled USD, and billing
+	reads those numbers as they stand. No agreed rate card in the right currency means
+	no rate — 0, for the Cashier to type — which is what the operator can see and fix,
+	unlike a number that is off by four orders of magnitude.
 	"""
 	if customer:
 		pl = frappe.db.get_value("Customer", customer, "default_price_list")
 		if pl:
 			return pl
-	return frappe.db.get_single_value("Selling Settings", "selling_price_list") or None
+	fallback = frappe.db.get_single_value("Selling Settings", "selling_price_list") or None
+	if fallback and customer:
+		# currency_for_customer with no price list = the customer's own answer (billing
+		# currency, else company base), so this never recurses back into here.
+		if frappe.db.get_value("Price List", fallback, "currency") != currency_for_customer(customer):
+			return None
+	return fallback
 
 
-# Mata uang terakhir yang dipakai saat sebuah baris tidak punya Item Price sendiri. Sejak
-# picker item dibuka ke seluruh katalog (lihat container_depot.item_catalog), baris seperti
-# itu jadi hal biasa: item di luar kontrak masuk dengan rate 0 untuk diisi manual — tapi
-# mata uangnya tidak boleh ikut kosong, atau invoice tercampur mata uang.
+# Jaring terakhir kalau company pun tidak punya mata uang (site setengah jadi / test).
 DEFAULT_CURRENCY = "IDR"
 
 
+def company_currency() -> str:
+	"""Mata uang dasar company — dasar terakhir setiap resolver di modul ini.
+
+	Dipakai menggantikan konstanta IDR yang dulu di-hardcode: mata uang company adalah
+	fakta yang sudah di-set operator saat setup, jadi site non-IDR pun ikut benar."""
+	from container_depot.invoicing import get_default_company
+
+	company = get_default_company()
+	return (
+		(frappe.db.get_value("Company", company, "default_currency") if company else None)
+		or frappe.defaults.get_global_default("currency")
+		or DEFAULT_CURRENCY
+	)
+
+
+def is_own_price_list(customer: str | None, price_list: str | None) -> bool:
+	"""True kalau ``price_list`` benar-benar rate card MILIK ``customer`` — daftar yang
+	diterbitkan kontraknya (``Price List.customer``) atau yang terpasang di
+	``Customer.default_price_list``.
+
+	Pembeda ini yang menentukan mata uang boleh dikunci atau tidak: daftar milik sendiri
+	adalah isi kesepakatan (harga USD-nya memang USD), sedangkan katalog generic site
+	("Standard Selling") cuma default bersama yang kebetulan ikut terpakai — dan dulu
+	diam-diam menutupi ``Customer.default_currency``, sehingga customer USD tanpa kontrak
+	selalu jatuh ke IDR tanpa pernah kelihatan."""
+	if not (customer and price_list):
+		return False
+	if frappe.db.get_value("Price List", price_list, "customer") == customer:
+		return True
+	return frappe.db.get_value("Customer", customer, "default_price_list") == price_list
+
+
 def currency_for_customer(customer: str | None = None, price_list: str | None = None) -> str:
-	"""Mata uang customer: currency price list-nya, lalu ``Customer.default_currency``,
-	lalu default site, dan terakhir IDR. Tidak pernah mengembalikan None."""
-	if price_list:
+	"""Mata uang customer, dari yang paling mengikat ke yang paling umum:
+
+	  1. currency rate card MILIK customer (kontraknya) — ini isi kesepakatan;
+	  2. ``Customer.default_currency`` — mata uang tagihan yang di-set di master;
+	  3. currency price list generic yang kebetulan dipakai (mis. katalog site);
+	  4. mata uang company.
+
+	Tidak pernah mengembalikan None. Langkah 1 sengaja disempitkan ke daftar milik sendiri
+	(lihat :func:`is_own_price_list`): sebelumnya price list APA PUN menang di langkah 1,
+	jadi customer tanpa kontrak selalu memakai currency katalog site dan
+	``Customer.default_currency`` tidak pernah terbaca sama sekali."""
+	if is_own_price_list(customer, price_list):
 		cur = frappe.db.get_value("Price List", price_list, "currency")
 		if cur:
 			return cur
@@ -122,4 +174,21 @@ def currency_for_customer(customer: str | None = None, price_list: str | None = 
 		cur = frappe.db.get_value("Customer", customer, "default_currency")
 		if cur:
 			return cur
-	return frappe.defaults.get_global_default("currency") or DEFAULT_CURRENCY
+	if price_list:
+		cur = frappe.db.get_value("Price List", price_list, "currency")
+		if cur:
+			return cur
+	return company_currency()
+
+
+def currency_is_locked(customer: str | None = None, price_list: str | None = None) -> bool:
+	"""Apakah mata uang sudah punya sumber yang mengikat, sehingga operator tidak boleh
+	menggantinya di form.
+
+	Terkunci kalau customer punya rate card sendiri (harga di dalamnya sudah dalam mata
+	uang itu) atau sudah menyatakan ``default_currency`` di master. Terbuka hanya kalau
+	tidak ada satu pun — walk-in tanpa kontrak — dan di situ tidak ada rate ter-seed yang
+	bisa tertinggal dengan label mata uang keliru, karena tidak ada daftar yang menyeed."""
+	if is_own_price_list(customer, price_list):
+		return True
+	return bool(customer and frappe.db.get_value("Customer", customer, "default_currency"))

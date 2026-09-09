@@ -320,6 +320,9 @@ def item_pricing(repair_order, item) -> dict:
 	# An item with no Item Price still bills in the owner's currency (the contract currency,
 	# e.g. USD) — turun ke default site / IDR hanya kalau pemiliknya memang tidak punya
 	# mata uang. Mirrors the fallback in RepairOrder.calculate_totals.
+	# Terkunci hanya kalau item ini benar-benar ada di rate card pemilik; baris di luar rate
+	# card mata uangnya boleh dipilih operator (RepairOrder.calculate_totals menghormatinya).
+	breakdown["currency_locked"] = 1 if breakdown.get("currency") else 0
 	if not breakdown.get("currency"):
 		breakdown["currency"] = currency_for_customer(_principal(ro), price_list)
 	return breakdown

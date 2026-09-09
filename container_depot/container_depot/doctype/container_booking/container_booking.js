@@ -43,6 +43,12 @@ function _bon_payment_block(frm) {
 }
 
 frappe.ui.form.on('Container Booking', {
+	currency(frm) {
+		// Charge lines carry the header's currency (the invoice is single-currency), so a
+		// walk-in's manual pick has to reach them without waiting for a save.
+		(frm.doc.charges || []).forEach((row) =>
+			frappe.model.set_value(row.doctype, row.name, 'currency', frm.doc.currency));
+	},
 	onload(frm) {
 		frm.trigger('_set_queries');
 		// Plan Date defaults to today on a NEW booking only, and only in the form. It is a
@@ -965,10 +971,13 @@ function _fetch_charge_rate(frm, cdt, cdn) {
 		callback(r) {
 			const d = r.message || {};
 			// Currency first so the rate formats in the price-list currency (USD / IDR).
-			if (d.currency) {
+			// Only a currency with a binding source (own rate card / Customer.default_currency)
+			// may overwrite the header — for a walk-in the operator's own pick stands, exactly
+			// like the server's _resolve_pricing_context.
+			if (d.currency && (d.currency_locked || !frm.doc.currency)) {
 				frm.set_value('currency', d.currency);
-				frappe.model.set_value(cdt, cdn, 'currency', d.currency);
 			}
+			frappe.model.set_value(cdt, cdn, 'currency', frm.doc.currency || d.currency || '');
 			frappe.model.set_value(cdt, cdn, 'item_name', d.item_name || row.item);
 			frappe.model.set_value(cdt, cdn, 'rate', d.rate || 0);
 		},

@@ -125,15 +125,27 @@ class CleaningOrder(Document):
 
 		from container_depot import pricing
 
-		from container_depot.pricing_model import currency_for_customer
+		from container_depot.pricing_model import currency_for_customer, currency_is_locked
 
 		price_list = price_list_for_container(self.container)
-		# Tarif ditampilkan dalam mata uang Price List kontrak (bisa beda dari mata uang
-		# company); tanpa kontrak ikut mata uang customer, lalu default site / IDR.
-		self.currency = currency_for_customer(
-			frappe.db.get_value("Container", self.container, "principal") if self.container else None,
-			price_list,
+		principal = (
+			frappe.db.get_value("Container", self.container, "principal") if self.container else None
 		)
+		# Mata uang pindah tank ikut pemiliknya, jadi pilihan operator di order ini milik
+		# pemilik yang lama — buang sebelum di-resolve ulang.
+		before = self.get_doc_before_save()
+		if before and before.container != self.container:
+			self.currency = None
+		# Tarif ditampilkan dalam mata uang Price List kontrak (bisa beda dari mata uang
+		# company). Terkunci selama pemiliknya punya rate card sendiri atau mata uang tagihan
+		# di master — itu fakta kesepakatan, bukan pilihan. Owner walk-in yang tidak punya
+		# keduanya: field-nya terbuka, operator yang menentukan, dan di situ tidak ada rate
+		# ter-seed yang bisa tertinggal dengan label mata uang keliru (tidak ada price list
+		# yang menyeed). Dulu baris ini selalu menimpa, jadi mata uang yang dipilih manual
+		# hilang lagi setiap save.
+		self.currency_locked = 1 if currency_is_locked(principal, price_list) else 0
+		if self.currency_locked or not self.currency:
+			self.currency = currency_for_customer(principal, price_list)
 		service_total = manhour_total = 0.0
 		for row in self.cleaning_services:
 			row.currency = self.currency
@@ -423,18 +435,19 @@ def service_pricing(container=None, item_code=None) -> dict:
 	"""
 	from container_depot import pricing
 
-	from container_depot.pricing_model import currency_for_customer
+	from container_depot.pricing_model import currency_for_customer, currency_is_locked
 
 	price_list = price_list_for_container(container)
-	currency = currency_for_customer(
-		frappe.db.get_value("Container", container, "principal") if container else None,
-		price_list,
-	)
+	principal = frappe.db.get_value("Container", container, "principal") if container else None
+	currency = currency_for_customer(principal, price_list)
 	return {
 		"rate": base_rate_for(item_code, price_list),
 		# Tarif labour dari rate card pemilik tank — dipakai apa adanya di order ini.
 		"manhour_rate": pricing.manhour_for(item_code, price_list),
 		"currency": currency,
+		# Terkunci = mata uang sudah punya sumber yang mengikat; kalau tidak, form membiarkan
+		# operator memilih dan JS tidak boleh menimpanya tiap kali Service diganti.
+		"currency_locked": 1 if currency_is_locked(principal, price_list) else 0,
 		"item_name": frappe.db.get_value("Item", item_code, "item_name") if item_code else None,
 		"price_list": price_list,
 	}

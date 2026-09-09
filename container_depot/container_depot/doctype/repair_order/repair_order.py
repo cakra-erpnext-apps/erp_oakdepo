@@ -326,7 +326,12 @@ class RepairOrder(Document):
 				# stock silently comes from the branch default.
 				row.warehouse = default_warehouse(self)
 			breakdown = item_rate_breakdown(row.item, price_list) if row.item else {}
-			# Currency always follows the item's own Item Price (fixes the old default-to-IDR).
+			# Mata uang baris: Item Price-nya sendiri kalau item itu memang ada di rate card
+			# pemilik — itu isi kesepakatan, jadi barisnya dikunci di form. Baris di luar rate
+			# card tidak punya sumber yang mengikat: pilihan operator dipertahankan, dan hanya
+			# diisi default saat masih kosong (dulu field-nya read-only, jadi mata uang salah
+			# tidak bisa dibetulkan dari mana pun kecuali master).
+			row.currency_locked = 1 if breakdown.get("currency") else 0
 			if row.item:
 				row.currency = breakdown.get("currency") or row.currency or default_currency
 			# Seed the adjustable rate from the owner's Item Price the first time a line is

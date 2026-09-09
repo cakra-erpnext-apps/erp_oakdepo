@@ -28,7 +28,8 @@
   "decision",
   "owner_remark",
   "remark",
-  "is_stock_item"
+  "is_stock_item",
+  "currency_locked"
  ],
  "fields": [
   {
@@ -101,12 +102,13 @@
    "columns": 1
   },
   {
-   "description": "Mata uang baris ini, dari Item Price pemilik tank.",
+   "description": "Ikut Item Price baris ini kalau itemnya ada di rate card pemilik; bisa dipilih hanya untuk baris di luar rate card.",
    "fieldname": "currency",
    "fieldtype": "Link",
    "label": "Currency",
    "options": "Currency",
-   "read_only": 1
+   "read_only": 0,
+   "read_only_depends_on": "eval:doc.currency_locked"
   },
   {
    "default": "0",
@@ -146,7 +148,7 @@
   },
   {
    "default": "0",
-   "description": "Auto: jam kerja standar item ini (master Item). Hidden \u2014 tidak diisi manusia, tapi INILAH jam yang ditagihkan invoice (Sales Invoice Item.manhour); lihat consolidated_billing._work_order_lines.",
+   "description": "Auto: jam kerja standar item ini (master Item). Hidden — tidak diisi manusia, tapi INILAH jam yang ditagihkan invoice (Sales Invoice Item.manhour); lihat consolidated_billing._work_order_lines.",
    "fieldname": "manhour",
    "fieldtype": "Float",
    "label": "Manhour",
@@ -154,7 +156,7 @@
    "hidden": 1
   },
   {
-   "description": "Tarif labour baris ini, apa adanya dari rate card pemilik tank \u2014 tidak dikali jam di sini. Boleh diubah. TIDAK masuk Total Cost: labour ditagih di header invoice (total jam \u00d7 tarif ini).",
+   "description": "Tarif labour baris ini, apa adanya dari rate card pemilik tank — tidak dikali jam di sini. Boleh diubah. TIDAK masuk Total Cost: labour ditagih di header invoice (total jam × tarif ini).",
    "fieldname": "manhour_rate",
    "fieldtype": "Currency",
    "label": "Tarif Manhour",
@@ -189,12 +191,20 @@
    "label": "Stock Item",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "fieldname": "currency_locked",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Currency Locked",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-24 14:00:00.000000",
+ "modified": "2026-09-09 14:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Used Item",
  "owner": "Administrator",

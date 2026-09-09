@@ -686,9 +686,20 @@ class ContainerBooking(Document):
 		# The customer's active price list — auto-resolved, not shown or picked. Empty only
 		# for a walk-in with no default list (charge rates then stay whatever was typed).
 		self.price_list = pricing_model.price_list_for_customer(self.customer) if self.customer else None
+		# Mata uang pilihan operator itu milik customer yang lama — buang saat customernya
+		# berganti, sama seperti charge lines di ``_reset_charges_on_customer_change``.
+		before = self.get_doc_before_save()
+		if before and before.customer != self.customer:
+			self.currency = None
 		# Mata uang selalu terisi, juga untuk baris yang tidak ada di rate card customer
-		# (picker item terbuka ke seluruh katalog): price list → mata uang customer → IDR.
-		self.currency = pricing_model.currency_for_customer(self.customer, self.price_list) or self.currency
+		# (picker item terbuka ke seluruh katalog). Terkunci selama customer punya rate card
+		# sendiri atau mata uang tagihan di master — itu isi kesepakatan. Walk-in tanpa
+		# keduanya: field-nya terbuka di form dan pilihan operator dipertahankan, karena tidak
+		# ada price list yang menyeed rate sehingga tidak ada angka yang bisa tertinggal
+		# dengan label mata uang keliru.
+		self.currency_locked = 1 if pricing_model.currency_is_locked(self.customer, self.price_list) else 0
+		if self.currency_locked or not self.currency:
+			self.currency = pricing_model.currency_for_customer(self.customer, self.price_list)
 
 	def _reset_charges_on_customer_change(self):
 		"""Drop every charge line when the customer changes.
@@ -1541,6 +1552,9 @@ def charge_pricing(customer, item):
 	return {
 		"rate": (pricing_model.resolve_price(item, price_list) or 0) if (price_list and item) else 0,
 		"currency": pricing_model.currency_for_customer(customer, price_list),
+		# Terkunci = mata uang sudah punya sumber yang mengikat; kalau tidak, form membiarkan
+		# operator memilih dan JS tidak boleh menimpanya tiap kali Service diganti.
+		"currency_locked": 1 if pricing_model.currency_is_locked(customer, price_list) else 0,
 		"item_name": frappe.db.get_value("Item", item, "item_name") if item else None,
 	}
 

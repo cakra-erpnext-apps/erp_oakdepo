@@ -18,6 +18,7 @@
   "cleaning_start",
   "cleaning_end",
   "service_section",
+  "currency",
   "cleaning_services",
   "cleaning_instructions",
   "signoff_section",
@@ -48,13 +49,13 @@
   "priority_score",
   "cleaning_total",
   "manhour_charge_total",
-  "currency",
   "created_by",
   "assigned_to",
   "completed_by",
   "sales_invoice",
   "cleaning_item",
-  "cleaning_rate"
+  "cleaning_rate",
+  "currency_locked"
  ],
  "fields": [
   {
@@ -350,13 +351,14 @@
    "read_only": 1
   },
   {
-   "description": "Dari price list kontrak pemilik tank.",
+   "description": "Ikut rate card / mata uang tagihan customer kalau ada — hanya bisa dipilih untuk customer tanpa keduanya, dan defaultnya mata uang company.",
    "fieldname": "currency",
    "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Currency",
+   "hidden": 0,
+   "label": "Mata Uang",
    "options": "Currency",
-   "read_only": 1
+   "read_only": 0,
+   "read_only_depends_on": "eval:doc.currency_locked || doc.docstatus"
   },
   {
    "description": "Distempel saat operator mulai mencuci.",
@@ -445,11 +447,19 @@
    "in_standard_filter": 1,
    "label": "Jenis Cleaning",
    "options": "Standard Cleaning\nPP Wash\nMethanol Rinse\nSteam Wash\nOther"
+  },
+  {
+   "fieldname": "currency_locked",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Currency Locked",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 10:00:00.000000",
+ "modified": "2026-09-09 14:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

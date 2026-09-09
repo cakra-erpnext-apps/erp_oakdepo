@@ -19,6 +19,12 @@
 // they stand and settles the labour once, on its own invoice line. Costing labour into the
 // tariff here too would bill it twice.
 frappe.ui.form.on('Cleaning Order', {
+	currency(frm) {
+		// Baris service ikut mata uang header (server menyamakan keduanya tiap save), jadi
+		// pilihan manual harus kelihatan di grid tanpa menunggu save.
+		(frm.doc.cleaning_services || []).forEach((row) =>
+			frappe.model.set_value(row.doctype, row.name, 'currency', frm.doc.currency));
+	},
 	setup(frm) {
 		install_photo_thumbnails(frm);
 	},
@@ -402,10 +408,15 @@ frappe.ui.form.on('Cleaning Order Service', {
 				const d = (r && r.message) || {};
 				// A different Service means different figures, so BOTH prices — and the hours
 				// behind the labour — are re-read from the price list, exactly like Tarif.
+				// Mata uang hanya ditimpa kalau memang ada sumbernya; owner walk-in dipilih
+				// operator di header, dan baris ikut header itu (server melakukan hal sama).
+				if (d.currency && (d.currency_locked || !frm.doc.currency)) {
+					frm.set_value('currency', d.currency);
+				}
 				const patch = {
 					rate: d.rate || 0,
 					manhour_rate: d.manhour_rate || 0,
-					currency: d.currency,
+					currency: frm.doc.currency || d.currency,
 					item_name: d.item_name,
 				};
 				frappe.model.set_value(cdt, cdn, patch).then(() => _recalc(frm));

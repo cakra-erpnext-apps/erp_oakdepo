@@ -603,6 +603,7 @@ const USED_ROW_DERIVED = {
 	item: null,
 	item_name: null,
 	currency: null,
+	currency_locked: 0,
 	on_hand: null,
 	is_stock_item: 0,
 	item_rate: 0,
@@ -651,8 +652,15 @@ frappe.ui.form.on('Repair Used Item', {
 			args: { repair_order: frm.doc.name, item: row.item },
 			callback: (r) => {
 				const b = r.message || {};
-				// Currency follows the item's own Item Price (lines may differ).
-				frappe.model.set_value(cdt, cdn, 'currency', b.currency || '');
+				// Currency follows the item's own Item Price (lines may differ) and the line
+				// locks. An item OUTSIDE the owner's rate card has no Item Price to follow, so
+				// the field opens up — and a currency the operator already picked there is left
+				// alone rather than reset under them on the next item.
+				const picked = frappe.get_doc(cdt, cdn) || {};
+				frappe.model.set_value(cdt, cdn, 'currency_locked', b.currency_locked ? 1 : 0);
+				if (b.currency_locked || !picked.currency) {
+					frappe.model.set_value(cdt, cdn, 'currency', b.currency || '');
+				}
 				frappe.model.set_value(cdt, cdn, 'item_rate', flt(b.item_rate));
 				// A fresh item means fresh labour: reseed from the owner's contract, the same
 				// figures the server would seed. The tariff is taken AS IT STANDS — no hours

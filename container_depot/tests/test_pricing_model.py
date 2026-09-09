@@ -128,3 +128,144 @@ class TestPricingModel(FrappeTestCase):
 
 	def test_resolve_price_matches_effective_rate(self):
 		self.assertAlmostEqual(resolve_price(REPAIR_ITEM, OAK_PL), effective_item_rate(REPAIR_ITEM, OAK_PL))
+
+
+# Currency resolution — which of the three possible sources (own rate card, the customer's
+# billing currency, the site catalog) is allowed to name an order's currency, and when the
+# operator may name it instead. The old order let ANY price list win first, so the site
+# catalog ("Standard Selling", IDR) shadowed ``Customer.default_currency`` and a USD
+# principal without a contract silently produced IDR orders that no form ever showed.
+USD_CUSTOMER = "ZZ Currency USD Customer"
+BARE_CUSTOMER = "ZZ Currency Bare Customer"
+CONTRACT_CUSTOMER = "ZZ Currency Contract Customer"
+CCY_PL = "ZZ Currency Test PL"
+
+
+class TestCurrencyResolution(FrappeTestCase):
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		if not frappe.db.exists("Price List", CCY_PL):
+			frappe.get_doc({
+				"doctype": "Price List",
+				"price_list_name": CCY_PL,
+				"currency": "USD",
+				"selling": 1,
+				"buying": 0,
+				"enabled": 1,
+			}).insert(ignore_permissions=True)
+
+		# default_price_list is read-only and contract-driven (a hand edit is refused on an
+		# EXISTING customer), so the contract case is seeded at insert time.
+		for name, currency, price_list in (
+			(USD_CUSTOMER, "USD", None),
+			(BARE_CUSTOMER, None, None),
+			(CONTRACT_CUSTOMER, "IDR", CCY_PL),
+		):
+			if not frappe.db.exists("Customer", name):
+				doc = frappe.get_doc({
+					"doctype": "Customer",
+					"customer_name": name,
+					"customer_type": "Company",
+				})
+				if currency:
+					doc.default_currency = currency
+				if price_list:
+					doc.default_price_list = price_list
+				doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.db.delete("Customer", {"name": ("in", [USD_CUSTOMER, BARE_CUSTOMER, CONTRACT_CUSTOMER])})
+		frappe.db.delete("Price List", {"name": CCY_PL})
+		frappe.db.commit()
+		super().tearDownClass()
+
+	@property
+	def site_catalog(self):
+		return frappe.db.get_single_value("Selling Settings", "selling_price_list")
+
+	def test_customer_currency_beats_the_site_catalog(self):
+		"""A USD principal with no contract still bills USD.
+
+		This is the regression the whole change exists for: ``price_list_for_customer``
+		hands back the site catalog for a contract-less customer, and the old resolver
+		took that list's currency first — so ``Customer.default_currency`` was never
+		read and every order came out IDR."""
+		from container_depot.pricing_model import currency_for_customer, price_list_for_customer
+
+		self.assertEqual(currency_for_customer(USD_CUSTOMER, price_list_for_customer(USD_CUSTOMER)), "USD")
+
+	def test_foreign_customer_does_not_borrow_the_site_catalog_as_a_rate_card(self):
+		"""No rate at all beats a rate in the wrong currency.
+
+		The site catalog is priced in the company currency. Seeding a USD order from it
+		would stamp IDR figures onto USD lines, and billing reads those numbers as they
+		stand — an error of four orders of magnitude that nothing downstream can catch."""
+		from container_depot.pricing_model import price_list_for_customer
+
+		self.assertIsNone(price_list_for_customer(USD_CUSTOMER))
+
+	def test_base_currency_customer_still_gets_the_site_catalog(self):
+		"""The guard is about currency, not about walk-ins: a customer in the company
+		currency keeps the convenience of the shared catalog."""
+		from container_depot.pricing_model import company_currency, price_list_for_customer
+
+		catalog = self.site_catalog
+		if not catalog or frappe.db.get_value("Price List", catalog, "currency") != company_currency():
+			self.skipTest("site has no default selling price list in the company currency")
+		self.assertEqual(price_list_for_customer(BARE_CUSTOMER), catalog)
+
+	def test_own_rate_card_outranks_the_customers_billing_currency(self):
+		"""The agreed list holds the actual prices, so it names the currency — even when
+		the master says otherwise. Locking the field is what keeps the two from drifting."""
+		from container_depot.pricing_model import currency_for_customer, price_list_for_customer
+
+		pl = price_list_for_customer(CONTRACT_CUSTOMER)
+		self.assertEqual(pl, CCY_PL)
+		self.assertEqual(currency_for_customer(CONTRACT_CUSTOMER, pl), "USD")
+
+	def test_company_currency_is_the_last_resort(self):
+		"""With nothing to go on the answer is the company's own currency — not a
+		hardcoded IDR, which was wrong on any non-IDR site."""
+		from container_depot.pricing_model import company_currency, currency_for_customer
+
+		self.assertEqual(currency_for_customer(None, None), company_currency())
+		self.assertEqual(
+			currency_for_customer(BARE_CUSTOMER, price_list=None), company_currency()
+		)
+
+	def test_only_a_customer_with_no_source_leaves_the_field_open(self):
+		"""What the form's ``read_only_depends_on`` reads: a rate card or a stated billing
+		currency is a fact of the agreement (locked); nothing at all is a question for the
+		operator (open, defaulting to the company currency)."""
+		from container_depot.pricing_model import currency_is_locked, price_list_for_customer
+
+		self.assertTrue(currency_is_locked(CONTRACT_CUSTOMER, price_list_for_customer(CONTRACT_CUSTOMER)))
+		self.assertTrue(currency_is_locked(USD_CUSTOMER, price_list_for_customer(USD_CUSTOMER)))
+		self.assertFalse(currency_is_locked(BARE_CUSTOMER, price_list_for_customer(BARE_CUSTOMER)))
+
+	def test_site_catalog_is_not_mistaken_for_an_own_rate_card(self):
+		from container_depot.pricing_model import is_own_price_list
+
+		catalog = self.site_catalog
+		if not catalog:
+			self.skipTest("site has no default selling price list")
+		self.assertFalse(is_own_price_list(BARE_CUSTOMER, catalog))
+		self.assertTrue(is_own_price_list(CONTRACT_CUSTOMER, CCY_PL))
+
+	def test_repair_line_outside_the_rate_card_keeps_the_operators_currency(self):
+		"""A line the owner's list does not price has no currency of its own, so the one
+		the operator picked has to survive the save — and the line stays unlocked so the
+		form lets them pick it in the first place."""
+		ro = frappe.get_doc({
+			"doctype": "Repair Order",
+			"principal": BARE_CUSTOMER,
+			"used_items": [{"item": FIXED_ITEM, "quantity": 1, "currency": "USD", "item_rate": 12.0}],
+		})
+		ro.calculate_totals()
+		row = ro.used_items[0]
+		self.assertEqual(row.currency, "USD")
+		self.assertFalse(row.currency_locked)
+		self.assertEqual([(t.currency, t.total) for t in ro.totals], [("USD", 12.0)])

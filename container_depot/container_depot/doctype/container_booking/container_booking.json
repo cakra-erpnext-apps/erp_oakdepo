@@ -23,6 +23,7 @@
   "payment_section",
   "payment_type",
   "pricing_section",
+  "currency",
   "charges",
   "do_section",
   "do_reference",
@@ -43,11 +44,11 @@
   "reff_email",
   "lift_type",
   "price_list",
-  "currency",
   "contract",
   "links_tab",
   "work_section",
-  "orders_by_container_html"
+  "orders_by_container_html",
+  "currency_locked"
  ],
  "fields": [
   {
@@ -368,14 +369,15 @@
    "allow_on_submit": 1
   },
   {
-   "description": "Dari price list customer.",
+   "description": "Ikut rate card / mata uang tagihan customer kalau ada — hanya bisa dipilih untuk customer tanpa keduanya, dan defaultnya mata uang company.",
    "fieldname": "currency",
    "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Currency",
+   "hidden": 0,
+   "label": "Mata Uang",
    "options": "Currency",
-   "read_only": 1,
-   "allow_on_submit": 1
+   "read_only": 0,
+   "allow_on_submit": 1,
+   "read_only_depends_on": "eval:doc.currency_locked || doc.docstatus"
   },
   {
    "description": "Dari kontrak aktif customer.",
@@ -403,11 +405,19 @@
    "fieldname": "orders_by_container_html",
    "fieldtype": "HTML",
    "label": "Orders per Container"
+  },
+  {
+   "fieldname": "currency_locked",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Currency Locked",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 12:00:00.000000",
+ "modified": "2026-09-09 14:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",
