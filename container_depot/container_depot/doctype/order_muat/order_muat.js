@@ -53,10 +53,19 @@ function _lock_actions(frm) {
 	// otherwise a read-only account is offered a destructive action. Enforced server-side
 	// in order_generation.void_order / revert_order_to_draft; this is the screen half.
 	const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
-	if (!frm.is_new() && may_cancel && frm.doc.docstatus === 1) {
+	// ...and on the bon still being undoable at all. `Completed` is written by the GATE once
+	// the bon's last tank has physically left the depot, and neither undo is honest after
+	// that: Void would return the Booking Codes of a tank that is gone, Cancel would reopen
+	// for editing the paper the driver was handed. Mirrors
+	// order_generation.ORDER_TERMINAL_STATUS, which refuses both calls anyway — this is only
+	// so the operator is not offered a button that answers with a red box. The way back is
+	// to undo the EIR-Out / gate-out: that returns the bon to `Issued` and these buttons
+	// with it.
+	const undoable = frm.doc.order_status !== 'Completed';
+	if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 1) {
 		frm.add_custom_button(__('Cancel'), () => _confirm_revert(frm));
 		frm.add_custom_button(__('Void'), () => _confirm_void(frm)).addClass('btn-danger');
-	} else if (!frm.is_new() && may_cancel && frm.doc.docstatus === 0) {
+	} else if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 0) {
 		frm.add_custom_button(__('Void'), () => _confirm_void(frm)).addClass('btn-danger');
 	}
 }

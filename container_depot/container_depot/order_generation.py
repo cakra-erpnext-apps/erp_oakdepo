@@ -364,12 +364,44 @@ def _order_child_doctype(doc):
 	return doc.meta.get_field("containers").options
 
 
+# The bon's terminal status. ``Completed`` is not written on the bon's own screen — the
+# GATE writes it: :func:`gate._complete_order_muat_if_done` closes an Order Muat once its
+# LAST tank has physically left the depot. Past that point the bon has stopped being a plan
+# and become the record of a departure that happened, so both undos are withdrawn. Voiding
+# would put the Booking Codes of a tank that is GONE back on the shelf for the next bon to
+# spend; Cancel would reopen for editing the very paper the driver was handed at the gate.
+#
+# Not a dead end, and deliberately so: ``gate.reverse_gate_out`` — reached by reverting or
+# cancelling the EIR-Out that sent the tank out — puts the bon back to ``Issued`` and the
+# buttons come back with it. The way to undo a closed bon is to undo the DEPARTURE first,
+# which is the whole point: that road carries the container / gate-entry / booking rollback
+# this one does not.
+ORDER_TERMINAL_STATUS = ("Completed",)
+
+
+def _assert_order_undoable(doc):
+	"""Refuse Cancel / Void on a bon that has already closed — see ORDER_TERMINAL_STATUS."""
+	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
+		return
+	frappe.throw(
+		_("Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak "
+		  "bisa di-Cancel maupun di-Void.<br><br>Batalkan dulu EIR-Out / gate-out tank-nya: "
+		  "bon akan kembali ke <b>Issued</b> dan kedua tombolnya muncul lagi.").format(
+			doc.name, doc.order_status
+		),
+		title=_("Bon Sudah Selesai"),
+	)
+
+
 @frappe.whitelist()
 def void_order(name, doctype="Order Bongkar"):
 	"""Void (soft-delete) an Order Bongkar/Muat: release its Booking Codes back to
 	``Active`` and mark the bon Cancelled (docstatus 2). The record is RETAINED —
 	``on_trash`` blocks real deletion — and voided bons drop out of the active
 	(docstatus=1) views.
+
+	A bon that has CLOSED (``ORDER_TERMINAL_STATUS``) is refused: its tanks are already out
+	the gate. Undo the departure first — see :func:`_assert_order_undoable`.
 
 	Both roads run the SAME unwinding — a submitted bon through ``doc.cancel()``, a draft
 	through ``on_cancel`` called by hand (a draft cannot go through submit→cancel, exactly as
@@ -392,6 +424,7 @@ def void_order(name, doctype="Order Bongkar"):
 	doc.check_permission("cancel")
 	if doc.docstatus == 2:
 		frappe.throw(_("Order {0} is already voided.").format(doc.name))
+	_assert_order_undoable(doc)
 	if doc.docstatus == 1:
 		doc.cancel()  # submitted: on_cancel releases the codes
 		return doc.name
@@ -413,13 +446,17 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 	"""Cancel → Draft: return a SUBMITTED Order Bongkar/Muat to an editable draft
 	(docstatus 1 → 0) so it can be corrected and re-submitted. The bon keeps its
 	containers and their Booking Codes (still ``Used``). Use ``void_order`` to
-	soft-delete instead."""
+	soft-delete instead.
+
+	Refused once the bon has CLOSED (``ORDER_TERMINAL_STATUS``) — a finished load is not a
+	draft waiting to be corrected. See :func:`_assert_order_undoable`."""
 	if doctype not in ("Order Bongkar", "Order Muat"):
 		frappe.throw(_("Unsupported order doctype: {0}").format(doctype))
 	doc = frappe.get_doc(doctype, name)
 	doc.check_permission("cancel")
 	if doc.docstatus != 1:
 		frappe.throw(_("Only a submitted order can be returned to draft."))
+	_assert_order_undoable(doc)
 	child = _order_child_doctype(doc)
 	frappe.db.set_value(doctype, doc.name, {"docstatus": 0, "order_status": "Issued"})
 	frappe.db.sql(

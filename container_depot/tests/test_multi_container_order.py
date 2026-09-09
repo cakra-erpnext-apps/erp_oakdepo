@@ -777,6 +777,59 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			revert_order_to_draft(name, "Order Bongkar")
 
+	def test_a_closed_bon_can_be_neither_voided_nor_reverted(self):
+		"""``Completed`` is the gate's word, not the operator's: it is written once the bon's
+		last tank has physically left the depot. Both undos are withdrawn there — Void would
+		hand the Booking Codes of a tank that is GONE to the next voucher, and Cancel would
+		reopen for editing the paper the driver was given at the gate."""
+		from container_depot.container_depot.order_generation import (
+			revert_order_to_draft,
+			void_order,
+		)
+
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCDN0")
+		name = make_order(booking, codes)
+		frappe.get_doc("Order Bongkar", name).submit()
+		frappe.db.set_value("Order Bongkar", name, "order_status", "Completed")
+
+		with self.assertRaises(frappe.ValidationError):
+			void_order(name, "Order Bongkar")
+		with self.assertRaises(frappe.ValidationError):
+			revert_order_to_draft(name, "Order Bongkar")
+		# Refused, not half-done: the bon is untouched and its codes still held.
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 1)
+		self.assertEqual(_states(codes), ["Used"])
+
+	def test_reopening_a_closed_bon_brings_both_undos_back(self):
+		"""The rule above is a door, not a wall. Undoing the departure puts the bon back to
+		``Issued`` (``gate.reverse_gate_out`` does exactly this write), and from there the bon
+		is undoable again — which is the point: that road carries the container / gate-entry /
+		booking rollback the bon's own Void does not."""
+		from container_depot.container_depot.order_generation import void_order
+
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCDR0")
+		name = make_order(booking, codes)
+		frappe.get_doc("Order Bongkar", name).submit()
+		frappe.db.set_value("Order Bongkar", name, "order_status", "Completed")
+		frappe.db.set_value("Order Bongkar", name, "order_status", "Issued")
+
+		void_order(name, "Order Bongkar")
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
+		self.assertEqual(_states(codes), ["Active"])
+
+	def test_hold_is_a_pause_not_an_ending(self):
+		"""``Hold`` keeps the bon out of the worklists but the tank is still in the depot, so
+		nothing about it has become irreversible — the undos stay."""
+		from container_depot.container_depot.order_generation import revert_order_to_draft
+
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCHD0")
+		name = make_order(booking, codes)
+		frappe.get_doc("Order Bongkar", name).submit()
+		frappe.db.set_value("Order Bongkar", name, "order_status", "Hold")
+
+		revert_order_to_draft(name, "Order Bongkar")
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 0)
+
 	def test_void_requires_the_cancel_permission(self):
 		"""Voiding is cancelling, so it needs the cancel permission — on both surfaces.
 
