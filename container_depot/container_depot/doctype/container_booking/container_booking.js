@@ -307,16 +307,8 @@ frappe.ui.form.on('Container Booking', {
 			'branch', 'depot', 'reff_doc', 'customer', 'principal', 'items', 'charges',
 			'payment_type', 'do_reference', 'do_document', 'sales_name', 'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
-		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
-		if (grid) {
-			grid.cannot_add_rows = locked;
-			grid.cannot_delete_rows = locked;
-		}
-		const charges = frm.fields_dict.charges && frm.fields_dict.charges.grid;
-		if (charges) {
-			charges.cannot_add_rows = locked;
-			charges.cannot_delete_rows = locked;
-		}
+		_lock_grid(frm, 'items', locked);
+		_lock_grid(frm, 'charges', locked);
 	},
 	// Mirror the server lock in the UI: outside Draft the billing facts are frozen, so
 	// showing them as editable would only let the operator type into a field whose save
@@ -1033,6 +1025,35 @@ function _reject_duplicate_container(frm, cdt, cdn, fieldname) {
 		]),
 		indicator: 'red',
 	});
+}
+
+// Lock (or unlock) a child grid's Add / Delete affordances.
+//
+// Frappe reads the two flags off two DIFFERENT objects, worth stating because writing both
+// to one of them is what this used to do: `Grid.setup_toolbar` checks the GRID object's own
+// `cannot_add_rows`, while a row's delete control checks the DOCFIELD's `cannot_delete_rows`
+// (`grid_row.js` — `this.grid.df.cannot_delete_rows`). So `grid.cannot_delete_rows = ...`
+// wrote a property nothing ever reads.
+//
+// Neither flag is watched, and that is the bug this closes. `setup_toolbar` decides the
+// buttons' `hidden` class the moment the grid renders and never looks again, while Frappe
+// keeps ONE form object per doctype for the whole session — and one grid object with it. A
+// submitted booking that locked its grids left `cannot_add_rows` true on that shared object,
+// so the NEXT document painted through this form, a brand-new draft included, came up with
+// no "Add row" under Charges and stayed that way. It returned only when the operator ticked
+// the grid's header checkbox: that handler (`setup_check`) re-evaluates the same flag and
+// clears the class as a side effect, which is why the button looked like it needed a tick.
+//
+// The repaint is unconditional rather than left to `set_df_property`, which refreshes only
+// when the VALUE changed — and here the value is routinely already right while the paint is
+// not. `items` escaped the bug by luck: `_freeze_bon_rows` repaints that grid anyway.
+function _lock_grid(frm, fieldname, locked) {
+	const field = frm.fields_dict[fieldname];
+	const grid = field && field.grid;
+	if (!grid) return;
+	grid.cannot_add_rows = locked;
+	frm.set_df_property(fieldname, 'cannot_delete_rows', locked);
+	grid.refresh();
 }
 
 function _confirm_void(frm) {
