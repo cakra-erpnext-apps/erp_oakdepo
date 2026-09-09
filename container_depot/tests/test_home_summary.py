@@ -264,6 +264,29 @@ class TestHomeSummary(FrappeTestCase):
 		self.assertIsNotNone(row["age"])
 		self.assertGreater(row["age"], 0)
 
+	def test_unlocated_tank_alone_is_not_a_waiting_row(self):
+		"""Tanpa survey yang menunggunya, tank tanpa letak cuma catatan — bukan antrean.
+
+		Kartunya tetap menghitungnya (ratusan tank di yard memang tidak pernah dicatat), tapi
+		barisnya tidak: "Menunggu Anda" berisi pekerjaan yang ada tenggatnya dan ada orangnya.
+		Siapa yang MASUK antrean adalah aturan container_position.open_position_orders dan
+		diuji di sana bersama booking-nya — di sini yang diuji cuma bahwa beranda memakainya.
+		"""
+		before = get_home_summary(tiles="unlocated")
+		self._skip_if_capped(before)
+		self._container("HOME0000060")
+
+		after = get_home_summary(tiles="unlocated")
+		self.assertEqual(after["today"]["unlocated"], before["today"]["unlocated"] + 1)
+		self.assertEqual(
+			self._waiting_count(after, "positionOrder"),
+			self._waiting_count(before, "positionOrder"),
+		)
+		self.assertFalse(
+			[r for r in after["waiting"] if r["key"] == "unlocated"],
+			"'unlocated' tidak lagi jadi baris antrean",
+		)
+
 	# --- "Menunggu Anda" row builder ---------------------------------------
 	def test_queue_names_the_container_only_when_alone(self):
 		a = self._container("HOME0000030")

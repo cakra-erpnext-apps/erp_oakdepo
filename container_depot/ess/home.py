@@ -363,11 +363,23 @@ def get_home_summary(tiles=None):
 		if total:
 			waiting.append({"key": "surveyReady", "count": total, "ref": None, "age": None})
 	if "tankPos" in menu:
-		total = container_position.search_containers(page_length=1, only_unlocated=1)["total"]
+		# Kartunya menghitung SEMUA tank tanpa letak; antreannya tidak, dan itu disengaja.
+		# Sebuah yard menyimpan ratusan tank yang letaknya tidak pernah dicatat karena memang
+		# belum ada yang menanyakannya, jadi "17 tank belum ada letaknya" muncul setiap pagi
+		# tanpa menyuruh siapa pun berbuat apa-apa — angka yang cuma menua di tempatnya sampai
+		# seluruh bagian ini berhenti dibaca. Yang layak masuk antrean hanya tank yang surveinya
+		# sudah dijadwalkan tapi letaknya belum (atau basi) dicatat: itu punya tenggat, punya
+		# orang, dan hilang sendiri begitu satu bacaan masuk.
+		#
+		# Aturannya tidak ditulis ulang di sini — antrean yang sama persis dengan tab "Perlu
+		# Dicek" di layar Letak Tank (container_position.open_position_orders).
 		if "unlocated" in want:
-			today_counts["unlocated"] = total
+			today_counts["unlocated"] = container_position.search_containers(
+				page_length=1, only_unlocated=1
+			)["total"]
+		total = container_position.open_position_orders(page_length=1)["total"]
 		if total:
-			waiting.append({"key": "unlocated", "count": total, "ref": None, "age": None})
+			waiting.append({"key": "positionOrder", "count": total, "ref": None, "age": None})
 
 	# Oldest first — the section answers "what has been waiting longest", so a queue with
 	# no age at all (the survey worklists, which are dated rather than aged) sorts under

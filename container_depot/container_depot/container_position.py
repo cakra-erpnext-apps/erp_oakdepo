@@ -206,8 +206,8 @@ def get_container_position(container, history_length=5) -> dict:
 # ---------------------------------------------------------------------------
 # The queue — tanks whose place has to be known before their survey day
 # ---------------------------------------------------------------------------
-def needs_position(container) -> bool:
-	"""Does this tank still owe an answer about where it is?
+def _needs_position(tank, since) -> bool:
+	"""The rule itself, on a row already loaded. ``since`` = creation of ``lift_on_booking``.
 
 	True when nobody has ever recorded it, or when the last reading is OLDER THAN the booking
 	that scheduled it. The second half is the whole point: a place written down in June is not
@@ -215,18 +215,31 @@ def needs_position(container) -> bool:
 	moved by three reachstackers since, and the survey crew arriving on the day would be
 	walking to a memory. Once anybody files a fresh reading the tank leaves the queue by
 	itself, which is why the queue needs no document to close.
+
+	Split out from :func:`needs_position` so the list below can apply the same rule to a whole
+	page without asking the database once per tank — the bell rings for one container, the
+	queue counts hundreds, and the two must not answer differently.
 	"""
+	if not tank or not tank.get("current_location"):
+		return True
+	if not tank.get("lift_on_booking"):
+		return False
+	return bool(since and tank.get("location_updated_on") and tank["location_updated_on"] < since)
+
+
+def needs_position(container) -> bool:
+	"""Does this tank still owe an answer about where it is? (one tank, by name)"""
 	tank = frappe.db.get_value(
 		"Container", container,
 		["current_location", "location_updated_on", "lift_on_booking"],
 		as_dict=True,
 	)
-	if not tank or not tank.current_location:
-		return True
-	if not tank.lift_on_booking:
-		return False
-	since = frappe.db.get_value("Container Booking", tank.lift_on_booking, "creation")
-	return bool(since and tank.location_updated_on and tank.location_updated_on < since)
+	since = (
+		frappe.db.get_value("Container Booking", tank.lift_on_booking, "creation")
+		if tank and tank.lift_on_booking
+		else None
+	)
+	return _needs_position(tank, since)
 
 
 def open_position_orders(start=0, page_length=20) -> dict:
@@ -256,7 +269,20 @@ def open_position_orders(start=0, page_length=20) -> dict:
 		order_by="container_no asc",
 		limit_page_length=0,
 	)
-	rows = [r for r in rows if needs_position(r.name)]
+	# Satu kueri untuk semua booking yang disebut halaman ini, bukan satu per tank: daftar ini
+	# menyapu SETIAP container yang punya deadline, dan versi lamanya menembak dua query per
+	# baris — beranda yang ikut menghitung antrean ini membayarnya di setiap kali dibuka.
+	since = {}
+	booking_names = list({r.lift_on_booking for r in rows if r.lift_on_booking})
+	if booking_names:
+		since = {
+			b.name: b.creation
+			for b in frappe.get_all(
+				"Container Booking", filters={"name": ["in", booking_names]},
+				fields=["name", "creation"], limit_page_length=0,
+			)
+		}
+	rows = [r for r in rows if _needs_position(r, since.get(r.lift_on_booking))]
 	total = len(rows)
 	# `started` is never true here: there is no half-done state — a tank either has a fresh
 	# reading (and has left this list) or it does not.

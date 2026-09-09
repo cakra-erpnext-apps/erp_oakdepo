@@ -204,7 +204,7 @@ export const labels = {
 	waitBookingGateMany: "{n} booking menunggu di gate",
 	waitLoweringMany: "{n} tank menunggu diturunkan",
 	waitSurveyReadyMany: "{n} tank siap disurvey",
-	waitUnlocatedMany: "{n} tank belum ada letaknya",
+	waitPositionOrderMany: "{n} tank survey belum ada letaknya",
 	// Antrean review Cleaning & M&R — sebangun dengan waitEirReview di atas: sudah selesai
 	// di lapangan, menunggu Adm Ops menutupnya.
 	waitCleaningReviewOne: "Cleaning {ref} menunggu review",

@@ -513,7 +513,9 @@ const WAIT = {
 	bookingGate: { icon: "log-in", tone: "bg-brand-50 text-brand-600", to: "/gate", one: labels.waitBookingGateOne, many: labels.waitBookingGateMany },
 	lowering: { icon: "arrow-down-circle", tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
 	surveyReady: { icon: "list", tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
-	unlocated: { icon: "map-pin", tone: "bg-gray-100 text-gray-500", to: "/tank-position", many: labels.waitUnlocatedMany },
+	// Bukan "tank tanpa letak" (itu ratusan dan tidak ada tenggatnya) — hanya yang surveinya
+	// sudah dijadwalkan. Warnanya ikut keluarga yard, bukan abu: ini pekerjaan, bukan catatan.
+	positionOrder: { icon: "map-pin", tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
 	cleaningReview: { icon: "droplet", tone: "bg-sky-50 text-sky-600", to: "/cleaning", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
 	mrReview: { icon: "tool", tone: "bg-sky-50 text-sky-600", to: "/mr", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
 	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
