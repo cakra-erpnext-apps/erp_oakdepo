@@ -770,18 +770,10 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		data = eir.prefill(container_no="EIRV3000010")
 		self.assertEqual(data["eir_in_date"], "2026-06-12")
 
-	def test_order_bongkar_stamps_container_ex_vessel(self):
-		from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
-			_update_container_ex_vessel,
-		)
-		c = _make_container("EIRV3000002")
-		# Not inserted — the writeback only reads ex_vessel + the container rows.
-		ob = frappe.get_doc({
-			"doctype": "Order Bongkar", "ex_vessel": "MV ATLANTIC",
-			"containers": [{"container": c, "container_no": c}],
-		})
-		_update_container_ex_vessel(ob)
-		self.assertEqual(frappe.db.get_value("Container", c, "ex_vessel"), "MV ATLANTIC")
+	# The bon -> master writeback for ex_vessel lives with the other Container-master
+	# mirrors now (``last_orders``), so it is tested there: a stamp that a cancel can undo
+	# is not a straight-through write any more. See
+	# ``test_container_last_orders.TestContainerLastOrders``.
 
 	def test_tank_status_laden_accepted(self):
 		c = _make_container("EIRV3000003")

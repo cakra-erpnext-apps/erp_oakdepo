@@ -42,6 +42,17 @@ _VIA_ROWS = {
 
 SOURCES = tuple(_DIRECT) + tuple(_VIA_ROWS)
 
+# Beyond the pointers: three FACTS the master mirrors off the bon that last moved the tank —
+# who hauled it, for which factory, and off which vessel it came. They live on the Container
+# because the yard asks them of the TANK, not of a document, and they are read-only there.
+#
+# They used to be stamped straight through at submit and never revisited, which is exactly
+# the failure this module exists to avoid: a voided bon left the master claiming a haul that
+# never happened, and no later bon could correct it unless it happened to carry the same
+# field. Recomputed from source here instead, so a cancel lands on the bon before it.
+_PARTY_FIELDS = ("emkl", "shipper", "ex_vessel")
+_BON_DOCTYPES = ("Order Bongkar", "Order Muat")
+
 
 def refresh_for_doc(doc, method=None) -> None:
 	"""doc_events entry point: re-cache every tank this order touches, or has just stopped
@@ -91,6 +102,8 @@ def refresh_container(container: str, only: str | None = None, exclude: str | No
 		if only and doctype != only:
 			continue
 		updates[fieldname] = _latest_via_rows(doctype, child, parentfield, container, exclude)
+	if only is None or only in _BON_DOCTYPES:
+		updates.update(_party_stamps(container, exclude))
 	if not updates:
 		return
 	current = frappe.db.get_value("Container", container, list(updates), as_dict=True) or {}
@@ -135,6 +148,51 @@ def _latest_via_rows(
 		(container, doctype, parentfield, exclude or ""),
 	)
 	return rows[0][0] if rows else None
+
+
+def _party_stamps(container: str, exclude: str | None = None) -> dict:
+	"""``{emkl, shipper, ex_vessel}`` from the most recent non-cancelled bon that NAMES one.
+
+	Per field "the most recent that names one", not "the most recent bon": a bon that leaves
+	EMKL blank says nothing about who hauled the tank, so blanking the master on it would
+	lose the answer rather than update it. The submit-time writer this replaces applied the
+	same rule (it skipped blanks); recomputing keeps it while making a cancel fall back to
+	the bon before instead of leaving a voided one's stamp standing.
+
+	SUBMITTED bons only, unlike the pointers above: a draft bon is a plan, and the master
+	answers what actually happened to the tank. That was the submit-time writer's rule too.
+
+	An Order Bongkar keeps EMKL / Shipper per ROW (one bon can carry two tanks for two
+	factories) and falls back to its header; an Order Muat keeps them on the header alone.
+	Only a Bongkar carries a vessel — a tank leaves on a truck.
+	"""
+	bons = frappe.db.sql(
+		"""
+		select p.creation as creation,
+		       coalesce(nullif(r.emkl, ''), nullif(p.emkl, ''))       as emkl,
+		       coalesce(nullif(r.shipper, ''), nullif(p.shipper, '')) as shipper,
+		       nullif(p.ex_vessel, '')                                as ex_vessel
+		  from `tabContainer Booking Item` r
+		  join `tabOrder Bongkar` p on p.name = r.parent
+		 where r.container = %(container)s and r.parenttype = 'Order Bongkar'
+		   and r.parentfield = 'containers' and p.docstatus = 1 and p.name != %(exclude)s
+		union all
+		select p.creation, nullif(p.emkl, ''), nullif(p.shipper, ''), null
+		  from `tabOrder Container Item` r
+		  join `tabOrder Muat` p on p.name = r.parent
+		 where r.container = %(container)s and r.parenttype = 'Order Muat'
+		   and r.parentfield = 'containers' and p.docstatus = 1 and p.name != %(exclude)s
+		 order by creation desc
+		""",
+		{"container": container, "exclude": exclude or ""},
+		as_dict=True,
+	)
+	stamps = dict.fromkeys(_PARTY_FIELDS)
+	for row in bons:
+		for field in _PARTY_FIELDS:
+			if stamps[field] is None and row.get(field):
+				stamps[field] = row[field]
+	return stamps
 
 
 def _touched(doc) -> set:

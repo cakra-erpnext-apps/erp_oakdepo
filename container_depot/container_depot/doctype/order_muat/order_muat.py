@@ -3,6 +3,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import getdate, today
 
+from container_depot.container_depot import last_orders
 from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
 	_ensure_order_qr,
 	_log_order_activity,
@@ -11,7 +12,6 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 	_release_codes,
 	_release_eirs,
 	_sync_booking,
-	_stamp_container_parties,
 	_sync_container_summary,
 	_validate_booking_code,
 )
@@ -29,7 +29,9 @@ class OrderMuat(Document):
 
 	def on_submit(self):
 		_log_order_activity(self, "Order Muat")
-		_stamp_container_parties(self)
+		# EMKL / Shipper on the Container master — recomputed from the bons (``last_orders``)
+		# so a cancel falls back to the bon before. See Order Bongkar.on_submit.
+		last_orders.refresh_for_doc(self)
 		_ensure_order_qr(self)
 		from container_depot.container_depot.notify import notify_order_gate, notify_order_muat_survey
 		notify_order_gate(self, "out")

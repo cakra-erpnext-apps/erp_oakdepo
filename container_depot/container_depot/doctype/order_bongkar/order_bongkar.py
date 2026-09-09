@@ -7,6 +7,7 @@ from container_depot.container_depot.doctype.container_booking.container_booking
 	build_container_summary,
 	refresh_bon_status,
 )
+from container_depot.container_depot import last_orders
 from container_depot.container_depot.container_activity import log_container_activity
 
 # A single bon/voucher may carry at most this many containers.
@@ -26,8 +27,13 @@ class OrderBongkar(Document):
 		# Sync depot/status first so the activity log + ex_vessel see the arrived tank.
 		_sync_container_arrival(self)
 		_log_order_activity(self, "Order Bongkar")
-		_stamp_container_parties(self)
-		_update_container_ex_vessel(self)
+		# EMKL / Shipper / Ex Vessel on the Container master. Recomputed from the bons
+		# (``last_orders``) rather than written straight through, so a later cancel lands on
+		# the bon before instead of leaving this one's stamp on a tank it never hauled.
+		# Called HERE and not left to the doc_event that fires after ``on_submit``, because
+		# ``_provision_eirs`` below reads ``ex_vessel`` back off the master; the doc_event
+		# runs again afterwards and finds nothing left to change.
+		last_orders.refresh_for_doc(self)
 		_ensure_order_qr(self)
 		# Open the gate log for this visit (the IN half of Riwayat Gate).
 		_record_gate_in(self)
@@ -110,30 +116,6 @@ def _log_order_activity(order: Document, activity_type: str):
 			)
 
 
-def _stamp_container_parties(order: Document):
-	"""Copy the bon's EMKL / Shipper onto each Container master it moves.
-
-	The two fields on the master answer "who last hauled this tank, and for which factory" —
-	a question the yard asks of the TANK, not of a document, and which otherwise costs a walk
-	back through the bons. They are read-only there for that reason: this is the only writer,
-	and it runs on submit, when the bon is final.
-
-	An Order Bongkar keeps both per row (its rows are Container Booking Item, so one bon can
-	carry two tanks for two different factories); an Order Muat keeps them on the header. Row
-	first, header second. A blank is skipped rather than written, so a bon that names neither
-	leaves the previous cycle's stamp alone instead of erasing it."""
-	for row in _order_rows(order):
-		if not row.get("container"):
-			continue
-		values = {}
-		for field in ("emkl", "shipper"):
-			value = row.get(field) or order.get(field)
-			if value:
-				values[field] = value
-		if values:
-			frappe.db.set_value("Container", row.container, values, update_modified=False)
-
-
 def _ensure_order_qr(order: Document):
 	"""Render a scannable QR (payload ``OAK|{name}``) into ``qr_image`` once the bon
 	exists, so a printed bon can be scanned at the gate. Best-effort — mirrors Booking
@@ -153,18 +135,6 @@ def _ensure_order_qr(order: Document):
 		order.db_set("qr_image", f"data:image/png;base64,{b64}", update_modified=False)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "order qr")
-
-
-def _update_container_ex_vessel(order: Document):
-	"""Stamp each container's ``ex_vessel`` from the bon's Ex Vessel on submit, so the
-	Container master reflects the vessel the tank last arrived on (read back by the EIR
-	header). Plain field write — no Container controller side-effects."""
-	ex_vessel = order.get("ex_vessel")
-	if not ex_vessel:
-		return
-	for row in _order_rows(order):
-		if row.get("container"):
-			frappe.db.set_value("Container", row.container, "ex_vessel", ex_vessel)
 
 
 def _booking_depot(order: Document):

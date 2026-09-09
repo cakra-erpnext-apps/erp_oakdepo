@@ -27,9 +27,13 @@ class TestContainerLastOrders(FrappeTestCase):
 
 	def tearDown(self):
 		for doctype, name in reversed(self._docs):
+			frappe.db.delete("Container Booking Item", {"parent": name})
+			frappe.db.delete("Order Container Item", {"parent": name})
 			frappe.db.delete(doctype, {"name": name})
 		for c in self._containers:
 			frappe.db.delete("Container", {"name": c})
+		# The EMKL / Shipper parties the bon fixtures had to mint (both are Link -> Customer).
+		frappe.db.delete("Customer", {"name": ("like", f"{_PREFIX} %")})
 		frappe.db.commit()
 
 	# --- factories ------------------------------------------------------------
@@ -53,6 +57,86 @@ class TestContainerLastOrders(FrappeTestCase):
 
 	def _cached(self, container, field):
 		return frappe.db.get_value("Container", container, field)
+
+	def _party(self, name):
+		"""EMKL / Shipper are Link -> Customer, so the fixture has to be a real party."""
+		return ensure_test_customer(f"{_PREFIX} {name}")
+
+	def _bon(self, doctype, container, *, submitted=True, created=None, **kw):
+		"""A bon naming one tank. Submitted by default — the master mirrors what actually
+		happened, and only a submitted bon has."""
+		child = "Container Booking Item" if doctype == "Order Bongkar" else "Order Container Item"
+		row = {"container": container, "container_no": container}
+		row.update(kw.pop("row", {}))
+		doc = self._order(doctype, containers=[row], **kw)
+		frappe.db.set_value(child, doc.containers[0].name, "parenttype", doctype, update_modified=False)
+		values = {"docstatus": 1} if submitted else {}
+		if created:
+			values["creation"] = created
+		if values:
+			frappe.db.set_value(doctype, doc.name, values, update_modified=False)
+		return doc
+
+	# --- what the tank actually carries: EMKL / Shipper / Ex Vessel ------------
+	def test_the_master_mirrors_the_submitted_bon(self):
+		c = self._container("0101")
+		self._bon("Order Bongkar", c, emkl=self._party("EMKL Satu"), shipper=self._party("Pabrik A"), ex_vessel="MV ATLANTIC")
+		refresh_container(c)
+		self.assertEqual(self._cached(c, "emkl"), self._party("EMKL Satu"))
+		self.assertEqual(self._cached(c, "shipper"), self._party("Pabrik A"))
+		self.assertEqual(self._cached(c, "ex_vessel"), "MV ATLANTIC")
+
+	def test_a_row_answers_before_the_header(self):
+		"""One bon can carry two tanks for two factories, so the row wins where it speaks."""
+		c = self._container("0102")
+		self._bon(
+			"Order Bongkar", c, emkl=self._party("EMKL Header"), shipper=self._party("Pabrik Header"),
+			row={"emkl": self._party("EMKL Baris"), "shipper": self._party("Pabrik Baris")},
+		)
+		refresh_container(c)
+		self.assertEqual(self._cached(c, "emkl"), self._party("EMKL Baris"))
+		self.assertEqual(self._cached(c, "shipper"), self._party("Pabrik Baris"))
+
+	def test_cancelling_the_bon_falls_back_to_the_one_before(self):
+		"""The regression this exists for: these three used to be stamped forward at submit
+		and never revisited, so a voided bon left the master naming a haul that never
+		happened — and no later bon could correct it."""
+		c = self._container("0103")
+		self._bon("Order Bongkar", c, emkl=self._party("EMKL Lama"), ex_vessel="MV LAMA",
+				  created="2026-01-01 08:00:00")
+		newer = self._bon("Order Bongkar", c, emkl=self._party("EMKL Baru"), ex_vessel="MV BARU",
+						  created="2026-02-01 08:00:00")
+		refresh_container(c)
+		self.assertEqual(self._cached(c, "emkl"), self._party("EMKL Baru"))
+
+		frappe.db.set_value("Order Bongkar", newer.name, "docstatus", 2, update_modified=False)
+		refresh_container(c)
+
+		self.assertEqual(self._cached(c, "emkl"), self._party("EMKL Lama"))
+		self.assertEqual(self._cached(c, "ex_vessel"), "MV LAMA")
+
+	def test_a_bon_that_names_nobody_does_not_erase_the_answer(self):
+		"""A blank EMKL says nothing about who hauled the tank, so blanking the master on it
+		would lose the answer rather than update it — the rule the old writer applied too."""
+		c = self._container("0104")
+		self._bon("Order Bongkar", c, emkl=self._party("EMKL Satu"), created="2026-01-01 08:00:00")
+		self._bon("Order Muat", c, created="2026-02-01 08:00:00")  # no EMKL at all
+		refresh_container(c)
+		self.assertEqual(self._cached(c, "emkl"), self._party("EMKL Satu"))
+
+	def test_a_draft_bon_does_not_stamp_the_master(self):
+		"""A draft is a plan; the master answers what actually happened."""
+		c = self._container("0105")
+		self._bon("Order Bongkar", c, submitted=False, emkl=self._party("EMKL Rencana"))
+		refresh_container(c)
+		self.assertIsNone(self._cached(c, "emkl"))
+
+	def test_the_last_bon_to_speak_wins_across_both_kinds(self):
+		c = self._container("0106")
+		self._bon("Order Bongkar", c, emkl=self._party("EMKL Masuk"), created="2026-01-01 08:00:00")
+		self._bon("Order Muat", c, emkl=self._party("EMKL Keluar"), created="2026-03-01 08:00:00")
+		refresh_container(c)
+		self.assertEqual(self._cached(c, "emkl"), self._party("EMKL Keluar"))
 
 	# --- the newest wins ------------------------------------------------------
 	def test_cleaning_pointer_follows_the_newest_order(self):
