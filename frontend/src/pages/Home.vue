@@ -1,8 +1,8 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-5 md:max-w-2xl">
-		<!-- Sapaan — siapa yang login, hari apa, dan berapa peran yang dipegang. Tanggal
-		     dan shift ada di sini karena handset depot dipakai bergantian antar shift: baris
-		     ini yang menjawab "HP ini sedang login sebagai siapa" tanpa membuka Profil. -->
+		<!-- Sapaan — siapa yang login, hari apa, dan berapa peran yang dipegang. Tanggalnya
+		     ada di sini karena handset depot dipakai bergantian antar shift: baris ini yang
+		     menjawab "HP ini sedang login sebagai siapa" tanpa membuka Profil. -->
 		<section class="oak-card animate-slide-up p-4">
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0">
@@ -251,7 +251,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { session } from "@/data/session"
 import { userContext } from "@/data/context"
@@ -291,21 +291,35 @@ function fill(tpl, vars) {
 	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
 }
 
-// --- Sapaan: tanggal + shift ------------------------------------------------------
-// Shift dibaca dari jam dinding, bukan dari roster: tidak ada doctype yang menyimpan
-// jadwal shift, dan yang dibutuhkan baris ini cuma menyebut waktu kerja yang sedang
-// berjalan supaya operator tahu HP ini menyapa hari yang benar.
+// --- Sapaan: tanggal + jam ----------------------------------------------------------
+// Sempat ada "Shift pagi/siang/malam" di sini, ditebak dari jam HP. Dihapus: depot tidak
+// menyimpan jadwal shift di mana pun, jadi angka 12 dan 18 itu tebakan yang ikut zona waktu
+// handset — tulisan yang terlihat resmi padahal tidak dijamin siapa-siapa. Jamnya sendiri
+// tidak mengaku tahu apa-apa selain jam, jadi itu yang tinggal.
+//
+// Dan jam itu HARUS berdetak. Beranda adalah layar yang ditinggal terbuka berjam-jam di
+// handset yang dipakai bergantian; jam yang beku sejak layar dibuka bukan cuma basi, ia
+// berbohong dengan meyakinkan. Setengah menit sekali sudah cukup halus untuk tampilan
+// jam-menit dan tetap murah — satu penulisan ref, tanpa permintaan ke server.
+const now = ref(new Date())
+let clock = null
+onMounted(() => {
+	clock = setInterval(() => (now.value = new Date()), 30_000)
+})
+onUnmounted(() => clearInterval(clock))
+
 const todayLine = computed(() => {
-	const now = new Date()
-	const date = new Intl.DateTimeFormat("id-ID", {
+	const d = new Intl.DateTimeFormat("id-ID", {
 		weekday: "long",
 		day: "numeric",
 		month: "short",
 		year: "numeric",
-	}).format(now)
-	const h = now.getHours()
-	const shift = h < 12 ? labels.homeShiftMorning : h < 18 ? labels.homeShiftDay : labels.homeShiftNight
-	return `${date} · ${shift}`
+	}).format(now.value)
+	const t = new Intl.DateTimeFormat("id-ID", {
+		hour: "2-digit",
+		minute: "2-digit",
+	}).format(now.value)
+	return `${d} · ${t}`
 })
 
 // --- Kotak cari -> Gate ------------------------------------------------------------

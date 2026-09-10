@@ -142,9 +142,6 @@ export const labels = {
 		"Status bayar dan blokir booking harus dicek langsung ke server sebelum bon dibuat, jadi layar ini tidak bisa dipakai offline. Sambungkan internet dulu.",
 	// --- Beranda (redesain 2026-09-08) ---------------------------------------
 	// Sapaan + kartu identitas di puncak layar.
-	homeShiftMorning: "Shift pagi",
-	homeShiftDay: "Shift siang",
-	homeShiftNight: "Shift malam",
 	homeRoles: "{n} peran", // chip di kartu sapaan -> Profil
 	// Kotak cari. Ini BUKAN pencarian global: yang dicari operator dari beranda selalu
 	// berujung di Gate (kode booking OAK-…, kode order ORD-…, atau nomor tank), jadi
