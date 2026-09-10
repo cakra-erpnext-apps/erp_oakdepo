@@ -416,6 +416,9 @@ def upload_inspection_evidence(container_no, photos, inspection_type="EIR-In", i
 			"container_no": container.container_no,
 			"inspection_type": inspection_type,
 			"inspector": inspector or frappe.session.user,
+			# Tanpa ini EIR-nya lahir tanpa depot, dan baris tanpa depot tidak pernah masuk
+			# worklist maupun angka Beranda akun yang ber-branch — lihat eir.create_eir.
+			"depot": container.depot,
 			"status": "Draft",
 		})
 		inspection.insert(ignore_permissions=True)

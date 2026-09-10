@@ -27,7 +27,6 @@ from frappe.utils import cint, flt, now_datetime
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
-from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
 from container_depot.container_depot import item_catalog
@@ -286,19 +285,19 @@ def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
 		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
-		# started_by: who pressed "Mulai" — what hides a job already in someone's hands from
-		# everyone else's worklist (see work_claim).
+		# started_by: who pressed "Mulai" — the job stays on everyone's worklist, and this is
+		# what the row says about who is on it.
 		fields=["name", "repair_order_id", "container", "container_no", "status",
 			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on",
 			"target_urgent_on", "creation",
 			 "started_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
-	items = filter_claimed(items, "started_by")
 	total = len(items)
 	# Gate-out priority, then the job already in this operator's hands, then the rest —
 	# see ``worklist.sort_by_priority`` for why that order.
 	items = sort_by_priority(items, lambda r: r.get("status") == "In Progress", start, page_length)
+	_attach_worker_names(items)
 	return {"items": items, "total": total}
 
 
@@ -361,6 +360,28 @@ def _attach_counts(items) -> None:
 		i["damage_count"] = damages.get(i["name"], 0)
 
 
+def _attach_worker_names(items) -> None:
+	"""Stamp ``started_by_name`` — siapa yang sudah memegang job ini.
+
+	Sejak pagar klaim dicabut (2026-09-10) M&R yang sudah ditekan "Mulai" tetap ada di
+	worklist semua orang. Barisnya karena itu harus menyebut namanya: dua teknisi masuk ke
+	form yang sama sekarang mungkin, dan satu baris nama adalah bedanya dari saling tabrak.
+	Satu lookup User untuk sehalaman, seperti ``_attach_decider_names``.
+	"""
+	emails = {i.get("started_by") for i in items if i.get("started_by")}
+	if not emails:
+		return
+	names = {
+		u.name: (u.full_name or u.name)
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", list(emails)]}, fields=["name", "full_name"]
+		)
+	}
+	for i in items:
+		if i.get("started_by"):
+			i["started_by_name"] = names.get(i["started_by"], i["started_by"])
+
+
 def _attach_decider_names(items) -> None:
 	"""Stamp ``decided_by_name`` — WHO approved the estimate, in a name a human recognises.
 
@@ -399,20 +420,20 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
-		# See list_open_mr_orders: started_by is the claim, not a displayed column.
+		# See list_open_mr_orders: started_by names who is on the job.
 		fields=["name", "repair_order_id", "container", "container_no", "status",
 			"principal", "depot", "total_cost", "target_lift_on", "target_survey_on",
 			"target_urgent_on", "creation",
 			 "started_by", "inspection", "start_date", "decided_by"],
 		order_by="creation asc", limit_page_length=0,
 	)
-	items = filter_claimed(items, "started_by")
 	total = len(items)
 	# Gate-out priority, then the job already in this operator's hands, then the rest —
 	# see ``worklist.sort_by_priority`` for why that order.
 	items = sort_by_priority(items, lambda r: r.get("status") == "In Progress", start, page_length)
 	_attach_counts(items)
 	_attach_decider_names(items)
+	_attach_worker_names(items)
 	return {"items": items, "total": total}
 
 
@@ -478,11 +499,6 @@ def get_mr_order_detail(repair_order) -> dict:
 	photos) and the tank spec."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
-	# Only while the job is actually running: a notification tap must not drop a second
-	# operator into a form somebody else is filling in. Once it is sent for review or closed
-	# the claim is over and the Riwayat detail stays readable to the whole branch.
-	if ro.status == "In Progress":
-		guard_claim(ro.started_by, _("M&R {0}").format(ro.repair_order_id or ro.name))
 	c = frappe.db.get_value("Container", ro.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
 
 	dmg_desc = {d.name: d.description for d in frappe.get_all("Inspection Damage Code", fields=["name", "description"])}
@@ -523,6 +539,13 @@ def get_mr_order_detail(repair_order) -> dict:
 		"actions": MR_TRANSITIONS.get(ro.status, []),
 		"container": ro.container,
 		"container_no": ro.container_no or c.container_no,
+		# Siapa yang terakhir menyentuh order ini, dan kapan. Frappe sudah mencatatnya
+		# (``modified_by`` + baris Version) — yang belum ada adalah jalannya ke HP. Sejak satu
+		# order boleh dikerjakan bergantian (pagar klaim dicabut 2026-09-10) inilah cara
+		# operator kedua tahu bahwa isian yang muncul di layarnya bukan tulisannya sendiri.
+		"updated_on": ro.modified,
+		"updated_by": ro.modified_by,
+		"updated_by_name": _fullname(ro.modified_by),
 		"inspection": ro.inspection,
 		"technician": ro.technician,
 		"reff_doc": ro.reff_doc,
@@ -962,10 +985,11 @@ def start_repair(repair_order):
 	starting gun (see :func:`forward_to_team`)."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
-	# First press wins — see work_claim. Checked BEFORE the status gate: a job a colleague
-	# already started is "In Progress", and "teruskan ke team dulu" would be a confusing way
-	# to say "Budi is holding it".
-	guard_claim(ro.started_by, _("M&R {0}").format(ro.repair_order_id or ro.name))
+	# Idempotent, and shared: a colleague pressing Mulai on a job that is already running
+	# joins it. Answered BEFORE the status gate below, which would otherwise say "teruskan ke
+	# team dulu" about a job that has been under way since this morning.
+	if ro.status == "In Progress":
+		return {"success": True, "name": ro.name, "status": ro.status}
 	if ro.status != "Pending":
 		frappe.throw(
 			_("M&R harus diteruskan ke team dulu sebelum dikerjakan (status: {0}).").format(ro.status)
@@ -974,8 +998,7 @@ def start_repair(repair_order):
 	if not ro.start_date:
 		ro.start_date = now_datetime()
 	# Who is doing the work is whoever pressed "Mulai" here — not whoever built the estimate
-	# in Desk. Same rule as Cleaning Order.assigned_to and Inspection.work_started_by, and it
-	# is what keeps the job in this operator's hands until it leaves for review.
+	# in Desk. Same rule as Cleaning Order.assigned_to and Inspection.work_started_by.
 	if not ro.started_by:
 		ro.started_by = frappe.session.user
 	ro.save()
@@ -1360,10 +1383,6 @@ def save_mr_order(
 	if ro.status in ("Completed", "Cancelled", "Rejected"):
 		frappe.throw(_("M&R sudah {0}.").format(ro.status), exc=AlreadySettled)
 	_guard_container_branch(ro.container)
-	# The operator who started it owns the form until it leaves for review — an autosave that
-	# only reaches the server later (offline queue) is checked here too.
-	if ro.status == "In Progress":
-		guard_claim(ro.started_by, _("M&R {0}").format(ro.repair_order_id or ro.name))
 
 	submitting = _as_bool(submit)
 	if submitting and ro.status != "In Progress":

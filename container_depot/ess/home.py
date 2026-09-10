@@ -232,8 +232,17 @@ def get_home_summary(tiles=None):
 			{"docstatus": 0, "inspection_type": "EIR-In", "status": ["!=", "Pending Review"]},
 			allowed,
 		)
+		# In DAN Out, karena itulah isi layar yang dibuka kartu ini: "Diajukan Review" di PWA
+		# adalah ``eir.list_review_eirs``, dan daftar itu tidak pernah memilah jenisnya. Kartu
+		# ini sempat menghitung EIR-In saja, jadi sebuah EIR-Out yang menunggu Admin Ops duduk
+		# di daftarnya tanpa pernah muncul di Beranda.
 		eir_review = _scoped(
-			{"docstatus": 0, "inspection_type": "EIR-In", "status": "Pending Review"}, allowed
+			{
+				"docstatus": 0,
+				"inspection_type": ["in", ["EIR-In", "EIR-Out"]],
+				"status": "Pending Review",
+			},
+			allowed,
 		)
 		# "Belum EIR" under "Tank masuk": every tank that came in still owes one, and this
 		# is the same list the EIR worklist opens on (``eir.list_pending_eirs``). Dihitung

@@ -106,6 +106,13 @@
 									class="oak-chip bg-brand-100 text-brand-700"
 								>{{ labels.mrInProgress }}</span>
 							</div>
+							<!-- Siapa yang sudah memegangnya. Job yang sudah dimulai tetap di daftar
+							     semua orang, jadi chip "Dikerjakan" saja tidak cukup: yang ditanya
+							     teknisi berikutnya adalah OLEH SIAPA. -->
+							<p v-if="o.started_by_name" class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400">
+								<Icon name="user" :size="11" class="shrink-0" />
+								{{ labels.eirWorkedBy.replace("{name}", o.started_by_name) }}
+							</p>
 						</div>
 						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
 					</button>
@@ -196,6 +203,8 @@
 		     anyone has pressed start, and it is exactly what the technician reads to decide
 		     whether to take it. Only the action at the bottom changes. -->
 		<template v-if="order">
+			<!-- Rekan yang menyentuhnya terakhir — di atas kartu, sebelum apa pun diisi. -->
+			<EditedBy :by="order.updated_by" :name="order.updated_by_name" :at="order.updated_on" />
 			<!-- Tank, papers, and how far along it is. -->
 			<section class="oak-card p-4">
 				<div class="flex items-start justify-between gap-3">
@@ -429,11 +438,11 @@ import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
 import { labels, repairStatusLabel } from "@/utils/labels"
 import { toast } from "@/utils/toast"
-import { claimMessage, isClaimed } from "@/utils/claim"
 import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
 import { confirm } from "@/utils/confirm"
 import { clockOf, fmtStamp, mrChip, workWindow } from "@/utils/mrStatus"
+import EditedBy from "@/components/EditedBy.vue"
 import Icon from "@/components/Icon.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import MrDamageCard from "@/components/MrDamageCard.vue"
@@ -749,14 +758,6 @@ const detailRes = cachedResource({
 	// operator would be left staring at a worklist wondering why their tap did nothing.
 	onError(err) {
 		detailPending.value = false
-		// Sudah dipegang rekan lain — kasusnya hampir selalu tautan notifikasi, karena
-		// worklist sendiri sudah menyembunyikannya. Ini bukan kegagalan yang perlu tombol
-		// "coba lagi": sebut siapa yang memegang lalu pulangkan ke worklist.
-		if (isClaimed(err)) {
-			toast.error(claimMessage(err))
-			router.replace({ query: {} })
-			return
-		}
 		detailFailed.value = true
 		detailError.value = err?.messages?.[0] || err?.message || labels.error
 	},

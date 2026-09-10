@@ -20,7 +20,6 @@ from frappe.utils import cint, flt, getdate, now_datetime, time_diff_in_seconds,
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
-from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
@@ -1141,7 +1140,13 @@ def create_eir(
 	doc.vessel = vessel
 	doc.truck_no = truck_no
 	doc.remarks = remarks
-	doc.depot = depot
+	# Depot yang diminta, kalau tidak ada ikut depot tangkinya. TIDAK boleh kosong: depot
+	# inilah satu-satunya yang menyaring EIR ke branch penggunanya (``get_user_depots``), jadi
+	# baris tanpa depot menghilang dari worklist DAN dari angka Beranda setiap akun yang
+	# ber-branch — sementara akun tak terbatas tetap melihatnya, yang membuatnya terlihat
+	# seperti "cuma dia yang punya datanya". Bukan fetch_from di doctype-nya karena depot
+	# sebuah EIR boleh berbeda dari master tangkinya (lihat ``_voucher_depot``).
+	doc.depot = depot or frappe.db.get_value("Container", container, "depot")
 	doc.inspector = frappe.session.user
 	doc.inspector_signature = signature
 	doc.eir_date = eir_date
@@ -1267,6 +1272,14 @@ def _draft_payload(doc, header: dict) -> dict:
 	header["shipper"] = doc.shipper
 	header["doc_remarks"] = doc.remarks
 	header["inspector_signature"] = doc.inspector_signature
+	# Siapa yang terakhir menyentuh EIR ini, dan kapan. Frappe sudah mencatatnya sendiri
+	# (``modified_by`` + baris Version, karena Inspection track_changes) — yang belum ada
+	# adalah jalannya ke HP. Sejak satu order boleh dikerjakan bergantian (pagar klaim
+	# dicabut 2026-09-10) inilah satu-satunya cara operator kedua tahu bahwa isian yang baru
+	# saja muncul di layarnya bukan tulisannya sendiri.
+	header["updated_on"] = str(doc.modified) if doc.modified else None
+	header["updated_by"] = doc.modified_by
+	header["updated_by_name"] = _fullname(doc.modified_by)
 	# Work-timing gate: the PWA locks the form until the operator presses "Mulai"
 	# (work_started_on), and stamps work_ended_on / work_duration on submit.
 	header["work_started_on"] = str(doc.work_started_on) if doc.work_started_on else None
@@ -1372,9 +1385,10 @@ def start_eir(inspection: str) -> dict:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
 	doc.check_permission("write")
-	# First press wins: a second operator pressing Mulai on the same tank is refused rather
-	# than silently sharing the draft.
-	guard_claim(doc.work_started_by, _("EIR {0}").format(doc.inspection_id or doc.name))
+	# Idempotent, and shared: a colleague pressing Mulai on an EIR somebody already started
+	# joins it rather than being refused. The first press keeps the stamp — `work_started_on`
+	# is how long the inspection took, and `work_started_by` who opened it, neither of which a
+	# second press changes.
 	if not doc.work_started_on:
 		# Stamp who started it too, so the PWA can scope the "next/prev EIR" navigator to
 		# the EIRs this account is working (idempotent: keep the original starter).
@@ -1516,13 +1530,15 @@ def save_draft(
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.docstatus != 0:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
+	# Branch, on the save as well as on the open. It used to lean on the claim gate that sat
+	# here — which only ever refused an EIR somebody else had STARTED, so an untouched draft
+	# in another branch was writable by anyone who knew its name. Every other PWA mutator
+	# (cleaning, M&R, start_eir) asks this question; this one has to as well.
+	_guard_container_branch(doc.container)
 	# Work-timing gate: editing is only allowed after the operator has pressed "Mulai"
 	# (see ``start_eir``), so every saved EIR carries a real work-start timestamp.
 	if not doc.work_started_on:
 		frappe.throw(_("Tekan \"Mulai\" dulu sebelum mengisi EIR ini."))
-	# Whoever pressed Mulai owns the checklist until it is sent for review — including an
-	# autosave that only reaches the server later, out of the offline queue.
-	guard_claim(doc.work_started_by, _("EIR {0}").format(doc.inspection_id or doc.name))
 
 	submit = _as_bool(submit)
 	items = _checklist_items()
@@ -1776,8 +1792,8 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 			"inspection_type", "tank_status", "referred_voucher", "voucher_doctype", "depot",
 			"eir_date", "creation",
 			# Empty = not started yet, set = in progress (stamped by ``start_eir``). Drives
-			# the PWA worklist's belum / dikerjakan split; work_started_by scopes the
-			# next/prev EIR navigator to the account that is working them.
+			# the PWA worklist's belum / dikerjakan split; work_started_by names who opened
+			# it — shown on the row, and it scopes the next/prev EIR navigator.
 			"work_started_on", "work_started_by",
 			# The outbound booking's stamp — sorts and badges this worklist by pickup urgency.
 			"target_lift_on", "target_survey_on", "target_urgent_on",
@@ -1785,15 +1801,51 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		order_by="creation desc",
 		limit_page_length=0,
 	)
-	# An EIR somebody already pressed "Mulai" on belongs to them — it leaves everyone else's
-	# worklist so two surveyors never fill in the same tank (see work_claim).
-	items = filter_claimed(items, "work_started_by")
 	# Whole list, then sort, then slice: the priority order is decided in Python (see
 	# _by_lift_on), so SQL cannot page it. The open EIR list is bounded by the tanks in the
 	# yard, which is what makes that affordable.
 	total = len(items)
-	items = _by_lift_on(items, start, page_length)
+	items = _stamp_worker(_by_lift_on(items, start, page_length))
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
+
+
+def _fullname(user) -> str | None:
+	"""Nama yang enak dibaca, jatuh ke login-nya. ``None`` tetap ``None`` supaya klien bisa
+	menyembunyikan barisnya, bukan mencetak nama berbentuk kosong."""
+	if not user:
+		return None
+	return frappe.db.get_value("User", user, "full_name") or user
+
+
+def _user_names(users) -> dict:
+	"""``{login: full name}`` for a set of logins, in one query. Blank set = no query."""
+	users = {u for u in users if u}
+	if not users:
+		return {}
+	return {
+		u.name: (u.full_name or u.name)
+		for u in frappe.get_all(
+			"User", filters={"name": ("in", list(users))}, fields=["name", "full_name"]
+		)
+	}
+
+
+def _stamp_worker(items: list[dict]) -> list[dict]:
+	"""Attach ``started_by_name`` — who already has this EIR open.
+
+	Sejak pagar klaim dicabut (2026-09-10) sebuah EIR yang sudah ditekan "Mulai" tetap berada
+	di worklist semua orang. Itu memang yang diminta, tapi berarti barisnya harus menyebut
+	siapa yang sudah di dalamnya: dua orang mengisi checklist tangki yang sama sekarang
+	mungkin terjadi, dan satu baris nama adalah bedanya antara "dikerjakan bergantian" dan
+	"kaget di akhir shift". Alamat email tidak menjawab itu dari jarak satu meter; nama iya.
+
+	Hanya untuk satu halaman, jadi satu query untuk baris yang benar-benar tampil.
+	"""
+	names = _user_names(i.get("work_started_by") for i in items)
+	for i in items:
+		if i.get("work_started_by"):
+			i["started_by_name"] = names.get(i["work_started_by"]) or i["work_started_by"]
+	return items
 
 
 def _stamp_who(items: list[dict]) -> list[dict]:
@@ -1804,15 +1856,7 @@ def _stamp_who(items: list[dict]) -> list[dict]:
 	address answers neither at arm's length on a phone; a name (and the initials a row can be
 	tagged with) does. One query for the whole page, not one per row.
 	"""
-	users = {i.get("inspector") for i in items if i.get("inspector")}
-	if not users:
-		return items
-	names = {
-		u.name: (u.full_name or u.name)
-		for u in frappe.get_all(
-			"User", filters={"name": ("in", list(users))}, fields=["name", "full_name"]
-		)
-	}
+	names = _user_names(i.get("inspector") for i in items)
 	for i in items:
 		if i.get("inspector"):
 			i["inspector_name"] = names.get(i["inspector"]) or i["inspector"]
@@ -1988,7 +2032,7 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 			"name", "inspection_id", "container", "container_no", "container_principal",
 			"tank_status", "referred_voucher", "depot", "eir_date", "creation",
 			# See list_pending_eirs: empty = not started, set = in progress; work_started_by
-			# scopes the next/prev EIR navigator to the account working them.
+			# names who opened it.
 			"work_started_on", "work_started_by",
 			# The tank is on its way out — the plan's stamp says whether that is today.
 			"target_lift_on", "target_survey_on", "target_urgent_on",
@@ -1996,11 +2040,9 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 		order_by="creation desc",
 		limit_page_length=0,
 	)
-	# See list_pending_eirs: an EIR-Out that is already being worked leaves the others' list.
-	items = filter_claimed(items, "work_started_by")
 	# See list_pending_eirs: priority is decided in Python, so SQL cannot page it.
 	total = len(items)
-	items = _by_lift_on(items, start, page_length)
+	items = _stamp_worker(_by_lift_on(items, start, page_length))
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
 
 
@@ -2019,12 +2061,6 @@ def open_draft_by_name(inspection: str) -> dict:
 	if doc.docstatus != 0:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
-	# The worklist already hides an EIR somebody else started, but a notification link carries
-	# the name straight here — so the refusal has to live on the endpoint too. Not applied to
-	# "Pending Review": that one is out of the field's hands and anyone in the branch may pull
-	# it back (see ``withdraw_review``).
-	if doc.status != "Pending Review":
-		guard_claim(doc.work_started_by, _("EIR {0}").format(doc.inspection_id or doc.name))
 	header = prefill(container=doc.container)
 	return _draft_payload(doc, header)
 

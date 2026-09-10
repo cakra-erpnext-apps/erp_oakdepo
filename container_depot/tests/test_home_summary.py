@@ -25,6 +25,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime, today
 
+from container_depot.container_depot import cleaning, eir, mr
 from container_depot.ess.home import (
 	DEFAULT_TILES,
 	MAX_WAITING,
@@ -34,6 +35,7 @@ from container_depot.ess.home import (
 	get_home_summary,
 )
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
+from container_depot.tests.test_work_claim import TEAM_ROLES, _user
 
 DEPOT = "HOMET"
 PREFIX = "HOME"
@@ -317,3 +319,209 @@ class TestHomeSummary(FrappeTestCase):
 				get_home_summary()
 		finally:
 			frappe.set_user("Administrator")
+
+
+# Dua branch, satu depot masing-masing: satu-satunya cara membuktikan bahwa angka Beranda
+# adalah angka PENGGUNANYA adalah dengan menaruh pekerjaan di branch yang tidak dipegangnya.
+BRANCH_A = "Home Scope Branch A"
+BRANCH_B = "Home Scope Branch B"
+DEPOT_A = "HSCPA"
+DEPOT_B = "HSCPB"
+SCOPED_USER = "home-scope-a@example.com"
+
+
+class TestHomeSummaryIsScopedToTheUsersBranch(FrappeTestCase):
+	"""Angka di Beranda = isi layar yang dibukanya, dan hanya untuk branch penggunanya.
+
+	Dua hal yang gampang berselisih diam-diam, dan keduanya pernah:
+
+	* **Branch.** Operator branch A tidak boleh menghitung pekerjaan branch B — sama seperti
+	  lonceng notifikasi, yang sudah lama begitu (``notify._recipients``). Yang menjaganya
+	  adalah ``user_branch.get_user_depots``, dipakai kartu maupun worklist.
+	* **Angka vs isi.** Kartu menghitung dengan ``frappe.db.count`` sementara layarnya
+	  memanggil worklist, jadi keduanya hanya cocok selama filternya sama. Sampai 2026-09-10
+	  keduanya memang tidak cocok: worklist membuang order yang sudah "Mulai" ditekan orang
+	  lain (``work_claim``, sudah dicabut) sedangkan kartunya tetap menghitungnya, dan kartu
+	  "EIR diajukan review" menghitung EIR-In saja padahal daftarnya berisi In + Out.
+
+	Angkanya PASTI, bukan delta seperti kelas di atas: branch-nya baru dibuat di sini, jadi
+	tidak ada pekerjaan site lain yang bisa masuk hitungan.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		frappe.set_user("Administrator")
+		cls._wipe()
+		for branch, depot in ((BRANCH_A, DEPOT_A), (BRANCH_B, DEPOT_B)):
+			ensure_test_branch(branch)
+			frappe.get_doc({
+				"doctype": "Depot", "depot_code": depot,
+				"depot_name": f"Home Scope Depot {depot}", "branch": branch,
+			}).insert(ignore_permissions=True)
+		cls.principal = ensure_test_customer(PRINCIPAL)
+		# Akun lapangan yang dikunci ke branch A. Role-nya sengaja hanya role lapangan: yang
+		# diuji adalah scope, dan role kantor akan memberinya menu yang bukan pokok soal.
+		_user(SCOPED_USER, *TEAM_ROLES)
+		user = frappe.get_doc("User", SCOPED_USER)
+		user.set("branch", [{"branch": BRANCH_A}])
+		user.save(ignore_permissions=True)
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		cls._wipe()
+		super().tearDownClass()
+
+	@classmethod
+	def _wipe(cls):
+		cls._wipe_work()
+		for depot in (DEPOT_A, DEPOT_B):
+			frappe.db.delete("Depot", {"name": depot})
+		if frappe.db.exists("User", SCOPED_USER):
+			frappe.delete_doc("User", SCOPED_USER, ignore_permissions=True, force=True)
+		for branch in (BRANCH_A, BRANCH_B):
+			if frappe.db.exists("Branch", branch):
+				frappe.delete_doc("Branch", branch, ignore_permissions=True, force=True)
+		frappe.db.commit()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		# Per test, bukan per kelas: sebagian controller order melakukan commit sendiri, jadi
+		# rollback bawaan FrappeTestCase tidak selalu menghapus fixture test sebelumnya — dan
+		# angka di sini PASTI, bukan delta, sehingga satu baris sisa langsung membuatnya merah.
+		self._wipe_work()
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		self._wipe_work()
+		super().tearDown()
+
+	@classmethod
+	def _wipe_work(cls):
+		names = frappe.get_all(
+			"Container", filters={"container_no": ["like", "HSCP%"]}, pluck="name"
+		)
+		if not names:
+			return
+		for dt in ("Container Movement", "Container Activity", "Cleaning Order",
+				   "Repair Order", "Inspection"):
+			frappe.db.delete(dt, {"container": ["in", names]})
+		frappe.db.delete("Container", {"name": ["in", names]})
+		frappe.db.commit()
+
+	# --- fixtures ---------------------------------------------------------
+	def _container(self, no, depot):
+		frappe.get_doc({
+			"doctype": "Container", "container_no": no, "container_type": "ISO Tank",
+			"status": "Available", "depot": depot, "principal": self.principal,
+		}).insert(ignore_permissions=True)
+		return no
+
+	def _cleaning(self, no, depot, status="Pending"):
+		return frappe.get_doc({
+			"doctype": "Cleaning Order", "container": self._container(no, depot), "status": status,
+		}).insert(ignore_permissions=True).name
+
+	def _eir(self, no, depot, inspection_type="EIR-In", status="Draft"):
+		# `depot` diisi tegas: Inspection tidak mengambilnya sendiri dari tangkinya (depot
+		# sebuah EIR boleh berbeda dari master-nya — lihat ``eir._voucher_depot``), dan justru
+		# kolom itulah yang menyaringnya ke branch penggunanya.
+		doc = frappe.get_doc({
+			"doctype": "Inspection", "container": self._container(no, depot),
+			"inspection_type": inspection_type, "status": "Draft", "depot": depot,
+		}).insert(ignore_permissions=True, ignore_mandatory=True)
+		if status != "Draft":
+			frappe.db.set_value("Inspection", doc.name, "status", status, update_modified=False)
+		return doc.name
+
+	def _summary(self, tiles):
+		frappe.set_user(SCOPED_USER)
+		try:
+			return get_home_summary(tiles=tiles)["today"]
+		finally:
+			frappe.set_user("Administrator")
+
+	def _as_scoped(self, fn, *args, **kwargs):
+		frappe.set_user(SCOPED_USER)
+		try:
+			return fn(*args, **kwargs)
+		finally:
+			frappe.set_user("Administrator")
+
+	# --- branch -----------------------------------------------------------
+	def test_the_other_branchs_work_is_not_counted_and_not_listed(self):
+		"""Satu order di tiap branch. Yang dipegang penggunanya satu — di angkanya maupun di
+		daftarnya."""
+		mine = self._cleaning("HSCP0000001", DEPOT_A)
+		theirs = self._cleaning("HSCP0000002", DEPOT_B)
+
+		self.assertEqual(self._summary("cleaning")["cleaning_open"], 1)
+		worklist = self._as_scoped(cleaning.list_open_cleaning_orders, page_length=0)
+		self.assertEqual({r["name"] for r in worklist["items"]}, {mine})
+		self.assertNotIn(theirs, {r["name"] for r in worklist["items"]})
+
+	def test_a_second_branch_on_the_account_adds_its_work(self):
+		""""Kecuali di-assign keduanya" — itu isi tabel Branch di User, bukan aturan lain."""
+		self._cleaning("HSCP0000003", DEPOT_A)
+		self._cleaning("HSCP0000004", DEPOT_B)
+		self.assertEqual(self._summary("cleaning")["cleaning_open"], 1)
+
+		user = frappe.get_doc("User", SCOPED_USER)
+		user.set("branch", [{"branch": BRANCH_A}, {"branch": BRANCH_B}])
+		user.save(ignore_permissions=True)
+		try:
+			self.assertEqual(self._summary("cleaning")["cleaning_open"], 2)
+		finally:
+			user.set("branch", [{"branch": BRANCH_A}])
+			user.save(ignore_permissions=True)
+
+	# --- angka vs isi -----------------------------------------------------
+	def test_the_eir_tile_and_the_eir_worklist_agree(self):
+		"""Termasuk EIR yang sudah ditekan "Mulai" oleh orang lain: sejak pagar klaim dicabut
+		ia tetap di daftar semua orang, jadi kartunya pun tidak boleh menghitung lebih."""
+		self._eir("HSCP0000010", DEPOT_A)
+		started = self._eir("HSCP0000011", DEPOT_A)
+		frappe.db.set_value(
+			"Inspection", started,
+			{"work_started_by": "Administrator", "work_started_on": now_datetime()},
+			update_modified=False,
+		)
+		self._eir("HSCP0000012", DEPOT_B)  # branch lain — tidak masuk dua-duanya
+
+		self.assertEqual(
+			self._summary("eirOpen")["eir_open"],
+			self._as_scoped(eir.list_pending_eirs, page_length=1)["total"],
+		)
+		self.assertEqual(self._summary("eirOpen")["eir_open"], 2)
+
+	def test_the_review_tile_counts_eir_out_too(self):
+		"""Kartunya membuka daftar "Diajukan Review", dan daftar itu berisi In + Out."""
+		self._eir("HSCP0000020", DEPOT_A, status="Pending Review")
+		self._eir("HSCP0000021", DEPOT_A, inspection_type="EIR-Out", status="Pending Review")
+		self._eir("HSCP0000022", DEPOT_B, status="Pending Review")
+
+		self.assertEqual(
+			self._summary("eirReview")["eir_review"],
+			self._as_scoped(eir.list_review_eirs, page_length=1)["total"],
+		)
+		self.assertEqual(self._summary("eirReview")["eir_review"], 2)
+
+	def test_the_mr_tile_and_its_worklist_agree(self):
+		container = self._container("HSCP0000030", DEPOT_A)
+		frappe.get_doc({
+			"doctype": "Repair Order", "container": container, "status": "In Progress",
+			"billing_status": "Unbilled", "started_by": "Administrator",
+		}).insert(ignore_permissions=True)
+		other = self._container("HSCP0000031", DEPOT_B)
+		frappe.get_doc({
+			"doctype": "Repair Order", "container": other, "status": "In Progress",
+			"billing_status": "Unbilled",
+		}).insert(ignore_permissions=True)
+
+		self.assertEqual(
+			self._summary("mr")["mr_open"],
+			self._as_scoped(mr.list_open_mr_orders, page_length=1)["total"],
+		)
+		self.assertEqual(self._summary("mr")["mr_open"], 1)

@@ -272,6 +272,18 @@
 										<span class="oak-chip shrink-0" :class="progressChip(r).tone">{{ progressChip(r).label }}</span>
 										<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
 									</p>
+									<!-- Siapa yang sudah di dalamnya. EIR yang sudah ditekan "Mulai"
+									     tetap ada di daftar semua orang (dulu ia hilang dari daftar
+									     rekan), jadi baris inilah yang membedakan "boleh dilanjutkan
+									     bergantian" dari "dua orang mengisi tangki yang sama tanpa
+									     saling tahu". -->
+									<p
+										v-if="r.started_by_name"
+										class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400"
+									>
+										<Icon name="user" :size="11" class="shrink-0" />
+										{{ labels.eirWorkedBy.replace("{name}", r.started_by_name) }}
+									</p>
 								</div>
 							</button>
 						</li>

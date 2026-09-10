@@ -361,6 +361,12 @@ export const labels = {
 	eirStartHint: "Tekan mulai untuk membuka checklist. Waktu pengerjaan mulai dihitung dari sini.",
 	eirStartBtn: "Mulai", // start button
 	eirStartedAt: "Dimulai", // started-at label
+	// Baris "siapa yang sedang memegang" di worklist. Order yang sudah dimulai tidak lagi
+	// hilang dari daftar rekan (pagar klaim dicabut 2026-09-10), jadi namanya yang bekerja.
+	eirWorkedBy: "Dikerjakan {name}", // "Dikerjakan Budi Santoso"
+	// Baris "terakhir diubah orang lain" di atas form (components/EditedBy.vue). Muncul hanya
+	// kalau yang menyentuhnya terakhir BUKAN pemakai layar ini.
+	orderEditedBy: "Diubah terakhir oleh {name}",
 	eirBadgeIn: "Masuk", // EIR-In badge
 	eirBadgeOut: "Keluar", // EIR-Out badge
 	eirBadge: "EIR", // queue navigator counter prefix ("EIR 2 / 5")

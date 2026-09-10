@@ -12,6 +12,10 @@
 			@back="emit('back')"
 		/>
 
+		<!-- Rekan yang menyentuhnya terakhir. Di atas isian, bukan di bawahnya: yang perlu
+		     dibaca sebelum menimpa sesuatu tidak boleh berada di ujung gulungan. -->
+		<EditedBy :by="header?.updated_by" :name="header?.updated_by_name" :at="header?.updated_on" />
+
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
 		<!-- Until the EIR loads there was nothing here at all: a back button, an empty title,
@@ -379,7 +383,6 @@ import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
-import { isClaimed } from "@/utils/claim"
 import { groupByCompartment } from "@/utils/fittings"
 import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
@@ -391,6 +394,7 @@ import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import EirFormHeader from "@/components/EirFormHeader.vue"
+import EditedBy from "@/components/EditedBy.vue"
 import TankFittings from "@/components/TankFittings.vue"
 import {
 	batch,
@@ -634,9 +638,6 @@ const openRes = cachedResource({
 	},
 	onError(err) {
 		toast.error(err?.messages?.[0] || err?.message || labels.error)
-		// Sudah dipegang rekan lain (biasanya dari tautan notifikasi): pulangkan ke worklist,
-		// form ini tidak akan bisa disimpan. Lihat EirInForm.vue.
-		if (isClaimed(err)) emit("back")
 	},
 })
 const fetchError = computed(() => (openRes.error ? openRes.error.messages?.[0] || openRes.error.message : null))

@@ -18,7 +18,6 @@ from frappe import _
 from frappe.utils import cint, now_datetime, today
 
 from container_depot.container_depot.exceptions import AlreadySettled
-from container_depot.container_depot.work_claim import filter_claimed, guard_claim
 from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
@@ -91,6 +90,36 @@ def cargo_history(container, limit=4) -> list:
 	return history
 
 
+def _fullname(user) -> str | None:
+	"""Nama yang enak dibaca, jatuh ke login-nya; ``None`` tetap ``None`` supaya klien bisa
+	menyembunyikan barisnya, bukan mencetak nama berbentuk kosong."""
+	if not user:
+		return None
+	return frappe.db.get_value("User", user, "full_name") or user
+
+
+def _attach_washer_names(items) -> None:
+	"""Stamp ``assigned_to_name`` — siapa yang sudah mencuci tangki ini.
+
+	Sejak pagar klaim dicabut (2026-09-10) cucian yang sudah dimulai tetap ada di worklist
+	semua orang. Itu memang yang diminta, tapi barisnya jadi harus menyebut namanya — kalau
+	tidak, "sedang dikerjakan" tidak memberi tahu OLEH SIAPA, dan orang kedua masuk ke form
+	yang sama tanpa tahu. Satu lookup User untuk sehalaman.
+	"""
+	emails = {i.get("assigned_to") for i in items if i.get("assigned_to")}
+	if not emails:
+		return
+	names = {
+		u.name: (u.full_name or u.name)
+		for u in frappe.get_all(
+			"User", filters={"name": ["in", list(emails)]}, fields=["name", "full_name"]
+		)
+	}
+	for i in items:
+		if i.get("assigned_to"):
+			i["assigned_to_name"] = names.get(i["assigned_to"], i["assigned_to"])
+
+
 def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 	"""Open Cleaning Orders (Pending / In_Progress) the cleaning team still has to
 	work — the PWA Cleaning menu's worklist. Depot-scoped to the caller's branch."""
@@ -110,8 +139,8 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		or_filters=or_filters,
 		# container_principal: the tank OWNER, shown next to the container number in the
 		# worklist — two tanks in the queue are told apart by whose they are.
-		# assigned_to: who pressed "Mulai". Not shown on the row — it is what hides an order
-		# already being washed from everyone else's worklist (see work_claim).
+		# assigned_to: who pressed "Mulai" — the wash stays on everyone's worklist, and this
+		# is what the row says about who is on it.
 		fields=["name", "order_id", "container", "container_no", "container_principal", "status",
 			"cleaning_type", "last_cargo", "depot", "target_lift_on", "target_survey_on",
 			"target_urgent_on",
@@ -119,11 +148,11 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		order_by="order_created asc",
 		limit_page_length=0,
 	)
-	items = filter_claimed(items, "assigned_to")
 	total = len(items)
 	# Gate-out priority, then the wash already in this operator's hands, then the rest —
 	# see ``worklist.sort_by_priority`` for why that order.
 	items = sort_by_priority(items, lambda r: r.get("status") == "In_Progress", start, page_length)
+	_attach_washer_names(items)
 	# Number of chosen cleaning services per order (NOT the price — hidden from the depot PWA).
 	names = [i.name for i in items]
 	if names:
@@ -187,10 +216,9 @@ def start_cleaning(cleaning_order):
 			exc=AlreadySettled,
 		)
 	_guard_container_branch(co.container)
-	# First press wins — see work_claim.
-	claim = frappe.db.get_value("Cleaning Order", co.name, ["assigned_to", "order_id"], as_dict=True)
-	guard_claim(claim.assigned_to, _("Cleaning Order {0}").format(claim.order_id or co.name))
-
+	# Idempotent, and shared: a colleague pressing Mulai on a wash that is already running
+	# joins it. The first press keeps `assigned_to` and `cleaning_start` — who opened it and
+	# how long it took are facts about the wash, not a lock on it.
 	if co.status != "In_Progress":
 		# doc.save() and not db.set_value: Cleaning Order tracks changes, and only the
 		# document path writes the Version row that puts "Mulai" on the order's timeline.
@@ -411,11 +439,6 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 	defaults."""
 	co = frappe.get_doc("Cleaning Order", cleaning_order)
 	_guard_container_branch(co.container)
-	# Only while the washing is actually running: a notification tap must not drop a second
-	# operator into a form somebody else is filling in. Once it is sent for review or closed
-	# the claim is over and the Riwayat detail stays readable to the whole branch.
-	if co.status == "In_Progress":
-		guard_claim(co.assigned_to, _("Cleaning Order {0}").format(co.order_id or co.name))
 	c = frappe.db.get_value("Container", co.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
 	user = frappe.session.user
 	return {
@@ -445,8 +468,16 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"remarks": co.remarks or "",
 		# Who worked it and when — the Riwayat detail is the record of the job, so it shows
 		# the same facts the Desk form keeps under "Sistem".
+		# Siapa yang terakhir menyentuh order ini, dan kapan. Frappe sudah mencatatnya
+		# (``modified_by`` + baris Version) — yang belum ada adalah jalannya ke HP. Sejak satu
+		# order boleh dikerjakan bergantian (pagar klaim dicabut 2026-09-10) inilah cara
+		# operator kedua tahu bahwa isian yang muncul di layarnya bukan tulisannya sendiri.
+		"updated_on": co.modified,
+		"updated_by": co.modified_by,
+		"updated_by_name": _fullname(co.modified_by),
 		"depot": co.depot,
 		"assigned_to": co.assigned_to,
+		"assigned_to_name": _fullname(co.assigned_to),
 		"completed_by": co.completed_by,
 		"cleaning_start": co.cleaning_start,
 		"cleaning_end": co.cleaning_end,
@@ -520,10 +551,6 @@ def save_cleaning_order(
 			_("Cleaning Order sudah dikirim untuk review Admin Ops."), exc=AlreadySettled
 		)
 	_guard_container_branch(co.container)
-	# The operator who started it owns the form until it leaves for review — an autosave that
-	# only reaches the server later (offline queue) is checked here too.
-	if co.status == "In_Progress":
-		guard_claim(co.assigned_to, _("Cleaning Order {0}").format(co.order_id or co.name))
 
 	# "Metode Cleaning" is now one OR MORE billable Service items (each priced from the
 	# owner's Price List); the controller resolves every row's rate + the total. The legacy

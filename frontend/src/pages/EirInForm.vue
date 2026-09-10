@@ -12,6 +12,10 @@
 			@back="emit('back')"
 		/>
 
+		<!-- Rekan yang menyentuhnya terakhir. Di atas isian, bukan di bawahnya: yang perlu
+		     dibaca sebelum menimpa sesuatu tidak boleh berada di ujung gulungan. -->
+		<EditedBy :by="header?.updated_by" :name="header?.updated_by_name" :at="header?.updated_on" />
+
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
 		<!-- Until the EIR loads there was nothing here at all: a back button, an empty title,
@@ -411,7 +415,6 @@ import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
-import { claimMessage, isClaimed } from "@/utils/claim"
 import { confirm } from "@/utils/confirm"
 import { shootOrFallback } from "@/utils/camera"
 import { openLightbox } from "@/utils/lightbox"
@@ -422,6 +425,7 @@ import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import EirFormHeader from "@/components/EirFormHeader.vue"
+import EditedBy from "@/components/EditedBy.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
 import TankFittings from "@/components/TankFittings.vue"
@@ -733,14 +737,6 @@ const openRes = cachedResource({
 				nextTick(() => {
 				suppressSave.value = false
 			})
-	},
-	// Rekan lain sudah menekan "Mulai" di tangki ini — tautan notifikasi masih bisa
-	// mendaratkan kita di sini. Sebut siapa yang memegangnya lalu kembali ke worklist,
-	// daripada memperlihatkan form yang pasti ditolak server waktu autosave.
-	onError(err) {
-		if (!isClaimed(err)) return
-		toast.error(claimMessage(err))
-		emit("back")
 	},
 })
 
