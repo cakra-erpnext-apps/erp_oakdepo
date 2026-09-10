@@ -46,6 +46,8 @@ There is no interval to claim, and the status check already makes a second press
 
 from __future__ import annotations
 
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import cint, get_first_day, get_last_day, getdate, now_datetime, today
@@ -453,6 +455,7 @@ def _filter_value(value):
 
 
 def list_all_survey_orders(status=None, from_date=None, to_date=None, search=None,
+						   principal=None, active_only=0, sort=None,
 						   start=0, page_length=20) -> dict:
 	"""Every Survey Order, filterable — the standalone Jadwal Survey list.
 
@@ -477,6 +480,14 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 	to_date = _filter_value(to_date)
 	if status and status in SCHEDULE_STATUSES:
 		filters["status"] = status
+	elif cint(active_only):
+		# "Aktif saja" hanya berlaku kalau tidak ada status yang dipilih: pilihan yang jelas
+		# mengalahkan saringan yang umum, kalau tidak menekan "Selesai" akan mengembalikan
+		# daftar kosong tanpa penjelasan.
+		filters["status"] = ["in", [SCHEDULED, IN_PROGRESS]]
+	principal = _filter_value(principal)
+	if principal:
+		filters["principal"] = principal
 	if from_date:
 		filters["survey_date"] = [">=", str(getdate(from_date))]
 	if to_date:
@@ -517,13 +528,22 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 			"per_surveyed", "container_summary", "docstatus",
 		],
 		# Newest day first: a list is browsed backwards from now, unlike the calendar which is
-		# read forwards from a date the user picked.
-		order_by="survey_date desc, creation desc",
+		# read forwards from a date the user picked. `sort=due` membaliknya jadi tenggat
+		# terdekat duluan — itu yang dicari orang yang membuka daftar ini untuk BEKERJA, bukan
+		# untuk mencari jadwal yang sudah lewat.
+		order_by=(
+			"survey_date asc, creation asc"
+			if _filter_value(sort) == "due"
+			else "survey_date desc, creation desc"
+		),
 		limit_start=cint(start),
 		limit_page_length=cint(page_length),
 	)
 	for it in items:
 		it["waiting_count"] = max((it.get("tank_count") or 0) - (it.get("lowered_count") or 0), 0)
+		# Mendesak dihitung sebelum tanggalnya jadi string: `_is_urgent` membaca tanggal.
+		it["days_to"] = _days_to(it)
+		it["urgent"] = _is_urgent(it, URGENT_SURVEY_DAYS) and it.get("status") in (SCHEDULED, IN_PROGRESS)
 		for k in ("survey_date", "plan_date", "target_urgent_on"):
 			it[k] = str(it[k]) if it.get(k) else None
 
@@ -537,7 +557,13 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 	else:
 		total = frappe.db.count(SCHEDULE, filters)
 
-	return {"items": items, "total": total, "counts": _status_counts()}
+	# Prinsipal yang benar-benar punya jadwal di cakupan ini — pilihan untuk chip filter.
+	# Dikirim bersama daftarnya, bukan endpoint tersendiri: satu-satunya layar yang memakainya
+	# adalah layar ini, dan sebuah permintaan kedua di sinyal yard adalah jeda yang terasa.
+	principals = sorted({
+		p for p in frappe.get_all(SCHEDULE, filters=_depot_filter({}), pluck="principal", distinct=True) if p
+	})
+	return {"items": items, "total": total, "counts": _status_counts(), "principals": principals}
 
 
 def _status_counts() -> dict:
@@ -550,12 +576,20 @@ def _status_counts() -> dict:
 	# One column, tallied in Python: `frappe.get_all` refuses a `count(...)` string in SELECT,
 	# and a schedule table is small enough that a raw-SQL detour would buy nothing.
 	rows = frappe.get_all(
-		SCHEDULE, filters=_depot_filter({}), fields=["status"], limit_page_length=0
+		SCHEDULE,
+		filters=_depot_filter({}),
+		fields=["status", "survey_date", "plan_date", "target_urgent_on"],
+		limit_page_length=0,
 	)
-	counts: dict = {}
+	counts: dict = {"all": len(rows), "urgent": 0}
 	for r in rows:
 		if r.status:
 			counts[r.status] = counts.get(r.status, 0) + 1
+		# Mendesak menghitung yang masih AKTIF saja. Sebuah jadwal yang sudah selesai kemarin
+		# tetap "H-1" menurut tanggalnya, dan menghitungnya berarti pil Mendesak menunjuk ke
+		# pekerjaan yang sudah tidak ada.
+		if r.status in (SCHEDULED, IN_PROGRESS) and _is_urgent(r, URGENT_SURVEY_DAYS):
+			counts["urgent"] += 1
 	return counts
 
 
@@ -685,7 +719,7 @@ def get_tank_detail(name: str) -> dict:
 	row = frappe.db.get_value(
 		ROW, name,
 		["name", "parent", "container", "container_no", "status", "depot", "target_lift_on",
-		 "target_survey_on", "target_urgent_on",
+		 "target_survey_on", "target_urgent_on", "creation",
 		 "lowered_by", "lowered_on", "lowering_note", "surveyed_by", "surveyed_on",
 		 "survey_notes", "eir_out", "reopen_note"],
 		as_dict=True,
@@ -716,6 +750,11 @@ def get_tank_detail(name: str) -> dict:
 		limit_page_length=1,
 	)
 	out["position_photos"] = _attach_photos(latest)[0]["photos"] if latest else []
+	# Seberapa mendesak, dalam kata yang sama dengan papan pembukanya — supaya spanduk merah
+	# "pickup besok" di layar ini dan bagian "Mendesak" di daftar tidak pernah berselisih.
+	out["days_to"] = _days_to(out)
+	out["urgent"] = _is_urgent(out, URGENT_LOWERING_DAYS)
+	out["timeline"] = tank_timeline(out)
 	return out
 
 
@@ -784,10 +823,16 @@ def mark_lowered(name, location_note=None, note=None, photos=None) -> dict:
 
 	row = _open_row(name, (WAITING, LOWERED), "write")
 	location_note = (str(location_note).strip() if location_note is not None else "")
-	if not location_note and not frappe.db.get_value("Container", row.container, "current_location"):
+	current = frappe.db.get_value("Container", row.container, "current_location")
+	if not location_note and not current:
 		frappe.throw(_("Tank ini belum pernah didata letaknya — isi letaknya sekalian."))
-	if location_note:
-		record_position(row.container, location_note, notes=note, photos=photos)
+	# Foto tanpa letak baru TETAP menghasilkan satu bacaan posisi, memakai letak yang berlaku
+	# sekarang. Tanpa ini foto yang baru saja diambil operator hilang tanpa pesan apa pun —
+	# tidak ada tempat lain di app ini yang menyimpan gambar tank berdiri di tumpukannya. Dan
+	# ia memang bacaan yang sah: seseorang baru saja berdiri di sana dan melihatnya, jadi umur
+	# catatan letaknya pantas ikut segar.
+	if location_note or photos:
+		record_position(row.container, location_note or current, notes=note, photos=photos)
 
 	if row.status == WAITING:
 		_write(name, {
@@ -970,3 +1015,210 @@ def reopen_survey(name, note=None) -> dict:
 		{"surveyed_by": None, "surveyed_on": None},
 		note, _("Survey"), notify_position_lowered,
 	)
+
+
+# ---------------------------------------------------------------------------
+# Papan kerja — lowering & survey dalam SATU alur
+# ---------------------------------------------------------------------------
+# Sejak kedua menu jadi satu alur, dua layar pembukanya menjawab pertanyaan yang bentuknya
+# sama: "apa yang harus saya kerjakan lebih dulu". Ambang di bawah ini yang memisahkan
+# "nanti" dari "hari ini", dan keduanya berbeda karena pekerjaannya berbeda: menurunkan tank
+# butuh reach stacker yang mungkin sedang dipakai (jadi dua hari sudah mepet), sementara satu
+# jadwal survey harus disiapkan berhari-hari sebelumnya.
+URGENT_LOWERING_DAYS = 2
+URGENT_SURVEY_DAYS = 8
+
+
+def _days_to(row) -> int | None:
+	"""Berapa hari lagi sampai tenggat baris ini — negatif kalau sudah lewat.
+
+	Tenggatnya milik ``worklist.priority_date`` (hari survey, jatuh ke hari pickup), sama
+	dengan yang dipakai semua worklist mengurut. Satu definisi: daftar yang diurut memakai
+	satu tanggal sementara tiap barisnya menampilkan tanggal lain lebih buruk dari keduanya.
+	"""
+	from container_depot.container_depot.worklist import priority_date
+
+	# Dua bentuk baris memakai fungsi yang sama: baris TANK menyimpan tenggatnya sebagai
+	# stempel `target_*` (ditanam lift_on supaya worklist tidak perlu join balik ke booking),
+	# sementara JADWAL-nya memegang tanggalnya sendiri. Menuliskan aturannya dua kali adalah
+	# cara termudah membuat spanduk "H-2" di satu layar berselisih dengan yang di layar lain.
+	due = priority_date(row) or row.get("survey_date") or row.get("plan_date")
+	if not due:
+		return None
+	return (getdate(due) - getdate()).days
+
+
+def _is_urgent(row, within) -> bool:
+	"""Mendesak = sudah DINYATAKAN mendesak, atau tenggatnya tinggal ``within`` hari.
+
+	Keduanya, bukan salah satu. ``target_urgent_on`` adalah tier tersendiri milik
+	``worklist`` — sebuah pernyataan dari orang yang berwenang, bukan turunan tanggal — dan
+	membuangnya di sini akan membuat tank yang sengaja diangkat ke atas justru tenggelam.
+	Sebaliknya, tenggat lusa tetap mendesak walau tidak ada yang sempat menyatakannya.
+	"""
+	from container_depot.container_depot.worklist import urgent_date
+
+	if urgent_date(row):
+		return True
+	days = _days_to(row)
+	return days is not None and days <= within
+
+
+def _mark_urgency(rows, within) -> list:
+	"""Tempelkan ``urgent`` + ``days_to`` ke tiap baris, sekali, untuk dibaca layar."""
+	for r in rows:
+		r["days_to"] = _days_to(r)
+		r["urgent"] = _is_urgent(r, within)
+	return rows
+
+
+def lowering_board(limit=8, group=None) -> dict:
+	"""Papan Lowering: empat angka + tiga daftar, satu layar pembuka untuk operator Kalmar.
+
+	Yang dijawab bukan "di mana tank X" melainkan "mana yang harus diturunkan lebih dulu".
+	Tiga daftarnya:
+
+	* MENDESAK — tenggatnya tinggal dua hari atau sudah dinyatakan mendesak. Ini yang membuat
+	  layar ini berguna: sebuah antrean yang mengurut apa adanya menyembunyikan tank yang
+	  truknya datang besok di tengah dua puluh tank yang truknya bulan depan.
+	* MENUNGGU LOWERING — sisanya, urut prioritas yang sama dengan worklist lain.
+	* LOWERED HARI INI — bukan pekerjaan, melainkan bukti bahwa shift ini menghasilkan
+	  sesuatu; tanpanya operator yang sudah menurunkan lima tank melihat layar yang tampak
+	  sama saja.
+
+	``group`` (``urgent`` / ``waiting`` / ``lowered``) = satu angka ditekan: hanya daftar itu
+	yang dikirim, dan utuh — pil yang menjanjikan tiga puluh lalu menampilkan delapan adalah
+	pil yang berbohong.
+	"""
+	limit = cint(limit) or 8
+	group = (group or "").strip().lower()
+	if group in ("", "all", "undefined", "null", "none"):
+		group = None
+	elif group not in ("urgent", "waiting", "lowered"):
+		frappe.throw(_("Filter tidak dikenal: {0}").format(group))
+	page = 300 if group else limit
+
+	waiting = _list_rows(WAITING, page_length=0)["items"]
+	_mark_urgency(waiting, URGENT_LOWERING_DAYS)
+	urgent = [r for r in waiting if r["urgent"]]
+	rest = [r for r in waiting if not r["urgent"]]
+
+	# "Lowered hari ini" dibaca dari stempel jamnya, bukan dari status: tank yang sudah lanjut
+	# ke Survey Done hari ini tetap diturunkan hari ini, dan menghapusnya dari daftar ini akan
+	# membuat angka shift menyusut justru ketika pekerjaannya paling maju.
+	today_str = str(getdate())
+	done_rows = frappe.get_all(
+		ROW,
+		filters=_depot_filter({
+			"parenttype": SCHEDULE,
+			"status": ["in", [LOWERED, DONE]],
+			"lowered_on": [">=", today_str],
+		}),
+		fields=["name", "parent", "container", "container_no", "status", "depot",
+				"target_lift_on", "target_survey_on", "target_urgent_on",
+				"lowered_by", "lowered_on", "creation"],
+		order_by="lowered_on desc",
+		limit_page_length=0,
+	)
+	for r in done_rows:
+		r["lowered_on"] = str(r["lowered_on"]) if r.get("lowered_on") else None
+
+	counts = {
+		"all": len(urgent) + len(rest) + len(done_rows),
+		"urgent": len(urgent),
+		"waiting": len(rest),
+		"lowered": len(done_rows),
+	}
+	return {
+		"success": True,
+		"group": group,
+		"counts": counts,
+		# `_list_rows` sudah menempelkan letak tank ke kedua daftar pertama; barisan
+		# "lowered hari ini" datang dari kueri sendiri, jadi hanya ia yang perlu.
+		"urgent": urgent[:page] if group in (None, "urgent") else [],
+		"waiting": rest[:page] if group in (None, "waiting") else [],
+		"lowered": _attach_positions(done_rows[: page if group == "lowered" else limit])
+		if group in (None, "lowered") else [],
+		"urgent_days": URGENT_LOWERING_DAYS,
+	}
+
+
+def mark_lowered_many(names=None, note=None, photos=None) -> dict:
+	"""Tandai beberapa tank lowered sekaligus — satu jadwal biasanya diturunkan berbarengan.
+
+	Tetap satu pencatatan per tank (``mark_lowered`` yang sama, satu per satu): riwayat tiap
+	tank harus berdiri sendiri, karena besok salah satunya bisa dikembalikan ke lowering
+	sendirian dan riwayat gabungan tidak bisa menjelaskan yang mana.
+
+	Gagal di tengah TIDAK membatalkan yang sudah tercatat. Yang paling mungkin gagal adalah
+	tank yang letaknya belum pernah didata (``mark_lowered`` menolaknya), dan membuang empat
+	pencatatan yang benar karena tank kelima belum punya letak berarti membuang pekerjaan
+	yang sudah dilakukan — operatornya sudah naik reach stacker lagi.
+	"""
+	if isinstance(names, str):
+		try:
+			names = json.loads(names)
+		except json.JSONDecodeError:
+			frappe.throw(_("names harus berupa array JSON."))
+	names = [n for n in (names or []) if n]
+	if not names:
+		frappe.throw(_("Pilih dulu tank-nya."))
+	if len(names) > 50:
+		frappe.throw(_("Maksimal 50 tank sekali tandai."))
+
+	done, failed = [], []
+	for name in dict.fromkeys(names):
+		try:
+			done.append(mark_lowered(name, note=note, photos=photos))
+		except Exception as e:
+			frappe.clear_last_message()
+			failed.append({"name": name, "error": str(e)})
+	return {"success": bool(done), "done": done, "failed": failed}
+
+
+def tank_timeline(row) -> list:
+	"""Riwayat satu baris tank, dirakit dari stempel yang sudah ada di barisnya sendiri.
+
+	Tidak ada tabel riwayat tersendiri, dan memang tidak perlu: tiap langkah alur ini menulis
+	stempel siapa + kapan di baris tank (``lowered_on``/``surveyed_on``/``reopen_note``), jadi
+	riwayatnya adalah pembacaan ulang stempel itu — bukan salinan kedua yang bisa berselisih
+	dengan yang pertama.
+
+	Terbaru di atas, karena yang paling sering ditanya adalah "barusan siapa yang menyentuh
+	ini".
+	"""
+	events = []
+	if row.get("creation"):
+		events.append({
+			"key": "scheduled",
+			"at": str(row["creation"]),
+			"by": None,
+			"ref": (row.get("schedule") or {}).get("booking"),
+		})
+	if row.get("lowered_on"):
+		events.append({
+			"key": "lowered",
+			"at": str(row["lowered_on"]),
+			"by": row.get("lowered_by"),
+			"note": row.get("lowering_note"),
+		})
+	if row.get("surveyed_on"):
+		events.append({
+			"key": "surveyed",
+			"at": str(row["surveyed_on"]),
+			"by": row.get("surveyed_by"),
+			"note": row.get("survey_notes"),
+		})
+	if row.get("eir_out") and row.get("surveyed_on"):
+		events.append({
+			"key": "eir_out",
+			"at": str(row["surveyed_on"]),
+			"by": None,
+			"ref": row.get("eir_out"),
+		})
+	# Dikembalikan ke langkah sebelumnya: catatannya yang tersimpan, jamnya tidak — jadi ia
+	# ditaruh paling atas sebagai kejadian terakhir yang diketahui, bukan diberi jam palsu.
+	if row.get("reopen_note"):
+		events.append({"key": "reopened", "at": None, "by": None, "note": row["reopen_note"]})
+	events.sort(key=lambda e: e["at"] or "9999", reverse=True)
+	return events

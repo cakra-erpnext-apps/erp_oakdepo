@@ -176,6 +176,13 @@ const routes = [
 		meta: { menuKey: "posFix" },
 		component: () => import("@/pages/KalmarPositionFix.vue"),
 	},
+	{
+		// Tandai beberapa tank lowered sekaligus — satu jadwal biasanya diturunkan berbarengan.
+		path: "/position-fix/bulk",
+		name: "LoweringBulk",
+		meta: { menuKey: "posFix" },
+		component: () => import("@/pages/LoweringBulk.vue"),
+	},
 ]
 
 // Opt out of the scroll reset for one navigation. Eir's batch ◀ / ▶ swaps to the next EIR

@@ -57,6 +57,7 @@ def survey_orders(date=None, start=0, page_length=20):
 
 @frappe.whitelist(methods=["GET"])
 def survey_order_list(status=None, from_date=None, to_date=None, search=None,
+					  principal=None, active_only=0, sort=None,
 					  start=0, page_length=20):
 	"""GET /api/v1/ess/survey-order-list — the standalone Jadwal Survey list.
 
@@ -69,6 +70,7 @@ def survey_order_list(status=None, from_date=None, to_date=None, search=None,
 	require_menu("surveyList")
 	return tank_survey.list_all_survey_orders(
 		status=status, from_date=from_date, to_date=to_date, search=search,
+		principal=principal, active_only=active_only, sort=sort,
 		start=start, page_length=page_length,
 	)
 
@@ -163,3 +165,25 @@ def survey_reopen_survey(name=None, note=None, request_id=None):
 	(→ Lowered) because it was closed too early. The lowering is left alone."""
 	require_menu("surveyPos")
 	return guarded(request_id, lambda: tank_survey.reopen_survey(name, note=note))
+
+
+@frappe.whitelist(methods=["GET"])
+def lowering_board(limit=8, group=None):
+	"""GET /api/v1/ess/lowering-board — empat angka + tiga daftar layar pembuka Lowering.
+
+	``group`` (``urgent`` / ``waiting`` / ``lowered``) = satu angka ditekan: hanya daftar itu,
+	utuh. Menu yang sama dengan pencatatannya (``posFix``)."""
+	require_menu("posFix")
+	return tank_survey.lowering_board(limit=limit, group=group)
+
+
+@frappe.whitelist(methods=["POST"])
+def survey_lowered_many(names=None, note=None, photos=None, request_id=None):
+	"""POST /api/v1/ess/survey-lowered-many — tandai beberapa tank lowered sekaligus.
+
+	``request_id`` lebih penting di sini daripada versi satuannya: satu pengiriman ulang
+	menyentuh seluruh tank yang dipilih sekaligus."""
+	require_menu("posFix")
+	return guarded(request_id, lambda: tank_survey.mark_lowered_many(
+		names=names, note=note, photos=photos
+	))

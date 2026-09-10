@@ -943,3 +943,164 @@ class TestMenuGates(FrappeTestCase):
 				self._refused(self.OUTSIDER, fn)
 		self._refused(self.OUTSIDER, ess.survey_tank_detail, name=self.row)
 		self._refused(self.OUTSIDER, ess.survey_lowered, name=self.row)
+
+
+# ---------------------------------------------------------------------------
+class TestTheLoweringBoard(_Base):
+	"""Layar pembuka operator Kalmar. Yang dijawabnya bukan "di mana tank X" melainkan "mana
+	yang harus diturunkan lebih dulu"."""
+
+	def test_a_near_deadline_lands_in_mendesak(self):
+		soon = self._container("TSVBOARD0001")
+		later = self._container("TSVBOARD0002")
+		a = self._row(self._booking(soon, survey_date=add_days(today(), 1)))
+		b = self._row(self._booking(later, survey_date=add_days(today(), 20)))
+
+		board = ts.lowering_board()
+		self.assertIn(a, [r["name"] for r in board["urgent"]])
+		self.assertIn(b, [r["name"] for r in board["waiting"]])
+		# Kedua daftar memilah habis: sebuah baris tidak boleh muncul di keduanya, kalau tidak
+		# angka "Semua" menghitungnya dua kali.
+		self.assertNotIn(a, [r["name"] for r in board["waiting"]])
+
+	def test_declared_urgency_stays_urgent_however_far_the_date(self):
+		"""``target_urgent_on`` adalah tier tersendiri milik worklist — sebuah pernyataan dari
+		orang yang berwenang. Membuangnya di sini akan menenggelamkan tank yang justru sengaja
+		diangkat ke atas."""
+		c = self._container("TSVBOARD0003")
+		row = self._row(self._booking(c, survey_date=add_days(today(), 30)))
+		frappe.db.set_value(ROW, row, "target_urgent_on", add_days(today(), 30), update_modified=False)
+		self.assertIn(row, [r["name"] for r in ts.lowering_board()["urgent"]])
+
+	def test_lowered_today_is_read_from_the_stamp_not_the_status(self):
+		"""Tank yang sudah lanjut ke Survey Done hari ini tetap DITURUNKAN hari ini; menghapusnya
+		membuat angka shift menyusut justru ketika pekerjaannya paling maju."""
+		c = self._container("TSVBOARD0004")
+		row = self._row(self._booking(c))
+		ts.mark_lowered(row)
+		ts.finish_survey(row)
+		self.assertIn(row, [r["name"] for r in ts.lowering_board()["lowered"]])
+
+	def test_pressing_one_number_returns_only_that_list(self):
+		c = self._container("TSVBOARD0005")
+		row = self._row(self._booking(c, survey_date=add_days(today(), 1)))
+		res = ts.lowering_board(group="urgent")
+		self.assertIn(row, [r["name"] for r in res["urgent"]])
+		self.assertEqual(res["waiting"], [])
+		self.assertEqual(res["lowered"], [])
+		# Angkanya tetap lengkap: keempat pil harus tetap terbaca saat salah satunya aktif.
+		self.assertEqual(res["counts"]["all"], ts.lowering_board()["counts"]["all"])
+
+	def test_an_unknown_filter_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			ts.lowering_board(group="entahlah")
+
+
+# ---------------------------------------------------------------------------
+class TestMarkingSeveralLowered(_Base):
+	"""Satu jadwal biasanya diturunkan berbarengan — yang dihemat ketikannya, bukan catatannya."""
+
+	def test_each_tank_keeps_its_own_record(self):
+		a = self._container("TSVMANY00001")
+		b = self._container("TSVMANY00002")
+		rows = [self._row(self._booking(a)), self._row(self._booking(b))]
+		res = ts.mark_lowered_many(rows, note="diturunkan berbarengan pagi ini")
+
+		self.assertEqual(len(res["done"]), 2)
+		for name in rows:
+			# Riwayat tiap tank berdiri sendiri: besok salah satunya bisa dikembalikan ke
+			# lowering sendirian, dan riwayat gabungan tidak bisa menjelaskan yang mana.
+			self.assertEqual(frappe.db.get_value(ROW, name, "status"), ts.LOWERED)
+			self.assertTrue(frappe.db.get_value(ROW, name, "lowered_on"))
+
+	def test_a_tank_that_cannot_be_marked_does_not_take_the_others_down(self):
+		"""Yang paling mungkin gagal adalah tank yang letaknya belum pernah didata. Membuang
+		pencatatan yang benar karenanya berarti membuang pekerjaan yang sudah dilakukan —
+		operatornya sudah naik reach stacker lagi."""
+		ok = self._container("TSVMANY00003")
+		row = self._row(self._booking(ok))
+		res = ts.mark_lowered_many([row, "baris-yang-tidak-ada"])
+		self.assertEqual([d["name"] for d in res["done"]], [row])
+		self.assertEqual([f["name"] for f in res["failed"]], ["baris-yang-tidak-ada"])
+
+	def test_a_repeated_tank_is_marked_once(self):
+		c = self._container("TSVMANY00004")
+		row = self._row(self._booking(c))
+		self.assertEqual(len(ts.mark_lowered_many([row, row])["done"]), 1)
+
+
+# ---------------------------------------------------------------------------
+class TestLoweringPhotos(_Base):
+	def test_a_photo_without_a_new_place_still_lands(self):
+		"""Tidak ada tempat lain di app ini yang menyimpan gambar tank berdiri di tumpukannya,
+		jadi foto yang diambil operator tidak boleh hilang hanya karena letaknya tidak berubah."""
+		c = self._container("TSVPHOTO0001", located="blok kanan B9")
+		row = self._row(self._booking(c))
+		ts.mark_lowered(row, photos=["/files/lowering.jpg"])
+
+		reading = cp.get_container_position(c)["history"][0]
+		self.assertEqual(reading["photos"], ["/files/lowering.jpg"])
+		# Letaknya tidak berubah — yang segar adalah UMUR catatannya, karena memang baru
+		# dilihat orang.
+		self.assertEqual(frappe.db.get_value("Container", c, "current_location"), "blok kanan B9")
+
+
+# ---------------------------------------------------------------------------
+class TestTheTankTimeline(_Base):
+	"""Riwayat dirakit dari stempel yang sudah ada di baris tank — bukan salinan kedua yang
+	bisa berselisih dengan yang pertama."""
+
+	def test_every_step_leaves_its_mark(self):
+		c = self._container("TSVTL000001")
+		row = self._row(self._booking(c))
+		ts.mark_lowered(row)
+		ts.finish_survey(row)
+
+		keys = [e["key"] for e in ts.get_tank_detail(row)["timeline"]]
+		self.assertIn("scheduled", keys)
+		self.assertIn("lowered", keys)
+		self.assertIn("surveyed", keys)
+		# Terbaru di atas: yang paling sering ditanya adalah "barusan siapa yang menyentuh ini".
+		self.assertLess(keys.index("surveyed"), keys.index("scheduled"))
+
+	def test_a_reopen_says_why(self):
+		c = self._container("TSVTL000002")
+		row = self._row(self._booking(c))
+		ts.mark_lowered(row)
+		ts.reopen_lowering(row, note="tank belum benar-benar turun")
+		event = next(e for e in ts.get_tank_detail(row)["timeline"] if e["key"] == "reopened")
+		# `reopen_note` sudah berisi kalimat utuh beserta siapa yang mengembalikannya, jadi
+		# layar cukup menampilkannya apa adanya — alasannya ada di dalamnya.
+		self.assertIn("tank belum benar-benar turun", event["note"])
+
+
+# ---------------------------------------------------------------------------
+class TestTheListFilters(_Base):
+	def test_active_only_hides_what_is_finished(self):
+		c = self._container("TSVFILT00001")
+		bk = self._booking(c)
+		order = frappe.db.get_value(ROW, self._row(bk), "parent")
+		frappe.db.set_value(SCHEDULE, order, "status", ts.COMPLETED, update_modified=False)
+
+		names = [i["name"] for i in ts.list_all_survey_orders(active_only=1, page_length=100)["items"]]
+		self.assertNotIn(order, names)
+		# Pilihan status yang jelas mengalahkan saringan umum — kalau tidak, menekan "Selesai"
+		# mengembalikan daftar kosong tanpa penjelasan.
+		names = [i["name"] for i in ts.list_all_survey_orders(status=ts.COMPLETED, active_only=1, page_length=100)["items"]]
+		self.assertIn(order, names)
+
+	def test_due_sort_puts_the_nearest_first(self):
+		far = self._container("TSVFILT00002")
+		soon = self._container("TSVFILT00003")
+		a = frappe.db.get_value(ROW, self._row(self._booking(far, survey_date=add_days(today(), 20))), "parent")
+		b = frappe.db.get_value(ROW, self._row(self._booking(soon, survey_date=add_days(today(), 2))), "parent")
+
+		names = [i["name"] for i in ts.list_all_survey_orders(sort="due", page_length=100)["items"]]
+		self.assertLess(names.index(b), names.index(a))
+
+	def test_the_counts_name_what_is_urgent(self):
+		c = self._container("TSVFILT00004")
+		before = ts.list_all_survey_orders(page_length=1)["counts"]["urgent"]
+		self._booking(c, survey_date=add_days(today(), 1))
+		after = ts.list_all_survey_orders(page_length=1)["counts"]["urgent"]
+		self.assertEqual(after, before + 1)

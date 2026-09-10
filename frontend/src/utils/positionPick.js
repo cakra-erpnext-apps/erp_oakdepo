@@ -18,3 +18,18 @@ export function takePreselect() {
 	pending = []
 	return out
 }
+
+// Alur lowering memakai pola yang sama, dan sengaja memakai laci sendiri: dua layar yang
+// menitipkan barisnya ke satu variabel akan saling mencuri pilihan begitu keduanya pernah
+// dibuka dalam satu sesi.
+let pendingLowering = []
+
+export function setLoweringPreselect(rows) {
+	pendingLowering = Array.isArray(rows) ? [...rows] : []
+}
+
+export function takeLoweringPreselect() {
+	const out = pendingLowering
+	pendingLowering = []
+	return out
+}

@@ -1,15 +1,17 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<div class="flex items-center justify-between">
-			<div class="min-w-0">
-				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">
-					{{ labels.surveyOrderTitle }}
-				</h1>
-				<p v-if="order" class="truncate font-mono text-[11px] text-gray-500">{{ order.name }}</p>
-			</div>
-			<button class="oak-btn oak-btn-secondary shrink-0 px-3 py-2" @click="goBack">
-				<Icon name="arrow-left" :size="16" /> {{ labels.surveyPosBack }}
+		<div class="flex items-center gap-2">
+			<button
+				class="oak-press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500"
+				:aria-label="labels.surveyPosBack"
+				@click="goBack"
+			>
+				<Icon name="chevron-left" :size="22" />
 			</button>
+			<h1 class="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight text-gray-900">
+				{{ labels.svDetailTitle }}
+			</h1>
+			<span v-if="order" class="oak-chip shrink-0" :class="orderChipClass">{{ orderStatusLabel }}</span>
 		</div>
 
 		<SkeletonDetail v-if="pending" :cells="4" :sections="2" />
@@ -26,32 +28,34 @@
 		</section>
 
 		<template v-else-if="order">
-			<!-- The day's header: who the tanks belong to, who is surveying, when the truck
-			     comes. Everything a surveyor needs before walking out, and nothing else. -->
+			<!-- Kepala hari kerja: milik siapa tank-nya, siapa yang mensurvey, kapan truknya
+			     datang. Tiga tanggal itu berdampingan dalam satu baris karena ketiganya dibaca
+			     bersamaan — surveyor memutuskan berangkat hari ini atau besok dari selisihnya. -->
 			<section class="oak-card space-y-3 p-4">
-				<div class="flex items-start justify-between gap-2">
+				<div class="flex items-start justify-between gap-3">
 					<div class="min-w-0">
-						<p class="flex items-center gap-1.5 font-bold text-gray-900">
-							<Icon name="calendar" :size="15" class="text-brand-500" />
-							{{ fmtDate(order.survey_date) }}
+						<p class="truncate text-lg font-extrabold tracking-tight text-gray-900">
+							{{ order.principal || order.booking || order.name }}
 						</p>
-						<p class="truncate text-sm font-semibold text-gray-700">
-							{{ order.principal || order.booking }}
+						<p class="truncate text-xs text-gray-500">
+							{{ labels.svListHint }}<template v-if="order.booking"> · {{ order.booking }}</template>
 						</p>
 					</div>
-					<span class="oak-chip shrink-0" :class="orderChipClass">{{ orderStatusLabel }}</span>
+					<p class="shrink-0 font-mono text-[11px] text-gray-400">{{ order.name }}</p>
 				</div>
-				<div class="space-y-1 text-[13px] text-gray-600">
-					<p class="flex items-center gap-1.5">
-						<Icon name="user" :size="14" class="text-gray-400" />
-						<span class="text-gray-400">{{ labels.surveyOrderSurveyor }}:</span>
-						<span class="truncate font-semibold text-gray-800">{{ order.surveyor || "—" }}</span>
-					</p>
-					<p v-if="order.plan_date" class="flex items-center gap-1.5">
-						<Icon name="truck" :size="14" class="text-gray-400" />
-						<span class="text-gray-400">{{ labels.surveyOrderPickup }}:</span>
-						<span class="font-semibold text-gray-800">{{ fmtDate(order.plan_date) }}</span>
-					</p>
+				<div class="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
+					<div class="min-w-0">
+						<p class="text-[11px] text-gray-400">{{ labels.svScheduleDate }}</p>
+						<p class="truncate text-sm font-bold text-gray-900">{{ fmtDate(order.survey_date) }}</p>
+					</div>
+					<div class="min-w-0">
+						<p class="text-[11px] text-gray-400">{{ labels.svPickupDate }}</p>
+						<p class="truncate text-sm font-bold text-gray-900">{{ order.plan_date ? fmtDate(order.plan_date) : "—" }}</p>
+					</div>
+					<div class="min-w-0">
+						<p class="text-[11px] text-gray-400">{{ labels.svSurveyor }}</p>
+						<p class="truncate text-sm font-bold text-gray-900">{{ order.surveyor || "—" }}</p>
+					</div>
 				</div>
 			</section>
 
@@ -130,6 +134,29 @@
 					</li>
 				</ul>
 			</section>
+
+			<!-- Berapa yang sudah bisa dikerjakan surveyor, dan syarat menutup harinya. Tanpa
+			     kalimat kedua, sebuah hari dengan satu tank siap terbaca seolah surveynya sudah
+			     bisa ditutup. -->
+			<div v-if="readyCount" class="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+				<Icon name="info" :size="16" class="mt-0.5 shrink-0 text-amber-600" />
+				<div class="min-w-0">
+					<p class="text-xs font-bold text-amber-900">{{ fill(labels.svReadyNote, { n: readyCount }) }}</p>
+					<p class="mt-0.5 text-[11px] text-amber-800">{{ labels.svReadyNoteHint }}</p>
+				</div>
+			</div>
+
+			<!-- Satu tombol ke pekerjaan berikutnya: tank yang paling siap disentuh. Sebuah
+			     daftar yang setiap barisnya bisa ditekan tetap butuh ini di HP — jempol ada di
+			     bawah layar, daftarnya di atas. -->
+			<div v-if="nextTank" class="oak-footer">
+				<router-link
+					:to="`/survey-orders/tank/${nextTank.name}`"
+					class="oak-btn oak-btn-primary min-h-[52px] w-full text-base"
+				>
+					{{ fill(labels.svOpenTank, { no: nextTank.container_no || nextTank.container }) }}
+				</router-link>
+			</div>
 		</template>
 	</div>
 </template>
@@ -147,6 +174,10 @@ const route = useRoute()
 const router = useRouter()
 
 const order = ref(null)
+
+function fill(tpl, vars) {
+	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
+}
 const pending = ref(true)
 const failed = ref(false)
 const error = ref("")
@@ -197,6 +228,22 @@ const orderChipClass = computed(() => {
 		Cancelled: "bg-red-100 text-red-700",
 	}
 	return map[order.value?.status] || "bg-gray-100 text-gray-600"
+})
+
+// Berapa tank yang sudah di bawah dan menunggu surveyor.
+const readyCount = computed(
+	() => (order.value?.tanks || []).filter((t) => t.status === "Lowered").length
+)
+// Tank berikutnya yang pantas dibuka: yang sudah siap disurvey lebih dulu, kalau tidak ada
+// yang masih menunggu diturunkan. Bukan sekadar baris pertama — urutan daftar mengikuti
+// jadwal, sementara tombol ini mengikuti pekerjaan.
+const nextTank = computed(() => {
+	const tanks = order.value?.tanks || []
+	return (
+		tanks.find((t) => t.status === "Lowered") ||
+		tanks.find((t) => t.status === "Waiting Lowering") ||
+		null
+	)
 })
 
 function goBack() {
