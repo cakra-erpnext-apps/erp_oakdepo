@@ -1,6 +1,8 @@
-"""ESS PWA read endpoints — Feature F1 (Tank Inventory & Live Status).
+"""ESS PWA tank-master endpoints — Feature F1 (Tank Inventory & Live Status).
 
-All endpoints are GET, authenticated (Guest rejected via the shared
+Read-only but for one POST (:func:`set_tank_last_test`, the tank's last test date — the
+one fact about the tank itself the PWA may correct from an order screen). The rest are
+GET, authenticated (Guest rejected via the shared
 ``_require_authenticated_user`` guard), and **permission-aware**: container
 reads go through ``frappe.get_list`` / ``frappe.has_permission``, so the
 Custom DocPerm matrix seeded by ``install.py`` *and* any ``User Permission``
@@ -21,7 +23,7 @@ import frappe
 from frappe.utils import add_to_date, cint, date_diff, getdate, today
 
 from container_depot.api import _require_authenticated_user
-from container_depot.ess.guard import require_menu
+from container_depot.ess.guard import require_any_menu, require_menu
 from container_depot.container_depot import container_activity, container_status
 from container_depot.container_depot.user_branch import get_user_depots
 
@@ -686,6 +688,24 @@ def _count_active_job_containers(allowed) -> int:
 		)
 	containers.discard(None)
 	return len(containers)
+
+
+@frappe.whitelist(methods=["POST"])
+def set_tank_last_test(container=None, last_test_date=None):
+	"""Tulis tanggal uji terakhir tank dari layar order mana pun.
+
+	POST /api/v1/ess/tank-last-test
+
+	Dibuka untuk keempat menu yang benar-benar berdiri di depan tank — EIR, Cleaning, M&R,
+	Monitor — karena uji di vendor atau depo lain diketahui oleh siapa pun yang memegang
+	kertasnya, dan menutupnya ke satu menu berarti nilai itu tetap kosong. Izin sebenarnya
+	tetap di bawah: Container read + branch pemanggil (lihat
+	``container.set_last_test_date``).
+	"""
+	require_any_menu("eir", "cleaning", "mr", "monitor")
+	from container_depot.container_depot.doctype.container.container import set_last_test_date
+
+	return set_last_test_date(container, last_test_date)
 
 
 @frappe.whitelist(methods=["GET"])

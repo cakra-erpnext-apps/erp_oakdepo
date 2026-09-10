@@ -40,6 +40,10 @@ frappe.ui.form.on('Cleaning Order', {
 		frm.trigger('_set_queries');
 		frm.trigger('_forward_button');
 		frm.trigger('_render_system_facts');
+		// Tgl. Tes Terakhir tank: dibaca hidup dari master (bukan disalin ke order ini) dan
+		// bisa dibetulkan di sini — termasuk uji yang dikerjakan vendor / depo lain.
+		container_depot.tank_last_test.load(frm);
+		container_depot.tank_last_test.button(frm);
 		// A revision request raised from the PWA, with its reason — otherwise the request
 		// reaches Admin Ops as a bell notification and leaves no trace on the order itself.
 		if (frm.doc.docstatus === 1 && frm.doc.revision_requested) {
@@ -95,6 +99,7 @@ frappe.ui.form.on('Cleaning Order', {
 			],
 			[__('Owner (Principal)'), link('Customer', frm.doc.container_principal)],
 			[__('Last Cargo'), link('Cargo', frm.doc.last_cargo)],
+			[__('Tgl. Tes Terakhir'), container_depot.tank_last_test.fact(frm)],
 			[__('Dikerjakan Oleh'), link('User', frm.doc.assigned_to)],
 			[__('Reference EIR'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],

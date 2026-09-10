@@ -261,6 +261,11 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_set_queries');
 		frm.trigger('_refresh_on_hand');
 		frm.trigger('_render_system_facts');
+		// Tgl. Tes Terakhir tank: dibaca hidup dari master (bukan disalin ke order ini) dan
+		// bisa dibetulkan di sini — termasuk uji yang dikerjakan vendor / depo lain. Uji
+		// berkala yang selesai di depo ini mengisinya sendiri saat order ditutup.
+		container_depot.tank_last_test.load(frm);
+		container_depot.tank_last_test.button(frm);
 		// A "buka lagi" request raised from the PWA, with its reason — otherwise it reaches
 		// Admin Ops as a bell notification and leaves no trace on the order itself.
 		container_depot.form_message(
@@ -316,6 +321,7 @@ frappe.ui.form.on('Repair Order', {
 			[__('Status'), frm.doc.status && esc(frm.doc.status)],
 			[__('Principal (Owner)'), frm.doc.principal && esc(frm.doc.principal)],
 			[__('Container No'), frm.doc.container_no && esc(frm.doc.container_no)],
+			[__('Tgl. Tes Terakhir'), container_depot.tank_last_test.fact(frm)],
 			// Order Date / Start Date / Completion Date are NOT repeated here: they stand on
 			// the form itself, read-only and behind a depends_on, so each one appears in
 			// place the moment the system stamps it (Container Booking's block_reason /

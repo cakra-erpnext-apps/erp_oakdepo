@@ -225,6 +225,45 @@ class RepairOrder(Document):
 
 		recompute_availability(self.container)
 		self._revoke_notifications_if_cancelled()
+		self._stamp_last_test_date()
+
+	def _stamp_last_test_date(self):
+		"""Uji berkala yang SELESAI di depo ini adalah tanggal uji baru tank itu.
+
+		Fitur Periodic Test dihapus di v0_66 dan ``Container.last_test_date`` sengaja
+		dipertahankan sebagai data pelat — tapi itu meninggalkannya tanpa satu pun penulis
+		selain mata orang (surveyor yang membaca pelat saat EIR masuk). Padahal ujinya
+		dikerjakan sendiri di sini, sebagai M&R ber-``job_type = Periodic Test``, jadi
+		jawabannya sudah ada di sistem: tanggal selesai order itu. Inilah "default dari tes
+		kita" yang dibaca semua form; koreksi manusia atas uji di luar depo lewat
+		``container.set_last_test_date``.
+
+		Hanya ditulis kalau LEBIH BARU dari yang tersimpan: order yang dibackdate, atau uji
+		di tempat lain yang diketik belakangan, tidak boleh dikalahkan oleh tanggal yang
+		lebih tua. Itu juga yang membuat hook ini aman dipanggil di setiap save.
+		"""
+		if self.job_type != "Periodic Test" or self.status != "Completed":
+			return
+		if not (self.container and self.completion_date):
+			return
+		from frappe.utils import getdate
+
+		from container_depot.container_depot.container_activity import log_doc_note
+
+		tested = getdate(self.completion_date)
+		current = frappe.db.get_value("Container", self.container, "last_test_date")
+		if current and getdate(current) >= tested:
+			return
+		# ``db.set_value``, bukan doc.save: Container disimpan di tengah save Repair Order
+		# ini, dan menyimpan master di sana memanggil balik recompute_availability. Karena
+		# itu tidak ada baris Version — catatan timeline-nya yang menggantikan.
+		frappe.db.set_value("Container", self.container, "last_test_date", tested)
+		log_doc_note(
+			"Container", self.container,
+			frappe._("Tgl. Tes Terakhir diperbarui ke {0} dari uji berkala {1}").format(
+				frappe.format(tested, "Date"), self.name
+			),
+		)
 
 	def _revoke_notifications_if_cancelled(self):
 		"""An M&R is not submittable, so Cancelled is its void — clear the "perlu

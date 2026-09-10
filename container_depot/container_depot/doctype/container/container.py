@@ -161,3 +161,58 @@ def seal_history(container: str) -> list:
 		for e in eirs
 		if by_eir.get(e.name)
 	]
+
+
+@frappe.whitelist(methods=["POST"])
+def set_last_test_date(container: str, last_test_date=None) -> dict:
+	"""Catat / perbaiki tanggal uji berkala terakhir tank, dari layar mana pun.
+
+	Satu nilai, satu rumah. Setiap layar yang menulis "Tgl. Tes Terakhir" — EIR, Cleaning
+	Order, M&R, cetakan EIR, Register Periodic Test — membaca ``Container.last_test_date``,
+	jadi tanggal yang dibetulkan sambil membuka order cuci adalah tanggal yang dicetak EIR
+	berikutnya. Tidak ada salinan per-order: salinan berarti satu tank punya dua jawaban.
+
+	Uji yang dikerjakan DI SINI mengisi field ini sendiri — lihat
+	``RepairOrder._stamp_last_test_date``. Fungsi ini separuh yang lain: uji di vendor atau
+	di depo lain, yang tidak akan pernah punya dokumennya di sistem ini.
+
+	Disimpan dengan ``ignore_permissions`` dengan alasan yang sama seperti
+	``eir._apply_tank_master``: role lapangan memegang Container READ (§8.1), dan yang
+	diberikan di sini SATU field atas tank yang ada di branch pemanggil sendiri — bukan
+	write penuh atas master yang juga menyimpan status dan depot. ``track_changes`` di
+	Container yang menyimpan siapa mengubah apa, dari nilai berapa.
+	"""
+	from frappe.utils import getdate, today
+
+	from container_depot.container_depot.user_branch import assert_in_user_branch
+
+	container = (container or "").strip()
+	if not container:
+		frappe.throw(_("Container wajib diisi."))
+	frappe.has_permission("Container", "read", doc=container, throw=True)
+	doc = frappe.get_doc("Container", container)
+	assert_in_user_branch(depot=doc.depot)
+
+	# Mengosongkan tidak lewat sini. Dari sebuah order, satu-satunya alasan menyentuh field
+	# ini adalah karena orangnya TAHU tanggalnya; menghapus tanggal uji tank adalah keputusan
+	# master yang tempatnya di form Container.
+	if not last_test_date:
+		frappe.throw(_("Tanggal uji wajib diisi."))
+	tested = getdate(last_test_date)
+	if tested > getdate(today()):
+		frappe.throw(_("Tanggal uji tidak boleh di masa depan."))
+	# Salah ketik tahun yang paling sering: uji yang jatuh sebelum tank-nya dibuat. Hanya
+	# diperiksa kalau tanggal buatnya memang ada di master.
+	if doc.manufacture_date and tested < getdate(doc.manufacture_date):
+		frappe.throw(
+			_("Tanggal uji ({0}) lebih awal dari tanggal pembuatan tank ({1}).").format(
+				frappe.format(tested, "Date"), frappe.format(doc.manufacture_date, "Date")
+			)
+		)
+
+	current = getdate(doc.last_test_date) if doc.last_test_date else None
+	# Menyimpan nilai yang sama akan menulis baris Version yang tidak mengatakan apa-apa.
+	if current != tested:
+		doc.last_test_date = tested
+		doc.save(ignore_permissions=True)
+	return {"success": True, "container": doc.name, "last_test_date": str(tested)}

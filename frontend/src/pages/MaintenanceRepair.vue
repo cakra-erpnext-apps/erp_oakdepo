@@ -382,6 +382,13 @@
 						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ cell.label }}</dt>
 						<dd class="truncate font-semibold text-gray-800">{{ cell.value || "—" }}</dd>
 					</div>
+					<!-- Satu-satunya sel yang bisa ditulis: tanggal uji tank, milik master. Di
+					     layar M&R ia yang paling sering dicari — uji berkala berikutnya dihitung
+					     dari sini. -->
+					<LastTestField
+						v-model="order.last_test_date"
+						:container="order.container"
+					/>
 				</dl>
 			</section>
 
@@ -444,6 +451,7 @@ import { confirm } from "@/utils/confirm"
 import { clockOf, fmtStamp, mrChip, workWindow } from "@/utils/mrStatus"
 import EditedBy from "@/components/EditedBy.vue"
 import Icon from "@/components/Icon.vue"
+import LastTestField from "@/components/LastTestField.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import MrDamageCard from "@/components/MrDamageCard.vue"
 import PhotoMark from "@/components/PhotoMark.vue"

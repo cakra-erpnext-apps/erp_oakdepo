@@ -285,6 +285,11 @@
 						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ cell.label }}</dt>
 						<dd class="truncate font-semibold text-gray-800">{{ cell.value || "—" }}</dd>
 					</div>
+					<!-- Satu-satunya sel yang bisa ditulis: tanggal uji tank, milik master. -->
+					<LastTestField
+						v-model="order.last_test_date"
+						:container="order.container"
+					/>
 				</dl>
 			</section>
 
@@ -466,6 +471,7 @@ import { confirm } from "@/utils/confirm"
 import { shootOrFallback } from "@/utils/camera"
 import EditedBy from "@/components/EditedBy.vue"
 import Icon from "@/components/Icon.vue"
+import LastTestField from "@/components/LastTestField.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
@@ -630,7 +636,8 @@ const headerCells = computed(() => {
 		{ label: labels.cleaningTare, value: h.tare },
 		{ label: labels.cleaningMgw, value: h.mgw },
 		{ label: labels.cleaningMfgDate, value: h.date_of_manufacture },
-		{ label: labels.cleaningLastTest, value: h.last_test_date },
+		// Tgl. tes terakhir TIDAK di sini: ia satu-satunya baris kartu ini yang boleh
+		// ditulis, dan tinggal di LastTestField tepat setelah deretan ini.
 	]
 })
 

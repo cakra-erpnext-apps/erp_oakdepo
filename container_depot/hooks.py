@@ -252,6 +252,8 @@ website_route_rules = [
 	{"from_route": "/api/v1/ess/home-summary", "to_route": "container_depot.ess.home.get_home_summary"},
 	{"from_route": "/api/v1/ess/tank-list", "to_route": "container_depot.ess.inventory.get_tank_list"},
 	{"from_route": "/api/v1/ess/tank-detail", "to_route": "container_depot.ess.inventory.get_tank_detail"},
+	# Tanggal uji terakhir tank — satu-satunya tulisan ke master dari layar order PWA.
+	{"from_route": "/api/v1/ess/tank-last-test", "to_route": "container_depot.ess.inventory.set_tank_last_test"},
 	# ESS PWA EIR (Equipment Interchange Receipt) checklist endpoints
 	{"from_route": "/api/v1/ess/eir-masters", "to_route": "container_depot.ess.inspections.eir_masters"},
 	{"from_route": "/api/v1/ess/eir-prefill", "to_route": "container_depot.ess.inspections.eir_prefill"},
@@ -342,6 +344,9 @@ app_include_js = [
 	# Jalan pulang dari form master yang dibuka lewat "Create a new …" di sebuah field
 	# Link — spanduk konteks + tombol batal (lihat file-nya).
 	"/assets/container_depot/js/link_return.js",
+	# container_depot.tank_last_test — Tgl. Tes Terakhir tank, dibaca hidup dari master dan
+	# dibetulkan dari form order mana pun (lihat file-nya).
+	"/assets/container_depot/js/tank_last_test.js",
 	# Matikan tombol "Edit" (pensil rename) di judul form + item menu "Rename" untuk semua
 	# doctype — nomor dokumen datang dari naming series, bukan diketik ulang.
 	"/assets/container_depot/js/no_rename.js",
