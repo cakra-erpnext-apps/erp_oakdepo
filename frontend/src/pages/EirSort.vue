@@ -72,6 +72,10 @@
 						<button type="button" class="oak-press block w-full" @click="openLightbox(photos.map((x) => x.photo), photos.indexOf(p))">
 							<img :src="p.photo" class="h-48 w-full rounded-xl border border-gray-200 object-cover" />
 						</button>
+						<!-- Yang ditulis petugas tentang foto INI. Sering justru kalimat itu yang
+						     menyebut bagiannya ("bocor di sambungan bawah"), jadi ia dibaca
+						     sebelum daftar section — bukan disembunyikan di balik ketuk. -->
+						<p v-if="p.caption" class="text-sm text-gray-700">{{ p.caption }}</p>
 						<label class="oak-label">{{ labels.eirSortPick }}</label>
 						<SearchSelect
 							:model-value="p.chosen"

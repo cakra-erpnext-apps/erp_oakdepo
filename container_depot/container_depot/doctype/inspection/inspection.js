@@ -493,8 +493,13 @@ function render_damage_photos(frm, cdt, cdn) {
 		.map((p) => {
 			const src = frappe.utils.escape_html(p.photo || '');
 			if (!src) return '';
+			// The note the operator typed about THIS frame, as the thumbnail's tooltip and as
+			// a line under it: the strip is what a reviewer scans, and a caption only visible
+			// after opening the carousel is a caption most readers never learn is there.
+			const note = frappe.utils.escape_html(p.caption || '');
 			return `<div class="oak-damage-photo">
-				<img src="${src}" data-oak-photo="${src}" alt="">
+				<img src="${src}" data-oak-photo="${src}" alt="" ${note ? `title="${note}"` : ''}>
+				${note ? `<span class="oak-damage-photo-note">${note}</span>` : ''}
 				${may_edit ? `<button type="button" class="oak-damage-photo-x" data-oak-drop="${frappe.utils.escape_html(p.name)}">&times;</button>` : ''}
 			</div>`;
 		})
@@ -989,6 +994,30 @@ function open_photo_carousel(frm, slides, start) {
 				},
 			},
 			{
+				// The operator's own words about THIS frame, typed at the tank. The codes on
+				// the checklist say what KIND of defect it is; this is the half no code has a
+				// slot for ("bocor di sambungan bawah", "seal terbaca dari sisi ini"), and a
+				// Desk reader who cannot see it is reading half the evidence.
+				//
+				// Editable on an exterior slide? No — Inspection Photo carries no caption
+				// field, so the control hides itself there rather than writing nowhere.
+				fieldname: 'caption',
+				fieldtype: 'Data',
+				label: __('Keterangan'),
+				onchange() {
+					if (syncing) return;
+					const slide = slides[idx];
+					if (!slide || slide.kind === 'exterior') return;
+					const row = (locals[slide.cdt] || {})[slide.cdn] || {};
+					const value = d.get_value('caption') || '';
+					if (value === (row.caption || '')) return;
+					frappe.model.set_value(slide.cdt, slide.cdn, 'caption', value).then(() => {
+						frm.refresh_field(slide.kind === 'damage' ? 'damage_photos' : 'item_photos');
+						render();
+					});
+				},
+			},
+			{
 				fieldname: 'photo',
 				fieldtype: 'Attach Image',
 				label: __('Foto'),
@@ -1060,6 +1089,11 @@ function open_photo_carousel(frm, slides, start) {
 				${area ? `<span class="oak-carousel-area">${frappe.utils.escape_html(area)}</span>` : ''}
 				<span>${frappe.utils.escape_html(slide.label || '')}</span>
 			</div>
+			${
+				row.caption
+					? `<div class="oak-carousel-note">${frappe.utils.escape_html(row.caption)}</div>`
+					: ''
+			}
 		`);
 		d.$wrapper.find('.oak-carousel-nav').on('click', (e) => go(cint($(e.currentTarget).attr('data-oak-step'))));
 		// The picker belongs to an item photo. On an exterior slide there is nothing to
@@ -1069,12 +1103,22 @@ function open_photo_carousel(frm, slides, start) {
 		// the grid. Once the photo is there it goes away: an EIR photo is evidence, and
 		// replacing it from a viewer is not an edit anyone should make in passing.
 		d.set_df_property('photo', 'hidden', sortable && slide.kind === 'item' && !slide.src ? 0 : 1);
+		// A caption belongs to a row that HAS one to hold. `item_photos.caption` is
+		// allow_on_submit like the rest of that table (sorting a submitted EIR is the whole
+		// reason this dialog stays open), while a damage caption closes with the EIR — its
+		// table is not allow_on_submit, so offering the box on a submitted one would only
+		// bounce on save.
+		const may_caption =
+			slide.kind === 'item' ? sortable : slide.kind === 'damage' && frm.doc.docstatus === 0 && sortable;
+		d.set_df_property('caption', 'hidden', slide.kind === 'exterior' ? 1 : 0);
+		d.set_df_property('caption', 'read_only', may_caption ? 0 : 1);
+		syncing = true;
 		if (slide.kind === 'item') {
-			syncing = true;
 			d.set_value('checklist_item', row.checklist_item || '');
 			d.set_value('photo', row.photo || '');
-			syncing = false;
 		}
+		d.set_value('caption', row.caption || '');
+		syncing = false;
 		// "Detail Foto" opens the file itself in its own tab: the stage above scales every
 		// photo to the same box, and a reviewer who wants to zoom into a weld or read a plate
 		// needs the original pixels, not the fitted copy.

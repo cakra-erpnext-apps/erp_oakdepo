@@ -179,25 +179,46 @@
 					<p class="oak-section-title">{{ labels.bulkPhotoTitle }}</p>
 				</div>
 				<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
-				<div class="flex flex-wrap items-center gap-2">
-					<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
-						<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
-							<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
-						</button>
-						<span
-							v-if="bulkMeta[url]"
-							class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
-						>
-							<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
-						</span>
-						<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="removeBulkPhoto(idx)">
-							<Icon name="x" :size="12" />
-						</button>
-						<PhotoMark :photo="url" />
+				<!-- Dua kolom, tiap foto dengan kotak keterangannya sendiri di bawahnya. Kotak
+				     selebar thumbnail 80 px tidak bisa diketik di HP; separuh kartu bisa — pola yang
+				     sama dipakai foto M&R. Keterangan itulah yang dibaca orang Desk di sebelah
+				     fotonya, karena kode kerusakan hanya menyebut JENIS-nya. -->
+				<div class="grid grid-cols-2 items-start gap-2">
+					<div v-for="(url, idx) in bulkPhotos" :key="url" class="space-y-1">
+						<div class="relative aspect-square">
+							<button type="button" class="oak-press h-full w-full" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+								<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
+							</button>
+							<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
+							<span
+								v-if="bulkMeta[url]"
+								class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
+							>
+								<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
+							</span>
+							<button
+								type="button"
+								class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
+								@click="removeBulkPhoto(idx)"
+							>
+								<Icon name="x" :size="12" />
+							</button>
+							<PhotoMark :photo="url" />
+						</div>
+						<input
+							v-model="photoNotes[url]"
+							type="text"
+							class="oak-input px-2 py-1.5 text-xs"
+							:placeholder="labels.photoCaption"
+						/>
 					</div>
-					<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="h-20 w-20" />
-					<!-- The phone's own camera app, only ever reached as the fallback — see
-					     utils/camera.js. -->
+					<!-- Sel yang bentuknya sama dengan foto yang sudah mendarat, jadi grid tidak
+					     melompat begitu unggahannya selesai. -->
+					<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
+				</div>
+				<div class="flex w-full gap-2">
+					<!-- Kamera bawaan HP, hanya dipakai kalau viewfinder in-app tidak bisa jalan —
+					     lihat utils/camera.js. -->
 					<input
 						ref="bulkCamInput"
 						type="file"
@@ -209,17 +230,17 @@
 					/>
 					<button
 						type="button"
-						class="flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+						class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100"
 						:disabled="bulkUploading"
 						@click="openCameraOrFallback"
 					>
-						<span v-if="bulkUploading" class="text-xs">…</span>
-						<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
+						<Icon v-if="bulkUploading" name="loader" :size="16" class="animate-spin" />
+						<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
 					</button>
-					<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
+					<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
 						<input type="file" accept="image/*" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
-						<span v-if="bulkUploading" class="text-xs">…</span>
-						<template v-else><Icon name="image" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoGallery }}</span></template>
+						<Icon v-if="bulkUploading" name="loader" :size="16" class="animate-spin" />
+						<template v-else><Icon name="image" :size="16" /> {{ labels.photoGallery }}</template>
 					</label>
 				</div>
 				<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
@@ -438,6 +459,8 @@ const bulkPhotos = ref([])
 // foto cepat URL → the checklist item Admin sorted it into ("" = unsorted). Keeps sorting
 // through a save so a sorted photo stays in Foto Cepat without losing its item_code.
 const bulkMeta = ref({})
+// Keterangan per FOTO, dikunci pada url-nya — lihat EirInForm untuk alasannya.
+const photoNotes = ref({})
 const bulkUploading = ref(false)
 const bulkErr = ref("")
 
@@ -652,16 +675,23 @@ function applyDraftPhotos(data) {
 	if (!data) return
 	const bulk = []
 	const meta = {}
+	const notes = {}
 	;(data.photos || []).forEach((p) => {
 		bulk.push(p.photo)
 		meta[p.photo] = p.item_code || ""
+		if (p.caption) notes[p.photo] = p.caption
 	})
+	photoNotes.value = notes
 	bulkPhotos.value = bulk
 	bulkMeta.value = meta
 }
 
 function buildPhotos() {
-	return bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
+	return bulkPhotos.value.map((url) => ({
+		item_code: bulkMeta.value[url] || "",
+		photo: url,
+		caption: (photoNotes.value[url] || "").trim(),
+	}))
 }
 
 // The server sends only the slots that carry a value, each with the EIR-In baseline beside
@@ -716,7 +746,11 @@ function openCameraOrFallback() {
 const photoQueue = usePhotoQueue()
 
 async function addBulkPhotos(files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	bulkErr.value = ""
 	photoQueue.clearFailed()
 	bulkUploading.value = true
@@ -725,10 +759,12 @@ async function addBulkPhotos(files) {
 			const id = photoQueue.add(f)
 			try {
 				const url = await uploadFile(f)
+				last = url
 				bulkPhotos.value.push(url)
 				bulkMeta.value[url] = "" // freshly taken → not sorted yet
 				photoQueue.done(id)
 			} catch (e) {
+				last = false
 				bulkErr.value = labels.photoError
 				photoQueue.fail(id)
 			}
@@ -736,10 +772,14 @@ async function addBulkPhotos(files) {
 	} finally {
 		bulkUploading.value = false
 	}
+	return last
 }
 function removeBulkPhoto(idx) {
 	const [url] = bulkPhotos.value.splice(idx, 1)
-	if (url) delete bulkMeta.value[url]
+	if (url) {
+		delete bulkMeta.value[url]
+		delete photoNotes.value[url]
+	}
 }
 
 // ---- signature pad ----
@@ -944,7 +984,7 @@ function scheduleSave() {
 		doSave(false)
 	}, 1200)
 }
-watch([remarks, cargo, seals, bulkPhotos, fittings], scheduleSave, { deep: true })
+watch([remarks, cargo, seals, bulkPhotos, photoNotes, fittings], scheduleSave, { deep: true })
 
 async function confirmSubmit() {
 	// Ya / Batal, nothing else: what happens after the hand-off is Adm Ops' business, not

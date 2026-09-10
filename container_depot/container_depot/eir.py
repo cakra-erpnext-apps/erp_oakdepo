@@ -922,12 +922,17 @@ def _build_damage_rows(lines, items):
 
 
 def _build_photo_rows(photos, items):
-	"""Map a flat ``[{item_code, photo}]`` payload to Inspection Item Photo rows.
+	"""Map a flat ``[{item_code, photo, caption}]`` payload to Inspection Item Photo rows.
 
 	A row is kept whenever it carries a ``photo``. ``item_code`` is OPTIONAL: blank
 	means "foto cepat" (bulk) not yet sorted into a section — stored with a null
 	``checklist_item`` for the admin to assign later. Only a non-blank *unknown*
 	code is rejected. (Rows with no photo are dropped.)
+
+	``caption`` is the operator's own words about THIS frame ("bocor di sambungan bawah",
+	"nomor seal terbaca dari sini") and is optional too. It is stored verbatim: the codes
+	already say what kind of defect it is, and what the caption adds is the part no code
+	has a slot for — which is exactly why a Desk reader must be able to see it.
 	"""
 	rows = []
 	for ph in photos:
@@ -937,7 +942,11 @@ def _build_photo_rows(photos, items):
 			continue
 		if item_code and item_code not in items:
 			frappe.throw(_("Unknown checklist item_code for photo: {0}").format(item_code))
-		rows.append({"checklist_item": item_code or None, "photo": photo})
+		rows.append({
+			"checklist_item": item_code or None,
+			"photo": photo,
+			"caption": (ph.get("caption") or "").strip() or None,
+		})
 	return rows
 
 
@@ -1279,7 +1288,7 @@ def _draft_payload(doc, header: dict) -> dict:
 	# card exists and drops the rest into Foto Cepat, which is the same rule the split on
 	# the way in uses. Nothing in the client has to know there are two tables.
 	header["photos"] = [
-		{"item_code": p.checklist_item, "photo": p.photo}
+		{"item_code": p.checklist_item, "photo": p.photo, "caption": p.get("caption") or ""}
 		for p in list(doc.item_photos) + list(doc.damage_photos)
 	]
 	return header
@@ -1605,7 +1614,7 @@ def unsorted_photos(inspection: str) -> dict:
 	doc = frappe.get_doc("Inspection", inspection)
 	_guard_container_branch(doc.container)
 	photos = [
-		{"row": p.name, "photo": p.photo}
+		{"row": p.name, "photo": p.photo, "caption": p.get("caption") or ""}
 		for p in doc.item_photos
 		if not p.checklist_item
 	]
@@ -2038,10 +2047,14 @@ def view_eir(inspection: str) -> dict:
 	}
 	# Evidence per finding, and the walk-around album on its own — the same two lists the
 	# Desk form shows, so a reviewer checking an EIR from the phone sees what the office sees.
+	# `{photo, caption}` and not a bare url: a caption the operator typed at the tank is
+	# invisible wherever the photo is shown without it, which is the whole point of storing it.
 	photos_by_item: dict = {}
 	for p in doc.damage_photos:
 		if p.photo:
-			photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
+			photos_by_item.setdefault(p.checklist_item, []).append(
+				{"photo": p.photo, "caption": p.get("caption") or ""}
+			)
 	# Codes are keys, not words: "v" / "X" mean nothing on a phone. The Desk grid shows the
 	# master's description because a Link renders its title; the PWA has to be handed it.
 	code_names = {
@@ -2074,6 +2087,7 @@ def view_eir(inspection: str) -> dict:
 			"item": p.checklist_item,
 			"item_name": names.get(p.checklist_item) or p.checklist_item,
 			"photo": p.photo,
+			"caption": p.get("caption") or "",
 		}
 		for p in doc.item_photos
 		if p.photo

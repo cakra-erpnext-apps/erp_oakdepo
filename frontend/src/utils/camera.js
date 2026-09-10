@@ -19,23 +19,55 @@ import { reactive } from "vue"
 export const cameraState = reactive({
 	open: false,
 	/**
-	 * Object URL of the LAST shot only, and how many were taken. Not the whole roll: each
-	 * frame is a full-resolution JPEG held in memory, and a tank inspection runs to dozens —
-	 * a strip of them would cost a cheap handset a hundred megabytes to show a row of
-	 * thumbnails nobody taps. The roll the operator actually reviews is the one in the form
-	 * behind the viewfinder, where each photo already belongs to a checklist row.
+	 * Every shot of this session, oldest first: `{ id, thumb, state }` with `state` one of
+	 * `uploading` / `sent` / `parked` / `failed`.
+	 *
+	 * It used to keep the LAST frame only, on the grounds that a full-resolution JPEG per
+	 * shot would cost a cheap handset a hundred megabytes over a tank inspection. That is
+	 * true of full frames and not of these: `thumb` is a ~96 px re-encode (a few kB), so
+	 * forty of them are cheaper than one of the originals.
+	 *
+	 * Keeping them is what lets the viewfinder answer the two questions an operator taking
+	 * twenty photos in a row actually has — how many have I taken, and did they get out of
+	 * my hand — without leaving the camera to go and look at the form.
 	 */
-	lastShot: "",
-	count: 0,
+	roll: [],
 	_onShot: null,
 	_resolve: null,
 })
 
-/** Record a shot's preview, dropping the one it replaces. */
-export function noteShot(url) {
-	if (cameraState.lastShot) URL.revokeObjectURL(cameraState.lastShot)
-	cameraState.lastShot = url
-	cameraState.count += 1
+let seq = 0
+
+/** Record a shot and return its id, for :func:`markShot` to settle later. */
+export function noteShot(thumb) {
+	const id = ++seq
+	cameraState.roll.push({ id, thumb, state: "uploading" })
+	return id
+}
+
+/** Settle one shot: `sent` (on the server), `parked` (on the handset), or `failed`. */
+export function markShot(id, state) {
+	const shot = cameraState.roll.find((x) => x.id === id)
+	if (shot) shot.state = state
+}
+
+/** How many of the roll are in each state — the counter over the strip. */
+export function rollTally() {
+	const tally = { total: cameraState.roll.length, uploading: 0, sent: 0, parked: 0, failed: 0 }
+	for (const s of cameraState.roll) tally[s.state] += 1
+	return tally
+}
+
+function emptyRoll() {
+	// Only a blob: url owns anything to release — the thumbnails are data: urls (encoded
+	// synchronously, so the strip answers the shutter in the same frame) and revoking one of
+	// those is a no-op the code should not pretend to be doing.
+	for (const shot of cameraState.roll) {
+		if (typeof shot.thumb === "string" && shot.thumb.startsWith("blob:")) {
+			URL.revokeObjectURL(shot.thumb)
+		}
+	}
+	cameraState.roll = []
 }
 
 /**
@@ -52,6 +84,12 @@ export function cameraSupported() {
  * instant the shutter is tapped — do the upload there; it runs while the operator lines up
  * the next shot.
  *
+ * RETURN THE PHOTO REFERENCE from `onShot` (the `file_url`, or the `local:` ref a parked
+ * photo gets): the strip in the viewfinder marks that shot from it — green tick for a real
+ * URL, amber clock for a parked one — and a rejected promise or a falsy answer marks it
+ * failed. A caller that swallows its own upload error therefore reports a success, which is
+ * the one answer the operator must never be given about a photo.
+ *
  * Resolves when the viewfinder closes: `true` if it ran, `false` if the camera could not be
  * started at all (no permission, no device, taken by another app). On `false` the caller
  * should fall back to its hidden file input.
@@ -62,8 +100,7 @@ export function shootPhotos(onShot) {
 			resolve(false)
 			return
 		}
-		cameraState.lastShot = ""
-		cameraState.count = 0
+		emptyRoll()
 		cameraState._onShot = onShot
 		cameraState._resolve = resolve
 		cameraState.open = true
@@ -75,8 +112,7 @@ export function closeCamera(started = true) {
 	if (!cameraState.open) return
 	cameraState.open = false
 	cameraState._onShot = null
-	if (cameraState.lastShot) URL.revokeObjectURL(cameraState.lastShot)
-	cameraState.lastShot = ""
+	emptyRoll()
 	const r = cameraState._resolve
 	cameraState._resolve = null
 	if (r) r(started)

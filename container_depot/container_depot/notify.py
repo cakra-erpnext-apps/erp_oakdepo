@@ -887,6 +887,32 @@ def notify_booking_submitted(booking):
 	)
 
 
+def notify_booking_urgent(booking, urgent_on, reason=None):
+	"""Fire when a booking is declared MENDESAK (``lift_on.set_urgent``).
+
+	Urgency is the one edit that reorders somebody ELSE's day: it lifts every tank on the
+	booking above every dated job in six worklists (``worklist.sort_by_priority``), and until
+	now the only trace of it was a pill in a list nobody is watching when the decision is made.
+	So it rings — the queue changed, and whoever is running the queue has to know why.
+
+	Carries the target day and the reason in the subject: "why is this on top of my list" is
+	the question the bell is answered for, and a subject that only names the booking would send
+	the reader to the document to find out.
+	"""
+	tail = f" • alasan: {reason}" if reason else ""
+	subject = (
+		f"MENDESAK {booking.name} • {_customer_name(booking.get('customer'))} • "
+		f"target {urgent_on}{tail}"
+	)
+	notify(
+		doctype="Container Booking",
+		name=booking.name,
+		subject=subject,
+		branch=booking.get("branch"),
+		event_key="booking_urgent",
+	)
+
+
 def _customer_name(customer):
 	"""Display name for a Customer link, falling back to the id (then a dash)."""
 	if not customer:

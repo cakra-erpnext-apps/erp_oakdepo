@@ -12,12 +12,13 @@
   "area",
   "item_name",
   "photo",
+  "caption",
   "photo_preview"
  ],
  "fields": [
   {
    "allow_on_submit": 1,
-   "columns": 5,
+   "columns": 3,
    "description": "Temuan kerusakan (baris Damage Details) yang difoto ini. Wajib — foto tanpa temuan bukan foto kerusakan, tempatnya di Foto per Item.",
    "fieldname": "checklist_item",
    "fieldtype": "Link",
@@ -47,12 +48,20 @@
    "read_only": 1
   },
   {
-   "columns": 3,
+   "columns": 2,
    "fieldname": "photo",
    "fieldtype": "Attach Image",
    "in_list_view": 1,
    "label": "Photo",
    "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "Keterangan tambahan petugas untuk foto INI — dibaca di Desk apa adanya (bukan hasil kode kerusakan).",
+   "fieldname": "caption",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Keterangan"
   },
   {
    "allow_on_submit": 1,
@@ -64,7 +73,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-20 00:00:00.000000",
+ "modified": "2026-09-10 09:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection Damage Photo"
 }

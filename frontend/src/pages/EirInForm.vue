@@ -180,6 +180,8 @@
 					:damage-codes="damageCodes"
 					:repair-codes="repairCodes"
 					:upload="uploadFile"
+					:notes="photoNotes"
+					@note="setPhotoNote"
 					:title="labels.checklist"
 				/>
 
@@ -190,30 +192,46 @@
 						<p class="oak-section-title">{{ labels.bulkPhotoTitle }}</p>
 					</div>
 					<p class="text-xs text-gray-400">{{ labels.bulkPhotoHint }}</p>
-					<div class="flex flex-wrap items-center gap-2">
-						<div v-for="(url, idx) in bulkPhotos" :key="url" class="relative">
-							<button type="button" class="oak-press block" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
-								<img :src="photoSrc(url)" class="h-20 w-20 rounded-lg border border-gray-200 object-cover" />
-							</button>
-							<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
-							<span
-								v-if="bulkMeta[url]"
-								class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
-							>
-								<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
-							</span>
-							<button
-								type="button"
-								class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
-								@click="removeBulkPhoto(idx)"
-							>
-								<Icon name="x" :size="12" />
-							</button>
-							<PhotoMark :photo="url" />
+					<!-- Dua kolom, tiap foto dengan kotak keterangannya sendiri di bawahnya. Kotak
+					     selebar thumbnail 80 px tidak bisa diketik di HP; separuh kartu bisa — pola yang
+					     sama dipakai foto M&R. Keterangan itulah yang dibaca orang Desk di sebelah
+					     fotonya, karena kode kerusakan hanya menyebut JENIS-nya. -->
+					<div class="grid grid-cols-2 items-start gap-2">
+						<div v-for="(url, idx) in bulkPhotos" :key="url" class="space-y-1">
+							<div class="relative aspect-square">
+								<button type="button" class="oak-press h-full w-full" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+									<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
+								</button>
+								<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
+								<span
+									v-if="bulkMeta[url]"
+									class="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-leaf-600/90 px-1 py-0.5 text-[9px] font-semibold text-white"
+								>
+									<Icon name="check" :size="10" /> {{ bulkMeta[url] }}
+								</span>
+								<button
+									type="button"
+									class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
+									@click="removeBulkPhoto(idx)"
+								>
+									<Icon name="x" :size="12" />
+								</button>
+								<PhotoMark :photo="url" />
+							</div>
+							<input
+								v-model="photoNotes[url]"
+								type="text"
+								class="oak-input px-2 py-1.5 text-xs"
+								:placeholder="labels.photoCaption"
+							/>
 						</div>
-						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="h-20 w-20" />
-						<!-- The phone's own camera app, kept only as the fallback: never reached by a
-						     tap, only by openCameraOrFallback when the in-app viewfinder cannot run. -->
+						<!-- Sel yang bentuknya sama dengan foto yang sudah mendarat, jadi grid tidak
+						     melompat begitu unggahannya selesai. -->
+						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
+					</div>
+					<div class="flex w-full gap-2">
+						<!-- Kamera bawaan HP, hanya dipakai kalau viewfinder in-app tidak bisa jalan —
+						     lihat utils/camera.js. -->
 						<input
 							ref="bulkCamInput"
 							type="file"
@@ -225,17 +243,17 @@
 						/>
 						<button
 							type="button"
-							class="flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+							class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100"
 							:disabled="bulkUploading"
 							@click="openCameraOrFallback"
 						>
-							<span v-if="bulkUploading" class="text-xs">…</span>
-							<template v-else><Icon name="camera" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
+							<Icon v-if="bulkUploading" name="loader" :size="16" class="animate-spin" />
+							<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
 						</button>
-						<label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
+						<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-300 bg-brand-50 py-2.5 text-sm font-medium text-brand-600 active:bg-brand-100">
 							<input type="file" accept="image/*" multiple class="hidden" :disabled="bulkUploading" @change="onBulkPhotoPick($event)" />
-							<span v-if="bulkUploading" class="text-xs">…</span>
-							<template v-else><Icon name="image" :size="20" /><span class="text-[9px] font-medium">{{ labels.photoGallery }}</span></template>
+							<Icon v-if="bulkUploading" name="loader" :size="16" class="animate-spin" />
+							<template v-else><Icon name="image" :size="16" /> {{ labels.photoGallery }}</template>
 						</label>
 					</div>
 					<p v-if="bulkErr" class="text-xs text-red-600">{{ bulkErr }}</p>
@@ -503,6 +521,11 @@ const bulkPhotos = ref([])
 // maps each bulk photo URL → the checklist item it was sorted into ("" = not yet sorted), so
 // buildPhotos re-sends that assignment and a save never un-sorts it.
 const bulkMeta = ref({})
+// Keterangan per FOTO, dikunci pada url-nya — bukan pada posisinya di array, karena baris
+// bisa dihapus di tengah. Tinggal terpisah dari `bulkPhotos` dengan alasan yang sama seperti
+// `bulkMeta`: yang dikirim ke server dirakit di buildPhotos, dan bentuk `photos` di form
+// (deretan url) tidak ikut berubah — checklist, lightbox dan autosave membacanya apa adanya.
+const photoNotes = ref({})
 const bulkUploading = ref(false)
 const bulkErr = ref("")
 
@@ -816,8 +839,10 @@ function applyDraftToRows(data) {
 	const photoMap = {}
 	const bulk = []
 	const meta = {}
+	const notes = {}
 	;(data.photos || []).forEach((p) => {
 		const code = p.item_code
+		if (p.caption) notes[p.photo] = p.caption
 		if (code && lineMap[code]) {
 			;(photoMap[code] = photoMap[code] || []).push(p.photo)
 		} else {
@@ -827,6 +852,7 @@ function applyDraftToRows(data) {
 	})
 	bulkPhotos.value = bulk
 	bulkMeta.value = meta
+	photoNotes.value = notes
 	applyDraftToFittings(data)
 	rows.value.forEach((r) => {
 		const l = lineMap[r.item_code]
@@ -883,9 +909,18 @@ function buildLines() {
 }
 
 function buildPhotos() {
-	const perItem = rows.value.flatMap((r) => (r.photos || []).map((url) => ({ item_code: r.item_code, photo: url })))
+	// One note map for both buckets: a photo keeps what was typed about it whether it hangs
+	// on a damage card or in Foto Cepat, and Admin sorting it later moves it between the two.
+	const note = (url) => (photoNotes.value[url] || "").trim()
+	const perItem = rows.value.flatMap((r) =>
+		(r.photos || []).map((url) => ({ item_code: r.item_code, photo: url, caption: note(url) }))
+	)
 	// Keep each foto cepat's sorted item_code (bulkMeta) so a save preserves Admin's sorting.
-	const bulk = bulkPhotos.value.map((url) => ({ item_code: bulkMeta.value[url] || "", photo: url }))
+	const bulk = bulkPhotos.value.map((url) => ({
+		item_code: bulkMeta.value[url] || "",
+		photo: url,
+		caption: note(url),
+	}))
 	return [...perItem, ...bulk]
 }
 
@@ -920,7 +955,11 @@ function openCameraOrFallback() {
 const photoQueue = usePhotoQueue()
 
 async function addBulkPhotos(files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	bulkErr.value = ""
 	photoQueue.clearFailed()
 	bulkUploading.value = true
@@ -931,10 +970,12 @@ async function addBulkPhotos(files) {
 			const id = photoQueue.add(f)
 			try {
 				const url = await uploadFile(f)
+				last = url
 				bulkPhotos.value.push(url)
 				bulkMeta.value[url] = "" // freshly taken → not sorted into a checklist item yet
 				photoQueue.done(id)
 			} catch (e) {
+				last = false
 				bulkErr.value = labels.photoError
 				photoQueue.fail(id)
 			}
@@ -942,11 +983,23 @@ async function addBulkPhotos(files) {
 	} finally {
 		bulkUploading.value = false
 	}
+	return last
+}
+
+// Satu pintu tulis untuk peta keterangan, dipakai kartu checklist lewat `@note`. Kosong
+// berarti kuncinya dibuang: keterangan yatim akan ikut terkirim ke server tanpa ada fotonya
+// di layar, dan menempel pada foto berikutnya yang kebetulan ber-url sama.
+function setPhotoNote({ url, value }) {
+	if (value) photoNotes.value[url] = value
+	else delete photoNotes.value[url]
 }
 
 function removeBulkPhoto(idx) {
 	const [url] = bulkPhotos.value.splice(idx, 1)
-	if (url) delete bulkMeta.value[url]
+	if (url) {
+		delete bulkMeta.value[url]
+		delete photoNotes.value[url]
+	}
 }
 
 // --- Virtual signature pad (EIR creator) -------------------------------------
@@ -1175,6 +1228,9 @@ watch(tank, scheduleSave, { deep: true })
 watch(rows, scheduleSave, { deep: true })
 watch(fittings, scheduleSave, { deep: true })
 watch(bulkPhotos, scheduleSave, { deep: true })
+// Sendiri, karena keterangan hidup di luar `bulkPhotos`: tanpa ini satu-satunya jalan
+// menyimpannya adalah menyentuh sesuatu yang lain di form.
+watch(photoNotes, scheduleSave, { deep: true })
 
 onMounted(() => {
 	openRes.submit({ inspection: props.inspection })

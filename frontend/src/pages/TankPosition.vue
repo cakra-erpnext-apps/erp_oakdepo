@@ -266,22 +266,33 @@
 							<p class="text-sm font-extrabold text-gray-900">{{ labels.tankPosPhotos }}</p>
 							<p class="shrink-0 text-[11px] text-gray-400">{{ labels.tankPosOptional }} · {{ labels.tankPosPhotoOne }}</p>
 						</div>
-						<div class="grid grid-cols-3 gap-2">
-							<div v-for="(url, i) in form.photos" :key="i" class="relative aspect-square">
-								<img
-									:src="photoSrc(url)"
-									class="h-full w-full rounded-lg border border-gray-200 object-cover"
-									@click="openLightbox(form.photos.map(photoSrc), i)"
+						<div class="grid grid-cols-3 items-start gap-2">
+							<!-- Keterangan per foto, di bawah petaknya. `location_note` menerangkan
+							     SELURUH pembacaan; kotak ini menerangkan satu frame ("di bawah pipa,
+							     deret kedua") — dan itulah yang dibaca orang Desk di sebelah fotonya. -->
+							<div v-for="(url, i) in form.photos" :key="url" class="space-y-1">
+								<div class="relative aspect-square">
+									<img
+										:src="photoSrc(url)"
+										class="h-full w-full rounded-lg border border-gray-200 object-cover"
+										@click="openLightbox(form.photos.map(photoSrc), i)"
+									/>
+									<button
+										type="button"
+										class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"
+										:aria-label="labels.tplCancel"
+										@click="removePhoto(i)"
+									>
+										<Icon name="x" :size="16" />
+									</button>
+									<PhotoMark :photo="url" />
+								</div>
+								<input
+									v-model="photoNotes[url]"
+									type="text"
+									class="oak-input px-2 py-1.5 text-xs"
+									:placeholder="labels.photoCaption"
 								/>
-								<button
-									type="button"
-									class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"
-									:aria-label="labels.tplCancel"
-									@click="removePhoto(i)"
-								>
-									<Icon name="x" :size="16" />
-								</button>
-								<PhotoMark :photo="url" />
 							</div>
 							<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
 							<input ref="camInput" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onPhotos" />
@@ -459,6 +470,9 @@ const tank = ref(null)
 const pending = ref(false)
 const saved = ref(null)
 const form = reactive({ location_note: "", notes: "", photos: [] })
+// Keterangan per foto, dikunci pada url-nya — di luar `form.photos` karena yang dikirim
+// dirakit saat simpan, dan grid/lightbox tetap membaca deretan url apa adanya.
+const photoNotes = reactive({})
 const photoUploading = ref(false)
 
 const specLine = computed(() =>
@@ -482,6 +496,7 @@ const detailRes = cachedResource({
 		// apa yang dilihat saat itu, jadi membawa foto kemarin ke hari ini berarti mengarsipkan
 		// gambar tumpukan yang mungkin sudah ditinggalkan tank-nya.
 		form.photos = []
+		for (const url of Object.keys(photoNotes)) delete photoNotes[url]
 	},
 	onError(err) {
 		pending.value = false
@@ -522,9 +537,12 @@ async function save() {
 				container: c,
 				location_note: form.location_note,
 				notes: form.notes || undefined,
-				// Daftar url telanjang — server menormalkan kedua bentuknya (`_coerce_photos`).
-				// Ref `local:` yang masih terparkir diunggah `send` sebelum POST berangkat.
-				photos: form.photos.length ? form.photos : undefined,
+				// `{photo, caption}` — server menormalkan kedua bentuknya (`_coerce_photos`).
+				// Ref `local:` yang masih terparkir diunggah `send` sebelum POST berangkat;
+				// penukarannya menelusuri objek bersarang juga (`collectLocalRefs`).
+				photos: form.photos.length
+					? form.photos.map((url) => ({ photo: url, caption: (photoNotes[url] || "").trim() }))
+					: undefined,
 			},
 		})
 		saved.value = { ...res, container: tank.value.container_no || c }
@@ -538,7 +556,9 @@ async function save() {
 
 // ---- foto ----
 function removePhoto(i) {
-	form.photos.splice(i, 1)
+	const [url] = form.photos.splice(i, 1)
+	// Keterangan yatim akan ikut terkirim menempel pada foto berikutnya yang ber-url sama.
+	if (url) delete photoNotes[url]
 }
 async function onPhotos(e) {
 	const files = Array.from(e.target.files || [])
@@ -551,7 +571,11 @@ function openCameraOrFallback() {
 }
 const photoQueue = usePhotoQueue()
 async function addPhotos(files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	photoQueue.clearFailed()
 	photoUploading.value = true
 	try {
@@ -560,9 +584,11 @@ async function addPhotos(files) {
 		for (const f of files) {
 			const id = photoQueue.add(f)
 			try {
-				form.photos.push(await uploadPhoto(f))
+				last = await uploadPhoto(f)
+				form.photos.push(last)
 				photoQueue.done(id)
 			} catch {
+				last = false
 				toast.error(labels.error)
 				photoQueue.fail(id)
 			}
@@ -570,6 +596,7 @@ async function addPhotos(files) {
 	} finally {
 		photoUploading.value = false
 	}
+	return last
 }
 
 // Deep link: `/tank-position?c=TNKU1234567` langsung membuka tank itu — bentuk yang dipakai

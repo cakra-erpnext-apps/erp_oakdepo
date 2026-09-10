@@ -879,7 +879,11 @@ function openCameraOrFallback() {
 const photoQueue = usePhotoQueue()
 
 async function addQcPhotos(files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	photoQueue.clearFailed()
 	photoUploading.value = true
 	try {
@@ -888,8 +892,10 @@ async function addQcPhotos(files) {
 			try {
 				const url = await uploadFile(f)
 				qcPhotos.value.push({ photo: url, caption: "" })
+				last = url
 				photoQueue.done(id)
 			} catch (err) {
+				last = false
 				toast.error(labels.error)
 				photoQueue.fail(id)
 			}
@@ -897,6 +903,7 @@ async function addQcPhotos(files) {
 	} finally {
 		photoUploading.value = false
 	}
+	return last
 }
 
 function backToList() {

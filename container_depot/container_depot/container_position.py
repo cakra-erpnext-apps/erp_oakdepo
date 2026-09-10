@@ -43,7 +43,14 @@ FRESH_HOURS = 12
 
 
 def _coerce_photos(photos) -> list:
-	"""Normalise the ``photos`` payload (JSON string or list of urls / {photo}) → url list."""
+	"""Normalise the ``photos`` payload (JSON string, or a list of urls / ``{photo, caption}``)
+	→ ``[{"photo": url, "caption": str|None}]``.
+
+	A bare url stays a valid payload: the bulk screen sends one location for many tanks, where
+	a note about a single frame says nothing. ``caption`` is what the operator typed about THIS
+	picture, and it is stored verbatim because it is the half a Desk reader cannot derive from
+	``location_note``.
+	"""
 	if photos is None:
 		return []
 	if isinstance(photos, str):
@@ -55,10 +62,11 @@ def _coerce_photos(photos) -> list:
 		frappe.throw(_("photos must be a list."))
 	out = []
 	for p in photos:
-		url = (p.get("photo") if isinstance(p, dict) else p) or ""
-		url = str(url).strip()
+		is_row = isinstance(p, dict)
+		url = str((p.get("photo") if is_row else p) or "").strip()
 		if url:
-			out.append(url)
+			caption = str(p.get("caption") or "").strip() if is_row else ""
+			out.append({"photo": url, "caption": caption or None})
 	return out
 
 
@@ -133,7 +141,7 @@ def record_position(container, location_note, notes=None, photos=None) -> dict:
 	doc.container = container
 	doc.location_note = location_note
 	doc.notes = notes
-	doc.set("position_photos", [{"photo": url} for url in _coerce_photos(photos)])
+	doc.set("position_photos", _coerce_photos(photos))
 	doc.insert()  # NOT ignore_permissions — DocPerm is the gate.
 
 	return {

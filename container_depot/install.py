@@ -2160,6 +2160,14 @@ NOTIFICATION_RULES = [
 		["Admin Ops", "Cashier", "Commercial"]),
 	("booking_submitted", "Booking dikonfirmasi", "Container Booking disubmit / dikonfirmasi.",
 		["Admin Ops", "Cashier", "Security"]),
+	# Prioritas mendesak. Kantor saja, dan itu disengaja: menandai satu booking MENDESAK
+	# mengangkat tank-tanknya ke puncak ENAM worklist sekaligus, jadi membunyikannya ke semua
+	# kru lapangan berarti satu keputusan = lima lonceng, untuk pekerjaan yang belum tentu
+	# sudah jadi order mereka (lihat test_field_teams_are_only_told_on_handoff). Yang perlu
+	# tahu seketika adalah yang mengatur antreannya. Depot butuh sebaliknya? Tambah perannya
+	# di Depot Notification Rule — nol baris kode, dan seeder tidak akan menimpanya.
+	("booking_urgent", "Booking ditandai MENDESAK", "Booking Tank Out dinyatakan mendesak — semua pekerjaan tank-nya naik ke puncak antrean.",
+		["Admin Ops", "SPV Lapangan", "Management"]),
 	("contract_created", "Kontrak depo dibuat", "Depot Contract dibuat — belum bisa dipakai sampai diaktifkan.",
 		["Commercial", "Management"]),
 	("contract_activated", "Kontrak depo aktif", "Depot Contract berstatus Active — tarifnya sudah live.",

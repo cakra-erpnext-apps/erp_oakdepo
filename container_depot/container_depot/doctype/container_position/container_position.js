@@ -14,6 +14,9 @@ frappe.ui.form.on("Container Position Photo", {
 	photo(frm) {
 		render_photo_gallery(frm);
 	},
+	caption(frm) {
+		render_photo_gallery(frm);
+	},
 	position_photos_remove(frm) {
 		render_photo_gallery(frm);
 	},
@@ -23,22 +26,34 @@ function render_photo_gallery(frm) {
 	const field = frm.fields_dict.photos_preview;
 	if (!field) return;
 
-	const urls = (frm.doc.position_photos || []).map((r) => r.photo).filter(Boolean);
-	if (!urls.length) {
+	const rows = (frm.doc.position_photos || []).filter((r) => r.photo);
+	if (!rows.length) {
 		field.$wrapper.empty();
 		return;
 	}
 
-	const thumbs = urls
-		.map(
-			(url) =>
-				`<a href="${frappe.utils.escape_html(url)}" target="_blank" rel="noopener"
-					style="display:inline-block;width:120px;height:120px;border:1px solid var(--border-color);
-					border-radius:8px;overflow:hidden;background:var(--control-bg);">
-					<img src="${frappe.utils.escape_html(url)}"
-						style="width:100%;height:100%;object-fit:cover;" loading="lazy" />
-				</a>`
-		)
+	// Keterangan foto ikut tercetak di bawah petaknya: yang mengetiknya berdiri di depan tank
+	// ("di bawah pipa, deret kedua"), dan letak itulah yang dicari pembacanya — `location_note`
+	// milik SELURUH pembacaan, bukan milik satu frame.
+	const thumbs = rows
+		.map((r) => {
+			const url = frappe.utils.escape_html(r.photo);
+			const note = frappe.utils.escape_html(r.caption || "");
+			return `<div style="width:120px;">
+					<a href="${url}" target="_blank" rel="noopener"
+						style="display:block;width:120px;height:120px;border:1px solid var(--border-color);
+						border-radius:8px;overflow:hidden;background:var(--control-bg);">
+						<img src="${url}" style="width:100%;height:100%;object-fit:cover;" loading="lazy" />
+					</a>
+					${
+						note
+							? `<div title="${note}" style="margin-top:2px;font-size:var(--text-xs);
+								color:var(--text-muted);white-space:nowrap;overflow:hidden;
+								text-overflow:ellipsis;">${note}</div>`
+							: ""
+					}
+				</div>`;
+		})
 		.join("");
 
 	field.$wrapper.html(

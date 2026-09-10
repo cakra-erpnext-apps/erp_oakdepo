@@ -214,6 +214,38 @@ class TestEirCreate(FrappeTestCase):
 		self.assertEqual(doc.item_photos[0].checklist_item, "03")
 		self.assertEqual(doc.item_photos[0].photo, "/private/files/c.jpg")
 
+	def test_a_photo_carries_the_note_typed_about_it(self):
+		"""Kode kerusakan menyebut JENIS temuan; keterangan foto adalah bagian yang tidak
+		punya kode ("bocor di sambungan bawah") — dan itulah yang dibaca orang Desk.
+
+		Diuji lewat kedua album sekaligus karena satu payload memang pecah ke dua tabel
+		(``_split_damage_photos``), dan keterangan yang hilang di salah satunya adalah bukti
+		yang hilang tanpa ada yang tahu.
+		"""
+		c = _make_container("EIRC1000005N")
+		res = eir.create_eir(
+			inspection_type="EIR-In", container=c,
+			lines=[{"item_code": "01", "damage_code": "11", "remarks": "dent"}],
+			photos=[
+				{"item_code": "01", "photo": "/private/files/n1.jpg", "caption": "bocor di sambungan bawah"},
+				{"item_code": "03", "photo": "/private/files/n2.jpg", "caption": "  seal terbaca dari sisi ini  "},
+				{"item_code": "", "photo": "/private/files/n3.jpg"},  # tanpa keterangan
+			],
+			submit=False,
+		)
+		doc = frappe.get_doc("Inspection", res["name"])
+		self.assertEqual(doc.damage_photos[0].caption, "bocor di sambungan bawah")
+		by_photo = {p.photo: p.caption for p in doc.item_photos}
+		# Dirapikan, bukan disimpan apa adanya: spasi di ujung adalah sisa mengetik di HP.
+		self.assertEqual(by_photo["/private/files/n2.jpg"], "seal terbaca dari sisi ini")
+		self.assertIsNone(by_photo["/private/files/n3.jpg"])
+
+		# ...dan kembali ke form yang sama saat draft-nya dibuka lagi.
+		again = eir.open_draft(container_no="EIRC1000005N")
+		notes = {p["photo"]: p["caption"] for p in again["photos"]}
+		self.assertEqual(notes["/private/files/n1.jpg"], "bocor di sambungan bawah")
+		self.assertEqual(notes["/private/files/n3.jpg"], "")
+
 	def test_create_rejects_unknown_photo_item(self):
 		c = _make_container("EIRC1000006")
 		with self.assertRaises(frappe.ValidationError):
@@ -329,7 +361,7 @@ class TestEirDraft(FrappeTestCase):
 		again = eir.open_draft(container_no="EIRD1000114")
 		self.assertEqual(len(again["photos"]), 3)
 		self.assertIn(
-			{"item_code": "01", "photo": "/private/files/dmg.jpg"}, again["photos"]
+			{"item_code": "01", "photo": "/private/files/dmg.jpg", "caption": ""}, again["photos"]
 		)
 
 	def test_photo_follows_its_card_when_the_card_is_removed(self):
@@ -382,7 +414,9 @@ class TestEirDraft(FrappeTestCase):
 		view = eir.view_eir(d["inspection"])
 		self.assertEqual([c["item"] for c in view["damages"]], ["01"])
 		self.assertEqual(view["damages"][0]["is_finding"], 0)
-		self.assertEqual(view["damages"][0]["photos"], ["/private/files/p9.jpg"])
+		self.assertEqual(
+			view["damages"][0]["photos"], [{"photo": "/private/files/p9.jpg", "caption": ""}]
+		)
 		self.assertEqual(view["finding_count"], 0)
 		self.assertEqual(view["photos"], [])  # nothing left over for the walk-around album
 

@@ -851,7 +851,11 @@ async function onFallbackPick(event) {
 }
 
 async function addPhotos(group, files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	const queue = queueFor(group.key)
 	queue.clearFailed()
 	photoErr.value = ""
@@ -861,8 +865,9 @@ async function addPhotos(group, files) {
 		for (const f of files) {
 			const id = queue.add(f)
 			try {
+				last = await uploadPhoto(f)
 				workPhotos.value.push({
-					photo: await uploadPhoto(f),
+					photo: last,
 					// Both halves of the link: the ROW for precision (the same item can be on
 					// the order twice) and the ITEM because that is what a human — and the
 					// owner reading the print — actually recognises.
@@ -872,6 +877,7 @@ async function addPhotos(group, files) {
 				})
 				queue.done(id)
 			} catch (e) {
+				last = false
 				photoErr.value = labels.mrPhotoError
 				queue.fail(id)
 			}
@@ -880,6 +886,7 @@ async function addPhotos(group, files) {
 	} finally {
 		uploading.value = null
 	}
+	return last
 }
 
 function removePhoto(row) {

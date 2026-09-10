@@ -246,6 +246,20 @@ img.oak-grid-photo:hover {
 	cursor: zoom-in;
 }
 
+/* Keterangan foto, di bawah thumbnail-nya. Dipotong pada lebar thumbnail — utuhnya ada di
+   `title` dan di carousel; yang dijual baris ini adalah "foto ini ADA keterangannya". */
+.oak-damage-photo-note {
+	display: block;
+	width: 96px;
+	margin-top: 2px;
+	line-height: 1.2;
+	font-size: var(--text-xs);
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 /* Sits ON the thumbnail's corner: the strip has no room for a row of labelled buttons. */
 .oak-damage-photo-x {
 	position: absolute;
@@ -348,6 +362,19 @@ img.oak-grid-photo:hover {
 	background: var(--control-bg);
 	border-radius: var(--border-radius-sm);
 	padding: 2px var(--padding-xs);
+}
+
+/* Keterangan the operator typed about THIS frame. On its own line, not in the caption row:
+   it is a sentence, and squeezing it between the counter and the item name would truncate the
+   one part of the strip that is not derivable from anything else on the form. */
+.oak-carousel-note {
+	margin-top: var(--margin-xs);
+	padding: var(--padding-xs) var(--padding-sm);
+	border-left: 3px solid var(--border-color);
+	background: var(--control-bg);
+	border-radius: var(--border-radius-sm);
+	color: var(--text-color);
+	white-space: pre-wrap;
 }
 
 /* Section of the checklist item the photo is filed under, ahead of the item name. */

@@ -88,30 +88,49 @@
 					trigger-class="px-2.5 py-2"
 				/>
 			</div>
-			<div class="mt-2 flex flex-wrap items-center gap-2">
-				<div v-for="(url, idx) in r.photos" :key="url" class="relative">
-					<button type="button" class="oak-press block" @click="openLightbox(r.photos.map(photoSrc), idx)">
-						<img :src="photoSrc(url)" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-					</button>
-					<button type="button" class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow" @click="r.photos.splice(idx, 1)">
-						<Icon name="x" :size="12" />
-					</button>
-					<PhotoMark :photo="url" />
+			<!-- Dua kolom dengan kotak keterangan di bawah tiap foto, sebentuk dengan Foto
+			     Cepat dan foto M&R. Keterangan inilah yang dibaca orang Desk di sebelah
+			     fotonya: kode kerusakan menyebut JENIS temuan, dan yang tidak punya kode
+			     ("bocor di sambungan bawah") hanya ada di sini. -->
+			<div class="mt-2 grid grid-cols-2 items-start gap-2">
+				<div v-for="(url, idx) in r.photos" :key="url" class="space-y-1">
+					<div class="relative aspect-square">
+						<button type="button" class="oak-press h-full w-full" @click="openLightbox(r.photos.map(photoSrc), idx)">
+							<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
+						</button>
+						<button
+							type="button"
+							class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow"
+							@click="dropPhoto(r, idx)"
+						>
+							<Icon name="x" :size="12" />
+						</button>
+						<PhotoMark :photo="url" />
+					</div>
+					<input
+						:value="notes[url]"
+						type="text"
+						class="oak-input px-2 py-1.5 text-xs"
+						:placeholder="labels.photoCaption"
+						@input="emit('note', { url, value: $event.target.value })"
+					/>
 				</div>
-				<PhotoTile v-for="it in queueFor(r).items" :key="it.id" :item="it" tile="h-16 w-16" />
+				<PhotoTile v-for="it in queueFor(r).items" :key="it.id" :item="it" tile="aspect-square w-full" />
+			</div>
+			<div class="mt-2 flex gap-2">
 				<button
 					type="button"
-					class="flex h-16 w-16 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500"
+					class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-sm font-medium text-gray-500 transition hover:border-brand-400 hover:text-brand-500"
 					:disabled="r.uploading"
 					@click="openCameraOrFallback(r)"
 				>
-					<span v-if="r.uploading" class="text-xs">…</span>
-					<template v-else><Icon name="camera" :size="18" /><span class="text-[9px] font-medium">{{ labels.photoCamera }}</span></template>
+					<Icon v-if="r.uploading" name="loader" :size="16" class="animate-spin" />
+					<template v-else><Icon name="camera" :size="16" /> {{ labels.photoCamera }}</template>
 				</button>
-				<label class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-gray-300 text-gray-400 transition hover:border-brand-400 hover:text-brand-500">
+				<label class="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 py-2 text-sm font-medium text-gray-500 transition hover:border-brand-400 hover:text-brand-500">
 					<input type="file" accept="image/*" multiple class="hidden" :disabled="r.uploading" @change="onPhotoPick(r, $event)" />
-					<span v-if="r.uploading" class="text-xs">…</span>
-					<template v-else><Icon name="image" :size="18" /><span class="text-[9px] font-medium">{{ labels.photoGallery }}</span></template>
+					<Icon v-if="r.uploading" name="loader" :size="16" class="animate-spin" />
+					<template v-else><Icon name="image" :size="16" /> {{ labels.photoGallery }}</template>
 				</label>
 			</div>
 			<p v-if="r.photoErr" class="mt-1 text-xs text-red-600">{{ r.photoErr }}</p>
@@ -162,8 +181,17 @@ const props = defineProps({
 	damageCodes: { type: Array, default: () => [] },
 	repairCodes: { type: Array, default: () => [] },
 	upload: { type: Function, required: true }, // (File) => Promise<file_url>
+	// Keterangan per foto, dikunci pada url dan dimiliki oleh form induk — satu peta untuk
+	// seluruh EIR, karena foto yang dipindahkan Admin antara Foto Cepat dan kartu kerusakan
+	// harus tetap membawa keterangannya. Dibaca di sini, ditulis lewat `note` (beda dengan
+	// `rows` yang memang diedit di tempat): peta ini juga dipakai Foto Cepat di form induk,
+	// dan dua tempat yang menulis ke satu objek adalah cara tercepat kehilangan jejaknya.
+	notes: { type: Object, default: () => ({}) },
 	title: { type: String, default: labels.checklist },
 })
+
+// `{ url, value }` — nilai kosong berarti keterangannya dibuang bersama fotonya.
+const emit = defineEmits(["note"])
 
 const query = ref("")
 // The picker opens on focus, not on the first keystroke. `mousedown.prevent` on every row
@@ -238,12 +266,20 @@ function addRow(item) {
 }
 
 function removeRow(r) {
+	for (const url of r.photos || []) emit("note", { url, value: "" })
 	r.added = false
 	r.damage_code = ACCEPTABLE_DAMAGE
 	r.repair_code = NO_ACTION_REPAIR
 	r.remarks = ""
 	r.photos = []
 	r.photoErr = ""
+}
+
+// Foto dibuang berikut keterangannya: keterangan yatim akan menempel pada foto lain yang
+// kebetulan punya url sama, dan tetap ikut terkirim ke server tanpa ada fotonya di layar.
+function dropPhoto(r, idx) {
+	const [url] = r.photos.splice(idx, 1)
+	if (url) emit("note", { url, value: "" })
 }
 
 async function onPhotoPick(item, event) {
@@ -280,7 +316,11 @@ function queueFor(item) {
 }
 
 async function addPhotos(item, files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	const queue = queueFor(item)
 	item.photoErr = ""
 	queue.clearFailed()
@@ -290,9 +330,11 @@ async function addPhotos(item, files) {
 		for (const f of files) {
 			const id = queue.add(f)
 			try {
-				item.photos.push(await props.upload(f))
+				last = await props.upload(f)
+				item.photos.push(last)
 				queue.done(id)
 			} catch (e) {
+				last = false
 				item.photoErr = labels.photoError
 				queue.fail(id)
 			}
@@ -300,5 +342,6 @@ async function addPhotos(item, files) {
 	} finally {
 		item.uploading = false
 	}
+	return last
 }
 </script>

@@ -283,6 +283,12 @@ def set_urgent(booking: str, urgent_date=None, reason: str | None = None) -> dic
 		frappe._("Ditandai MENDESAK untuk {0}.").format(frappe.format(d, {"fieldtype": "Date"}))
 		+ (frappe._(" Alasan: {0}").format(reason) if reason else ""),
 	)
+	# Dan dibunyikan: komentar di timeline hanya terbaca oleh yang sudah membuka booking ini,
+	# sementara yang berubah adalah urutan kerja orang lain. `notify` sendiri best-effort —
+	# lonceng yang gagal tidak boleh membatalkan urgensinya (lihat notify.notify).
+	from container_depot.container_depot.notify import notify_booking_urgent
+
+	notify_booking_urgent(doc, frappe.format(d, {"fieldtype": "Date"}), reason)
 	return {"urgent_date": str(d), "urgent_reason": reason}
 
 

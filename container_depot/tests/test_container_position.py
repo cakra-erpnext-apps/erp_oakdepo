@@ -296,11 +296,18 @@ class TestPhotos(_Base):
 
 	def test_photos_arrive_in_any_of_the_shapes_a_client_may_send(self):
 		"""A bare url list, a list of ``{photo}`` rows, or either of those as a JSON string —
-		the PWA sends the first, the Desk grid the second."""
+		the bulk screen sends the first, the single-tank screen the second."""
 		c = self._container("CPOSPHOTO0002")
-		self.assertEqual(cp._coerce_photos(["/files/a.jpg"]), ["/files/a.jpg"])
-		self.assertEqual(cp._coerce_photos([{"photo": "/files/a.jpg"}]), ["/files/a.jpg"])
-		self.assertEqual(cp._coerce_photos('["/files/a.jpg"]'), ["/files/a.jpg"])
+		row = {"photo": "/files/a.jpg", "caption": None}
+		self.assertEqual(cp._coerce_photos(["/files/a.jpg"]), [row])
+		self.assertEqual(cp._coerce_photos([{"photo": "/files/a.jpg"}]), [row])
+		self.assertEqual(cp._coerce_photos('["/files/a.jpg"]'), [row])
+		# Keterangan yang diketik di HP ikut, dirapikan ujungnya; yang kosong tidak menjadi
+		# baris keterangan kosong.
+		self.assertEqual(
+			cp._coerce_photos([{"photo": "/files/a.jpg", "caption": "  di bawah pipa  "}]),
+			[{"photo": "/files/a.jpg", "caption": "di bawah pipa"}],
+		)
 		# Blanks are dropped rather than stored as empty child rows.
 		self.assertEqual(cp._coerce_photos(["", None, "  "]), [])
 

@@ -478,6 +478,9 @@ export const labels = {
 	photoGallery: "Galeri", // pick existing photos, several at once
 	addPhoto: "Tambah Foto", // Add photo
 	photoError: "Gagal mengunggah foto", // Photo upload failed
+	// Per-photo note. Kode kerusakan menyebut JENIS-nya; kotak ini untuk yang tidak punya
+	// kode — dan itulah yang dibaca orang Desk di samping fotonya.
+	photoCaption: "Keterangan foto…", // per-photo caption input
 	// In-app viewfinder (components/CameraHost.vue). The shutter IS the decision — there is
 	// no "pakai foto ini?" step, because every shot lands as a thumbnail in the form behind
 	// and can be deleted there.
@@ -488,6 +491,14 @@ export const labels = {
 	camTorch: "Senter", // torch / flashlight toggle
 	camStarting: "Menyalakan kamera…", // Starting camera…
 	camCount: "foto diambil", // follows a number: "3 foto diambil"
+	// Rol foto di dalam viewfinder: satu petak per jepretan, dengan nasib unggahannya.
+	// Angka-angka ini berdiri sendiri di atas strip ("2 terkirim", "1 gagal") supaya jawabannya
+	// terbaca tanpa memeriksa petak satu per satu.
+	camShotUploading: "mengirim", // still going up
+	camShotSent: "terkirim", // landed on the server
+	camShotParked: "di HP", // parked locally, leaves with the document
+	camShotFailed: "gagal", // could not even be parked — retake it
+	camRetakeHint: "Ada foto gagal — foto ulang yang bertanda merah.",
 	// Per-photo state, drawn as a small badge on the thumbnail itself. A photo is evidence;
 	// "did it actually get out of my hand?" is the question the operator has, and a toast
 	// that has already faded cannot answer it about THIS photo.

@@ -7,6 +7,8 @@ dropped, the booking voided, the tank gone.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, today
@@ -395,6 +397,28 @@ class TestUrgentPriority(FrappeTestCase):
 		lift_on.release_on_gate_out(c)
 
 		self.assertIsNone(self._urgent(c))
+
+	def test_marking_urgent_rings_the_bell(self):
+		"""Urgensi mengubah urutan kerja ORANG LAIN — enam worklist sekaligus.
+
+		Jejaknya di timeline hanya terbaca oleh yang sudah membuka booking-nya, jadi yang
+		mengatur antrean baru tahu setelah tanknya terlanjur didahului. Patch di ``notify``
+		karena yang dijaga di sini adalah pemanggilannya; siapa penerimanya diuji di
+		``test_notifications``.
+		"""
+		c = self._container("URGENT00008")
+		doc = self._booking([c], add_days(today(), 6))
+
+		with patch("container_depot.container_depot.notify.notify") as spy:
+			lift_on.set_urgent(doc.name, reason="Kapal maju sehari")
+
+		self.assertTrue(spy.called, "menandai MENDESAK harus membunyikan lonceng")
+		kwargs = spy.call_args.kwargs
+		self.assertEqual(kwargs["event_key"], "booking_urgent")
+		self.assertEqual(kwargs["name"], doc.name)
+		# Alasannya ikut di subject: "kenapa ini di atas antrean saya" adalah pertanyaan yang
+		# lonceng ini dijawab untuknya.
+		self.assertIn("Kapal maju sehari", kwargs["subject"])
 
 	def test_a_field_role_may_not_declare_urgency(self):
 		"""An urgency every role can grant is one every role will grant, and a queue where

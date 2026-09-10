@@ -87,15 +87,21 @@
 							<span v-if="d.damage_description" class="block text-xs text-gray-400">{{ d.damage_description }}</span>
 							<!-- Bukti temuan ini, sejajar dengan yang ada di form Desk. -->
 							<div v-if="(d.photos || []).length" class="mt-1.5 flex flex-wrap gap-1.5">
-								<button
-									v-for="(url, pi) in d.photos"
-									:key="url"
-									type="button"
-									class="oak-press"
-									@click="openLightbox(d.photos.map(photoSrc), pi)"
-								>
-									<img :src="photoSrc(url)" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
-								</button>
+								<div v-for="(ph, pi) in d.photos" :key="ph.photo" class="w-16">
+									<button
+										type="button"
+										class="oak-press"
+										@click="openLightbox(d.photos.map((x) => photoSrc(x.photo)), pi)"
+									>
+										<img :src="photoSrc(ph.photo)" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
+									</button>
+									<!-- Keterangan yang diketik petugas di tank. Dipotong di lebar
+									     thumbnail-nya, utuh di `title` — deretan foto tetap terbaca
+									     sebagai deretan, dan yang panjang tetap bisa dibaca. -->
+									<span v-if="ph.caption" :title="ph.caption" class="block truncate text-[10px] text-gray-500">
+										{{ ph.caption }}
+									</span>
+								</div>
 							</div>
 						</div>
 					</li>
@@ -156,6 +162,9 @@
 						@click="openLightbox((data.photos || []).map((x) => photoSrc(x.photo)), i)"
 					>
 						<img :src="photoSrc(p.photo)" class="aspect-square w-full rounded-lg border border-gray-200 object-cover" />
+						<span v-if="p.caption" :title="p.caption" class="mt-0.5 block truncate text-[11px] text-gray-700">
+							{{ p.caption }}
+						</span>
 						<span class="mt-0.5 block truncate text-[11px]" :class="p.item_name ? 'text-gray-500' : 'text-gray-400'">
 							{{ p.item_name || labels.eirPhotoUnsorted }}
 						</span>

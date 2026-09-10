@@ -222,16 +222,22 @@ async function onPhotos(e) {
 	await addPhotos(files)
 }
 async function addPhotos(files) {
-	if (!files.length) return
+	if (!files.length) return false
+	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
+	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
+	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
+	let last = false
 	photoQueue.clearFailed()
 	photoUploading.value = true
 	try {
 		for (const f of files) {
 			const id = photoQueue.add(f)
 			try {
-				photos.value.push(await uploadPhoto(f))
+				last = await uploadPhoto(f)
+				photos.value.push(last)
 				photoQueue.done(id)
 			} catch {
+				last = false
 				toast.error(labels.error)
 				photoQueue.fail(id)
 			}
@@ -239,6 +245,7 @@ async function addPhotos(files) {
 	} finally {
 		photoUploading.value = false
 	}
+	return last
 }
 
 // --- simpan ---
