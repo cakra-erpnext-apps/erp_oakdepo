@@ -18,11 +18,11 @@ in_progress / gate_out — classifying by the most-advanced order state it carri
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_to_date, cint, getdate, today
+from frappe.utils import add_to_date, cint, date_diff, getdate, today
 
 from container_depot.api import _require_authenticated_user
 from container_depot.ess.guard import require_menu
-from container_depot.container_depot import container_activity
+from container_depot.container_depot import container_activity, container_status
 from container_depot.container_depot.user_branch import get_user_depots
 
 # Canonical Monitor status buckets — order-state centric so a field observer sees the
@@ -58,9 +58,29 @@ _LIST_FIELDS = [
 	"principal",
 	"depot",
 	"yard_zone",
+	"current_location",
 	"status",
 	"last_order_bongkar",
 ]
+
+# Tiga kelompok yang dibaca layar Monitor. Lima bucket di atas menjawab "pekerjaan apa yang
+# menahan tank ini"; kelompok menjawab pertanyaan yang lebih dulu ditanyakan orang yang berdiri
+# di yard: "tank ini sedang dikerjakan, siap, atau sudah keluar". Draft dan Pending bukan
+# keadaan tank yang berbeda bagi pengamat — ketiganya sama-sama berarti ada yang belum selesai,
+# jadi ketiganya satu kelompok dan lencana barisnya yang menyebut persisnya.
+# Kunci kelompok sengaja TIDAK memakai ulang nama bucket "in_progress". Sempat begitu, dan
+# akibatnya filter `status=in_progress` — yang dikirim deep-link KPI dashboard dan berarti
+# "pekerjaan yang benar-benar sedang berjalan" — diam-diam ikut menarik draft dan pending,
+# karena satu kata menjawab dua pertanyaan. "available" dan "gate_out" boleh sama: di kedua
+# sisi isinya persis baris yang sama.
+GROUPS = ("working", "available", "gate_out")
+_GROUP_OF = {
+	"draft": "working",
+	"pending": "working",
+	"in_progress": "working",
+	"available": "available",
+	"gate_out": "gate_out",
+}
 
 
 def _apply_user_depot_scope(filters, depot):
@@ -131,6 +151,20 @@ def _driving_orders(names):
 		fields=["name", "container", "status"],
 	):
 		rows.append((r.container, _REPAIR_STATE[r.status], "M&R", "Repair Order", r.name, r.status))
+	# EIR yang SUDAH DISENTUH. Sebuah EIR-In draft lahir sendiri bersama tank-nya, jadi
+	# menghitung setiap draft berarti menyebut seluruh isi depo "sedang dikerjakan" — tapi
+	# `work_started_on` hanya ada kalau seseorang benar-benar membuka dan memulainya, dan itu
+	# ukuran yang sudah dipakai eir.py untuk membedakan EIR berisi pekerjaan dari EIR kosong.
+	#
+	# Sebelum ini tank dengan EIR berjalan tampil "Available" di Monitor padahal
+	# container_status menahannya di In_Depot dan gate menolak melepasnya — dua layar yang
+	# menjawab pertanyaan yang sama dengan jawaban berbeda.
+	for r in frappe.get_all(
+		"Inspection",
+		filters={"container": ["in", names], "docstatus": 0, "work_started_on": ["is", "set"]},
+		fields=["name", "container", "inspection_type"],
+	):
+		rows.append((r.container, "draft", "EIR", "Inspection", r.name, r.inspection_type or "EIR"))
 	out = {}
 	for container, state, kind, doctype, name, status in rows:
 		cur = out.get(container)
@@ -146,6 +180,163 @@ def _order_ref(drv):
 	return {"kind": drv["kind"], "doctype": drv["doctype"], "name": drv["name"], "status": drv["status"]}
 
 
+def _last_activity(names):
+	"""container -> aktivitas TERAKHIRNYA ``{type, summary, time, by, ref_doctype, ref_name}``.
+
+	Satu kueri untuk seluruh halaman, lewat turunan ``max(activity_time)`` — bukan satu kueri
+	per tank. Daftar Monitor menyapu ratusan container sekaligus dan baris ketiganya ("Mulai
+	perbaikan · 12 mnt lalu · Rudi") ada di setiap baris, jadi versi per-tank akan membayar
+	ratusan query untuk satu layar yang cuma dibaca sekilas.
+
+	Dipakai tiga kali dari satu hasil: kalimat baris, filter periode ("aktivitas hari ini"),
+	dan urutan (teraktif / paling lama diam). Ketiganya HARUS memakai jam yang sama — kalau
+	tidak, sebuah tank bisa lolos filter "hari ini" sambil menampilkan aktivitas minggu lalu.
+	"""
+	if not names:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		select a.container, a.activity_type, a.summary, a.activity_time, a.performed_by,
+		       a.reference_doctype, a.reference_name
+		  from `tabContainer Activity` a
+		  join (
+		        select container, max(activity_time) as t
+		          from `tabContainer Activity`
+		         where container in %(names)s
+		         group by container
+		       ) m on m.container = a.container and m.t = a.activity_time
+		 where a.container in %(names)s
+		""",
+		{"names": tuple(names)},
+		as_dict=True,
+	)
+	out = {}
+	for r in rows:
+		# Dua aktivitas berjam sama persis: yang pertama menang, sekadar supaya hasilnya tetap.
+		out.setdefault(r.container, {
+			"type": r.activity_type,
+			"summary": r.summary,
+			"time": str(r.activity_time) if r.activity_time else None,
+			"by": r.performed_by,
+			"ref_doctype": r.reference_doctype,
+			"ref_name": r.reference_name,
+		})
+	return out
+
+
+def _clean(value):
+	"""``None`` untuk filter yang datang sebagai "" / "undefined" / "null" dari klien."""
+	value = (value or "").strip()
+	return None if not value or value.lower() in ("undefined", "null", "none") else value
+
+
+def _scan(search=None):
+	"""Setiap container yang boleh dilihat pemanggil, lengkap dengan bucket, kelompok, dan
+	aktivitas terakhirnya — SEBELUM filter depot / prinsipal / periode / status dipasang.
+
+	Satu pemindaian ini yang dipakai daftar DAN penghitung faset di sheet filter. Kalau
+	keduanya memindai sendiri-sendiri, tombol "Terapkan · 96 tank" bisa menjanjikan angka yang
+	tidak sama dengan isi daftar yang muncul sesudahnya — dan yang salah tidak akan ketahuan
+	karena keduanya sama-sama terlihat masuk akal.
+	"""
+	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
+	scoped = _apply_user_depot_scope(filters, None)
+	if scoped is None:
+		return []
+	or_filters = None
+	search = _clean(search)
+	if search:
+		# Nomor tank ATAU nomor bon: yang dipegang orang yang mencari belum tentu tanknya —
+		# sering justru selembar bon bongkar dengan nomor tank yang tidak terbaca lagi.
+		or_filters = {
+			"container_no": ["like", f"%{search}%"],
+			"last_order_bongkar": ["like", f"%{search}%"],
+		}
+
+	rows = frappe.get_list(
+		"Container",
+		filters=scoped,
+		or_filters=or_filters,
+		fields=_LIST_FIELDS,
+		order_by="container_no asc",
+		limit_page_length=0,
+	)
+	names = [r.name for r in rows]
+	driving = _driving_orders(names)
+	activity = _last_activity(names)
+
+	out = []
+	for r in rows:
+		drv = driving.get(r.name)
+		st = (drv or {}).get("state")
+		bucket = derive_status(r.status, st == "in_progress", st == "pending", st == "draft")
+		out.append({
+			"name": r.name,
+			"container_no": r.container_no,
+			"container_type": r.container_type,
+			"principal": r.principal,
+			"depot": r.depot,
+			"location": r.current_location,
+			"status": bucket,
+			"group": _GROUP_OF[bucket],
+			"raw_status": r.status,  # exact Container.status (drives the gate-out action eligibility)
+			"order_bongkar": r.last_order_bongkar,
+			# Which order put the tank in this bucket (draft/pending/in_progress) —
+			# lets the UI say "Draft M&R" and link straight to the order.
+			"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
+			"last_activity": activity.get(r.name),
+		})
+	return out
+
+
+# Periode aktivitas -> berapa hari ke belakang. `None` = tanpa batas.
+_PERIODS = {"today": 0, "7d": 7, "all": None}
+
+
+def _passes(row, depot=None, principal=None, status=None, cutoff=None):
+	"""Apakah satu baris lolos filter yang dipilih? Dipakai daftar dan penghitung faset."""
+	if depot and row["depot"] != depot:
+		return False
+	if principal and row["principal"] != principal:
+		return False
+	if status and status not in (row["status"], row["group"]):
+		return False
+	if cutoff is not None:
+		la = row.get("last_activity") or {}
+		if not la.get("time") or la["time"][:10] < cutoff:
+			return False
+	return True
+
+
+def _cutoff(period):
+	"""Tanggal terawal yang masih dihitung "punya aktivitas", atau None untuk semua waktu."""
+	period = _clean(period) or "all"
+	days = _PERIODS.get(period, None)
+	if days is None:
+		return None
+	return str(getdate(add_to_date(today(), days=-days)))
+
+
+# Urutan daftar. Kuncinya mengembalikan tuple: elemen pertama memaksa baris tanpa aktivitas
+# ke ujung yang benar (paling bawah saat mengurut keaktifan, paling atas saat mencari yang
+# paling lama diam — sebuah tank yang tidak pernah tercatat apa-apa adalah yang PALING diam,
+# bukan yang paling baru).
+def _sort_key(sort):
+	if sort == "number":
+		return lambda r: (r.get("container_no") or r["name"] or "",)
+	if sort == "idle":
+		return lambda r: (bool((r.get("last_activity") or {}).get("time")),
+		                  (r.get("last_activity") or {}).get("time") or "")
+	return lambda r: (not (r.get("last_activity") or {}).get("time"),
+	                  _desc((r.get("last_activity") or {}).get("time")))
+
+
+def _desc(value):
+	"""Kunci urut menurun untuk string tanggal, tanpa `reverse=True` yang akan ikut membalik
+	elemen pertama tuple (penanda "tidak punya aktivitas") dan menaruhnya di tempat salah."""
+	return tuple(-ord(c) for c in (value or ""))
+
+
 @frappe.whitelist(methods=["GET"])
 def get_inventory_summary(depot=None):
 	"""Status-count header, depot-scoped.
@@ -157,7 +348,12 @@ def get_inventory_summary(depot=None):
 	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
 	scoped = _apply_user_depot_scope(filters, depot)
 	if scoped is None:
-		return {"success": True, "counts": {b: 0 for b in BUCKETS}, "total": 0}
+		return {
+			"success": True,
+			"counts": {b: 0 for b in BUCKETS},
+			"groups": {g: 0 for g in GROUPS},
+			"total": 0,
+		}
 	filters = scoped
 
 	# Permission-aware: User Permissions on Depot (and DocPerms) filter this.
@@ -171,14 +367,18 @@ def get_inventory_summary(depot=None):
 	driving = _driving_orders(names)
 
 	counts = {b: 0 for b in BUCKETS}
+	groups = {g: 0 for g in GROUPS}
 	for c in containers:
 		st = (driving.get(c.name) or {}).get("state")
 		bucket = derive_status(c.status, st == "in_progress", st == "pending", st == "draft")
 		counts[bucket] += 1
+		groups[_GROUP_OF[bucket]] += 1
 
 	return {
 		"success": True,
 		"counts": counts,
+		# Empat pil di puncak Monitor: Semua + ketiga kelompok ini.
+		"groups": groups,
 		"total": len(names),
 	}
 
@@ -186,7 +386,7 @@ def get_inventory_summary(depot=None):
 @frappe.whitelist(methods=["GET"])
 def get_tank_list(
 	search=None, principal=None, status=None, depot=None,
-	today=0, start=0, page_length=50,
+	today=0, period=None, sort=None, start=0, page_length=50,
 ):
 	"""Searchable / filterable / paginated tank list with derived status.
 
@@ -194,83 +394,118 @@ def get_tank_list(
 	and the rows themselves expose the *derived* bucket, which has no column to
 	filter on server-side. Container reads remain permission-aware.
 
+	``status`` menerima bucket presisi (``draft`` / ``pending`` / …) MAUPUN kelompok
+	(``in_progress`` / ``available`` / ``gate_out``) — pil di puncak layar mengirim yang kedua,
+	deep-link lama dari dashboard mengirim yang pertama, dan keduanya harus tetap jalan.
+
 	GET /api/v1/ess/tank-list
 	"""
 	require_menu("monitor")
 
 	start = cint(start)
 	page_length = cint(page_length) or 50
-	# Tolerate client quirks where an absent filter arrives as "" / "undefined".
-	if status in (None, "", "undefined", "null"):
-		status = None
-	elif status not in BUCKETS:
+	status = _clean(status)
+	if status and status not in BUCKETS and status not in GROUPS:
 		frappe.throw(frappe._("Invalid status filter: {0}").format(status), frappe.ValidationError)
 
-	filters = {"status": ["not in", EXCLUDED_FROM_INVENTORY]}
-	if principal:
-		filters["principal"] = principal
-	scoped = _apply_user_depot_scope(filters, depot)
-	if scoped is None:
-		return {"success": True, "total": 0, "start": start, "page_length": page_length, "items": []}
-	filters = scoped
-	if search:
-		# PRD: search by tank number.
-		filters["container_no"] = ["like", f"%{search.strip()}%"]
+	depot = _clean(depot)
+	if depot:
+		allowed = get_user_depots()
+		if allowed is not None and depot not in allowed:
+			return {"success": True, "total": 0, "start": start, "page_length": page_length, "items": []}
+	# `today=1` adalah bentuk lama parameter ini; periode yang lebih kaya menggantikannya.
+	period = _clean(period) or ("today" if cint(today) else "all")
+	cutoff = _cutoff(period)
 
-	rows = frappe.get_list(
-		"Container",
-		filters=filters,
-		fields=_LIST_FIELDS,
-		order_by="container_no asc",
-		limit_page_length=0,
-	)
-	names = [r.name for r in rows]
-	driving = _driving_orders(names)
+	principal = _clean(principal)
+	# Disaring dua kali dari satu pemindaian: sekali TANPA pil status (itu yang dihitung
+	# keempat pil di puncak layar dan kepala tiap kelompok), sekali dengan (itu isi daftarnya).
+	# Kalau angka pil datang dari endpoint lain, ia akan menghitung dunia yang sedikit berbeda
+	# dari daftar di bawahnya — dan yang membaca tidak punya cara tahu yang mana yang benar.
+	scoped = [
+		r for r in _scan(search)
+		if _passes(r, depot=depot, principal=principal, cutoff=cutoff)
+	]
+	groups = {g: 0 for g in GROUPS}
+	for r in scoped:
+		groups[r["group"]] += 1
 
-	today_flag = cint(today)
-	today_set = None
-	if today_flag and names:
-		today_set = set(
-			frappe.get_all(
-				"Container Activity",
-				filters={"container": ["in", names], "activity_time": [">=", frappe.utils.today()]},
-				pluck="container",
-				distinct=True,
-			)
-		)
+	rows = [r for r in scoped if _passes(r, status=status)]
+	rows.sort(key=_sort_key(_clean(sort) or "activity"))
 
-	items = []
-	for r in rows:
-		drv = driving.get(r.name)
-		st = (drv or {}).get("state")
-		bucket = derive_status(r.status, st == "in_progress", st == "pending", st == "draft")
-		if status and bucket != status:
-			continue
-		if today_set is not None and r.name not in today_set:
-			continue
-		items.append(
-			{
-				"name": r.name,
-				"container_no": r.container_no,
-				"container_type": r.container_type,
-				"principal": r.principal,
-				"depot": r.depot,
-				"status": bucket,
-				"raw_status": r.status,  # exact Container.status (drives the gate-out action eligibility)
-				"order_bongkar": r.last_order_bongkar,
-				# Which order put the tank in this bucket (draft/pending/in_progress) —
-				# lets the UI say "Draft M&R" and link straight to the order.
-				"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
-			}
-		)
-
-	total = len(items)
 	return {
 		"success": True,
-		"total": total,
+		"total": len(rows),
+		# Tanpa pil status: angka "Semua" dan tiap kelompok, di bawah filter yang sama.
+		"all": len(scoped),
+		"groups": groups,
 		"start": start,
 		"page_length": page_length,
-		"items": items[start : start + page_length],
+		"items": rows[start : start + page_length],
+	}
+
+
+@frappe.whitelist(methods=["GET"])
+def get_tank_facets(search=None, principal=None, status=None, depot=None, period=None):
+	"""Berapa tank di balik tiap pilihan di sheet filter, plus total untuk tombol Terapkan.
+
+	Tiap faset dihitung dengan pilihannya SENDIRI diabaikan — itu yang membuat angka di
+	sebelah "OAK1" berarti "kalau depot diganti ke OAK1", bukan "0" hanya karena depot lain
+	sedang dipilih. Total di tombol Terapkan justru memakai semua filter sekaligus, karena ia
+	menjanjikan isi daftar yang akan muncul.
+
+	GET /api/v1/ess/tank-facets
+	"""
+	require_menu("monitor")
+
+	principal = _clean(principal)
+	depot = _clean(depot)
+	status = _clean(status)
+	cutoff = _cutoff(period)
+	rows = _scan(search)
+
+	def count(**skip):
+		f = {"depot": depot, "principal": principal, "status": status, "cutoff": cutoff}
+		f.update(skip)
+		return [r for r in rows if _passes(r, **f)]
+
+	by_depot, by_principal = {}, {}
+	for r in count(depot=None):
+		if r["depot"]:
+			by_depot[r["depot"]] = by_depot.get(r["depot"], 0) + 1
+	for r in count(principal=None):
+		if r["principal"]:
+			by_principal[r["principal"]] = by_principal.get(r["principal"], 0) + 1
+
+	groups = {g: 0 for g in GROUPS}
+	for r in count(status=None):
+		groups[r["group"]] += 1
+
+	labels = (
+		{c.name: c.customer_name for c in frappe.get_all(
+			"Customer", filters={"name": ["in", list(by_principal)]}, fields=["name", "customer_name"]
+		)} if by_principal else {}
+	)
+	depot_names = (
+		{d.name: d.depot_name or d.name for d in frappe.get_all(
+			"Depot", filters={"name": ["in", list(by_depot)]}, fields=["name", "depot_name"]
+		)} if by_depot else {}
+	)
+
+	return {
+		"success": True,
+		# Angka di tombol "Terapkan": semua filter dipasang sekaligus.
+		"total": len(count()),
+		"all": len(rows),
+		"groups": groups,
+		"depots": [
+			{"code": k, "name": depot_names.get(k) or k, "count": v}
+			for k, v in sorted(by_depot.items(), key=lambda kv: (-kv[1], kv[0]))
+		],
+		"principals": [
+			{"name": k, "label": labels.get(k) or k, "count": v}
+			for k, v in sorted(by_principal.items(), key=lambda kv: (-kv[1], kv[0]))
+		],
 	}
 
 
@@ -349,8 +584,70 @@ def get_tank_detail(container):
 		"eir_in_date": str(doc.eir_in_date) if doc.eir_in_date else None,
 		"eir_out_date": str(doc.eir_out_date) if doc.eir_out_date else None,
 		"status": bucket,
+		"group": _GROUP_OF[bucket],
 		"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
+		# Letak tank: catatan Container Position terakhir, apa adanya. Depot ini tidak
+		# menyimpan peta yard (blok/baris/slot dihapus di patch v0_36), jadi yang bisa
+		# ditampilkan adalah kalimat yang ditulis orang yang terakhir melihatnya — beserta
+		# KAPAN ia menulisnya, karena letak berumur seminggu di yard yang sibuk adalah
+		# tebakan, bukan jawaban.
+		"location": doc.current_location,
+		"location_updated_on": str(doc.location_updated_on) if doc.location_updated_on else None,
+		"location_updated_by": doc.location_updated_by,
+		"in_depot_days": _in_depot_days(doc),
+		# Semua pekerjaan yang masih memegang tank ini, bukan cuma yang menentukan bucket —
+		# aturannya milik container_status, satu-satunya definisi "belum selesai" di app ini.
+		"open_orders": _open_orders(doc.name),
+		"activities": container_activity.list_activity_history(
+			page_length=5, container=doc.name
+		)["items"],
 	}
+
+
+def _in_depot_days(doc):
+	"""Sudah berapa hari tank ini di depo — dari EIR-In, jatuh ke aktivitas Gate In.
+
+	``None`` kalau keduanya tidak ada: lebih baik kosong daripada "0 hari" untuk tank yang
+	sebenarnya sudah sebulan berdiri di sana tanpa dokumen masuk.
+	"""
+	since = doc.eir_in_date
+	if not since:
+		since = frappe.db.get_value(
+			"Container Activity",
+			{"container": doc.name, "activity_type": "Gate In"},
+			"activity_time",
+			order_by="activity_time desc",
+		)
+	if not since:
+		return None
+	return max(0, date_diff(today(), getdate(since)))
+
+
+def _open_orders(container):
+	"""``container_open_orders`` + sejak kapan dan oleh siapa tiap pekerjaan berjalan.
+
+	Jam mulainya diambil dari Container Activity yang menunjuk dokumen itu, bukan dari
+	``creation``-nya: sebuah Repair Order bisa dibuat pagi dan baru benar-benar dikerjakan
+	sore, dan yang ditanya orang yang membaca kartu "Proses aktif" adalah yang kedua.
+	"""
+	orders = container_status.container_open_orders(container)
+	if not orders:
+		return []
+	names = [o["name"] for o in orders]
+	started = {}
+	for a in frappe.get_all(
+		"Container Activity",
+		filters={"container": container, "reference_name": ["in", names]},
+		fields=["reference_name", "activity_time", "performed_by", "summary"],
+		order_by="activity_time asc",  # yang PERTAMA menyentuh dokumen = mulainya
+	):
+		started.setdefault(a.reference_name, a)
+	for o in orders:
+		a = started.get(o["name"])
+		o["since"] = str(a.activity_time) if a and a.activity_time else None
+		o["by"] = a.performed_by if a else None
+		o["note"] = a.summary if a else None
+	return orders
 
 
 def _count_active_job_containers(allowed) -> int:
@@ -493,10 +790,16 @@ def get_dashboard_summary(depot=None):
 
 
 @frappe.whitelist(methods=["GET"])
-def activity_history(start=0, page_length=10, search=None):
-	"""GET /api/v1/ess/activity-history — Container Activity timeline (Monitor "Riwayat")."""
+def activity_history(start=0, page_length=10, search=None, container=None):
+	"""GET /api/v1/ess/activity-history — Container Activity timeline (Monitor "Riwayat").
+
+	``container`` mempersempit ke satu tank: itu yang dibuka tombol "Lihat semua aktivitas"
+	di kartu detail, dan feed penuhnya adalah endpoint yang sama tanpa parameter itu.
+	"""
 	require_menu("monitor")
-	return container_activity.list_activity_history(start=start, page_length=page_length, search=search)
+	return container_activity.list_activity_history(
+		start=start, page_length=page_length, search=search, container=container
+	)
 
 
 @frappe.whitelist(methods=["GET"])

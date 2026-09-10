@@ -1167,13 +1167,73 @@ export const labels = {
 	surveyPosHistoryDesc: "Survey posisi selesai / batal",
 	surveyPosHistoryCount: "survey",
 	// Monitor Container (inventory list, filter by status + principal)
-	monitorTitle: "Monitor Container", // page title
-	monitorSearch: "Cari nomor container…", // search placeholder
+	monitorTitle: "Monitor container", // page title
+	monitorSearch: "Cari nomor container atau voucher", // search placeholder
 	monitorAll: "Semua", // all statuses
 	monitorAllPrincipals: "Semua Prinsipal", // principal filter default
 	monitorAllDepots: "Semua Depot", // depot filter default
 	monitorEmpty: "Tidak ada container untuk filter ini.", // empty state
 	monitorToday: "Hari Ini", // today filter
+	// --- Monitor container (redesain 2026-09-10) ------------------------------
+	monitorAllBranch: "Semua branch", // subjudul saat akun tidak dibatasi branch
+	monitorTankWord: "tank",
+	monitorNoNumber: "— tanpa no.", // container yang belum punya nomor
+	monitorDraftEir: "Draft EIR", // lencana baris: EIR yang sudah disentuh
+	// Baris chip filter di bawah pil status. Semuanya membuka sheet yang sama.
+	monitorChipDepot: "Semua depot",
+	monitorChipPrincipal: "Prinsipal",
+	monitorChipSort: "Urut",
+	// Keterangan kecil di kanan kepala kelompok — kenapa urutannya seperti itu.
+	monitorSortHintActivity: "urut: aktivitas terbaru",
+	monitorSortHintNumber: "urut: nomor container",
+	monitorSortHintIdle: "urut: paling lama diam",
+	// --- Sheet filter ---------------------------------------------------------
+	monitorFilterTitle: "Filter",
+	monitorFilterReset: "Reset",
+	monitorFilterDepot: "Depot",
+	// Ditulis lengkap: "Prinsipal" sendirian sering dikira principal pelayaran, padahal
+	// yang disaring adalah customer pemilik tank (Container.principal).
+	monitorFilterPrincipal: "Prinsipal · tank owner",
+	monitorFilterPeriod: "Periode aktivitas",
+	monitorPeriodToday: "Hari ini",
+	monitorPeriod7: "7 hari",
+	monitorPeriodAll: "Semua",
+	monitorFilterSort: "Urutkan",
+	monitorSortActivity: "Aktivitas",
+	monitorSortNumber: "No. container",
+	monitorSortIdle: "Lama diam",
+	monitorCancel: "Batal",
+	monitorApply: "Terapkan",
+	// --- Keadaan kosong & gagal ----------------------------------------------
+	monitorEmptyTitle: "Tidak ada container cocok",
+	monitorEmptyHint: "Coba nomor lain, atau longgarkan filter depot dan periode.",
+	monitorEmptyReset: "Reset filter",
+	monitorErrorTitle: "Gagal memuat data",
+	monitorErrorHint: "Server tidak merespons. Data terakhir dimuat {t}.",
+	monitorErrorHintNoCache: "Server tidak merespons. Belum ada data yang tersimpan di HP ini.",
+	monitorRetry: "Coba lagi",
+	monitorStale: "Lihat data lama",
+	monitorStaleBanner: "Data lama · dimuat {t}",
+	// --- Detail container (track & trace) ------------------------------------
+	monitorDetailTitle: "Detail container",
+	monitorDepotWord: "Depot",
+	monitorLocationWord: "Letak",
+	monitorInDepot: "Lama di depo",
+	monitorDays: "{n} hari",
+	monitorProcessTitle: "Proses aktif",
+	monitorProcessEmpty: "Tidak ada pekerjaan yang menahan tank ini.",
+	monitorProcessStart: "Mulai",
+	monitorYardTitle: "Letak di yard",
+	monitorYardEmpty: "Letaknya belum pernah dicatat.",
+	monitorYardRecorded: "dicatat {t}",
+	monitorYardOpen: "Buka Letak Tank",
+	monitorActivityTitle: "Riwayat aktivitas",
+	monitorActivityLast: "{n} terakhir",
+	monitorActivityAll: "Lihat semua aktivitas",
+	monitorActivityEmpty: "Belum ada aktivitas tercatat.",
+	monitorFullHistory: "Riwayat lengkap",
+	monitorOpenOrder: "Buka {kind}",
+	monitorTare: "tara",
 	storageTitle: "Depot Storage",
 	storagePlaceTitle: "Tempatkan Isotank", // Place an isotank
 	storagePlaceHint: "Masukkan nomor isotank — sistem menyarankan zona sesuai status.",

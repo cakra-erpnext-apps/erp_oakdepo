@@ -5,6 +5,7 @@
 		back-to="/monitor"
 		:back-label="labels.monitorTitle"
 		list-url="container_depot.ess.inventory.activity_history"
+		:list-params="listParams"
 		detail-url="container_depot.ess.inventory.activity_detail"
 		detail-param="name"
 		:search-placeholder="labels.monitorHistorySearch"
@@ -65,11 +66,21 @@
 </template>
 
 <script setup>
+import { computed } from "vue"
+import { useRoute } from "vue-router"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 
 const fmtDateTime = (v) => (v ? String(v).slice(0, 16).replace("T", " ") : "—")
+
+// `?c=` mempersempit feed ke satu tank — dari tombol "Lihat semua aktivitas" di kartu
+// detail container. Tanpa parameter itu halaman ini tetap feed seluruh depo seperti semula.
+const route = useRoute()
+const listParams = computed(() => {
+	const c = route.query.c
+	return typeof c === "string" && c ? { container: c } : {}
+})
 
 const ICONS = {
 	Booking: "calendar",

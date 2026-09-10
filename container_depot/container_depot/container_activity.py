@@ -165,7 +165,7 @@ def annotate_voided(rows) -> list:
 # ---------------------------------------------------------------------------
 # Riwayat (history): read the Container Activity timeline.
 # ---------------------------------------------------------------------------
-def list_activity_history(start=0, page_length=10, search=None) -> dict:
+def list_activity_history(start=0, page_length=10, search=None, container=None) -> dict:
 	"""Container Activity timeline (Gate / EIR / Cleaning / Repair / Status… events) — the
 	PWA Monitor "Riwayat" feed, newest first, paginated + searchable, depot-scoped to the
 	caller's branch. (``Container.name == container_no``, so search matches the number.)"""
@@ -176,6 +176,12 @@ def list_activity_history(start=0, page_length=10, search=None) -> dict:
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]
+	# Satu tank saja — jejak yang dibaca dari kartu detail container. Filter, bukan endpoint
+	# tersendiri: pertanyaannya sama ("apa yang terjadi"), yang berbeda cuma cakupannya, dan
+	# dua fungsi berarti dua urutan yang bisa menyimpang diam-diam.
+	container = (container or "").strip()
+	if container and container.lower() not in ("undefined", "null", "none"):
+		filters["container"] = container
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() not in ("undefined", "null", "none"):

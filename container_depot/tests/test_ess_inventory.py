@@ -16,6 +16,7 @@ from frappe.tests.utils import FrappeTestCase
 from container_depot.ess.inventory import (
 	derive_status,
 	get_inventory_summary,
+	get_tank_facets,
 	get_tank_list,
 	get_tank_detail,
 )
@@ -160,6 +161,127 @@ class TestEssInventory(FrappeTestCase):
 		self.assertEqual({i["container_no"] for i in pending["items"]}, {"ESST1000001"})
 		available = get_tank_list(depot=ESS_DEPOT, status="available")
 		self.assertEqual({i["container_no"] for i in available["items"]}, {"ESST1000003", "ESST1000007"})
+
+	# --- Monitor redesain 2026-09-10 ---------------------------------------
+	# Empat pil di puncak layar, sheet filter, dan urutan daftar. Yang diuji di sini bukan
+	# tampilannya melainkan janji yang dipegangnya: angka pil = isi daftar, dan sebuah kata
+	# filter tidak boleh berarti dua hal sekaligus.
+	def test_status_filter_accepts_a_group(self):
+		"""``working`` menyapu draft + pending + in_progress; ``in_progress`` tetap presisi.
+
+		Keduanya sempat memakai kunci yang sama, dan akibatnya deep-link KPI dashboard
+		("tank yang benar-benar sedang dikerjakan") diam-diam ikut menarik draft dan pending.
+		"""
+		grouped = get_tank_list(depot=ESS_DEPOT, status="working")
+		self.assertEqual(
+			{i["container_no"] for i in grouped["items"]},
+			{"ESST1000001", "ESST1000004", "ESST1000005", "ESST1000006"},
+		)
+		precise = get_tank_list(depot=ESS_DEPOT, status="in_progress")
+		self.assertEqual({i["container_no"] for i in precise["items"]}, {"ESST1000004", "ESST1000005"})
+
+	def test_list_carries_the_counts_its_pills_show(self):
+		"""``groups``/``all`` diabaikan pil status, jadi menekan satu pil tidak mengosongkan
+		angka pil lainnya — dan angka itu datang dari daftar yang sama, bukan endpoint lain."""
+		res = get_tank_list(depot=ESS_DEPOT, status="available")
+		self.assertEqual(res["all"], 7)
+		self.assertEqual(res["groups"], {"working": 4, "available": 2, "gate_out": 1})
+		self.assertEqual(res["total"], 2)  # yang benar-benar masuk daftar
+
+	def test_search_matches_the_voucher_too(self):
+		"""Yang dipegang orang yang mencari sering selembar bon, bukan tanknya."""
+		self._set("ESST1000003", "last_order_bongkar", "ORD-BKR-ESS-4242")
+		res = get_tank_list(depot=ESS_DEPOT, search="BKR-ESS-4242")
+		self.assertEqual({i["container_no"] for i in res["items"]}, {"ESST1000003"})
+
+	def test_sort_by_number_and_by_idle(self):
+		by_no = get_tank_list(depot=ESS_DEPOT, sort="number", page_length=50)
+		self.assertEqual(
+			[i["container_no"] for i in by_no["items"]], sorted(TANKS.keys())
+		)
+		# Tanpa aktivitas sama sekali = PALING lama diam, jadi ia di atas — bukan di bawah
+		# bersama yang "tidak diketahui".
+		self._activity("ESST1000005")
+		idle = get_tank_list(depot=ESS_DEPOT, sort="idle", page_length=50)
+		self.assertEqual(idle["items"][-1]["container_no"], "ESST1000005")
+
+	def test_period_filter_reads_the_last_activity(self):
+		self._activity("ESST1000005")
+		res = get_tank_list(depot=ESS_DEPOT, period="today")
+		self.assertEqual({i["container_no"] for i in res["items"]}, {"ESST1000005"})
+		# Baris itu juga membawa aktivitasnya, karena kalimat baris ketiga dan filter ini
+		# HARUS membaca jam yang sama.
+		self.assertEqual(res["items"][0]["last_activity"]["type"], "Repair")
+
+	def test_a_started_eir_counts_as_work(self):
+		"""EIR-In draft lahir sendiri bersama tank-nya; yang sudah disentuh tidak.
+
+		Sebelumnya tank dengan EIR berjalan tampil "Available" di Monitor padahal gate
+		menolak melepasnya — dua layar, satu pertanyaan, dua jawaban.
+		"""
+		eir = frappe.get_doc({
+			"doctype": "Inspection", "container": "ESST1000003",
+			"inspection_type": "EIR-In", "inspector": "Administrator",
+		}).insert(ignore_permissions=True)
+		self.addCleanup(self._drop, "Inspection", eir.name)
+		rows = {i["container_no"]: i for i in get_tank_list(depot=ESS_DEPOT)["items"]}
+		self.assertEqual(rows["ESST1000003"]["status"], "available", "draft kosong bukan pekerjaan")
+
+		frappe.db.set_value("Inspection", eir.name, "work_started_on", frappe.utils.now(), update_modified=False)
+		rows = {i["container_no"]: i for i in get_tank_list(depot=ESS_DEPOT)["items"]}
+		self.assertEqual(rows["ESST1000003"]["status"], "draft")
+		self.assertEqual(rows["ESST1000003"]["group"], "working")
+		self.assertEqual(rows["ESST1000003"]["order"]["kind"], "EIR")
+
+	def test_facets_ignore_their_own_selection(self):
+		"""Angka di sebelah "OAK1" berarti "kalau depot diganti ke OAK1" — kalau ia ikut
+		disaring oleh depot yang sedang dipilih, setiap pilihan lain akan tertulis 0 dan
+		sheet filter berhenti bisa dipakai untuk berpindah."""
+		principal = ensure_test_customer("ESS Inventory Test Principal")
+		res = get_tank_facets(principal=principal, depot=ESS_DEPOT)
+		self.assertEqual(res["total"], 7)  # semua filter dipasang: janji tombol Terapkan
+		depots = {d["code"]: d["count"] for d in res["depots"]}
+		self.assertEqual(depots[ESS_DEPOT], 7, "faset depot dihitung tanpa filter depot")
+		self.assertEqual(res["groups"], {"working": 4, "available": 2, "gate_out": 1})
+
+	def test_detail_carries_the_work_and_the_trail(self):
+		self._activity("ESST1000005")
+		res = get_tank_detail("ESST1000005")
+		self.assertEqual(res["group"], "working")
+		self.assertEqual([o["doctype"] for o in res["open_orders"]], ["Repair Order"])
+		self.assertTrue(res["open_orders"][0]["since"], "kapan pekerjaan itu mulai disentuh")
+		self.assertEqual(res["activities"][0]["activity_type"], "Repair")
+
+	# --- fixture per-test -------------------------------------------------
+	# Dibereskan sendiri, bukan diserahkan ke rollback: dokumen di app ini punya controller
+	# yang commit, jadi baris yang ditinggalkan satu test akan muncul sebagai hasil test
+	# berikutnya — dan sebagai jadwal palsu di layar orang kalau ia lolos sampai akhir.
+	def _drop(self, doctype, name):
+		frappe.db.delete(doctype, {"name": name})
+		frappe.db.commit()
+
+	def _set(self, container, field, value):
+		before = frappe.db.get_value("Container", container, field)
+		frappe.db.set_value("Container", container, field, value, update_modified=False)
+		self.addCleanup(
+			lambda: frappe.db.set_value("Container", container, field, before, update_modified=False)
+		)
+
+	def _activity(self, container, activity_type="Repair"):
+		"""Satu baris Container Activity hari ini — bahan untuk filter periode & urutan."""
+		row = frappe.get_doc({
+			"doctype": "Container Activity",
+			"container": container,
+			"activity_type": activity_type,
+			"activity_time": frappe.utils.now(),
+			"performed_by": "Administrator",
+			"depot": ESS_DEPOT,
+			"summary": "fixture",
+			"reference_doctype": "Repair Order",
+			"reference_name": frappe.db.get_value("Repair Order", {"container": container}, "name"),
+		}).insert(ignore_permissions=True)
+		self.addCleanup(self._drop, "Container Activity", row.name)
+		return row
 
 	def test_tank_list_carries_driving_order(self):
 		# Each draft/pending/in_progress row names the order that drives it (kind + link).

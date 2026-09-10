@@ -88,6 +88,15 @@ const routes = [
 		component: () => import("@/pages/MonitorHistory.vue"),
 	},
 	{
+		// Track & trace satu tank. Segmen `tank/` bukan hiasan: tanpanya `/monitor/:container`
+		// juga cocok dengan `/monitor/history`, dan sebuah tank bernomor "history" tidak perlu
+		// ada untuk membuat itu jadi bug.
+		path: "/monitor/tank/:container",
+		name: "MonitorDetail",
+		meta: { menuKey: "monitor" },
+		component: () => import("@/pages/MonitorDetail.vue"),
+	},
+	{
 		// Jadwal — the ONE calendar over every kind of planned work. Not part of the survey
 		// family any more: it is gated on its own menu key, which is an any-of over the four
 		// scheduled doctypes, and it shows each account only the kinds they may read.
