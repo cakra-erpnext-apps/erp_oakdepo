@@ -11,7 +11,7 @@ Invoked monthly by :func:`container_depot.tasks.generate_monthly_invoices`, but
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_months, get_first_day, get_last_day, getdate, today
+from frappe.utils import add_months, flt, get_first_day, get_last_day, getdate, today
 
 from container_depot import finance
 from container_depot.pricing import CLEANING_ITEM, STORAGE_ITEM, resolve_tariff_rate
@@ -62,6 +62,9 @@ def _work_order_items(customer, from_date, to_date, doctype, party_field, label)
 	path only fires for a pure-Cash customer, and an OAK Monthly Invoice has no manhour
 	machinery at all — so a charge landing here carries **parts only, no labour**. Kept as a
 	safety net; if Cash work orders ever become real, this is what has to learn about labour.
+
+	A completed order that cost nothing bills nothing — carrying it here would raise an
+	OAK Monthly Invoice line worth 0 for work that was given away.
 	"""
 	lo, hi = _bounds(from_date, to_date)
 	rows = frappe.get_all(
@@ -76,9 +79,10 @@ def _work_order_items(customer, from_date, to_date, doctype, party_field, label)
 			"reference_name": r.name,
 			"description": f"{label} {r.name}",
 			"service_date": getdate(r.completion_date),
-			"amount": r.total_cost or 0,
+			"amount": flt(r.total_cost),
 		}
 		for r in rows
+		if flt(r.total_cost) > 0
 	]
 
 
@@ -98,18 +102,22 @@ def _cleaning_items(customer, from_date, to_date):
 	for r in rows:
 		if frappe.db.get_value("Container", r.container, "principal") != customer:
 			continue
-		# Bill each chosen cleaning Service (owner-price-list rate) as its own line; orders
-		# with no priced service fall back to one line at the contract's flat cleaning tariff.
+		# Bill each chosen cleaning Service (owner-price-list rate) as its own line; an order
+		# that chose NO service falls back to one line at the contract's flat cleaning tariff.
+		# An order that chose services and priced them all at zero is a free job — it bills
+		# nothing, and the tariff is not substituted for that decision (the same rule
+		# consolidated_billing._bills_something applies to the on-demand path).
 		services = frappe.get_all(
 			"Cleaning Order Service", filters={"parent": r.name},
 			fields=["cleaning_item", "item_name", "rate"], order_by="idx asc",
 		)
 		priced = [s for s in services if s.cleaning_item and s.rate and s.rate > 0]
-		emit = (
-			[(s.cleaning_item, s.item_name or s.cleaning_item, s.rate) for s in priced]
-			if priced
-			else [(CLEANING_ITEM, None, fallback_rate)]
-		)
+		if priced:
+			emit = [(s.cleaning_item, s.item_name or s.cleaning_item, s.rate) for s in priced]
+		elif not services and fallback_rate and fallback_rate > 0:
+			emit = [(CLEANING_ITEM, None, fallback_rate)]
+		else:
+			continue
 		for item_code, item_name, rate in emit:
 			desc = f"Cleaning {r.name}" + (f" · {item_name}" if item_name else "")
 			items.append({

@@ -118,8 +118,13 @@ def _cleaning_lines(customer, lo, hi):
 	"""Completed, not-yet-billed cleaning for the customer's tanks.
 
 	Each cleaning Service chosen on an order (``cleaning_services``) becomes its own invoice
-	line, billed at the rate locked from the owner's Price List at cleaning time. Orders with
-	no priced service fall back to ONE line at the contract's flat ``CLEANING_ITEM`` tariff."""
+	line, billed at the rate locked from the owner's Price List at cleaning time. An order that
+	chose NO service at all falls back to ONE line at the contract's flat ``CLEANING_ITEM``
+	tariff — that is a missing price, and the contract is the answer to it.
+
+	An order that DID choose services and priced every one of them at zero is a different
+	thing: a free job somebody decided on. It bills nothing, and the contract tariff must not
+	be substituted for the decision (see :func:`_bills_something`)."""
 	fallback_rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
 	fallback_ccy = _fallback_currency(customer)
 	rows = frappe.get_all(
@@ -144,7 +149,7 @@ def _cleaning_lines(customer, lo, hi):
 					"description": f"Cleaning {r.name} · {s.item_name or s.cleaning_item}",
 					"qty": 1, "rate": s.rate,
 				})
-		elif fallback_rate and fallback_rate > 0:
+		elif not services and fallback_rate and fallback_rate > 0:
 			lines.append({"item_code": CLEANING_ITEM, "description": f"Cleaning {r.name}", "qty": 1, "rate": fallback_rate})
 		if not lines:
 			continue
@@ -186,7 +191,9 @@ def _work_order_lines(customer, lo, hi, spec):
 	``RepairOrder.calculate_totals``).
 
 	Owner-rejected lines are excluded, the same rule the order's own total uses. A line whose
-	part is free (rate 0) is still billed: it may carry nothing but labour.
+	part is free (rate 0) is still billed: it may carry nothing but labour. An order where
+	NOTHING is worth anything — no priced part and no hours booked — is dropped by
+	:func:`_bills_something` instead, so the free job never reaches an invoice.
 	"""
 	rows = frappe.get_all(
 		spec["doctype"],
@@ -405,7 +412,26 @@ def _collect(customer, cats, from_d, to_d):
 		for u in got:
 			u["category"] = cat
 		units += got
-	return units
+	return [u for u in units if _bills_something(u)]
+
+
+def _bills_something(unit) -> bool:
+	"""True when a unit is actually worth money — the zero-total gate for every category.
+
+	An order that prices out at zero is a free job: a real outcome somebody decided on, not
+	a gap to fill from the tariff. It must never become an invoice line, because a zero-value
+	receivable is something the customer is asked to settle and owes nothing on. Container
+	Booking has enforced this at the source since it grew charges
+	(``ContainerBooking._billable_lines``); this is the same rule for cleaning, M&R and
+	storage, applied in ONE place so the preview and every fill path agree about what bills.
+
+	Labour still counts as value. An M&R line may carry no part price at all and bill only the
+	hours it books (``manhour``) at a tariff the invoice header supplies, so hours alone keep
+	an order billable — which is why this asks about the unit, not about each line
+	(see :func:`_work_order_lines`)."""
+	total = sum(flt(ln.get("qty") or 1) * flt(ln.get("rate")) for ln in unit["lines"])
+	hours = sum(flt(ln.get("manhour")) for ln in unit["lines"])
+	return total > 0 or hours > 0
 
 
 def _mark_billed(dt, name, si):
