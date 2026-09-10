@@ -45,6 +45,9 @@ from container_depot.container_depot.doctype.container_booking.container_booking
 	build_container_summary,
 )
 
+SCHEDULE = "Survey Order"
+BOOKING = "Container Booking"
+
 SCHEDULED = "Scheduled"
 IN_PROGRESS = "In Progress"
 COMPLETED = "Completed"
@@ -61,6 +64,17 @@ class SurveyOrder(Document):
 			if row.container and not row.depot:
 				row.depot = frappe.db.get_value("Container", row.container, "depot") or self.depot
 
+	def on_update(self):
+		sync_booking_reff_doc(self.booking)
+
+	# ``reff_doc`` is allow_on_submit — a survey document number often arrives after the day
+	# closed itself (refresh_progress submits the schedule), so the mirror has to follow a
+	# post-submit edit too, and a cancel has to take the number away with it.
+	on_update_after_submit = on_update
+
+	def on_cancel(self):
+		sync_booking_reff_doc(self.booking)
+
 	def before_cancel(self):
 		"""Cancelling the schedule cancels its tanks with it.
 
@@ -70,6 +84,34 @@ class SurveyOrder(Document):
 		for row in self.tanks or []:
 			if row.status != "Survey Done":
 				row.db_set("status", CANCELLED, update_modified=False)
+
+
+def sync_booking_reff_doc(booking: str | None) -> None:
+	"""Mirror this survey's Reff Doc onto its Tank Out booking.
+
+	One pickup, two pieces of paper: the customer's booking document and the survey document,
+	which is usually issued by someone else and arrives on another day. The Tank Out form has
+	to show both side by side, so the survey's number is CACHED there instead of retyped —
+	retyping is how two fields holding one fact start disagreeing.
+
+	Recomputed from the survey rather than stepped forward, like every other cached pointer in
+	this app: blank when the survey has no number, and blank again when the survey is
+	cancelled, because a cancelled day's document number is not this booking's answer.
+	"""
+	if not booking:
+		return
+	rows = frappe.get_all(
+		SCHEDULE,
+		filters={"booking": booking, "docstatus": ["<", 2], "status": ["!=", CANCELLED]},
+		fields=["reff_doc"],
+		order_by="creation desc",
+		limit=1,
+	)
+	value = (rows[0].reff_doc or None) if rows else None
+	if frappe.db.get_value(BOOKING, booking, "survey_reff_doc") != value:
+		# db.set_value, never doc.save(): the booking is usually submitted, and this is a
+		# cache of ITS survey — not an edit anybody made to the booking itself.
+		frappe.db.set_value(BOOKING, booking, "survey_reff_doc", value, update_modified=False)
 
 
 def refresh_urgency(name: str) -> None:

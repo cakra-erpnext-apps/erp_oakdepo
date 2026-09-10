@@ -619,6 +619,8 @@ def get_survey_order_detail(name: str) -> dict:
 		"booking": doc.booking,
 		"principal": doc.principal,
 		"surveyor": doc.surveyor,
+		# The survey's OWN document number — not the booking's. Two papers meet on one pickup.
+		"reff_doc": doc.reff_doc,
 		"status": doc.status,
 		"docstatus": doc.docstatus,
 		"survey_date": str(doc.survey_date) if doc.survey_date else None,

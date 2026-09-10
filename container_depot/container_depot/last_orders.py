@@ -53,6 +53,24 @@ SOURCES = tuple(_DIRECT) + tuple(_VIA_ROWS)
 _PARTY_FIELDS = ("emkl", "shipper", "ex_vessel")
 _BON_DOCTYPES = ("Order Bongkar", "Order Muat")
 
+# One more fact per order kind: the Reff Doc that order carries — the customer's OWN
+# document number for that job (a principal's cleaning instruction, an owner's repair
+# approval). It reaches the tank master because the yard and the front desk ask it of the
+# TANK ("order cuci terakhir tank ini pakai dokumen apa?") without wanting to open the order.
+#
+# One field per kind, never merged into a single "last reff doc": these numbers come from
+# different pieces of paper from different people, and one field holding whichever arrived
+# last would answer a question nobody asked. For the same reason the EIR's number is NOT
+# mirrored here — it is the booking's number, already answerable from `last_booking`.
+#
+# Recomputed from source like everything else here, BLANK INCLUDED: the value is read off
+# whatever order the pointer beside it lands on, so cancelling the newest cleaning moves
+# both fields back to the one before it together.
+_REFF_OF = {
+	"last_cleaning_order": ("Cleaning Order", "last_cleaning_reff_doc"),
+	"last_repair_order": ("Repair Order", "last_repair_reff_doc"),
+}
+
 
 def refresh_for_doc(doc, method=None) -> None:
 	"""doc_events entry point: re-cache every tank this order touches, or has just stopped
@@ -102,6 +120,10 @@ def refresh_container(container: str, only: str | None = None, exclude: str | No
 		if only and doctype != only:
 			continue
 		updates[fieldname] = _latest_via_rows(doctype, child, parentfield, container, exclude)
+	for pointer, (doctype, fieldname) in _REFF_OF.items():
+		# Only when the pointer beside it was just recomputed — the two always move together.
+		if pointer in updates:
+			updates[fieldname] = _reff_doc_of(doctype, updates[pointer])
 	if only is None or only in _BON_DOCTYPES:
 		updates.update(_party_stamps(container, exclude))
 	if not updates:
@@ -149,6 +171,12 @@ def _latest_via_rows(
 	)
 	return rows[0][0] if rows else None
 
+
+def _reff_doc_of(doctype: str, order: str | None) -> str | None:
+	"""The Reff Doc one order carries, or ``None`` — including when it carries none."""
+	if not order:
+		return None
+	return frappe.db.get_value(doctype, order, "reff_doc") or None
 
 def _party_stamps(container: str, exclude: str | None = None) -> dict:
 	"""``{emkl, shipper, ex_vessel}`` from the most recent non-cancelled bon that NAMES one.

@@ -201,6 +201,37 @@ class TestContainerLastOrders(FrappeTestCase):
 		self.assertEqual(self._cached(kept, "last_booking"), booking.name)
 		self.assertIsNone(self._cached(dropped, "last_booking"))
 
+	# --- the customer's own document number, per order kind ---------------------
+	def test_each_orders_reff_doc_lands_in_its_own_field(self):
+		"""Never merged into one "last reff doc": a principal's cleaning instruction and an
+		owner's repair approval are different papers from different people."""
+		c = self._container("0009")
+		self._order("Cleaning Order", container=c, status="Pending", reff_doc="CLN-77")
+		self._order("Repair Order", container=c, status="Draft", reff_doc="MR-88")
+		self.assertEqual(self._cached(c, "last_cleaning_reff_doc"), "CLN-77")
+		self.assertEqual(self._cached(c, "last_repair_reff_doc"), "MR-88")
+
+	def test_a_newer_order_without_a_reff_doc_blanks_its_field(self):
+		"""The number belongs to the LAST order, not to whichever order last had one — a
+		cleaning filed with no customer document must not keep wearing the previous one's."""
+		c = self._container("0010")
+		self._order("Cleaning Order", container=c, status="Pending", reff_doc="CLN-77")
+		self._order("Cleaning Order", container=c, status="Pending")
+		self.assertIsNone(self._cached(c, "last_cleaning_reff_doc"))
+
+	def test_cancelling_the_newest_order_restores_the_previous_reff_doc(self):
+		"""Pointer and number move together, both recomputed from source."""
+		c = self._container("0011")
+		first = self._order("Cleaning Order", container=c, status="Pending", reff_doc="CLN-77")
+		second = self._order("Cleaning Order", container=c, status="Pending", reff_doc="CLN-99")
+		self.assertEqual(self._cached(c, "last_cleaning_reff_doc"), "CLN-99")
+
+		second.status = "Cancelled"
+		second.flags.ignore_validate = True
+		second.save(ignore_permissions=True)
+		self.assertEqual(self._cached(c, "last_cleaning_order"), first.name)
+		self.assertEqual(self._cached(c, "last_cleaning_reff_doc"), "CLN-77")
+
 	# --- rebuildable from nothing ---------------------------------------------
 	def test_the_cache_can_be_rebuilt_from_source(self):
 		"""What the backfill patch relies on, and what makes a missed event recoverable."""

@@ -104,7 +104,7 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True, force=Fa
 	tank_status does not spell out — so a ticked box files the order whatever the status
 	says. Automatic callers leave ``force`` off and keep the evidence test."""
 	insp = frappe.db.get_value(
-		"Inspection", inspection, ["container", "tank_status", "depot", "reff_doc"], as_dict=True
+		"Inspection", inspection, ["container", "tank_status", "depot"], as_dict=True
 	)
 	if not insp or not insp.container:
 		return None
@@ -126,14 +126,13 @@ def create_cleaning_order_from_eir(inspection, ignore_permissions=True, force=Fa
 		{"container": insp.container, "status": ["in", ["Service Setup", "Pending", "In_Progress"]]},
 	)
 	if existing:
-		# Backfill the reference doc from the EIR if the open order doesn't have one yet.
-		if insp.reff_doc and not frappe.db.get_value("Cleaning Order", existing, "reff_doc"):
-			frappe.db.set_value("Cleaning Order", existing, "reff_doc", insp.reff_doc, update_modified=False)
 		return existing
 	co = frappe.new_doc("Cleaning Order")
 	co.container = insp.container
 	co.inspection = inspection  # EIR -> Cleaning Order
-	co.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
+	# Reff Doc is NOT inherited from the EIR: a cleaning ordered by the principal usually
+	# quotes their own instruction number, which is not the paper the tank arrived on. Left
+	# blank for whoever files the order to type what the customer actually gave them.
 	# Order yang lahir dari EIR-In tank kotor SELALU cleaning standar. Tiga jenis khusus
 	# (PP Wash / Methanol Rinse / Steam Wash) adalah permintaan principal atas tank yang
 	# sudah bersih dan parkir di yard — tidak pernah punya EIR-In kotor sebagai pemicu.
@@ -234,7 +233,7 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True, force=Fals
 	if not rows and not force:
 		return None
 	insp = frappe.db.get_value(
-		"Inspection", inspection, ["container", "depot", "reff_doc"], as_dict=True
+		"Inspection", inspection, ["container", "depot"], as_dict=True
 	)
 	if not insp or not insp.container:
 		return None
@@ -262,14 +261,12 @@ def create_repair_order_from_eir(inspection, ignore_permissions=True, force=Fals
 				frappe.db.set_value(
 					"Repair Order", existing, "container_booking", booking, update_modified=False
 				)
-		# Backfill the reference doc from the EIR if the open order doesn't have one yet.
-		if insp.reff_doc and not frappe.db.get_value("Repair Order", existing, "reff_doc"):
-			frappe.db.set_value("Repair Order", existing, "reff_doc", insp.reff_doc, update_modified=False)
 		return existing
 	ro = frappe.new_doc("Repair Order")
 	ro.container = insp.container
 	ro.inspection = inspection  # EIR -> M&R -> (parts issued on completion)
-	ro.reff_doc = insp.reff_doc  # reference doc flows through from the EIR
+	# Reff Doc deliberately left blank — same reason as the Cleaning Order above: the repair
+	# is approved on the owner's own paperwork, not on the bon the tank came in with.
 	ro.status = "Draft"
 	ro.billing_status = "Unbilled"
 	depot = insp.depot or frappe.db.get_value("Container", insp.container, "depot")

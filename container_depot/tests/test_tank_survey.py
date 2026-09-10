@@ -130,6 +130,40 @@ class _Base(FrappeTestCase):
 
 
 # ---------------------------------------------------------------------------
+class TestTheSurveysOwnReffDoc(_Base):
+	"""One pickup, two pieces of paper. The customer's booking document and the survey
+	document are issued by different people on different days, so they are two fields — and
+	the Tank Out form shows both by caching the survey's number onto the booking."""
+
+	def test_it_reaches_the_booking_without_touching_the_bookings_own(self):
+		c = self._container("SVREFF00001")
+		b = self._booking(c, reff_doc="BOOK-1")
+		doc = frappe.get_doc(SCHEDULE, self._order(b))
+		doc.reff_doc = "SURV-9"
+		doc.save(ignore_permissions=True)
+
+		cached = frappe.db.get_value(
+			"Container Booking", b, ["reff_doc", "survey_reff_doc"], as_dict=True
+		)
+		self.assertEqual(cached.survey_reff_doc, "SURV-9")
+		self.assertEqual(cached.reff_doc, "BOOK-1")
+
+	def test_clearing_it_on_the_survey_clears_the_mirror(self):
+		"""Recomputed from source, blank included — otherwise a number deleted because it was
+		wrong would go on standing on the booking where nobody would think to look for it."""
+		c = self._container("SVREFF00002")
+		b = self._booking(c)
+		doc = frappe.get_doc(SCHEDULE, self._order(b))
+		doc.reff_doc = "SURV-9"
+		doc.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container Booking", b, "survey_reff_doc"), "SURV-9")
+
+		doc.reff_doc = None
+		doc.save(ignore_permissions=True)
+		self.assertIsNone(frappe.db.get_value("Container Booking", b, "survey_reff_doc"))
+
+
+# ---------------------------------------------------------------------------
 class TestProvisioning(_Base):
 	def test_saving_an_outbound_draft_already_schedules_the_day(self):
 		"""Provisioning happens on the DRAFT, not at submit. Getting a tank down out of a full

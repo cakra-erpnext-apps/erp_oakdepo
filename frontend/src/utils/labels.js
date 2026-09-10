@@ -547,9 +547,9 @@ export const labels = {
 	voucherHintIn: "EIR-In: data diambil dari Order Bongkar.",
 	voucherHintOut: "EIR-Out: data diambil dari Order Muat.",
 	eirRemarks: "Catatan", // Remarks
-	reffDoc: "Reff Doc", // Reference document (optional; flows EIR -> Cleaning/M&R)
+	reffDoc: "Reff Doc", // Reference document (optional; per document — Cleaning/M&R never inherit it)
 	reffDocHint: "No. dokumen referensi (opsional).", // reff doc hint
-	reffDocAutoHint: "Terisi dari EIR, bisa diubah.", // reff doc auto-filled hint (cleaning/M&R)
+	reffDocAutoHint: "Terisi dari booking, bisa diubah.", // reff doc auto-filled hint (EIR only)
 	officer: "Petugas", // Officer
 	saveDraft: "Simpan Draf", // Save draft
 	submitEir: "Submit EIR",
@@ -1359,6 +1359,7 @@ export const labels = {
 	svScheduleDate: "Jadwal survey",
 	svPickupDate: "Pickup",
 	svSurveyor: "Surveyor",
+	svReffDoc: "Reff Doc Survey", // survey's own customer document no. (not the booking's)
 	svStatLowered: "Lowered",
 	svStatWaitingLow: "Menunggu lowering",
 	svStatSurveyDone: "Survey selesai",

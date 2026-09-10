@@ -11,6 +11,7 @@
   "column_break_1",
   "depot",
   "reff_doc",
+  "survey_reff_doc",
   "plan_date",
   "survey_date",
   "urgent_date",
@@ -101,12 +102,21 @@
    "in_list_view": 1
   },
   {
-   "description": "Opsional. No. dokumen referensi.",
+   "description": "Opsional. No. dokumen referensi customer untuk booking ini. Ikut turun ke EIR lewat bon; Cleaning & M&R punya Reff Doc-nya sendiri.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "label": "Reff Doc",
    "allow_on_submit": 1,
    "in_list_view": 1
+  },
+  {
+   "depends_on": "survey_reff_doc",
+   "description": "No. dokumen survey dari Survey Order booking ini. Terisi sendiri \u2014 diubah di Survey Order-nya.",
+   "fieldname": "survey_reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc Survey",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "description": "Tanggal rencana pekerjaan. Wajib untuk Tank Out — ini satu-satunya deadline yang dipakai yard untuk memprioritaskan pekerjaan tank.",
@@ -438,7 +448,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-10 13:00:00.000000",
+ "modified": "2026-09-10 16:40:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

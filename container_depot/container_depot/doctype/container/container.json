@@ -41,7 +41,9 @@
   "last_booking",
   "last_order_muat",
   "last_cleaning_order",
+  "last_cleaning_reff_doc",
   "last_repair_order",
+  "last_repair_reff_doc",
   "last_eir_in",
   "last_eir_out",
   "lift_on_booking",
@@ -400,10 +402,26 @@
    "read_only": 1
   },
   {
+   "description": "Reff Doc yang dibawa Cleaning Order terakhir itu \u2014 no. dokumen milik customer untuk order cuci, bukan no. job booking. Kosong kalau order itu tidak mencantumkannya.",
+   "fieldname": "last_cleaning_reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc Cleaning Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "description": "Repair Order terakhir tank ini (yang dibatalkan tidak dihitung).",
    "fieldname": "last_repair_order",
    "fieldtype": "Data",
    "label": "M&R Terakhir",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "description": "Reff Doc yang dibawa Repair Order terakhir itu \u2014 no. dokumen milik customer untuk order M&R. Kosong kalau order itu tidak mencantumkannya.",
+   "fieldname": "last_repair_reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc M&R Terakhir",
    "no_copy": 1,
    "read_only": 1
   },
@@ -425,7 +443,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-10 13:00:00.000000",
+ "modified": "2026-09-10 16:10:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

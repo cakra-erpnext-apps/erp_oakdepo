@@ -95,7 +95,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Opsional. Terisi dari EIR, bisa diubah.",
+   "description": "Opsional. No. dokumen dari customer untuk order cuci ini \u2014 diisi manual, tidak diturunkan dari EIR / booking. Terekam di master tank sebagai Reff Doc Cleaning Terakhir.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "label": "Reff Doc"
@@ -471,7 +471,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-10 13:00:00.000000",
+ "modified": "2026-09-10 16:10:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

@@ -227,7 +227,13 @@ def _voucher_depot(doctype: str, voucher: str | None, container: str | None = No
 def _voucher_reff_doc(doctype: str, voucher: str | None) -> str | None:
 	"""The reference doc carried by a bon's Container Booking (``voucher.booking`` ->
 	``Container Booking.reff_doc``). This is what makes a Reff Doc entered on the booking
-	flow down the chain: Booking -> bon -> EIR -> Cleaning Order / M&R.
+	reach the EIR: Booking -> bon -> EIR.
+
+	And it stops there. The Cleaning Order / M&R the EIR spawns are ordered on the owner's
+	OWN paperwork — an instruction number that has nothing to do with the paper the tank
+	arrived on — so they are left blank for whoever files them to type (see
+	``eir_followups``). Each of those numbers is mirrored onto the tank master in its own
+	field, never merged with this one (see ``last_orders``).
 	"""
 	if not voucher:
 		return None
@@ -1151,7 +1157,7 @@ def create_eir(
 	doc.inspector_signature = signature
 	doc.eir_date = eir_date
 	doc.cargo = cargo
-	doc.reff_doc = reff_doc  # optional reference doc; flows into auto-created Cleaning / M&R
+	doc.reff_doc = reff_doc  # this EIR's own reference doc (defaults from the booking)
 	# Follow-up opt-outs (default checked via the doctype) — only overridden when supplied.
 	if create_cleaning_order is not None:
 		doc.create_cleaning_order = 1 if _as_bool(create_cleaning_order) else 0

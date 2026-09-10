@@ -40,6 +40,11 @@
 						<p class="truncate text-xs text-gray-500">
 							{{ labels.svListHint }}<template v-if="order.booking"> · {{ order.booking }}</template>
 						</p>
+						<!-- Dokumen survey milik customer/surveyor sendiri — sengaja terpisah dari
+						     Reff Doc booking, karena kertasnya memang dua dan sering beda nomor. -->
+						<p v-if="order.reff_doc" class="truncate font-mono text-[11px] text-gray-400">
+							{{ labels.svReffDoc }}: {{ order.reff_doc }}
+						</p>
 					</div>
 					<p class="shrink-0 font-mono text-[11px] text-gray-400">{{ order.name }}</p>
 				</div>

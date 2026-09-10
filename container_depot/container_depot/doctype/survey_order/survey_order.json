@@ -10,6 +10,7 @@
   "booking",
   "principal",
   "surveyor",
+  "reff_doc",
   "column_break_1",
   "status",
   "survey_date",
@@ -65,6 +66,13 @@
    "label": "Surveyor",
    "options": "Customer",
    "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Opsional. No. dokumen survey dari customer / surveyor untuk jadwal ini \u2014 berdiri sendiri, bukan Reff Doc booking. Ikut tampil di form Tank Out.",
+   "fieldname": "reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc Survey"
   },
   {
    "fieldname": "column_break_1",
@@ -187,7 +195,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-10 13:00:00.000000",
+ "modified": "2026-09-10 16:40:00.000000",
  "module": "Container Depot",
  "name": "Survey Order",
  "search_fields": "booking, principal, survey_date, status",

@@ -165,10 +165,9 @@
    "options": "Depot"
   },
   {
-   "description": "Opsional. Ikut ke Cleaning Order & M&R dari EIR ini.",
+   "description": "Opsional. Terisi dari Reff Doc Container Booking lewat bon, boleh diubah. Berhenti di sini \u2014 Cleaning & M&R punya Reff Doc-nya sendiri.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
-   "hidden": 1,
    "label": "Reff Doc"
   },
   {
@@ -762,7 +761,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-10 13:00:00.000000",
+ "modified": "2026-09-10 16:10:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

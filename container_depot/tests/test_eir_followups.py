@@ -10,7 +10,8 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot import eir, eir_followups
-from container_depot.tests.test_eir import _make_container
+from container_depot.tests.test_api import ensure_test_customer
+from container_depot.tests.test_eir import _make_container, _make_order_bongkar
 
 
 class TestEirFollowups(FrappeTestCase):
@@ -18,8 +19,12 @@ class TestEirFollowups(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self._containers = []
 		self._inspections = []
+		self._extra = []         # (doctype, name) fixtures torn down newest first
 
 	def tearDown(self):
+		for doctype, name in reversed(self._extra):
+			frappe.db.delete("Container Booking Item", {"parent": name})
+			frappe.db.delete(doctype, {"name": name})
 		for ins in self._inspections:
 			frappe.db.delete("Repair Order", {"inspection": ins})
 			frappe.db.delete("Inspection", {"name": ins})
@@ -39,6 +44,45 @@ class TestEirFollowups(FrappeTestCase):
 		)
 		self._inspections.append(res["name"])
 		return c, res["name"]
+
+	# --- reff doc: typed per document, never inherited -------------------------
+	def test_the_bookings_reff_doc_reaches_the_eir(self):
+		"""The booking's number IS the arrival's number, so it rides down the bon onto the EIR
+		rather than being retyped at the gate."""
+		cust = ensure_test_customer("Reff Doc Test Co")
+		c = _make_container("FUPREFF0001")
+		self._containers.append(c)
+		ob = _make_order_bongkar(cust, c)
+		booking = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank In", "customer": cust,
+			"booking_status": "Confirmed", "reff_doc": "26.5.54.0162",
+			"items": [{"container": c}],
+		})
+		booking.flags.ignore_validate = True
+		booking.insert(ignore_permissions=True, ignore_mandatory=True)
+		self._extra += [("Order Bongkar", ob), ("Container Booking", booking.name)]
+		frappe.db.set_value("Order Bongkar", ob, "booking", booking.name, update_modified=False)
+
+		res = eir.create_eir(inspection_type="EIR-In", container=c, referred_voucher=ob)
+		self._inspections.append(res["name"])
+		self.assertEqual(frappe.db.get_value("Inspection", res["name"], "referred_voucher"), ob)
+		self.assertEqual(frappe.db.get_value("Inspection", res["name"], "reff_doc"), "26.5.54.0162")
+
+	def test_but_it_stops_at_the_eir_and_never_reaches_the_orders(self):
+		"""A cleaning or repair is ordered on the owner's own instruction, which is a different
+		piece of paper from the one the tank arrived on. Blank is the honest default; the
+		number each order ends up carrying is mirrored onto the tank master separately (see
+		test_container_last_orders)."""
+		c, ins = self._eir(
+			"FUPREFF0002", tank_status="Empty Dirty",
+			lines=[{"item_code": "A01", "damage_code": "12", "remarks": "broken"}],
+		)
+		frappe.db.set_value("Inspection", ins, "reff_doc", "26.5.54.0162", update_modified=False)
+
+		co = eir_followups.create_cleaning_order_from_eir(ins)
+		ro = eir_followups.create_repair_order_from_eir(ins)
+		self.assertFalse(frappe.db.get_value("Cleaning Order", co, "reff_doc"))
+		self.assertFalse(frappe.db.get_value("Repair Order", ro, "reff_doc"))
 
 	# --- detection ------------------------------------------------------------
 	def test_needs_cleaning_only_when_empty_dirty(self):
