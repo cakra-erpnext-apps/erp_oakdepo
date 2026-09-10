@@ -10,23 +10,30 @@
 //   Order Created — the from→to range added below
 // `hide_name_filter` drops Frappe's default "ID" (RO-series) box, which nobody searches by
 // now that the container number is the subject.
+
+// Tenggat pekerjaan ini, urut seperti `container_depot/worklist.py` mengurutkannya.
+const PRIORITY = { urgent: "target_urgent_on", survey: "target_survey_on", due: "target_lift_on" };
+
 frappe.listview_settings["Repair Order"] = {
 	hide_name_filter: 1,
 
 	// status is not a column here, so the list query would not fetch it and get_indicator
 	// would read undefined on every row.
-	add_fields: ["status", "target_urgent_on"],
-	// Penanda MENDESAK — dua tempat sekaligus (lihat public/js/urgency_mark.js): pill merah
-	// berisi tanggalnya di kolom Tanggal Mendesak, bisa diklik untuk menyaring daftar jadi
-	// yang mendesak saja, plus awalan pada kolom subject yang tidak pernah terpotong sesempit
-	// apa pun layarnya. Pill status sengaja tidak diganggu: merah di daftar ini sudah berarti
-	// dibatalkan.
+	// target_survey_on bukan kolom di sini, tapi dialah tenggat sebenarnya pekerjaan ini —
+	// tanpa ikut ditarik, pill prioritasnya akan menghitung mundur ke hari pickup sementara
+	// PWA menghitung ke hari survey, dan satu order akan terbaca H-5 di Desk tapi H-2 di HP.
+	add_fields: ["status", ...Object.values(PRIORITY)],
+	// Prioritas — dua bentuk sekaligus (lihat public/js/urgency_mark.js): pill di kolom
+	// Prioritas berisi hitung mundur beserta tanggalnya, persis kosakata PWA ("MENDESAK ·
+	// H-2 · 9 Sep"), bisa diklik untuk menyaring yang mendesak saja; plus awalan MENDESAK
+	// pada kolom subject yang tidak pernah terpotong sesempit apa pun layarnya. Pill status
+	// sengaja tidak diganggu: merah di daftar ini sudah berarti dibatalkan.
 	formatters: {
 		container_no(value, df, doc) {
-			return container_depot.urgency_subject(value, doc, "target_urgent_on");
+			return container_depot.urgency_subject(value, doc, PRIORITY.urgent);
 		},
-		target_urgent_on(value) {
-			return container_depot.urgency_pill(value, "target_urgent_on");
+		target_urgent_on(value, df, doc) {
+			return container_depot.priority_pill(doc, PRIORITY);
 		},
 	},
 

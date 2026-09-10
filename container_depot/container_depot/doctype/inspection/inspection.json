@@ -530,7 +530,7 @@
    "search_index": 1
   },
   {
-   "description": "EMKL / angkutan \u2014 dari bon yang dirujuk.",
+   "description": "EMKL / angkutan — dari bon yang dirujuk.",
    "fieldname": "emkl",
    "fieldtype": "Link",
    "hidden": 1,
@@ -539,7 +539,7 @@
    "read_only": 1
   },
   {
-   "description": "Pabrik / pemilik muatan \u2014 dari bon yang dirujuk.",
+   "description": "Pabrik / pemilik muatan — dari bon yang dirujuk.",
    "fieldname": "shipper",
    "fieldtype": "Link",
    "hidden": 1,
@@ -762,7 +762,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-10 09:00:00.000000",
+ "modified": "2026-09-10 13:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

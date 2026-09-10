@@ -58,20 +58,30 @@ const STATUS_COLOURS = {
 	Blocked: 'pink',
 };
 
+// Tenggat booking ini, urut seperti `container_depot/worklist.py` mengurutkannya. Di sinilah
+// kedua tanggalnya ASLI tinggal — order yang memegang tank hanya menerima stempelnya
+// (`lift_on.push_to_open_orders`), jadi di sini namanya masih `survey_date` / `plan_date`.
+const PRIORITY = { urgent: 'urgent_date', survey: 'survey_date', due: 'plan_date' };
+
 frappe.listview_settings['Container Booking'] = {
 	// booking_status is no longer a column of its own, so the list query would not fetch
 	// it — and `get_indicator` would read undefined on every row and paint them all Draft.
-	add_fields: ['booking_status', 'bon_status', 'bon_summary', 'direction', 'per_fulfilled', 'urgent_date'],
+	// Kedua tanggal tenggat ikut ditarik meski bukan kolom, supaya hitung mundurnya memakai
+	// tanggal yang sama dengan yang dipakai worklist PWA mengurutkan pekerjaannya.
+	add_fields: [
+		'booking_status', 'bon_status', 'bon_summary', 'direction', 'per_fulfilled',
+		...Object.values(PRIORITY),
+	],
 	formatters: {
-		// Penanda MENDESAK (lihat public/js/urgency_mark.js). Di sinilah urgensinya dipasang,
-		// jadi di sinilah paling penting terlihat siapa yang sudah ditandai: pill merah berisi
-		// tanggalnya di kolom Prioritas Mendesak — klik untuk menyaring yang mendesak saja —
-		// plus awalan pada kolom subject (customer), yang tidak pernah terpotong.
+		// Prioritas (lihat public/js/urgency_mark.js). Di sinilah urgensinya dipasang, jadi di
+		// sinilah paling penting terlihat siapa yang sudah ditandai: pill berisi hitung mundur
+		// beserta tanggalnya di kolom Prioritas — klik untuk menyaring yang mendesak saja —
+		// plus awalan MENDESAK pada kolom subject (customer), yang tidak pernah terpotong.
 		customer(value, df, doc) {
-			return container_depot.urgency_subject(value, doc, 'urgent_date');
+			return container_depot.urgency_subject(value, doc, PRIORITY.urgent);
 		},
-		urgent_date(value) {
-			return container_depot.urgency_pill(value, 'urgent_date');
+		urgent_date(value, df, doc) {
+			return container_depot.priority_pill(doc, PRIORITY);
 		},
 		// How much of an outbound booking has actually left the depot. A lift-on is
 		// routinely collected over several visits (a bon carries at most two tanks), so a
@@ -115,6 +125,9 @@ frappe.listview_settings['Container Booking'] = {
 		if (doc.docstatus === 2) return [__('Cancelled'), 'red', 'docstatus,=,2'];
 		const status = doc.booking_status || 'Draft';
 		return [__(status), STATUS_COLOURS[status] || 'grey', `booking_status,=,${status}`];
+	},
+	onload(listview) {
+		container_depot.priority_column(listview, PRIORITY.urgent);
 	},
 	// Runs after every list load, i.e. after the filter area exists. Appending each control
 	// in turn is idempotent, so re-running it on refresh cannot scramble the row.

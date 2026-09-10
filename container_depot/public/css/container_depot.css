@@ -460,3 +460,18 @@ img.oak-grid-photo:hover {
 .oak-carousel-caption {
 	flex-wrap: wrap;
 }
+
+/* Ujung merah penuh tanjakan prioritas di Desk list (lihat public/js/urgency_mark.js).
+   Frappe hanya menyediakan `indicator-pill` berlatar muda; lewat tenggat dan MENDESAK bukan
+   "satu tingkat lagi" di tanjakan yang sama, keduanya kategori lain — satu-satunya hal yang
+   boleh mendahului pekerjaan yang harinya sudah tiba. Hanya warnanya yang ditimpa: bentuk,
+   tinggi dan padding-nya tetap ikut `.indicator-pill` supaya sebaris dengan pill status di
+   sebelahnya. Diberi ring supaya tetap terbaca sebagai pill, sama seperti chip-nya di PWA
+   (LiftOnBadge.vue). */
+.indicator-pill.oak-pri-alarm,
+.indicator-pill.oak-pri-alarm.filterable,
+.indicator-pill.oak-pri-alarm.filterable:hover {
+	background: var(--red-600);
+	color: #fff;
+	box-shadow: 0 0 0 1px var(--red-700);
+}

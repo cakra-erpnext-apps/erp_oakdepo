@@ -4,21 +4,28 @@
 // Inspection (EIR) list view — colour each row by the EIR's real state so the
 // worklist reads at a glance, including the "Revisi Diminta" flag the PWA raises
 // (container_depot.container_depot.eir.request_revision) which otherwise left no mark.
+
+// Tenggat pekerjaan ini, urut seperti `container_depot/worklist.py` mengurutkannya.
+const PRIORITY = { urgent: 'target_urgent_on', survey: 'target_survey_on', due: 'target_lift_on' };
+
 frappe.listview_settings['Inspection'] = {
-	add_fields: ['revision_requested', 'docstatus', 'status', 'work_started_on', 'target_urgent_on'],
+	// Kedua tanggal tenggat ikut ditarik meski bukan kolom: tanpa itu pill prioritasnya akan
+	// menghitung mundur ke tanggal yang berbeda dari yang dipakai PWA, dan satu EIR akan
+	// terbaca H-5 di Desk tapi H-2 di HP.
+	add_fields: ['revision_requested', 'docstatus', 'status', 'work_started_on', ...Object.values(PRIORITY)],
 
 	// Direction as a colour, not a word to read: green In / orange Out, matching the gate
 	// PWA's GATE IN / GATE OUT so one habit covers both screens. The stored value stays
 	// "EIR-In"/"EIR-Out" — the "EIR-" half is noise in a column headed "Tipe EIR".
 	formatters: {
-		// Penanda MENDESAK — lihat public/js/urgency_mark.js. Awalan pada subject karena
-		// kolom tanggalnya bisa terpotong di layar sempit; pill status tidak diganggu, merah
-		// di daftar ini sudah berarti batal.
+		// Prioritas — lihat public/js/urgency_mark.js. Awalan MENDESAK pada subject karena
+		// kolomnya bisa terpotong di layar sempit; pill status tidak diganggu, merah di
+		// daftar ini sudah berarti batal.
 		title(value, df, doc) {
-			return container_depot.urgency_subject(value, doc, 'target_urgent_on');
+			return container_depot.urgency_subject(value, doc, PRIORITY.urgent);
 		},
-		target_urgent_on(value) {
-			return container_depot.urgency_pill(value, 'target_urgent_on');
+		target_urgent_on(value, df, doc) {
+			return container_depot.priority_pill(doc, PRIORITY);
 		},
 		inspection_type(value) {
 			const pill = (colour, text) =>
@@ -67,6 +74,7 @@ frappe.listview_settings['Inspection'] = {
 	// declarative way to ask for it. Wrapping setup_columns is the one seam: it re-runs on
 	// every rebuild (incl. after the user saves List View Settings), so the column sticks.
 	onload(listview) {
+		container_depot.priority_column(listview, PRIORITY.urgent);
 		if (listview._creation_column_added) return;
 		listview._creation_column_added = true;
 		const build_columns = listview.setup_columns.bind(listview);

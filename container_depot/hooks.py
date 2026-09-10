@@ -331,9 +331,9 @@ app_include_js = [
 	# container_depot.form_message — spanduk berkunci di atas form, supaya pesan yang sama
 	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
 	"/assets/container_depot/js/form_message.js",
-	# container_depot.urgency_pill / urgency_subject — penanda MENDESAK di Desk list, satu
-	# bentuk untuk kolom tanggalnya dan satu untuk kolom subject yang tidak pernah terpotong
-	# (lihat file-nya).
+	# container_depot.priority_pill / urgency_subject — penanda prioritas di Desk list, dengan
+	# kosakata yang sama persis dengan PWA ("MENDESAK · H-2 · 9 Sep"): satu bentuk untuk
+	# kolomnya dan satu untuk kolom subject yang tidak pernah terpotong (lihat file-nya).
 	"/assets/container_depot/js/urgency_mark.js",
 	# container_depot.rate_card_notice — warns on an order whose tank owner has no live
 	# Depot Contract, so the work is not done at rate 0 and then never billed.
