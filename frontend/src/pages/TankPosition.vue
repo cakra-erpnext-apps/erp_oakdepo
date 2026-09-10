@@ -1,447 +1,472 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<div class="flex items-center justify-between">
-			<div class="min-w-0">
-				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">
-					{{ labels.tankPosTitle }}
-				</h1>
-				<p v-if="tank" class="truncate font-mono text-[11px] text-gray-500">
-					{{ tank.container_no || tank.container }}
-				</p>
-				<p v-else class="text-sm text-gray-500">{{ labels.tankPosHint }}</p>
+		<!-- =================== PAPAN + PENCARIAN =================== -->
+		<template v-if="!tank">
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.tankPosTitle }}</h1>
+					<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.tankPosHint }}</p>
+				</div>
+				<!-- Jalan masuk "dari luar" ke daftar template — untuk yang datang memang untuk
+				     merapikan daftarnya, bukan untuk mencatat satu tank. Dari dalam form, panel
+				     yang sama muncul sebagai sheet supaya isian tidak dibongkar. -->
+				<router-link to="/tank-position/templates" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3">
+					<Icon name="list" :size="15" /> {{ labels.tplShort }}
+				</router-link>
 			</div>
-			<button v-if="tank" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2" @click="backToList">
-				<Icon name="arrow-left" :size="16" /> {{ labels.surveyPosBack }}
-			</button>
-		</div>
 
-		<!-- =================== SEARCH ===================
-		     A tank number is the only thing anyone standing in a yard has to hand, so it is the
-		     only thing this searches on. The second tab is the list this feature exists to
-		     empty: tanks nobody has ever recorded. -->
-		<section v-if="!tank" class="oak-section space-y-3">
-			<div class="flex gap-2">
+			<div class="relative">
+				<Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
 				<input
 					v-model="search"
-					class="oak-input uppercase"
+					type="search"
 					:placeholder="labels.tankPosSearch"
-					autocapitalize="characters"
-					autocorrect="off"
-					autocomplete="off"
-					spellcheck="false"
-					enterkeyhint="search"
+					class="oak-input pl-10 pr-10 uppercase"
 					@input="onSearchInput"
-					@keyup.enter="reload"
 				/>
-				<button class="oak-btn oak-btn-secondary shrink-0 px-3" @click="reload">
-					<Icon name="search" :size="16" />
-				</button>
-			</div>
-
-			<!-- Empat tab tidak muat dibagi rata di layar HP tanpa memotong "Belum Terdata",
-			     jadi barisnya menggeser ke samping seperti baris status di daftar lain. -->
-			<div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
 				<button
-					v-for="f in FILTERS"
-					:key="f.key"
-					class="oak-toggle flex shrink-0 items-center justify-center gap-1.5 px-3 text-xs"
-					:class="filter === f.key ? 'oak-toggle-on' : 'oak-toggle-off'"
-					@click="setFilter(f.key)"
+					v-if="search"
+					class="oak-press absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-400"
+					:aria-label="labels.tplCancel"
+					@click="clearSearch"
 				>
-					{{ f.label }}
+					<Icon name="x" :size="16" />
 				</button>
 			</div>
 
-			<!-- Antrean "cek letak tank": tank yang hari surveinya sudah dijadwalkan tapi
-			     letaknya belum pernah dicatat — atau catatannya lebih tua dari booking yang
-			     menjadwalkannya, yang artinya sama saja: tidak ada yang benar-benar melihat
-			     tank itu sejak ada alasan untuk mencarinya. Diurut memakai tenggat yang sama
-			     dengan worklist lain, jadi yang surveinya paling dekat berdiri paling atas. -->
-			<p v-if="filter === 'orders'" class="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
-				{{ labels.tankPosOrdersHint }}
-			</p>
-
-			<SkeletonList v-if="loading && !items.length" :action="false" />
-			<p v-else-if="!items.length" class="py-6 text-center text-sm text-gray-400">
-				{{ EMPTY_TEXT[filter] || labels.tankPosEmpty }}
-			</p>
-			<!-- Tab Riwayat: satu baris = satu pencatatan, bukan satu tank. Nomor tank tetap di
-			     depan karena itu yang dicari mata, tapi yang dijawab baris ini adalah "apa yang
-			     dilaporkan, kapan, oleh siapa" — dan fotonya langsung terlihat, karena riwayat
-			     berisi kalimat-kalimat telanjang memaksa orang membuka satu per satu untuk tahu
-			     ada gambarnya atau tidak. -->
-			<ul v-else-if="filter === 'history'" class="divide-y divide-gray-100">
-				<li v-for="h in items" :key="h.name">
-					<button class="oak-press w-full py-2.5 text-left" @click="open(h.container)">
-						<div class="flex items-baseline justify-between gap-2">
-							<p class="truncate font-bold text-gray-900">{{ h.container_no || h.container }}</p>
-							<span class="shrink-0 text-[11px] text-gray-400">{{ since(h.recorded_on) }}</span>
-						</div>
-						<p class="mt-0.5 flex items-start gap-1.5 whitespace-pre-line text-[13px] text-gray-700">
-							<Icon name="map-pin" :size="13" class="mt-0.5 shrink-0 text-brand-500" />
-							{{ h.location_note }}
-						</p>
-						<p v-if="h.notes" class="truncate text-[11px] text-gray-400">{{ h.notes }}</p>
-						<p class="mt-0.5 flex items-center gap-1 truncate text-[11px] text-gray-400">
-							<Icon name="clock" :size="11" class="shrink-0" />
-							{{ [fmtDateTime(h.recorded_on), h.recorded_by].filter(Boolean).join(" · ") }}
-						</p>
-						<div v-if="h.photos && h.photos.length" class="mt-1.5 flex flex-wrap gap-1.5">
-							<img
-								v-for="(url, j) in h.photos"
-								:key="url"
-								:src="url"
-								class="h-14 w-14 rounded-md border border-gray-200 object-cover"
-								loading="lazy"
-								@click.stop="openLightbox(h.photos, j)"
-							/>
-						</div>
-					</button>
-				</li>
-			</ul>
-			<ul v-else class="divide-y divide-gray-100">
-				<li v-for="r in items" :key="r.name">
-					<button class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="open(r.name)">
-						<span class="oak-icon-tile h-9 w-9 shrink-0" :class="r.located ? 'bg-brand-50 text-brand-600' : 'bg-red-50 text-red-500'">
-							<Icon :name="r.located ? 'map-pin' : 'help-circle'" :size="16" />
-						</span>
-						<div class="min-w-0 flex-1">
-							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.name }}</p>
-							<p class="truncate text-[11px]" :class="r.located ? 'text-gray-600' : 'text-red-500'">
-								{{ r.located ? r.current_location : labels.tankPosUnlocated }}
-							</p>
-							<p v-if="r.target_survey_on || r.target_lift_on" class="mt-1 flex items-center">
-								<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
-							</p>
-						</div>
-						<!-- The age of the answer, not just the answer. A position recorded in June
-						     is a guess; one from this morning is an instruction. -->
-						<span v-if="r.located" class="oak-chip shrink-0" :class="r.fresh ? 'bg-leaf-100 text-leaf-700' : 'bg-amber-100 text-amber-800'">
-							{{ since(r.location_updated_on) }}
-						</span>
-						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
-					</button>
-				</li>
-			</ul>
-			<!-- Ditambahkan ke bawah, bukan pindah halaman: orang yang meng-scroll daftar tank
-			     tidak memegang nomor halaman di kepalanya. -->
-			<button
-				v-if="items.length && items.length < total"
-				class="oak-btn oak-btn-secondary w-full py-2.5"
-				:disabled="loading"
-				@click="loadMore"
-			>
-				{{ loading ? "…" : labels.surveyListMore }}
-			</button>
-			<p v-if="items.length" class="text-center text-xs text-gray-400">
-				{{ items.length }} / {{ total }} {{ labels.tankPosCount }}
-			</p>
-		</section>
-
-		<!-- =================== ONE TANK =================== -->
-		<SkeletonDetail v-else-if="pending" :cells="4" :sections="2" />
-		<template v-else-if="tank">
-			<section class="oak-card space-y-2 p-4">
-				<p class="truncate text-2xl font-extrabold tracking-tight text-gray-900">
-					{{ tank.container_no || tank.container }}
-				</p>
-				<p v-if="tank.principal" class="truncate text-sm font-semibold text-gray-600">
-					{{ tank.principal }}
-				</p>
-			</section>
-
-			<section class="oak-card space-y-2 p-4" :class="tank.located ? '' : 'border-red-200 bg-red-50'">
-				<p class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.tankPosCurrent }}</p>
-				<template v-if="tank.located">
-					<p class="flex items-start gap-1.5 whitespace-pre-line text-base font-bold text-gray-900">
-						<Icon name="map-pin" :size="16" class="mt-1 shrink-0 text-brand-500" />
-						{{ tank.location_note }}
-					</p>
-					<p class="text-xs text-gray-500">
-						{{ since(tank.location_updated_on) }}
-						<template v-if="tank.location_updated_by">
-							· {{ labels.tankPosBy }} {{ tank.location_updated_by }}
-						</template>
-					</p>
-					<p v-if="!tank.fresh" class="oak-chip bg-amber-100 text-amber-800">
-						<Icon name="alert-triangle" :size="11" /> {{ labels.tankPosStale }}
-					</p>
-				</template>
-				<template v-else>
-					<p class="flex items-center gap-1.5 text-sm font-bold text-red-700">
-						<Icon name="alert-triangle" :size="15" /> {{ labels.tankPosUnlocated }}
-					</p>
-					<p class="text-sm text-red-900">{{ labels.tankPosUnlocatedHint }}</p>
-				</template>
-			</section>
-
-			<!-- The whole point of the screen: correct it, from wherever you are standing. -->
-			<section class="oak-section space-y-3">
-				<div class="flex items-center gap-2">
-					<Icon name="edit-2" :size="16" class="text-brand-500" />
-					<p class="oak-section-title">
-						{{ tank.located ? labels.tankPosUpdate : labels.tankPosInput }}
-					</p>
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.tankPosNewLabel }}</label>
-					<textarea
-						v-model.trim="form.location_note"
-						rows="2"
-						class="oak-input"
-						:placeholder="labels.posLocationHint"
-					/>
-				</div>
-				<div>
-					<label class="oak-label">{{ labels.tankPosNote }}</label>
-					<textarea
-						v-model.trim="form.notes"
-						rows="2"
-						class="oak-input"
-						:placeholder="labels.tankPosNoteHint"
-					/>
-				</div>
-
-				<!-- Several photos, because one is rarely enough: the stack from the front, the
-				     bay marking, the neighbouring tank. They go up the moment they are taken
-				     (data/send.js) and a shot taken with no signal is parked and carried by the
-				     save, so the operator keeps shooting either way. -->
-				<div>
-					<label class="oak-label">{{ labels.tankPosPhotos }}</label>
-					<div class="grid grid-cols-3 gap-2">
-						<div v-for="(url, i) in form.photos" :key="i" class="relative aspect-square">
-							<img
-								:src="photoSrc(url)"
-								class="h-full w-full rounded-lg border border-gray-200 object-cover"
-								@click="openLightbox(form.photos.map(photoSrc), i)"
-							/>
-							<button
-								type="button"
-								class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
-								aria-label="Hapus"
-								@click="removePhoto(i)"
-							>
-								<Icon name="x" :size="16" />
-							</button>
-							<PhotoMark :photo="url" />
-						</div>
-						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
-
-						<!-- Two tiles, not one: the camera for the shot being taken right now,
-						     the gallery for several already on the phone. -->
-						<!-- The phone's own camera app, only ever reached as the fallback — see
-						     utils/camera.js. -->
-						<input
-							ref="camInput"
-							type="file"
-							accept="image/*"
-							capture="environment"
-							multiple
-							class="hidden"
-							@change="onPhotos"
-						/>
+			<!-- Hasil pencarian menggantikan papan: yang mengetik nomor tank sedang mencari satu
+			     tank, bukan sedang membaca ringkasan depo. -->
+			<template v-if="search.trim()">
+				<ul v-if="searchRows.length" class="oak-card divide-y divide-gray-100 overflow-hidden">
+					<li v-for="r in searchRows" :key="r.name">
 						<button
 							type="button"
-							class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
-							:disabled="photoUploading"
-							@click="openCameraOrFallback"
+							class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50"
+							@click="open(r.name)"
 						>
-							<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
-							<template v-else>
-								<Icon name="camera" :size="22" />
-								<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
-							</template>
+							<span class="oak-icon-tile h-10 w-10 shrink-0" :class="r.current_location ? 'bg-leaf-50 text-leaf-600' : 'bg-gray-100 text-gray-400'">
+								<Icon :name="r.current_location ? 'map-pin' : 'help-circle'" :size="16" />
+							</span>
+							<span class="min-w-0 flex-1">
+								<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
+								<span class="block truncate text-[11px] text-gray-500">{{ searchLine(r) }}</span>
+							</span>
+							<span v-if="r.current_location" class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
+							<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
 						</button>
-						<label
-							class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
-						>
-							<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
-							<template v-else>
-								<Icon name="image" :size="22" />
-								<span class="text-xs font-medium">{{ labels.photoGallery }}</span>
-							</template>
-							<input
-								type="file"
-								accept="image/*"
-								multiple
-								class="hidden"
-								:disabled="photoUploading"
-								@change="onPhotos"
-							/>
-						</label>
-					</div>
-					<p class="mt-1 text-[11px] text-gray-400">{{ labels.tankPosPhotoHint }}</p>
-				</div>
-
-				<p v-if="saveError" class="text-xs text-red-600">{{ saveError }}</p>
-				<button
-					class="oak-btn oak-btn-primary w-full py-3 text-base"
-					:disabled="saving || !form.location_note"
-					@click="save"
-				>
-					<Icon v-if="!saving" name="check-circle" :size="18" />
-					{{ saving ? "…" : labels.tankPosSave }}
-				</button>
-			</section>
-
-			<!-- The readings behind the current answer. A tank reported in three blocks this
-			     morning is a tank nobody has actually found, and no single "current location"
-			     can say that. -->
-			<section v-if="(tank.history || []).length" class="oak-section space-y-2">
-				<div class="flex items-center gap-2">
-					<Icon name="clock" :size="16" class="text-gray-400" />
-					<p class="oak-section-title">{{ labels.tankPosHistory }}</p>
-				</div>
-				<ul class="space-y-2 text-[13px]">
-					<li v-for="(h, i) in tank.history" :key="h.name" class="flex items-start gap-2">
-						<span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="i === 0 ? 'bg-brand-500' : 'bg-gray-300'" />
-						<div class="min-w-0 flex-1">
-							<p class="whitespace-pre-line font-medium text-gray-800">{{ h.location_note }}</p>
-							<p class="text-xs text-gray-400">
-								{{ fmtDateTime(h.recorded_on) }}
-								<template v-if="h.recorded_by"> · {{ h.recorded_by }}</template>
-							</p>
-							<!-- Thumbnails right in the timeline. A history of bare sentences makes
-							     the operator open every row to find out whether there is anything
-							     to look at, which on a handset is the same as not having them. -->
-							<div v-if="h.photos && h.photos.length" class="mt-1.5 flex flex-wrap gap-1.5">
-								<img
-									v-for="(url, j) in h.photos"
-									:key="url"
-									:src="url"
-									class="h-14 w-14 cursor-pointer rounded-md border border-gray-200 object-cover"
-									loading="lazy"
-									@click="openLightbox(h.photos, j)"
-								/>
-							</div>
-						</div>
 					</li>
 				</ul>
+				<div v-else-if="!searchRes.loading" class="oak-card p-8 text-center text-sm text-gray-400">
+					{{ labels.tankPosEmpty }}
+				</div>
+			</template>
+
+			<template v-else>
+				<!-- Empat angka. "Perlu dicek" berdiri sendiri dari "Belum" karena keduanya
+				     pekerjaan yang berbeda: yang satu mengisi kekosongan, yang lain memeriksa
+				     jawaban yang mungkin sudah bohong. -->
+				<div class="grid grid-cols-4 gap-1.5">
+					<button
+						v-for="s in stats"
+						:key="s.key"
+						class="oak-press flex min-h-[68px] flex-col items-center justify-center rounded-xl border px-1 py-2 transition"
+						:class="pillClass(s)"
+						:aria-pressed="group === s.key"
+						@click="setGroup(s.key)"
+					>
+						<span class="text-lg font-extrabold leading-none" :class="group === s.key ? 'text-brand-700' : s.tone">
+							{{ s.count }}
+						</span>
+						<span class="mt-1 truncate text-[11px] font-semibold" :class="group === s.key ? 'text-brand-700' : 'text-gray-500'">
+							{{ s.label }}
+						</span>
+					</button>
+				</div>
+
+				<div v-if="boardRes.loading && !board" class="oak-card space-y-3 p-4">
+					<div class="oak-skeleton h-4 w-2/3"></div>
+					<div class="oak-skeleton h-4 w-1/2"></div>
+				</div>
+
+				<!-- Tidak ada pekerjaan tersisa. Kalimat keduanya penting: tanpa itu layar kosong
+				     terbaca sebagai layar rusak, padahal posisi memang banyak tercatat sendiri. -->
+				<div
+					v-else-if="board && !board.recheck.length && !board.missing.length && !board.today.length && !board.located.length"
+					class="oak-card flex flex-col items-center gap-2 p-8 text-center"
+				>
+					<span class="oak-icon-tile h-12 w-12 bg-leaf-50 text-leaf-500"><Icon name="check-circle" :size="24" /></span>
+					<p class="text-sm font-bold text-gray-900">{{ labels.tankPosBoardEmpty }}</p>
+					<p class="text-xs text-gray-500">{{ labels.tankPosBoardEmptyHint }}</p>
+				</div>
+
+				<template v-else-if="board">
+					<!-- Perlu dicek ulang -->
+					<section v-if="board.recheck.length" class="space-y-1.5">
+						<div class="flex items-baseline justify-between gap-2 px-1">
+							<p class="text-xs font-bold text-gray-500">{{ labels.tankPosSecRecheck }} · {{ board.counts.recheck }}</p>
+							<p class="truncate text-[11px] text-gray-400">
+								{{ fill(labels.tankPosSecRecheckHint, { n: board.recheck_days }) }}
+							</p>
+						</div>
+						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
+							<li v-for="r in board.recheck" :key="r.name">
+								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name)">
+									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-amber-50 text-amber-600"><Icon name="flag" :size="17" /></span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
+										<span class="block truncate text-[11px] text-gray-500">{{ recheckLine(r) }}</span>
+									</span>
+									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
+									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
+								</button>
+							</li>
+						</ul>
+					</section>
+
+					<!-- Belum terdata -->
+					<section v-if="board.missing.length" class="space-y-1.5">
+						<div class="flex items-baseline justify-between gap-2 px-1">
+							<p class="text-xs font-bold text-gray-500">{{ labels.tankPosSecMissing }} · {{ board.counts.missing }}</p>
+							<button class="oak-press -my-1 shrink-0 rounded-lg px-2 py-2 text-xs font-bold text-brand-600" @click="bulkFrom(board.missing)">
+								{{ labels.bulkOpen }}
+							</button>
+						</div>
+						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
+							<li v-for="r in board.missing" :key="r.name" class="flex min-h-[60px] items-center gap-3 px-4 py-3">
+								<span class="oak-icon-tile h-10 w-10 shrink-0 bg-gray-100 text-gray-400"><Icon name="help-circle" :size="17" /></span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</p>
+									<p class="truncate text-[11px] text-gray-500">{{ missingLine(r) }}</p>
+								</div>
+								<button class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-4 text-xs" @click="open(r.name)">
+									{{ labels.tankPosRecordBtn }}
+								</button>
+							</li>
+						</ul>
+						<button
+							v-if="board.counts.missing > board.missing.length"
+							class="oak-btn oak-btn-secondary w-full"
+							@click="showAllMissing"
+						>
+							{{ fill(labels.tankPosSecMore, { n: board.counts.missing - board.missing.length }) }}
+						</button>
+					</section>
+
+					<!-- Semua yang sudah terdata, dibuka dari yang paling basi. Hanya muncul saat
+					     pil "Terdata" ditekan: di tampilan pembuka ia bukan pekerjaan, dan daftar
+					     ratusan baris di puncak layar mengubur dua daftar yang memang pekerjaan. -->
+					<section v-if="board.located.length" class="space-y-1.5">
+						<div class="flex items-baseline justify-between gap-2 px-1">
+							<p class="text-xs font-bold text-gray-500">{{ labels.tankPosStatLocated }} · {{ board.counts.located }}</p>
+							<p class="truncate text-[11px] text-gray-400">{{ labels.tankPosSortStale }}</p>
+						</div>
+						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
+							<li v-for="r in board.located" :key="r.name">
+								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name)">
+									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="map-pin" :size="17" /></span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
+										<span class="block truncate text-[11px] text-gray-500">{{ recheckLine(r) }}</span>
+									</span>
+									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
+									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
+								</button>
+							</li>
+						</ul>
+					</section>
+
+					<!-- Terdata hari ini — bukan pekerjaan, melainkan bukti bahwa layar ini dipakai. -->
+					<section v-if="board.today.length" class="space-y-1.5">
+						<p class="px-1 text-xs font-bold text-gray-500">{{ labels.tankPosSecToday }} · {{ board.today.length }}</p>
+						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
+							<li v-for="r in board.today" :key="r.name">
+								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name)">
+									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="check-circle" :size="17" /></span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
+										<span class="block truncate text-[11px] text-gray-500">{{ todayLine(r) }}</span>
+									</span>
+									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
+									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
+								</button>
+							</li>
+						</ul>
+					</section>
+				</template>
+			</template>
+		</template>
+
+		<!-- =================== SATU TANK =================== -->
+		<template v-else>
+			<div class="flex items-center gap-2">
+				<button class="oak-press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-500" :aria-label="labels.backBtn" @click="backToList">
+					<Icon name="chevron-left" :size="22" />
+				</button>
+				<h1 class="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight text-gray-900">
+					{{ labels.tankPosTitle }}
+				</h1>
+				<span v-if="tank.located && !tank.fresh" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
+					{{ labels.tankPosStale }}
+				</span>
+			</div>
+
+			<!-- Sudah tersimpan: layar berhenti menjadi form dan menjadi jawaban. -->
+			<section v-if="saved" class="oak-card border-leaf-300 p-5 text-center">
+				<span class="oak-icon-tile mx-auto h-12 w-12 bg-leaf-500 text-white"><Icon name="check" :size="24" /></span>
+				<p class="mt-2 text-base font-extrabold text-gray-900">
+					{{ fill(labels.tankPosSavedTitle, { label: saved.location_note }) }}
+				</p>
+				<p class="mt-0.5 text-xs text-gray-500">
+					{{ saved.container }} · {{ fmtDateTime(saved.recorded_on) }}
+					<template v-if="saved.recorded_by"> · {{ saved.recorded_by }}</template>
+				</p>
+				<div class="mt-3 flex gap-2">
+					<button class="oak-btn oak-btn-primary min-h-[48px] flex-1" @click="backToList">{{ labels.tankPosNext }}</button>
+					<button class="oak-btn oak-btn-secondary min-h-[48px] flex-1" @click="saved = null">{{ labels.tankPosDone }}</button>
+				</div>
 			</section>
+
+			<template v-else>
+				<SkeletonDetail v-if="pending" :cells="4" :sections="2" />
+				<template v-else>
+					<!-- Identitas + posisi yang berlaku sekarang -->
+					<section class="oak-card space-y-3 p-4">
+						<div class="min-w-0">
+							<p class="truncate font-mono text-xl font-extrabold tracking-tight text-gray-900">
+								{{ tank.container_no || tank.container }}
+							</p>
+							<p class="truncate text-xs text-gray-500">{{ specLine }}</p>
+						</div>
+						<div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
+							<div class="min-w-0">
+								<p class="text-[11px] text-gray-400">{{ labels.tankPosCurrent }}</p>
+								<p class="truncate font-mono text-sm font-bold" :class="tank.located ? 'text-gray-900' : 'text-gray-400'">
+									{{ tank.location_note || labels.tankPosUnlocated }}
+								</p>
+							</div>
+							<div class="min-w-0">
+								<p class="text-[11px] text-gray-400">{{ labels.tankPosDicatat }}</p>
+								<p class="truncate text-sm font-bold text-gray-900">
+									{{ tank.located ? since(tank.location_updated_on) : "—" }}
+									<template v-if="tank.location_updated_by"> · {{ tank.location_updated_by }}</template>
+								</p>
+							</div>
+						</div>
+					</section>
+
+					<!-- Posisi baru -->
+					<section class="oak-card space-y-2 border-brand-300 p-4">
+						<p class="text-sm font-extrabold text-gray-900">{{ labels.tankPosNewTitle }}</p>
+						<PositionTemplateChips v-model="form.location_note" :depot="tank.depot" />
+					</section>
+
+					<!-- Foto -->
+					<section class="oak-card space-y-2 p-4">
+						<div class="flex items-baseline justify-between gap-2">
+							<p class="text-sm font-extrabold text-gray-900">{{ labels.tankPosPhotos }}</p>
+							<p class="shrink-0 text-[11px] text-gray-400">{{ labels.tankPosOptional }} · {{ labels.tankPosPhotoOne }}</p>
+						</div>
+						<div class="grid grid-cols-3 gap-2">
+							<div v-for="(url, i) in form.photos" :key="i" class="relative aspect-square">
+								<img
+									:src="photoSrc(url)"
+									class="h-full w-full rounded-lg border border-gray-200 object-cover"
+									@click="openLightbox(form.photos.map(photoSrc), i)"
+								/>
+								<button
+									type="button"
+									class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"
+									:aria-label="labels.tplCancel"
+									@click="removePhoto(i)"
+								>
+									<Icon name="x" :size="16" />
+								</button>
+								<PhotoMark :photo="url" />
+							</div>
+							<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
+							<input ref="camInput" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onPhotos" />
+							<button
+								type="button"
+								class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+								:disabled="photoUploading"
+								@click="openCameraOrFallback"
+							>
+								<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
+								<template v-else>
+									<Icon name="camera" :size="22" />
+									<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
+								</template>
+							</button>
+							<label class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100">
+								<Icon name="image" :size="22" />
+								<span class="text-xs font-medium">{{ labels.photoGallery }}</span>
+								<input type="file" accept="image/*" multiple class="hidden" :disabled="photoUploading" @change="onPhotos" />
+							</label>
+						</div>
+						<p class="text-[11px] text-gray-400">{{ labels.tankPosPhotoHint }}</p>
+					</section>
+
+					<!-- Catatan -->
+					<section class="oak-card space-y-2 p-4">
+						<div class="flex items-baseline justify-between gap-2">
+							<p class="text-sm font-extrabold text-gray-900">{{ labels.tankPosNote }}</p>
+							<p class="shrink-0 text-[11px] text-gray-400">{{ labels.tankPosOptional }}</p>
+						</div>
+						<textarea v-model.trim="form.notes" rows="2" class="oak-input" :placeholder="labels.tankPosNoteHint"></textarea>
+					</section>
+
+					<router-link
+						:to="`/tank-position/history/${encodeURIComponent(tank.container)}`"
+						class="oak-btn oak-btn-secondary w-full"
+					>
+						<Icon name="clock" :size="15" /> {{ labels.posHistTitle }}
+						<span v-if="tank.moves" class="text-gray-400">· {{ fill(labels.posHistTimes, { n: tank.moves }) }}</span>
+					</router-link>
+
+					<!-- Gagal disimpan. Yang diketik TETAP di layar dan tombolnya tetap di
+					     tempatnya: app ini tidak punya antrean kirim-belakangan (dihapus
+					     2026-08-18, lihat data/send.js), jadi satu-satunya jawaban jujur adalah
+					     "belum tersimpan, coba lagi" — bukan "tersimpan di HP". -->
+					<div v-if="saveError" class="rounded-xl border border-red-200 bg-red-50 p-3">
+						<p class="flex items-center gap-1.5 text-sm font-bold text-red-700">
+							<Icon name="alert-circle" :size="15" /> {{ labels.error }}
+						</p>
+						<p class="mt-0.5 text-xs text-red-900">{{ saveError }}</p>
+					</div>
+
+					<div class="oak-footer space-y-1">
+						<button
+							class="oak-btn oak-btn-primary min-h-[52px] w-full text-base"
+							:disabled="saving || !form.location_note"
+							@click="save"
+						>
+							{{ saving ? "…" : fill(labels.tankPosSaveWith, { label: form.location_note.trim() || "—" }) }}
+						</button>
+						<p class="text-center text-[11px] text-gray-400">{{ labels.tankPosAutoStamp }}</p>
+					</div>
+				</template>
+			</template>
 		</template>
 	</div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue"
+import { computed, onMounted, onBeforeUnmount, reactive, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { labels } from "@/utils/labels"
-import { toast } from "@/utils/toast"
-import Icon from "@/components/Icon.vue"
-import PhotoMark from "@/components/PhotoMark.vue"
-import PhotoTile from "@/components/PhotoTile.vue"
-import { usePhotoQueue } from "@/utils/photoQueue"
-import LiftOnBadge from "@/components/LiftOnBadge.vue"
-import SkeletonList from "@/components/SkeletonList.vue"
-import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
-import { photoSrc, send, uploadPhoto } from "@/data/send"
+import { send, uploadPhoto, photoSrc } from "@/data/send"
+import { labels } from "@/utils/labels"
+import { since, fmtDateTime } from "@/utils/surveyStatus"
+import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
+import { usePhotoQueue } from "@/utils/photoQueue"
 import { shootOrFallback } from "@/utils/camera"
-import { fmtDateTime, since } from "@/utils/surveyStatus"
+import { setPreselect } from "@/utils/positionPick"
+import Icon from "@/components/Icon.vue"
+import PhotoTile from "@/components/PhotoTile.vue"
+import PhotoMark from "@/components/PhotoMark.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
+import PositionTemplateChips from "@/components/PositionTemplateChips.vue"
 
 const route = useRoute()
 const router = useRouter()
 
-// ---- list ----
-const items = ref([])
-const total = ref(0)
-const search = ref("")
-const filter = ref("all")
-// Daftar ini adalah SELURUH tank aktif di depot, bukan hasil pencarian: layar ini tempat
-// letak tank dibetulkan, jadi yang sudah ada letaknya pun harus bisa dibuka tanpa mengetik
-// apa pun. Satu depot punya ratusan tank, maka halaman berikutnya ditambahkan ke bawah —
-// tanpa ini footer menyebut "312 tank" sementara cuma 50 yang bisa disentuh.
-const PAGE = 50
-const start = ref(0)
-
-const FILTERS = computed(() => [
-	{ key: "all", label: labels.tankPosFilterAll },
-	{ key: "unlocated", label: labels.tankPosFilterUnlocated },
-	{ key: "orders", label: labels.tankPosFilterOrders },
-	{ key: "history", label: labels.tankPosFilterHistory },
-])
-
-const EMPTY_TEXT = computed(() => ({
-	orders: labels.tankPosOrdersEmpty,
-	history: labels.tankPosHistoryEmpty,
-}))
-
-function takeList(data) {
-	// `start > 0` satu-satunya penanda bahwa ini "muat lagi", bukan kueri baru — resource-nya
-	// sendiri tidak membedakan keduanya.
-	items.value = start.value ? [...items.value, ...(data.items || [])] : data.items || []
-	total.value = data.total || 0
+function fill(tpl, vars) {
+	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
 }
 
-const listRes = cachedResource({
+// ---- papan ----
+const boardLimit = ref(8)
+// Pil yang sedang ditekan: "" = tampilan pembuka (tiga daftar pendek), selain itu satu daftar
+// utuh. Dikirim ke server, bukan disaring di klien — yang dijanjikan pil adalah angka penuh,
+// dan menyaring delapan baris yang terlanjur diambil tidak akan pernah sampai ke angka itu.
+const group = ref("")
+const boardRes = cachedResource({
+	url: "container_depot.ess.container_position.position_board",
+	method: "GET",
+	makeParams: () => ({ limit: boardLimit.value, group: group.value || "" }),
+	auto: true,
+})
+const board = computed(() => (boardRes.data?.success ? boardRes.data : null))
+
+const stats = computed(() => {
+	const c = board.value?.counts || { all: 0, located: 0, missing: 0, recheck: 0 }
+	return [
+		{ key: "all", label: labels.tankPosStatAll, count: c.all, tone: "text-gray-900" },
+		{ key: "located", label: labels.tankPosStatLocated, count: c.located, tone: "text-leaf-600" },
+		{ key: "missing", label: labels.tankPosStatMissing, count: c.missing, tone: "text-gray-500" },
+		{ key: "recheck", label: labels.tankPosStatRecheck, count: c.recheck, tone: "text-amber-600" },
+	]
+})
+function pillClass(s) {
+	if (group.value === s.key) return "border-brand-500 bg-brand-500/10"
+	if (s.key === "recheck" && s.count) return "border-amber-300 bg-amber-50"
+	return "border-gray-200 bg-paper"
+}
+// Menekan pil yang sudah aktif mengembalikannya ke tampilan pembuka. Di HP itu jalan keluar
+// yang paling dekat dengan jempol — tanpanya satu-satunya cara kembali adalah menemukan pil
+// "Semua" yang letaknya justru paling jauh.
+function setGroup(key) {
+	group.value = group.value === key || key === "all" ? "" : key
+	boardRes.reload()
+}
+function showAllMissing() {
+	group.value = "missing"
+	boardRes.reload()
+}
+function bulkFrom(rows) {
+	setPreselect(rows)
+	router.push("/tank-position/bulk")
+}
+
+function recheckLine(r) {
+	return [r.principal, `${labels.tankPosDicatat.toLowerCase()} ${since(r.location_updated_on)}`, r.location_updated_by]
+		.filter(Boolean)
+		.join(" · ")
+}
+function missingLine(r) {
+	const entered = r.eir_in_date ? `${labels.tankPosEnteredAt} ${fmtDateTime(r.eir_in_date)}` : null
+	return [r.principal, entered].filter(Boolean).join(" · ")
+}
+function todayLine(r) {
+	const clock = String(r.location_updated_on || "").slice(11, 16)
+	return [r.principal, clock, r.location_updated_by].filter(Boolean).join(" · ")
+}
+
+// ---- pencarian ----
+const search = ref("")
+const searchRes = cachedResource({
 	url: "container_depot.ess.container_position.tank_search",
 	method: "GET",
-	makeParams: () => ({
-		search: search.value || "",
-		only_unlocated: filter.value === "unlocated" ? 1 : 0,
-		start: start.value,
-		page_length: PAGE,
-	}),
-	auto: true,
-	onSuccess: takeList,
+	makeParams: () => ({ search: search.value || "", page_length: 20 }),
 })
-
-// Sumber kedua, bukan parameter ketiga pada yang pertama: antrean ini menjawab pertanyaan
-// yang berbeda ("tank mana yang ditunggu jawabannya") dan sudah diurut server memakai
-// prioritas yang sama dengan worklist lain, sementara pencarian tank diurut dari yang paling
-// basi. Menggabungkannya berarti satu endpoint dengan dua urutan dan satu pencarian yang
-// diam-diam tidak berlaku.
-const orderRes = cachedResource({
-	url: "container_depot.ess.container_position.position_orders",
-	method: "GET",
-	makeParams: () => ({ start: start.value, page_length: PAGE }),
-	onSuccess: takeList,
-})
-
-// Riwayat SELURUH tank, bukan riwayat satu tank. Inilah "history dan foto history" dari
-// letak: setiap pencatatan berdiri sebagai baris tersendiri karena koreksi sepuluh menit
-// kemudian adalah bacaan kedua, bukan penghapusan yang pertama — dan foto tiap bacaan ikut,
-// dari sumber yang sama dengan layar tank-nya (container_position._attach_photos).
-const historyRes = cachedResource({
-	url: "container_depot.ess.container_position.position_history",
-	method: "GET",
-	makeParams: () => ({ search: search.value || "", start: start.value, page_length: PAGE }),
-	onSuccess: takeList,
-})
-
-const activeRes = () =>
-	({ orders: orderRes, history: historyRes })[filter.value] || listRes
-const loading = computed(() => activeRes().loading)
-
+const searchRows = computed(() => (search.value.trim() ? searchRes.data?.items || [] : []))
 let searchTimer = null
-function reload() {
-	clearTimeout(searchTimer)
-	start.value = 0
-	activeRes().reload()
-}
-function loadMore() {
-	start.value = items.value.length
-	activeRes().reload()
-}
 function onSearchInput() {
 	clearTimeout(searchTimer)
-	// Pencarian berlaku untuk daftar tank dan riwayatnya (keduanya dicari lewat nomor tank);
-	// antrean adalah daftar tertutup yang isinya ditentukan jadwal, bukan ketikan.
-	if (filter.value === "orders") return
-	searchTimer = setTimeout(reload, 300)
+	searchTimer = setTimeout(() => search.value.trim() && searchRes.reload(), 300)
 }
-function setFilter(key) {
-	filter.value = key
-	items.value = []
-	reload()
+function clearSearch() {
+	search.value = ""
+}
+function searchLine(r) {
+	if (!r.current_location) return [r.principal, labels.bulkPrevNone].filter(Boolean).join(" · ")
+	return [r.principal, since(r.location_updated_on)].filter(Boolean).join(" · ")
 }
 
-// ---- one tank ----
+// ---- satu tank ----
 const tank = ref(null)
 const pending = ref(false)
+const saved = ref(null)
 const form = reactive({ location_note: "", notes: "", photos: [] })
 const photoUploading = ref(false)
+
+const specLine = computed(() =>
+	[tank.value?.principal, [tank.value?.container_type, tank.value?.size].filter(Boolean).join(" "),
+		tank.value?.depot ? `depot ${tank.value.depot}` : null]
+		.filter(Boolean)
+		.join(" · ")
+)
 
 const detailRes = cachedResource({
 	url: "container_depot.ess.container_position.tank_position",
@@ -449,14 +474,13 @@ const detailRes = cachedResource({
 	onSuccess(data) {
 		pending.value = false
 		tank.value = data
-		// Pre-filled with what is already recorded: most updates are a small correction to the
-		// existing note, not a fresh sentence typed one-handed next to a stack.
+		// Diisi dengan yang sudah tercatat: kebanyakan pembaruan adalah koreksi kecil atas
+		// kalimat yang ada, bukan kalimat baru yang diketik satu tangan di samping tumpukan.
 		form.location_note = data.location_note || ""
 		form.notes = ""
-		// Photos are NOT pre-filled from the last reading. Every reading is its own record of
-		// what was seen at that moment (container_position.record_position always inserts), so
-		// carrying yesterday's picture into today's would file a photo of a stack the tank may
-		// well have left.
+		// Foto TIDAK diwarisi dari pencatatan sebelumnya. Tiap pencatatan adalah catatan atas
+		// apa yang dilihat saat itu, jadi membawa foto kemarin ke hari ini berarti mengarsipkan
+		// gambar tumpukan yang mungkin sudah ditinggalkan tank-nya.
 		form.photos = []
 	},
 	onError(err) {
@@ -467,6 +491,8 @@ const detailRes = cachedResource({
 })
 
 function open(container) {
+	saved.value = null
+	saveError.value = ""
 	pending.value = true
 	tank.value = { container, container_no: container, history: [] }
 	detailRes.submit({ container })
@@ -474,12 +500,13 @@ function open(container) {
 
 function backToList() {
 	tank.value = null
+	saved.value = null
 	pending.value = false
-	start.value = 0
-	listRes.reload()
+	search.value = ""
+	boardRes.reload()
 }
 
-// ---- save ----
+// ---- simpan ----
 const saving = ref(false)
 const saveError = ref("")
 
@@ -489,21 +516,18 @@ async function save() {
 	saveError.value = ""
 	const c = tank.value.container
 	try {
-		await send({
+		const res = await send({
 			url: "container_depot.ess.container_position.position_record",
 			payload: {
 				container: c,
 				location_note: form.location_note,
 				notes: form.notes || undefined,
-				// A bare url list — the server coerces both shapes (`_coerce_photos`). Any
-				// still-parked `local:` ref is uploaded by `send` before the post goes out.
+				// Daftar url telanjang — server menormalkan kedua bentuknya (`_coerce_photos`).
+				// Ref `local:` yang masih terparkir diunggah `send` sebelum POST berangkat.
 				photos: form.photos.length ? form.photos : undefined,
 			},
 		})
-		toast.success(labels.tankPosSaved, { title: tank.value.container_no || c })
-		// Re-fetched rather than patched locally: the master's timestamp and the history are
-		// the whole answer, and both are written by the server.
-		open(c)
+		saved.value = { ...res, container: tank.value.container_no || c }
 	} catch (e) {
 		saveError.value = e?.message || labels.error
 		toast.error(saveError.value)
@@ -512,34 +536,27 @@ async function save() {
 	}
 }
 
-// ---- photos ----
+// ---- foto ----
 function removePhoto(i) {
 	form.photos.splice(i, 1)
 }
-
 async function onPhotos(e) {
 	const files = Array.from(e.target.files || [])
-	e.target.value = "" // so the same file can be picked again
+	e.target.value = "" // supaya file yang sama bisa dipilih lagi
 	await addPhotos(files)
 }
-
-// In-app viewfinder: shutter -> upload, no camera-app confirm screen in between
-// (utils/camera.js).
 const camInput = ref(null)
 function openCameraOrFallback() {
 	return shootOrFallback(camInput, (file) => addPhotos([file]))
 }
-
-// Each photo shows itself while it goes up — see EirInForm for why.
 const photoQueue = usePhotoQueue()
-
 async function addPhotos(files) {
 	if (!files.length) return
 	photoQueue.clearFailed()
 	photoUploading.value = true
 	try {
-		// One at a time and appended as they land, so the grid fills in while the rest are
-		// still going up — on the yard's 3G a batch of four is a real wait.
+		// Satu per satu dan ditambahkan begitu mendarat, supaya grid terisi selagi sisanya
+		// masih naik — di 3G yard, empat foto sekaligus adalah penantian yang nyata.
 		for (const f of files) {
 			const id = photoQueue.add(f)
 			try {
@@ -555,12 +572,13 @@ async function addPhotos(files) {
 	}
 }
 
-// Deep link: `/tank-position?c=TNKU1234567` opens that tank straight away — the shape a QR
-// scan or a link from the survey screen arrives in.
+// Deep link: `/tank-position?c=TNKU1234567` langsung membuka tank itu — bentuk yang dipakai
+// tautan dari layar survey, Monitor, dan riwayat posisi.
 onMounted(() => {
 	const c = route.query.c
 	if (!c) return
 	router.replace({ query: {} })
 	open(String(c))
 })
+onBeforeUnmount(() => clearTimeout(searchTimer))
 </script>

@@ -29,7 +29,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime, time_diff_in_seconds
+from frappe.utils import add_to_date, cint, date_diff, getdate, now_datetime, time_diff_in_seconds
 
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
@@ -164,7 +164,8 @@ def get_container_position(container, history_length=5) -> dict:
 	_guard_container_branch(container)
 	tank = frappe.db.get_value(
 		"Container", container,
-		["name", "container_no", "depot", "status", "principal", "container_type",
+		["name", "container_no", "depot", "status", "principal", "container_type", "size",
+		 "eir_in_date",
 		 "current_location", "location_updated_on", "location_updated_by", "target_lift_on",
 		 "target_survey_on", "target_urgent_on"],
 		as_dict=True,
@@ -200,6 +201,15 @@ def get_container_position(container, history_length=5) -> dict:
 		# screen says so differently ("Lokasi belum terdata" vs a stale badge).
 		"located": bool(tank.current_location),
 		**_age(tank.location_updated_on),
+		"size": tank.size,
+		# Berapa kali tank ini berpindah, dan sudah berapa lama ia di depo. Dua angka yang
+		# mengubah cara membaca posisi terakhirnya: tank yang berpindah empat kali minggu ini
+		# adalah tank yang catatannya cepat basi, sementara yang berdiri di tempat sama sejak
+		# masuk sebulan lalu tidak perlu dicurigai walau catatannya tua.
+		"moves": frappe.db.count(DOCTYPE, {"container": container}),
+		"in_depot_days": (
+			max(0, date_diff(now_datetime(), tank.eir_in_date)) if tank.eir_in_date else None
+		),
 		"history": history,
 	}
 
@@ -390,3 +400,366 @@ def list_position_history(container=None, start=0, page_length=20, search=None) 
 		it["recorded_on"] = str(it["recorded_on"]) if it["recorded_on"] else None
 	_attach_photos(items)
 	return {"items": items, "total": frappe.db.count(DOCTYPE, filters)}
+
+
+# ---------------------------------------------------------------------------
+# Template posisi — daftar pendek di balik form, milik depot
+# ---------------------------------------------------------------------------
+TEMPLATE = "Container Position Template"
+
+# Berapa hari ke belakang "sering diketik manual" melihat. Seminggu: cukup panjang untuk
+# menangkap bay yang benar-benar dipakai berulang, cukup pendek supaya bay yang dipakai sekali
+# waktu proyek bulan lalu tidak terus ditawarkan jadi template.
+SUGGEST_DAYS = 7
+# Berapa kali sebuah tulisan harus muncul sebelum ditawarkan. Dua sudah cukup: yang diketik
+# dua kali dengan tangan adalah yang akan diketik ketiga kalinya.
+SUGGEST_MIN = 2
+# Setelah berapa hari sebuah posisi minta dicek ulang. Beda dari FRESH_HOURS di atas, dan
+# memang dua pertanyaan yang berbeda: yang itu "boleh langsung dipakai?", yang ini "sudah
+# waktunya ada yang berjalan ke sana dan melihat?".
+RECHECK_DAYS = 7
+
+
+def _one_depot(depot=None) -> str:
+	"""Depot yang sedang dikelola template-nya, dan boleh dilihat pemanggil.
+
+	Template adalah milik satu depot, jadi setiap layarnya harus tahu depot mana — sebuah
+	daftar gabungan dari dua depot akan menawarkan bay yang tidak ada di yard tempat orangnya
+	berdiri.
+	"""
+	allowed = get_user_depots()
+	depot = (depot or "").strip()
+	if depot and depot.lower() in ("undefined", "null", "none"):
+		depot = ""
+	if depot:
+		if allowed is not None and depot not in allowed:
+			frappe.throw(_("Depot {0} di luar cakupan branch Anda.").format(depot))
+		return depot
+	if allowed:
+		return allowed[0]
+	if allowed is None:
+		first = frappe.get_all("Depot", filters={"is_active": 1}, order_by="name asc", limit=1)
+		if first:
+			return first[0].name
+	frappe.throw(_("Belum ada depot yang bisa dikelola template-nya."))
+
+
+def _usage(depot, labels_wanted) -> dict:
+	"""``lower(label) -> {"used": n, "last": datetime}`` dari pencatatan nyata di depot itu.
+
+	Dihitung dari Container Position, BUKAN dari kolom penghitung di template. Sebuah counter
+	harus diperbarui setiap kali posisi dicatat, dihapus, atau template-nya diganti nama — dan
+	begitu satu jalur lupa memperbaruinya, angkanya salah selamanya tanpa ada yang tahu. Di
+	sini angkanya selalu jawaban atas data yang sebenarnya ada.
+	"""
+	if not labels_wanted:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		select lower(trim(location_note)) as k, count(*) as used, max(recorded_on) as last
+		  from `tabContainer Position`
+		 where depot = %(depot)s and lower(trim(location_note)) in %(labels)s
+		 group by lower(trim(location_note))
+		""",
+		{"depot": depot, "labels": tuple(labels_wanted)},
+		as_dict=True,
+	)
+	return {r.k: {"used": r.used, "last": str(r.last) if r.last else None} for r in rows}
+
+
+def list_templates(depot=None) -> dict:
+	"""Template satu depot, urut tampil, plus tulisan yang sering diketik manual.
+
+	Bagian kedua itu yang membuat daftar ini tidak menua: sebuah bay baru dibuka, semua orang
+	mengetiknya dengan tangan, dan tidak ada yang merasa punya urusan membuka layar pengaturan
+	untuk mendaftarkannya. Yang muncul di sini adalah tulisan yang sudah terbukti dipakai —
+	tinggal diangkat jadi template dengan satu ketukan.
+	"""
+	depot = _one_depot(depot)
+	rows = frappe.get_all(
+		TEMPLATE,
+		filters={"depot": depot},
+		fields=["name", "label", "sort_order"],
+		order_by="sort_order asc, creation asc",
+		limit_page_length=0,
+	)
+	stats = _usage(depot, [r.label.strip().lower() for r in rows if r.label])
+	items = []
+	for r in rows:
+		s = stats.get((r.label or "").strip().lower(), {})
+		items.append({
+			"name": r.name,
+			"label": r.label,
+			"sort_order": r.sort_order,
+			"used": s.get("used", 0),
+			"last_used": s.get("last"),
+		})
+
+	known = {(r.label or "").strip().lower() for r in rows}
+	typed = frappe.db.sql(
+		"""
+		select trim(location_note) as label, count(*) as typed
+		  from `tabContainer Position`
+		 where depot = %(depot)s
+		   and recorded_on >= %(since)s
+		   and trim(ifnull(location_note, '')) != ''
+		 group by lower(trim(location_note))
+		having count(*) >= %(min)s
+		 order by typed desc
+		 limit 20
+		""",
+		{
+			"depot": depot,
+			"since": add_to_date(now_datetime(), days=-SUGGEST_DAYS),
+			"min": SUGGEST_MIN,
+		},
+		as_dict=True,
+	)
+	return {
+		"success": True,
+		"depot": depot,
+		"items": items,
+		"suggestions": [
+			{"label": t.label, "typed": t.typed}
+			for t in typed
+			if (t.label or "").strip().lower() not in known
+		][:5],
+	}
+
+
+def add_template(depot=None, label=None) -> dict:
+	"""Daftarkan satu posisi sebagai template depot. Baris baru selalu di URUTAN PALING BAWAH.
+
+	Bukan paling atas: yang di atas adalah yang paling sering dipakai (diatur dengan digeser),
+	dan sebuah template yang baru lahir belum pernah membuktikan apa pun.
+	"""
+	depot = _one_depot(depot)
+	label = (label or "").strip()
+	if not label:
+		frappe.throw(_("Isi dulu posisinya."))
+	last = frappe.db.sql(
+		"""select max(sort_order) from `tabContainer Position Template` where depot = %s""", depot
+	)
+	doc = frappe.new_doc(TEMPLATE)
+	doc.depot = depot
+	doc.label = label
+	doc.sort_order = cint((last or [[0]])[0][0]) + 1
+	doc.insert()  # NOT ignore_permissions — DocPerm yang jadi gerbangnya.
+	return {"success": True, "name": doc.name, "label": doc.label, "depot": depot}
+
+
+def rename_template(name=None, label=None) -> dict:
+	"""Ganti tulisan sebuah template.
+
+	Posisi tank yang SUDAH tercatat dengan tulisan lama tidak ikut berubah — pencatatan
+	menyimpan teksnya sendiri. Itu sengaja: mengubah daftar pilihan tidak boleh menulis ulang
+	apa yang dilaporkan orang minggu lalu.
+	"""
+	doc = _template(name)
+	doc.label = (label or "").strip()
+	doc.save()
+	return {"success": True, "name": doc.name, "label": doc.label}
+
+
+def delete_template(name=None) -> dict:
+	"""Buang sebuah template dari daftar pilihan depot. Pencatatan lama tidak tersentuh."""
+	doc = _template(name)
+	label, depot = doc.label, doc.depot
+	doc.delete()
+	return {"success": True, "label": label, "depot": depot}
+
+
+def reorder_templates(names=None, depot=None) -> dict:
+	"""Simpan urutan tampil, sesuai urutan ``names``.
+
+	Yang dikirim adalah SELURUH daftar, bukan "pindahkan yang ini ke posisi tiga": dua orang
+	yang menggeser bersamaan lewat perintah relatif bisa menghasilkan urutan yang tidak pernah
+	dilihat keduanya, sementara daftar utuh cuma menghasilkan yang terakhir menang.
+	"""
+	depot = _one_depot(depot)
+	if isinstance(names, str):
+		try:
+			names = json.loads(names)
+		except json.JSONDecodeError:
+			frappe.throw(_("names harus berupa array JSON."))
+	if not isinstance(names, list):
+		frappe.throw(_("names harus berupa array."))
+	owned = set(frappe.get_all(TEMPLATE, filters={"depot": depot}, pluck="name"))
+	for i, name in enumerate(names):
+		if name not in owned:
+			continue  # baris asing / sudah dihapus orang lain: dilewati, bukan meledak
+		frappe.db.set_value(TEMPLATE, name, "sort_order", i, update_modified=False)
+	return {"success": True, "depot": depot, "count": len(names)}
+
+
+def template_usage(name=None) -> dict:
+	"""Berapa tank yang SEKARANG berdiri di posisi ini — angka di dialog hapus.
+
+	Bukan berapa kali template dipakai sepanjang masa: yang ditanya orang sebelum menghapus
+	adalah "kalau daftar ini saya rapikan, ada berapa tank yang jadi susah dicari".
+	"""
+	doc = _template(name)
+	count = frappe.db.sql(
+		"""select count(*) from `tabContainer`
+		    where is_active = 1 and depot = %(depot)s
+		      and lower(trim(ifnull(current_location, ''))) = %(label)s""",
+		{"depot": doc.depot, "label": (doc.label or "").strip().lower()},
+	)
+	return {
+		"success": True,
+		"name": doc.name,
+		"label": doc.label,
+		"depot": doc.depot,
+		"tanks": cint((count or [[0]])[0][0]),
+	}
+
+
+def _template(name):
+	"""Muat satu template, dengan penjaga branch — depot-nya harus boleh dilihat pemanggil."""
+	if not name:
+		frappe.throw(_("name wajib diisi."))
+	doc = frappe.get_doc(TEMPLATE, name)
+	assert_in_user_branch(depot=doc.depot)
+	return doc
+
+
+# ---------------------------------------------------------------------------
+# Catat sekaligus — satu posisi, beberapa tank
+# ---------------------------------------------------------------------------
+def record_positions(containers=None, location_note=None, notes=None, photos=None) -> dict:
+	"""Catat posisi yang SAMA untuk beberapa tank sekaligus.
+
+	Tetap satu dokumen per tank, bukan satu dokumen berisi banyak tank: posisi adalah fakta
+	tentang satu tank, dan tank yang besok dipindah sendirian harus bisa dikoreksi sendirian
+	tanpa menyeret dua temannya. Yang dihemat layar ini adalah ketikannya, bukan catatannya.
+
+	Foto yang sama menempel ke semuanya — satu jepretan tumpukan memang menjelaskan ketiganya.
+
+    Gagal di tengah TIDAK dibatalkan seluruhnya: yang sudah tercatat tetap tercatat dan yang
+    gagal dilaporkan per tank. Sebuah rollback di sini akan membuang pencatatan yang benar
+    hanya karena tank keempat sudah keluar depo — dan operatornya sudah berjalan pergi.
+	"""
+	if isinstance(containers, str):
+		try:
+			containers = json.loads(containers)
+		except json.JSONDecodeError:
+			frappe.throw(_("containers harus berupa array JSON."))
+	containers = [c for c in (containers or []) if c]
+	if not containers:
+		frappe.throw(_("Pilih dulu tank-nya."))
+	if len(containers) > 50:
+		frappe.throw(_("Maksimal 50 tank sekali simpan."))
+
+	saved, failed = [], []
+	for container in dict.fromkeys(containers):  # urutan tetap, kembar dibuang
+		try:
+			saved.append(record_position(container, location_note, notes=notes, photos=photos))
+		except Exception as e:
+			frappe.clear_last_message()
+			failed.append({"container": container, "error": str(e)})
+	return {
+		"success": bool(saved),
+		"location_note": (location_note or "").strip(),
+		"saved": saved,
+		"failed": failed,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Papan Posisi Tank — apa yang harus dikerjakan hari ini
+# ---------------------------------------------------------------------------
+def position_board(limit=8, group=None) -> dict:
+	"""Empat angka dan tiga daftar pendek: layar pembuka menu Posisi Tank.
+
+	Yang dijawab layar ini bukan "di mana tank X" (itu pencarian) melainkan "apa yang belum
+	beres soal posisi di depo ini". Tiga daftarnya berurut menurut siapa yang paling merugikan
+	kalau dibiarkan:
+
+    * PERLU DICEK ULANG — ada jawabannya, tapi sudah tua. Ini yang paling berbahaya, karena ia
+      terbaca seperti jawaban yang benar sampai seseorang berjalan ke sana.
+    * BELUM TERDATA — tidak ada jawabannya sama sekali. Merepotkan, tapi jujur.
+    * TERDATA HARI INI — bukan pekerjaan, melainkan bukti bahwa layar ini dipakai; tanpa ini
+      operator yang sudah membereskan lima tank melihat layar yang tampak sama saja.
+
+	Hanya tank yang sedang BERADA di depo. Tank yang sudah keluar tidak punya posisi untuk
+	dicari, dan menghitungnya cuma membuat angka "belum terdata" tidak pernah bisa nol.
+
+	``group`` = satu angka di puncak layar ditekan: yang dikembalikan hanya daftar itu, dan
+	utuh — bukan potongan delapan baris. Angka di pil berjanji "sekian tank", dan pil yang
+	menampilkan delapan setelah menjanjikan dua puluh tujuh adalah pil yang berbohong.
+	"""
+	limit = cint(limit) or 8
+	group = (group or "").strip().lower()
+	if group in ("", "all", "undefined", "null", "none"):
+		group = None
+	elif group not in ("located", "missing", "recheck"):
+		frappe.throw(_("Filter tidak dikenal: {0}").format(group))
+	# Sebuah daftar penuh tetap dibatasi. Depo dengan seribu tank tanpa posisi adalah masalah
+	# yang tidak selesai dengan menggulir seribu baris di HP, dan tiga ratus sudah lebih
+	# panjang dari yang akan dibaca siapa pun dalam satu shift.
+	page = 300 if group else limit
+	where = ["c.is_active = 1", "c.status in ('In_Depot', 'Available')"]
+	args = {}
+	depots = get_user_depots()
+	if depots is not None:
+		where.append("c.depot in %(depots)s")
+		args["depots"] = tuple(depots or [""])
+	clause = " and ".join(where)
+
+	rows = frappe.db.sql(
+		f"""
+		select c.name, c.container_no, c.principal, c.depot, c.status, c.current_location,
+		       c.location_updated_on, c.location_updated_by, c.eir_in_date
+		  from `tabContainer` c
+		 where {clause}
+		""",
+		args,
+		as_dict=True,
+	)
+
+	stale_before = add_to_date(now_datetime(), days=-RECHECK_DAYS)
+	today_start = getdate()
+	recheck, missing, today_rows, located = [], [], [], []
+	for r in rows:
+		r["location_updated_on"] = str(r.location_updated_on) if r.location_updated_on else None
+		r["eir_in_date"] = str(r.eir_in_date) if r.eir_in_date else None
+		if not (r.current_location or "").strip():
+			missing.append(r)
+			continue
+		located.append(r)
+		recorded = r["location_updated_on"]
+		if recorded and getdate(recorded) >= today_start:
+			today_rows.append(r)
+		if recorded and recorded < str(stale_before):
+			recheck.append(r)
+
+	# Yang paling tua duluan di daftar "perlu dicek": itu yang paling mungkin sudah bohong.
+	recheck.sort(key=lambda r: r["location_updated_on"] or "")
+	# Yang paling lama di depo duluan di daftar "belum terdata": tank yang baru masuk sepuluh
+	# menit lalu memang belum sempat dicatat, yang masuk tiga hari lalu terlewat.
+	missing.sort(key=lambda r: r["eir_in_date"] or "9999")
+	today_rows.sort(key=lambda r: r["location_updated_on"] or "", reverse=True)
+	# Daftar "terdata" dibuka dari yang PALING BASI, bukan yang terbaru: yang baru dicatat tidak
+	# butuh dilihat siapa pun, dan daftar yang dibuka pada bacaan tersegar membuka pada baris
+	# yang paling tidak berguna.
+	located.sort(key=lambda r: r["location_updated_on"] or "")
+
+	counts = {
+		"all": len(rows),
+		"located": len(located),
+		"missing": len(missing),
+		"recheck": len(recheck),
+	}
+	return {
+		"success": True,
+		"counts": counts,
+		"group": group,
+		# Satu pil ditekan = hanya daftar itu yang dikirim, utuh. Tanpa filter, ketiganya
+		# dikirim sebagai potongan pendek karena layar pembuka menjawab "apa yang perlu
+		# dikerjakan", bukan "sebutkan semuanya".
+		"recheck": recheck[:page] if group in (None, "recheck") else [],
+		"missing": missing[:page] if group in (None, "missing") else [],
+		"today": today_rows[:limit] if group is None else [],
+		"located": located[:page] if group == "located" else [],
+		"recheck_days": RECHECK_DAYS,
+	}

@@ -78,3 +78,79 @@ def position_record(container=None, location_note=None, notes=None, photos=None,
 	return guarded(request_id, lambda: container_position.record_position(
 		container, location_note, notes=notes, photos=photos
 	))
+
+
+# ---------------------------------------------------------------------------
+# Template posisi — daftar pilihan milik depot
+# ---------------------------------------------------------------------------
+# Menu yang sama dengan pencatatannya (`tankPos`), dan alasannya sama: daftar pilihan yang
+# salah merugikan orang yang sama dengan posisi yang salah, jadi yang boleh mencatat boleh
+# merapikan. Lihat FIELD_ROLE_MATRIX di install.py.
+@frappe.whitelist(methods=["GET"])
+def position_templates(depot=None):
+	"""GET /api/v1/ess/position-templates — template satu depot + tulisan yang sering diketik."""
+	require_menu(MENU)
+	return container_position.list_templates(depot=depot)
+
+
+@frappe.whitelist(methods=["POST"])
+def position_template_add(depot=None, label=None, request_id=None):
+	"""POST /api/v1/ess/position-template-add — daftarkan satu posisi sebagai template.
+
+	``request_id`` menjaga pengiriman ulang: endpoint ini INSERT, dan jawaban yang hilang di
+	sinyal buruk akan meninggalkan dua template kembar di daftar semua orang."""
+	require_menu(MENU)
+	return guarded(request_id, lambda: container_position.add_template(depot=depot, label=label))
+
+
+@frappe.whitelist(methods=["POST"])
+def position_template_rename(name=None, label=None):
+	"""POST /api/v1/ess/position-template-rename — ganti tulisan sebuah template."""
+	require_menu(MENU)
+	return container_position.rename_template(name=name, label=label)
+
+
+@frappe.whitelist(methods=["POST"])
+def position_template_delete(name=None):
+	"""POST /api/v1/ess/position-template-delete — buang template dari daftar pilihan depot."""
+	require_menu(MENU)
+	return container_position.delete_template(name=name)
+
+
+@frappe.whitelist(methods=["POST"])
+def position_template_reorder(names=None, depot=None):
+	"""POST /api/v1/ess/position-template-reorder — simpan urutan tampil (daftar utuh)."""
+	require_menu(MENU)
+	return container_position.reorder_templates(names=names, depot=depot)
+
+
+@frappe.whitelist(methods=["GET"])
+def position_template_usage(name=None):
+	"""GET /api/v1/ess/position-template-usage — berapa tank yang sekarang di posisi ini."""
+	require_menu(MENU)
+	return container_position.template_usage(name=name)
+
+
+# ---------------------------------------------------------------------------
+# Papan + catat sekaligus
+# ---------------------------------------------------------------------------
+@frappe.whitelist(methods=["GET"])
+def position_board(limit=8, group=None):
+	"""GET /api/v1/ess/position-board — empat angka + tiga daftar pendek layar Posisi Tank.
+
+	``group`` (``located`` / ``missing`` / ``recheck``) = satu angka di puncak layar ditekan:
+	yang dikembalikan hanya daftar itu, utuh."""
+	require_menu(MENU)
+	return container_position.position_board(limit=limit, group=group)
+
+
+@frappe.whitelist(methods=["POST"])
+def position_record_bulk(containers=None, location_note=None, notes=None, photos=None, request_id=None):
+	"""POST /api/v1/ess/position-record-bulk — satu posisi untuk beberapa tank sekaligus.
+
+	``request_id`` lebih penting di sini daripada di pencatatan satuan: satu pengiriman ulang
+	menggandakan pencatatan untuk SELURUH tank yang dipilih sekaligus."""
+	require_menu(MENU)
+	return guarded(request_id, lambda: container_position.record_positions(
+		containers, location_note, notes=notes, photos=photos
+	))

@@ -1,0 +1,57 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-09-10 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "depot",
+  "label",
+  "column_break_1",
+  "sort_order"
+ ],
+ "fields": [
+  {
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Depot",
+   "options": "Depot",
+   "reqd": 1
+  },
+  {
+   "description": "Posisi yang sering dipakai di depot ini, mis. B4-R2 atau Gate area.",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Posisi",
+   "length": 60,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Kecil tampil duluan di form. Diatur dengan menggeser di PWA.",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Urutan"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-10 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Container Depot",
+ "name": "Container Position Template",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "sort_order",
+ "sort_order": "ASC",
+ "title_field": "label",
+ "track_changes": 0
+}

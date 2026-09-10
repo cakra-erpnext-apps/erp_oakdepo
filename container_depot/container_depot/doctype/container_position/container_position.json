@@ -23,7 +23,7 @@
   {
    "fieldname": "header_section",
    "fieldtype": "Section Break",
-   "label": "Letak Tank"
+   "label": "Posisi Tank"
   },
   {
    "fieldname": "container",
@@ -72,14 +72,14 @@
   {
    "fieldname": "position_section",
    "fieldtype": "Section Break",
-   "label": "Letak"
+   "label": "Posisi"
   },
   {
    "description": "Catatan bebas letak container di depo (mis. \"blok kanan dekat pos, tumpukan 2\").",
    "fieldname": "location_note",
    "fieldtype": "Small Text",
    "in_list_view": 1,
-   "label": "Letak Container",
+   "label": "Posisi Container",
    "reqd": 1
   },
   {
@@ -107,7 +107,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-03 12:00:00.000000",
+ "modified": "2026-09-10 12:00:00.000000",
  "module": "Container Depot",
  "name": "Container Position",
  "search_fields": "container_no, location_note, depot",

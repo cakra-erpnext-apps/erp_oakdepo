@@ -385,3 +385,179 @@ class TestWhoMayRecord(FrappeTestCase):
 		):
 			with self.assertRaises(frappe.PermissionError):
 				call()
+
+
+class TestPositionTemplates(_Base):
+	"""Daftar posisi yang sering dipakai — milik DEPOT, bukan milik yang membuatnya."""
+
+	def setUp(self):
+		super().setUp()
+		self._templates = []
+
+	def tearDown(self):
+		if self._templates:
+			frappe.db.delete("Container Position Template", {"name": ["in", self._templates]})
+		super().tearDown()
+
+	def _template(self, label, depot=DEPOT):
+		res = cp.add_template(depot=depot, label=label)
+		self._templates.append(res["name"])
+		return res
+
+	def test_a_new_template_lands_at_the_bottom(self):
+		"""Yang di atas adalah yang sudah terbukti sering dipakai; yang baru belum apa-apa."""
+		a = self._template("CPOS bay satu")
+		b = self._template("CPOS bay dua")
+		order = [t["label"] for t in cp.list_templates(depot=DEPOT)["items"]]
+		self.assertLess(order.index(a["label"]), order.index(b["label"]))
+
+	def test_the_same_writing_cannot_appear_twice(self):
+		"""Dua baris kembar di daftar pilihan cuma membuat dua orang memilih yang berbeda."""
+		self._template("CPOS bay satu")
+		with self.assertRaises(frappe.ValidationError):
+			self._template("cpos BAY satu")  # beda huruf, bay yang sama
+
+	def test_usage_is_counted_from_real_readings(self):
+		"""Angkanya dijawab dari pencatatan yang benar-benar ada, bukan dari kolom penghitung
+		yang harus diingat semua jalur untuk memperbaruinya."""
+		self._template("CPOS bay satu")
+		c = self._container("CPOS00000060")
+		cp.record_position(c, "CPOS bay satu")
+		row = next(t for t in cp.list_templates(depot=DEPOT)["items"] if t["label"] == "CPOS bay satu")
+		self.assertEqual(row["used"], 1)
+		self.assertTrue(row["last_used"])
+
+	def test_what_people_keep_typing_is_offered_as_a_template(self):
+		"""Bay baru dibuka, semua orang mengetiknya, dan tidak ada yang merasa punya urusan
+		membuka layar pengaturan — daftar ini yang mengangkatnya."""
+		c = self._container("CPOS00000061")
+		for _ in range(cp.SUGGEST_MIN):
+			cp.record_position(c, "CPOS bay hantu")
+		res = cp.list_templates(depot=DEPOT)
+		self.assertIn("CPOS bay hantu", [s["label"] for s in res["suggestions"]])
+
+		# Begitu diangkat jadi template, ia berhenti ditawarkan — kalau tidak, daftar saran
+		# akan terus menyuruh mendaftarkan yang sudah terdaftar.
+		self._template("CPOS bay hantu")
+		res = cp.list_templates(depot=DEPOT)
+		self.assertNotIn("CPOS bay hantu", [s["label"] for s in res["suggestions"]])
+
+	def test_deleting_a_template_leaves_recorded_positions_alone(self):
+		"""Merapikan daftar pilihan tidak boleh menulis ulang apa yang dilaporkan minggu lalu."""
+		t = self._template("CPOS bay satu")
+		c = self._container("CPOS00000062")
+		cp.record_position(c, "CPOS bay satu")
+		usage = cp.template_usage(t["name"])
+		self.assertEqual(usage["tanks"], 1, "dialog hapus menyebut berapa tank yang terdampak")
+
+		cp.delete_template(t["name"])
+		self._templates.remove(t["name"])
+		self.assertEqual(
+			frappe.db.get_value("Container", c, "current_location"), "CPOS bay satu"
+		)
+
+	def test_reorder_takes_the_whole_list(self):
+		"""Urutan diuji secara RELATIF: depot ini dipakai orang lain juga, dan template mereka
+		berhak duduk di antara dua fixture ini tanpa membuat test gagal."""
+		a = self._template("CPOS bay satu")
+		b = self._template("CPOS bay dua")
+		cp.reorder_templates(names=[b["name"], a["name"]], depot=DEPOT)
+		order = [t["name"] for t in cp.list_templates(depot=DEPOT)["items"]]
+		self.assertLess(order.index(b["name"]), order.index(a["name"]))
+
+
+class TestRecordingSeveralAtOnce(_Base):
+	"""Satu posisi untuk beberapa tank — yang dihemat ketikannya, bukan catatannya."""
+
+	def test_each_tank_still_gets_its_own_reading(self):
+		a = self._container("CPOS00000070")
+		b = self._container("CPOS00000071")
+		res = cp.record_positions([a, b], "CPOS A2 baris depan")
+		self.assertTrue(res["success"])
+		self.assertEqual(len(res["saved"]), 2)
+		self.assertEqual(frappe.db.count(DOCTYPE, {"container": ["in", [a, b]]}), 2)
+		# Besok salah satunya dipindah sendirian: itu harus bisa dikoreksi sendirian.
+		cp.record_position(a, "CPOS B1")
+		self.assertEqual(frappe.db.get_value("Container", a, "current_location"), "CPOS B1")
+		self.assertEqual(frappe.db.get_value("Container", b, "current_location"), "CPOS A2 baris depan")
+
+	def test_a_repeated_tank_is_recorded_once(self):
+		a = self._container("CPOS00000072")
+		res = cp.record_positions([a, a], "CPOS A2 baris depan")
+		self.assertEqual(len(res["saved"]), 1)
+
+	def test_one_bad_tank_does_not_throw_away_the_good_ones(self):
+		"""Operatornya sudah berjalan pergi; membatalkan yang benar karena yang keempat salah
+		berarti pekerjaan yang hilang tanpa ada yang tahu."""
+		a = self._container("CPOS00000073")
+		res = cp.record_positions([a, "CPOS-TIDAK-ADA"], "CPOS A2 baris depan")
+		self.assertEqual([s["container"] for s in res["saved"]], [a])
+		self.assertEqual([f["container"] for f in res["failed"]], ["CPOS-TIDAK-ADA"])
+
+
+class TestThePositionBoard(_Base):
+	"""Layar pembuka: bukan "di mana tank X", tapi "apa yang belum beres soal posisi"."""
+
+	def test_a_tank_nobody_recorded_lands_in_belum_terdata(self):
+		c = self._container("CPOS00000080")
+		board = cp.position_board()
+		self.assertIn(c, [r["name"] for r in board["missing"]])
+		self.assertNotIn(c, [r["name"] for r in board["recheck"]], "belum ada jawaban ≠ jawaban tua")
+
+	def test_recording_moves_it_to_terdata_hari_ini(self):
+		c = self._container("CPOS00000081")
+		before = cp.position_board()["counts"]
+		cp.record_position(c, "CPOS A2 baris depan")
+		after = cp.position_board()
+		self.assertEqual(after["counts"]["missing"], before["missing"] - 1)
+		self.assertEqual(after["counts"]["located"], before["located"] + 1)
+		self.assertIn(c, [r["name"] for r in after["today"]])
+
+	def test_an_old_reading_asks_to_be_checked_again(self):
+		"""Posisi tua adalah yang paling berbahaya: ia terbaca seperti jawaban yang benar
+		sampai seseorang berjalan ke sana."""
+		c = self._container("CPOS00000082")
+		cp.record_position(c, "CPOS A2 baris depan")
+		stale = add_to_date(now_datetime(), days=-(cp.RECHECK_DAYS + 1))
+		frappe.db.set_value("Container", c, "location_updated_on", stale, update_modified=False)
+		board = cp.position_board()
+		self.assertIn(c, [r["name"] for r in board["recheck"]])
+		self.assertNotIn(c, [r["name"] for r in board["today"]])
+
+	def test_pressing_one_number_returns_only_that_list(self):
+		"""Angka di pil berjanji "sekian tank"; pil yang menampilkan delapan setelah
+		menjanjikan dua puluh tujuh adalah pil yang berbohong. Jadi daftar yang dipilih dikirim
+		utuh, dan dua daftar lainnya tidak ikut."""
+		c = self._container("CPOS00000084")
+		res = cp.position_board(group="missing")
+		self.assertIn(c, [r["name"] for r in res["missing"]])
+		self.assertEqual(res["today"], [])
+		self.assertEqual(res["recheck"], [])
+		# Angkanya tetap lengkap: keempat pil harus tetap terbaca saat salah satunya aktif.
+		self.assertEqual(res["counts"]["all"], cp.position_board()["counts"]["all"])
+
+	def test_located_opens_on_the_stalest(self):
+		"""Yang baru dicatat tidak butuh dilihat siapa pun; daftar yang dibuka pada bacaan
+		tersegar membuka pada baris yang paling tidak berguna."""
+		fresh = self._container("CPOS00000085")
+		old = self._container("CPOS00000086")
+		cp.record_position(old, "CPOS A2 baris depan")
+		cp.record_position(fresh, "CPOS B1")
+		frappe.db.set_value(
+			"Container", old, "location_updated_on",
+			add_to_date(now_datetime(), days=-3), update_modified=False,
+		)
+		rows = [r["name"] for r in cp.position_board(group="located")["located"]]
+		self.assertLess(rows.index(old), rows.index(fresh))
+
+	def test_an_unknown_filter_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			cp.position_board(group="entahlah")
+
+	def test_a_tank_that_has_left_is_not_counted(self):
+		"""Tank yang sudah keluar tidak punya posisi untuk dicari, dan menghitungnya membuat
+		angka "belum terdata" tidak pernah bisa nol."""
+		c = self._container("CPOS00000083")
+		frappe.db.set_value("Container", c, "status", "Gate_Out", update_modified=False)
+		board = cp.position_board()
+		self.assertNotIn(c, [r["name"] for r in board["missing"]])

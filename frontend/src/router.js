@@ -142,13 +142,33 @@ const routes = [
 		component: () => import("@/pages/SurveyPositionHistory.vue"),
 	},
 	{
-		// Letak Tank — a menu of its own, open to every field team. It is NOT part of the
+		// Posisi Tank — a menu of its own, open to every field team. It is NOT part of the
 		// survey: where a tank stands is a fact about the tank, corrected by whoever finds it,
 		// and it outlives every booking. See ess/container_position.py.
 		path: "/tank-position",
 		name: "TankPosition",
 		meta: { menuKey: "tankPos" },
 		component: () => import("@/pages/TankPosition.vue"),
+	},
+	{
+		// Kelola template posisi satu depot. Bukan tab di layar utama: yang membukanya sedang
+		// mengurus daftar pilihan seluruh depo, bukan mencatat satu tank.
+		path: "/tank-position/templates",
+		name: "PositionTemplates",
+		meta: { menuKey: "tankPos" },
+		component: () => import("@/pages/PositionTemplates.vue"),
+	},
+	{
+		path: "/tank-position/bulk",
+		name: "PositionBulk",
+		meta: { menuKey: "tankPos" },
+		component: () => import("@/pages/PositionBulk.vue"),
+	},
+	{
+		path: "/tank-position/history/:container",
+		name: "PositionHistory",
+		meta: { menuKey: "tankPos" },
+		component: () => import("@/pages/PositionHistory.vue"),
 	},
 	{
 		path: "/position-fix",

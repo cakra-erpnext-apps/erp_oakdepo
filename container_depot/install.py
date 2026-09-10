@@ -1669,6 +1669,13 @@ FIELD_ROLE_MATRIX = [
 	# boleh mencatatnya. `c` (create) adalah kuncinya — tiap pencatatan itu dokumen baru, bukan
 	# suntingan yang lama — dan itu juga diskriminator menu `tankPos`.
 	("Container Position",          ("rc",    "rc",    "rc",   "rc",     "rc",   "rc",   "rc")),
+	# Template posisi mengikuti aturan yang sama, sampai ke `d`. Daftar pilihan yang salah
+	# merugikan orang yang sama dengan posisi yang salah, dan tidak ada sejarah yang hilang
+	# kalau satu template dibuang: pencatatan menyimpan teksnya sendiri, bukan link ke sini.
+	# Membiarkan hanya SPV yang boleh merapikan berarti daftar yang kotor bertahan sampai SPV
+	# sempat membukanya — sementara yang tahu bay-nya salah tulis adalah yang sedang berdiri
+	# di sana.
+	("Container Position Template", ("rwcd",  "rwcd",  "rwcd", "rwcd",   "rwcd", "rwcd", "rwcd")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 ]
