@@ -47,6 +47,17 @@
 					class="oak-input h-11 pl-10 pr-3"
 				/>
 			</div>
+			<!-- Tombol cari muncul begitu ada yang diketik. Enter / tombol "cari" di keyboard
+			     sudah mengirim form ini, tapi di ponsel tombol itu tidak selalu terlihat sebagai
+			     jalan keluar — jadi sediakan yang bisa ditekan, seperti di layar Gate. -->
+			<button
+				v-if="query"
+				type="submit"
+				class="oak-btn oak-btn-primary h-11 w-11 shrink-0 px-0"
+				:aria-label="labels.homeSearchAria"
+			>
+				<Icon name="search" :size="18" />
+			</button>
 			<router-link
 				to="/gate?scan=1"
 				class="oak-btn oak-btn-secondary h-11 w-11 shrink-0 px-0"

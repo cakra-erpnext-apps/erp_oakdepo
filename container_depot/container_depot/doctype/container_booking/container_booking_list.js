@@ -81,6 +81,13 @@ frappe.listview_settings['Container Booking'] = {
 			return container_depot.urgency_subject(value, doc, PRIORITY.urgent);
 		},
 		urgent_date(value, df, doc) {
+			// Tank Out only, like `per_fulfilled` below. Prioritas di depot ini adalah tenggat
+			// pekerjaan ATAS tank sebelum diambil — survey, cleaning, M&R — dan itu cuma ada
+			// pada booking keluar: `lift_on.set_urgent` menolak menandai Tank In, dan tombolnya
+			// pun tidak muncul di form-nya. Yang tersisa untuk baris Tank In cuma fallback ke
+			// `plan_date`, jadi kolomnya memajang hitung mundur ("H-2") ke tanggal yang tidak
+			// mengurutkan pekerjaan siapa pun: tank masuk datang saat truknya datang.
+			if (doc.direction !== 'Tank Out') return '';
 			return container_depot.priority_pill(doc, PRIORITY);
 		},
 		// How much of an outbound booking has actually left the depot. A lift-on is

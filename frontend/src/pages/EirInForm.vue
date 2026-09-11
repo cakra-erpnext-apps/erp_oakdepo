@@ -337,7 +337,7 @@
 						{{ labels.signedBy }}: <span class="font-semibold text-gray-800">{{ session.user }}</span>
 					</p>
 					<div v-if="signatureUrl && !signing">
-						<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-paper object-contain" />
+						<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl oak-sign-paper object-contain" />
 						<button type="button" class="oak-link mt-1.5 inline-flex items-center gap-1 text-sm" @click="startResign">
 							<Icon name="rotate-ccw" :size="14" /> {{ labels.signAgain }}
 						</button>
@@ -345,7 +345,7 @@
 					<div v-else>
 						<canvas
 							ref="sigCanvas"
-							class="w-full touch-none rounded-xl border border-gray-200 bg-paper"
+							class="w-full touch-none rounded-xl oak-sign-paper"
 							style="height: 150px"
 							@pointerdown="sigDown"
 							@pointermove="sigMove"

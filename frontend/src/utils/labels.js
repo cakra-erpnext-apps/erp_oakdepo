@@ -148,6 +148,7 @@ export const labels = {
 	// mengetik di sini membuka Gate dengan kodenya sudah terisi dan hasilnya tampil di sana.
 	homeSearchPlaceholder: "Cari no. container, booking, atau voucher",
 	homeScanAria: "Pindai kode booking",
+	homeSearchAria: "Cari",
 	// Kartu angka "Hari ini". Sub-teks tiap kartu sengaja menyebut sisa pekerjaan, bukan
 	// mengulang angka besarnya — itu satu-satunya alasan angka hari ini perlu dilihat.
 	homeToday: "Hari ini",
@@ -1324,7 +1325,6 @@ export const labels = {
 	tankSurveyDone: "Survey selesai",
 	tankResult: "Hasil",
 	tankDraftEirOut: "Draft EIR-Out",
-	tankOpenEirOut: "Buka EIR-Out",
 	tankUpdates: "Riwayat update",
 	tankUndo: "Batalkan",
 	tankUndoPick: "Pilih",

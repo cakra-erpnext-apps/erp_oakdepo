@@ -162,6 +162,48 @@ class TestEssInventory(FrappeTestCase):
 		available = get_tank_list(depot=ESS_DEPOT, status="available")
 		self.assertEqual({i["container_no"] for i in available["items"]}, {"ESST1000003", "ESST1000007"})
 
+	def test_every_open_order_status_buckets_as_work(self):
+		"""Tidak ada status terbuka yang boleh jatuh ke "tidak ada kerjaan".
+
+		Monitor menerjemahkan status order ke bucket lewat daftar tetap
+		(``IN_PROGRESS_*`` / ``PENDING_*`` / ``DRAFT_REPAIR``), sementara sisa aplikasi
+		mendefinisikan "selesai" sebagai ``DONE_CLEANING`` / ``DONE_REPAIR``. Begitu sebuah
+		status terbuka lupa didaftarkan, tanknya terbaca `available` di Monitor padahal gate
+		dan ``container_open_orders`` masih menahannya — yang persis terjadi pada "Service
+		Setup", "Pending Review", "Pending" (M&R) dan "Revision Requested".
+
+		Dibandingkan langsung dengan pilihan Select doctype-nya, jadi status yang ditambahkan
+		nanti ikut ketahuan di sini, bukan di lapangan.
+		"""
+		from container_depot.container_depot.container_status import DONE_CLEANING, DONE_REPAIR
+		from container_depot.ess.inventory import _CLEANING_STATE, _REPAIR_STATE
+
+		for doctype, done, mapped in (
+			("Cleaning Order", DONE_CLEANING, _CLEANING_STATE),
+			("Repair Order", DONE_REPAIR, _REPAIR_STATE),
+		):
+			options = [
+				s.strip()
+				for s in (frappe.get_meta(doctype).get_field("status").options or "").split("\n")
+				if s.strip()
+			]
+			missing = [s for s in options if s not in done and s not in mapped]
+			self.assertEqual(missing, [], f"{doctype}: status terbuka tanpa bucket Monitor: {missing}")
+
+	def test_an_assigned_but_unstarted_cleaning_still_counts_as_work(self):
+		"""Order cuci lahir sebagai "Service Setup" (dari EIR tank kotor) dan menunggu Admin Ops
+		memilih metodenya. Ia sudah ada, sudah di-assign, dan menahan tanknya — jadi tanknya
+		tidak boleh tampil sebagai tank menganggur."""
+		co = frappe.db.get_value("Cleaning Order", {"container": "ESST1000001"}, "name")
+		frappe.db.set_value("Cleaning Order", co, "status", "Service Setup", update_modified=False)
+		try:
+			res = get_tank_list(depot=ESS_DEPOT, status="working")
+			self.assertIn("ESST1000001", {i["container_no"] for i in res["items"]})
+			available = get_tank_list(depot=ESS_DEPOT, status="available")
+			self.assertNotIn("ESST1000001", {i["container_no"] for i in available["items"]})
+		finally:
+			frappe.db.set_value("Cleaning Order", co, "status", "Pending", update_modified=False)
+
 	# --- Monitor redesain 2026-09-10 ---------------------------------------
 	# Empat pil di puncak layar, sheet filter, dan urutan daftar. Yang diuji di sini bukan
 	# tampilannya melainkan janji yang dipegangnya: angka pil = isi daftar, dan sebuah kata

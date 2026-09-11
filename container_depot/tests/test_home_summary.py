@@ -48,6 +48,9 @@ def _teardown():
 		for dt in ["Container Movement", "Container Activity", "Cleaning Order", "Repair Order", "Inspection"]:
 			frappe.db.delete(dt, {"container": ["in", names]})
 		frappe.db.delete("Container", {"name": ["in", names]})
+	# Gate Entry hangs off the container NUMBER, not the link, so it needs its own sweep —
+	# otherwise the arrivals these tests stage stay in Riwayat Gate for good.
+	frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 	if frappe.db.exists("Depot", DEPOT):
 		frappe.db.delete("Depot", {"name": DEPOT})
 	# The test principal too: `ensure_test_customer` commits, so it would otherwise outlive
@@ -117,6 +120,38 @@ class TestHomeSummary(FrappeTestCase):
 		after = get_home_summary()["today"]
 		self.assertEqual(after["gate_in"], before["gate_in"] + 1)
 		self.assertEqual(after["gate_out"], before["gate_out"])  # unrelated type untouched
+
+	def test_a_cancelled_arrival_drops_out_of_the_count(self):
+		"""Membatalkan bon tidak menghapus baris "Gate In"-nya — log itu append-only, yang
+		berubah hanya status Gate Entry yang dirujuknya. Kartunya harus menjawab "berapa tank
+		yang benar-benar masuk hari ini", bukan "berapa yang sempat dicatat"."""
+		c = self._container("HOME0000011")
+		ge = frappe.get_doc({
+			"doctype": "Gate Entry",
+			"container_no": c,
+			"depot": DEPOT,
+			"gate_in_timestamp": now_datetime(),
+			"status": "Gate_In_Completed",
+			"inspection_status": "Pending",
+		}).insert(ignore_permissions=True)
+		before = get_home_summary()["today"]
+		frappe.get_doc({
+			"doctype": "Container Activity",
+			"container": c,
+			"activity_type": "Gate In",
+			"activity_time": now_datetime(),
+			"depot": DEPOT,
+			"reference_doctype": "Gate Entry",
+			"reference_name": ge.name,
+		}).insert(ignore_permissions=True)
+		self.assertEqual(get_home_summary()["today"]["gate_in"], before["gate_in"] + 1)
+
+		frappe.db.set_value("Gate Entry", ge.name, "status", "Cancelled")
+		self.assertEqual(
+			get_home_summary()["today"]["gate_in"],
+			before["gate_in"],
+			"a cancelled arrival must not keep counting",
+		)
 
 	def test_cleaning_and_eir_review_deltas(self):
 		c = self._container("HOME0000020")

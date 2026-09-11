@@ -354,6 +354,10 @@ app_include_js = [
 	# Matikan tombol "Edit" (pensil rename) di judul form + item menu "Rename" untuk semua
 	# doctype — nomor dokumen datang dari naming series, bukan diketik ulang.
 	"/assets/container_depot/js/no_rename.js",
+	# Matikan "Delete" + "Duplicate" (form ⋯ Menu, Actions ▸ Delete di daftar, dan pintasan
+	# keyboardnya) untuk order, jejak gate/yard dan dokumen penagihan — dibatalkan lewat
+	# Cancel/Void, tidak dihapus; order baru dibuat dari menunya, tidak disalin.
+	"/assets/container_depot/js/no_delete_duplicate.js",
 ]
 
 # include js, css files in header of web template

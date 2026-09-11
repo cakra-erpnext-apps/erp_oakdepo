@@ -4,9 +4,11 @@
 // Container booking. Direction is the operator's pick — Tank In = Lift Off (tank dropped
 // at the depot), Tank Out = Lift On (tank taken from it) — and drives the gates, the bon
 // type and the BKG-IN/BKG-OUT number. Branch scopes the depot; Customer drives the payment
-// modes and resolves the active Price List server-side (its currency — USD / IDR — formats
-// every charge, no exchange rate). Charges are a free table: any number of services from
-// the item catalogue, or none at all. Principal (Tank Owner) scopes the
+// modes and resolves the active Price List server-side. Charges are a free table: any
+// number of services from the item catalogue, or none at all — each row billed in the
+// currency its contract Item Price agreed (locked), or in the one the operator picks when
+// the rate card doesn't price that service. No exchange rate: the figures are used as-is,
+// and the document's own currency simply follows its rows. Principal (Tank Owner) scopes the
 // container picker on each line.
 // Whether this site raises invoices at all (Depot Finance Settings, published at boot).
 // With finance off the depot runs operationally — charges are still priced and stored, but
@@ -43,12 +45,9 @@ function _bon_payment_block(frm) {
 }
 
 frappe.ui.form.on('Container Booking', {
-	currency(frm) {
-		// Charge lines carry the header's currency (the invoice is single-currency), so a
-		// walk-in's manual pick has to reach them without waiting for a save.
-		(frm.doc.charges || []).forEach((row) =>
-			frappe.model.set_value(row.doctype, row.name, 'currency', frm.doc.currency));
-	},
+	// No header `currency` handler: the document's currency is now derived from its charge
+	// rows (each locked to the Item Price its contract agreed, or picked by the operator on
+	// a row the rate card doesn't price), never pushed down from the header.
 	onload(frm) {
 		frm.trigger('_set_queries');
 		// Plan Date defaults to today on a NEW booking only, and only in the form. It is a
@@ -925,22 +924,17 @@ frappe.ui.form.on('Container Booking', {
 	},
 	_apply_payment_modes(frm) {
 		// Payment Type is constrained to the customer's contract mode (Cash / TOP / Both).
-		// No active contract -> no options; the operator must create a contract first.
+		// A customer with no active contract is a walk-in: nothing has been agreed, so both
+		// modes stay offered and the operator picks one.
 		if (!frm.doc.customer) return;
 		frappe.call({
 			method: 'container_depot.container_depot.doctype.container_booking.container_booking.customer_payment_modes',
 			args: { customer: frm.doc.customer },
 			callback(r) {
-				const modes = r.message || [];
-				if (!modes.length) {
-					frappe.msgprint(__('{0} has no active contract / price list. Create one for this customer first.', [frm.doc.customer]));
-					frm.set_df_property('payment_type', 'options', ['']);
-					frm.set_value('payment_type', null);
-					return;
-				}
+				const modes = r.message && r.message.length ? r.message : ['Cash', 'TOP'];
 				frm.set_df_property('payment_type', 'options', modes.join('\n'));
 				if (!modes.includes(frm.doc.payment_type)) frm.set_value('payment_type', modes[0]);
-				// Single mode -> lock; Both -> let the operator choose.
+				// Single mode (contract signed on it) -> lock; otherwise let the operator choose.
 				frm.set_df_property('payment_type', 'read_only', modes.length === 1 ? 1 : 0);
 			},
 		});
@@ -1009,14 +1003,14 @@ function _fetch_charge_rate(frm, cdt, cdn) {
 		args: { customer: frm.doc.customer, item: row.item },
 		callback(r) {
 			const d = r.message || {};
-			// Currency first so the rate formats in the price-list currency (USD / IDR).
-			// Only a currency with a binding source (own rate card / Customer.default_currency)
-			// may overwrite the header — for a walk-in the operator's own pick stands, exactly
-			// like the server's _resolve_pricing_context.
-			if (d.currency && (d.currency_locked || !frm.doc.currency)) {
-				frm.set_value('currency', d.currency);
+			// Currency first so the rate formats in the currency it was agreed in (USD / IDR).
+			// The lock is per ROW: a service priced by the contract's rate card carries that
+			// Item Price's currency and the operator can't touch it; a service outside the rate
+			// card keeps whatever the operator picked (or the customer's currency, when blank).
+			frappe.model.set_value(cdt, cdn, 'currency_locked', d.currency_locked ? 1 : 0);
+			if (d.currency && (d.currency_locked || !row.currency)) {
+				frappe.model.set_value(cdt, cdn, 'currency', d.currency);
 			}
-			frappe.model.set_value(cdt, cdn, 'currency', frm.doc.currency || d.currency || '');
 			frappe.model.set_value(cdt, cdn, 'item_name', d.item_name || row.item);
 			frappe.model.set_value(cdt, cdn, 'rate', d.rate || 0);
 			// The lift is billed per container, so a fresh line starts at the number of
@@ -1044,6 +1038,13 @@ frappe.ui.form.on('Container Booking Charge', {
 	},
 	rate(frm) {
 		frm.trigger('_recompute_charges');
+	},
+	currency(frm, cdt, cdn) {
+		// The document is billed in one currency — a Sales Invoice cannot hold two — so an
+		// editable row's pick becomes the booking's. The server has the last word: it refuses
+		// the save outright when the rows disagree (_sync_currency_from_charges).
+		const row = locals[cdt][cdn];
+		if (row.currency && row.currency !== frm.doc.currency) frm.set_value('currency', row.currency);
 	},
 });
 

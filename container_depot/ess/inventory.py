@@ -39,14 +39,25 @@ EXCLUDED_FROM_INVENTORY = ("Booked",)
 # Order states grouped into the Monitor buckets. A container is classified by the
 # MOST-ADVANCED order state it carries (in_progress > pending > draft), across Cleaning
 # Order + Repair Order (M&R). No open order at all -> `available`.
-#   in_progress ("Dikerjakan") = a started job     (start_cleaning / start_repair)
+#   in_progress ("Dikerjakan") = a started job, or one whose field work is done and is
+#                                waiting for Admin Ops to close it (Pending Review)
 #   pending     ("Pending")    = waiting to be run (queued / awaiting or post approval)
-#   draft       ("Draft")      = M&R created, not yet submitted for approval
-IN_PROGRESS_CLEANING = ("In_Progress",)
-IN_PROGRESS_REPAIR = ("In Progress",)
-PENDING_CLEANING = ("Pending",)
-PENDING_REPAIR = ("Pending Approval", "Approved")
-DRAFT_REPAIR = ("Draft",)
+#   draft       ("Draft")      = M&R created, not yet submitted for approval — or bounced
+#                                back to the depot for edits (Revision Requested)
+#
+# WAJIB memuat SETIAP status yang bukan terminal (``DONE_CLEANING`` / ``DONE_REPAIR``).
+# Status terbuka yang tidak tersebut di sini jatuh ke `available` — Monitor lalu berkata
+# "tidak ada kerjaan" atas tank yang ordernya masih hidup, sementara gate dan
+# ``container_status.container_open_orders`` menahannya. Itulah yang terjadi pada "Service
+# Setup" (status LAHIR-nya order cuci dari EIR tank kotor), "Pending Review" di kedua
+# doctype, "Pending" M&R dan "Revision Requested": order sudah ada, sudah di-assign, tapi
+# tanknya terbaca menganggur. ``test_ess_inventory`` menguncinya — ada test yang membandingkan
+# daftar ini dengan pilihan Select doctype-nya, jadi status baru tidak bisa lolos diam-diam.
+IN_PROGRESS_CLEANING = ("In_Progress", "Pending Review")
+IN_PROGRESS_REPAIR = ("In Progress", "Pending Review")
+PENDING_CLEANING = ("Service Setup", "Pending")
+PENDING_REPAIR = ("Pending Approval", "Approved", "Pending")
+DRAFT_REPAIR = ("Draft", "Revision Requested")
 
 # Container.status is presence-based (Booked / In_Depot / Available / Gate_Out).
 # `Gate_Out` is terminal; everything else with no open order maps to `available`.
@@ -754,12 +765,11 @@ def get_dashboard_summary(depot=None):
 		act_filters["depot"] = ["in", allowed or [""]]
 	today_activity = {}
 	if "gate" in menu:
-		today_activity["gate_in"] = frappe.db.count(
-			"Container Activity", {**act_filters, "activity_type": "Gate In"}
-		)
-		today_activity["gate_out"] = frappe.db.count(
-			"Container Activity", {**act_filters, "activity_type": "Gate Out"}
-		)
+		# Sama seperti kartu Beranda: pergerakan yang gate entry-nya dibatalkan tidak ikut
+		# (lihat ``container_activity.count_gate_movements``) — dua layar, satu angka.
+		moves = container_activity.count_gate_movements(act_filters)
+		today_activity["gate_in"] = moves["Gate In"]
+		today_activity["gate_out"] = moves["Gate Out"]
 	if "eir" in menu:
 		today_activity["eir"] = frappe.db.count(
 			"Container Activity", {**act_filters, "activity_type": "Inspection (EIR)"}

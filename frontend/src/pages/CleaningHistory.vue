@@ -113,7 +113,7 @@
 
 			<section v-if="data.signature" class="oak-card space-y-2 p-4">
 				<p class="oak-section-title">{{ labels.cleaningSignature }}</p>
-				<img :src="photoSrc(data.signature)" class="h-24 rounded-lg border border-gray-200 bg-paper object-contain p-1" />
+				<img :src="photoSrc(data.signature)" class="h-24 rounded-lg oak-sign-paper object-contain p-1" />
 				<p v-if="data.signed_by" class="text-xs text-gray-500">{{ data.signed_by }}</p>
 			</section>
 

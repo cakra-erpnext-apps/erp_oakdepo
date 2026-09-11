@@ -60,6 +60,50 @@ def log_container_activity(
 		return None
 
 
+def count_gate_movements(filters: dict, types=("Gate In", "Gate Out")) -> dict:
+	"""Berapa tank masuk / keluar, dengan yang DIBATALKAN tidak ikut terhitung.
+
+	``filters`` adalah saringan biasa untuk Container Activity (rentang waktu + scope depot);
+	kuncinya di kembaliannya adalah ``activity_type``.
+
+	Kenapa butuh fungsi sendiri: Container Activity itu log append-only — membatalkan bon
+	tidak menghapus baris "Gate In"-nya, ia hanya membuat Gate Entry yang dirujuknya
+	berstatus ``Cancelled`` (``Order Bongkar._release_gate_in`` / ``GateEntry.on_cancel``).
+	Jadi menghitung barisnya mentah-mentah menjawab "berapa truk yang sempat dicatat", bukan
+	"berapa tank yang benar-benar masuk hari ini" — dan satu kedatangan yang salah bon lalu
+	dibatalkan akan tetap duduk di angka hari itu selamanya.
+
+	Dikerjakan dua langkah, bukan join: yang dibaca cuma pergerakan satu hari (puluhan baris),
+	dan hanya Gate Entry yang benar-benar dirujuk hari itu yang ditanyakan statusnya — beda
+	dengan menarik seluruh daftar Gate Entry yang dibatalkan sepanjang sejarah depo.
+	"""
+	rows = frappe.get_all(
+		"Container Activity",
+		filters={**filters, "activity_type": ["in", list(types)]},
+		fields=["activity_type", "reference_doctype", "reference_name"],
+	)
+	refs = {r.reference_name for r in rows if r.reference_doctype == "Gate Entry" and r.reference_name}
+	voided = (
+		set(
+			frappe.get_all(
+				"Gate Entry",
+				filters={"name": ["in", list(refs)], "status": "Cancelled"},
+				pluck="name",
+			)
+		)
+		if refs
+		else set()
+	)
+	counts = {t: 0 for t in types}
+	for r in rows:
+		# Baris tanpa rujukan Gate Entry (data lama) tetap dihitung: tidak ada yang bisa
+		# membantahnya, dan menganggapnya batal akan menghilangkan kedatangan yang nyata.
+		if r.reference_name in voided:
+			continue
+		counts[r.activity_type] = counts.get(r.activity_type, 0) + 1
+	return counts
+
+
 def log_doc_note(doctype, name, message) -> None:
 	"""Append one timeline comment to a document — best-effort, never raises.
 

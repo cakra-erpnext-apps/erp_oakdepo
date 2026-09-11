@@ -126,6 +126,26 @@ def _clean_eir_out(container):
 
 
 class TestGateLog(FrappeTestCase):
+	@classmethod
+	def tearDownClass(cls):
+		"""Yang berumur sepanjang kelas ikut dibuang: depot, kontrak (+ price list yang
+		diterbitkannya) dan kedua customer uji. ``ensure_test_customer`` commit, jadi tanpa ini
+		mereka menetap di site kerja dan menumpuk tiap kali suite dijalankan."""
+		from container_depot.tests.test_container_booking import _cleanup_customer_world
+
+		for name in (CUSTOMER, "Gate Log Shipper"):
+			customer = frappe.db.get_value("Customer", {"customer_name": name})
+			if not customer:
+				continue
+			_cleanup_customer_world(customer)
+			frappe.delete_doc(
+				"Customer", customer, force=True, ignore_permissions=True, delete_permanently=True
+			)
+		if frappe.db.exists("Depot", DEPOT):
+			frappe.db.delete("Depot", {"name": DEPOT})
+		frappe.db.commit()
+		super().tearDownClass()
+
 	def tearDown(self):
 		conts = frappe.get_all("Container", filters={"name": ["like", f"{PREFIX}%"]}, pluck="name")
 		gates = frappe.get_all("Gate Entry", filters={"container_no": ["like", f"{PREFIX}%"]}, pluck="name")
@@ -135,6 +155,38 @@ class TestGateLog(FrappeTestCase):
 		frappe.db.delete("Container Activity", {"container": ["in", conts or [""]]})
 		frappe.db.delete("Container Movement", {"container": ["in", conts or [""]]})
 		frappe.db.delete("Inspection", {"container": ["in", conts or [""]]})
+		# Bon + booking yang dibuat fixture, dicari lewat baris containernya sendiri — jadi
+		# harus DIKUMPULKAN dulu, sebelum baris-baris itu ikut terhapus di bawah. Tanpa ini
+		# setiap test meninggalkan satu bon dan satu booking yang menunjuk tank yang sudah
+		# tidak ada, dan daftar Order Bongkar di site kerja penuh sampah uji.
+		#
+		# Perhatikan dua tabel anak yang berbeda: Container Booking DAN Order Bongkar
+		# sama-sama memakai `Container Booking Item` (bedanya di `parenttype`), sementara
+		# Order Muat punya `Order Container Item` sendiri. Menyamakan keduanya akan menghapus
+		# baris bon tapi meninggalkan bonnya — persis bug yang pernah membuat daftar bon penuh
+		# order tanpa container.
+		rows = frappe.get_all(
+			"Container Booking Item",
+			filters={"container_no": ["like", f"{PREFIX}%"]},
+			fields=["parent", "parenttype"],
+		)
+		muat = frappe.get_all(
+			"Order Container Item",
+			filters={"container_no": ["like", f"{PREFIX}%"]},
+			fields=["parent", "parenttype"],
+		)
+		for doctype, parents in (
+			("Order Bongkar", [r.parent for r in rows if r.parenttype == "Order Bongkar"]),
+			("Order Muat", [r.parent for r in muat if r.parenttype == "Order Muat"]),
+		):
+			if parents:
+				frappe.db.delete(doctype, {"name": ["in", parents]})
+		bookings = [r.parent for r in rows if r.parenttype == "Container Booking"]
+		if bookings:
+			frappe.db.delete("Booking Code", {"booking": ["in", bookings]})
+			frappe.db.delete("Container Booking Charge", {"parent": ["in", bookings]})
+			frappe.db.delete("Container Booking", {"name": ["in", bookings]})
+		frappe.db.delete("Container Booking Item", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Order Container Item", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Booking Code", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
@@ -164,6 +216,34 @@ class TestGateLog(FrappeTestCase):
 		self.assertEqual(ge.order_doctype, "Order Bongkar")
 		self.assertEqual(ge.order_ref, bon)
 		self.assertTrue(ge.booking_code)
+
+	def test_arrival_writes_a_gate_in_activity(self):
+		"""The count every "Tank masuk" tile reads.
+
+		Container Activity is the single table every movement counter reads — the PWA home
+		tile, the Desk monitor, and the days-in-depot fallback. The arrival never wrote to
+		it: the Gate Entry this bon opens stays a DRAFT, so ``GateEntry.on_submit`` — the
+		only writer of that row — never ran, and every bonned arrival counted zero while the
+		rarely-used SST kiosk path counted.
+		"""
+		c = _container(f"{PREFIX}000010")
+		bon = _tank_in_bon(c)
+
+		rows = frappe.get_all(
+			"Container Activity",
+			filters={"container": c, "activity_type": "Gate In"},
+			fields=["reference_doctype", "reference_name", "activity_time", "summary"],
+		)
+		self.assertEqual(len(rows), 1, "exactly one arrival row per visit")
+		self.assertEqual(rows[0].reference_doctype, "Gate Entry")
+		self.assertEqual(rows[0].reference_name, self._gates(c)[0].name)
+		self.assertIn(bon, rows[0].summary)
+		# Stamped with the gate log's own timestamp, so "today" can never disagree between
+		# the timeline and Riwayat Gate.
+		self.assertEqual(
+			frappe.utils.get_datetime(rows[0].activity_time),
+			frappe.utils.get_datetime(self._gates(c)[0].gate_in_timestamp),
+		)
 
 	def test_the_record_is_a_draft(self):
 		"""Not an oversight — ``GateEntry.on_submit`` refuses a tank already in the depot,

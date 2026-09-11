@@ -8,7 +8,39 @@
 // Tenggat pekerjaan ini, urut seperti `container_depot/worklist.py` mengurutkannya.
 const PRIORITY = { urgent: 'target_urgent_on', survey: 'target_survey_on', due: 'target_lift_on' };
 
+// Status sebagai filter langsung di baris filter — sebelumnya satu-satunya jalan menyaring
+// status adalah tombol Filter (atau mengklik pill-nya), padahal "tunjukkan yang menunggu
+// review" adalah pertanyaan pertama yang dibawa Adm Ops ke daftar ini.
+//
+// Labelnya memakai kosakata yang sama dengan pill di kolom Status, bukan nilai mentahnya:
+// `{label, value}` dibaca Select control frappe (form/controls/select.js `parse_option`),
+// jadi yang terbaca operator "Menunggu Review" sementara yang dikirim ke query tetap
+// `Pending Review`. Satu kosakata untuk kolom, filter dan PWA.
+//
+// Dua dari enam keadaan pill sengaja TIDAK di sini, karena keduanya bukan nilai `status`:
+// "Revisi Diminta" (submitted + flag) sudah punya kotak centangnya sendiri di baris yang
+// sama, dan "Dikerjakan" (draf yang sudah ditekan Mulai) hidup di `work_started_on` —
+// pill-nya bisa diklik untuk menyaringnya.
+const STATUS_OPTIONS = [
+	{ value: '', label: __('Semua Status') },
+	{ value: 'Draft', label: __('Draf') },
+	{ value: 'Pending Review', label: __('Menunggu Review') },
+	{ value: 'Submitted', label: __('Selesai') },
+	{ value: 'Cancelled', label: __('Batal') },
+];
+
 frappe.listview_settings['Inspection'] = {
+	// Ditambahkan ke baris filter bawaan, bukan dipasang sendiri ke DOM: frappe membaca
+	// nilainya lewat `get_standard_filters`, jadi tombol "bersihkan filter", chip filter dan
+	// tersimpannya filter antar-kunjungan semuanya ikut jalan tanpa kode tambahan.
+	custom_filter_configs: [
+		{
+			fieldtype: 'Select',
+			fieldname: 'status',
+			label: __('Status'),
+			options: STATUS_OPTIONS,
+		},
+	],
 	// Kedua tanggal tenggat ikut ditarik meski bukan kolom: tanpa itu pill prioritasnya akan
 	// menghitung mundur ke tanggal yang berbeda dari yang dipakai PWA, dan satu EIR akan
 	// terbaca H-5 di Desk tapi H-2 di HP.

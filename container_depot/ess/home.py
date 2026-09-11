@@ -29,6 +29,7 @@ import frappe
 from frappe.utils import now_datetime, time_diff_in_seconds, today
 
 from container_depot.api import _require_authenticated_user
+from container_depot.container_depot.container_activity import count_gate_movements
 from container_depot.container_depot.container_status import DONE_CLEANING
 from container_depot.container_depot.user_branch import get_user_depots
 
@@ -201,18 +202,17 @@ def get_home_summary(tiles=None):
 	# --- Gate: what came in and went out since midnight -----------------------------
 	# Read from the Container Activity log rather than from the gate documents, same as
 	# the Desk dashboard: it is the one table that records a movement per tank whichever
-	# door it came through.
+	# door it came through. Lewat ``count_gate_movements``, yang membuang pergerakan yang
+	# gate entry-nya sudah dibatalkan — log-nya append-only, jadi baris batal tetap duduk
+	# di sana dan menghitungnya mentah akan menjawab pertanyaan yang berbeda.
 	if "gate" in menu:
 		if {"gateIn", "gateOut"} & want:
 			act = _scoped({"activity_time": [">=", today()]}, allowed)
+			moves = count_gate_movements(act)
 			if "gateIn" in want:
-				today_counts["gate_in"] = frappe.db.count(
-					"Container Activity", {**act, "activity_type": "Gate In"}
-				)
+				today_counts["gate_in"] = moves["Gate In"]
 			if "gateOut" in want:
-				today_counts["gate_out"] = frappe.db.count(
-					"Container Activity", {**act, "activity_type": "Gate Out"}
-				)
+				today_counts["gate_out"] = moves["Gate Out"]
 		codes = _active_booking_codes(allowed)
 		# Sub-count under "Tank keluar": bookings cleared to leave whose truck has not
 		# arrived. The full list (both directions) is the gate's own queue row below.

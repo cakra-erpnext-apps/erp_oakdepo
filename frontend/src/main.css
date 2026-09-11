@@ -265,6 +265,15 @@
 	.oak-press {
 		@apply transition active:scale-[0.99];
 	}
+	/* Kertas tanda tangan — kanvas tempat orang membubuhkan tanda tangan dan pratinjau
+	   hasilnya. SELALU putih, juga di tema gelap, dan itu disengaja: tintanya hitam
+	   (#111827) dan ikut tersimpan begitu ke dalam PNG yang nanti dicetak / dilampirkan di
+	   EIR — yang harus mengikuti tema adalah kartunya, bukan kertasnya. Selama ini kotaknya
+	   memakai `bg-paper`, jadi di tema gelap tanda tangannya jadi coretan hitam di atas latar
+	   hitam: ada, tapi tidak terlihat. */
+	.oak-sign-paper {
+		@apply border border-gray-200 bg-white;
+	}
 
 	/* Typography --------------------------------------------------------- */
 	.oak-eyebrow {

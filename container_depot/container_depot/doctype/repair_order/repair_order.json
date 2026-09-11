@@ -116,6 +116,7 @@
    "description": "Opsional. No. dokumen dari customer untuk order M&R ini \u2014 diisi manual, tidak diturunkan dari EIR / booking. Terekam di master tank sebagai Reff Doc M&R Terakhir.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Reff Doc"
   },
   {
@@ -397,7 +398,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-10 16:10:00.000000",
+ "modified": "2026-09-11 14:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

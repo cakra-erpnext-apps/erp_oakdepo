@@ -193,13 +193,6 @@
 					<p class="text-xs text-gray-500">{{ labels.tankSurveyNote }}</p>
 					<p class="mt-0.5 whitespace-pre-line text-sm text-gray-800">{{ tank.survey_notes }}</p>
 				</div>
-				<router-link
-					v-if="tank.eir_out"
-					:to="{ path: '/eir', query: { e: tank.eir_out, t: 'out' } }"
-					class="oak-btn oak-btn-secondary mt-1 min-h-[48px] w-full"
-				>
-					{{ labels.tankOpenEirOut }}
-				</router-link>
 			</section>
 
 			<!-- Riwayat update — dirakit dari stempel di baris tank-nya sendiri. -->

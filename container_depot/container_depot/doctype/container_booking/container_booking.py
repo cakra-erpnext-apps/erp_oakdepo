@@ -81,7 +81,7 @@ def _billing_signature(doc) -> tuple:
 		doc.get("customer"),
 		doc.get("currency"),
 		tuple(
-			(r.item, flt(r.qty), flt(r.rate))
+			(r.item, flt(r.qty), flt(r.rate), r.currency)
 			for r in (doc.get("charges") or [])
 			if r.item
 		),
@@ -801,9 +801,9 @@ class ContainerBooking(Document):
 	def _resolve_pricing_context(self):
 		"""Pricing follows the customer's *active* Price List — the one published by their
 		active contract and mirrored onto ``Customer.default_price_list``. It is resolved
-		automatically (hidden, never picked by hand); its currency (USD / IDR) drives every
-		charge line with no exchange-rate conversion. The customer's active contract is also
-		resolved (hidden) for the allowed payment modes.
+		automatically (hidden, never picked by hand); every rate it carries is billed in the
+		currency it was agreed in, with no exchange-rate conversion. The customer's active
+		contract is also resolved (hidden) for the allowed payment modes.
 
 		Neither is *required*: a booking with no charge lines bills nothing, so a walk-in
 		with no contract is a legitimate booking rather than something to block."""
@@ -812,19 +812,14 @@ class ContainerBooking(Document):
 		# The customer's active price list — auto-resolved, not shown or picked. Empty only
 		# for a walk-in with no default list (charge rates then stay whatever was typed).
 		self.price_list = pricing_model.price_list_for_customer(self.customer) if self.customer else None
-		# Mata uang pilihan operator itu milik customer yang lama — buang saat customernya
-		# berganti, sama seperti charge lines di ``_reset_charges_on_customer_change``.
+		# Mata uang dokumen tidak dipilih di header lagi: ia mengikuti baris charge, yang
+		# masing-masing terkunci ke Item Price kontraknya sendiri (lihat ``_price_charges``).
+		# Yang di-set di sini cuma nilai awal — booking tanpa satu pun baris charge tetap
+		# harus punya mata uang, karena invoice-nya nanti dibuat dengan angka itu.
+		# Mata uang customer lama ikut dibuang saat customernya berganti, sama seperti
+		# charge lines di ``_reset_charges_on_customer_change``.
 		before = self.get_doc_before_save()
-		if before and before.customer != self.customer:
-			self.currency = None
-		# Mata uang selalu terisi, juga untuk baris yang tidak ada di rate card customer
-		# (picker item terbuka ke seluruh katalog). Terkunci selama customer punya rate card
-		# sendiri atau mata uang tagihan di master — itu isi kesepakatan. Walk-in tanpa
-		# keduanya: field-nya terbuka di form dan pilihan operator dipertahankan, karena tidak
-		# ada price list yang menyeed rate sehingga tidak ada angka yang bisa tertinggal
-		# dengan label mata uang keliru.
-		self.currency_locked = 1 if pricing_model.currency_is_locked(self.customer, self.price_list) else 0
-		if self.currency_locked or not self.currency:
+		if not self.currency or (before and before.customer != self.customer):
 			self.currency = pricing_model.currency_for_customer(self.customer, self.price_list)
 
 	def _reset_charges_on_customer_change(self):
@@ -870,8 +865,31 @@ class ContainerBooking(Document):
 		for row in self.charges or []:
 			if not row.item:
 				continue
-			row.item_name = frappe.db.get_value("Item", row.item, "item_name") or row.item
-			row.currency = self.currency
+			# Service-nya divalidasi di sini, bukan nanti di invoice: item yang hilang atau
+			# sudah dinonaktifkan baru ketahuan saat Sales Invoice dibuat, jauh dari baris
+			# yang menyebabkannya.
+			item = frappe.db.get_value("Item", row.item, ["item_name", "disabled"], as_dict=True)
+			if not item:
+				frappe.throw(
+					_("Baris charge {0}: Service <b>{1}</b> tidak ada di master Item.").format(
+						row.idx, row.item
+					),
+					title=_("Service Tidak Dikenal"),
+				)
+			if item.disabled:
+				frappe.throw(
+					_("Baris charge {0}: Service <b>{1}</b> sudah dinonaktifkan — pilih service lain.").format(
+						row.idx, row.item_name or row.item
+					),
+					title=_("Service Nonaktif"),
+				)
+			row.item_name = item.item_name or row.item
+			# Mata uang per baris: terkunci ke Item Price kontrak kalau service ini memang
+			# ada di rate card customer, kalau tidak ada — pilihan operator yang berlaku.
+			row.currency, locked = pricing_model.charge_currency(
+				self.customer, self.price_list, row.item, row.get("currency")
+			)
+			row.currency_locked = 1 if locked else 0
 			if not flt(row.qty):
 				row.qty = container_qty
 			elif (
@@ -892,6 +910,39 @@ class ContainerBooking(Document):
 			row.amount = flt(row.qty) * flt(row.rate)
 			total += flt(row.amount)
 		self.charges_total = total
+		self._sync_currency_from_charges()
+
+	def _sync_currency_from_charges(self):
+		"""Mata uang dokumen = mata uang baris-baris charge-nya.
+
+		Satu Sales Invoice cuma bisa punya satu mata uang, dan ``_build_draft_invoice``
+		mengirim ``self.currency`` apa adanya (conversion rate 1, tanpa konversi kurs). Jadi
+		booking bercampur USD + IDR bukan sekadar tampilan yang aneh: baris USD-nya akan
+		ditagih sebagai IDR dengan angka yang sama. Ditolak di sini, sambil menyebut baris
+		mana yang beda, daripada lolos diam-diam ke invoice.
+
+		Baris terkunci (ada di rate card kontrak) yang menang: baris bebas yang belum
+		dipilih operator sudah ikut mata uang itu lewat ``charge_currency``."""
+		used = {row.currency for row in (self.charges or []) if row.item and row.currency}
+		if len(used) > 1:
+			locked = {row.currency for row in self.charges if row.item and row.currency_locked}
+			frappe.throw(
+				_(
+					"Satu booking hanya bisa ditagih dalam satu mata uang, tapi baris charge-nya "
+					"campur: {0}.<br>{1}"
+				).format(
+					", ".join(sorted(used)),
+					_("Mata uang {0} datang dari rate card kontrak dan tidak bisa diubah — "
+					  "samakan baris lainnya, atau pisahkan jadi booking sendiri.").format(
+						", ".join(sorted(locked))
+					)
+					if locked
+					else _("Samakan mata uang semua baris, atau pisahkan jadi booking sendiri."),
+				),
+				title=_("Mata Uang Charges Campur"),
+			)
+		if used:
+			self.currency = used.pop()
 
 	def _billable_lines(self) -> list[dict]:
 		"""The booking's charges as Sales Invoice line dicts — or ``[]`` when the booking
@@ -1694,26 +1745,34 @@ def charge_pricing(customer, item):
 	editable and is never re-applied once filled (see ``_price_charges``). An item the list
 	does not price returns rate 0, which is a valid free line rather than an error — sejak
 	picker dibuka ke seluruh katalog, baris seperti itu memang jalur normalnya, dan
-	mata uangnya tetap mengikuti customer (default IDR) supaya tidak pernah kosong."""
+	mata uangnya tetap mengikuti customer (default IDR) supaya tidak pernah kosong.
+
+	``currency_locked`` menjawab baris INI, bukan customernya: terkunci hanya kalau service
+	yang dipilih benar-benar punya Item Price di rate card kontrak. Service di luar rate
+	card tidak punya harga yang disepakati, jadi mata uangnya boleh dipilih operator dan
+	form tidak boleh menimpanya."""
 	price_list = pricing_model.price_list_for_customer(customer) if customer else None
+	currency, locked = pricing_model.charge_currency(customer, price_list, item)
 	return {
 		"rate": (pricing_model.resolve_price(item, price_list) or 0) if (price_list and item) else 0,
-		"currency": pricing_model.currency_for_customer(customer, price_list),
-		# Terkunci = mata uang sudah punya sumber yang mengikat; kalau tidak, form membiarkan
-		# operator memilih dan JS tidak boleh menimpanya tiap kali Service diganti.
-		"currency_locked": 1 if pricing_model.currency_is_locked(customer, price_list) else 0,
+		"currency": currency,
+		"currency_locked": 1 if locked else 0,
 		"item_name": frappe.db.get_value("Item", item, "item_name") if item else None,
 	}
 
 
 @frappe.whitelist()
 def customer_payment_modes(customer):
-	"""Payment modes a customer's bookings may use, from their active contract:
-	``["Cash"]`` / ``["TOP"]`` / ``["Cash", "TOP"]``. Returns ``[]`` when the customer
-	has no active contract — the caller must create a contract / price list first."""
+	"""Payment modes a customer's bookings may use: ``["Cash"]`` / ``["TOP"]`` /
+	``["Cash", "TOP"]``.
+
+	An active contract narrows the list to the mode it was signed on ("Both" keeps both).
+	Without a contract the customer is a walk-in — nothing has been agreed, so both modes
+	stay on the table and the operator picks one (see ``_sync_payment_type_from_contract``,
+	which defaults such a booking to Cash)."""
 	contract = get_active_contract(customer) if customer else None
 	if not contract:
-		return []
+		return ["Cash", "TOP"]
 	return ["Cash", "TOP"] if contract.payment_type == "Both" else [contract.payment_type]
 
 

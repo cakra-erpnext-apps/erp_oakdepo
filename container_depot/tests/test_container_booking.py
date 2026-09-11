@@ -182,7 +182,8 @@ class TestTankInFlow(FrappeTestCase):
 		)
 
 		self.assertEqual(set(customer_payment_modes(self.customer)), {"Cash", "TOP"})  # Both
-		self.assertEqual(customer_payment_modes(self.nocon), [])  # no contract → must create one
+		# No contract = walk-in: nothing agreed, so both modes stay on offer.
+		self.assertEqual(set(customer_payment_modes(self.nocon)), {"Cash", "TOP"})
 
 	def test_charge_pricing_reads_active_list(self):
 		# Rate + currency come from the customer's active (contract-published) price list —
@@ -217,6 +218,47 @@ class TestTankInFlow(FrappeTestCase):
 			self.assertEqual(hit["rate"], 36)
 		finally:
 			_cleanup_customer_world(usd_cust)
+
+	def test_contract_priced_row_locks_its_own_currency(self):
+		# The lock is per ROW, not per document: "Lift Off" is on this customer's contract
+		# rate card, so its currency is the one the rate was agreed in and the operator
+		# cannot move it — a pasted USD lands back on IDR.
+		b = self._booking(self.customer, charges=[{"item": "Lift Off", "currency": "USD"}])
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.charges[0].currency, "IDR")
+		self.assertTrue(b.charges[0].currency_locked)
+		self.assertEqual(b.currency, "IDR")  # the document follows its rows
+
+	def test_row_outside_the_rate_card_keeps_the_operators_currency(self):
+		# "Lift On" is not priced by this contract, so nothing was agreed about it: the
+		# operator's pick stands and the booking is billed in it.
+		b = self._booking(self.customer, charges=[{"item": "Lift On", "currency": "USD", "rate": 40}])
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.charges[0].currency, "USD")
+		self.assertFalse(b.charges[0].currency_locked)
+		self.assertEqual(b.currency, "USD")
+
+	def test_mixed_row_currencies_are_refused(self):
+		# A Sales Invoice holds ONE currency and the booking hands it over as-is, so a
+		# USD row next to a contract-priced IDR row would be billed as IDR at the same
+		# figure. Refused on save instead.
+		b = self._booking(
+			self.customer,
+			charges=[{"item": "Lift Off"}, {"item": "Lift On", "currency": "USD", "rate": 40}],
+		)
+		with self.assertRaises(frappe.ValidationError):
+			b.insert(ignore_permissions=True)
+
+	def test_disabled_service_is_refused(self):
+		# A disabled Item would only blow up later, inside Sales Invoice creation, far from
+		# the row that caused it.
+		frappe.db.set_value("Item", "Lift On", "disabled", 1)
+		try:
+			b = self._booking(self.customer, charges=[{"item": "Lift On", "rate": 1000}])
+			with self.assertRaises(frappe.ValidationError):
+				b.insert(ignore_permissions=True)
+		finally:
+			frappe.db.set_value("Item", "Lift On", "disabled", 0)
 
 	def test_booking_prices_from_active_list(self):
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])

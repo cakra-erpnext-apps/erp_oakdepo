@@ -417,12 +417,12 @@
 						</button>
 					</div>
 					<div v-if="signatureUrl && !signing">
-						<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl border border-gray-200 bg-paper object-contain" />
+						<img :src="photoSrc(signatureUrl)" class="h-28 w-full rounded-xl oak-sign-paper object-contain" />
 					</div>
 					<div v-else>
 						<canvas
 							ref="sigCanvas"
-							class="h-28 w-full touch-none rounded-xl border border-dashed border-gray-300 bg-paper"
+							class="h-28 w-full touch-none rounded-xl oak-sign-paper border-dashed border-gray-300"
 							@pointerdown="sigDown"
 							@pointermove="sigMove"
 							@pointerup="sigUp"

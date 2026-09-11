@@ -202,6 +202,29 @@ def _record_gate_in(order: Document):
 			doc.status = "Gate_In_Completed"
 			doc.inspection_status = "Pending"
 			doc.insert(ignore_permissions=True)
+			# Dan satu baris "Gate In" di timeline tank — pasangan dari "Gate Out" yang
+			# ditulis ``gate.mark_gate_out``, dan baris yang sama persis dengan yang ditulis
+			# ``GateEntry.on_submit`` untuk kedatangan lewat kiosk SST.
+			#
+			# WHY: Container Activity adalah SATU tabel yang dibaca setiap penghitung
+			# pergerakan — kartu "Tank masuk" di Beranda PWA (``ess/home.py``), kartu hari ini
+			# di monitor Desk (``ess/inventory.py``), dan umur tank di depo yang jatuh ke
+			# aktivitas Gate In kalau EIR-In belum ada. Kedatangan lewat bon tidak pernah
+			# menulisnya: Gate Entry-nya sengaja ditinggal DRAFT (lihat docstring di atas),
+			# jadi ``on_submit``-nya — satu-satunya penulis baris itu — tidak pernah jalan.
+			# Akibatnya semua kedatangan jalur normal terhitung nol, sementara jalur kiosk
+			# yang jarang dipakai justru terhitung.
+			#
+			# Waktunya memakai ``when`` yang sama dengan ``gate_in_timestamp``, supaya
+			# hitungan "hari ini" tidak pernah berbeda antara timeline dan Riwayat Gate.
+			log_container_activity(
+				row.container, "Gate In",
+				reference_doctype="Gate Entry", reference_name=doc.name,
+				to_status=frappe.db.get_value("Container", row.container, "status"),
+				performed_by=order.owner,
+				activity_time=when,
+				summary=f"Gate-in (Bon {order.name})",
+			)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"gate-in log for {order.name}/{container_no}")
 

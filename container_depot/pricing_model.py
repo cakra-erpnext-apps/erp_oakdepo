@@ -30,6 +30,46 @@ def item_price_rate(item_code: str, price_list: str):
 	)
 
 
+def item_price_currency(item_code: str, price_list: str) -> str | None:
+	"""Currency of the agreed Item Price for (item, price_list), or None when that list
+	does not price the item at all.
+
+	The currency lives on the Item Price row itself, so it is the exact denomination the
+	rate was agreed in — not the price list's nominal currency, and not the site default.
+	Falls back to the list's own currency only when a row exists without one (hand-made
+	data); no row at all stays None, which is what tells a caller "unpriced"."""
+	if not (item_code and price_list):
+		return None
+	ip = frappe.db.get_value(
+		"Item Price",
+		{"item_code": item_code, "price_list": price_list, "selling": 1},
+		["currency", "name"],
+		as_dict=True,
+	)
+	if not ip:
+		return None
+	return ip.currency or frappe.db.get_value("Price List", price_list, "currency") or None
+
+
+def charge_currency(
+	customer: str | None, price_list: str | None, item_code: str | None, chosen: str | None = None
+) -> tuple[str, bool]:
+	"""Mata uang satu baris charge + apakah baris itu terkunci: ``(currency, locked)``.
+
+	Kuncinya per BARIS, bukan per dokumen, karena yang mengikat itu kesepakatan atas
+	service-nya: kalau item ini punya Item Price di rate card milik customer sendiri
+	(diterbitkan kontraknya — lihat :func:`is_own_price_list`), rate-nya sudah dalam mata
+	uang itu dan operator tidak boleh menggantinya. Item di luar rate card — picker memang
+	terbuka ke seluruh katalog — tidak punya harga yang disepakati, jadi tidak ada yang
+	bisa tertinggal dengan label keliru: pilihan operator (``chosen``) yang dipakai, dan
+	kalau dia belum memilih, jatuh ke mata uang customer."""
+	if is_own_price_list(customer, price_list):
+		cur = item_price_currency(item_code, price_list)
+		if cur:
+			return cur, True
+	return (chosen or currency_for_customer(customer, price_list)), False
+
+
 def effective_item_rate(item_code: str, price_list: str) -> float:
 	"""Flat per-unit selling rate for a depot service Item in a Price List (0.0 if none).
 
