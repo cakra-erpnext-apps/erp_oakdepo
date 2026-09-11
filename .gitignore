@@ -30,3 +30,6 @@ logs/
 .vscode/
 .idea/
 restore/
+
+# Backup site yang ditarik keluar volume oleh scripts/reset-site.sh
+_backups/

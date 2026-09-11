@@ -12,11 +12,13 @@ What it seeds
 * Depot                  — OAK1, OAK2 (Medan) + OAKSBY (Surabaya)
 * Cleaning Checklist     — reuses patches.v0_31 (12 rows)
 * Cargo                  — reuses patches.v0_12 (data/cargo_list.json)
-* EIR masters            — reuses patches.v0_6 (Inspection Damage + Repair Code) and
-                           patches.v0_39 (Inspection Checklist Item, 138 rows)
+* EIR masters            — reuses patches.v0_6 (Inspection Damage + Repair Code),
+                           patches.v0_39 (Inspection Checklist Item, 138 rows) and
+                           patches.v0_82 (Inspection Fitting Item — kelengkapan tank)
 * Item Group + Item      — from reference/seed/{Item_Group,Item}.csv (embedded below);
                            item_code == item_name (the descriptive name is the identity)
-* Customer               — Stolt, Bertschi
+* Customer               — Bertschi (satu-satunya principal yang dipakai)
+* Depot Finance Settings — invoicing dimatikan pada site yang masih kosong
 
 Items are created as non-stock sales items (``is_stock_item=0``) so the seeder needs
 no Company / warehouse / valuation — flip specific M&R parts to stock items later if
@@ -35,6 +37,7 @@ from container_depot.patches.v0_6.seed_eir_codes import execute as _seed_eir_cod
 from container_depot.patches.v0_39.seed_eir_checklist_positional import (
     execute as _seed_eir_checklist,
 )
+from container_depot.patches.v0_82.seed_eir_fittings import execute as _seed_eir_fittings
 
 # ----------------------------------------------------------------------------------
 # Curated dev data
@@ -50,7 +53,11 @@ DEPOTS = [
     ("OAKSBY", "OAK SBY", "Oak Surabaya"),
 ]
 
-CUSTOMERS = ["Stolt", "Bertschi"]
+CUSTOMERS = ["Bertschi"]
+
+# Pernah ikut di-seed, sekarang tidak lagi. Hanya dipakai `clear()` supaya site lama
+# tidak meninggalkan customer yatim setelah seeder dipangkas.
+LEGACY_CUSTOMERS = ["Stolt"]
 
 # --- Depot Contract dummy ----------------------------------------------------------
 # Tanpa satu kontrak Active, praktis tidak ada yang bisa dikerjakan di app: harga charge
@@ -417,6 +424,29 @@ def _ensure_customer(name):
     }).insert(ignore_permissions=True)
 
 
+def _finance_default_off():
+    """Matikan invoicing pada site yang belum punya transaksi apa pun.
+
+    ``install.after_migrate`` memanggil ``finance.ensure_defaults()``, yang menyimpan
+    default bawaan app (ON) sekali saat migrate pertama — jadi seeder tidak bisa sekadar
+    "isi kalau kosong", nilainya sudah terlanjur ada. Seeder di sini menuliskan 0 secara
+    eksplisit, karena menyiapkan site baru memang keputusan sadar operatornya.
+
+    Pengamannya: site yang SUDAH dipakai tidak pernah disentuh. Kalau sudah ada Container
+    Booking atau Sales Invoice, orang jelas sudah menyalakan finance dengan sengaja dan
+    seeder tidak boleh mematikannya lagi.
+    """
+    from container_depot import finance
+
+    for dt in ("Container Booking", "Sales Invoice"):
+        if frappe.db.exists("DocType", dt) and frappe.db.count(dt):
+            print("[seed_dev] Depot Finance Settings: dilewati — site sudah ada transaksi")
+            return
+    frappe.db.set_single_value(finance.SETTINGS, "enable_finance", 0)
+    finance.clear_cache()
+    print("[seed_dev] Depot Finance Settings: enable_finance = 0 (invoicing OFF)")
+
+
 # ----------------------------------------------------------------------------------
 # Entry points
 # ----------------------------------------------------------------------------------
@@ -438,6 +468,7 @@ def run():
     _seed_cargo()                  # patches.v0_12
     _seed_eir_codes()              # patches.v0_6  — Inspection Damage + Repair Code (EIR masters)
     _seed_eir_checklist()          # patches.v0_39 — Inspection Checklist Item (8 areas, 138 rows)
+    _seed_eir_fittings()           # patches.v0_82 — Inspection Fitting Item (kelengkapan tank)
 
     for uom in sorted({i[2] for i in ITEMS}):
         _ensure_uom(uom)
@@ -455,6 +486,8 @@ def run():
 
     # Terakhir: butuh Customer + Item sudah ada.
     _ensure_contract()
+
+    _finance_default_off()
 
     frappe.db.commit()
     print("=" * 64)
@@ -486,7 +519,7 @@ def clear():
         _del("Depot", code)
     for name in BRANCHES:
         _del("Branch", name)
-    for name in CUSTOMERS:
+    for name in CUSTOMERS + LEGACY_CUSTOMERS:
         _del("Customer", name)
 
     frappe.db.commit()

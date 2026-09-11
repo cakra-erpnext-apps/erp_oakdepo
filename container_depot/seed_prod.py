@@ -14,9 +14,11 @@ Seeded (in order)
 * Branch / Depot          — Oak Medan, Oak Surabaya · OAK1, OAK2, OAKSBY
 * Cleaning Checklist,     — reuse the in-app master patches (already shipped data)
   Cargo, EIR Damage/Repair
-  codes, EIR checklist
+  codes, EIR checklist,
+  EIR fittings
 * UOM / Item Group / Item — full OAK service + M&R parts + packages catalogue
-* Customer                — principal masters (Stolt, Bertschi)
+* Customer                — principal master (Bertschi)
+* Depot Finance Settings  — invoicing left OFF on a site with no transactions yet
 
 Most of the above also lands automatically on ``bench migrate`` (the seed
 patches in patches.txt). This seeder additionally provisions the org-level
@@ -58,6 +60,7 @@ def run():
     _dev._seed_cargo()                  # patches.v0_12
     _dev._seed_eir_codes()              # patches.v0_6  — Inspection Damage + Repair Code
     _dev._seed_eir_checklist()          # patches.v0_39 — Inspection Checklist Item (138 rows)
+    _dev._seed_eir_fittings()           # patches.v0_82 — Inspection Fitting Item (tank fittings)
 
     for uom in sorted({i[2] for i in _dev.ITEMS}):
         _dev._ensure_uom(uom)
@@ -71,6 +74,8 @@ def run():
     for name in _dev.CUSTOMERS:
         _dev._ensure_customer(name)
     print(f"[seed_prod] Customer: {len(_dev.CUSTOMERS)}")
+
+    _dev._finance_default_off()
 
     frappe.db.commit()
     print("=" * 64)
