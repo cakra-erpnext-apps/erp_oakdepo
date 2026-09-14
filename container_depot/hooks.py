@@ -51,6 +51,9 @@ extend_bootinfo = [
 # reads them as None (a Frappe core crash for users with no allowed workspaces).
 before_request = [
 	"container_depot.boot.warm_domain_restricted_caches",
+	# Backport `return` yang hilang di WorkspaceSidebar.get_can_read_items — tanpa ini
+	# SEMUA item DocType di sidebar kiri tersembunyi dari non-Administrator. See boot.py.
+	"container_depot.boot.patch_workspace_sidebar_can_read",
 	# A field account is a Website User, and /desk answers those with "Not Permitted".
 	# Send them to the PWA instead. Must be a request hook: PathResolver hardcodes /desk
 	# ahead of website_redirects and page_renderer. See desk_landing.py.

@@ -40,6 +40,50 @@ def expose_finance_switch(bootinfo):
 	bootinfo.depot_finance_enabled = 1 if finance.is_enabled() else 0
 
 
+def patch_workspace_sidebar_can_read():
+	"""Backport satu `return` yang hilang di Frappe, yang mengosongkan sidebar kiri.
+
+	`WorkspaceSidebar.__init__` mengisi daftar doctype yang boleh dibaca lewat::
+
+	    self.can_read = self.get_cached("user_perm_can_read", self.get_can_read_items)
+
+	tapi salinan `get_can_read_items` di kelas itu MEMBANGUN izinnya lalu tidak
+	mengembalikan apa pun — kembarannya di `desk/desktop.py` mengembalikan
+	`self.user.can_read`, dan keduanya memakai kunci cache yang sama. Akibatnya
+	`self.can_read` bernilai None, dan `is_item_allowed` menguji
+	`name in (self.can_read or [])`, jadi **setiap item ber-type DocType disembunyikan**
+	dari semua orang kecuali Administrator (yang di-short-circuit di baris pertama).
+
+	Gejalanya menyesatkan karena tidak konsisten: kunci cache-nya dipakai bersama, jadi
+	begitu sebuah workspace dibuka lewat jalur `desktop.py`, cache-nya terisi daftar yang
+	benar dan sidebar berikutnya tampil normal. Yang selalu kena justru boot pertama
+	(`frappe/boot.py` membangun sidebar sebelum workspace mana pun dibuka) — persis saat
+	orang mencari menunya dan menyimpulkan "izinnya belum ada".
+
+	Dipasang sebagai monkey patch di app ini, bukan suntingan di core: aturan repo melarang
+	menyentuh berkas frappe/erpnext (lihat STRUCTURE.md), dan app ini memang sudah
+	memuat beberapa backport perbaikan Frappe lain lewat `app_include_js`. Idempoten, dan
+	tidak ada cache yang perlu dibuang: `get_cached` menyimpan None dan membacanya sebagai
+	"belum ada", jadi nilai basi itu tidak pernah ikut terpakai.
+	"""
+	try:
+		from frappe.desk.doctype.workspace_sidebar.workspace_sidebar import WorkspaceSidebar
+
+		if getattr(WorkspaceSidebar.get_can_read_items, "_cd_patched", False):
+			return
+
+		def get_can_read_items(self):
+			if not self.user.can_read:
+				self.user.build_permissions()
+			return self.user.can_read
+
+		get_can_read_items._cd_patched = True
+		WorkspaceSidebar.get_can_read_items = get_can_read_items
+	except Exception:
+		# Sidebar yang kosong jauh lebih baik daripada request yang mati.
+		frappe.log_error("patch_workspace_sidebar_can_read failed")
+
+
 def warm_domain_restricted_caches():
 	"""Prevent a Frappe desk-boot crash on the Workspace Sidebar.
 
