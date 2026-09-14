@@ -14,9 +14,10 @@ Parameter
 ``confirm``  wajib, harus sama persis dengan nama site. Tanpa ini script menolak jalan —
              satu-satunya pengaman terhadap "kepencet di server yang salah".
 ``masters``  1 = kosongkan master kurasi SELURUHNYA, bukan cuma yang dibuat seeder:
-             Customer, Item, Item Group (daunnya), Warehouse ber-branch, Depot, Branch,
-             Depot Contract + Price List terbitannya, Shipping Line, Surveyor Company,
-             template letak tank, portal user, SST. Yang diketik orang ikut hilang —
+             Customer, Supplier, Item, Item Price, Item Group (daunnya), Warehouse
+             ber-branch, Depot, Branch, Depot Contract + Price List terbitannya,
+             Shipping Line, Surveyor Company, template letak tank, portal user, SST.
+             Yang diketik orang ikut hilang —
              lihat :func:`_wipe_masters`. 0 (default) = master dibiarkan, hanya
              transaksi yang dibersihkan.
 ``seed``     ``""`` (default) tidak menyeed apa pun; ``"prod"`` master saja tanpa tarif;
@@ -66,13 +67,47 @@ DEPOT_DOCTYPES = [
 	"Container",
 ]
 
-# --- akuntansi + stok ------------------------------------------------------------
+# --- akuntansi, pembelian, penjualan, stok ---------------------------------------
+#
+# Semuanya dokumen transaksi (submittable), bukan master: tidak ada satu pun yang
+# dibangun ulang oleh seeder, jadi meninggalkannya berarti site "baru" yang masih
+# menyimpan PO uji coba dan stok yang tidak pernah benar-benar ada.
+#
+# Rantai pembelian ada di sini karena justru itu jalur sparepart M&R (Purchase Order →
+# Purchase Receipt → Stock Entry, lihat COMPANION_ROLES: peran Warehouse yang memilikinya).
+# Sebelum 2026-09-14 hanya Purchase *Invoice* yang terdaftar, jadi PO dan PR-nya selamat
+# dan stoknya ikut bertahan lewat Bin/Stock Ledger Entry yang menautnya.
+#
+# Sisi penjualan (Quotation / Sales Order / Delivery Note) tidak dipakai app ini, tapi
+# tetap dihapus: reset yang menyisakannya bukan reset.
 ACCOUNTING_DOCTYPES = [
+	# Akuntansi
 	"Sales Invoice",
 	"Purchase Invoice",
 	"Payment Entry",
+	"Payment Request",
 	"Journal Entry",
+	# Jejak jalannya langganan berulang. Bukan dipakai depot, tapi barisnya menumpuk
+	# sendiri dari scheduler — dan `_report_leftovers` di bawah yang menemukannya.
+	"Process Subscription",
+	# Pembelian — jalur sparepart M&R
+	"Material Request",
+	"Request for Quotation",
+	"Supplier Quotation",
+	"Purchase Order",
+	"Purchase Receipt",
+	"Subcontracting Order",
+	"Subcontracting Receipt",
+	"Landed Cost Voucher",
+	# Penjualan
+	"Quotation",
+	"Sales Order",
+	"Delivery Note",
+	"Pick List",
+	"Packing Slip",
+	# Stok
 	"Stock Entry",
+	"Stock Reconciliation",
 ]
 
 # Tabel datar tanpa dokumen induk — dihapus utuh.
@@ -86,6 +121,10 @@ LEDGER_TABLES = [
 	"Repost Item Valuation",
 	"Repost Payment Ledger",
 	"Repost Accounting Ledger",
+	# Identitas stok yang lahir DARI transaksi di atas, bukan master yang diketik orang.
+	"Serial No",
+	"Batch",
+	"Stock Reservation Entry",
 ]
 
 # (doctype jejak, kolom yang menyimpan nama doctype yang ditunjuk)
@@ -153,6 +192,8 @@ def run(confirm: str | None = None, masters: int = 0, seed: str = "") -> None:
 
 	if seed:
 		_reseed(seed)
+
+	_report_leftovers()
 
 	frappe.clear_cache()
 	print("=" * 64)
@@ -252,15 +293,16 @@ def _wipe_masters() -> int:
 	total += _wipe_tables(["Item Price"], "master")
 
 	total += _wipe_documents(MASTER_DOCTYPES, "master")
-	total += _wipe_documents(["Customer", "Item", "Depot", "Branch"], "master")
+	total += _wipe_documents(["Customer", "Supplier", "Item", "Depot", "Branch"], "master")
 
-	# Jejak Contact/Address ke Customer yang barusan hilang. Dokumennya sendiri
-	# dibiarkan — sebuah Contact bisa menaut pihak lain juga.
-	n = frappe.db.count("Dynamic Link", {"link_doctype": "Customer"})
-	if n:
-		frappe.db.delete("Dynamic Link", {"link_doctype": "Customer"})
-		total += n
-		print(f"[reset] master: Dynamic Link → Customer — {n}")
+	# Jejak Contact/Address ke pihak yang barusan hilang. Dokumennya sendiri dibiarkan —
+	# satu Contact bisa menaut pihak lain juga.
+	for party in ("Customer", "Supplier"):
+		n = frappe.db.count("Dynamic Link", {"link_doctype": party})
+		if n:
+			frappe.db.delete("Dynamic Link", {"link_doctype": party})
+			total += n
+			print(f"[reset] master: Dynamic Link → {party} — {n}")
 
 	total += _wipe_tree_leaves("Item Group")
 	total += _wipe_tree_leaves("Warehouse", {"branch": ["!=", ""]})
@@ -310,6 +352,29 @@ def _sweep_orphans() -> int:
 		total += n
 		print(f"[reset] jejak: Comment(comment_type=Deleted) — {n}")
 	return total
+
+
+def _report_leftovers() -> None:
+	"""Sebut dokumen transaksi yang MASIH bersisa, alih-alih diam.
+
+	Daftar di atas ditulis tangan, dan daftar tulis tangan selalu ketinggalan — PO dan
+	PR ketinggalan sampai 2026-09-14. Yang mahal bukan ketinggalannya, melainkan bahwa
+	tidak ada yang memberi tahu: operator menyangka site-nya bersih. Sapuan ini tidak
+	menghapus apa pun, hanya menyalakan lampu.
+	"""
+	modules = ["Accounts", "Stock", "Buying", "Selling", "Assets", "Container Depot"]
+	rows = frappe.get_all(
+		"DocType",
+		filters={"module": ["in", modules], "istable": 0, "issingle": 0, "is_submittable": 1},
+		pluck="name",
+	)
+	sisa = {dt: frappe.db.count(dt) for dt in rows if frappe.db.table_exists(dt)}
+	sisa = {dt: n for dt, n in sisa.items() if n}
+	if not sisa:
+		return
+	print("[reset] MASIH BERSISA (tidak ada di daftar hapus):")
+	for dt, n in sorted(sisa.items(), key=lambda kv: -kv[1]):
+		print(f"[reset]   {dt} — {n}")
 
 
 def _reset_series(prefixes: list[str]) -> None:
