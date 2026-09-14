@@ -1535,7 +1535,13 @@ PWA_OFFICE_ROLES = {"Admin Ops"}
 # licence seat). They keep the `email` DocPerm flag from `_PERM_LETTERS`; they have no Desk
 # to compose from, and the PWA sends nothing by mail.
 COMPANION_ROLES = {
-	"Admin Ops": ["Inbox User"],
+	# `Item Manager` (master Item) + `Sales Master Manager` (Price List, Item Price,
+	# Customer, Customer Group, Territory, template pajak, Terms) — keduanya role standar
+	# ERPNext, bukan Custom DocPerm, karena baris Custom DocPerm PERTAMA pada doctype
+	# ERPNext mematikan seluruh izin bawaannya. `Item Price` khususnya tidak punya tingkat
+	# baca-saja sama sekali: hanya Sales/Purchase Master Manager yang menyentuhnya, jadi
+	# "boleh ubah harga" memang berarti menaikkan Admin Ops ke tingkat manager (2026-09-14).
+	"Admin Ops": ["Inbox User", "Item Manager", "Sales Master Manager"],
 	"Cashier": ["Accounts User", "Inbox User"],
 	"Finance": ["Accounts Manager", "Inbox User"],
 	"Commercial": ["Sales Manager", "Item Manager", "Inbox User"],
@@ -1604,7 +1610,15 @@ NO_MANUAL_CREATE = AUDIT_DOCTYPES | {"Gate Entry"}
 
 # Container Depot doctypes owned by finance/commercial, kept OUT of Admin Ops' blanket
 # grant (§8.2: "TANPA Sales Invoice, Payment Entry, Depot Contract…").
-FINANCE_DOCTYPES = {"Depot Contract", "OAK Monthly Invoice", "Depot Finance Settings"}
+#
+# `Depot Contract` KELUAR dari daftar ini 2026-09-14 atas keputusan pemilik repo: yang
+# mengisi kontrak dan tarifnya saat go-live adalah Admin Ops, dan sebelumnya ia bahkan
+# tidak punya izin BACA — menunya tidak sekadar tersembunyi, dokumennya tertutup. Ia
+# sekarang jatuh ke cabang terakhir `_office_role_perms` (rwcsxa) seperti transaksi
+# operasional lain. Konsekuensinya disebut terang-terangan: menyunting tariff_lines sebuah
+# kontrak Active menerbitkan ulang Price List yang dibaca booking, cleaning dan M&R — jadi
+# Admin Ops kini memegang harga, bukan cuma jadwal.
+FINANCE_DOCTYPES = {"OAK Monthly Invoice", "Depot Finance Settings"}
 
 # Reference/config records. Admin Ops may correct them but not spawn new ones.
 MASTER_DOCTYPES = {
@@ -1844,7 +1858,7 @@ PARKED_ROLES = [
 	"Supplier",
 	# Master/Manager tiers of companion roles we do grant (COMPANION_ROLES hands out the
 	# plain User tier). Un-park the manager tier if a lead genuinely needs it.
-	"Purchase Manager", "Purchase Master Manager", "Sales Master Manager",
+	"Purchase Manager", "Purchase Master Manager",
 	"Sales User", "Stock Manager",
 	# Desk power-user tooling — nobody here writes Server Scripts or edits Workspaces.
 	"Dashboard Manager", "Prepared Report User", "Report Manager",
@@ -1894,14 +1908,49 @@ def reassert_parked_fixture_roles():
 		frappe.log_error(title="container_depot role parking failed", message=frappe.get_traceback())
 
 
-def unpark_roles():
-	"""Undo: put every parked role back in the picker. Assignments were never touched."""
-	names = frappe.get_all("Role", filters={"restrict_to_domain": PARKED_DOMAIN}, pluck="name")
-	for role in names:
+def unpark_roles(names=None):
+	"""Undo: put parked roles back in the picker. Assignments were never touched.
+
+	``names`` limits it to those roles — a role that graduates into COMPANION_ROLES has
+	to leave the parked list AND leave the `Unused` domain on sites already seeded.
+	"""
+	filters = {"restrict_to_domain": PARKED_DOMAIN}
+	if names is not None:
+		filters["name"] = ["in", list(names)]
+	found = frappe.get_all("Role", filters=filters, pluck="name")
+	for role in found:
+		# db.set_value, not doc.save(): Role.validate() is where the Has Role wipe lives.
 		frappe.db.set_value("Role", role, "restrict_to_domain", None, update_modified=False)
-	frappe.clear_cache()
-	print(f"Un-parked {len(names)} roles")
-	return names
+	if found:
+		frappe.clear_cache()
+	print(f"Un-parked {len(found)} roles")
+	return found
+
+
+def push_role_profiles_to_users(profiles):
+	"""Re-save every holder of the given Role Profiles, so new roles land NOW.
+
+	``RoleProfile.on_update`` enqueues this on the long queue after commit; a site whose
+	worker is asleep would keep showing the old access until someone opened each User and
+	saved it. Saving here is the same call the job makes — ``populate_role_profile_roles``
+	syncs the user's roles to the union of their profiles. Used by the patches that add a
+	companion role to a profile.
+	"""
+	users = frappe.get_all(
+		"User Role Profile",
+		filters={"role_profile": ["in", list(profiles)], "parenttype": "User"},
+		pluck="parent",
+	)
+	users += frappe.get_all(
+		"User", filters={"role_profile_name": ["in", list(profiles)]}, pluck="name"
+	)
+	for user in sorted(set(users)):
+		try:
+			frappe.get_doc("User", user).save(ignore_permissions=True)
+		except Exception:
+			# One unsaveable account must not abort the migrate for everyone else.
+			frappe.log_error(title=f"push_role_profiles_to_users: {user}", message=frappe.get_traceback())
+	return sorted(set(users))
 
 
 def ensure_roles_exist():

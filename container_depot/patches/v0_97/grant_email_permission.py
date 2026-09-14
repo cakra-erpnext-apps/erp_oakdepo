@@ -25,17 +25,23 @@ Scope of half 1 is deliberately narrow, same as v0_83:
 
 import frappe
 
-from container_depot.install import OFFICE_ROLES, PARKED_DOMAIN, setup_role_profiles
+from container_depot.install import (
+	OFFICE_ROLES,
+	push_role_profiles_to_users,
+	setup_role_profiles,
+	unpark_roles,
+)
 
 EMAIL_ROLE = "Inbox User"
 
 
 def execute():
 	_grant_email_flag()
-	_unpark_email_role()
+	# A role named in COMPANION_ROLES has to stay in the User form's picker.
+	unpark_roles([EMAIL_ROLE])
 	# Writes EMAIL_ROLE into the office profiles (add-only, see setup_role_profiles).
 	setup_role_profiles()
-	_push_profiles_to_users()
+	push_role_profiles_to_users(OFFICE_ROLES)
 
 
 def _grant_email_flag():
@@ -55,35 +61,3 @@ def _grant_email_flag():
 		frappe.clear_cache()
 
 
-def _unpark_email_role():
-	"""A role named in COMPANION_ROLES has to stay in the User form's picker."""
-	if not frappe.db.exists("Role", EMAIL_ROLE):
-		return
-	if frappe.db.get_value("Role", EMAIL_ROLE, "restrict_to_domain") == PARKED_DOMAIN:
-		# db.set_value, not doc.save(): Role.validate() is where the Has Role wipe lives.
-		frappe.db.set_value("Role", EMAIL_ROLE, "restrict_to_domain", None, update_modified=False)
-		frappe.clear_cache()
-
-
-def _push_profiles_to_users():
-	"""Re-save every holder of an office profile, so the new role lands now.
-
-	``RoleProfile.on_update`` enqueues this on the long queue after commit; a site whose
-	worker is asleep would keep showing the same error until someone opened each User and
-	saved it. Saving here is the same call the job makes — ``populate_role_profile_roles``
-	syncs the user's roles to the union of their profiles.
-	"""
-	users = frappe.get_all(
-		"User Role Profile",
-		filters={"role_profile": ["in", OFFICE_ROLES], "parenttype": "User"},
-		pluck="parent",
-	)
-	users += frappe.get_all("User", filters={"role_profile_name": ["in", OFFICE_ROLES]}, pluck="name")
-	for user in sorted(set(users)):
-		if frappe.db.exists("Has Role", {"parent": user, "role": EMAIL_ROLE}):
-			continue
-		try:
-			frappe.get_doc("User", user).save(ignore_permissions=True)
-		except Exception:
-			# One unsaveable account must not abort the migrate for everyone else.
-			frappe.log_error(title=f"grant_email_permission: {user}", message=frappe.get_traceback())
