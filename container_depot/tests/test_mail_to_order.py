@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import today
+from frappe.utils import date_diff, getdate, today
 
 from container_depot.container_depot.mail_to_order import (
+	_MAX_PULL_DAYS,
+	_pull_window,
+	_sync_rule,
 	download_container_template,
 	get_order_prefill,
 	linked_orders,
@@ -420,3 +423,38 @@ class TestMailToOrder(FrappeTestCase):
 
 		listed = linked_orders(comm)
 		self.assertIn(("Cleaning Order", order.name), [(o["doctype"], o["name"]) for o in listed])
+
+
+class TestPullWindow(FrappeTestCase):
+	"""A pull is bounded by a date window, at most a week wide.
+
+	Unbounded, the first pull on an account reaches for `initial_sync_count` (100-500
+	messages) and every later one for everything unseen — one click, hundreds of
+	Communications, and the booking mail somebody was looking for buried among them.
+	"""
+
+	def test_the_default_window_is_the_last_week_ending_today(self):
+		start, end = _pull_window()
+		self.assertEqual(end, getdate(today()))
+		self.assertEqual(date_diff(end, start) + 1, _MAX_PULL_DAYS)
+
+	def test_a_full_week_is_accepted(self):
+		"""Seven days INCLUSIVE: 1 Sep to 7 Sep is the limit, not 1 Sep to 8 Sep."""
+		start, end = _pull_window("2026-09-01", "2026-09-07")
+		self.assertEqual((str(start), str(end)), ("2026-09-01", "2026-09-07"))
+
+	def test_a_wider_window_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			_pull_window("2026-09-01", "2026-09-08")
+
+	def test_a_backwards_window_is_refused(self):
+		with self.assertRaises(frappe.ValidationError):
+			_pull_window("2026-09-07", "2026-09-01")
+
+	def test_the_rule_asks_imap_for_exactly_that_window(self):
+		"""BEFORE is exclusive, so the end date only lands inside the window if the search
+		runs to the day after it. English month names are required by RFC 3501."""
+		self.assertEqual(
+			_sync_rule(getdate("2026-09-01"), getdate("2026-09-07")),
+			"SINCE 01-Sep-2026 BEFORE 08-Sep-2026",
+		)

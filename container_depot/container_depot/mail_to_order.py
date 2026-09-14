@@ -33,7 +33,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import strip_html_tags
+from frappe.utils import add_days, date_diff, formatdate, getdate, strip_html_tags
 
 # order_type (as sent by the client) -> (target doctype, customer field, direction).
 #
@@ -604,14 +604,71 @@ def linked_orders(communication: str) -> list[dict]:
 	return out
 
 
-@frappe.whitelist()
-def pull_my_emails() -> dict:
-	"""Pull new mail for the incoming Email Accounts set on the current user.
+# A pull is bounded by a date window, at most a week wide. Without one the first pull on an
+# account reaches for `initial_sync_count` (100-500 messages) and every later one for
+# everything unseen — one click, hundreds of Communications, and an operator hunting for the
+# booking mail among them. A week is the span somebody actually asks for ("email minggu lalu
+# belum masuk"), and it keeps the batch small enough to read.
+_MAX_PULL_DAYS = 7
 
-	Desk mirror of the Email Account "Pull Emails" button, but scoped to the accounts
-	linked under the user's ``User Emails`` — so each operator only fetches their own
-	inbox (nothing configured → a clear message, no error).
+# IMAP wants its dates as dd-Mon-yyyy with ENGLISH month names (RFC 3501). Spelled out
+# rather than taken from strftime("%b"), which follows the process locale.
+_IMAP_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _imap_date(value) -> str:
+	d = getdate(value)
+	return f"{d.day:02d}-{_IMAP_MONTHS[d.month - 1]}-{d.year}"
+
+
+def _pull_window(start_date=None, end_date=None) -> tuple:
+	"""Validate the requested window. Defaults to the last week, ending today."""
+	end = getdate(end_date) if end_date else getdate()
+	start = getdate(start_date) if start_date else add_days(end, -(_MAX_PULL_DAYS - 1))
+	if start > end:
+		frappe.throw(_("Tanggal awal tidak boleh melewati tanggal akhir."), title=_("Tarik Email"))
+	span = date_diff(end, start) + 1  # inclusive: 1 Sep - 7 Sep is seven days, not six
+	if span > _MAX_PULL_DAYS:
+		frappe.throw(
+			_("Rentang maksimal {0} hari, diminta {1} hari. Tarik per minggu agar tidak "
+			  "terlalu banyak email masuk sekaligus.").format(_MAX_PULL_DAYS, span),
+			title=_("Tarik Email"),
+		)
+	return start, end
+
+
+def _sync_rule(start, end) -> str:
+	"""The window as an IMAP UID SEARCH criteria.
+
+	``BEFORE`` is exclusive, so the end date only lands inside the window if we search up
+	to the day after it.
 	"""
+	return f"SINCE {_imap_date(start)} BEFORE {_imap_date(add_days(end, 1))}"
+
+
+@frappe.whitelist()
+def pull_my_emails(start_date=None, end_date=None) -> dict:
+	"""Pull mail dated within a window for the incoming Email Accounts set on the user.
+
+	Desk mirror of the Email Account "Pull Emails" button, but scoped two ways: to the
+	accounts linked under the user's ``User Emails`` — so each operator only fetches their
+	own inbox (nothing configured → a clear message, no error) — and to a date window of at
+	most :data:`_MAX_PULL_DAYS` days, which is the whole point of having our own button.
+
+	Frappe already caps a single fetch at 100 messages per folder
+	(``EmailServer.get_messages``) and skips a message whose Message-ID it has already
+	filed (``InboundMail.is_exist_in_system``), so re-pulling an overlapping window costs a
+	round trip and creates nothing.
+
+	One case the window does NOT govern, and cannot: the very first pull on a folder (or
+	any pull after the server reindexes its UIDs). ``EmailServer.check_imap_uidvalidity``
+	replaces whatever search rule it was given with a UID range covering the account's
+	``initial_sync_count``. That is core's resync path; it lands at most 100 messages
+	because of the cap above, and every pull after it obeys the window.
+	"""
+	start, end = _pull_window(start_date, end_date)
+	rule = _sync_rule(start, end)
+
 	user = frappe.session.user
 	accounts = frappe.get_all("User Email", filters={"parent": user}, pluck="email_account")
 	incoming = [
@@ -625,12 +682,24 @@ def pull_my_emails() -> dict:
 			  "Set di User → Settings → Email Inbox terlebih dahulu."),
 			title=_("Tarik Email"),
 		)
-		return {"pulled": [], "failed": []}
+		return {"pulled": [], "failed": [], "unfiltered": []}
 
-	pulled, failed = [], []
+	pulled, failed, unfiltered = [], [], []
 	for account in incoming:
+		doc = frappe.get_doc("Email Account", account)
+		if doc.use_imap:
+			# The window rides in as the IMAP search criteria: `get_inbound_mails` asks the
+			# doc for the rule and hands it straight to `UID SEARCH`. Shadowing the bound
+			# method on this in-memory copy (never saved, discarded after the loop) keeps
+			# the whole of core's receive pipeline — threading, attachments, duplicate
+			# detection, bad-mail quarantine — instead of reimplementing it here.
+			doc.build_email_sync_rule = lambda rule=rule: rule
+		else:
+			# POP3 has no SEARCH at all: the protocol only offers "list everything".
+			# Pull it the old way and say so, rather than pretending it was filtered.
+			unfiltered.append(account)
 		try:
-			frappe.get_doc("Email Account", account).receive()
+			doc.receive()
 			pulled.append(account)
 		except Exception:
 			failed.append(account)
@@ -639,11 +708,19 @@ def pull_my_emails() -> dict:
 				message=frappe.get_traceback(),
 			)
 
+	window = _("{0} s/d {1}").format(formatdate(start), formatdate(end))
 	if pulled:
 		frappe.msgprint(
-			_("Email ditarik dari: {0}").format(", ".join(pulled)),
+			_("Email {0} ditarik dari: {1}").format(window, ", ".join(pulled)),
 			title=_("Tarik Email"),
 			indicator="green",
+		)
+	if unfiltered:
+		frappe.msgprint(
+			_("Akun POP3 tidak mengenal filter tanggal, jadi {0} ditarik tanpa batas "
+			  "rentang.").format(", ".join(unfiltered)),
+			title=_("Tarik Email"),
+			indicator="orange",
 		)
 	if failed:
 		frappe.msgprint(
@@ -653,4 +730,4 @@ def pull_my_emails() -> dict:
 			title=_("Tarik Email"),
 			indicator="orange",
 		)
-	return {"pulled": pulled, "failed": failed}
+	return {"pulled": pulled, "failed": failed, "unfiltered": unfiltered, "window": [str(start), str(end)]}
