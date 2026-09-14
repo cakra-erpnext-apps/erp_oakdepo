@@ -3,7 +3,7 @@
 #
 #   ./scripts/reset-site.sh                       # dev, transaksi saja, seed dev
 #   MASTERS=1 ./scripts/reset-site.sh             # dev, master ikut dibangun ulang
-#   STACK=prod SITE=app.oakdepo.com ./scripts/reset-site.sh
+#   STACK=prod ./scripts/reset-site.sh            # prod, site dibaca dari .env.prod
 #
 # Backup diambil lebih dulu, SELALU, lalu disalin keluar volume ke ./_backups.
 # Yang TIDAK disentuh: site itu sendiri, user, role, dan site_config.json (termasuk
@@ -12,7 +12,12 @@ set -euo pipefail
 
 STACK="${STACK:-dev}"
 MASTERS="${MASTERS:-0}"        # 1 = master kurasi ikut dihapus lalu di-seed ulang
-SEED="${SEED:-dev}"            # dev | prod | "" (tanpa seed)
+# Seeder mengikuti stack-nya, dan itu bukan kenyamanan belaka: `seed_dev` menanam
+# Customer contoh DAN satu Depot Contract Active berisi tarif karangan — dan kontrak
+# Active menerbitkan Price List yang dibaca booking, cleaning dan M&R sebagai rate
+# card. Di produksi itu artinya harga palsu yang terlihat sah. Default yang salah di
+# sini lebih berbahaya daripada tidak ada default sama sekali.
+SEED="${SEED:-$([ "$STACK" = "prod" ] && echo prod || echo dev)}"   # dev | prod | ""
 BACKUP_DIR="${BACKUP_DIR:-_backups}"
 
 cd "$(dirname "$0")/.."
@@ -24,9 +29,19 @@ case "$STACK" in
     SITE="${SITE:-oakdepo.localhost}"
     ;;
   prod)
+    [ -f .env.prod ] || { echo "compose prod butuh .env.prod di $(pwd) — jalankan dari repo di server prod." >&2; exit 1; }
     COMPOSE=(docker compose --env-file .env.prod -f compose.prod.yaml)
     SVC=backend
-    SITE="${SITE:?SITE wajib diisi untuk STACK=prod}"
+    # Nama site diambil dari .env.prod kalau tidak diberikan: satu sumber kebenaran,
+    # dan satu kesempatan salah ketik yang hilang.
+    if [ -z "${SITE:-}" ]; then
+      SITE=$(sed -n 's/^SITE_NAME=//p' .env.prod | tail -1 | tr -d '"' | tr -d "'" | tr -d ' ')
+    fi
+    [ -n "$SITE" ] || { echo "SITE tidak diberikan dan SITE_NAME tidak ada di .env.prod" >&2; exit 1; }
+    if [ "$SEED" = "dev" ]; then
+      echo "SEED=dev ditolak untuk STACK=prod: seeder dev menanam kontrak + tarif karangan." >&2
+      exit 1
+    fi
     ;;
   *)
     echo "STACK harus 'dev' atau 'prod' (dapat: $STACK)" >&2
@@ -35,6 +50,18 @@ case "$STACK" in
 esac
 
 log() { printf '\n== %s ==\n' "$*"; }
+
+# Rencananya dicetak sebelum apa pun terjadi — kegagalan pertama skrip ini di lapangan
+# adalah ia diam-diam memilih stack dev, lalu mengeluh "service frappe is not running"
+# tanpa pernah menyebut site mana yang sebetulnya dituju.
+log "rencana"
+printf '  stack   : %s\n  site    : %s\n  seed    : %s\n  masters : %s\n' \
+  "$STACK" "$SITE" "${SEED:-tidak}" "$MASTERS"
+
+if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$SVC"; then
+  echo "service '$SVC' tidak jalan untuk stack $STACK. Stack-nya belum naik, atau STACK=$STACK salah." >&2
+  exit 1
+fi
 
 # Prod tidak pernah jalan tanpa diketik ulang nama site-nya.
 if [ "$STACK" = "prod" ] && [ "${FORCE:-0}" != "1" ]; then

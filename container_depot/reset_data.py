@@ -16,9 +16,13 @@ Parameter
 ``masters``  1 = ikut hapus master kurasi (Customer, Item, Depot, Branch, Depot Contract
              + Price List terbitannya, Shipping Line, Surveyor Company, letak tank, dst).
              0 (default) = master dibiarkan, hanya transaksi yang dibersihkan.
-``seed``     ``"dev"`` (default) seed lengkap termasuk Depot Contract Bertschi yang
-             langsung bisa dipakai; ``"prod"`` master saja tanpa tarif; ``""`` tidak
-             menyeed apa pun.
+``seed``     ``""`` (default) tidak menyeed apa pun; ``"prod"`` master saja tanpa tarif;
+             ``"dev"`` seed lengkap TERMASUK Depot Contract Bertschi berisi tarif
+             karangan. Defaultnya sengaja kosong: menghapus itu yang Anda minta,
+             menyeed itu kejutannya — dan satu kontrak Active menerbitkan Price List
+             yang langsung dibaca booking, cleaning dan M&R sebagai rate card, jadi
+             ``seed='dev'`` yang nyasar ke produksi memasang harga palsu yang terlihat
+             sah. ``scripts/reset-site.sh`` selalu mengisinya sesuai stack.
 
 Catatan
 -------
@@ -100,18 +104,22 @@ SERIES_PREFIXES = [
 MASTER_SERIES_PREFIXES = ["DCNT-"]
 
 # Master kurasi yang ikut hilang saat ``masters=1`` (di luar yang diurus seed_dev.clear).
+#
+# Hanya doctype berdiri sendiri. ``Contract Document`` dan ``Allowed Branch`` pernah ada
+# di sini dan keduanya tabel ANAK: yang pertama milik Depot Contract (jadi sudah ikut
+# terhapus lewat ``_child_tables`` saat kontraknya dihapus, ber-scope), yang kedua tidak
+# punya induk sama sekali. Menyebut tabel anak di daftar ini berarti ``frappe.db.delete``
+# tanpa scope — persis yang diperingatkan docstring modul ini.
 MASTER_DOCTYPES = [
 	"Container Position Template",
 	"Shipping Line",
 	"Surveyor Company",
 	"Customer Portal User",
-	"Contract Document",
-	"Allowed Branch",
 	"Self Service Terminal",
 ]
 
 
-def run(confirm: str | None = None, masters: int = 0, seed: str = "dev") -> None:
+def run(confirm: str | None = None, masters: int = 0, seed: str = "") -> None:
 	site = frappe.local.site
 	if confirm != site:
 		frappe.throw(
