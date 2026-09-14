@@ -72,9 +72,12 @@ doctype — narrowing that would mean cutting its Desk access too.
 ### Why the role picker is short
 
 Nine apps are installed and each contributes roles to the same flat checkbox list on the
-User form — 71 entries, six of them ever assigned. `install.PARKED_ROLES` tags 48 of them
+User form — 71 entries, six of them ever assigned. `install.PARKED_ROLES` tags 47 of them
 with the **`Unused`** domain, which is never activated; `get_all_roles` drops any role whose
-`restrict_to_domain` is not an active domain, so the picker shows **23**.
+`restrict_to_domain` is not an active domain, so the picker shows **24**.
+
+A role named in `COMPANION_ROLES` is never parked — `Inbox User` was un-parked on
+2026-09-14 (patch v0_97) when it became the email companion on every office profile.
 
 **Never use `Role.disabled` for this.** `Role.validate` routes it to `remove_roles()`, which
 `db.delete`s every `Has Role` row for that role — ticking the box unassigns everyone holding
@@ -101,11 +104,11 @@ Two things that will bite:
    | Role Profile | Grants |
    |---|---|
    | Security / Team EIR / Team Kalmar / Team Cleaning / Team Repair / Team Survey / SPV Lapangan | the field role itself |
-   | Admin Ops · Management | the office role itself |
-   | Cashier | `Cashier` + `Accounts User` |
-   | Finance | `Finance` + `Accounts Manager` |
-   | Commercial | `Commercial` + `Sales Manager`, `Item Manager` |
-   | Warehouse | `Warehouse` + `Stock User`, `Purchase User` |
+   | Admin Ops · Management | the office role + `Inbox User` |
+   | Cashier | `Cashier` + `Accounts User`, `Inbox User` |
+   | Finance | `Finance` + `Accounts Manager`, `Inbox User` |
+   | Commercial | `Commercial` + `Sales Manager`, `Item Manager`, `Inbox User` |
+   | Warehouse | `Warehouse` + `Stock User`, `Purchase User`, `Inbox User` |
 
    The companion roles are not optional extras and they are not seeded as DocPerms: the
    custom roles carry Container Depot module permissions **only**. The first Custom DocPerm
@@ -113,6 +116,15 @@ Two things that will bite:
    granting perms on Sales Invoice or Purchase Order here would silently disable ERPNext's
    own accounting and stock roles. Bundling them in the profile is how they stop being
    forgotten.
+
+   **`Inbox User` is the email companion** and every office profile carries it. Frappe's
+   compose dialog reads `Email Account` for the sender's signature, and that read lives on
+   `Inbox User` — without it the Email action fails with *"User X does not have doctype
+   access via role permission for document Email Account"*. Field profiles deliberately do
+   **not** get it: `Inbox User` carries `desk_access = 1`, and `User.validate_user_type`
+   would re-type those PWA-only accounts as System Users. Sending also needs the `email`
+   DocPerm flag on the document itself, which `_PERM_LETTERS` now bundles into `r` — so
+   every role that may read a depot document may mail it too.
 
 3. Optionally scope the user to a Branch (User → Branch). Empty = all branches.
 

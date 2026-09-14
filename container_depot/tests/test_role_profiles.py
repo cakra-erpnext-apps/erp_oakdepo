@@ -18,9 +18,12 @@ from container_depot.install import (
 	COMPANION_ROLES,
 	FIELD_ROLES,
 	OFFICE_ROLES,
+	PARKED_DOMAIN,
 	STOCK_ROLE_PROFILES,
 	setup_role_profiles,
 )
+
+EMAIL_ROLE = "Inbox User"
 
 USER = "rp-cashier@example.com"
 HELD_PROFILE = "RP Test Stock Bundle"
@@ -142,4 +145,28 @@ class TestRoleProfiles(FrappeTestCase):
 		self.assertTrue(
 			frappe.db.exists("Role Profile", HELD_PROFILE),
 			"a profile with holders must survive the sweep",
+		)
+
+	def test_every_office_profile_can_send_email(self):
+		"""`Inbox User` is what reads `Email Account`; without it the compose dialog dies on
+		"does not have doctype access via role permission for document Email Account"."""
+		for role in OFFICE_ROLES:
+			with self.subTest(role=role):
+				carried = {row.role for row in frappe.get_doc("Role Profile", role).roles}
+				self.assertIn(EMAIL_ROLE, carried)
+
+	def test_no_field_profile_carries_the_email_role(self):
+		"""`Inbox User` has `desk_access = 1`, and `User.validate_user_type` re-types any
+		account holding a desk role as a System User — handing it to the yard would move
+		seven PWA-only jobs onto the Desk. They keep the `email` DocPerm flag instead."""
+		for role in FIELD_ROLES:
+			with self.subTest(role=role):
+				carried = {row.role for row in frappe.get_doc("Role Profile", role).roles}
+				self.assertNotIn(EMAIL_ROLE, carried)
+
+	def test_the_email_role_stays_in_the_picker(self):
+		"""It used to be parked as desk power-user tooling. A role a profile hands out must
+		be visible on the User form, or the model stops matching what an admin can see."""
+		self.assertNotEqual(
+			frappe.db.get_value("Role", EMAIL_ROLE, "restrict_to_domain"), PARKED_DOMAIN
 		)

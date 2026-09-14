@@ -1429,9 +1429,16 @@ def drop_legacy_inventory_sidebar():
 # `model.sync.remove_orphan_entities` looks for exactly that path and DELETES any
 # standard Desktop Icon it cannot find a file for. Rename the label without
 # renaming the file and the tile silently disappears on the next deploy.
+#
+# `Quality` (erpnext/desktop_icon/quality.json) is gated for a third reason: it is a Link
+# icon, and a Link icon is shown when the Workspace Sidebar it points at has ANY visible
+# item — Quality's items hang off doctypes the stock `All` / `Desk User` roles can read, so
+# the tile reached every office account even though no depot job touches Quality Management
+# (asked for 2026-09-14). System Manager keeps it so an admin can still find the module.
 FOREIGN_ICON_ROLES = {
 	"Framework": ["System Manager"],
 	"Raven": ["Raven User", "Raven Admin"],
+	"Quality": ["System Manager"],
 }
 
 
@@ -1514,11 +1521,26 @@ PWA_OFFICE_ROLES = {"Admin Ops"}
 # entirely — it would silently strip ERPNext's own accounting/stock roles. So the
 # custom roles below carry Container Depot module perms only, and the standard access is
 # granted the standard way: give the user both roles. Surfaced in STRUCTURE.md.
+#
+# `Inbox User` is on EVERY office profile for the same reason: it is Frappe's own "may use
+# email" role — read on `Email Account` plus create on `Communication` — and without it the
+# form's Email dialog dies on `User X does not have doctype access via role permission for
+# document Email Account` while fetching the sender's signature. It is granted here rather
+# than as a Custom DocPerm precisely because `Email Account` is a core doctype: one custom
+# row on it would blank System Manager's shipped perms.
+#
+# Field roles are deliberately absent. `Inbox User` carries `desk_access = 1`, and
+# `User.validate_user_type` re-types any account holding a desk role as a System User — so
+# handing it to the yard would quietly move seven PWA-only jobs onto the Desk (and onto a
+# licence seat). They keep the `email` DocPerm flag from `_PERM_LETTERS`; they have no Desk
+# to compose from, and the PWA sends nothing by mail.
 COMPANION_ROLES = {
-	"Cashier": ["Accounts User"],
-	"Finance": ["Accounts Manager"],
-	"Commercial": ["Sales Manager", "Item Manager"],
-	"Warehouse": ["Stock User", "Purchase User"],
+	"Admin Ops": ["Inbox User"],
+	"Cashier": ["Accounts User", "Inbox User"],
+	"Finance": ["Accounts Manager", "Inbox User"],
+	"Commercial": ["Sales Manager", "Item Manager", "Inbox User"],
+	"Warehouse": ["Stock User", "Purchase User", "Inbox User"],
+	"Management": ["Inbox User"],
 }
 
 # ---------------------------------------------------------------------------
@@ -1600,18 +1622,23 @@ MASTER_DOCTYPES = {
 	"Surveyor Company",
 }
 
-# Compact permission grammar, one letter per flag. `r` carries report+export+print with it
-# because a role that may read a doctype has no reason to be barred from listing it — or
-# from printing it. `print` is its own Frappe flag and was missing here, which is why the
-# Desk showed no Print action on ANY Container Depot document: the first Custom DocPerm on
-# a doctype makes Frappe ignore its shipped permissions wholesale, so a flag this seeder
-# never sets is a flag nobody has. Note `export` was always granted, and export hands over
-# strictly more than a printed copy does — print was the odd one out, not the risky one.
+# Compact permission grammar, one letter per flag. `r` carries report+export+print+email
+# with it because a role that may read a doctype has no reason to be barred from listing
+# it, printing it, or sending it on. Each of those is its own Frappe flag, and the first
+# Custom DocPerm on a doctype makes Frappe ignore its shipped permissions wholesale — so a
+# flag this seeder never sets is a flag nobody has, sitewide. That is exactly how the Desk
+# ended up with no Print action on ANY Container Depot document (fixed 2026-08-27, patch
+# v0_83) and then with no Email action either (fixed 2026-09-14, patch v0_97).
 #
-# `email` is deliberately NOT in the bundle: printing produces a copy for the person
-# already allowed to read the document, emailing sends it to someone who is not.
+# `email` used to be held back on the argument that printing hands a copy to someone
+# already allowed to read the document while emailing hands it to someone who is not.
+# Reversed on the user's instruction 2026-09-14: sending a bon, an EIR or an invoice to the
+# customer who ordered it IS the job, and `export` — always granted — already hands over
+# strictly more than a mailed print does. Note the flag only decides whether the form's
+# Email action exists; actually sending also needs the standard `Inbox User` role, which
+# COMPANION_ROLES now puts on every office profile.
 _PERM_LETTERS = {
-	"r": ("read", "report", "export", "print"),
+	"r": ("read", "report", "export", "print", "email"),
 	"w": ("write",),
 	"c": ("create",),
 	"s": ("submit",),
@@ -1820,7 +1847,7 @@ PARKED_ROLES = [
 	"Purchase Manager", "Purchase Master Manager", "Sales Master Manager",
 	"Sales User", "Stock Manager",
 	# Desk power-user tooling — nobody here writes Server Scripts or edits Workspaces.
-	"Dashboard Manager", "Inbox User", "Prepared Report User", "Report Manager",
+	"Dashboard Manager", "Prepared Report User", "Report Manager",
 	"Script Manager", "Translator", "Website Manager", "Workspace Manager",
 ]
 
