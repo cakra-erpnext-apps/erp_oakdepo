@@ -305,6 +305,50 @@ def _ensure_depot(code, name, branch):
         }).insert(ignore_permissions=True)
 
 
+def _company_abbr():
+    """Company default + singkatannya — akhiran WAJIB di setiap nama Warehouse ERPNext."""
+    company = frappe.defaults.get_defaults().get("company") or frappe.db.get_value("Company", {}, "name")
+    if not company:
+        return None, None
+    return company, frappe.db.get_value("Company", company, "abbr")
+
+
+def _ensure_warehouse(branch):
+    """Satu gudang per Branch, ditandai `branch` — itulah gunanya.
+
+    Gudang bawaan ERPNext (Stores / Finished Goods / WIP / Goods In Transit) lahir dari
+    setup wizard TANPA branch, dan `mr._default_warehouse` menyaring justru pada kolom itu
+    untuk membatasi sparepart ke cabang yang benar. Tanpa gudang ber-branch, picker
+    sparepart M&R jatuh ke gudang mana saja yang kebetulan pertama menurut abjad.
+
+    Gudang bawaan sengaja TIDAK diutak-atik: Stock Settings dan Company menautnya, dan
+    menghapus gudang yang ditaut sebuah Single memunculkan LinkExistsError yang pesannya
+    di-samarkan Frappe jadi "disable saja" — mahal dilacaknya.
+
+    Konsekuensinya perlu disebut terang-terangan: selama "Stores - <abbr>" bawaan masih
+    ada tanpa branch, ia tetap terlihat oleh SEMUA cabang (`user_branch.get_user_warehouses`
+    memang memperlakukan branch kosong sebagai "semua cabang"), dan `mr._default_warehouse`
+    tetap memilihnya lebih dulu karena namanya mengandung "stores". Jadi gudang per-branch
+    ini membuat penyaringan per cabang MUNGKIN, bukan otomatis eksklusif — untuk itu gudang
+    bawaannya harus dipensiunkan manual, satu keputusan yang bukan milik seeder.
+    """
+    company, abbr = _company_abbr()
+    if not company:
+        return None
+    name = f"{branch} - {abbr}"
+    if frappe.db.exists("Warehouse", name):
+        return name
+    root = f"All Warehouses - {abbr}"
+    frappe.get_doc({
+        "doctype": "Warehouse",
+        "warehouse_name": branch,
+        "company": company,
+        "parent_warehouse": root if frappe.db.exists("Warehouse", root) else None,
+        "branch": branch,
+    }).insert(ignore_permissions=True)
+    return name
+
+
 def _ensure_item_group(name):
     if not frappe.db.exists("Item Group", name):
         frappe.get_doc({
@@ -463,6 +507,9 @@ def run():
     for code, name, branch in DEPOTS:
         _ensure_depot(code, name, branch)
     print(f"[seed_dev] Depot: {len(DEPOTS)}")
+
+    warehouses = [w for w in (_ensure_warehouse(b) for b in BRANCHES) if w]
+    print(f"[seed_dev] Warehouse: {len(warehouses)}")
 
     _seed_cleaning_checklist()     # patches.v0_31
     _seed_cargo()                  # patches.v0_12

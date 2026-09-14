@@ -12,6 +12,7 @@ skip-if-exists, no dummy transactional data, clear summary output.
 Seeded (in order)
 -----------------
 * Branch / Depot          — Oak Medan, Oak Surabaya · OAK1, OAK2, OAKSBY
+* Warehouse               — satu per Branch, ditandai `branch` (picker sparepart M&R)
 * Cleaning Checklist,     — reuse the in-app master patches (already shipped data)
   Cargo, EIR Damage/Repair
   codes, EIR checklist,
@@ -54,6 +55,12 @@ def run():
     for code, name, branch in _dev.DEPOTS:
         _dev._ensure_depot(code, name, branch)
     print(f"[seed_prod] Depot: {len(_dev.DEPOTS)}")
+
+    # Satu gudang per Branch, ditandai `branch`: itulah kolom yang dipakai picker
+    # sparepart M&R untuk membatasi stok ke cabang yang benar. Gudang bawaan ERPNext
+    # lahir tanpa branch dan sengaja tidak diutak-atik — lihat _dev._ensure_warehouse.
+    warehouses = [w for w in (_dev._ensure_warehouse(b) for b in _dev.BRANCHES) if w]
+    print(f"[seed_prod] Warehouse: {len(warehouses)}")
 
     # Shared masters that already ship inside the app's patches (idempotent).
     _dev._seed_cleaning_checklist()     # patches.v0_31

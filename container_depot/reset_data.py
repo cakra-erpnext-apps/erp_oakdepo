@@ -13,9 +13,12 @@ Parameter
 ---------
 ``confirm``  wajib, harus sama persis dengan nama site. Tanpa ini script menolak jalan —
              satu-satunya pengaman terhadap "kepencet di server yang salah".
-``masters``  1 = ikut hapus master kurasi (Customer, Item, Depot, Branch, Depot Contract
-             + Price List terbitannya, Shipping Line, Surveyor Company, letak tank, dst).
-             0 (default) = master dibiarkan, hanya transaksi yang dibersihkan.
+``masters``  1 = kosongkan master kurasi SELURUHNYA, bukan cuma yang dibuat seeder:
+             Customer, Item, Item Group (daunnya), Warehouse ber-branch, Depot, Branch,
+             Depot Contract + Price List terbitannya, Shipping Line, Surveyor Company,
+             template letak tank, portal user, SST. Yang diketik orang ikut hilang —
+             lihat :func:`_wipe_masters`. 0 (default) = master dibiarkan, hanya
+             transaksi yang dibersihkan.
 ``seed``     ``""`` (default) tidak menyeed apa pun; ``"prod"`` master saja tanpa tarif;
              ``"dev"`` seed lengkap TERMASUK Depot Contract Bertschi berisi tarif
              karangan. Defaultnya sengaja kosong: menghapus itu yang Anda minta,
@@ -211,33 +214,80 @@ def _wipe_tables(doctypes: list[str], label: str) -> int:
 
 
 def _wipe_masters() -> int:
-	"""Kembalikan master kurasi ke nol supaya seeder membangunnya dari awal."""
-	from container_depot import seed_dev
+	"""Kosongkan master kurasi SELURUHNYA, supaya seeder membangunnya dari awal.
 
+	Bukan cuma nama-nama yang dikenal seeder: satu site yang sudah dipakai uji coba
+	punya Customer dan Item yang diketik orang, dan "reset ke kondisi baru selesai
+	di-seed" tidak berarti apa-apa kalau sisa itu bertahan (keputusan pemilik repo,
+	2026-09-14). Karena itu flag ini bukan default, dan pembungkusnya menuntut nama
+	site diketik ulang sebelum jalan.
+
+	Tiga hal yang sengaja TIDAK ikut:
+
+	* **Node grup** pada pohon Item Group dan Warehouse. Akar "All Item Groups" /
+	  "All Warehouses - <abbr>" adalah induk yang dipakai seeder saat membangun ulang;
+	  menghapusnya berarti seeder tidak punya tempat menggantung apa pun.
+	* **Gudang bawaan ERPNext** (Stores / Finished Goods / WIP / Goods In Transit).
+	  Stock Settings dan Company menautnya, dan menghapus gudang yang ditaut sebuah
+	  Single memunculkan LinkExistsError yang pesannya di-samarkan Frappe jadi "disable
+	  saja" — mahal dilacaknya. Yang dibuang hanya gudang ber-`branch`, yaitu milik
+	  seeder ini.
+	* **Customer Group / Territory / UOM / Company**. Seeder membacanya, tidak
+	  membuatnya.
+	"""
 	total = 0
 
 	# Kontrak dulu, sebelum Customer: Price List terbitannya menautkan keduanya.
 	price_lists = frappe.get_all(
 		"Price List", filters={"name": ["like", "% - DCNT-%"]}, pluck="name"
 	)
-	if price_lists:
-		total += frappe.db.count("Item Price", {"price_list": ["in", price_lists]})
-		frappe.db.delete("Item Price", {"price_list": ["in", price_lists]})
 	total += _wipe_documents(["Depot Contract"], "master")
 	for pl in price_lists:
 		frappe.db.delete("Price List", {"name": pl})
 	total += len(price_lists)
-	frappe.db.sql("update `tabCustomer` set default_price_list = null where default_price_list like %s",
-		"% - DCNT-%")
 	if price_lists:
 		print(f"[reset] master: Price List terbitan kontrak — {len(price_lists)}")
 
-	total += _wipe_documents(MASTER_DOCTYPES, "master")
+	# Harga ikut Item-nya. Dihapus utuh, bukan per price list: semua Item-nya hilang.
+	total += _wipe_tables(["Item Price"], "master")
 
-	# Item / Item Group / Depot / Branch / Customer: pakai pembersih milik seeder sendiri.
-	frappe.db.commit()
-	seed_dev.clear()
+	total += _wipe_documents(MASTER_DOCTYPES, "master")
+	total += _wipe_documents(["Customer", "Item", "Depot", "Branch"], "master")
+
+	# Jejak Contact/Address ke Customer yang barusan hilang. Dokumennya sendiri
+	# dibiarkan — sebuah Contact bisa menaut pihak lain juga.
+	n = frappe.db.count("Dynamic Link", {"link_doctype": "Customer"})
+	if n:
+		frappe.db.delete("Dynamic Link", {"link_doctype": "Customer"})
+		total += n
+		print(f"[reset] master: Dynamic Link → Customer — {n}")
+
+	total += _wipe_tree_leaves("Item Group")
+	total += _wipe_tree_leaves("Warehouse", {"branch": ["!=", ""]})
+
 	return total
+
+
+def _wipe_tree_leaves(doctype: str, extra: dict | None = None) -> int:
+	"""Hapus daun sebuah pohon (``is_group = 0``), lalu susun ulang lft/rgt.
+
+	``frappe.db.delete`` melewati ``on_trash``, jadi angka nested-set induknya tidak
+	ikut menyusut. Insert berikutnya menghitung posisinya dari angka yang sudah basi
+	itu — pohonnya rusak diam-diam, dan yang kelihatan baru nanti waktu seeder menaruh
+	Item Group pertama. ``rebuild_tree`` menghitungnya ulang dari awal.
+	"""
+	from frappe.utils.nestedset import rebuild_tree
+
+	filters = {"is_group": 0, **(extra or {})}
+	names = frappe.get_all(doctype, filters=filters, pluck="name")
+	if not names:
+		return 0
+	for child in _child_tables(doctype):
+		_wipe_child_rows(child, doctype, quiet=True)
+	frappe.db.delete(doctype, {"name": ["in", names]})
+	rebuild_tree(doctype)
+	print(f"[reset] master: {doctype} — {len(names)}")
+	return len(names)
 
 
 def _sweep_orphans() -> int:
