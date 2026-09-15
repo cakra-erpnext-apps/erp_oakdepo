@@ -116,6 +116,22 @@ export async function enablePush() {
 	}
 }
 
+/** Kirim push percobaan ke perangkat sendiri. Mengembalikan jumlah perangkat terkirim. */
+export async function testPush() {
+	state.busy = true
+	state.error = null
+	try {
+		const res = await api("send_test", {})
+		if (res?.error) throw new Error(res.error)
+		return res?.sent ?? 0
+	} catch (e) {
+		state.error = e.message || String(e)
+		return null
+	} finally {
+		state.busy = false
+	}
+}
+
 /** Drop this device's registration, server-side and in the browser. */
 export async function disablePush() {
 	state.busy = true

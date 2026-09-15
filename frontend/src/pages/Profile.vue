@@ -132,6 +132,18 @@
 						</p>
 						<p class="mt-0.5 text-xs text-gray-500">{{ labels.pushHint }}</p>
 					</div>
+					<!-- Tombol tes hanya muncul saat sudah berlangganan: sebelum itu tidak ada
+					     perangkat untuk dikirimi, dan tombol yang selalu menjawab "0 perangkat"
+					     lebih membingungkan daripada tidak ada tombol. -->
+					<button
+						v-if="push.subscribed"
+						type="button"
+						class="oak-btn oak-btn-ghost shrink-0 text-gray-500"
+						:disabled="push.busy"
+						@click="sendTestPush"
+					>
+						{{ labels.pushTest }}
+					</button>
 					<button
 						type="button"
 						class="oak-btn shrink-0"
@@ -223,7 +235,7 @@ import { computed, onMounted, ref } from "vue"
 import { session } from "@/data/session"
 import { userContext } from "@/data/context"
 import { fetchMenu, menu } from "@/data/menu"
-import { disablePush, enablePush, push, refreshPushState } from "@/data/push"
+import { disablePush, enablePush, push, refreshPushState, testPush } from "@/data/push"
 import { isIos, isStandalone } from "@/utils/install"
 import { labels, passwordFeedbackLabel } from "@/utils/labels"
 import { compressPhoto } from "@/utils/photo"
@@ -339,6 +351,15 @@ async function togglePush() {
 		return
 	}
 	if (await enablePush()) toast.success(labels.pushEnabled)
+}
+
+async function sendTestPush() {
+	const sent = await testPush()
+	// `null` = permintaannya gagal; `0` = berhasil tapi tidak ada perangkat terdaftar.
+	// Dua hal yang berbeda, dan yang kedua ada obatnya.
+	if (sent === null) toast.error(labels.pushTestFailed)
+	else if (sent === 0) toast.error(labels.pushTestNoDevice)
+	else toast.success(labels.pushTestSent)
 }
 
 // --- Ubah password ----------------------------------------------------------

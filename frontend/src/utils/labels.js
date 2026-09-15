@@ -60,6 +60,10 @@ export const labels = {
 	pushDenied: "Notifikasi diblokir. Izinkan dulu lewat setelan situs di browser/HP Anda.",
 	pushServerOff: "Notifikasi HP belum disiapkan di server. Hubungi admin.",
 	pushFailed: "Gagal mengaktifkan notifikasi.",
+	pushTest: "Tes",
+	pushTestSent: "Notifikasi percobaan dikirim. Cek layar HP Anda.",
+	pushTestNoDevice: "Tidak ada perangkat terdaftar. Matikan lalu aktifkan lagi notifikasinya.",
+	pushTestFailed: "Gagal mengirim notifikasi percobaan.",
 	pushSwTimeout: "Aplikasi belum siap menerima notifikasi. Tutup lalu buka lagi aplikasinya; bila tetap muncul, hubungi admin.",
 	pushIosHint: "Di iPhone, notifikasi hanya jalan setelah aplikasi ditambahkan ke Layar Utama.",
 	// --- Wajib install (InstallGate) ---

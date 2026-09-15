@@ -194,6 +194,34 @@ def unsubscribe(endpoint: str | None = None):
 	return {"success": True}
 
 
+@frappe.whitelist(methods=["POST"])
+def send_test():
+	"""POST — kirim satu push percobaan ke perangkat milik pemanggil sendiri.
+
+	Hanya ke ``frappe.session.user``; tidak menerima daftar penerima, jadi tidak bisa
+	dipakai mengirim apa pun ke orang lain.
+
+	Dikirim langsung, bukan lewat antrean seperti :func:`push_to_users`. Gunanya justru
+	untuk menjawab "sudah nyala atau belum" — jawaban yang datang beberapa detik kemudian
+	dari worker tidak bisa ditampilkan ke orang yang sedang menekan tombolnya. Jumlah
+	perangkat yang berhasil dikembalikan supaya "0 perangkat" terbaca beda dari "terkirim".
+	"""
+	from container_depot.api import _require_authenticated_user
+
+	_require_authenticated_user()
+	if not _keys():
+		return {"sent": 0, "error": "server-off"}
+
+	sent = deliver(
+		[frappe.session.user],
+		title="Depot OAK",
+		body="Notifikasi percobaan. Kalau ini muncul, notifikasi HP Anda sudah aktif.",
+		url="/depot",
+		tag="depot-test",
+	)
+	return {"sent": sent}
+
+
 # ---------------------------------------------------------------------------
 # Delivery
 # ---------------------------------------------------------------------------
