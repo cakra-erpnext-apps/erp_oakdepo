@@ -38,6 +38,13 @@ class TestDepotAppPage(FrappeTestCase):
 
 		self.assertEqual(get_apk().file_name, "depot-oak-test-1.1.0.apk")
 
+	def test_file_url_is_url_encoded(self):
+		# Upload lewat Desk sering menghasilkan nama bersspasi; spasi mentah di href
+		# bikin unduhan gagal di HP.
+		self.files = [_apk("Depot OAK test.apk")]
+
+		self.assertEqual(get_apk().file_url, "/files/Depot%20OAK%20test.apk")
+
 	def test_private_apk_is_not_offered(self):
 		# Private files need a session to download — useless as a share link.
 		self.files = [_apk("depot-oak-test-private.apk", is_private=1)]

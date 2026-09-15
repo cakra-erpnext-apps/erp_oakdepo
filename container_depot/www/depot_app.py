@@ -13,6 +13,8 @@ manager Desk), dan halaman ini memakai yang paling baru. Jadi rilis berikutnya
 cukup upload ulang — tanpa deploy, tanpa field settings baru.
 """
 
+from urllib.parse import quote
+
 import frappe
 from frappe.utils import get_url
 
@@ -30,7 +32,14 @@ def get_apk():
 		order_by="creation desc",
 		limit=1,
 	)
-	return rows[0] if rows else None
+	if not rows:
+		return None
+	apk = rows[0]
+	# Nama berkas hasil upload bisa mengandung spasi ("Depot OAK.apk"). Spasi mentah di
+	# dalam href membuat unduhan gagal, jadi encode di sini — bukan di template — supaya
+	# setiap pemakai get_apk() ikut aman. `quote` membiarkan "/" apa adanya.
+	apk.file_url = quote(apk.file_url)
+	return apk
 
 
 def get_context(context):
