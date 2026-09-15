@@ -380,7 +380,8 @@ update_website_context = "container_depot.branding.update_website_context"
 # Client script for standard ERPNext Sales Invoice — surfaces a visible
 # "Batalkan & Kembalikan Order" button on generated (consolidated) invoices.
 # Communication — "Buat Order" buttons that seed a booking/M&R/survey/cleaning draft
-# from an incoming email (see container_depot/mail_to_order.py).
+# from an incoming email (see container_depot/mail_to_order.py). Reads mail already on the
+# site: intake is off since patch v0_99.stop_email_intake.
 # lock_item_picker — the service Item pickers only pick; no ad-hoc Item creation.
 doctype_js = {
 	"Sales Invoice": ["public/js/sales_invoice.js", "public/js/lock_item_picker.js"],
@@ -393,8 +394,6 @@ doctype_js = {
 	# Rapikan form User baru + guard handler Role Profiles bawaan (lihat file-nya).
 	"User": "public/js/user.js",
 }
-# Communication list — on-demand "Tarik Email" (pull) button, scoped to the user's accounts.
-doctype_list_js = {"Communication": "public/js/communication_list.js"}
 # doctype_tree = {"doctype" : "doctype_tree.js"}
 # doctype_calendar = {"doctype" : "public/js/doctype_calendar.js"}
 

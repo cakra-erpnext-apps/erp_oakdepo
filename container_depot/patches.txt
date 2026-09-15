@@ -127,3 +127,4 @@ container_depot.patches.v0_96.backfill_cleaning_plan_date
 container_depot.patches.v0_96.backfill_gate_in_activity
 container_depot.patches.v0_97.grant_email_permission
 container_depot.patches.v0_98.admin_ops_contract_and_masters
+container_depot.patches.v0_99.stop_email_intake
