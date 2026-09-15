@@ -104,7 +104,6 @@ frappe.ui.form.on('Cleaning Order', {
 			[__('Reference EIR'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],
 			[__('Sales Invoice'), link('Sales Invoice', frm.doc.sales_invoice)],
-			[__('Ref Email'), link('Communication', frm.doc.reff_email)],
 		]);
 	},
 	container(frm) {

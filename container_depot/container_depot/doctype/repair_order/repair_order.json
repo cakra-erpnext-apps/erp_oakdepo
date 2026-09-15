@@ -35,7 +35,6 @@
   "target_urgent_on",
   "inspection",
   "container_booking",
-  "reff_email",
   "started_by",
   "requested_on",
   "decided_on",
@@ -113,7 +112,7 @@
    "description": "Opsional. Teknisi yang mengerjakan."
   },
   {
-   "description": "Opsional. No. dokumen dari customer untuk order M&R ini \u2014 diisi manual, tidak diturunkan dari EIR / booking. Terekam di master tank sebagai Reff Doc M&R Terakhir.",
+   "description": "Opsional. No. dokumen dari customer untuk order M&R ini — diisi manual, tidak diturunkan dari EIR / booking. Terekam di master tank sebagai Reff Doc M&R Terakhir.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -265,17 +264,6 @@
    "hidden": 1
   },
   {
-   "depends_on": "eval:doc.reff_email",
-   "description": "Bila order dibuat dari email.",
-   "fieldname": "reff_email",
-   "fieldtype": "Link",
-   "label": "Ref Email",
-   "no_copy": 1,
-   "options": "Communication",
-   "read_only": 1,
-   "hidden": 1
-  },
-  {
    "description": "Distempel saat repair dimulai.",
    "depends_on": "eval:doc.start_date",
    "fieldname": "start_date",
@@ -398,7 +386,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-11 14:00:00.000000",
+ "modified": "2026-09-15 10:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

@@ -43,7 +43,6 @@
   "zone",
   "inspection",
   "container_booking",
-  "reff_email",
   "target_lift_on",
   "target_survey_on",
   "target_urgent_on",
@@ -95,7 +94,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Opsional. No. dokumen dari customer untuk order cuci ini \u2014 diisi manual, tidak diturunkan dari EIR / booking. Terekam di master tank sebagai Reff Doc Cleaning Terakhir.",
+   "description": "Opsional. No. dokumen dari customer untuk order cuci ini — diisi manual, tidak diturunkan dari EIR / booking. Terekam di master tank sebagai Reff Doc Cleaning Terakhir.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -294,17 +293,6 @@
    "search_index": 1
   },
   {
-   "depends_on": "eval:doc.reff_email",
-   "description": "Bila order dibuat dari email.",
-   "fieldname": "reff_email",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Ref Email",
-   "no_copy": 1,
-   "options": "Communication",
-   "read_only": 1
-  },
-  {
    "description": "Rencana lift-on, dari container.",
    "fetch_from": "container.target_lift_on",
    "fieldname": "target_lift_on",
@@ -446,7 +434,7 @@
   },
   {
    "default": "Today",
-   "description": "Wajib. Rencana tanggal cuci \u2014 default hari ini, ganti kalau dijadwalkan lain hari. Realisasinya di Cleaning End.",
+   "description": "Wajib. Rencana tanggal cuci — default hari ini, ganti kalau dijadwalkan lain hari. Realisasinya di Cleaning End.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
    "in_standard_filter": 1,
@@ -474,7 +462,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-11 14:00:00.000000",
+ "modified": "2026-09-15 10:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

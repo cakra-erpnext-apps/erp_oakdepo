@@ -859,7 +859,6 @@ frappe.ui.form.on('Container Booking', {
 			[__('Containers'), frm.doc.container_summary && esc(frm.doc.container_summary)],
 			[__('% Keluar'), frm.doc.direction === 'Tank Out' && frm.doc.container_summary
 				? `${flt(frm.doc.per_fulfilled, 2)}%` : null],
-			[__('Ref Email'), link('Communication', frm.doc.reff_email)],
 			[__('Block Reason'), frm.doc.block_reason && esc(frm.doc.block_reason)],
 		]);
 	},

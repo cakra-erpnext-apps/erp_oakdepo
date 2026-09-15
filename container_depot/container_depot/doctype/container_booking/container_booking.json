@@ -44,7 +44,6 @@
   "container_summary",
   "bon_summary",
   "per_fulfilled",
-  "reff_email",
   "lift_type",
   "price_list",
   "contract",
@@ -110,7 +109,7 @@
   },
   {
    "depends_on": "survey_reff_doc",
-   "description": "No. dokumen survey dari Survey Order booking ini. Terisi sendiri \u2014 diubah di Survey Order-nya.",
+   "description": "No. dokumen survey dari Survey Order booking ini. Terisi sendiri — diubah di Survey Order-nya.",
    "fieldname": "survey_reff_doc",
    "fieldtype": "Data",
    "label": "Reff Doc Survey",
@@ -369,17 +368,6 @@
    "allow_on_submit": 1
   },
   {
-   "depends_on": "eval:doc.reff_email",
-   "description": "Bila order dibuat dari email.",
-   "fieldname": "reff_email",
-   "fieldtype": "Link",
-   "label": "Ref Email",
-   "no_copy": 1,
-   "options": "Communication",
-   "read_only": 1,
-   "hidden": 1
-  },
-  {
    "description": "Tank In = Lift Off, Tank Out = Lift On.",
    "fieldname": "lift_type",
    "fieldtype": "Select",
@@ -437,7 +425,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-11 12:00:00.000000",
+ "modified": "2026-09-15 10:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

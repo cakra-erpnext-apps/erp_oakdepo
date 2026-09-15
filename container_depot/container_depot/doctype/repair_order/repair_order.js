@@ -324,8 +324,8 @@ frappe.ui.form.on('Repair Order', {
 			[__('Tgl. Tes Terakhir'), container_depot.tank_last_test.fact(frm)],
 			// Order Date / Start Date / Completion Date are NOT repeated here: they stand on
 			// the form itself, read-only and behind a depends_on, so each one appears in
-			// place the moment the system stamps it (Container Booking's block_reason /
-			// reff_email idiom). Printing the same timestamp twice on one screen is noise.
+			// place the moment the system stamps it (Container Booking's block_reason
+			// idiom). Printing the same timestamp twice on one screen is noise.
 			[__('Inspection Reference'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],
 			[__('Dikerjakan Oleh'), link('User', frm.doc.started_by)],
