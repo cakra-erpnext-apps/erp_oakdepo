@@ -6,6 +6,18 @@
 		<title>Install Depot OAK</title>
 		<meta name="theme-color" content="#ffffff" />
 		<link rel="icon" type="image/png" href="/assets/container_depot/ess/icons/icon-192.png" />
+		<!--
+			Manifest PWA-nya diumumkan DI SINI, bukan cuma di /depot.
+
+			/depot menendang Guest ke /login, jadi perkakas yang membungkus PWA jadi APK
+			(PWABuilder, Bubblewrap) cuma melihat halaman login dan menyimpulkan "situs ini
+			tidak punya manifest". Halaman ini publik, jadi arahkan perkakas itu ke sini.
+
+			`scope`/`start_url` tetap /depot — yang dipasang tetap app-nya, bukan halaman ini.
+			Browser mengabaikan manifest di luar scope, jadi halaman ini sendiri tidak ikut
+			jadi installable; itu memang yang diinginkan.
+		-->
+		<link rel="manifest" href="/assets/container_depot/ess/manifest.json" />
 		<style>
 			:root {
 				--brand: #ea6614;
