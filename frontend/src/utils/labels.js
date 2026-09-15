@@ -60,6 +60,7 @@ export const labels = {
 	pushDenied: "Notifikasi diblokir. Izinkan dulu lewat setelan situs di browser/HP Anda.",
 	pushServerOff: "Notifikasi HP belum disiapkan di server. Hubungi admin.",
 	pushFailed: "Gagal mengaktifkan notifikasi.",
+	pushSwTimeout: "Aplikasi belum siap menerima notifikasi. Tutup lalu buka lagi aplikasinya; bila tetap muncul, hubungi admin.",
 	pushIosHint: "Di iPhone, notifikasi hanya jalan setelah aplikasi ditambahkan ke Layar Utama.",
 	// --- Wajib install (InstallGate) ---
 	installTitle: "Install Depot OAK dulu",

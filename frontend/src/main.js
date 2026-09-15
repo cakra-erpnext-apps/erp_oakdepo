@@ -32,11 +32,22 @@ app.use(router)
 // Register the minimal service worker so the app is installable (Add to Home
 // Screen). The SW source lives at src/service-worker.js; Vite emits it under
 // the build base, /assets/container_depot/ess/.
+//
+// `scope` is not cosmetic. Left at its default, a script served from /assets/ gets the
+// scope /assets/container_depot/ess/ — which does not cover /depot, where the app
+// actually runs. `navigator.serviceWorker.ready` then never resolves for this app, so
+// enabling push hangs on "memproses" forever instead of failing, and a push aimed at the
+// app has no worker to wake.
+//
+// Claiming a scope above the script's own path needs the server's permission:
+// nginx sends `Service-Worker-Allowed: /depot` on this file. In `vite dev` there is no
+// nginx, so registration fails there with a SecurityError — expected, and it costs dev
+// nothing but push, which needs the production VAPID keys anyway.
 function registerServiceWorker() {
 	if (!("serviceWorker" in navigator)) return
 	const swUrl = "/assets/container_depot/ess/service-worker.js"
 	navigator.serviceWorker
-		.register(swUrl, { type: "module" })
+		.register(swUrl, { type: "module", scope: "/depot" })
 		.catch((err) => console.error("SW registration failed", err))
 }
 

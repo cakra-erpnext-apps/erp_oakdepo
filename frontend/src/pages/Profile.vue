@@ -327,6 +327,7 @@ const pushNote = computed(() => {
 	if (push.permission === "denied") return labels.pushDenied
 	if (push.error === "server-off") return labels.pushServerOff
 	if (push.error === "denied") return labels.pushDenied
+	if (push.error === "sw-timeout") return labels.pushSwTimeout
 	if (push.error) return labels.pushFailed
 	if (!push.subscribed && isIos() && !isStandalone()) return labels.pushIosHint
 	return ""

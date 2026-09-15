@@ -36,6 +36,21 @@ function urlBase64ToUint8Array(base64String) {
 	return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)))
 }
 
+// `navigator.serviceWorker.ready` never rejects and never times out: with no registration
+// whose scope covers this page it simply stays pending, and the button sits on "Memproses…"
+// for the rest of the session. A scope mismatch already caused exactly that once. Cap the
+// wait so a broken registration surfaces as an error the operator can report.
+const SW_READY_TIMEOUT_MS = 10000
+
+function swReady() {
+	return Promise.race([
+		navigator.serviceWorker.ready,
+		new Promise((_, reject) =>
+			setTimeout(() => reject(new Error("sw-timeout")), SW_READY_TIMEOUT_MS)
+		),
+	])
+}
+
 async function api(path, body) {
 	const res = await fetch(`/api/method/container_depot.ess.push.${path}`, {
 		method: body ? "POST" : "GET",
@@ -56,7 +71,7 @@ export async function refreshPushState() {
 	if (!state.supported) return state
 	state.permission = Notification.permission
 	try {
-		const reg = await navigator.serviceWorker.ready
+		const reg = await swReady()
 		state.subscribed = !!(await reg.pushManager.getSubscription())
 	} catch (e) {
 		state.subscribed = false
@@ -79,7 +94,7 @@ export async function enablePush() {
 		state.permission = await Notification.requestPermission()
 		if (state.permission !== "granted") throw new Error("denied")
 
-		const reg = await navigator.serviceWorker.ready
+		const reg = await swReady()
 		// An existing subscription is reused: re-subscribing with the same key returns the
 		// same endpoint anyway, and unsubscribing first would drop pushes in between.
 		const subscription =
@@ -106,7 +121,7 @@ export async function disablePush() {
 	state.busy = true
 	state.error = null
 	try {
-		const reg = await navigator.serviceWorker.ready
+		const reg = await swReady()
 		const subscription = await reg.pushManager.getSubscription()
 		// Tell the server first: if the browser-side unsubscribe succeeds and the request
 		// then fails, the row lives on and we would keep pushing to a dead endpoint until
