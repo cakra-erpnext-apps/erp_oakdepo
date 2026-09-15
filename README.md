@@ -198,6 +198,37 @@ Post-deploy admin screens live under **Container Depot → Notifikasi & Akses**:
 | Depot Notification Settings | Master switch (turn all depot notifications off during maintenance) + fallback roles. |
 | Role | Tick *Depot Field Role (PWA)* to let a new role into `/depot`. |
 
+## APK Android (TWA)
+
+APK-nya cuma shell Chrome fullscreen (Trusted Web Activity) yang membuka
+`https://app.oakdepo.com/depot`. Isinya tetap dari server, jadi update fitur = deploy
+web seperti biasa. APK baru hanya perlu kalau nama app, ikon, atau package name berubah.
+
+Halaman bagikan ada di **`/depot-app`** — tombolnya di Desk: workspace *Container Depot*
+→ shortcut **Download App**. Halaman itu terbuka untuk Guest (yang diunduh cuma shell,
+tanpa data) supaya link/QR-nya bisa dikirim ke orang yang belum punya akun.
+
+Sekali seumur signing key:
+
+1. Buka [pwabuilder.com](https://www.pwabuilder.com), isi `https://app.oakdepo.com/depot`
+   → *Package For Stores* → Android → package name `com.oakdepo.depot`.
+2. **Simpan `signing.keypair` + passwordnya.** Hilang = APK tidak bisa di-update, semua
+   user harus uninstall-install ulang.
+3. Ambil fingerprint SHA-256 dari output PWABuilder (atau
+   `keytool -list -v -keystore <file>`), tempel menggantikan `GANTI_SHA256_FINGERPRINT`
+   di [nginx/conf.d/default.conf](nginx/conf.d/default.conf), lalu restart nginx.
+   Tanpa ini Chrome menolak verifikasi dan app tampil dengan address bar di atas layar.
+   Berkas ini dilayani nginx, bukan Frappe: Frappe menolak semua `/.well-known/` yang
+   bukan OAuth (`frappe/app.py`).
+4. Cek: `curl https://app.oakdepo.com/.well-known/assetlinks.json` harus membalas JSON.
+
+Setiap rilis APK:
+
+- Upload berkas `.apk` sebagai File **publik** lewat File manager Desk (`/app/file`).
+  `/depot-app` otomatis memakai APK publik yang paling baru — tanpa deploy, tanpa setting.
+
+Catatan: iOS tidak punya padanan TWA. Di iPhone tetap *Add to Home Screen* dari Safari.
+
 ## Rules
 
 See `STRUCTURE.md`.

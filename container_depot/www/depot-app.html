@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="id">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Install Depot OAK</title>
+		<meta name="theme-color" content="#ffffff" />
+		<link rel="icon" type="image/png" href="/assets/container_depot/ess/icons/icon-192.png" />
+		<style>
+			:root {
+				--brand: #ea6614;
+				--brand-hi: #f97828;
+				--ink: #111827;
+				--muted: #6b7280;
+				--line: #e5e7eb;
+			}
+			* { box-sizing: border-box; }
+			body {
+				margin: 0;
+				padding: 32px 16px 48px;
+				background: #f9fafb;
+				color: var(--ink);
+				font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+				line-height: 1.55;
+			}
+			.wrap { max-width: 420px; margin: 0 auto; }
+			.head { text-align: center; margin-bottom: 24px; }
+			.head img { width: 64px; height: 64px; border-radius: 14px; }
+			.head h1 { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; margin: 12px 0 2px; }
+			.head h1 span { color: var(--brand); }
+			.head p { margin: 0; color: var(--muted); font-size: 13px; }
+			.card {
+				background: #fff;
+				border: 1px solid var(--line);
+				border-radius: 14px;
+				padding: 20px;
+				margin-bottom: 16px;
+			}
+			.btn {
+				display: block;
+				background: var(--brand-hi);
+				color: #fff;
+				text-align: center;
+				text-decoration: none;
+				font-weight: 700;
+				font-size: 15px;
+				padding: 14px;
+				border-radius: 10px;
+			}
+			.btn.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+			.meta { margin: 12px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
+			.qr { text-align: center; }
+			.qr img { width: 168px; height: 168px; }
+			.qr p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+			h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; }
+			ol { margin: 0; padding-left: 20px; font-size: 14px; }
+			ol li { margin-bottom: 8px; }
+			.note { background: #fff7ed; border-color: #fed7aa; font-size: 13px; }
+			.note code { background: #fff; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+		</style>
+	</head>
+	<body>
+		<div class="wrap">
+			<div class="head">
+				<img src="/assets/container_depot/ess/icons/icon-192.png" alt="" />
+				<h1>Depot <span>OAK</span></h1>
+				<p>Gate, EIR &amp; operasional lapangan</p>
+			</div>
+
+			{% if apk %}
+			<div class="card">
+				<a class="btn" href="{{ apk.file_url }}" download>Download APK</a>
+				<p class="meta">
+					{{ apk.file_name }} · {{ (apk.file_size / 1048576) | round(1) }} MB ·
+					{{ frappe.utils.format_date(apk.creation, "d MMM yyyy") }}
+				</p>
+			</div>
+
+			<div class="card">
+				<h2>Cara pasang</h2>
+				<ol>
+					<li>Buka file APK yang sudah terunduh.</li>
+					<li>Android akan menanyakan izin pasang dari sumber ini — pilih <b>Izinkan</b>, lalu kembali dan tekan <b>Install</b>.</li>
+					<li>Buka app, login pakai akun Depot OAK Anda.</li>
+				</ol>
+				<p class="meta">Update app otomatis ikut server. Tidak perlu unduh ulang APK.</p>
+			</div>
+			{% else %}
+			<div class="card">
+				<p style="margin: 0; text-align: center; color: var(--muted); font-size: 14px">
+					APK belum tersedia. Pakai versi web dulu.
+				</p>
+			</div>
+			{% if is_admin %}
+			<div class="card note">
+				<h2>Untuk admin</h2>
+				Upload berkas <code>.apk</code> sebagai File <b>publik</b> di
+				<a href="/app/file">File manager</a>. Halaman ini otomatis memakai APK
+				publik yang paling baru — rilis berikutnya cukup upload ulang.
+			</div>
+			{% endif %}
+			{% endif %}
+
+			<div class="card">
+				<a class="btn secondary" href="/depot">Buka versi web</a>
+			</div>
+
+			{% if qr %}
+			<div class="card qr">
+				<img src="{{ qr }}" alt="QR halaman ini" />
+				<p>Scan untuk membuka halaman ini di HP</p>
+			</div>
+			{% endif %}
+
+			<p class="meta">{{ page_url }}</p>
+		</div>
+	</body>
+</html>
