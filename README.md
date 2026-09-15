@@ -211,15 +211,14 @@ tanpa data) supaya link/QR-nya bisa dikirim ke orang yang belum punya akun.
 Sekali seumur signing key:
 
 1. Buka [pwabuilder.com](https://www.pwabuilder.com), isi `https://app.oakdepo.com/depot`
-   → *Package For Stores* → Android → package name `com.oakdepo.depot`.
+   → *Package For Stores* → Android → package name `com.oakdepo.app.twa`.
 2. **Simpan `signing.keypair` + passwordnya.** Hilang = APK tidak bisa di-update, semua
    user harus uninstall-install ulang.
-3. Ambil fingerprint SHA-256 dari output PWABuilder (atau
-   `keytool -list -v -keystore <file>`), tempel menggantikan `GANTI_SHA256_FINGERPRINT`
-   di [nginx/conf.d/default.conf](nginx/conf.d/default.conf), lalu restart nginx.
-   Tanpa ini Chrome menolak verifikasi dan app tampil dengan address bar di atas layar.
-   Berkas ini dilayani nginx, bukan Frappe: Frappe menolak semua `/.well-known/` yang
-   bukan OAuth (`frappe/app.py`).
+3. Fingerprint SHA-256 signing key sudah terpasang di
+   [nginx/conf.d/default.conf](nginx/conf.d/default.conf) (package `com.oakdepo.app.twa`).
+   Tanpa berkas itu Chrome menolak verifikasi dan app tampil dengan address bar di atas
+   layar. Dilayani nginx, bukan Frappe: Frappe menolak semua `/.well-known/` yang bukan
+   OAuth (`frappe/app.py`). Ganti isinya hanya kalau signing key diganti.
 4. Cek: `curl https://app.oakdepo.com/.well-known/assetlinks.json` harus membalas JSON.
 
 Setiap rilis APK:
