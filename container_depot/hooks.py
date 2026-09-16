@@ -365,7 +365,7 @@ app_include_js = [
 
 # include js, css files in header of web template
 # web_include_css = "/assets/container_depot/css/container_depot.css"
-# login_remember — checkbox "Ingat saya" di halaman login Frappe standar: email dan
+# login_remember — checkbox "Remember Me" di halaman login Frappe standar: email dan
 # password disimpan di localStorage dan diisi ulang otomatis, supaya operator lapangan
 # tidak mengetik ulang tiap sesi habis. Password tersimpan apa adanya — siapa pun yang
 # memegang perangkat tidak terkunci bisa membacanya; lihat catatan di file-nya.

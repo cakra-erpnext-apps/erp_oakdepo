@@ -1,4 +1,4 @@
-// "Ingat saya" on the stock Frappe login page (/login) — loaded site-wide via the
+// "Remember Me" on the stock Frappe login page (/login) — loaded site-wide via the
 // `web_include_js` hook, so it must no-op on every other website page.
 //
 // The checkbox stores the email AND the password in localStorage and refills both on the
@@ -36,17 +36,35 @@
 		const password = form.querySelector("#login_password");
 		if (password) password.name = password.name || "password";
 
-		const wrap = document.createElement("div");
-		wrap.className = "form-group";
-		wrap.innerHTML =
-			'<label for="oak_remember_me" style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer">' +
-			'<input type="checkbox" id="oak_remember_me" style="margin:0">' +
-			"<span>Ingat saya</span></label>";
-		const actions = form.querySelector(".page-card-actions");
-		if (actions) actions.parentNode.insertBefore(wrap, actions);
-		else form.appendChild(wrap);
+		// Ride on the "Forgot Password?" line instead of inventing a row: its stylesheet
+		// already paints every direct child in --text-light at the small regular text style,
+		// so the checkbox inherits the page's own look. Turning that line into a flex row
+		// puts "Remember Me" on the left and leaves the link where it has always been.
+		const label = document.createElement("label");
+		label.setAttribute("for", "oak_remember_me");
+		label.style.cssText =
+			"display:flex;align-items:center;gap:6px;margin:0;font-weight:inherit;cursor:pointer";
+		label.innerHTML =
+			'<input type="checkbox" id="oak_remember_me" style="margin:0"><span>Remember Me</span>';
 
-		const box = wrap.querySelector("#oak_remember_me");
+		const forgot = form.querySelector(".forgot-password-message");
+		if (forgot) {
+			forgot.style.display = "flex";
+			forgot.style.alignItems = "center";
+			forgot.style.justifyContent = "space-between";
+			forgot.prepend(label);
+		} else {
+			// No forgot-password line on this site (it is rendered conditionally): fall back to
+			// a plain row above the button.
+			const wrap = document.createElement("div");
+			wrap.className = "form-group";
+			wrap.appendChild(label);
+			const actions = form.querySelector(".page-card-actions");
+			if (actions) actions.parentNode.insertBefore(wrap, actions);
+			else form.appendChild(wrap);
+		}
+
+		const box = label.querySelector("#oak_remember_me");
 		const saved = read();
 		box.checked = !!saved;
 		if (saved) {
