@@ -25,7 +25,20 @@ self.addEventListener("fetch", () => {
 // updates while someone is looking at it. The OS plays its own notification sound and
 // vibration for these — that is not something the page can do for itself, and it is the
 // whole reason for going through the push service rather than polling harder.
-const ICON = "/assets/container_depot/ess/icons/icon-192.png"
+
+// Two icons, two completely different jobs — the app icon can do neither.
+//
+//   notif-192: the large icon, shown in colour. The brand disc edge to edge with
+//     transparent corners, because Android keeps whatever is behind the artwork and
+//     `icon-192` carries the white page the launcher icon needs.
+//   badge-96: the small status-bar icon, which Android reads as an ALPHA MASK — colour
+//     is thrown away and the opaque pixels get tinted. `icon-192` is RGB with no alpha
+//     at all, so every pixel counted as opaque and the badge came out a blank square.
+//     This one is the palm alone, white on transparent.
+//
+// Both are derived from icons/icon-192.png; re-cut them if the logo ever changes.
+const ICON = "/assets/container_depot/ess/icons/notif-192.png"
+const BADGE = "/assets/container_depot/ess/icons/badge-96.png"
 
 self.addEventListener("push", (event) => {
 	let data = {}
@@ -39,7 +52,7 @@ self.addEventListener("push", (event) => {
 		self.registration.showNotification(data.title || "Depot OAK", {
 			body: data.body || "",
 			icon: ICON,
-			badge: ICON,
+			badge: BADGE,
 			// Tag is the source document. Two events about one order collapse into a
 			// single banner; `renotify` makes that replacement still alert, so an update
 			// worth knowing about is not swallowed by the collapsing.

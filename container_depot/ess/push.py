@@ -185,9 +185,15 @@ def unsubscribe(endpoint: str | None = None):
 	)
 
 	_require_authenticated_user()
-	filters = {"user": frappe.session.user}
-	if endpoint:
-		filters["endpoint_hash"] = hash_endpoint(endpoint)
+	# No endpoint means the caller could not name its own browser, and there is nothing
+	# safe left to do: deleting every row for the user would switch off their OTHER phone
+	# — one person on two handsets is normal here, and the second one never finds out.
+	if not endpoint:
+		return {"success": True, "removed": 0}
+	filters = {
+		"user": frappe.session.user,
+		"endpoint_hash": hash_endpoint(endpoint),
+	}
 	for name in frappe.get_all(SUBSCRIPTION_DOCTYPE, filters=filters, pluck="name"):
 		frappe.delete_doc(SUBSCRIPTION_DOCTYPE, name, ignore_permissions=True, force=True)
 	frappe.db.commit()
@@ -195,11 +201,15 @@ def unsubscribe(endpoint: str | None = None):
 
 
 @frappe.whitelist(methods=["POST"])
-def send_test():
+def send_test(endpoint: str | None = None):
 	"""POST — kirim satu push percobaan ke perangkat milik pemanggil sendiri.
 
 	Hanya ke ``frappe.session.user``; tidak menerima daftar penerima, jadi tidak bisa
 	dipakai mengirim apa pun ke orang lain.
+
+	``endpoint`` menyempitkan ke satu perangkat: perangkat yang menekan tombolnya. Tanpa
+	itu satu orang dengan dua HP mendapat jawaban yang menyesatkan — HP lain berbunyi,
+	HP di tangannya diam, dan tombolnya tetap bilang "terkirim".
 
 	Dikirim langsung, bukan lewat antrean seperti :func:`push_to_users`. Gunanya justru
 	untuk menjawab "sudah nyala atau belum" — jawaban yang datang beberapa detik kemudian
@@ -218,6 +228,7 @@ def send_test():
 		body="Notifikasi percobaan. Kalau ini muncul, notifikasi HP Anda sudah aktif.",
 		url="/depot",
 		tag="depot-test",
+		endpoint=endpoint,
 	)
 	return {"sent": sent}
 
@@ -251,16 +262,36 @@ def push_to_users(users: list[str], *, title: str, body: str = "", url: str = "/
 		frappe.log_error(title="Depot push enqueue failed", message=frappe.get_traceback())
 
 
-def deliver(users: list[str], title: str, body: str = "", url: str = "/depot", tag: str = ""):
-	"""Background job — send one payload to every live subscription of every user."""
+def deliver(
+	users: list[str],
+	title: str,
+	body: str = "",
+	url: str = "/depot",
+	tag: str = "",
+	endpoint: str | None = None,
+):
+	"""Background job — send one payload to every live subscription of every user.
+
+	``endpoint`` narrows it to that one browser, and only for :func:`send_test`. Real
+	events never pass it: an event is addressed to a person, and a person answers on
+	whichever handset is in their hand.
+	"""
 	keys = _keys()
 	if not keys:
 		return 0
 	_public, private = keys
 
+	filters = {"user": ["in", users], "enabled": 1}
+	if endpoint:
+		from container_depot.container_depot.doctype.depot_push_subscription.depot_push_subscription import (
+			hash_endpoint,
+		)
+
+		filters["endpoint_hash"] = hash_endpoint(endpoint)
+
 	rows = frappe.get_all(
 		SUBSCRIPTION_DOCTYPE,
-		filters={"user": ["in", users], "enabled": 1},
+		filters=filters,
 		fields=["name", "endpoint", "p256dh", "auth", "failure_count"],
 		limit_page_length=0,
 	)

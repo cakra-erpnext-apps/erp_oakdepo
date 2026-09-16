@@ -65,14 +65,33 @@ async function api(path, body) {
 	return (await res.json()).message
 }
 
-/** Read current state without prompting for anything. Safe to call on mount. */
+/**
+ * Read current state without prompting for anything. Safe to call on mount.
+ *
+ * A browser subscription is only half the truth, and the half that outlives the other:
+ * it survives a logout into a different account, a wiped `Depot Push Subscription` table,
+ * and any bug that drops the row server-side. In that state `getSubscription()` still
+ * answers yes, so the gate stays quiet and the profile toggle reads "aktif" — while the
+ * server holds nothing for this device and no code path ever offers to register it again.
+ * The phone is then permanently silent, and the same person's OTHER phone still rings,
+ * which is what makes it look like a routing problem rather than a missing row.
+ *
+ * So re-register on every read. `subscribe` is an upsert keyed by the endpoint, needs no
+ * permission prompt, and is one request per app load.
+ */
 export async function refreshPushState() {
 	state.supported = pushSupported()
 	if (!state.supported) return state
 	state.permission = Notification.permission
 	try {
 		const reg = await swReady()
-		state.subscribed = !!(await reg.pushManager.getSubscription())
+		const subscription = await reg.pushManager.getSubscription()
+		state.subscribed = !!subscription
+		if (subscription) {
+			// Swallowed: a network blip here must not report the device as unsubscribed
+			// and drag the gate up over a working phone. The next load retries.
+			await api("subscribe", { subscription: subscription.toJSON() }).catch(() => {})
+		}
 	} catch (e) {
 		state.subscribed = false
 	}
@@ -179,12 +198,20 @@ export async function enablePush() {
 	}
 }
 
-/** Kirim push percobaan ke perangkat sendiri. Mengembalikan jumlah perangkat terkirim. */
+/**
+ * Kirim push percobaan ke PERANGKAT INI. Mengembalikan jumlah perangkat terkirim (0/1).
+ *
+ * Endpoint-nya dikirim supaya yang diuji adalah HP yang menekan tombolnya. Tanpa itu
+ * server mengirim ke semua perangkat orang tersebut, jadi HP kedua yang belum terdaftar
+ * tetap membaca "terkirim" karena HP pertama yang berbunyi.
+ */
 export async function testPush() {
 	state.busy = true
 	state.error = null
 	try {
-		const res = await api("send_test", {})
+		const reg = await swReady()
+		const subscription = await reg.pushManager.getSubscription()
+		const res = await api("send_test", { endpoint: subscription?.endpoint || "" })
 		if (res?.error) throw new Error(res.error)
 		return res?.sent ?? 0
 	} catch (e) {
