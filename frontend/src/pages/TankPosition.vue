@@ -222,7 +222,7 @@
 				</p>
 				<div class="mt-3 flex gap-2">
 					<button class="oak-btn oak-btn-primary min-h-[48px] flex-1" @click="backToList">{{ labels.tankPosNext }}</button>
-					<button class="oak-btn oak-btn-secondary min-h-[48px] flex-1" @click="saved = null">{{ labels.tankPosDone }}</button>
+					<button class="oak-btn oak-btn-secondary min-h-[48px] flex-1" @click="finish">{{ labels.tankPosDone }}</button>
 				</div>
 			</section>
 
@@ -521,6 +521,23 @@ function backToList() {
 	boardRes.reload()
 }
 
+// "Selesai" berarti selesai — keluar dari layar ini, bukan kembali ke formulir tank yang baru
+// saja dicatat (yang dilakukan `saved = null`, dan terbaca sebagai tombol yang tidak berbuat
+// apa-apa: kartu hijau hilang, isian yang sama muncul lagi).
+//
+// Ke mana keluarnya tergantung dari mana masuknya. Yang datang lewat tautan `?c=` sedang di
+// tengah pekerjaan lain — membaca kartu tank di Monitor, menutup survey — dan yang mereka
+// minta hanyalah mencatat letaknya; mengembalikan mereka ke papan Letak Tank berarti jalan
+// kembali harus ditempuh sendiri. Yang masuk dari papan ini memang sedang mencatat tank satu
+// per satu, jadi papan itulah tempat kembalinya.
+function finish() {
+	if (cameFromDeepLink.value && window.history.length > 1) {
+		router.back()
+		return
+	}
+	backToList()
+}
+
 // ---- simpan ----
 const saving = ref(false)
 const saveError = ref("")
@@ -601,9 +618,15 @@ async function addPhotos(files) {
 
 // Deep link: `/tank-position?c=TNKU1234567` langsung membuka tank itu — bentuk yang dipakai
 // tautan dari layar survey, Monitor, dan riwayat posisi.
+// Dicatat sebelum query-nya dihapus: `router.replace` di bawah membuang `?c=` supaya reload
+// tidak membuka ulang tank yang sudah ditinggalkan, jadi sesudahnya tidak ada lagi jejak
+// bahwa layar ini dibuka dari layar lain. `finish()` membutuhkannya.
+const cameFromDeepLink = ref(false)
+
 onMounted(() => {
 	const c = route.query.c
 	if (!c) return
+	cameFromDeepLink.value = true
 	router.replace({ query: {} })
 	open(String(c))
 })
