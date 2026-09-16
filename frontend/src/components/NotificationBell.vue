@@ -178,11 +178,29 @@ function fromNow(t) {
 	return t ? dayjs(t).fromNow() : ""
 }
 
+// Android freezes the WebView of a backgrounded APK: the interval below stops firing and
+// resumes whenever it feels like it, so a handset reopened after an hour showed the badge it
+// had when it was put away until something else triggered a load. Reopening the app is
+// exactly the moment the count has to be right, so refetch on every return to the
+// foreground — and drop the timer while hidden, since a frozen tab's interval only wakes up
+// to ask a question nobody is looking at.
+function onVisibility() {
+	if (document.hidden) {
+		if (timer) clearInterval(timer)
+		timer = null
+		return
+	}
+	load()
+	if (!timer) timer = setInterval(load, 60000)
+}
+
 onMounted(() => {
 	load()
 	timer = setInterval(load, 60000) // refresh the badge while the app is open
+	document.addEventListener("visibilitychange", onVisibility)
 })
 onBeforeUnmount(() => {
 	if (timer) clearInterval(timer)
+	document.removeEventListener("visibilitychange", onVisibility)
 })
 </script>
