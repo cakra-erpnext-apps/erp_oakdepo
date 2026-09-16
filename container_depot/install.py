@@ -2111,31 +2111,104 @@ def setup_permissions():
 		for dt, letters in _office_role_perms(role_name, doctypes).items():
 			_ensure_docperm(dt, role_name, letters, submittable[dt])
 
-	_grant_currency_read()
+	_grant_link_select()
 
 	frappe.db.commit()
 
 
-# `Currency` gets read for EVERYONE. Frappe ships it to Accounts/Sales/Purchase User only,
-# so Admin Ops — holding none of those — hit `Insufficient Permission for Currency` on the
-# currency picker of `Depot Contract` (2026-09-16). The picker is also on `Cleaning Order`,
-# `Container Booking Charge` and `Repair Used Item` whenever the line is not `currency_locked`,
-# so the gap was never contract-specific.
+# Link pickers are NOT a second permission layer. Access to depot work is decided ONCE, by the
+# DocPerm on the form itself (and the menu that follows from it). A user who may edit a Repair
+# Order must be able to pick its technician; making them ALSO hold an HR role before the
+# `Employee` picker opens is a second gate on a decision already taken — and it fails as a 403
+# inside a form they were told they may use.
 #
-# Granted to `All` rather than to a role list because the list of currencies is a reference
-# table — codes, symbols, decimal places — with nothing to protect: a role-by-role grant is
-# just the same 403 waiting for the next role. Write stays with System Manager.
+# That is the shape of every bug this fixes: `Insufficient Permission for Currency` on
+# `Depot Contract`, because Admin Ops holds no Accounts/Sales/Purchase role (2026-09-16); then
+# the same for `Branch`; and the sweep finds `Employee`, `User`, `Role`, `Price List` and
+# `Warehouse` queued up behind them. Granting one doctype at a time is the same 403 waiting for
+# the next field, so the rule is applied to every doctype a Container Depot form links to.
 #
-# `frappe.permissions.add_permission` is used rather than this module's `_ensure_docperm`
-# precisely because Currency is a core doctype: it calls `setup_custom_perms`, which COPIES
-# the shipped DocPerm rows into Custom DocPerm before adding, so System Manager and the
-# accounting roles keep the access they ship with. A raw insert would blank them.
-def _grant_currency_read() -> None:
-	"""Add-only read on `Currency` for every role. Idempotent."""
-	from frappe.permissions import add_permission
+# WHAT IS GRANTED IS `select`, NOT `read`. Frappe keeps them separate: `select` means exactly
+# "may be chosen in a Link field", and `has_permission` falls back to `read` only when `select`
+# is absent (frappe/permissions.py). So the picker opens while the list view, report view and
+# export of that doctype stay shut to anyone without a real role on it. What it does expose is
+# the names inside the picker — customers, employees — to every signed-in user. Deliberate:
+# those names are already on the forms and in the PWA.
+#
+# `frappe.permissions.setup_custom_perms` is called first because these are core/ERPNext
+# doctypes: it COPIES the shipped DocPerm rows into Custom DocPerm, so the doctype's own roles
+# keep the access they ship with. Without it the first custom row blanks them all.
+#
+# The row is then inserted directly rather than through `add_permission`, which takes a single
+# ptype and leaves the REST at their field defaults — and `Custom DocPerm` defaults `read` and
+# `export` to 1 (custom_docperm.json). Asking it for `select` therefore hands out read and
+# export too, which is the opposite of the point. Every flag is spelled out below.
+# The four doctypes Frappe's own metadata layer refuses to read Custom DocPerm for:
+# `Meta.set_custom_permissions` skips them by name (frappe/model/meta.py), so a row written
+# here is never consulted. Excluded rather than written and ignored.
+#
+# The cost is real and worth naming: the `DocType` pickers on `Gate Entry.order_doctype` and
+# `OAK Monthly Invoice Item.reference_doctype` stay closed to everyone below System Manager.
+# Both fields are filled by code — the gate rows by `_record_gate_in` / `mark_gate_out`, the
+# invoice rows by the billing collector — so nothing a person does is blocked by it. If a
+# human ever needs to pick one, the fix is a Select field of the handful of valid doctypes,
+# not a System Manager role.
+META_PERM_DOCTYPES = {"DocType", "DocField", "DocPerm", "Custom DocPerm"}
 
-	if not frappe.db.exists("Custom DocPerm", {"parent": "Currency", "role": "All"}):
-		add_permission("Currency", "All", ptype="read")
+
+def _link_targets() -> set[str]:
+	"""Every doctype OUTSIDE Container Depot that a Container Depot form links to.
+
+	Child tables are walked into rather than listed: a picker on a grid row is still a picker.
+	Dynamic Link is skipped — its target is a value in a sibling field, so there is no doctype
+	to grant here.
+	"""
+	seen: set[str] = set()
+	targets: set[str] = set()
+
+	def walk(doctype: str) -> None:
+		if doctype in seen:
+			return
+		seen.add(doctype)
+		for field in frappe.get_meta(doctype).fields:
+			if not field.options:
+				continue
+			if field.fieldtype in ("Table", "Table MultiSelect"):
+				walk(field.options)
+			if field.fieldtype in ("Link", "Table MultiSelect"):
+				targets.add(field.options)
+
+	depot = _depot_doctypes()
+	for doctype in depot:
+		walk(doctype)
+	return targets - set(depot) - META_PERM_DOCTYPES
+
+
+def _grant_link_select() -> None:
+	"""Add-only `select` on every linked doctype, for every role. Idempotent."""
+	from frappe.permissions import setup_custom_perms
+
+	for target in sorted(_link_targets()):
+		if not frappe.db.exists("DocType", target):
+			continue  # link left pointing at a doctype an app has since removed
+		meta = frappe.get_meta(target)
+		if meta.istable or meta.module == "Container Depot":
+			continue
+		if any(p.role == "All" and (p.get("select") or p.get("read")) for p in meta.permissions):
+			continue
+		setup_custom_perms(target)
+		frappe.get_doc({
+			"doctype": "Custom DocPerm",
+			"parent": target,
+			"parenttype": "DocType",
+			"parentfield": "permissions",
+			"role": "All",
+			"permlevel": 0,
+			"select": 1,
+			"read": 0,
+			"export": 0,
+		}).insert(ignore_permissions=True)
+		frappe.clear_cache(doctype=target)
 
 
 # ---------------------------------------------------------------------------
