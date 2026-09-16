@@ -52,31 +52,15 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench &&
 log "migrate"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench && bench --site '$SITE' migrate"
 
-# `bench build` memulai tiap jalannya dengan make_asset_dirs(): sites/assets/<app> dihapus dan
-# diganti symlink ke public/ milik app-nya (frappe/build.py, link_assets_dir). Jadi build SELALU
-# menulis ke pohon sumber, dan untuk container_depot pohon itu adalah bind mount host — karena itu
-# direktori keluarannya disiapkan di atas. Konsekuensi keduanya: build harus SELALU mendahului
-# langkah materialize di bawah, sebab ia meninggalkan sites/assets/container_depot sebagai symlink
-# yang tidak bisa diikuti nginx dari container-nya sendiri.
-# esbuild menulis berkas ber-hash ke container_depot/public/dist, dan direktori itu ada di bind
-# mount milik user host sementara bench jalan sebagai uid frappe di dalam container — mkdir-nya
-# mati dengan EACCES. Dua uid memang menulis ke pohon ini (build PWA di bawah jalan sebagai user
-# host, bench build sebagai frappe), jadi yang dilonggarkan hanya direktori keluarannya, bukan
-# seluruh public/.
-# ponytail: chmod di satu direktori; samakan uid host dengan uid frappe kalau suatu saat mau rapi
-log "prepare container_depot asset output dir"
-mkdir -p container_depot/public/dist
-# Rekursif di dist: jalan yang gagal sebelumnya bisa meninggalkan dist/js atau dist/css milik uid
-# lain, dan esbuild menulis ke dalamnya, bukan cuma ke dist sendiri.
-chmod a+rwX container_depot/public
-chmod -R a+rwX container_depot/public/dist
-
+# container_depot sengaja TIDAK ikut di sini: ia satu-satunya app yang datang dari bind mount
+# host, jadi `bench build` tidak boleh menulis ke sana (uid host != uid frappe di container) dan
+# hasil build-nya akan dihapus lagi oleh langkah materialize di bawah. Ia dibangun SESUDAH
+# materialize, langsung ke direktori yang dilayani nginx.
 log "build bench assets"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "
   set -euo pipefail
   cd /home/frappe/frappe-bench
   bench build --apps frappe,erpnext
-  bench build --apps container_depot
   bench build --apps hrms,raven
   bench build --apps helpdesk
   bench build --apps gameplan
@@ -117,6 +101,17 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "
       echo \"skip \$app no public dir\"
     fi
   done
+"
+
+# Sesudah materialize, bukan sebelumnya: berkas ber-hash container_depot ditulis langsung ke
+# direktori yang dilayani nginx. Dibangun lebih awal, langkah materialize di atas akan menghapus
+# dist-nya dan assets.json akan menunjuk berkas yang tidak ada — Desk dan halaman login memuat
+# script 404 tanpa satu pun pesan error.
+log "build container_depot assets into the served directory"
+docker exec erp_oakdepo_prod-backend-1 bash -lc "
+  set -euo pipefail
+  cd /home/frappe/frappe-bench
+  bench build --apps container_depot
 "
 
 log "clear cache"
