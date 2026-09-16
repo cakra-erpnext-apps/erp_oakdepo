@@ -94,6 +94,11 @@ services:
         for i in $(seq 1 120); do (echo > /dev/tcp/mariadb/3306) >/dev/null 2>&1 && break; sleep 1; done
         echo "MariaDB ready"
         cd /home/frappe/frappe-bench
+        # container_depot datang dari bind mount host, dan `bench build` menulis berkas ber-hash-nya
+        # ke apps/container_depot/container_depot/public/dist sebagai uid frappe. Di host, direktori
+        # itu harus bisa ditulis uid tersebut (`mkdir -p container_depot/public/dist && chmod a+rwX
+        # container_depot/public container_depot/public/dist`, seperti scripts/prod-update.sh), kalau
+        # tidak build mati dengan EACCES.
         env/bin/pip install -e apps/container_depot --no-deps -q
         echo -e "frappe\nerpnext\nhrms\ncrm\nhelpdesk\nraven\ngameplan\ntelephony\ncontainer_depot" > sites/apps.txt
         if [ ! -d "sites/${SITE_NAME}" ]; then
@@ -108,9 +113,7 @@ services:
           bench --site "${SITE_NAME}" migrate
           bench --site "${SITE_NAME}" set-config host_name "https://${SITE_NAME}"
           bench --site "${SITE_NAME}" set-config developer_mode 0
-          # container_depot dibangun BELAKANGAN, sesudah asetnya dimaterialisasi — lihat catatan
-          # di bawah dan di scripts/prod-update.sh.
-          bench build --production --apps frappe,erpnext,hrms,crm,helpdesk,raven,gameplan,telephony
+          bench build --production --apps frappe,erpnext,hrms,crm,helpdesk,raven,gameplan,telephony,container_depot
           # Nginx runs in a separate container. Frappe build creates symlinks in sites/assets,
           # but symlink targets do not exist inside nginx. Use physical copies.
           rm -rf sites/assets/frappe sites/assets/erpnext sites/assets/hrms sites/assets/crm sites/assets/helpdesk sites/assets/raven sites/assets/gameplan sites/assets/telephony sites/assets/container_depot
@@ -134,11 +137,6 @@ services:
           mv /tmp/oakdepo_assets/gameplan sites/assets/gameplan 2>/dev/null || true
           mv /tmp/oakdepo_assets/telephony sites/assets/telephony 2>/dev/null || true
           mv /tmp/oakdepo_assets/container_depot sites/assets/container_depot
-          # Baru sekarang: container_depot satu-satunya app yang datang dari bind mount host, jadi
-          # `bench build` tidak bisa menulis dist ke sumbernya (uid host != uid frappe) dan salinan
-          # di atas akan menghapusnya lagi kalau dibangun lebih dulu. Dibangun di sini, berkas
-          # ber-hash-nya mendarat langsung di direktori yang dilayani nginx.
-          bench build --production --apps container_depot
           cp -rL apps/container_depot/frontend/dist sites/assets/container_depot/frontend 2>/dev/null || true
           echo "[create-site] Done."
         else
