@@ -66,6 +66,26 @@ export const labels = {
 	pushTestFailed: "Gagal mengirim notifikasi percobaan.",
 	pushSwTimeout: "Aplikasi belum siap menerima notifikasi. Tutup lalu buka lagi aplikasinya; bila tetap muncul, hubungi admin.",
 	pushIosHint: "Di iPhone, notifikasi hanya jalan setelah aplikasi ditambahkan ke Layar Utama.",
+	// --- Wajib aktif (NotifGate) — notifikasi tidak boleh dilewat ---
+	pushGateTitle: "Aktifkan notifikasi dulu",
+	pushGateBody:
+		"Pekerjaan baru dikirim lewat notifikasi HP. Selama notifikasi belum aktif di perangkat ini, Anda tidak bisa memakai aplikasi.",
+	pushGateBtn: "Aktifkan Notifikasi",
+	pushGateAllow: 'Ketuk "Izinkan" pada kotak izin yang muncul.',
+	pushGateDeniedTitle: "Notifikasi diblokir di perangkat ini",
+	pushGateDeniedBody:
+		"Izin notifikasi pernah ditolak, jadi aplikasi tidak bisa meminta ulang. Izinkan lewat setelan, lalu ketuk Cek Lagi.",
+	pushGateAndroidStep1: "Buka Setelan HP > Aplikasi > Depot OAK > Notifikasi.",
+	pushGateAndroidStep2: "Hidupkan notifikasi, lalu kembali ke aplikasi ini.",
+	pushGateIosStep1: "Buka Setelan iPhone > Depot OAK > Notifikasi.",
+	pushGateIosStep2: 'Hidupkan "Izinkan Notifikasi", lalu kembali ke aplikasi ini.',
+	pushGateRecheck: "Cek Lagi",
+	pushGateSkip: "Lewati dulu",
+	pushGateSkipHint:
+		"Tanpa notifikasi, pekerjaan baru tidak masuk ke HP Anda. Layar ini muncul lagi 30 menit lagi.",
+	pushGateWhy: "Kenapa wajib?",
+	pushGateWhyBody:
+		"Gate, EIR, cleaning dan M&R dibagikan lewat notifikasi. Tanpa notifikasi, pekerjaan Anda baru terlihat kalau kebetulan membuka aplikasi.",
 	// --- Wajib install (InstallGate) ---
 	installTitle: "Install Depot OAK dulu",
 	installBody:

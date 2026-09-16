@@ -60,6 +60,9 @@
 		</main>
 
 		<BottomNav v-if="session.isLoggedIn" />
+		<!-- Notifikasi wajib aktif: renders itself only when this device can be pushed to
+		     and is not subscribed yet. Overlays everything until it is. -->
+		<NotifGate v-if="session.isLoggedIn" />
 		<ToastHost />
 		<LightboxHost />
 		<ConfirmHost />
@@ -76,6 +79,7 @@ import { link } from "@/data/link"
 import { clearBrowserVisits, mustInstall } from "@/utils/install"
 import InstallGate from "@/components/InstallGate.vue"
 import BottomNav from "@/components/BottomNav.vue"
+import NotifGate from "@/components/NotifGate.vue"
 import NotificationBell from "@/components/NotificationBell.vue"
 import ToastHost from "@/components/ToastHost.vue"
 import LightboxHost from "@/components/LightboxHost.vue"

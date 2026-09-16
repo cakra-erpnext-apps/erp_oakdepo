@@ -40,7 +40,7 @@ function urlBase64ToUint8Array(base64String) {
 // whose scope covers this page it simply stays pending, and the button sits on "Memproses…"
 // for the rest of the session. A scope mismatch already caused exactly that once. Cap the
 // wait so a broken registration surfaces as an error the operator can report.
-const SW_READY_TIMEOUT_MS = 10000
+const SW_READY_TIMEOUT_MS = 5000
 
 function swReady() {
 	return Promise.race([
@@ -77,6 +77,69 @@ export async function refreshPushState() {
 		state.subscribed = false
 	}
 	return state
+}
+
+// Skipping is a pause, never a decision. A browser or a deployment that genuinely cannot
+// subscribe must not take someone's shift with it, but a phone that CAN ring has to be
+// asked again — an operator who skips once still misses every job until push is on.
+//
+// So the snooze is deliberately weak in two ways at once:
+//   - sessionStorage, so closing the app and reopening it brings the gate straight back;
+//   - plus a short time cap, so a handset that is never closed is asked again within
+//     half an hour.
+//
+// `depot.push.gateOff` = "1" is the one permanent opt-out, in localStorage and set from
+// the console: for a dev machine or a site that will never have push. An operator never
+// finds it.
+// ponytail: two storage keys, no server-side preference until someone asks who skipped
+const GATE_OFF_KEY = "depot.push.gateOff"
+const GATE_SNOOZE_KEY = "depot.push.gateSnoozeUntil"
+export const GATE_SNOOZE_MS = 30 * 60 * 1000
+
+function gateSnoozed() {
+	try {
+		if (localStorage.getItem(GATE_OFF_KEY) === "1") return true
+		return Date.now() < (parseInt(sessionStorage.getItem(GATE_SNOOZE_KEY), 10) || 0)
+	} catch (e) {
+		return false // private mode has no memory, so the gate stays on
+	}
+}
+
+/** Pause the gate for GATE_SNOOZE_MS, this app session only. Called by the skip button. */
+export function snoozePushGate() {
+	try {
+		sessionStorage.setItem(GATE_SNOOZE_KEY, String(Date.now() + GATE_SNOOZE_MS))
+	} catch (e) {
+		/* nothing to remember; the gate comes back on the next check */
+	}
+}
+
+/**
+ * Should this device be blocked until notifications are on?
+ *
+ * Only when a push actually could arrive: a browser that supports it AND a server that
+ * holds VAPID keys. Without the key check a bench with push unconfigured would lock every
+ * operator out of the app over a switch that can never flip.
+ */
+export async function pushGateNeeded() {
+	if (!pushSupported()) return false
+	if (gateSnoozed()) return false
+	state.supported = true
+	state.permission = Notification.permission
+
+	const cfg = await api("get_config").catch(() => null)
+	if (!cfg?.enabled || !cfg.public_key) return false
+
+	// Permission first, and deliberately WITHOUT refreshPushState: that one waits on
+	// `serviceWorker.ready`, which on a failed registration only gives up after
+	// SW_READY_TIMEOUT_MS — ten seconds of the normal app on screen before the gate
+	// appears. Nothing about an unanswered permission needs the worker.
+	if (state.permission !== "granted") return true
+
+	// Granted: the only open question is whether a subscription still exists, and that
+	// does need the worker.
+	await refreshPushState()
+	return !state.subscribed
 }
 
 /** Ask permission, subscribe, and register the endpoint. Call from a click handler. */
