@@ -2111,7 +2111,31 @@ def setup_permissions():
 		for dt, letters in _office_role_perms(role_name, doctypes).items():
 			_ensure_docperm(dt, role_name, letters, submittable[dt])
 
+	_grant_currency_read()
+
 	frappe.db.commit()
+
+
+# `Currency` gets read for EVERYONE. Frappe ships it to Accounts/Sales/Purchase User only,
+# so Admin Ops — holding none of those — hit `Insufficient Permission for Currency` on the
+# currency picker of `Depot Contract` (2026-09-16). The picker is also on `Cleaning Order`,
+# `Container Booking Charge` and `Repair Used Item` whenever the line is not `currency_locked`,
+# so the gap was never contract-specific.
+#
+# Granted to `All` rather than to a role list because the list of currencies is a reference
+# table — codes, symbols, decimal places — with nothing to protect: a role-by-role grant is
+# just the same 403 waiting for the next role. Write stays with System Manager.
+#
+# `frappe.permissions.add_permission` is used rather than this module's `_ensure_docperm`
+# precisely because Currency is a core doctype: it calls `setup_custom_perms`, which COPIES
+# the shipped DocPerm rows into Custom DocPerm before adding, so System Manager and the
+# accounting roles keep the access they ship with. A raw insert would blank them.
+def _grant_currency_read() -> None:
+	"""Add-only read on `Currency` for every role. Idempotent."""
+	from frappe.permissions import add_permission
+
+	if not frappe.db.exists("Custom DocPerm", {"parent": "Currency", "role": "All"}):
+		add_permission("Currency", "All", ptype="read")
 
 
 # ---------------------------------------------------------------------------
