@@ -24,7 +24,7 @@ from frappe.utils import add_to_date, cint, date_diff, getdate, today
 
 from container_depot.api import _require_authenticated_user
 from container_depot.ess.guard import require_any_menu, require_menu
-from container_depot.container_depot import container_activity, container_status
+from container_depot.container_depot import container_activity, container_position, container_status
 from container_depot.container_depot.user_branch import get_user_depots
 
 # Canonical Monitor status buckets — order-state centric so a field observer sees the
@@ -607,6 +607,7 @@ def get_tank_detail(container):
 		"location": doc.current_location,
 		"location_updated_on": str(doc.location_updated_on) if doc.location_updated_on else None,
 		"location_updated_by": doc.location_updated_by,
+		"location_photos": _location_photos(doc.name),
 		"in_depot_days": _in_depot_days(doc),
 		# Semua pekerjaan yang masih memegang tank ini, bukan cuma yang menentukan bucket —
 		# aturannya milik container_status, satu-satunya definisi "belum selesai" di app ini.
@@ -636,6 +637,30 @@ def _in_depot_days(doc):
 	return max(0, date_diff(today(), getdate(since)))
 
 
+def _location_photos(container):
+	"""Foto dari catatan letak TERAKHIR — bagian dari posisi yang tidak bisa didebat.
+
+	"Blok kanan tumpukan 2" adalah kalimat seseorang; fotonya yang dicocokkan orang berikutnya
+	dengan tumpukan di depannya. Layar Monitor sudah menampilkan kalimat itu beserta umurnya,
+	jadi gambarnya ikut di sini dan bukan satu tap lagi ke menu Letak Tank.
+
+	Hanya pembacaan terbaru: ia yang mengisi ``Container.current_location``, jadi ia pula yang
+	fotonya menggambarkan letak yang sedang ditampilkan. Foto pembacaan lama menggambarkan
+	tempat tank ini TIDAK berada lagi — riwayatnya ada di menu Letak Tank, dengan tanggalnya.
+	"""
+	rows = frappe.get_all(
+		"Container Position",
+		filters={"container": container},
+		fields=["name"],
+		order_by="recorded_on desc, creation desc",
+		limit_page_length=1,
+	)
+	if not rows:
+		return []
+	container_position._attach_photos(rows)
+	return rows[0].get("photos") or []
+
+
 def _open_orders(container):
 	"""``container_open_orders`` + sejak kapan dan oleh siapa tiap pekerjaan berjalan.
 
@@ -646,6 +671,16 @@ def _open_orders(container):
 	orders = container_status.container_open_orders(container)
 	if not orders:
 		return []
+	# Ke mana sebuah baris "Proses aktif" membuka, dijawab di sini dan bukan oleh peta rute
+	# milik layar Monitor sendiri. Resolver yang sama melayani lonceng dan banner push, dan ia
+	# membaca STATUS dokumennya: order yang sudah selesai jatuh ke Riwayat, yang masih jalan ke
+	# formulirnya, dan EIR draft ke layar EIR dengan tipe yang benar. Peta di sisi klien hanya
+	# mengenal dua doctype, jadi EIR-In — satu-satunya pekerjaan yang tidak punya order lain di
+	# belakangnya — adalah baris yang tidak bisa dibuka sama sekali.
+	from container_depot.ess.notification_routes import route_for
+
+	for o in orders:
+		o["route"] = route_for(o["doctype"], o["name"])
 	names = [o["name"] for o in orders]
 	started = {}
 	for a in frappe.get_all(

@@ -109,6 +109,19 @@
 						{{ fill(labels.monitorYardRecorded, { t: fmtDateTime(tank.location_updated_on) }) }}
 						<template v-if="tank.location_updated_by"> · {{ tank.location_updated_by }}</template>
 					</p>
+					<!-- Foto pembacaan terakhir. Kalimat letak adalah deskripsi seseorang; foto ini
+						yang dicocokkan orang berikutnya dengan tumpukan di depannya, jadi ia ikut di
+						kartu yang sama, bukan satu tap lagi ke menu Letak Tank. -->
+					<div v-if="locationPhotos.length" class="grid grid-cols-3 gap-2 pt-1">
+						<img
+							v-for="(url, i) in locationPhotos"
+							:key="url"
+							:src="url"
+							:alt="labels.monitorYardTitle"
+							class="aspect-square w-full rounded-lg border border-gray-200 object-cover"
+							@click="openLightbox(locationPhotos, i)"
+						>
+					</div>
 				</template>
 				<p v-else class="text-xs text-gray-500">{{ labels.monitorYardEmpty }}</p>
 				<router-link :to="{ path: '/tank-position', query: { c: tank.name } }" class="oak-btn oak-btn-secondary mt-1 w-full">
@@ -177,6 +190,7 @@ import { computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { labels, statusLabels } from "@/utils/labels"
+import { openLightbox } from "@/utils/lightbox"
 import { since, fmtDateTime } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
 
@@ -192,6 +206,7 @@ const detailRes = cachedResource({
 })
 const tank = computed(() => (detailRes.data?.success ? detailRes.data : null))
 const openOrders = computed(() => tank.value?.open_orders || [])
+const locationPhotos = computed(() => tank.value?.location_photos || [])
 const activities = computed(() => tank.value?.activities || [])
 
 function fill(tpl, vars) {
@@ -233,17 +248,19 @@ function orderLine(o) {
 	return [started, o.by, o.status].filter(Boolean).join(" · ")
 }
 
-const ROUTES = { "Repair Order": "/mr", "Cleaning Order": "/cleaning" }
+// Rutenya datang dari server (`ess/inventory._open_orders`), bukan dari peta doctype di sini:
+// ia sudah lengkap dengan query-nya, sudah sadar status dokumen, dan sama persis dengan yang
+// dipakai lonceng serta banner push — tiga pintu ke pekerjaan yang sama tidak boleh berbeda
+// pendapat. Baris tanpa rute tetap ada, hanya tidak bisa ditekan.
 function routeOf(o) {
-	return ROUTES[o.doctype] || null
+	return o.route || null
 }
 function openOrder(o) {
 	const path = routeOf(o)
 	if (!path) return
-	router.push({ path, query: { o: o.name } })
+	router.push(path)
 }
 // Pekerjaan yang ditawarkan tombol kaki: yang pertama yang PUNYA layar untuk dibuka.
-// Sebuah EIR draft tidak dibuka dari sini (layar EIR punya alur batch-nya sendiri).
 const primaryOrder = computed(() => openOrders.value.find((o) => routeOf(o)) || null)
 
 function dotTone(a) {
