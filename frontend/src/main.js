@@ -3,6 +3,7 @@ import App from "./App.vue"
 import router from "./router"
 import { pruneReads } from "@/data/cache"
 import { initTheme } from "@/utils/theme"
+import { initHaptics } from "@/utils/haptics"
 
 import {
 	Button,
@@ -18,6 +19,9 @@ import "./main.css"
 // onto <html> so the boot splash paints in it; this takes the same state over and keeps
 // tracking the OS setting from here on.
 initTheme()
+// One delegated listener for the whole app — see utils/haptics.js for why it is not a
+// per-button directive.
+initHaptics()
 
 const app = createApp(App)
 
