@@ -320,47 +320,47 @@ jinja = {
 # include js, css files in header of desk.html
 # Small desk-form polish (e.g. aligning Section Break descriptions with their
 # centered section head/body — a Frappe rendering quirk). See public/css.
-app_include_css = "container_depot.bundle.css"
+app_include_css = "/assets/container_depot/css/container_depot.css"
 # notification_click — ask whether the recipient may open a notification's document before
 # following the link, so a Desk bell tap gives a plain reason instead of Frappe's
 # "Insufficient Permission" page. Fails open; see the file.
 app_include_js = [
-	"notification_click.bundle.js",
+	"/assets/container_depot/js/notification_click.js",
 	# Backport perbaikan Frappe untuk pill Table MultiSelect (lihat file-nya).
-	"table_multiselect_fix.bundle.js",
+	"/assets/container_depot/js/table_multiselect_fix.js",
 	# Sidebar Desk: backport perbaikan Frappe untuk sidebar yang hilang saat workspace
 	# di-refresh, plus aturan "menu Container Depot tetap di sidebar Container Depot"
 	# (lihat file-nya).
-	"sidebar_workspace_fix.bundle.js",
+	"/assets/container_depot/js/sidebar_workspace_fix.js",
 	# container_depot.render_system_facts — the shared sidebar block every depot document
 	# shows its system-filled facts in (see the file).
-	"system_facts.bundle.js",
+	"/assets/container_depot/js/system_facts.js",
 	# container_depot.form_message — spanduk berkunci di atas form, supaya pesan yang sama
 	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
-	"form_message.bundle.js",
+	"/assets/container_depot/js/form_message.js",
 	# container_depot.priority_pill / urgency_subject — penanda prioritas di Desk list, dengan
 	# kosakata yang sama persis dengan PWA ("MENDESAK · H-2 · 9 Sep"): satu bentuk untuk
 	# kolomnya dan satu untuk kolom subject yang tidak pernah terpotong (lihat file-nya).
-	"urgency_mark.bundle.js",
+	"/assets/container_depot/js/urgency_mark.js",
 	# container_depot.rate_card_notice — warns on an order whose tank owner has no live
 	# Depot Contract, so the work is not done at rate 0 and then never billed.
-	"rate_card_notice.bundle.js",
+	"/assets/container_depot/js/rate_card_notice.js",
 	# container_depot.show_tank_history — dialog riwayat satu tank di balik keempat
 	# register (Steam / PP / Methanol / Periodic Test). Dipakai formatter report-nya.
-	"register_history.bundle.js",
+	"/assets/container_depot/js/register_history.js",
 	# Jalan pulang dari form master yang dibuka lewat "Create a new …" di sebuah field
 	# Link — spanduk konteks + tombol batal (lihat file-nya).
-	"link_return.bundle.js",
+	"/assets/container_depot/js/link_return.js",
 	# container_depot.tank_last_test — Tgl. Tes Terakhir tank, dibaca hidup dari master dan
 	# dibetulkan dari form order mana pun (lihat file-nya).
-	"tank_last_test.bundle.js",
+	"/assets/container_depot/js/tank_last_test.js",
 	# Matikan tombol "Edit" (pensil rename) di judul form + item menu "Rename" untuk semua
 	# doctype — nomor dokumen datang dari naming series, bukan diketik ulang.
-	"no_rename.bundle.js",
+	"/assets/container_depot/js/no_rename.js",
 	# Matikan "Delete" + "Duplicate" (form ⋯ Menu, Actions ▸ Delete di daftar, dan pintasan
 	# keyboardnya) untuk order, jejak gate/yard dan dokumen penagihan — dibatalkan lewat
 	# Cancel/Void, tidak dihapus; order baru dibuat dari menunya, tidak disalin.
-	"no_delete_duplicate.bundle.js",
+	"/assets/container_depot/js/no_delete_duplicate.js",
 ]
 
 # include js, css files in header of web template
@@ -369,14 +369,7 @@ app_include_js = [
 # password disimpan di localStorage dan diisi ulang otomatis, supaya operator lapangan
 # tidak mengetik ulang tiap sesi habis. Password tersimpan apa adanya — siapa pun yang
 # memegang perangkat tidak terkunci bisa membacanya; lihat catatan di file-nya.
-# Ditulis sebagai `.bundle.js` TANPA awalan /assets, dan itu yang membuatnya bisa diperbarui:
-# `include_script` melewatkan nama semacam itu ke `bundled_asset`, yang menukarnya dengan
-# berkas ber-hash hasil `bench build` (/assets/container_depot/dist/js/login_remember.bundle.
-# <HASH>.js). Jalur mentah yang dipakai sebelumnya tidak pernah berubah nama, sementara nginx
-# memberi seluruh /assets/ `expires 1y; immutable` — jadi peramban yang pernah memuatnya
-# menyimpannya setahun tanpa pernah bertanya lagi, dan halaman login tetap versi lama meski
-# app-nya sudah berganti berkali-kali.
-web_include_js = ["login_remember.bundle.js"]
+web_include_js = ["/assets/container_depot/js/login_remember.js"]
 
 # include custom scss in every website theme (without file extension)
 # website_scss = "container_depot/public/scss/website"
