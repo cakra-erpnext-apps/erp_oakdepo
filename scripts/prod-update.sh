@@ -52,12 +52,15 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench &&
 log "migrate"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench && bench --site '$SITE' migrate"
 
+# container_depot sengaja TIDAK ikut di sini: ia satu-satunya app yang datang dari bind mount
+# host, jadi `bench build` tidak boleh menulis ke sana (uid host != uid frappe di container) dan
+# hasil build-nya akan dihapus lagi oleh langkah materialize di bawah. Ia dibangun SESUDAH
+# materialize, langsung ke direktori yang dilayani nginx.
 log "build bench assets"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "
   set -euo pipefail
   cd /home/frappe/frappe-bench
   bench build --apps frappe,erpnext
-  bench build --apps container_depot
   bench build --apps hrms,raven
   bench build --apps helpdesk
   bench build --apps gameplan
@@ -90,11 +93,25 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "
       echo \"materialize \$app <- \$src\"
       rm -rf \"sites/assets/\$app\"
       mkdir -p \"sites/assets/\$app\"
-      cp -a \"\$src/.\" \"sites/assets/\$app/\"
+      # --no-preserve=ownership: sumbernya bind mount milik user host, dan \`cp -a\` menyalin
+      # kepemilikan itu ke salinannya — termasuk ke direktori puncaknya. Hasilnya frappe tidak
+      # bisa membuat apa pun di dalamnya lagi, dan build berikutnya mati dengan EACCES mkdir.
+      cp -a --no-preserve=ownership \"\$src/.\" \"sites/assets/\$app/\"
     else
       echo \"skip \$app no public dir\"
     fi
   done
+"
+
+# Sesudah materialize, bukan sebelumnya: berkas ber-hash container_depot ditulis langsung ke
+# direktori yang dilayani nginx. Dibangun lebih awal, langkah materialize di atas akan menghapus
+# dist-nya dan assets.json akan menunjuk berkas yang tidak ada — Desk dan halaman login memuat
+# script 404 tanpa satu pun pesan error.
+log "build container_depot assets into the served directory"
+docker exec erp_oakdepo_prod-backend-1 bash -lc "
+  set -euo pipefail
+  cd /home/frappe/frappe-bench
+  bench build --apps container_depot
 "
 
 log "clear cache"
