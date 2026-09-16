@@ -365,9 +365,10 @@ app_include_js = [
 
 # include js, css files in header of web template
 # web_include_css = "/assets/container_depot/css/container_depot.css"
-# login_remember — checkbox "Ingat email saya" di halaman login Frappe standar, supaya
-# operator lapangan tidak mengetik ulang emailnya tiap sesi habis. Password sengaja TIDAK
-# disimpan: itu tugas password manager Chrome/Android, yang juga jalan di APK TWA.
+# login_remember — checkbox "Ingat saya" di halaman login Frappe standar: email dan
+# password disimpan di localStorage dan diisi ulang otomatis, supaya operator lapangan
+# tidak mengetik ulang tiap sesi habis. Password tersimpan apa adanya — siapa pun yang
+# memegang perangkat tidak terkunci bisa membacanya; lihat catatan di file-nya.
 web_include_js = ["/assets/container_depot/js/login_remember.js"]
 
 # include custom scss in every website theme (without file extension)
