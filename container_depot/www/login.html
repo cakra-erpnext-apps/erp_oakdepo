@@ -2,7 +2,9 @@
 
 {#
 	Login OAK Depot — mengikuti mockup: ilustrasi yard mengisi seluruh layar, kartu
-	login mengambang di atasnya.
+	login mengambang di atasnya. Tidak ada pemilih tujuan: setelah berhasil, tujuan
+	ditentukan Frappe (atau ?redirect-to yang dikirim halaman yang menendang tamu
+	ke sini, mis. gerbang /depot).
 
 	Blok `page_content` di-fork dari frappe/www/login.html (Frappe 16.18.3) karena
 	mockup memindahkan hal-hal yang tidak bisa disentuh dari luar: judul kartu,
@@ -28,6 +30,13 @@
 <link rel="stylesheet"
 	href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/assets/container_depot/css/login.css">
+{# Ilustrasi latar dimuat lewat background-image, yang baru diminta setelah CSS
+   selesai diurai. Preload memulainya bersamaan dengan CSS — `media` menjaga agar
+   tiap layar hanya menarik satu berkas, sama seperti pilihan di login.css. #}
+<link rel="preload" as="image" type="image/webp" media="(max-width: 1023px)"
+	href="/assets/container_depot/images/login-yard-960.webp">
+<link rel="preload" as="image" type="image/webp" media="(min-width: 1024px)"
+	href="/assets/container_depot/images/login-yard-1920.webp">
 {% endblock %}
 
 {% macro heading(title, subtitle=null) %}
@@ -54,15 +63,6 @@
 
 			<section class="for-login">
 				{{ heading(_("Sign in"), _("Welcome back. Enter your details to continue.")) }}
-
-				<div class="oak-login-tabs" id="oak-dest" role="tablist" hidden>
-					<button type="button" role="tab" data-dest="" aria-selected="true">
-						{{ _("Customer") }}
-					</button>
-					<button type="button" role="tab" data-dest="/depot" aria-selected="false">
-						{{ _("Depot staff") }}
-					</button>
-				</div>
 
 				<div class="login-content page-card">
 					{% if provider_logins %}
@@ -241,38 +241,6 @@
 {% block script %}
 {{ super() }}
 <script>
-// Pemilih tujuan setelah login. Bukan dua cara login — kredensialnya sama; yang
-// diubah hanya ?redirect-to, yang dibaca login.js Frappe saat submit. Staf depo
-// mendarat langsung di PWA /depot, customer ikut halaman default server.
-(function () {
-	var tabs = document.getElementById("oak-dest");
-	if (!tabs) return;
-
-	var url = new URL(window.location.href);
-	var current = url.searchParams.get("redirect-to");
-
-	// Sudah dikirim ke sini dengan tujuan tertentu (mis. /depot menendang tamu ke
-	// login): tujuan itu yang menang, dan pemilihnya tidak perlu muncul sama sekali.
-	if (current && current !== "/depot") return;
-
-	tabs.hidden = false;
-	if (current === "/depot") select("/depot");
-
-	tabs.addEventListener("click", function (e) {
-		var btn = e.target.closest("button[data-dest]");
-		if (btn) select(btn.dataset.dest);
-	});
-
-	function select(dest) {
-		tabs.querySelectorAll("button").forEach(function (b) {
-			b.setAttribute("aria-selected", String(b.dataset.dest === dest));
-		});
-		if (dest) url.searchParams.set("redirect-to", dest);
-		else url.searchParams.delete("redirect-to");
-		history.replaceState(null, "", url);
-	}
-})();
-
 // Lihat/sembunyikan sandi.
 document.addEventListener("click", function (e) {
 	var btn = e.target.closest("[data-toggle-password]");

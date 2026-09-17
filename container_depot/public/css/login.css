@@ -15,9 +15,12 @@
 	--oak-line: #e7e2d7;
 	/* Krem latar = warna latar ilustrasi, supaya gambar menyatu tanpa batas. */
 	--oak-cream: #fdf9ed;
-	/* Ilustrasi yard: 3168x1344 asli diperkecil ke 1920x815 dan disimpan WebP
-	   (2 MB jadi 132 KB) — ini gambar pertama di halaman pertama. */
-	--oak-login-art: url("/assets/container_depot/images/login-yard.webp");
+	/* Ilustrasi yard, dua ukuran dari sumber 3168x1344: 960x407 (46 KB) untuk ponsel
+	   dan tablet, 1920x815 (116 KB) mulai 1024px. Ini gambar pertama di halaman
+	   pertama dan sering dibuka lewat jaringan seluler, jadi ponsel tidak ikut
+	   menanggung berkas desktop. Lebar ada di nama berkas: nginx melayani /assets/
+	   dengan `immutable` setahun, jadi versi baru harus berganti URL, bukan isi. */
+	--oak-login-art: url("/assets/container_depot/images/login-yard-960.webp");
 }
 
 /* Overlay penuh layar: melewati .container dan padding page-content-wrapper milik
@@ -40,6 +43,13 @@
 	   isinya var(--control-bg) — jadi variabelnya yang diganti, bukan lomba selector. */
 	--control-bg: #fff;
 	font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Berkas besar baru diminta di layar yang benar-benar melebarkannya. */
+@media (min-width: 1024px) {
+	.oak-login {
+		background-image: url("/assets/container_depot/images/login-yard-1920.webp");
+	}
 }
 
 /* ---------- kartu mengambang ---------- */
@@ -122,41 +132,6 @@
 	margin: 6px 0 0;
 	font-size: 13px;
 	color: var(--oak-muted);
-}
-
-/* ---------- pemilih tujuan ---------- */
-
-/* Bukan dua cara login — kredensialnya sama; yang berubah hanya halaman yang
-   dibuka setelah berhasil (login.js membaca ?redirect-to saat submit). */
-.oak-login-tabs {
-	display: flex;
-	gap: 4px;
-	margin-bottom: 16px;
-	padding: 4px;
-	border-radius: 12px;
-	background: #efe9dc;
-}
-
-.oak-login-tabs button {
-	flex: 1;
-	padding: 9px 8px;
-	font-size: 13px;
-	font-weight: 700;
-	color: var(--oak-muted);
-	background: transparent;
-	border: none;
-	border-radius: 9px;
-	cursor: pointer;
-}
-
-.oak-login-tabs button[aria-selected="true"] {
-	color: var(--oak-leaf);
-	background: #fff;
-	box-shadow: 0 1px 2px rgb(20 50 60 / 0.12);
-}
-
-.oak-login-tabs[hidden] {
-	display: none;
 }
 
 /* ---------- kartu ---------- */
