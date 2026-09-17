@@ -425,42 +425,6 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Price List",
-   "link_to": "Price List",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "tags"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Item Price",
-   "link_to": "Item Price",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "badge-dollar-sign"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Product Bundle",
-   "link_to": "Product Bundle",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "package-check"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
    "label": "Service Item",
    "link_to": "Depot Service Item",
    "link_type": "Report",
@@ -838,7 +802,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-15 10:00:00.000000",
+ "modified": "2026-09-17 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

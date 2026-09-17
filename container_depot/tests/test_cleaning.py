@@ -16,6 +16,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot import cleaning
 from container_depot.container_depot.exceptions import AlreadySettled
+from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_eir import _ensure_cargo, _make_container
 
 
@@ -26,6 +27,8 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self._orders = []
 		self._cargos = []
 		self._items = []
+		self._price_lists = []
+		self._customer_lists = {}
 
 	def tearDown(self):
 		for o in self._orders:
@@ -40,6 +43,13 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		for item in self._items:
 			frappe.db.delete("Item Price", {"item_code": item})
 			frappe.db.delete("Item", {"name": item})
+		# Restore the customer's own rate card before dropping the list it points at, or the
+		# next test in this site inherits a Customer pointing at a Price List that is gone.
+		for customer, before in self._customer_lists.items():
+			frappe.db.set_value("Customer", customer, "default_price_list", before, update_modified=False)
+		for pl in self._price_lists:
+			frappe.db.delete("Item Price", {"price_list": pl})
+			frappe.db.delete("Price List", {"name": pl})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -47,6 +57,15 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		c = _make_container(cno, **kw)
 		self._containers.append(c)
 		return c
+
+	def _customer_price_list(self, customer, price_list):
+		"""Point a customer at a rate card for the length of one test, remembering what was
+		there before — ``default_price_list`` is contract-owned, so leaving a test value on it
+		would price every later order from a list that test then deletes."""
+		self._customer_lists.setdefault(
+			customer, frappe.db.get_value("Customer", customer, "default_price_list")
+		)
+		frappe.db.set_value("Customer", customer, "default_price_list", price_list, update_modified=False)
 
 	def _cargo(self, name):
 		self._cargos.append(name)
@@ -110,8 +129,19 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		neither is folded into the other: billing settles labour on its own invoice line."""
 		from frappe.utils import flt
 
-		item, price_list = "CLEAN-MHR-TEST", "Standard Selling"
+		# The principal's OWN rate card, not the site catalog: a Depot Contract publishes one
+		# and mirrors it onto ``Customer.default_price_list``, and that list is the only thing
+		# that prices a line — a customer without one is billed 0.
+		item, price_list = "CLEAN-MHR-TEST", "ZZ Cleaning Tariff PL"
 		tariff, labour = 200.0, 50.0
+		principal = ensure_test_customer("EIR Test Principal")
+		if not frappe.db.exists("Price List", price_list):
+			frappe.get_doc({
+				"doctype": "Price List", "price_list_name": price_list, "currency": "IDR",
+				"selling": 1, "buying": 0, "enabled": 1,
+			}).insert(ignore_permissions=True)
+		self._price_lists.append(price_list)
+		self._customer_price_list(principal, price_list)
 		if not frappe.db.exists("Item", item):
 			frappe.get_doc({
 				"doctype": "Item", "item_code": item, "item_name": "Cleaning Manhour Test",

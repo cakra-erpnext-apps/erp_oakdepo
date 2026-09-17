@@ -189,33 +189,27 @@ class TestCurrencyResolution(FrappeTestCase):
 	def test_customer_currency_beats_the_site_catalog(self):
 		"""A USD principal with no contract still bills USD.
 
-		This is the regression the whole change exists for: ``price_list_for_customer``
-		hands back the site catalog for a contract-less customer, and the old resolver
-		took that list's currency first — so ``Customer.default_currency`` was never
-		read and every order came out IDR."""
+		``price_list_for_customer`` used to hand back the site catalog for a contract-less
+		customer, and the resolver took that list's currency first — so
+		``Customer.default_currency`` was never read and every order came out IDR. Both
+		halves are gone now: the catalog no longer answers at all, and the currency is the
+		customer's own."""
 		from container_depot.pricing_model import currency_for_customer, price_list_for_customer
 
 		self.assertEqual(currency_for_customer(USD_CUSTOMER, price_list_for_customer(USD_CUSTOMER)), "USD")
 
-	def test_foreign_customer_does_not_borrow_the_site_catalog_as_a_rate_card(self):
-		"""No rate at all beats a rate in the wrong currency.
+	def test_a_customer_with_no_contract_has_no_rate_card_at_all(self):
+		"""Depot Contract is the only thing that prices an order, in either currency.
 
-		The site catalog is priced in the company currency. Seeding a USD order from it
-		would stamp IDR figures onto USD lines, and billing reads those numbers as they
-		stand — an error of four orders of magnitude that nothing downstream can catch."""
+		The site catalog used to answer here for a contract-less customer, which put
+		agreed-looking numbers on an order nobody had agreed — and in the wrong currency for
+		a USD principal, an error of four orders of magnitude nothing downstream can catch.
+		No contract, no rate: 0, which the Cashier can see and type over."""
 		from container_depot.pricing_model import price_list_for_customer
 
 		self.assertIsNone(price_list_for_customer(USD_CUSTOMER))
-
-	def test_base_currency_customer_still_gets_the_site_catalog(self):
-		"""The guard is about currency, not about walk-ins: a customer in the company
-		currency keeps the convenience of the shared catalog."""
-		from container_depot.pricing_model import company_currency, price_list_for_customer
-
-		catalog = self.site_catalog
-		if not catalog or frappe.db.get_value("Price List", catalog, "currency") != company_currency():
-			self.skipTest("site has no default selling price list in the company currency")
-		self.assertEqual(price_list_for_customer(BARE_CUSTOMER), catalog)
+		self.assertIsNone(price_list_for_customer(BARE_CUSTOMER))
+		self.assertIsNone(price_list_for_customer(None))
 
 	def test_own_rate_card_outranks_the_customers_billing_currency(self):
 		"""The agreed list holds the actual prices, so it names the currency — even when

@@ -905,7 +905,10 @@ class ContainerBooking(Document):
 				# to anything else is a decision and is left exactly as it stands, the same
 				# bargain ``rate`` strikes one line below.
 				row.qty = container_qty
-			if row.get("rate") is None and self.price_list:
+			if row.get("rate") is None:
+				# No rate card (no contract) prices nothing, and 0 is the answer — the
+				# Cashier types the figure on the draft invoice. Leaving it None showed a
+				# blank box on a line that bills 0 anyway.
 				row.rate = pricing_model.resolve_price(row.item, self.price_list) or 0
 			row.amount = flt(row.qty) * flt(row.rate)
 			total += flt(row.amount)

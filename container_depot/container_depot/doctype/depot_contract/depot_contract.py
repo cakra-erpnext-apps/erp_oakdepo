@@ -399,8 +399,9 @@ def rate_card_status(customer: str | None = None) -> dict:
 	contract = frappe.db.get_value(
 		"Depot Contract", {"customer": customer, "status": "Active"}, "name", order_by="valid_from desc"
 	)
-	# The contract's own published list (Customer.default_price_list is what _publish_price_list
-	# writes), NOT the Selling Settings fallback — a site-wide default is not this owner's tariff.
+	# The contract's own published list — Customer.default_price_list is what
+	# _publish_price_list writes, and since the site-wide Selling Settings catalog stopped
+	# answering for a contract-less customer it is the ONLY rate card there is.
 	price_list = frappe.db.get_value("Customer", customer, "default_price_list")
 	priced_items = (
 		frappe.db.count("Item Price", {"price_list": price_list, "selling": 1}) if price_list else 0

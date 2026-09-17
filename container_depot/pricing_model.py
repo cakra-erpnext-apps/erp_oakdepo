@@ -128,34 +128,22 @@ def item_rate_breakdown(item_code: str, price_list: str) -> dict:
 
 
 def price_list_for_customer(customer: str | None) -> str | None:
-	"""Resolve the selling Price List to use for a *no-contract* (walk-in) booking.
+	"""The customer's own selling rate card, or ``None``.
 
-	A booking backed by a Depot Contract prices from that contract's tariff; a
-	walk-in has none, so the rate card falls back to a Price List. Preference:
+	A Depot Contract is the ONLY thing that prices an order. Saving one Active publishes its
+	agreed lines to a customer Price List and mirrors that list onto
+	``Customer.default_price_list`` (``DepotContract._publish_price_list``), so this one
+	field IS "does this customer have an agreed tariff". No contract, no rate card, and the
+	caller leaves the rate at 0 for the Cashier to type.
 
-	  1. the Customer's own ``default_price_list`` (per-principal rate card);
-	  2. the site Selling Settings default selling price list — but ONLY when it is
-	     denominated in the customer's own currency;
-	  3. ``None`` — caller then leaves the rate 0 for the Cashier to fill in.
-
-	Step 2's currency guard is what keeps a USD principal off the site's IDR catalog.
-	The generic list is a convenience, not an agreement: seeding a USD order from it
-	would stamp IDR figures (Lift Off 450000) onto a line labelled USD, and billing
-	reads those numbers as they stand. No agreed rate card in the right currency means
-	no rate — 0, for the Cashier to type — which is what the operator can see and fix,
-	unlike a number that is off by four orders of magnitude.
+	There is deliberately no site-wide fallback. The Selling Settings catalog used to answer
+	here for a contract-less customer, which put agreed-looking numbers on an order nobody
+	had agreed: a price it is somebody's job to negotiate is not a default. A visible 0 is
+	the version the operator can see and fix.
 	"""
-	if customer:
-		pl = frappe.db.get_value("Customer", customer, "default_price_list")
-		if pl:
-			return pl
-	fallback = frappe.db.get_single_value("Selling Settings", "selling_price_list") or None
-	if fallback and customer:
-		# currency_for_customer with no price list = the customer's own answer (billing
-		# currency, else company base), so this never recurses back into here.
-		if frappe.db.get_value("Price List", fallback, "currency") != currency_for_customer(customer):
-			return None
-	return fallback
+	if not customer:
+		return None
+	return frappe.db.get_value("Customer", customer, "default_price_list") or None
 
 
 # Jaring terakhir kalau company pun tidak punya mata uang (site setengah jadi / test).
