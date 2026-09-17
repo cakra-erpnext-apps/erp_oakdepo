@@ -31,6 +31,7 @@ def after_install():
 	# Runs after setup_permissions() because it seeds the Roles the profiles point at.
 	setup_role_profiles()
 	setup_property_setters()
+	lock_rate_card_write()
 	ensure_selling_settings()
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
@@ -65,6 +66,9 @@ def after_migrate():
 	# Item links show the item name, Item Price 'New' uses the full form, and a
 	# Customer's Default Price List is read-only (the Depot Contract owns it).
 	setup_property_setters()
+	# Same invariant one level down: the contract owns the rate card it publishes, so the
+	# Price List / Item Price rows behind it are read-only to everybody.
+	lock_rate_card_write()
 	# Container Inventory monitoring dashboard (Number Cards + Charts). Idempotent
 	# upsert by name; safe to re-run every migrate.
 	setup_inventory_dashboard()
@@ -758,6 +762,57 @@ def setup_property_setters():
 	"""Apply app Property Setters on standard doctypes (idempotent)."""
 	for doctype, fieldname, prop, value, property_type in PROPERTY_SETTERS:
 		_set_property(doctype, fieldname, prop, value, property_type)
+	frappe.db.commit()
+
+
+# The published rate card. Every figure in these two is written by
+# DepotContract._publish_price_list and by nothing else.
+RATE_CARD_DOCTYPES = ("Price List", "Item Price")
+
+
+def lock_rate_card_write():
+	"""Take write off the published rate card — the Depot Contract owns every figure in it.
+
+	``_publish_price_list`` creates the customer's Price List and ``_sync_item_prices``
+	rewrites its Item Prices from ``tariff_lines`` every time an Active contract is saved,
+	DELETING any row the contract does not list. A rate typed straight into Item Price
+	therefore survives exactly until somebody next opens that contract: it vanishes with no
+	error and no trace, and the invoice goes out carrying the contract's figure rather than
+	the typed one. The menus are gone from the workspace, but the doctype is still one URL
+	away for anyone holding ``Sales Master Manager`` — which Admin Ops does, for Item and
+	Customer (see COMPANION_ROLES).
+
+	Read stays. The list view is how the office checks what a contract actually published,
+	and the customer portal reads its own rate card through these same two doctypes
+	(CUSTOMER_STANDARD_DOCPERMS). The publisher writes with ``ignore_permissions``, so no
+	role needs write for anything to work.
+
+	``setup_custom_perms`` first, exactly as ``_grant_link_select`` does: on a site where
+	these doctypes still carry only their shipped DocPerms it copies those into Custom
+	DocPerm, so zeroing the flags below touches these two doctypes and nothing else.
+	"""
+	from frappe.permissions import setup_custom_perms
+
+	for doctype in RATE_CARD_DOCTYPES:
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		setup_custom_perms(doctype)
+		locked = 0
+		# `parent` is a plain Link to DocType here — Custom DocPerm is a standalone doctype,
+		# not a child table, and has no `parenttype` column to filter on.
+		for name in frappe.get_all("Custom DocPerm", filters={"parent": doctype}, pluck="name"):
+			row = frappe.db.get_value(
+				"Custom DocPerm", name, ["write", "create", "delete"], as_dict=True
+			)
+			if not (row.write or row.create or row.delete):
+				continue
+			frappe.db.set_value(
+				"Custom DocPerm", name, {"write": 0, "create": 0, "delete": 0},
+				update_modified=False,
+			)
+			locked += 1
+		if locked:
+			frappe.clear_cache(doctype=doctype)
 	frappe.db.commit()
 
 
@@ -1547,12 +1602,14 @@ PWA_OFFICE_ROLES = {"Admin Ops"}
 # licence seat). They keep the `email` DocPerm flag from `_PERM_LETTERS`; they have no Desk
 # to compose from, and the PWA sends nothing by mail.
 COMPANION_ROLES = {
-	# `Item Manager` (master Item) + `Sales Master Manager` (Price List, Item Price,
-	# Customer, Customer Group, Territory, template pajak, Terms) — keduanya role standar
-	# ERPNext, bukan Custom DocPerm, karena baris Custom DocPerm PERTAMA pada doctype
-	# ERPNext mematikan seluruh izin bawaannya. `Item Price` khususnya tidak punya tingkat
-	# baca-saja sama sekali: hanya Sales/Purchase Master Manager yang menyentuhnya, jadi
-	# "boleh ubah harga" memang berarti menaikkan Admin Ops ke tingkat manager (2026-09-14).
+	# `Item Manager` (master Item) + `Sales Master Manager` (Customer, Customer Group,
+	# Territory, template pajak, Terms) — keduanya role standar ERPNext, bukan Custom
+	# DocPerm, karena baris Custom DocPerm PERTAMA pada doctype ERPNext mematikan seluruh
+	# izin bawaannya. `Sales Master Manager` dulu dipilih justru KARENA ia satu-satunya
+	# tingkat yang menyentuh `Item Price` (doctype itu tidak punya tingkat baca-saja), waktu
+	# tarif masih diketik di rate card (2026-09-14). Tarif kini cuma diketik di Depot
+	# Contract, dan `lock_rate_card_write` mencabut write-nya kembali — role ini tinggal
+	# dipakai untuk master Customer dan pajaknya.
 	"Admin Ops": ["Inbox User", "Item Manager", "Sales Master Manager"],
 	"Cashier": ["Accounts User", "Inbox User"],
 	"Finance": ["Accounts Manager", "Inbox User"],
