@@ -3,8 +3,8 @@
 Each Bertschi package is one flat-priced parent Item (``is_depot_package=1``)
 whose price lives on its ``Bertschi 2026`` Item Price, plus a Product Bundle
 listing the included services for audit. With
-``Selling Settings.editable_bundle_item_rates`` OFF (pinned by
-install.ensure_selling_settings) the parent's flat Item Price is authoritative
+``Selling Settings.editable_bundle_item_rates`` OFF (pinned by install until
+2026-09-17, then left to the site) the parent's flat Item Price is authoritative
 and the components are informational.
 
 Storage per day is intentionally NOT a bundle component: the packages include

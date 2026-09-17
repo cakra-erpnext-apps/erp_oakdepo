@@ -31,7 +31,6 @@ def after_install():
 	# Runs after setup_permissions() because it seeds the Roles the profiles point at.
 	setup_role_profiles()
 	setup_property_setters()
-	ensure_selling_settings()
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
@@ -72,9 +71,6 @@ def after_migrate():
 	# Depot Notification Settings single. Add-only: an existing event_key is never
 	# rewritten, so admin routing tweaks survive every migrate.
 	setup_notification_rules()
-	# Keep the depot-pricing invariant: Bertschi Product Bundles must bill at the
-	# bundle parent's flat Item Price, not a recomputed sum of component prices.
-	ensure_selling_settings()
 	# Cash-vs-Termin billing primitives (Payment Terms Templates + Modes of
 	# Payment account mapping). Idempotent — created on fresh install AND kept in
 	# sync for existing sites on every migrate. See set_customer_payment_terms
@@ -983,25 +979,6 @@ def setup_inventory_dashboard():
 			**DASHBOARD_CHART_DEFAULTS, **spec,
 		})
 	frappe.db.commit()
-
-
-def ensure_selling_settings():
-	"""Pin Selling Settings so Product Bundle parents bill at their own flat price.
-
-	With ``editable_bundle_item_rates`` ON, ERPNext recomputes a bundle's rate from
-	the sum of its component Item Prices (see erpnext stock ``packed_item``). The
-	Bertschi packages are sold at a single negotiated price held on the bundle
-	parent's Item Price, so we keep this OFF. Idempotent: only writes when needed,
-	and never breaks a migrate if Selling Settings is unavailable (frappe-only site).
-	"""
-	try:
-		if not frappe.db.exists("DocType", "Selling Settings"):
-			return
-		if frappe.db.get_single_value("Selling Settings", "editable_bundle_item_rates"):
-			frappe.db.set_single_value("Selling Settings", "editable_bundle_item_rates", 0)
-			frappe.db.commit()
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "container_depot selling-settings sync failed")
 
 
 # ---------------------------------------------------------------------------
