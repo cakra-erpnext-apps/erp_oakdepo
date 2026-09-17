@@ -1,0 +1,96 @@
+{#
+	Splash Desk versi OAK — menimpa frappe/templates/includes/splash_screen.html
+	(jinja loader menelusuri app secara terbalik, jadi container_depot menang).
+	Bawaan Frappe menampilkan logo frappe-framework selama boot Desk; yang dilihat
+	operator seharusnya emblem sendiri.
+
+	Tampilannya sengaja sama dengan splash PWA (frontend/index.html): emblem,
+	wordmark, bar indeterminate, latar korugasi yard. Nilai warnanya ditulis ulang
+	di sini — halaman ini bukan bagian dari bundle PWA.
+
+	Class `splash` wajib tetap ada: desk.js membuangnya lewat $(".splash").remove().
+	Class `centered` bawaan sengaja dilepas — isinya position:absolute + translate
+	yang melawan tata letak flex di bawah ini.
+#}
+<div class="splash oak-splash">
+	<style>
+		.oak-splash {
+			position: fixed;
+			inset: 0;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			gap: 18px;
+			background-color: #f8f8f8;
+			background-image: repeating-linear-gradient(
+				90deg,
+				rgba(249, 120, 40, 0.05) 0 2px,
+				transparent 2px 16px
+			);
+			font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+		}
+		.oak-splash img {
+			width: 68px;
+			height: 68px;
+			max-width: none;
+		}
+		.oak-splash-word {
+			margin: 0;
+			font-size: 19px;
+			font-weight: 800;
+			letter-spacing: -0.02em;
+			color: #171717;
+		}
+		.oak-splash-word span {
+			color: #ea6614;
+		}
+		[data-theme="dark"] .oak-splash {
+			background-color: #0f1115;
+		}
+		[data-theme="dark"] .oak-splash-word {
+			color: #f5f6f8;
+		}
+		[data-theme="dark"] .oak-splash-bar {
+			background: #3c1c0b;
+		}
+		/* Bar indeterminate, bukan persentase: lama boot Desk memang tidak diketahui,
+		   dan angka palsu yang mentok di 90% lebih buruk daripada tanpa angka. */
+		.oak-splash-bar {
+			position: relative;
+			width: 132px;
+			height: 3px;
+			overflow: hidden;
+			border-radius: 999px;
+			background: #ffe7d4;
+		}
+		.oak-splash-bar::after {
+			content: "";
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			width: 42%;
+			border-radius: 999px;
+			background: #f97828;
+			animation: oak-splash-slide 1.1s ease-in-out infinite;
+		}
+		@keyframes oak-splash-slide {
+			0% { left: -42%; }
+			100% { left: 100%; }
+		}
+		@media (prefers-reduced-motion: reduce) {
+			.oak-splash-bar::after {
+				animation: none;
+				left: 0;
+				width: 100%;
+				opacity: 0.55;
+			}
+		}
+	</style>
+	{# Emblem ditulis di kode, bukan lewat Website Settings.splash_image: nilai di
+	   sana diisi logo ERPNext saat install, jadi setiap site baru akan salah sampai
+	   ada yang mengubahnya manual. Sama alasannya dengan app_name di www/login.py. #}
+	<img src="/assets/container_depot/images/oak-emblem.png" alt="">
+	<p class="oak-splash-word">Depot <span>OAK</span></p>
+	<div class="oak-splash-bar"></div>
+</div>
