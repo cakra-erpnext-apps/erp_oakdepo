@@ -16,6 +16,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.install import (
 	COMPANION_ROLES,
+	CUSTOMER_DESK_ROLE,
 	FIELD_ROLES,
 	OFFICE_ROLES,
 	PARKED_DOMAIN,
@@ -151,9 +152,22 @@ class TestRoleProfiles(FrappeTestCase):
 		"""`Inbox User` is what reads `Email Account`; without it the compose dialog dies on
 		"does not have doctype access via role permission for document Email Account"."""
 		for role in OFFICE_ROLES:
+			if role == CUSTOMER_DESK_ROLE:
+				continue  # not an OAK mailbox — see the test below
 			with self.subTest(role=role):
 				carried = {row.role for row in frappe.get_doc("Role Profile", role).roles}
 				self.assertIn(EMAIL_ROLE, carried)
+
+	def test_the_customer_profile_does_not_carry_the_email_role(self):
+		"""The one office profile that is not an OAK employee. It gets no depot mailbox, so
+		it is seeded with the `v` permission grammar (read/print/export, no `email`) and
+		carries no companion role at all."""
+		carried = {row.role for row in frappe.get_doc("Role Profile", CUSTOMER_DESK_ROLE).roles}
+		self.assertNotIn(EMAIL_ROLE, carried)
+		# It carries ERPNext's stock `Customer` beside its own role: a profile is
+		# authoritative over a user's roles, so leaving it out would strip the role the
+		# portal hook grants from every account the profile is assigned to.
+		self.assertEqual(carried, {CUSTOMER_DESK_ROLE, "Customer"})
 
 	def test_no_field_profile_carries_the_email_role(self):
 		"""`Inbox User` has `desk_access = 1`, and `User.validate_user_type` re-types any

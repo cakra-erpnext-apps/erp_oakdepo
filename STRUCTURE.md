@@ -62,7 +62,40 @@ Monitor is the read-only yard browser and follows Container read, which every fi
 holds because every worklist shows container data.
 
 **Office roles** — `desk_access = 1`, no PWA menu: Cashier, Finance, Commercial,
-Warehouse, Management (read-only everywhere).
+Warehouse, Management (read-only everywhere), Customer Desk (external, see below).
+
+**Customer Desk** is the one role in that list that is not an OAK employee: a customer
+company's own staff, logging in to the Desk to watch their tanks. Read-only on six
+doctypes (Container, Container Booking, Depot Contract, Gate Entry, Container Movement,
+Container Activity) plus their own rate card (Price List, Item Price), seeded with the
+`v` permission grammar — read/print/export, no `email` and no `report` (a Query Report
+runs raw SQL, which no customer filter reaches), and no mailbox. Its Role Profile carries
+ERPNext's stock `Customer` role beside it, because a profile is authoritative over a
+user's roles and would otherwise strip what the portal hook granted. It exists beside ERPNext's stock `Customer` role rather than replacing it:
+`erpnext/setup/install.py` pins that one to `desk_access = 0`, which re-types its holders
+as Website Users and answers them "Not Permitted" at `/app`.
+
+An account is provisioned by a **Customer Portal User** row going Active
+(`container_depot/portal.py`), which grants both roles, writes the one User Permission
+(`allow=Customer`) that scopes every list it will ever see, and blocks every module but
+Container Depot so the sidebar is the depot and nothing else. Setting the row back to
+Inactive takes all three away again. Two logins for one customer company = two rows.
+
+What the account actually SEES is the same permission set, drawn honestly: the workspace
+cards and the left sidebar keep only what it may open, `boot.prune_empty_sidebar_sections`
+drops the section headings Frappe appends without testing (they would otherwise outnumber
+the links), and `boot.patch_workspace_url_shortcuts` removes the "Download App" tile,
+which installs a PWA a customer may not open. Report links disappear because the Report
+doctype is closed to the account — `boot.get_allowed_reports` filters through
+`frappe.get_list("Report")` — and `boot.patch_number_card_empty_report_list` keeps
+Frappe's Number Card filter from rendering `IN ()` once that list is empty.
+
+Scoping beyond that is `container_depot/customer_scope.py`: Frappe filters any doctype
+with a Link to Customer by itself, and that file covers what it cannot — doctypes with no
+Customer link (Gate Entry, Container Movement, Item Price), doctypes with several of them
+(Container Booking's customer/principal, joined with `and` natively, which would hide a
+booking from its own owner), and the whole rest of the site, which a System User can
+otherwise read through the stock `All` / `Desk User` grants.
 
 **Admin Ops** is both (`install.py::PWA_OFFICE_ROLES`): `desk_access = 1` *and*
 `is_depot_field_role = 1`, so it works the Desk and the PWA. It sees **every** tile,

@@ -111,3 +111,113 @@ def warm_domain_restricted_caches():
 			build_domain_restricted_page_cache()
 	except Exception:
 		frappe.log_error("warm_domain_restricted_caches failed")
+
+
+def prune_empty_sidebar_sections(bootinfo):
+	"""Drop left-sidebar section headers whose every item was filtered away.
+
+	`frappe.boot.get_sidebar_items` appends a Section Break unconditionally — the
+	permission test it runs on every other item is explicitly skipped for them
+	(``item.type == "Section Break" or sidebar_doc.is_item_allowed(...)``). So a role that
+	may read two doctypes out of forty still gets all eleven headings: "Pekerjaan Depo",
+	"Invoicing & Pembayaran", "Sparepart & Stock" — each one now a label with nothing
+	under it. A customer account, which may read six, sees more headings than links.
+
+	A heading that opens onto nothing is not a smaller menu, it is a menu that lies about
+	what the account can do. This keeps a Section Break only when at least one real item
+	follows it before the next one.
+
+	Wired through `extend_bootinfo`, which runs after the sidebar is built, and applies to
+	every role — the yard and the office have the same empty headings today.
+	"""
+	sidebars = bootinfo.get("workspace_sidebar_item")
+	if not sidebars:
+		return
+	try:
+		for sidebar in sidebars.values():
+			items = sidebar.get("items") or []
+			keep, section = [], None
+			for item in items:
+				if item.get("type") == "Section Break":
+					section = item
+					continue
+				if section is not None:
+					keep.append(section)
+					section = None
+				keep.append(item)
+			sidebar["items"] = keep
+	except Exception:
+		# A sidebar with dead headings beats a boot that fails.
+		frappe.log_error("prune_empty_sidebar_sections failed")
+
+
+def patch_workspace_url_shortcuts():
+	"""Hide URL shortcut tiles from customer accounts.
+
+	`Workspace.is_item_allowed` waves through every shortcut whose type is URL — there is
+	no role or permission on a `Workspace Shortcut` row to test (the child doctype has
+	`restrict_to_domain` and nothing else). The one on the Container Depot workspace is
+	"Download App", the APK share page for the yard PWA, and a customer account holds no
+	`Depot PWA` role: the tile hands them an installer for an app that refuses them at the
+	door.
+
+	Scoped to accounts with a Customer User Permission, so the yard and the office keep the
+	button. A monkey patch for the same reason as `patch_workspace_sidebar_can_read`: the
+	repo does not edit frappe/erpnext, and Frappe exposes no hook here. Idempotent.
+	"""
+	try:
+		from frappe.desk.desktop import Workspace
+
+		from container_depot.customer_scope import get_user_customers
+
+		if getattr(Workspace.is_item_allowed, "_cd_patched", False):
+			return
+
+		original = Workspace.is_item_allowed
+
+		def is_item_allowed(self, name, item_type):
+			if (item_type or "").lower() == "url" and get_user_customers():
+				return False
+			return original(self, name, item_type)
+
+		is_item_allowed._cd_patched = True
+		Workspace.is_item_allowed = is_item_allowed
+	except Exception:
+		frappe.log_error("patch_workspace_url_shortcuts failed")
+
+
+def patch_number_card_empty_report_list():
+	"""Stop the Number Card list from dying for an account that may run NO report.
+
+	`number_card.get_permission_query_conditions` builds its filter with
+	``nc.report_name.isin(get_allowed_report_names())`` and never checks the set for
+	emptiness — pypika renders `IN ()`, and MariaDB answers::
+
+	    (1064, "You have an error in your SQL syntax ... near '))'")
+
+	Every dashboard the account opens then 500s. Its sibling in `dashboard_chart.py` gets
+	this right (`if allowed_reports:`), so it is the one function, not the pattern.
+
+	Nobody hit it before because every depot role can run something. A customer account
+	can run nothing at all, by design: it holds no `report` permission, so the Report
+	doctype is closed to it (container_depot/customer_scope.py) and the allowlist comes
+	back empty.
+
+	The fix is to hand that function a name no report will ever have instead of an empty
+	set — `IN ('...')` is valid SQL and matches nothing, which is exactly the intent. Only
+	the copy imported into `number_card` is rebound; `frappe.boot` keeps its own.
+	"""
+	try:
+		from frappe.boot import get_allowed_report_names
+		from frappe.desk.doctype.number_card import number_card
+
+		if getattr(number_card.get_allowed_report_names, "_cd_patched", False):
+			return
+
+		def _non_empty_report_names(*args, **kwargs):
+			return get_allowed_report_names(*args, **kwargs) or {"__container_depot_no_report__"}
+
+		_non_empty_report_names._cd_patched = True
+		number_card.get_allowed_report_names = _non_empty_report_names
+	except Exception:
+		frappe.log_error("patch_number_card_empty_report_list failed")

@@ -1479,6 +1479,8 @@ def _ensure_icon_roles(icon: str, roles: list[str]) -> None:
 # reads, NOT this list: an admin can add a 14th field role from the UI and it works
 # without a deploy. This list only seeds the ones the app ships with.
 
+CUSTOMER_DESK_ROLE = "Customer Desk"
+
 FIELD_ROLES = [
 	"Security",
 	"Team EIR",
@@ -1496,6 +1498,16 @@ OFFICE_ROLES = [
 	"Commercial",
 	"Warehouse",
 	"Management",
+	# The one role in this list that is NOT an OAK employee. A customer company's own
+	# staff log in to the Desk with it to watch their tanks — read-only, and scoped to
+	# their own company by a User Permission (see customer_scope.py), not by this role.
+	#
+	# It is a NEW role rather than ERPNext's stock `Customer`, which is pinned to
+	# `desk_access = 0` by erpnext/setup/install.py: an account holding only that role is
+	# re-typed a Website User and meets "Not Permitted" at /app. Flipping the flag would
+	# hand the Desk to every website portal customer ERPNext has; adding a role beside it
+	# does not. `portal.sync_portal_user_permission` grants both.
+	CUSTOMER_DESK_ROLE,
 ]
 
 # Office roles that work the PWA as well as the Desk. The two flags are independent —
@@ -1547,6 +1559,13 @@ COMPANION_ROLES = {
 	"Commercial": ["Sales Manager", "Item Manager", "Inbox User"],
 	"Warehouse": ["Stock User", "Purchase User", "Inbox User"],
 	"Management": ["Inbox User"],
+	# No `Inbox User` here — see the `v` grammar. What this profile DOES have to carry is
+	# ERPNext's stock `Customer` role, because a Role Profile is authoritative: assigning
+	# this profile to an account sets its roles to the profile's union and drops the rest
+	# (`User.populate_role_profile_roles`), so the `Customer` role that
+	# `portal.sync_portal_user_permission` grants would be stripped on the next save of
+	# any account an admin assigned the profile to. Both paths now land on both roles.
+	CUSTOMER_DESK_ROLE: ["Customer"],
 }
 
 # ---------------------------------------------------------------------------
@@ -1653,6 +1672,19 @@ MASTER_DOCTYPES = {
 # COMPANION_ROLES now puts on every office profile.
 _PERM_LETTERS = {
 	"r": ("read", "report", "export", "print", "email"),
+	# The external-customer grammar: read, print, export. Two flags are missing from it
+	# ON PURPOSE.
+	#
+	# `email` — the form's Email action needs the standard `Inbox User` role to actually
+	# send (see COMPANION_ROLES), and an external account is not getting a depot mailbox,
+	# so the button would only ever raise "no doctype access ... Email Account".
+	#
+	# `report` — this one is load-bearing. `frappe.desk.query_report.run` admits anyone
+	# holding the ref doctype's REPORT permission, and a Query Report then runs its own
+	# SQL: no `permission_query_conditions`, no User Permission, no customer filter. One
+	# `report` flag would hand every customer the whole depot's Order Billing Status. The
+	# cost is the list's Report view; the list view itself only needs `read`.
+	"v": ("read", "export", "print"),
 	"w": ("write",),
 	"c": ("create",),
 	"s": ("submit",),
@@ -1756,6 +1788,34 @@ OFFICE_ROLE_MATRIX = {
 		"Repair Order": "r",
 		"Container": "r",
 	},
+	# The customer's own view of the depot. Read-only everywhere, and every row is
+	# filtered to their company before they see it — natively where the doctype has a
+	# Customer link, by container_depot/customer_scope.py where it does not.
+	#
+	# Nothing that prices or approves work is here: a Cleaning Order, a Repair Order and
+	# an Inspection are OAK's working documents, and what the customer is owed of them
+	# arrives as an order, an EIR print or an invoice. What they get is the tank
+	# (Container), its paperwork (Container Booking, Depot Contract) and its history
+	# (Gate Entry, Container Movement, Container Activity).
+	CUSTOMER_DESK_ROLE: {
+		"Container": "v",
+		"Container Booking": "v",
+		"Depot Contract": "v",
+		"Gate Entry": "v",
+		"Container Movement": "v",
+		"Container Activity": "v",
+	},
+}
+
+# Standard ERPNext doctypes the customer role reads: its rate card. Kept out of
+# OFFICE_ROLE_MATRIX because that table is written straight to Custom DocPerm, and the
+# FIRST Custom DocPerm on a standard doctype makes Frappe ignore everything that doctype
+# ships with — so these go through `frappe.permissions.setup_custom_perms` first, which
+# copies the shipped rows across before anything is added. Same treatment as
+# `_grant_link_select`.
+CUSTOMER_STANDARD_DOCPERMS = {
+	"Price List": "v",
+	"Item Price": "v",
 }
 
 # Report access is NOT seeded. A Report with an empty `roles` table falls back to the
@@ -2061,7 +2121,7 @@ def _ensure_docperm(doctype: str, role: str, letters: str, is_submittable: bool)
 	if doctype in NO_MANUAL_CREATE:
 		# Enforced here rather than in each matrix so a doctype added to the set later is
 		# covered without hunting down every table that mentions it.
-		letters = "".join(c for c in letters if c in "rw")
+		letters = "".join(c for c in letters if c in "rwv")
 	if not letters or frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role}):
 		return
 	frappe.get_doc({
@@ -2112,6 +2172,7 @@ def setup_permissions():
 			_ensure_docperm(dt, role_name, letters, submittable[dt])
 
 	_grant_link_select()
+	_grant_customer_standard_docperms()
 
 	frappe.db.commit()
 
@@ -2207,6 +2268,34 @@ def _grant_link_select() -> None:
 			"select": 1,
 			"read": 0,
 			"export": 0,
+		}).insert(ignore_permissions=True)
+		frappe.clear_cache(doctype=target)
+
+
+def _grant_customer_standard_docperms() -> None:
+	"""Read the customer's own rate card: Price List + Item Price. Add-only, idempotent.
+
+	`setup_custom_perms` is what makes this safe on a standard doctype — see the comment
+	on CUSTOMER_STANDARD_DOCPERMS. Neither doctype filters itself by customer (Item Price
+	has no Customer field at all, and a Price List with an empty one is an OAK-internal
+	rate card), so both are narrowed by permission_query_conditions in customer_scope.py.
+	"""
+	from frappe.permissions import setup_custom_perms
+
+	for target, letters in CUSTOMER_STANDARD_DOCPERMS.items():
+		if not frappe.db.exists("DocType", target):
+			continue
+		if frappe.db.exists("Custom DocPerm", {"parent": target, "role": CUSTOMER_DESK_ROLE}):
+			continue
+		setup_custom_perms(target)
+		frappe.get_doc({
+			"doctype": "Custom DocPerm",
+			"parent": target,
+			"parenttype": "DocType",
+			"parentfield": "permissions",
+			"role": CUSTOMER_DESK_ROLE,
+			"permlevel": 0,
+			**_perm_dict(letters, frappe.get_meta(target).is_submittable),
 		}).insert(ignore_permissions=True)
 		frappe.clear_cache(doctype=target)
 

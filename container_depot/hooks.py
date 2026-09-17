@@ -45,6 +45,9 @@ extend_bootinfo = [
 	# Tell the desk client whether this site does invoicing at all, so a form never
 	# offers a billing button the server is about to refuse (container_depot.finance).
 	"container_depot.boot.expose_finance_switch",
+	# Frappe appends every sidebar Section Break without testing it, so a role that may
+	# read six doctypes still gets all eleven headings. Drop the ones left empty.
+	"container_depot.boot.prune_empty_sidebar_sections",
 ]
 
 # Warm the domain-restricted caches before boot so the Workspace Sidebar never
@@ -58,12 +61,49 @@ before_request = [
 	# Send them to the PWA instead. Must be a request hook: PathResolver hardcodes /desk
 	# ahead of website_redirects and page_renderer. See desk_landing.py.
 	"container_depot.desk_landing.redirect_field_users_off_the_desk",
+	# A URL shortcut has no permission to test, so "Download App" (the yard PWA installer)
+	# reaches customer accounts, who may not open the PWA at all. See boot.py.
+	"container_depot.boot.patch_workspace_url_shortcuts",
+	# Frappe's Number Card filter renders `IN ()` for an account that may run no report at
+	# all — a customer — and every dashboard it opens dies on SQL syntax. See boot.py.
+	"container_depot.boot.patch_number_card_empty_report_list",
 ]
 
 # What "open" means for the depot's work orders, on the Connections badges and the Desk
 # open-document counts. Overrides ERPNext's blanket "open = draft" for submittable
 # doctypes, which is wrong here — see container_depot/notifications.py.
 notification_config = "container_depot.notifications.get_notification_config"
+
+# Customer-account scoping
+# -----------------------
+# An external customer login is scoped by ONE User Permission (allow=Customer). Frappe
+# applies that natively wherever a doctype has a Link to Customer; these two tables cover
+# the doctypes where it cannot — no Customer link at all (Gate Entry, Container Movement,
+# Item Price), or several of them joined with `and` where the answer is `or` (Container
+# Booking). Both are no-ops for internal staff, who hold no such User Permission.
+# See container_depot/customer_scope.py.
+permission_query_conditions = {
+	"Gate Entry": "container_depot.customer_scope.gate_entry_query",
+	"Container Movement": "container_depot.customer_scope.container_movement_query",
+	"Container Booking": "container_depot.customer_scope.container_booking_query",
+	"Price List": "container_depot.customer_scope.price_list_query",
+	"Item Price": "container_depot.customer_scope.item_price_query",
+	# A customer account is a System User, so it inherits every doctype the stock
+	# `All` / `Desk User` roles may read — another app's support tickets, HR ledgers,
+	# integration settings. This empties all of them; see customer_scope.
+	"*": "container_depot.customer_scope.foreign_doctype_query",
+}
+
+# The query conditions above only guard LIST reads; opening one document by URL is routed
+# through has_permission instead, so each doctype is tested a second time here.
+has_permission = {
+	"Gate Entry": "container_depot.customer_scope.gate_entry_permission",
+	"Container Movement": "container_depot.customer_scope.container_movement_permission",
+	"Container Booking": "container_depot.customer_scope.container_booking_permission",
+	"Price List": "container_depot.customer_scope.price_list_permission",
+	"Item Price": "container_depot.customer_scope.item_price_permission",
+	"*": "container_depot.customer_scope.foreign_doctype_permission",
+}
 
 # Document Events
 # ---------------

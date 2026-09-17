@@ -178,6 +178,7 @@
   {
    "description": "EMKL / angkutan pada bon terakhir tank ini. Distempel otomatis saat bon terbit.",
    "fieldname": "emkl",
+   "ignore_user_permissions": 1,
    "fieldtype": "Link",
    "label": "EMKL",
    "options": "Customer",
@@ -186,6 +187,7 @@
   {
    "description": "Pabrik / pemilik muatan pada bon terakhir tank ini. Distempel otomatis saat bon terbit.",
    "fieldname": "shipper",
+   "ignore_user_permissions": 1,
    "fieldtype": "Link",
    "label": "Shipper",
    "options": "Customer",
@@ -443,7 +445,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-10 16:10:00.000000",
+ "modified": "2026-09-17 13:43:32.109998",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",
