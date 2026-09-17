@@ -15,8 +15,8 @@
 	--oak-line: #e7e2d7;
 	/* Krem latar = warna latar ilustrasi, supaya gambar menyatu tanpa batas. */
 	--oak-cream: #fdf9ed;
-	/* Ilustrasi yard: 2752x1536 asli diperkecil ke 1920px dan disimpan WebP
-	   (2 MB jadi 139 KB) — ini gambar pertama di halaman pertama. */
+	/* Ilustrasi yard: 3168x1344 asli diperkecil ke 1920x815 dan disimpan WebP
+	   (2 MB jadi 132 KB) — ini gambar pertama di halaman pertama. */
 	--oak-login-art: url("/assets/container_depot/images/login-yard.webp");
 }
 
@@ -24,7 +24,7 @@
    templates/web.html, jadi tidak perlu ikut campur layout web Frappe.
    ponytail: language picker di navbar ikut tertutup — belum dipakai di site ini.
 
-   Ilustrasi lanskap (rasio 16:9) dipasang `cover` dan dikaitkan ke tepi bawah:
+   Ilustrasi lanskap (rasio 2.36:1) dipasang `cover` dan dikaitkan ke tepi bawah:
    yang dipangkas langit, yard dan gedung OAK tetap utuh di tiap tinggi jendela. */
 .oak-login {
 	position: fixed;
@@ -377,11 +377,11 @@
 
 /* ---------- ponsel ---------- */
 
-/* Ilustrasi 16:9 dipasang `cover` hanya selama jendelanya memang lebar. Di layar
+/* Ilustrasi 2.36:1 dipasang `cover` hanya selama jendelanya memang lebar. Di layar
    tegak (tablet portrait, ponsel) `cover` memperbesar gambar sampai yang terlihat
    cuma roda reachstacker — jadi di sana gambarnya dipakai selebar layar dan duduk
    sebagai pita di kaki halaman, sisanya krem. */
-@media (max-aspect-ratio: 13 / 10) {
+@media (max-aspect-ratio: 2 / 1) {
 	.oak-login {
 		background-size: 100% auto;
 	}
