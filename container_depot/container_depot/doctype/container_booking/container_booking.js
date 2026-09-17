@@ -1114,7 +1114,7 @@ function _lock_grid(frm, fieldname, locked) {
 // Sama persis dengan lift_on.URGENCY_ROLES di server. Sengaja pendek: prioritas yang semua
 // orang boleh berikan akan diberikan semua orang, dan antrean yang semuanya nomor satu sama
 // saja dengan antrean yang tidak diurutkan.
-const URGENCY_ROLES = ['SPV Lapangan', 'Admin Ops', 'Management', 'Container Depot', 'System Manager'];
+const URGENCY_ROLES = ['SPV Lapangan', 'Admin Ops', 'Management', 'System Manager'];
 
 function _open_urgency_dialog(frm) {
 	const d = new frappe.ui.Dialog({

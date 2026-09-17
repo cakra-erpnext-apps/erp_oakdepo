@@ -64,7 +64,7 @@ URGENT_REASON = "urgent_reason"
 # Who may declare a job urgent. Not everyone, deliberately: an urgency every role can grant is
 # one every role will grant, and a queue where everything is first is sorted by nothing again.
 # SPV and above, plus the ops backstop — the same shape as the role model in ``install.py``.
-URGENCY_ROLES = ("SPV Lapangan", "Admin Ops", "Management", "Container Depot", "System Manager")
+URGENCY_ROLES = ("SPV Lapangan", "Admin Ops", "Management", "System Manager")
 
 
 # A booking that no longer expects anything to leave: cancelled either way — ``booking_status``

@@ -463,11 +463,18 @@ def _unmark_billed(dt, name):
 def _guard_billing(action):
 	"""Common gate for every entry point that turns depot work into a receivable."""
 	finance.require_enabled(action)
-	# Creating receivables is limited to billing roles. Administrator / test runs bypass via
-	# frappe.only_for. The billing roles (Commercial / Admin Ops / Management / Cashier /
-	# Container Depot) were removed on 2026-08-05 pending a role redesign — until then only
-	# System Manager may raise invoices. Widen this list again with the new roles.
-	frappe.only_for(["System Manager"])
+	# This used to be a hardcoded role list, narrowed to System Manager when the old role
+	# model was purged on 2026-08-05. It is DocPerm-first now: whoever may create a Sales
+	# Invoice may raise one from depot work too — the same rule the ESS layer runs on
+	# (ess.guard.require_menu, "DocPerm is the teeth"), and it needs no editing when a role
+	# is added, since the billing roles get Sales Invoice through their ERPNext companion
+	# role (install.COMPANION_ROLES — Cashier/Accounts User, Finance/Accounts Manager).
+	# The invoice itself is inserted with ignore_permissions (invoicing.py), so this IS the
+	# gate. System Manager stays admitted on its own: it holds Sales Invoice READ via "All"
+	# but no create, so a DocPerm-only check would take billing away from the admin who has
+	# it today.
+	if not frappe.has_permission("Sales Invoice", ptype="create"):
+		frappe.only_for(["System Manager"])
 
 
 def _unit_key(u):

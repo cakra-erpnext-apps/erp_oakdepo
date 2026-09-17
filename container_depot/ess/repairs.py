@@ -148,11 +148,12 @@ def set_repair_status(repair_order, status, note=None):
 
 # The PWA M&R menu is the field/cleaning division's EXECUTION console: it may only start /
 # complete already-approved work. Estimate-building, the offer to the owner and the owner's
-# decision live in Desk (ERP). The owner-approval bypass used to be Admin-Ops only; that
-# role was deleted on 2026-08-05 pending a role redesign, so the bypass is System Manager
-# only until the new model names a replacement — deliberately the narrow side, since this
-# skips the tank owner's approval of what they will be charged for.
-BYPASS_ROLES = {"System Manager"}
+# decision live in Desk (ERP). These depot-side actions were Admin-Ops only; that role was
+# deleted on 2026-08-05 and the guard narrowed to System Manager pending the role redesign.
+# The rebuilt model seeds "Admin Ops" again (install.OFFICE_ROLES), so it is back — still
+# the narrow side, since these skip the tank owner's approval of what they are charged for.
+# Mirrored by MR_DEPOT_ROLES in repair_order.js, which only decides button visibility.
+BYPASS_ROLES = {"Admin Ops", "System Manager"}
 
 
 def _require_admin_ops() -> None:

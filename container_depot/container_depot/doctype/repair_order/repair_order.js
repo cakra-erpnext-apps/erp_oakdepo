@@ -93,12 +93,15 @@ function mr_finalize_direct(frm) {
 	);
 }
 
-// The depot-side actions (publish / withdraw / bypass). These were gated on "Admin Ops"
-// until that role was deleted on 2026-08-05 with the custom role model, so System Manager
-// is the only holder left — matching the server guard in ess/repairs.py. The server
-// re-checks either way; this only decides whether the button is worth showing.
+// The depot-side actions (publish / withdraw / bypass). "Admin Ops" was deleted with the
+// old role model on 2026-08-05 and this check was narrowed to System Manager; the rebuilt
+// role model seeds it again (install.OFFICE_ROLES), so it is back here. Mirror of
+// ess/repairs.BYPASS_ROLES, which is what actually refuses — this only decides whether the
+// button is worth showing. Keep the two in step.
+const MR_DEPOT_ROLES = ['Admin Ops', 'System Manager'];
+
 function is_admin_ops() {
-	return frappe.user.has_role('System Manager');
+	return MR_DEPOT_ROLES.some((role) => frappe.user.has_role(role));
 }
 
 // Admin-Ops bypass: approve directly without ever showing it to the owner. Offered wherever
