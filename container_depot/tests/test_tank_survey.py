@@ -1073,7 +1073,7 @@ class TestLoweringPhotos(_Base):
 		ts.mark_lowered(row, photos=["/files/lowering.jpg"])
 
 		reading = cp.get_container_position(c)["history"][0]
-		self.assertEqual(reading["photos"], ["/files/lowering.jpg"])
+		self.assertEqual(reading["photos"], [{"photo": "/files/lowering.jpg", "caption": ""}])
 		# Letaknya tidak berubah — yang segar adalah UMUR catatannya, karena memang baru
 		# dilihat orang.
 		self.assertEqual(frappe.db.get_value("Container", c, "current_location"), "blok kanan B9")

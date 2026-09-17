@@ -275,7 +275,7 @@
 									<img
 										:src="photoSrc(url)"
 										class="h-full w-full rounded-lg border border-gray-200 object-cover"
-										@click="openLightbox(form.photos.map(photoSrc), i)"
+										@click="openLightbox(form.photos.map((u) => ({ src: photoSrc(u), caption: photoNotes[u] })), i)"
 									/>
 									<button
 										type="button"

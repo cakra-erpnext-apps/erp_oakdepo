@@ -91,7 +91,7 @@
 									<button
 										type="button"
 										class="oak-press"
-										@click="openLightbox(d.photos.map((x) => photoSrc(x.photo)), pi)"
+										@click="openLightbox(d.photos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), pi)"
 									>
 										<img :src="photoSrc(ph.photo)" class="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
 									</button>
@@ -159,7 +159,7 @@
 						:key="p.photo"
 						type="button"
 						class="oak-press min-w-0 text-left"
-						@click="openLightbox((data.photos || []).map((x) => photoSrc(x.photo)), i)"
+						@click="openLightbox((data.photos || []).map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), i)"
 					>
 						<img :src="photoSrc(p.photo)" class="aspect-square w-full rounded-lg border border-gray-200 object-cover" />
 						<span v-if="p.caption" :title="p.caption" class="mt-0.5 block truncate text-[11px] text-gray-700">

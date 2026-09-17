@@ -339,18 +339,33 @@
 					<p class="oak-section-title">{{ labels.cleaningQcPhotos }}</p>
 
 					<!-- Thumbnails (3-up, square tap-friendly tiles) + inline "add" tile -->
-					<div class="grid grid-cols-3 gap-2">
-						<div v-for="(p, i) in qcPhotos" :key="i" class="relative aspect-square">
-							<img :src="photoSrc(p.photo)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
-							<button
-								type="button"
-								class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
-								:aria-label="labels.remove || 'Hapus'"
-								@click="removeQcPhoto(i)"
-							>
-								<Icon name="x" :size="16" />
-							</button>
-							<PhotoMark :photo="p.photo" />
+					<div class="grid grid-cols-3 items-start gap-2">
+						<!-- Keterangan per foto, di bawah petaknya — sebentuk dengan foto M&R dan
+						     Letak Tank. Kolomnya sudah ada di Cleaning QC Photo dan sudah dibaca
+						     Desk maupun Riwayat; tanpa kotak ini ia tidak pernah bisa terisi. -->
+						<div v-for="(p, i) in qcPhotos" :key="i" class="space-y-1">
+							<div class="relative aspect-square">
+								<img
+									:src="photoSrc(p.photo)"
+									class="h-full w-full rounded-lg border border-gray-200 object-cover"
+									@click="openLightbox(qcPhotos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), i)"
+								/>
+								<button
+									type="button"
+									class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
+									:aria-label="labels.remove || 'Hapus'"
+									@click="removeQcPhoto(i)"
+								>
+									<Icon name="x" :size="16" />
+								</button>
+								<PhotoMark :photo="p.photo" />
+							</div>
+							<input
+								v-model="p.caption"
+								type="text"
+								class="oak-input px-2 py-1.5 text-xs"
+								:placeholder="labels.photoCaption"
+							/>
 						</div>
 						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
 
@@ -468,6 +483,7 @@ import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
+import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
 import EditedBy from "@/components/EditedBy.vue"
 import Icon from "@/components/Icon.vue"

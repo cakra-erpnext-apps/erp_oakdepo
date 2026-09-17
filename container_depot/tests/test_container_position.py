@@ -318,8 +318,11 @@ class TestPhotos(_Base):
 		cp.record_position(c, "bay lama", photos=["/files/old.jpg"])
 		cp.record_position(c, "bay baru", photos=["/files/new1.jpg", "/files/new2.jpg"])
 		history = cp.get_container_position(c)["history"]
-		self.assertEqual(history[0]["photos"], ["/files/new1.jpg", "/files/new2.jpg"])
-		self.assertEqual(history[1]["photos"], ["/files/old.jpg"])
+		self.assertEqual(
+			history[0]["photos"],
+			[{"photo": "/files/new1.jpg", "caption": ""}, {"photo": "/files/new2.jpg", "caption": ""}],
+		)
+		self.assertEqual(history[1]["photos"], [{"photo": "/files/old.jpg", "caption": ""}])
 
 	def test_a_reading_with_no_photos_reports_an_empty_list_not_a_missing_key(self):
 		"""The screens iterate this. A missing key renders as a broken row, an empty list as
@@ -332,7 +335,20 @@ class TestPhotos(_Base):
 		c = self._container("CPOSPHOTO0005")
 		cp.record_position(c, "blok kanan", photos=["/files/x.jpg"])
 		row = cp.list_position_history(container=c)["items"][0]
-		self.assertEqual(row["photos"], ["/files/x.jpg"])
+		self.assertEqual(row["photos"], [{"photo": "/files/x.jpg", "caption": ""}])
+
+	def test_the_reading_s_photos_carry_the_caption_typed_for_each_frame(self):
+		"""Tanpa ini keterangan itu tersimpan tapi tak pernah terbaca di layar mana pun."""
+		c = self._container("CPOSPHOTO0007")
+		cp.record_position(
+			c, "blok kanan",
+			photos=[{"photo": "/files/x.jpg", "caption": "di bawah pipa, deret kedua"}],
+		)
+		history = cp.get_container_position(c)["history"]
+		self.assertEqual(
+			history[0]["photos"],
+			[{"photo": "/files/x.jpg", "caption": "di bawah pipa, deret kedua"}],
+		)
 
 	def test_photos_are_optional(self):
 		"""Somebody standing at a tank in the rain must not be blocked from correcting a

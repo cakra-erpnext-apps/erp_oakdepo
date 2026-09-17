@@ -113,14 +113,18 @@
 						yang dicocokkan orang berikutnya dengan tumpukan di depannya, jadi ia ikut di
 						kartu yang sama, bukan satu tap lagi ke menu Letak Tank. -->
 					<div v-if="locationPhotos.length" class="grid grid-cols-3 gap-2 pt-1">
-						<img
-							v-for="(url, i) in locationPhotos"
-							:key="url"
-							:src="url"
-							:alt="labels.monitorYardTitle"
-							class="aspect-square w-full rounded-lg border border-gray-200 object-cover"
-							@click="openLightbox(locationPhotos, i)"
-						>
+						<div v-for="(p, i) in locationPhotos" :key="p.photo">
+							<img
+								:src="p.photo"
+								:alt="labels.monitorYardTitle"
+								class="aspect-square w-full rounded-lg border border-gray-200 object-cover"
+								@click="openLightbox(locationPhotos, i)"
+							>
+							<!-- Keterangan milik foto ini, bukan kalimat letak di atasnya. -->
+							<span v-if="p.caption" :title="p.caption" class="mt-0.5 block truncate text-[10px] text-gray-500">
+								{{ p.caption }}
+							</span>
+						</div>
 					</div>
 				</template>
 				<p v-else class="text-xs text-gray-500">{{ labels.monitorYardEmpty }}</p>

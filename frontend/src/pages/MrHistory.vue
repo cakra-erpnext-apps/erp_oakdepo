@@ -86,7 +86,7 @@
 						<button
 							type="button"
 							class="oak-press block aspect-square w-full"
-							@click="openLightbox(photosFor(data, u).map((x) => x.photo), pi)"
+							@click="openLightbox(photosFor(data, u), pi)"
 						>
 							<img :src="ph.photo" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 						</button>
@@ -106,7 +106,7 @@
 						:key="i"
 						type="button"
 						class="oak-press relative aspect-square"
-						@click="openLightbox(orphanPhotos(data).map((x) => x.photo), i)"
+						@click="openLightbox(orphanPhotos(data), i)"
 					>
 						<img :src="ph.photo" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 						<span

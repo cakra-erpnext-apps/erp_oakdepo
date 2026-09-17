@@ -517,14 +517,19 @@ def get_eir_out_reference(inspection) -> dict:
 				r.item_code: r.item_name
 				for r in frappe.get_all("Inspection Checklist Item", fields=["item_code", "item_name"])
 			}
+			# `{photo, caption}` and not a bare url: the caption is the surveyor's own words
+			# about THIS frame, and the EIR-Out panel is read to decide what the tank arrived
+			# with — a picture shown without them says less than the surveyor recorded.
 			photos_by_item: dict = {}
 			for table in ("Inspection Damage Photo", "Inspection Item Photo"):
 				for p in frappe.get_all(
 					table, filters={"parent": ref, "parenttype": "Inspection"},
-					fields=["checklist_item", "photo"],
+					fields=["checklist_item", "photo", "caption"],
 				):
 					if p.photo:
-						photos_by_item.setdefault(p.checklist_item, []).append(p.photo)
+						photos_by_item.setdefault(p.checklist_item, []).append(
+							{"photo": p.photo, "caption": p.caption or ""}
+						)
 			damages = []
 			for d in frappe.get_all(
 				"Inspection Damage Entry", filters={"parent": ref, "parenttype": "Inspection"},
@@ -574,7 +579,7 @@ def get_eir_out_reference(inspection) -> dict:
 				"has_damage": ein.has_damage,
 				"damages": damages,
 				"fittings": fittings,
-				"photos": [u for lst in photos_by_item.values() for u in lst],
+				"photos": [row for lst in photos_by_item.values() for row in lst],
 			}
 	return out
 

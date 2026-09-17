@@ -203,7 +203,7 @@
 					<div class="grid grid-cols-2 items-start gap-2">
 						<div v-for="(url, idx) in bulkPhotos" :key="url" class="space-y-1">
 							<div class="relative aspect-square">
-								<button type="button" class="oak-press h-full w-full" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+								<button type="button" class="oak-press h-full w-full" @click="openLightbox(bulkPhotos.map((u) => ({ src: photoSrc(u), caption: photoNotes[u] })), idx)">
 									<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 								</button>
 								<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->

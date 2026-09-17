@@ -81,6 +81,10 @@ def _attach_photos(rows) -> list:
 
 	Row-by-row lookups are what make a long history feel slow on a handset, hence the single
 	``in`` query and the grouping here.
+
+	``{photo, caption}`` and not a bare url: the caption is what the operator typed about THIS
+	frame ("di bawah pipa, deret kedua") and ``location_note`` belongs to the whole reading —
+	a screen handed only urls cannot show it at all.
 	"""
 	names = [r.get("name") for r in rows if r.get("name")]
 	by_parent: dict = {}
@@ -88,11 +92,13 @@ def _attach_photos(rows) -> list:
 		for ph in frappe.get_all(
 			"Container Position Photo",
 			filters={"parent": ["in", names], "parenttype": DOCTYPE},
-			fields=["parent", "photo"],
+			fields=["parent", "photo", "caption"],
 			order_by="idx asc",
 		):
 			if ph.photo:
-				by_parent.setdefault(ph.parent, []).append(ph.photo)
+				by_parent.setdefault(ph.parent, []).append(
+					{"photo": ph.photo, "caption": ph.caption or ""}
+				)
 	for r in rows:
 		r["photos"] = by_parent.get(r.get("name"), [])
 	return rows

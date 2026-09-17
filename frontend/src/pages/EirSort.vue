@@ -69,7 +69,7 @@
 				<p class="text-xs text-gray-500">{{ photos.length }} {{ labels.eirSortUnsortedCount }}</p>
 				<div class="space-y-3">
 					<div v-for="p in photos" :key="p.row" class="oak-card space-y-3 p-3">
-						<button type="button" class="oak-press block w-full" @click="openLightbox(photos.map((x) => x.photo), photos.indexOf(p))">
+						<button type="button" class="oak-press block w-full" @click="openLightbox(photos, photos.indexOf(p))">
 							<img :src="p.photo" class="h-48 w-full rounded-xl border border-gray-200 object-cover" />
 						</button>
 						<!-- Yang ditulis petugas tentang foto INI. Sering justru kalimat itu yang

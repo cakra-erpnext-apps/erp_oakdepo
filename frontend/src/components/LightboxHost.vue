@@ -39,7 +39,7 @@
 				</button>
 
 				<img
-					:src="current"
+					:src="current.src"
 					alt=""
 					class="max-h-full max-w-full select-none rounded-lg object-contain shadow-2xl"
 					@click.stop
@@ -55,6 +55,17 @@
 					<Icon name="chevron-right" :size="26" />
 				</button>
 			</div>
+
+			<!-- Keterangan foto INI, di layar tempat fotonya benar-benar dibaca. Yang
+			     mengetiknya berdiri di depan tank ("bocor di sambungan bawah"), dan petak
+			     kecil di daftar memotongnya — di sini muat utuh. -->
+			<p
+				v-if="current.caption"
+				class="whitespace-pre-line px-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm leading-snug text-white/90"
+				@click.stop
+			>
+				{{ current.caption }}
+			</p>
 		</div>
 	</transition>
 </template>
@@ -65,7 +76,7 @@ import { lightbox, closeLightbox, nextImage, prevImage } from "@/utils/lightbox"
 import { useDismissOnBack } from "@/utils/backstack"
 import Icon from "@/components/Icon.vue"
 
-const current = computed(() => lightbox.images[lightbox.index] || "")
+const current = computed(() => lightbox.images[lightbox.index] || { src: "", caption: "" })
 
 // Escape closes the viewer on a desktop; on a phone that key does not exist and Back is the
 // only dismiss there is. Without this it closed the page underneath instead.

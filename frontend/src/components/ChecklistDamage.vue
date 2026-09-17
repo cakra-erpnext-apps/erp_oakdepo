@@ -95,7 +95,7 @@
 			<div class="mt-2 grid grid-cols-2 items-start gap-2">
 				<div v-for="(url, idx) in r.photos" :key="url" class="space-y-1">
 					<div class="relative aspect-square">
-						<button type="button" class="oak-press h-full w-full" @click="openLightbox(r.photos.map(photoSrc), idx)">
+						<button type="button" class="oak-press h-full w-full" @click="openLightbox(r.photos.map((u) => ({ src: photoSrc(u), caption: notes[u] })), idx)">
 							<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 						</button>
 						<button

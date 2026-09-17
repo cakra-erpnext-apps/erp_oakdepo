@@ -70,14 +70,21 @@
 							     gambar tumpukan itulah yang dicocokkan orang berikutnya, dan riwayat
 							     berisi kalimat telanjang membuat setiap baris harus dibuka dulu untuk
 							     tahu apakah ada yang bisa dilihat. -->
-							<div v-if="h.photos?.length" class="mt-1.5 flex gap-1.5">
-								<img
-									v-for="(url, k) in h.photos"
-									:key="k"
-									:src="photoSrc(url)"
-									class="h-14 w-14 rounded-lg border border-gray-200 object-cover"
-									@click="openLightbox(h.photos.map(photoSrc), k)"
-								/>
+							<div v-if="h.photos?.length" class="mt-1.5 flex flex-wrap gap-1.5">
+								<div v-for="(p, k) in h.photos" :key="k" class="w-14">
+									<img
+										:src="photoSrc(p.photo)"
+										class="h-14 w-14 rounded-lg border border-gray-200 object-cover"
+										@click="openLightbox(h.photos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), k)"
+									/>
+									<!-- Keterangan yang diketik di depan tank untuk foto INI — `location_note`
+									     di atas milik seluruh pembacaan, bukan milik satu frame. -->
+									<span
+										v-if="p.caption"
+										:title="p.caption"
+										class="mt-0.5 block truncate text-[10px] text-gray-500"
+									>{{ p.caption }}</span>
+								</div>
 							</div>
 						</div>
 					</li>

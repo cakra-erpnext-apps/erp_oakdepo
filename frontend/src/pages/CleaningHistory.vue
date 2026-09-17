@@ -95,7 +95,7 @@
 						:key="i"
 						type="button"
 						class="oak-press relative aspect-square"
-						@click="openLightbox(data.qc_photos.map((q) => photoSrc(q.photo)), i)"
+						@click="openLightbox(data.qc_photos.map((q) => ({ src: photoSrc(q.photo), caption: q.caption })), i)"
 					>
 						<img :src="photoSrc(p.photo)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 						<span

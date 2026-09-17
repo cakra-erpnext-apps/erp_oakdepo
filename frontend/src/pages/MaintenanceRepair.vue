@@ -296,7 +296,7 @@
 								<button
 									type="button"
 									class="oak-press h-full w-full"
-									@click="openLightbox(g.photos.map((x) => photoSrc(x.photo)), pi)"
+									@click="openLightbox(g.photos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), pi)"
 								>
 									<img :src="photoSrc(ph.photo)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 								</button>

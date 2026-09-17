@@ -152,13 +152,18 @@
 					<p class="shrink-0 text-[11px] text-gray-400">{{ latestPhotos.length }} {{ labels.tankPosPhotoCount }}</p>
 				</div>
 				<div class="grid grid-cols-3 gap-2">
-					<img
-						v-for="(url, i) in latestPhotos"
-						:key="i"
-						:src="photoSrc(url)"
-						class="aspect-square w-full rounded-lg border border-gray-200 object-cover"
-						@click="openLightbox(latestPhotos.map(photoSrc), i)"
-					/>
+					<div v-for="(p, i) in latestPhotos" :key="i">
+						<img
+							:src="photoSrc(p.photo)"
+							class="aspect-square w-full rounded-lg border border-gray-200 object-cover"
+							@click="openLightbox(latestPhotos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), i)"
+						/>
+						<!-- Keterangan foto ini sendiri: letak yang diketik saat menurunkan tank
+						     menyebut tumpukannya, dan itulah yang dicari pembacanya. -->
+						<span v-if="p.caption" :title="p.caption" class="mt-0.5 block truncate text-[10px] text-gray-500">
+							{{ p.caption }}
+						</span>
+					</div>
 				</div>
 			</section>
 

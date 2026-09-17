@@ -78,9 +78,21 @@
 							<div v-for="(d, i) in refEirIn.damages" :key="i" class="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
 								<p class="text-sm font-semibold text-gray-800">{{ d.component || d.item_name }}</p>
 								<p class="text-xs text-gray-600">{{ d.damage_description }}<span v-if="d.damage_type"> · {{ d.damage_type }}</span></p>
+								<!-- Keterangan foto ikut di bawah petaknya: kode kerusakan menyebut JENIS
+								     temuan, dan yang diketik surveyor ("bocor di sambungan bawah") hanya
+								     ada di keterangan ini. -->
 								<div v-if="d.photos && d.photos.length" class="mt-1.5 flex flex-wrap gap-1.5">
-									<button v-for="(ph, pi) in d.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(d.photos.map(photoSrc), pi)">
-										<img :src="photoSrc(ph)" class="h-12 w-12 rounded border border-gray-200 object-cover" />
+									<button
+										v-for="(ph, pi) in d.photos"
+										:key="pi"
+										type="button"
+										class="oak-press w-12"
+										@click="openLightbox(d.photos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), pi)"
+									>
+										<img :src="photoSrc(ph.photo)" class="h-12 w-12 rounded border border-gray-200 object-cover" />
+										<span v-if="ph.caption" :title="ph.caption" class="mt-0.5 block truncate text-left text-[10px] text-gray-500">
+											{{ ph.caption }}
+										</span>
 									</button>
 								</div>
 							</div>
@@ -114,8 +126,17 @@
 						<div v-if="refEirIn.photos && refEirIn.photos.length" class="mt-3">
 							<p class="mb-1.5 text-xs font-bold uppercase tracking-wide text-gray-400">{{ labels.eirOutPrevPhotos }}</p>
 							<div class="flex flex-wrap gap-1.5">
-								<button v-for="(ph, pi) in refEirIn.photos" :key="pi" type="button" class="oak-press" @click="openLightbox(refEirIn.photos.map(photoSrc), pi)">
-									<img :src="photoSrc(ph)" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
+								<button
+									v-for="(ph, pi) in refEirIn.photos"
+									:key="pi"
+									type="button"
+									class="oak-press w-14"
+									@click="openLightbox(refEirIn.photos.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), pi)"
+								>
+									<img :src="photoSrc(ph.photo)" class="h-14 w-14 rounded-lg border border-gray-200 object-cover" />
+									<span v-if="ph.caption" :title="ph.caption" class="mt-0.5 block truncate text-left text-[10px] text-gray-500">
+										{{ ph.caption }}
+									</span>
 								</button>
 							</div>
 						</div>
@@ -190,7 +211,7 @@
 				<div class="grid grid-cols-2 items-start gap-2">
 					<div v-for="(url, idx) in bulkPhotos" :key="url" class="space-y-1">
 						<div class="relative aspect-square">
-							<button type="button" class="oak-press h-full w-full" @click="openLightbox(bulkPhotos.map(photoSrc), idx)">
+							<button type="button" class="oak-press h-full w-full" @click="openLightbox(bulkPhotos.map((u) => ({ src: photoSrc(u), caption: photoNotes[u] })), idx)">
 								<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
 							</button>
 							<!-- Sudah disortir Admin ke item checklist — tetap di Foto Cepat, sortirannya dijaga. -->
