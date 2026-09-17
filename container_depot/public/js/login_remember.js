@@ -1,13 +1,15 @@
-// "Remember Me" on the stock Frappe login page (/login) — loaded site-wide via the
-// `web_include_js` hook, so it must no-op on every other website page.
+// Checkbox "Keep me signed in on this device" di /login — kotaknya ada di markup
+// (www/login.html), skrip ini yang menyimpan dan mengisi ulang isinya. Dimuat
+// site-wide lewat hook `web_include_js`, jadi harus diam di halaman web lain.
 //
-// The checkbox stores the email AND the password in localStorage and refills both on the
-// next visit. That is a deliberate, requested trade-off, so the risk is stated plainly:
-// the password is readable in cleartext by anyone holding an unlocked device (devtools,
-// or any other script that ends up running on this origin). On a depot tablet passed
-// between operators, everyone who ticks this shares their login with the next person.
-// Obfuscating the value would only hide that fact, not change it, so it is stored as-is.
-// Untick the box and log in once to wipe what was stored.
+// Yang disimpan di localStorage adalah email DAN sandi, lalu diisikan lagi pada
+// kunjungan berikutnya. Itu memang yang diminta, jadi risikonya ditulis terang:
+// sandinya terbaca apa adanya oleh siapa pun yang memegang perangkat tidak
+// terkunci (devtools, atau skrip lain yang kebetulan jalan di origin ini). Di
+// tablet depo yang berpindah tangan, yang mencentang ini berbagi login dengan
+// orang berikutnya. Menyamarkan nilainya hanya menutupi kenyataan itu, bukan
+// mengubahnya, jadi disimpan apa adanya. Lepas centangnya lalu login sekali untuk
+// menghapus yang tersimpan.
 (function () {
 	const KEY = "oak_login_remember";
 
@@ -15,7 +17,7 @@
 		try {
 			const raw = localStorage.getItem(KEY);
 			if (raw) return JSON.parse(raw);
-			// The first build of this script remembered the bare email under its own key.
+			// Versi pertama skrip ini menyimpan email saja di key-nya sendiri.
 			const legacy = localStorage.getItem("oak_login_email");
 			if (!legacy) return null;
 			localStorage.removeItem("oak_login_email");
@@ -26,51 +28,27 @@
 	}
 
 	function init() {
-		const email = document.getElementById("login_email");
-		const form = email && email.closest("form.form-login");
-		if (!form || form.querySelector("#oak_remember_me")) return;
+		const box = document.getElementById("oak_remember_me");
+		const form = box && box.closest("form.form-login");
+		if (!form) return;
 
-		// Frappe ships these inputs without a `name`; Chrome's password manager is happier
-		// saving a form whose fields are named, and Frappe reads the values by id anyway.
-		email.name = email.name || "username";
+		const email = form.querySelector("#login_email");
 		const password = form.querySelector("#login_password");
+		if (!email) return;
+
+		// Frappe mengirim input ini tanpa `name`; password manager Chrome lebih senang
+		// menyimpan form yang field-nya bernama, dan Frappe sendiri membaca nilainya
+		// lewat id.
+		email.name = email.name || "username";
 		if (password) password.name = password.name || "password";
 
-		// Ride on the "Forgot Password?" line instead of inventing a row: its stylesheet
-		// already paints every direct child in --text-light at the small regular text style,
-		// so the checkbox inherits the page's own look. Turning that line into a flex row
-		// puts "Remember Me" on the left and leaves the link where it has always been.
-		const label = document.createElement("label");
-		label.setAttribute("for", "oak_remember_me");
-		label.style.cssText =
-			"display:flex;align-items:center;gap:6px;margin:0;font-weight:inherit;cursor:pointer";
-		label.innerHTML =
-			'<input type="checkbox" id="oak_remember_me" style="margin:0"><span>Remember Me</span>';
-
-		const forgot = form.querySelector(".forgot-password-message");
-		if (forgot) {
-			forgot.style.display = "flex";
-			forgot.style.alignItems = "center";
-			forgot.style.justifyContent = "space-between";
-			forgot.prepend(label);
-		} else {
-			// No forgot-password line on this site (it is rendered conditionally): fall back to
-			// a plain row above the button.
-			const wrap = document.createElement("div");
-			wrap.className = "form-group";
-			wrap.appendChild(label);
-			const actions = form.querySelector(".page-card-actions");
-			if (actions) actions.parentNode.insertBefore(wrap, actions);
-			else form.appendChild(wrap);
-		}
-
-		const box = label.querySelector("#oak_remember_me");
 		const saved = read();
 		box.checked = !!saved;
 		if (saved) {
 			if (!email.value) email.value = saved.usr || "";
 			if (password && !password.value) password.value = saved.pwd || "";
-			// Nothing left to type: put the operator on the button, not back in a filled field.
+			// Tidak ada lagi yang perlu diketik: taruh operator di tombol, bukan kembali
+			// ke field yang sudah terisi.
 			if (email.value && password && password.value) {
 				const button = form.querySelector(".btn-login");
 				if (button) button.focus();

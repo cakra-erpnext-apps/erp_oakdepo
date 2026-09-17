@@ -1,0 +1,419 @@
+/* Halaman login OAK Depot — mengikuti mockup: ilustrasi yard mengisi seluruh
+ * layar, kartu login mengambang di atasnya (kiri pada layar lebar, tengah pada
+ * layar sempit).
+ *
+ * Pasangan www/login.html, yang menimpa halaman login Frappe. Markup section dan
+ * id field di sana adalah kontrak dengan login.js — lihat komentar di template.
+ */
+
+:root {
+	--oak-brand: #f97828;
+	--oak-brand-dark: #c2530f;
+	--oak-leaf: #078044;
+	--oak-ink: #14323c;
+	--oak-muted: #6b7f88;
+	--oak-line: #e7e2d7;
+	/* Krem latar = warna latar ilustrasi, supaya gambar menyatu tanpa batas. */
+	--oak-cream: #fdf9ed;
+	/* Ilustrasi yard: 2752x1536 asli diperkecil ke 1920px dan disimpan WebP
+	   (2 MB jadi 139 KB) — ini gambar pertama di halaman pertama. */
+	--oak-login-art: url("/assets/container_depot/images/login-yard.webp");
+}
+
+/* Overlay penuh layar: melewati .container dan padding page-content-wrapper milik
+   templates/web.html, jadi tidak perlu ikut campur layout web Frappe.
+   ponytail: language picker di navbar ikut tertutup — belum dipakai di site ini.
+
+   Ilustrasi lanskap (rasio 16:9) dipasang `cover` dan dikaitkan ke tepi bawah:
+   yang dipangkas langit, yard dan gedung OAK tetap utuh di tiap tinggi jendela. */
+.oak-login {
+	position: fixed;
+	inset: 0;
+	z-index: 1;
+	display: flex;
+	overflow: auto;
+	padding: 24px clamp(16px, 6vw, 104px);
+	background: var(--oak-cream) var(--oak-login-art) center bottom / cover no-repeat;
+	color: var(--oak-ink);
+	/* Field putih: aturan login.bundle.scss (.for-login .page-card .page-card-body
+	   input[...]) lebih spesifik dari apa pun yang masuk akal ditulis di sini, dan
+	   isinya var(--control-bg) — jadi variabelnya yang diganti, bukan lomba selector. */
+	--control-bg: #fff;
+	font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ---------- kartu mengambang ---------- */
+
+/* `margin: auto` yang menengahkan secara vertikal, bukan align-items: kalau kartu
+   lebih tinggi dari jendela, margin auto menyusut ke 0 dan kepala kartu tetap
+   terjangkau saat di-scroll — align-items: center memotongnya. */
+.oak-login-form {
+	display: grid;
+	grid-template-rows: auto 1fr auto;
+	gap: 22px;
+	width: 100%;
+	max-width: 404px;
+	margin: auto auto auto 0;
+	padding: 26px 28px 18px;
+	background: rgb(255 255 255 / 0.97);
+	border: 1px solid rgb(231 226 215 / 0.9);
+	border-radius: 18px;
+	box-shadow: 0 24px 60px -26px rgb(20 50 60 / 0.45);
+}
+
+.oak-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 17px;
+	font-weight: 800;
+	letter-spacing: -0.02em;
+}
+
+.oak-brand img {
+	width: 32px;
+	height: 32px;
+}
+
+.oak-brand span {
+	color: var(--oak-brand);
+}
+
+.oak-login-body {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	min-width: 0;
+}
+
+.oak-login-body > section {
+	width: 100%;
+}
+
+.oak-login-legal {
+	margin: 0;
+	font-size: 11px;
+	text-align: center;
+	color: #9ca3af;
+}
+
+.oak-login-noscript {
+	font-weight: 600;
+	text-align: center;
+	color: #b91c1c;
+}
+
+/* ---------- judul ---------- */
+
+.oak-login-head {
+	margin-bottom: 18px;
+	text-align: center;
+}
+
+.oak-login-head h1 {
+	margin: 0;
+	font-size: 26px;
+	font-weight: 800;
+	letter-spacing: -0.02em;
+	color: var(--oak-ink);
+}
+
+.oak-login-head p {
+	margin: 6px 0 0;
+	font-size: 13px;
+	color: var(--oak-muted);
+}
+
+/* ---------- pemilih tujuan ---------- */
+
+/* Bukan dua cara login — kredensialnya sama; yang berubah hanya halaman yang
+   dibuka setelah berhasil (login.js membaca ?redirect-to saat submit). */
+.oak-login-tabs {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 16px;
+	padding: 4px;
+	border-radius: 12px;
+	background: #efe9dc;
+}
+
+.oak-login-tabs button {
+	flex: 1;
+	padding: 9px 8px;
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--oak-muted);
+	background: transparent;
+	border: none;
+	border-radius: 9px;
+	cursor: pointer;
+}
+
+.oak-login-tabs button[aria-selected="true"] {
+	color: var(--oak-leaf);
+	background: #fff;
+	box-shadow: 0 1px 2px rgb(20 50 60 / 0.12);
+}
+
+.oak-login-tabs[hidden] {
+	display: none;
+}
+
+/* ---------- kartu ---------- */
+
+.oak-login .page-card {
+	max-width: none;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	gap: 0;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.oak-login .page-card-body {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 0;
+}
+
+.oak-login .page-card-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 18px;
+}
+
+/* Label kiri, "Forgot password?" kanan, field selebar keduanya. */
+.oak-login .form-group {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	align-items: baseline;
+	gap: 6px;
+	margin: 0;
+}
+
+.oak-login .form-group > .oak-field,
+.oak-login .form-group > .form-control {
+	grid-column: 1 / -1;
+}
+
+.oak-login .form-label {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--oak-ink);
+}
+
+/* Wajib diisi — input-nya memang `required`, tandanya saja yang belum terlihat. */
+.oak-login .form-group:has([required]) > .form-label::after {
+	content: " *";
+	color: #e11d48;
+}
+
+.oak-login-forgot {
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.oak-login .form-control {
+	height: 44px;
+	padding-left: 12px;
+	border: 1px solid var(--oak-line);
+	border-radius: 10px;
+}
+
+.oak-login .form-control:focus {
+	border-color: var(--oak-brand);
+	box-shadow: 0 0 0 3px rgb(249 120 40 / 0.18);
+}
+
+/* Sisi kanan field sandi disisakan untuk tombol mata. */
+.oak-field .form-control {
+	padding-right: 42px;
+}
+
+/* Pemegang tombol mata. Bukan .password-field milik Frappe: kelas itu menyisakan
+   padding-left 35px untuk ikon dalam field, yang sudah dibuang. */
+.oak-field {
+	position: relative;
+}
+
+/* Tombol lihat sandi, di ujung kanan field. */
+.oak-eye {
+	position: absolute;
+	top: 50%;
+	right: 10px;
+	display: flex;
+	padding: 4px;
+	color: #9ca3af;
+	background: none;
+	border: none;
+	transform: translateY(-50%);
+	cursor: pointer;
+}
+
+.oak-eye.is-on {
+	color: var(--oak-brand);
+}
+
+.oak-login a {
+	color: var(--oak-leaf);
+}
+
+/* ---------- ingat saya ---------- */
+
+/* Kotaknya ada di markup, isinya (simpan/isi ulang) dikerjakan
+   public/js/login_remember.js. */
+.oak-remember {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 2px 0 0;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--oak-muted);
+	cursor: pointer;
+}
+
+.oak-remember input {
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	accent-color: var(--oak-brand);
+}
+
+/* ---------- tombol ---------- */
+
+.oak-login .btn-login,
+.oak-login .btn-ldap-login,
+.oak-login .btn-signup,
+.oak-login .btn-forgot,
+.oak-login .btn-login-with-email-link {
+	height: 46px;
+	font-size: 15px;
+	font-weight: 700;
+	color: #fff;
+	background: var(--oak-brand);
+	border: none;
+	border-radius: 10px;
+}
+
+.oak-login .btn-login:hover,
+.oak-login .btn-login:focus,
+.oak-login .btn-ldap-login:hover,
+.oak-login .btn-signup:hover,
+.oak-login .btn-forgot:hover,
+.oak-login .btn-login-with-email-link:hover {
+	color: #fff;
+	background: var(--oak-brand-dark);
+}
+
+/* Tombol sekunder: social login, email link, "kembali". Social hanya muncul kalau
+   Social Login Key-nya memang dikonfigurasi — Frappe yang menentukan. */
+.oak-login .btn-login-option {
+	height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--oak-ink);
+	background: #fff;
+	border: 1px solid var(--oak-line);
+	border-radius: 10px;
+}
+
+.oak-login .btn-login-option:hover {
+	background: #faf7f0;
+}
+
+.oak-login-social {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.oak-login-divider {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 16px 0;
+	font-size: 12px;
+	color: var(--oak-muted);
+}
+
+.oak-login-divider::before,
+.oak-login-divider::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--oak-line);
+}
+
+.oak-login-alt {
+	margin: 14px 0 0;
+	font-size: 13px;
+	text-align: center;
+	color: var(--oak-muted);
+}
+
+/* ---------- tablet: kartu pindah ke tengah ---------- */
+
+@media (max-width: 900px) {
+	.oak-login {
+		padding: 24px;
+	}
+
+	.oak-login-form {
+		max-width: 420px;
+		margin: auto;
+	}
+}
+
+/* ---------- ponsel ---------- */
+
+/* Ilustrasi 16:9 dipasang `cover` hanya selama jendelanya memang lebar. Di layar
+   tegak (tablet portrait, ponsel) `cover` memperbesar gambar sampai yang terlihat
+   cuma roda reachstacker — jadi di sana gambarnya dipakai selebar layar dan duduk
+   sebagai pita di kaki halaman, sisanya krem. */
+@media (max-aspect-ratio: 13 / 10) {
+	.oak-login {
+		background-size: 100% auto;
+	}
+}
+
+@media (max-width: 560px) {
+	.oak-login {
+		padding: 16px 14px;
+	}
+
+	.oak-login-form {
+		gap: 18px;
+		padding: 20px 18px 14px;
+		border-radius: 16px;
+	}
+
+	.oak-login-head h1 {
+		font-size: 23px;
+	}
+
+	/* login.bundle.scss memaksa kartu setinggi layar di breakpoint xs —
+	   di layout ini kartu sudah punya tingginya sendiri, jadi dilepas. */
+	.oak-login .page-card {
+		min-height: 0;
+		padding: 0;
+	}
+}
+
+/* Layar pendek (ponsel melintang, tablet split-view): kartu yang menang,
+   ilustrasi cukup jadi warna latar. */
+@media (max-height: 560px) {
+	.oak-login {
+		background-image: none;
+	}
+}
