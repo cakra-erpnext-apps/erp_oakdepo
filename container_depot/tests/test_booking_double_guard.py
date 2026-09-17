@@ -59,11 +59,6 @@ def _cleanup():
 		frappe.db.delete(log, {"container": ("in", CONTAINERS)})
 	_purge("Container", {"name": ("in", CONTAINERS)})
 	_purge("Depot Contract", by_customer, ("Tariff Rate",))
-	price_lists = frappe.get_all("Price List", filters=by_customer, pluck="name")
-	if price_lists:
-		frappe.db.delete("Item Price", {"price_list": ("in", price_lists)})
-		frappe.db.delete("Price List", {"name": ("in", price_lists)})
-	frappe.db.set_value("Customer", CUSTOMER, "default_price_list", None, update_modified=False)
 	invoices = frappe.get_all("Sales Invoice", filters=by_customer, pluck="name")
 	if invoices:
 		frappe.db.sql(

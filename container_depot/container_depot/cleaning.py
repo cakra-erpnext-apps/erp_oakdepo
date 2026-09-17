@@ -421,7 +421,7 @@ def _cleaning_item_options() -> list:
 	"""Cleaning Service items yang boleh dipilih — SELURUH katalog, urut dari yang paling
 	sering dipakai. Tidak lagi bergantung pada tank/pemiliknya.
 
-	Dulu disaring "anggota menu Cleaning ∩ punya Item Price di price list pemilik tank",
+	Dulu disaring "anggota menu Cleaning ∩ punya baris tarif di kontrak pemilik tank",
 	jadi tank milik customer tanpa kontrak tidak menawarkan metode apa pun.
 	Sejak 2026-09-07 saringan itu dilepas; yang di luar kontrak tetap boleh dipilih dan
 	tarifnya diisi Admin Ops. Owner's RATE tetap TIDAK dikirim ke PWA depot (dihitung dan
@@ -553,7 +553,7 @@ def save_cleaning_order(
 	_guard_container_branch(co.container)
 
 	# "Metode Cleaning" is now one OR MORE billable Service items (each priced from the
-	# owner's Price List); the controller resolves every row's rate + the total. The legacy
+	# owner's contract); the controller resolves every row's rate + the total. The legacy
 	# free-text cleaning_type is still accepted for back-compat.
 	if cleaning_items is not None:
 		codes = _coerce_list(cleaning_items)

@@ -11,7 +11,7 @@ app_license = "MIT"
 # -------------
 # ERPNext is a hard dependency: the app imports erpnext (e.g. invoicing.py uses
 # erpnext.controllers.accounts_controller) and builds on ERPNext selling masters
-# (Item / Price List / Product Bundle / Sales Invoice). Declaring it here makes
+# (Item / Customer / Sales Invoice). Declaring it here makes
 # `bench install-app` fail fast on a frappe-only site instead of erroring later.
 required_apps = ["erpnext"]
 
@@ -78,16 +78,14 @@ notification_config = "container_depot.notifications.get_notification_config"
 # -----------------------
 # An external customer login is scoped by ONE User Permission (allow=Customer). Frappe
 # applies that natively wherever a doctype has a Link to Customer; these two tables cover
-# the doctypes where it cannot — no Customer link at all (Gate Entry, Container Movement,
-# Item Price), or several of them joined with `and` where the answer is `or` (Container
-# Booking). Both are no-ops for internal staff, who hold no such User Permission.
+# the doctypes where it cannot — no Customer link at all (Gate Entry, Container Movement),
+# or several of them joined with `and` where the answer is `or` (Container Booking). Both
+# are no-ops for internal staff, who hold no such User Permission.
 # See container_depot/customer_scope.py.
 permission_query_conditions = {
 	"Gate Entry": "container_depot.customer_scope.gate_entry_query",
 	"Container Movement": "container_depot.customer_scope.container_movement_query",
 	"Container Booking": "container_depot.customer_scope.container_booking_query",
-	"Price List": "container_depot.customer_scope.price_list_query",
-	"Item Price": "container_depot.customer_scope.item_price_query",
 	# A customer account is a System User, so it inherits every doctype the stock
 	# `All` / `Desk User` roles may read — another app's support tickets, HR ledgers,
 	# integration settings. This empties all of them; see customer_scope.
@@ -100,8 +98,6 @@ has_permission = {
 	"Gate Entry": "container_depot.customer_scope.gate_entry_permission",
 	"Container Movement": "container_depot.customer_scope.container_movement_permission",
 	"Container Booking": "container_depot.customer_scope.container_booking_permission",
-	"Price List": "container_depot.customer_scope.price_list_permission",
-	"Item Price": "container_depot.customer_scope.item_price_permission",
 	"*": "container_depot.customer_scope.foreign_doctype_permission",
 }
 
@@ -109,13 +105,6 @@ has_permission = {
 # ---------------
 
 doc_events = {
-	# A customer's rate card belongs to their Depot Contract (it publishes the Price List
-	# and mirrors its name onto the Customer). The field is read-only on the form; this
-	# refuses the same edit arriving any other way. The contract writes with db.set_value,
-	# which never runs a Customer save, so it is never caught by its own rule.
-	"Customer": {
-		"validate": "container_depot.container_depot.doctype.depot_contract.depot_contract.guard_manual_price_list",
-	},
 	"Customer Portal User": {
 		"after_insert": "container_depot.portal.sync_portal_user_permission",
 		"on_update": "container_depot.portal.sync_portal_user_permission",

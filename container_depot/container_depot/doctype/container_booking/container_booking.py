@@ -799,28 +799,25 @@ class ContainerBooking(Document):
 		)
 
 	def _resolve_pricing_context(self):
-		"""Pricing follows the customer's *active* Price List — the one published by their
-		active contract and mirrored onto ``Customer.default_price_list``. It is resolved
-		automatically (hidden, never picked by hand); every rate it carries is billed in the
-		currency it was agreed in, with no exchange-rate conversion. The customer's active
-		contract is also resolved (hidden) for the allowed payment modes.
+		"""Pricing follows the customer's *active* Depot Contract — the tariff lines on their
+		active contract. It is resolved automatically (hidden, never picked by hand); every
+		rate it carries is billed in the currency it was agreed in, with no exchange-rate
+		conversion. The same contract decides the allowed payment modes.
 
-		Neither is *required*: a booking with no charge lines bills nothing, so a walk-in
-		with no contract is a legitimate booking rather than something to block."""
+		It is not *required*: a booking with no charge lines bills nothing, so a walk-in with
+		no contract is a legitimate booking rather than something to block — its charge lines
+		simply price at 0 for the Cashier."""
 		contract = get_active_contract(self.customer) if self.customer else None
 		self.contract = contract.name if contract else None
-		# The customer's active price list — auto-resolved, not shown or picked. Empty only
-		# for a walk-in with no default list (charge rates then stay whatever was typed).
-		self.price_list = pricing_model.price_list_for_customer(self.customer) if self.customer else None
 		# Mata uang dokumen tidak dipilih di header lagi: ia mengikuti baris charge, yang
-		# masing-masing terkunci ke Item Price kontraknya sendiri (lihat ``_price_charges``).
+		# masing-masing terkunci ke baris tarif kontraknya sendiri (lihat ``_price_charges``).
 		# Yang di-set di sini cuma nilai awal — booking tanpa satu pun baris charge tetap
 		# harus punya mata uang, karena invoice-nya nanti dibuat dengan angka itu.
 		# Mata uang customer lama ikut dibuang saat customernya berganti, sama seperti
 		# charge lines di ``_reset_charges_on_customer_change``.
 		before = self.get_doc_before_save()
 		if not self.currency or (before and before.customer != self.customer):
-			self.currency = pricing_model.currency_for_customer(self.customer, self.price_list)
+			self.currency = pricing_model.currency_for_customer(self.customer, self.contract)
 
 	def _reset_charges_on_customer_change(self):
 		"""Drop every charge line when the customer changes.
@@ -844,7 +841,7 @@ class ContainerBooking(Document):
 
 		Per line: ``item_name`` and ``currency`` are refreshed from the master, ``qty``
 		follows the number of containers (the lift is billed per container) and ``rate``
-		is seeded from the customer's active Price List.
+		is seeded from the customer's active contract.
 
 		The qty seed was dead code for as long as it existed: ``Container Booking Charge``
 		carried ``default: 1``, so a fresh row never arrived with an empty qty and the
@@ -884,10 +881,10 @@ class ContainerBooking(Document):
 					title=_("Service Nonaktif"),
 				)
 			row.item_name = item.item_name or row.item
-			# Mata uang per baris: terkunci ke Item Price kontrak kalau service ini memang
+			# Mata uang per baris: terkunci ke baris tarif kontrak kalau service ini memang
 			# ada di rate card customer, kalau tidak ada — pilihan operator yang berlaku.
 			row.currency, locked = pricing_model.charge_currency(
-				self.customer, self.price_list, row.item, row.get("currency")
+				self.customer, self.contract, row.item, row.get("currency")
 			)
 			row.currency_locked = 1 if locked else 0
 			if not flt(row.qty):
@@ -906,10 +903,10 @@ class ContainerBooking(Document):
 				# bargain ``rate`` strikes one line below.
 				row.qty = container_qty
 			if row.get("rate") is None:
-				# No rate card (no contract) prices nothing, and 0 is the answer — the
+				# No contract prices nothing, and 0 is the answer — the
 				# Cashier types the figure on the draft invoice. Leaving it None showed a
 				# blank box on a line that bills 0 anyway.
-				row.rate = pricing_model.resolve_price(row.item, self.price_list) or 0
+				row.rate = pricing_model.resolve_price(row.item, self.contract) or 0
 			row.amount = flt(row.qty) * flt(row.rate)
 			total += flt(row.amount)
 		self.charges_total = total
@@ -1244,7 +1241,6 @@ class ContainerBooking(Document):
 			due_days=30,
 			remarks=f"Cash booking for {self.customer} ({self.direction}). Cashier to confirm payment.",
 			currency=self.currency,
-			selling_price_list=self.price_list,
 			branch=self.branch,
 		)
 
@@ -1311,7 +1307,6 @@ class ContainerBooking(Document):
 				due_days=30,
 				remarks=f"Auto-generated from Container Booking {self.name}",
 				currency=self.currency,
-				selling_price_list=self.price_list,
 				branch=self.branch,
 			)
 			if si:
@@ -1723,7 +1718,7 @@ def booking_container_query(doctype, txt, searchfield, start, page_len, filters)
 def charge_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Options for a booking charge line: SELURUH katalog item.
 
-	Dulu dua saringan: menu item "Booking" ∩ item yang punya Item Price di price list
+	Dulu dua saringan: menu item "Booking" ∩ item yang punya baris tarif di kontrak
 	customer — dan tanpa customer pickernya kosong sama sekali. Keduanya dilepas
 	(2026-09-07) karena menyembunyikan jasa yang nyata ditagihkan: jasa insidentil yang
 	belum masuk kontrak si customer tetap harus bisa dibaris-kan, lalu tarifnya diisi
@@ -1741,23 +1736,23 @@ def charge_item_query(doctype, txt, searchfield, start, page_len, filters):
 
 @frappe.whitelist()
 def charge_pricing(customer, item):
-	"""Rate + currency + name for one charge Item under the customer's *active* Price List.
+	"""Rate + currency + name for one charge Item under the customer's *active* contract.
 
 	The Desk form calls this the moment a Service is picked so the row's Tarif fills in
 	immediately instead of only after a save. It is a starting point only — the rate stays
-	editable and is never re-applied once filled (see ``_price_charges``). An item the list
+	editable and is never re-applied once filled (see ``_price_charges``). An item the contract
 	does not price returns rate 0, which is a valid free line rather than an error — sejak
 	picker dibuka ke seluruh katalog, baris seperti itu memang jalur normalnya, dan
 	mata uangnya tetap mengikuti customer (default IDR) supaya tidak pernah kosong.
 
 	``currency_locked`` menjawab baris INI, bukan customernya: terkunci hanya kalau service
-	yang dipilih benar-benar punya Item Price di rate card kontrak. Service di luar rate
+	yang dipilih benar-benar punya baris tarif di kontrak customer. Service di luar rate
 	card tidak punya harga yang disepakati, jadi mata uangnya boleh dipilih operator dan
 	form tidak boleh menimpanya."""
-	price_list = pricing_model.price_list_for_customer(customer) if customer else None
-	currency, locked = pricing_model.charge_currency(customer, price_list, item)
+	contract = pricing_model.active_contract(customer) if customer else None
+	currency, locked = pricing_model.charge_currency(customer, contract, item)
 	return {
-		"rate": (pricing_model.resolve_price(item, price_list) or 0) if (price_list and item) else 0,
+		"rate": (pricing_model.resolve_price(item, contract) or 0) if (contract and item) else 0,
 		"currency": currency,
 		"currency_locked": 1 if locked else 0,
 		"item_name": frappe.db.get_value("Item", item, "item_name") if item else None,
@@ -2381,7 +2376,6 @@ def regenerate_invoice(booking):
 		due_days=30,
 		remarks=f"Regenerated for Container Booking {doc.name} after the previous invoice was cancelled.",
 		currency=doc.currency,
-		selling_price_list=doc.price_list,
 		branch=doc.branch,
 	)
 	if not si:

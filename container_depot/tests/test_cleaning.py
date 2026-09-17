@@ -27,8 +27,7 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self._orders = []
 		self._cargos = []
 		self._items = []
-		self._price_lists = []
-		self._customer_lists = {}
+		self._contracts = []
 
 	def tearDown(self):
 		for o in self._orders:
@@ -43,13 +42,10 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		for item in self._items:
 			frappe.db.delete("Item Price", {"item_code": item})
 			frappe.db.delete("Item", {"name": item})
-		# Restore the customer's own rate card before dropping the list it points at, or the
-		# next test in this site inherits a Customer pointing at a Price List that is gone.
-		for customer, before in self._customer_lists.items():
-			frappe.db.set_value("Customer", customer, "default_price_list", before, update_modified=False)
-		for pl in self._price_lists:
-			frappe.db.delete("Item Price", {"price_list": pl})
-			frappe.db.delete("Price List", {"name": pl})
+		# An Active contract left behind silently prices every later test in this site.
+		for name in self._contracts:
+			frappe.db.delete("Tariff Rate", {"parent": name})
+			frappe.db.delete("Depot Contract", {"name": name})
 		frappe.db.commit()
 		super().tearDown()
 
@@ -58,14 +54,19 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self._containers.append(c)
 		return c
 
-	def _customer_price_list(self, customer, price_list):
-		"""Point a customer at a rate card for the length of one test, remembering what was
-		there before — ``default_price_list`` is contract-owned, so leaving a test value on it
-		would price every later order from a list that test then deletes."""
-		self._customer_lists.setdefault(
-			customer, frappe.db.get_value("Customer", customer, "default_price_list")
-		)
-		frappe.db.set_value("Customer", customer, "default_price_list", price_list, update_modified=False)
+	def _rate_card(self, customer, lines):
+		"""An Active Depot Contract for the length of one test — the customer's rate card,
+		and the only thing a Cleaning Order reads a tariff from."""
+		from frappe.utils import add_days, today
+
+		name = frappe.get_doc({
+			"doctype": "Depot Contract", "customer": customer, "currency": "IDR",
+			"status": "Active", "payment_type": "Cash",
+			"valid_from": today(), "valid_to": add_days(today(), 365),
+			"tariff_lines": lines,
+		}).insert(ignore_permissions=True).name
+		self._contracts.append(name)
+		return name
 
 	def _cargo(self, name):
 		self._cargos.append(name)
@@ -123,25 +124,17 @@ class TestCleaningOrderFlow(FrappeTestCase):
 			self.assertEqual(spy.call_count, 1, "already forwarded — do not ring again")
 
 	# --- what a chosen service is priced at -----------------------------------
-	def test_service_row_carries_both_tariffs_from_the_price_list(self):
+	def test_service_row_carries_both_tariffs_from_the_contract(self):
 		"""A cleaning line carries the two prices the rate card states — the service tariff and
 		its labour tariff — each as it stands. Neither is multiplied by anything here, and
 		neither is folded into the other: billing settles labour on its own invoice line."""
 		from frappe.utils import flt
 
-		# The principal's OWN rate card, not the site catalog: a Depot Contract publishes one
-		# and mirrors it onto ``Customer.default_price_list``, and that list is the only thing
-		# that prices a line — a customer without one is billed 0.
-		item, price_list = "CLEAN-MHR-TEST", "ZZ Cleaning Tariff PL"
+		# The principal's OWN contract, which since 2026-09-17 is the only thing that prices a
+		# line — a tank whose owner has none is billed 0.
+		item = "CLEAN-MHR-TEST"
 		tariff, labour = 200.0, 50.0
 		principal = ensure_test_customer("EIR Test Principal")
-		if not frappe.db.exists("Price List", price_list):
-			frappe.get_doc({
-				"doctype": "Price List", "price_list_name": price_list, "currency": "IDR",
-				"selling": 1, "buying": 0, "enabled": 1,
-			}).insert(ignore_permissions=True)
-		self._price_lists.append(price_list)
-		self._customer_price_list(principal, price_list)
 		if not frappe.db.exists("Item", item):
 			frappe.get_doc({
 				"doctype": "Item", "item_code": item, "item_name": "Cleaning Manhour Test",
@@ -149,10 +142,9 @@ class TestCleaningOrderFlow(FrappeTestCase):
 				"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
 			}).insert(ignore_permissions=True)
 		self._items.append(item)
-		frappe.get_doc({
-			"doctype": "Item Price", "item_code": item, "price_list": price_list,
-			"selling": 1, "price_list_rate": tariff, "manhour_rate": labour,
-		}).insert(ignore_permissions=True)
+		self._rate_card(principal, [
+			{"item": item, "rate": tariff, "manhour_rate": labour, "currency": "IDR"}
+		])
 
 		cno = self._container("MHRCLEAN001")
 		co = frappe.get_doc({

@@ -127,7 +127,7 @@ class CleaningOrder(Document):
 
 		from container_depot.pricing_model import currency_for_customer, currency_is_locked
 
-		price_list = price_list_for_container(self.container)
+		contract = contract_for_container(self.container)
 		principal = (
 			frappe.db.get_value("Container", self.container, "principal") if self.container else None
 		)
@@ -136,16 +136,16 @@ class CleaningOrder(Document):
 		before = self.get_doc_before_save()
 		if before and before.container != self.container:
 			self.currency = None
-		# Tarif ditampilkan dalam mata uang Price List kontrak (bisa beda dari mata uang
+		# Tarif ditampilkan dalam mata uang kontrak (bisa beda dari mata uang
 		# company). Terkunci selama pemiliknya punya rate card sendiri atau mata uang tagihan
 		# di master — itu fakta kesepakatan, bukan pilihan. Owner walk-in yang tidak punya
 		# keduanya: field-nya terbuka, operator yang menentukan, dan di situ tidak ada rate
-		# ter-seed yang bisa tertinggal dengan label mata uang keliru (tidak ada price list
-		# yang menyeed). Dulu baris ini selalu menimpa, jadi mata uang yang dipilih manual
-		# hilang lagi setiap save.
-		self.currency_locked = 1 if currency_is_locked(principal, price_list) else 0
+		# ter-seed yang bisa tertinggal dengan label mata uang keliru (tidak ada kontrak yang
+		# menyeed). Dulu baris ini selalu menimpa, jadi mata uang yang dipilih manual hilang
+		# lagi setiap save.
+		self.currency_locked = 1 if currency_is_locked(principal, contract) else 0
 		if self.currency_locked or not self.currency:
-			self.currency = currency_for_customer(principal, price_list)
+			self.currency = currency_for_customer(principal, contract)
 		service_total = manhour_total = 0.0
 		for row in self.cleaning_services:
 			row.currency = self.currency
@@ -155,9 +155,9 @@ class CleaningOrder(Document):
 				if not row.item_name:
 					row.item_name = frappe.db.get_value("Item", row.cleaning_item, "item_name")
 				if not flt(row.rate):
-					row.rate = base_rate_for(row.cleaning_item, price_list)
+					row.rate = base_rate_for(row.cleaning_item, contract)
 				if not flt(row.manhour_rate):
-					row.manhour_rate = pricing.manhour_for(row.cleaning_item, price_list)
+					row.manhour_rate = pricing.manhour_for(row.cleaning_item, contract)
 			service_total += flt(row.rate)
 			manhour_total += flt(row.manhour_rate)
 		self.cleaning_total = service_total
@@ -371,29 +371,28 @@ class CleaningOrder(Document):
 # ---------------------------------------------------------------------------
 # Base pricing: the contract that owns the container.
 # ---------------------------------------------------------------------------
-def price_list_for_container(container) -> str | None:
-	"""The Price List that carries the base prices for this container's cleaning.
+def contract_for_container(container) -> str | None:
+	"""The Active ``Depot Contract`` that carries the base prices for this container's cleaning.
 
-	An Active ``Depot Contract`` publishes its negotiated tariff lines to a customer Price
-	List (``generated_price_list``); that contract — the one the tank Owner (Principal)
-	holds — is the source of truth for what cleaning costs them. A tank whose owner has no
-	active contract (walk-in) falls back to the owner's rate card, then the site default.
+	The contract the tank Owner (Principal) holds is the source of truth for what cleaning
+	costs them. A tank whose owner has no active contract (walk-in) has no rate card at all,
+	and every service comes in at 0 for Admin Ops to fill in.
 	"""
-	from container_depot import pricing, pricing_model
+	from container_depot import pricing_model
 
 	principal = frappe.db.get_value("Container", container, "principal") if container else None
 	if not principal:
 		return None
-	return pricing.contract_price_list(principal) or pricing_model.price_list_for_customer(principal)
+	return pricing_model.active_contract(principal)
 
 
-def base_rate_for(item_code, price_list) -> float:
+def base_rate_for(item_code, contract) -> float:
 	"""Contract base price of one cleaning Service (0 when unpriced / no contract)."""
 	from container_depot import pricing_model
 
-	if not (item_code and price_list):
+	if not (item_code and contract):
 		return 0.0
-	return pricing_model.resolve_price(item_code, price_list) or 0.0
+	return pricing_model.resolve_price(item_code, contract) or 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -404,8 +403,8 @@ def base_rate_for(item_code, price_list) -> float:
 def cleaning_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""Items for the Cleaning Order's "Metode Cleaning (Service)" field: SELURUH katalog item.
 
-	Dulu disaring dua kali — anggota menu item "Cleaning" ∩ item yang punya Item Price di
-	price list kontrak pemilik tank — sehingga tank yang pemiliknya belum punya kontrak
+	Dulu disaring dua kali — anggota menu item "Cleaning" ∩ item yang punya baris tarif di
+	kontrak pemilik tank — sehingga tank yang pemiliknya belum punya kontrak
 	tidak menawarkan metode apa pun. Sejak 2026-09-07 penyaringan itu dilepas: apa
 	pun boleh dipilih, yang di luar kontrak masuk dengan tarif 0 untuk diisi Admin Ops
 	(``service_pricing``). Urutannya yang menggantikan: metode yang paling sering dipakai
@@ -437,17 +436,17 @@ def service_pricing(container=None, item_code=None) -> dict:
 
 	from container_depot.pricing_model import currency_for_customer, currency_is_locked
 
-	price_list = price_list_for_container(container)
+	contract = contract_for_container(container)
 	principal = frappe.db.get_value("Container", container, "principal") if container else None
-	currency = currency_for_customer(principal, price_list)
+	currency = currency_for_customer(principal, contract)
 	return {
-		"rate": base_rate_for(item_code, price_list),
+		"rate": base_rate_for(item_code, contract),
 		# Tarif labour dari rate card pemilik tank — dipakai apa adanya di order ini.
-		"manhour_rate": pricing.manhour_for(item_code, price_list),
+		"manhour_rate": pricing.manhour_for(item_code, contract),
 		"currency": currency,
 		# Terkunci = mata uang sudah punya sumber yang mengikat; kalau tidak, form membiarkan
 		# operator memilih dan JS tidak boleh menimpanya tiap kali Service diganti.
-		"currency_locked": 1 if currency_is_locked(principal, price_list) else 0,
+		"currency_locked": 1 if currency_is_locked(principal, contract) else 0,
 		"item_name": frappe.db.get_value("Item", item_code, "item_name") if item_code else None,
-		"price_list": price_list,
+		"contract": contract,
 	}

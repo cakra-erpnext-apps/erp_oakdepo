@@ -2,7 +2,7 @@
 //
 // Nothing in the depot flow blocks on a Depot Contract: a tank is imported, gated in, cleaned
 // and repaired whether or not its owner has one. But the rates on those orders come from the
-// owner's contract price list, so with no contract every line prices at 0 — and consolidated
+// owner's contract tariff lines, so with no contract every line prices at 0 — and consolidated
 // billing invoices straight off those zeros. The work gets done and silently never billed.
 //
 // So the forms say it out loud, once, at the top: what is missing and where to fix it.
@@ -35,8 +35,8 @@ container_depot._paint_rate_card_notice = function (frm, status) {
 	const who = esc(status.customer);
 	let msg;
 	if (!status.contract) {
-		// Nothing agreed yet — the contract has to be made AND activated (a Draft publishes
-		// no Item Prices, so it prices nothing either).
+		// Nothing agreed yet — the contract has to be made AND activated (a Draft is not
+		// the customer's rate card, so it prices nothing either).
 		const href = `/app/depot-contract/new?customer=${encodeURIComponent(status.customer)}`;
 		msg =
 			__('Owner tank <b>{0}</b> belum punya Depot Contract yang Active.', [who]) +
@@ -44,10 +44,10 @@ container_depot._paint_rate_card_notice = function (frm, status) {
 			__('Semua tarif di order ini akan 0 dan tidak bisa ditagih sampai kontraknya dibuat lalu diaktifkan.') +
 			` <a href="${href}">${__('Buat Depot Contract')}</a>`;
 	} else {
-		// Agreed, but the tariff is empty — the published price list has no Item Prices.
+		// Agreed, but the tariff is empty — the contract carries no Tariff Lines.
 		const href = `/app/depot-contract/${encodeURIComponent(status.contract)}`;
 		msg =
-			__('Kontrak <b>{0}</b> aktif tapi belum menerbitkan tarif apa pun.', [esc(status.contract)]) +
+			__('Kontrak <b>{0}</b> aktif tapi belum punya tarif apa pun.', [esc(status.contract)]) +
 			' ' +
 			__('Isi Tariff Lines-nya, lalu simpan — tanpa itu setiap baris order harganya 0.') +
 			` <a href="${href}">${__('Buka kontrak')}</a>`;

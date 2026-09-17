@@ -3,7 +3,7 @@
 // pills even though one is "belum berlaku" and the other "dibatalkan".
 //
 // Draft    grey   — not in force yet, still editable (and the only deletable state)
-// Active   green  — the contract in force; its Price List is the live one
+// Active   green  — the contract in force; its tariff lines are the live rate card
 // Expired  orange — ran past valid_to
 // Void     red    — cancelled / invalidated, never to be used again
 // Amended  blue   — replaced by a newer contract (see Amendment Of on the successor)

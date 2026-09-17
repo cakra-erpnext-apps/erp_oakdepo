@@ -44,11 +44,6 @@ def _cleanup(customer: str):
 	if contracts:
 		frappe.db.delete("Tariff Rate", {"parent": ("in", contracts)})
 		frappe.db.delete("Depot Contract", {"name": ("in", contracts)})
-	price_lists = frappe.get_all("Price List", filters={"customer": customer}, pluck="name")
-	if price_lists:
-		frappe.db.delete("Item Price", {"price_list": ("in", price_lists)})
-		frappe.db.delete("Price List", {"name": ("in", price_lists)})
-	frappe.db.set_value("Customer", customer, "default_price_list", None, update_modified=False)
 	# Every container this customer owns, not just Booked ones — a gated-in tank has
 	# moved on to another status and would otherwise be left behind.
 	containers = frappe.get_all("Container", filters={"principal": customer}, pluck="name")

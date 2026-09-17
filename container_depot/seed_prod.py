@@ -26,7 +26,7 @@ patches in patches.txt). This seeder additionally provisions the org-level
 masters those patches don't: Branch, Depot, the Item catalogue, and the
 principal Customers.
 
-Prices are intentionally NOT seeded — Item Price / tariff is commercial data;
+Prices are intentionally NOT seeded — the contract tariff is commercial data;
 load it per principal via the depot contract import (paste from Excel),
 ``container_depot.container_depot.doctype.depot_contract.depot_contract.import_tariff_lines``,
 or the v0_11 price patches.

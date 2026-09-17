@@ -332,7 +332,7 @@ frappe.ui.form.on('Repair Order', {
 			[__('Inspection Reference'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],
 			[__('Dikerjakan Oleh'), link('User', frm.doc.started_by)],
-			// One line per currency: an M&R can mix them (each Item Price carries its own),
+			// One line per currency: an M&R can mix them (each tariff line carries its own),
 			// so a single number would be adding rupiah to dollars.
 			[
 				__('Total Cost'),
@@ -674,14 +674,14 @@ frappe.ui.form.on('Repair Used Item', {
 		const row = frappe.get_doc(cdt, cdn);
 		if (!row.item || frm.is_new()) return;
 		frm.trigger('_refresh_on_hand');
-		// Default the cost inputs from the owner's Item Price for the picked item.
+		// Default the cost inputs from the owner's contract tariff for the picked item.
 		frappe.call({
 			method: 'container_depot.ess.repairs.mr_item_pricing',
 			args: { repair_order: frm.doc.name, item: row.item },
 			callback: (r) => {
 				const b = r.message || {};
-				// Currency follows the item's own Item Price (lines may differ) and the line
-				// locks. An item OUTSIDE the owner's rate card has no Item Price to follow, so
+				// Currency follows the item's own tariff line (lines may differ) and the line
+				// locks. An item OUTSIDE the owner's rate card has no tariff line to follow, so
 				// the field opens up — and a currency the operator already picked there is left
 				// alone rather than reset under them on the next item.
 				const picked = frappe.get_doc(cdt, cdn) || {};
@@ -735,7 +735,7 @@ function price_used_row(frm, cdt, cdn) {
 }
 
 function recompute_used_total(frm) {
-	// Group by currency — a Repair Order can mix currencies (each Item Price carries its own).
+	// Group by currency — a Repair Order can mix currencies (each tariff line carries its own).
 	let numeric = 0;
 	const by_currency = {};
 	const default_currency = frappe.defaults.get_default('currency');

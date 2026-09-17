@@ -31,7 +31,6 @@ container_depot.patches.v0_11.seed_contract_template
 container_depot.patches.v0_12.seed_cargo
 container_depot.patches.v0_12.link_cargo_fields
 container_depot.patches.v0_13.set_customer_payment_terms
-container_depot.patches.v0_13.set_customer_billing_currency
 container_depot.patches.v0_15.move_manhour_rate_to_item_price
 container_depot.patches.v0_17.migrate_quoted_status
 container_depot.patches.v0_18.migrate_rejected_status
@@ -130,3 +129,4 @@ container_depot.patches.v0_98.admin_ops_contract_and_masters
 container_depot.patches.v0_99.stop_email_intake
 container_depot.patches.v0_99.drop_email_to_order
 container_depot.patches.v1_00.customer_desk_report_flag
+container_depot.patches.v1_01.retire_the_published_price_list

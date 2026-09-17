@@ -37,11 +37,6 @@ def _cleanup():
 		if contracts:
 			frappe.db.delete("Tariff Rate", {"parent": ("in", contracts)})
 			frappe.db.delete("Depot Contract", {"name": ("in", contracts)})
-		price_lists = frappe.get_all("Price List", filters={"customer": customer}, pluck="name")
-		if price_lists:
-			frappe.db.delete("Item Price", {"price_list": ("in", price_lists)})
-			frappe.db.delete("Price List", {"name": ("in", price_lists)})
-		frappe.db.set_value("Customer", customer, "default_price_list", None, update_modified=False)
 		containers = frappe.get_all("Container", filters={"principal": customer}, pluck="name")
 		if containers:
 			frappe.db.delete("Cleaning Order", {"container": ("in", containers)})

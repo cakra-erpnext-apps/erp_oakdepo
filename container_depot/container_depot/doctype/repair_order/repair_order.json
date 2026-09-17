@@ -136,7 +136,7 @@
    "fieldtype": "Section Break"
   },
   {
-   "description": "Wajib sebelum diajukan ke owner. Tarif dari Item Price pemilik tank, bisa diubah.",
+   "description": "Wajib sebelum diajukan ke owner. Tarif dari kontrak pemilik tank, bisa diubah.",
    "fieldname": "used_items",
    "fieldtype": "Table",
    "label": "Service & Parts",

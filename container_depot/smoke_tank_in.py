@@ -98,7 +98,6 @@ class Smoke:
 		self.company = None
 		self.contract = None
 		self.customer = None
-		self.price_list = None
 		self.currency = None
 		self.depot = None
 		self.branch = None
@@ -167,12 +166,12 @@ class Smoke:
 		self.check("Seeder · item 'Lift Off' ada", bool(frappe.db.exists("Item", "Lift Off")))
 
 		# --- Depot Contract yang Active DAN punya customer -----------------
-		# Inilah sumber semua harga di alur ini: price list-nya yang mengisi charge booking,
+		# Inilah sumber semua harga di alur ini: tariff_lines-nya yang mengisi charge booking,
 		# tarif cleaning, dan tarif M&R. Tanpa ini tidak ada yang bisa dibilling.
 		row = frappe.db.get_value(
 			"Depot Contract",
 			{"status": "Active", "customer": ["is", "set"]},
-			["name", "customer", "payment_type", "currency", "generated_price_list"],
+			["name", "customer", "payment_type", "currency"],
 			as_dict=True,
 			order_by="valid_from desc",
 		)
@@ -180,8 +179,12 @@ class Smoke:
 				"tidak ada kontrak Active — seed/buat kontrak dulu"):
 			return False
 		self.contract, self.customer = row.name, row.customer
-		self.price_list, self.currency = row.generated_price_list, row.currency
-		self.check("Kontrak · punya generated Price List", bool(self.price_list), f"contract={self.contract}")
+		self.currency = row.currency
+		self.check(
+			"Kontrak · punya tariff lines",
+			bool(frappe.db.count("Tariff Rate", {"parent": self.contract, "parenttype": "Depot Contract"})),
+			f"contract={self.contract}",
+		)
 
 		# Customer master-nya benar-benar ada (bukan link menggantung).
 		self.check("Kontrak · customer master ada", bool(frappe.db.exists("Customer", self.customer)),
@@ -197,7 +200,7 @@ class Smoke:
 
 		_log(f"masters: company={self.company} depot={self.depot} branch={self.branch} "
 			f"contract={self.contract} customer={self.customer} "
-			f"price_list={self.price_list} {self.currency} modes={self.modes}")
+			f"{self.currency} modes={self.modes}")
 		return True
 
 	# =======================================================================
@@ -259,10 +262,10 @@ class Smoke:
 		self.check("Container · owner/principal cocok dengan customer kontrak",
 			owner.principal == self.customer, f"principal={owner.principal} customer={self.customer}")
 
-		# Charge harus terharga dari price list kontrak, bukan 0.
+		# Charge harus terharga dari tarif kontrak, bukan 0.
 		rate = flt(doc.charges[0].rate)
-		self.check("Booking · charge terharga dari price list kontrak", rate > 0,
-			f"rate={rate} price_list={self.price_list}")
+		self.check("Booking · charge terharga dari tarif kontrak", rate > 0,
+			f"rate={rate} contract={self.contract}")
 		self.booking_total = flt(doc.charges_total) or rate
 		return True
 
@@ -690,7 +693,7 @@ def cleanup():
 	jadi tidak ada link menggantung. Sales Invoice / Payment Entry membawa jurnal, jadi
 	baris GL-nya ikut dihapus.
 
-	Yang TIDAK pernah dihapus: Customer, Depot Contract, Price List, Item, Depot, Branch —
+	Yang TIDAK pernah dihapus: Customer, Depot Contract, Item, Depot, Branch —
 	itu punya seeder, bukan punya test ini.
 	"""
 	removed = 0

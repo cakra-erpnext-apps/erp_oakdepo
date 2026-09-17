@@ -68,7 +68,7 @@
   },
   {
    "columns": 1,
-   "description": "Ikut Item Price kontrak kalau service ini ada di rate card customer (terkunci); kalau tidak ada, boleh dipilih.",
+   "description": "Ikut tarif kontrak kalau service ini ada di rate card customer (terkunci); kalau tidak ada, boleh dipilih.",
    "fieldname": "currency",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -79,7 +79,7 @@
   },
   {
    "default": "0",
-   "description": "Terisi sistem: service ini punya Item Price di rate card kontrak, jadi mata uangnya sudah disepakati.",
+   "description": "Terisi sistem: service ini punya baris tarif di kontrak, jadi mata uangnya sudah disepakati.",
    "fieldname": "currency_locked",
    "fieldtype": "Check",
    "hidden": 1,

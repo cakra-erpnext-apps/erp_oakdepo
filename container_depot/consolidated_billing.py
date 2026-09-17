@@ -118,7 +118,7 @@ def _cleaning_lines(customer, lo, hi):
 	"""Completed, not-yet-billed cleaning for the customer's tanks.
 
 	Each cleaning Service chosen on an order (``cleaning_services``) becomes its own invoice
-	line, billed at the rate locked from the owner's Price List at cleaning time. An order that
+	line, billed at the rate locked from the owner's contract at cleaning time. An order that
 	chose NO service at all falls back to ONE line at the contract's flat ``CLEANING_ITEM``
 	tariff — that is a missing price, and the contract is the answer to it.
 

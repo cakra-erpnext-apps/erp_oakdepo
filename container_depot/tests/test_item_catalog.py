@@ -19,7 +19,7 @@ from container_depot.container_depot import item_catalog
 _PREFIX = "ZZ-CAT-TEST"
 _CUST = "ZZ Cat Test Customer"
 _PRINCIPAL = "ZZ Cat Test Principal"
-_PL = "ZZ Cat Test PL"
+_OTHER_CUST = "ZZ Cat Other Customer"
 
 
 class TestItemCatalog(FrappeTestCase):
@@ -41,9 +41,12 @@ class TestItemCatalog(FrappeTestCase):
 			frappe.db.delete("Container", {"name": name})
 		for suffix in ("A", "B", "C"):
 			frappe.db.delete("Item", {"name": f"{_PREFIX}-{suffix}"})
-		frappe.db.delete("Item Price", {"price_list": _PL})
-		frappe.db.delete("Price List", {"name": _PL})
-		frappe.db.delete("Customer", {"name": ("in", [_CUST, _PRINCIPAL])})
+		for name in frappe.get_all(
+			"Depot Contract", filters={"customer": ("in", [_CUST, _OTHER_CUST])}, pluck="name"
+		):
+			frappe.db.delete("Tariff Rate", {"parent": name})
+			frappe.db.delete("Depot Contract", {"name": name})
+		frappe.db.delete("Customer", {"name": ("in", [_CUST, _OTHER_CUST, _PRINCIPAL])})
 		item_catalog.clear_popular_cache()
 		frappe.db.commit()
 		super().tearDown()
@@ -86,7 +89,7 @@ class TestItemCatalog(FrappeTestCase):
 
 	# --- katalog terbuka ---------------------------------------------------------
 	def test_search_offers_items_no_contract_prices(self):
-		"""Tidak satu pun item fixture punya Item Price — semuanya tetap ditawarkan."""
+		"""Tidak satu pun item fixture ada di kontrak mana pun — semuanya tetap ditawarkan."""
 		codes = {r["item_code"] for r in item_catalog.search_items(txt=_PREFIX, page_length=50)}
 		self.assertEqual(codes, {f"{_PREFIX}-A", f"{_PREFIX}-B", f"{_PREFIX}-C"})
 
@@ -130,32 +133,36 @@ class TestItemCatalog(FrappeTestCase):
 		second = item_catalog.search_items(txt=_PREFIX, context="mr", start=1, page_length=1)
 		self.assertEqual([r["item_code"] for r in second], [f"{_PREFIX}-A"])
 
-	# --- mata uang baris tanpa Item Price ---------------------------------------
-	def test_currency_follows_own_rate_card_then_customer_then_company(self):
-		"""Urutan mata uang baris tanpa Item Price, dari yang paling mengikat.
+	# --- mata uang baris yang kontraknya tidak menghargai -----------------------
+	def test_currency_follows_own_contract_then_customer_then_company(self):
+		"""Urutan mata uang baris di luar rate card, dari yang paling mengikat.
 
-		Rate card MILIK customer menang duluan — harganya memang tertulis dalam mata uang
-		itu. Price list yang bukan miliknya (katalog site, daftar customer lain) TIDAK:
-		dulu price list apa pun menang di langkah pertama, sehingga katalog site menutupi
-		``Customer.default_currency`` dan customer USD tanpa kontrak selamanya jatuh ke IDR.
+		Kontrak MILIK customer menang duluan — harganya memang tertulis dalam mata uang itu.
+		Kontrak milik pihak LAIN tidak: dulu pertanyaannya price list, dan price list apa pun
+		menang di langkah pertama, sehingga katalog site menutupi ``Customer.default_currency``
+		dan customer USD tanpa kontrak selamanya jatuh ke IDR.
 		"""
-		frappe.get_doc({
-			"doctype": "Price List", "price_list_name": _PL,
-			"currency": "USD", "selling": 1, "enabled": 1,
-		}).insert(ignore_permissions=True)
-		self._customer(_CUST, default_currency="SGD")
+		from frappe.utils import add_days, today
 
-		# Daftar asing: mata uang tagihan customer yang dipakai, bukan currency daftarnya.
-		self.assertEqual(pricing_model.currency_for_customer(_CUST, _PL), "SGD")
+		self._customer(_CUST, default_currency="SGD")
+		self._customer(_OTHER_CUST)
+		foreign = frappe.get_doc({
+			"doctype": "Depot Contract", "customer": _OTHER_CUST, "currency": "USD",
+			"status": "Draft", "payment_type": "Cash",
+			"valid_from": today(), "valid_to": add_days(today(), 365),
+		}).insert(ignore_permissions=True).name
+
+		# Kontrak orang lain: mata uang tagihan customer yang dipakai, bukan currency kontrak itu.
+		self.assertEqual(pricing_model.currency_for_customer(_CUST, foreign), "SGD")
 		self.assertEqual(pricing_model.currency_for_customer(_CUST), "SGD")
 
-		# Daftar yang sama, kini terpasang sebagai rate card customer: daftarnya yang menang.
-		frappe.db.set_value("Price List", _PL, "customer", _CUST, update_modified=False)
-		self.assertEqual(pricing_model.currency_for_customer(_CUST, _PL), "USD")
+		# Kontraknya sendiri: kontraknya yang menang.
+		frappe.db.set_value("Depot Contract", foreign, "customer", _CUST, update_modified=False)
+		self.assertEqual(pricing_model.currency_for_customer(_CUST, foreign), "USD")
 
 		self.assertEqual(
 			pricing_model.currency_for_customer(None), pricing_model.company_currency()
 		)
 
 	def test_currency_is_never_empty(self):
-		self.assertTrue(pricing_model.currency_for_customer("No Such Customer", "No Such List"))
+		self.assertTrue(pricing_model.currency_for_customer("No Such Customer", "No Such Contract"))

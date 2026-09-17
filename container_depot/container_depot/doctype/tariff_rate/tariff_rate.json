@@ -22,7 +22,7 @@
       "reqd": 1
     },
     {
-      "description": "From the Item Price (read-only).",
+      "description": "From the Base Contract (read-only).",
       "fieldname": "uom",
       "fieldtype": "Link",
       "in_list_view": 1,
@@ -32,7 +32,7 @@
     },
     {
       "default": "0",
-      "description": "Defaults from the Item Price; editable.",
+      "description": "Defaults from the Base Contract; editable.",
       "fieldname": "rate",
       "fieldtype": "Currency",
       "in_list_view": 1,
@@ -42,7 +42,7 @@
     },
     {
       "default": "0",
-      "description": "Tarif labour per JAM untuk pelanggan ini (uang) — harga satu jam, BUKAN jumlah jam. Jumlah jam tiap service ada di master Item (field Manhour). Default dari Base Price List; bisa diubah.",
+      "description": "Tarif labour per JAM untuk pelanggan ini (uang) — harga satu jam, BUKAN jumlah jam. Jumlah jam tiap service ada di master Item (field Manhour). Default dari Base Contract; bisa diubah.",
       "fieldname": "manhour_rate",
       "fieldtype": "Currency",
       "in_list_view": 1,
@@ -50,7 +50,7 @@
       "options": "currency"
     },
     {
-      "description": "Inherited from the contract / Base Price List currency.",
+      "description": "Inherited from the contract currency.",
       "fetch_from": "parent.currency",
       "fieldname": "currency",
       "fieldtype": "Link",

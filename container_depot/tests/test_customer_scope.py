@@ -6,7 +6,7 @@ read back as a logged-in customer user. What is being pinned:
 * the company flag is ONE User Permission (allow=Customer), written by the Customer
   Portal User lifecycle, and withdrawn again when the row leaves Active;
 * the doctypes Frappe cannot scope by itself are scoped anyway (Gate Entry and Container
-  Movement carry no Customer link; Item Price is owned by its Price List);
+  Movement carry no Customer link);
 * a second Customer link on a record does NOT hide it from its owner — the and-joined
   User Permission conditions are exactly the trap ``ignore_user_permissions`` is set for
   (a tank owned by A whose last EMKL was B must stay in A's list);
@@ -23,7 +23,7 @@ OWNER = "CS Owner Co"
 OTHER = "CS Other Co"
 USER = "cs-portal@example.com"
 TANKS = {OWNER: "CSTU0000001", OTHER: "CSTU0000002"}
-PRICE_LISTS = {OWNER: "CS Rate Card Owner", OTHER: "CS Rate Card Other"}
+CONTRACTS: dict = {}  # customer -> its Depot Contract, filled in setUpClass
 
 
 def _customer(name):
@@ -70,16 +70,24 @@ def _movement(container_no):
 	}).insert(ignore_permissions=True).name
 
 
-def _price_list(name, customer):
-	if not frappe.db.exists("Price List", name):
-		frappe.get_doc({
-			"doctype": "Price List",
-			"price_list_name": name,
-			"selling": 1,
-			"currency": "IDR",
-		}).insert(ignore_permissions=True)
-	frappe.db.set_value("Price List", name, "customer", customer, update_modified=False)
-	return name
+def _contract(customer):
+	"""A customer's rate card, which since 2026-09-17 IS its Depot Contract.
+
+	Left Draft on purpose: scoping is by the Customer link, which Frappe applies whatever the
+	status says, and an Active contract would drag in payment terms and a credit limit that
+	have nothing to do with what is being tested here.
+	"""
+	from frappe.utils import add_days, today
+
+	return frappe.get_doc({
+		"doctype": "Depot Contract",
+		"customer": customer,
+		"currency": "IDR",
+		"status": "Draft",
+		"payment_type": "Cash",
+		"valid_from": today(),
+		"valid_to": add_days(today(), 365),
+	}).insert(ignore_permissions=True).name
 
 
 def _portal_row(status="Active"):
@@ -105,8 +113,8 @@ class TestCustomerScope(FrappeTestCase):
 		_container(TANKS[OTHER], OTHER)
 		cls.gates = {c: _gate_entry(t) for c, t in TANKS.items()}
 		cls.moves = {c: _movement(t) for c, t in TANKS.items()}
-		for c, pl in PRICE_LISTS.items():
-			_price_list(pl, c)
+		for c in (OWNER, OTHER):
+			CONTRACTS[c] = _contract(c)
 		if frappe.db.exists("User", USER):
 			frappe.delete_doc("User", USER, ignore_permissions=True, force=True)
 		frappe.get_doc({
@@ -129,8 +137,9 @@ class TestCustomerScope(FrappeTestCase):
 			frappe.delete_doc("Gate Entry", name, ignore_permissions=True, force=True)
 		for tank in TANKS.values():
 			frappe.delete_doc("Container", tank, ignore_permissions=True, force=True)
-		for pl in PRICE_LISTS.values():
-			frappe.delete_doc("Price List", pl, ignore_permissions=True, force=True)
+		for name in CONTRACTS.values():
+			frappe.delete_doc("Depot Contract", name, ignore_permissions=True, force=True)
+		CONTRACTS.clear()
 		for perm in frappe.get_all("User Permission", filters={"user": USER}, pluck="name"):
 			frappe.delete_doc("User Permission", perm, ignore_permissions=True, force=True)
 		if frappe.db.exists("User", USER):
@@ -185,10 +194,12 @@ class TestCustomerScope(FrappeTestCase):
 		self.assertIn(self.moves[OWNER], names)
 		self.assertNotIn(self.moves[OTHER], names)
 
-	def test_price_list_is_own_rate_card_only(self):
+	def test_rate_card_is_its_own_contract_only(self):
+		"""The rate card is the contract now, and Frappe scopes it by its Customer link —
+		nothing in this app grants a customer any doctype outside the module."""
 		frappe.set_user(USER)
-		names = frappe.get_list("Price List", pluck="name")
-		self.assertEqual(names, [PRICE_LISTS[OWNER]])
+		names = frappe.get_list("Depot Contract", pluck="name")
+		self.assertEqual(names, [CONTRACTS[OWNER]])
 
 	def test_opening_another_customers_record_is_refused(self):
 		frappe.set_user(USER)

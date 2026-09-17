@@ -43,7 +43,7 @@
    "columns": 1
   },
   {
-   "description": "Service or spare part — must have an Item Price in the owner's price list.",
+   "description": "Service or spare part. Priced by the owner's contract when it lists one, else 0.",
    "fieldname": "item",
    "fieldtype": "Link",
    "label": "Item (Service / Part)",
@@ -102,7 +102,7 @@
    "columns": 1
   },
   {
-   "description": "Ikut Item Price baris ini kalau itemnya ada di rate card pemilik; bisa dipilih hanya untuk baris di luar rate card.",
+   "description": "Ikut tarif kontrak baris ini kalau itemnya ada di rate card pemilik; bisa dipilih hanya untuk baris di luar rate card.",
    "fieldname": "currency",
    "fieldtype": "Link",
    "label": "Currency",
@@ -112,7 +112,7 @@
   },
   {
    "default": "0",
-   "description": "Per-unit item price from the owner's Item Price (adjustable).",
+   "description": "Per-unit item price from the owner's contract tariff (adjustable).",
    "fieldname": "item_rate",
    "fieldtype": "Currency",
    "label": "Item Rate",

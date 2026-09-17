@@ -147,9 +147,6 @@ def purge_mc_data():
 			for child in children:
 				frappe.db.delete(child, {"parent": name, "parenttype": doctype})
 			frappe.db.delete(doctype, {"name": name})
-	for price_list in frappe.get_all("Price List", filters={"customer": MC_CUSTOMER}, pluck="name"):
-		frappe.db.delete("Item Price", {"price_list": price_list})
-		frappe.db.delete("Price List", {"name": price_list})
 	frappe.db.delete("Customer", {"customer_name": ["in", (MC_CUSTOMER, MC_SURVEYOR)]})
 	frappe.db.commit()
 

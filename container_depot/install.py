@@ -31,7 +31,6 @@ def after_install():
 	# Runs after setup_permissions() because it seeds the Roles the profiles point at.
 	setup_role_profiles()
 	setup_property_setters()
-	lock_rate_card_write()
 	ensure_selling_settings()
 	ensure_payment_terms_templates()
 	ensure_modes_of_payment()
@@ -63,12 +62,9 @@ def after_migrate():
 	# the six stock ERPNext/HRMS bundles, skipping any a user still holds.
 	setup_role_profiles()
 	# Doctype-level UX tweaks on standard doctypes (Property Setters, idempotent):
-	# Item links show the item name, Item Price 'New' uses the full form, and a
-	# Customer's Default Price List is read-only (the Depot Contract owns it).
+	# Item links show the item name, masters open their real form instead of the quick-entry
+	# modal, and the Customer's Default Price List is hidden (the contract carries the rates).
 	setup_property_setters()
-	# Same invariant one level down: the contract owns the rate card it publishes, so the
-	# Price List / Item Price rows behind it are read-only to everybody.
-	lock_rate_card_write()
 	# Container Inventory monitoring dashboard (Number Cards + Charts). Idempotent
 	# upsert by name; safe to re-run every migrate.
 	setup_inventory_dashboard()
@@ -305,8 +301,8 @@ CUSTOM_FIELDS = {
 		},
 	],
 	# Depot-pricing fields (pricing spec §3.2). Repair services price as
-	# manhour × Item Price manhour_rate + material_cost; packages are flagged so
-	# they can be filtered apart from single services.
+	# manhour × the contract's Tariff Rate manhour_rate + material_cost; packages are
+	# flagged so they can be filtered apart from single services.
 	"Item": [
 		{
 			"fieldname": "depot_pricing_section",
@@ -335,7 +331,7 @@ CUSTOM_FIELDS = {
 			"label": "Manhour",
 			"fieldtype": "Float",
 			"insert_after": "service_unit",
-			"description": "Standard labour hours for a repair service. Effective rate = manhour × Item Price manhour rate + material cost.",
+			"description": "Standard labour hours for a repair service. Effective rate = manhour × the contract's manhour rate + material cost.",
 		},
 		{
 			"fieldname": "material_cost",
@@ -344,30 +340,6 @@ CUSTOM_FIELDS = {
 			"insert_after": "manhour",
 			"description": "Spare-part / material cost added on top of labour for a repair service.",
 		},
-	],
-	"Item Price": [
-		{
-			"fieldname": "manhour_rate",
-			"label": "Manhour Rate",
-			"fieldtype": "Currency",
-			"options": "currency",
-			"insert_after": "price_list_rate",
-			"allow_in_quick_entry": 1,
-			"description": "Labour rate per hour for repair services priced as manhour × rate + material. Held per Item Price so each principal's rate card can carry its own rate (e.g. OAK 4.50, Bertschi 4.00).",
-		}
-	],
-	"Price List": [
-		{
-			"fieldname": "customer",
-			"label": "Customer",
-			"fieldtype": "Link",
-			"options": "Customer",
-			"insert_after": "currency",
-			"in_standard_filter": 1,
-			# Optional: a per-principal rate card can be tied to its Customer
-			# master; standard/shared price lists leave this blank.
-			"description": "Optional — the Customer this rate card belongs to. Leave blank for shared/standard price lists.",
-		}
 	],
 	# Stamp the depot Branch on receivables so invoices can be filtered / reported per
 	# branch (Sales Invoice has no native branch field). Set from the Container Booking.
@@ -469,7 +441,7 @@ CUSTOM_FIELDS = {
 			"insert_after": "qty",
 			"in_list_view": 1,
 			"columns": 1,
-			"description": "Manhour dari Price List kontrak — tidak dikali qty dan tidak menambah harga baris ini. Ditotal di header lalu dikali Hour.",
+			"description": "Manhour dari tarif kontrak — tidak dikali qty dan tidak menambah harga baris ini. Ditotal di header lalu dikali Hour.",
 		}
 	],
 	# Back-link a Repair Order to the consolidated invoice it was billed into. Repair
@@ -639,7 +611,7 @@ def _drop_obsolete_custom_fields():
 #   (doctype, fieldname|None, property, value, property_type)
 PROPERTY_SETTERS = [
 	# Item Link fields show the item NAME (title field) instead of the bare code,
-	# so pickers (incl. the Item Price item selector) are human-readable.
+	# so pickers (incl. the tariff-line item selector) are human-readable.
 	("Item", None, "show_title_field_in_link", "1", "Check"),
 	# "Create a new …" from a Link field opens the master's REAL form, never the
 	# quick-entry modal. The modal is not a smaller form, it is a different one: it
@@ -648,7 +620,9 @@ PROPERTY_SETTERS = [
 	# (frappe/form/controls/base_input.js reads `this.frm?.doc`) and never runs the
 	# doctype's client script. So the operator saved a half-filled master and had to
 	# open the form to finish it anyway; Item Price was the first case caught (the
-	# modal hid manhour rate and never fetched currency from the price list).
+	# modal hid manhour rate and never fetched currency from the price list) — that
+	# doctype is no longer the app's business, but the same trap applies to every
+	# master below.
 	#
 	# Routing away costs nothing: link.js stashes the calling field in
 	# `frappe._from_link`, and save.js calls `update_calling_link()` after every
@@ -664,22 +638,14 @@ PROPERTY_SETTERS = [
 	# quick_entry off already.
 	("Customer", None, "quick_entry", "0", "Check"),
 	("Item", None, "quick_entry", "0", "Check"),
-	("Item Price", None, "quick_entry", "0", "Check"),
 	("Role", None, "quick_entry", "0", "Check"),
 	("UOM", None, "quick_entry", "0", "Check"),
 	("User", None, "quick_entry", "0", "Check"),
-	# A customer's rate card is the OUTPUT of their Depot Contract: going Active publishes
-	# a Price List named after the contract and mirrors it here
-	# (DepotContract._publish_price_list). Typing a different list on the Customer form
-	# silently re-rates every future booking, bon and invoice for that party while the
-	# contract everyone reads still says otherwise — so the field is read-only, and the
-	# description says where to change it instead. The server refuses it too
-	# (depot_contract.guard_manual_price_list); this is the half that stops the mistake
-	# being made rather than reported.
-	("Customer", "default_price_list", "read_only", "1", "Check"),
-	("Customer", "default_price_list", "description",
-	 "Diatur otomatis dari Depot Contract yang Active. Untuk mengubahnya, amend contract "
-	 "customer ini — bukan dari sini.", "Small Text"),
+	# A customer's rate card is its Depot Contract's tariff lines and nothing else. ERPNext's
+	# own Default Price List no longer takes part in pricing anywhere in this app, so it is
+	# hidden rather than left on the form looking like the place to set prices — the one
+	# mistake this field has ever caused.
+	("Customer", "default_price_list", "hidden", "1", "Check"),
 	# The booking print is a customer-facing document, so Print must open the OAK format
 	# rather than Frappe's Standard field-dump. Nothing else selects it: /desk/print/...
 	# falls back to the doctype default. The driver's copy is a separate pick from the
@@ -762,57 +728,6 @@ def setup_property_setters():
 	"""Apply app Property Setters on standard doctypes (idempotent)."""
 	for doctype, fieldname, prop, value, property_type in PROPERTY_SETTERS:
 		_set_property(doctype, fieldname, prop, value, property_type)
-	frappe.db.commit()
-
-
-# The published rate card. Every figure in these two is written by
-# DepotContract._publish_price_list and by nothing else.
-RATE_CARD_DOCTYPES = ("Price List", "Item Price")
-
-
-def lock_rate_card_write():
-	"""Take write off the published rate card — the Depot Contract owns every figure in it.
-
-	``_publish_price_list`` creates the customer's Price List and ``_sync_item_prices``
-	rewrites its Item Prices from ``tariff_lines`` every time an Active contract is saved,
-	DELETING any row the contract does not list. A rate typed straight into Item Price
-	therefore survives exactly until somebody next opens that contract: it vanishes with no
-	error and no trace, and the invoice goes out carrying the contract's figure rather than
-	the typed one. The menus are gone from the workspace, but the doctype is still one URL
-	away for anyone holding ``Sales Master Manager`` — which Admin Ops does, for Item and
-	Customer (see COMPANION_ROLES).
-
-	Read stays. The list view is how the office checks what a contract actually published,
-	and the customer portal reads its own rate card through these same two doctypes
-	(CUSTOMER_STANDARD_DOCPERMS). The publisher writes with ``ignore_permissions``, so no
-	role needs write for anything to work.
-
-	``setup_custom_perms`` first, exactly as ``_grant_link_select`` does: on a site where
-	these doctypes still carry only their shipped DocPerms it copies those into Custom
-	DocPerm, so zeroing the flags below touches these two doctypes and nothing else.
-	"""
-	from frappe.permissions import setup_custom_perms
-
-	for doctype in RATE_CARD_DOCTYPES:
-		if not frappe.db.exists("DocType", doctype):
-			continue
-		setup_custom_perms(doctype)
-		locked = 0
-		# `parent` is a plain Link to DocType here — Custom DocPerm is a standalone doctype,
-		# not a child table, and has no `parenttype` column to filter on.
-		for name in frappe.get_all("Custom DocPerm", filters={"parent": doctype}, pluck="name"):
-			row = frappe.db.get_value(
-				"Custom DocPerm", name, ["write", "create", "delete"], as_dict=True
-			)
-			if not (row.write or row.create or row.delete):
-				continue
-			frappe.db.set_value(
-				"Custom DocPerm", name, {"write": 0, "create": 0, "delete": 0},
-				update_modified=False,
-			)
-			locked += 1
-		if locked:
-			frappe.clear_cache(doctype=doctype)
 	frappe.db.commit()
 
 
@@ -1314,14 +1229,14 @@ def ensure_multi_currency_billing():
 	"""Allow foreign-currency (USD) invoices against the single party receivable.
 
 	The depot books in IDR (company base currency) but quotes some principals
-	(OAK, Bertschi) in USD via their Price List. Turning this on lets one IDR
+	(OAK, Bertschi) in USD in their contract. Turning this on lets one IDR
 	receivable account hold those USD invoices — tracked per-party with an
 	exchange rate — instead of forcing a separate USD receivable account. This is
 	native ERPNext multi-currency; the company base currency is unchanged.
 
 	Idempotent + defensive: only writes when the flag is off, never breaks a
 	migrate. Per-customer billing currency is set by the set_customer_billing_currency
-	patch (from each customer's Price List currency).
+	patch (from each customer's contract currency).
 	"""
 	try:
 		if not frappe.db.exists("DocType", "Accounts Settings"):
@@ -1607,8 +1522,8 @@ COMPANION_ROLES = {
 	# DocPerm, karena baris Custom DocPerm PERTAMA pada doctype ERPNext mematikan seluruh
 	# izin bawaannya. `Sales Master Manager` dulu dipilih justru KARENA ia satu-satunya
 	# tingkat yang menyentuh `Item Price` (doctype itu tidak punya tingkat baca-saja), waktu
-	# tarif masih diketik di rate card (2026-09-14). Tarif kini cuma diketik di Depot
-	# Contract, dan `lock_rate_card_write` mencabut write-nya kembali — role ini tinggal
+	# tarif masih diketik di rate card (2026-09-14). Tarif kini hidup di `Tariff Rate` milik
+	# Depot Contract dan app ini tidak membaca Item Price sama sekali — role ini tinggal
 	# dipakai untuk master Customer dan pajaknya.
 	"Admin Ops": ["Inbox User", "Item Manager", "Sales Master Manager"],
 	"Cashier": ["Accounts User", "Inbox User"],
@@ -1691,9 +1606,9 @@ NO_MANUAL_CREATE = AUDIT_DOCTYPES | {"Gate Entry"}
 # mengisi kontrak dan tarifnya saat go-live adalah Admin Ops, dan sebelumnya ia bahkan
 # tidak punya izin BACA — menunya tidak sekadar tersembunyi, dokumennya tertutup. Ia
 # sekarang jatuh ke cabang terakhir `_office_role_perms` (rwcsxa) seperti transaksi
-# operasional lain. Konsekuensinya disebut terang-terangan: menyunting tariff_lines sebuah
-# kontrak Active menerbitkan ulang Price List yang dibaca booking, cleaning dan M&R — jadi
-# Admin Ops kini memegang harga, bukan cuma jadwal.
+# operasional lain. Konsekuensinya disebut terang-terangan: tariff_lines sebuah kontrak
+# Active ADALAH tarif yang dibaca booking, cleaning dan M&R — jadi Admin Ops memegang
+# harga, bukan cuma jadwal.
 FINANCE_DOCTYPES = {"OAK Monthly Invoice", "Depot Finance Settings"}
 
 # Reference/config records. Admin Ops may correct them but not spawn new ones.
@@ -1862,17 +1777,6 @@ OFFICE_ROLE_MATRIX = {
 		"Container Movement": "v",
 		"Container Activity": "v",
 	},
-}
-
-# Standard ERPNext doctypes the customer role reads: its rate card. Kept out of
-# OFFICE_ROLE_MATRIX because that table is written straight to Custom DocPerm, and the
-# FIRST Custom DocPerm on a standard doctype makes Frappe ignore everything that doctype
-# ships with — so these go through `frappe.permissions.setup_custom_perms` first, which
-# copies the shipped rows across before anything is added. Same treatment as
-# `_grant_link_select`.
-CUSTOMER_STANDARD_DOCPERMS = {
-	"Price List": "v",
-	"Item Price": "v",
 }
 
 # Report access is NOT seeded. A Report with an empty `roles` table falls back to the
@@ -2229,7 +2133,6 @@ def setup_permissions():
 			_ensure_docperm(dt, role_name, letters, submittable[dt])
 
 	_grant_link_select()
-	_grant_customer_standard_docperms()
 
 	frappe.db.commit()
 
@@ -2242,8 +2145,8 @@ def setup_permissions():
 #
 # That is the shape of every bug this fixes: `Insufficient Permission for Currency` on
 # `Depot Contract`, because Admin Ops holds no Accounts/Sales/Purchase role (2026-09-16); then
-# the same for `Branch`; and the sweep finds `Employee`, `User`, `Role`, `Price List` and
-# `Warehouse` queued up behind them. Granting one doctype at a time is the same 403 waiting for
+# the same for `Branch`; and the sweep finds `Employee`, `User`, `Role` and `Warehouse`
+# queued up behind them. Granting one doctype at a time is the same 403 waiting for
 # the next field, so the rule is applied to every doctype a Container Depot form links to.
 #
 # WHAT IS GRANTED IS `select`, NOT `read`. Frappe keeps them separate: `select` means exactly
@@ -2329,32 +2232,6 @@ def _grant_link_select() -> None:
 		frappe.clear_cache(doctype=target)
 
 
-def _grant_customer_standard_docperms() -> None:
-	"""Read the customer's own rate card: Price List + Item Price. Add-only, idempotent.
-
-	`setup_custom_perms` is what makes this safe on a standard doctype — see the comment
-	on CUSTOMER_STANDARD_DOCPERMS. Neither doctype filters itself by customer (Item Price
-	has no Customer field at all, and a Price List with an empty one is an OAK-internal
-	rate card), so both are narrowed by permission_query_conditions in customer_scope.py.
-	"""
-	from frappe.permissions import setup_custom_perms
-
-	for target, letters in CUSTOMER_STANDARD_DOCPERMS.items():
-		if not frappe.db.exists("DocType", target):
-			continue
-		if frappe.db.exists("Custom DocPerm", {"parent": target, "role": CUSTOMER_DESK_ROLE}):
-			continue
-		setup_custom_perms(target)
-		frappe.get_doc({
-			"doctype": "Custom DocPerm",
-			"parent": target,
-			"parenttype": "DocType",
-			"parentfield": "permissions",
-			"role": CUSTOMER_DESK_ROLE,
-			"permlevel": 0,
-			**_perm_dict(letters, frappe.get_meta(target).is_submittable),
-		}).insert(ignore_permissions=True)
-		frappe.clear_cache(doctype=target)
 
 
 # ---------------------------------------------------------------------------

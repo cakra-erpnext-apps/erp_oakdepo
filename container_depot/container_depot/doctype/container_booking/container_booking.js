@@ -4,9 +4,9 @@
 // Container booking. Direction is the operator's pick — Tank In = Lift Off (tank dropped
 // at the depot), Tank Out = Lift On (tank taken from it) — and drives the gates, the bon
 // type and the BKG-IN/BKG-OUT number. Branch scopes the depot; Customer drives the payment
-// modes and resolves the active Price List server-side. Charges are a free table: any
+// modes and resolves the active contract server-side. Charges are a free table: any
 // number of services from the item catalogue, or none at all — each row billed in the
-// currency its contract Item Price agreed (locked), or in the one the operator picks when
+// currency its contract line agreed (locked), or in the one the operator picks when
 // the rate card doesn't price that service. No exchange rate: the figures are used as-is,
 // and the document's own currency simply follows its rows. Principal (Tank Owner) scopes the
 // container picker on each line.
@@ -46,7 +46,7 @@ function _bon_payment_block(frm) {
 
 frappe.ui.form.on('Container Booking', {
 	// No header `currency` handler: the document's currency is now derived from its charge
-	// rows (each locked to the Item Price its contract agreed, or picked by the operator on
+	// rows (each locked to the rate its contract agreed, or picked by the operator on
 	// a row the rate card doesn't price), never pushed down from the header.
 	onload(frm) {
 		frm.trigger('_set_queries');
@@ -1004,7 +1004,7 @@ function _fetch_charge_rate(frm, cdt, cdn) {
 			const d = r.message || {};
 			// Currency first so the rate formats in the currency it was agreed in (USD / IDR).
 			// The lock is per ROW: a service priced by the contract's rate card carries that
-			// Item Price's currency and the operator can't touch it; a service outside the rate
+			// tariff line's currency and the operator can't touch it; a service outside the rate
 			// card keeps whatever the operator picked (or the customer's currency, when blank).
 			frappe.model.set_value(cdt, cdn, 'currency_locked', d.currency_locked ? 1 : 0);
 			if (d.currency && (d.currency_locked || !row.currency)) {

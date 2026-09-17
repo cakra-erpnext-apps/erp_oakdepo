@@ -45,7 +45,6 @@
   "bon_summary",
   "per_fulfilled",
   "lift_type",
-  "price_list",
   "contract",
   "links_tab",
   "work_section",
@@ -378,16 +377,6 @@
    "label": "Lift Type",
    "options": "\nLift On\nLift Off",
    "read_only": 1
-  },
-  {
-   "description": "Dari kontrak aktif customer.",
-   "fieldname": "price_list",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Price List",
-   "options": "Price List",
-   "read_only": 1,
-   "allow_on_submit": 1
   },
   {
    "fieldname": "currency",

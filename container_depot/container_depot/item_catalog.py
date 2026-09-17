@@ -1,7 +1,7 @@
 """Katalog item untuk semua picker transaksi (M&R, Cleaning, Booking, Kontrak).
 
-Sampai 2026-09-07 setiap picker menyaring dua kali: item harus punya selling Item Price di
-price list customer **dan** masuk sebuah "Depot Service Menu" (master pemetaan Item Group
+Sampai 2026-09-07 setiap picker menyaring dua kali: item harus punya baris tarif di
+kontrak customer **dan** masuk sebuah "Depot Service Menu" (master pemetaan Item Group
 yang ikut dihapus, patch v0_92). Dua saringan itu dilepas — operator boleh memilih item apa
 pun dari katalog, termasuk yang belum ada di kontrak si customer. Yang tidak dikontrak datang dengan rate 0 dan diisi manual oleh operator/kasir
 (lihat ``pricing_model.currency_for_customer`` untuk mata uangnya).

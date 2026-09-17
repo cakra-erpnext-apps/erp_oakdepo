@@ -295,13 +295,14 @@ class RepairOrder(Document):
 			if principal:
 				self.principal = principal
 
-	def owner_price_list(self):
-		"""The selling Price List for this M&R's owner/principal — drives every rate
-		(harga ikut Item Price per principal). None when the owner has no price list."""
-		from container_depot.pricing_model import price_list_for_customer
+	def owner_contract(self):
+		"""The Active Depot Contract of this M&R's owner/principal — the rate card behind
+		every figure on the order. None when the owner has no contract, and then every line
+		prices at 0 for the Cashier to fill in."""
+		from container_depot.pricing_model import active_contract
 
 		principal = self.principal or frappe.db.get_value("Container", self.container, "principal")
-		return price_list_for_customer(principal) if principal else None
+		return active_contract(principal) if principal else None
 
 	def calculate_totals(self):
 		"""Cost each Service & Parts line from the item alone:
@@ -317,11 +318,11 @@ class RepairOrder(Document):
 		along hidden as the hours the invoice books for that item. Neither enters the line
 		amount or the order total.
 
-		``quantity`` and ``item_rate`` are the ADJUSTABLE inputs (seeded from the owner's Item
-		Price when a line is first added); the amounts are always derived here, so they stay
-		read-only in the UI.
+		``quantity`` and ``item_rate`` are the ADJUSTABLE inputs (seeded from the owner's
+		contract line when a line is first added); the amounts are always derived here, so they
+		stay read-only in the UI.
 
-		Each line's currency follows its own Item Price, so a Repair Order can MIX currencies.
+		Each line's currency follows its own tariff line, so a Repair Order can MIX currencies.
 		Totals are therefore grouped by currency into the ``totals`` table (one row per
 		currency); ``total_cost`` stays as the plain numeric sum (kept for the worklists /
 		billing report that still read a single figure). The copied ``damages`` carry no cost."""
@@ -329,17 +330,16 @@ class RepairOrder(Document):
 
 		from container_depot.pricing_model import currency_for_customer, item_rate_breakdown
 
-		price_list = self.owner_price_list()
-		# Fallback currency for a line whose item has no Item Price = the OWNER'S price-list
-		# currency (i.e. the contract currency, e.g. USD for Bertschi), NOT the site default
-		# (IDR). Otherwise an item missing from the price list silently drags the line — and
-		# the empty grid — back to IDR even though the whole M&R is priced in the owner's
-		# currency. Baris tanpa Item Price kini hal biasa (picker item tidak lagi dibatasi
-		# kontrak), jadi jalur ini yang menjaga mata uangnya: price list pemilik → mata uang
-		# customer → default site → IDR.
+		contract = self.owner_contract()
+		# Fallback currency for a line the contract does not price = the OWNER'S contract
+		# currency (e.g. USD for Bertschi), NOT the site default (IDR). Otherwise an item
+		# missing from the rate card silently drags the line — and the empty grid — back to
+		# IDR even though the whole M&R is priced in the owner's currency. Baris di luar rate
+		# card kini hal biasa (picker item tidak lagi dibatasi kontrak), jadi jalur ini yang
+		# menjaga mata uangnya: kontrak pemilik, mata uang customer, lalu default company.
 		default_currency = currency_for_customer(
 			self.principal or frappe.db.get_value("Container", self.container, "principal"),
-			price_list,
+			contract,
 		)
 		numeric_total = 0.0
 		by_currency = {}
@@ -364,8 +364,8 @@ class RepairOrder(Document):
 				# Show the gudang actually used instead of leaving the column blank while the
 				# stock silently comes from the branch default.
 				row.warehouse = default_warehouse(self)
-			breakdown = item_rate_breakdown(row.item, price_list) if row.item else {}
-			# Mata uang baris: Item Price-nya sendiri kalau item itu memang ada di rate card
+			breakdown = item_rate_breakdown(row.item, contract) if row.item else {}
+			# Mata uang baris: baris tarifnya sendiri kalau item itu memang ada di rate card
 			# pemilik — itu isi kesepakatan, jadi barisnya dikunci di form. Baris di luar rate
 			# card tidak punya sumber yang mengikat: pilihan operator dipertahankan, dan hanya
 			# diisi default saat masih kosong (dulu field-nya read-only, jadi mata uang salah
@@ -373,7 +373,7 @@ class RepairOrder(Document):
 			row.currency_locked = 1 if breakdown.get("currency") else 0
 			if row.item:
 				row.currency = breakdown.get("currency") or row.currency or default_currency
-			# Seed the adjustable rate from the owner's Item Price the first time a line is
+			# Seed the adjustable rate from the owner's contract the first time a line is
 			# added (a fresh line carries only item + qty); manual edits are kept afterwards.
 			if row.item and not flt(row.item_rate):
 				row.item_rate = breakdown.get("item_rate") or 0.0

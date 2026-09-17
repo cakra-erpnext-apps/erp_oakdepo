@@ -6,7 +6,7 @@ and may approve only some lines (partial approval, per Repair Used Item). Only A
 lines drive ``total_cost`` and the stock issue — which happens **at approval**, not at
 completion: the workshop needs the parts in hand to do the job at all.
 
-Pricing is wired through a per-owner Price List so the totals are real. All fixtures use
+Pricing is wired through the owner's Depot Contract so the totals are real. All fixtures use
 the ``MRA`` prefix and are removed in tearDown (stock entries are cancelled too).
 """
 
@@ -20,7 +20,6 @@ from container_depot.container_depot import eir, mr
 from container_depot.tests.test_eir import _make_container
 
 _CUST = "MRA Test Owner"
-_PL = "MRA Test PL"
 _PART = "MRA-PART"     # stock item, priced 100
 _SERVICE = "MRA-LABOR"  # non-stock service, priced 50
 _WH_NAME = "MRA Test Store"
@@ -65,8 +64,9 @@ class TestMRApproval(FrappeTestCase):
 		for ins in self._inspections:
 			self._safe(lambda ins=ins: frappe.db.delete("Inspection", {"name": ins}))
 		self._safe(lambda: frappe.db.delete("Bin", {"item_code": _PART}))
-		self._safe(lambda: frappe.db.delete("Item Price", {"price_list": _PL}))
-		self._safe(lambda: frappe.db.exists("Price List", _PL) and frappe.delete_doc("Price List", _PL, force=True, ignore_permissions=True))
+		for name in frappe.get_all("Depot Contract", filters={"customer": _CUST}, pluck="name"):
+			self._safe(lambda name=name: frappe.db.delete("Tariff Rate", {"parent": name}))
+			self._safe(lambda name=name: frappe.db.delete("Depot Contract", {"name": name}))
 		wh = self._wh_name()
 		for dt, name in (("Item", _PART), ("Item", _SERVICE), ("Item", _WELD), ("Warehouse", wh), ("Customer", _CUST)):
 			if name:
@@ -92,23 +92,44 @@ class TestMRApproval(FrappeTestCase):
 					"doctype": "Item", "item_code": code, "item_name": name,
 					"item_group": grp, "stock_uom": "Nos", "is_stock_item": stock, "is_sales_item": 1,
 				}).insert(ignore_permissions=True)
-		if not frappe.db.exists("Price List", _PL):
-			frappe.get_doc({
-				"doctype": "Price List", "price_list_name": _PL, "currency": "USD", "selling": 1, "enabled": 1,
-			}).insert(ignore_permissions=True)
-		for code, rate in ((_PART, 100.0), (_SERVICE, 50.0)):
-			if not frappe.db.exists("Item Price", {"item_code": code, "price_list": _PL, "selling": 1}):
-				frappe.get_doc({
-					"doctype": "Item Price", "item_code": code, "price_list": _PL,
-					"selling": 1, "price_list_rate": rate,
-				}).insert(ignore_permissions=True)
 		if not frappe.db.exists("Customer", _CUST):
 			frappe.get_doc({
 				"doctype": "Customer", "customer_name": _CUST,
 				"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
 				"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
 			}).insert(ignore_permissions=True)
-		frappe.db.set_value("Customer", _CUST, "default_price_list", _PL)
+		self._owner_contract({_PART: 100.0, _SERVICE: 50.0})
+
+	def _owner_contract(self, tariff):
+		"""The owner's Active contract — the rate card every M&R figure on this order reads.
+
+		Re-entrant: a test needing one more priced item calls it again with just that entry
+		and the line is appended, rather than the contract being rebuilt from a running
+		tally. A tally would carry an item from an earlier test into a contract written after
+		that test's tearDown deleted the Item, and the line would refuse to save.
+		"""
+		from frappe.utils import add_days, today
+
+		name = frappe.db.get_value(
+			"Depot Contract", {"customer": _CUST, "status": "Active"}, "name"
+		)
+		if not name:
+			return frappe.get_doc({
+				"doctype": "Depot Contract", "customer": _CUST, "currency": "USD",
+				"status": "Active", "payment_type": "Cash",
+				"valid_from": today(), "valid_to": add_days(today(), 365),
+				"tariff_lines": [
+					{"item": code, "rate": rate, "currency": "USD"}
+					for code, rate in tariff.items()
+				],
+			}).insert(ignore_permissions=True).name
+		doc = frappe.get_doc("Depot Contract", name)
+		have = {row.item for row in doc.tariff_lines or []}
+		for code, rate in tariff.items():
+			if code not in have:
+				doc.append("tariff_lines", {"item": code, "rate": rate, "currency": "USD"})
+		doc.save(ignore_permissions=True)
+		return doc.name
 
 	def _wh_name(self):
 		return frappe.db.get_value("Warehouse", {"warehouse_name": _WH_NAME, "company": self.company}, "name")
@@ -445,11 +466,12 @@ class TestMRApproval(FrappeTestCase):
 				# split and must never reach the line — the contract Rate does.
 				"manhour": 2.0, "material_cost": 999.0,
 			}).insert(ignore_permissions=True)
-		if not frappe.db.exists("Item Price", {"item_code": svc, "price_list": _PL, "selling": 1}):
-			frappe.get_doc({
-				"doctype": "Item Price", "item_code": svc, "price_list": _PL,
-				"selling": 1, "price_list_rate": 10.0, "manhour_rate": 5.0,
-			}).insert(ignore_permissions=True)
+		contract = self._owner_contract({svc: 10.0})
+		frappe.db.set_value(
+			"Tariff Rate",
+			frappe.db.get_value("Tariff Rate", {"parent": contract, "item": svc}, "name"),
+			"manhour_rate", 5.0, update_modified=False,
+		)
 		_, ro = self._draft_ro("MRAMHR00001")
 		# Build the line the Desk way (edit the child rows, then doc.save()).
 		doc = frappe.get_doc("Repair Order", ro)
@@ -463,7 +485,7 @@ class TestMRApproval(FrappeTestCase):
 		# Labour is taken AS IT STANDS: the rate card's tariff, never hours × tariff. The
 		# multiplication belongs to the invoice header, which reads this tariff back and the
 		# hours riding beside it (consolidated_billing._negotiated_manhour_hour).
-		self.assertEqual(flt(row.manhour_rate), 5.0)     # Item Price.manhour_rate, undoubled
+		self.assertEqual(flt(row.manhour_rate), 5.0)     # Tariff Rate.manhour_rate, undoubled
 		self.assertEqual(flt(row.manhour), 2.0)          # Item.manhour, for the invoice
 
 		# The rate is adjustable; the amounts are always re-derived from it.
@@ -497,13 +519,16 @@ class TestMRApproval(FrappeTestCase):
 		self.assertTrue(all(ln.get("item_code") for ln in lines), "every line must carry item_code")
 
 	# --- multi-currency totals ------------------------------------------------
-	def test_multi_currency_totals_grouped_by_item_price(self):
-		# Force one item's Item Price into a different currency to simulate a mixed RO.
-		eur_ip = frappe.db.get_value(
-			"Item Price", {"item_code": _SERVICE, "price_list": _PL, "selling": 1}, "name"
+	def test_multi_currency_totals_grouped_by_tariff_line(self):
+		# Force one tariff line into a different currency to simulate a mixed RO. Written
+		# straight to the row: `DepotContract.before_save` stamps the contract currency onto
+		# every line, so a normal save would put it back.
+		contract = frappe.db.get_value("Depot Contract", {"customer": _CUST, "status": "Active"}, "name")
+		eur_line = frappe.db.get_value("Tariff Rate", {"parent": contract, "item": _SERVICE}, "name")
+		frappe.db.set_value("Tariff Rate", eur_line, "currency", "EUR", update_modified=False)
+		self.addCleanup(
+			lambda: frappe.db.set_value("Tariff Rate", eur_line, "currency", "USD", update_modified=False)
 		)
-		frappe.db.set_value("Item Price", eur_ip, "currency", "EUR")
-		self.addCleanup(lambda: frappe.db.set_value("Item Price", eur_ip, "currency", "USD"))
 
 		_, ro = self._draft_ro("MRAMUL00001")
 		doc = frappe.get_doc("Repair Order", ro)
@@ -514,7 +539,7 @@ class TestMRApproval(FrappeTestCase):
 
 		doc = frappe.get_doc("Repair Order", ro)
 		by_item = {r.item: r for r in doc.used_items}
-		self.assertEqual(by_item[_PART].currency, "USD")     # each line follows its Item Price
+		self.assertEqual(by_item[_PART].currency, "USD")     # each line follows its tariff line
 		self.assertEqual(by_item[_SERVICE].currency, "EUR")
 		totals = {t.currency: flt(t.total) for t in doc.totals}
 		self.assertEqual(totals.get("USD"), 100.0)           # grouped per currency

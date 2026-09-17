@@ -31,12 +31,12 @@ from container_depot.container_depot.worklist import sort_by_priority
 from container_depot.container_depot.eir_followups import MR_OPEN_STATUSES
 from container_depot.container_depot import item_catalog
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots, get_user_warehouses
-from container_depot.pricing_model import price_list_for_customer, resolve_price
+from container_depot.pricing_model import active_contract, resolve_price
 
 # Picker item M&R tidak disaring: seluruh katalog boleh dipilih, baik untuk Repair maupun
 # Periodic Test, tanpa peduli item itu ada di kontrak pemilik tank atau tidak (lihat
 # container_depot.item_catalog). Penyaringan lama — katalog per jenis pekerjaan ∩ item yang
-# punya Item Price di price list pemilik — dihapus 2026-09-07 karena menyembunyikan
+# punya baris tarif di kontrak pemilik — dihapus 2026-09-07 karena menyembunyikan
 # pekerjaan yang nyata: item yang belum sempat dinegosiasikan ke kontrak tetap harus bisa
 # dicatat, lalu tarifnya diisi manual.
 
@@ -115,8 +115,9 @@ def _principal(ro) -> str | None:
 	return ro.principal or frappe.db.get_value("Container", ro.container, "principal")
 
 
-def _owner_price_list(principal) -> str | None:
-	return price_list_for_customer(principal) if principal else None
+def _owner_contract(principal) -> str | None:
+	"""The principal's Active contract — the rate card every M&R figure is read from."""
+	return active_contract(principal) if principal else None
 
 
 # --- inventory / warehouse helpers -------------------------------------------
@@ -227,15 +228,15 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 	belongs to the warehouse the user is actually looking at, not the one last saved. Only
 	when the row has none does the container's branch default stand in.
 	"""
-	pl = None
+	contract = None
 	warehouse = _clean(warehouse) or None
 	if repair_order:
 		ro = frappe.db.get_value(
 			"Repair Order", repair_order, ["principal", "container"], as_dict=True
 		) or frappe._dict()
 		principal = ro.principal or (frappe.db.get_value("Container", ro.container, "principal") if ro.container else None)
-		# Price list pemilik tetap dipakai untuk MENGHARGAI item, bukan untuk menyaringnya.
-		pl = _owner_price_list(principal)
+		# Kontrak pemilik tetap dipakai untuk MENGHARGAI item, bukan untuk menyaringnya.
+		contract = _owner_contract(principal)
 		warehouse = warehouse or _default_warehouse(_resolve_company(), frappe.db.get_value("Container", ro.container, "depot") if ro.container else None)
 
 	filters = {}
@@ -264,11 +265,11 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 		fields=["name as item_code", "item_name", "stock_uom", "is_stock_item"],
 	)
 	for it in items:
-		it["rate"] = resolve_price(it["item_code"], pl)  # computed, hidden in the PWA
+		it["rate"] = resolve_price(it["item_code"], contract)  # computed, hidden in the PWA
 		# Only ever report stock for a known warehouse. Without one, _on_hand would total
 		# every warehouse in the company — a number no single M&R can actually issue.
 		it["on_hand"] = _on_hand(it["item_code"], warehouse) if (it.get("is_stock_item") and warehouse) else None
-	return {"items": items, "price_list": pl, "warehouse": warehouse}
+	return {"items": items, "contract": contract, "warehouse": warehouse}
 
 
 # --- worklist ----------------------------------------------------------------
@@ -311,20 +312,20 @@ MR_EXECUTION_STATUSES = ["Pending", "In Progress"]
 
 def item_pricing(repair_order, item) -> dict:
 	"""Cost inputs (manhour / manhour_rate / item_rate / currency) for one item under the
-	Repair Order's owner price list — the Desk grid uses it to default a newly-picked line."""
+	Repair Order owner's contract — the Desk grid uses it to default a newly-picked line."""
 	from container_depot.pricing_model import currency_for_customer, item_rate_breakdown
 
 	ro = frappe.get_doc("Repair Order", repair_order)
-	price_list = ro.owner_price_list()
-	breakdown = item_rate_breakdown(item, price_list)
-	# An item with no Item Price still bills in the owner's currency (the contract currency,
-	# e.g. USD) — turun ke default site / IDR hanya kalau pemiliknya memang tidak punya
-	# mata uang. Mirrors the fallback in RepairOrder.calculate_totals.
+	contract = ro.owner_contract()
+	breakdown = item_rate_breakdown(item, contract)
+	# An item the contract does not price still bills in the owner's currency (the contract
+	# currency, e.g. USD) — turun ke default site / IDR hanya kalau pemiliknya memang tidak
+	# punya mata uang. Mirrors the fallback in RepairOrder.calculate_totals.
 	# Terkunci hanya kalau item ini benar-benar ada di rate card pemilik; baris di luar rate
 	# card mata uangnya boleh dipilih operator (RepairOrder.calculate_totals menghormatinya).
 	breakdown["currency_locked"] = 1 if breakdown.get("currency") else 0
 	if not breakdown.get("currency"):
-		breakdown["currency"] = currency_for_customer(_principal(ro), price_list)
+		breakdown["currency"] = currency_for_customer(_principal(ro), contract)
 	return breakdown
 
 
@@ -1376,7 +1377,7 @@ def save_mr_order(
 	the job at all. Mirrors ``cleaning.save_cleaning_order``.
 
 	Used items may only be edited while Draft / Revision Requested; the copied ``damages`` are
-	read-only. Rates follow the owner's Item Price (controller-computed)."""
+	read-only. Rates follow the owner's contract tariff (controller-computed)."""
 	if not repair_order:
 		frappe.throw(_("repair_order is required."))
 	ro = frappe.get_doc("Repair Order", repair_order)
@@ -1417,7 +1418,7 @@ def save_mr_order(
 		# estimate would fail on every order that ever took a part.
 		ro.status = "Pending Review"
 
-	ro.save()  # before_save -> calculate_totals() (prices from Item Price) + container sync
+	ro.save()  # before_save -> calculate_totals() (prices from the contract) + container sync
 	if submitting:
 		from container_depot.container_depot.notify import notify_repair_pending_review
 

@@ -36,7 +36,7 @@ class TestQuickEntryIsOff(FrappeTestCase):
 		"""Every master this app reaches from a Link field and that has a modal worth killing."""
 		self.assertEqual(
 			sorted(_quick_entry_off_for()),
-			["Customer", "Item", "Item Price", "Role", "UOM", "User"],
+			["Customer", "Item", "Role", "UOM", "User"],
 		)
 
 	def test_meta_reports_the_modal_as_disabled(self):

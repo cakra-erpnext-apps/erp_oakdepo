@@ -10,9 +10,9 @@ Frappe applies it natively to any doctype carrying a Link to Customer
 Container Activity for free. This module fills the two holes that leaves:
 
 1. **Doctypes with no Customer link at all.** Gate Entry (its ``container_no`` is plain
-   Data), Container Movement and Item Price are not touched by User Permissions, so a
-   customer would read the whole depot's gate history. They are filtered here, by
-   walking one link to the owning record.
+   Data) and Container Movement are not touched by User Permissions, so a customer would
+   read the whole depot's gate history. They are filtered here, by walking one link to the
+   owning record.
 
 2. **Doctypes with SEVERAL Customer links.** ``add_user_permissions`` joins one
    condition per link field with **and**, not or — so on Container Booking
@@ -41,9 +41,11 @@ import frappe
 # `foreign_doctype_*` at the bottom of this file for what this list is for.
 _DESK_PLUMBING_MODULES = {"Core", "Custom", "Desk", "Printing"}
 
-# Doctypes outside the Container Depot module that the customer role is granted outright
-# (install.CUSTOMER_STANDARD_DOCPERMS) — their own rate card.
-_ALLOWED_FOREIGN_DOCTYPES = {"Price List", "Item Price"}
+# Doctypes outside the Container Depot module that the customer role is granted outright.
+# Empty since the rate card moved onto the contract (2026-09-17): a customer's prices are
+# its own Depot Contract's tariff lines, and Depot Contract is a module doctype that Frappe
+# already scopes by its Customer link — nothing outside the module is granted any more.
+_ALLOWED_FOREIGN_DOCTYPES: set[str] = set()
 
 # Core doctypes the Desk plumbing would otherwise carry through, kept shut anyway.
 #
@@ -123,31 +125,6 @@ def container_booking_query(user=None, doctype=None) -> str:
 	)
 
 
-def price_list_query(user=None, doctype=None) -> str:
-	"""Only the customer's OWN rate card.
-
-	Strict on purpose, with no "or the field is empty" arm: a Price List with no customer
-	is a shared/standard OAK rate card (`Standard Selling`), and those are not an external
-	party's business. That is the opposite of Frappe's own default for User Permissions,
-	which does let an empty link through.
-	"""
-	values = _values(user)
-	if not values:
-		return ""
-	return f"`tabPrice List`.`customer` in ({values})"
-
-
-def item_price_query(user=None, doctype=None) -> str:
-	"""Item Price carries no customer — it is owned by the Price List above it."""
-	values = _values(user)
-	if not values:
-		return ""
-	return (
-		"`tabItem Price`.`price_list` in"
-		f" (select `name` from `tabPrice List` where `customer` in ({values}))"
-	)
-
-
 # --- has_permission (opening one document directly) ------------------------
 # A query condition only guards the list. Frappe routes a single-document read through
 # has_permission, so every doctype filtered above needs the same test again here.
@@ -178,17 +155,6 @@ def container_booking_permission(doc, ptype=None, user=None, **kwargs) -> bool:
 	if not customers:
 		return True
 	return doc.get("customer") in customers or doc.get("principal") in customers
-
-
-def price_list_permission(doc, ptype=None, user=None, **kwargs) -> bool:
-	return _allowed(doc.get("customer"), user)
-
-
-def item_price_permission(doc, ptype=None, user=None, **kwargs) -> bool:
-	customers = get_user_customers(user)
-	if not customers:
-		return True
-	return frappe.db.get_value("Price List", doc.get("price_list"), "customer") in customers
 
 
 # --- the rest of the site --------------------------------------------------

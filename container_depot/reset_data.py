@@ -14,8 +14,8 @@ Parameter
 ``confirm``  wajib, harus sama persis dengan nama site. Tanpa ini script menolak jalan —
              satu-satunya pengaman terhadap "kepencet di server yang salah".
 ``masters``  1 = kosongkan master kurasi SELURUHNYA, bukan cuma yang dibuat seeder:
-             Customer, Supplier, Item, Item Price, Item Group (daunnya), Warehouse
-             ber-branch, Depot, Branch, Depot Contract + Price List terbitannya,
+             Customer, Supplier, Item, Item Group (daunnya), Warehouse
+             ber-branch, Depot, Branch, Depot Contract (tarifnya ikut di dalamnya),
              Shipping Line, Surveyor Company, template letak tank, portal user, SST.
              Yang diketik orang ikut hilang —
              lihat :func:`_wipe_masters`. 0 (default) = master dibiarkan, hanya
@@ -23,8 +23,8 @@ Parameter
 ``seed``     ``""`` (default) tidak menyeed apa pun; ``"prod"`` master saja tanpa tarif;
              ``"dev"`` seed lengkap TERMASUK Depot Contract Bertschi berisi tarif
              karangan. Defaultnya sengaja kosong: menghapus itu yang Anda minta,
-             menyeed itu kejutannya — dan satu kontrak Active menerbitkan Price List
-             yang langsung dibaca booking, cleaning dan M&R sebagai rate card, jadi
+             menyeed itu kejutannya — dan tarif satu kontrak Active langsung dibaca
+             booking, cleaning dan M&R sebagai rate card, jadi
              ``seed='dev'`` yang nyasar ke produksi memasang harga palsu yang terlihat
              sah. ``scripts/reset-site.sh`` selalu mengisinya sesuai stack.
 
@@ -278,19 +278,9 @@ def _wipe_masters() -> int:
 	"""
 	total = 0
 
-	# Kontrak dulu, sebelum Customer: Price List terbitannya menautkan keduanya.
-	price_lists = frappe.get_all(
-		"Price List", filters={"name": ["like", "% - DCNT-%"]}, pluck="name"
-	)
+	# Kontrak dulu, sebelum Customer: tarifnya ikut di dalamnya (child table Tariff Rate),
+	# jadi tidak ada rate card terpisah yang perlu dibersihkan sendiri.
 	total += _wipe_documents(["Depot Contract"], "master")
-	for pl in price_lists:
-		frappe.db.delete("Price List", {"name": pl})
-	total += len(price_lists)
-	if price_lists:
-		print(f"[reset] master: Price List terbitan kontrak — {len(price_lists)}")
-
-	# Harga ikut Item-nya. Dihapus utuh, bukan per price list: semua Item-nya hilang.
-	total += _wipe_tables(["Item Price"], "master")
 
 	total += _wipe_documents(MASTER_DOCTYPES, "master")
 	total += _wipe_documents(["Customer", "Supplier", "Item", "Depot", "Branch"], "master")

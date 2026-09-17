@@ -2,10 +2,10 @@
 
 Prices come from the customer's active ``Depot Contract`` tariff lines (the
 ``Tariff Rate`` child table, keyed by **Item**: item / uom / rate / manhour_rate
-/ qty). Billing resolves a negotiated rate by Item code, so a contract change
+/ currency). Billing resolves a negotiated rate by Item code, so a contract change
 flows straight through to new orders. The service Items themselves (``Lift On``,
 ``Lift Off``, ``Storage per Day``, the cleaning grades, …) are the seeded catalog
-Items priced per principal via Item Price.
+Items; what each principal pays for one is the contract line that prices it.
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ CLEANING_ITEM = "Standard Cleaning"
 #   * **Jam** — how long a service takes. A property of the SERVICE, the same for everyone:
 #     ``Item.manhour`` (e.g. Standard Clean 0.5 h, Lift On 1.5 h).
 #   * **Tarif per jam** — what an hour of depot labour costs THIS customer. A property of
-#     the RATE CARD, negotiated per principal: ``Item Price.manhour_rate``, published from
-#     the contract's ``Tariff Rate.manhour_rate`` (e.g. OAK 4.50, Bertschi 4.00).
+#     the RATE CARD, negotiated per principal: ``Tariff Rate.manhour_rate`` on the
+#     customer's contract (e.g. OAK 4.50, Bertschi 4.00).
 #
 # Labour is never folded into a service's own rate. Each order keeps the two apart and
 # billing settles them once, in the invoice header:
@@ -65,39 +65,19 @@ CLEANING_ITEM = "Standard Cleaning"
 DEFAULT_MANHOUR_HOUR = 4.0
 
 
-def contract_price_list(customer):
-	"""Published Price List of the customer's Active Depot Contract (None when none)."""
-	if not customer:
-		return None
-	return (
-		frappe.db.get_value(
-			"Depot Contract",
-			{"customer": customer, "status": "Active"},
-			"generated_price_list",
-			order_by="valid_from desc",
-		)
-		or None
-	)
-
-
-def manhour_for(item, price_list):
+def manhour_for(item, contract):
 	"""Labour TARIFF (money per hour) one rate card charges for a service (0 when none).
 
 	This is the price of an hour, not a number of hours — the hours are on the Item
-	(:func:`manhour_hours_for`). Held per Item Price so each principal's rate card can carry
+	(:func:`manhour_hours_for`). Held per tariff line so each principal's contract can carry
 	its own figure.
 	"""
 	from frappe.utils import flt
 
-	if not (item and price_list):
-		return 0.0
-	return flt(
-		frappe.db.get_value(
-			"Item Price",
-			{"item_code": item, "price_list": price_list, "selling": 1},
-			"manhour_rate",
-		)
-	)
+	from container_depot import pricing_model
+
+	row = pricing_model.tariff_row(item, contract)
+	return flt(row.manhour_rate) if row else 0.0
 
 
 def manhour_hours_for(item) -> float:
@@ -117,21 +97,25 @@ def manhour_rate_for(customer) -> float:
 	"""The labour tariff (money per hour) to charge this customer's invoice.
 
 	A rate card states one price for an hour of depot labour, repeated on every line it
-	prices, so any non-zero figure on the customer's published Price List is that price —
-	the most common one wins if a stray line disagrees. Falls back to
-	:data:`DEFAULT_MANHOUR_HOUR` when the contract prices no labour at all.
+	prices, so any non-zero figure on the customer's contract is that price — the most common
+	one wins if a stray line disagrees. Falls back to :data:`DEFAULT_MANHOUR_HOUR` when the
+	contract prices no labour at all.
 	"""
 	from collections import Counter
 
 	from frappe.utils import flt
 
-	price_list = contract_price_list(customer)
-	if not price_list:
+	from container_depot import pricing_model
+
+	contract = pricing_model.active_contract(customer)
+	if not contract:
 		return 0.0
 	rates = [
 		flt(r)
 		for r in frappe.get_all(
-			"Item Price", filters={"price_list": price_list, "selling": 1}, pluck="manhour_rate"
+			"Tariff Rate",
+			filters={"parent": contract, "parenttype": "Depot Contract"},
+			pluck="manhour_rate",
 		)
 		if flt(r)
 	]
@@ -147,7 +131,9 @@ def invoice_manhours(customer, lines):
 	line and let the header total them and meet the tariff once. Empty when the customer has
 	no active contract (nobody to charge labour to) or nothing billed books hours.
 	"""
-	if not contract_price_list(customer):
+	from container_depot import pricing_model
+
+	if not pricing_model.active_contract(customer):
 		return {}
 	out = {}
 	for i, ln in enumerate(lines):
@@ -160,18 +146,15 @@ def invoice_manhours(customer, lines):
 def resolve_tariff_rate(contract, item):
 	"""Return the negotiated rate for ``item`` on ``contract`` (0 if none).
 
-	Rates are resolved from Item Price (single source of truth): an Active contract
-	publishes its agreed lines to a customer Price List (``generated_price_list``),
-	and billing reads that list — the same path walk-in pricing uses.
+	Straight off the contract's own ``Tariff Rate`` line. It used to hop through the Price
+	List the contract published and read the rate back out of Item Price — a copy that could
+	drift from the agreement it was copied from.
 	"""
 	if not contract or not item:
 		return 0
-	price_list = frappe.db.get_value("Depot Contract", contract, "generated_price_list")
-	if not price_list:
-		return 0
 	from container_depot import pricing_model
 
-	return pricing_model.resolve_price(item, price_list) or 0
+	return pricing_model.resolve_price(item, contract) or 0
 
 
 def contract_for_order(order):

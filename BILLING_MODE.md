@@ -100,14 +100,15 @@ Di-setup oleh:
   **"Allow multi-currency invoices against single party account"** sehingga satu
   akun piutang IDR bisa menampung invoice USD (di-track per-party + exchange
   rate). Base currency company **tidak** diubah.
-- patch `v0_13.set_customer_billing_currency` — set `Customer.default_currency` =
-  currency Price List customer, **hanya** bila currency itu asing (bukan base
-  company) dan `default_currency` masih kosong. Jadi Bertschi → USD; customer
-  IDR dibiarkan (default ke base).
+- `Customer.default_currency` — billing currency customer, diisi tangan di master.
+  Dulu ada patch `v0_13.set_customer_billing_currency` yang mengisinya dari currency
+  Price List customer; patch itu ikut turun bersama seluruh lapisan Price List
+  (2026-09-17). Customer yang punya kontrak memakai currency kontraknya dan tidak
+  membaca field ini sama sekali — lihat `pricing_model.currency_for_customer`.
 
-> Catatan: patch memakai `db.set_value` (lewati guard "ubah currency saat sudah
-> ada transaksi"). Di site yang sudah punya invoice IDR untuk customer yang sama,
-> review dulu sebelum mengganti billing currency-nya. Untuk bayar invoice USD via
+> Catatan: mengganti billing currency memakai `db.set_value` melewati guard "ubah
+> currency saat sudah ada transaksi". Di site yang sudah punya invoice IDR untuk
+> customer yang sama, review dulu sebelum menggantinya. Untuk bayar invoice USD via
 > akun bank IDR, isi exchange rate di Payment Entry (selisih kurs otomatis).
 
 ## 5. Idempotency & lokasi kode

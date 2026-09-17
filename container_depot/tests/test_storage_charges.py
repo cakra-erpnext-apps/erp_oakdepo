@@ -278,14 +278,10 @@ class TestStorageBillingMode(FrappeTestCase):
 	def tearDown(self):
 		if self.contract:
 			# Only a Draft contract may be deleted (Void/Amend is the real-world path for the
-			# rest), and activating one publishes a customer Price List — both have to go, or
-			# the next run inherits a contract that silently answers billing_mode_for.
-			price_list = frappe.db.get_value("Depot Contract", self.contract, "generated_price_list")
+			# rest), so it is demoted first — left Active it would silently answer
+			# billing_mode_for on the next run.
 			frappe.db.set_value("Depot Contract", self.contract, "status", "Draft")
 			frappe.delete_doc("Depot Contract", self.contract, force=True, ignore_permissions=True)
-			if price_list and frappe.db.exists("Price List", price_list):
-				frappe.db.delete("Item Price", {"price_list": price_list})
-				frappe.delete_doc("Price List", price_list, force=True, ignore_permissions=True)
 		_cleanup()
 
 	def _contract(self, mode):

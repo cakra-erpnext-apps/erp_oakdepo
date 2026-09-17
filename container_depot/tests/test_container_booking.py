@@ -60,14 +60,6 @@ def _cleanup_customer_world(customer: str):
 	if contracts:
 		frappe.db.delete("Tariff Rate", {"parent": ("in", contracts)})
 		frappe.db.delete("Depot Contract", {"name": ("in", contracts)})
-	# Price Lists an Active contract published for this customer (+ their Item Prices).
-	# Deleting the contract above orphans them; drop them too or they leak into the site
-	# and clutter the Base Price List picker.
-	price_lists = frappe.get_all("Price List", filters={"customer": customer}, pluck="name")
-	if price_lists:
-		frappe.db.delete("Item Price", {"price_list": ("in", price_lists)})
-		frappe.db.delete("Price List", {"name": ("in", price_lists)})
-	frappe.db.set_value("Customer", customer, "default_price_list", None, update_modified=False)
 	# Auto-created draft Cash invoices (B6) — drop drafts so they don't accumulate.
 	frappe.db.delete("Sales Invoice", {"customer": customer, "docstatus": 0})
 	# Pre-arrival (Booked) phantom containers spawned by booking resolution (B6).
@@ -153,7 +145,6 @@ class TestTankInFlow(FrappeTestCase):
 		cls.contract = _make_active_contract(
 			cls.customer, payment_type="Both", credit_limit=1_000_000, payment_terms="NET 30"
 		)
-		cls.price_list = frappe.db.get_value("Depot Contract", cls.contract, "generated_price_list")
 
 	@classmethod
 	def tearDownClass(cls):
@@ -194,12 +185,12 @@ class TestTankInFlow(FrappeTestCase):
 
 		hit = charge_pricing(self.customer, "Lift Off")
 		self.assertEqual(hit["rate"], 250000)
-		self.assertEqual(hit["currency"], "IDR")  # follows the price-list currency
+		self.assertEqual(hit["currency"], "IDR")  # follows the contract currency
 		self.assertEqual(charge_pricing(None, "Lift Off")["rate"], 0)
 
-	def test_currency_follows_price_list(self):
-		# The actual bug: a USD price list must format charge rates in USD, not the system
-		# default. No exchange-rate conversion — the price-list currency is used as-is.
+	def test_currency_follows_the_contract(self):
+		# The actual bug: a USD contract must format charge rates in USD, not the system
+		# default. No exchange-rate conversion — the contract currency is used as-is.
 		from container_depot.container_depot.doctype.container_booking.container_booking import (
 			charge_pricing,
 		)
@@ -260,13 +251,12 @@ class TestTankInFlow(FrappeTestCase):
 		finally:
 			frappe.db.set_value("Item", "Lift On", "disabled", 0)
 
-	def test_booking_prices_from_active_list(self):
+	def test_booking_prices_from_the_active_contract(self):
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
 		b.insert(ignore_permissions=True)
-		self.assertEqual(b.contract, self.contract)      # resolved (hidden) for payment modes
-		self.assertEqual(b.price_list, self.price_list)  # auto-resolved from the customer
-		self.assertEqual(b.currency, "IDR")              # follows the price-list currency
-		self.assertEqual(b.charges[0].rate, 250000)      # seeded from the active price list
+		self.assertEqual(b.contract, self.contract)      # resolved (hidden): rate card + modes
+		self.assertEqual(b.currency, "IDR")              # follows the contract currency
+		self.assertEqual(b.charges[0].rate, 250000)      # seeded from the active contract
 		self.assertEqual(b.charges[0].qty, 1)            # = container count
 		self.assertEqual(b.charges_total, 250000)
 		self.assertTrue(b.branch)                        # branch fell back
@@ -548,14 +538,14 @@ class TestTankInFlow(FrappeTestCase):
 		b.save(ignore_permissions=True)
 		self.assertEqual(b.remarks, "gate note")
 
-	def test_cash_invoice_follows_price_list_and_branch(self):
-		# The auto-created Cash invoice bills off the customer's active price list: its
-		# currency, the price list itself, the charged Item, and the booking's branch.
+	def test_cash_invoice_follows_the_contract_and_branch(self):
+		# The auto-created Cash invoice bills off the customer's active contract: its
+		# currency, the charged Item, and the booking's branch. It carries no price list of
+		# its own — every line arrives with the rate its contract agreed.
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
 		b.insert(ignore_permissions=True)
 		si = frappe.get_doc("Sales Invoice", _bill(b))
-		self.assertEqual(si.currency, "IDR")                  # from the price list
-		self.assertEqual(si.selling_price_list, self.price_list)
+		self.assertEqual(si.currency, "IDR")                  # from the contract
 		self.assertEqual(si.branch, b.branch)
 		self.assertEqual(si.items[0].item_code, "Lift Off")   # charged Item, not generic service
 
@@ -771,14 +761,18 @@ class TestCashPaidInvoice(FrappeTestCase):
 		self.assertEqual(b.payment_status, "Paid")
 
 
-class TestWalkInPriceListPricing(FrappeTestCase):
-	"""Walk-in (no contract): the booking's default rate is resolved from the
-	customer's Price List instead of a contract tariff. The lift service name
-	(``Lift Off`` for Tank In) doubles as the catalog Item code."""
+class TestWalkInHasNoRateCard(FrappeTestCase):
+	"""Walk-in (no contract): there is no rate card, so every charge line starts at 0.
+
+	This class used to assert the opposite — that a contract-less customer was priced from
+	its own Price List. That fallback was removed on 2026-09-17 along with the rest of the
+	price-list layer: a price somebody is paid to negotiate is not a default, and a visible 0
+	is the version the Cashier can see and fix. The lift service name (``Lift Off`` for Tank
+	In) still doubles as the catalog Item code.
+	"""
 
 	CUSTOMER = "Phase11 WalkIn Customer"
-	PRICE_LIST = "ZZ WalkIn PL"
-	LIFT_RATE = 175000.0  # IDR, matches the company currency so net_total is clean
+	TYPED_RATE = 175000.0  # IDR, matches the company currency so net_total is clean
 
 	@classmethod
 	def setUpClass(cls):
@@ -787,17 +781,6 @@ class TestWalkInPriceListPricing(FrappeTestCase):
 		cls.customer = ensure_test_customer(cls.CUSTOMER)
 		# Walk-in has NO contract — _cleanup_customer_world clears any lingering one.
 		_cleanup_customer_world(cls.customer)
-
-		# Per-principal selling Price List the walk-in customer defaults to.
-		if not frappe.db.exists("Price List", cls.PRICE_LIST):
-			frappe.get_doc({
-				"doctype": "Price List",
-				"price_list_name": cls.PRICE_LIST,
-				"currency": "IDR",
-				"selling": 1,
-				"buying": 0,
-				"enabled": 1,
-			}).insert(ignore_permissions=True)
 		# "Lift Off" is a seeded catalog Item; create a minimal stand-in if the
 		# service-item seed has not run in this site.
 		if not frappe.db.exists("Item", "Lift Off"):
@@ -811,23 +794,11 @@ class TestWalkInPriceListPricing(FrappeTestCase):
 				"is_stock_item": 0,
 				"is_sales_item": 1,
 			}).insert(ignore_permissions=True)
-		if not frappe.db.exists("Item Price", {"item_code": "Lift Off", "price_list": cls.PRICE_LIST}):
-			frappe.get_doc({
-				"doctype": "Item Price",
-				"item_code": "Lift Off",
-				"price_list": cls.PRICE_LIST,
-				"price_list_rate": cls.LIFT_RATE,
-				"selling": 1,
-			}).insert(ignore_permissions=True)
-		frappe.db.set_value("Customer", cls.customer, "default_price_list", cls.PRICE_LIST)
 		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):
 		_cleanup_customer_world(cls.customer)
-		frappe.db.set_value("Customer", cls.customer, "default_price_list", None)
-		frappe.db.delete("Item Price", {"item_code": "Lift Off", "price_list": cls.PRICE_LIST})
-		frappe.db.delete("Price List", {"name": cls.PRICE_LIST})
 		frappe.db.commit()
 		super().tearDownClass()
 
@@ -835,45 +806,40 @@ class TestWalkInPriceListPricing(FrappeTestCase):
 		super().setUp()
 		_purge_bookings(self.customer)
 
-	def _walkin_booking(self):
+	def _walkin_booking(self, rate=None):
 		# No ``contract`` key at all — this is the walk-in path.
+		charge = {"item": "Lift Off"}
+		if rate is not None:
+			charge["rate"] = rate
 		return frappe.get_doc({
 			"doctype": "Container Booking",
 			"direction": "Tank In",  # Tank In = Lift Off
 			"customer": self.customer,
 			"do_reference": "DO-WALKIN",
-			"charges": [{"item": "Lift Off"}],
+			"charges": [charge],
 			"items": [{"container_no": "WALKIN00001"}],
 		})
 
-	def test_walkin_rate_resolved_from_price_list(self):
+	def test_walkin_rate_is_zero_for_the_cashier_to_fill_in(self):
 		b = self._walkin_booking()
 		b.insert(ignore_permissions=True)
 		self.assertFalse(b.contract, "walk-in must carry no contract")
 		self.assertEqual(b.payment_type, "Cash", "walk-in defaults to Cash")
-		# The charge line seeds from the customer's own Price List, no contract involved.
-		self.assertEqual(b.charges[0].rate, self.LIFT_RATE)
+		# Nothing agreed, nothing seeded — and 0, not blank, so the line reads as unpriced
+		# rather than looking like a field that failed to load.
+		self.assertEqual(b.charges[0].rate, 0)
 
-	def test_walkin_draft_invoice_priced_from_price_list(self):
-		b = self._walkin_booking()
+	def test_a_typed_rate_survives_and_bills(self):
+		"""The rate seed fires only on a rate that was never SET, so what the Cashier types
+		is what the invoice carries."""
+		b = self._walkin_booking(rate=self.TYPED_RATE)
 		b.insert(ignore_permissions=True)
+		self.assertEqual(b.charges[0].rate, self.TYPED_RATE)
 		self.assertTrue(_bill(b), "a walk-in Cash booking can be billed too")
 		self.assertEqual(
 			frappe.db.get_value("Sales Invoice", b.sales_invoice, "net_total"),
-			self.LIFT_RATE,  # 1 container x Price List Lift Off rate
+			self.TYPED_RATE,  # 1 container x the typed rate
 		)
-
-	def test_walkin_without_price_list_resolves_to_zero(self):
-		# Strip the customer's Price List: with no contract there is no rate card left, so
-		# the charge line stays at 0 — the Cashier fills it in on the draft invoice.
-		# Graceful, never throws.
-		frappe.db.set_value("Customer", self.customer, "default_price_list", None)
-		try:
-			b = self._walkin_booking()
-			b.insert(ignore_permissions=True)
-			self.assertEqual(b.charges[0].rate, 0)
-		finally:
-			frappe.db.set_value("Customer", self.customer, "default_price_list", self.PRICE_LIST)
 
 
 class TestBookingCancel(FrappeTestCase):

@@ -105,7 +105,7 @@ def _resolve_tax_template(title_or_name, company):
 
 def create_draft_sales_invoice(
 	customer, lines, due_days=30, posting_date=None, remarks=None, taxes_and_charges=None,
-	currency=None, selling_price_list=None, branch=None, conversion_rate=None, manhour=True,
+	currency=None, branch=None, conversion_rate=None, manhour=True,
 	manhour_hour=None,
 ):
 	"""Create (and return the name of) a Draft Sales Invoice.
@@ -123,10 +123,13 @@ def create_draft_sales_invoice(
 	``consolidated_billing``); :func:`apply_manhour_charge` only seeds a BLANK one, so a value
 	set here survives.
 
-	``currency`` / ``selling_price_list`` make the invoice follow the booking's chosen
-	rate card — the price-list currency (USD / IDR) is used as-is with conversion_rate 1
-	(no exchange-rate conversion), so a USD price list yields a USD invoice. ``branch``
-	is stamped on the app's Sales Invoice custom field. Returns None if the site is not
+	``currency`` makes the invoice follow the contract the work was priced under — the
+	contract currency (USD / IDR) is used as-is with conversion_rate 1 (no exchange-rate
+	conversion), so a USD contract yields a USD invoice. ERPNext's own
+	``selling_price_list`` is left at whatever the site defaults to and is hidden on the
+	form: every line arrives here carrying the rate its contract agreed, so nothing on the
+	invoice is ever priced FROM a list. ``branch`` is stamped on the app's Sales Invoice
+	custom field. Returns None if the site is not
 	invoice-ready (no company / no customer) — or if finance is switched off.
 	"""
 	# The one door every invoice in this app comes through, so this is where "run the depot
@@ -152,8 +155,6 @@ def create_draft_sales_invoice(
 		si.remarks = remarks
 	if branch and frappe.db.exists("Branch", branch):
 		si.branch = branch
-	if selling_price_list:
-		si.selling_price_list = selling_price_list
 	if currency:
 		# Bill in the price-list currency. Exchange rate is optional: default 1
 		# (value-as-is, no FX) but a caller may pass a real rate. Point a foreign
@@ -199,7 +200,7 @@ def create_draft_sales_invoice(
 			si.append("taxes", tax)
 
 	si.flags.ignore_permissions = True
-	# A foreign-currency invoice (e.g. a USD price list under an IDR-base company) carries
+	# A foreign-currency invoice (e.g. a USD contract under an IDR-base company) carries
 	# conversion_rate 1 by design here — we bill the price-list value as-is, no FX. That
 	# trips ERPNext's *non-blocking* "Conversion rate is 1.00, but document currency is
 	# different…" msgprint (accounts_controller.check_conversion_rate). Mute it for this
@@ -227,9 +228,9 @@ def create_draft_sales_invoice(
 # Sales Taxes and Charges row — the native way to fold a flat amount into ERPNext's grand
 # total while keeping it out of the items' Sub Total.
 #
-# ``Tarif per Jam`` seeds from the customer's own rate card (``Item Price.manhour_rate``,
-# published by their contract) and stays editable: change it and everything below
-# recomputes on save.
+# ``Tarif per Jam`` seeds from the customer's own rate card
+# (``Tariff Rate.manhour_rate`` on their contract) and stays editable: change it and
+# everything below recomputes on save.
 # --------------------------------------------------------------------------- #
 def apply_manhour_charge(doc, method=None):
 	"""validate hook: total the lines' hours and charge them as one amount.

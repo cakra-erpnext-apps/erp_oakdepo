@@ -30,16 +30,13 @@ def _make_contract(**overrides) -> frappe.model.document.Document:
 
 
 def _cleanup_contract_world():
-	"""Remove contracts and the Price Lists / Item Prices they published, plus the
-	customer's default-list pointer (Active contracts publish these and commit)."""
+	"""Remove the test customer's contracts and their tariff lines — an Active one left
+	behind silently prices every later test, and these commit."""
 	customer = ensure_test_customer(CUSTOMER_NAME)
-	pls = frappe.get_all("Price List", filters={"customer": customer}, pluck="name")
-	for pl in pls:
-		frappe.db.delete("Item Price", {"price_list": pl})
-	frappe.db.delete("Depot Contract", {"customer": customer})
-	if pls:
-		frappe.db.delete("Price List", {"name": ["in", pls]})
-	frappe.db.set_value("Customer", customer, "default_price_list", None, update_modified=False)
+	names = frappe.get_all("Depot Contract", filters={"customer": customer}, pluck="name")
+	if names:
+		frappe.db.delete("Tariff Rate", {"parent": ["in", names]})
+		frappe.db.delete("Depot Contract", {"name": ["in", names]})
 	frappe.db.commit()
 
 
@@ -167,60 +164,57 @@ class TestDepotContract(FrappeTestCase):
 		self.assertEqual(hit.payment_type, "TOP")
 		self.assertEqual(hit.payment_terms, "NET 45")
 
-	# --- price-list publishing -------------------------------------------
-	def test_activation_publishes_price_list(self):
+	# --- the contract IS the rate card -----------------------------------
+	def test_the_tariff_lines_are_the_rate_card(self):
+		"""Nothing is published anywhere: the resolver reads these rows.
+
+		This used to assert a Price List named after the contract, carrying an Item Price per
+		line. That mirror was deleted 2026-09-17 — it could be edited in place and was then
+		silently overwritten on the contract's next save."""
+		from container_depot import pricing_model
+
 		c = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
-		# Named by Customer + contract number, e.g. "Depot Contract Test Co - DCNT-...".
-		self.assertTrue(c.generated_price_list)
-		self.assertIn(c.name, c.generated_price_list)
-		pl = frappe.get_doc("Price List", c.generated_price_list)
-		self.assertEqual(pl.enabled, 1)
-		self.assertEqual(pl.selling, 1)
-		self.assertEqual(pl.customer, ensure_test_customer(CUSTOMER_NAME))
-		rate = frappe.db.get_value(
-			"Item Price",
-			{"item_code": "Lift Off", "price_list": c.generated_price_list, "selling": 1},
-			"price_list_rate",
-		)
-		self.assertEqual(rate, 250000)
+		customer = ensure_test_customer(CUSTOMER_NAME)
+		self.assertEqual(pricing_model.active_contract(customer), c.name)
+		self.assertEqual(pricing_model.resolve_price("Lift Off", c.name), 250000)
 
-	def test_customer_price_list_cannot_be_edited_by_hand(self):
-		"""The rate card is the contract's output: the contract writes it (through
-		db.set_value, which never runs a Customer save), a person may not."""
+	def test_the_contract_leaves_the_customer_master_alone(self):
+		"""It used to write its published list onto ``Customer.default_price_list`` and guard
+		that field against hand edits. Both are gone: ERPNext's own field takes no part in
+		pricing here any more, so the app neither writes it nor polices it.
+
+		Asserted as "unchanged" rather than "empty": the field is ERPNext's, and a site whose
+		Selling Settings default one is free to fill it in."""
+		name = ensure_test_customer(CUSTOMER_NAME)
+		before = frappe.db.get_value("Customer", name, "default_price_list")
 		c = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
-		customer = frappe.get_doc("Customer", ensure_test_customer(CUSTOMER_NAME))
-		# The contract's own write landed, unblocked.
-		self.assertEqual(customer.default_price_list, c.generated_price_list)
-
+		self.assertEqual(frappe.db.get_value("Customer", name, "default_price_list"), before)
+		# ...and saving the Customer is not refused for touching it — the guard is gone too.
+		customer = frappe.get_doc("Customer", name)
 		customer.default_price_list = "Standard Selling"
-		with self.assertRaises(frappe.ValidationError):
-			customer.save(ignore_permissions=True)
-
-		# Saving the customer for any other reason is untouched.
-		customer.reload()
-		customer.customer_details = "kontak baru"
 		customer.save(ignore_permissions=True)
-		self.assertEqual(
-			frappe.db.get_value("Customer", customer.name, "default_price_list"),
-			c.generated_price_list,
+		self.addCleanup(
+			frappe.db.set_value, "Customer", name, "default_price_list", before, update_modified=False
 		)
 
-	def test_reactivate_updates_price_in_place(self):
+	def test_editing_a_rate_takes_effect_in_place(self):
+		from container_depot import pricing_model
+
 		c = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
 		c.tariff_lines[0].rate = 300000
 		c.save(ignore_permissions=True)
-		prices = frappe.get_all(
-			"Item Price",
-			filters={"item_code": "Lift Off", "price_list": c.generated_price_list, "selling": 1},
-			fields=["price_list_rate"],
-		)
-		self.assertEqual(len(prices), 1)
-		self.assertEqual(prices[0].price_list_rate, 300000)
+		self.assertEqual(pricing_model.resolve_price("Lift Off", c.name), 300000)
 
-	def test_new_active_contract_disables_old_list(self):
+	def test_the_newest_active_contract_is_the_one_that_prices(self):
+		"""Two Active contracts for one customer is a transient state (an amendment
+		mid-flight), and the later agreement is the one that counts. It used to be settled by
+		disabling the older contract's published list; now the resolver orders by
+		``valid_from``."""
+		from container_depot import pricing_model
+
 		c1 = _make_contract(
 			status="Active",
 			valid_from=add_days(today(), -10),
@@ -229,16 +223,20 @@ class TestDepotContract(FrappeTestCase):
 		c1.insert(ignore_permissions=True)
 		c2 = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 260000}])
 		c2.insert(ignore_permissions=True)
-		self.assertEqual(frappe.db.get_value("Price List", c1.generated_price_list, "enabled"), 0)
-		self.assertEqual(frappe.db.get_value("Price List", c2.generated_price_list, "enabled"), 1)
+		customer = ensure_test_customer(CUSTOMER_NAME)
+		self.assertEqual(pricing_model.active_contract(customer), c2.name)
+		self.assertEqual(pricing_model.resolve_price("Lift Off", c2.name), 260000)
 
-	def test_void_disables_published_list(self):
+	def test_void_takes_the_rate_card_out_of_service(self):
+		from container_depot import pricing_model
+
 		c = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
 		c.insert(ignore_permissions=True)
-		self.assertEqual(frappe.db.get_value("Price List", c.generated_price_list, "enabled"), 1)
+		customer = ensure_test_customer(CUSTOMER_NAME)
+		self.assertEqual(pricing_model.active_contract(customer), c.name)
 		c.status = "Void"
 		c.save(ignore_permissions=True)
-		self.assertEqual(frappe.db.get_value("Price List", c.generated_price_list, "enabled"), 0)
+		self.assertIsNone(pricing_model.active_contract(customer))
 
 	def test_duplicate_item_lines_rejected(self):
 		c = _make_contract(
@@ -260,46 +258,46 @@ class TestDepotContract(FrappeTestCase):
 		self.assertEqual(pricing.resolve_tariff_rate(c.name, "Nonexistent Item"), 0)
 
 	def test_line_currency_follows_contract(self):
-		# Rate / Manhour format in the contract (Base Price List) currency.
+		# Rate / Manhour format in the contract currency, and the resolver reads it off the
+		# line — so one contract can never quote two currencies.
 		c = _make_contract(currency="USD", status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 36}])
 		c.insert(ignore_permissions=True)
 		self.assertEqual(c.tariff_lines[0].currency, "USD")
 
-	def test_base_price_list_lines_returns_priced_items(self):
-		from container_depot.container_depot.doctype.depot_contract.depot_contract import base_price_list_lines
+	def test_base_contract_lines_returns_priced_items(self):
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import (
+			base_contract_lines,
+		)
 
-		lines = base_price_list_lines("OAK 2026")
+		src = _make_contract(
+			status="Draft", tariff_lines=[{"item": "Lift Off", "uom": "Nos", "rate": 36.0}]
+		)
+		src.insert(ignore_permissions=True)
+		lines = base_contract_lines(src.name)
 		self.assertTrue(any(d["item"] == "Lift Off" and d["rate"] == 36.0 for d in lines))
 		self.assertTrue(all({"item", "uom", "rate", "manhour_rate"} <= set(d.keys()) for d in lines))
 
-	def test_base_price_list_query_allows_cribbing_from_any_list(self):
-		# The base picker may seed from another customer's list (relaxed filter), but
-		# still hides empty / buying-only lists (nothing to copy from those).
-		from container_depot.container_depot.doctype.depot_contract.depot_contract import base_price_list_query
+	def test_base_contract_query_offers_any_contract_that_has_lines(self):
+		"""Cribbing is copying numbers, so status is not the question — an Expired contract
+		is often exactly the one being renewed. Empty contracts are hidden (nothing to copy)
+		and so is the contract doing the cribbing (it cannot seed from itself)."""
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import (
+			base_contract_query,
+		)
 
-		cust = ensure_test_customer(CUSTOMER_NAME)
-		crib = "DCT Crib Source"
-		empty = "DCT Empty List"
-		for pl in (crib, empty):
-			if not frappe.db.exists("Price List", pl):
-				frappe.get_doc({
-					"doctype": "Price List", "price_list_name": pl, "currency": "IDR",
-					"customer": cust, "selling": 1, "buying": 0, "enabled": 1,
-				}).insert(ignore_permissions=True)
-		if not frappe.db.exists("Item Price", {"item_code": "Lift Off", "price_list": crib}):
-			frappe.get_doc({
-				"doctype": "Item Price", "item_code": "Lift Off", "price_list": crib,
-				"price_list_rate": 111, "selling": 1,
-			}).insert(ignore_permissions=True)
-		try:
-			names = [r[0] for r in base_price_list_query("Price List", "", "name", 0, 100, {})]
-			self.assertIn(crib, names)       # customer list with prices now shows
-			self.assertIn("OAK 2026", names)  # standard catalog still shows
-			self.assertNotIn(empty, names)    # empty list stays hidden
-		finally:
-			frappe.db.delete("Item Price", {"price_list": ["in", [crib, empty]]})
-			frappe.db.delete("Price List", {"name": ["in", [crib, empty]]})
-			frappe.db.commit()
+		crib = _make_contract(
+			status="Expired", tariff_lines=[{"item": "Lift Off", "rate": 111}]
+		)
+		crib.insert(ignore_permissions=True)
+		empty = _make_contract(status="Draft", tariff_lines=[])
+		empty.insert(ignore_permissions=True)
+		me = _make_contract(status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 1}])
+		me.insert(ignore_permissions=True)
+
+		names = [r[0] for r in base_contract_query("Depot Contract", "", "name", 0, 100, {"name": me.name})]
+		self.assertIn(crib.name, names)      # has lines, status irrelevant
+		self.assertNotIn(empty.name, names)  # nothing to copy from
+		self.assertNotIn(me.name, names)     # never itself
 
 	# --- status workflow -------------------------------------------------
 	def test_status_transition_guard_blocks_skips(self):
@@ -312,7 +310,7 @@ class TestDepotContract(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			c.save(ignore_permissions=True)
 
-	def test_set_status_walks_the_flow_and_publishes(self):
+	def test_set_status_walks_the_flow(self):
 		from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
 
 		c = _make_contract(status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 250000}])
@@ -320,7 +318,6 @@ class TestDepotContract(FrappeTestCase):
 		# Draft submits straight to Active — the Negotiation step was removed.
 		set_status(c.name, "Active")
 		self.assertEqual(frappe.db.get_value("Depot Contract", c.name, "status"), "Active")
-		self.assertTrue(frappe.db.get_value("Depot Contract", c.name, "generated_price_list"))
 		# Active then ends at Expired (the "Invalid" button uses Void instead).
 		set_status(c.name, "Expired")
 		self.assertEqual(frappe.db.get_value("Depot Contract", c.name, "status"), "Expired")
@@ -343,7 +340,6 @@ class TestDepotContract(FrappeTestCase):
 		amd.insert(ignore_permissions=True)
 		# Nothing changes until the amendment is submitted.
 		self.assertEqual(frappe.db.get_value("Depot Contract", src.name, "status"), "Active")
-		self.assertEqual(frappe.db.get_value("Price List", src.generated_price_list, "enabled"), 1)
 
 	def test_submitting_amendment_supersedes_source(self):
 		from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
@@ -357,13 +353,15 @@ class TestDepotContract(FrappeTestCase):
 		amd.insert(ignore_permissions=True)
 		set_status(amd.name, "Active")
 
+		from container_depot import pricing_model
+
 		self.assertEqual(frappe.db.get_value("Depot Contract", src.name, "status"), "Amended")
-		self.assertEqual(frappe.db.get_value("Price List", src.generated_price_list, "enabled"), 0)
-		# The amendment is now the customer's live contract and rate.
-		hit = get_active_contract(ensure_test_customer(CUSTOMER_NAME))
+		# The amendment is now the customer's live contract, and its rate is what prices.
+		customer = ensure_test_customer(CUSTOMER_NAME)
+		hit = get_active_contract(customer)
 		self.assertEqual(hit.name, amd.name)
-		amd.reload()
-		self.assertEqual(frappe.db.get_value("Price List", amd.generated_price_list, "enabled"), 1)
+		self.assertEqual(pricing_model.active_contract(customer), amd.name)
+		self.assertEqual(pricing_model.resolve_price("Lift Off", amd.name), 275000)
 
 	def test_amendment_must_keep_customer(self):
 		src = self._active_contract()

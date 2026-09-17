@@ -29,7 +29,7 @@ class DepotContract(Document):
 		self._validate_amendment()
 		self._validate_date_window()
 		self._validate_payment_type()
-		self._validate_currency_vs_base_list()
+		self._validate_currency_vs_base_contract()
 		self._validate_no_duplicate_lines()
 
 	def before_save(self):
@@ -48,8 +48,6 @@ class DepotContract(Document):
 	def on_update(self):
 		# Auto-expire on date rollover (may flip status to Expired in-place).
 		self._auto_expire_on_rollover()
-		# Publish / retire the customer Price List based on the status transition.
-		self._sync_published_price_list()
 		# An amendment going Active retires the contract it replaces.
 		self._supersede_amended_contract()
 		self._notify_status_change()
@@ -162,16 +160,18 @@ class DepotContract(Document):
 					_("Credit Limit must be greater than zero for {0} contracts.").format(self.payment_type)
 				)
 		if self.status == "Active" and not (self.tariff_lines and len(self.tariff_lines) > 0):
-			frappe.throw(_("An Active contract must declare at least one Price List line."))
+			frappe.throw(_("An Active contract must declare at least one tariff line."))
 
-	def _validate_currency_vs_base_list(self):
-		"""The published Item Prices inherit the Price List currency, so the contract
-		currency must match the base rate card it is negotiated from."""
-		if self.currency and self.base_price_list:
-			base_cur = frappe.db.get_value("Price List", self.base_price_list, "currency")
+	def _validate_currency_vs_base_contract(self):
+		"""Lines cribbed from another contract arrive at ITS figures, so the two contracts
+		must be denominated the same — otherwise a USD rate lands on an IDR contract with the
+		number unchanged, which is an error of four orders of magnitude nothing downstream
+		can catch."""
+		if self.currency and self.base_contract:
+			base_cur = frappe.db.get_value("Depot Contract", self.base_contract, "currency")
 			if base_cur and base_cur != self.currency:
 				frappe.throw(
-					_("Contract currency {0} must match the Base Price List currency {1}.").format(
+					_("Contract currency {0} must match the Base Contract currency {1}.").format(
 						self.currency, base_cur
 					)
 				)
@@ -182,188 +182,21 @@ class DepotContract(Document):
 			key = (row.item, row.uom or None)
 			if key in seen:
 				frappe.throw(
-					_("Duplicate Price List line for Item {0} (UoM {1}).").format(row.item, row.uom or "-")
+					_("Duplicate tariff line for Item {0} (UoM {1}).").format(row.item, row.uom or "-")
 				)
 			seen.add(key)
-
-	# --- price-list publishing -----------------------------------------
-	def _sync_published_price_list(self):
-		"""Keep a customer Price List (named after the contract) in lock-step with
-		this contract's status, so the newest agreed prices apply automatically.
-
-		* Active   -> (re)publish the list from the lines + disable the customer's
-		  previous contract-published list.
-		* terminal (Expired / Void / Amended) after having been Active -> disable
-		  this contract's own published list.
-		"""
-		before = self.get_doc_before_save()
-		prev_status = before.status if before else None
-
-		if self.status == "Active":
-			self._publish_price_list()
-			self._disable_other_generated_lists()
-		elif prev_status == "Active" and self.status in ("Expired", "Void", "Amended"):
-			self._disable_own_generated_list()
-
-	def _resolve_currency(self):
-		if self.currency:
-			return self.currency
-		if self.base_price_list:
-			cur = frappe.db.get_value("Price List", self.base_price_list, "currency")
-			if cur:
-				return cur
-		return (
-			frappe.db.get_value("Customer", self.customer, "default_currency")
-			or frappe.defaults.get_global_default("currency")
-			or "IDR"
-		)
-
-	def _publish_price_list(self):
-		"""Create-or-refresh the customer Price List named after this contract and
-		write its Item Prices from the agreed lines. Idempotent."""
-		if not (self.tariff_lines and len(self.tariff_lines) > 0):
-			return
-		currency = self._resolve_currency()
-		# Name the list by Customer + contract number, e.g. "Acme Ltd - DCNT-2026-00001".
-		customer_name = frappe.db.get_value("Customer", self.customer, "customer_name") or self.customer
-		pl_name = f"{customer_name} - {self.name}"
-
-		if frappe.db.exists("Price List", pl_name):
-			pl = frappe.get_doc("Price List", pl_name)
-			pl.update({"currency": currency, "customer": self.customer, "selling": 1, "buying": 0, "enabled": 1})
-			pl.save(ignore_permissions=True)
-		else:
-			frappe.get_doc({
-				"doctype": "Price List",
-				"price_list_name": pl_name,
-				"currency": currency,
-				"customer": self.customer,
-				"selling": 1,
-				"buying": 0,
-				"enabled": 1,
-			}).insert(ignore_permissions=True)
-
-		if self.generated_price_list != pl_name:
-			self.db_set("generated_price_list", pl_name, update_modified=False)
-
-		self._sync_item_prices(pl_name)
-
-		# Unify walk-in + contract pricing on the latest agreed list.
-		frappe.db.set_value("Customer", self.customer, "default_price_list", pl_name, update_modified=False)
-		if not frappe.db.get_value("Customer", self.customer, "default_currency"):
-			frappe.db.set_value("Customer", self.customer, "default_currency", currency, update_modified=False)
-
-	def _sync_item_prices(self, pl_name):
-		# Track the Item Prices we wrote by name (uom may be defaulted to the item's
-		# stock UOM by Item Price.validate, so prune by name rather than (item, uom)).
-		kept = set()
-		for row in self.tariff_lines:
-			kept.add(self._upsert_item_price(pl_name, row))
-		for name in frappe.get_all("Item Price", filters={"price_list": pl_name, "selling": 1}, pluck="name"):
-			if name not in kept:
-				frappe.delete_doc("Item Price", name, ignore_permissions=True)
-
-	def _upsert_item_price(self, pl_name, row):
-		flt = {"item_code": row.item, "price_list": pl_name, "selling": 1}
-		if row.uom:
-			flt["uom"] = row.uom
-		existing = frappe.db.get_value("Item Price", flt, "name")
-		if existing:
-			ip = frappe.get_doc("Item Price", existing)
-			ip.price_list_rate = row.rate or 0
-			ip.manhour_rate = row.manhour_rate or 0
-			if row.uom:
-				ip.uom = row.uom
-			ip.save(ignore_permissions=True)
-			return ip.name
-		payload = {
-			"doctype": "Item Price",
-			"item_code": row.item,
-			"price_list": pl_name,
-			"price_list_rate": row.rate or 0,
-			"manhour_rate": row.manhour_rate or 0,
-			"selling": 1,
-		}
-		if row.uom:
-			payload["uom"] = row.uom
-		# currency is copied from the Price List by Item Price.validate().
-		doc = frappe.get_doc(payload)
-		doc.insert(ignore_permissions=True)
-		return doc.name
-
-	def _disable_other_generated_lists(self):
-		"""Disable the customer's other selling Price Lists (older contract lists) so
-		only this contract's list is active for the customer. Base / standard rate
-		cards are customer-less, so they are never touched."""
-		others = frappe.get_all(
-			"Price List",
-			filters={
-				"customer": self.customer,
-				"enabled": 1,
-				"selling": 1,
-				"name": ["!=", self.generated_price_list or ""],
-			},
-			pluck="name",
-		)
-		for pl in others:
-			frappe.db.set_value("Price List", pl, "enabled", 0, update_modified=False)
-
-	def _disable_own_generated_list(self):
-		if self.generated_price_list and frappe.db.exists("Price List", self.generated_price_list):
-			frappe.db.set_value("Price List", self.generated_price_list, "enabled", 0, update_modified=False)
 
 
 @frappe.whitelist()
 def set_status(contract: str, target: str) -> str:
-	"""Workflow-button transition. Validates against ALLOWED_TRANSITIONS and saves,
-	which publishes / retires the customer Price List as a side effect."""
+	"""Workflow-button transition. Validates against ALLOWED_TRANSITIONS and saves, which
+	supersedes the contract an amendment replaces as a side effect."""
 	doc = frappe.get_doc("Depot Contract", contract)
 	if target not in ALLOWED_TRANSITIONS.get(doc.status, ()):
 		frappe.throw(_("Cannot move contract from {0} to {1}.").format(doc.status, target))
 	doc.status = target
 	doc.save()
 	return doc.status
-
-
-def guard_manual_price_list(doc, method=None):
-	"""Refuse a hand-edited ``Customer.default_price_list``.
-
-	The rate card a customer is billed on is the contract's output, not a field to type in:
-	:meth:`DepotContract._publish_price_list` builds the Price List and mirrors its name
-	onto the Customer. Pointing a customer at some other list from the Customer form
-	re-rates every future booking, bon and invoice for that party while the contract
-	everybody reads still says otherwise — a divergence that only ever surfaces as a wrong
-	invoice.
-
-	The contract's own write goes through ``db.set_value``, which never runs a Customer
-	save, so this guard cannot fire on it: anything reaching here IS a manual document edit.
-	Only a *change* is refused — saving the Customer for any other reason is untouched, and
-	so is a brand-new Customer (the field is read-only on the form, so nothing types into it
-	there either).
-	"""
-	if doc.is_new() or not doc.has_value_changed("default_price_list"):
-		return
-
-	contract = frappe.db.get_value(
-		"Depot Contract",
-		{"customer": doc.name, "status": "Active"},
-		"name",
-		order_by="valid_from desc",
-	)
-	where = (
-		_("Ubah lewat Depot Contract {0} (amend contract-nya).").format(contract)
-		if contract
-		else _(
-			"Customer ini belum punya Depot Contract Active — buat contract-nya dulu, "
-			"price list-nya terbit otomatis."
-		)
-	)
-	frappe.throw(
-		_("Default Price List diatur otomatis dari Depot Contract, tidak bisa diubah manual.")
-		+ "<br><br>"
-		+ where,
-		title=_("Price List Dikunci Contract"),
-	)
 
 
 def get_active_contract(customer: str) -> dict | None:
@@ -385,49 +218,46 @@ def rate_card_status(customer: str | None = None) -> dict:
 
 	A tank whose owner has no Active Depot Contract still gets imported, gated in, cleaned and
 	repaired: nothing in the depot flow blocks on the contract. But every line on those orders
-	then prices at 0 (no Item Price to read), and consolidated billing invoices straight off
+	then prices at 0 (no tariff line to read), and consolidated billing invoices straight off
 	those zeros — so the work is done and never billed, silently. The order forms use this to
 	say so up front instead.
 
 	``ok`` is False in two different ways, and the caller needs to tell them apart:
 	  * no Active contract at all — nothing has been agreed yet;
-	  * an Active contract that published no Item Prices — agreed, but its Tariff Lines are
-	    empty, so there is still nothing to price from.
+	  * an Active contract with no tariff lines — agreed, but empty, so there is still
+	    nothing to price from.
 	"""
 	if not customer:
-		return {"customer": None, "contract": None, "price_list": None, "priced_items": 0, "ok": True}
+		return {"customer": None, "contract": None, "priced_items": 0, "ok": True}
 	contract = frappe.db.get_value(
 		"Depot Contract", {"customer": customer, "status": "Active"}, "name", order_by="valid_from desc"
 	)
-	# The contract's own published list — Customer.default_price_list is what
-	# _publish_price_list writes, and since the site-wide Selling Settings catalog stopped
-	# answering for a contract-less customer it is the ONLY rate card there is.
-	price_list = frappe.db.get_value("Customer", customer, "default_price_list")
 	priced_items = (
-		frappe.db.count("Item Price", {"price_list": price_list, "selling": 1}) if price_list else 0
+		frappe.db.count("Tariff Rate", {"parent": contract, "parenttype": "Depot Contract"})
+		if contract
+		else 0
 	)
 	return {
 		"customer": customer,
 		"contract": contract,
-		"price_list": price_list,
 		"priced_items": priced_items,
-		"ok": bool(contract and price_list and priced_items),
+		"ok": bool(contract and priced_items),
 	}
 
 
-# --- tariff line item picker (seeded from the contract's Base Price List) --------
+# --- tariff line item picker (seeded from the contract's Base Contract) ----------
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def tariff_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Link query for a Price List line's Item: SELURUH katalog item, urut dari yang paling
+	"""Link query for a tariff line's Item: SELURUH katalog item, urut dari yang paling
 	sering dipakai.
 
-	Dulu dibatasi item yang punya selling Item Price di Base Price List kontrak. Batas itu
-	dilepas bersama semua picker item lain (2026-09-07): sebuah kontrak justru sering perlu
-	memuat jasa yang belum ada di rate card standar, dan tarifnya memang diketik tangan di
-	baris itu. Base Price List tetap dipakai untuk MENGISI default (``item_price_defaults``)
-	dan untuk tombol bulk-add, bukan lagi untuk menyembunyikan pilihan."""
+	Dulu dibatasi item yang punya baris tarif di rate card dasar kontrak. Batas itu dilepas
+	bersama semua picker item lain (2026-09-07): sebuah kontrak justru sering perlu memuat
+	jasa yang belum ada di rate card standar, dan tarifnya memang diketik tangan di baris
+	itu. Base Contract tetap dipakai untuk MENGISI default (``base_tariff_defaults``) dan
+	untuk tombol bulk-add, bukan lagi untuk menyembunyikan pilihan."""
 	from container_depot.container_depot import item_catalog
 
 	rows = item_catalog.search_items(
@@ -438,65 +268,71 @@ def tariff_item_query(doctype, txt, searchfield, start, page_len, filters):
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
-def base_price_list_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Base Price List options: any enabled *selling* Price List that holds at least
-	one selling Item Price. A contract can be seeded ("cribbed") from any rate card —
-	a standard catalog (OAK 2026, Standard Selling) or another customer's agreed list,
-	so a new customer can be put on the same prices as an existing one. Only empty and
-	buying-only lists are hidden (there is nothing to copy from those)."""
+def base_contract_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Base Contract options: any contract that carries at least one tariff line.
+
+	A contract can be seeded ("cribbed") from one that already exists, so a new customer can
+	be put on the same prices as an existing one and then negotiated away from them. Status
+	is deliberately NOT filtered: an Expired or Void contract is still a perfectly good sheet
+	of numbers to start from, and it is often exactly the one being renewed. Only empty
+	contracts are hidden — there is nothing to copy from those.
+
+	Its own row is excluded (``filters.name``), so a contract can never crib from itself.
+	"""
 	like = f"%{txt or ''}%"
+	me = (filters or {}).get("name") or ""
 	return frappe.db.sql(
 		"""
-		SELECT pl.name
-		FROM `tabPrice List` pl
-		WHERE pl.selling = 1 AND pl.enabled = 1
+		SELECT dc.name, dc.customer, dc.currency
+		FROM `tabDepot Contract` dc
+		WHERE dc.name != %(me)s
 		  AND EXISTS (
-		      SELECT 1 FROM `tabItem Price` ip WHERE ip.price_list = pl.name AND ip.selling = 1
+		      SELECT 1 FROM `tabTariff Rate` tr
+		      WHERE tr.parent = dc.name AND tr.parenttype = 'Depot Contract'
 		  )
-		  AND pl.name LIKE %(like)s
-		ORDER BY pl.name
+		  AND (dc.name LIKE %(like)s OR dc.customer LIKE %(like)s)
+		ORDER BY dc.valid_from DESC, dc.name
 		LIMIT {start}, {page_len}
 		""".format(start=cint(start), page_len=cint(page_len)),
-		{"like": like},
+		{"like": like, "me": me},
 	)
 
 
 @frappe.whitelist()
-def base_price_list_lines(base_price_list: str) -> list:
-	"""Every selling Item Price in the Base Price List, as tariff line dicts.
+def base_contract_lines(base_contract: str) -> list:
+	"""Every tariff line of the Base Contract, as tariff line dicts.
 
-	Powers the "Get Items from Base Price List" button, which clears the lines and
-	re-adds one per priced item so a contract can be seeded from a standard rate
-	card and then negotiated.
+	Powers the "Get Items from Base Contract" button, which clears the lines and re-adds one
+	per priced item so a contract can be seeded from an existing one and then negotiated.
 	"""
-	if not base_price_list:
+	if not base_contract:
 		return []
 	return frappe.get_all(
-		"Item Price",
-		filters={"price_list": base_price_list, "selling": 1},
-		fields=["item_code as item", "uom", "price_list_rate as rate", "manhour_rate"],
-		order_by="item_code",
+		"Tariff Rate",
+		filters={"parent": base_contract, "parenttype": "Depot Contract"},
+		fields=["item", "uom", "rate", "manhour_rate"],
+		order_by="idx",
 	)
 
 
 @frappe.whitelist()
-def item_price_defaults(base_price_list: str, item: str) -> dict:
-	"""Default uom / rate / manhour_rate for ``item`` from the Base Price List.
+def base_tariff_defaults(base_contract: str, item: str) -> dict:
+	"""Default uom / rate / manhour_rate for ``item`` from the Base Contract.
 
 	uom is shown read-only on the line; rate and manhour_rate are seeded as editable
 	defaults that are then negotiated. Returns {} when the item is not priced there.
 	"""
-	if not base_price_list or not item:
+	if not base_contract or not item:
 		return {}
 	row = frappe.db.get_value(
-		"Item Price",
-		{"item_code": item, "price_list": base_price_list, "selling": 1},
-		["uom", "price_list_rate", "manhour_rate"],
+		"Tariff Rate",
+		{"parent": base_contract, "parenttype": "Depot Contract", "item": item},
+		["uom", "rate", "manhour_rate"],
 		as_dict=True,
 	)
 	if not row:
 		return {}
-	return {"uom": row.uom, "rate": row.price_list_rate, "manhour_rate": row.manhour_rate}
+	return {"uom": row.uom, "rate": row.rate, "manhour_rate": row.manhour_rate}
 
 
 # --- bulk fill: paste from Excel ------------------------------------------------
@@ -540,18 +376,21 @@ def _parse_pasted_lines(text: str) -> list:
 	return rows
 
 
-def _resolve_paste_item(token: str, base_price_list: str | None) -> str | None:
+def _resolve_paste_item(token: str, base_contract: str | None) -> str | None:
 	"""Resolve a pasted token to an Item code. The template asks for the Item Name, but
 	an exact Item code is accepted first (they are the same string for almost every
-	item here), then an exact item_name match, preferring items priced in the Base
-	Price List."""
+	item here), then an exact item_name match, preferring items priced by the Base
+	Contract."""
 	if not token:
 		return None
 	if frappe.db.exists("Item", token):
 		return token
-	if base_price_list:
+	if base_contract:
 		priced = frappe.get_all(
-			"Item Price", filters={"price_list": base_price_list, "selling": 1}, pluck="item_code", distinct=True
+			"Tariff Rate",
+			filters={"parent": base_contract, "parenttype": "Depot Contract"},
+			pluck="item",
+			distinct=True,
 		)
 		if priced:
 			match = frappe.db.get_value("Item", {"item_name": token, "name": ["in", priced]}, "name")
@@ -566,13 +405,13 @@ def _to_rate(value, fallback) -> float:
 
 @frappe.whitelist()
 def import_tariff_lines(contract: str, text: str, replace=0) -> dict:
-	"""Bulk-fill a Draft contract's Price List lines from pasted Excel text. Each
+	"""Bulk-fill a Draft contract's tariff lines from pasted Excel text. Each
 	line: ``item [, rate [, manhour_rate [, uom]]]`` (tab- or comma-sep).
-	Blank rate/uom/manhour default from the Base Price List. Unknown items are
+	Blank rate/uom/manhour default from the Base Contract. Unknown items are
 	collected (not fatal). Returns ``{added, skipped, errors, total_lines}``."""
 	doc = frappe.get_doc("Depot Contract", contract)
 	if doc.status not in EDITABLE_STATUSES:
-		frappe.throw(_("Price List lines can only be imported while the contract is a Draft."))
+		frappe.throw(_("Tariff lines can only be imported while the contract is a Draft."))
 
 	rows = _parse_pasted_lines(text)
 	if not rows:
@@ -582,16 +421,23 @@ def import_tariff_lines(contract: str, text: str, replace=0) -> dict:
 		doc.set("tariff_lines", [])
 
 	seen = {(r.item, r.uom or None) for r in (doc.tariff_lines or [])}
-	base_pl = doc.base_price_list
+	base = doc.base_contract
 	added = skipped = 0
 	errors = []
 	for raw in rows:
-		item = _resolve_paste_item(raw["item"], base_pl)
+		item = _resolve_paste_item(raw["item"], base)
 		if not item:
 			errors.append(_("Unknown item: {0}").format(raw["item"]))
 			continue
-		defaults = item_price_defaults(base_pl, item) if base_pl else {}
-		uom = raw["uom"] or defaults.get("uom")
+		defaults = base_tariff_defaults(base, item) if base else {}
+		# Pasted value, then the Base Contract's line, then the Item's own stock UOM. That
+		# last step is what the form does client-side for a line typed by hand, and without
+		# it a base whose lines carry no UoM imports rows with an empty billing unit.
+		uom = (
+			raw["uom"]
+			or defaults.get("uom")
+			or frappe.db.get_value("Item", item, "stock_uom")
+		)
 		key = (item, uom or None)
 		if key in seen:
 			skipped += 1
@@ -644,12 +490,12 @@ def download_tariff_template():
 
 
 @frappe.whitelist(methods=["GET"])
-def download_item_master(base_price_list: str | None = None):
-	"""Reference list of the sellable items valid for a Price List line — the names to
+def download_item_master(base_contract: str | None = None):
+	"""Reference list of the sellable items valid for a tariff line — the names to
 	put in the template's "Item Name" column. One item column only, deliberately: the
 	Item Name is unique here, so listing the code beside it just invites the wrong
 	column being copied. Mirrors the form's item picker filter
-	(``is_sales_item=1, disabled=0``). When a Base Price List is given, its Rate /
+	(``is_sales_item=1, disabled=0``). When a Base Contract is given, its Rate /
 	Manhour are included so the sheet doubles as a starting rate card.
 
 	Rows are grouped under a bold Item Group banner for readability. Note the banner
@@ -676,7 +522,7 @@ def download_item_master(base_price_list: str | None = None):
 			ws.write(row, col, "", fmts["group"])
 		row += 1
 		for it in grouped[group]:
-			defaults = item_price_defaults(base_price_list, it.name) if base_price_list else {}
+			defaults = base_tariff_defaults(base_contract, it.name) if base_contract else {}
 			ws.write_row(row, 0, [
 				it.item_name or it.name,
 				defaults.get("uom") or it.stock_uom,
@@ -688,8 +534,8 @@ def download_item_master(base_price_list: str | None = None):
 
 
 @frappe.whitelist()
-def parse_tariff_xlsx(file_url: str, base_price_list: str | None = None) -> dict:
-	"""Parse an uploaded .xlsx into Price List rows for the grid's "Import Excel" button.
+def parse_tariff_xlsx(file_url: str, base_contract: str | None = None) -> dict:
+	"""Parse an uploaded .xlsx into tariff rows for the grid's "Import Excel" button.
 
 	Columns by position: Item, Rate, Manhour (a 4th UoM column is honoured if present);
 	a header row whose first cell is item/kode is skipped. Pure read — it resolves items
@@ -714,11 +560,11 @@ def parse_tariff_xlsx(file_url: str, base_price_list: str | None = None) -> dict
 			continue
 		if token.lower() in _HEADER_TOKENS:
 			continue  # header
-		item = _resolve_paste_item(token, base_price_list)
+		item = _resolve_paste_item(token, base_contract)
 		if not item:
 			errors.append(_("Unknown item: {0}").format(token))
 			continue
-		defaults = item_price_defaults(base_price_list, item) if base_price_list else {}
+		defaults = base_tariff_defaults(base_contract, item) if base_contract else {}
 		uom = defaults.get("uom")
 		if uom is None and len(cells) > 3 and cells[3] not in (None, ""):
 			uom = str(cells[3]).strip()

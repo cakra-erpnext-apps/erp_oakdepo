@@ -1,6 +1,6 @@
 """Import baris tarif Depot Contract dari paste Excel (``import_tariff_lines``).
 
-Parsing, default dari Base Price List, item tak dikenal, mode replace, dan penjaga status
+Parsing, default dari Base Contract, item tak dikenal, mode replace, dan penjaga status
 (hanya kontrak yang masih bisa diedit). Test-test ini dulu menumpang di
 ``test_service_menu.py``; file itu ikut turun bersama fitur Depot Service Menu (patch
 v0_92) sementara import-nya tetap hidup.
@@ -16,8 +16,8 @@ from frappe.tests.utils import FrappeTestCase
 from container_depot.container_depot.doctype.depot_contract import depot_contract
 
 _PREFIX = "ZZ-IMP-TEST"
-_PL = "ZZ Imp Test PL"
 _CUST = "ZZ Imp Test Customer"
+_BASE_CUST = "ZZ Imp Base Customer"
 
 
 class TestContractTariffImport(FrappeTestCase):
@@ -27,9 +27,11 @@ class TestContractTariffImport(FrappeTestCase):
 		group = frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups"
 		self._ensure_item(f"{_PREFIX}-A", group)
 		self._ensure_item(f"{_PREFIX}-B", group)
-		self._ensure_price_list()
-		self._ensure_item_price(f"{_PREFIX}-A", 100.0, 0.0)
-		self._ensure_item_price(f"{_PREFIX}-B", 200.0, 5.0)
+		# The rate card the import cribs its defaults from is another CONTRACT now.
+		self._base = self._base_contract([
+			{"item": f"{_PREFIX}-A", "rate": 100.0, "manhour_rate": 0.0, "currency": "USD"},
+			{"item": f"{_PREFIX}-B", "rate": 200.0, "manhour_rate": 5.0, "currency": "USD"},
+		])
 		frappe.db.commit()
 
 	def _safe(self, fn):
@@ -42,11 +44,11 @@ class TestContractTariffImport(FrappeTestCase):
 		# Raw delete: Depot Contract.on_trash refuses to delete anything past Draft
 		# (contracts are Voided / Amended, never removed), and this fixture makes Void ones.
 		self._safe(lambda: self._contracts and frappe.db.delete("Depot Contract", {"name": ("in", self._contracts)}))
-		self._safe(lambda: frappe.db.delete("Item Price", {"price_list": _PL}))
-		self._safe(lambda: frappe.db.exists("Price List", _PL) and frappe.delete_doc("Price List", _PL, force=True, ignore_permissions=True))
+		self._safe(lambda: self._contracts and frappe.db.delete("Tariff Rate", {"parent": ("in", self._contracts)}))
 		for code in (f"{_PREFIX}-A", f"{_PREFIX}-B"):
 			self._safe(lambda code=code: frappe.db.exists("Item", code) and frappe.delete_doc("Item", code, force=True, ignore_permissions=True))
-		self._safe(lambda: frappe.db.exists("Customer", _CUST) and frappe.delete_doc("Customer", _CUST, force=True, ignore_permissions=True))
+		for cust in (_CUST, _BASE_CUST):
+			self._safe(lambda cust=cust: frappe.db.exists("Customer", cust) and frappe.delete_doc("Customer", cust, force=True, ignore_permissions=True))
 		frappe.db.commit()
 		super().tearDown()
 
@@ -60,37 +62,33 @@ class TestContractTariffImport(FrappeTestCase):
 			"is_stock_item": 0, "is_sales_item": 1,
 		}).insert(ignore_permissions=True)
 
-	def _ensure_price_list(self):
-		if frappe.db.exists("Price List", _PL):
-			return
+	def _customer(self, name=_CUST):
+		if frappe.db.exists("Customer", name):
+			return name
 		frappe.get_doc({
-			"doctype": "Price List", "price_list_name": _PL,
-			"currency": "USD", "selling": 1, "enabled": 1,
-		}).insert(ignore_permissions=True)
-
-	def _ensure_item_price(self, item, rate, manhour_rate):
-		if frappe.db.exists("Item Price", {"item_code": item, "price_list": _PL, "selling": 1}):
-			return
-		frappe.get_doc({
-			"doctype": "Item Price", "item_code": item, "price_list": _PL,
-			"selling": 1, "price_list_rate": rate, "manhour_rate": manhour_rate,
-		}).insert(ignore_permissions=True)
-
-	def _customer(self):
-		if frappe.db.exists("Customer", _CUST):
-			return _CUST
-		frappe.get_doc({
-			"doctype": "Customer", "customer_name": _CUST,
+			"doctype": "Customer", "customer_name": name,
 			"customer_group": frappe.db.get_value("Customer Group", {"is_group": 0}, "name"),
 			"territory": frappe.db.get_value("Territory", {"is_group": 0}, "name"),
 		}).insert(ignore_permissions=True)
-		return _CUST
+		return name
+
+	def _base_contract(self, lines):
+		"""The contract whose lines the import copies defaults from. Draft on purpose: being
+		cribbed from has nothing to do with being live, and the picker says so."""
+		doc = frappe.get_doc({
+			"doctype": "Depot Contract", "customer": self._customer(_BASE_CUST),
+			"status": "Draft", "payment_type": "Cash", "currency": "USD",
+			"valid_from": "2026-01-01", "valid_to": "2030-12-31",
+			"tariff_lines": lines,
+		}).insert(ignore_permissions=True)
+		self._contracts.append(doc.name)
+		return doc.name
 
 	def _draft_contract(self, status="Draft"):
 		doc = frappe.get_doc({
 			"doctype": "Depot Contract", "customer": self._customer(),
 			"status": status, "payment_type": "Cash",
-			"currency": "USD", "base_price_list": _PL,
+			"currency": "USD", "base_contract": self._base,
 			"valid_from": "2026-01-01", "valid_to": "2030-12-31",
 		}).insert(ignore_permissions=True)
 		self._contracts.append(doc.name)

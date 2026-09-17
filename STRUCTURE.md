@@ -67,8 +67,7 @@ Warehouse, Management (read-only everywhere), Customer Desk (external, see below
 **Customer Desk** is the one role in that list that is not an OAK employee: a customer
 company's own staff, logging in to the Desk to watch their tanks. Read-only on six
 doctypes (Container, Container Booking, Depot Contract, Gate Entry, Container Movement,
-Container Activity) plus their own rate card (Price List, Item Price), seeded with the
-`v` permission grammar — read/print/export, no `email` and no `report` (a Query Report
+Container Activity), seeded with the `v` permission grammar — read/print/export, no `email` and no `report` (a Query Report
 runs raw SQL, which no customer filter reaches), and no mailbox. Its Role Profile carries
 ERPNext's stock `Customer` role beside it, because a profile is authoritative over a
 user's roles and would otherwise strip what the portal hook granted. It exists beside ERPNext's stock `Customer` role rather than replacing it:
@@ -92,7 +91,7 @@ Frappe's Number Card filter from rendering `IN ()` once that list is empty.
 
 Scoping beyond that is `container_depot/customer_scope.py`: Frappe filters any doctype
 with a Link to Customer by itself, and that file covers what it cannot — doctypes with no
-Customer link (Gate Entry, Container Movement, Item Price), doctypes with several of them
+Customer link (Gate Entry, Container Movement), doctypes with several of them
 (Container Booking's customer/principal, joined with `and` natively, which would hide a
 booking from its own owner), and the whole rest of the site, which a System User can
 otherwise read through the stock `All` / `Desk User` grants.

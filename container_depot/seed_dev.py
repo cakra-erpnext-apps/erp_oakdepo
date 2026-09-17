@@ -61,8 +61,8 @@ LEGACY_CUSTOMERS = ["Stolt"]
 
 # --- Depot Contract dummy ----------------------------------------------------------
 # Tanpa satu kontrak Active, praktis tidak ada yang bisa dikerjakan di app: harga charge
-# booking, tarif cleaning, dan tarif M&R semuanya dibaca dari Price List yang diterbitkan
-# kontrak. Karena itu kontraknya ikut di-seed — kalau site di-reset, satu `seed_dev.run()`
+# booking, tarif cleaning, dan tarif M&R semuanya dibaca dari tariff_lines kontrak.
+# Karena itu kontraknya ikut di-seed — kalau site di-reset, satu `seed_dev.run()`
 # mengembalikannya.
 #
 # Satu item per Item Group (22 grup), USD, tarif dan jam sengaja dibuat bervariasi supaya
@@ -392,9 +392,8 @@ def _ensure_contract():
     sama: Cash (invoice + Payment Entry per booking) dan TOP (postpaid, ditagih lewat
     consolidated billing). Keduanya mensyaratkan payment terms + credit limit > 0.
 
-    Menyimpan kontrak berstatus Active otomatis menerbitkan Price List
-    "<Customer> - <nama kontrak>" berisi Item Price dari tariff_lines — itulah rate card
-    yang dibaca booking, cleaning dan M&R.
+    ``tariff_lines`` kontrak inilah rate card yang dibaca booking, cleaning dan M&R —
+    langsung, tanpa terbitan apa pun di tengah.
     """
     from frappe.utils import add_days, today
 
@@ -409,8 +408,8 @@ def _ensure_contract():
     )
     if existing:
         # Kontraknya sudah ada: jangan dibuat ulang, tapi tambal tarif yang belum ada.
-        # Kalau daftar di atas bertambah (mis. Lift On), satu `run()` cukup untuk
-        # menerbitkannya — menyimpan kontrak Active otomatis me-refresh Price List-nya.
+        # Kalau daftar di atas bertambah (mis. Lift On), satu `run()` cukup — barisnya
+        # langsung jadi tarif yang dibaca order berikutnya.
         doc = frappe.get_doc("Depot Contract", existing)
         have = {row.item for row in doc.tariff_lines or []}
         missing = [ln for ln in lines if ln["item"] not in have]
@@ -440,8 +439,7 @@ def _ensure_contract():
         "valid_to": add_days(today(), 365),
         "tariff_lines": lines,
     }).insert(ignore_permissions=True)
-    print(f"[seed_dev] Depot Contract: {doc.name} ({len(lines)} tarif, {CONTRACT_CURRENCY}) "
-          f"→ Price List {doc.generated_price_list}")
+    print(f"[seed_dev] Depot Contract: {doc.name} ({len(lines)} tarif, {CONTRACT_CURRENCY})")
     return doc.name
 
 

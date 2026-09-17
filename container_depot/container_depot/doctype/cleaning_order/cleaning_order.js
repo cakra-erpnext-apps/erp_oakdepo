@@ -424,7 +424,7 @@ frappe.ui.form.on('Cleaning Order Service', {
 					item_name: d.item_name,
 				};
 				frappe.model.set_value(cdt, cdn, patch).then(() => _recalc(frm));
-				if (!d.price_list) {
+				if (!d.contract) {
 					frappe.show_alert({
 						message: __('Owner container ini belum punya kontrak aktif — isi tarif manual.'),
 						indicator: 'orange',

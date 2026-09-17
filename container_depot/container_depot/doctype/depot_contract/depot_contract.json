@@ -22,9 +22,8 @@
     "valid_to",
     "pricing_section",
     "currency",
-    "base_price_list",
+    "base_contract",
     "column_break_pricing",
-    "generated_price_list",
     "tariff_section",
     "tariff_lines",
     "generate_lines",
@@ -136,42 +135,33 @@
       "reqd": 1
     },
     {
-      "description": "Standard rate card the lines are seeded from (item picker + default rate/uom/manhour). Negotiated rates are edited per line.",
-      "fieldname": "base_price_list",
+      "description": "Existing contract the lines are seeded from (item picker + default rate/uom/manhour). Negotiated rates are edited per line.",
+      "fieldname": "base_contract",
       "fieldtype": "Link",
-      "label": "Base Price List",
-      "options": "Price List"
+      "label": "Base Contract",
+      "options": "Depot Contract"
     },
     {
       "fieldname": "column_break_pricing",
       "fieldtype": "Column Break"
     },
     {
-      "description": "Customer Price List published automatically when this contract goes Active. Managed by the system.",
-      "fieldname": "generated_price_list",
-      "fieldtype": "Link",
-      "label": "Published Price List",
-      "no_copy": 1,
-      "options": "Price List",
-      "read_only": 1
-    },
-    {
       "fieldname": "tariff_section",
       "fieldtype": "Section Break",
-      "label": "Price List"
+      "label": "Tarif"
     },
     {
       "fieldname": "tariff_lines",
       "fieldtype": "Table",
-      "label": "Price List",
+      "label": "Tariff Lines",
       "options": "Tariff Rate"
     },
     {
-      "depends_on": "eval:doc.base_price_list",
-      "description": "Reset the lines and re-add one per priced item from the Base Price List.",
+      "depends_on": "eval:doc.base_contract",
+      "description": "Reset the lines and re-add one per priced item from the Base Contract.",
       "fieldname": "generate_lines",
       "fieldtype": "Button",
-      "label": "Get Items from Base Price List"
+      "label": "Get Items from Base Contract"
     },
     {
       "collapsible": 1,

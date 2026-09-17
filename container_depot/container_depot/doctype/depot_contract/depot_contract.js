@@ -1,12 +1,11 @@
-// Depot Contract — the Price List lines are negotiated from a Base Price List.
+// Depot Contract — the tariff lines are negotiated from a Base Contract.
 //
-// The Item picker on each line is filtered to Items priced in the contract's
-// Base Price List. Picking an Item seeds the line from that Item Price: UoM
-// (read-only), Rate and Manhour (editable defaults) which are then negotiated.
-// "Get Items from Base Price List" (re)populates the lines from the whole list.
-// On Active the contract publishes these lines as a customer Price List named
-// after the contract (handled server-side). Each line's currency follows the
-// contract currency so Rate / Manhour format in the Base Price List currency.
+// The Item picker on each line is open to the whole catalog. Picking an Item seeds the
+// line from the Base Contract's own line for it: UoM (read-only), Rate and Manhour
+// (editable defaults) which are then negotiated. "Get Items from Base Contract"
+// (re)populates the lines from the whole of that contract. These lines ARE the customer's
+// rate card — every order reads them directly, nothing is published anywhere else. Each
+// line's currency follows the contract currency, so Rate / Manhour format in it.
 //
 // Status is driven by workflow buttons (set_status), not picked from a dropdown:
 // Draft -> Submit -> Active, then Invalid (or Amend). Expired has no button: the daily
@@ -102,13 +101,13 @@ frappe.ui.form.on("Depot Contract", {
 		if (!editable || !frappe.perm.has_perm(frm.doctype, 0, "write")) return;
 		grid.add_custom_button(__("Import Excel"), () => {
 			const d = new frappe.ui.Dialog({
-				title: __("Import Price List from Excel"),
+				title: __("Import Tariff Lines from Excel"),
 				fields: [
 					{
 						fieldname: "hint",
 						fieldtype: "HTML",
 						options: `<p class="text-muted small">${__(
-							"Columns: Item Name, Rate, Manhour. Item Name is the name exactly as it appears in the Item Master sheet below — only that column is required; Rate/Manhour default to 0 (or the Base Price List, if set). A header row is skipped."
+							"Columns: Item Name, Rate, Manhour. Item Name is the name exactly as it appears in the Item Master sheet below — only that column is required; Rate/Manhour default to 0 (or the Base Contract, if set). A header row is skipped."
 						)}</p>`,
 					},
 					{ fieldname: "file", fieldtype: "Attach", label: __("Excel File (.xlsx)"), reqd: 1 },
@@ -118,7 +117,7 @@ frappe.ui.form.on("Depot Contract", {
 				primary_action(values) {
 					frappe.call({
 						method: "container_depot.container_depot.doctype.depot_contract.depot_contract.parse_tariff_xlsx",
-						args: { file_url: values.file, base_price_list: frm.doc.base_price_list || null },
+						args: { file_url: values.file, base_contract: frm.doc.base_contract || null },
 						freeze: true,
 						freeze_message: __("Reading file…"),
 						callback(r) {
@@ -161,8 +160,8 @@ frappe.ui.form.on("Depot Contract", {
 				window.open(`${base}.download_tariff_template`);
 			});
 			d.add_custom_action(__("Download Item Master (Item Names)"), () => {
-				const q = frm.doc.base_price_list
-					? `?base_price_list=${encodeURIComponent(frm.doc.base_price_list)}`
+				const q = frm.doc.base_contract
+					? `?base_contract=${encodeURIComponent(frm.doc.base_contract)}`
 					: "";
 				window.open(`${base}.download_item_master${q}`);
 			});
@@ -214,7 +213,7 @@ frappe.ui.form.on("Depot Contract", {
 		// Editable only in Draft; Active and terminal states are locked.
 		const locked = !frm.is_new() && !["Draft"].includes(frm.doc.status);
 		[
-			"customer", "currency", "base_price_list", "payment_type", "payment_terms",
+			"customer", "currency", "base_contract", "payment_type", "payment_terms",
 			"credit_limit", "valid_from", "valid_to", "tariff_lines", "generate_lines",
 			"company_docs", "esign_status", "signed_pdf",
 		].forEach((f) => frm.set_df_property(f, "read_only", locked ? 1 : 0));
@@ -235,12 +234,13 @@ frappe.ui.form.on("Depot Contract", {
 	customer(frm) {
 		frm.trigger("_apply_customer_currency");
 	},
-	base_price_list(frm) {
+	base_contract(frm) {
 		frm.trigger("_set_tariff_item_query");
-		if (!frm.doc.base_price_list) return;
-		// Bind currency to the base rate card (published Item Prices inherit the
-		// Price List currency). Lines are generated only on the button.
-		frappe.db.get_value("Price List", frm.doc.base_price_list, "currency").then((r) => {
+		if (!frm.doc.base_contract) return;
+		// Bind currency to the contract being cribbed from — its rates arrive unchanged, so
+		// the two have to be denominated the same (the server refuses otherwise). Lines are
+		// generated only on the button.
+		frappe.db.get_value("Depot Contract", frm.doc.base_contract, "currency").then((r) => {
 			if (r.message && r.message.currency) frm.set_value("currency", r.message.currency);
 			// ...unless the customer master pins a billing currency — that one wins.
 			frm.trigger("_apply_customer_currency");
@@ -259,13 +259,15 @@ frappe.ui.form.on("Depot Contract", {
 		frm.trigger("_generate_lines_from_base");
 	},
 	_set_tariff_item_query(frm) {
-		// Base Price List picker: only customer-less rate cards that have Item Prices.
-		frm.set_query("base_price_list", () => ({
-			query: "container_depot.container_depot.doctype.depot_contract.depot_contract.base_price_list_query",
+		// Base Contract picker: any contract that actually carries tariff lines, minus this
+		// one (a contract cannot crib from itself).
+		frm.set_query("base_contract", () => ({
+			query: "container_depot.container_depot.doctype.depot_contract.depot_contract.base_contract_query",
+			filters: { name: frm.doc.name },
 		}));
 		frm.set_query("item", "tariff_lines", () => ({
 			query: "container_depot.container_depot.doctype.depot_contract.depot_contract.tariff_item_query",
-			filters: { base_price_list: frm.doc.base_price_list },
+			filters: { base_contract: frm.doc.base_contract },
 		}));
 	},
 	_sync_line_currency(frm) {
@@ -275,13 +277,13 @@ frappe.ui.form.on("Depot Contract", {
 		frm.refresh_field("tariff_lines");
 	},
 	_generate_lines_from_base(frm) {
-		if (!frm.doc.base_price_list) {
-			frappe.msgprint(__("Select a Base Price List first."));
+		if (!frm.doc.base_contract) {
+			frappe.msgprint(__("Select a Base Contract first."));
 			return;
 		}
 		frappe.call({
-			method: "container_depot.container_depot.doctype.depot_contract.depot_contract.base_price_list_lines",
-			args: { base_price_list: frm.doc.base_price_list },
+			method: "container_depot.container_depot.doctype.depot_contract.depot_contract.base_contract_lines",
+			args: { base_contract: frm.doc.base_contract },
 			callback(r) {
 				const rows = r.message || [];
 				// Reset first so repeated clicks always mirror the base list.
@@ -289,7 +291,7 @@ frappe.ui.form.on("Depot Contract", {
 				if (!rows.length) {
 					frm.refresh_field("tariff_lines");
 					frappe.msgprint(
-						__("No selling Item Prices found in {0}. Lines cleared.", [frm.doc.base_price_list])
+						__("No tariff lines found in {0}. Lines cleared.", [frm.doc.base_contract])
 					);
 					return;
 				}
@@ -303,7 +305,7 @@ frappe.ui.form.on("Depot Contract", {
 				});
 				frm.refresh_field("tariff_lines");
 				frappe.show_alert({
-					message: __("Added {0} line(s) from {1}.", [rows.length, frm.doc.base_price_list]),
+					message: __("Added {0} line(s) from {1}.", [rows.length, frm.doc.base_contract]),
 					indicator: "green",
 				});
 			},
@@ -315,9 +317,9 @@ frappe.ui.form.on("Tariff Rate", {
 	item(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.item) return;
-		if (!frm.doc.base_price_list) {
-			// No Base Price List: allow any service item. Default the UoM from the
-			// item itself; the rate is entered manually (no base list to copy from).
+		if (!frm.doc.base_contract) {
+			// No Base Contract: allow any service item. Default the UoM from the
+			// item itself; the rate is entered manually (nothing to copy from).
 			frappe.db.get_value("Item", row.item, "stock_uom", (r) => {
 				if (r && r.stock_uom) frappe.model.set_value(cdt, cdn, "uom", r.stock_uom);
 				frappe.model.set_value(cdt, cdn, "currency", frm.doc.currency || null);
@@ -325,8 +327,8 @@ frappe.ui.form.on("Tariff Rate", {
 			return;
 		}
 		frappe.call({
-			method: "container_depot.container_depot.doctype.depot_contract.depot_contract.item_price_defaults",
-			args: { base_price_list: frm.doc.base_price_list, item: row.item },
+			method: "container_depot.container_depot.doctype.depot_contract.depot_contract.base_tariff_defaults",
+			args: { base_contract: frm.doc.base_contract, item: row.item },
 			callback(r) {
 				const d = r.message;
 				if (!d) return;

@@ -4,7 +4,7 @@ Access to depot work is decided once, by the DocPerm on the form. A picker that 
 SECOND role on the linked doctype gates the same decision twice, and fails as a 403 inside a
 form the user was told they may use: `Insufficient Permission for Currency` on Depot Contract
 (Admin Ops holds no Accounts/Sales/Purchase role), then the same for `Branch`, with `Employee`,
-`User`, `Role`, `Price List` and `Warehouse` queued up behind them (2026-09-16).
+`User`, `Role` and `Warehouse` queued up behind them (2026-09-16).
 
 `setup_permissions` therefore sweeps every doctype a Container Depot form links to and grants
 `select` to `All`. This pins both halves: the pickers open, and `select` did not quietly turn
@@ -61,7 +61,7 @@ class TestLinkSelect(FrappeTestCase):
 	def test_the_targets_include_the_fields_that_broke(self):
 		"""Regression pin for the two reported 403s and the sweep that found the rest."""
 		targets = _link_targets()
-		for dt in ("Currency", "Branch", "Employee", "User", "Price List", "Warehouse"):
+		for dt in ("Currency", "Branch", "Employee", "User", "Warehouse"):
 			self.assertIn(dt, targets)
 
 	def test_doctypes_frappe_ignores_custom_perms_for_are_left_alone(self):
