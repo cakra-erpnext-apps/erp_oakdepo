@@ -262,6 +262,17 @@
 	.oak-section {
 		@apply rounded-2xl border border-gray-100 bg-paper p-4 shadow-card;
 	}
+	/* Latar "yard" — korugasi dinding tank container, pola yang sama dengan panel kiri
+	   halaman login (public/css/login.css). Dipakai layar gerbang penuh (InstallGate,
+	   NotifGate) supaya layar sebelum masuk app satu bahasa dengan layar login. */
+	.oak-yard {
+		background-color: rgb(var(--c-gray-50));
+		background-image: repeating-linear-gradient(
+			90deg,
+			rgb(var(--c-brand-500) / 0.05) 0 2px,
+			transparent 2px 16px
+		);
+	}
 	.oak-press {
 		@apply transition active:scale-[0.99];
 	}

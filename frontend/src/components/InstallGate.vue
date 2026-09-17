@@ -1,5 +1,5 @@
 <template>
-	<div class="flex min-h-screen flex-col items-center justify-center gap-4 bg-gray-50 px-6 py-10">
+	<div class="flex min-h-screen flex-col items-center justify-center gap-4 oak-yard px-6 py-10">
 		<!-- Second visit onwards. Deliberately above the card rather than inside a branch:
 		     whatever is blocking this person, the fact that it has now blocked them twice is
 		     the part they have not been told. -->

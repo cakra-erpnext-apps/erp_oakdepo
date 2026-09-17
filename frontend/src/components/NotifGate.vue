@@ -4,7 +4,7 @@
 	     the bottom nav on purpose — there is no way past it but turning notifications on. -->
 	<div
 		v-if="show"
-		class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto bg-gray-50 px-6 py-10"
+		class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto oak-yard px-6 py-10"
 	>
 		<div class="oak-card relative w-full max-w-md overflow-hidden animate-slide-up">
 			<div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-500 to-leaf-500"></div>

@@ -72,7 +72,14 @@
 				align-items: center;
 				justify-content: center;
 				gap: 18px;
-				background: #f9fafb;
+				background-color: #f9fafb;
+				/* Korugasi yard, sama dengan .oak-yard di main.css dan panel login. Nilainya
+				   ditulis ulang di sini karena splash paint sebelum stylesheet apa pun. */
+				background-image: repeating-linear-gradient(
+					90deg,
+					rgba(249, 120, 40, 0.05) 0 2px,
+					transparent 2px 16px
+				);
 				font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 			}
 			#oak-splash img {
@@ -92,7 +99,7 @@
 			   before the stylesheet), so it carries its own two-line dark variant. Values
 			   mirror --c-gray-50 / --c-gray-900 / --c-brand-100 in main.css. */
 			[data-theme="dark"] #oak-splash {
-				background: #0f1115;
+				background-color: #0f1115;
 			}
 			[data-theme="dark"] #oak-splash .oak-splash-word {
 				color: #f5f6f8;
