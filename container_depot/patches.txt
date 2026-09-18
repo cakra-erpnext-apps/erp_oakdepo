@@ -130,6 +130,7 @@ container_depot.patches.v0_99.stop_email_intake
 container_depot.patches.v0_99.drop_email_to_order
 container_depot.patches.v1_00.customer_desk_report_flag
 container_depot.patches.v1_01.retire_the_published_price_list
+container_depot.patches.v1_02.drop_depot_service_item_reports
 container_depot.patches.v1_03.customer_desk_menu_access
 container_depot.patches.v1_04.merge_container_inventory_reports
 container_depot.patches.v1_05.customer_audit_to_inventory
