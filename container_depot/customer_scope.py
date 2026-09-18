@@ -42,22 +42,31 @@ import frappe
 _DESK_PLUMBING_MODULES = {"Core", "Custom", "Desk", "Printing"}
 
 # Doctypes outside the Container Depot module that the customer role is granted outright.
-# Empty since the rate card moved onto the contract (2026-09-17): a customer's prices are
-# its own Depot Contract's tariff lines, and Depot Contract is a module doctype that Frappe
-# already scopes by its Customer link — nothing outside the module is granted any more.
-_ALLOWED_FOREIGN_DOCTYPES: set[str] = set()
-
-# Core doctypes the Desk plumbing would otherwise carry through, kept shut anyway.
+# Three master lists the customer fills in for itself (2026-09-18): its own companies, and
+# the cargo/item catalogue a booking and a contract line are typed against. `Customer` is
+# scoped natively — a User Permission on a doctype applies to that doctype's own `name`, so
+# the list shows only the companies the account is tied to. `Item` and `Item Group` are a
+# shared catalogue with no owner to scope by, and are open on purpose.
 #
-# `Report` is the load-bearing one, and it is what makes the REPORT LINKS DISAPPEAR from
-# the workspace cards and the left sidebar instead of erroring when clicked. Both menus
-# ask `boot.get_allowed_reports`, which ends by running `frappe.get_list("Report", ...)`
-# and dropping every report that query does not return (`non_permitted_reports`) — so the
-# condition below empties the list, and a menu entry nobody may open is never drawn. The
-# customer role holds no `report` permission (see the `v` grammar in install.py), so
-# without this the link renders and then throws "You don't have permission to get a report
-# on: <doctype>" — a menu that exists only to refuse is worse than no menu.
-_DENIED_CORE_DOCTYPES = {"Report"}
+# The read itself is a Custom DocPerm seeded by `install._grant_customer_desk_masters`,
+# written after `setup_custom_perms` has copied ERPNext's own rows across.
+_ALLOWED_FOREIGN_DOCTYPES: set[str] = {"Customer", "Item", "Item Group"}
+
+# The only reports a customer account may see or run. An allowlist BY NAME, not by the ref
+# doctype's `report` permission: that flag is per doctype, and four of this app's reports
+# hang off `Container Booking` alone. Two of them (`Lift On Register`, `Daily Operations
+# Report`) build raw SQL that no `permission_query_conditions` touches, so granting the
+# flag and stopping there would hand over the whole depot.
+#
+# Both entries below read through a filter: `Storage Charges` via `frappe.get_all`, and
+# `Container Booking Register` via `booking_sql_filter` in its own WHERE. A report added
+# here needs the same treatment before it goes in.
+CUSTOMER_REPORTS = {"Container Booking Register", "Storage Charges"}
+
+# Core doctypes the Desk plumbing would otherwise carry through, kept shut anyway. Empty
+# since `Report` became a name allowlist (2026-09-18) rather than a closed door — see
+# `report_query` below for what replaced it and why the menu still cannot lie.
+_DENIED_CORE_DOCTYPES: set[str] = set()
 
 _SKIP_USERS = {"Administrator", "Guest"}
 
@@ -125,6 +134,40 @@ def container_booking_query(user=None, doctype=None) -> str:
 	)
 
 
+def report_query(user=None, doctype=None) -> str:
+	"""Show a customer only the reports in ``CUSTOMER_REPORTS``.
+
+	This is what keeps the report links in the workspace cards and the left sidebar honest.
+	Both menus ask `boot.get_allowed_reports`, which ends by running
+	`frappe.get_list("Report", ...)` and dropping everything that query does not return
+	(`non_permitted_reports`) — so a report filtered out here is never drawn, rather than
+	drawn and then refused on click.
+
+	It used to be the whole doctype: `Report` sat in `_DENIED_CORE_DOCTYPES`, the list came
+	back empty and the customer got no report links at all. Narrowed to a name filter on
+	2026-09-18 so the two reports the customer is owed can be reached. The run path is
+	guarded separately — a list filter does not stop an API call, see
+	`boot.patch_query_report_customer_scope`.
+	"""
+	if not get_user_customers(user):
+		return ""
+	names = ", ".join(frappe.db.escape(n, percent=False) for n in sorted(CUSTOMER_REPORTS))
+	return f"`tabReport`.`name` in ({names})"
+
+
+def booking_sql_filter(alias: str) -> str:
+	"""AND-clause scoping raw SQL over Container Booking; ``1=1`` for internal accounts.
+
+	`permission_query_conditions` only reaches queries built by `frappe.get_all`. A Script
+	Report that writes its own SELECT has to ask for the same condition by hand, and every
+	report in `CUSTOMER_REPORTS` that does so calls this.
+	"""
+	values = _values(None)
+	if not values:
+		return "1=1"
+	return f"({alias}.customer in ({values}) or {alias}.principal in ({values}))"
+
+
 # --- has_permission (opening one document directly) ------------------------
 # A query condition only guards the list. Frappe routes a single-document read through
 # has_permission, so every doctype filtered above needs the same test again here.
@@ -155,6 +198,10 @@ def container_booking_permission(doc, ptype=None, user=None, **kwargs) -> bool:
 	if not customers:
 		return True
 	return doc.get("customer") in customers or doc.get("principal") in customers
+
+
+def report_permission(doc, ptype=None, user=None, **kwargs) -> bool:
+	return doc.get("name") in CUSTOMER_REPORTS or not get_user_customers(user)
 
 
 # --- the rest of the site --------------------------------------------------

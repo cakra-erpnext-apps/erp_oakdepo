@@ -221,3 +221,43 @@ def patch_number_card_empty_report_list():
 		number_card.get_allowed_report_names = _non_empty_report_names
 	except Exception:
 		frappe.log_error("patch_number_card_empty_report_list failed")
+
+
+def patch_query_report_customer_scope():
+	"""Refuse a customer account any report outside ``customer_scope.CUSTOMER_REPORTS``.
+
+	`permission_query_conditions` on `Report` decides which links the menus DRAW; it has no
+	say over `/api/method/frappe.desk.query_report.run`, which fetches the report with
+	`frappe.get_doc` (no read check) and then asks only two questions: does the report list
+	roles (`Report.is_permitted` — these do not), and does the user hold `report` on the ref
+	doctype. A customer holds it on `Container Booking`, and four reports hang off that one
+	doctype — two of which build raw SQL nothing in customer_scope can filter.
+
+	`get_report_doc` is the single gate every run, export and prepared-report path in
+	`frappe.desk.query_report` goes through, so the allowlist is held there once instead of
+	at each caller. A monkey patch for the same reason as the others in this file: the repo
+	does not edit frappe/erpnext, and Frappe exposes no hook on this path. Idempotent.
+	"""
+	try:
+		from frappe import _
+		from frappe.desk import query_report
+
+		from container_depot.customer_scope import CUSTOMER_REPORTS, get_user_customers
+
+		if getattr(query_report.get_report_doc, "_cd_patched", False):
+			return
+
+		original = query_report.get_report_doc
+
+		def get_report_doc(report_name):
+			if report_name not in CUSTOMER_REPORTS and get_user_customers():
+				frappe.throw(
+					_("You don't have access to Report: {0}").format(_(report_name)),
+					frappe.PermissionError,
+				)
+			return original(report_name)
+
+		get_report_doc._cd_patched = True
+		query_report.get_report_doc = get_report_doc
+	except Exception:
+		frappe.log_error("patch_query_report_customer_scope failed")

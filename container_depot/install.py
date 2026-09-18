@@ -1634,6 +1634,12 @@ _PERM_LETTERS = {
 	# `report` flag would hand every customer the whole depot's Order Billing Status. The
 	# cost is the list's Report view; the list view itself only needs `read`.
 	"v": ("read", "export", "print"),
+	# `report` on its own, so the customer grammar can name the ONE doctype whose reports
+	# it may run without loosening `v` for the rest. It is a per-doctype flag and four of
+	# this app's reports hang off `Container Booking`, so the flag alone is not the gate —
+	# `customer_scope.CUSTOMER_REPORTS` names the two reports that are, and
+	# `boot.patch_query_report_customer_scope` enforces it on the run path.
+	"R": ("report",),
 	"w": ("write",),
 	"c": ("create",),
 	"s": ("submit",),
@@ -1748,12 +1754,37 @@ OFFICE_ROLE_MATRIX = {
 	# (Gate Entry, Container Movement, Container Activity).
 	CUSTOMER_DESK_ROLE: {
 		"Container": "v",
-		"Container Booking": "v",
+		# `R` opens the Report view and with it the two reports in
+		# `customer_scope.CUSTOMER_REPORTS` — the booking register and its storage charges,
+		# which is the customer's own bill taking shape. The other two reports on this
+		# doctype stay shut by name, not by this flag; see customer_scope.
+		"Container Booking": "vR",
+		# The cargo catalogue a booking line is typed against. A master list, no owner.
+		"Cargo": "v",
+		# The Storage Charges report reads these rows through `frappe.get_all`, so without
+		# read it raises instead of rendering. Scoped natively — `principal` is a Customer
+		# link, and it is the row's only one. The cost is one extra sidebar entry (the
+		# doctype itself, under Invoicing): a customer's own storage ledger.
+		"Storage Charge": "v",
 		"Depot Contract": "v",
 		"Gate Entry": "v",
 		"Container Movement": "v",
 		"Container Activity": "v",
 	},
+}
+
+# The customer role's masters that live OUTSIDE the Container Depot module. Kept apart from
+# OFFICE_ROLE_MATRIX because they need `setup_custom_perms` first — see
+# `_grant_customer_desk_masters`, and `_grant_link_select` for the same dance.
+#
+# Customer scopes itself: a User Permission on a doctype applies to that doctype's own
+# `name`, so the account sees only the companies it is tied to. Item and Item Group are a
+# shared catalogue with nothing to scope by, and are open on purpose. All three are also in
+# `customer_scope._ALLOWED_FOREIGN_DOCTYPES`, or the wildcard gate would empty them anyway.
+CUSTOMER_DESK_MASTERS = {
+	"Customer": "v",
+	"Item": "v",
+	"Item Group": "v",
 }
 
 # Report access is NOT seeded. A Report with an empty `roles` table falls back to the
@@ -2110,6 +2141,7 @@ def setup_permissions():
 			_ensure_docperm(dt, role_name, letters, submittable[dt])
 
 	_grant_link_select()
+	_grant_customer_desk_masters()
 
 	frappe.db.commit()
 
@@ -2209,6 +2241,27 @@ def _grant_link_select() -> None:
 		frappe.clear_cache(doctype=target)
 
 
+
+
+def _grant_customer_desk_masters() -> None:
+	"""Read-only Custom DocPerm for the customer role on the ERPNext masters it needs.
+
+	These are ERPNext doctypes, so `setup_custom_perms` runs first: it COPIES the shipped
+	DocPerm rows into Custom DocPerm, and without it the first custom row on Customer would
+	silently blank Sales User, Accounts User and the rest. Same dance as `_grant_link_select`.
+
+	Add-only like the rest of the seeder, and a no-op for anything already granted.
+	"""
+	from frappe.permissions import setup_custom_perms
+
+	for doctype, letters in CUSTOMER_DESK_MASTERS.items():
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		if frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": CUSTOMER_DESK_ROLE}):
+			continue
+		setup_custom_perms(doctype)
+		_ensure_docperm(doctype, CUSTOMER_DESK_ROLE, letters, frappe.get_meta(doctype).is_submittable)
+		frappe.clear_cache(doctype=doctype)
 
 
 # ---------------------------------------------------------------------------

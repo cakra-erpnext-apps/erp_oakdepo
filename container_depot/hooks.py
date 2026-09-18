@@ -67,6 +67,9 @@ before_request = [
 	# Frappe's Number Card filter renders `IN ()` for an account that may run no report at
 	# all — a customer — and every dashboard it opens dies on SQL syntax. See boot.py.
 	"container_depot.boot.patch_number_card_empty_report_list",
+	# A report list filter guards the MENU only; `query_report.run` never touches it.
+	# Hold the same allowlist at the one choke point every report run passes. See boot.py.
+	"container_depot.boot.patch_query_report_customer_scope",
 ]
 
 # What "open" means for the depot's work orders, on the Connections badges and the Desk
@@ -86,6 +89,10 @@ permission_query_conditions = {
 	"Gate Entry": "container_depot.customer_scope.gate_entry_query",
 	"Container Movement": "container_depot.customer_scope.container_movement_query",
 	"Container Booking": "container_depot.customer_scope.container_booking_query",
+	# Which report links the workspace cards and the left sidebar draw for a customer —
+	# an allowlist by report name, because `report` permission is per ref doctype and
+	# four of this app's reports share `Container Booking`. See customer_scope.
+	"Report": "container_depot.customer_scope.report_query",
 	# A customer account is a System User, so it inherits every doctype the stock
 	# `All` / `Desk User` roles may read — another app's support tickets, HR ledgers,
 	# integration settings. This empties all of them; see customer_scope.
@@ -98,6 +105,7 @@ has_permission = {
 	"Gate Entry": "container_depot.customer_scope.gate_entry_permission",
 	"Container Movement": "container_depot.customer_scope.container_movement_permission",
 	"Container Booking": "container_depot.customer_scope.container_booking_permission",
+	"Report": "container_depot.customer_scope.report_permission",
 	"*": "container_depot.customer_scope.foreign_doctype_permission",
 }
 

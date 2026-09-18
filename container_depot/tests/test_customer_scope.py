@@ -16,7 +16,7 @@ read back as a logged-in customer user. What is being pinned:
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.customer_scope import get_user_customers
+from container_depot.customer_scope import CUSTOMER_REPORTS, get_user_customers
 from container_depot.install import CUSTOMER_DESK_ROLE
 
 OWNER = "CS Owner Co"
@@ -209,16 +209,16 @@ class TestCustomerScope(FrappeTestCase):
 
 	# --- the menu ----------------------------------------------------------
 
-	def test_no_report_links_are_offered(self):
-		"""`boot.get_allowed_reports` ends with a `frappe.get_list("Report")`, so closing
-		the Report doctype is what empties the report links out of the workspace cards and
-		the sidebar — instead of drawing a link that throws "You don't have permission to
-		get a report on:" when clicked."""
+	def test_only_the_customer_reports_are_offered(self):
+		"""`boot.get_allowed_reports` ends with a `frappe.get_list("Report")`, so the name
+		filter on the Report doctype is what decides which report links the workspace cards
+		and the sidebar draw — the rest are never rendered, rather than rendered and then
+		refused on click."""
 		frappe.set_user(USER)
 		frappe.clear_cache(user=USER)
 		from frappe.boot import get_allowed_reports
 
-		self.assertEqual(get_allowed_reports(), {})
+		self.assertEqual(set(get_allowed_reports()), CUSTOMER_REPORTS)
 
 	def test_url_shortcuts_are_hidden(self):
 		"""The "Download App" tile installs the yard PWA, which a customer may not open."""
@@ -262,18 +262,57 @@ class TestCustomerScope(FrappeTestCase):
 		self.assertTrue(perms, "the customer role has no permissions seeded")
 		for row in perms:
 			self.assertEqual(row.read, 1, row.parent)
-			# `report` is denied with the rest: a Query Report runs raw SQL, which none of
-			# the scoping in customer_scope.py touches. See the `v` grammar in install.py.
-			for flag in ("write", "create", "submit", "delete", "email", "report"):
+			for flag in ("write", "create", "submit", "delete", "email"):
 				self.assertEqual(row.get(flag), 0, f"{row.parent}.{flag}")
+			# `report` is granted on exactly one doctype, and it is not what decides which
+			# reports run: a Script Report builds its own SQL, so the gate is the report
+			# NAME (customer_scope.CUSTOMER_REPORTS), tested below.
+			self.assertEqual(
+				row.report, 1 if row.parent == "Container Booking" else 0, f"{row.parent}.report"
+			)
 
-	def test_query_reports_are_refused(self):
-		"""The one path that would bypass every filter in customer_scope: a Query Report
-		builds its own SQL. It is gated by the ref doctype's `report` permission, which the
-		customer role does not hold."""
+	def test_unlisted_reports_are_refused_on_the_run_path(self):
+		"""The list filter guards the MENU; `query_report.run` never consults it and fetches
+		the report with `frappe.get_doc`. `Daily Operations Report` hangs off the same
+		`Container Booking` the customer now holds `report` on, and counts the whole depot in
+		raw SQL — so the name allowlist has to hold at the run path too."""
+		from container_depot.boot import patch_query_report_customer_scope
+
+		patch_query_report_customer_scope()
+		from frappe.desk import query_report
+
 		frappe.set_user(USER)
-		self.assertTrue(frappe.has_permission("Container Booking", "read"))
-		self.assertFalse(frappe.has_permission("Container Booking", "report"))
+		with self.assertRaises(frappe.PermissionError):
+			query_report.get_report_doc("Daily Operations Report")
+		self.assertTrue(query_report.get_report_doc("Container Booking Register"))
+
+	def test_booking_register_sql_is_scoped(self):
+		"""The report writes its own SELECT, so `permission_query_conditions` never sees it
+		and it has to ask customer_scope for the condition by hand. Without that clause in
+		the WHERE the customer reads every booking in the depot."""
+		from unittest.mock import patch
+
+		from container_depot.container_depot.report.container_booking_register import (
+			container_booking_register as register,
+		)
+		from container_depot.customer_scope import booking_sql_filter
+
+		frappe.set_user(USER)
+		with patch.object(frappe.db, "sql", return_value=[]) as sql:
+			register._rows({})
+		self.assertIn(f"b.customer in ('{OWNER}')", sql.call_args[0][0])
+
+		frappe.set_user("Administrator")
+		self.assertEqual(booking_sql_filter("b"), "1=1")  # internal staff, unchanged
+
+	def test_own_masters_are_readable(self):
+		"""The customer types its own bookings and contract lines against these."""
+		frappe.set_user(USER)
+		for doctype in ("Cargo", "Item", "Item Group", "Customer", "Storage Charge"):
+			self.assertTrue(frappe.has_permission(doctype, "read"), doctype)
+		# ...and `Customer` still only lists its own companies: a User Permission on a
+		# doctype applies to that doctype's own name.
+		self.assertEqual([c.name for c in frappe.get_list("Customer")], [OWNER])
 
 	def test_another_apps_doctypes_are_closed(self):
 		"""A System User inherits the stock `All` / `Desk User` reads — helpdesk tickets,

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.customer_scope import booking_sql_filter
+
 
 def execute(filters=None):
 	filters = filters or {}
@@ -23,7 +25,10 @@ def execute(filters=None):
 
 
 def _rows(filters) -> list:
-	where = ["b.docstatus < 2"]
+	# This SELECT is written by hand, so `permission_query_conditions` never sees it — an
+	# external customer account reaching this report would otherwise read every booking in
+	# the depot. Returns `1=1` for internal staff. See container_depot/customer_scope.py.
+	where = ["b.docstatus < 2", booking_sql_filter("b")]
 	params = {}
 	for key, clause in (
 		("customer", "b.customer = %(customer)s"),
