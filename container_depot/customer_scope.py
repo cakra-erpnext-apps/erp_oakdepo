@@ -54,9 +54,9 @@ _ALLOWED_FOREIGN_DOCTYPES: set[str] = {"Customer", "Item", "Item Group"}
 
 # The only reports a customer account may see or run. An allowlist BY NAME, not by the ref
 # doctype's `report` permission: that flag is per doctype, and four of this app's reports
-# hang off `Container Booking` alone. Two of them (`Lift On Register`, `Daily Operations
-# Report`) build raw SQL that no `permission_query_conditions` touches, so granting the
-# flag and stopping there would hand over the whole depot.
+# hang off `Container Booking` alone. One of them (`Lift On Register`) builds raw SQL that
+# no `permission_query_conditions` touches, so granting the flag and stopping there would
+# hand over the whole depot.
 #
 # Both entries below read through a filter: `Storage Charges` via `frappe.get_all`, and
 # `Container Booking Register` via `booking_sql_filter` in its own WHERE. A report added

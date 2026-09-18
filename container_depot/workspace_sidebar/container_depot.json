@@ -161,18 +161,6 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Container Status Report",
-   "link_to": "Container Status Report",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "chart-pie"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
    "label": "Container Activity Report",
    "link_to": "Container Activity",
    "link_type": "Report",
@@ -191,18 +179,6 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "target"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Daily Operations Report",
-   "link_to": "Daily Operations Report",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "calendar-days"
   },
   {
    "child": 0,
@@ -419,30 +395,6 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "handshake"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Service Item",
-   "link_to": "Depot Service Item",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "hand-platter"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Service Item Group",
-   "link_to": "Depot Service Item Group",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link",
-   "icon": "folder-cog"
   },
   {
    "child": 0,
@@ -802,7 +754,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-17 14:00:00.000000",
+ "modified": "2026-09-18 09:30:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

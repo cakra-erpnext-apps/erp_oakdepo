@@ -29,7 +29,7 @@ PRESENT = (IN_DEPOT, AVAILABLE)
 
 # Terminal order states — everything else counts as "open" (i.e. keeps the container
 # In_Depot). Public because this is the app's definition of finished work: the Desk
-# dashboard cards and the Container Status Report read it from here rather than
+# dashboard cards and the Container Inventory report read it from here rather than
 # restating it, so "open" cannot come to mean two different things.
 DONE_CLEANING = ("Completed", "Cancelled")
 DONE_REPAIR = ("Completed", "Cancelled", "Rejected")

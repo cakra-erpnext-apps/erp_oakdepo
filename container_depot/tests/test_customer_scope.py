@@ -273,7 +273,7 @@ class TestCustomerScope(FrappeTestCase):
 
 	def test_unlisted_reports_are_refused_on_the_run_path(self):
 		"""The list filter guards the MENU; `query_report.run` never consults it and fetches
-		the report with `frappe.get_doc`. `Daily Operations Report` hangs off the same
+		the report with `frappe.get_doc`. `Lift On Register` hangs off the same
 		`Container Booking` the customer now holds `report` on, and counts the whole depot in
 		raw SQL — so the name allowlist has to hold at the run path too."""
 		from container_depot.boot import patch_query_report_customer_scope
@@ -283,7 +283,7 @@ class TestCustomerScope(FrappeTestCase):
 
 		frappe.set_user(USER)
 		with self.assertRaises(frappe.PermissionError):
-			query_report.get_report_doc("Daily Operations Report")
+			query_report.get_report_doc("Lift On Register")
 		self.assertTrue(query_report.get_report_doc("Container Booking Register"))
 
 	def test_booking_register_sql_is_scoped(self):
