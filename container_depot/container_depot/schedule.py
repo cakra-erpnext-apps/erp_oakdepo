@@ -19,10 +19,11 @@ itself, applied one level down: the menu says whether the calendar opens, the so
 is in it.
 
 The consequence to keep in mind: a team with read on NOTHING scheduled gets no menu tile at
-all (``_MENU``'s entry for ``schedule`` is an any-of over these four doctypes). Security is in
-that position today — they hold Gate Entry and the bons, not the plans behind them. Grant them
-read on Container Booking in Permission Manager and the tile appears, showing exactly the one
-source they gained. Nothing here needs changing for that.
+all (``_MENU``'s entry for ``schedule`` is an any-of over these four doctypes). Security used to
+be in that position — they hold Gate Entry and the bons, not the plans behind them — and the
+fix was one letter in the seeder, not a line here: they now hold read on Container Booking
+(``install.FIELD_ROLE_MATRIX``), so the gate sees the day's planned arrivals and departures and
+nothing else. Any other team is widened the same way, in Permission Manager, with no deploy.
 
 READ-ONLY, AND WHY
 ------------------

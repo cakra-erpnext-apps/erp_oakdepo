@@ -217,6 +217,23 @@ class TestPermissionIsTheFilter(_Base):
 		finally:
 			frappe.set_user("Administrator")
 
+	def test_security_sees_the_trucks_and_nothing_else(self):
+		"""Why the gate holds read on Container Booking (install.FIELD_ROLE_MATRIX).
+
+		The barrier has to know a container is planned in or out BEFORE it is standing there.
+		It must not gain the wash, repair and survey plans along with it.
+		"""
+		c = self._container("SCHEDSEC00001")
+		self._cleaning(c)
+		self._repair(c)
+		self._booking()
+		user = _user("sched.security@example.com", "Security")
+		frappe.set_user(user)
+		try:
+			self.assertEqual(self._kinds_on(), {"booking"})
+		finally:
+			frappe.set_user("Administrator")
+
 	def test_the_source_list_reports_only_what_the_caller_holds(self):
 		"""The UI builds its filter chips from this. A chip that can only ever return nothing
 		is a worse lie than no chip."""
