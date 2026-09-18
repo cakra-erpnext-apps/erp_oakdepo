@@ -21,7 +21,7 @@ from frappe.utils import getdate
 # Booking yang belum selesai keluar. Bukan "Open" seperti dulu — sebuah booking punya alur
 # statusnya sendiri, dan yang berarti di sini adalah: sudah dikonfirmasi, tanknya belum
 # semua keluar.
-LIVE_STATUSES = ("Draft", "Pending Payment", "Pending Confirmation", "Confirmed", "Blocked")
+LIVE_STATUSES = ("Draft", "Pengajuan", "Pending Payment", "Pending Confirmation", "Confirmed", "Blocked")
 
 
 def execute(filters=None):

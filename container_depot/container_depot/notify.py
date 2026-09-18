@@ -887,6 +887,37 @@ def notify_booking_submitted(booking):
 	)
 
 
+def notify_booking_revision_requested(booking, reason=None):
+	"""Fire when a CUSTOMER asks for a confirmed booking to be opened again ("Minta Revisi").
+
+	Same shape and same reasoning as :func:`notify_repair_revision_requested`: the request
+	changes no status, so the bell IS the request. It reaches the desks that can act on it —
+	Admin Ops holds the **Kembali ke Draft (pembayaran tetap)** button, the Cashier is who
+	the money question comes back to if the charges move.
+
+	The reason travels in the subject: this is a request to judge, not to route, and a bare
+	"minta revisi" makes the reader open the booking just to find out what for.
+	"""
+	row = frappe.db.get_value(
+		"Container Booking", booking, ["name", "customer", "branch"], as_dict=True
+	)
+	if not row:
+		return 0
+	customer = frappe.db.get_value("Customer", row.customer, "customer_name") if row.customer else None
+	subject = frappe._("Minta revisi booking • {0} • {1}").format(
+		row.name, customer or row.customer or "-"
+	)
+	if reason:
+		subject += f" — {reason}"
+	return notify(
+		doctype="Container Booking",
+		name=row.name,
+		subject=subject,
+		branch=row.branch,
+		event_key="booking_revision_requested",
+	)
+
+
 def notify_booking_urgent(booking, urgent_on, reason=None):
 	"""Fire when a booking is declared MENDESAK (``lift_on.set_urgent``).
 

@@ -48,6 +48,10 @@ const BON_COLOURS = {
 // of red — it gets pink, which still shouts across a list.
 const STATUS_COLOURS = {
 	Draft: 'grey',
+	// A customer's draft that has been handed over ("Ajukan"). Purple because it is nobody's
+	// stage yet — the office has not started on it and the customer can no longer touch it —
+	// and grey would have made it read as a draft still being typed.
+	Pengajuan: 'purple',
 	'Pending Payment': 'orange',
 	'Pending Confirmation': 'yellow',
 	Confirmed: 'blue',

@@ -96,7 +96,7 @@ def _columns() -> list:
 def _summary(rows) -> list:
 	unpaid = sum(1 for r in rows if r["payment_status"] == "Unpaid")
 	waiting = sum(
-		1 for r in rows if r["booking_status"] in ("Draft", "Pending Payment", "Pending Confirmation")
+		1 for r in rows if r["booking_status"] in ("Draft", "Pengajuan", "Pending Payment", "Pending Confirmation")
 	)
 	return [
 		{"label": "Total Booking", "value": len(rows), "datatype": "Int"},

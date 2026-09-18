@@ -37,7 +37,7 @@ from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 from frappe.utils import cint, flt, get_datetime, getdate, now_datetime, today
 
-from container_depot import finance, invoicing, pricing_model
+from container_depot import customer_scope, finance, invoicing, pricing_model
 from container_depot.container_depot.doctype.booking_code.booking_code import (
 	generate_code,
 )
@@ -50,6 +50,14 @@ from container_depot.container_depot.container_status import GATE_OUT, PRESENT, 
 
 
 CONTAINER_READY_STATUSES = {"Available"}
+
+# The two statuses that mean "nothing has been generated yet, everything is still editable".
+# `Pengajuan` is a Draft that a CUSTOMER raised and submitted to Admin Ops (see
+# :func:`submit_request`): it is hidden from internal lists while it says Draft, and named
+# apart once it is asked for so an office desk can tell whose booking it was. To every guard
+# on this side of the fence the two are the same state, so they are tested as a pair — a
+# booking at Pengajuan prices, invoices and rolls back exactly like a Draft.
+EDITABLE_STATUSES = ("Draft", "Pengajuan")
 
 # container_summary is a Data field (140 chars). Keep whole container numbers and
 # append a "(+N)" marker rather than clipping one mid-number.
@@ -88,6 +96,10 @@ def _billing_signature(doc) -> tuple:
 	)
 
 
+def _is_tank_owner(customer: str | None) -> bool:
+	return bool(customer) and bool(frappe.db.get_value("Customer", customer, "is_tank_owner"))
+
+
 def status_tag_for_condition(condition: str | None) -> str:
 	"""Clean/Dirty gate tag carried onto a Booking Code, derived from a line's
 	``condition``: EMPTY CLEAN → ``Clean``; anything else (EMPTY DIRTY / LADEN / unset)
@@ -105,11 +117,21 @@ class ContainerBooking(Document):
 		self.name = make_autoname(prefix + ".YYYY.-.#####")
 
 	# ---- lifecycle ------------------------------------------------------
+	def before_insert(self):
+		# Stamp the origin once, at birth, and never again: every later guard (who may edit
+		# it, whether internal lists show it, where a rollback lands) asks this field. The
+		# alternative — deriving it from `owner` — answers differently the day the account's
+		# `Customer Portal User` row is deactivated, which is the one day nobody is looking.
+		customers = customer_scope.get_user_customers()
+		if customers:
+			self.requested_by_customer = customers[0]
+
 	def validate(self):
 		if self.docstatus == 0 and self.booking_status == "Cancelled":
 			# A voided draft (see ``void_draft``) is terminal — never re-price or
 			# re-reserve it, so a re-save can't resurrect its rolled-back invoice / tanks.
 			return
+		self._clamp_customer_request()
 		self._require_containers()
 		self._ensure_depot()
 		self._ensure_branch_and_principal()
@@ -138,6 +160,12 @@ class ContainerBooking(Document):
 	def after_insert(self):
 		# Notify Commercial / admin / Cashier that a new booking (and, for Cash, a
 		# payment to collect) exists — shows in the PWA + Desk bell.
+		#
+		# NOT for a customer's own draft: it is hidden from internal lists until they press
+		# Ajukan, so a bell here would ring about a document its reader cannot open. The
+		# same notification is fired from :func:`submit_request` instead.
+		if self.requested_by_customer:
+			return
 		from container_depot.container_depot.notify import notify_booking_created
 		notify_booking_created(self)
 
@@ -667,6 +695,54 @@ class ContainerBooking(Document):
 				+ "<br><br>"
 				+ _("Ganti Branch booking, atau pilih container dari depo Branch ini."),
 				title=_("Beda Branch"),
+			)
+
+	def _clamp_customer_request(self):
+		"""Pin a customer-raised booking to the company the account belongs to.
+
+		Two different questions, and the OAK Party Roles on the account's own Customer master
+		answer the first:
+
+		* **Principal (Tank Owner)** — whose tanks these are. A tank owner may only announce
+		  its own; an EMKL may name any registered tank owner, because moving somebody else's
+		  tank is the job (`customer_scope.allowed_principals`). Left blank it falls back to
+		  the account's own company, but only when that company IS a tank owner — an EMKL has
+		  to say whose tanks it is coming for.
+		* **Bill To** — who pays. The customer's own pick (the payer is often the EMKL), out
+		  of its own address book: its company plus the parties it keyed in itself
+		  (`customer_scope._own_and_created`). Left blank it follows the Principal.
+
+		Internal accounts hold no Customer User Permission, so `get_user_customers` returns
+		None for them and nothing here runs. The form narrows the same pickers; this is the
+		half that a hand-built API call cannot walk around.
+		"""
+		if not self.requested_by_customer:
+			return
+		own = customer_scope.get_user_customers()
+		if not own:
+			# Internal staff editing a booking the customer raised — leave their edits alone.
+			return
+		principals = customer_scope.allowed_principals() or []
+		if not self.principal:
+			self.principal = next((c for c in own if _is_tank_owner(c)), None)
+			if not self.principal:
+				frappe.throw(
+					_("Pilih <b>Principal / Tank Owner</b> — tank siapa yang mau diambil."),
+					title=_("Principal Belum Diisi"),
+				)
+		elif self.principal not in principals:
+			frappe.throw(
+				_("Anda tidak boleh membuat booking untuk principal {0}.").format(self.principal),
+				frappe.PermissionError,
+			)
+		if not self.customer:
+			self.customer = own[0]
+			return
+		address_book = customer_scope._own_and_created() or []
+		if self.customer not in address_book:
+			frappe.throw(
+				_("Bill To {0} bukan pihak yang Anda daftarkan.").format(self.customer),
+				frappe.PermissionError,
 			)
 
 	def _ensure_branch_and_principal(self):
@@ -1261,7 +1337,7 @@ class ContainerBooking(Document):
 		stays editable in every state, because none of it changes what was invoiced."""
 		if self.is_new() or self.docstatus != 0:
 			return
-		if self.booking_status in ("Draft", "Cancelled"):
+		if self.booking_status in EDITABLE_STATUSES + ("Cancelled",):
 			return
 		before = self.get_doc_before_save()
 		if not before or _billing_signature(before) == _billing_signature(self):
@@ -1686,7 +1762,15 @@ def booking_container_query(doctype, txt, searchfield, start, page_len, filters)
 	branch = filters.get("branch")
 
 	cond = {"is_active": 1}
-	if principal:
+	# A portal account never picks outside the principals its party roles allow — and when
+	# it names none, the whole list is those principals' tanks rather than the depot's.
+	# The form passes the booking's principal; this is what an API call meets instead.
+	allowed = customer_scope.allowed_principals()
+	if allowed is not None:
+		if principal and principal not in allowed:
+			return []
+		cond["principal"] = principal or ["in", allowed]
+	elif principal:
 		cond["principal"] = principal
 	# Container is named by its number (autoname field:container_no), so one LIKE on the
 	# name covers the search box — which leaves `or_filters` free for the depot group.
@@ -1789,7 +1873,7 @@ def generate_invoice(booking):
 	frappe.has_permission("Container Booking", ptype="write", throw=True)
 	finance.require_enabled(_("Generate Invoice"))
 	doc = frappe.get_doc("Container Booking", booking)
-	if doc.docstatus != 0 or doc.booking_status != "Draft":
+	if doc.docstatus != 0 or doc.booking_status not in EDITABLE_STATUSES:
 		frappe.throw(_("Hanya booking berstatus Draft yang bisa dibuatkan invoice."))
 	if doc.sales_invoice:
 		frappe.throw(_("Booking ini sudah punya Sales Invoice {0}.").format(doc.sales_invoice))
@@ -1834,7 +1918,7 @@ def rollback_to_draft(booking):
 	doc = frappe.get_doc("Container Booking", booking)
 	if doc.docstatus != 0:
 		frappe.throw(_("Hanya booking yang belum disubmit yang bisa dikembalikan ke Draft."))
-	if doc.booking_status in ("Draft", "Cancelled"):
+	if doc.booking_status in EDITABLE_STATUSES + ("Cancelled",):
 		frappe.throw(_("Booking ini sudah berstatus {0}.").format(doc.booking_status))
 
 	si = doc.sales_invoice
@@ -1854,8 +1938,13 @@ def rollback_to_draft(booking):
 			)
 	doc.db_set("sales_invoice", None, update_modified=False)
 	doc.db_set("payment_status", "Unpaid", update_modified=False)
-	doc.db_set("booking_status", "Draft", update_modified=False)
-	return {"booking_status": "Draft", "cancelled_invoice": si}
+	# Back to where it came FROM, not to a literal "Draft". A booking the customer raised is
+	# hidden from every internal list while it says Draft (`customer_scope`), so rolling one
+	# back to Draft would make it vanish from the desk of the very person who just pressed
+	# the button.
+	target = "Pengajuan" if doc.requested_by_customer else "Draft"
+	doc.db_set("booking_status", target, update_modified=False)
+	return {"booking_status": target, "cancelled_invoice": si}
 
 
 # --- "a bon was raised" — the point of no return ----------------------------------
@@ -2201,11 +2290,106 @@ def revert_booking_to_draft(booking):
 	# exactly as they are — Submit again to re-confirm.
 	frappe.db.set_value(
 		"Container Booking", doc.name,
-		{"docstatus": 0, "booking_status": "Pending Confirmation"},
+		{
+			"docstatus": 0,
+			"booking_status": "Pending Confirmation",
+			# This IS the answer to a pending "minta revisi" (:func:`request_revision`), so
+			# the flag goes with it — a banner that outlives the reopening would have the
+			# office chasing a request it has already granted. Cleared unconditionally:
+			# reopening a booking nobody asked about clears nothing.
+			"revision_requested": 0,
+			"revision_note": None,
+		},
 		update_modified=False,
 	)
 	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=0 WHERE parent=%s", doc.name)
 	return {"booking": doc.name, "docstatus": 0, "booking_status": "Pending Confirmation"}
+
+
+# ---- customer-raised bookings ----------------------------------------------
+# A portal account (`Customer Desk`) may raise a booking for its own company and nothing
+# else. The two endpoints below are its whole write surface beyond saving the draft itself;
+# everything that prices, confirms or collects stays on the office side of the fence.
+
+
+def _assert_own_request(doc, states: tuple) -> None:
+	"""Refuse unless this is the caller's own customer booking, in one of ``states``."""
+	if not doc.requested_by_customer or doc.owner != frappe.session.user:
+		frappe.throw(_("Booking ini bukan pengajuan Anda."), frappe.PermissionError)
+	if doc.booking_status not in states:
+		frappe.throw(
+			_("Status booking ini <b>{0}</b> — aksi itu tidak berlaku di status ini.").format(
+				doc.booking_status or "Draft"
+			)
+		)
+
+
+@frappe.whitelist()
+def submit_request(booking):
+	"""**Ajukan** — the customer hands its own draft to Admin Ops: Draft -> Pengajuan.
+
+	Until this runs the booking is the customer's private scratch pad: `customer_scope`
+	hides a `requested_by_customer` Draft from every internal list, so nobody is looking at a
+	half-typed one. Pressing this is what makes it exist for the office — and the same bell
+	`after_insert` would have rung is rung here instead.
+
+	It is NOT a submit. `docstatus` stays 0 and the booking is still a draft in every sense
+	the rest of this file cares about (see ``EDITABLE_STATUSES``); what changes is who may
+	edit it — the customer is read-only from here, by `customer_scope`. Confirming it is
+	still the office's Submit, after the money question is settled.
+	"""
+	doc = frappe.get_doc("Container Booking", booking)
+	frappe.has_permission("Container Booking", ptype="write", doc=doc, throw=True)
+	_assert_own_request(doc, ("Draft",))
+	if doc.docstatus != 0:
+		frappe.throw(_("Booking ini sudah diproses."))
+	# Everything the form validates on save is already validated — this only moves the flag.
+	doc.db_set("booking_status", "Pengajuan", update_modified=False)
+	log_doc_note("Container Booking", doc.name, _("Booking diajukan oleh {0}").format(frappe.session.user))
+	from container_depot.container_depot.notify import notify_booking_created
+
+	notify_booking_created(doc)
+	return {"booking": doc.name, "booking_status": "Pengajuan"}
+
+
+@frappe.whitelist()
+def request_revision(booking, reason=None):
+	"""**Minta Revisi** — the customer asks for a CONFIRMED booking to be opened again.
+
+	Mirrors ``mr.request_revision`` / ``cleaning.request_revision`` exactly, and for the same
+	reason: a confirmed booking is not editable from the outside, so this raises a REQUEST
+	rather than touching the document — a timeline note, a flag the Desk shows with its
+	reason, and a notification. Reopening stays a human decision on the office side, and it
+	already has its button: **Kembali ke Draft (pembayaran tetap)**
+	(:func:`revert_booking_to_draft`), which clears this flag when it runs.
+
+	Refused once a bon has been raised — that is the same wall the reopening itself hits, so
+	asking would only produce a request nobody can grant.
+	"""
+	doc = frappe.get_doc("Container Booking", booking)
+	# `read`, not `write`: a Confirmed booking is outside the customer's editing window by
+	# design (`customer_scope.container_booking_permission`), and asking for a revision is
+	# precisely the action that exists BECAUSE they cannot write. Ownership is checked below.
+	frappe.has_permission("Container Booking", ptype="read", doc=doc, throw=True)
+	if doc.docstatus != 1 or doc.booking_status != "Confirmed":
+		frappe.throw(_("Hanya booking yang sudah dikonfirmasi yang bisa diminta revisi."))
+	_assert_own_request(doc, ("Confirmed",))
+	_block_if_bon_raised(doc.name, _("diminta revisi"))
+
+	reason = (reason or "").strip()
+	note = _("Minta revisi oleh {0}").format(frappe.session.user)
+	if reason:
+		note += ": " + reason
+	log_doc_note("Container Booking", doc.name, note)
+	frappe.db.set_value(
+		"Container Booking", doc.name,
+		{"revision_requested": 1, "revision_note": note},
+		update_modified=False,
+	)
+	from container_depot.container_depot.notify import notify_booking_revision_requested
+
+	notify_booking_revision_requested(doc.name, reason=reason)
+	return {"booking": doc.name, "revision_requested": 1, "revision_note": note}
 
 
 # ---- payment-status sync (booking ↔ its Sales Invoice) ----------------------
@@ -2968,6 +3152,16 @@ def parse_container_xlsx(
 
 	if not file_url:
 		frappe.throw(_("No file provided."))
+	# Same gate as the picker: an import is the one road into the grid that meets no picker,
+	# so the principal it claims to be importing FOR is checked here. The row-level test
+	# (`_import_block`) then keeps every tank inside that principal's fleet, which is what
+	# locks a tank owner's import to its own tanks.
+	allowed = customer_scope.allowed_principals()
+	if allowed is not None and (not principal or principal not in allowed):
+		frappe.throw(
+			_("Import hanya untuk principal yang boleh Anda booking-kan."),
+			frappe.PermissionError,
+		)
 	raw_rows = read_xlsx_file_from_attached_file(file_url=file_url) or []
 	if direction == "Tank In":
 		# A Container master cannot exist without an owner, and guessing one is not on the

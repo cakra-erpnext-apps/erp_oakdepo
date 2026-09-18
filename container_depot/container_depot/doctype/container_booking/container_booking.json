@@ -41,6 +41,9 @@
   "payment_status",
   "sales_invoice",
   "block_reason",
+  "requested_by_customer",
+  "revision_requested",
+  "revision_note",
   "container_summary",
   "bon_summary",
   "per_fulfilled",
@@ -276,12 +279,12 @@
   },
   {
    "default": "Draft",
-   "description": "Diatur alur booking. Completed = semua container-nya sudah keluar gate.",
+   "description": "Diatur alur booking. Pengajuan = draft customer yang sudah diajukan ke Admin Ops (sama dengan Draft untuk internal). Completed = semua container-nya sudah keluar gate.",
    "fieldname": "booking_status",
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Booking Status",
-   "options": "Draft\nPending Payment\nPending Confirmation\nConfirmed\nCompleted\nCancelled\nBlocked",
+   "options": "Draft\nPengajuan\nPending Payment\nPending Confirmation\nConfirmed\nCompleted\nCancelled\nBlocked",
    "read_only": 1,
    "reqd": 1,
    "hidden": 1
@@ -336,6 +339,36 @@
    "label": "Block Reason",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "depends_on": "eval:doc.requested_by_customer",
+   "description": "Perusahaan yang mengajukan booking ini lewat akun portal-nya. Kosong = dibuat staff OAK.",
+   "fieldname": "requested_by_customer",
+   "fieldtype": "Link",
+   "options": "Customer",
+   "in_standard_filter": 1,
+   "label": "Diajukan oleh Customer",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval:doc.revision_requested",
+   "description": "Customer minta booking yang sudah dikonfirmasi ini dibuka lagi.",
+   "fieldname": "revision_requested",
+   "fieldtype": "Check",
+   "label": "Minta Revisi",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval:doc.revision_requested",
+   "fieldname": "revision_note",
+   "fieldtype": "Small Text",
+   "label": "Catatan Revisi",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "description": "Ringkasan untuk list view. Filter Containers di list mencari di kolom ini.",
@@ -417,7 +450,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-17 13:43:32.109998",
+ "modified": "2026-09-18 10:20:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

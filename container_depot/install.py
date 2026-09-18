@@ -295,6 +295,37 @@ CUSTOM_FIELDS = {
 			"in_standard_filter": 1,
 			"description": "Inspects a tank before the customer lifts it on. Named on the outbound booking; not a billed party.",
 		},
+		{
+			# The depot's own Portal Users tab, replacing ERPNext's (hidden in
+			# PROPERTY_SETTERS). Rendered by public/js/customer.js, which reads the
+			# `Customer Portal User` rows pointing here — a doctype of ours, so it cannot be
+			# a child table on this form.
+			"fieldname": "oak_portal_users_tab",
+			"label": "Portal Users",
+			"fieldtype": "Tab Break",
+			"insert_after": "portal_users",
+		},
+		{
+			"fieldname": "oak_portal_users_html",
+			"fieldtype": "HTML",
+			"insert_after": "oak_portal_users_tab",
+		},
+		{
+			# Who asked for this record to exist. Filled only when a CUSTOMER PORTAL account
+			# creates the party itself from its own booking form (its EMKL, its shipper) —
+			# OAK's own masters leave it blank. It is what tells one customer's private
+			# address book from the depot's shared one, in the picker
+			# (`customer_scope.customer_link_query`) and in a filter on this list.
+			"fieldname": "created_by_customer",
+			"label": "Dibuat oleh Customer",
+			"fieldtype": "Link",
+			"options": "Customer",
+			"insert_after": "is_surveyor",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_standard_filter": 1,
+			"description": "Terisi kalau master ini dibuat sendiri oleh akun portal customer tersebut.",
+		},
 	],
 	# Depot-pricing fields (pricing spec §3.2). Repair services price as
 	# manhour × the contract's Tariff Rate manhour_rate + material_cost; packages are
@@ -642,6 +673,13 @@ PROPERTY_SETTERS = [
 	# hidden rather than left on the form looking like the place to set prices — the one
 	# mistake this field has ever caused.
 	("Customer", "default_price_list", "hidden", "1", "Check"),
+	# ERPNext's own "Portal Users" tab is its WEBSITE portal (`Customer.portal_users`, child
+	# doctype `Portal User`): a row there opens the ERPNext portal pages, not the Desk, and
+	# this app never writes one — so the tab sat on every Customer permanently empty while
+	# the depot's real accounts lived in `Customer Portal User`. Both halves are hidden and
+	# the app's own tab takes the place (see CUSTOM_FIELDS "Customer" / customer.js).
+	("Customer", "portal_users_tab", "hidden", "1", "Check"),
+	("Customer", "portal_users", "hidden", "1", "Check"),
 	# The booking print is a customer-facing document, so Print must open the OAK format
 	# rather than Frappe's Standard field-dump. Nothing else selects it: /desk/print/...
 	# falls back to the doctype default. The driver's copy is a separate pick from the
@@ -1766,11 +1804,22 @@ OFFICE_ROLE_MATRIX = {
 		# `R` on top of the list read: `Container Inventory` and `Inventory KPI per
 		# Principal` hang off this doctype.
 		"Container": "vR",
+		# The depot a booking is raised against — a link the customer has to pick, and the
+		# only master in this table they need for that. Read, not just select: the picker is
+		# fed by `frappe.get_list`, which the wildcard gate would otherwise empty.
+		"Depot": "v",
 		# `R` opens the Report view and with it the two reports in
 		# `customer_scope.CUSTOMER_REPORTS` — the booking register and its storage charges,
 		# which is the customer's own bill taking shape. The other two reports on this
 		# doctype stay shut by name, not by this flag; see customer_scope.
-		"Container Booking": "vR",
+		#
+		# `c`/`w`/`x` (2026-09-18): the ONE thing a customer does rather than reads — raise
+		# its own booking, edit it while it is still theirs, and void it if it was a mistake.
+		# The flags alone are not the gate: `customer_scope.container_booking_permission`
+		# holds all three to a booking the account owns, still at `Draft`, still unsubmitted.
+		# `s` (submit) is deliberately absent — confirming a booking is the office's call,
+		# and so is the money question in front of it.
+		"Container Booking": "vRcwx",
 		# The cargo catalogue a booking line is typed against. A master list, no owner.
 		"Cargo": "v",
 		# The Storage Charges report reads these rows through `frappe.get_all`, so without
@@ -1798,6 +1847,12 @@ OFFICE_ROLE_MATRIX = {
 # shared catalogue with nothing to scope by, and are open on purpose. All three are also in
 # `customer_scope._ALLOWED_FOREIGN_DOCTYPES`, or the wildcard gate would empty them anyway.
 CUSTOMER_DESK_MASTERS = {
+	# Read only, and `create` is deliberately NOT here even though a portal account does
+	# create parties (its EMKL, its shipper). It cannot go through a DocPerm: the account's
+	# company flag is a User Permission on `Customer`, and `has_user_permission` refuses a
+	# document whose own name is not in that permission — which is every record that does
+	# not exist yet (frappe/permissions.py, "check user permissions on self"). So the create
+	# path is one whitelisted endpoint instead: `customer_scope.create_party`.
 	"Customer": "v",
 	"Item": "v",
 	"Item Group": "v",
@@ -2402,6 +2457,11 @@ NOTIFICATION_RULES = [
 		["Admin Ops", "Cashier", "Commercial"]),
 	("booking_submitted", "Booking dikonfirmasi", "Container Booking disubmit / dikonfirmasi.",
 		["Admin Ops", "Cashier", "Security"]),
+	# Kantor saja: yang bisa mengabulkannya cuma pemegang tombol Kembali ke Draft, dan kalau
+	# charges-nya ikut berubah pertanyaan uangnya kembali ke kasir.
+	("booking_revision_requested", "Customer minta booking dibuka lagi",
+		"Customer mengajukan revisi atas booking yang sudah dikonfirmasi — Admin Ops yang memutuskan membukanya.",
+		["Admin Ops", "Cashier", "Commercial"]),
 	# Prioritas mendesak. Kantor saja, dan itu disengaja: menandai satu booking MENDESAK
 	# mengangkat tank-tanknya ke puncak ENAM worklist sekaligus, jadi membunyikannya ke semua
 	# kru lapangan berarti satu keputusan = lima lonceng, untuk pekerjaan yang belum tentu

@@ -134,3 +134,5 @@ container_depot.patches.v1_02.drop_depot_service_item_reports
 container_depot.patches.v1_03.customer_desk_menu_access
 container_depot.patches.v1_04.merge_container_inventory_reports
 container_depot.patches.v1_05.customer_audit_to_inventory
+container_depot.patches.v1_06.customer_booking_requests
+container_depot.patches.v1_07.drop_portal_role_column

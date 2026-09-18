@@ -31,6 +31,18 @@ function _finance_on() {
 // (`set_payment_status`), which is the only answer the depot has about the money.
 const BON_ALLOWED_PAYMENT = { Cash: ['Paid'], TOP: null };
 
+// Mirror of `container_booking.EDITABLE_STATUSES`: nothing has been generated yet and every
+// billing fact is still editable. `Pengajuan` is a draft a CUSTOMER raised and handed over
+// (see `submit_request`) — same state to this desk, different name so it is obvious whose
+// booking arrived.
+const EDITABLE_STATUSES = ['Draft', 'Pengajuan'];
+
+// A portal account. Everything about money, confirmation and the yard belongs to OAK, so it
+// comes off their screen rather than being left to fail on save.
+function _is_customer() {
+	return frappe.user.has_role('Customer Desk') && !frappe.user.has_role('System Manager');
+}
+
 function _bon_payment_block(frm) {
 	const ptype = frm.doc.payment_type || 'Cash';
 	const status = frm.doc.payment_status || 'Unpaid';
@@ -73,6 +85,9 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_apply_billing_lock');
 		frm.trigger('_render_work_per_container');
 		frm.trigger('_urgency_actions');
+		frm.trigger('_customer_view');
+		frm.trigger('_customer_actions');
+		frm.trigger('_revision_banner');
 		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
 		// operator can get the booking right before it reaches the Cashier's queue.
 		// Each button below mirrors the permission its endpoint enforces, so nobody is
@@ -85,7 +100,7 @@ frappe.ui.form.on('Container Booking', {
 			may_write &&
 			_finance_on() &&
 			frm.doc.docstatus === 0 &&
-			frm.doc.booking_status === 'Draft' &&
+			EDITABLE_STATUSES.includes(frm.doc.booking_status) &&
 			frm.doc.charges_total > 0 &&
 			frm.doc.payment_type === 'Cash'
 		) {
@@ -324,7 +339,7 @@ frappe.ui.form.on('Container Booking', {
 		// branch would hand charges / customer back on a submitted booking that just locked
 		// them.
 		if (frm.doc.docstatus !== 0) return;
-		const locked = !['Draft', 'Cancelled'].includes(frm.doc.booking_status);
+		const locked = !EDITABLE_STATUSES.concat('Cancelled').includes(frm.doc.booking_status);
 		frm.set_df_property('charges', 'read_only', locked ? 1 : 0);
 		frm.set_df_property('customer', 'read_only', locked ? 1 : 0);
 		if (locked) {
@@ -749,6 +764,83 @@ frappe.ui.form.on('Container Booking', {
 	// Sebuah menu, bukan field yang bisa diketik: tanggalnya read-only dan hanya lahir dari
 	// tombol ini, supaya setiap kali ada yang didahulukan selalu ada jejak siapa dan kenapa
 	// di timeline (lihat lift_on.set_urgent).
+	// --- akun customer (portal) --------------------------------------------
+	// A `Customer Desk` account raises its own bookings on this same form. What it may do is
+	// enforced server-side (`customer_scope.container_booking_permission`); this only keeps
+	// the screen honest about it, so nobody types into a field whose save is about to bounce.
+	_customer_view(frm) {
+		if (!_is_customer()) return;
+		// The system facts are OAK's half of the document. Charges stay VISIBLE — they are
+		// priced from this customer's own contract and seeing them is the point — but
+		// read-only, because the rate card decides them, not the person reading. Payment
+		// Type is the customer's own pick (it is still held to whatever their contract
+		// allows, server-side), and so is Bill To: the payer is often their EMKL.
+		frm.set_df_property('system_section', 'hidden', 1);
+		frm.set_df_property('charges', 'read_only', 1);
+		// Every party picker on the form, narrowed to this customer's own address book —
+		// its company plus the parties it keyed in itself. Without this they would each
+		// list OAK's entire customer book, because the fields carry
+		// `ignore_user_permissions` (which is what keeps a booking visible to both its
+		// payer and its tank owner). Set AFTER `_set_queries`, which runs first in refresh.
+		const own_parties = (f) => () => ({
+			query: 'container_depot.customer_scope.customer_link_query',
+			filters: f || {},
+		});
+		frm.set_query('customer', own_parties());
+		// Principal follows the OAK Party Roles on the account's own Customer master: a tank
+		// owner sees only itself, an EMKL every registered tank owner (see
+		// `customer_scope.allowed_principals`). So the field is only read-only when the list
+		// has one entry to choose from — which is the tank-owner-only case.
+		frm.set_query('principal', () => ({
+			query: 'container_depot.customer_scope.principal_link_query',
+		}));
+		frm.set_query('surveyor', own_parties({ is_surveyor: 1 }));
+		frm.set_query('emkl', 'items', own_parties());
+		frm.set_query('shipper', 'items', own_parties());
+		frm.set_query('surveyor', 'items', own_parties({ is_surveyor: 1 }));
+		// ...and the way to put something IN that address book. Frappe's own "Create a new
+		// Customer" cannot work for this account — the company flag is a User Permission on
+		// Customer, and that refuses any document of the doctype it does not name, which a
+		// new one never is (see `customer_scope.create_party`). One button, one dialog, and
+		// the party is pickable on the next click.
+		if (frm.doc.docstatus === 0) {
+			frm.add_custom_button(__('Tambah Pihak (EMKL / Shipper)'), () => _open_party_dialog(frm));
+		}
+	},
+	// Ajukan / Minta Revisi — the customer's only two actions beyond saving the draft.
+	_customer_actions(frm) {
+		if (frm.is_new() || !_is_customer()) return;
+		if (frm.doc.owner !== frappe.session.user) return;
+		if (frm.doc.docstatus === 0 && frm.doc.booking_status === 'Draft') {
+			frm.add_custom_button(__('Ajukan ke OAK'), () => _confirm_submit_request(frm)).addClass(
+				'btn-primary'
+			);
+			container_depot.form_message(
+				frm, 'customer-request',
+				__('Booking ini belum diajukan — OAK belum melihatnya. Tekan <b>Ajukan ke OAK</b> kalau isinya sudah benar.'),
+				'orange'
+			);
+		} else {
+			container_depot.form_message(frm, 'customer-request', '');
+		}
+		if (frm.doc.docstatus === 1 && frm.doc.booking_status === 'Confirmed' && !frm.doc.revision_requested) {
+			frm.add_custom_button(__('Minta Revisi'), () => _open_revision_dialog(frm));
+		}
+	},
+	// The other side of the same request: what the office sees when one is pending. Not a
+	// status — the booking stays Confirmed — so without this the request would live only in
+	// a notification somebody has already clicked away.
+	_revision_banner(frm) {
+		if (!frm.doc.revision_requested) return container_depot.form_message(frm, 'revision', '');
+		const tail = _is_customer()
+			? __('OAK sudah diberi tahu.')
+			: __('Buka lagi lewat <b>Kembali ke Draft (pembayaran tetap)</b>, atau tolak lewat komentar.');
+		container_depot.form_message(
+			frm, 'revision',
+			`${__('Customer minta revisi')} — ${frappe.utils.escape_html(frm.doc.revision_note || '')} ${tail}`,
+			'orange'
+		);
+	},
 	_urgency_actions(frm) {
 		if (frm.is_new() || frm.doc.direction !== 'Tank Out') return;
 		if (frm.doc.urgent_date) {
@@ -1167,6 +1259,90 @@ function _clear_urgency(frm) {
 			});
 		}
 	);
+}
+
+function _open_party_dialog(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __('Tambah Pihak'),
+		fields: [
+			{ fieldname: 'customer_name', fieldtype: 'Data', label: __('Nama Perusahaan'), reqd: 1 },
+			{
+				fieldname: 'role',
+				fieldtype: 'Select',
+				label: __('Jenis'),
+				options: [
+					{ value: 'emkl', label: __('EMKL / Transporter') },
+					{ value: 'shipper', label: __('Shipper') },
+					{ value: 'surveyor', label: __('Surveyor') },
+				],
+				default: 'emkl',
+				reqd: 1,
+			},
+		],
+		primary_action_label: __('Simpan'),
+		primary_action(values) {
+			frappe.call({
+				method: 'container_depot.customer_scope.create_party',
+				args: values,
+				freeze: true,
+				callback(r) {
+					if (!r.message) return;
+					d.hide();
+					frappe.show_alert({
+						message: __('{0} ditambahkan — sekarang bisa dipilih.', [r.message.customer_name]),
+						indicator: 'green',
+					});
+				},
+			});
+		},
+	});
+	d.show();
+}
+
+function _confirm_submit_request(frm) {
+	frappe.confirm(
+		__('Ajukan booking ini ke OAK? Setelah diajukan isinya tidak bisa Anda ubah lagi.'),
+		() => {
+			frappe.call({
+				method: 'container_depot.container_depot.doctype.container_booking.container_booking.submit_request',
+				args: { booking: frm.doc.name },
+				freeze: true,
+				freeze_message: __('Mengajukan...'),
+				callback() {
+					frappe.show_alert({ message: __('Booking diajukan.'), indicator: 'green' });
+					frm.reload_doc();
+				},
+			});
+		}
+	);
+}
+
+function _open_revision_dialog(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __('Minta Revisi'),
+		fields: [
+			{
+				fieldname: 'reason',
+				fieldtype: 'Small Text',
+				label: __('Apa yang perlu diubah?'),
+				reqd: 1,
+			},
+		],
+		primary_action_label: __('Kirim'),
+		primary_action(values) {
+			d.hide();
+			frappe.call({
+				method: 'container_depot.container_depot.doctype.container_booking.container_booking.request_revision',
+				args: { booking: frm.doc.name, reason: values.reason },
+				freeze: true,
+				callback() {
+					frappe.show_alert({ message: __('Permintaan revisi terkirim.'), indicator: 'green' });
+					frm.reload_doc();
+				},
+			});
+		},
+	});
+	d.show();
 }
 
 function _confirm_void(frm) {

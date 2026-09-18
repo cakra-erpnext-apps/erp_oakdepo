@@ -7,7 +7,7 @@ frappe.query_reports["Lift On Register"] = {
 			fieldname: "status",
 			label: __("Status"),
 			fieldtype: "Select",
-			options: "\nDraft\nPending Payment\nPending Confirmation\nConfirmed\nCompleted\nCancelled\nBlocked",
+			options: "\nDraft\nPengajuan\nPending Payment\nPending Confirmation\nConfirmed\nCompleted\nCancelled\nBlocked",
 		},
 		{ fieldname: "from_date", label: __("Tanggal Rencana Dari"), fieldtype: "Date" },
 		{ fieldname: "to_date", label: __("Tanggal Rencana Sampai"), fieldtype: "Date" },

@@ -10,7 +10,7 @@ frappe.query_reports["Container Booking Register"] = {
 			fieldname: "booking_status",
 			label: __("Status"),
 			fieldtype: "Select",
-			options: "\nDraft\nPending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
+			options: "\nDraft\nPengajuan\nPending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
 		},
 		{ fieldname: "from_date", label: __("Order Date Dari"), fieldtype: "Date" },
 		{ fieldname: "to_date", label: __("Order Date Sampai"), fieldtype: "Date" },

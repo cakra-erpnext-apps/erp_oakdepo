@@ -112,7 +112,20 @@ has_permission = {
 # Document Events
 # ---------------
 
+# The Customer form's Connections: the depot's own portal accounts, contracts and bookings.
+# ERPNext's stock "Portal Users" TAB on that form is a different table (`Customer.portal_users`,
+# its website portal) which this app never fills — see customer_dashboard.py.
+override_doctype_dashboards = {
+	"Customer": "container_depot.customer_dashboard.get_data",
+}
+
 doc_events = {
+	# A party a PORTAL account keys in for its own booking (its EMKL, its shipper) is
+	# stamped with the company that created it — the only thing telling one customer's
+	# private address book from the depot's shared one. No-op for every internal account.
+	"Customer": {
+		"before_insert": "container_depot.customer_scope.stamp_customer_created_master",
+	},
 	"Customer Portal User": {
 		"after_insert": "container_depot.portal.sync_portal_user_permission",
 		"on_update": "container_depot.portal.sync_portal_user_permission",
@@ -434,6 +447,8 @@ doctype_js = {
 	"Repair Order": "public/js/lock_item_picker.js",
 	# Rapikan form User baru + guard handler Role Profiles bawaan (lihat file-nya).
 	"User": "public/js/user.js",
+	# Tab "Portal Users" versi depot, menggantikan milik ERPNext (lihat file-nya).
+	"Customer": "public/js/customer.js",
 }
 # doctype_tree = {"doctype" : "doctype_tree.js"}
 # doctype_calendar = {"doctype" : "public/js/doctype_calendar.js"}

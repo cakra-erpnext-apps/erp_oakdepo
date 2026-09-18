@@ -290,13 +290,18 @@ class TestCustomerScope(FrappeTestCase):
 
 	# --- the role itself ---------------------------------------------------
 
-	def test_role_is_read_only(self):
+	def test_role_is_read_only_except_for_raising_its_own_booking(self):
 		perms = frappe.get_all(
 			"Custom DocPerm",
 			filters={"role": CUSTOMER_DESK_ROLE},
 			fields=["parent", "read", "write", "create", "submit", "delete", "email", "report"],
 		)
 		self.assertTrue(perms, "the customer role has no permissions seeded")
+		# The one doctype a customer WRITES: its own booking request. The flags are not the
+		# gate — `customer_scope.container_booking_permission` holds them to a booking the
+		# account owns, still at Draft (see test_customer_booking_request.py). `submit` is
+		# absent everywhere, here included: confirming a booking is OAK's decision.
+		may_write = {"Container Booking"}
 		# Container Activity is the one row with `report` and no `read`: the history is read
 		# through the report, the ledger's own list stays shut (patch v1_05).
 		report_only = {"Container Activity"}
@@ -306,7 +311,10 @@ class TestCustomerScope(FrappeTestCase):
 		may_report = {"Container Booking", "Container", "Container Activity"}
 		for row in perms:
 			self.assertEqual(row.read, 0 if row.parent in report_only else 1, row.parent)
-			for flag in ("write", "create", "submit", "delete", "email"):
+			writable = row.parent in may_write
+			for flag in ("write", "create"):
+				self.assertEqual(row.get(flag), 1 if writable else 0, f"{row.parent}.{flag}")
+			for flag in ("submit", "delete", "email"):
 				self.assertEqual(row.get(flag), 0, f"{row.parent}.{flag}")
 			self.assertEqual(
 				row.report, 1 if row.parent in may_report else 0, f"{row.parent}.report"

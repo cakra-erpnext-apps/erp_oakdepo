@@ -72,6 +72,7 @@ EVENT_DOCTYPES = [
 	("gate_out", "Gate Entry"),
 	("booking_created", "Container Booking"),
 	("booking_submitted", "Container Booking"),
+	("booking_revision_requested", "Container Booking"),
 	("booking_urgent", "Container Booking"),
 	("contract_created", "Depot Contract"),
 	("contract_activated", "Depot Contract"),
@@ -81,6 +82,7 @@ EVENT_DOCTYPES = [
 DESK_ONLY_EVENTS = {
 	"booking_created",
 	"booking_submitted",
+	"booking_revision_requested",
 	"booking_urgent",
 	"contract_created",
 	"contract_activated",

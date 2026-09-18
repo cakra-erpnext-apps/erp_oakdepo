@@ -33,6 +33,8 @@ them and nothing changes.
 from __future__ import annotations
 
 import frappe
+from frappe import _
+from frappe.utils import cint
 
 # Modules a customer account may read outside the depot: what the Desk itself is built
 # from — files, comments, notes, list settings, dashboards, print formats — and nothing
@@ -50,7 +52,11 @@ _DESK_PLUMBING_MODULES = {"Core", "Custom", "Desk", "Printing"}
 #
 # The read itself is a Custom DocPerm seeded by `install._grant_customer_desk_masters`,
 # written after `setup_custom_perms` has copied ERPNext's own rows across.
-_ALLOWED_FOREIGN_DOCTYPES: set[str] = {"Customer", "Item", "Item Group"}
+# `Branch` is here for a different reason than the other three: it is the one REQUIRED link
+# on a Container Booking, so without it the wildcard gate below empties the picker and a
+# customer cannot save the booking it is allowed to raise at all. It carries no customer
+# data — a branch is a depot location, already printed on every document they hold.
+_ALLOWED_FOREIGN_DOCTYPES: set[str] = {"Customer", "Item", "Item Group", "Branch"}
 
 # The only reports a customer account may see or run. An allowlist BY NAME, not by the ref
 # doctype's `report` permission: that flag is per doctype, and four of this app's reports
@@ -146,13 +152,206 @@ def container_movement_query(user=None, doctype=None) -> str:
 
 
 def container_booking_query(user=None, doctype=None) -> str:
-	"""Billed-to OR tank owner. See the module docstring on and-vs-or."""
+	"""Billed-to OR tank owner for a customer; everyone else, minus unsent customer drafts.
+
+	The second half is the only place in this file that restricts an INTERNAL account, and it
+	is not a permission so much as an inbox: a booking a customer is still typing says
+	``Draft`` and belongs to nobody's queue. Pressing **Ajukan**
+	(``container_booking.submit_request``) moves it to ``Pengajuan``, which is what puts it on
+	the office's list — and every guard on the office side treats the two the same
+	(``container_booking.EDITABLE_STATUSES``).
+	"""
 	values = _values(user)
 	if not values:
-		return ""
+		return _unsent_request_filter(user)
 	return (
 		f"(`tabContainer Booking`.`customer` in ({values})"
-		f" or `tabContainer Booking`.`principal` in ({values}))"
+		f" or `tabContainer Booking`.`principal` in ({values})"
+		# An EMKL raises bookings for tanks it neither owns nor is billed for. Without this
+		# it would lose sight of its own request the moment it was saved.
+		f" or `tabContainer Booking`.`requested_by_customer` in ({values}))"
+	)
+
+
+def _unsent_request_filter(user: str | None) -> str:
+	"""Hide a customer's not-yet-submitted draft from the internal lists."""
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return ""
+	return (
+		"(ifnull(`tabContainer Booking`.`requested_by_customer`, '') = ''"
+		" or `tabContainer Booking`.`booking_status` != 'Draft'"
+		f" or `tabContainer Booking`.`owner` = {frappe.db.escape(user, percent=False)})"
+	)
+
+
+# --- the customer's own address book ---------------------------------------
+# A portal account fills in the parties its booking needs (its EMKL, its shipper) itself.
+# Two halves: the record is STAMPED with the company that asked for it, and the pickers on
+# the booking form are narrowed to "mine + what I created" — because the fields those
+# pickers sit on carry `ignore_user_permissions`, which switches the User Permission filter
+# off entirely and would otherwise hand a customer OAK's whole customer book.
+
+
+def stamp_customer_created_master(doc, method=None) -> None:
+	"""Stamp a Customer created by a portal account with the company that created it.
+
+	`doc_events` on Customer.before_insert. A no-op for every internal account, which holds
+	no Customer User Permission — so OAK's own masters are never stamped, and "blank" keeps
+	meaning "the depot's own, shared by everyone".
+	"""
+	if doc.get("created_by_customer"):
+		return
+	customers = get_user_customers()
+	if customers:
+		doc.created_by_customer = customers[0]
+
+
+def allowed_principals(user: str | None = None) -> list[str] | None:
+	"""Tank owners this account may raise a booking FOR, or ``None`` when unrestricted.
+
+	Read straight off the OAK Party Roles on the account's own Customer master — the
+	checkboxes the office already keeps there, not a second list to maintain:
+
+	* **Tank Owner only** — its own tanks. Nobody else's is any of its business.
+	* **EMKL (`is_transporter`)** — every registered tank owner. Lifting somebody else's
+	  tank IS the job; the tanks it may then pick are that principal's, narrowed by
+	  `booking_container_query`.
+	* **Both** — the union, which is the tank-owner list with its own company in it.
+
+	Anything else (an agent, a surveyor) gets its own company and nothing more: a party
+	role this app cannot read as "moves other people's tanks" is not one that widens
+	access.
+	"""
+	customers = get_user_customers(user)
+	if not customers:
+		return None
+	is_transporter = frappe.db.exists(
+		"Customer", {"name": ["in", customers], "is_transporter": 1}
+	)
+	if not is_transporter:
+		return customers
+	owners = frappe.get_all(
+		"Customer", filters={"is_tank_owner": 1, "disabled": 0}, pluck="name"
+	)
+	return sorted(set(owners) | set(customers))
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def principal_link_query(doctype, txt, searchfield, start, page_len, filters):
+	"""The Principal (Tank Owner) picker on a booking, for a portal account.
+
+	Wired from the form script for portal accounts only — see `allowed_principals` for what
+	decides the list, and `container_booking._clamp_customer_request` for the server-side
+	half a hand-built API call meets instead.
+	"""
+	allowed = allowed_principals()
+	conditions = [["Customer", "name", "in", allowed]] if allowed else []
+	if txt:
+		conditions.append(["Customer", "customer_name", "like", f"%{txt}%"])
+	return frappe.get_all(
+		"Customer",
+		filters=conditions,
+		fields=["name", "customer_name"],
+		limit_start=start,
+		limit_page_length=page_len,
+		order_by="customer_name asc",
+		as_list=True,
+	)
+
+
+PARTY_ROLES = {
+	# What the booking form offers when a customer adds a party of its own, and the flag
+	# each one sets on the Customer master. `shipper` carries no flag — ERPNext has no such
+	# party role and this app never asks for one.
+	"emkl": "is_transporter",
+	"surveyor": "is_surveyor",
+	"shipper": None,
+}
+
+
+@frappe.whitelist()
+def create_party(customer_name, role=None):
+	"""Create one party (EMKL / shipper / surveyor) on behalf of a portal account.
+
+	Why this exists rather than a `create` DocPerm on Customer: the account's company flag
+	is a User Permission ON Customer, and `has_user_permission` refuses any document of that
+	doctype whose own name is not named in the permission — a record that does not exist yet
+	never is. Frappe's own "Create a new Customer" from the link field therefore cannot work
+	for this account whatever the role permissions say, and granting `create` would only
+	produce a button that always 403s.
+
+	So the insert runs with `ignore_permissions`, and the guard is this function: the caller
+	must BE a portal account, and what it writes is a name, one role flag, and the stamp
+	(`stamp_customer_created_master`, on before_insert) that ties the record to the company
+	that asked for it. Nothing else — no credit limit, no tax template, no price list.
+	"""
+	customers = get_user_customers()
+	if not customers:
+		frappe.throw(_("Hanya akun customer yang bisa menambah pihak dari form ini."), frappe.PermissionError)
+	name = (customer_name or "").strip()
+	if not name:
+		frappe.throw(_("Nama pihak wajib diisi."))
+	if role and role not in PARTY_ROLES:
+		frappe.throw(_("Jenis pihak tidak dikenal: {0}").format(role))
+	if frappe.db.exists("Customer", {"customer_name": name}):
+		frappe.throw(_("{0} sudah terdaftar — pilih dari daftar.").format(name))
+	doc = frappe.get_doc({
+		"doctype": "Customer",
+		"customer_name": name,
+		"customer_type": "Company",
+	})
+	flag = PARTY_ROLES.get(role or "")
+	if flag:
+		doc.set(flag, 1)
+	doc.insert(ignore_permissions=True)
+	return {"name": doc.name, "customer_name": doc.customer_name}
+
+
+def _own_and_created(user: str | None = None) -> list[str] | None:
+	"""The customers a portal account may NAME on a booking, or None if unrestricted."""
+	customers = get_user_customers(user)
+	if not customers:
+		return None
+	created = frappe.get_all(
+		"Customer", filters={"created_by_customer": ["in", customers]}, pluck="name"
+	)
+	return sorted(set(customers) | set(created))
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def customer_link_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Link query for the party pickers on a Container Booking.
+
+	Wired from the form script for PORTAL ACCOUNTS ONLY (`container_booking.js`), so an
+	internal desk keeps Frappe's stock search and everything it does — nothing about the
+	office's pickers changes.
+
+	It exists because the fields it serves (`customer`, `principal`, `surveyor`, and the
+	`emkl` / `shipper` / `surveyor` on each row) carry `ignore_user_permissions`: that flag
+	is what keeps a booking billed to A for tanks owned by B visible to both, and it also
+	switches OFF the only filter standing between a customer and every party name OAK has
+	ever keyed in. This puts a filter back, and a narrower one: the account's own company,
+	plus the parties that company created for itself.
+	"""
+	allowed = _own_and_created()
+	conditions = [["Customer", "name", "in", allowed]] if allowed else []
+	if txt:
+		conditions.append(["Customer", "customer_name", "like", f"%{txt}%"])
+	# Whatever the field already narrowed by — `is_surveyor` on the two surveyor pickers.
+	# Equality only: that is every filter a link query on this form passes.
+	for field, value in (filters or {}).items():
+		conditions.append(["Customer", field, "=", value])
+	return frappe.get_all(
+		"Customer",
+		filters=conditions,
+		fields=["name", "customer_name"],
+		limit_start=start,
+		limit_page_length=page_len,
+		order_by="customer_name asc",
+		as_list=True,
 	)
 
 
@@ -187,7 +386,10 @@ def booking_sql_filter(alias: str) -> str:
 	values = _values(None)
 	if not values:
 		return "1=1"
-	return f"({alias}.customer in ({values}) or {alias}.principal in ({values}))"
+	return (
+		f"({alias}.customer in ({values}) or {alias}.principal in ({values})"
+		f" or {alias}.requested_by_customer in ({values}))"
+	)
 
 
 def container_sql_filter(column: str) -> str:
@@ -237,11 +439,52 @@ def container_movement_permission(doc, ptype=None, user=None, **kwargs) -> bool:
 	return _allowed(_principal_of(doc.get("container")), user)
 
 
+# What a customer account may do to a Container Booking, beyond reading it. Anything not
+# listed is refused outright — `submit` and `amend` among them: confirming a booking is the
+# office's decision, and amending a cancelled one is how a customer would otherwise get back
+# inside a document the office closed.
+#
+# `cancel` is in, and it is not the office's Cancel: on a draft it reaches
+# `container_booking.void_draft` (the ONLY undo a draft has — a booking is never deleted,
+# `on_trash` refuses), and the window below keeps it to a booking the customer has not yet
+# handed over. A `Pengajuan` or anything past it is out of reach, as is every submitted one.
+_CUSTOMER_BOOKING_WRITES = {"write", "create", "delete", "cancel"}
+
+
 def container_booking_permission(doc, ptype=None, user=None, **kwargs) -> bool:
 	customers = get_user_customers(user)
 	if not customers:
+		# Internal: everything except somebody's unsent customer draft — see
+		# `_unsent_request_filter`, this is the same rule for a direct document open.
+		if (user or frappe.session.user) == "Administrator":
+			return True
+		if doc.get("requested_by_customer") and doc.get("booking_status") == "Draft":
+			return doc.get("owner") == (user or frappe.session.user)
 		return True
-	return doc.get("customer") in customers or doc.get("principal") in customers
+	if not (
+		doc.get("customer") in customers
+		or doc.get("principal") in customers
+		or doc.get("requested_by_customer") in customers
+	):
+		return False
+	if ptype in (None, "read", "select", "print", "export", "report", "email"):
+		return True
+	if ptype == "create":
+		# A brand-new document: there is no window to test yet, and what it may contain is
+		# pinned server-side the moment it is saved (`_clamp_customer_request` forces the
+		# Principal to this account's own company). The ownership test above still applies —
+		# a payload naming somebody else's company never reaches the clamp.
+		return True
+	if ptype not in _CUSTOMER_BOOKING_WRITES:
+		return False
+	# The editing window: their OWN booking, before they hand it over. `Pengajuan` onwards
+	# the office owns the document — see `container_booking.submit_request`.
+	return (
+		bool(doc.get("requested_by_customer"))
+		and doc.get("owner") == (user or frappe.session.user)
+		and cint(doc.get("docstatus")) == 0
+		and doc.get("booking_status") == "Draft"
+	)
 
 
 def report_permission(doc, ptype=None, user=None, **kwargs) -> bool:
