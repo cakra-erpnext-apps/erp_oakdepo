@@ -475,3 +475,12 @@ img.oak-grid-photo:hover {
 	color: #fff;
 	box-shadow: 0 0 0 1px var(--red-700);
 }
+
+/* Workspace: blok yang widget-nya tidak terpakai oleh user ini (number card / chart / shortcut
+   tanpa izin) tetap dirender sebagai <div> kosong oleh editorjs — lengkap dengan kelas col-*-nya,
+   jadi slot grid-nya tetap dipakai dan kartu yang tersisa terlihat melayang di tengah/kanan.
+   Sembunyikan blok kosongnya supaya sisa kartu rapat ke kiri. Hanya di mode baca: saat
+   `edit-mode` blok kosong memang wajar (blok baru sebelum dialognya diisi). */
+.layout-main-section:not(.edit-mode) .ce-block:has(> .ce-block__content > div:empty) {
+	display: none;
+}

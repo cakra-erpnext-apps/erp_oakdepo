@@ -353,7 +353,7 @@ jinja = {
 # sudah menyimpannya perlu URL baru untuk mau mengambil versi baru. nginx sekarang
 # menyuruh revalidasi berkas bernama tetap (nginx/conf.d/default.conf), jadi angka
 # ini tidak perlu dinaikkan lagi setiap kali mengubah skrip.
-app_include_css = "/assets/container_depot/css/container_depot.css?v=2"
+app_include_css = "/assets/container_depot/css/container_depot.css?v=3"
 # notification_click — ask whether the recipient may open a notification's document before
 # following the link, so a Desk bell tap gives a plain reason instead of Frappe's
 # "Insufficient Permission" page. Fails open; see the file.
