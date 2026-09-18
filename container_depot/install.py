@@ -1678,6 +1678,13 @@ _PERM_LETTERS = {
 	# `customer_scope.CUSTOMER_REPORTS` names the two reports that are, and
 	# `boot.patch_query_report_customer_scope` enforces it on the run path.
 	"R": ("report",),
+	# `select` WITHOUT `read`: the doctype may be chosen in a Link field and nowhere else.
+	# Frappe splits the two (`db_query.check_read_permission` asks for `select` when that is
+	# all a role has, `frappe.only_has_select_perm`), and the split is exactly what an
+	# external account needs on a master it must PICK but has no business browsing — the
+	# picker opens, the list view and the sidebar entry do not (a Workspace Sidebar Item is
+	# drawn off `can_read`, which is the only lever it has).
+	"L": ("select",),
 	"w": ("write",),
 	"c": ("create",),
 	"s": ("submit",),
@@ -1804,10 +1811,12 @@ OFFICE_ROLE_MATRIX = {
 		# `R` on top of the list read: `Container Inventory` and `Inventory KPI per
 		# Principal` hang off this doctype.
 		"Container": "vR",
-		# The depot a booking is raised against — a link the customer has to pick, and the
-		# only master in this table they need for that. Read, not just select: the picker is
-		# fed by `frappe.get_list`, which the wildcard gate would otherwise empty.
-		"Depot": "v",
+		# Two masters the customer PICKS on its booking and has no reason to browse: the
+		# depot it is coming to, and the cargo a tank last carried. `L` = select only, so
+		# both pickers open while neither shows up as a menu entry — OAK's depot list and
+		# the 200-odd cargo catalogue are not a customer's screen.
+		"Depot": "L",
+		"Cargo": "L",
 		# `R` opens the Report view and with it the two reports in
 		# `customer_scope.CUSTOMER_REPORTS` — the booking register and its storage charges,
 		# which is the customer's own bill taking shape. The other two reports on this
@@ -1820,8 +1829,6 @@ OFFICE_ROLE_MATRIX = {
 		# `s` (submit) is deliberately absent — confirming a booking is the office's call,
 		# and so is the money question in front of it.
 		"Container Booking": "vRcwx",
-		# The cargo catalogue a booking line is typed against. A master list, no owner.
-		"Cargo": "v",
 		# The Storage Charges report reads these rows through `frappe.get_all`, so without
 		# read it raises instead of rendering. Scoped natively — `principal` is a Customer
 		# link, and it is the row's only one. The cost is one extra sidebar entry (the
@@ -1843,8 +1850,8 @@ OFFICE_ROLE_MATRIX = {
 # `_grant_customer_desk_masters`, and `_grant_link_select` for the same dance.
 #
 # Customer scopes itself: a User Permission on a doctype applies to that doctype's own
-# `name`, so the account sees only the companies it is tied to. Item and Item Group are a
-# shared catalogue with nothing to scope by, and are open on purpose. All three are also in
+# `name`, so the account sees only the companies it is tied to. Item and Item Group have
+# nothing to scope by, so they are not read at all — only selectable. All three are also in
 # `customer_scope._ALLOWED_FOREIGN_DOCTYPES`, or the wildcard gate would empty them anyway.
 CUSTOMER_DESK_MASTERS = {
 	# Read only, and `create` is deliberately NOT here even though a portal account does
@@ -1854,8 +1861,12 @@ CUSTOMER_DESK_MASTERS = {
 	# not exist yet (frappe/permissions.py, "check user permissions on self"). So the create
 	# path is one whitelisted endpoint instead: `customer_scope.create_party`.
 	"Customer": "v",
-	"Item": "v",
-	"Item Group": "v",
+	# `L` (select, no read): the depot's service catalogue is not a customer's screen. What
+	# they are owed of it is the charge lines on their own booking, and those carry the
+	# item's title in the document payload already — `form.load.set_link_titles` reads it
+	# with `frappe.db.get_value`, which asks no permission, so the rows still render.
+	"Item": "L",
+	"Item Group": "L",
 }
 
 # Report access is NOT seeded. A Report with an empty `roles` table falls back to the

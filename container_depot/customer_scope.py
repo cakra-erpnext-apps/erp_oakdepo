@@ -43,12 +43,11 @@ from frappe.utils import cint
 # `foreign_doctype_*` at the bottom of this file for what this list is for.
 _DESK_PLUMBING_MODULES = {"Core", "Custom", "Desk", "Printing"}
 
-# Doctypes outside the Container Depot module that the customer role is granted outright.
-# Three master lists the customer fills in for itself (2026-09-18): its own companies, and
-# the cargo/item catalogue a booking and a contract line are typed against. `Customer` is
-# scoped natively — a User Permission on a doctype applies to that doctype's own `name`, so
-# the list shows only the companies the account is tied to. `Item` and `Item Group` are a
-# shared catalogue with no owner to scope by, and are open on purpose.
+# Doctypes outside the Container Depot module the wildcard gate below must NOT empty.
+# `Customer` is scoped natively — a User Permission on a doctype applies to that doctype's
+# own `name`, so the list shows only the companies the account is tied to. `Item` and
+# `Item Group` are here for their PICKERS only: the role holds `select` on them and no
+# `read` (install.CUSTOMER_DESK_MASTERS), so neither has a list view or a menu entry.
 #
 # The read itself is a Custom DocPerm seeded by `install._grant_customer_desk_masters`,
 # written after `setup_custom_perms` has copied ERPNext's own rows across.
@@ -307,6 +306,46 @@ def create_party(customer_name, role=None):
 		doc.set(flag, 1)
 	doc.insert(ignore_permissions=True)
 	return {"name": doc.name, "customer_name": doc.customer_name}
+
+
+@frappe.whitelist()
+def create_tank(container_no, principal=None, container_type=None):
+	"""Register one tank for a portal account — the Desk's "Create a new Container", guarded.
+
+	Same reasoning as :func:`create_party`, and the same road round the same wall: a portal
+	account holds `read` on Container and nothing more, so Frappe's own "Create a new ..."
+	from the Link field is not offered to it. Without this the only way to announce a tank
+	the master does not know yet is the grid's Excel import — fine for twenty tanks, absurd
+	for one.
+
+	The tank is born the way an imported one is (`_create_imported_container`): owned by the
+	booking's Principal and left at the Container default `Gate_Out`, i.e. outside the depot.
+	Picking it on a Tank In row is what reserves it; nothing here touches a booking.
+	"""
+	allowed = allowed_principals()
+	if allowed is None:
+		frappe.throw(_("Hanya akun customer yang bisa mendaftarkan tank dari form ini."), frappe.PermissionError)
+	principal = principal or (allowed[0] if len(allowed) == 1 else None)
+	if not principal:
+		frappe.throw(_("Pilih <b>Principal / Tank Owner</b> dulu — tank ini milik siapa."))
+	if principal not in allowed:
+		frappe.throw(
+			_("Anda tidak boleh mendaftarkan tank untuk principal {0}.").format(principal),
+			frappe.PermissionError,
+		)
+	no = (container_no or "").strip().upper()
+	if not no:
+		frappe.throw(_("Nomor container wajib diisi."))
+	if frappe.db.exists("Container", no):
+		frappe.throw(_("Container {0} sudah terdaftar — pilih dari daftar.").format(no))
+	doc = frappe.get_doc({
+		"doctype": "Container",
+		"container_no": no,
+		"container_type": container_type or "ISO Tank",
+		"principal": principal,
+	})
+	doc.insert(ignore_permissions=True)
+	return {"name": doc.name, "principal": doc.principal}
 
 
 def _own_and_created(user: str | None = None) -> list[str] | None:

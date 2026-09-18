@@ -805,6 +805,10 @@ frappe.ui.form.on('Container Booking', {
 		// the party is pickable on the next click.
 		if (frm.doc.docstatus === 0) {
 			frm.add_custom_button(__('Tambah Pihak (EMKL / Shipper)'), () => _open_party_dialog(frm));
+			// Same wall, same road round it: the account reads Container and nothing more, so
+			// Frappe's "Create a new Container" is not offered on the row's picker. Without
+			// this the only way to announce an unknown tank is the Excel import.
+			frm.add_custom_button(__('Daftarkan Tank Baru'), () => _open_tank_dialog(frm));
 		}
 	},
 	// Ajukan / Minta Revisi — the customer's only two actions beyond saving the draft.
@@ -1315,6 +1319,45 @@ function _confirm_submit_request(frm) {
 			});
 		}
 	);
+}
+
+function _open_tank_dialog(frm) {
+	const d = new frappe.ui.Dialog({
+		title: __('Daftarkan Tank Baru'),
+		fields: [
+			{
+				fieldname: 'container_no',
+				fieldtype: 'Data',
+				label: __('Nomor Container'),
+				reqd: 1,
+				description: __('Tank yang belum pernah masuk depo. Yang sudah ada, pilih saja di baris.'),
+			},
+		],
+		primary_action_label: __('Daftarkan'),
+		primary_action(values) {
+			frappe.call({
+				method: 'container_depot.customer_scope.create_tank',
+				args: { container_no: values.container_no, principal: frm.doc.principal },
+				freeze: true,
+				callback(r) {
+					if (!r.message) return;
+					d.hide();
+					// Straight onto the booking: registering a tank and then hunting for it in
+					// the picker is two steps for one intention.
+					const row = frm.add_child('items', {
+						container: r.message.name,
+						container_no: r.message.name,
+					});
+					frm.refresh_field('items');
+					frappe.show_alert({
+						message: __('{0} didaftarkan dan ditambahkan ke booking.', [row.container_no]),
+						indicator: 'green',
+					});
+				},
+			});
+		},
+	});
+	d.show();
 }
 
 function _open_revision_dialog(frm) {

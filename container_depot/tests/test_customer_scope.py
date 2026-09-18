@@ -294,7 +294,10 @@ class TestCustomerScope(FrappeTestCase):
 		perms = frappe.get_all(
 			"Custom DocPerm",
 			filters={"role": CUSTOMER_DESK_ROLE},
-			fields=["parent", "read", "write", "create", "submit", "delete", "email", "report"],
+			fields=[
+				"parent", "read", "write", "create", "submit", "delete", "email", "report",
+				"select",
+			],
 		)
 		self.assertTrue(perms, "the customer role has no permissions seeded")
 		# The one doctype a customer WRITES: its own booking request. The flags are not the
@@ -305,12 +308,16 @@ class TestCustomerScope(FrappeTestCase):
 		# Container Activity is the one row with `report` and no `read`: the history is read
 		# through the report, the ledger's own list stays shut (patch v1_05).
 		report_only = {"Container Activity"}
+		# Masters the account PICKS and may not browse: `select` without `read`, which is
+		# what takes them off the sidebar (patch v1_08).
+		select_only = {"Depot", "Cargo", "Item", "Item Group"}
 		# The doctypes the offered reports hang off. `report` alone does not decide which
 		# report runs — a Script Report builds its own SQL, so the gate is the report NAME
 		# (customer_scope.CUSTOMER_REPORTS), tested below.
 		may_report = {"Container Booking", "Container", "Container Activity"}
 		for row in perms:
-			self.assertEqual(row.read, 0 if row.parent in report_only else 1, row.parent)
+			may_read = row.parent not in report_only and row.parent not in select_only
+			self.assertEqual(row.read, 1 if may_read else 0, row.parent)
 			writable = row.parent in may_write
 			for flag in ("write", "create"):
 				self.assertEqual(row.get(flag), 1 if writable else 0, f"{row.parent}.{flag}")
@@ -319,6 +326,8 @@ class TestCustomerScope(FrappeTestCase):
 			self.assertEqual(
 				row.report, 1 if row.parent in may_report else 0, f"{row.parent}.report"
 			)
+			if row.parent in select_only:
+				self.assertEqual(row.select, 1, f"{row.parent}.select")
 
 	def test_unlisted_reports_are_refused_on_the_run_path(self):
 		"""The list filter guards the MENU; `query_report.run` never consults it and fetches
@@ -407,11 +416,16 @@ class TestCustomerScope(FrappeTestCase):
 			with self.subTest(report=report):
 				self.assertTrue(query_report.get_report_doc(report))
 
-	def test_own_masters_are_readable(self):
-		"""The customer types its own bookings and contract lines against these."""
+	def test_masters_are_picked_not_browsed(self):
+		"""What a customer READS is its own data; the catalogues it merely picks from are
+		`select` without `read` (patch v1_08) — the Link field opens, the list view and the
+		sidebar entry are gone, since a Workspace Sidebar Item is drawn off `can_read`."""
 		frappe.set_user(USER)
-		for doctype in ("Cargo", "Item", "Item Group", "Customer", "Storage Charge"):
+		for doctype in ("Customer", "Storage Charge"):
 			self.assertTrue(frappe.has_permission(doctype, "read"), doctype)
+		for doctype in ("Depot", "Cargo", "Item", "Item Group"):
+			self.assertFalse(frappe.has_permission(doctype, "read"), doctype)
+			self.assertTrue(frappe.has_permission(doctype, "select"), doctype)
 		# ...and `Customer` still only lists its own companies: a User Permission on a
 		# doctype applies to that doctype's own name.
 		self.assertEqual([c.name for c in frappe.get_list("Customer")], [OWNER])

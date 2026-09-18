@@ -37,6 +37,7 @@ from container_depot.customer_scope import (
 	container_booking_permission,
 	container_booking_query,
 	create_party,
+	create_tank,
 	customer_link_query,
 )
 from container_depot.tests.test_cash_gate import _ensure_test_depot
@@ -131,6 +132,9 @@ class TestCustomerBookingRequest(FrappeTestCase):
 		_cleanup_customer_world(OWNER)
 		# The parties these tests key in are real Customer masters, not booking fixtures —
 		# and a booking billed to one is not swept by the owner's own cleanup.
+		for name in frappe.get_all("Container", filters={"name": ["like", "CBRU%"]}, pluck="name"):
+			frappe.db.delete("Container Movement", {"container": name})
+			frappe.delete_doc("Container", name, ignore_permissions=True, force=True)
 		for name in frappe.get_all("Customer", filters={"created_by_customer": OWNER}, pluck="name"):
 			_cleanup_customer_world(name)
 			frappe.delete_doc("Customer", name, ignore_permissions=True, force=True)
@@ -280,6 +284,27 @@ class TestCustomerBookingRequest(FrappeTestCase):
 		)
 		with self.assertRaises(frappe.PermissionError):
 			parse_container_xlsx("/files/whatever.xlsx", direction="Tank In", principal=OTHER)
+
+	def test_it_registers_a_tank_of_its_own_and_no_one_elses(self):
+		"""A portal account holds `read` on Container and nothing more, so Frappe's own
+		"Create a new Container" is not offered on the row's picker — this is the road round
+		that wall, and it keeps the same principal list as everything else."""
+		frappe.set_user(USER)
+		tank = create_tank("cbru0000021", principal=OWNER)
+		frappe.set_user("Administrator")
+		row = frappe.db.get_value(
+			"Container", tank["name"], ["principal", "status", "container_type"], as_dict=True
+		)
+		self.assertEqual(tank["name"], "CBRU0000021", "the number is normalised")
+		self.assertEqual(row.principal, OWNER)
+		self.assertEqual(row.status, "Gate_Out", "registered, not yet in the depot")
+		self.assertEqual(row.container_type, "ISO Tank")
+
+		frappe.set_user(USER)
+		with self.assertRaises(frappe.PermissionError):
+			create_tank("CBRU0000022", principal=OTHER)
+		with self.assertRaises(frappe.ValidationError):
+			create_tank("CBRU0000021", principal=OWNER)
 
 	# --- the customer's own address book -----------------------------------
 
