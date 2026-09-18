@@ -1750,10 +1750,16 @@ OFFICE_ROLE_MATRIX = {
 	# Nothing that prices or approves work is here: a Cleaning Order, a Repair Order and
 	# an Inspection are OAK's working documents, and what the customer is owed of them
 	# arrives as an order, an EIR print or an invoice. What they get is the tank
-	# (Container), its paperwork (Container Booking, Depot Contract) and its history
-	# (Gate Entry, Container Movement, Container Activity).
+	# (Container), its paperwork (Container Booking, Depot Contract) and its history —
+	# the last of which is now READ AS A REPORT, not as three raw lists: Gate Entry and
+	# Container Movement are gone from this table and Container Activity is report-only
+	# (patch v1_05), so the sidebar's "Audit" section is dark for this role and the
+	# "Container Inventory" section lit instead. A doctype list could not carry a storage
+	# age or an order column; the three reports there do, and each filters by customer.
 	CUSTOMER_DESK_ROLE: {
-		"Container": "v",
+		# `R` on top of the list read: `Container Inventory` and `Inventory KPI per
+		# Principal` hang off this doctype.
+		"Container": "vR",
 		# `R` opens the Report view and with it the two reports in
 		# `customer_scope.CUSTOMER_REPORTS` — the booking register and its storage charges,
 		# which is the customer's own bill taking shape. The other two reports on this
@@ -1767,9 +1773,13 @@ OFFICE_ROLE_MATRIX = {
 		# doctype itself, under Invoicing): a customer's own storage ledger.
 		"Storage Charge": "v",
 		"Depot Contract": "v",
-		"Gate Entry": "v",
-		"Container Movement": "v",
-		"Container Activity": "v",
+		# `R` alone — the report flag WITHOUT read. The `Container Activity` report is the
+		# customer's tank history (filtered by `customer_scope.container_sql_filter`), while
+		# the ledger's own list view stays shut: it is an append-only audit log of OAK's
+		# internal actions, and the row a customer wants from it is the one the report draws.
+		# Dropping `read` is also what takes the doctype off the sidebar — a Workspace
+		# Sidebar Item has no role field, so `can_read` is the only lever there is.
+		"Container Activity": "R",
 	},
 }
 

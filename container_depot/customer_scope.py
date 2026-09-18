@@ -58,10 +58,32 @@ _ALLOWED_FOREIGN_DOCTYPES: set[str] = {"Customer", "Item", "Item Group"}
 # no `permission_query_conditions` touches, so granting the flag and stopping there would
 # hand over the whole depot.
 #
-# Both entries below read through a filter: `Storage Charges` via `frappe.get_all`, and
-# `Container Booking Register` via `booking_sql_filter` in its own WHERE. A report added
-# here needs the same treatment before it goes in.
-CUSTOMER_REPORTS = {"Container Booking Register", "Storage Charges"}
+# EVERY entry reads through a filter it asks for BY HAND, and that is the price of entry:
+# `permission_query_conditions` never reaches a Script Report, and neither does a User
+# Permission — `frappe.get_all` runs with `ignore_permissions=True`, so even the reports
+# that look like ordinary list reads are unscoped until they call one of the filters below
+# (`booking_sql_filter`, `container_sql_filter`, `principal_sql_filter`, or
+# `get_user_customers` straight into a `frappe.get_all` filter dict).
+#
+#   Container Booking Register  — booking_sql_filter in its WHERE
+#   Storage Charges             — frappe.get_all + get_user_customers
+#   Container Inventory         — frappe.get_all + get_user_customers (principal)
+#   Container Activity          — container_sql_filter in its WHERE
+#   Inventory KPI per Principal — principal_sql_filter in each of its WHEREs
+#
+# A report added here needs the same treatment before it goes in.
+CUSTOMER_REPORTS = {
+	"Container Booking Register",
+	"Storage Charges",
+	# The "Container Inventory" section of the sidebar: the customer's own tanks, their
+	# history, and the rollup of both. It replaced the raw Audit lists (Gate Entry /
+	# Container Movement / Container Activity) for this role — same facts, read through a
+	# report that can be filtered, rather than three doctype lists that could not carry a
+	# storage age or an order column.
+	"Container Inventory",
+	"Container Activity",
+	"Inventory KPI per Principal",
+}
 
 # Core doctypes the Desk plumbing would otherwise carry through, kept shut anyway. Empty
 # since `Report` became a name allowlist (2026-09-18) rather than a closed door — see
@@ -166,6 +188,28 @@ def booking_sql_filter(alias: str) -> str:
 	if not values:
 		return "1=1"
 	return f"({alias}.customer in ({values}) or {alias}.principal in ({values}))"
+
+
+def container_sql_filter(column: str) -> str:
+	"""AND-clause scoping raw SQL that names a Container; ``1=1`` for internal accounts.
+
+	``column`` is the qualified column holding the container name (e.g. ``a.container``).
+	"""
+	values = _values(None)
+	if not values:
+		return "1=1"
+	return f"{column} in {_owned_containers(values)}"
+
+
+def principal_sql_filter(column: str) -> str:
+	"""AND-clause scoping raw SQL by tank owner; ``1=1`` for internal accounts.
+
+	``column`` is the qualified column holding the principal (e.g. ``c.principal``).
+	"""
+	values = _values(None)
+	if not values:
+		return "1=1"
+	return f"{column} in ({values})"
 
 
 # --- has_permission (opening one document directly) ------------------------

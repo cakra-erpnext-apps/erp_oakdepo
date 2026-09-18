@@ -6,7 +6,11 @@ read back as a logged-in customer user. What is being pinned:
 * the company flag is ONE User Permission (allow=Customer), written by the Customer
   Portal User lifecycle, and withdrawn again when the row leaves Active;
 * the doctypes Frappe cannot scope by itself are scoped anyway (Gate Entry and Container
-  Movement carry no Customer link);
+  Movement carry no Customer link) — the customer role no longer reads either, but the
+  conditions stay pinned: they are one Permission Manager edit away from being live again;
+* the reports it IS offered each filter by customer in their own query, which is the only
+  thing that scopes a Script Report: `frappe.get_all` runs with ignore_permissions=True,
+  so a report is unscoped until it asks;
 * a second Customer link on a record does NOT hide it from its owner — the and-joined
   User Permission conditions are exactly the trap ``ignore_user_permissions`` is set for
   (a tank owned by A whose last EMKL was B must stay in A's list);
@@ -70,6 +74,17 @@ def _movement(container_no):
 	}).insert(ignore_permissions=True).name
 
 
+def _activity(container_no, principal):
+	return frappe.get_doc({
+		"doctype": "Container Activity",
+		"container": container_no,
+		"principal": principal,
+		"activity_type": "Gate In",
+		"activity_time": frappe.utils.now_datetime(),
+		"summary": "fixture",
+	}).insert(ignore_permissions=True).name
+
+
 def _contract(customer):
 	"""A customer's rate card, which since 2026-09-17 IS its Depot Contract.
 
@@ -113,6 +128,7 @@ class TestCustomerScope(FrappeTestCase):
 		_container(TANKS[OTHER], OTHER)
 		cls.gates = {c: _gate_entry(t) for c, t in TANKS.items()}
 		cls.moves = {c: _movement(t) for c, t in TANKS.items()}
+		cls.activities = {c: _activity(t, c) for c, t in TANKS.items()}
 		for c in (OWNER, OTHER):
 			CONTRACTS[c] = _contract(c)
 		if frappe.db.exists("User", USER):
@@ -131,6 +147,8 @@ class TestCustomerScope(FrappeTestCase):
 		frappe.set_user("Administrator")
 		for name in frappe.get_all("Customer Portal User", filters={"user": USER}, pluck="name"):
 			frappe.delete_doc("Customer Portal User", name, ignore_permissions=True, force=True)
+		for name in cls.activities.values():
+			frappe.delete_doc("Container Activity", name, ignore_permissions=True, force=True)
 		for name in cls.moves.values():
 			frappe.delete_doc("Container Movement", name, ignore_permissions=True, force=True)
 		for name in cls.gates.values():
@@ -182,17 +200,28 @@ class TestCustomerScope(FrappeTestCase):
 		self.assertIn(TANKS[OWNER], names)
 		self.assertNotIn(TANKS[OTHER], names)
 
-	def test_gate_entry_filtered_through_the_tank(self):
+	def test_the_audit_lists_are_closed_to_the_customer(self):
+		"""The sidebar's "Audit" section — Gate Entry, Container Movement, Container
+		Activity — is the internal movement record, and the customer reads its own half of
+		it as the three reports in "Container Inventory" instead (patch v1_05). A Workspace
+		Sidebar Item carries no role, so withdrawing `read` is what takes the section off
+		the rail."""
 		frappe.set_user(USER)
-		names = frappe.get_list("Gate Entry", pluck="name")
-		self.assertIn(self.gates[OWNER], names)
-		self.assertNotIn(self.gates[OTHER], names)
+		for doctype in ("Gate Entry", "Container Movement", "Container Activity"):
+			with self.subTest(doctype=doctype):
+				self.assertFalse(frappe.has_permission(doctype, "read"))
 
-	def test_container_movement_filtered_through_the_tank(self):
-		frappe.set_user(USER)
-		names = frappe.get_list("Container Movement", pluck="name")
-		self.assertIn(self.moves[OWNER], names)
-		self.assertNotIn(self.moves[OTHER], names)
+	def test_the_audit_query_conditions_still_scope(self):
+		"""Kept live even though the role cannot read those doctypes today: the conditions
+		are one Permission Manager edit away from mattering again, and they are the only
+		thing standing between a customer and the whole depot's gate log."""
+		from container_depot.customer_scope import container_movement_query, gate_entry_query
+
+		for condition in (gate_entry_query(USER), container_movement_query(USER)):
+			self.assertIn(f"'{OWNER}'", condition)
+			self.assertNotIn(OTHER, condition)
+		frappe.set_user("Administrator")
+		self.assertEqual(gate_entry_query("Administrator"), "")
 
 	def test_rate_card_is_its_own_contract_only(self):
 		"""The rate card is the contract now, and Frappe scopes it by its Customer link —
@@ -202,10 +231,18 @@ class TestCustomerScope(FrappeTestCase):
 		self.assertEqual(names, [CONTRACTS[OWNER]])
 
 	def test_opening_another_customers_record_is_refused(self):
+		"""`has_permission` hooks, tested at their own level: the role's DocPerm on these
+		two is gone, so `frappe.has_permission` would answer False for both owners and prove
+		nothing about the scoping."""
+		from container_depot.customer_scope import (
+			container_movement_permission,
+			gate_entry_permission,
+		)
+
 		frappe.set_user(USER)
-		self.assertTrue(frappe.has_permission("Gate Entry", doc=self.gates[OWNER]))
-		self.assertFalse(frappe.has_permission("Gate Entry", doc=self.gates[OTHER]))
-		self.assertFalse(frappe.has_permission("Container Movement", doc=self.moves[OTHER]))
+		self.assertTrue(gate_entry_permission(frappe._dict(container_no=TANKS[OWNER])))
+		self.assertFalse(gate_entry_permission(frappe._dict(container_no=TANKS[OTHER])))
+		self.assertFalse(container_movement_permission(frappe._dict(container=TANKS[OTHER])))
 
 	# --- the menu ----------------------------------------------------------
 
@@ -260,15 +297,19 @@ class TestCustomerScope(FrappeTestCase):
 			fields=["parent", "read", "write", "create", "submit", "delete", "email", "report"],
 		)
 		self.assertTrue(perms, "the customer role has no permissions seeded")
+		# Container Activity is the one row with `report` and no `read`: the history is read
+		# through the report, the ledger's own list stays shut (patch v1_05).
+		report_only = {"Container Activity"}
+		# The doctypes the offered reports hang off. `report` alone does not decide which
+		# report runs — a Script Report builds its own SQL, so the gate is the report NAME
+		# (customer_scope.CUSTOMER_REPORTS), tested below.
+		may_report = {"Container Booking", "Container", "Container Activity"}
 		for row in perms:
-			self.assertEqual(row.read, 1, row.parent)
+			self.assertEqual(row.read, 0 if row.parent in report_only else 1, row.parent)
 			for flag in ("write", "create", "submit", "delete", "email"):
 				self.assertEqual(row.get(flag), 0, f"{row.parent}.{flag}")
-			# `report` is granted on exactly one doctype, and it is not what decides which
-			# reports run: a Script Report builds its own SQL, so the gate is the report
-			# NAME (customer_scope.CUSTOMER_REPORTS), tested below.
 			self.assertEqual(
-				row.report, 1 if row.parent == "Container Booking" else 0, f"{row.parent}.report"
+				row.report, 1 if row.parent in may_report else 0, f"{row.parent}.report"
 			)
 
 	def test_unlisted_reports_are_refused_on_the_run_path(self):
@@ -304,6 +345,59 @@ class TestCustomerScope(FrappeTestCase):
 
 		frappe.set_user("Administrator")
 		self.assertEqual(booking_sql_filter("b"), "1=1")  # internal staff, unchanged
+
+	# --- the reports the customer IS offered ---------------------------------
+
+	def test_the_inventory_section_reports_run_and_show_only_own_tanks(self):
+		"""The three reports that replaced the Audit lists. Each builds its own query, so
+		each has to ask customer_scope for the filter by hand — `frappe.get_all` runs with
+		ignore_permissions=True and a Script Report never meets
+		`permission_query_conditions`. One assertion per report, because a missing filter
+		looks exactly like a working report until someone else's tank shows up in it."""
+		from container_depot.container_depot.report.container_activity import (
+			container_activity as activity_report,
+		)
+		from container_depot.container_depot.report.container_inventory import (
+			container_inventory as inventory_report,
+		)
+		from container_depot.container_depot.report.inventory_kpi_per_principal import (
+			inventory_kpi_per_principal as kpi_report,
+		)
+
+		frappe.set_user(USER)
+
+		tanks = {r["container_no"] for r in inventory_report.execute({})[1]}
+		self.assertIn(TANKS[OWNER], tanks)
+		self.assertNotIn(TANKS[OTHER], tanks)
+
+		containers = {r["container"] for r in activity_report.execute({})[1]}
+		self.assertIn(TANKS[OWNER], containers)
+		self.assertNotIn(TANKS[OTHER], containers)
+
+		principals = {r["principal"] for r in kpi_report.execute({})[1]}
+		self.assertEqual(principals, {OWNER})
+
+	def test_the_storage_charges_report_shows_only_own_tanks(self):
+		"""Same trap, older report: it reads Container through `frappe.get_all`, which does
+		NOT apply the Customer User Permission."""
+		from container_depot.container_depot.report.storage_charges import storage_charges
+
+		frappe.set_user(USER)
+		tanks = {r["container"] for r in storage_charges.execute({})[1]}
+		self.assertNotIn(TANKS[OTHER], tanks)
+
+	def test_the_offered_reports_run(self):
+		"""The run path's allowlist and the menu's must name the same reports — a link that
+		is drawn and then refused on click is worse than no link."""
+		from container_depot.boot import patch_query_report_customer_scope
+
+		patch_query_report_customer_scope()
+		from frappe.desk import query_report
+
+		frappe.set_user(USER)
+		for report in sorted(CUSTOMER_REPORTS):
+			with self.subTest(report=report):
+				self.assertTrue(query_report.get_report_doc(report))
 
 	def test_own_masters_are_readable(self):
 		"""The customer types its own bookings and contract lines against these."""

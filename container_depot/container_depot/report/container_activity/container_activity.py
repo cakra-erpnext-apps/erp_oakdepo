@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.customer_scope import container_sql_filter
+
 
 def execute(filters=None):
 	filters = filters or {}
@@ -35,7 +37,9 @@ def _columns():
 
 
 def _data(filters):
-	where = []
+	# Raw SQL, so `permission_query_conditions` never sees it: an external customer account
+	# would otherwise read the whole depot's history. `1=1` for internal staff.
+	where = [container_sql_filter("container")]
 	params = {}
 	for field in ("container", "activity_type", "principal", "depot"):
 		if filters.get(field):
@@ -48,7 +52,7 @@ def _data(filters):
 		where.append("activity_time <= %(to_date)s")
 		params["to_date"] = filters["to_date"]
 
-	clause = (" WHERE " + " AND ".join(where)) if where else ""
+	clause = " WHERE " + " AND ".join(where)
 	rows = frappe.db.sql(
 		f"""
 		SELECT activity_time, container, activity_type, from_status, to_status,

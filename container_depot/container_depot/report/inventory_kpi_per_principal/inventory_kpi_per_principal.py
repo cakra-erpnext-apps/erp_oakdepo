@@ -20,6 +20,7 @@ from __future__ import annotations
 import frappe
 
 from container_depot.container_depot.container_status import DONE_CLEANING
+from container_depot.customer_scope import principal_sql_filter
 
 
 def execute(filters=None):
@@ -94,6 +95,13 @@ _OPEN_CLEANING = (
 )
 
 
+# Raw SQL in all three queries below, so nothing in customer_scope reaches them on its own:
+# an external customer account would read every principal's counts, which is the one thing
+# this report is made of. `1=1` for internal staff.
+def _customer_clause(alias="c"):
+	return f" AND {principal_sql_filter(f'{alias}.principal')}"
+
+
 def _depot_clause(alias, depot, params):
 	if depot:
 		params.append(depot)
@@ -103,12 +111,13 @@ def _depot_clause(alias, depot, params):
 
 def _container_counts(depot, where):
 	params = []
+	customer = _customer_clause()
 	clause = _depot_clause("c", depot, params)
 	rows = frappe.db.sql(
 		f"""
 		SELECT c.principal AS principal, COUNT(*) AS c
 		FROM `tabContainer` c
-		WHERE c.principal IS NOT NULL AND c.principal != ''
+		WHERE c.principal IS NOT NULL AND c.principal != ''{customer}
 		  AND ({where}){clause}
 		GROUP BY c.principal
 		""",
@@ -120,6 +129,7 @@ def _container_counts(depot, where):
 
 def _booking_counts(depot, direction):
 	params = [direction]
+	customer = _customer_clause()
 	clause = _depot_clause("c", depot, params)
 	rows = frappe.db.sql(
 		f"""
@@ -128,7 +138,7 @@ def _booking_counts(depot, direction):
 		JOIN `tabContainer Booking` b ON it.parent = b.name
 		JOIN `tabContainer` c ON it.container = c.name
 		WHERE b.direction = %s AND b.docstatus < 2
-		  AND c.principal IS NOT NULL AND c.principal != ''{clause}
+		  AND c.principal IS NOT NULL AND c.principal != ''{customer}{clause}
 		GROUP BY c.principal
 		""",
 		tuple(params),
@@ -161,6 +171,7 @@ def _cleaned_counts(depot, wash_type=None, item_code=None):
 			"   SELECT 1 FROM `tabCleaning Order Service` cos"
 			"   WHERE cos.parent = co.name AND cos.cleaning_item = %s))"
 		)
+	customer = _customer_clause()
 	clause = _depot_clause("c", depot, params)
 	rows = frappe.db.sql(
 		f"""
@@ -168,7 +179,7 @@ def _cleaned_counts(depot, wash_type=None, item_code=None):
 		FROM `tabCleaning Order` co
 		JOIN `tabContainer` c ON co.container = c.name
 		WHERE co.docstatus = 1 AND co.status = 'Completed'
-		  AND c.principal IS NOT NULL AND c.principal != ''{method_clause}{clause}
+		  AND c.principal IS NOT NULL AND c.principal != ''{customer}{method_clause}{clause}
 		GROUP BY c.principal
 		""",
 		tuple(params),

@@ -45,6 +45,7 @@ from frappe.utils import getdate, today
 
 from container_depot import storage, storage_charge
 from container_depot.container_depot.container_status import AVAILABLE, GATE_OUT, IN_DEPOT
+from container_depot.customer_scope import get_user_customers
 from container_depot.monthly_invoicing import _active_contract
 from container_depot.pricing import storage_rate_for
 
@@ -108,6 +109,15 @@ def _containers(filters):
 			where[field] = filters[field]
 	if filters.get("container"):
 		where["name"] = filters["container"]
+	# `frappe.get_all` runs with ignore_permissions=True, so NEITHER the DocPerm matrix nor
+	# the Customer User Permission reaches these rows: an external customer account is
+	# filtered here by hand or not at all. None for internal staff, who see everything.
+	customers = get_user_customers()
+	if customers:
+		asked = where.get("principal")
+		if asked and asked not in customers:
+			return []
+		where["principal"] = asked or ["in", customers]
 	return frappe.get_all(
 		"Container",
 		filters=where,

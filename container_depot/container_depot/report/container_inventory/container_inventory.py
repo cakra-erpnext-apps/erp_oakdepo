@@ -43,6 +43,7 @@ from container_depot.container_depot.container_status import (
 	DONE_REPAIR,
 	readiness_label,
 )
+from container_depot.customer_scope import get_user_customers
 from container_depot.state_machine import IN_DEPO_STAGES
 
 
@@ -146,6 +147,16 @@ def _containers(filters):
 	# reachable, because "why is this tank not in the report" needs an answer too.
 	if not filters.get("include_retired"):
 		query["is_active"] = 1
+	# `frappe.get_all` runs with ignore_permissions=True, so NEITHER the DocPerm matrix nor
+	# the Customer User Permission reaches these rows: an external customer account is
+	# filtered here by hand or not at all, and every query below is bounded by the names
+	# this one returns. None for internal staff, who see everything.
+	customers = get_user_customers()
+	if customers:
+		asked = query.get("principal")
+		if asked and asked not in customers:
+			return []
+		query["principal"] = asked or ["in", customers]
 	return frappe.get_all(
 		"Container",
 		filters=query,
