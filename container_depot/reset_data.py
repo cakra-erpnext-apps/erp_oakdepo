@@ -127,14 +127,41 @@ LEDGER_TABLES = [
 	"Stock Reservation Entry",
 ]
 
-# (doctype jejak, kolom yang menyimpan nama doctype yang ditunjuk)
+# (doctype jejak, kolom doctype yang ditunjuk, kolom NAMA dokumen yang ditunjuk)
+#
+# Kolom nama ada di sini sejak 2026-09-18 karena sapuannya berubah aturan: dulu ia membuang
+# jejak milik daftar doctype yang dihapus reset ini, sekarang ia membuang SETIAP jejak yang
+# dokumennya tidak ada lagi. Daftar tidak pernah lengkap — Depot Contract ketinggalan dan
+# meninggalkan 252 Notification Log yatim — sedangkan "dokumennya sudah tidak ada" berlaku
+# untuk doctype apa pun, termasuk yang dipasang app lain besok.
 ORPHAN_TRAILS = [
-	("Comment", "reference_doctype"),
-	("Version", "ref_doctype"),
-	("ToDo", "reference_type"),        # bukan reference_doctype
-	("DocShare", "share_doctype"),
-	("Notification Log", "document_type"),
-	("File", "attached_to_doctype"),
+	("Comment", "reference_doctype", "reference_name"),
+	("Version", "ref_doctype", "docname"),
+	("ToDo", "reference_type", "reference_name"),        # bukan reference_doctype
+	("DocShare", "share_doctype", "share_name"),
+	("Notification Log", "document_type", "document_name"),
+	("File", "attached_to_doctype", "attached_to_name"),
+]
+
+# Log murni: baris yang tidak menunjuk dokumen mana pun, jadi ``_sweep_orphans`` tidak akan
+# pernah menjaringnya, dan tidak ada yang lain yang membersihkannya. Di site dev ini mereka
+# menumpuk jadi 9041 Deleted Document, 5462 Error Log dan 1428 Scheduled Job Log yang
+# bertahan menyeberangi setiap reset — "hapus semua data" yang menyisakan 16 ribu baris log
+# bukan hapus semua data.
+#
+# ``Deleted Document`` ikut karena setelah reset ia hanya menyimpan nisan dokumen yang
+# memang sudah tidak ada. Yang TIDAK ada di sini: `Email Queue` (antrean kirim, bukan
+# riwayat — membuangnya di tengah jalan menelan email yang belum terkirim) dan `File`
+# (barisnya menaut berkas di disk, dan yang yatim sudah diurus sapuan).
+LOG_TABLES = [
+	"Deleted Document",
+	"Activity Log",
+	"Route History",
+	"Access Log",
+	"Error Log",
+	"Error Snapshot",
+	"Scheduled Job Log",
+	"Prepared Report",
 ]
 
 # Awalan penomoran yang ikut di-nol-kan supaya nomor mulai dari 1 lagi.
@@ -158,6 +185,24 @@ MASTER_DOCTYPES = [
 	"Surveyor Company",
 	"Customer Portal User",
 	"Self Service Terminal",
+	# Katalog kurasi depot. Ditambahkan 2026-09-18: sebelumnya `masters=1` melewatinya,
+	# jadi tiap baris yang pernah diketik tangan atau ditinggalkan teardown test bertahan
+	# menyeberangi setiap reset — Cargo sempat 211 dari 210 yang ditanam seeder, Damage
+	# Code 36 dari 29. Aman dihapus karena KEDUA seeder membangunnya ulang dari patch yang
+	# sama (`seed_dev.run` dan `seed_prod.run` sama-sama memanggil `_seed_cargo`,
+	# `_seed_eir_codes`, `_seed_eir_checklist`, `_seed_eir_fittings`,
+	# `_seed_cleaning_checklist`), jadi hasilnya persis angka seeder, bukan nol.
+	"Cargo",
+	"Cleaning Checklist Item",
+	"Inspection Checklist Item",
+	"Inspection Damage Code",
+	"Inspection Repair Code",
+	"Inspection Fitting Item",
+	# Satu-satunya di blok ini yang TIDAK dibangun seeder — routing-nya lahir di
+	# `install.setup_notification_rules`, yang biasanya cuma jalan waktu migrate. Karena
+	# itu `_reseed` memanggilnya sendiri; tanpa itu reset meninggalkan site tanpa satu pun
+	# aturan notifikasi sampai migrate berikutnya.
+	"Depot Notification Rule",
 ]
 
 
@@ -185,6 +230,7 @@ def run(confirm: str | None = None, masters: int = 0, seed: str = "") -> None:
 		deleted += _wipe_masters()
 
 	deleted += _sweep_orphans()
+	deleted += _wipe_tables(LOG_TABLES, "log")
 	_reset_series(SERIES_PREFIXES + (MASTER_SERIES_PREFIXES if int(masters) else []))
 
 	frappe.db.commit()
@@ -323,19 +369,58 @@ def _wipe_tree_leaves(doctype: str, extra: dict | None = None) -> int:
 
 
 def _sweep_orphans() -> int:
-	"""Buang jejak yang menunjuk ke dokumen yang barusan hilang."""
-	gone = set(DEPOT_DOCTYPES + ACCOUNTING_DOCTYPES + LEDGER_TABLES)
-	total = 0
-	for dt, field in ORPHAN_TRAILS:
-		if not frappe.db.table_exists(dt):
-			continue
-		n = frappe.db.count(dt, {field: ["in", list(gone)]})
-		if n:
-			frappe.db.delete(dt, {field: ["in", list(gone)]})
-			total += n
-			print(f"[reset] jejak: {dt}.{field} — {n}")
+	"""Buang SETIAP jejak yang dokumennya sudah tidak ada.
 
-	# Nisan "Deleted" menumpuk ribuan baris dari tiap teardown dan murni derau.
+	Bukan "jejak milik doctype yang barusan dihapus". Itu aturan lamanya, dan aturan itu
+	adalah sebuah daftar: daftar transaksi saja sampai 2026-09-18, jadi satu reset
+	``masters=1`` meninggalkan 252 Notification Log milik Depot Contract yang sudah hilang.
+	Daftar berikutnya akan ketinggalan doctype berikutnya.
+
+	Aturannya sekarang satu kalimat: sebuah riwayat tanpa dokumen adalah sampah. Yang
+	diperiksa tiap baris jejak, bukan nama doctype-nya — jadi ia ikut membuang sisa dari
+	teardown test, dari penghapusan manual di Desk, dan dari app yang dipasang besok, tanpa
+	pernah menyentuh riwayat dokumen yang masih hidup.
+
+	Tidak ada lagi flag ``masters`` di sini: master yang ``_wipe_masters`` hapus ikut
+	terjaring dengan sendirinya, karena dokumennya memang sudah tidak ada.
+	"""
+	total = 0
+	for trail, dt_col, name_col in ORPHAN_TRAILS:
+		if not frappe.db.table_exists(trail):
+			continue
+		targets = frappe.db.sql(
+			f"select distinct `{dt_col}` from `tab{trail}` where ifnull(`{dt_col}`, '') != ''",
+			pluck=True,
+		)
+		for target in targets:
+			if not frappe.db.table_exists(target):
+				# Doctype-nya sendiri sudah tidak ada (app dicopot, doctype dibuang patch):
+				# setiap barisnya yatim, tidak ada tabel untuk dibandingkan.
+				n = frappe.db.count(trail, {dt_col: target})
+				if n:
+					frappe.db.delete(trail, {dt_col: target})
+					total += n
+					print(f"[reset] jejak: {trail} → {target} (doctype hilang) — {n}")
+				continue
+			# LEFT JOIN, bukan `not in (select …)`: daftar nama bisa ratusan ribu baris, dan
+			# NOT IN dengan NULL di dalamnya diam-diam tidak mencocokkan apa pun.
+			orphans = frappe.db.sql(
+				f"""
+				select t.name from `tab{trail}` t
+				left join `tab{target}` d on d.name = t.`{name_col}`
+				where t.`{dt_col}` = %s and ifnull(t.`{name_col}`, '') != '' and d.name is null
+				""",
+				(target,),
+				pluck=True,
+			)
+			if orphans:
+				frappe.db.delete(trail, {"name": ["in", orphans]})
+				total += len(orphans)
+				print(f"[reset] jejak: {trail} → {target} — {len(orphans)}")
+
+	# Nisan "Deleted" menumpuk ribuan baris dari tiap teardown dan murni derau. Tidak
+	# terjaring aturan di atas: baris nisan justru MENUNJUK dokumen yang sudah hilang secara
+	# sah, dan sebagiannya menunjuk dokumen yang masih ada.
 	n = frappe.db.count("Comment", {"comment_type": "Deleted"})
 	if n:
 		frappe.db.delete("Comment", {"comment_type": "Deleted"})
@@ -385,4 +470,11 @@ def _reseed(seed: str) -> None:
 		seed_prod.run()
 	else:
 		frappe.throw(f"seed='{seed}' tidak dikenal — pakai 'dev', 'prod', atau '' ")
+
+	# Routing notifikasi tidak ada di seeder mana pun — ia lahir di `after_migrate`. Reset
+	# yang menghapusnya (MASTER_DOCTYPES) tanpa memanggil ini meninggalkan site yang diam:
+	# tidak ada bel untuk gate, EIR, cleaning atau approval sampai migrate berikutnya.
+	from container_depot.install import setup_notification_rules
+
+	setup_notification_rules()
 	frappe.db.commit()
