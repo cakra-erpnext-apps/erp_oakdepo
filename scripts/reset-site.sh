@@ -3,6 +3,7 @@
 #
 #   ./scripts/reset-site.sh                       # dev, transaksi saja, seed dev
 #   MASTERS=1 ./scripts/reset-site.sh             # dev, master ikut dibangun ulang
+#   PARTIES=1 ./scripts/reset-site.sh             # + Customer/kontrak/tarif, katalog Item tetap
 #   STACK=prod ./scripts/reset-site.sh            # prod, site dibaca dari .env.prod
 #
 # Backup diambil lebih dulu, SELALU, lalu disalin keluar volume ke ./_backups.
@@ -12,6 +13,7 @@ set -euo pipefail
 
 STACK="${STACK:-dev}"
 MASTERS="${MASTERS:-0}"        # 1 = master kurasi ikut dihapus lalu di-seed ulang
+PARTIES="${PARTIES:-0}"        # 1 = Customer, Supplier, Depot Contract + tarif, Item Price
 # Seeder mengikuti stack-nya, dan itu bukan kenyamanan belaka: `seed_dev` menanam
 # Customer contoh DAN satu Depot Contract Active berisi tarif karangan — dan kontrak
 # Active menerbitkan Price List yang dibaca booking, cleaning dan M&R sebagai rate
@@ -20,7 +22,17 @@ MASTERS="${MASTERS:-0}"        # 1 = master kurasi ikut dihapus lalu di-seed ula
 # `${SEED-...}` tanpa titik dua, dan itu bukan gaya: dengan `:-` sebuah `SEED=`
 # eksplisit (artinya "jangan seed apa pun") diperlakukan sama dengan tidak diset dan
 # diam-diam berubah jadi `dev` — operator meminta site kosong dan mendapat data contoh.
-SEED="${SEED-$([ "$STACK" = "prod" ] && echo prod || echo dev)}"   # dev | prod | ""
+# PARTIES=1 sendirian selalu berakhir tanpa seed: kedua seeder menanam Customer contoh,
+# jadi menyeed setelah menghapus pihak membatalkan separuh perintahnya. reset_data menolak
+# gabungan itu; di sini defaultnya tinggal dibuat benar sejak awal.
+if [ "$PARTIES" = "1" ] && [ "$MASTERS" != "1" ]; then
+  _seed_default=""
+elif [ "$STACK" = "prod" ]; then
+  _seed_default=prod
+else
+  _seed_default=dev
+fi
+SEED="${SEED-$_seed_default}"   # dev | prod | ""
 BACKUP_DIR="${BACKUP_DIR:-_backups}"
 
 cd "$(dirname "$0")/.."
@@ -58,8 +70,8 @@ log() { printf '\n== %s ==\n' "$*"; }
 # adalah ia diam-diam memilih stack dev, lalu mengeluh "service frappe is not running"
 # tanpa pernah menyebut site mana yang sebetulnya dituju.
 log "rencana"
-printf '  stack   : %s\n  site    : %s\n  seed    : %s\n  masters : %s\n' \
-  "$STACK" "$SITE" "${SEED:-tidak}" "$MASTERS"
+printf '  stack   : %s\n  site    : %s\n  seed    : %s\n  masters : %s\n  pihak   : %s\n' \
+  "$STACK" "$SITE" "${SEED:-tidak}" "$MASTERS" "$PARTIES"
 
 if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$SVC"; then
   echo "service '$SVC' tidak jalan untuk stack $STACK. Stack-nya belum naik, atau STACK=$STACK salah." >&2
@@ -82,7 +94,7 @@ docker cp "$cid:/home/frappe/frappe-bench/sites/$SITE/private/backups/." "$BACKU
 echo "backup tersalin ke $BACKUP_DIR/"
 
 log "reset data"
-"${COMPOSE[@]}" exec -T "$SVC" bash -lc "cd ~/frappe-bench && bench --site '$SITE' execute container_depot.reset_data.run --kwargs \"{'confirm': '$SITE', 'masters': $MASTERS, 'seed': '$SEED'}\""
+"${COMPOSE[@]}" exec -T "$SVC" bash -lc "cd ~/frappe-bench && bench --site '$SITE' execute container_depot.reset_data.run --kwargs \"{'confirm': '$SITE', 'masters': $MASTERS, 'parties': $PARTIES, 'seed': '$SEED'}\""
 
 log "clear cache"
 "${COMPOSE[@]}" exec -T "$SVC" bash -lc "cd ~/frappe-bench && bench --site '$SITE' clear-cache"

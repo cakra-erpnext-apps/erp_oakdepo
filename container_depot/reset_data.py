@@ -20,6 +20,12 @@ Parameter
              Yang diketik orang ikut hilang —
              lihat :func:`_wipe_masters`. 0 (default) = master dibiarkan, hanya
              transaksi yang dibersihkan.
+``parties``  1 = kosongkan PIHAK dan rate card-nya saja: Depot Contract (tarifnya ikut di
+             dalamnya), Customer Portal User, Customer, Supplier, dan seluruh
+             ``Item Price``. Katalog Item, Branch, Depot dan katalog kurasi depot
+             TIDAK disentuh — inilah yang dimaksud "customer bersih, kontrak bersih,
+             tarif bersih, item master yang sekarang tetap". Tidak perlu diisi kalau
+             ``masters=1``: mode itu sudah mencakupnya.
 ``seed``     ``""`` (default) tidak menyeed apa pun; ``"prod"`` master saja tanpa tarif;
              ``"dev"`` seed lengkap TERMASUK Depot Contract Bertschi berisi tarif
              karangan. Defaultnya sengaja kosong: menghapus itu yang Anda minta,
@@ -179,11 +185,29 @@ MASTER_SERIES_PREFIXES = ["DCNT-"]
 # terhapus lewat ``_child_tables`` saat kontraknya dihapus, ber-scope), yang kedua tidak
 # punya induk sama sekali. Menyebut tabel anak di daftar ini berarti ``frappe.db.delete``
 # tanpa scope — persis yang diperingatkan docstring modul ini.
+# Pihak + rate card-nya. Dipisah dari ``MASTER_DOCTYPES`` karena inilah potongan yang
+# paling sering diminta sendirian: sebuah site produksi yang sudah dipakai uji coba mau
+# Customer, kontrak dan tarifnya kembali nol, sementara katalog Item yang sudah dikurasi
+# tangan harus bertahan apa adanya — ``masters=1`` membuang katalog itu juga.
+#
+# ``Item Price`` ada di sini, bukan di ``MASTER_DOCTYPES``: app ini tidak membacanya lagi
+# sejak model harga pindah ke Tariff Rate di dalam kontrak (patch
+# ``v1_01.retire_the_published_price_list``), jadi yang tersisa di DB adalah cermin rate
+# card lama milik kontrak-kontrak itu. Sebelum ini tidak ada satu mode pun yang
+# membuangnya — ``masters=1`` menghapus Item-nya dan meninggalkan baris harganya yatim.
+# Baris ``Price List``-nya sendiri dibiarkan: namanya cuma label kosong, sudah disabled,
+# dan ERPNext menaut yang bawaan dari Selling/Buying Settings.
+PARTY_DOCTYPES = [
+	"Depot Contract",       # Tariff Rate ikut terhapus sebagai tabel anak
+	"Customer Portal User",  # satu baris per Customer, tak berarti tanpa induknya
+	"Customer",
+	"Supplier",
+]
+
 MASTER_DOCTYPES = [
 	"Container Position Template",
 	"Shipping Line",
 	"Surveyor Company",
-	"Customer Portal User",
 	"Self Service Terminal",
 	# Katalog kurasi depot. Ditambahkan 2026-09-18: sebelumnya `masters=1` melewatinya,
 	# jadi tiap baris yang pernah diketik tangan atau ditinggalkan teardown test bertahan
@@ -206,7 +230,9 @@ MASTER_DOCTYPES = [
 ]
 
 
-def run(confirm: str | None = None, masters: int = 0, seed: str = "") -> None:
+def run(
+	confirm: str | None = None, masters: int = 0, parties: int = 0, seed: str = ""
+) -> None:
 	site = frappe.local.site
 	if confirm != site:
 		frappe.throw(
@@ -216,7 +242,20 @@ def run(confirm: str | None = None, masters: int = 0, seed: str = "") -> None:
 
 	print("=" * 64)
 	print(f"Container Depot — RESET DATA · site {site}")
-	print(f"  masters={'ya' if int(masters) else 'tidak'}  seed={seed or 'tidak'}")
+	print(
+		f"  masters={'ya' if int(masters) else 'tidak'}"
+		f"  pihak={'ya' if int(masters) or int(parties) else 'tidak'}"
+		f"  seed={seed or 'tidak'}"
+	)
+
+	# Menghapus pihak lalu menyeed ulang membatalkan separuh perintahnya sendiri: kedua
+	# seeder menanam Customer contoh (`seed_prod` pun menanam Bertschi). Di `masters=1`
+	# menyeed memang tujuannya — di sini tidak.
+	if int(parties) and not int(masters) and seed:
+		frappe.throw(
+			f"parties=1 dengan seed='{seed}' membatalkan dirinya sendiri: "
+			"seeder menanam Customer contoh kembali. Pakai seed='' ."
+		)
 	print("=" * 64)
 
 	deleted = 0
@@ -228,10 +267,15 @@ def run(confirm: str | None = None, masters: int = 0, seed: str = "") -> None:
 
 	if int(masters):
 		deleted += _wipe_masters()
+	elif int(parties):
+		deleted += _wipe_parties()
 
 	deleted += _sweep_orphans()
 	deleted += _wipe_tables(LOG_TABLES, "log")
-	_reset_series(SERIES_PREFIXES + (MASTER_SERIES_PREFIXES if int(masters) else []))
+	_reset_series(
+		SERIES_PREFIXES
+		+ (MASTER_SERIES_PREFIXES if int(masters) or int(parties) else [])
+	)
 
 	frappe.db.commit()
 	print(f"[reset] {deleted} baris dihapus.")
@@ -322,14 +366,31 @@ def _wipe_masters() -> int:
 	* **Customer Group / Territory / UOM / Company**. Seeder membacanya, tidak
 	  membuatnya.
 	"""
-	total = 0
-
-	# Kontrak dulu, sebelum Customer: tarifnya ikut di dalamnya (child table Tariff Rate),
-	# jadi tidak ada rate card terpisah yang perlu dibersihkan sendiri.
-	total += _wipe_documents(["Depot Contract"], "master")
+	total = _wipe_parties()
 
 	total += _wipe_documents(MASTER_DOCTYPES, "master")
-	total += _wipe_documents(["Customer", "Supplier", "Item", "Depot", "Branch"], "master")
+	total += _wipe_documents(["Item", "Depot", "Branch"], "master")
+
+	total += _wipe_tree_leaves("Item Group")
+	total += _wipe_tree_leaves("Warehouse", {"branch": ["!=", ""]})
+
+	return total
+
+
+def _wipe_parties() -> int:
+	"""Kosongkan pihak + rate card: Customer, Supplier, kontrak, tarif, portal user.
+
+	Katalog Item, Branch, Depot dan katalog kurasi depot tidak disentuh — itu bedanya
+	dengan :func:`_wipe_masters`, yang memanggil fungsi ini lalu melanjutkan ke katalog.
+
+	Urutannya kontrak dulu, baru Customer: tarif hidup sebagai tabel anak di dalam
+	kontrak, jadi tidak ada rate card terpisah yang perlu dibereskan sendiri.
+	"""
+	total = _wipe_documents(PARTY_DOCTYPES, "pihak")
+
+	# Cermin harga model lama. Tidak dibaca app ini lagi, dan induk Item-nya bisa saja
+	# bertahan (parties=1), jadi sapuan yatim tidak akan pernah menjaringnya.
+	total += _wipe_tables(["Item Price"], "pihak")
 
 	# Jejak Contact/Address ke pihak yang barusan hilang. Dokumennya sendiri dibiarkan —
 	# satu Contact bisa menaut pihak lain juga.
@@ -338,10 +399,7 @@ def _wipe_masters() -> int:
 		if n:
 			frappe.db.delete("Dynamic Link", {"link_doctype": party})
 			total += n
-			print(f"[reset] master: Dynamic Link → {party} — {n}")
-
-	total += _wipe_tree_leaves("Item Group")
-	total += _wipe_tree_leaves("Warehouse", {"branch": ["!=", ""]})
+			print(f"[reset] pihak: Dynamic Link → {party} — {n}")
 
 	return total
 

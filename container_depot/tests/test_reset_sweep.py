@@ -13,7 +13,13 @@ ikut terbawa, karena sapuan yang kelewat rajin menghapus komentar orang.
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from container_depot.reset_data import ORPHAN_TRAILS, _sweep_orphans
+from container_depot.reset_data import (
+	MASTER_DOCTYPES,
+	ORPHAN_TRAILS,
+	PARTY_DOCTYPES,
+	_sweep_orphans,
+	_wipe_parties,
+)
 
 GHOST = "RSW-doc-yang-tidak-pernah-ada"
 
@@ -62,3 +68,34 @@ class TestResetSweepsEveryOrphan(FrappeTestCase):
 				columns = {c.get("Field") for c in frappe.db.sql(f"desc `tab{trail}`", as_dict=True)}
 				self.assertIn(dt_col, columns)
 				self.assertIn(name_col, columns)
+
+
+class TestPartiesWipeLeavesTheItemCatalogue(FrappeTestCase):
+	"""``parties=1`` membuang pihak + rate card, dan berhenti di situ.
+
+	Gunanya persis itu: site produksi yang sudah dipakai uji coba mau Customer, kontrak
+	dan tarifnya nol sementara katalog Item yang dikurasi tangan bertahan apa adanya.
+	Satu doctype katalog yang bocor ke ``PARTY_DOCTYPES`` menghapus pekerjaan itu tanpa
+	suara, jadi yang dipatok di sini sisi "tidak boleh ikut".
+
+	Tidak ada ``commit`` di dalam ``_wipe_parties``; ``rollback`` di akhir mengembalikan
+	site ke keadaan semula.
+	"""
+
+	def test_parties_go_and_the_catalogue_stays(self):
+		before = {dt: frappe.db.count(dt) for dt in ("Item", "Branch", "Depot", "Cargo")}
+		try:
+			_wipe_parties()
+			for dt in PARTY_DOCTYPES:
+				with self.subTest(dt=dt):
+					self.assertEqual(frappe.db.count(dt), 0)
+			self.assertEqual(frappe.db.count("Item Price"), 0)
+			for dt, n in before.items():
+				with self.subTest(dt=dt):
+					self.assertEqual(frappe.db.count(dt), n)
+		finally:
+			frappe.db.rollback()
+
+	def test_the_two_lists_do_not_overlap(self):
+		"""``_wipe_masters`` menjalankan keduanya — nama ganda = hapus dua kali, diam-diam."""
+		self.assertEqual(set(PARTY_DOCTYPES) & set(MASTER_DOCTYPES), set())
