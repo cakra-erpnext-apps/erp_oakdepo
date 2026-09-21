@@ -17,7 +17,10 @@ MASTERS="${MASTERS:-0}"        # 1 = master kurasi ikut dihapus lalu di-seed ula
 # Active menerbitkan Price List yang dibaca booking, cleaning dan M&R sebagai rate
 # card. Di produksi itu artinya harga palsu yang terlihat sah. Default yang salah di
 # sini lebih berbahaya daripada tidak ada default sama sekali.
-SEED="${SEED:-$([ "$STACK" = "prod" ] && echo prod || echo dev)}"   # dev | prod | ""
+# `${SEED-...}` tanpa titik dua, dan itu bukan gaya: dengan `:-` sebuah `SEED=`
+# eksplisit (artinya "jangan seed apa pun") diperlakukan sama dengan tidak diset dan
+# diam-diam berubah jadi `dev` — operator meminta site kosong dan mendapat data contoh.
+SEED="${SEED-$([ "$STACK" = "prod" ] && echo prod || echo dev)}"   # dev | prod | ""
 BACKUP_DIR="${BACKUP_DIR:-_backups}"
 
 cd "$(dirname "$0")/.."

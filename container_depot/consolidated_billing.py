@@ -30,8 +30,17 @@ too would double-charge.
 
 Each builder returns a list of **units** — ``{"currency", "lines", "sources"}`` —
 where ``lines`` are the invoice-line dicts for one source and ``sources`` are the
-rollback descriptors (an order ``{"dt", "name"}`` or a storage container
+rollback descriptors (an order ``{"dt", "name", "currency"}`` or a storage container
 ``{"storage", "prev"}``). :func:`bill_customer` groups units by currency.
+
+**An order may be billed in more than one currency.** A cleaning order, an M&R or a
+booking prices each of its rows in the currency its own tariff line states, so one
+order can carry both USD and IDR work. Such an order produces one unit PER CURRENCY
+and therefore lands on two sibling invoices of the same billing number — never one
+invoice that reads dollars as rupiah. What has already been billed is consequently a
+per-(order, currency) fact, read back off the live manifests (:func:`_billed_pairs`)
+rather than off the order's ``sales_invoice`` link: the link can only name one
+document, so it says "this order is on an invoice", not "this order is settled".
 """
 
 from __future__ import annotations
@@ -65,25 +74,78 @@ def _fallback_currency(customer):
 	return ccy or _default_currency()
 
 
+def _billed_pairs(customer):
+	"""Every ``(doctype, order, currency)`` a LIVE consolidated invoice of this customer
+	already carries.
+
+	The manifest is the truth about what has been billed — it is what a rollback gives back,
+	and it is cleared the moment an invoice is cancelled or discarded. The order's own
+	``sales_invoice`` link cannot answer this: an order billed in two currencies sits on two
+	invoices and the link names only one of them, so rolling ONE of them back would either
+	strand the other currency as unbillable or re-bill both.
+
+	Scoped to the customer's own invoices, so the scan stays the size of one account's
+	billing history rather than the whole ledger.
+	"""
+	pairs = set()
+	for raw in frappe.get_all(
+		"Sales Invoice",
+		filters={"customer": customer, MANIFEST_FIELD: ["is", "set"]},
+		pluck=MANIFEST_FIELD,
+	):
+		try:
+			sources = json.loads(raw) or []
+		except Exception:
+			continue
+		for src in sources:
+			if "storage" in src:
+				continue
+			pairs.add((src.get("dt"), src.get("name"), src.get("currency")))
+	return pairs
+
+
+def _already_billed(pairs, dt, name, currency, link=None) -> bool:
+	"""Whether this order's work IN THIS CURRENCY is already on an invoice.
+
+	A manifest written before billing split per currency names the order alone (no
+	``currency`` key); it stands for the WHOLE order, every currency on it.
+
+	``link`` is the order's ``sales_invoice``. A link that no live manifest explains was made
+	outside consolidated billing — a Cash invoice raised at the booking, an amended invoice
+	relinked, a hand-made one — and it means the order is spoken for whatever its currencies.
+	That is the guard the per-doctype query filter used to provide before this gate replaced
+	it.
+	"""
+	if (dt, name, currency) in pairs or (dt, name, None) in pairs:
+		return True
+	return bool(link) and not any(p[0] == dt and p[1] == name for p in pairs)
+
+
 def _booking_lines(customer, lo, hi):
-	"""Unbilled (no ``sales_invoice``) submitted **TOP** bookings → one unit per booking,
-	carrying every charge line the booking priced.
+	"""Unbilled submitted **TOP** bookings → one unit per booking PER CURRENCY, carrying
+	every charge line the booking priced.
 
 	Cash bookings settle at the booking (they carry their own paid invoice), so only
 	``payment_type = TOP`` bookings accrue for consolidated billing. A booking with no
 	charges bills nothing and is skipped — that is a deliberate free booking, not a gap to
 	fill from the tariff. (Before charges existed this re-derived a single lift rate from
-	the contract tariff, which could disagree with what the booking itself showed.)"""
+	the contract tariff, which could disagree with what the booking itself showed.)
+
+	A booking is always ONE currency — ``ContainerBooking._sync_currency_from_charges``
+	refuses to save one whose charge rows disagree, and mirrors theirs onto the document — so
+	unlike cleaning and M&R there is nothing to split here. The unit is still built through
+	the shared splitter, so what counts as already-billed is decided the same way for every
+	category."""
+	pairs = _billed_pairs(customer)
 	rows = frappe.get_all(
 		"Container Booking",
 		filters={
 			"customer": customer,
 			"payment_type": "TOP",
 			"docstatus": 1,
-			"sales_invoice": ["is", "not set"],
 			"creation": ["between", [lo, hi]],
 		},
-		fields=["name", "currency"],
+		fields=["name", "currency", "sales_invoice"],
 	)
 	fallback = _fallback_currency(customer)
 	units = []
@@ -104,33 +166,51 @@ def _booking_lines(customer, lo, hi):
 			for c in charges
 			if c.rate and c.rate > 0
 		]
-		if not lines:
-			continue
-		units.append({
-			"currency": r.currency or fallback,
-			"lines": lines,
-			"sources": [{"dt": "Container Booking", "name": r.name}],
-		})
+		by_ccy = {r.currency or fallback: lines} if lines else {}
+		units += _currency_units("Container Booking", r.name, by_ccy, pairs, r.sales_invoice)
 	return units
+
+
+def _currency_units(dt, name, lines_by_currency, pairs, link=None):
+	"""One unit per currency of one order, minus the currencies already on an invoice.
+
+	Sorted so a mixed order always produces its units — and therefore its sibling invoices —
+	in the same order, run after run.
+	"""
+	return [
+		{
+			"currency": ccy,
+			"lines": lines_by_currency[ccy],
+			# The currency is part of the rollback descriptor: giving an order back means
+			# giving back the half THIS invoice billed, not the whole order.
+			"sources": [{"dt": dt, "name": name, "currency": ccy}],
+		}
+		for ccy in sorted(lines_by_currency)
+		if lines_by_currency[ccy] and not _already_billed(pairs, dt, name, ccy, link)
+	]
 
 
 def _cleaning_lines(customer, lo, hi):
 	"""Completed, not-yet-billed cleaning for the customer's tanks.
 
 	Each cleaning Service chosen on an order (``cleaning_services``) becomes its own invoice
-	line, billed at the rate locked from the owner's contract at cleaning time. An order that
-	chose NO service at all falls back to ONE line at the contract's flat ``CLEANING_ITEM``
+	line — its own qty at the rate locked from the owner's contract at cleaning time. An order
+	that chose NO service at all falls back to ONE line at the contract's flat ``CLEANING_ITEM``
 	tariff — that is a missing price, and the contract is the answer to it.
 
 	An order that DID choose services and priced every one of them at zero is a different
 	thing: a free job somebody decided on. It bills nothing, and the contract tariff must not
-	be substituted for the decision (see :func:`_bills_something`)."""
+	be substituted for the decision (see :func:`_bills_something`).
+
+	Each service row carries its own currency, so an order that mixes them is split into one
+	unit per currency and lands on two sibling invoices."""
 	fallback_rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
 	fallback_ccy = _fallback_currency(customer)
+	pairs = _billed_pairs(customer)
 	rows = frappe.get_all(
 		"Cleaning Order",
-		filters={"status": "Completed", "cleaning_end": ["between", [lo, hi]], "sales_invoice": ["is", "not set"]},
-		fields=["name", "container", "currency"],
+		filters={"status": "Completed", "cleaning_end": ["between", [lo, hi]]},
+		fields=["name", "container", "currency", "sales_invoice"],
 	)
 	units = []
 	for r in rows:
@@ -138,26 +218,23 @@ def _cleaning_lines(customer, lo, hi):
 			continue
 		services = frappe.get_all(
 			"Cleaning Order Service", filters={"parent": r.name},
-			fields=["cleaning_item", "item_name", "rate"], order_by="idx asc",
+			fields=["cleaning_item", "item_name", "quantity", "rate", "currency"], order_by="idx asc",
 		)
 		priced = [s for s in services if s.cleaning_item and s.rate and s.rate > 0]
-		lines = []
+		by_ccy = {}
 		if priced:
 			for s in priced:
-				lines.append({
+				by_ccy.setdefault(s.currency or r.currency or fallback_ccy, []).append({
 					"item_code": s.cleaning_item,
 					"description": f"Cleaning {r.name} · {s.item_name or s.cleaning_item}",
-					"qty": 1, "rate": s.rate,
+					# Baris lama (sebelum kolom Qty ada) tidak punya qty — satu kali pakai.
+					"qty": flt(s.quantity) or 1, "rate": s.rate,
 				})
 		elif not services and fallback_rate and fallback_rate > 0:
-			lines.append({"item_code": CLEANING_ITEM, "description": f"Cleaning {r.name}", "qty": 1, "rate": fallback_rate})
-		if not lines:
-			continue
-		units.append({
-			"currency": r.currency or fallback_ccy,
-			"lines": lines,
-			"sources": [{"dt": "Cleaning Order", "name": r.name}],
-		})
+			by_ccy[r.currency or fallback_ccy] = [
+				{"item_code": CLEANING_ITEM, "description": f"Cleaning {r.name}", "qty": 1, "rate": fallback_rate}
+			]
+		units += _currency_units("Cleaning Order", r.name, by_ccy, pairs, r.sales_invoice)
 	return units
 
 
@@ -194,18 +271,21 @@ def _work_order_lines(customer, lo, hi, spec):
 	part is free (rate 0) is still billed: it may carry nothing but labour. An order where
 	NOTHING is worth anything — no priced part and no hours booked — is dropped by
 	:func:`_bills_something` instead, so the free job never reaches an invoice.
+
+	Each used-item row carries the currency its own tariff line states, so an order that mixes
+	them is split into one unit per currency rather than billed whole in one of the two.
 	"""
 	rows = frappe.get_all(
 		spec["doctype"],
 		filters={
 			"status": "Completed",
 			spec["party_field"]: customer,
-			"billing_status": "Unbilled",
 			"completion_date": ["between", [lo, hi]],
 		},
-		fields=["name"],
+		fields=["name", "sales_invoice"],
 	)
 	fallback_ccy = _fallback_currency(customer)
+	pairs = _billed_pairs(customer)
 	# Ask the child doctype whether it carries a negotiated labour tariff rather than
 	# assuming every work-order child is shaped alike.
 	labour_fields = (
@@ -221,7 +301,7 @@ def _work_order_lines(customer, lo, hi, spec):
 			fields=["item", "item_name", "quantity", "item_rate", "currency", "decision"] + labour_fields,
 			order_by="idx asc",
 		)
-		lines, currencies = [], set()
+		by_ccy = {}
 		for u in used:
 			if not u.item or (u.decision or "Pending") == "Rejected":
 				continue
@@ -241,19 +321,8 @@ def _work_order_lines(customer, lo, hi, spec):
 			if labour_fields and flt(u.get("manhour")):
 				line["manhour"] = flt(u.manhour)
 				line["manhour_rate"] = flt(u.manhour_rate)
-			lines.append(line)
-			if u.currency:
-				currencies.add(u.currency)
-		if not lines:
-			continue
-		units.append({
-			# An order can only be linked to ONE invoice (``_mark_billed`` writes a single
-			# sales_invoice), so a mixed-currency order is billed whole in the customer's
-			# currency rather than split across two invoices it could not both point at.
-			"currency": currencies.pop() if len(currencies) == 1 else fallback_ccy,
-			"lines": lines,
-			"sources": [{"dt": spec["doctype"], "name": r.name}],
-		})
+			by_ccy.setdefault(u.currency or fallback_ccy, []).append(line)
+		units += _currency_units(spec["doctype"], r.name, by_ccy, pairs, r.sales_invoice)
 	return units
 
 
@@ -444,20 +513,63 @@ def _mark_billed(dt, name, si):
 		frappe.db.set_value(dt, name, "sales_invoice", si, update_modified=False)
 
 
-def _unmark_billed(dt, name):
+def _other_invoice_for(dt, name, exclude):
+	"""Another LIVE consolidated invoice that still carries this order, or None.
+
+	A mixed-currency order sits on one invoice per currency. Rolling one of them back gives
+	back only THAT currency (its manifest entry goes with it); the order itself is still
+	billed, so its link has to move to a sibling rather than be cleared — a cleared link
+	reads as "never invoiced" and is what the ``_already_billed`` fallback would trust.
+
+	The LIKE is only a cheap prefilter on the stored JSON; the manifest is parsed to confirm.
+	"""
+	for row in frappe.get_all(
+		"Sales Invoice",
+		filters={MANIFEST_FIELD: ["like", f'%"{name}"%'], "name": ["!=", exclude or ""]},
+		fields=["name", MANIFEST_FIELD],
+	):
+		try:
+			sources = json.loads(row.get(MANIFEST_FIELD)) or []
+		except Exception:
+			continue
+		if any(src.get("dt") == dt and src.get("name") == name for src in sources):
+			return row.name
+	return None
+
+
+def _unmark_billed(dt, name, exclude_invoice=None):
 	"""Reverse :func:`_mark_billed` — return the order to its pre-generate, un-invoiced
-	state so it is billable again."""
+	state so it is billable again.
+
+	Only when nothing else still bills it. An order billed in two currencies is on two
+	invoices; rolling one back leaves the other standing, and the order must keep reading as
+	invoiced (pointed at the surviving sibling) or the next sweep would bill BOTH halves a
+	second time. The currency that was rolled back is billable again all the same — that is
+	decided by the manifests, not by this link (see :func:`_billed_pairs`).
+	"""
 	# A manifest written before a doctype was taken down (Periodic Test Order / Survey
 	# Order, v0_66) still names it; rolling back such an invoice must not blow up on a
 	# table that no longer exists.
 	if not frappe.db.exists("DocType", dt) or not frappe.db.exists(dt, name):
 		return
+	survivor = _other_invoice_for(dt, name, exclude_invoice)
 	if dt == "Container Booking":
-		frappe.db.set_value(dt, name, {"sales_invoice": None, "payment_status": "Unpaid"}, update_modified=False)
+		frappe.db.set_value(
+			dt, name,
+			{"sales_invoice": survivor, "payment_status": "Invoiced" if survivor else "Unpaid"},
+			update_modified=False,
+		)
 	elif dt in _WORK_ORDER_DOCTYPES:
-		frappe.db.set_value(dt, name, {"billing_status": "Unbilled", "sales_invoice": None}, update_modified=False)
+		frappe.db.set_value(
+			dt, name,
+			{
+				"billing_status": "Client Billed" if survivor else "Unbilled",
+				"sales_invoice": survivor,
+			},
+			update_modified=False,
+		)
 	elif dt == "Cleaning Order":
-		frappe.db.set_value(dt, name, "sales_invoice", None, update_modified=False)
+		frappe.db.set_value(dt, name, "sales_invoice", survivor, update_modified=False)
 
 
 def _guard_billing(action):
@@ -480,10 +592,21 @@ def _guard_billing(action):
 def _unit_key(u):
 	"""Stable id for one collected unit — what the preview ticks and the fill filters on.
 
-	Every builder returns one unit per source, so a unit is always exactly one order (or, for
-	storage, one container). The key survives a re-collect because it is derived from the
-	source document, not from position in the list.
+	A unit is one order IN ONE CURRENCY (or, for storage, one container), so the currency is
+	part of the key: a mixed order shows as two preview rows and either may be billed on its
+	own. The key survives a re-collect because it is derived from the source document, not
+	from position in the list.
 	"""
+	src = u["sources"][0]
+	if "storage" in src:
+		return f"Storage|{src['storage']}"
+	return f"{src['dt']}|{src['name']}|{src.get('currency') or ''}"
+
+
+def _unit_order_key(u):
+	"""The unit's ORDER, without its currency — the vocabulary the Order Billing Status
+	selection speaks. Ticking an order there bills everything it still owes, in every
+	currency it carries."""
 	src = u["sources"][0]
 	return f"Storage|{src['storage']}" if "storage" in src else f"{src['dt']}|{src['name']}"
 
@@ -679,7 +802,9 @@ def fill_invoice_from_orders(customer, orders):
 	# fresh collect identically — a ticked order bills byte-for-byte like a filtered one.
 	wanted = {f"{o['doctype']}|{o['name']}" for o in orders}
 	units = [
-		u for u in collect_units(customer, None, "2000-01-01", today()) if _unit_key(u) in wanted
+		u
+		for u in collect_units(customer, None, "2000-01-01", today())
+		if _unit_order_key(u) in wanted
 	]
 	if not units:
 		frappe.throw(_("Order yang dipilih sudah ditagih atau tidak menagihkan apa pun."))
@@ -748,7 +873,7 @@ def rollback_billed_sources(doc, method=None):
 				getdate(prev) if prev else None, update_modified=False,
 			)
 		else:
-			_unmark_billed(src.get("dt"), src.get("name"))
+			_unmark_billed(src.get("dt"), src.get("name"), exclude_invoice=doc.name)
 	# On cancel the invoice survives (docstatus 2); clear its manifest so a later delete
 	# does not roll back a second time (the orders may have been re-generated by then).
 	if method == "on_cancel":

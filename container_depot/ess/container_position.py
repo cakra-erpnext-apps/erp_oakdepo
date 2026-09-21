@@ -80,6 +80,20 @@ def position_record(container=None, location_note=None, notes=None, photos=None,
 	))
 
 
+@frappe.whitelist(methods=["POST"])
+def position_request(container=None):
+	"""POST /api/v1/ess/position-request — minta letak satu tank dicek ulang.
+
+	Dipakai tombol "Minta Cek Letak" di form Cleaning Order / Repair Order di Desk (Desk
+	memanggil endpoint ESS di banyak tempat lain juga — lihat ess.guard). Menu yang sama
+	dengan pencatatannya: yang boleh menjawab pertanyaan ini boleh mengajukannya.
+
+	Tidak di-``guarded``: ini UPDATE stempel, bukan INSERT, jadi kiriman ulang cuma menulis
+	jam yang sama sekali lagi."""
+	require_menu(MENU)
+	return container_position.request_position_check(container)
+
+
 # ---------------------------------------------------------------------------
 # Template posisi — daftar pilihan milik depot
 # ---------------------------------------------------------------------------

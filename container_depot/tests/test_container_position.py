@@ -144,6 +144,55 @@ class TestThePositionQueue(_Base):
 		self.assertIn(c, self._queued())
 
 
+class TestAskingByHand(_Base):
+	"""Minta cek letak dari order yang sedang memegang tank — tanpa booking, tanpa dokumen.
+
+	Antrean yang sama dengan yang dijadwalkan booking Tank Out; yang berbeda cuma pintu
+	masuknya. Penutupnya tetap satu: sebuah bacaan letak yang lebih baru dari permintaannya.
+	"""
+
+	def _queued(self):
+		return [r["name"] for r in cp.open_position_orders()["items"]]
+
+	def test_a_request_puts_a_tank_with_no_booking_in_the_queue(self):
+		c = self._container("CPOS00000060")
+		self.assertNotIn(c, self._queued())
+		cp.request_position_check(c)
+		self.assertIn(c, self._queued())
+
+	def test_filing_a_reading_closes_it(self):
+		c = self._container("CPOS00000061")
+		cp.request_position_check(c)
+		cp.record_position(c, "blok C baris 1")
+		self.assertNotIn(c, self._queued())
+
+	def test_asking_again_reopens_a_tank_whose_reading_has_been_answered(self):
+		"""Letak yang dicatat pagi tadi tetap boleh diminta dicek lagi sore ini: permintaan
+		kedua memajukan stempelnya, dan bacaan lama jadi lebih tua dari pertanyaannya."""
+		c = self._container("CPOS00000062")
+		cp.record_position(c, "blok C baris 1")
+		self.assertNotIn(c, self._queued())
+		cp.request_position_check(c)
+		self.assertIn(c, self._queued())
+
+	def test_a_tank_that_has_left_the_depot_cannot_be_asked_about(self):
+		"""Tank yang sudah lewat gerbang tidak punya letak untuk dicari."""
+		c = self._container("CPOS00000063")
+		frappe.db.set_value("Container", c, "status", "Gate_Out", update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			cp.request_position_check(c)
+		self.assertNotIn(c, self._queued())
+
+	def test_a_tank_that_leaves_after_being_asked_drops_out_of_the_queue(self):
+		"""Antrean ini soal berjalan ke sebuah tumpukan; tank yang sudah tidak ada di depo
+		tidak bisa ditemukan di sana, jadi ia turun sendiri dari daftar."""
+		c = self._container("CPOS00000064")
+		cp.request_position_check(c)
+		self.assertIn(c, self._queued())
+		frappe.db.set_value("Container", c, "status", "Gate_Out", update_modified=False)
+		self.assertNotIn(c, self._queued())
+
+
 class TestRecordingAPosition(_Base):
 	def test_a_reading_lands_on_the_master(self):
 		"""The master is what every other screen reads, so a reading that does not reach it has

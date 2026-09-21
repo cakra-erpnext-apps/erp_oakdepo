@@ -2,23 +2,30 @@
  "actions": [],
  "creation": "2026-06-24 00:00:00.000000",
  "doctype": "DocType",
- "editable_grid": 1,
+ "editable_grid": 0,
  "engine": "InnoDB",
  "field_order": [
   "cleaning_item",
   "item_name",
+  "section_cost",
+  "quantity",
+  "currency",
+  "column_break_cost",
   "rate",
+  "amount",
+  "section_labour",
   "manhour_rate",
-  "currency"
+  "section_notes",
+  "remark"
  ],
  "fields": [
   {
-   "columns": 4,
-   "description": "Service cleaning dari katalog item; yang paling sering dipakai muncul lebih dulu.",
+   "columns": 3,
+   "description": "Wajib. Pilih satu item service atau part dari katalog. Item paling sering dipakai tampil lebih dulu.",
    "fieldname": "cleaning_item",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Service",
+   "label": "Item (Service / Part)",
    "options": "Item",
    "reqd": 1
   },
@@ -28,20 +35,61 @@
    "fieldtype": "Data",
    "label": "Nama",
    "read_only": 1,
-   "description": "Cermin nama Item; kolomnya disembunyikan di grid — Service sudah menampilkan nama."
+   "description": "Terisi otomatis. Diambil dari master Item."
+  },
+  {
+   "fieldname": "section_cost",
+   "fieldtype": "Section Break"
+  },
+  {
+   "columns": 1,
+   "default": "1",
+   "description": "Wajib. Isi jumlah pemakaian pada baris ini. Kosong atau 0 dihitung 1.",
+   "fieldname": "quantity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty",
+   "reqd": 1
+  },
+  {
+   "columns": 1,
+   "description": "Opsional. Terisi dari kontrak pemilik tank yang sedang jalan. Boleh diubah.",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "column_break_cost",
+   "fieldtype": "Column Break"
   },
   {
    "columns": 2,
-   "description": "Tarif service dari kontrak pemilik container, bisa diubah. Tidak termasuk labour.",
+   "description": "Opsional. Tarif satuan dari kontrak pemilik tank. Boleh diubah.",
    "fieldname": "rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "Tarif",
+   "label": "Item Rate",
    "options": "currency"
   },
   {
    "columns": 2,
-   "description": "Tarif labour service ini, langsung dari price list kontrak pemilik container — dipakai apa adanya, tanpa dikalikan jam.",
+   "description": "Terisi otomatis. Qty x Item Rate. Tarif Manhour tidak dihitung di sini.",
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Cost",
+   "options": "currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_labour",
+   "fieldtype": "Section Break"
+  },
+  {
+   "columns": 1,
+   "description": "Opsional. Tarif labour baris ini dipakai apa adanya. Tidak dikali jam maupun qty.",
    "fieldname": "manhour_rate",
    "fieldtype": "Currency",
    "in_list_view": 1,
@@ -49,21 +97,20 @@
    "options": "currency"
   },
   {
-   "description": "Mata uang price list pemilik container.",
-   "fieldname": "currency",
-   "fieldtype": "Link",
-   "hidden": 0,
-   "label": "Currency",
-   "options": "Currency",
-   "read_only": 1,
-   "columns": 1,
-   "in_list_view": 1
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Opsional. Isi catatan untuk baris ini.",
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-07 12:00:00.000000",
+ "modified": "2026-09-21 12:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order Service",
  "permissions": [],

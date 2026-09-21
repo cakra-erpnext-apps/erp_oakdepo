@@ -108,47 +108,52 @@ class CleaningOrder(Document):
 		"""Seed every chosen cleaning Service (one or more) from the contract that owns the
 		container, so the order starts on the figures negotiated with the tank owner.
 
-		Each row carries the two PRICES the rate card states, side by side and never merged:
-		  * ``rate``         — the service tariff, summed into ``cleaning_total``
-		  * ``manhour_rate`` — its labour tariff, summed into ``manhour_charge_total``
+		Shaped like the M&R estimate (``Repair Used Item``): a row is a LINE — an item, a qty,
+		its own currency, a unit rate — and its money is derived:
+		  * ``amount``       — Qty x Item Rate, summed into ``cleaning_total``
+		  * ``manhour_rate`` — its labour tariff, NOT multiplied by anything, summed into
+		    ``manhour_charge_total``
 
-		Both are taken AS THEY STAND — no hours arithmetic here. The order records what the
-		price list charges; how labour is settled on the invoice is billing's business, and
-		doubling it into the service tariff here would pay for it twice.
+		Labour is taken AS IT STANDS and deliberately stays OUT of ``amount``: the invoice
+		settles labour once in its own header (``invoicing.apply_manhour_charge``), so costing
+		it into the line here would bill the owner twice.
 
-		Both are only a BASE PRICE: seeded once (while the row still reads 0) and never
-		overwritten afterwards, so Admin Ops can negotiate a one-off figure on the order
+		The two tariffs are only a BASE PRICE: seeded once (while the row still reads 0) and
+		never overwritten afterwards, so Admin Ops can negotiate a one-off figure on the order
 		without a later save silently resetting it back to the contract. No contract / no
 		price list leaves them at 0 for Admin Ops to fill in.
+
+		Currency lives on the ROW (the order can mix them). It is SEEDED from the running
+		contract and then belongs to whoever is filling the order in: never locked, never
+		re-applied. A rate card states the currency the owner normally pays in, not the only
+		one a depot may invoice — a one-off quoted in another currency is a real thing, and
+		refusing it here only pushes the correction onto the invoice. The header ``currency``
+		is DERIVED from the rows (single currency, else the owner's billing currency) and is
+		what billing, the printout and the reports keep reading.
 		"""
 		from frappe.utils import flt
 
 		from container_depot import pricing
 
-		from container_depot.pricing_model import currency_for_customer, currency_is_locked
+		from container_depot.pricing_model import currency_for_customer
 
 		contract = contract_for_container(self.container)
 		principal = (
 			frappe.db.get_value("Container", self.container, "principal") if self.container else None
 		)
-		# Mata uang pindah tank ikut pemiliknya, jadi pilihan operator di order ini milik
-		# pemilik yang lama — buang sebelum di-resolve ulang.
+		# Mata uang kontrak yang sedang jalan (bisa beda dari mata uang company). Dipakai
+		# sebagai ISIAN AWAL baris, bukan kunci: kolom Currency di baris selalu bisa diubah.
+		base_currency = currency_for_customer(principal, contract)
+		# Mata uang pindah tank ikut pemiliknya, jadi pilihan operator atas baris-baris ini
+		# milik pemilik yang lama — buang sebelum di-resolve ulang.
 		before = self.get_doc_before_save()
-		if before and before.container != self.container:
-			self.currency = None
-		# Tarif ditampilkan dalam mata uang kontrak (bisa beda dari mata uang
-		# company). Terkunci selama pemiliknya punya rate card sendiri atau mata uang tagihan
-		# di master — itu fakta kesepakatan, bukan pilihan. Owner walk-in yang tidak punya
-		# keduanya: field-nya terbuka, operator yang menentukan, dan di situ tidak ada rate
-		# ter-seed yang bisa tertinggal dengan label mata uang keliru (tidak ada kontrak yang
-		# menyeed). Dulu baris ini selalu menimpa, jadi mata uang yang dipilih manual hilang
-		# lagi setiap save.
-		self.currency_locked = 1 if currency_is_locked(principal, contract) else 0
-		if self.currency_locked or not self.currency:
-			self.currency = currency_for_customer(principal, contract)
+		owner_changed = bool(before and before.container != self.container)
 		service_total = manhour_total = 0.0
 		for row in self.cleaning_services:
-			row.currency = self.currency
+			# Diisi hanya saat baris belum punya mata uang. Tank pindah pemilik = kontrak
+			# lain, jadi pilihan untuk pemilik lama dibuang dan di-seed ulang.
+			if owner_changed or not row.currency:
+				row.currency = base_currency
 			if not row.cleaning_item:
 				row.rate = row.manhour_rate = 0
 			else:
@@ -158,8 +163,18 @@ class CleaningOrder(Document):
 					row.rate = base_rate_for(row.cleaning_item, contract)
 				if not flt(row.manhour_rate):
 					row.manhour_rate = pricing.manhour_for(row.cleaning_item, contract)
-			service_total += flt(row.rate)
+			# Baris lama (sebelum kolom Qty ada) tidak punya qty — satu kali pakai.
+			row.quantity = flt(row.quantity) or 1
+			row.amount = row.quantity * flt(row.rate)
+			service_total += flt(row.amount)
 			manhour_total += flt(row.manhour_rate)
+		# Mata uang order = mata uang barisnya kalau seragam. Kalau campur, satu order tetap
+		# hanya bisa menunjuk SATU invoice (`consolidated_billing._mark_billed`), jadi yang
+		# dipakai adalah mata uang tagihan pemiliknya — sama seperti M&R campur mata uang.
+		row_currencies = {r.currency for r in self.cleaning_services if r.currency}
+		self.currency = row_currencies.pop() if len(row_currencies) == 1 else base_currency
+		# Dua total yang TIDAK pernah dijumlahkan jadi satu, dan tidak dipecah per mata uang:
+		# penagihan membaca barisnya sendiri; ini angka ringkas untuk sidebar & report.
 		self.cleaning_total = service_total
 		self.manhour_charge_total = manhour_total
 
@@ -434,7 +449,7 @@ def service_pricing(container=None, item_code=None) -> dict:
 	"""
 	from container_depot import pricing
 
-	from container_depot.pricing_model import currency_for_customer, currency_is_locked
+	from container_depot.pricing_model import currency_for_customer
 
 	contract = contract_for_container(container)
 	principal = frappe.db.get_value("Container", container, "principal") if container else None
@@ -443,10 +458,9 @@ def service_pricing(container=None, item_code=None) -> dict:
 		"rate": base_rate_for(item_code, contract),
 		# Tarif labour dari rate card pemilik tank — dipakai apa adanya di order ini.
 		"manhour_rate": pricing.manhour_for(item_code, contract),
+		# Isian awal saja: form hanya memakainya kalau baris belum punya mata uang, dan
+		# tidak pernah menimpa pilihan operator saat itemnya diganti.
 		"currency": currency,
-		# Terkunci = mata uang sudah punya sumber yang mengikat; kalau tidak, form membiarkan
-		# operator memilih dan JS tidak boleh menimpanya tiap kali Service diganti.
-		"currency_locked": 1 if currency_is_locked(principal, contract) else 0,
 		"item_name": frappe.db.get_value("Item", item_code, "item_name") if item_code else None,
 		"contract": contract,
 	}

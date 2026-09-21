@@ -14,7 +14,10 @@
 {%- set _ccy = doc.get("currency") or frappe.db.get_default("currency") or "IDR" -%}
 {%- set _svc = doc.get("cleaning_services") or [] -%}
 {%- set _photos = doc.get("qc_photos") or [] -%}
-{%- set _total = frappe.utils.flt(doc.get("cleaning_total")) + frappe.utils.flt(doc.get("manhour_charge_total")) -%}
+{#- Totals are grouped BY THE ROW'S CURRENCY: one cleaning order may mix them, and a single
+    figure would be adding rupiah to dollars. `groupby` sorts, so the blocks come out in a
+    stable order; a row with no currency of its own falls under the order's. -#}
+{%- set _by_ccy = _svc | groupby("currency") -%}
 
 <div class="oak-doc">
   {{ oak.watermark() }}
@@ -82,12 +85,14 @@
   <!-- ============ PEKERJAAN CLEANING ============ -->
   <table class="grid">
     <thead>
-      <tr><th class="sec-row" colspan="4">PEKERJAAN CLEANING</th></tr>
+      <tr><th class="sec-row" colspan="6">PEKERJAAN CLEANING</th></tr>
       <tr>
         <th style="width:5%;">#</th>
-        <th>SERVICE</th>
-        <th style="width:22%;" class="num">TARIF</th>
-        <th style="width:22%;" class="num">TARIF MANHOUR</th>
+        <th>ITEM</th>
+        <th style="width:8%;" class="num">QTY</th>
+        <th style="width:19%;" class="num">ITEM RATE</th>
+        <th style="width:19%;" class="num">TOTAL COST</th>
+        <th style="width:19%;" class="num">TARIF MANHOUR</th>
       </tr>
     </thead>
     <tbody>
@@ -95,11 +100,13 @@
       <tr>
         <td class="ctr">{{ loop.index }}</td>
         <td>{{ r.get("item_name") or r.get("cleaning_item") or "&mdash;" }}</td>
+        <td class="num">{{ frappe.utils.flt(r.get("quantity")) or 1 }}</td>
         <td class="num">{{ oak.money(r.get("rate"), r.get("currency") or _ccy) }}</td>
+        <td class="num">{{ oak.money(r.get("amount"), r.get("currency") or _ccy) }}</td>
         <td class="num">{{ oak.money(r.get("manhour_rate"), r.get("currency") or _ccy) }}</td>
       </tr>
       {%- else %}
-      <tr><td colspan="4" class="ctr sub">Tidak ada baris service.</td></tr>
+      <tr><td colspan="6" class="ctr sub">Tidak ada baris service.</td></tr>
       {%- endfor %}
     </tbody>
   </table>
@@ -109,18 +116,23 @@
       <td style="width:56%;"></td>
       <td style="width:44%; vertical-align:top;">
         <table>
+          {%- for _cur, _rows in _by_ccy %}
+          {%- set _cur = _cur or _ccy -%}
+          {%- set _svc_total = _rows | sum(attribute="amount") -%}
+          {%- set _mhr_total = _rows | sum(attribute="manhour_rate") -%}
           <tr>
             <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Total Tarif Service</td>
-            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(doc.get("cleaning_total"), _ccy) }}</td>
+            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(_svc_total, _cur) }}</td>
           </tr>
           <tr>
             <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Biaya Manhour</td>
-            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(doc.get("manhour_charge_total"), _ccy) }}</td>
+            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(_mhr_total, _cur) }}</td>
           </tr>
           <tr class="total-row">
-            <td>TOTAL</td>
-            <td class="num">{{ oak.money(_total, _ccy) }}</td>
+            <td>TOTAL {{ _cur }}</td>
+            <td class="num">{{ oak.money(_svc_total + _mhr_total, _cur) }}</td>
           </tr>
+          {%- endfor %}
         </table>
       </td>
     </tr>

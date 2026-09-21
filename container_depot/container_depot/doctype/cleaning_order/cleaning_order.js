@@ -1,30 +1,30 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
-// The "Metode Cleaning (Service)" table picks one OR MORE cleaning services from the whole
-// item catalogue, most-used first (no contract narrowing — a service the owner's rate card
-// does not price comes in at 0 for Admin Ops to fill in).
+// "Metode Cleaning (Service)" is shaped exactly like the M&R's Service & Parts grid: a row is
+// a LINE — an item from the whole catalogue (most-used first, no contract narrowing), a qty,
+// its own currency, a unit rate — and it is NOT typed in the grid. The child carries
+// `editable_grid: 0`, so the grid is a plain list and a click on a row opens its own form,
+// where the whole line is visible and the fields sit in the order they are meant to be filled.
 //
-// Each row carries the two PRICES the rate card states, side by side and never merged:
-//   Tarif         — what the service itself costs
-//   Tarif Manhour — what its labour costs
-// Both are read straight off the owner's price list and used AS THEY STAND — no hours
-// arithmetic on the order. They roll up into Total Tarif Service and Biaya Manhour, which
-// stay apart: billing charges the service tariffs and settles labour on its own line, so
-// folding one into the other here would bill labour twice.
-// All three are SEEDED from the active Depot Contract of the container's owner the moment a
-// Service is picked and stay EDITABLE — a seeded value is never re-applied, so a negotiated
-// one-off figure survives every later save. They roll up into Total Tarif Service and Total
-// Tarif Manhour, which are deliberately kept apart: billing charges the service tariffs as
-// they stand and settles the labour once, on its own invoice line. Costing labour into the
-// tariff here too would bill it twice.
+// The money on a line:
+//   Item Rate     — what one of this service/part costs
+//   Total Cost    — Qty x Item Rate, derived, never typed
+//   Tarif Manhour — what its labour costs, taken AS IT STANDS (no hours, no qty)
+// Tarif Manhour is deliberately LEFT OUT of Total Cost: billing settles labour once, on its
+// own invoice line, so folding it in here would bill it twice. The two roll up into Total
+// Tarif Service and Biaya Manhour, which stay apart for the same reason.
+//
+// Both tariffs are SEEDED from the active Depot Contract of the container's owner the moment
+// an item is picked, and stay EDITABLE — a seeded value is never re-applied, so a negotiated
+// one-off figure survives every later save. A service the owner's rate card does not price
+// comes in at 0 for Admin Ops to fill in.
+//
+// Currency is per ROW (an order may mix them), SEEDED from the running contract and never
+// locked: a rate card states what the owner normally pays in, not the only currency a depot
+// may invoice. The order's own `currency` is DERIVED from the rows server-side and lives
+// under "Sistem", not on this form.
 frappe.ui.form.on('Cleaning Order', {
-	currency(frm) {
-		// Baris service ikut mata uang header (server menyamakan keduanya tiap save), jadi
-		// pilihan manual harus kelihatan di grid tanpa menunggu save.
-		(frm.doc.cleaning_services || []).forEach((row) =>
-			frappe.model.set_value(row.doctype, row.name, 'currency', frm.doc.currency));
-	},
 	setup(frm) {
 		install_photo_thumbnails(frm);
 	},
@@ -44,6 +44,9 @@ frappe.ui.form.on('Cleaning Order', {
 		// bisa dibetulkan di sini — termasuk uji yang dikerjakan vendor / depo lain.
 		container_depot.tank_last_test.load(frm);
 		container_depot.tank_last_test.button(frm);
+		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
+		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
+		container_depot.tank_position.button(frm);
 		// A revision request raised from the PWA, with its reason — otherwise the request
 		// reaches Admin Ops as a bell notification and leaves no trace on the order itself.
 		if (frm.doc.docstatus === 1 && frm.doc.revision_requested) {
@@ -83,20 +86,17 @@ frappe.ui.form.on('Cleaning Order', {
 	//
 	// Tarif and Manhour are listed as two separate facts and NEVER added up: billing charges
 	// the tariff as it stands and settles the labour once, on its own invoice line.
+	//
+	// Each is broken down PER CURRENCY, off the rows themselves: an order may mix currencies,
+	// and one number would be adding rupiah to dollars. The two stored totals are a plain
+	// numeric roll-up for the list view and the reports, and are not what is shown here.
 	_render_system_facts(frm) {
 		const link = container_depot.doc_link;
 		const esc = frappe.utils.escape_html;
 		container_depot.render_system_facts(frm, [
 			[__('Status'), frm.doc.status && esc(frm.doc.status)],
-			[
-				__('Total Tarif Service'),
-				frm.doc.cleaning_total && format_currency(frm.doc.cleaning_total, frm.doc.currency),
-			],
-			[
-				__('Biaya Manhour'),
-				frm.doc.manhour_charge_total &&
-					format_currency(frm.doc.manhour_charge_total, frm.doc.currency),
-			],
+			[__('Total Tarif Service'), _totals_by_currency(frm, 'amount')],
+			[__('Biaya Manhour'), _totals_by_currency(frm, 'manhour_rate')],
 			[__('Owner (Principal)'), link('Customer', frm.doc.container_principal)],
 			[__('Last Cargo'), link('Cargo', frm.doc.last_cargo)],
 			[__('Tgl. Tes Terakhir'), container_depot.tank_last_test.fact(frm)],
@@ -118,6 +118,11 @@ frappe.ui.form.on('Cleaning Order', {
 			query: 'container_depot.container_depot.doctype.cleaning_order.cleaning_order.cleaning_item_query',
 			filters: { container: frm.doc.container || '' },
 		}));
+	},
+	// Labelled "Tutup" instead of the icon-only chevron, and no Insert Above/Below — shared
+	// with every other non-editable depot grid (public/js/grid_row_form.js).
+	cleaning_services_on_form_rendered(frm) {
+		container_depot.grid_row_form(frm, 'cleaning_services');
 	},
 	_forward_button(frm) {
 		// Admin Ops step: while the order is in "Service Setup" they pick the cleaning
@@ -395,35 +400,31 @@ frappe.ui.form.on('Cleaning Order Service', {
 	cleaning_item(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.cleaning_item) {
-			frappe.model.set_value(cdt, cdn, { rate: 0 });
-			_recalc(frm);
+			frappe.model.set_value(cdt, cdn, { rate: 0, manhour_rate: 0, item_name: null });
+			_price_row(frm, cdt, cdn);
 			return;
 		}
 		if (!frm.doc.container) {
 			frappe.msgprint(__('Pilih Container dulu — base price diambil dari kontrak pemilik tank.'));
 			return;
 		}
-		// Seed from the owner's contract immediately. A different Service means a different
-		// base price, so the tariff is re-seeded here even if it already carried a value.
+		// Seed from the owner's contract immediately. A different item means a different base
+		// price, so BOTH tariffs are re-seeded here even if the row already carried values.
 		frappe.call({
 			method: 'container_depot.container_depot.doctype.cleaning_order.cleaning_order.service_pricing',
 			args: { container: frm.doc.container, item_code: row.cleaning_item },
 			callback(r) {
 				const d = (r && r.message) || {};
-				// A different Service means different figures, so BOTH prices — and the hours
-				// behind the labour — are re-read from the price list, exactly like Tarif.
-				// Mata uang hanya ditimpa kalau memang ada sumbernya; owner walk-in dipilih
-				// operator di header, dan baris ikut header itu (server melakukan hal sama).
-				if (d.currency && (d.currency_locked || !frm.doc.currency)) {
-					frm.set_value('currency', d.currency);
-				}
+				// Mata uang hanya DIISI, tidak pernah ditimpa: pilihan operator atas baris
+				// ini harus bertahan waktu itemnya diganti (server melakukan hal sama).
+				const picked = locals[cdt][cdn] || {};
 				const patch = {
 					rate: d.rate || 0,
 					manhour_rate: d.manhour_rate || 0,
-					currency: frm.doc.currency || d.currency,
 					item_name: d.item_name,
 				};
-				frappe.model.set_value(cdt, cdn, patch).then(() => _recalc(frm));
+				if (d.currency && !picked.currency) patch.currency = d.currency;
+				frappe.model.set_value(cdt, cdn, patch).then(() => _price_row(frm, cdt, cdn));
 				if (!d.contract) {
 					frappe.show_alert({
 						message: __('Owner container ini belum punya kontrak aktif — isi tarif manual.'),
@@ -433,26 +434,64 @@ frappe.ui.form.on('Cleaning Order Service', {
 			},
 		});
 	},
-	rate(frm) {
+	quantity: _price_row,
+	rate: _price_row,
+	// Only repaints: the sidebar totals are grouped by the row's currency, so moving a line
+	// to another currency moves its money to another line of the block.
+	currency(frm) {
 		_recalc(frm);
 	},
+	// Typing a labour tariff only moves the sidebar total — it is never priced into the line.
 	manhour_rate(frm) {
 		_recalc(frm);
 	},
 	cleaning_services_remove(frm) {
 		_recalc(frm);
 	},
+	// No `cleaning_services_add` here: the child carries `editable_grid: 0`, so Frappe opens a
+	// freshly added row's form by itself (Grid.add_new_row).
 });
 
-// Service tariff and labour are totalled apart — never into one figure, and neither is
-// multiplied by anything: each is the sum of what the rate card charges.
+// Total Cost of one line = Qty x Item Rate. Tarif Manhour stays out of it on purpose (see the
+// note at the top of this file).
+function _price_row(frm, cdt, cdn) {
+	const row = locals[cdt][cdn] || {};
+	frappe.model.set_value(cdt, cdn, 'amount', flt(row.quantity) * flt(row.rate));
+	_recalc(frm);
+}
+
+// One line per currency for a single column of the service rows, for the sidebar. An order may
+// mix currencies, so a lone number would be adding rupiah to dollars; a row that carries no
+// currency yet falls in under the order's own. Empty string when there is nothing to show, so
+// render_system_facts drops the fact entirely.
+function _totals_by_currency(frm, fieldname) {
+	const by_currency = {};
+	for (const row of frm.doc.cleaning_services || []) {
+		const ccy = row.currency || frm.doc.currency || frappe.defaults.get_default('currency');
+		by_currency[ccy] = (by_currency[ccy] || 0) + flt(row[fieldname]);
+	}
+	return Object.keys(by_currency)
+		.sort()
+		.filter((ccy) => by_currency[ccy])
+		.map((ccy) => frappe.utils.escape_html(format_currency(by_currency[ccy], ccy)))
+		.join('<br>');
+}
+
+// Service cost and labour are totalled apart — never into one figure. Labour is not multiplied
+// by anything: it is the sum of what the rate card charges per line.
+//
+// Neither stored total is split per currency, even though the rows may mix them: an order can
+// only ever be linked to ONE invoice, so billing reads the rows themselves and these two are
+// the plain numeric roll-up the list view and the reports read (mirrors Repair Order's
+// `total_cost`). What a human is SHOWN is broken down per currency — see _totals_by_currency.
 function _recalc(frm) {
 	let service = 0;
 	let labour = 0;
 	for (const row of frm.doc.cleaning_services || []) {
-		service += flt(row.rate);
+		service += flt(row.amount);
 		labour += flt(row.manhour_rate);
 	}
 	frm.set_value('cleaning_total', service);
 	frm.set_value('manhour_charge_total', labour);
+	frm.trigger('_render_system_facts');
 }

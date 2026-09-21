@@ -210,15 +210,25 @@ class TestTankInFlow(FrappeTestCase):
 		finally:
 			_cleanup_customer_world(usd_cust)
 
-	def test_contract_priced_row_locks_its_own_currency(self):
-		# The lock is per ROW, not per document: "Lift Off" is on this customer's contract
-		# rate card, so its currency is the one the rate was agreed in and the operator
-		# cannot move it — a pasted USD lands back on IDR.
+	def test_contract_priced_row_keeps_the_operators_currency(self):
+		# The rate card DEFAULTS a row and nothing more. "Lift Off" is on this customer's
+		# contract, but a currency typed on the row is a decision and survives the save —
+		# it used to be pushed back to IDR on every save, which left a wrong currency
+		# unfixable from anywhere. ``currency_locked`` stays as a marker that the service
+		# is priced by the contract; it no longer locks the field.
 		b = self._booking(self.customer, charges=[{"item": "Lift Off", "currency": "USD"}])
 		b.insert(ignore_permissions=True)
-		self.assertEqual(b.charges[0].currency, "IDR")
+		self.assertEqual(b.charges[0].currency, "USD")
 		self.assertTrue(b.charges[0].currency_locked)
-		self.assertEqual(b.currency, "IDR")  # the document follows its rows
+		self.assertEqual(b.currency, "USD")  # the document follows its rows
+
+	def test_contract_priced_row_seeds_the_contract_currency_when_blank(self):
+		# The other half of the same rule: a row with nothing typed on it still starts at
+		# the currency its tariff line was agreed in.
+		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
+		b.insert(ignore_permissions=True)
+		self.assertEqual(b.charges[0].currency, "IDR")
+		self.assertEqual(b.currency, "IDR")
 
 	def test_row_outside_the_rate_card_keeps_the_operators_currency(self):
 		# "Lift On" is not priced by this contract, so nothing was agreed about it: the

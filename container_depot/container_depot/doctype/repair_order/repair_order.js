@@ -184,8 +184,7 @@ function mr_step_back(frm, opts) {
 				(v) => mr_call(frm, opts.method, { ...(opts.args || {}), note: v.note }, __(opts.confirm)),
 				__(opts.label),
 				__(opts.primary || opts.label)
-			),
-		opts.group
+			)
 	);
 	if (btn && opts.cls) $(btn).addClass(opts.cls);
 }
@@ -269,6 +268,9 @@ frappe.ui.form.on('Repair Order', {
 		// berkala yang selesai di depo ini mengisinya sendiri saat order ditutup.
 		container_depot.tank_last_test.load(frm);
 		container_depot.tank_last_test.button(frm);
+		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
+		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
+		container_depot.tank_position.button(frm);
 		// A "buka lagi" request raised from the PWA, with its reason — otherwise it reaches
 		// Admin Ops as a bell notification and leaves no trace on the order itself.
 		container_depot.form_message(
@@ -435,14 +437,11 @@ frappe.ui.form.on('Repair Order', {
 			frm.add_custom_button(__('Selesaikan Langsung'), () => mr_finalize_direct(frm));
 		}
 
-		// The REWIND steps live in one dropdown, so the happy path is never buried among
-		// escape hatches. Only rewinds: the two actions that end the round differently —
-		// approving without the owner, and cancelling outright — sit flat in the toolbar
-		// beside it, because a user has to see those before choosing them.
-		const group = __('Tindakan Lain');
-
-		// Kept OUT of "Tindakan Lain": skipping the owner is a decision someone has to see
-		// before they take it, and a bypass hidden behind a dropdown is one nobody reads.
+		// Every remaining step sits FLAT in the toolbar — no "Tindakan Lain" dropdown. A status
+		// only ever offers a handful of them, and a rewind nobody can see is a rewind nobody
+		// takes: staff were re-opening orders the long way round because the short one was
+		// hidden. Order of appearance is the order they are added, so the primary next step
+		// stays first and Cancel stays last.
 		if (is_admin_ops() && ['Draft', 'Revision Requested'].includes(s)) {
 			mr_bypass_button(frm);
 		}
@@ -454,7 +453,6 @@ frappe.ui.form.on('Repair Order', {
 				method: 'container_depot.ess.repairs.mr_withdraw_review',
 				confirm: 'Kembalikan M&R ini ke team untuk diperbaiki? Statusnya kembali In Progress.',
 				primary: 'Kembalikan',
-				group,
 			});
 		}
 		// "Tarik ulang" — pull it back off the customer web to arrange it again. Only while
@@ -465,7 +463,6 @@ frappe.ui.form.on('Repair Order', {
 				method: 'container_depot.ess.repairs.mr_withdraw_from_owner',
 				confirm: 'Tarik estimasi ini dari owner? Keputusan per-item direset dan bisa dikirim ulang.',
 				primary: 'Tarik',
-				group,
 			});
 		}
 		// Human-error recovery: rewind to an editable Draft to fix a wrong / missing input,
@@ -480,7 +477,6 @@ frappe.ui.form.on('Repair Order', {
 				method: 'container_depot.ess.repairs.mr_reopen_draft',
 				confirm: 'Kembalikan M&R ini ke Draft? Seluruh ronde approval dihapus (keputusan per-item, waktu pengajuan, keputusan owner) dan part yang sudah keluar DIKEMBALIKAN ke stok; item tetap.',
 				primary: 'Kembalikan',
-				group,
 			});
 		}
 		// Cancel also stands on its own, red, next to the bypass — it is the one button here
@@ -538,7 +534,7 @@ frappe.ui.form.on('Repair Order', {
 		grid.cannot_delete_rows = !editable;
 		// The adjustable cost inputs follow the estimate-build phase (the three amounts are
 		// always derived, so they stay read-only via the doctype).
-		['item', 'quantity', 'item_rate', 'manhour_rate'].forEach((f) =>
+		['item', 'quantity', 'currency', 'item_rate', 'manhour_rate'].forEach((f) =>
 			grid.update_docfield_property(f, 'read_only', editable ? 0 : 1)
 		);
 		['decision', 'owner_remark'].forEach((f) => grid.update_docfield_property(f, 'read_only', pending ? 0 : 1));
@@ -560,30 +556,10 @@ frappe.ui.form.on('Repair Order', {
 			photos.refresh();
 		}
 	},
-	// The row form's own close control is an icon-only chevron in the corner of the heading,
-	// which reads as "collapse" rather than "done with this line". A labelled button sits
-	// beside it instead.
-	//
-	// It ONLY closes. There is deliberately no Save here: every field writes straight into the
-	// M&R as it is typed, so a closed row has lost nothing, and what puts it in the database is
-	// the order's own Save — one press at the end, not one per line.
-	//
-	// Re-injected on every render because the toolbar is rebuilt with the form, and guarded by
-	// its own class so a second render never stacks two buttons.
+	// Labelled "Tutup" instead of the icon-only chevron, and no Insert Above/Below — shared
+	// with every other non-editable depot grid (public/js/grid_row_form.js).
 	used_items_on_form_rendered(frm) {
-		const grid_form = frm.fields_dict.used_items && frm.fields_dict.used_items.grid.open_grid_row;
-		if (!grid_form) return;
-		const actions = grid_form.wrapper.find('.grid-form-heading .row-actions');
-		if (!actions.length || actions.find('.mr-row-close').length) return;
-		$(`<button class="btn btn-primary btn-sm pull-right mr-row-close">${__('Tutup')}</button>`)
-			.prependTo(actions)
-			.on('click', () => {
-				grid_form.row.toggle_view(false);
-				// Swallow the click. The heading this button sits in carries a handler of its
-				// own that TOGGLES the row, so a bubbling click reopens what was just closed
-				// — which is why every native button in this toolbar returns false too.
-				return false;
-			});
+		container_depot.grid_row_form(frm, 'used_items');
 	},
 	container(frm) {
 		if (frm.doc.container) {
@@ -680,13 +656,13 @@ frappe.ui.form.on('Repair Used Item', {
 			args: { repair_order: frm.doc.name, item: row.item },
 			callback: (r) => {
 				const b = r.message || {};
-				// Currency follows the item's own tariff line (lines may differ) and the line
-				// locks. An item OUTSIDE the owner's rate card has no tariff line to follow, so
-				// the field opens up — and a currency the operator already picked there is left
-				// alone rather than reset under them on the next item.
+				// Currency is DEFAULTED from the item's own tariff line (lines may differ) and
+				// stays editable either way — the rate card is where the figure starts, not a
+				// lock. A currency the operator already picked is left alone rather than reset
+				// under them on the next item.
 				const picked = frappe.get_doc(cdt, cdn) || {};
 				frappe.model.set_value(cdt, cdn, 'currency_locked', b.currency_locked ? 1 : 0);
-				if (b.currency_locked || !picked.currency) {
+				if (!picked.currency) {
 					frappe.model.set_value(cdt, cdn, 'currency', b.currency || '');
 				}
 				frappe.model.set_value(cdt, cdn, 'item_rate', flt(b.item_rate));
@@ -708,20 +684,12 @@ frappe.ui.form.on('Repair Used Item', {
 	decision: recompute_used_total,
 	used_items_remove: recompute_used_total,
 	// Filling a line is a sequence — Jenis, then Gudang, then Item, then the numbers the
-	// item seeds — and the grid can only ever show a few of those columns at once. So a new
-	// row opens straight into its OWN form, where the whole line is visible and the fields
-	// sit in the order they are meant to be filled; the grid itself stays a list, and an
-	// existing line is still editable in place.
-	//
-	// Deferred by a tick on purpose: Grid.add_new_row fires this trigger BEFORE it calls
-	// refresh(), so the GridRow for the new line does not exist yet at trigger time.
-	used_items_add(frm, cdt, cdn) {
-		setTimeout(() => {
-			const grid = frm.fields_dict.used_items && frm.fields_dict.used_items.grid;
-			const row = grid && grid.grid_rows_by_docname && grid.grid_rows_by_docname[cdn];
-			if (row) row.toggle_view(true);
-		}, 0);
-	},
+	// item seeds — and the grid can only ever show a few of those columns at once. So no line
+	// is edited in the row itself: Repair Used Item carries `editable_grid: 0`, which turns
+	// the grid into a plain list and makes a click anywhere on a row open its own form, where
+	// the whole line is visible and the fields sit in the order they are meant to be filled.
+	// Frappe opens a freshly added row the same way (Grid.add_new_row), so there is no
+	// used_items_add handler here to do it by hand.
 });
 
 function price_used_row(frm, cdt, cdn) {

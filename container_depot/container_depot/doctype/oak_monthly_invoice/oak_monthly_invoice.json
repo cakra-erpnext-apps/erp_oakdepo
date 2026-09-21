@@ -14,6 +14,7 @@
   "from_date",
   "to_date",
   "amounts_section",
+  "currency",
   "subtotal",
   "ppn",
   "column_break_2",
@@ -88,13 +89,15 @@
    "fieldname": "subtotal",
    "fieldtype": "Currency",
    "label": "Subtotal",
-   "read_only": 1
+   "read_only": 1,
+   "options": "currency"
   },
   {
    "fieldname": "ppn",
    "fieldtype": "Currency",
    "label": "PPN (11%)",
-   "read_only": 1
+   "read_only": 1,
+   "options": "currency"
   },
   {
    "fieldname": "column_break_2",
@@ -104,7 +107,8 @@
    "fieldname": "total",
    "fieldtype": "Currency",
    "label": "Total",
-   "read_only": 1
+   "read_only": 1,
+   "options": "currency"
   },
   {
    "fieldname": "sales_invoice",
@@ -123,11 +127,19 @@
    "fieldtype": "Table",
    "label": "Items",
    "options": "OAK Monthly Invoice Item"
+  },
+  {
+   "description": "Mata uang tagihan ini. Diturunkan dari order yang disapu: satu invoice per mata uang, karena satu Sales Invoice hanya bisa punya satu.",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Mata Uang",
+   "options": "Currency",
+   "read_only": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-21 11:00:00.000000",
+ "modified": "2026-09-21 13:00:00.000000",
  "module": "Container Depot",
  "name": "OAK Monthly Invoice",
  "search_fields": "customer, period, category, status",

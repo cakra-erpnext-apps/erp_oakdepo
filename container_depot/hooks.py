@@ -408,6 +408,12 @@ app_include_js = [
 	# container_depot.tank_last_test — Tgl. Tes Terakhir tank, dibaca hidup dari master dan
 	# dibetulkan dari form order mana pun (lihat file-nya).
 	"/assets/container_depot/js/tank_last_test.js?v=2",
+	# container_depot.tank_position — tombol "Minta Cek Letak": memasukkan tank yang dipegang
+	# sebuah order ke antrean cek letak, tanpa dokumen order baru (lihat file-nya).
+	"/assets/container_depot/js/tank_position.js?v=1",
+	# container_depot.grid_row_form — rapikan form baris di balik grid yang tidak bisa diketik
+	# langsung (Service & Parts, Metode Cleaning): tombol "Tutup" + buang Insert Above/Below.
+	"/assets/container_depot/js/grid_row_form.js?v=1",
 	# Matikan tombol "Edit" (pensil rename) di judul form + item menu "Rename" untuk semua
 	# doctype — nomor dokumen datang dari naming series, bukan diketik ulang.
 	"/assets/container_depot/js/no_rename.js?v=2",

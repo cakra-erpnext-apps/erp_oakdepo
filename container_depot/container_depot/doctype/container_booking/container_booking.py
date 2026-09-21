@@ -957,12 +957,21 @@ class ContainerBooking(Document):
 					title=_("Service Nonaktif"),
 				)
 			row.item_name = item.item_name or row.item
-			# Mata uang per baris: terkunci ke baris tarif kontrak kalau service ini memang
-			# ada di rate card customer, kalau tidak ada — pilihan operator yang berlaku.
-			row.currency, locked = pricing_model.charge_currency(
+			# Mata uang per baris: rate card customer hanya jadi DEFAULT. Dulu baris yang ada
+			# di rate card dikunci dan ditimpa balik tiap save, jadi mata uang yang salah
+			# tidak bisa dibetulkan dari mana pun kecuali master. Sekarang: diisi saat masih
+			# kosong, sesudah itu milik orang yang mengetiknya — sama seperti Repair Order.
+			# ``currency_locked`` tinggal penanda "service ini ada tarifnya di kontrak".
+			#
+			# Yang TIDAK ikut longgar: satu booking tetap satu mata uang. Invoice-nya dibuat
+			# dengan ``currency=self.currency`` tanpa konversi (``_build_draft_invoice``), jadi
+			# baris campur akan ditagih dengan label yang salah — lihat
+			# ``_sync_currency_from_charges``.
+			resolved, locked = pricing_model.charge_currency(
 				self.customer, self.contract, row.item, row.get("currency")
 			)
 			row.currency_locked = 1 if locked else 0
+			row.currency = row.get("currency") or resolved
 			if not flt(row.qty):
 				row.qty = container_qty
 			elif (
@@ -997,8 +1006,9 @@ class ContainerBooking(Document):
 		ditagih sebagai IDR dengan angka yang sama. Ditolak di sini, sambil menyebut baris
 		mana yang beda, daripada lolos diam-diam ke invoice.
 
-		Baris terkunci (ada di rate card kontrak) yang menang: baris bebas yang belum
-		dipilih operator sudah ikut mata uang itu lewat ``charge_currency``."""
+		Baris yang ada di rate card kontrak disebut namanya dalam pesannya — itu mata uang
+		yang disepakati, jadi biasanya baris lain yang disamakan, bukan sebaliknya. Tapi
+		keduanya bisa diubah: tidak ada lagi baris charge yang terkunci."""
 		used = {row.currency for row in (self.charges or []) if row.item and row.currency}
 		if len(used) > 1:
 			locked = {row.currency for row in self.charges if row.item and row.currency_locked}
@@ -1008,8 +1018,8 @@ class ContainerBooking(Document):
 					"campur: {0}.<br>{1}"
 				).format(
 					", ".join(sorted(used)),
-					_("Mata uang {0} datang dari rate card kontrak dan tidak bisa diubah — "
-					  "samakan baris lainnya, atau pisahkan jadi booking sendiri.").format(
+					_("Mata uang {0} datang dari rate card kontrak — biasanya baris lain yang "
+					  "disamakan, atau pisahkan jadi booking sendiri.").format(
 						", ".join(sorted(locked))
 					)
 					if locked

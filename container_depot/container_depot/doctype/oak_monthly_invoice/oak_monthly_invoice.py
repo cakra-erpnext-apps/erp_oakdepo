@@ -22,21 +22,28 @@ class OAKMonthlyInvoice(Document):
 		self.total = self.subtotal + self.ppn
 
 	def _guard_unique_period(self):
-		"""One monthly invoice per (customer, period, category)."""
+		"""One monthly invoice per (customer, period, category, CURRENCY).
+
+		Currency is part of the key because a customer's work in a month may be priced in
+		more than one — a cleaning order carries the currency each of its rows was quoted in
+		— and a Sales Invoice can only ever be raised in one. So two currencies are two
+		invoices, not one that reads dollars as rupiah.
+		"""
 		dup = frappe.db.exists(
 			"OAK Monthly Invoice",
 			{
 				"customer": self.customer,
 				"period": self.period,
 				"category": self.category,
+				"currency": self.currency,
 				"name": ["!=", self.name],
 				"docstatus": ["<", 2],
 			},
 		)
 		if dup:
 			frappe.throw(
-				_("A {0} invoice for {1} / {2} already exists ({3}).").format(
-					self.category, self.customer, self.period, dup
+				_("A {0} invoice for {1} / {2} in {3} already exists ({4}).").format(
+					self.category, self.customer, self.period, self.currency, dup
 				)
 			)
 
@@ -59,6 +66,9 @@ class OAKMonthlyInvoice(Document):
 				due_days=30,
 				remarks=f"OAK {self.category} invoice {self.period} ({self.name})",
 				taxes_and_charges=invoicing.PPN_TEMPLATE,
+				# Billed at face value in the currency the work was priced in — never
+				# converted, and never silently read as the company default.
+				currency=self.currency or None,
 			)
 			if si:
 				self.db_set("sales_invoice", si, update_modified=False)

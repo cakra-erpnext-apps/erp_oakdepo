@@ -31,6 +31,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, date_diff, getdate, now_datetime, time_diff_in_seconds
 
+from container_depot.container_depot.container_status import PRESENT, assert_container_active
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 DOCTYPE = "Container Position"
@@ -247,6 +248,16 @@ def _needs_position(tank, since) -> bool:
 	"""
 	if not tank or not tank.get("current_location"):
 		return True
+	# Diminta dengan tangan (`request_position_check`): berlaku sampai ada catatan letak yang
+	# LEBIH BARU dari permintaannya. Dibandingkan dengan tanggal, bukan ditutup dengan tulisan
+	# ke master, supaya penutupnya tetap satu-satunya penutup yang ada di fitur ini — sebuah
+	# bacaan letak — dan permintaan kedua atas tank yang sama tidak perlu membersihkan yang
+	# pertama.
+	requested = tank.get("position_check_requested_on")
+	if requested:
+		updated = tank.get("location_updated_on")
+		if not updated or updated < requested:
+			return True
 	if not tank.get("lift_on_booking"):
 		return False
 	return bool(since and tank.get("location_updated_on") and tank["location_updated_on"] < since)
@@ -256,7 +267,8 @@ def needs_position(container) -> bool:
 	"""Does this tank still owe an answer about where it is? (one tank, by name)"""
 	tank = frappe.db.get_value(
 		"Container", container,
-		["current_location", "location_updated_on", "lift_on_booking"],
+		["current_location", "location_updated_on", "lift_on_booking",
+		 "position_check_requested_on"],
 		as_dict=True,
 	)
 	since = (
@@ -271,16 +283,21 @@ def open_position_orders(start=0, page_length=20) -> dict:
 	"""The "cek letak tank" queue: tanks with a survey coming whose place is unknown or stale.
 
 	Derived, not stored — see ``tank_survey._raise_position_orders`` for why there is no order
-	document behind this. A tank qualifies when a live outbound booking has stamped a deadline
-	on it (``lift_on_booking``) and :func:`needs_position` still says yes; filing one reading
-	is what closes it.
+	document behind this. A tank qualifies two ways: a live outbound booking stamped a deadline
+	on it (``lift_on_booking``), or somebody asked for it by hand from an order holding the
+	tank (:func:`request_position_check`). Either way :func:`needs_position` has the last word,
+	and filing one reading is what closes it.
+
+	Hanya tank yang masih BERADA di depo, alasan yang sama dengan :func:`position_board`: tank
+	yang sudah lewat gerbang tidak punya letak untuk dicari, dan antrean yang memuatnya adalah
+	antrean yang tidak pernah bisa kosong.
 
 	Ordered by the same rule as every other worklist (``worklist.priority_date``): survey day
 	first, pickup day when no survey has been set. Branch-scoped like everything else here.
 	"""
 	from container_depot.container_depot.worklist import sort_by_priority
 
-	filters = {"is_active": 1, "lift_on_booking": ["is", "set"]}
+	filters = {"is_active": 1, "status": ["in", PRESENT]}
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]
@@ -288,9 +305,15 @@ def open_position_orders(start=0, page_length=20) -> dict:
 	rows = frappe.get_all(
 		"Container",
 		filters=filters,
+		# Dijadwalkan ATAU diminta dengan tangan — dua pintu masuk ke antrean yang sama.
+		or_filters={
+			"lift_on_booking": ["is", "set"],
+			"position_check_requested_on": ["is", "set"],
+		},
 		fields=["name", "container_no", "principal", "depot", "status", "target_lift_on",
 				"target_survey_on", "target_urgent_on", "current_location", "location_updated_on",
-				"location_updated_by", "lift_on_booking"],
+				"location_updated_by", "lift_on_booking", "position_check_requested_on",
+				"position_check_requested_by"],
 		order_by="container_no asc",
 		limit_page_length=0,
 	)
@@ -314,10 +337,77 @@ def open_position_orders(start=0, page_length=20) -> dict:
 	rows = sort_by_priority(rows, lambda r: False, cint(start), cint(page_length))
 	for it in rows:
 		it["located"] = bool(it.get("current_location"))
-		for k in ("target_lift_on", "target_survey_on", "target_urgent_on", "location_updated_on"):
+		# Diminta dengan tangan, bukan lewat jadwal: layar menyebutnya lain karena baris ini
+		# tidak punya hari survey untuk ditampilkan — yang ada cuma siapa yang memintanya.
+		it["requested"] = bool(it.get("position_check_requested_on"))
+		for k in ("target_lift_on", "target_survey_on", "target_urgent_on", "location_updated_on",
+				  "position_check_requested_on"):
 			it[k] = str(it[k]) if it.get(k) else None
 		it.update(_age(it.get("location_updated_on")))
 	return {"items": rows, "total": total}
+
+
+def request_position_check(container) -> dict:
+	"""Minta seseorang berjalan ke tank ini dan mencatat letaknya — dari order yang memegangnya.
+
+	Tombolnya ada di form Cleaning Order / Repair Order di Desk: yang butuh tahu letak tank
+	adalah orang yang harus mengambilnya, dan pertanyaan itu muncul saat order-nya dibuka,
+	bukan saat booking keluarnya ditulis.
+
+	TIDAK ADA DOKUMEN ORDER DI BELAKANG INI, dan itu keputusan yang sama dengan antrean
+	terjadwalnya (lihat ``tank_survey._raise_position_orders``): yang diminta adalah satu
+	jawaban — sebuah ``Container Position`` — dan dokumen kedua hanya akan menambah sesuatu
+	yang harus ditutup, dibatalkan saat tank keluar, dan dibersihkan. Yang ditulis di sini cuma
+	stempel "kapan diminta" di master; bacaan letak yang lebih baru dari stempel itu adalah
+	penutupnya, persis seperti antrean yang lain.
+
+	Permintaan berulang bukan kesalahan: ia cuma memajukan stempelnya, jadi tank yang letaknya
+	baru dicatat pagi tadi tetap bisa diminta dicek lagi sore ini.
+	"""
+	if not container:
+		frappe.throw(_("Container wajib diisi."))
+	_guard_container_branch(container)
+	assert_container_active(container)
+	tank = frappe.db.get_value(
+		"Container", container,
+		["name", "container_no", "depot", "status", "current_location", "location_updated_on"],
+		as_dict=True,
+	)
+	if not tank:
+		frappe.throw(_("Container {0} tidak ditemukan.").format(container))
+	# Tank yang sudah lewat gerbang tidak punya letak untuk dicari (lihat position_board).
+	if tank.status not in PRESENT:
+		frappe.throw(
+			_("Tank {0} sudah tidak ada di depo — tidak ada letak yang bisa dicek.").format(
+				tank.container_no or container
+			)
+		)
+
+	requested_on = now_datetime()
+	frappe.db.set_value(
+		"Container", container,
+		{
+			"position_check_requested_on": requested_on,
+			"position_check_requested_by": frappe.session.user,
+		},
+		update_modified=False,
+	)
+	# Bel yang sama dengan permintaan terjadwal: satu tank, satu jalan kaki, ke kru lowering.
+	from container_depot.container_depot.notify import notify_position_order
+
+	notify_position_order({
+		"container": tank.name,
+		"container_no": tank.container_no or container,
+		"depot": tank.depot,
+	})
+	return {
+		"container": tank.name,
+		"container_no": tank.container_no or container,
+		"requested_on": str(requested_on),
+		"location_note": tank.current_location,
+		"location_updated_on": str(tank.location_updated_on) if tank.location_updated_on else None,
+		**_age(tank.location_updated_on),
+	}
 
 
 def search_containers(search=None, start=0, page_length=20, only_unlocated=0) -> dict:

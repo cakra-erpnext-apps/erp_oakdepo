@@ -1,8 +1,15 @@
 """Monthly categorized invoice generation (Tank Owner billing).
 
 Aggregates a prior month's depot activity into one OAK Monthly Invoice per
-(customer, period, category): Cleaning / M&R / Storage / Order Service. Each
+(customer, period, category, CURRENCY): Cleaning / M&R / Storage. Each
 invoice's ``on_submit`` then issues a native ERPNext Sales Invoice with PPN.
+
+Currency is part of that key because an order prices each of its rows in the
+currency that row's tariff line states — one cleaning order may carry both USD
+and IDR work — and a Sales Invoice can only ever be raised in one. So every
+builder returns its items tagged with a currency, and the generator splits them:
+two currencies are two invoices, never one that reads dollars as rupiah. Same
+rule ``consolidated_billing`` bills the TOP side by.
 
 Invoked monthly by :func:`container_depot.tasks.generate_monthly_invoices`, but
 ``generate_monthly_invoices(period="YYYY-MM")`` can also be called directly.
@@ -39,6 +46,19 @@ def _active_contract(customer):
 	return frappe.db.get_value("Depot Contract", {"customer": customer, "status": "Active"}, "name")
 
 
+def _contract_currency(customer):
+	"""Currency of the customer's active Depot Contract — what an order's rows fall back to
+	when they carry none of their own, and the company default when there is no contract."""
+	contract = _active_contract(customer)
+	ccy = frappe.db.get_value("Depot Contract", contract, "currency") if contract else None
+	return (
+		ccy
+		or frappe.defaults.get_global_default("currency")
+		or frappe.db.get_default("currency")
+		or "IDR"
+	)
+
+
 def _is_postpaid(customer):
 	"""True if the customer's Active contract carries a credit relationship (TOP or
 	Both). Such customers are billed on-demand via ``consolidated_billing.bill_customer``
@@ -65,25 +85,44 @@ def _work_order_items(customer, from_date, to_date, doctype, party_field, label)
 
 	A completed order that cost nothing bills nothing — carrying it here would raise an
 	OAK Monthly Invoice line worth 0 for work that was given away.
+
+	One lump line PER CURRENCY: the order's own ``total_cost`` is a plain numeric roll-up
+	that adds every row together whatever it is priced in, so the lines are summed off the
+	used-item rows instead. Owner-rejected rows are left out, the same rule the order's own
+	total and the TOP sweep use.
 	"""
 	lo, hi = _bounds(from_date, to_date)
 	rows = frappe.get_all(
 		doctype,
 		filters={"status": "Completed", party_field: customer, "completion_date": ["between", [lo, hi]]},
-		fields=["name", "container", "total_cost", "completion_date"],
+		fields=["name", "container", "completion_date"],
 	)
-	return [
-		{
-			"container": r.container,
-			"reference_doctype": doctype,
-			"reference_name": r.name,
-			"description": f"{label} {r.name}",
-			"service_date": getdate(r.completion_date),
-			"amount": flt(r.total_cost),
-		}
-		for r in rows
-		if flt(r.total_cost) > 0
-	]
+	fallback = _contract_currency(customer)
+	items = []
+	for r in rows:
+		by_ccy = {}
+		for u in frappe.get_all(
+			"Repair Used Item",
+			filters={"parent": r.name, "parenttype": doctype},
+			fields=["amount", "currency", "decision"],
+		):
+			if (u.decision or "Pending") == "Rejected":
+				continue
+			ccy = u.currency or fallback
+			by_ccy[ccy] = by_ccy.get(ccy, 0) + flt(u.amount)
+		for ccy, amount in sorted(by_ccy.items()):
+			if amount <= 0:
+				continue
+			items.append({
+				"container": r.container,
+				"reference_doctype": doctype,
+				"reference_name": r.name,
+				"description": f"{label} {r.name}",
+				"service_date": getdate(r.completion_date),
+				"amount": amount,
+				"currency": ccy,
+			})
+	return items
 
 
 def _mr_items(customer, from_date, to_date):
@@ -93,6 +132,7 @@ def _mr_items(customer, from_date, to_date):
 def _cleaning_items(customer, from_date, to_date):
 	lo, hi = _bounds(from_date, to_date)
 	fallback_rate = resolve_tariff_rate(_active_contract(customer), CLEANING_ITEM)
+	fallback_ccy = _contract_currency(customer)
 	rows = frappe.get_all(
 		"Cleaning Order",
 		filters={"status": "Completed", "cleaning_end": ["between", [lo, hi]]},
@@ -109,16 +149,24 @@ def _cleaning_items(customer, from_date, to_date):
 		# consolidated_billing._bills_something applies to the on-demand path).
 		services = frappe.get_all(
 			"Cleaning Order Service", filters={"parent": r.name},
-			fields=["cleaning_item", "item_name", "rate"], order_by="idx asc",
+			fields=["cleaning_item", "item_name", "quantity", "rate", "currency"], order_by="idx asc",
 		)
 		priced = [s for s in services if s.cleaning_item and s.rate and s.rate > 0]
 		if priced:
-			emit = [(s.cleaning_item, s.item_name or s.cleaning_item, s.rate) for s in priced]
+			# Baris lama (sebelum kolom Qty ada) tidak punya qty — satu kali pakai.
+			emit = [
+				(
+					s.item_name or s.cleaning_item,
+					(flt(s.quantity) or 1) * flt(s.rate),
+					s.currency or fallback_ccy,
+				)
+				for s in priced
+			]
 		elif not services and fallback_rate and fallback_rate > 0:
-			emit = [(CLEANING_ITEM, None, fallback_rate)]
+			emit = [(None, fallback_rate, fallback_ccy)]
 		else:
 			continue
-		for item_code, item_name, rate in emit:
+		for item_name, amount, ccy in emit:
 			desc = f"Cleaning {r.name}" + (f" · {item_name}" if item_name else "")
 			items.append({
 				"container": r.container,
@@ -126,7 +174,8 @@ def _cleaning_items(customer, from_date, to_date):
 				"reference_name": r.name,
 				"description": desc,
 				"service_date": getdate(r.cleaning_end),
-				"amount": rate,
+				"amount": amount,
+				"currency": ccy,
 			})
 	return items
 
@@ -137,6 +186,8 @@ def _storage_items(customer, from_date, to_date):
 	rate = resolve_tariff_rate(_active_contract(customer), STORAGE_ITEM)
 	if not rate:
 		return []
+	# Storage is priced by ONE contract tariff line, so it has one currency by construction.
+	currency = _contract_currency(customer)
 	containers = frappe.get_all("Container", filters={"principal": customer}, pluck="name")
 	items = []
 	for cname in containers:
@@ -152,6 +203,7 @@ def _storage_items(customer, from_date, to_date):
 			"days": days,
 			"rate": rate,
 			"amount": days * rate,
+			"currency": currency,
 		})
 	return items
 
@@ -186,13 +238,21 @@ _BUILDERS = {
 }
 
 
-def create_monthly_invoice(customer, period, category, from_date, to_date, items):
-	"""Create a draft OAK Monthly Invoice. Skips empty sets and duplicates."""
+def create_monthly_invoice(customer, period, category, from_date, to_date, items, currency=None):
+	"""Create a draft OAK Monthly Invoice in ONE currency. Skips empty sets and duplicates.
+
+	``items`` carry a ``currency`` key for grouping (see :func:`generate_monthly_invoices`);
+	it is not a column on the child row, so it is dropped before the rows are written.
+	"""
 	if not items:
 		return None
+	currency = currency or _contract_currency(customer)
 	if frappe.db.exists(
 		"OAK Monthly Invoice",
-		{"customer": customer, "period": period, "category": category, "docstatus": ["<", 2]},
+		{
+			"customer": customer, "period": period, "category": category,
+			"currency": currency, "docstatus": ["<", 2],
+		},
 	):
 		return None
 	doc = frappe.get_doc({
@@ -200,10 +260,11 @@ def create_monthly_invoice(customer, period, category, from_date, to_date, items
 		"customer": customer,
 		"period": period,
 		"category": category,
+		"currency": currency,
 		"from_date": from_date,
 		"to_date": to_date,
 		"status": "Unpaid",
-		"items": items,
+		"items": [{k: v for k, v in item.items() if k != "currency"} for item in items],
 	})
 	doc.insert(ignore_permissions=True)
 	return doc.name
@@ -230,10 +291,18 @@ def generate_monthly_invoices(period=None):
 	for customer in customers:
 		if _is_postpaid(customer):
 			continue  # TOP → billed on-demand via consolidated_billing.bill_customer
+		default_ccy = _contract_currency(customer)
 		for category in CATEGORIES:
-			items = _BUILDERS[category](customer, from_date, to_date)
-			if create_monthly_invoice(customer, period, category, from_date, to_date, items):
-				created += 1
+			# One invoice per currency: a month's work may be priced in more than one, and a
+			# Sales Invoice can only ever be raised in one of them.
+			by_ccy = {}
+			for item in _BUILDERS[category](customer, from_date, to_date):
+				by_ccy.setdefault(item.get("currency") or default_ccy, []).append(item)
+			for ccy in sorted(by_ccy):
+				if create_monthly_invoice(
+					customer, period, category, from_date, to_date, by_ccy[ccy], ccy
+				):
+					created += 1
 	if created:
 		frappe.db.commit()
 	return created

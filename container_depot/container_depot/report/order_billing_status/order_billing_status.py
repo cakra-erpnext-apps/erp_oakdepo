@@ -11,10 +11,15 @@ Read-only monitor (Phase 1). No billing logic lives here — amounts/status are
 read from the orders' stored fields, and TOP-vs-Cash for cleaning/repair reuses
 the same ``_is_postpaid`` authority as the billing engine.
 
-Each order carries its own currency (IDR / USD), so the Amount column is bound to
-the per-row ``currency`` and formatted in that currency. Booking/Cleaning
-store a ``currency`` field; Repair Order has none, so its currency is read from the
-owner's active Depot Contract (falling back to the company default).
+Each order PRICES EACH OF ITS ROWS in the currency that row's tariff line states, so one
+order may carry both USD and IDR work. Such an order is listed ONCE PER CURRENCY — the
+Amount column is bound to the per-row ``currency`` and formatted in it, and adding dollars
+to rupiah into a single figure would be the one thing this report must never do. It is the
+same split ``consolidated_billing`` bills by: a mixed order becomes one invoice per
+currency, so it must read as one line per currency here too.
+
+An order with no priced rows at all falls back to its stored total in the customer's
+contract currency — that is the flat-tariff case billing itself falls back to.
 
 The report is role-gated (see its .json ``roles``) to internal commercial roles;
 queries run with ``ignore_permissions`` and would otherwise expose every
@@ -125,6 +130,39 @@ def _si_status(sales_invoice):
 	return "Unpaid"
 
 
+def _amounts_by_currency(child_dt, parent, parenttype, fallback, keep=None):
+	"""``{currency: total}`` of one order's priced child rows.
+
+	All three order children (Container Booking Charge, Cleaning Order Service, Repair Used
+	Item) carry the same two columns for this — ``amount`` and ``currency`` — so one reader
+	serves them all. ``keep`` filters rows in PYTHON rather than in SQL: the M&R's owner
+	decision is NULL on a line nobody has ruled on, and a SQL ``!= 'Rejected'`` drops those.
+	"""
+	totals = {}
+	for r in frappe.get_all(
+		child_dt,
+		filters={"parent": parent, "parenttype": parenttype},
+		fields=["amount", "currency", "decision"] if keep else ["amount", "currency"],
+		ignore_permissions=True,
+	):
+		if keep and not keep(r):
+			continue
+		ccy = r.currency or fallback
+		totals[ccy] = totals.get(ccy, 0) + flt(r.amount)
+	return {ccy: total for ccy, total in totals.items() if total}
+
+
+def _split_rows(base, totals, fallback, stored_total):
+	"""One report row per currency the order actually prices, newest formatting rules aside.
+
+	No priced row at all (a free job, or the flat-tariff fallback billing uses) leaves the
+	order with its stored total in the contract currency — one row, as before.
+	"""
+	if not totals:
+		return [dict(base, currency=fallback, amount=flt(stored_total))]
+	return [dict(base, currency=ccy, amount=totals[ccy]) for ccy in sorted(totals)]
+
+
 def _postpaid(customer, ctx) -> bool:
 	"""Memoized ``_is_postpaid`` (TOP/Both active contract) per execute() call."""
 	if not customer:
@@ -165,20 +203,24 @@ def _booking_rows(filters, ctx):
 		fields=["name", "customer", "creation", "payment_type", "charges_total", "currency", "sales_invoice"],
 		ignore_permissions=True,
 	)
-	return [
-		{
-			"order_type": "Container Booking",
-			"order": r.name,
-			"customer": r.customer,
-			"date": getdate(r.creation),
-			"payment_type": r.payment_type,
-			"currency": r.currency or ctx["default"],
-			"amount": flt(r.charges_total),
-			"invoice_status": _si_status(r.sales_invoice),
-			"sales_invoice": r.sales_invoice,
-		}
-		for r in recs
-	]
+	rows = []
+	for r in recs:
+		fallback = r.currency or ctx["default"]
+		rows += _split_rows(
+			{
+				"order_type": "Container Booking",
+				"order": r.name,
+				"customer": r.customer,
+				"date": getdate(r.creation),
+				"payment_type": r.payment_type,
+				"invoice_status": _si_status(r.sales_invoice),
+				"sales_invoice": r.sales_invoice,
+			},
+			_amounts_by_currency("Container Booking Charge", r.name, "Container Booking", fallback),
+			fallback,
+			r.charges_total,
+		)
+	return rows
 
 
 def _cleaning_rows(filters, ctx):
@@ -196,17 +238,21 @@ def _cleaning_rows(filters, ctx):
 		owner = frappe.db.get_value("Container", r.container, "principal") if r.container else None
 		if want_customer and owner != want_customer:
 			continue
-		out.append({
-			"order_type": "Cleaning Order",
-			"order": r.name,
-			"customer": owner,
-			"date": getdate(r.cleaning_end),
-			"payment_type": "TOP" if _postpaid(owner, ctx) else "Cash",
-			"currency": r.currency or ctx["default"],
-			"amount": flt(r.cleaning_total),
-			"invoice_status": _si_status(r.sales_invoice),
-			"sales_invoice": r.sales_invoice,
-		})
+		fallback = r.currency or ctx["default"]
+		out += _split_rows(
+			{
+				"order_type": "Cleaning Order",
+				"order": r.name,
+				"customer": owner,
+				"date": getdate(r.cleaning_end),
+				"payment_type": "TOP" if _postpaid(owner, ctx) else "Cash",
+				"invoice_status": _si_status(r.sales_invoice),
+				"sales_invoice": r.sales_invoice,
+			},
+			_amounts_by_currency("Cleaning Order Service", r.name, "Cleaning Order", fallback),
+			fallback,
+			r.cleaning_total,
+		)
 	return out
 
 
@@ -224,27 +270,37 @@ def _work_order_rows(filters, ctx, doctype, party_field):
 		ignore_permissions=True,
 	)
 	# Both carry a sales_invoice back-link (set on Generate), so the live invoice status
-	# reads from the SI like the others; else fall back to billing_status. Neither stores a
-	# currency — it comes from the owner's active Depot Contract.
+	# reads from the SI like the others; else fall back to billing_status. The order itself
+	# stores no currency — each used-item row carries its own, and what an unpriced order
+	# falls back to is the owner's active Depot Contract.
 	def _status(r):
 		if r.sales_invoice:
 			return _si_status(r.sales_invoice)
 		return "Not Invoiced" if r.billing_status == "Unbilled" else "Billed"
 
-	return [
-		{
-			"order_type": doctype,
-			"order": r.name,
-			"customer": r.get(party_field),
-			"date": getdate(r.completion_date),
-			"payment_type": "TOP" if _postpaid(r.get(party_field), ctx) else "Cash",
-			"currency": _contract_currency(r.get(party_field), ctx),
-			"amount": flt(r.total_cost),
-			"invoice_status": _status(r),
-			"sales_invoice": r.sales_invoice,
-		}
-		for r in recs
-	]
+	rows = []
+	for r in recs:
+		owner = r.get(party_field)
+		fallback = _contract_currency(owner, ctx)
+		rows += _split_rows(
+			{
+				"order_type": doctype,
+				"order": r.name,
+				"customer": owner,
+				"date": getdate(r.completion_date),
+				"payment_type": "TOP" if _postpaid(owner, ctx) else "Cash",
+				"invoice_status": _status(r),
+				"sales_invoice": r.sales_invoice,
+			},
+			# The owner's own total excludes what they rejected, and so must this.
+			_amounts_by_currency(
+				"Repair Used Item", r.name, doctype, fallback,
+				keep=lambda u: (u.get("decision") or "Pending") != "Rejected",
+			),
+			fallback,
+			r.total_cost,
+		)
+	return rows
 
 
 def _repair_rows(filters, ctx):

@@ -103,7 +103,14 @@ frappe.query_reports["Order Billing Status"] = {
 				return;
 			}
 
-			const orders = billable.map((r) => ({ doctype: r.order_type, name: r.order }));
+			// An order that prices work in two currencies is listed twice — one row per
+			// currency, the way it will be invoiced. Ticking either bills the whole order, so
+			// the pair collapses to one entry here rather than being counted twice.
+			const orders = [
+				...new Map(
+					billable.map((r) => [`${r.order_type}|${r.order}`, { doctype: r.order_type, name: r.order }])
+				).values(),
+			];
 			frappe.confirm(
 				__("Buat invoice untuk <b>{0}</b> dari {1} order terpilih{2}?", [
 					frappe.utils.escape_html(customers[0]),

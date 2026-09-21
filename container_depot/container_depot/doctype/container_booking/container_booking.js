@@ -1099,11 +1099,12 @@ function _fetch_charge_rate(frm, cdt, cdn) {
 		callback(r) {
 			const d = r.message || {};
 			// Currency first so the rate formats in the currency it was agreed in (USD / IDR).
-			// The lock is per ROW: a service priced by the contract's rate card carries that
-			// tariff line's currency and the operator can't touch it; a service outside the rate
-			// card keeps whatever the operator picked (or the customer's currency, when blank).
+			// The contract's rate card DEFAULTS the row and nothing more: a currency the
+			// operator already picked stays, here and on the server. The booking still has to
+			// settle on ONE currency across its rows — _sync_currency_from_charges says so at
+			// save time, because the invoice carries no conversion.
 			frappe.model.set_value(cdt, cdn, 'currency_locked', d.currency_locked ? 1 : 0);
-			if (d.currency && (d.currency_locked || !row.currency)) {
+			if (d.currency && !row.currency) {
 				frappe.model.set_value(cdt, cdn, 'currency', d.currency);
 			}
 			frappe.model.set_value(cdt, cdn, 'item_name', d.item_name || row.item);

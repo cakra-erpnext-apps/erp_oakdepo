@@ -206,7 +206,7 @@
    "hidden": 1
   },
   {
-   "description": "Waktu order dibuat.",
+   "description": "Terisi otomatis saat order dibuat.",
    "depends_on": "eval:doc.order_created",
    "fieldname": "order_created",
    "fieldtype": "Datetime",
@@ -264,7 +264,7 @@
    "hidden": 1
   },
   {
-   "description": "Distempel saat repair dimulai.",
+   "description": "Terisi otomatis saat repair dimulai.",
    "depends_on": "eval:doc.start_date",
    "fieldname": "start_date",
    "fieldtype": "Datetime",
@@ -281,7 +281,7 @@
    "hidden": 1
   },
   {
-   "description": "Distempel saat M&R selesai.",
+   "description": "Terisi otomatis saat M&R selesai.",
    "depends_on": "eval:doc.completion_date",
    "fieldname": "completion_date",
    "fieldtype": "Datetime",
@@ -386,7 +386,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-17 06:05:00.000000",
+ "modified": "2026-09-21 09:45:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

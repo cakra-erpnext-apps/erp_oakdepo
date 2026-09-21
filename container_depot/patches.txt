@@ -137,3 +137,6 @@ container_depot.patches.v1_05.customer_audit_to_inventory
 container_depot.patches.v1_06.customer_booking_requests
 container_depot.patches.v1_07.drop_portal_role_column
 container_depot.patches.v1_08.customer_masters_select_only
+container_depot.patches.v1_09.cleaning_service_qty
+container_depot.patches.v1_10.drop_cleaning_currency_lock
+container_depot.patches.v1_10.backfill_monthly_invoice_currency

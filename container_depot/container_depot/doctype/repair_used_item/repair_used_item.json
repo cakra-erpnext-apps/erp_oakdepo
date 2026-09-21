@@ -4,7 +4,7 @@
  "autoname": "hash",
  "creation": "2026-06-18 00:00:00.000000",
  "doctype": "DocType",
- "editable_grid": 1,
+ "editable_grid": 0,
  "engine": "InnoDB",
  "field_order": [
   "line_type",
@@ -33,7 +33,7 @@
  ],
  "fields": [
   {
-   "description": "Jasa = pekerjaan/servis. Part = barang dari gudang (dikeluarkan dari stok saat M&R selesai).",
+   "description": "Wajib. Jasa = pekerjaan, Part = barang gudang. Ikut master Item begitu item dipilih.",
    "fieldname": "line_type",
    "fieldtype": "Select",
    "label": "Jenis",
@@ -43,13 +43,14 @@
    "columns": 1
   },
   {
-   "description": "Service or spare part. Priced by the owner's contract when it lists one, else 0.",
+   "description": "Wajib. Harga ikut kontrak pemilik; di luar kontrak 0.",
    "fieldname": "item",
    "fieldtype": "Link",
    "label": "Item (Service / Part)",
    "options": "Item",
    "in_list_view": 1,
-   "columns": 2
+   "columns": 2,
+   "reqd": 1
   },
   {
    "fetch_from": "item.item_name",
@@ -64,7 +65,7 @@
   },
   {
    "depends_on": "eval:doc.line_type=='Part'",
-   "description": "Gudang asal part ini. Tiap baris boleh beda gudang.",
+   "description": "Wajib untuk Part. Gudang asal part ini.",
    "fieldname": "warehouse",
    "fieldtype": "Link",
    "label": "Gudang",
@@ -72,7 +73,7 @@
    "options": "Warehouse"
   },
   {
-   "description": "Sisa stok di gudang baris ini. Kosong untuk Jasa.",
+   "description": "Otomatis. Sisa stok gudang baris ini; kosong untuk Jasa.",
    "fieldname": "on_hand",
    "fieldtype": "Data",
    "label": "Stok",
@@ -81,7 +82,7 @@
   },
   {
    "default": "Pending",
-   "description": "Owner's per-line decision. Only Approved lines are repaired, issued from stock, and billed.",
+   "description": "Diisi owner. Hanya baris Approved yang dikerjakan dan ditagih.",
    "fieldname": "decision",
    "fieldtype": "Select",
    "label": "Owner Decision",
@@ -99,20 +100,21 @@
    "fieldtype": "Float",
    "label": "Qty",
    "in_list_view": 1,
-   "columns": 1
+   "columns": 1,
+   "reqd": 1,
+   "description": "Wajib."
   },
   {
-   "description": "Ikut tarif kontrak baris ini kalau itemnya ada di rate card pemilik; bisa dipilih hanya untuk baris di luar rate card.",
+   "description": "Opsional. Default ikut kontrak, bisa diganti.",
    "fieldname": "currency",
    "fieldtype": "Link",
    "label": "Currency",
    "options": "Currency",
-   "read_only": 0,
-   "read_only_depends_on": "eval:doc.currency_locked"
+   "read_only": 0
   },
   {
    "default": "0",
-   "description": "Per-unit item price from the owner's contract tariff (adjustable).",
+   "description": "Opsional. Dari kontrak pemilik, bisa diubah.",
    "fieldname": "item_rate",
    "fieldtype": "Currency",
    "label": "Item Rate",
@@ -125,7 +127,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Auto: Qty × Item Rate.",
+   "description": "Otomatis: Qty × Item Rate.",
    "fieldname": "item_amount",
    "fieldtype": "Currency",
    "label": "Amount Item Rate",
@@ -133,7 +135,7 @@
    "read_only": 1
   },
   {
-   "description": "Auto: Amount Cost Manhour + Amount Item Rate.",
+   "description": "Otomatis: sama dengan Amount Item Rate.",
    "fieldname": "amount",
    "fieldtype": "Currency",
    "label": "Total Cost",
@@ -148,7 +150,7 @@
   },
   {
    "default": "0",
-   "description": "Auto: jam kerja standar item ini (master Item). Hidden — tidak diisi manusia, tapi INILAH jam yang ditagihkan invoice (Sales Invoice Item.manhour); lihat consolidated_billing._work_order_lines.",
+   "description": "Otomatis: jam standar item (master Item). Inilah jam yang ditagih invoice.",
    "fieldname": "manhour",
    "fieldtype": "Float",
    "label": "Manhour",
@@ -156,7 +158,7 @@
    "hidden": 1
   },
   {
-   "description": "Tarif labour baris ini, apa adanya dari rate card pemilik tank — tidak dikali jam di sini. Boleh diubah. TIDAK masuk Total Cost: labour ditagih di header invoice (total jam × tarif ini).",
+   "description": "Opsional. Tarif labour dari kontrak, bisa diubah. Ditagih di header invoice.",
    "fieldname": "manhour_rate",
    "fieldtype": "Currency",
    "label": "Tarif Manhour",
@@ -173,7 +175,7 @@
    "fieldtype": "Section Break"
   },
   {
-   "description": "Owner's note on this line (e.g. why it was rejected).",
+   "description": "Diisi owner. Alasan baris ditolak / catatan.",
    "fieldname": "owner_remark",
    "fieldtype": "Small Text",
    "label": "Owner Remark"
@@ -181,11 +183,12 @@
   {
    "fieldname": "remark",
    "fieldtype": "Small Text",
-   "label": "Remark"
+   "label": "Remark",
+   "description": "Opsional. Catatan internal."
   },
   {
    "default": "0",
-   "description": "Auto: a stock item is issued from the source warehouse on completion.",
+   "description": "Otomatis: item stok dikeluarkan dari gudang saat M&R selesai.",
    "fieldname": "is_stock_item",
    "fieldtype": "Check",
    "label": "Stock Item",
@@ -204,7 +207,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-09 14:00:00.000000",
+ "modified": "2026-09-21 13:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Used Item",
  "owner": "Administrator",
