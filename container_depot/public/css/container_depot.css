@@ -484,3 +484,25 @@ img.oak-grid-photo:hover {
 .layout-main-section:not(.edit-mode) .ce-block:has(> .ce-block__content > div:empty) {
 	display: none;
 }
+
+/*
+ * Splash Desk: ikut mode gelap sejak cat pertama.
+ *
+ * desk.html menaruh `data-theme="{{ desk_theme }}"` di <html>, jadi untuk user yang
+ * memilih tema "Automatic" atribut itu berisi harfiah "automatic" — tidak cocok dengan
+ * `[data-theme="dark"]` maupun `[data-theme="light"]`, sehingga SELURUH palet jatuh ke
+ * default `:root` yang terang. Baru setelah desk.bundle.js jalan, frappe.ui.set_theme()
+ * membaca prefers-color-scheme dan menukar atributnya. Selama jeda itu splash-nya putih
+ * menyala di desktop bertema gelap.
+ *
+ * Server tidak pernah tahu preferensi OS, jadi media query-nya yang mengambil alih:
+ * untuk mode automatic saja, pakai --bg-color gelap yang sama dengan palet dark
+ * (html/body di frappe dicat dari variabel ini). Nilainya dirujuk lewat var yang sama,
+ * bukan hex, supaya tetap ikut kalau palet dark Frappe berubah. Setelah JS menukar
+ * data-theme jadi "dark", aturan ini masih menang spesifisitas tapi nilainya identik.
+ */
+@media (prefers-color-scheme: dark) {
+	html[data-theme-mode="automatic"] {
+		--bg-color: var(--gray-900);
+	}
+}

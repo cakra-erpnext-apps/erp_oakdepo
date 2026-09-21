@@ -160,6 +160,10 @@ def sync_branding():
 			"app_logo": logo_main,
 			"banner_image": logo_main,
 			"favicon": logo_main,
+			# Splash /desk (templates/includes/splash_screen.html). Tanpa ini Frappe
+			# memakai logo hitam bawaannya, yang nyaris hilang di tema gelap; emblem
+			# OAK (oranye/hijau) terbaca di kedua tema.
+			"splash_image": logo_main,
 		})
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "container_depot branding: website")
