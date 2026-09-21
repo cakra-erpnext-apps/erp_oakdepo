@@ -1728,11 +1728,11 @@ FIELD_ROLE_MATRIX = [
 	# read on the booking it is issued from. Read only — a booking's charges, customer and
 	# payment terms belong to the office, never to the yard.
 	#
-	# Security reads it for one reason: the Jadwal tile keys on read over the four scheduled
-	# doctypes (ess.context.SCHEDULE_DOCTYPES), and a booking IS the plan for a truck arriving
-	# or leaving. Without this the gate knows a container is coming only when it is already at
-	# the barrier. They gain exactly the booking kind on the calendar and nothing else — the
-	# other three sources stay dark for them.
+	# Security reads it for one reason: the Jadwal calendar draws each kind from read on its
+	# own doctype (container_depot.schedule.SOURCES), and a booking IS the plan for a truck
+	# arriving or leaving. Without this the gate opens Jadwal to an empty grid and knows a
+	# container is coming only when it is already at the barrier. They gain exactly the booking
+	# kind on the calendar and nothing else — the other three sources stay dark for them.
 	("Container Booking",           ("r",     "",      "",     "",       "",     "",     "r")),
 	("Booking Code",                ("r",     "",      "",     "",       "",     "",     "r")),
 	("Inspection",                  ("",      "rwcs",  "r",    "r",      "r",    "r",    "rwcs")),

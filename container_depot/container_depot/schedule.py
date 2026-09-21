@@ -18,10 +18,11 @@ calendar with no deploy. That is the same contract ``ess.context._MENU`` makes f
 itself, applied one level down: the menu says whether the calendar opens, the sources say what
 is in it.
 
-The consequence to keep in mind: a team with read on NOTHING scheduled gets no menu tile at
-all (``_MENU``'s entry for ``schedule`` is an any-of over these four doctypes). Security used to
-be in that position — they hold Gate Entry and the bons, not the plans behind them — and the
-fix was one letter in the seeder, not a line here: they now hold read on Container Booking
+The menu itself asks nothing (``_MENU``'s entry for ``schedule`` carries no doctype): the
+screen is global and this table is the whole filter. A team with read on NOTHING scheduled
+therefore lands on an empty grid, which is the honest answer and not an error. Security was in
+that position once — they hold Gate Entry and the bons, not the plans behind them — and the fix
+was one letter in the seeder, not a line here: they now hold read on Container Booking
 (``install.FIELD_ROLE_MATRIX``), so the gate sees the day's planned arrivals and departures and
 nothing else. Any other team is widened the same way, in Permission Manager, with no deploy.
 

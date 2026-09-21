@@ -3,15 +3,13 @@
 Thin ``@frappe.whitelist`` wrappers over ``container_depot.container_depot.schedule``; the
 logic, the source table and the per-source permission filter all live there.
 
-TWO GATES, AND WHY BOTH
------------------------
-``require_menu("schedule")`` decides whether the calendar opens at all — it is an any-of over
-the four scheduled doctypes (``ess.context._MENU``), so an account with read on none of them
-is refused outright rather than handed an empty grid.
-
-Inside, every source re-checks READ on its own doctype. That second check is the one that
-matters: the menu gate passing means the caller can read SOMETHING, never that they can read
-everything. Team Cleaning opens the same URL as SPV Lapangan and gets only the wash plan.
+ONE GATE, AND WHERE IT IS
+-------------------------
+``require_menu("schedule")`` only asks that the caller is a logged-in depot user: the entry in
+``ess.context._MENU`` carries no doctype, because Jadwal is a GLOBAL screen. What it shows is
+where the permission lives — every source re-checks READ on its own doctype, so Team Cleaning
+opens the same URL as SPV Lapangan and gets only the wash plan, and a crew with read on
+nothing scheduled gets the screen with an empty grid rather than a refusal.
 """
 
 from __future__ import annotations

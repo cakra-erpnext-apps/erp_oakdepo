@@ -30,7 +30,7 @@ import frappe
 from frappe import _
 
 from container_depot.api import _require_authenticated_user
-from container_depot.ess.context import _MENU
+from container_depot.ess.context import _MENU, _may
 
 
 def require_menu(menu_key: str) -> None:
@@ -44,7 +44,10 @@ def require_menu(menu_key: str) -> None:
 	if entry is None:
 		frappe.throw(_("Menu tidak dikenal: {0}").format(menu_key), frappe.PermissionError)
 	_key, _route, doctype, ptype = entry
-	if not frappe.has_permission(doctype, ptype):
+	# `_may`, not `has_permission`: one entry (the universal Jadwal) carries no doctype at
+	# all, and `has_permission` cannot be handed that — it falls through to its DocShare
+	# lookup and dies in SQL. `_may` is the one reader of the table's doctype slot.
+	if not _may(doctype, ptype):
 		frappe.throw(_("Anda tidak punya akses menu ini."), frappe.PermissionError)
 
 

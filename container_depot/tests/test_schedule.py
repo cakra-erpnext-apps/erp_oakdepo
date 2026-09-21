@@ -348,18 +348,23 @@ class TestTheClockColumn(_Base):
 
 # ---------------------------------------------------------------------------
 class TestTheMenuGate(FrappeTestCase):
-	def test_the_calendar_opens_for_anyone_who_can_read_one_kind(self):
-		"""`schedule` is the only _MENU entry keyed on SEVERAL doctypes, and it is an any-of.
+	def test_the_calendar_is_global_and_its_contents_are_what_narrow(self):
+		"""`schedule` is the only _MENU entry with no doctype gate: the screen opens for
+		everyone and each SOURCE carries the permission.
 
-		Team Cleaning reads Cleaning Order and nothing else scheduled, which is enough. The
-		filtering of WHAT they see is a separate job one layer down.
+		Team Cleaning reads Cleaning Order and nothing else scheduled. The menu says yes
+		either way; the calendar hands them one source out of four.
 		"""
-		from container_depot.ess.context import SCHEDULE_DOCTYPES, _may
+		from container_depot.ess.context import _MENU, _may
+		from container_depot.container_depot.schedule import _visible_sources
+
+		self.assertIsNone(next(m for m in _MENU if m[0] == "schedule")[2])
 
 		user = _user("sched.cleaning@example.com", "Team Cleaning")
 		frappe.set_user(user)
 		try:
-			self.assertTrue(_may(SCHEDULE_DOCTYPES, "read"))
+			self.assertTrue(_may(None, "read"))
 			self.assertFalse(_may("Repair Order", "read"))
+			self.assertEqual([s["kind"] for s in _visible_sources()], ["cleaning"])
 		finally:
 			frappe.set_user("Administrator")

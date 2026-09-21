@@ -98,8 +98,18 @@ class TestEssGuard(FrappeTestCase):
 	def test_guest_rejected_everywhere(self):
 		frappe.set_user("Guest")
 		try:
-			for menu_key in ("gate", "eir", "cleaning", "mr", "monitor"):
+			for menu_key in ("gate", "eir", "cleaning", "mr", "monitor", "schedule"):
 				with self.assertRaises(frappe.PermissionError):
 					require_menu(menu_key)
 		finally:
 			frappe.set_user("Administrator")
+
+	def test_schedule_menu_opens_for_every_field_team(self):
+		# Jadwal is global — its _MENU entry carries no doctype, and `frappe.has_permission`
+		# cannot be handed that: it falls through to the DocShare lookup and dies with an
+		# OperationalError ("Illegal parameter data types varchar and row"). What each team
+		# SEES is filtered one layer down, per source.
+		for role in ("Team Survey", "Team Cleaning", "Cashier"):
+			with self.subTest(role=role):
+				frappe.set_user(USERS[role])
+				require_menu("schedule")  # does not raise

@@ -266,8 +266,8 @@ def can_open_menu(route: str, user: str = None) -> bool:
 	if not entry:
 		return False
 	_key, doctype, ptype = entry
-	# `_may`, not `has_permission`: one _MENU entry (the universal Jadwal) names several
-	# doctypes and is satisfied by any of them.
+	# `_may`, not `has_permission`: one _MENU entry (the universal Jadwal) has no doctype
+	# gate at all and filters its contents instead.
 	return has_field_role(user) and _may(doctype, ptype, user=user)
 
 
