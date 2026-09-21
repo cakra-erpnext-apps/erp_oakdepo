@@ -406,6 +406,9 @@ app_include_js = [
 	"/assets/container_depot/js/form_message.js?v=2",
 	# Menu profil /desk: buang About / Frappe Support / Reset Desktop Layout (lihat file-nya).
 	"/assets/container_depot/js/desktop_menu_trim.js?v=1",
+	# Akun portal: "Daftarkan ... baru" ikut duduk di dalam picker Customer/Container, bukan
+	# jadi tombol terpisah di toolbar (lihat file-nya).
+	"/assets/container_depot/js/customer_link_create.js?v=1",
 	# container_depot.priority_pill / urgency_subject — penanda prioritas di Desk list, dengan
 	# kosakata yang sama persis dengan PWA ("MENDESAK · H-2 · 9 Sep"): satu bentuk untuk
 	# kolomnya dan satu untuk kolom subject yang tidak pernah terpotong (lihat file-nya).

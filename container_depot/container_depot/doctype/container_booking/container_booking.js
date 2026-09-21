@@ -822,18 +822,12 @@ frappe.ui.form.on('Container Booking', {
 		frm.set_query('emkl', 'items', own_parties());
 		frm.set_query('shipper', 'items', own_parties());
 		frm.set_query('surveyor', 'items', own_parties({ is_surveyor: 1 }));
-		// ...and the way to put something IN that address book. Frappe's own "Create a new
-		// Customer" cannot work for this account — the company flag is a User Permission on
-		// Customer, and that refuses any document of the doctype it does not name, which a
-		// new one never is (see `customer_scope.create_party`). One button, one dialog, and
-		// the party is pickable on the next click.
-		if (frm.doc.docstatus === 0) {
-			frm.add_custom_button(__('Tambah Pihak (EMKL / Shipper)'), () => _open_party_dialog(frm));
-			// Same wall, same road round it: the account reads Container and nothing more, so
-			// Frappe's "Create a new Container" is not offered on the row's picker. Without
-			// this the only way to announce an unknown tank is the Excel import.
-			frm.add_custom_button(__('Daftarkan Tank Baru'), () => _open_tank_dialog(frm));
-		}
+		// Cara memasukkan sesuatu KE dalam buku alamat itu TIDAK duduk di toolbar: barisnya
+		// "+ Daftarkan ... baru" ditempel ke dalam picker Customer / Container sendiri, lewat
+		// `frappe.ui.form.ControlLink.link_options` (public/js/customer_link_create.js). Sama
+		// tempatnya dengan "Create a new ..." yang dilihat orang internal — yang untuk akun ini
+		// tidak pernah muncul, karena Frappe hanya menggambarnya kalau ada izin `create`, dan
+		// izin itu percuma di sini (lihat `customer_scope.create_party`).
 	},
 	// Ajukan / Minta Revisi — the customer's only two actions beyond saving the draft.
 	_customer_actions(frm) {
@@ -1300,43 +1294,6 @@ function _clear_urgency(frm) {
 	);
 }
 
-function _open_party_dialog(frm) {
-	const d = new frappe.ui.Dialog({
-		title: __('Tambah Pihak'),
-		fields: [
-			{ fieldname: 'customer_name', fieldtype: 'Data', label: __('Nama Perusahaan'), reqd: 1 },
-			{
-				fieldname: 'role',
-				fieldtype: 'Select',
-				label: __('Jenis'),
-				options: [
-					{ value: 'emkl', label: __('EMKL / Transporter') },
-					{ value: 'shipper', label: __('Shipper') },
-					{ value: 'surveyor', label: __('Surveyor') },
-				],
-				default: 'emkl',
-				reqd: 1,
-			},
-		],
-		primary_action_label: __('Simpan'),
-		primary_action(values) {
-			frappe.call({
-				method: 'container_depot.customer_scope.create_party',
-				args: values,
-				freeze: true,
-				callback(r) {
-					if (!r.message) return;
-					d.hide();
-					frappe.show_alert({
-						message: __('{0} ditambahkan — sekarang bisa dipilih.', [r.message.customer_name]),
-						indicator: 'green',
-					});
-				},
-			});
-		},
-	});
-	d.show();
-}
 
 function _confirm_submit_request(frm) {
 	frappe.confirm(
@@ -1356,44 +1313,6 @@ function _confirm_submit_request(frm) {
 	);
 }
 
-function _open_tank_dialog(frm) {
-	const d = new frappe.ui.Dialog({
-		title: __('Daftarkan Tank Baru'),
-		fields: [
-			{
-				fieldname: 'container_no',
-				fieldtype: 'Data',
-				label: __('Nomor Container'),
-				reqd: 1,
-				description: __('Tank yang belum pernah masuk depo. Yang sudah ada, pilih saja di baris.'),
-			},
-		],
-		primary_action_label: __('Daftarkan'),
-		primary_action(values) {
-			frappe.call({
-				method: 'container_depot.customer_scope.create_tank',
-				args: { container_no: values.container_no, principal: frm.doc.principal },
-				freeze: true,
-				callback(r) {
-					if (!r.message) return;
-					d.hide();
-					// Straight onto the booking: registering a tank and then hunting for it in
-					// the picker is two steps for one intention.
-					const row = frm.add_child('items', {
-						container: r.message.name,
-						container_no: r.message.name,
-					});
-					frm.refresh_field('items');
-					frappe.show_alert({
-						message: __('{0} didaftarkan dan ditambahkan ke booking.', [row.container_no]),
-						indicator: 'green',
-					});
-				},
-			});
-		},
-	});
-	d.show();
-}
 
 function _open_revision_dialog(frm) {
 	const d = new frappe.ui.Dialog({
