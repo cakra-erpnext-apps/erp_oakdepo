@@ -2171,12 +2171,27 @@ def _profile_home_page(name: str) -> str | None:
 	return "/depot" if name in FIELD_ROLES else None
 
 
+def _has_amended_from(doctype: str) -> bool:
+	"""Does ``doctype`` carry the field Frappe's Amend action writes into?"""
+	return bool(frappe.get_meta(doctype).get_field("amended_from"))
+
+
 def _ensure_docperm(doctype: str, role: str, letters: str, is_submittable: bool) -> None:
 	"""Add-only: an existing (doctype, role) row is left exactly as the admin tuned it."""
 	if doctype in NO_MANUAL_CREATE:
 		# Enforced here rather than in each matrix so a doctype added to the set later is
 		# covered without hunting down every table that mentions it.
 		letters = "".join(c for c in letters if c in "rwv")
+	if "a" in letters and not _has_amended_from(doctype):
+		# Amend is Frappe's "copy this cancelled document into a new draft", and the copy is
+		# stamped with `amended_from`. No Container Depot doctype has that field — undoing
+		# work here is each doctype's own reopen flow (Kembali ke Draft on a booking, void +
+		# reissue on a bon), never a second document that claims to replace the first. The
+		# permission alone is what puts the Amend button on a cancelled form, and pressing it
+		# can only answer `"amended_from" field must be present to do an amendment.` — so the
+		# flag comes off rather than the field going on. Add `amended_from` to a doctype and
+		# its roles get Amend back on the next migrate.
+		letters = letters.replace("a", "")
 	if not letters or frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role}):
 		return
 	frappe.get_doc({

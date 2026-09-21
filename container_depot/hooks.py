@@ -382,6 +382,9 @@ app_include_js = [
 	"/assets/container_depot/js/notification_click.js?v=2",
 	# Backport perbaikan Frappe untuk pill Table MultiSelect (lihat file-nya).
 	"/assets/container_depot/js/table_multiselect_fix.js?v=2",
+	# Tidak ada doctype Container Depot yang punya `amended_from`, jadi tombol Amend pada
+	# dokumen Cancelled hanya bisa menjawab error (lihat file-nya).
+	"/assets/container_depot/js/amend_guard.js?v=1",
 	# Sidebar Desk: backport perbaikan Frappe untuk sidebar yang hilang saat workspace
 	# di-refresh, plus aturan "menu Container Depot tetap di sidebar Container Depot"
 	# (lihat file-nya).
