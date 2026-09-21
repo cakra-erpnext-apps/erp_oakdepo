@@ -48,7 +48,15 @@ function _bon_payment_block(frm) {
 	const status = frm.doc.payment_status || 'Unpaid';
 	// An unknown payment type falls back to the STRICTER rule, same as the server — and the
 	// message names the bar that was applied, not the type, so nobody is sent to the wrong desk.
-	const allowed = BON_ALLOWED_PAYMENT[ptype] || BON_ALLOWED_PAYMENT.Cash;
+	//
+	// The membership test is the whole point and `||` cannot do it: TOP's rule IS `null`
+	// ("no bar"), which is falsy, so `BON_ALLOWED_PAYMENT[ptype] || …Cash` read every TOP
+	// booking as an unknown type and applied Cash's Paid-only bar to it. The button then
+	// went missing from every unpaid TOP booking — a booking that is SUPPOSED to be unpaid,
+	// since paying later is the arrangement — while the server (`payment_block_reason`,
+	// which uses `dict.get(ptype, default)` and so keeps the `None`) would have let the bon
+	// straight through. Mirror that: only a type the table does not name falls back.
+	const allowed = ptype in BON_ALLOWED_PAYMENT ? BON_ALLOWED_PAYMENT[ptype] : BON_ALLOWED_PAYMENT.Cash;
 	if (!allowed || allowed.includes(status)) return null;
 	return __(
 		'<b>Generate Bon / Order</b> belum tersedia: booking <b>Cash</b> ini masih <b>{0}</b>. Bayar ke kasir dulu.',
@@ -151,8 +159,12 @@ frappe.ui.form.on('Container Booking', {
 			// people hunt for the permission they are missing, a sentence tells them where
 			// to go.
 			const pay_block = _bon_payment_block(frm);
-			if (pay_block) frm.dashboard.add_comment(pay_block, 'orange', true);
-			else frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
+			// Keyed, not `frm.dashboard.add_comment`: that APPENDS in v16, and refresh()
+			// runs more than once per render after a save — the same sentence twice.
+			container_depot.form_message(frm, 'bon-payment', pay_block || '', 'orange');
+			if (!pay_block) {
+				frm.add_custom_button(__('Generate Bon / Order'), () => open_generate_dialog(frm));
+			}
 		}
 		// A submitted (Confirmed) booking can be reopened for a data correction WITHOUT
 		// reversing its payment — handy for a paid Cash booking that auto-confirmed. Both
@@ -427,7 +439,17 @@ frappe.ui.form.on('Container Booking', {
 		});
 	},
 	_flag_open_conflicts(frm) {
-		// Draft-time heads-up in a single intro banner for the two things a draft can't
+		// A KEYED banner (`container_depot.form_message`), not `frm.set_intro()`, and the
+		// difference is not cosmetic: clearing an intro is `layout.show_message()` with no
+		// html, which EMPTIES the whole message area — every other banner on the form with
+		// it. And this one clears itself on every refresh of a submitted booking, from a
+		// `frm.trigger()` handler, i.e. a microtask that runs AFTER the synchronous tail of
+		// refresh() has already painted its banners. That is what swallowed the "Bayar ke
+		// kasir dulu" notice on an unpaid Cash booking: the one sentence saying WHY Generate
+		// Bon / Order is missing was drawn, then wiped, a tick later. A keyed banner only
+		// ever removes its own.
+		//
+		// Draft-time heads-up in a single banner for the two things a draft can't
 		// surface until Submit (codes / status gates only run there):
 		//   1. the container is already held by another active booking, and
 		//   2. its status won't pass the chosen Direction's gate (Tank In / Lift Off wants a
@@ -435,14 +457,14 @@ frappe.ui.form.on('Container Booking', {
 		// Both call the SAME server helpers that back the actual submit blocks, so the
 		// warning can never disagree with what Submit will do. Non-blocking.
 		if (frm.doc.docstatus !== 0) {
-			frm.set_intro('');
+			container_depot.form_message(frm, 'conflicts', '');
 			return;
 		}
 		const rows = (frm.doc.items || [])
 			.filter((it) => it.container || it.container_no)
 			.map((it) => ({ container: it.container || null, container_no: it.container_no || null }));
 		if (!rows.length) {
-			frm.set_intro('');
+			container_depot.form_message(frm, 'conflicts', '');
 			return;
 		}
 		const payload = JSON.stringify(rows);
@@ -491,7 +513,7 @@ frappe.ui.form.on('Container Booking', {
 					return __('Container {0}: {1}', [p.container_no, orders]);
 				});
 				if (!lines.length && !prep.length) {
-					frm.set_intro('');
+					container_depot.form_message(frm, 'conflicts', '');
 					return;
 				}
 				const blocks = [];
@@ -501,7 +523,9 @@ frappe.ui.form.on('Container Booking', {
 						`<b>${__('Belum selesai — akan diprioritaskan untuk tanggal muat booking ini:')}</b><br>${prep.join('<br>')}`
 					);
 				}
-				frm.set_intro(blocks.join('<br><br>'), lines.length ? 'orange' : 'blue');
+				container_depot.form_message(
+					frm, 'conflicts', blocks.join('<br><br>'), lines.length ? 'orange' : 'blue', false
+				);
 			})
 			.catch(() => {
 				/* non-blocking — a failed warning must never get in the operator's way */
@@ -987,6 +1011,16 @@ frappe.ui.form.on('Container Booking', {
 			// this.visible_columns is non-empty, so the painted header survives a plain
 			// refresh(). Clearing it is what forces the columns to be recomputed.
 			grid.visible_columns = [];
+			// ...and recomputing them is only half of it. refresh() rebuilds the HEADER from
+			// scratch (make_head() throws the old header row away) but REUSES the data rows,
+			// and a reused row only ever gains cells: grid_row.setup_columns() adds a column
+			// it does not have and refreshes the ones it does, never dropping one that has
+			// left visible_columns nor resizing one that changed width. So the header lost
+			// Depo while every painted row kept it — nine rows one cell out of step with
+			// their own header, which read as two columns under the single "Condition" label.
+			// Throwing the rows away is what makes them repaint against the new column set.
+			(grid.grid_rows || []).forEach((row) => row.wrapper && row.wrapper.remove());
+			grid.grid_rows = [];
 			grid.refresh();
 		}
 	},
