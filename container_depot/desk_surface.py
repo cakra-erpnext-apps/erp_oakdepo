@@ -183,3 +183,30 @@ def prune_boot_can_read(bootinfo) -> None:
 	bootinfo.user["can_read"] = [
 		dt for dt in can_read if dt in _ROUTE_EXTRAS or not _outside_assigned_roles(dt, user)
 	]
+
+
+# --- layar /desk ------------------------------------------------------------
+# Ikon di halaman utama /desk adalah doctype `Desktop Icon`, dan penjaganya sendiri lemah:
+# ikon ber-`icon_type = "App"` hanya ditanya hook `add_to_apps_screen.has_permission` milik
+# app-nya (frappe tidak punya, Raven meluluskan semua orang), sedangkan ikon `Link` tanpa
+# `link_to` melewati pemeriksaan modul sama sekali. Hasilnya akun office melihat Framework,
+# Frappe HR, Helpdesk, ERPNext dan belasan folder ERPNext lain di layar pertamanya.
+#
+# Yang benar-benar dibaca halaman itu satu: `frappe.boot.desktop_icons`
+# (`desk/page/desktop/desktop.js`, `sync_layout`). Daftar yang sama juga mengisi pemilih app
+# di kepala sidebar, jadi memangkasnya di sini merapikan keduanya sekaligus.
+_HOME_ICONS = {"Container Depot", "Depot OAK (Mobile)"}
+
+
+def prune_desktop_icons(bootinfo) -> None:
+	"""Sisakan ikon depot saja di /desk untuk akun non-admin (extend_bootinfo).
+
+	Catatan satu kasus yang tidak lewat sini: kalau user pernah menggeser ikonnya sendiri,
+	`Desktop Layout` miliknya yang dipakai, bukan daftar ini. Isinya lahir dari daftar ini
+	juga, jadi tata letak yang dibuat SESUDAH pemangkasan tidak akan memuat ikon lain.
+	"""
+	if _is_privileged(frappe.session.user):
+		return
+	icons = bootinfo.get("desktop_icons") or []
+	bootinfo.desktop_icons = [icon for icon in icons if icon.get("label") in _HOME_ICONS]
+

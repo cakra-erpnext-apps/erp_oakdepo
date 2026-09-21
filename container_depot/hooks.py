@@ -51,6 +51,8 @@ extend_bootinfo = [
 	# Rute doctype Desk dibangun dari `boot.user.can_read`; buang yang di luar permukaan akun
 	# ini supaya /desk/hd-ticket dan kawan-kawannya tidak punya rute (desk_surface.py).
 	"container_depot.desk_surface.prune_boot_can_read",
+	# Layar /desk: sisakan ikon Container Depot + Depot OAK (Mobile) untuk akun non-admin.
+	"container_depot.desk_surface.prune_desktop_icons",
 	# Frappe appends every sidebar Section Break without testing it, so a role that may
 	# read six doctypes still gets all eleven headings. Drop the ones left empty.
 	"container_depot.boot.prune_empty_sidebar_sections",

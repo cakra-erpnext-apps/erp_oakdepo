@@ -92,3 +92,23 @@ class TestDeskSurface(FrappeTestCase):
 		desk_surface.prune_boot_can_read(bootinfo=boot)
 		self.assertEqual(before, list(boot.user.get("can_read") or []))
 		self.assertFalse(desk_surface.is_blocked("HD Ticket", "Administrator"))
+
+	def test_desk_home_keeps_only_the_depot_icons(self):
+		frappe.set_user(_STAFF)
+		frappe.cache.hdel("desktop_icons", _STAFF)
+		boot = get_bootinfo()
+		before = [i["label"] for i in (boot.get("desktop_icons") or [])]
+		desk_surface.prune_desktop_icons(bootinfo=boot)
+		after = [i["label"] for i in (boot.get("desktop_icons") or [])]
+
+		self.assertGreater(len(before), 2, "fixture no longer sees the foreign app icons")
+		self.assertEqual(sorted(after), ["Container Depot", "Depot OAK (Mobile)"])
+
+	def test_desk_home_is_untouched_for_an_admin(self):
+		frappe.set_user("Administrator")
+		frappe.cache.hdel("desktop_icons", "Administrator")
+		boot = get_bootinfo()
+		before = [i["label"] for i in (boot.get("desktop_icons") or [])]
+		desk_surface.prune_desktop_icons(bootinfo=boot)
+		self.assertEqual(before, [i["label"] for i in (boot.get("desktop_icons") or [])])
+
