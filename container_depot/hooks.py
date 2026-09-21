@@ -405,9 +405,9 @@ app_include_js = [
 	# Jalan pulang dari form master yang dibuka lewat "Create a new …" di sebuah field
 	# Link — spanduk konteks + tombol batal (lihat file-nya).
 	"/assets/container_depot/js/link_return.js?v=2",
-	# container_depot.tank_last_test — Tgl. Tes Terakhir tank, dibaca hidup dari master dan
-	# dibetulkan dari form order mana pun (lihat file-nya).
-	"/assets/container_depot/js/tank_last_test.js?v=2",
+	# container_depot.tank_last_test — Tgl. Periodic Test Terakhir tank, dibaca hidup dari
+	# master dan dibetulkan dari M&R uji berkala (lihat file-nya).
+	"/assets/container_depot/js/tank_last_test.js?v=3",
 	# container_depot.tank_position — tombol "Minta Cek Letak": memasukkan tank yang dipegang
 	# sebuah order ke antrean cek letak, tanpa dokumen order baru (lihat file-nya).
 	"/assets/container_depot/js/tank_position.js?v=1",

@@ -742,13 +742,13 @@ def set_tank_last_test(container=None, last_test_date=None):
 
 	POST /api/v1/ess/tank-last-test
 
-	Dibuka untuk keempat menu yang benar-benar berdiri di depan tank — EIR, Cleaning, M&R,
-	Monitor — karena uji di vendor atau depo lain diketahui oleh siapa pun yang memegang
-	kertasnya, dan menutupnya ke satu menu berarti nilai itu tetap kosong. Izin sebenarnya
-	tetap di bawah: Container read + branch pemanggil (lihat
-	``container.set_last_test_date``).
+	Dibuka untuk menu yang benar-benar berdiri di depan tank DAN memang membahas uji
+	berkala — EIR (surveyor membaca pelat), M&R (order uji berkala), Monitor. Cuci tidak
+	ada di sini lagi: tanggal uji tidak menjawab apa pun di layar itu, dan field yang
+	muncul di mana-mana adalah field yang diisi sambil lalu. Izin sebenarnya tetap di
+	bawah: Container read + branch pemanggil (lihat ``container.set_last_test_date``).
 	"""
-	require_any_menu("eir", "cleaning", "mr", "monitor")
+	require_any_menu("eir", "mr", "monitor")
 	from container_depot.container_depot.doctype.container.container import set_last_test_date
 
 	return set_last_test_date(container, last_test_date)

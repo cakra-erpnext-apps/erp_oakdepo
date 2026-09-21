@@ -1,4 +1,5 @@
-// Tgl. Tes Terakhir tank, dibaca dan dibetulkan dari form order mana pun di Desk.
+// Tgl. Periodic Test Terakhir tank, dibaca dan dibetulkan dari form order yang memang
+// membahas uji berkala (M&R ber-job_type Periodic Test). Order cuci tidak memakainya.
 //
 // Nilainya milik TANK (`Container.last_test_date`), bukan milik order — tidak ada salinan
 // yang disimpan di Cleaning Order / Repair Order, karena salinan berarti satu tank punya dua
@@ -15,9 +16,13 @@ container_depot.tank_last_test = {
 	// Panggil dari `refresh`: baca ulang nilai master, lalu gambar ulang panel fakta sidebar.
 	// Async — Desk tidak menahan form untuk satu tanggal — jadi nilainya diparkir di `frm`
 	// dan `_render_system_facts` dipicu ulang begitu ia sampai.
-	load(frm) {
+	// ``active`` supaya pemanggil bisa mematikannya per dokumen (M&R non-Periodic Test)
+	// tanpa menyentuh ``frm.__last_test`` sendiri: satu form object dipakai ulang untuk
+	// setiap dokumen yang dibuka, jadi melewatkan load() begitu saja akan menyisakan
+	// tanggal milik order sebelumnya di panel fakta.
+	load(frm, active = true) {
 		frm.__last_test = undefined;
-		if (frm.is_new() || !frm.doc.container) return;
+		if (!active || frm.is_new() || !frm.doc.container) return;
 		frappe.db.get_value('Container', frm.doc.container, 'last_test_date').then((r) => {
 			frm.__last_test = (r.message || {}).last_test_date || null;
 			frm.trigger('_render_system_facts');
@@ -33,10 +38,10 @@ container_depot.tank_last_test = {
 
 	// Tombol di grup "Tank". Sengaja bukan field di order: field berarti tersimpan di order,
 	// dan order yang menyimpan tanggal uji akan menampilkan tanggal basi selamanya.
-	button(frm) {
-		if (frm.is_new() || !frm.doc.container) return;
+	button(frm, active = true) {
+		if (!active || frm.is_new() || !frm.doc.container) return;
 		frm.add_custom_button(
-			__('Tgl. Tes Terakhir'),
+			__('Tgl. Periodic Test Terakhir'),
 			() => container_depot.tank_last_test.edit(frm),
 			__('Tank')
 		);
@@ -48,11 +53,11 @@ container_depot.tank_last_test = {
 				{
 					fieldname: 'last_test_date',
 					fieldtype: 'Date',
-					label: __('Tgl. Tes Terakhir'),
+					label: __('Tgl. Periodic Test Terakhir'),
 					default: frm.__last_test || null,
 					reqd: 1,
 					description: __(
-						'Tanggal uji berkala terakhir tank ini — dari depo kita maupun vendor/depo lain. Tersimpan di master tank, bukan di order ini.'
+						'Uji berkala terakhir tank ini — termasuk yang dikerjakan vendor / depo lain, yang tidak punya M&R di sistem ini. Tersimpan di master tank, bukan di order ini.'
 					),
 				},
 			],
@@ -67,7 +72,7 @@ container_depot.tank_last_test = {
 					frm.__last_test = r.message.last_test_date;
 					frm.trigger('_render_system_facts');
 					frappe.show_alert({
-						message: __('Tgl. Tes Terakhir {0} tersimpan di {1}', [
+						message: __('Tgl. Periodic Test Terakhir {0} tersimpan di {1}', [
 							frappe.datetime.str_to_user(r.message.last_test_date),
 							frm.doc.container,
 						]),
@@ -75,7 +80,7 @@ container_depot.tank_last_test = {
 					});
 				});
 			},
-			__('Tgl. Tes Terakhir'),
+			__('Tgl. Periodic Test Terakhir'),
 			__('Simpan')
 		);
 	},

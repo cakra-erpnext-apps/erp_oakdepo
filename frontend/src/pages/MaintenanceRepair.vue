@@ -382,10 +382,11 @@
 						<dt class="text-[11px] uppercase tracking-wide text-gray-400">{{ cell.label }}</dt>
 						<dd class="truncate font-semibold text-gray-800">{{ cell.value || "—" }}</dd>
 					</div>
-					<!-- Satu-satunya sel yang bisa ditulis: tanggal uji tank, milik master. Di
-					     layar M&R ia yang paling sering dicari — uji berkala berikutnya dihitung
-					     dari sini. -->
+					<!-- Satu-satunya sel yang bisa ditulis: tanggal uji tank, milik master. Hanya
+					     di order uji berkala — di sanalah pertanyaannya muncul, dan uji berikutnya
+					     dihitung dari sini. M&R perbaikan biasa tidak membahasnya. -->
 					<LastTestField
+						v-if="order.job_type === 'Periodic Test'"
 						v-model="order.last_test_date"
 						:container="order.container"
 					/>

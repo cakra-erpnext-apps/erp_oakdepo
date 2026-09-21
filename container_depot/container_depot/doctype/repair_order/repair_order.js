@@ -263,11 +263,17 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_set_queries');
 		frm.trigger('_refresh_on_hand');
 		frm.trigger('_render_system_facts');
-		// Tgl. Tes Terakhir tank: dibaca hidup dari master (bukan disalin ke order ini) dan
-		// bisa dibetulkan di sini — termasuk uji yang dikerjakan vendor / depo lain. Uji
-		// berkala yang selesai di depo ini mengisinya sendiri saat order ditutup.
-		container_depot.tank_last_test.load(frm);
-		container_depot.tank_last_test.button(frm);
+		// Tgl. Periodic Test Terakhir tank: dibaca hidup dari master (bukan disalin ke order
+		// ini) dan bisa dibetulkan di sini — termasuk uji yang dikerjakan vendor / depo lain,
+		// yang memang tidak akan pernah punya M&R di sistem ini. Uji berkala yang selesai di
+		// depo sendiri mengisinya otomatis saat order ditutup (_stamp_last_test_date).
+		//
+		// HANYA di order uji berkala. Di M&R perbaikan biasa tanggal ini tidak menjawab apa
+		// pun yang sedang dikerjakan, dan tombol yang selalu ada di mana-mana adalah tombol
+		// yang ditekan sambil lalu.
+		const is_periodic_test = frm.doc.job_type === 'Periodic Test';
+		container_depot.tank_last_test.load(frm, is_periodic_test);
+		container_depot.tank_last_test.button(frm, is_periodic_test);
 		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
 		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
 		container_depot.tank_position.button(frm);
@@ -326,7 +332,7 @@ frappe.ui.form.on('Repair Order', {
 			[__('Status'), frm.doc.status && esc(frm.doc.status)],
 			[__('Principal (Owner)'), frm.doc.principal && esc(frm.doc.principal)],
 			[__('Container No'), frm.doc.container_no && esc(frm.doc.container_no)],
-			[__('Tgl. Tes Terakhir'), container_depot.tank_last_test.fact(frm)],
+			[__('Tgl. Periodic Test Terakhir'), container_depot.tank_last_test.fact(frm)],
 			// Order Date / Start Date / Completion Date are NOT repeated here: they stand on
 			// the form itself, read-only and behind a depends_on, so each one appears in
 			// place the moment the system stamps it (Container Booking's block_reason

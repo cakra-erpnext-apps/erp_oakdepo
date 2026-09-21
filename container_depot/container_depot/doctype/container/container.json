@@ -157,10 +157,10 @@
    "label": "Max Gross Weight / MWG (kg)"
   },
   {
-   "description": "Tanggal periodic test terakhir dari data plate tank. Diisi manual.",
+   "description": "Uji berkala terakhir tank ini, dari pelat tank atau dari sertifikat vendor. Uji yang dikerjakan di depo sendiri mengisinya otomatis lewat M&R Periodic Test; yang dikerjakan vendor / depo lain cukup diketik tanggalnya di sini \u2014 tidak perlu M&R. Dipakai Periodic Test Register untuk menghitung jatuh tempo.",
    "fieldname": "last_test_date",
    "fieldtype": "Date",
-   "label": "Last Test Date"
+   "label": "Tgl. Periodic Test Terakhir"
   },
   {
    "collapsible": 1,
@@ -465,7 +465,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-18 09:00:00.000000",
+ "modified": "2026-09-21 10:05:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

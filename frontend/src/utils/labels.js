@@ -297,7 +297,7 @@ export const labels = {
 	tare: "Tara (kg)", // Tare
 	maxGross: "Berat Kotor Maks (kg)", // Max gross weight
 	lastCargo: "Muatan Terakhir", // Last cargo
-	lastTest: "Tgl. Tes Terakhir", // Last test date — tanggal uji berkala di pelat tank
+	lastTest: "Tgl. Periodic Test Terakhir", // Container.last_test_date — uji berkala di pelat tank
 	eirInDate: "Last EIR-In Date", // last EIR-In date from the Container master
 	eirOutDate: "Last EIR-Out Date", // last EIR-Out date from the Container master
 	location: "Lokasi Yard", // Yard location
@@ -887,16 +887,16 @@ export const labels = {
 	cleaningMgw: "MGW (kg)",
 	cleaningPrevCargo: "Cargo Sebelumnya",
 	cleaningMfgDate: "Tgl. Pembuatan",
-	cleaningLastTest: "Last Test",
-	// Tgl. tes terakhir yang bisa dikoreksi dari layar order (components/LastTestField.vue).
-	// Satu nilai milik TANK, bukan milik order — teksnya mengatakan itu, supaya tidak ada yang
-	// mengira ia sedang mengisi kolom di order cuci ini saja.
+	cleaningLastTest: "Last Periodic Test",
+	// Tgl. periodic test terakhir, dikoreksi dari EIR atau dari M&R uji berkala
+	// (components/LastTestField.vue). Satu nilai milik TANK, bukan milik order — teksnya
+	// mengatakan itu, supaya tidak ada yang mengira ia sedang mengisi kolom di order ini saja.
 	lastTestEdit: "Ubah",
 	lastTestAdd: "Isi",
 	lastTestSave: "Simpan",
 	lastTestCancel: "Batal",
-	lastTestHint: "Tanggal uji berkala terakhir tank ini — dari depo kita maupun vendor/depo lain.",
-	lastTestSaved: "Tgl. tes terakhir tersimpan",
+	lastTestHint: "Uji berkala terakhir tank ini — termasuk yang dikerjakan vendor / depo lain, yang tidak punya M&R di sini.",
+	lastTestSaved: "Tgl. periodic test terakhir tersimpan",
 	// M&R (Maintenance & Repair — workshop team; auto-created from EIRs with damage)
 	mrTitle: "M&R", // page + Home tile + nav title
 	mrTitleFull: "M&R (Maintenance & Repair)",
