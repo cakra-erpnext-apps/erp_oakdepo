@@ -45,6 +45,12 @@ extend_bootinfo = [
 	# Tell the desk client whether this site does invoicing at all, so a form never
 	# offers a billing button the server is about to refuse (container_depot.finance).
 	"container_depot.boot.expose_finance_switch",
+	# Akun tanpa izin `read` pada User: tandai supaya list view-nya digambar "Not Permitted"
+	# dan tidak menggantung menunggu 403 dari user_directory.user_query.
+	"container_depot.boot.expose_user_list_block",
+	# Rute doctype Desk dibangun dari `boot.user.can_read`; buang yang di luar permukaan akun
+	# ini supaya /desk/hd-ticket dan kawan-kawannya tidak punya rute (desk_surface.py).
+	"container_depot.desk_surface.prune_boot_can_read",
 	# Frappe appends every sidebar Section Break without testing it, so a role that may
 	# read six doctypes still gets all eleven headings. Drop the ones left empty.
 	"container_depot.boot.prune_empty_sidebar_sections",
@@ -93,10 +99,13 @@ permission_query_conditions = {
 	# an allowlist by report name, because `report` permission is per ref doctype and
 	# four of this app's reports share `Container Booking`. See customer_scope.
 	"Report": "container_depot.customer_scope.report_query",
-	# A customer account is a System User, so it inherits every doctype the stock
-	# `All` / `Desk User` roles may read — another app's support tickets, HR ledgers,
-	# integration settings. This empties all of them; see customer_scope.
-	"*": "container_depot.customer_scope.foreign_doctype_query",
+	# Daftar User bocor ke semua akun lewat izin `select` milik role `Desk User` — lihat
+	# user_directory.py. Picker (Assign To / Share / mention) sengaja tidak ikut disaring.
+	"User": "container_depot.user_directory.user_query",
+	# SETIAP System User mewarisi doctype yang boleh dibaca role otomatis `All` / `Desk User`
+	# — tiket support app lain, ledger cuti, setelan integrasi. Dikosongkan di jalur daftar;
+	# akun customer dijawab aturannya sendiri. Lihat desk_surface.py.
+	"*": "container_depot.desk_surface.foreign_doctype_query",
 }
 
 # The query conditions above only guard LIST reads; opening one document by URL is routed
@@ -106,7 +115,7 @@ has_permission = {
 	"Container Movement": "container_depot.customer_scope.container_movement_permission",
 	"Container Booking": "container_depot.customer_scope.container_booking_permission",
 	"Report": "container_depot.customer_scope.report_permission",
-	"*": "container_depot.customer_scope.foreign_doctype_permission",
+	"*": "container_depot.desk_surface.foreign_doctype_permission",
 }
 
 # Document Events
@@ -395,6 +404,8 @@ app_include_js = [
 	# container_depot.form_message — spanduk berkunci di atas form, supaya pesan yang sama
 	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
 	"/assets/container_depot/js/form_message.js?v=2",
+	# Menu profil /desk: buang About / Frappe Support / Reset Desktop Layout (lihat file-nya).
+	"/assets/container_depot/js/desktop_menu_trim.js?v=1",
 	# container_depot.priority_pill / urgency_subject — penanda prioritas di Desk list, dengan
 	# kosakata yang sama persis dengan PWA ("MENDESAK · H-2 · 9 Sep"): satu bentuk untuk
 	# kolomnya dan satu untuk kolom subject yang tidak pernah terpotong (lihat file-nya).
@@ -458,6 +469,17 @@ doctype_js = {
 	"User": "public/js/user.js",
 	# Tab "Portal Users" versi depot, menggantikan milik ERPNext (lihat file-nya).
 	"Customer": "public/js/customer.js",
+}
+
+override_whitelisted_methods = {
+	# Daftar `@sebutan` dibaca dengan `frappe.get_all` lalu di-cache global, jadi tidak ada
+	# permission_query_conditions yang bisa menyentuhnya — akun portal ditutup di sini.
+	"frappe.desk.search.get_names_for_mentions": "container_depot.user_directory.get_names_for_mentions",
+}
+
+doctype_list_js = {
+	# Daftar User untuk akun tanpa izin `read` (lihat file-nya + user_directory.py).
+	"User": "public/js/user_list.js",
 }
 # doctype_tree = {"doctype" : "doctype_tree.js"}
 # doctype_calendar = {"doctype" : "public/js/doctype_calendar.js"}

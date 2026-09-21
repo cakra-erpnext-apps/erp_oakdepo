@@ -4,6 +4,26 @@
 // baik saat mendaftarkan handler maupun saat handler `refresh` dijalankan.
 
 // ---------------------------------------------------------------------------------------
+// 0. Menyembunyikan TAB tidak bisa lewat `set_df_property`
+//
+// `frm.set_df_property` menulis ke salinan docfield PER DOKUMEN
+// (`frappe.meta.docfield_copy[doctype][docname]`), sementara objek Tab memegang docfield
+// GLOBAL dari `frappe.get_meta` — dibuktikan di browser pada frappe 16.18.3:
+// `tab.df === frappe.get_meta("User").fields[...]` true, `=== frappe.meta.get_docfield(...)`
+// false. Jadi Section Break ikut sembunyi (control-nya membaca salinan per dokumen), tapi
+// Tab Break tidak pernah. Satu-satunya pegangan adalah objek Tab-nya sendiri.
+//
+// Karena docfield-nya global, nilainya bertahan untuk semua dokumen User di sesi itu —
+// jadi pemanggilnya WAJIB menyetel kedua arah (sembunyi/tampil), bukan cuma menyembunyikan.
+function set_tabs_hidden(frm, fieldnames, hidden) {
+	for (const tab of frm.layout?.tabs || []) {
+		if (!fieldnames.includes(tab.df?.fieldname)) continue;
+		tab.df.hidden = hidden ? 1 : 0;
+		tab.refresh();
+	}
+}
+
+// ---------------------------------------------------------------------------------------
 // 1. Tata letak form "New User"
 //
 // Form pembuatan user bawaan menampilkan seluruh isi doctype User sekaligus, termasuk yang
@@ -40,11 +60,13 @@ const HIDE_UNTIL_SAVED = [
 	// Baru bisa dipakai setelah ada user-nya.
 	"third_party_authentication",
 	"api_access",
-	"connections_tab",
 ];
 
 frappe.ui.form.on("User", {
 	refresh(frm) {
+		// Tab, bukan field — lihat bagian 0. Disetel dua arah: docfield-nya global, jadi
+		// tanpa `false` di dokumen tersimpan tab ini ikut hilang di form user lain.
+		set_tabs_hidden(frm, ["connections_tab"], frm.is_new());
 		if (!frm.is_new()) return;
 
 		// Core menyembunyikan sb1 di setiap refresh (`toggle_display(["sb1", ...], false)`),
@@ -91,3 +113,53 @@ frappe.ui.form.on("User", {
 		});
 	}
 })();
+
+// ---------------------------------------------------------------------------------------
+// 3. Form User milik user sendiri (non System Manager)
+//
+// Frappe membagikan tiap dokumen User ke user-nya sendiri lewat DocShare read+write
+// (lihat `tabDocShare`, share_doctype = "User"), jadi SETIAP akun bisa membuka
+// /app/user/<email>-nya sendiri walaupun role `Desk User` cuma punya `select`. Yang terbuka
+// di sana bukan cuma profilnya: preferensi Desk, Email, Document Follow, Workspace/App
+// default, Security Settings, Third Party Authentication, sampai tab Sessions — belasan
+// setelan yang bukan urusan pemakai dan cuma jadi jalan merusak akunnya sendiri.
+//
+// Yang disisakan persis tiga: tab User Details, tab More Information, dan tab Settings
+// dengan SATU section — Change Password. Selebihnya disembunyikan.
+//
+// Gate-nya role System Manager, bukan nama dokumen: akun non-SM tidak punya `read` pada
+// doctype User sama sekali, jadi satu-satunya dokumen User yang bisa ia buka memang
+// dokumennya sendiri. Administrator memegang semua role, jadi ikut lolos.
+//
+// Batasnya: ini lapisan tampilan. Field permlevel 1 (Roles, Allow Modules, Defaults) memang
+// sudah tertutup izin, dan `generate_keys` sudah `frappe.only_for("System Manager")` — tapi
+// field permlevel 0 yang disembunyikan di sini (mis. `simultaneous_sessions`,
+// `bypass_restrict_ip_check_if_2fa_enabled`) masih bisa ditulis lewat API oleh pemilik
+// akunnya. Kalau itu perlu ditutup juga, tempatnya guard di `User.before_save`.
+const SELF_VIEW_HIDDEN_TABS = ["roles_permissions_tab", "connections_tab", "sessions_tab"];
+
+const SELF_VIEW_HIDDEN = [
+	// Isi tab Settings, semuanya kecuali `change_password`.
+	"desk_settings_section",
+	"navigation_settings_section",
+	"list_settings_section",
+	"form_settings_section",
+	"document_follow_notifications_section",
+	"email_settings",
+	"workspace_section",
+	"app_section",
+	"sb3",
+	"third_party_authentication",
+	"api_access",
+];
+
+frappe.ui.form.on("User", {
+	refresh(frm) {
+		if (frm.is_new() || frappe.user.has_role("System Manager")) return;
+
+		for (const fieldname of SELF_VIEW_HIDDEN) {
+			frm.set_df_property(fieldname, "hidden", 1);
+		}
+		set_tabs_hidden(frm, SELF_VIEW_HIDDEN_TABS, true);
+	},
+});

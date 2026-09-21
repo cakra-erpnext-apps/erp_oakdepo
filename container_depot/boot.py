@@ -40,6 +40,19 @@ def expose_finance_switch(bootinfo):
 	bootinfo.depot_finance_enabled = 1 if finance.is_enabled() else 0
 
 
+def expose_user_list_block(bootinfo):
+	"""Beri tahu klien kalau akun ini tidak boleh membuka DAFTAR User.
+
+	Servernya sudah menolak (``container_depot.user_directory.user_query``), tapi list view
+	menjawab 403 dengan kerangka halaman yang menggantung di "Refreshing…". Flag ini yang
+	dipakai ``user_list.js`` untuk menggambar "Not Permitted" sebelum permintaannya berangkat.
+
+	Tidak bisa dibaca dari `frappe.boot.user.can_read` di klien: daftar itu ikut memuat
+	doctype yang izinnya cuma `select`, jadi User selalu ada di sana.
+	"""
+	bootinfo.depot_block_user_list = 1 if frappe.only_has_select_perm("User") else 0
+
+
 def patch_workspace_sidebar_can_read():
 	"""Backport satu `return` yang hilang di Frappe, yang mengosongkan sidebar kiri.
 
