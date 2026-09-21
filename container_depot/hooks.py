@@ -423,7 +423,7 @@ app_include_js = [
 	# Matikan "Delete" + "Duplicate" (form ⋯ Menu, Actions ▸ Delete di daftar, dan pintasan
 	# keyboardnya) untuk order, jejak gate/yard dan dokumen penagihan — dibatalkan lewat
 	# Cancel/Void, tidak dihapus; order baru dibuat dari menunya, tidak disalin.
-	"/assets/container_depot/js/no_delete_duplicate.js?v=2",
+	"/assets/container_depot/js/no_delete_duplicate.js?v=3",
 ]
 
 # include js, css files in header of web template

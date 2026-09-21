@@ -15,6 +15,13 @@
 //               sama dibooking dua kali, EIR kedua untuk kunjungan yang sama. Order baru
 //               dibuat dari menunya sendiri, yang mengisi konteksnya dengan benar.
 //
+//               Kecuali Container Booking (lihat DUPLICATE_OK di bawah): satu customer
+//               memesan pekerjaan yang sama berulang kali, dan yang berulang justru bagian
+//               atas formnya. Di sana Duplicate dibiarkan hidup, dan yang TIDAK boleh ikut
+//               tersalin dijaga dengan `no_copy: 1` di doctype-nya — container, biaya,
+//               pembayaran, DO, catatan dan seluruh kolom sistem lahir kosong; yang terbawa
+//               hanya section "Booking" dan "Pihak".
+//
 // Ditegakkan di prototype toolbar/list, bukan per-doctype, supaya berlaku sama di semua
 // form dan daftar — termasuk lewat pintasan keyboard, yang ikut mati karena ia didaftarkan
 // bersama item menunya (`add_menu_item` di toolbar.js). Sebagian doctype sudah memakai
@@ -47,13 +54,18 @@
 		'OAK Monthly Invoice',
 	]);
 
+	// Dijaga dari Delete, TAPI Duplicate tetap boleh — lihat catatan Duplicate di atas.
+	const DUPLICATE_OK = new Set(['Container Booking']);
+
 	const Toolbar = frappe.ui?.form?.Toolbar;
 	if (Toolbar) {
 		['add_delete', 'add_duplicate'].forEach((method) => {
 			const original = Toolbar.prototype[method];
 			if (!original) return;
 			Toolbar.prototype[method] = function () {
-				if (GUARDED.has(this.frm?.doctype)) return;
+				const doctype = this.frm?.doctype;
+				const allowed = method === 'add_duplicate' && DUPLICATE_OK.has(doctype);
+				if (GUARDED.has(doctype) && !allowed) return;
 				return original.apply(this, arguments);
 			};
 		});

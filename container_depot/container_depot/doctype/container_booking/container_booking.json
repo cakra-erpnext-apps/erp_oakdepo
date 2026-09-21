@@ -199,6 +199,7 @@
   {
    "description": "Wajib. Minimal satu container.",
    "fieldname": "items",
+   "no_copy": 1,
    "fieldtype": "Table",
    "label": "Containers",
    "options": "Container Booking Item",
@@ -212,6 +213,7 @@
   {
    "description": "Opsional. Kosong = tanpa invoice.",
    "fieldname": "charges",
+   "no_copy": 1,
    "fieldtype": "Table",
    "label": "Charges",
    "options": "Container Booking Charge",
@@ -226,6 +228,7 @@
    "default": "Cash",
    "description": "Wajib. Cash harus lunas sebelum disetujui; TOP ditagih belakangan.",
    "fieldname": "payment_type",
+   "no_copy": 1,
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Payment Type",
@@ -241,6 +244,7 @@
   {
    "description": "Opsional.",
    "fieldname": "do_reference",
+   "no_copy": 1,
    "fieldtype": "Data",
    "label": "DO Reference",
    "allow_on_submit": 1
@@ -248,6 +252,7 @@
   {
    "description": "Opsional. Scan / PDF DO.",
    "fieldname": "do_document",
+   "no_copy": 1,
    "fieldtype": "Attach",
    "label": "DO Document",
    "allow_on_submit": 1
@@ -260,6 +265,7 @@
   {
    "description": "Opsional.",
    "fieldname": "sales_name",
+   "no_copy": 1,
    "fieldtype": "Data",
    "label": "Sales Name",
    "allow_on_submit": 1
@@ -267,6 +273,7 @@
   {
    "description": "Opsional.",
    "fieldname": "remarks",
+   "no_copy": 1,
    "fieldtype": "Small Text",
    "label": "Remarks",
    "allow_on_submit": 1
@@ -281,6 +288,7 @@
    "default": "Draft",
    "description": "Diatur alur booking. Pengajuan = draft customer yang sudah diajukan ke Admin Ops (sama dengan Draft untuk internal). Completed = semua container-nya sudah keluar gate.",
    "fieldname": "booking_status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Booking Status",
@@ -292,6 +300,7 @@
   {
    "description": "Total semua baris charge.",
    "fieldname": "charges_total",
+   "no_copy": 1,
    "fieldtype": "Currency",
    "label": "Total Charges",
    "options": "currency",
@@ -316,6 +325,7 @@
    "depends_on": "eval:doc.payment_type=='Cash' || doc.booking_status=='Cancelled'",
    "description": "Hanya untuk booking Cash. Ditandai manual selama finance mati, dari Sales Invoice-nya saat finance aktif.",
    "fieldname": "payment_status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Payment Status",
@@ -326,6 +336,7 @@
   },
   {
    "fieldname": "sales_invoice",
+   "no_copy": 1,
    "fieldtype": "Link",
    "label": "Sales Invoice",
    "options": "Sales Invoice",
@@ -335,6 +346,7 @@
   {
    "depends_on": "eval:doc.block_reason",
    "fieldname": "block_reason",
+   "no_copy": 1,
    "fieldtype": "Small Text",
    "label": "Block Reason",
    "read_only": 1,
@@ -373,6 +385,7 @@
   {
    "description": "Ringkasan untuk list view. Filter Containers di list mencari di kolom ini.",
    "fieldname": "container_summary",
+   "no_copy": 1,
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Containers",
@@ -405,6 +418,7 @@
   {
    "description": "Tank In = Lift Off, Tank Out = Lift On.",
    "fieldname": "lift_type",
+   "no_copy": 1,
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Lift Type",
@@ -413,6 +427,7 @@
   },
   {
    "fieldname": "currency",
+   "no_copy": 1,
    "fieldtype": "Link",
    "hidden": 1,
    "label": "Mata Uang",
@@ -423,6 +438,7 @@
   {
    "description": "Dari kontrak aktif customer.",
    "fieldname": "contract",
+   "no_copy": 1,
    "fieldtype": "Link",
    "hidden": 1,
    "label": "Contract",
@@ -450,7 +466,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-21 15:00:00.000000",
+ "modified": "2026-09-21 18:30:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

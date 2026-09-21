@@ -645,6 +645,33 @@ class TestTankInFlow(FrappeTestCase):
 		self.assertEqual(status_tag_for_condition("LADEN"), "Dirty")
 		self.assertEqual(status_tag_for_condition(None), "Dirty")
 
+	def test_duplicate_keeps_booking_and_parties_only(self):
+		# Duplicate is deliberately left ON for Container Booking (see no_delete_duplicate.js).
+		# What it may carry is fenced by `no_copy` on the doctype: the "Booking" and "Pihak"
+		# sections come along, everything below them is born empty.
+		b = self._booking(
+			self.customer,
+			plan_date=today(),
+			remarks="sekali saja",
+			charges=[{"item": "Lift Off"}],
+		)
+		b.insert(ignore_permissions=True)
+
+		copy = frappe.copy_doc(b, ignore_no_copy=False)
+		# Booking + Pihak.
+		for field in ("direction", "branch", "depot", "plan_date", "customer", "principal"):
+			self.assertEqual(copy.get(field), b.get(field), field)
+		self.assertEqual(copy.do_reference or None, None)
+		# Everything past them.
+		self.assertFalse(copy.items)
+		self.assertFalse(copy.charges)
+		self.assertFalse(copy.remarks)
+		self.assertFalse(copy.contract)
+		self.assertFalse(copy.currency)
+		# The client's copy re-applies field defaults (server-side `copy_doc` does not), so the
+		# reqd, no_copy Booking Status only survives duplication because it has one.
+		self.assertEqual(frappe.get_meta("Container Booking").get_field("booking_status").default, "Draft")
+
 	def test_no_contract_no_charges_submits_free(self):
 		# A contract is no longer a hard gate: it only supplies the rate card and the
 		# allowed payment modes. A walk-in booking that bills nothing is a legitimate
