@@ -18,7 +18,8 @@
 			<div class="space-y-4 px-4 pb-5 pt-1">
 				<div>
 					<p class="text-base font-extrabold leading-tight text-gray-900">
-						{{ labels.eirBatchTitle }} <span v-if="voucher" class="font-mono">{{ voucher }}</span>
+						{{ labels.eirBatchTitle }}
+						<span v-if="tanks" class="font-mono text-sm">· {{ tanks }}</span>
 					</p>
 					<p class="mt-0.5 text-xs text-gray-500">{{ countLine }}</p>
 				</div>
@@ -84,7 +85,8 @@ const props = defineProps({
 	// Sama dengan yang dipakai bar batch: baris worklist + `sent` untuk yang sudah dikirim.
 	rows: { type: Array, default: () => [] },
 	activeName: { type: String, default: "" },
-	voucher: { type: String, default: "" },
+	// Nomor tank anggota batch, sudah dirangkai — lihat catatan yang sama di EirBatchBar.
+	tanks: { type: String, default: "" },
 })
 const emit = defineEmits(["close", "leave", "pick"])
 

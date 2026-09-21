@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, getdate, now_datetime
 
 from container_depot.container_depot.container_status import PRESENT, container_open_orders
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
@@ -28,13 +28,29 @@ _LIST_FIELDS = [
 ]
 
 
-def list_gate_history(start=0, page_length=10, search=None) -> dict:
+def list_gate_history(start=0, page_length=10, search=None, direction=None, day=None) -> dict:
 	"""Gate Entry records (gate-in/out vouchers), newest first, paginated + searchable,
-	depot-scoped to the caller's branch."""
+	depot-scoped to the caller's branch.
+
+	``direction`` ("in" / "out") + ``day`` ("today" or a date) narrow the feed to the tanks
+	that came through that door on that day. Beranda's "Tank masuk" / "Tank keluar" tiles
+	link here with exactly the day and direction their number counts, so the list opens on
+	the rows behind the tile instead of on the whole history.
+	"""
 	filters = {}
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]
+	# Arah dibaca dari cap waktunya, bukan dari sebuah field arah: satu Gate Entry adalah
+	# satu kunjungan tank, dan cap mana yang terisi itulah yang memberi tahu pintu mana
+	# yang sudah dilewatinya.
+	stamp = {"in": "gate_in_timestamp", "out": "gate_out_timestamp"}.get(str(direction or "").strip().lower())
+	if stamp:
+		if day and str(day).strip().lower() not in ("undefined", "null", "none"):
+			d = getdate() if str(day).strip().lower() == "today" else getdate(day)
+			filters[stamp] = ["between", [d, d]]
+		else:
+			filters[stamp] = ["is", "set"]
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":

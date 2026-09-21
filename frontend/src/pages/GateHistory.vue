@@ -9,7 +9,19 @@
 		detail-param="name"
 		:search-placeholder="labels.gateHistorySearch"
 		:count-label="labels.gateHistoryCount"
+		:list-params="listParams"
 	>
+		<!-- Datang dari kartu Beranda: daftarnya sudah disaring persis seperti angka yang
+		     barusan ditekan. Chip-nya mengatakannya, dan sekali ketuk membuka riwayat penuh. -->
+		<template v-if="filterNote" #filters>
+			<div class="flex items-center gap-2">
+				<span class="oak-chip bg-brand-50 text-brand-700">
+					<Icon name="filter" :size="12" /> {{ filterNote }}
+				</span>
+				<router-link to="/gate/history" class="oak-link text-xs">{{ labels.gateHistoryAll }}</router-link>
+			</div>
+		</template>
+
 		<template #row="{ item }">
 			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600"><Icon name="log-in" :size="16" /></span>
 			<div class="min-w-0 flex-1">
@@ -48,9 +60,23 @@
 </template>
 
 <script setup>
+import { computed } from "vue"
+import { useRoute } from "vue-router"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
+
+// ?direction=in|out&day=today — saringan opsional dari tautan mana pun, diteruskan apa adanya
+// ke server (gate.list_gate_history yang memutuskan cap waktu mana
+// yang dipakai). Tanpa query, halaman ini tetap riwayat gate yang penuh.
+const route = useRoute()
+const dir = computed(() => (route.query.direction === "in" || route.query.direction === "out" ? route.query.direction : ""))
+const listParams = computed(() => (dir.value ? { direction: dir.value, day: route.query.day || undefined } : {}))
+const filterNote = computed(() => {
+	if (!dir.value) return ""
+	const what = dir.value === "in" ? labels.homeTileGateIn : labels.homeTileGateOut
+	return route.query.day === "today" ? `${what} · ${labels.gateHistoryToday}` : what
+})
 
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
 const fmtDateTime = (v) => (v ? String(v).slice(0, 16).replace("T", " ") : "")

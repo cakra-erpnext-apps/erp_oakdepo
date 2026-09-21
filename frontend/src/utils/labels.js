@@ -223,8 +223,6 @@ export const labels = {
 	waitCleaningIdleMany: "{n} cleaning order belum dimulai",
 	waitMrApprovalOne: "M&R {ref} menunggu approval",
 	waitMrApprovalMany: "{n} M&R menunggu approval",
-	waitBookingGateOne: "Booking {ref} menunggu di gate",
-	waitBookingGateMany: "{n} booking menunggu di gate",
 	waitLoweringMany: "{n} tank menunggu diturunkan",
 	waitSurveyReadyMany: "{n} tank siap disurvey",
 	waitPositionOrderMany: "{n} tank survey belum ada letaknya",
@@ -393,6 +391,12 @@ export const labels = {
 	// Baris "terakhir diubah orang lain" di atas form (components/EditedBy.vue). Muncul hanya
 	// kalau yang menyentuhnya terakhir BUKAN pemakai layar ini.
 	orderEditedBy: "Diubah terakhir oleh {name}",
+	// Nama bagian daftar yang dipakai SEMUA menu antrean (EIR, Cleaning, M&R): empat
+	// bagian yang bisa dibuka-tutup dengan urutan yang sama, supaya satu kebiasaan cukup
+	// untuk seluruh aplikasi. "Diajukan Review" dan "Selesai" tetap punya kalimatnya
+	// sendiri per menu — keduanya menyebut jenis pekerjaannya.
+	sectionDoing: "Dikerjakan", // sudah dipegang seseorang
+	sectionTodo: "Menunggu dikerjakan", // belum disentuh siapa pun
 	eirBadgeIn: "Masuk", // EIR-In badge
 	eirBadgeOut: "Keluar", // EIR-Out badge
 	eirBadge: "EIR", // queue navigator counter prefix ("EIR 2 / 5")
@@ -405,7 +409,6 @@ export const labels = {
 	// Batch EIR — satu bon, beberapa tank, dikerjakan berurutan tanpa kembali ke daftar.
 	// Kata-kata di sini dipakai bar batch, sheet daftar batch, dan layar batch selesai.
 	eirBatchOf: "dari", // "EIR 2 dari 5" / "langkah 1 dari 4"
-	eirBatchWord: "batch", // "batch ORD-BKR-2026-09508"
 	eirBatchTitle: "Batch", // judul sheet
 	eirBatchOpenBtn: "Buka batch", // tombol utama di daftar: "Buka batch · 2 EIR"
 	eirBatchOpenHint: "Bisa pindah antar EIR tanpa kembali ke daftar.",
@@ -461,7 +464,6 @@ export const labels = {
 	eirBatchDoneNote: "Cleaning order dibuat otomatis untuk tank yang statusnya tetap Empty dirty.",
 	eirBatchDoneBack: "Kembali ke daftar",
 	eirBatchDoneNew: "Buka batch baru",
-	eirPendingCount: "menunggu", // pending count suffix
 	eirSource: "Sumber Data", // Source
 	eirFetch: "Ambil Data", // Fetch
 	containerNumber: "Nomor Container", // Container number (EIR is keyed on the unit)
@@ -544,7 +546,6 @@ export const labels = {
 	checklistSearchDamaged: "Cari section / part yang rusak…", // Search a section/part to add
 	checklistEmpty: "Belum ada kerusakan. Cari section / part di atas untuk menambah.", // No damage added yet
 	checklistAllAdded: "Semua part sudah ditambahkan.", // Picker open, nothing left to add
-	bookingCode: "Kode Booking", // Booking code (header)
 	// Mandatory-before-submit (EIR-In)
 	eirNeedComplete: "Lengkapi dulu sebelum submit:", // Complete before submitting
 	eirNeedCargo: "Cargo (Last Cargo)",
@@ -653,6 +654,8 @@ export const labels = {
 	gateHistoryTitle: "Riwayat Gate",
 	gateHistoryDesc: "Voucher gate-in/out yang sudah dibuat",
 	gateHistorySearch: "Cari container / truk / booking…",
+	gateHistoryToday: "hari ini", // chip saringan riwayat gate: "Tank masuk · hari ini"
+	gateHistoryAll: "Semua riwayat", // buang saringan yang dibawa dari Beranda
 	gateHistoryCount: "gate entry",
 	gateTruck: "No. Truk",
 	gateDriver: "Sopir",
@@ -761,19 +764,13 @@ export const labels = {
 	eirCompleteEmpty: "Belum ada EIR selesai.", // No completed EIRs yet
 	eirResume: "Lanjutkan", // Resume (open a draft)
 	// Pending EIR worklist (auto-created per container when an Order Bongkar is submitted)
-	eirPendingList: "Menunggu dikerjakan", // EIRs awaiting inspection
-	eirPendingEmpty: "Belum ada EIR menunggu dikerjakan", // none pending
 	// Kalimat kedua kosong-state: bukan sekadar hiburan, ini menjawab "lalu saya harus apa?"
 	// — jawabannya tidak ada, daftarnya terisi sendiri dari bon.
 	eirPendingEmptyHint: "Dibuat otomatis dari Order Bongkar / Order Muat",
-	eirPendingSearch: "Cari no. container / voucher…", // search container no / voucher
+	eirPendingSearch: "Cari no. container / voucher…", // satu kotak cari untuk keempat bagian daftar EIR
 	// Worklist status split — a draft EIR is "belum" until Mulai stamps work_started_on,
 	// then "dikerjakan"; submitted ones live in the Selesai section below.
-	eirFilterStatus: "Status", // label baris filter status
 	eirFilterAll: "Semua", // All
-	eirFilterNotStarted: "Belum", // Not started
-	eirFilterStarted: "Dikerjakan", // In progress
-	eirFilterDone: "Selesai", // sudah dikirim/di-ACC — bagian bawah halaman
 	eirChipStarted: "Dikerjakan", // row badge for an in-progress EIR
 	eirFilterEmptyStarted: "Belum ada EIR yang sedang dikerjakan.", // no in-progress EIRs
 	eirFilterEmptyNotStarted: "Semua EIR sudah mulai dikerjakan. 🎉", // nothing left unstarted
@@ -823,9 +820,7 @@ export const labels = {
 	cleaningOrdersEmpty: "Tidak ada cleaning order terbuka.",
 	cleaningOrdersList: "Cleaning Order List", // worklist section title
 	cleaningOrdersCount: "menunggu", // worklist count suffix
-	cleaningFilterAll: "Semua", // All
 	cleaningFilterTodo: "Belum", // not started yet (status Pending)
-	cleaningFilterStarted: "Dikerjakan", // started (status In_Progress)
 	cleaningFilterEmptyTodo: "Semua cleaning sudah mulai dikerjakan. 🎉", // nothing left unstarted
 	cleaningFilterEmptyStarted: "Belum ada cleaning yang sedang dikerjakan.", // none in progress
 	// --- review queue + finished list on the cleaning landing (mirrors the EIR screen) ---
@@ -979,12 +974,10 @@ export const labels = {
 	mrExecErpBanner: "Order ini masih dalam persetujuan — dikelola di ERP.",
 	// --- landing sections (mirrors the cleaning screen: worklist, review queue, finished) ---
 	mrItemsCount: "pekerjaan", // worklist row: "<n> pekerjaan" to be done
-	mrFilterAll: "Semua", // All
-	mrFilterTodo: "Belum", // handed over but not started (status Pending)
-	mrFilterStarted: "Dikerjakan", // started (status In Progress)
 	mrFilterEmptyTodo: "Semua M&R sudah mulai dikerjakan. 🎉", // nothing left unstarted
 	mrFilterEmptyStarted: "Belum ada M&R yang sedang dikerjakan.", // none in progress
 	mrReviewList: "Diajukan Review", // sent for Admin Ops review (Pending Review)
+	mrReviewEmpty: "Tidak ada M&R menunggu review.", // none awaiting review
 	mrStatusPendingReview: "Menunggu Review", // Pending Review chip
 	mrCompleteList: "M&R Selesai", // completed orders
 	mrCompleteEmpty: "Belum ada M&R selesai.", // none completed yet

@@ -359,6 +359,11 @@ function sub(count, tpl) {
 	return { sub: fill(tpl, { n: count }), subTone: "text-brand-600" }
 }
 
+// Tujuan kartu membawa saringannya sendiri: ia menu yang sama, disaring persis seperti
+// angka yang barusan dibaca operator (hari ini + arahnya untuk gate, section-nya untuk EIR).
+// Mendarat di daftar penuh berarti ia harus mencari ulang baris yang angkanya sudah
+// dihitungkan untuknya.
+//
 // Katalog kartu "Hari ini" — satu-dua per menu, semuanya tersedia untuk dipilih. `menu`
 // adalah kunci permission yang menjaganya (sama dengan yang dipakai bar bawah), `value`
 // membaca angka yang dikirim ess/home.py, dan `sub` kalimat kecil di bawahnya: sisa
@@ -370,22 +375,22 @@ function sub(count, tpl) {
 const TILE_CATALOG = [
 	{
 		key: "gateIn", menu: "gate", icon: "log-in", text: "text-brand-500",
-		label: labels.homeTileGateIn, to: "/gate/history",
+		label: labels.homeTileGateIn, to: "/gate/history?direction=in&day=today",
 		value: (t) => t.gate_in, sub: (t) => sub(t.eir_open, labels.homeTileGateInSub),
 	},
 	{
 		key: "gateOut", menu: "gate", icon: "log-out", text: "text-leaf-500",
-		label: labels.homeTileGateOut, to: "/gate/history",
+		label: labels.homeTileGateOut, to: "/gate/history?direction=out&day=today",
 		value: (t) => t.gate_out, sub: (t) => sub(t.booking_out, labels.homeTileGateOutSub),
 	},
 	{
 		key: "eirOpen", menu: "eir", icon: "clipboard", text: "text-brand-500",
-		label: labels.homeTileEirOpen, to: "/eir",
+		label: labels.homeTileEirOpen, to: "/eir?s=todo",
 		value: (t) => t.eir_open, sub: (t) => sub(t.eir_out, labels.homeTileEirOpenSub),
 	},
 	{
 		key: "eirReview", menu: "eir", icon: "clipboard", text: "text-amber-500",
-		label: labels.homeTileEirReview, to: "/eir",
+		label: labels.homeTileEirReview, to: "/eir?s=review",
 		value: (t) => t.eir_review,
 		// Umur yang tertua, bukan jumlahnya: satu EIR yang menunggu sejak awal shift lebih
 		// mendesak daripada tiga yang baru dikirim semenit lalu.
@@ -526,23 +531,25 @@ function tileValue(c) {
 	return v === undefined || v === null ? "—" : v
 }
 
-// Satu entri per kunci antrean yang dikirim ess/home.py. Kalimatnya dua versi: yang
+// Satu entri per kunci antrean yang dikirim ess/home.py. Tujuannya membawa `?s=` — bagian
+// mana di layar itu yang menghitung angka barisnya (lihat CollapseSection di EIR/Cleaning/
+// M&R); antrean yang tidak punya bagiannya sendiri (mis. approval pemilik tank) mendarat di
+// halamannya apa adanya. Kalimatnya dua versi: yang
 // menyebut tank (antrean berisi satu) dan yang menyebut jumlah — server hanya mengirim
 // `ref` ketika antreannya memang tinggal satu.
 const WAIT = {
-	eirReview: { icon: "clipboard", tone: "bg-amber-50 text-amber-600", to: "/eir", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
-	eirOpen: { icon: "clipboard", tone: "bg-brand-50 text-brand-600", to: "/eir", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
-	eirOut: { icon: "log-out", tone: "bg-brand-50 text-brand-600", to: "/eir", many: labels.waitEirOutMany },
-	cleaningIdle: { icon: "droplet", tone: "bg-leaf-50 text-leaf-600", to: "/cleaning", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
+	eirReview: { icon: "clipboard", tone: "bg-amber-50 text-amber-600", to: "/eir?s=review", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
+	eirOpen: { icon: "clipboard", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
+	eirOut: { icon: "log-out", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", many: labels.waitEirOutMany },
+	cleaningIdle: { icon: "droplet", tone: "bg-leaf-50 text-leaf-600", to: "/cleaning?s=todo", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
 	mrApproval: { icon: "tool", tone: "bg-amber-50 text-amber-600", to: "/mr", one: labels.waitMrApprovalOne, many: labels.waitMrApprovalMany },
-	bookingGate: { icon: "log-in", tone: "bg-brand-50 text-brand-600", to: "/gate", one: labels.waitBookingGateOne, many: labels.waitBookingGateMany },
 	lowering: { icon: "arrow-down-circle", tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
 	surveyReady: { icon: "list", tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
 	// Bukan "tank tanpa letak" (itu ratusan dan tidak ada tenggatnya) — hanya yang surveinya
 	// sudah dijadwalkan. Warnanya ikut keluarga yard, bukan abu: ini pekerjaan, bukan catatan.
 	positionOrder: { icon: "map-pin", tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
-	cleaningReview: { icon: "droplet", tone: "bg-sky-50 text-sky-600", to: "/cleaning", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
-	mrReview: { icon: "tool", tone: "bg-sky-50 text-sky-600", to: "/mr", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
+	cleaningReview: { icon: "droplet", tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
+	mrReview: { icon: "tool", tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
 	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
 	scheduleOverdue: { icon: "calendar", tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
 }

@@ -38,10 +38,14 @@
 		</section>
 
 		<!-- =================== WORKLIST ===================
-		     Search, then Semua / Belum / Dikerjakan with counts, then one card per order. The
-		     whole card is the tap target: the row used to carry its own "Mulai" shortcut, which
-		     started a repair from a list where neither the findings nor the approved work were
-		     on screen yet. Starting now happens on the job's own page, next to what it is. -->
+		     Satu kotak cari, lalu empat bagian yang bisa dibuka-tutup: Dikerjakan, Menunggu
+		     dikerjakan, Diajukan Review, Selesai — susunan yang sama dengan layar EIR dan
+		     Cleaning. Pencariannya dikirim ke server untuk keempat daftar, jadi satu nomor
+		     tank yang diketik menjawab "di bagian mana dia" tanpa dibuka satu per satu.
+
+		     Kartu penuh adalah target sentuhnya: baris ini dulu membawa pintasan "Mulai",
+		     yang memulai perbaikan dari daftar tempat temuan dan pekerjaan yang disetujui
+		     belum terlihat sama sekali. -->
 		<template v-else-if="!order">
 			<div class="relative">
 				<Icon
@@ -59,78 +63,82 @@
 					spellcheck="false"
 					enterkeyhint="search"
 					@input="onSearchInput"
-					@keyup.enter="reloadOrders"
+					@keyup.enter="reloadLists"
 				/>
 			</div>
 
-			<!-- Belum / Dikerjakan split: an order Admin Ops handed over is "belum" until Mulai
-			     moves it to In Progress; one sent for review leaves for the section below. -->
-			<div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-				<button
-					v-for="f in FILTERS"
-					:key="f.key"
-					class="oak-chip shrink-0 gap-1.5 px-3 py-1.5"
-					:class="filter === f.key ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600'"
-					@click="filter = f.key"
-				>
-					{{ f.label }}<span class="font-extrabold">{{ f.count }}</span>
-				</button>
-			</div>
-
-			<SkeletonList v-if="ordersRes.loading && !orders.length" />
-			<p v-else-if="!visibleOrders.length" class="oak-card py-8 text-center text-sm text-gray-400">
-				{{ emptyText }}
-			</p>
-			<ul v-else class="space-y-2">
-				<li v-for="o in visibleOrders" :key="o.name">
-					<button class="oak-card oak-press flex w-full items-center gap-3 p-3 text-left" @click="openOrder(o)">
-						<span
-							class="oak-icon-tile h-9 w-9 shrink-0"
-							:class="o.status === 'In Progress' ? 'bg-brand-50 text-brand-600' : 'bg-gray-100 text-gray-500'"
-						>
-							<Icon name="tool" :size="16" />
-						</span>
-						<div class="min-w-0 flex-1">
-							<p class="truncate font-bold text-gray-900">
-								{{ o.container_no || o.container
-								}}<span v-if="o.principal" class="font-normal text-gray-500"> · {{ o.principal }}</span>
-							</p>
-							<!-- How big the job is, and who let it through. Two counts, not one: a
-							     single finding can take three repair lines and three findings can
-							     share one, so "1 pekerjaan · 3 temuan" is not a rounding of itself. -->
-							<p class="truncate text-[11px] text-gray-500">{{ rowSubtitle(o) }}</p>
-							<div class="mt-1 flex flex-wrap items-center gap-1.5">
-								<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
-								<span
-									v-if="o.status === 'In Progress'"
-									class="oak-chip bg-brand-100 text-brand-700"
-								>{{ labels.mrInProgress }}</span>
+			<!-- Dua bagian pekerjaan yang belum lepas tangan. Markupnya satu, dirender dua
+			     kali: barisnya memang sama, yang berbeda cuma isi dan judulnya. -->
+			<CollapseSection
+				v-for="s in workSections"
+				:key="s.key"
+				:title="s.title"
+				:icon="s.icon"
+				:tone="s.tone"
+				:chip="s.chip"
+				:count="s.rows.length"
+				:open="openSections[s.key]"
+				@update:open="openSections[s.key] = $event"
+			>
+				<SkeletonList v-if="ordersRes.loading && !orders.length" />
+				<p v-else-if="!s.rows.length" class="py-4 text-center text-sm text-gray-400">{{ emptyFor(s) }}</p>
+				<ul v-else class="space-y-2">
+					<li v-for="o in s.rows" :key="o.name">
+						<button class="oak-card oak-press flex w-full items-center gap-3 p-3 text-left" @click="openOrder(o)">
+							<span
+								class="oak-icon-tile h-9 w-9 shrink-0"
+								:class="o.status === 'In Progress' ? 'bg-brand-50 text-brand-600' : 'bg-gray-100 text-gray-500'"
+							>
+								<Icon name="tool" :size="16" />
+							</span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-bold text-gray-900">
+									{{ o.container_no || o.container
+									}}<span v-if="o.principal" class="font-normal text-gray-500"> · {{ o.principal }}</span>
+								</p>
+								<!-- How big the job is, and who let it through. Two counts, not one: a
+								     single finding can take three repair lines and three findings can
+								     share one, so "1 pekerjaan · 3 temuan" is not a rounding of itself. -->
+								<p class="truncate text-[11px] text-gray-500">{{ rowSubtitle(o) }}</p>
+								<div class="mt-1 flex flex-wrap items-center gap-1.5">
+									<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
+									<span
+										v-if="o.status === 'In Progress'"
+										class="oak-chip bg-brand-100 text-brand-700"
+									>{{ labels.mrInProgress }}</span>
+								</div>
+								<!-- Siapa yang sudah memegangnya. Job yang sudah dimulai tetap di daftar
+								     semua orang, jadi chip "Dikerjakan" saja tidak cukup: yang ditanya
+								     teknisi berikutnya adalah OLEH SIAPA. -->
+								<p v-if="o.started_by_name" class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400">
+									<Icon name="user" :size="11" class="shrink-0" />
+									{{ labels.eirWorkedBy.replace("{name}", o.started_by_name) }}
+								</p>
 							</div>
-							<!-- Siapa yang sudah memegangnya. Job yang sudah dimulai tetap di daftar
-							     semua orang, jadi chip "Dikerjakan" saja tidak cukup: yang ditanya
-							     teknisi berikutnya adalah OLEH SIAPA. -->
-							<p v-if="o.started_by_name" class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400">
-								<Icon name="user" :size="11" class="shrink-0" />
-								{{ labels.eirWorkedBy.replace("{name}", o.started_by_name) }}
-							</p>
-						</div>
-						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
-					</button>
-				</li>
-			</ul>
+							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
+						</button>
+					</li>
+				</ul>
+			</CollapseSection>
 
 			<!-- Sent for review (Pending Review) — the field is done, Desk still has to check the
 			     work and close it. Kept out of the worklist above: work waiting on somebody ELSE
 			     must not sit among work waiting on YOU. -->
-			<section v-if="reviewRes.loading || reviewItems.length" class="space-y-2">
-				<div class="flex items-center gap-2 px-1">
-					<Icon name="clock" :size="15" class="text-sky-500" />
-					<p class="oak-section-title">{{ labels.mrReviewList }}</p>
-					<span v-if="reviewItems.length" class="oak-chip bg-sky-100 text-sky-700">{{ reviewItems.length }}</span>
-				</div>
+			<CollapseSection
+				:title="labels.mrReviewList"
+				icon="clock"
+				tone="text-sky-500"
+				chip="bg-sky-100 text-sky-700"
+				:count="reviewItems.length"
+				:open="openSections.review"
+				@update:open="openSections.review = $event"
+			>
 				<ul v-if="reviewRes.loading && !reviewItems.length" class="space-y-2">
 					<li v-for="n in 2" :key="n" class="oak-skeleton h-14 rounded-2xl"></li>
 				</ul>
+				<p v-else-if="!reviewItems.length" class="py-4 text-center text-sm text-gray-400">
+					{{ labels.mrReviewEmpty }}
+				</p>
 				<ul v-else class="space-y-2">
 					<li v-for="r in reviewItems" :key="r.name">
 						<div class="oak-card flex items-center gap-3 p-3">
@@ -159,21 +167,22 @@
 						</div>
 					</li>
 				</ul>
-			</section>
+			</CollapseSection>
 
 			<!-- Finished (Completed / Rejected / Cancelled) — the last few, full log behind Riwayat. -->
-			<section class="space-y-2">
-				<div class="flex items-center justify-between gap-2 px-1">
-					<div class="flex items-center gap-2">
-						<Icon name="check-circle" :size="15" class="text-leaf-600" />
-						<p class="oak-section-title">{{ labels.mrCompleteList }}</p>
-					</div>
-					<router-link to="/mr/history" class="oak-link text-xs">{{ labels.mrListMore }}</router-link>
-				</div>
+			<CollapseSection
+				:title="labels.mrCompleteList"
+				icon="check-circle"
+				tone="text-leaf-600"
+				chip="bg-leaf-100 text-leaf-800"
+				:count="doneItems.length"
+				:open="openSections.done"
+				@update:open="openSections.done = $event"
+			>
 				<ul v-if="doneRes.loading && !doneItems.length" class="space-y-2">
 					<li v-for="n in 2" :key="n" class="oak-skeleton h-14 rounded-2xl"></li>
 				</ul>
-				<p v-else-if="!doneItems.length" class="oak-card py-4 text-center text-sm text-gray-400">
+				<p v-else-if="!doneItems.length" class="py-4 text-center text-sm text-gray-400">
 					{{ labels.mrCompleteEmpty }}
 				</p>
 				<ul v-else class="space-y-2">
@@ -194,7 +203,8 @@
 						</button>
 					</li>
 				</ul>
-			</section>
+				<router-link to="/mr/history" class="oak-link block text-center text-sm">{{ labels.mrListMore }}</router-link>
+			</CollapseSection>
 		</template>
 
 		<!-- =================== ONE ORDER ===================
@@ -440,7 +450,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, watch } from "vue"
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { useRoute, useRouter } from "vue-router"
@@ -459,6 +469,7 @@ import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonList from "@/components/SkeletonList.vue"
+import CollapseSection from "@/components/CollapseSection.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
 
@@ -568,6 +579,7 @@ const reviewItems = ref([])
 const reviewRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_pending_review",
 	method: "GET",
+	makeParams: () => ({ search: search.value.trim() || undefined }),
 	auto: true,
 	onSuccess: (data) => (reviewItems.value = data.items || []),
 })
@@ -576,7 +588,7 @@ const doneItems = ref([])
 const doneRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_history",
 	method: "GET",
-	makeParams: () => ({ page_length: LANDING_LIMIT }),
+	makeParams: () => ({ page_length: LANDING_LIMIT, search: search.value.trim() || undefined }),
 	auto: true,
 	onSuccess: (data) => (doneItems.value = data.items || []),
 })
@@ -603,6 +615,12 @@ function withdrawReview(r) {
 
 const orders = computed(() => allOrders.value)
 
+// Satu kotak cari untuk empat daftar — jadi satu ketikan menyegarkan keempatnya.
+function reloadLists() {
+	reloadOrders()
+	reviewRes.reload()
+	doneRes.reload()
+}
 function reloadOrders() {
 	const s = search.value.trim()
 	ordersRes.fetch(s ? { search: s } : {})
@@ -613,30 +631,43 @@ function reloadOrders() {
 let searchTimer = null
 function onSearchInput() {
 	clearTimeout(searchTimer)
-	searchTimer = setTimeout(reloadOrders, 300)
+	searchTimer = setTimeout(reloadLists, 300)
 }
 
-// Worklist status filter. "Selesai" is not a choice here: a job sent for review leaves the
-// worklist for the review queue, and a closed one shows under Riwayat.
-const filter = ref("all")
-const startedOrders = computed(() => orders.value.filter((o) => o.status === "In Progress"))
-const todoOrders = computed(() => orders.value.filter((o) => o.status !== "In Progress"))
-const visibleOrders = computed(() => {
-	if (filter.value === "started") return startedOrders.value
-	if (filter.value === "todo") return todoOrders.value
-	return orders.value
-})
-const FILTERS = computed(() => [
-	{ key: "all", label: labels.mrFilterAll, count: orders.value.length },
-	{ key: "todo", label: labels.mrFilterTodo, count: todoOrders.value.length },
-	{ key: "started", label: labels.mrFilterStarted, count: startedOrders.value.length },
+// Empat bagian yang bisa dibuka-tutup, susunan yang sama dengan layar EIR dan Cleaning:
+// dua di sini (pekerjaan yang belum lepas tangan), dua lagi di template (Review dan
+// Selesai, yang daftarnya datang dari endpoint-nya sendiri).
+const workSections = computed(() => [
+	{
+		key: "doing", title: labels.sectionDoing, icon: "play-circle",
+		tone: "text-brand-500", chip: "bg-brand-100 text-brand-700",
+		rows: orders.value.filter((o) => o.status === "In Progress"),
+		empty: labels.mrFilterEmptyStarted,
+	},
+	{
+		key: "todo", title: labels.sectionTodo, icon: "tool",
+		tone: "text-amber-500", chip: "bg-amber-100 text-amber-800",
+		rows: orders.value.filter((o) => o.status !== "In Progress"),
+		empty: labels.mrFilterEmptyTodo,
+	},
 ])
-const emptyText = computed(() => {
-	if (!orders.value.length) return labels.mrExecEmpty
-	if (filter.value === "started") return labels.mrFilterEmptyStarted
-	if (filter.value === "todo") return labels.mrFilterEmptyTodo
-	return labels.mrExecEmpty
+
+// Yang terbuka saat halaman dibuka: pekerjaan yang belum lepas tangan. Review dan Selesai
+// tertutup — keduanya bacaan, bukan antrean, dan kepalanya sudah menyebut jumlahnya.
+const openSections = reactive({ doing: true, todo: true, review: false, done: false })
+
+// ?s=doing|todo|review|done — dikirim kartu & antrean Beranda, supaya sebuah angka yang
+// ditekan mendarat di bagian yang menghitungnya.
+onMounted(() => {
+	const want = String(route.query.s || "")
+	if (!Object.prototype.hasOwnProperty.call(openSections, want)) return
+	Object.keys(openSections).forEach((k) => (openSections[k] = k === want))
 })
+
+/** Kalimat kosong satu bagian — "tidak ada M&R siap dikerjakan" kalau memang kosong semua. */
+function emptyFor(s) {
+	return orders.value.length ? s.empty : labels.mrExecEmpty
+}
 
 // The tank in four facts. Whose it is, what type it is and what it last carried moved into
 // the header line above — they are how the technician recognises the tank, not how they work

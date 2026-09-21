@@ -28,6 +28,11 @@
 
 		<!-- LIST -->
 		<template v-else>
+			<!-- Saringan milik halaman pemanggil (mis. "Tank masuk · hari ini" dari Beranda),
+			     duduk di atas kotak cari supaya terlihat sebelum satu baris pun dibaca: daftar
+			     yang tersaring tanpa mengaku tersaring terbaca sebagai riwayat yang hilang. -->
+			<slot name="filters" />
+
 			<div class="relative">
 				<Icon
 					name="search"
@@ -120,7 +125,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
@@ -228,6 +233,17 @@ function goTo(p) {
 	page.value = Math.min(Math.max(1, p), totalPages.value)
 	listRes.reload()
 }
+
+// Saringan berganti tanpa halaman ini di-mount ulang (mis. chip "Semua riwayat" yang cuma
+// menghapus query) — tanpa ini daftarnya tetap memakai hasil saringan yang lama.
+watch(
+	() => props.listParams,
+	() => {
+		page.value = 1
+		listRes.reload()
+	},
+	{ deep: true }
+)
 
 let searchTimer = null
 function onSearchInput() {

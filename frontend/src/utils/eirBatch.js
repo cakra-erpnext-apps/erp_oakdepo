@@ -14,9 +14,13 @@
 //              waktu antara handset dan site membuat penghitung waktu melompat berjam-jam;
 //              angka yang dicetak di layar harus berasal dari jam yang sama dengan yang
 //              menghitungnya.
-//   sent       EIR yang sudah dikirim dari batch ini, dengan ringkasannya. Baris yang
-//              dikirim hilang dari daftar pending, jadi tanpa catatan ini layar "batch
-//              selesai" tidak punya apa-apa untuk ditampilkan.
+//   sent       EIR yang sudah dikirim, dengan ringkasannya. Baris yang dikirim hilang dari
+//              daftar pending, jadi tanpa catatan ini layar "batch selesai" tidak punya
+//              apa-apa untuk ditampilkan.
+//
+// Ketiganya berkunci nama EIR, bukan nama batch, dan itu disengaja: batch boleh berganti
+// (satu bon ditinggal, bon lain dikerjakan, yang pertama dibuka lagi) tanpa satu pun
+// kemajuan ikut hilang. Yang berganti hanya keanggotaan — `names` + `voucher`.
 //
 // localStorage dengan umur, bukan sessionStorage. sessionStorage adalah pilihan pertama
 // yang salah: ia mati bersama "sesi browsing", dan di HP depo itu terjadi setiap kali
@@ -83,9 +87,10 @@ export function openBatch(members, voucher = "") {
 	// Nomor tank ikut disimpan: form EIR hanya memuat tank-nya sendiri, sementara kartu
 	// "Status batch" di langkah terakhir harus menyebut anggota lain dengan nama yang
 	// dikenal operator — bukan nama dokumen.
-	batch.tank = Object.fromEntries(members.map((m) => [m.name, m.container_no || ""]))
+	batch.tank = { ...batch.tank, ...Object.fromEntries(members.map((m) => [m.name, m.container_no || ""])) }
 	batch.voucher = voucher || ""
-	batch.sent = {}
+	// Catatan kiriman TIDAK dikosongkan: ia milik EIR-nya masing-masing, bukan milik batch
+	// yang kebetulan sedang terbuka, dan `sentRows()` sudah menyaringnya ke anggota batch ini.
 }
 
 /** Nomor tank satu anggota batch. */
@@ -93,9 +98,18 @@ export function tankNo(name) {
 	return batch.tank[name] || ""
 }
 
-/** Keluar dari batch — langkah dan jam mulai ikut dibuang, catatan kiriman tidak lagi relevan. */
+/**
+ * Tutup batch yang sedang terbuka — HANYA keanggotaannya.
+ *
+ * Langkah, jam mulai, dan catatan kiriman tetap tinggal (sampai cap 12 jam di atas
+ * menghapusnya), dan itulah yang membuat batch boleh lebih dari satu: satu bon dibuka,
+ * ditinggal, bon berikutnya dikerjakan, lalu yang pertama dibuka lagi dan mendarat persis
+ * di langkah yang ditinggalkan. Dulu keluar dari batch membuang ketiganya, jadi berpindah
+ * bon berarti kehilangan kemajuan bon yang lama.
+ */
 export function leaveBatch() {
-	Object.assign(batch, blank())
+	batch.names = []
+	batch.voucher = ""
 }
 
 export function setStep(name, step) {
@@ -147,10 +161,15 @@ export function pendingNames() {
 	return batch.names.filter((n) => !batch.sent[n])
 }
 
-/** Ringkasan kiriman batch ini, urut waktu kirim. */
+/**
+ * Ringkasan kiriman batch YANG SEDANG TERBUKA, urut waktu kirim. Disaring ke anggotanya:
+ * catatan kiriman hidup lebih lama dari satu batch (lihat `leaveBatch`), jadi tanpa
+ * saringan ini layar "batch selesai" ikut memajang tank dari bon yang ditutup sejam lalu.
+ */
 export function sentRows() {
-	return Object.entries(batch.sent)
-		.map(([name, info]) => ({ name, ...info }))
+	return batch.names
+		.filter((n) => batch.sent[n])
+		.map((n) => ({ name: n, ...batch.sent[n] }))
 		.sort((a, b) => a.at - b.at)
 }
 

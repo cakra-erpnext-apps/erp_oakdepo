@@ -213,18 +213,15 @@ def get_home_summary(tiles=None):
 				today_counts["gate_in"] = moves["Gate In"]
 			if "gateOut" in want:
 				today_counts["gate_out"] = moves["Gate Out"]
-		codes = _active_booking_codes(allowed)
 		# Sub-count under "Tank keluar": bookings cleared to leave whose truck has not
-		# arrived. The full list (both directions) is the gate's own queue row below.
+		# arrived. Dihitung hanya kalau kartunya memang tampil.
+		#
+		# Booking yang menunggu di gate TIDAK lagi jadi baris "Menunggu Anda" (dibuang
+		# 2026-09-21, atas permintaan operator): tidak ada yang bisa dikerjakan dari
+		# sana — yang ditunggu adalah truk yang belum datang, bukan pekerjaan depo.
 		if "gateOut" in want:
+			codes = _active_booking_codes(allowed)
 			today_counts["booking_out"] = sum(1 for c in codes if c.direction == "Tank Out")
-		if codes:
-			waiting.append({
-				"key": "bookingGate",
-				"count": len(codes),
-				"ref": codes[0].container_no if len(codes) == 1 else None,
-				"age": _age_minutes(codes[0].issued_at),
-			})
 
 	# --- EIR: drafts to work, and the ones already done waiting on Admin Ops ---------
 	if "eir" in menu:

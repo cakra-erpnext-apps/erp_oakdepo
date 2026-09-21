@@ -24,17 +24,16 @@
 			<div class="flex min-w-0 flex-1 justify-center px-2">
 				<!-- Judulnya sebuah tombol: daftar isi batch tidak punya tempat lain untuk
 				     hidup, dan nomor tank adalah hal yang paling sering ditatap di layar ini. -->
-				<!-- max-w-[62%] bukan hiasan: tanpa batas ini judul melar mengikuti panjang nomor
-				     bon dan memakan lagi ruang mati yang baru saja dibuat. Nomor bon-nya boleh
-				     terpotong — versi lengkapnya ada di kepala sheet dan di kartu Voucher
-				     Referensi satu langkah di bawah. -->
+				<!-- max-w-[62%] bukan hiasan: tanpa batas ini judul melar mengikuti panjang
+				     daftar tank dan memakan lagi ruang mati yang baru saja dibuat. Daftarnya
+				     boleh terpotong — versi lengkapnya ada di kepala sheet. -->
 				<button class="oak-press min-w-0 max-w-[62%] rounded-lg px-2 py-1 text-center" @click="emit('open')">
 					<span class="block truncate font-mono text-sm font-extrabold leading-tight">
 						{{ active?.container_no || active?.container || "—" }}
 					</span>
 					<span class="block truncate text-[11px] leading-tight text-brand-900/70">
 						{{ labels.eirBadge }} {{ activeIndex + 1 }} {{ labels.eirBatchOf }} {{ queue.length }}
-						<template v-if="voucher"> · {{ labels.eirBatchWord }} {{ voucher }}</template>
+						<template v-if="tanks"> · {{ tanks }}</template>
 					</span>
 				</button>
 			</div>
@@ -73,7 +72,10 @@ const props = defineProps({
 	// catatan kiriman batch — baris yang sudah dikirim sudah tidak ada di worklist.
 	queue: { type: Array, default: () => [] },
 	activeIndex: { type: Number, default: 0 },
-	voucher: { type: String, default: "" },
+	// Nomor tank anggota batch, sudah dirangkai. Nomor bon-nya sendiri tidak dipajang di
+	// sini: ia nama dokumen, dan yang dicocokkan mata operator dengan badan tangki dan
+	// kertas di tangan sopir adalah nomor tank.
+	tanks: { type: String, default: "" },
 })
 const emit = defineEmits(["prev", "next", "open"])
 
