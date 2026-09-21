@@ -177,12 +177,14 @@ export const labels = {
 	// Kartu angka "Hari ini". Sub-teks tiap kartu sengaja menyebut sisa pekerjaan, bukan
 	// mengulang angka besarnya — itu satu-satunya alasan angka hari ini perlu dilihat.
 	homeToday: "Hari ini",
-	// Atur kartu "Hari ini" — maksimal empat, dipilih dari kartu yang menunya dipegang akun
-	// ini (utils/homeTiles.js). Tombol Simpan/Batal/Bawaan-nya berbagi label dengan pengatur
-	// tab bar bawah: dua panel, satu bahasa.
+	// Atur kartu "Hari ini" — sebanyak yang mau, dipilih dari kartu yang menunya dipegang
+	// akun ini (utils/homeTiles.js). Bawaannya empat, karena itu yang muat tanpa mendorong
+	// "Menunggu Anda" ke bawah lipatan; memasang semuanya berarti beranda memanjang ke
+	// bawah, dan itu pilihan yang boleh diambil. Tombol Simpan/Batal/Bawaan-nya berbagi
+	// label dengan pengatur tab bar bawah: dua panel, satu bahasa.
 	homeTilesEdit: "Atur",
 	homeTilesTitle: "Atur kartu",
-	homeTilesHint: "Pilih sampai 4 kartu yang paling sering Anda lihat. Angkanya sudah yang sebenarnya, jadi bisa dibandingkan sebelum memilih.",
+	homeTilesHint: "Pilih kartu yang paling sering Anda lihat — boleh semuanya, beranda tinggal memanjang ke bawah. Angkanya sudah yang sebenarnya, jadi bisa dibandingkan sebelum memilih.",
 	homeTilesSaved: "Kartu beranda diperbarui",
 	homeTilesResetDone: "Kartu beranda kembali ke bawaan",
 	homeTodayMonitor: "Lihat monitor",
@@ -208,7 +210,7 @@ export const labels = {
 	homeTileEirReviewSub: "tertua {age}",
 	homeTileCleaning: "Cleaning aktif",
 	homeTileCleaningSub: "{n} belum mulai",
-	homeTileClear: "beres semua",
+	homeTileClear: "Tidak ada tugas",
 	// "Menunggu Anda" — antrean yang sudah menunggu, tertua di atas. Baris dengan satu
 	// item menyebut tanknya; lebih dari satu menyebut jumlahnya.
 	homeWaiting: "Menunggu Anda",

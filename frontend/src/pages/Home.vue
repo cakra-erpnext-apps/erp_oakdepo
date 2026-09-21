@@ -92,21 +92,38 @@
 			<section v-if="todayTiles.length || summaryRes.loading || editTiles">
 				<div class="mb-2 flex items-end justify-between gap-2 px-1">
 					<p class="oak-eyebrow">{{ editTiles ? labels.homeTilesTitle : labels.homeToday }}</p>
-					<div class="flex shrink-0 items-center gap-3">
+					<!-- Dua tautan kecil bersebelahan di layar sentuh: jempol meleset kalau
+					     keduanya cuma setinggi hurufnya. Padding-nya melebarkan bidang ketuk
+					     jadi 36px dan garis tipis memisahkannya, sementara -my-2.5 menahan
+					     tinggi baris judulnya tetap seperti semula. -->
+					<div class="-my-2.5 flex shrink-0 items-center gap-0.5">
 						<span
 							v-if="editTiles"
-							class="text-[11px] font-bold"
+							class="px-1 text-[11px] font-bold"
 							:class="tileDraft.length ? 'text-brand-600' : 'text-gray-400'"
 						>
-							{{ tileDraft.length }}/{{ MAX_TILES }}
+							{{ tileDraft.length }}/{{ availableTiles.length }}
 						</span>
 						<template v-else>
 							<!-- "Atur" hanya berarti sesuatu kalau memang ada yang bisa ditukar:
 							     akun dengan satu kartu tidak punya pilihan untuk dibuat. -->
-							<button v-if="availableTiles.length > 1" class="oak-link text-xs" @click="startEditTiles">
+							<button
+								v-if="availableTiles.length > 1"
+								class="oak-link px-2 py-2.5 text-xs"
+								@click="startEditTiles"
+							>
 								{{ labels.homeTilesEdit }}
 							</button>
-							<router-link v-if="menu.has('monitor')" to="/monitor" class="oak-link text-xs">
+							<span
+								v-if="availableTiles.length > 1 && menu.has('monitor')"
+								class="h-3 w-px shrink-0 bg-gray-200"
+								aria-hidden="true"
+							></span>
+							<router-link
+								v-if="menu.has('monitor')"
+								to="/monitor"
+								class="oak-link px-2 py-2.5 text-xs"
+							>
 								{{ labels.homeTodayMonitor }}
 							</router-link>
 						</template>
@@ -273,7 +290,6 @@ import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import {
 	DEFAULT_TILES,
-	MAX_TILES,
 	pickedTiles,
 	resetTiles,
 	setTiles,
@@ -351,7 +367,7 @@ function ageText(min) {
 	return fill(labels.ageDays, { n: Math.floor(min / (60 * 24)) })
 }
 
-// Sub-teks kartu: sisa pekerjaan bila ada, "beres semua" bila nol, dan TIDAK ADA bila
+// Sub-teks kartu: sisa pekerjaan bila ada, "Tidak ada tugas" bila nol, dan TIDAK ADA bila
 // angkanya memang tidak dikirim server (menu yang bersangkutan tidak dipegang akun ini).
 function sub(count, tpl) {
 	if (count === undefined || count === null) return { sub: null, subTone: "" }
@@ -449,7 +465,7 @@ const availableTiles = computed(() => TILE_CATALOG.filter((c) => menu.has(c.menu
 const tileKeys = computed(() => {
 	const picked = pickedTiles(session.user) || DEFAULT_TILES
 	const allowed = new Set(availableTiles.value.map((c) => c.key))
-	return picked.filter((k) => allowed.has(k)).slice(0, MAX_TILES)
+	return picked.filter((k) => allowed.has(k))
 })
 
 // Panel "atur kartu". Disunting sebagai draft supaya "Batal" benar-benar membatalkan, dan
@@ -506,8 +522,7 @@ function toggleTile(key) {
 		tileDraft.value = tileDraft.value.filter((k) => k !== key)
 		return
 	}
-	// Penuh: yang paling lama dipilih keluar, bukan ketukannya yang ditolak diam-diam.
-	tileDraft.value = [...tileDraft.value, key].slice(-MAX_TILES)
+	tileDraft.value = [...tileDraft.value, key]
 }
 function saveTiles() {
 	setTiles(session.user, tileDraft.value)

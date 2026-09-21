@@ -49,7 +49,9 @@ export function createPicks(storageKey, max) {
 			return Array.isArray(keys) ? keys : null
 		},
 		set(user, keys) {
-			if (user) state.byUser[user] = [...new Set(keys)].slice(0, max)
+			// `max` opsional: tanpa batas (kartu Beranda) semua yang dipilih disimpan apa adanya.
+			const uniq = [...new Set(keys)]
+			if (user) state.byUser[user] = max ? uniq.slice(0, max) : uniq
 		},
 		reset(user) {
 			if (user) delete state.byUser[user]
