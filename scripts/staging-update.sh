@@ -62,6 +62,9 @@ docker exec -u root erp_oakdepo_staging-backend-1 bash -lc '
   for app in frappe erpnext container_depot hrms telephony helpdesk raven gameplan crm; do
     [ -L "$app" ] || rm -rf "$app"
   done
+  # salinan itu dibuat oleh root (job create-site), termasuk direktori assets-nya sendiri,
+  # jadi user frappe tidak bisa memasang symlink baru di sini sampai kepemilikannya balik.
+  chown -R frappe:frappe /home/frappe/frappe-bench/sites/assets
 '
 
 log "build bench assets"
