@@ -69,6 +69,11 @@ class Inspection(Document):
 		# so the list filter "Ada Foto Belum Disortir" stays accurate.
 		self.has_unsorted_photos = 1 if any(not p.checklist_item for p in self.item_photos) else 0
 
+		for table in ("exterior_photos", "item_photos", "damage_photos"):
+			for p in self.get(table) or []:
+				if not p.get("timestamp"):
+					p.timestamp = p.creation or frappe.utils.now_datetime()
+
 	def sync_has_damage(self):
 		"""Derive Has Damage from the log instead of trusting a second, editable copy of it.
 

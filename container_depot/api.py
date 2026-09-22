@@ -17,6 +17,9 @@ Hardening rules (Phase 1 — PRO-OPS-08):
 
 from __future__ import annotations
 
+import io
+import os
+import zipfile
 import base64
 import hashlib
 import hmac
@@ -1415,3 +1418,126 @@ def get_agent_skills():
 	]
 
 	return {"success": True, "skills": skills}
+
+
+def _resolve_file_disk_path(file_url: str) -> str | None:
+	"""Convert a Frappe file URL (/files/... or /private/files/...) to its physical path on disk."""
+	if not file_url:
+		return None
+	clean = file_url.lstrip("/")
+	if clean.startswith("private/files/"):
+		filename = clean[len("private/files/"):]
+		path = frappe.get_site_path("private", "files", filename)
+	elif clean.startswith("files/"):
+		filename = clean[len("files/"):]
+		path = frappe.get_site_path("public", "files", filename)
+	else:
+		path = frappe.get_site_path("public", "files", clean)
+
+	if os.path.exists(path):
+		return path
+
+	file_doc = frappe.db.get_value("File", {"file_url": file_url}, ["file_name", "is_private"], as_dict=True)
+	if file_doc:
+		folder = "private" if file_doc.is_private else "public"
+		p = frappe.get_site_path(folder, "files", file_doc.file_name)
+		if os.path.exists(p):
+			return p
+
+	return None
+
+
+@frappe.whitelist()
+def download_doc_photos(doctype: str, name: str):
+	"""Package and download all photos of an Inspection, Repair Order, Cleaning Order,
+	or Container Position as a single ZIP archive.
+	"""
+	if not frappe.has_permission(doctype, "read", doc=name):
+		frappe.throw(_("Tidak memiliki izin untuk mengakses dokumen ini."), frappe.PermissionError)
+
+	doc = frappe.get_doc(doctype, name)
+	photos: list[tuple[str, str]] = []  # [(filename_in_zip, file_url), ...]
+
+	if doctype == "Inspection":
+		for p in doc.get("exterior_photos") or []:
+			if p.photo_url:
+				view = (p.photo_view or "exterior").strip()
+				photos.append((f"exterior_{view}_{p.name}.jpg", p.photo_url))
+		for p in doc.get("item_photos") or []:
+			if p.photo:
+				item = (p.item_name or p.checklist_item or "item").replace("/", "-").strip()
+				photos.append((f"item_{item}_{p.name}.jpg", p.photo))
+		for p in doc.get("damage_photos") or []:
+			if p.photo:
+				item = (p.item_name or p.checklist_item or "damage").replace("/", "-").strip()
+				photos.append((f"damage_{item}_{p.name}.jpg", p.photo))
+
+	elif doctype == "Repair Order":
+		for p in doc.get("work_photos") or []:
+			if p.photo:
+				item = (p.item_name or p.item or "work").replace("/", "-").strip()
+				caption = (p.caption or "").replace("/", "-").strip()
+				label = f"{item}_{caption}" if caption else item
+				photos.append((f"work_{label}_{p.name}.jpg", p.photo))
+		for d in doc.get("damages") or []:
+			if d.photos:
+				try:
+					urls = frappe.parse_json(d.photos)
+					if isinstance(urls, list):
+						for i, u in enumerate(urls):
+							photos.append((f"damage_{d.item_code or d.name}_{i+1}.jpg", u))
+				except Exception:
+					pass
+			if d.before_photo:
+				photos.append((f"before_{d.item_code or d.name}.jpg", d.before_photo))
+			if d.after_photo:
+				photos.append((f"after_{d.item_code or d.name}.jpg", d.after_photo))
+
+	elif doctype == "Cleaning Order":
+		for p in doc.get("qc_photos") or []:
+			if p.photo:
+				caption = (p.caption or "qc").replace("/", "-").strip()
+				photos.append((f"qc_{caption}_{p.name}.jpg", p.photo))
+
+	elif doctype == "Container Position":
+		for p in doc.get("position_photos") or []:
+			if p.photo:
+				caption = (p.caption or "pos").replace("/", "-").strip()
+				photos.append((f"position_{caption}_{p.name}.jpg", p.photo))
+
+	if not photos:
+		frappe.throw(_("Tidak ada foto pada dokumen ini untuk diunduh."))
+
+	zip_buffer = io.BytesIO()
+	seen_names: set[str] = set()
+	found_files = 0
+
+	with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+		for arcname_hint, file_url in photos:
+			disk_path = _resolve_file_disk_path(file_url)
+			if not disk_path or not os.path.exists(disk_path):
+				continue
+
+			ext = os.path.splitext(disk_path)[1] or ".jpg"
+			base = os.path.splitext(arcname_hint)[0]
+			# Sanitize arcname
+			base = re.sub(r"[^\w\-.]", "_", base)
+			final_name = f"{base}{ext}"
+			count = 1
+			while final_name in seen_names:
+				final_name = f"{base}_{count}{ext}"
+				count += 1
+			seen_names.add(final_name)
+
+			zf.write(disk_path, arcname=final_name)
+			found_files += 1
+
+	if found_files == 0:
+		frappe.throw(_("File foto fisik tidak ditemukan di server."))
+
+	zip_buffer.seek(0)
+	safe_name = re.sub(r"[^\w\-.]", "_", name)
+	frappe.response["type"] = "download"
+	frappe.response["filename"] = f"{safe_name}_photos.zip"
+	frappe.response["filecontent"] = zip_buffer.getvalue()
+

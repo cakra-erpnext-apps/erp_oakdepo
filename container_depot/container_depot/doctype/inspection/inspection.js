@@ -60,6 +60,7 @@ frappe.ui.form.on('Inspection', {
 		// not to hunt for the way in.
 		if (!frm.is_new() && photo_slides(frm).length) {
 			frm.add_custom_button(__('Lihat Semua Foto'), () => open_photo_carousel(frm, photo_slides(frm), 0));
+			frm.add_custom_button(__('Download Foto'), () => container_depot.download_doc_photos('Inspection', frm.doc.name));
 		}
 		// A submitted EIR is closed to hand-editing, and the way back in is Kembalikan ke Draft.
 		// `item_photos` is the one field Frappe would still leave typeable — it has to stay
@@ -857,6 +858,7 @@ function photo_slides(frm) {
 				cdn: row.name,
 				kind: 'exterior',
 				label: row.photo_view || __('Foto luar'),
+				timestamp: row.timestamp || row.creation,
 			});
 		}
 	});
@@ -868,6 +870,7 @@ function photo_slides(frm) {
 				cdn: row.name,
 				kind: 'item',
 				label: row.item_name || __('(Belum disortir)'),
+				timestamp: row.timestamp || row.creation,
 			});
 		}
 	});
@@ -879,6 +882,7 @@ function photo_slides(frm) {
 				cdn: row.name,
 				kind: 'damage',
 				label: `${__('Kerusakan')}: ${row.item_name || row.checklist_item || ''}`,
+				timestamp: row.timestamp || row.creation,
 			});
 		}
 	});
@@ -908,6 +912,7 @@ function item_photo_slides(frm) {
 			cdn: row.name,
 			kind: 'item',
 			label: row.item_name || __('(Belum disortir)'),
+			timestamp: row.timestamp || row.creation,
 		}));
 }
 
@@ -1076,6 +1081,8 @@ function open_photo_carousel(frm, slides, start) {
 					<div class="oak-photo-none">${__('Belum ada foto')}</div>
 				</div>`;
 		const area = slide.kind === 'item' ? row.area || '' : '';
+		const time_raw = slide.timestamp || row.timestamp || row.creation;
+		const time_str = time_raw ? frappe.datetime.str_to_user(time_raw) : '';
 		d.fields_dict.viewer.$wrapper.html(`
 			<div class="oak-carousel">
 				<button class="btn btn-default oak-carousel-nav" data-oak-step="-1"
@@ -1088,6 +1095,7 @@ function open_photo_carousel(frm, slides, start) {
 				<span class="oak-carousel-count">${idx + 1} / ${slides.length}</span>
 				${area ? `<span class="oak-carousel-area">${frappe.utils.escape_html(area)}</span>` : ''}
 				<span>${frappe.utils.escape_html(slide.label || '')}</span>
+				${time_str ? `<span class="oak-carousel-time text-muted" style="margin-left:8px;"><i class="fa fa-clock-o"></i> ${frappe.utils.escape_html(time_str)}</span>` : ''}
 			</div>
 			${
 				row.caption
@@ -1126,6 +1134,22 @@ function open_photo_carousel(frm, slides, start) {
 		d.set_secondary_action_label(__('Detail Foto'));
 		d.set_secondary_action(() => slide.src && window.open(slide.src, '_blank'));
 		$open_tab.toggleClass('hide', !slide.src);
+
+		let $dl_btn = d.$wrapper.find('.oak-btn-download-photo');
+		if (!$dl_btn.length) {
+			$dl_btn = $(`<button class="btn btn-default btn-sm oak-btn-download-photo" style="margin-right: 8px;">
+				<i class="fa fa-download"></i> ${__('Download Foto')}
+			</button>`).insertBefore($open_tab);
+		}
+		$dl_btn.off('click').on('click', () => {
+			if (slide && slide.src) {
+				const ext = slide.src.split('.').pop().split('?')[0] || 'jpg';
+				const doc_prefix = frm && frm.docname ? frm.docname + '_' : '';
+				const name = `${doc_prefix}${slide.kind || 'photo'}_${idx + 1}.${ext}`;
+				container_depot.download_photo(slide.src, name);
+			}
+		});
+		$dl_btn.toggleClass('hide', !slide.src);
 	}
 
 	function go(step) {

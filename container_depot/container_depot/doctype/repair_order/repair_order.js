@@ -315,6 +315,9 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_mr_buttons');
 		mr_submit_primary(frm);
 		frm.trigger('_lock_estimate_grid');
+		if (!frm.is_new() && ((frm.doc.work_photos || []).length || (frm.doc.damages || []).length)) {
+			frm.add_custom_button(__('Download Foto'), () => container_depot.download_doc_photos('Repair Order', frm.doc.name));
+		}
 		install_work_photo_thumbnails(frm);
 		bind_work_photo_clicks(frm);
 	},
@@ -786,6 +789,13 @@ function open_damage_photos(photos, start) {
 			 <div class="text-muted text-center mt-2">${idx + 1} / ${photos.length}</div>`
 		);
 	};
+	d.set_primary_action(__('Download Foto'), () => {
+		const src = photos[idx];
+		if (src) {
+			const ext = src.split('.').pop().split('?')[0] || 'jpg';
+			container_depot.download_photo(src, `damage_${idx + 1}.${ext}`);
+		}
+	});
 	if (photos.length > 1) {
 		d.set_secondary_action_label(__('Berikutnya ›'));
 		d.set_secondary_action(() => {
@@ -852,6 +862,12 @@ function work_photo_thumbnail(value) {
 	return `<img class="oak-grid-photo" src="${src}" data-oak-photo="${src}" loading="lazy" alt="">`;
 }
 
+function work_photo_timestamp_formatter(value, df, options, doc) {
+	const val = value || (doc && doc.creation);
+	if (!val) return '';
+	return frappe.datetime.str_to_user(val);
+}
+
 // Must run from setup: form.js renders the fields and only then fires refresh, so a formatter
 // installed in refresh arrives after the column has already painted. Written onto the
 // STANDARD docfield (every per-docname copy made later inherits it, because grid.js copies
@@ -859,9 +875,13 @@ function work_photo_thumbnail(value) {
 function install_work_photo_thumbnails(frm) {
 	const std = (frappe.meta.docfield_map['Repair Work Photo'] || {}).photo;
 	if (std) std.formatter = work_photo_thumbnail;
+	const std_ts = (frappe.meta.docfield_map['Repair Work Photo'] || {}).timestamp;
+	if (std_ts) std_ts.formatter = work_photo_timestamp_formatter;
 	if (!frm.docname) return;
 	const df = frappe.meta.get_docfield('Repair Work Photo', 'photo', frm.docname);
 	if (df) df.formatter = work_photo_thumbnail;
+	const df_ts = frappe.meta.get_docfield('Repair Work Photo', 'timestamp', frm.docname);
+	if (df_ts) df_ts.formatter = work_photo_timestamp_formatter;
 }
 
 // Click a row -> open it in the carousel. CAPTURE phase, because Frappe binds click-to-edit
@@ -925,13 +945,28 @@ function render_work_photo_preview(frm, cdt, cdn) {
 		}
 	}
 
-	const url = ((locals[cdt] || {})[cdn] || {}).photo;
+	const row = (locals[cdt] || {})[cdn] || {};
+	const url = row.photo;
 	if (!url) {
 		field.$wrapper.html(`<div class="oak-photo-none">${__('Belum ada foto')}</div>`);
 		return;
 	}
 	const src = frappe.utils.escape_html(url);
-	field.$wrapper.html(`<div class="oak-photo-large"><img src="${src}" data-oak-photo="${src}" alt=""></div>`);
+	const time_raw = row.timestamp || row.creation;
+	const time_str = time_raw ? frappe.datetime.str_to_user(time_raw) : '';
+	field.$wrapper.html(`
+		<div class="oak-photo-large"><img src="${src}" data-oak-photo="${src}" alt=""></div>
+		<div class="oak-photo-preview-meta mt-2 d-flex justify-content-between align-items-center" style="max-width: 400px;">
+			${time_str ? `<span class="text-muted small"><i class="fa fa-clock-o"></i> ${frappe.utils.escape_html(time_str)}</span>` : '<span></span>'}
+			<button type="button" class="btn btn-xs btn-default oak-preview-dl-btn">
+				<i class="fa fa-download"></i> ${__('Download')}
+			</button>
+		</div>
+	`);
+	field.$wrapper.find('.oak-preview-dl-btn').on('click', () => {
+		const ext = url.split('.').pop().split('?')[0] || 'jpg';
+		container_depot.download_photo(url, `${frm.docname || 'repair'}_${row.name || 'photo'}.${ext}`);
+	});
 }
 
 // Every row the grid is showing, in its order — INCLUDING rows whose photo is still missing,
@@ -941,6 +976,7 @@ function work_photo_slides(frm) {
 		src: row.photo || '',
 		cdn: row.name,
 		label: row.item_name || row.item || __('(Belum dipilih)'),
+		timestamp: row.timestamp || row.creation,
 	}));
 }
 
@@ -1067,6 +1103,8 @@ function open_work_photo_carousel(frm, src, cdn) {
 			: `<div class="oak-carousel-stage oak-carousel-empty">
 					<div class="oak-photo-none">${__('Belum ada foto')}</div>
 				</div>`;
+		const time_raw = slide.timestamp || row.timestamp || row.creation;
+		const time_str = time_raw ? frappe.datetime.str_to_user(time_raw) : '';
 		d.fields_dict.viewer.$wrapper.html(`
 			<div class="oak-carousel">
 				<button class="btn btn-default oak-carousel-nav" data-oak-step="-1"
@@ -1079,6 +1117,7 @@ function open_work_photo_carousel(frm, src, cdn) {
 				<span class="oak-carousel-count">${idx + 1} / ${slides.length}</span>
 				<span>${frappe.utils.escape_html(row.item_name || row.item || '')}</span>
 				${row.caption ? `<span class="oak-carousel-area">${frappe.utils.escape_html(row.caption)}</span>` : ''}
+				${time_str ? `<span class="oak-carousel-time text-muted" style="margin-left:8px;"><i class="fa fa-clock-o"></i> ${frappe.utils.escape_html(time_str)}</span>` : ''}
 			</div>
 		`);
 		d.$wrapper.find('.oak-carousel-nav').on('click', (e) => go(cint($(e.currentTarget).attr('data-oak-step'))));
@@ -1097,6 +1136,22 @@ function open_work_photo_carousel(frm, src, cdn) {
 		d.set_secondary_action_label(__('Detail Foto'));
 		d.set_secondary_action(() => slide.src && window.open(slide.src, '_blank'));
 		$open_tab.toggleClass('hide', !slide.src);
+
+		let $dl_btn = d.$wrapper.find('.oak-btn-download-photo');
+		if (!$dl_btn.length) {
+			$dl_btn = $(`<button class="btn btn-default btn-sm oak-btn-download-photo" style="margin-right: 8px;">
+				<i class="fa fa-download"></i> ${__('Download Foto')}
+			</button>`).insertBefore($open_tab);
+		}
+		$dl_btn.off('click').on('click', () => {
+			if (slide && slide.src) {
+				const ext = slide.src.split('.').pop().split('?')[0] || 'jpg';
+				const doc_prefix = frm && frm.docname ? frm.docname + '_' : '';
+				const name = `${doc_prefix}work_${idx + 1}.${ext}`;
+				container_depot.download_photo(slide.src, name);
+			}
+		});
+		$dl_btn.toggleClass('hide', !slide.src);
 	}
 
 	function go(step) {

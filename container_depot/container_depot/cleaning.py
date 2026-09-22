@@ -502,7 +502,10 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		# Recent cargo history.
 		"cargo_history": cargo_history(co.container),
 		# QC photos already on the order (uploaded straight from the field phone).
-		"qc_photos": [{"photo": r.photo, "caption": r.caption} for r in co.qc_photos],
+		"qc_photos": [
+			{"photo": r.photo, "caption": r.caption, "timestamp": r.get("timestamp") or r.creation}
+			for r in co.qc_photos
+		],
 	}
 
 
@@ -575,7 +578,8 @@ def save_cleaning_order(
 			url = url.strip()
 			if url:
 				caption = (p.get("caption") or "").strip() if isinstance(p, dict) else ""
-				photos.append({"photo": url, "caption": caption})
+				ts = (p.get("timestamp") if isinstance(p, dict) else None) or frappe.utils.now_datetime()
+				photos.append({"photo": url, "caption": caption, "timestamp": ts})
 		co.set("qc_photos", photos)
 	# Optional reference doc (usually pre-filled from the EIR; editable here).
 	if reff_doc is not None:

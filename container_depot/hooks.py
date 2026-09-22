@@ -403,6 +403,8 @@ app_include_js = [
 	# container_depot.render_system_facts — the shared sidebar block every depot document
 	# shows its system-filled facts in (see the file).
 	"/assets/container_depot/js/system_facts.js?v=2",
+	# container_depot.download_photo / download_doc_photos — download helpers.
+	"/assets/container_depot/js/photo_utils.js?v=1",
 	# container_depot.form_message — spanduk berkunci di atas form, supaya pesan yang sama
 	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
 	"/assets/container_depot/js/form_message.js?v=2",

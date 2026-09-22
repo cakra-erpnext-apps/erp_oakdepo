@@ -598,6 +598,7 @@ def get_mr_order_detail(repair_order) -> dict:
 		"work_photos": [{
 			"name": p.name, "photo": p.photo, "item": p.item, "item_name": p.item_name,
 			"caption": p.caption, "used_item": p.used_item,
+			"timestamp": p.get("timestamp") or p.creation,
 		} for p in (ro.work_photos or [])],
 	}
 
@@ -1198,6 +1199,7 @@ def _apply_work_photos(ro, work_photos) -> None:
 			"item": row.get("item"),
 			"caption": _clean(row.get("caption")),
 			"used_item": _clean(row.get("used_item")),
+			"timestamp": row.get("timestamp") or frappe.utils.now_datetime(),
 		})
 
 

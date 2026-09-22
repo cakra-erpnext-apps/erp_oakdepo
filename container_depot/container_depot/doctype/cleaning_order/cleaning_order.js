@@ -73,6 +73,9 @@ frappe.ui.form.on('Cleaning Order', {
 		// Tarif + Manhour of every cleaning service are seeded from the tank OWNER's active
 		// contract; without one the grid seeds zeros and the invoice bills nothing.
 		container_depot.rate_card_notice(frm, frm.doc.container_principal);
+		if (!frm.is_new() && (frm.doc.qc_photos || []).length) {
+			frm.add_custom_button(__('Download Foto'), () => container_depot.download_doc_photos('Cleaning Order', frm.doc.name));
+		}
 	},
 	// Everything the system fills in by itself — status, the two totals, the invoice it was
 	// swept into, the documents it came from — lives in the SIDEBAR (shared block, same look
@@ -185,12 +188,22 @@ function photo_thumbnail(value) {
 	return `<img class="oak-grid-photo" src="${src}" loading="lazy" alt="">`;
 }
 
+function qc_photo_timestamp_formatter(value, df, options, doc) {
+	const val = value || (doc && doc.creation);
+	if (!val) return '';
+	return frappe.datetime.str_to_user(val);
+}
+
 function install_photo_thumbnails(frm) {
 	const std = (frappe.meta.docfield_map['Cleaning QC Photo'] || {}).photo;
 	if (std) std.formatter = photo_thumbnail;
+	const std_ts = (frappe.meta.docfield_map['Cleaning QC Photo'] || {}).timestamp;
+	if (std_ts) std_ts.formatter = qc_photo_timestamp_formatter;
 	if (!frm.docname) return;
 	const df = frappe.meta.get_docfield('Cleaning QC Photo', 'photo', frm.docname);
 	if (df) df.formatter = photo_thumbnail;
+	const df_ts = frappe.meta.get_docfield('Cleaning QC Photo', 'timestamp', frm.docname);
+	if (df_ts) df_ts.formatter = qc_photo_timestamp_formatter;
 }
 
 // Click a Foto QC row -> the picture at working size in a modal, with its Keterangan beside
@@ -237,6 +250,7 @@ function qc_photo_slides(frm) {
 		cdt: 'Cleaning QC Photo',
 		cdn: row.name,
 		label: row.caption || '',
+		timestamp: row.timestamp || row.creation,
 	}));
 }
 
@@ -338,6 +352,8 @@ function open_qc_carousel(frm, slides, start) {
 			: `<div class="oak-carousel-stage oak-carousel-empty">
 					<div class="oak-photo-none">${__('Belum ada foto')}</div>
 				</div>`;
+		const time_raw = slide.timestamp || row.timestamp || row.creation;
+		const time_str = time_raw ? frappe.datetime.str_to_user(time_raw) : '';
 		d.fields_dict.viewer.$wrapper.html(`
 			<div class="oak-carousel">
 				<button class="btn btn-default oak-carousel-nav" data-oak-step="-1"
@@ -349,6 +365,7 @@ function open_qc_carousel(frm, slides, start) {
 			<div class="oak-carousel-caption">
 				<span class="oak-carousel-count">${idx + 1} / ${slides.length}</span>
 				<span>${frappe.utils.escape_html(row.caption || '')}</span>
+				${time_str ? `<span class="oak-carousel-time text-muted" style="margin-left:8px;"><i class="fa fa-clock-o"></i> ${frappe.utils.escape_html(time_str)}</span>` : ''}
 			</div>
 		`);
 		d.$wrapper.find('.oak-carousel-nav').on('click', (e) => go(cint($(e.currentTarget).attr('data-oak-step'))));
@@ -366,6 +383,22 @@ function open_qc_carousel(frm, slides, start) {
 		d.set_secondary_action_label(__('Detail Foto'));
 		d.set_secondary_action(() => slide.src && window.open(slide.src, '_blank'));
 		$open_tab.toggleClass('hide', !slide.src);
+
+		let $dl_btn = d.$wrapper.find('.oak-btn-download-photo');
+		if (!$dl_btn.length) {
+			$dl_btn = $(`<button class="btn btn-default btn-sm oak-btn-download-photo" style="margin-right: 8px;">
+				<i class="fa fa-download"></i> ${__('Download Foto')}
+			</button>`).insertBefore($open_tab);
+		}
+		$dl_btn.off('click').on('click', () => {
+			if (slide && slide.src) {
+				const ext = slide.src.split('.').pop().split('?')[0] || 'jpg';
+				const doc_prefix = frm && frm.docname ? frm.docname + '_' : '';
+				const name = `${doc_prefix}qc_${idx + 1}.${ext}`;
+				container_depot.download_photo(slide.src, name);
+			}
+		});
+		$dl_btn.toggleClass('hide', !slide.src);
 	}
 
 	function go(step) {

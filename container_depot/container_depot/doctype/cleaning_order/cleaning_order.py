@@ -47,6 +47,9 @@ class CleaningOrder(Document):
 		if self.container and self.has_value_changed("container"):
 			assert_container_active(self.container)
 		self._guard_dates_after_invoice()
+		for p in self.get("qc_photos") or []:
+			if p.photo and not p.get("timestamp"):
+				p.timestamp = p.creation or frappe.utils.now_datetime()
 
 	# Tanggal yang menentukan PERIODE TAGIHAN. consolidated_billing / monthly_invoicing
 	# memilih order lewat rentang ``cleaning_end``, jadi menggesernya setelah order masuk

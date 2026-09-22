@@ -121,6 +121,8 @@ class RepairOrder(Document):
 			# not the other way round.
 			p.used_item = line.name
 			p.item = line.item
+			if p.photo and not p.get("timestamp"):
+				p.timestamp = p.creation or frappe.utils.now_datetime()
 
 	def _validate_stock_available(self):
 		"""A part may only sit on an M&R when its own gudang actually holds it.
