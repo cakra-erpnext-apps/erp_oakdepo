@@ -91,6 +91,9 @@ def after_migrate():
 	sync_workspace_sidebar()
 	# Close the /desk home-screen holes where an app icon ignores Allow Modules.
 	sync_desktop_icons()
+	# Non-production sites hide the APK share page; the card that links to it goes too.
+	# After the sidebar/workspace re-import, which is what re-creates the row.
+	hide_apk_shortcut()
 	# Keep the Desk "Depot PWA" shortcut visible only to roles flagged as depot field
 	# roles. Runs after the sidebar re-import, which is what re-creates the entry.
 	setup_pwa_page_roles()
@@ -1429,6 +1432,20 @@ FOREIGN_ICON_ROLES = {
 	"Raven": ["Raven User", "Raven Admin"],
 	"Quality": ["System Manager"],
 }
+
+
+def hide_apk_shortcut():
+	"""Drop the "Download App" shortcut on a site that sets ``hide_apk_page``.
+
+	The TWA target URL is baked into the APK at build time (app.oakdepo.com/depot), so an
+	APK handed out by staging still opens PRODUCTION. Staging therefore hides the share
+	page (see ``www/depot_app.page_hidden``) and the card that links to it.
+
+	Runs every migrate because the Workspace JSON re-import puts the row back.
+	"""
+	if not frappe.conf.get("hide_apk_page"):
+		return
+	frappe.db.delete("Workspace Shortcut", {"parent": "Container Depot", "url": "/depot-app"})
 
 
 def sync_desktop_icons():

@@ -11,6 +11,15 @@ minta login, orang baru justru tidak bisa memasang app-nya.
 APK-nya TIDAK ikut repo. Admin meng-upload File publik berakhiran ``.apk`` (File
 manager Desk), dan halaman ini memakai yang paling baru. Jadi rilis berikutnya
 cukup upload ulang — tanpa deploy, tanpa field settings baru.
+
+Site non-produksi boleh menyembunyikan halaman ini:
+
+    bench --site staging.oakdepo.com set-config hide_apk_page 1
+
+Alasannya: URL target TWA dipatri ke dalam APK saat build (``app.oakdepo.com/depot``),
+jadi APK yang diunduh dari staging tetap membuka PRODUKSI — link yang menyesatkan.
+Flag-nya juga membuang shortcut "Download App" di Workspace (lihat
+``install.hide_apk_shortcut``).
 """
 
 from urllib.parse import quote
@@ -21,6 +30,11 @@ from frappe.utils import get_url
 from container_depot.print_utils import qr_data_uri
 
 no_cache = 1
+
+
+def page_hidden() -> bool:
+	"""``hide_apk_page`` di site_config — dipakai site non-produksi."""
+	return bool(frappe.conf.get("hide_apk_page"))
 
 
 def get_apk():
@@ -43,6 +57,9 @@ def get_apk():
 
 
 def get_context(context):
+	if page_hidden():
+		raise frappe.PageDoesNotExistError
+
 	context.no_cache = 1
 	context.apk = get_apk()
 	context.page_url = get_url("/depot-app")

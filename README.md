@@ -226,6 +226,17 @@ Setiap rilis APK:
 - Upload berkas `.apk` sebagai File **publik** lewat File manager Desk (`/app/file`).
   `/depot-app` otomatis memakai APK publik yang paling baru — tanpa deploy, tanpa setting.
 
+Site non-produksi (staging) menyembunyikan halaman itu, sekali saja per site:
+
+```
+bench --site staging.oakdepo.com set-config hide_apk_page 1
+```
+
+`/depot-app` jadi 404 dan shortcut **Download App** dibuang tiap migrate
+(`install.hide_apk_shortcut`). Alasannya: URL target TWA dipatri ke dalam APK saat build,
+jadi APK yang diunduh dari staging tetap membuka produksi. Untuk menguji PWA di staging
+pakai Chrome → *Add to Home Screen*; tidak perlu APK kedua.
+
 Catatan: iOS tidak punya padanan TWA. Di iPhone tetap *Add to Home Screen* dari Safari.
 
 ## Rules
