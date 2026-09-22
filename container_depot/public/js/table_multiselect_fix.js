@@ -103,3 +103,112 @@
 		};
 	};
 })();
+
+// ---------------------------------------------------------------------------------------
+// 3. Tombol "Add Roles" pada pop up "No Roles Specified"
+//
+// Saat membuat User baru tanpa role, Frappe menampilkan msgprint peringatan dengan
+// primary_action client_action ("frappe.set_route").
+// Masalah:
+// - Handler client_action bawaan Frappe tidak memanggil `frappe.hide_msgprint()`, sehingga
+//   dialog modal tetap menutup layar setelah tombol diklik.
+// - Jika form User sudah aktif (mis. setelah create/save user), route sudah sama persis
+//   sehingga `frappe.set_route` adalah no-op dan tidak berpindah tab.
+// - Form User membuka default ke tab "User Details", sementara field role profile dan roles
+//   ada di tab "Roles & Permissions".
+// Solusi:
+// Intercept `frappe.msgprint`: tutup dialog, lalu buka tab `roles_permissions_tab` dan
+// scroll ke field `role_profiles` baik saat form sudah terbuka maupun saat harus bernavigasi.
+(function () {
+	if (!window.frappe) return;
+
+	function wrap_msgprint() {
+		if (!frappe.msgprint || frappe.msgprint.__depot_wrapped) return;
+
+		const original_msgprint = frappe.msgprint;
+		frappe.msgprint = function (msg, ...rest) {
+			let data = msg;
+			let is_parsed = false;
+
+			if (typeof data === "string" && data.trim().startsWith("{")) {
+				try {
+					data = JSON.parse(data);
+					is_parsed = true;
+				} catch (e) {}
+			}
+
+			if (data && typeof data === "object" && !Array.isArray(data) && data.primary_action) {
+				const pa = data.primary_action;
+				const is_user_roles_prompt =
+					data.title === "No Roles Specified" ||
+					(window.__ && data.title === __("No Roles Specified")) ||
+					(pa.client_action === "frappe.set_route" &&
+						Array.isArray(pa.args) &&
+						pa.args[0] === "Form" &&
+						pa.args[1] === "User");
+
+				if (is_user_roles_prompt) {
+					const user_email = Array.isArray(pa.args) ? pa.args[2] : null;
+					pa.client_action = null;
+					pa.action = () => {
+						frappe.hide_msgprint(true);
+
+						const activate_roles = () => {
+							const frm = window.cur_frm;
+							if (
+								frm &&
+								frm.doctype === "User" &&
+								(!user_email ||
+									frm.docname === user_email ||
+									decodeURIComponent(frm.docname || "").toLowerCase() ===
+										decodeURIComponent(user_email || "").toLowerCase())
+							) {
+								if (!frm.scroll_to_field?.("role_profiles")) {
+									frm.layout?.select_tab?.("roles_permissions_tab");
+								}
+								return true;
+							}
+							return false;
+						};
+
+						if (!activate_roles()) {
+							frappe.route_options = Object.assign(frappe.route_options || {}, {
+								scroll_to: "role_profiles",
+							});
+							if (user_email) {
+								frappe.set_route("Form", "User", user_email).then(() => {
+									setTimeout(activate_roles, 150);
+								});
+							}
+						}
+					};
+				} else if (pa.client_action && typeof pa.client_action === "string") {
+					const client_action_str = pa.client_action;
+					const action_args = pa.args;
+					pa.client_action = null;
+					pa.action = () => {
+						frappe.hide_msgprint(true);
+						let parts = client_action_str.split(".");
+						let obj = window;
+						for (let part of parts) {
+							obj = obj?.[part];
+						}
+						if (typeof obj === "function") {
+							obj(action_args);
+						}
+					};
+				}
+
+				if (is_parsed) {
+					msg = data;
+				}
+			}
+
+			return original_msgprint.call(this, msg, ...rest);
+		};
+
+		frappe.msgprint.__depot_wrapped = true;
+	}
+
+	wrap_msgprint();
+})();
