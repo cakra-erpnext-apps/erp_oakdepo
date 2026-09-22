@@ -10,10 +10,13 @@ for app in apps:
     name = app['name']
     url = app['url']
     branch = app['branch']
+    commit = app.get('commit')
     print('=' * 80, flush=True)
     print(f'Installing app source: {name}', flush=True)
     print(f'URL    : {url}', flush=True)
     print(f'Branch : {branch}', flush=True)
+    if commit:
+        print(f'Commit : {commit}', flush=True)
     print('=' * 80, flush=True)
     try:
         subprocess.check_call([
@@ -24,11 +27,15 @@ for app in apps:
             branch,
             url,
         ])
+        if commit:
+            subprocess.check_call(['git', '-C', f'apps/{name}', 'checkout', commit])
     except subprocess.CalledProcessError as e:
         print('=' * 80, flush=True)
         print(f'FAILED installing app: {name}', flush=True)
         print(f'URL       : {url}', flush=True)
         print(f'Branch    : {branch}', flush=True)
+        if commit:
+            print(f'Commit    : {commit}', flush=True)
         print(f'Exit code : {e.returncode}', flush=True)
         print('=' * 80, flush=True)
         sys.exit(e.returncode)

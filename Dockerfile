@@ -10,6 +10,7 @@ USER frappe
 
 ARG FRAPPE_REPO=https://github.com/cakra-erpnext-apps/frappe
 ARG FRAPPE_BRANCH=version-16
+ARG FRAPPE_COMMIT=69be97cf314e53e314678c5af98fef25f5c2d7e6
 
 WORKDIR /home/frappe
 
@@ -19,7 +20,8 @@ RUN bench init frappe-bench \
     --frappe-path ${FRAPPE_REPO} \
     --frappe-branch ${FRAPPE_BRANCH} \
     --skip-redis-config-generation \
-    --skip-assets
+    --skip-assets \
+    && git -C frappe-bench/apps/frappe checkout ${FRAPPE_COMMIT}
 
 WORKDIR /home/frappe/frappe-bench
 
