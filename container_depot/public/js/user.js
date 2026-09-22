@@ -106,6 +106,14 @@ frappe.ui.form.on("User", {
 
 			const guarded = function (frm, ...rest) {
 				if (!frm?.roles_editor) return;
+				if (event === "role_profiles_remove" && frm.doc.role_profiles?.length > 0) {
+					frm.roles_editor.disable = 1;
+					frm.call("populate_role_profile_roles").then(() => {
+						frm.roles_editor.show();
+					});
+					$(".deselect-all, .select-all").prop("disabled", true);
+					return;
+				}
 				return handler(frm, ...rest);
 			};
 			guarded.__depot_guarded = true;

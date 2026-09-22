@@ -392,7 +392,7 @@ app_include_css = "/assets/container_depot/css/container_depot.css?v=3"
 app_include_js = [
 	"/assets/container_depot/js/notification_click.js?v=2",
 	# Backport perbaikan Frappe untuk pill Table MultiSelect (lihat file-nya).
-	"/assets/container_depot/js/table_multiselect_fix.js?v=2",
+	"/assets/container_depot/js/table_multiselect_fix.js?v=3",
 	# Tidak ada doctype Container Depot yang punya `amended_from`, jadi tombol Amend pada
 	# dokumen Cancelled hanya bisa menjawab error (lihat file-nya).
 	"/assets/container_depot/js/amend_guard.js?v=1",
