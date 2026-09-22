@@ -52,6 +52,18 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench &&
 log "migrate"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "cd /home/frappe/frappe-bench && bench --site '$SITE' migrate"
 
+# Langkah "materialize assets for nginx" di bawah mengubah sites/assets/<app> jadi direktori
+# nyata milik root. Run berikutnya, `bench build` tidak bisa rmtree direktori itu untuk
+# memasang ulang symlink-nya, sehingga apps/frappe/frappe/public/node_modules tidak pernah
+# dibuat dan desk.bundle.scss gagal di import highlight.js. Buang salinannya dulu.
+log "unmaterialize assets"
+docker exec -u root erp_oakdepo_prod-backend-1 bash -lc '
+  cd /home/frappe/frappe-bench/sites/assets || exit 0
+  for app in frappe erpnext container_depot hrms telephony helpdesk raven gameplan crm; do
+    [ -L "$app" ] || rm -rf "$app"
+  done
+'
+
 log "build bench assets"
 docker exec erp_oakdepo_prod-backend-1 bash -lc "
   set -euo pipefail
