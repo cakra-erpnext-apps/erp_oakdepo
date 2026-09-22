@@ -1,4 +1,4 @@
-name: erp_oakdepo_prod
+name: erp_oakdepo_staging
 
 x-frappe-image: &frappe-image
   image: oakdepo-erpnext:prod
@@ -21,7 +21,6 @@ x-app-volumes: &app-volumes
   - assets:/home/frappe/frappe-bench/assets
   - logs:/home/frappe/frappe-bench/logs
   - ./:/home/frappe/frappe-bench/apps/container_depot
-  - egg-info:/home/frappe/frappe-bench/apps/container_depot/container_depot.egg-info
   - ./ensure-apps.sh:/scripts/ensure-apps.sh:ro
 
 services:
@@ -192,7 +191,7 @@ services:
     restart: unless-stopped
     <<: *default-logging
     ports:
-      - "127.0.0.1:18088:80"
+      - "127.0.0.1:18092:80"
     volumes:
       - sites:/home/frappe/frappe-bench/sites:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
@@ -205,7 +204,6 @@ volumes:
   sites:
   assets:
   logs:
-  egg-info:
 
 networks:
   frappe_net:
