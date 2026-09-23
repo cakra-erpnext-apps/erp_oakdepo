@@ -888,10 +888,6 @@ export const labels = {
 	// Tgl. periodic test terakhir, dikoreksi dari EIR atau dari M&R uji berkala
 	// (components/LastTestField.vue). Satu nilai milik TANK, bukan milik order — teksnya
 	// mengatakan itu, supaya tidak ada yang mengira ia sedang mengisi kolom di order ini saja.
-	lastTestEdit: "Ubah",
-	lastTestAdd: "Isi",
-	lastTestSave: "Simpan",
-	lastTestCancel: "Batal",
 	lastTestHint: "Uji berkala terakhir tank ini — termasuk yang dikerjakan vendor / depo lain, yang tidak punya M&R di sini.",
 	lastTestSaved: "Tgl. periodic test terakhir tersimpan",
 	// M&R (Maintenance & Repair — workshop team; auto-created from EIRs with damage)

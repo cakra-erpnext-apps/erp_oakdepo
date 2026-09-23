@@ -11,6 +11,7 @@
   "depot",
   "job_type",
   "pt_type",
+  "last_test_date",
   "plan_date",
   "column_break_1",
   "technician",
@@ -99,6 +100,13 @@
    "label": "Type PT",
    "mandatory_depends_on": "eval:doc.job_type == \"Periodic Test\"",
    "options": "\n2,5Y\n5Y"
+  },
+  {
+   "depends_on": "eval:doc.job_type == \"Periodic Test\" && doc.container",
+   "description": "Milik master tank, bukan order ini: diisi dari master saat dibuka, dan yang diubah di sini ditulis balik ke master saat disimpan. Termasuk uji di vendor / depo lain.",
+   "fieldname": "last_test_date",
+   "fieldtype": "Date",
+   "label": "Tgl. Periodic Test Terakhir"
   },
   {
    "fieldname": "column_break_1",
@@ -386,7 +394,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-23 16:00:00.000000",
+ "modified": "2026-09-23 17:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

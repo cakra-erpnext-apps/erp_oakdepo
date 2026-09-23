@@ -273,17 +273,6 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_set_queries');
 		frm.trigger('_refresh_on_hand');
 		frm.trigger('_render_system_facts');
-		// Tgl. Periodic Test Terakhir tank: dibaca hidup dari master (bukan disalin ke order
-		// ini) dan bisa dibetulkan di sini — termasuk uji yang dikerjakan vendor / depo lain,
-		// yang memang tidak akan pernah punya M&R di sistem ini. Uji berkala yang selesai di
-		// depo sendiri mengisinya otomatis saat order ditutup (_stamp_last_test_date).
-		//
-		// HANYA di order uji berkala. Di M&R perbaikan biasa tanggal ini tidak menjawab apa
-		// pun yang sedang dikerjakan, dan tombol yang selalu ada di mana-mana adalah tombol
-		// yang ditekan sambil lalu.
-		const is_periodic_test = frm.doc.job_type === 'Periodic Test';
-		container_depot.tank_last_test.load(frm, is_periodic_test);
-		container_depot.tank_last_test.button(frm, is_periodic_test);
 		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
 		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
 		container_depot.tank_position.button(frm);
@@ -355,7 +344,6 @@ frappe.ui.form.on('Repair Order', {
 			[__('Status'), frm.doc.status && esc(frm.doc.status)],
 			[__('Principal (Owner)'), frm.doc.principal && esc(frm.doc.principal)],
 			[__('Container No'), frm.doc.container_no && esc(frm.doc.container_no)],
-			[__('Tgl. Periodic Test Terakhir'), container_depot.tank_last_test.fact(frm)],
 			// Order Date / Start Date / Completion Date are NOT repeated here: they stand on
 			// the form itself, read-only and behind a depends_on, so each one appears in
 			// place the moment the system stamps it (Container Booking's block_reason
@@ -542,7 +530,7 @@ frappe.ui.form.on('Repair Order', {
 		// itself (and only shown at all once stamped, via depends_on), so handing them back
 		// on reopen would be the one thing that makes them typeable.
 		[
-			'container', 'depot', 'plan_date', 'job_type', 'pt_type', 'technician', 'reff_doc',
+			'container', 'depot', 'plan_date', 'job_type', 'pt_type', 'last_test_date', 'technician', 'reff_doc',
 			'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
 		// Nothing left to change means nothing to Save — Frappe would otherwise keep offering
@@ -592,14 +580,16 @@ frappe.ui.form.on('Repair Order', {
 	},
 	container(frm) {
 		if (frm.doc.container) {
-			// Fetch principal (owner) from Container record
-			frappe.db.get_value('Container', frm.doc.container, 'principal', (r) => {
+			// Fetch principal (owner) + tank's last test date from Container record
+			frappe.db.get_value('Container', frm.doc.container, ['principal', 'last_test_date'], (r) => {
 				if (r && r.principal) {
 					frm.set_value('principal', r.principal);
 				}
+				frm.set_value('last_test_date', (r && r.last_test_date) || '');
 			});
 		} else {
 			frm.set_value('principal', '');
+			frm.set_value('last_test_date', '');
 		}
 	}
 });

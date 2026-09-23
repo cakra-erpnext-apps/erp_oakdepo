@@ -36,6 +36,29 @@ class RepairOrder(Document):
 		self._validate_stock_available()
 		self._bind_work_photos()
 		self._guard_dates_after_billing()
+		self._push_last_test_date()
+
+	def onload(self):
+		# ``last_test_date`` milik master tank; kolom di order ini hanya tempat mengetiknya.
+		# Selalu tampilkan nilai master terbaru, bukan salinan yang tersimpan di order.
+		if self.job_type == "Periodic Test" and self.container:
+			self.last_test_date = frappe.db.get_value("Container", self.container, "last_test_date")
+
+	def _push_last_test_date(self):
+		"""Tanggal uji yang diketik di form ditulis ke master tank (uji di vendor / depo lain).
+
+		Hanya kalau orangnya benar-benar mengubahnya; validasi (masa depan, sebelum tank
+		dibuat, branch) ada di ``container.set_last_test_date``.
+		"""
+		# ponytail: pembanding = nilai tersimpan di order, bukan yang tampil saat dibuka; kalau
+		# master diubah layar lain di antara buka & simpan, simpan ini menimpanya kembali.
+		if self.job_type != "Periodic Test" or not self.container or not self.last_test_date:
+			return
+		if not self.has_value_changed("last_test_date"):
+			return
+		from container_depot.container_depot.doctype.container.container import set_last_test_date
+
+		set_last_test_date(self.container, self.last_test_date)
 
 	def _guard_final_status(self):
 		"""A finished M&R is history — the only writes left are the edges back out of it.

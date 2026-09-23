@@ -150,3 +150,31 @@ class TestTankLastTestDate(FrappeTestCase):
 			set_last_test_date(c, "")
 
 		self.assertEqual(self._last_test(c), getdate("2024-03-11"))
+
+	# --- kolom di form M&R ----------------------------------------------------
+	def test_form_field_shows_the_master_and_writes_back(self):
+		"""Kolom ``last_test_date`` di M&R uji berkala: dibuka = nilai master, diubah lalu
+		disimpan = master ikut berubah."""
+		c = self._container("LTDU1000010")
+		set_last_test_date(c, "2024-03-11")
+		doc = self._periodic_test(c, completion_date=None, status="Pending")
+
+		doc = frappe.get_doc("Repair Order", doc.name)
+		doc.run_method("onload")
+		self.assertEqual(getdate(doc.last_test_date), getdate("2024-03-11"))
+
+		doc.last_test_date = "2025-01-20"
+		doc.save(ignore_permissions=True)
+		self.assertEqual(self._last_test(c), getdate("2025-01-20"))
+
+	def test_form_field_ignored_on_ordinary_repair(self):
+		c = self._container("LTDU1000011")
+		doc = frappe.get_doc({
+			"doctype": "Repair Order",
+			"container": c,
+			"job_type": "Repair",
+			"last_test_date": "2025-01-20",
+		}).insert(ignore_permissions=True)
+		self._orders.append(doc.name)
+
+		self.assertIsNone(self._last_test(c))
