@@ -26,6 +26,13 @@ const FILTER_ORDER = [
 	'payment_status',
 ];
 
+// Direction as a colour pill: green for Tank In (inbound), orange for Tank Out (outbound),
+// matching EIR's In / Out convention and the gate PWA.
+const DIRECTION_COLOURS = {
+	'Tank In': 'green',
+	'Tank Out': 'orange',
+};
+
 // "Sudah dibonkan belum?" is the other half of a booking's state, and it is invisible on the
 // booking itself — the bons live in another doctype and reach it only through Booking Codes.
 // A confirmed booking whose containers have no bon yet is work nobody has started; on a list
@@ -83,6 +90,11 @@ frappe.listview_settings['Container Booking'] = {
 		// plus awalan MENDESAK pada kolom subject (customer), yang tidak pernah terpotong.
 		customer(value, df, doc) {
 			return container_depot.urgency_subject(value, doc, PRIORITY.urgent);
+		},
+		direction(value) {
+			if (!value) return '';
+			const colour = DIRECTION_COLOURS[value] || 'gray';
+			return `<span class="indicator-pill no-indicator-dot ${colour}">${__(value)}</span>`;
 		},
 		urgent_date(value, df, doc) {
 			// Tank Out only, like `per_fulfilled` below. Prioritas di depot ini adalah tenggat

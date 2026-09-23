@@ -19,6 +19,10 @@ frappe.query_reports["Container Booking Register"] = {
 
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
+		if (column.fieldname === "direction" && data && data.direction) {
+			const colour = data.direction === "Tank In" ? "green" : data.direction === "Tank Out" ? "orange" : "gray";
+			value = `<span class="indicator-pill no-indicator-dot ${colour}">${data.direction}</span>`;
+		}
 		if (column.fieldname === "payment_status" && data && data.payment_status) {
 			const colour = { Paid: "green", Invoiced: "blue", Unpaid: "orange", Cancelled: "gray" }[
 				data.payment_status
