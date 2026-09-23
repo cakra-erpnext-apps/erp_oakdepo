@@ -206,6 +206,32 @@ class TestStorageCharges(FrappeTestCase):
 		self.assertEqual(periods[0]["source"], storage.SRC_MOVEMENT)
 		self.assertIsNone(periods[0]["end"])
 
+	def test_injected_tank_starts_on_its_eir_in_date(self):
+		"""An imported tank: the movement is stamped at import time, the EIR-In date is the
+		arrival the operator set — the stay starts on the EIR-In date."""
+		cno = f"{PREFIX}INJECT"
+		arrived = add_days(today(), -20)
+		doc = _container(cno, "In_Depot", self.customer)
+		frappe.db.set_value("Container", doc.name, "eir_in_date", f"{arrived} 09:00:00")
+		row = self._row(doc.name)
+		self.assertEqual(getdate(row["in_date"]), getdate(arrived))
+		self.assertEqual(row["stay_days"], 21)
+		self.assertEqual(row["source"], storage.SRC_EIR)
+
+	def test_injected_tank_leaves_on_its_eir_out_date(self):
+		"""An imported tank that has left: out is the EIR-Out date, not the import stamp."""
+		cno = f"{PREFIX}INJOUT"
+		arrived, left = add_days(today(), -20), add_days(today(), -5)
+		doc = _container(cno, "In_Depot", self.customer)
+		doc.db_set("status", "Gate_Out")
+		frappe.db.set_value("Container", doc.name, {
+			"eir_in_date": f"{arrived} 09:00:00", "eir_out_date": f"{left} 15:00:00",
+		})
+		row = self._row(doc.name)
+		self.assertEqual(getdate(row["out_date"]), getdate(left))
+		self.assertEqual(row["stay_days"], 16)
+		self.assertEqual(storage.days_in_depot(doc.name, add_days(today(), -30), today()), 16)
+
 	def test_report_columns_shape(self):
 		columns, _ = execute({})
 		names = {c["fieldname"] for c in columns}

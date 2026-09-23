@@ -38,7 +38,7 @@ gate record is a bill the customer will argue with.
 from __future__ import annotations
 
 import frappe
-from frappe.utils import add_days, cint, date_diff, getdate, today
+from frappe.utils import add_days, cint, date_diff, get_datetime, getdate, today
 
 from container_depot.container_depot.container_status import GATE_OUT, PRESENT
 
@@ -73,6 +73,8 @@ SRC_GATE = "Gate Entry"
 SRC_MOVEMENT = "Container Movement"
 SRC_EIR = "EIR (Container)"
 SRC_NONE = "-"
+
+EIR_FIELDS = ["eir_in_date", "eir_out_date", "status"]
 
 
 # --------------------------------------------------------------------------- #
@@ -143,10 +145,11 @@ def billable_now(period: dict, mode: str) -> bool:
 def stay_periods(container: str, container_no: str | None = None) -> list[dict]:
 	"""Every recorded depot visit of one tank, oldest first."""
 	container_no = container_no or frappe.db.get_value("Container", container, "container_no")
-	return (
+	return _anchor_to_eir(
 		_gate_entry_periods(container_no)
 		or _movement_periods(container)
-		or _eir_periods(container)
+		or _eir_periods(container),
+		frappe.db.get_value("Container", container, EIR_FIELDS, as_dict=True),
 	)
 
 
@@ -179,14 +182,44 @@ def periods_for_many(containers: list[dict]) -> dict[str, list[dict]]:
 				"source": SRC_GATE,
 				"ref": r.name,
 			})
+	eir = {r.name: r for r in frappe.get_all(
+		"Container", filters={"name": ["in", [c["name"] for c in containers] or [""]]},
+		fields=["name", *EIR_FIELDS],
+	)}
 	out = {}
 	for c in containers:
-		out[c["name"]] = (
+		out[c["name"]] = _anchor_to_eir(
 			by_no.get(c.get("container_no"))
 			or _movement_periods(c["name"])
-			or _eir_periods(c["name"])
+			or _eir_periods(c["name"]),
+			eir.get(c["name"]),
 		)
 	return out
+
+
+def _anchor_to_eir(periods: list[dict], eir) -> list[dict]:
+	"""The newest visit runs on the tank's own EIR dates: in = ``eir_in_date``, out =
+	``eir_out_date`` (only once the tank is Gate_Out).
+
+	Gate Entry writes both fields at the gate, so for a gated tank this changes nothing. It
+	matters for a tank injected by import: its Container Movement is stamped when the import
+	ran, not when the tank moved, while the EIR dates are what the operator set. Only the
+	LAST visit is touched (both fields are overwritten on re-entry), and a date that does
+	not fit — before the previous visit's exit, or out before in — is ignored.
+	"""
+	if not periods or not eir:
+		return periods
+	last = dict(periods[-1])
+	prev_end = periods[-2]["end"] if len(periods) > 1 else None
+	if eir.eir_in_date and not (prev_end and get_datetime(eir.eir_in_date) <= get_datetime(prev_end)):
+		if getdate(eir.eir_in_date) != getdate(last["start"]):
+			last.update(start=eir.eir_in_date, source=SRC_EIR)
+	if eir.status == GATE_OUT and eir.eir_out_date and get_datetime(eir.eir_out_date) >= get_datetime(last["start"]):
+		if not last["end"] or getdate(eir.eir_out_date) != getdate(last["end"]):
+			last.update(end=eir.eir_out_date, source=SRC_EIR)
+	if last["end"] and get_datetime(last["end"]) < get_datetime(last["start"]):
+		return periods
+	return periods[:-1] + [last]
 
 
 def _gate_entry_periods(container_no: str | None) -> list[dict]:

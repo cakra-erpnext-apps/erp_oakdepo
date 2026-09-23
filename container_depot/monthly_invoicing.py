@@ -20,7 +20,7 @@ from __future__ import annotations
 import frappe
 from frappe.utils import add_months, flt, get_first_day, get_last_day, getdate, today
 
-from container_depot import finance
+from container_depot import finance, storage
 from container_depot.pricing import CLEANING_ITEM, STORAGE_ITEM, resolve_tariff_rate
 
 # Lift on/off charges are billed at the BOOKING (Cash: paid at submit; TOP: swept
@@ -209,26 +209,11 @@ def _storage_items(customer, from_date, to_date):
 
 
 def _days_in_depot(container, from_date, to_date):
-	"""Days the container was in the depot during [from_date, to_date]."""
-	lo, hi = _bounds(from_date, to_date)
-	moves = frappe.get_all(
-		"Container Movement",
-		filters={"container": container, "event_type": ["in", ["Status", "Combined"]], "movement_timestamp": ["<=", hi]},
-		fields=["to_status", "movement_timestamp"],
-		order_by="movement_timestamp asc",
-	)
-	if not moves:
-		return 0
-	gate_in = None
-	for m in moves:
-		if m.to_status in ("Gate_In", "In_Depot", "Available") and gate_in is None:
-			gate_in = getdate(m.movement_timestamp)
-		if m.to_status == "Gate_Out":
-			gate_in = None
-	if gate_in is None:
-		return 0
-	start = max(gate_in, from_date)
-	return max(0, (to_date - start).days + 1)
+	"""Days the container was in the depot during [from_date, to_date].
+
+	Delegates to the storage days engine so billing reads the same stay dates as the
+	Storage Charges report — Gate Entry, else the EIR dates, else the status trail."""
+	return storage.days_in_depot(container, getdate(from_date), getdate(to_date))
 
 
 _BUILDERS = {
