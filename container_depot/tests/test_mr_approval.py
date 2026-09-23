@@ -192,11 +192,6 @@ class TestMRApproval(FrappeTestCase):
 		mr.publish_to_owner(ro)
 
 	# --- publish --------------------------------------------------------------
-	def test_publish_requires_item(self):
-		_, ro = self._draft_ro("MRAREQ00001")
-		with self.assertRaises(frappe.ValidationError):
-			mr.publish_to_owner(ro)
-
 	def test_publish_sets_pending_and_parks_container(self):
 		c, ro = self._draft_ro("MRAPEN00001")
 		self._submit(ro, [{"item": _SERVICE, "quantity": 1}])
@@ -296,11 +291,6 @@ class TestMRApproval(FrappeTestCase):
 		mr.start_repair(ro)
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "In Progress")
 
-	def test_bypass_requires_item(self):
-		_, ro = self._draft_ro("MRABYP00002")
-		with self.assertRaises(frappe.ValidationError):
-			mr.bypass_approval(ro)
-
 	# --- Desk "Submit" (one press, from wherever the order stands) -------------
 	def test_submit_direct_closes_a_draft_in_one_press(self):
 		"""Draft -> Completed without the owner, the hand-over or the review. The parts still
@@ -338,13 +328,25 @@ class TestMRApproval(FrappeTestCase):
 
 	def test_submit_direct_closes_an_empty_estimate(self):
 		"""Nothing on the order = nothing to bill and no part to issue, so it closes rather
-		than being refused (``bypass_approval`` alone insists on an item)."""
+		than being refused."""
 		_, ro = self._draft_ro("MRASUB00003")
 		mr.submit_direct(ro)
 		doc = frappe.get_doc("Repair Order", ro)
 		self.assertEqual(doc.status, "Completed")
 		self.assertEqual(flt(doc.total_cost), 0.0)
 		self.assertFalse(doc.stock_entry)
+
+	def test_empty_estimate_can_be_published_and_approved(self):
+		"""No minimum item count: an empty M&R goes to the owner and is approved as-is,
+		and the Admin-Ops bypass takes an empty one just the same."""
+		_, ro = self._draft_ro("MRAEMP00001")
+		mr.publish_to_owner(ro)
+		mr.record_decision(ro, "Approved")
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Approved")
+
+		_, ro2 = self._draft_ro("MRAEMP00002")
+		mr.bypass_approval(ro2)
+		self.assertEqual(frappe.db.get_value("Repair Order", ro2, "status"), "Approved")
 
 	def test_submit_direct_refuses_a_settled_order(self):
 		_, ro = self._draft_ro("MRASUB00004")

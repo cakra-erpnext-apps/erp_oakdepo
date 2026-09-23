@@ -624,8 +624,6 @@ def publish_to_owner(repair_order):
 		frappe.throw(
 			_("M&R hanya bisa dikirim ke owner dari Draft / Revision Requested (status: {0}).").format(ro.status)
 		)
-	if not (ro.used_items and len(ro.used_items) > 0):
-		frappe.throw(_("Tambahkan minimal satu item sebelum mengirim ke owner."))
 	for r in ro.used_items:
 		r.decision = "Pending"
 		r.owner_remark = None
@@ -706,7 +704,7 @@ def reopen_to_draft(repair_order, note=None):
 def bypass_approval(repair_order, note=None):
 	"""Admin-Ops BYPASS: approve the estimate directly (Draft / Revision Requested ->
 	Approved) without sending it to the owner. Same preconditions as ``publish_to_owner``
-	(≥1 used item); every still-Pending line is auto-approved so the total + stock issue are
+	(an empty estimate is allowed); every still-Pending line is auto-approved so the total + stock issue are
 	consistent with a normal Approved.
 
 	The Admin-Ops role gate lives in the ESS wrapper (``mr_bypass_approval``); this function
@@ -718,12 +716,11 @@ def bypass_approval(repair_order, note=None):
 		frappe.throw(
 			_("Bypass hanya dari Draft / Revision Requested (status: {0}).").format(ro.status)
 		)
-	if not (ro.used_items and len(ro.used_items) > 0):
-		frappe.throw(_("Tambahkan minimal satu item sebelum menyetujui."))
 	for r in ro.used_items:
 		if r.decision not in ("Approved", "Rejected"):
 			r.decision = "Approved"
-	if not any(r.decision == "Approved" for r in ro.used_items):
+	# An empty estimate may be approved as-is; only a list that is ALL struck out is a no.
+	if ro.used_items and not any(r.decision == "Approved" for r in ro.used_items):
 		frappe.throw(_("Minimal satu item harus disetujui."))
 	ro.status = "Approved"
 	ro.owner_note = _clean(note) or _("Disetujui langsung oleh Admin Ops (bypass owner).")
@@ -772,7 +769,8 @@ def record_decision(repair_order, decision, line_decisions=None, note=None):
 
 	``decision`` ∈ {Approved, Rejected, Revision Requested}. ``line_decisions`` optionally
 	sets each line's Approved/Rejected before an Approved is validated (partial approval).
-	On Approved, any still-Pending line defaults to Approved; ≥1 Approved line is required.
+	On Approved, any still-Pending line defaults to Approved; an order WITH lines needs ≥1
+	Approved line (an empty one is approved as-is).
 	Only Approved lines drive the total and the stock issue on completion."""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
@@ -802,7 +800,7 @@ def record_decision(repair_order, decision, line_decisions=None, note=None):
 				r.decision = "Approved"
 			if r.decision == "Approved":
 				approved += 1
-		if approved == 0:
+		if ro.used_items and approved == 0:
 			frappe.throw(_("Minimal satu item harus disetujui untuk meng-approve M&R."))
 		ro.status = "Approved"
 		ro.owner_note = note
