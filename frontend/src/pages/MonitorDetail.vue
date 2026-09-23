@@ -1,60 +1,23 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-3 md:max-w-2xl">
-		<!-- Kepala: kembali, judul, dan status tank. Statusnya duduk di kepala, bukan di dalam
-		     kartu, karena itu satu-satunya hal di layar ini yang harus terbaca sebelum apa pun
-		     digulir — sisanya menjelaskan, yang ini menyimpulkan. -->
-		<div class="flex items-center gap-2">
-			<button class="oak-press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-500" :aria-label="labels.backBtn" @click="goBack">
-				<Icon name="chevron-left" :size="22" />
-			</button>
-			<h1 class="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight text-gray-900">
-				{{ labels.monitorDetailTitle }}
-			</h1>
-			<span v-if="tank" class="oak-chip shrink-0" :class="badge.tone">{{ badge.label }}</span>
-		</div>
+		<!-- Kepala: kembali, judul, dan status tank. Statusnya duduk di kepala karena itu
+		     satu-satunya hal di layar ini yang harus terbaca sebelum apa pun digulir. -->
+		<DetailHeader :title="labels.monitorDetailTitle" :chip="tank ? tankChip(tank) : null" @back="goBack" />
 
-		<template v-if="detailRes.loading && !tank">
-			<div class="oak-card space-y-3 p-4">
-				<div class="oak-skeleton h-5 w-1/2"></div>
-				<div class="oak-skeleton h-3 w-3/4"></div>
-				<div class="oak-skeleton h-3 w-2/3"></div>
-			</div>
-		</template>
+		<SkeletonDetail v-if="detailRes.loading && !tank" :cells="2" :sections="3" />
 
 		<div v-else-if="!tank" class="oak-card flex flex-col items-center gap-2 p-8 text-center">
 			<span class="oak-icon-tile h-12 w-12 bg-red-50 text-red-500"><Icon name="alert-circle" :size="24" /></span>
 			<p class="text-sm font-bold text-gray-900">{{ labels.monitorErrorTitle }}</p>
-			<button class="oak-btn oak-btn-primary mt-1 px-4 py-2" @click="detailRes.reload()">{{ labels.monitorRetry }}</button>
+			<button class="oak-btn oak-btn-primary mt-1 min-h-[44px] px-4" @click="detailRes.reload()">{{ labels.monitorRetry }}</button>
 		</div>
 
 		<template v-else>
-			<!-- Identitas -->
+			<!-- Identitas: kartu yang sama dengan barisnya di daftar (depot, lama di depo, posisi
+			     sudah di sana — grid tiga-kotak lama dihapus supaya tidak tertulis dua kali). -->
 			<section class="oak-card space-y-3 p-4">
-				<div class="flex items-start justify-between gap-3">
-					<p class="min-w-0 truncate font-mono text-xl font-extrabold tracking-tight text-gray-900">
-						{{ tank.container_no || tank.name }}
-					</p>
-					<p v-if="tank.serial_no" class="shrink-0 font-mono text-xs text-gray-400">{{ tank.serial_no }}</p>
-				</div>
-				<p class="text-xs text-gray-500">{{ specLine }}</p>
-
-				<!-- Tiga hal yang ditanyakan orang yang mencari tank ini secara fisik. -->
-				<div class="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
-					<div class="min-w-0">
-						<p class="text-[11px] text-gray-400">{{ labels.monitorDepotWord }}</p>
-						<p class="truncate text-sm font-bold text-gray-900">{{ tank.depot || "—" }}</p>
-					</div>
-					<div class="min-w-0">
-						<p class="text-[11px] text-gray-400">{{ labels.monitorLocationWord }}</p>
-						<p class="truncate text-sm font-bold text-gray-900">{{ tank.location || "—" }}</p>
-					</div>
-					<div class="min-w-0">
-						<p class="text-[11px] text-gray-400">{{ labels.monitorInDepot }}</p>
-						<p class="truncate text-sm font-bold text-gray-900">
-							{{ tank.in_depot_days === null || tank.in_depot_days === undefined ? "—" : fill(labels.monitorDays, { n: tank.in_depot_days }) }}
-						</p>
-					</div>
-				</div>
+				<MonitorTankInfo :c="tank" />
+				<p v-if="specLine" class="text-xs text-gray-500">{{ specLine }}</p>
 			</section>
 
 			<!-- Proses aktif -->
@@ -193,10 +156,15 @@
 import { computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
-import { labels, statusLabels } from "@/utils/labels"
+import { labels } from "@/utils/labels"
 import { openLightbox } from "@/utils/lightbox"
 import { since, fmtDateTime } from "@/utils/surveyStatus"
+import { fill } from "@/utils/listKit"
+import { tankChip } from "@/utils/monitorStatus"
 import Icon from "@/components/Icon.vue"
+import SkeletonDetail from "@/components/SkeletonDetail.vue"
+import DetailHeader from "@/components/list/DetailHeader.vue"
+import MonitorTankInfo from "@/components/MonitorTankInfo.vue"
 
 const route = useRoute()
 const router = useRouter()
@@ -213,29 +181,13 @@ const openOrders = computed(() => tank.value?.open_orders || [])
 const locationPhotos = computed(() => tank.value?.location_photos || [])
 const activities = computed(() => tank.value?.activities || [])
 
-function fill(tpl, vars) {
-	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
-}
-
-const BADGE_TONE = {
-	available: "bg-leaf-100 text-leaf-800",
-	draft: "bg-gray-100 text-gray-700",
-	pending: "bg-amber-100 text-amber-800",
-	in_progress: "bg-blue-100 text-blue-800",
-	gate_out: "bg-gray-200 text-gray-700",
-}
-const badge = computed(() => ({
-	label: statusLabels[tank.value?.status] || tank.value?.status || "—",
-	tone: BADGE_TONE[tank.value?.status] || "bg-gray-100 text-gray-600",
-}))
-
 // Spesifikasi tank dalam satu baris — hanya bagian yang benar-benar terisi, supaya sebuah
 // master yang setengah lengkap tidak tampil sebagai deretan tanda hubung.
 const specLine = computed(() => {
 	const t = tank.value
 	if (!t) return ""
-	const type = [t.container_type, t.size].filter(Boolean).join(" ")
-	const parts = [t.principal, type]
+	// Prinsipal & tipe sudah di kartu info; di sini sisanya.
+	const parts = []
 	if (t.capacity) parts.push(`${num(t.capacity)} L`)
 	if (t.tare_weight) parts.push(`${labels.monitorTare} ${num(t.tare_weight)} kg`)
 	return parts.filter(Boolean).join(" · ")
