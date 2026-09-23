@@ -180,13 +180,18 @@ def survey_reopen_survey(name=None, note=None, request_id=None):
 
 
 @frappe.whitelist(methods=["GET"])
-def lowering_board(limit=8, group=None):
+def lowering_board(limit=8, group=None, depot=None, principal=None, day=None, sort=None,
+				   start=0, page_length=20):
 	"""GET /api/v1/ess/lowering-board — empat angka + tiga daftar layar pembuka Lowering.
 
 	``group`` (``urgent`` / ``waiting`` / ``lowered``) = satu angka ditekan: hanya daftar itu,
-	utuh. Menu yang sama dengan pencatatannya (``posFix``)."""
+	utuh. ``items`` = daftar datar yang sudah disaring dan dipotong per halaman (layar daftar
+	PWA). Menu yang sama dengan pencatatannya (``posFix``)."""
 	require_menu("posFix")
-	return tank_survey.lowering_board(limit=limit, group=group)
+	return tank_survey.lowering_board(
+		limit=limit, group=group, depot=depot, principal=principal, day=day, sort=sort,
+		start=start, page_length=page_length,
+	)
 
 
 @frappe.whitelist(methods=["POST"])

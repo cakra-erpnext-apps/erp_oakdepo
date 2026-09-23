@@ -770,9 +770,60 @@ def record_positions(containers=None, location_note=None, notes=None, photos=Non
 
 
 # ---------------------------------------------------------------------------
+# Satu halaman datar untuk layar daftar (pola Jadwal Survey) — dipakai papan Posisi Tank dan
+# papan Lowering
+# ---------------------------------------------------------------------------
+def _arg(value) -> str:
+	value = (value or "").strip()
+	return "" if value.lower() in ("undefined", "null", "none") else value
+
+
+def board_page(rows, depot=None, principal=None, day=None, urgent_only=0, sort=None,
+			   start=0, page_length=20) -> dict:
+	"""Filter → urut prioritas → potong satu halaman, plus pilihan filter dan hitungan per grup.
+
+	Pilihan depo/prinsipal diambil dari baris SEBELUM disaring, supaya memilih satu depo tidak
+	menghapus depo lain dari sheet-nya. Tiap baris dapat ``day_key`` = grup tanggalnya di
+	layar: ``"urgent"`` untuk yang dinyatakan mendesak (tier-nya berdiri sendiri di atas semua
+	tanggal, lihat ``worklist``), selain itu hari tenggatnya (survey, jatuh ke pickup).
+	``sort="far"`` = tenggat terjauh dulu.
+	"""
+	from collections import Counter
+
+	from container_depot.container_depot.worklist import priority_date, sort_by_priority, urgent_date
+
+	depot, principal, day = _arg(depot), _arg(principal), _arg(day)
+	options = {
+		"depots": sorted({r.get("depot") for r in rows if r.get("depot")}),
+		"principals": sorted({r.get("principal") for r in rows if r.get("principal")}),
+	}
+	due = lambda r: str(priority_date(r) or "")[:10]  # noqa: E731
+	rows = [
+		r for r in rows
+		if (not depot or r.get("depot") == depot)
+		and (not principal or r.get("principal") == principal)
+		and (not day or due(r) == day)
+		and (not cint(urgent_only) or r.get("urgent") or urgent_date(r))
+	]
+	sort_by_priority(rows, lambda r: False)
+	if _arg(sort) == "far":
+		rows.reverse()
+	for r in rows:
+		r["day_key"] = "urgent" if urgent_date(r) else due(r)
+	pl = cint(page_length) or 20
+	return {
+		"items": rows[cint(start):cint(start) + pl],
+		"total": len(rows),
+		"day_counts": dict(Counter(r["day_key"] for r in rows)),
+		**options,
+	}
+
+
+# ---------------------------------------------------------------------------
 # Papan Posisi Tank — apa yang harus dikerjakan hari ini
 # ---------------------------------------------------------------------------
-def position_board(limit=8, group=None) -> dict:
+def position_board(limit=8, group=None, depot=None, principal=None, day=None, urgent_only=0,
+				   sort=None, start=0, page_length=20) -> dict:
 	"""Empat angka dan tiga daftar pendek: layar pembuka menu Posisi Tank.
 
 	Yang dijawab layar ini bukan "di mana tank X" (itu pencarian) melainkan "apa yang belum
@@ -797,6 +848,11 @@ def position_board(limit=8, group=None) -> dict:
 	``group`` = satu angka di puncak layar ditekan: yang dikembalikan hanya daftar itu, dan
 	utuh — bukan potongan delapan baris. Angka di pil berjanji "sekian tank", dan pil yang
 	menampilkan delapan setelah menjanjikan dua puluh tujuh adalah pil yang berbohong.
+
+	``items`` / ``total`` = daftar datar pil yang dipilih (tanpa pil: semua tank di job),
+	disaring ``depot`` / ``principal`` / ``day`` / ``urgent_only`` dan dipotong per halaman —
+	yang dibaca layar daftar PWA (:func:`board_page`). Angka pil tetap TANPA filter.
+	Tiap baris membawa ``pos_state``: ``missing`` / ``recheck`` / ``located``.
 	"""
 	from container_depot.container_depot.worklist import sort_by_priority
 
@@ -850,13 +906,16 @@ def position_board(limit=8, group=None) -> dict:
 		for k in ("eir_in_date", "target_lift_on", "target_survey_on", "target_urgent_on"):
 			r[k] = str(r[k]) if r.get(k) else None
 		if not (r.current_location or "").strip():
+			r["pos_state"] = "missing"
 			missing.append(r)
 			continue
+		r["pos_state"] = "located"
 		located.append(r)
 		recorded = r["location_updated_on"]
 		if recorded and getdate(recorded) >= today_start:
 			today_rows.append(r)
 		if recorded and recorded < str(stale_before):
+			r["pos_state"] = "recheck"
 			recheck.append(r)
 
 	# Urutan dasar tiap daftar, lalu prioritas job di atasnya. sort_by_priority stabil, jadi
@@ -892,4 +951,12 @@ def position_board(limit=8, group=None) -> dict:
 		"today": today_rows[:limit] if group is None else [],
 		"located": located[:page] if group == "located" else [],
 		"recheck_days": RECHECK_DAYS,
+		**board_page(
+			{
+				None: recheck + missing + [r for r in located if r["pos_state"] == "located"],
+				"located": located, "missing": missing, "recheck": recheck,
+			}[group],
+			depot=depot, principal=principal, day=day, urgent_only=urgent_only, sort=sort,
+			start=start, page_length=page_length,
+		),
 	}

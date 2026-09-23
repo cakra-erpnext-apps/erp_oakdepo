@@ -149,13 +149,18 @@ def position_template_usage(name=None):
 # Papan + catat sekaligus
 # ---------------------------------------------------------------------------
 @frappe.whitelist(methods=["GET"])
-def position_board(limit=8, group=None):
+def position_board(limit=8, group=None, depot=None, principal=None, day=None, urgent_only=0,
+				   sort=None, start=0, page_length=20):
 	"""GET /api/v1/ess/position-board — empat angka + tiga daftar pendek layar Posisi Tank.
 
 	``group`` (``located`` / ``missing`` / ``recheck``) = satu angka di puncak layar ditekan:
-	yang dikembalikan hanya daftar itu, utuh."""
+	yang dikembalikan hanya daftar itu, utuh. ``items`` = daftar datar yang sudah disaring
+	dan dipotong per halaman (layar daftar PWA)."""
 	require_menu(MENU)
-	return container_position.position_board(limit=limit, group=group)
+	return container_position.position_board(
+		limit=limit, group=group, depot=depot, principal=principal, day=day,
+		urgent_only=urgent_only, sort=sort, start=start, page_length=page_length,
+	)
 
 
 @frappe.whitelist(methods=["POST"])

@@ -1,6 +1,8 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<!-- =================== PAPAN + PENCARIAN =================== -->
+		<!-- =================== DAFTAR + PENCARIAN =================== -->
+		<!-- Tata letak = Jadwal Survey (SurveyOrderList): cari, pil, filter + urut, grup per
+		     tanggal survey. Satu baris = satu tank di Survey Order booking Tank Out. -->
 		<template v-if="!tank">
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0">
@@ -15,46 +17,13 @@
 				</router-link>
 			</div>
 
-			<div class="relative">
-				<Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-				<input
-					v-model="search"
-					type="search"
-					:placeholder="labels.tankPosSearch"
-					class="oak-input pl-10 pr-10 uppercase"
-					@input="onSearchInput"
-				/>
-				<button
-					v-if="search"
-					class="oak-press absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-400"
-					:aria-label="labels.tplCancel"
-					@click="clearSearch"
-				>
-					<Icon name="x" :size="16" />
-				</button>
-			</div>
+			<ListSearch v-model="search" :placeholder="labels.tankPosSearch" @search="onSearch" />
 
-			<!-- Hasil pencarian menggantikan papan: yang mengetik nomor tank sedang mencari satu
-			     tank, bukan sedang membaca ringkasan depo. -->
+			<!-- Hasil pencarian menggantikan daftar: yang mengetik nomor tank sedang mencari satu
+			     tank — di SEMUA tank depo, bukan hanya yang sedang punya job. -->
 			<template v-if="search.trim()">
 				<ul v-if="searchRows.length" class="oak-card divide-y divide-gray-100 overflow-hidden">
-					<li v-for="r in searchRows" :key="r.name">
-						<button
-							type="button"
-							class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50"
-							@click="open(r.name, r)"
-						>
-							<span class="oak-icon-tile h-10 w-10 shrink-0" :class="r.current_location ? 'bg-leaf-50 text-leaf-600' : 'bg-gray-100 text-gray-400'">
-								<Icon :name="r.current_location ? 'map-pin' : 'help-circle'" :size="16" />
-							</span>
-							<span class="min-w-0 flex-1">
-								<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
-								<span class="block truncate text-[11px] text-gray-500">{{ searchLine(r) }}</span>
-							</span>
-							<span v-if="r.current_location" class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
-							<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
-						</button>
-					</li>
+					<PosRow v-for="r in searchRows" :key="r.name" :r="r" />
 				</ul>
 				<div v-else-if="!searchRes.loading" class="oak-card p-8 text-center text-sm text-gray-400">
 					{{ labels.tankPosEmpty }}
@@ -62,157 +31,85 @@
 			</template>
 
 			<template v-else>
-				<!-- Empat angka. "Perlu dicek" berdiri sendiri dari "Belum" karena keduanya
-				     pekerjaan yang berbeda: yang satu mengisi kekosongan, yang lain memeriksa
-				     jawaban yang mungkin sudah bohong. -->
-				<div class="grid grid-cols-4 gap-1.5">
-					<button
-						v-for="s in stats"
-						:key="s.key"
-						class="oak-press flex min-h-[68px] flex-col items-center justify-center rounded-xl border px-1 py-2 transition"
-						:class="pillClass(s)"
-						:aria-pressed="group === s.key"
-						@click="setGroup(s.key)"
-					>
-						<span class="text-lg font-extrabold leading-none" :class="group === s.key ? 'text-brand-700' : s.tone">
-							{{ s.count }}
-						</span>
-						<span class="mt-1 truncate text-[11px] font-semibold" :class="group === s.key ? 'text-brand-700' : 'text-gray-500'">
-							{{ s.label }}
-						</span>
-					</button>
+				<!-- "Perlu dicek" berdiri sendiri dari "Belum" karena keduanya pekerjaan yang
+				     berbeda: yang satu mengisi kekosongan, yang lain memeriksa jawaban yang
+				     mungkin sudah bohong. -->
+				<StatPills :pills="pills" :model-value="f.group" @update:model-value="setGroup" />
+
+				<FilterBar
+					:chips="activeChips"
+					:sort-label="f.sort === 'far' ? labels.listSortFar : labels.svSortDue"
+					@open="sheetOpen = true"
+					@sort="toggleSort"
+					@clear-one="clearOne"
+					@clear-all="clearAll"
+				/>
+
+				<FilterSheet
+					:open="sheetOpen"
+					:value="f"
+					:options="options"
+					:fields="SHEET_FIELDS"
+					@close="sheetOpen = false"
+					@apply="applyFilter"
+				/>
+
+				<SkeletonList v-if="boardRes.loading && !items.length" :action="false" />
+
+				<div v-else-if="failed" class="oak-card flex flex-col items-center gap-2 p-8 text-center">
+					<span class="oak-icon-tile h-12 w-12 bg-red-50 text-red-500"><Icon name="alert-circle" :size="24" /></span>
+					<p class="text-sm font-bold text-gray-900">{{ labels.monitorErrorTitle }}</p>
+					<button class="oak-btn oak-btn-primary mt-1 min-h-[44px] px-4" @click="reload">{{ labels.monitorRetry }}</button>
 				</div>
 
-				<div v-if="boardRes.loading && !board" class="oak-card space-y-3 p-4">
-					<div class="oak-skeleton h-4 w-2/3"></div>
-					<div class="oak-skeleton h-4 w-1/2"></div>
-				</div>
-
-				<!-- Tidak ada pekerjaan tersisa. Kalimat keduanya penting: tanpa itu layar kosong
-				     terbaca sebagai layar rusak, padahal posisi memang banyak tercatat sendiri. -->
-				<div
-					v-else-if="board && !board.recheck.length && !board.missing.length && !board.today.length && !board.located.length"
-					class="oak-card flex flex-col items-center gap-2 p-8 text-center"
-				>
+				<!-- Tidak ada tank di job. Kalimat keduanya penting: tanpa itu layar kosong
+				     terbaca sebagai layar rusak, padahal tank lain tetap bisa dicari. -->
+				<div v-else-if="!counts.all" class="oak-card flex flex-col items-center gap-2 p-8 text-center">
 					<span class="oak-icon-tile h-12 w-12 bg-leaf-50 text-leaf-500"><Icon name="check-circle" :size="24" /></span>
 					<p class="text-sm font-bold text-gray-900">{{ labels.tankPosBoardEmpty }}</p>
 					<p class="text-xs text-gray-500">{{ labels.tankPosBoardEmptyHint }}</p>
 				</div>
 
-				<template v-else-if="board">
-					<!-- Perlu dicek ulang -->
-					<section v-if="board.recheck.length" class="space-y-1.5">
-						<div class="flex items-baseline justify-between gap-2 px-1">
-							<p class="text-xs font-bold text-gray-500">{{ labels.tankPosSecRecheck }} · {{ board.counts.recheck }}</p>
-							<p class="truncate text-[11px] text-gray-400">
-								{{ fill(labels.tankPosSecRecheckHint, { n: board.recheck_days }) }}
+				<p v-else-if="!items.length" class="oak-card p-8 text-center text-sm text-gray-400">{{ labels.tankPosEmpty }}</p>
+
+				<div v-else class="space-y-4">
+					<section v-for="g in days" :key="g.date" class="space-y-2">
+						<div class="flex items-center justify-between gap-2 px-1">
+							<p class="flex min-w-0 items-center gap-1.5 truncate text-xs font-bold" :class="g.hot ? 'text-red-600' : 'text-gray-600'">
+								<span class="h-2 w-2 shrink-0 rounded-full" :class="g.hot ? 'bg-red-500' : 'bg-gray-400'"></span>
+								{{ g.label }}
 							</p>
+							<p class="shrink-0 text-[11px] text-gray-400">{{ dayCounts[g.date] || g.rows.length }} {{ labels.bulkTankWord }}</p>
 						</div>
-						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
-							<li v-for="r in board.recheck" :key="r.name">
-								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name, r)">
-									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-amber-50 text-amber-600"><Icon name="flag" :size="17" /></span>
-									<span class="min-w-0 flex-1">
-										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
-										<span class="block truncate text-[11px] text-gray-500">{{ recheckLine(r) }}</span>
-										<PositionJob :row="r" />
-									</span>
-									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
-									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
-								</button>
-							</li>
+						<ul class="oak-card divide-y divide-gray-100 overflow-hidden" :class="g.hot && 'border-red-200'">
+							<PosRow v-for="r in g.rows" :key="r.name" :r="r" />
 						</ul>
 					</section>
 
-					<!-- Belum terdata -->
-					<section v-if="board.missing.length" class="space-y-1.5">
-						<div class="flex items-baseline justify-between gap-2 px-1">
-							<p class="text-xs font-bold text-gray-500">{{ labels.tankPosSecMissing }} · {{ board.counts.missing }}</p>
-							<button class="oak-press -my-1 shrink-0 rounded-lg px-2 py-2 text-xs font-bold text-brand-600" @click="bulkFrom(board.missing)">
-								{{ labels.bulkOpen }}
-							</button>
-						</div>
-						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
-							<li v-for="r in board.missing" :key="r.name" class="flex min-h-[60px] items-center gap-3 px-4 py-3">
-								<span class="oak-icon-tile h-10 w-10 shrink-0 bg-gray-100 text-gray-400"><Icon name="help-circle" :size="17" /></span>
-								<div class="min-w-0 flex-1">
-									<p class="truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</p>
-									<p class="truncate text-[11px] text-gray-500">{{ missingLine(r) }}</p>
-									<PositionJob :row="r" />
-								</div>
-								<button class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-4 text-xs" @click="open(r.name, r)">
-									{{ labels.tankPosRecordBtn }}
-								</button>
-							</li>
-						</ul>
-						<button
-							v-if="board.counts.missing > board.missing.length"
-							class="oak-btn oak-btn-secondary w-full"
-							@click="showAllMissing"
-						>
-							{{ fill(labels.tankPosSecMore, { n: board.counts.missing - board.missing.length }) }}
-						</button>
-					</section>
+					<!-- Catat sekaligus: tank "belum terdata" yang ADA di layar ini. -->
+					<button v-if="missingRows.length" class="oak-btn oak-btn-secondary min-h-[48px] w-full" @click="bulkFrom(missingRows)">
+						<Icon name="map-pin" :size="15" /> {{ labels.bulkOpen }} · {{ missingRows.length }} {{ labels.bulkTankWord }}
+					</button>
 
-					<!-- Semua yang sudah terdata, dibuka dari yang paling basi. Hanya muncul saat
-					     pil "Terdata" ditekan: di tampilan pembuka ia bukan pekerjaan, dan daftar
-					     ratusan baris di puncak layar mengubur dua daftar yang memang pekerjaan. -->
-					<section v-if="board.located.length" class="space-y-1.5">
-						<div class="flex items-baseline justify-between gap-2 px-1">
-							<p class="text-xs font-bold text-gray-500">{{ labels.tankPosStatLocated }} · {{ board.counts.located }}</p>
-							<p class="truncate text-[11px] text-gray-400">{{ labels.tankPosSortStale }}</p>
-						</div>
-						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
-							<li v-for="r in board.located" :key="r.name">
-								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name, r)">
-									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="map-pin" :size="17" /></span>
-									<span class="min-w-0 flex-1">
-										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
-										<span class="block truncate text-[11px] text-gray-500">{{ recheckLine(r) }}</span>
-										<PositionJob :row="r" />
-									</span>
-									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
-									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
-								</button>
-							</li>
-						</ul>
-					</section>
-
-					<!-- Terdata hari ini — bukan pekerjaan, melainkan bukti bahwa layar ini dipakai. -->
-					<section v-if="board.today.length" class="space-y-1.5">
-						<p class="px-1 text-xs font-bold text-gray-500">{{ labels.tankPosSecToday }} · {{ board.today.length }}</p>
-						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
-							<li v-for="r in board.today" :key="r.name">
-								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name, r)">
-									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="check-circle" :size="17" /></span>
-									<span class="min-w-0 flex-1">
-										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
-										<span class="block truncate text-[11px] text-gray-500">{{ todayLine(r) }}</span>
-										<PositionJob :row="r" />
-									</span>
-									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
-									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
-								</button>
-							</li>
-						</ul>
-					</section>
-				</template>
+					<button
+						v-if="items.length < total"
+						class="oak-btn oak-btn-secondary min-h-[48px] w-full"
+						:disabled="boardRes.loading"
+						@click="loadMore"
+					>
+						{{ boardRes.loading ? "…" : `${labels.svMore} (${items.length}/${total})` }}
+					</button>
+				</div>
 			</template>
 		</template>
 
 		<!-- =================== SATU TANK =================== -->
 		<template v-else>
-			<div class="flex items-center gap-2">
-				<button class="oak-press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-500" :aria-label="labels.backBtn" @click="backToList">
-					<Icon name="chevron-left" :size="22" />
-				</button>
-				<h1 class="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight text-gray-900">
-					{{ labels.tankPosTitle }}
-				</h1>
-				<span v-if="tank.located && !tank.fresh" class="oak-chip shrink-0 bg-amber-100 text-amber-800">
-					{{ labels.tankPosStale }}
-				</span>
-			</div>
+			<DetailHeader
+				:title="labels.tankPosTitle"
+				:chip="tank.located && !tank.fresh ? { label: labels.tankPosStale, cls: 'bg-amber-100 text-amber-800' } : null"
+				@back="backToList"
+			/>
 
 			<!-- Sudah tersimpan: layar berhenti menjadi form dan menjadi jawaban. -->
 			<section v-if="saved" class="oak-card border-leaf-300 p-5 text-center">
@@ -374,13 +271,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { send, uploadPhoto, photoSrc } from "@/data/send"
 import { useServerDraft } from "@/utils/serverDraft"
 import { labels } from "@/utils/labels"
-import { since, fmtDateTime } from "@/utils/surveyStatus"
+import { since, fmtDate, fmtDateTime } from "@/utils/surveyStatus"
+import { daysFrom, fill, groupByDay, useSavedFilters } from "@/utils/listKit"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { usePhotoQueue } from "@/utils/photoQueue"
@@ -392,71 +290,158 @@ import PhotoMark from "@/components/PhotoMark.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import PositionTemplateChips from "@/components/PositionTemplateChips.vue"
 import PositionJob from "@/components/PositionJob.vue"
+import SkeletonList from "@/components/SkeletonList.vue"
+import OrderInfo from "@/components/list/OrderInfo.vue"
+import ListSearch from "@/components/list/ListSearch.vue"
+import StatPills from "@/components/list/StatPills.vue"
+import FilterBar from "@/components/list/FilterBar.vue"
+import FilterSheet from "@/components/list/FilterSheet.vue"
+import DetailHeader from "@/components/list/DetailHeader.vue"
 
 const route = useRoute()
 const router = useRouter()
 
-function fill(tpl, vars) {
-	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
+
+// ---- daftar ----
+// Pil dan filter dikirim ke server, bukan disaring di klien — yang dijanjikan pil adalah
+// angka penuh, dan menyaring satu halaman yang terlanjur diambil tidak akan sampai ke sana.
+const PAGE = 20
+const SHEET_DEFAULTS = { day: "", depot: "", principal: "", urgentOnly: false }
+const SHEET_FIELDS = [
+	{ key: "urgentOnly", type: "toggle", icon: "alert-triangle", label: labels.listUrgentOnly },
+	{ key: "day", type: "date", label: labels.svChipDate },
+	{ key: "depot", type: "chips", list: "depots", label: labels.svChipDepot },
+	{ key: "principal", type: "select", list: "principals", label: labels.svChipPrincipal },
+]
+const f = useSavedFilters("tankpos", { ...SHEET_DEFAULTS, group: "", sort: "due" })
+const sheetOpen = ref(false)
+
+const activeChips = computed(() =>
+	[
+		f.day && { key: "day", label: labels.svChipDate, value: fmtDate(f.day) },
+		f.depot && { key: "depot", label: labels.svChipDepot, value: f.depot },
+		f.principal && { key: "principal", label: labels.svChipPrincipal, value: f.principal },
+		f.urgentOnly && { key: "urgentOnly", label: "", value: labels.listUrgentOnly },
+	].filter(Boolean)
+)
+function clearOne(key) {
+	f[key] = SHEET_DEFAULTS[key]
+	reload()
+}
+function applyFilter(draft) {
+	Object.assign(f, draft)
+	reload()
+}
+function clearAll() {
+	Object.assign(f, SHEET_DEFAULTS, { group: "", sort: "due" })
+	reload()
 }
 
-// ---- papan ----
-const boardLimit = ref(8)
-// Pil yang sedang ditekan: "" = tampilan pembuka (tiga daftar pendek), selain itu satu daftar
-// utuh. Dikirim ke server, bukan disaring di klien — yang dijanjikan pil adalah angka penuh,
-// dan menyaring delapan baris yang terlanjur diambil tidak akan pernah sampai ke angka itu.
-const group = ref("")
+const items = ref([])
+const total = ref(0)
+const counts = ref({})
+const options = ref({ depots: [], principals: [] })
+const dayCounts = ref({})
+const failed = ref(false)
+const start = ref(0)
+
 const boardRes = cachedResource({
 	url: "container_depot.ess.container_position.position_board",
 	method: "GET",
-	makeParams: () => ({ limit: boardLimit.value, group: group.value || "" }),
+	makeParams: () => ({
+		group: f.group || "",
+		day: f.day || undefined,
+		depot: f.depot || undefined,
+		principal: f.principal || undefined,
+		urgent_only: f.urgentOnly ? 1 : 0,
+		sort: f.sort,
+		start: start.value,
+		page_length: PAGE,
+		limit: 1, // daftar pendek papan lama tidak dibaca layar ini
+	}),
 	auto: true,
+	onSuccess(data) {
+		failed.value = false
+		items.value = start.value ? [...items.value, ...(data?.items || [])] : data?.items || []
+		total.value = data?.total || 0
+		counts.value = data?.counts || {}
+		options.value = { depots: data?.depots || [], principals: data?.principals || [] }
+		dayCounts.value = data?.day_counts || {}
+	},
+	onError() {
+		failed.value = true
+	},
 })
-const board = computed(() => (boardRes.data?.success ? boardRes.data : null))
 
-const stats = computed(() => {
-	const c = board.value?.counts || { all: 0, located: 0, missing: 0, recheck: 0 }
-	return [
-		{ key: "all", label: labels.tankPosStatAll, count: c.all, tone: "text-gray-900" },
-		{ key: "located", label: labels.tankPosStatLocated, count: c.located, tone: "text-leaf-600" },
-		{ key: "missing", label: labels.tankPosStatMissing, count: c.missing, tone: "text-gray-500" },
-		{ key: "recheck", label: labels.tankPosStatRecheck, count: c.recheck, tone: "text-amber-600" },
-	]
-})
-function pillClass(s) {
-	if (group.value === s.key) return "border-brand-500 bg-brand-500/10"
-	if (s.key === "recheck" && s.count) return "border-amber-300 bg-amber-50"
-	return "border-gray-200 bg-paper"
+const pills = computed(() => [
+	{ key: "", label: labels.tankPosStatAll, count: counts.value.all || 0, tone: "text-gray-900" },
+	{ key: "located", label: labels.tankPosStatLocated, count: counts.value.located || 0, tone: "text-leaf-600" },
+	{ key: "missing", label: labels.tankPosStatMissing, count: counts.value.missing || 0, tone: "text-gray-500" },
+	{ key: "recheck", label: labels.tankPosStatRecheck, count: counts.value.recheck || 0, tone: "text-amber-600" },
+])
+
+// Grup per tanggal survey (server: `day_key`); yang dinyatakan mendesak di grupnya sendiri di
+// atas semua tanggal. Merah = tenggatnya sudah tiba dan letaknya belum/perlu dicek.
+const days = computed(() =>
+	groupByDay(items.value, (r) => r.day_key, {
+		hot: (r) => r.pos_state !== "located" && !!r.day_key && r.day_key !== "urgent" && daysFrom(r.day_key) <= 0,
+	}).map((g) =>
+		g.date === "urgent" ? { ...g, label: labels.lowSecUrgent, hot: true } : g.date ? g : { ...g, label: labels.listNoSurveyDate }
+	)
+)
+const missingRows = computed(() => items.value.filter((r) => r.pos_state === "missing"))
+
+function reload() {
+	start.value = 0
+	boardRes.reload()
 }
-// Menekan pil yang sudah aktif mengembalikannya ke tampilan pembuka. Di HP itu jalan keluar
-// yang paling dekat dengan jempol — tanpanya satu-satunya cara kembali adalah menemukan pil
-// "Semua" yang letaknya justru paling jauh.
+function loadMore() {
+	start.value = items.value.length
+	boardRes.reload()
+}
 function setGroup(key) {
-	group.value = group.value === key || key === "all" ? "" : key
-	boardRes.reload()
+	f.group = key
+	reload()
 }
-function showAllMissing() {
-	group.value = "missing"
-	boardRes.reload()
+function toggleSort() {
+	f.sort = f.sort === "far" ? "due" : "far"
+	reload()
 }
 function bulkFrom(rows) {
 	setPreselect(rows)
 	router.push("/tank-position/bulk")
 }
 
-function recheckLine(r) {
-	return [r.principal, `${labels.tankPosDicatat.toLowerCase()} ${since(r.location_updated_on)}`, r.location_updated_by]
-		.filter(Boolean)
-		.join(" · ")
+// Satu baris tank: nomor + letak + job (OrderInfo + PositionJob). Dipakai daftar dan hasil
+// pencarian; render function di file yang sama karena ia tidak punya arti di luar layar ini.
+const STATE = {
+	missing: { label: labels.tankPosStatMissing, cls: "bg-gray-100 text-gray-600" },
+	recheck: { label: labels.tankPosStatRecheck, cls: "bg-amber-100 text-amber-800" },
+	located: { label: labels.tankPosStatLocated, cls: "bg-leaf-100 text-leaf-700" },
 }
-function missingLine(r) {
-	const entered = r.eir_in_date ? `${labels.tankPosEnteredAt} ${fmtDateTime(r.eir_in_date)}` : null
-	return [r.principal, entered].filter(Boolean).join(" · ")
+function rowLine(r) {
+	if (!r.current_location) {
+		return [labels.tankPosUnlocated, r.eir_in_date ? `${labels.tankPosEnteredAt} ${fmtDateTime(r.eir_in_date)}` : null]
+	}
+	return [r.current_location, `${labels.tankPosDicatat.toLowerCase()} ${since(r.location_updated_on)}`, r.location_updated_by]
 }
-function todayLine(r) {
-	const clock = String(r.location_updated_on || "").slice(11, 16)
-	return [r.principal, clock, r.location_updated_by].filter(Boolean).join(" · ")
+const PosRow = ({ r }) => {
+	const st = STATE[r.pos_state || (r.current_location ? "located" : "missing")]
+	return h("li", null, [
+		h("button", { type: "button", class: "oak-press flex min-h-[64px] w-full items-center gap-2 px-4 py-3 text-left", onClick: () => open(r.name, r) }, [
+			h("span", { class: "block min-w-0 flex-1" }, [
+				h(
+					OrderInfo,
+					{ title: r.container_no || r.name, principal: r.principal, meta: rowLine(r) },
+					() => h("span", { class: `oak-chip shrink-0 ${st.cls}` }, st.label)
+				),
+				h(PositionJob, { row: r }),
+			]),
+			h(Icon, { name: "chevron-right", size: 18, class: "shrink-0 text-gray-300" }),
+		]),
+	])
 }
+PosRow.props = ["r"]
 
 // ---- pencarian ----
 const search = ref("")
@@ -466,17 +451,8 @@ const searchRes = cachedResource({
 	makeParams: () => ({ search: search.value || "", page_length: 20 }),
 })
 const searchRows = computed(() => (search.value.trim() ? searchRes.data?.items || [] : []))
-let searchTimer = null
-function onSearchInput() {
-	clearTimeout(searchTimer)
-	searchTimer = setTimeout(() => search.value.trim() && searchRes.reload(), 300)
-}
-function clearSearch() {
-	search.value = ""
-}
-function searchLine(r) {
-	if (!r.current_location) return [r.principal, labels.bulkPrevNone].filter(Boolean).join(" · ")
-	return [r.principal, since(r.location_updated_on)].filter(Boolean).join(" · ")
+function onSearch() {
+	if (search.value.trim()) searchRes.reload()
 }
 
 // ---- satu tank ----
@@ -538,7 +514,7 @@ function backToList() {
 	saved.value = null
 	pending.value = false
 	search.value = ""
-	boardRes.reload()
+	reload()
 }
 
 // "Selesai" berarti selesai — keluar dari layar ini, bukan kembali ke formulir tank yang baru
@@ -672,5 +648,4 @@ onMounted(() => {
 	router.replace({ query: {} })
 	open(String(c))
 })
-onBeforeUnmount(() => clearTimeout(searchTimer))
 </script>

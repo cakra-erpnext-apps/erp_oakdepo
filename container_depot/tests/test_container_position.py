@@ -686,6 +686,15 @@ class TestThePositionBoard(_Base):
 		with self.assertRaises(frappe.ValidationError):
 			cp.position_board(group="entahlah")
 
+	def test_the_flat_list_obeys_the_filters(self):
+		"""Layar daftar PWA membaca ``items``: tanpa pil semua tank di job, disaring per halaman;
+		yang dinyatakan mendesak masuk grup ``urgent`` di atas semua tanggal."""
+		c = self._container("CPOS00000092", survey_on=add_days(today(), 6), urgent_on=add_days(today(), 6))
+		res = cp.position_board(depot=DEPOT, urgent_only=1, page_length=300)
+		hit = next(r for r in res["items"] if r["name"] == c)
+		self.assertEqual((hit["pos_state"], hit["day_key"]), ("missing", "urgent"))
+		self.assertNotIn(c, [r["name"] for r in cp.position_board(depot="TIDAK-ADA")["items"]])
+
 	def test_a_tank_that_has_left_is_not_counted(self):
 		"""Tank yang sudah keluar tidak punya posisi untuk dicari, dan menghitungnya membuat
 		angka "belum terdata" tidak pernah bisa nol."""

@@ -1108,6 +1108,19 @@ class TestTheLoweringBoard(_Base):
 		with self.assertRaises(frappe.ValidationError):
 			ts.lowering_board(group="entahlah")
 
+	def test_the_flat_list_carries_the_job_and_obeys_the_filters(self):
+		"""Layar daftar PWA membaca ``items``: baris tank + job-nya, disaring per halaman."""
+		c = self._container("TSVBOARD0006")
+		day = add_days(today(), 4)
+		booking = self._booking(c, survey_date=day)
+		row = self._row(booking)
+		res = ts.lowering_board(group="waiting", depot=DEPOT, day=day, page_length=300)
+		hit = next(r for r in res["items"] if r["name"] == row)
+		self.assertEqual(hit["booking"], booking)
+		self.assertEqual(hit["day_key"], day)
+		self.assertIn(DEPOT, res["depots"])
+		self.assertNotIn(row, [r["name"] for r in ts.lowering_board(depot="TIDAK-ADA")["items"]])
+
 
 # ---------------------------------------------------------------------------
 class TestMarkingSeveralLowered(_Base):

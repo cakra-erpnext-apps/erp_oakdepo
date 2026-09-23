@@ -1,20 +1,10 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-3 md:max-w-2xl">
-		<div class="flex items-center gap-2">
-			<button
-				class="oak-press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500"
-				:aria-label="labels.backBtn"
-				@click="goBack"
-			>
-				<Icon name="chevron-left" :size="22" />
-			</button>
-			<h1 class="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight text-gray-900">
-				{{ labels.bulkLowTitle }}
-			</h1>
-			<span v-if="picked.length" class="oak-chip shrink-0 bg-brand-100 text-brand-700">
-				{{ picked.length }} {{ labels.bulkTankWord }}
-			</span>
-		</div>
+		<DetailHeader
+			:title="labels.bulkLowTitle"
+			:chip="picked.length ? { label: `${picked.length} ${labels.bulkTankWord}`, cls: 'bg-brand-100 text-brand-700' } : null"
+			@back="goBack"
+		/>
 
 		<!-- Sudah tersimpan: layar berhenti jadi form dan jadi jawaban. -->
 		<section v-if="done" class="oak-card border-leaf-300 p-5 text-center">
@@ -105,6 +95,8 @@ import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { takeLoweringPreselect } from "@/utils/positionPick"
 import Icon from "@/components/Icon.vue"
+import DetailHeader from "@/components/list/DetailHeader.vue"
+import { fill } from "@/utils/listKit"
 
 const router = useRouter()
 
@@ -114,9 +106,6 @@ const note = ref("")
 const saving = ref(false)
 const done = ref(null)
 
-function fill(tpl, vars) {
-	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
-}
 function line(t) {
 	return [t.principal, t.located ? t.location_note : labels.tankPosUnlocated].filter(Boolean).join(" · ")
 }

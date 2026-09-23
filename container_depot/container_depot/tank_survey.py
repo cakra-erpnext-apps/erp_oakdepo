@@ -52,7 +52,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, get_first_day, get_last_day, get_fullname, getdate, now_datetime, today
 
-from container_depot.container_depot.container_position import _age, _attach_photos, _coerce_photos
+from container_depot.container_depot.container_position import _age, _attach_photos, _coerce_photos, board_page
 from container_depot.container_depot.doctype.survey_order.survey_order import (
 	COMPLETED,
 	IN_PROGRESS,
@@ -1264,7 +1264,28 @@ def _mark_urgency(rows, within) -> list:
 	return rows
 
 
-def lowering_board(limit=8, group=None) -> dict:
+def _attach_jobs(rows) -> list:
+	"""Job tiap baris tank (Survey Order, booking, Reff Doc, customer) untuk kartu di daftar —
+	dua kueri untuk satu halaman, bentuknya sama dengan baris papan Posisi Tank."""
+	orders = {
+		s.name: s.booking
+		for s in frappe.get_all(SCHEDULE, filters={"name": ["in", list({r.parent for r in rows}) or [""]]},
+								fields=["name", "booking"])
+	}
+	bookings = {
+		b.name: b
+		for b in frappe.get_all("Container Booking", filters={"name": ["in", [b for b in orders.values() if b] or [""]]},
+								fields=["name", "reff_doc", "customer"])
+	}
+	for r in rows:
+		b = bookings.get(orders.get(r.parent)) or {}
+		r.update(survey_order=r.parent, booking=orders.get(r.parent), reff_doc=b.get("reff_doc"),
+				 customer=b.get("customer"))
+	return rows
+
+
+def lowering_board(limit=8, group=None, depot=None, principal=None, day=None, sort=None,
+				   start=0, page_length=20) -> dict:
 	"""Papan Lowering: empat angka + tiga daftar, satu layar pembuka untuk operator Kalmar.
 
 	Yang dijawab bukan "di mana tank X" melainkan "mana yang harus diturunkan lebih dulu".
@@ -1281,6 +1302,10 @@ def lowering_board(limit=8, group=None) -> dict:
 	``group`` (``urgent`` / ``waiting`` / ``lowered``) = satu angka ditekan: hanya daftar itu
 	yang dikirim, dan utuh — pil yang menjanjikan tiga puluh lalu menampilkan delapan adalah
 	pil yang berbohong.
+
+	``items`` / ``total`` = daftar datar pil yang dipilih (tanpa pil: ketiganya), disaring
+	``depot`` / ``principal`` / ``day`` dan dipotong per halaman — yang dibaca layar daftar PWA
+	(``container_position.board_page``). Angka pil tetap TANPA filter.
 	"""
 	limit = cint(limit) or 8
 	group = (group or "").strip().lower()
@@ -1314,6 +1339,14 @@ def lowering_board(limit=8, group=None) -> dict:
 	)
 	for r in done_rows:
 		r["lowered_on"] = str(r["lowered_on"]) if r.get("lowered_on") else None
+	# `_list_rows` sudah menempelkan letak tank ke kedua daftar pertama; barisan "lowered hari
+	# ini" datang dari kueri sendiri. Dibatasi jumlah yang diturunkan hari ini.
+	_attach_positions(done_rows)
+	flat = board_page(
+		{None: urgent + rest + done_rows, "urgent": urgent, "waiting": rest, "lowered": done_rows}[group],
+		depot=depot, principal=principal, day=day, sort=sort, start=start, page_length=page_length,
+	)
+	_attach_jobs(flat["items"])
 
 	counts = {
 		"all": len(urgent) + len(rest) + len(done_rows),
@@ -1325,13 +1358,11 @@ def lowering_board(limit=8, group=None) -> dict:
 		"success": True,
 		"group": group,
 		"counts": counts,
-		# `_list_rows` sudah menempelkan letak tank ke kedua daftar pertama; barisan
-		# "lowered hari ini" datang dari kueri sendiri, jadi hanya ia yang perlu.
 		"urgent": urgent[:page] if group in (None, "urgent") else [],
 		"waiting": rest[:page] if group in (None, "waiting") else [],
-		"lowered": _attach_positions(done_rows[: page if group == "lowered" else limit])
-		if group in (None, "lowered") else [],
+		"lowered": done_rows[: page if group == "lowered" else limit] if group in (None, "lowered") else [],
 		"urgent_days": URGENT_LOWERING_DAYS,
+		**flat,
 	}
 
 
