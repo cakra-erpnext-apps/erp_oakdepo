@@ -266,6 +266,22 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		open_names = {i["name"] for i in cleaning.list_open_cleaning_orders(page_length=500)["items"]}
 		self.assertNotIn(co, open_names)
 
+	def test_list_filters_by_pill_and_counts_without_the_filter(self):
+		c = self._container("CLNLIST0001", status="In_Depot", depot="OAK1")
+		todo = self._order(c, reff_doc="CLNLIST-REFF")
+		running = self._order(c)
+		cleaning.start_cleaning(running)
+		res = cleaning.list_cleaning_orders(search="CLNLIST0001", page_length=50)
+		# Same day: the wash in hand leads the queue.
+		self.assertEqual([i["name"] for i in res["items"]], [running, todo])
+		self.assertEqual(res["total"], 2)
+		only = cleaning.list_cleaning_orders(status="todo", search="CLNLIST0001")
+		self.assertEqual([i["name"] for i in only["items"]], [todo])
+		# Pills ignore the filter: the full scope is at least both orders.
+		self.assertGreaterEqual(only["counts"]["all"], 2)
+		self.assertGreaterEqual(only["counts"]["In_Progress"], 1)
+		self.assertEqual([i["name"] for i in cleaning.list_cleaning_orders(search="CLNLIST-REFF")["items"]], [todo])
+
 	def test_withdraw_review_returns_the_order_to_the_operator(self):
 		c = self._container("CLNWDRW0001", status="In_Depot", depot="OAK1")
 		co = self._order(c)

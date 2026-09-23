@@ -29,6 +29,17 @@ def cleaning_orders(start=0, page_length=20, search=None):
 
 
 @frappe.whitelist(methods=["GET"])
+def cleaning_list(status=None, search=None, depot=None, principal=None, cleaning_type=None,
+				  day=None, sort=None, start=0, page_length=20):
+	"""GET — every Cleaning Order (branch-scoped) for the list screen: status pills counted
+	without the filter, grouped by order day, filter options."""
+	require_menu("cleaning")
+	return cleaning.list_cleaning_orders(status=status, search=search, depot=depot, principal=principal,
+										 cleaning_type=cleaning_type, day=day, sort=sort, start=start,
+										 page_length=page_length)
+
+
+@frappe.whitelist(methods=["GET"])
 def cleaning_history(start=0, page_length=10, search=None):
 	"""GET /api/v1/ess/cleaning-history — finished (Completed/Cancelled) cleaning orders."""
 	require_menu("cleaning")

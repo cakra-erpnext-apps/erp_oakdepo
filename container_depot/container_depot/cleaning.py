@@ -279,6 +279,123 @@ def list_review_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 	return {"items": items, "total": frappe.db.count("Cleaning Order", filters)}
 
 
+# ---------------------------------------------------------------------------
+# PWA list — same shape as the Jadwal Survey / Leak Check lists
+# (leak_check.list_leak_checks): pills counted without the filter, day groups, options.
+# ---------------------------------------------------------------------------
+TODO = "todo"  # pseudo-status for the "Belum" pill: not started yet
+_STATUS_FILTER = {
+	TODO: ["in", ["Pending", "Service Setup"]],
+	"In_Progress": "In_Progress",
+	"Pending Review": "Pending Review",
+	"Completed": "Completed",
+	"Cancelled": "Cancelled",
+}
+# Within one day: the wash in hand first, then the queue, then what is off the operator's plate.
+_STATUS_RANK = {"In_Progress": 0, "Pending": 1, "Service Setup": 1, "Pending Review": 2, "Completed": 3, "Cancelled": 4}
+
+
+def list_cleaning_orders(status=None, search=None, depot=None, principal=None, cleaning_type=None,
+						 day=None, sort=None, start=0, page_length=20) -> dict:
+	from frappe.utils import getdate
+
+	from container_depot.container_depot.user_branch import get_user_depots
+
+	depots = get_user_depots()
+	scope = {} if depots is None else {"depot": ["in", depots or [""]]}
+	filters = dict(scope)
+	if status in _STATUS_FILTER:
+		filters["status"] = _STATUS_FILTER[status]
+	if depot:
+		# A depot outside the caller's branch matches nothing rather than widening the scope.
+		filters["depot"] = depot if depots is None or depot in depots else ""
+	if principal:
+		filters["container_principal"] = principal
+	if cleaning_type:
+		filters["cleaning_type"] = cleaning_type
+	if day:
+		d = getdate(day)
+		filters["order_created"] = ["between", [d, d]]
+	or_filters = None
+	search = (search or "").strip()
+	if search and search.lower() != "undefined":
+		like = f"%{search}%"
+		or_filters = [["container_no", "like", like], ["reff_doc", "like", like],
+					  ["name", "like", like], ["order_id", "like", like]]
+
+	# Paged in Python: the in-day status order is a rank, not a column. A branch's cleaning
+	# orders are a few thousand rows at most — two cheap columns each.
+	# ponytail: whole-scope scan per page; move to SQL CASE ordering if the table gets big.
+	rows = frappe.get_all("Cleaning Order", filters=filters, or_filters=or_filters,
+						  fields=["name", "status", "order_created", "creation", "target_lift_on",
+								  "target_survey_on", "target_urgent_on"], limit_page_length=0)
+	for r in rows:
+		r["day"] = str(getdate(r.order_created or r.creation))
+	if sort in ("newest", "oldest"):
+		newest = sort == "newest"
+		# Stable sorts, least significant first: time, then status rank (always ascending), then day.
+		rows.sort(key=lambda r: str(r.order_created or r.creation), reverse=newest)
+		rows.sort(key=lambda r: _STATUS_RANK.get(r.status, 9))
+		rows.sort(key=lambda r: r.day, reverse=newest)
+		for r in rows:
+			r["group"] = r.day
+	else:
+		# Default = the order the worklist always had (worklist.sort_by_priority): urgent, then
+		# nearest survey / pickup day, started first. Finished orders sink below the open ones.
+		from container_depot.container_depot.worklist import sort_by_priority
+
+		rows.sort(key=lambda r: str(r.order_created or r.creation))
+		rows = sort_by_priority(rows, lambda r: r.status == "In_Progress")
+		rows.sort(key=lambda r: 1 if r.status in ("Completed", "Cancelled") else 0)
+		for r in rows:
+			due = r.target_urgent_on or r.target_survey_on or r.target_lift_on
+			if r.status in ("Completed", "Cancelled"):
+				r["group"] = r.day
+			else:
+				# "urgent" = tier mendesak sendiri; "" = belum ada tanggal target.
+				r["group"] = "urgent" if r.target_urgent_on else (str(getdate(due)) if due else "")
+	day_counts: dict = {}
+	for r in rows:
+		day_counts[r.group] = day_counts.get(r.group, 0) + 1
+	page = rows[cint(start):cint(start) + (cint(page_length) or 20)]
+
+	fields = ["name", "order_id", "reff_doc", "container", "container_no", "container_principal",
+			  "status", "docstatus", "cleaning_type", "last_cargo", "depot", "order_created", "cleaning_start",
+			  "cleaning_end", "assigned_to", "revision_requested", "target_lift_on", "target_survey_on",
+			  "target_urgent_on"]
+	by_name = {
+		i.name: i
+		for i in frappe.get_all("Cleaning Order", filters={"name": ["in", [r.name for r in page] or [""]]},
+								fields=fields)
+	}
+	items = [by_name[r.name] for r in page if r.name in by_name]
+	_attach_washer_names(items)
+	from collections import Counter
+
+	services = Counter(frappe.get_all("Cleaning Order Service",
+									  filters={"parent": ["in", list(by_name) or [""]]}, pluck="parent"))
+	day_of = {r.name: (r.day, r.group) for r in page}
+	for i in items:
+		i["day"], i["group"] = day_of[i.name]
+		i["service_count"] = services.get(i.name, 0)
+
+	# Pills count WITHOUT the current filter — they are how the filter gets changed.
+	counts = {"all": 0, TODO: 0, "In_Progress": 0, "Pending Review": 0, "Completed": 0, "Cancelled": 0}
+	for s in frappe.get_all("Cleaning Order", filters=scope, pluck="status", limit_page_length=0):
+		counts["all"] += 1
+		k = TODO if s in ("Pending", "Service Setup") else s
+		counts[k] = counts.get(k, 0) + 1
+
+	def distinct(field):
+		return sorted({v for v in frappe.get_all("Cleaning Order", filters=scope, pluck=field, distinct=True) if v})
+
+	return {
+		"items": items, "total": len(rows), "counts": counts, "day_counts": day_counts,
+		"depots": distinct("depot"), "principals": distinct("container_principal"),
+		"cleaning_types": distinct("cleaning_type"),
+	}
+
+
 def withdraw_review(cleaning_order) -> dict:
 	"""Operator pulls a "Pending Review" order back so they can fix it — before Admin Ops
 	finalizes it. No Admin Ops needed: the order returns to the worklist as In_Progress and
@@ -510,6 +627,14 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"updated_by": co.modified_by,
 		"updated_by_name": _fullname(co.modified_by),
 		"depot": co.depot,
+		# Same keys as a list row, so the list's info card renders the detail header as-is.
+		"container_principal": co.container_principal or c.principal,
+		"last_cargo": co.last_cargo,
+		"target_lift_on": co.target_lift_on,
+		"target_survey_on": co.target_survey_on,
+		"target_urgent_on": co.target_urgent_on,
+		"created_by": co.get("created_by") or co.owner,
+		"created_by_name": _fullname(co.get("created_by") or co.owner),
 		"assigned_to": co.assigned_to,
 		"assigned_to_name": _fullname(co.assigned_to),
 		"completed_by": co.completed_by,
