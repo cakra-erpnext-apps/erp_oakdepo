@@ -408,6 +408,9 @@ app_include_js = [
 	# container_depot.form_message — spanduk berkunci di atas form, supaya pesan yang sama
 	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
 	"/assets/container_depot/js/form_message.js?v=2",
+	# container_depot.cancel_button — satu tombol merah "Cancel" di posisi yang sama di semua
+	# form Container Depot; Discard/Cancel bawaan Frappe dicabut (lihat file-nya).
+	"/assets/container_depot/js/cancel_button.js?v=1",
 	# Menu profil /desk: buang About / Frappe Support / Reset Desktop Layout (lihat file-nya).
 	"/assets/container_depot/js/desktop_menu_trim.js?v=1",
 	# Akun portal: "Daftarkan ... baru" ikut duduk di dalam picker Customer/Container, bukan

@@ -103,7 +103,7 @@ function _bon_grid_columns(grid) {
 }
 
 function _lock_actions(frm) {
-	// A bon is never deleted, duplicated, or used as a template for a New one — it is Voided
+	// A bon is never deleted, duplicated, or used as a template for a New one — it is Cancelled
 	// to release its containers. Strip those menu items (server also
 	// hard-blocks delete in on_trash).
 	// Duplicate is not in this list because it is never ADDED: `allow_copy` on the doctype
@@ -113,8 +113,9 @@ function _lock_actions(frm) {
 	['Delete', __('New {0}', [__('Order Bongkar')])].forEach((label) => {
 		frm.page.menu.find(`a[data-label="${encodeURIComponent(__(label))}"]`).parent().remove();
 	});
-	// Submitted bon → Cancel returns it to an editable Draft; Void soft-deletes it
-	// (release codes, mark Cancelled, record kept). Draft bon → only Void.
+	// Submitted bon → Kembalikan ke Draft returns it to an editable Draft. Draft bon →
+	// Cancel soft-deletes it (release codes, mark Cancelled, record kept). A submitted bon is
+	// never cancelled straight away: it steps back to Draft first, like every depot form.
 	//
 	// Both key on the CANCEL permission, which §8.1 withholds from every field role: a bon
 	// is undone by Admin Ops, not by the operator who raised it. Frappe hides its native
@@ -124,7 +125,7 @@ function _lock_actions(frm) {
 	const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
 	// ...and on the bon still being undoable at all. `Completed` is written by the GATE once
 	// the bon's last tank has physically left the depot, and neither undo is honest after
-	// that: Void would return the Booking Codes of a tank that is gone, Cancel would reopen
+	// that: Cancel would return the Booking Codes of a tank that is gone, the rollback would reopen
 	// for editing the paper the driver was handed. Mirrors
 	// order_generation.ORDER_TERMINAL_STATUS, which refuses both calls anyway — this is only
 	// so the operator is not offered a button that answers with a red box. The way back is
@@ -132,10 +133,9 @@ function _lock_actions(frm) {
 	// with it.
 	const undoable = frm.doc.order_status !== 'Completed';
 	if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 1) {
-		frm.add_custom_button(__('Cancel'), () => _confirm_revert(frm));
-		frm.add_custom_button(__('Void'), () => _confirm_void(frm)).addClass('btn-danger');
+		frm.add_custom_button(__('Kembalikan ke Draft'), () => _confirm_revert(frm));
 	} else if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 0) {
-		frm.add_custom_button(__('Void'), () => _confirm_void(frm)).addClass('btn-danger');
+		container_depot.cancel_button(frm, () => _confirm_void(frm));
 	}
 }
 
@@ -156,13 +156,13 @@ function _confirm_revert(frm) {
 
 function _confirm_void(frm) {
 	frappe.confirm(
-		__('Void this bon? Its containers are released (back to pending) and the bon is marked Cancelled — kept for audit, not deleted.'),
+		__('Cancel this bon? Its containers are released (back to pending) and the bon is marked Cancelled — kept for audit, not deleted.'),
 		() => {
 			frappe.call({
 				method: 'container_depot.container_depot.order_generation.void_order',
 				args: { name: frm.doc.name, doctype: frm.doctype },
 				freeze: true,
-				freeze_message: __('Voiding …'),
+				freeze_message: __('Cancelling …'),
 				callback: () => frm.reload_doc(),
 			});
 		}

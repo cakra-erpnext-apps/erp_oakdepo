@@ -42,12 +42,18 @@ frappe.ui.form.on('Inspection', {
 				true,
 			);
 		}
-		// "Cancel" (Desk-only): return a submitted EIR to Draft so it can be edited again
-		// in the PWA / Inspection menu.
+		// Desk-only: return a submitted EIR to Draft so it can be edited again in the PWA /
+		// Inspection menu.
 		// eir.revert_to_draft enforces doc.check_permission("cancel") — un-submitting is
 		// cancelling, and §8.1 keeps that away from the field roles.
 		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			frm.add_custom_button(__('Kembalikan ke Draft'), () => revert_to_draft(frm));
+		}
+		// A draft EIR ends through the shared red Cancel (Frappe's Discard, same server call),
+		// on the same cancel right as the rollback above. A submitted one never does — it goes
+		// back to Draft first.
+		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
+			container_depot.cancel_button(frm, () => frm._discard());
 		}
 		// "Search by section" for sorting bulk ("foto cepat") photos: quick-filter the
 		// item_photos grid by Area — including a "Belum disortir" bucket for the photos the

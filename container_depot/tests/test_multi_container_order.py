@@ -744,13 +744,18 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		self.assertEqual(_states(codes), ["Active"])
 		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
 
-	def test_void_submitted_releases_codes(self):
-		# A submitted bon can still be voided; on_cancel releases its codes.
-		from container_depot.container_depot.order_generation import void_order
+	def test_void_submitted_needs_rollback_first(self):
+		# A submitted bon is never cancelled straight away: refused until it is back in
+		# Draft, then the draft cancel releases its codes.
+		from container_depot.container_depot.order_generation import revert_order_to_draft, void_order
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCCS0")
 		name = make_order(booking, codes)
 		frappe.get_doc("Order Bongkar", name).submit()
 		self.assertEqual(_states(codes), ["Used"])
+		with self.assertRaises(frappe.ValidationError):
+			void_order(name, "Order Bongkar")
+		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 1)
+		revert_order_to_draft(name, "Order Bongkar")
 		void_order(name, "Order Bongkar")
 		self.assertEqual(_states(codes), ["Active"])
 		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
@@ -776,8 +781,8 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 
 	def test_a_closed_bon_can_be_neither_voided_nor_reverted(self):
 		"""``Completed`` is the gate's word, not the operator's: it is written once the bon's
-		last tank has physically left the depot. Both undos are withdrawn there — Void would
-		hand the Booking Codes of a tank that is GONE to the next voucher, and Cancel would
+		last tank has physically left the depot. Both undos are withdrawn there — Cancel would
+		hand the Booking Codes of a tank that is GONE to the next voucher, and the rollback would
 		reopen for editing the paper the driver was given at the gate."""
 		from container_depot.container_depot.order_generation import (
 			revert_order_to_draft,
@@ -801,8 +806,8 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		"""The rule above is a door, not a wall. Undoing the departure puts the bon back to
 		``Issued`` (``gate.reverse_gate_out`` does exactly this write), and from there the bon
 		is undoable again — which is the point: that road carries the container / gate-entry /
-		booking rollback the bon's own Void does not."""
-		from container_depot.container_depot.order_generation import void_order
+		booking rollback the bon's own Cancel does not."""
+		from container_depot.container_depot.order_generation import revert_order_to_draft, void_order
 
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCDR0")
 		name = make_order(booking, codes)
@@ -810,6 +815,7 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		frappe.db.set_value("Order Bongkar", name, "order_status", "Completed")
 		frappe.db.set_value("Order Bongkar", name, "order_status", "Issued")
 
+		revert_order_to_draft(name, "Order Bongkar")
 		void_order(name, "Order Bongkar")
 		self.assertEqual(frappe.db.get_value("Order Bongkar", name, "docstatus"), 2)
 		self.assertEqual(_states(codes), ["Active"])

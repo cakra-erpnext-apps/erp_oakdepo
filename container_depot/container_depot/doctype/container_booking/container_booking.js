@@ -756,21 +756,10 @@ frappe.ui.form.on('Container Booking', {
 	_lock_actions(frm) {
 		// A booking is never permanently removed — it is voided (Cancel) so its cancelled
 		// invoice and history stay readable, and `on_trash` refuses the alternative. Strip
-		// both menu items.
-		['Delete', 'Discard'].forEach((label) => {
-			frm.page.menu.find(`a[data-label="${encodeURIComponent(__(label))}"]`).parent().remove();
-		});
-		// Cancel is gone from a SUBMITTED booking: `before_cancel` refuses it unconditionally
-		// because what Submit set in motion is undone by stepping back — Kembali ke Draft,
-		// then cancelling the draft. A button whose only possible answer is an error is worse
-		// than no button.
-		//
-		// It is NOT a menu item, which is why removing it from `frm.page.menu` alongside
-		// Delete/Discard did nothing: Frappe renders Cancel as the SECONDARY action button
-		// next to Submit/Update (toolbar.js set_page_actions, status === 'Cancel'), so the
-		// button is what has to go. Safe to clear wholesale — Cancel is the only secondary
-		// action a submitted booking is ever given.
-		if (frm.doc.docstatus === 1) frm.page.clear_secondary_action();
+		// Delete; Frappe's Discard and its Cancel on a SUBMITTED booking are taken off every
+		// depot form by public/js/cancel_button.js — a submitted booking steps back first
+		// (Kembali ke Draft; `before_cancel` refuses anything else), then cancels the draft.
+		frm.page.menu.find(`a[data-label="${encodeURIComponent(__('Delete'))}"]`).parent().remove();
 		// Saved draft → the only undo is Cancel = void: cancel the draft's invoice (kept
 		// linked) + release reservations and mark it Cancelled. Submit (Approve) stays
 		// the primary action.
@@ -780,7 +769,7 @@ frappe.ui.form.on('Container Booking', {
 		// Management) is shown a destructive action it has no right to. The server enforces
 		// the same check in void_draft — this only keeps the screen honest.
 		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
-			frm.add_custom_button(__('Cancel'), () => _confirm_void(frm)).addClass('btn-danger');
+			container_depot.cancel_button(frm, () => _confirm_void(frm));
 		}
 	},
 	// --- prioritas mendesak ------------------------------------------------

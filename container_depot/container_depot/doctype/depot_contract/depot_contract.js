@@ -195,6 +195,12 @@ frappe.ui.form.on("Depot Contract", {
 				frm.page.set_primary_action(__(label), () => container_depot_transition(frm, target));
 				return;
 			}
+			// Ending a Draft contract is the shared red Cancel, first in the row like on every
+			// depot form. An Active contract is never cancelled — it is Invalid-ed or Amended.
+			if (label === "Cancel") {
+				container_depot.cancel_button(frm, () => container_depot_transition(frm, target));
+				return;
+			}
 			const btn = frm.add_custom_button(__(label), () => container_depot_transition(frm, target));
 			if (type === "primary") btn.removeClass("btn-default").addClass("btn-primary");
 		});

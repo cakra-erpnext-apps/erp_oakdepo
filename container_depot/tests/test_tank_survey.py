@@ -825,6 +825,17 @@ class TestWorklists(_Base):
 		ts.provision_survey_order_for_booking(bk)
 		self.assertNotIn(row, {i["name"] for i in ts.list_waiting_lowering()["items"]})
 
+	def test_a_day_cancelled_from_desk_leaves_the_queue(self):
+		# The Desk red Cancel on a draft Survey Order is Frappe's discard; it must call the
+		# day off like a cancel does, tanks included.
+		c = self._container("TSVLIST00005")
+		bk = self._booking(c)
+		row = self._row(bk)
+		so = frappe.get_doc("Survey Order", frappe.db.get_value("Survey Order Tank", row, "parent"))
+		so.discard()
+		self.assertEqual(frappe.db.get_value("Survey Order", so.name, "status"), "Cancelled")
+		self.assertNotIn(row, {i["name"] for i in ts.list_waiting_lowering()["items"]})
+
 	def test_riwayat_holds_the_finished_ones(self):
 		c = self._container("TSVHIST00001")
 		bk = self._booking(c)

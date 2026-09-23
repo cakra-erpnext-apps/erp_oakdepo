@@ -85,6 +85,14 @@ class SurveyOrder(Document):
 			if row.status != "Survey Done":
 				row.db_set("status", CANCELLED, update_modified=False)
 
+	# A day that never closed is ended from Desk as a DRAFT (the red Cancel, which is
+	# Frappe's discard) — its tanks have to leave the lowering queue all the same.
+	before_discard = before_cancel
+
+	def on_discard(self):
+		self.db_set("status", CANCELLED, update_modified=False)
+		self.on_cancel()
+
 
 def sync_booking_reff_doc(booking: str | None) -> None:
 	"""Mirror this survey's Reff Doc onto its Tank Out booking.

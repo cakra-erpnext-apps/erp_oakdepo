@@ -186,17 +186,15 @@ function mr_decision_with_note(frm, decision, title) {
 // what it undoes, then call. Cancelling used to be the one destructive action that asked for
 // nothing at all.
 function mr_step_back(frm, opts) {
-	const btn = frm.add_custom_button(
-		__(opts.label),
-		() =>
-			frappe.prompt(
-				[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
-				(v) => mr_call(frm, opts.method, { ...(opts.args || {}), note: v.note }, __(opts.confirm)),
-				__(opts.label),
-				__(opts.primary || opts.label)
-			)
-	);
-	if (btn && opts.cls) $(btn).addClass(opts.cls);
+	const action = () =>
+		frappe.prompt(
+			[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
+			(v) => mr_call(frm, opts.method, { ...(opts.args || {}), note: v.note }, __(opts.confirm)),
+			__(opts.label),
+			__(opts.primary || opts.label)
+		);
+	if (opts.cancel) container_depot.cancel_button(frm, action);
+	else frm.add_custom_button(__(opts.label), action);
 }
 
 frappe.ui.form.on('Repair Order', {
@@ -458,7 +456,7 @@ frappe.ui.form.on('Repair Order', {
 		// only ever offers a handful of them, and a rewind nobody can see is a rewind nobody
 		// takes: staff were re-opening orders the long way round because the short one was
 		// hidden. Order of appearance is the order they are added, so the primary next step
-		// stays first and Cancel stays last.
+		// stays first; Cancel is pinned to the front by the shared helper.
 		if (MR_OWNER_APPROVAL && is_admin_ops() && ['Draft', 'Revision Requested'].includes(s)) {
 			mr_bypass_button(frm);
 		}
@@ -496,9 +494,10 @@ frappe.ui.form.on('Repair Order', {
 				primary: 'Kembalikan',
 			});
 		}
-		// Cancel also stands on its own, red, next to the bypass — it is the one button here
-		// that ENDS the order, and burying it among the rewind steps made it read like just
-		// another one of them.
+		// Cancel stands on its own, red and first in the row like on every depot form — it is
+		// the one button here that ENDS the order, and burying it among the rewind steps made
+		// it read like just another one of them. Never from Completed / Rejected / Cancelled:
+		// those roll back first (Buka Lagi / Kembalikan ke Draft).
 		if (['Draft', 'Revision Requested', 'Pending Approval', 'Approved', 'Pending', 'In Progress', 'Pending Review'].includes(s)) {
 			mr_step_back(frm, {
 				label: 'Cancel',
@@ -506,7 +505,7 @@ frappe.ui.form.on('Repair Order', {
 				args: { status: 'Cancelled' },
 				confirm: 'Batalkan M&R ini? Pekerjaan dianggap tidak jadi, part yang sudah keluar DIKEMBALIKAN ke stok, dan tank dilepas dari order ini.',
 				primary: 'Batalkan',
-				cls: 'btn-danger',
+				cancel: true,
 			});
 		}
 	},

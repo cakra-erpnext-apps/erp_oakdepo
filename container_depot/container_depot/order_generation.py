@@ -303,7 +303,7 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 
 		# The "generate" actions (SST kiosk / DMS / Gate) issue a FINAL bon — submit
 		# it in the same transaction so it goes live immediately and logs a Container
-		# Activity per container. Use Cancel (→ draft) to edit, or Void to soft-delete.
+		# Activity per container. Use Kembalikan ke Draft to edit, then Cancel to soft-delete.
 		if submit:
 			order.flags.ignore_permissions = True
 			order.submit()
@@ -380,12 +380,12 @@ ORDER_TERMINAL_STATUS = ("Completed",)
 
 
 def _assert_order_undoable(doc):
-	"""Refuse Cancel / Void on a bon that has already closed — see ORDER_TERMINAL_STATUS."""
+	"""Refuse Cancel / Kembalikan ke Draft on a bon that has already closed — see ORDER_TERMINAL_STATUS."""
 	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
 		return
 	frappe.throw(
 		_("Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak "
-		  "bisa di-Cancel maupun di-Void.<br><br>Batalkan dulu EIR-Out / gate-out tank-nya: "
+		  "bisa di-Cancel maupun dikembalikan ke Draft.<br><br>Batalkan dulu EIR-Out / gate-out tank-nya: "
 		  "bon akan kembali ke <b>Issued</b> dan kedua tombolnya muncul lagi.").format(
 			doc.name, doc.order_status
 		),
@@ -403,14 +403,16 @@ def void_order(name, doctype="Order Bongkar"):
 	A bon that has CLOSED (``ORDER_TERMINAL_STATUS``) is refused: its tanks are already out
 	the gate. Undo the departure first — see :func:`_assert_order_undoable`.
 
-	Both roads run the SAME unwinding — a submitted bon through ``doc.cancel()``, a draft
-	through ``on_cancel`` called by hand (a draft cannot go through submit→cancel, exactly as
-	``ContainerBooking.void_draft`` cannot). That matters because a draft here is not always a
-	bon that never happened: ``revert_order_to_draft`` brings a SUBMITTED bon back to draft
-	with everything its submit produced still standing — the EIRs, the gate-in log, the tanks
-	it arrived. Releasing only the Booking Codes on that road left all of it pointing at a
-	voided bon. Every step of ``on_cancel`` is a no-op on a bon that really was never
-	submitted, so one path serves both."""
+	Drafts only. A SUBMITTED bon is refused: it goes back to Draft first
+	(:func:`revert_order_to_draft`), the same rule every Container Depot form follows.
+
+	The draft still runs the full ``on_cancel`` unwinding, called by hand (a draft cannot go
+	through submit→cancel, exactly as ``ContainerBooking.void_draft`` cannot). That matters
+	because a draft here is not always a bon that never happened: ``revert_order_to_draft``
+	brings a SUBMITTED bon back to draft with everything its submit produced still standing —
+	the EIRs, the gate-in log, the tanks it arrived. Releasing only the Booking Codes on that
+	road left all of it pointing at a voided bon. Every step of ``on_cancel`` is a no-op on a
+	bon that really was never submitted."""
 	if doctype not in ("Order Bongkar", "Order Muat"):
 		frappe.throw(_("Unsupported order doctype: {0}").format(doctype))
 	doc = frappe.get_doc(doctype, name)
@@ -426,11 +428,13 @@ def void_order(name, doctype="Order Bongkar"):
 		frappe.throw(_("Order {0} is already voided.").format(doc.name))
 	_assert_order_undoable(doc)
 	if doc.docstatus == 1:
-		doc.cancel()  # submitted: on_cancel releases the codes
-		return doc.name
-	# Draft: unwind exactly what a cancel unwinds, then mark Cancelled directly (parent +
-	# child rows). Written before the docstatus flip, like the submitted path: `on_cancel`
-	# reads the bon's own rows, and they are the same either way.
+		frappe.throw(
+			_("Bon <b>{0}</b> sudah disubmit dan tidak bisa langsung di-Cancel. "
+			  "Kembalikan ke Draft dulu, lalu Cancel.").format(doc.name),
+			title=_("Kembalikan ke Draft Dulu"),
+		)
+	# Unwind exactly what a cancel unwinds, then mark Cancelled directly (parent + child
+	# rows). Written before the docstatus flip: `on_cancel` reads the bon's own rows.
 	doc.run_method("on_cancel")
 	child = _order_child_doctype(doc)
 	frappe.db.set_value(doctype, doc.name, "docstatus", 2, update_modified=False)

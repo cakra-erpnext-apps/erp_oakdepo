@@ -55,24 +55,19 @@ frappe.ui.form.on('Cleaning Order', {
 		// The other half of the PWA's "Ajukan Revisi": the request only notifies: THIS is
 		// where Admin Ops acts on it. Also offered without a request — Admin Ops may spot the
 		// mistake themselves. It is the ONLY way back from a submitted order — Frappe's own
-		// Cancel is taken away here — so everyone holding the menu (write) gets it.
-		if (frm.doc.docstatus === 1) frm.page.clear_secondary_action();
+		// Cancel is gone (public/js/cancel_button.js) — so everyone holding the menu (write)
+		// gets it.
 		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'write')) {
 			frm.add_custom_button(
 				frm.doc.revision_requested ? __('Setujui Revisi') : __('Kembalikan ke Draft'),
 				() => revert_to_draft(frm),
 			).addClass(frm.doc.revision_requested ? 'btn-primary' : '');
 		}
-		// Cancel, the same red button the M&R has — drafts only; a submitted order goes back
-		// to Draft first (before_cancel refuses it). Frappe's "Discard" menu item is removed:
-		// the server refuses it (before_discard), so this is the one way to end a draft.
-		frm.page.menu
-			.find('.menu-item-label')
-			.filter((_, el) => $(el).text().trim() === __('Discard'))
-			.closest('li')
-			.remove();
+		// Cancel, the same red button every depot form has — drafts only; a submitted order
+		// goes back to Draft first (before_cancel refuses it). Frappe's "Discard" is refused
+		// by the server too (before_discard), so this is the one way to end a draft.
 		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'write')) {
-			frm.add_custom_button(__('Cancel'), () =>
+			container_depot.cancel_button(frm, () =>
 				frappe.prompt(
 					[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
 					(v) =>
@@ -86,7 +81,7 @@ frappe.ui.form.on('Cleaning Order', {
 					__('Cancel'),
 					__('Batalkan')
 				)
-			).addClass('btn-danger');
+			);
 		}
 		// Waiting on THIS reviewer: the field is done, Submit is the last step.
 		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
