@@ -457,7 +457,7 @@ function badge(c) {
 }
 
 function orderIcon(kind) {
-	return { "M&R": "tool", Cleaning: "droplet", EIR: "clipboard" }[kind] || "file-text"
+	return { "M&R": "wrench", Cleaning: "sparkles", EIR: "search-check" }[kind] || "file-text"
 }
 
 function subline(c) {

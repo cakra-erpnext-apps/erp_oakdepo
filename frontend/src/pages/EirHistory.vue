@@ -1,7 +1,7 @@
 <template>
 	<HistoryPage
 		:title="labels.eirHistoryTitle"
-		icon="clipboard"
+		icon="search-check"
 		back-to="/eir"
 		:back-label="labels.eirTitle"
 		list-url="container_depot.ess.inspections.eir_history"
@@ -120,7 +120,7 @@
 			<section v-if="(data.fittings || []).length" class="oak-card overflow-hidden">
 				<div class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
 					<div class="flex min-w-0 items-center gap-2">
-						<Icon name="clipboard" :size="16" class="shrink-0 text-gray-400" />
+						<Icon name="search-check" :size="16" class="shrink-0 text-gray-400" />
 						<p class="oak-section-title truncate">{{ labels.fittingsTitle }}</p>
 					</div>
 					<span class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ data.fittings.length }}</span>

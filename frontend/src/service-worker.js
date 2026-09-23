@@ -16,8 +16,24 @@ self.addEventListener("activate", (event) => {
 
 // App-shell only: never cache /api or /files responses here — live data must
 // stay fresh. Offline data queueing (IndexedDB) is a later phase (PRD §7).
-self.addEventListener("fetch", () => {
-	// No-op handler; presence of a fetch listener satisfies installability.
+// One exception: the Lucide sprite every <Icon> draws from. It is Frappe's file, outside the
+// precache manifest, so without this an offline app renders with no icons at all.
+// Stale-while-revalidate: served from cache, refreshed in the background when online.
+const ICON_SPRITE = "/assets/frappe/icons/lucide.svg"
+self.addEventListener("fetch", (event) => {
+	if (new URL(event.request.url).pathname !== ICON_SPRITE) return
+	event.respondWith(
+		caches.open("oak-icons").then(async (cache) => {
+			const hit = await cache.match(event.request, { ignoreSearch: true })
+			const fresh = fetch(event.request)
+				.then((res) => {
+					if (res.ok) cache.put(event.request, res.clone())
+					return res
+				})
+				.catch(() => hit)
+			return hit || fresh
+		})
+	)
 })
 
 // --- Web Push (container_depot/ess/push.py) ---------------------------------

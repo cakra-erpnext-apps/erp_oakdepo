@@ -89,7 +89,7 @@
 								class="oak-icon-tile h-9 w-9 shrink-0"
 								:class="o.status === 'In Progress' ? 'bg-brand-50 text-brand-600' : 'bg-gray-100 text-gray-500'"
 							>
-								<Icon name="tool" :size="16" />
+								<Icon name="wrench" :size="16" />
 							</span>
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-bold text-gray-900">
@@ -188,7 +188,7 @@
 				<ul v-else class="space-y-2">
 					<li v-for="r in doneItems" :key="r.name">
 						<button type="button" class="oak-card oak-press flex w-full items-center gap-3 p-3 text-left" @click="goFinished(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="tool" :size="16" /></span>
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="wrench" :size="16" /></span>
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-bold text-gray-900">
 									{{ r.container_no || r.container
@@ -652,7 +652,7 @@ const workSections = computed(() => [
 		empty: labels.mrFilterEmptyStarted,
 	},
 	{
-		key: "todo", title: labels.sectionTodo, icon: "tool",
+		key: "todo", title: labels.sectionTodo, icon: "wrench",
 		tone: "text-amber-500", chip: "bg-amber-100 text-amber-800",
 		rows: orders.value.filter((o) => o.status !== "In Progress"),
 		empty: labels.mrFilterEmptyTodo,

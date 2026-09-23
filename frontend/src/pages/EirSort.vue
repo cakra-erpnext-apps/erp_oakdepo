@@ -13,7 +13,7 @@
 				</div>
 			</div>
 			<router-link v-if="mode === 'list'" to="/eir" class="oak-btn oak-btn-secondary px-3 py-2">
-				<Icon name="clipboard" :size="16" /> {{ labels.eirTitle }}
+				<Icon name="search-check" :size="16" /> {{ labels.eirTitle }}
 			</router-link>
 		</div>
 

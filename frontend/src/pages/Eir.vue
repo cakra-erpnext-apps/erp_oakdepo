@@ -84,7 +84,7 @@
 		<template v-else>
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<div class="flex items-center gap-2">
-					<span class="oak-icon-tile h-9 w-9 bg-leaf-50 text-leaf-600"><Icon name="clipboard" :size="20" /></span>
+					<span class="oak-icon-tile h-9 w-9 bg-leaf-50 text-leaf-600"><Icon name="search-check" :size="20" /></span>
 					<div class="min-w-0">
 						<h1 class="text-lg font-extrabold leading-tight tracking-tight">{{ labels.eirTitle }}</h1>
 						<p class="truncate text-xs text-gray-500">{{ labels.eirCombinedSubtitle }}</p>
@@ -228,7 +228,7 @@
 									<Icon v-if="selected.has(r.name)" name="check" :size="14" />
 								</span>
 								<span v-else class="oak-icon-tile h-9 w-9 shrink-0" :class="r._type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-amber-50 text-amber-600'">
-									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'clipboard'" :size="16" />
+									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'search-check'" :size="16" />
 								</span>
 								<div class="min-w-0 flex-1">
 									<!-- Nomor tank memiliki barisnya sendiri, nomor EIR-nya menepi ke
@@ -605,7 +605,7 @@ const pendingSections = computed(() => {
 			rows: rows.filter((r) => r.work_started_on), empty: labels.eirFilterEmptyStarted,
 		},
 		{
-			key: "todo", title: labels.sectionTodo, icon: "clipboard",
+			key: "todo", title: labels.sectionTodo, icon: "search-check",
 			tone: "text-amber-500", chip: "bg-amber-100 text-amber-800",
 			rows: rows.filter((r) => !r.work_started_on), empty: labels.eirFilterEmptyNotStarted,
 		},

@@ -97,7 +97,7 @@
 								class="oak-icon-tile h-9 w-9 shrink-0"
 								:class="o.status === 'In_Progress' ? 'bg-amber-50 text-amber-600' : 'bg-brand-50 text-brand-600'"
 							>
-								<Icon name="droplet" :size="16" />
+								<Icon name="sparkles" :size="16" />
 							</span>
 							<div class="min-w-0 flex-1">
 								<div class="flex items-center justify-between gap-2">
@@ -200,7 +200,7 @@
 				<ul v-else class="space-y-2">
 					<li v-for="r in doneItems" :key="r.name">
 						<button type="button" class="oak-card oak-press flex w-full items-center gap-3 p-3 text-left" @click="goFinished(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="droplet" :size="16" /></span>
+							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="sparkles" :size="16" /></span>
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
 								<p class="truncate text-[11px] text-gray-500">
@@ -619,7 +619,7 @@ const workSections = computed(() => [
 		empty: labels.cleaningFilterEmptyStarted,
 	},
 	{
-		key: "todo", title: labels.sectionTodo, icon: "droplet",
+		key: "todo", title: labels.sectionTodo, icon: "sparkles",
 		tone: "text-brand-500", chip: "bg-brand-100 text-brand-700",
 		rows: orders.value.filter((o) => o.status !== "In_Progress"),
 		empty: labels.cleaningFilterEmptyTodo,

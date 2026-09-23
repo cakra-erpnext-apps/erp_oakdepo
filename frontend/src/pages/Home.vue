@@ -285,7 +285,7 @@ import { session } from "@/data/session"
 import { userContext } from "@/data/context"
 import { cachedResource } from "@/data/cache"
 import { fetchMenu, menu } from "@/data/menu"
-import { GROUP_OPS, GROUP_YARD, modulesFor } from "@/data/modules"
+import { GROUP_OPS, GROUP_YARD, MODULES, modulesFor } from "@/data/modules"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import {
@@ -400,12 +400,12 @@ const TILE_CATALOG = [
 		value: (t) => t.gate_out, sub: (t) => sub(t.booking_out, labels.homeTileGateOutSub),
 	},
 	{
-		key: "eirOpen", menu: "eir", icon: "clipboard", text: "text-brand-500",
+		key: "eirOpen", menu: "eir", icon: MODULES.eir.icon, text: "text-brand-500",
 		label: labels.homeTileEirOpen, to: "/eir?s=todo",
 		value: (t) => t.eir_open, sub: (t) => sub(t.eir_out, labels.homeTileEirOpenSub),
 	},
 	{
-		key: "eirReview", menu: "eir", icon: "clipboard", text: "text-amber-500",
+		key: "eirReview", menu: "eir", icon: MODULES.eir.icon, text: "text-amber-500",
 		label: labels.homeTileEirReview, to: "/eir?s=review",
 		value: (t) => t.eir_review,
 		// Umur yang tertua, bukan jumlahnya: satu EIR yang menunggu sejak awal shift lebih
@@ -419,42 +419,42 @@ const TILE_CATALOG = [
 		},
 	},
 	{
-		key: "cleaning", menu: "cleaning", icon: "droplet", text: "text-leaf-500",
+		key: "cleaning", menu: "cleaning", icon: MODULES.cleaning.icon, text: "text-leaf-500",
 		label: labels.homeTileCleaning, to: "/cleaning",
 		value: (t) => t.cleaning_open, sub: (t) => sub(t.cleaning_idle, labels.homeTileCleaningSub),
 	},
 	{
-		key: "mr", menu: "mr", icon: "tool", text: "text-amber-500",
+		key: "mr", menu: "mr", icon: MODULES.mr.icon, text: "text-amber-500",
 		label: labels.homeTileMr, to: "/mr",
 		value: (t) => t.mr_open, sub: (t) => sub(t.mr_approval, labels.homeTileMrSub),
 	},
 	{
-		key: "periodic", menu: "periodic", icon: "award", text: "text-amber-500",
+		key: "periodic", menu: "periodic", icon: MODULES.periodic.icon, text: "text-amber-500",
 		label: labels.homeTilePeriodic, to: "/periodic",
 		value: (t) => t.periodic_open, sub: (t) => sub(t.periodic_approval, labels.homeTileMrSub),
 	},
 	{
-		key: "monitor", menu: "monitor", icon: "grid", text: "text-brand-500",
+		key: "monitor", menu: "monitor", icon: MODULES.monitor.icon, text: "text-brand-500",
 		label: labels.homeTileMonitor, to: "/monitor",
 		value: (t) => t.depot_total, sub: () => ({ sub: labels.homeTileMonitorSub, subTone: "text-gray-400" }),
 	},
 	{
-		key: "schedule", menu: "schedule", icon: "calendar", text: "text-brand-500",
+		key: "schedule", menu: "schedule", icon: MODULES.schedule.icon, text: "text-brand-500",
 		label: labels.homeTileSchedule, to: "/schedule",
 		value: (t) => t.schedule_today, sub: (t) => sub(t.schedule_open, labels.homeTileScheduleSub),
 	},
 	{
-		key: "survey", menu: "surveyList", icon: "list", text: "text-brand-500",
+		key: "survey", menu: "surveyList", icon: MODULES.surveyList.icon, text: "text-brand-500",
 		label: labels.homeTileSurvey, to: "/survey-orders",
 		value: (t) => t.survey_today, sub: () => ({ sub: null, subTone: "" }),
 	},
 	{
-		key: "lowering", menu: "posFix", icon: "arrow-down-circle", text: "text-leaf-500",
+		key: "lowering", menu: "posFix", icon: MODULES.posFix.icon, text: "text-leaf-500",
 		label: labels.homeTileLowering, to: "/position-fix",
 		value: (t) => t.lowering, sub: (t) => sub(t.lowering, labels.homeTileLoweringSub),
 	},
 	{
-		key: "unlocated", menu: "tankPos", icon: "map-pin", text: "text-amber-500",
+		key: "unlocated", menu: "tankPos", icon: MODULES.tankPos.icon, text: "text-amber-500",
 		label: labels.homeTileUnlocated, to: "/tank-position",
 		value: (t) => t.unlocated, sub: (t) => sub(t.unlocated, labels.homeTileUnlocatedSub),
 	},
@@ -567,22 +567,22 @@ function tileValue(c) {
 // menyebut tank (antrean berisi satu) dan yang menyebut jumlah — server hanya mengirim
 // `ref` ketika antreannya memang tinggal satu.
 const WAIT = {
-	eirReview: { icon: "clipboard", tone: "bg-amber-50 text-amber-600", to: "/eir?s=review", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
-	eirOpen: { icon: "clipboard", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
+	eirReview: { icon: MODULES.eir.icon, tone: "bg-amber-50 text-amber-600", to: "/eir?s=review", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
+	eirOpen: { icon: MODULES.eir.icon, tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
 	eirOut: { icon: "log-out", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", many: labels.waitEirOutMany },
-	cleaningIdle: { icon: "droplet", tone: "bg-leaf-50 text-leaf-600", to: "/cleaning?s=todo", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
-	mrApproval: { icon: "tool", tone: "bg-amber-50 text-amber-600", to: "/mr", one: labels.waitMrApprovalOne, many: labels.waitMrApprovalMany },
-	lowering: { icon: "arrow-down-circle", tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
-	surveyReady: { icon: "list", tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
+	cleaningIdle: { icon: MODULES.cleaning.icon, tone: "bg-leaf-50 text-leaf-600", to: "/cleaning?s=todo", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
+	mrApproval: { icon: MODULES.mr.icon, tone: "bg-amber-50 text-amber-600", to: "/mr", one: labels.waitMrApprovalOne, many: labels.waitMrApprovalMany },
+	lowering: { icon: MODULES.posFix.icon, tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
+	surveyReady: { icon: MODULES.surveyList.icon, tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
 	// Bukan "tank tanpa letak" (itu ratusan dan tidak ada tenggatnya) — hanya yang surveinya
 	// sudah dijadwalkan. Warnanya ikut keluarga yard, bukan abu: ini pekerjaan, bukan catatan.
-	positionOrder: { icon: "map-pin", tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
-	cleaningReview: { icon: "droplet", tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
-	mrReview: { icon: "tool", tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
-	periodicApproval: { icon: "award", tone: "bg-amber-50 text-amber-600", to: "/periodic", one: labels.waitPeriodicApprovalOne, many: labels.waitPeriodicApprovalMany },
-	periodicReview: { icon: "award", tone: "bg-sky-50 text-sky-600", to: "/periodic?s=review", one: labels.waitPeriodicReviewOne, many: labels.waitPeriodicReviewMany },
+	positionOrder: { icon: MODULES.tankPos.icon, tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
+	cleaningReview: { icon: MODULES.cleaning.icon, tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
+	mrReview: { icon: MODULES.mr.icon, tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
+	periodicApproval: { icon: MODULES.periodic.icon, tone: "bg-amber-50 text-amber-600", to: "/periodic", one: labels.waitPeriodicApprovalOne, many: labels.waitPeriodicApprovalMany },
+	periodicReview: { icon: MODULES.periodic.icon, tone: "bg-sky-50 text-sky-600", to: "/periodic?s=review", one: labels.waitPeriodicReviewOne, many: labels.waitPeriodicReviewMany },
 	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
-	scheduleOverdue: { icon: "calendar", tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
+	scheduleOverdue: { icon: MODULES.schedule.icon, tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
 }
 const waiting = computed(() =>
 	(summary.value?.waiting || [])
@@ -624,14 +624,14 @@ const menuGroups = computed(() =>
 // Riwayat menumpang kunci menu utamanya, jadi akun yang tidak boleh membuka M&R juga
 // tidak bisa menelusuri riwayat M&R.
 const allHistory = [
-	{ key: "gate", to: "/gate/history", icon: "log-in", title: labels.navGate },
-	{ key: "eir", to: "/eir/history", icon: "clipboard", title: labels.navEir },
-	{ key: "cleaning", to: "/cleaning/history", icon: "droplet", title: labels.navCleaning },
-	{ key: "mr", to: "/mr/history", icon: "tool", title: labels.navMr },
-	{ key: "periodic", to: "/periodic/history", icon: "award", title: labels.navPeriodic },
+	{ key: "gate", to: "/gate/history", icon: MODULES.gate.icon, title: labels.navGate },
+	{ key: "eir", to: "/eir/history", icon: MODULES.eir.icon, title: labels.navEir },
+	{ key: "cleaning", to: "/cleaning/history", icon: MODULES.cleaning.icon, title: labels.navCleaning },
+	{ key: "mr", to: "/mr/history", icon: MODULES.mr.icon, title: labels.navMr },
+	{ key: "periodic", to: "/periodic/history", icon: MODULES.periodic.icon, title: labels.navPeriodic },
 	// Satu-satunya Riwayat dengan dua pemilik: ia memuat kedua sisi alur survey posisi.
-	{ keys: ["surveyList", "surveyPos", "posFix"], to: "/survey-orders/history", icon: "map-pin", title: labels.navSurveyList },
-	{ key: "monitor", to: "/monitor/history", icon: "activity", title: labels.navMonitor },
+	{ keys: ["surveyList", "surveyPos", "posFix"], to: "/survey-orders/history", icon: MODULES.surveyList.icon, title: labels.navSurveyList },
+	{ key: "monitor", to: "/monitor/history", icon: MODULES.monitor.icon, title: labels.navMonitor },
 ]
 const history = computed(() =>
 	allHistory.filter((h) => (h.keys || [h.key]).some((k) => menu.has(k)))

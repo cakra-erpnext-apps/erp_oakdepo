@@ -18,9 +18,9 @@ import { labels } from "@/utils/labels"
 export const MODULES = {
 	schedule: { key: "schedule", to: "/schedule", icon: "calendar", title: labels.navSchedule, tone: "bg-brand-50 text-brand-600" },
 	gate: { key: "gate", to: "/gate", icon: "log-in", title: labels.navGate, tone: "bg-brand-50 text-brand-600" },
-	eir: { key: "eir", to: "/eir", icon: "clipboard", title: labels.navEir, tone: "bg-leaf-50 text-leaf-600" },
-	cleaning: { key: "cleaning", to: "/cleaning", icon: "droplet", title: labels.navCleaning, tone: "bg-leaf-50 text-leaf-600" },
-	mr: { key: "mr", to: "/mr", icon: "tool", title: labels.navMr, tone: "bg-amber-50 text-amber-600" },
+	eir: { key: "eir", to: "/eir", icon: "search-check", title: labels.navEir, tone: "bg-leaf-50 text-leaf-600" },
+	cleaning: { key: "cleaning", to: "/cleaning", icon: "sparkles", title: labels.navCleaning, tone: "bg-leaf-50 text-leaf-600" },
+	mr: { key: "mr", to: "/mr", icon: "wrench", title: labels.navMr, tone: "bg-amber-50 text-amber-600" },
 	periodic: { key: "periodic", to: "/periodic", icon: "award", title: labels.navPeriodic, tone: "bg-amber-50 text-amber-600" },
 	monitor: { key: "monitor", to: "/monitor", icon: "grid", title: labels.navMonitor, tone: "bg-brand-50 text-brand-600" },
 	tankPos: { key: "tankPos", to: "/tank-position", icon: "map-pin", title: labels.tankPosTitle, tone: "bg-leaf-50 text-leaf-600" },

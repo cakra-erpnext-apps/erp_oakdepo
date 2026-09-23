@@ -85,9 +85,9 @@ const listParams = computed(() => {
 const ICONS = {
 	Booking: "calendar",
 	"Gate In": "log-in",
-	"Inspection (EIR)": "clipboard",
-	Cleaning: "droplet",
-	Repair: "tool",
+	"Inspection (EIR)": "search-check",
+	Cleaning: "sparkles",
+	Repair: "wrench",
 	"Order Bongkar": "download",
 	"Order Muat": "upload",
 	Release: "send",

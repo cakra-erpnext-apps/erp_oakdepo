@@ -1,7 +1,7 @@
 <template>
 	<HistoryPage
 		:title="kind.title"
-		icon="tool"
+		icon="wrench"
 		:back-to="kind.base"
 		:back-label="kind.backLabel"
 		list-url="container_depot.ess.repairs.mr_history"
@@ -12,7 +12,7 @@
 		:count-label="labels.mrHistoryCount"
 	>
 		<template #row="{ item }">
-			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="tool" :size="16" /></span>
+			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="wrench" :size="16" /></span>
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center justify-between gap-2">
 					<p class="truncate font-bold text-gray-900">

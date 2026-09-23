@@ -1,7 +1,7 @@
 <template>
 	<HistoryPage
 		:title="labels.cleaningHistoryTitle"
-		icon="droplet"
+		icon="sparkles"
 		back-to="/cleaning"
 		:back-label="labels.cleaningTitle"
 		list-url="container_depot.ess.cleaning.cleaning_history"
@@ -11,7 +11,7 @@
 		:count-label="labels.cleaningHistoryCount"
 	>
 		<template #row="{ item }">
-			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600"><Icon name="droplet" :size="16" /></span>
+			<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-600"><Icon name="sparkles" :size="16" /></span>
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center justify-between gap-2">
 					<p class="truncate font-semibold text-gray-900">{{ item.container_no || item.container }}</p>

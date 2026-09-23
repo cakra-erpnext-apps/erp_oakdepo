@@ -13,9 +13,9 @@ export const KIND = {
 	// Colours follow the rest of the app rather than the calendar's own taste: a droplet is
 	// green wherever cleaning appears, a wrench is amber, a truck is brand orange. Survey
 	// takes sky, the one family nothing else in the PWA claims.
-	survey: { label: labels.kindSurvey, icon: "clipboard", dot: "bg-sky-500", bar: "bg-sky-500", text: "text-sky-600", chip: "bg-sky-100 text-sky-800" },
-	cleaning: { label: labels.kindCleaning, icon: "droplet", dot: "bg-leaf-500", bar: "bg-leaf-500", text: "text-leaf-600", chip: "bg-leaf-100 text-leaf-800" },
-	repair: { label: labels.kindRepair, icon: "tool", dot: "bg-amber-500", bar: "bg-amber-500", text: "text-amber-600", chip: "bg-amber-100 text-amber-800" },
+	survey: { label: labels.kindSurvey, icon: "list", dot: "bg-sky-500", bar: "bg-sky-500", text: "text-sky-600", chip: "bg-sky-100 text-sky-800" },
+	cleaning: { label: labels.kindCleaning, icon: "sparkles", dot: "bg-leaf-500", bar: "bg-leaf-500", text: "text-leaf-600", chip: "bg-leaf-100 text-leaf-800" },
+	repair: { label: labels.kindRepair, icon: "wrench", dot: "bg-amber-500", bar: "bg-amber-500", text: "text-amber-600", chip: "bg-amber-100 text-amber-800" },
 	booking: { label: labels.kindBooking, icon: "truck", dot: "bg-brand-500", bar: "bg-brand-500", text: "text-brand-600", chip: "bg-brand-100 text-brand-700" },
 }
 

@@ -245,7 +245,7 @@ function num(v) {
 }
 
 function orderIcon(label) {
-	return { "M&R": "tool", Cleaning: "droplet", "EIR-In": "clipboard", EIR: "clipboard" }[label] || "file-text"
+	return { "M&R": "wrench", Cleaning: "sparkles", "EIR-In": "search-check", EIR: "search-check" }[label] || "file-text"
 }
 function orderLine(o) {
 	const started = o.since ? `${labels.monitorProcessStart} ${String(o.since).slice(11, 16)}` : null
