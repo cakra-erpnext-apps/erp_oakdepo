@@ -7,6 +7,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from container_depot.container_depot import eir
 from container_depot.tests._booking_helpers import make_booking_code
+from container_depot.tests._leak_check import make_leak_check
 from container_depot.tests.test_api import ensure_test_customer
 
 
@@ -785,6 +786,7 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		# ...and since 2026-09-03 it cannot be submitted at all until a loading bon carries
 		# the tank (Inspection.before_submit) — a clean EIR-Out sends it through the gate.
 		_make_order_muat(ensure_test_customer("EIR Voucher Cust"), c)
+		make_leak_check(c)  # gate-out also needs a Leak Check this visit
 		d = eir.open_draft(container_no="EIRV2000021", inspection_type="EIR-Out")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",

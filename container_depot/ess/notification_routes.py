@@ -173,6 +173,10 @@ def _tank_position(doctype, name):
 	return f"/tank-position?c={name}"
 
 
+def _leak(doctype, name):
+	return "/leak-check"
+
+
 def _none(doctype, name):
 	"""Documents the PWA has no screen for. Desk-only, and honest about it."""
 	return None
@@ -201,6 +205,7 @@ _BY_EVENT = {
 	"survey_order_scheduled": _schedule,
 	"position_survey_pending": _lowering_queue,
 	"position_order_pending": _tank_position,
+	"leak_check_created": _leak,
 	"position_surveyed": _schedule,
 	"position_confirmed": _eir_pending,
 	"eir_out_hold": _eir_worklist,
@@ -225,6 +230,7 @@ _BY_DOCTYPE = {
 	"Gate Entry": _gate_history,
 	"Order Bongkar": _gate,
 	"Container": _monitor,
+	"Leak Check": _leak,
 }
 
 

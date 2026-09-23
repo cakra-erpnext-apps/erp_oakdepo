@@ -18,6 +18,7 @@ from container_depot.container_depot.doctype.booking_code.booking_code import ge
 from container_depot.container_depot.gate import open_gate_entry_for
 from container_depot.container_depot.order_generation import make_order
 from container_depot.tests.test_api import ensure_test_branch, ensure_test_customer
+from container_depot.tests._leak_check import drop_leak_checks, make_leak_check
 from container_depot.tests.test_eir import _make_order_muat
 
 PREFIX = "GLOG"
@@ -116,6 +117,7 @@ def _clean_eir_out(container):
 
 	if not _eir.latest_voucher_for_container(container, "EIR-Out"):
 		_make_order_muat(ensure_test_customer("Gate Log Shipper"), container)
+	make_leak_check(container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
@@ -155,6 +157,7 @@ class TestGateLog(FrappeTestCase):
 		frappe.db.delete("Container Activity", {"container": ["in", conts or [""]]})
 		frappe.db.delete("Container Movement", {"container": ["in", conts or [""]]})
 		frappe.db.delete("Inspection", {"container": ["in", conts or [""]]})
+		drop_leak_checks(["in", conts or [""]])
 		# Bon + booking yang dibuat fixture, dicari lewat baris containernya sendiri — jadi
 		# harus DIKUMPULKAN dulu, sebelum baris-baris itu ikut terhapus di bawah. Tanpa ini
 		# setiap test meninggalkan satu bon dan satu booking yang menunjuk tank yang sudah
@@ -190,6 +193,76 @@ class TestGateLog(FrappeTestCase):
 		frappe.db.delete("Order Container Item", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Booking Code", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
+
+	# --- Leak Check order: one per container, born on the Tank In bon -------------------
+	def _leak(self, container):
+		return frappe.get_all(
+			"Leak Check", filters={"container": container},
+			fields=["name", "status", "order_bongkar", "booking"],
+		)
+
+	def test_bon_submit_raises_one_open_leak_check_per_container(self):
+		c = _container(f"{PREFIX}000L01")
+		bon = _tank_in_bon(c)
+		rows = self._leak(c)
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0].status, "Open")
+		self.assertEqual(rows[0].order_bongkar, bon)
+		self.assertTrue(rows[0].booking)
+		self.assertTrue(frappe.db.exists(
+			"Notification Log", {"document_type": "Leak Check", "document_name": rows[0].name}
+		))
+		# Re-submitting the same bon (revert → submit) must not raise a second one.
+		from container_depot.container_depot.doctype.leak_check import leak_check
+
+		leak_check.provision_for_order_bongkar(bon)
+		self.assertEqual(len(self._leak(c)), 1)
+		# An open order is not enough to leave: gate-out wants it COMPLETED.
+		self.assertFalse(leak_check.has_leak_check_this_visit(c))
+		doc = frappe.get_doc("Leak Check", rows[0].name)
+		doc.append("photos", {"photo": "/files/leak-test.jpg", "is_leak": 1})
+		doc.save(ignore_permissions=True)
+		self.assertEqual(doc.status, "Completed")
+		self.assertTrue(leak_check.has_leak_check_this_visit(c))
+		# ...and a completed check cannot be emptied back to open.
+		doc.photos = []
+		with self.assertRaises(frappe.ValidationError):
+			doc.save(ignore_permissions=True)
+		frappe.db.delete("Notification Log", {"document_type": "Leak Check", "document_name": rows[0].name})
+
+	def test_voiding_the_bon_deletes_the_open_leak_check(self):
+		from container_depot.container_depot.order_generation import revert_order_to_draft, void_order
+
+		c = _container(f"{PREFIX}000L02")
+		bon = _tank_in_bon(c)
+		self.assertEqual(len(self._leak(c)), 1)
+		revert_order_to_draft(bon)
+		void_order(bon)
+		self.assertEqual(self._leak(c), [])
+
+	def test_a_row_removed_from_the_bon_takes_its_leak_check_along(self):
+		from container_depot.container_depot.doctype.leak_check import leak_check
+
+		c = _container(f"{PREFIX}000L03")
+		bon = _tank_in_bon(c)
+		frappe.db.delete("Container Booking Item", {"parent": bon, "parenttype": "Order Bongkar"})
+		leak_check.release_removed_rows(bon)
+		self.assertEqual(self._leak(c), [])
+
+	def test_a_completed_leak_check_survives_the_void_detached(self):
+		from container_depot.container_depot.order_generation import revert_order_to_draft, void_order
+
+		c = _container(f"{PREFIX}000L04")
+		bon = _tank_in_bon(c)
+		doc = frappe.get_doc("Leak Check", self._leak(c)[0].name)
+		doc.append("photos", {"photo": "/files/leak-test.jpg"})
+		doc.save(ignore_permissions=True)
+		revert_order_to_draft(bon)
+		void_order(bon)
+		rows = self._leak(c)
+		self.assertEqual(len(rows), 1)
+		self.assertEqual(rows[0].status, "Completed")
+		self.assertIsNone(rows[0].order_bongkar)
 
 	def _gates(self, container_no):
 		return frappe.get_all(

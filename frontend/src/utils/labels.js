@@ -15,6 +15,7 @@ export const labels = {
 	navSchedule: "Jadwal", // bottom-nav label — kalender universal (semua rencana kerja)
 	navSurveyList: "Survey", // bottom-nav label — daftar Survey Order
 	navPosFix: "Lowering", // bottom-nav label — antrean lowering Kalmar
+	navLeak: "Leak Check",
 	navTankPos: "Posisi", // bottom-nav label — menu Posisi Tank
 	// --- Profil (account + access overview) ---
 	profileTitle: "Profil",
@@ -1136,6 +1137,16 @@ export const labels = {
 	tankPosTitle: "Posisi tank",
 	tankPosHint: "Cari atau scan tank untuk perbarui posisinya",
 	tankPosSearch: "Cari nomor tank…",
+	leakHint: "Wajib diisi sebelum tank keluar depo.",
+	leakPickTank: "Pilih tank",
+	leakChange: "Ganti",
+	leakPhotos: "Foto",
+	leakPhotosReq: "Wajib, boleh banyak",
+	leakFlag: "Bocor",
+	leakRemarks: "Remark",
+	leakRemarksHint: "Catatan umum (opsional)…",
+	leakSave: "Simpan Leak Check",
+	leakSaved: "Leak Check tersimpan",
 	tankPosEmpty: "Tidak ada tank yang cocok.",
 	tankPosCount: "tank",
 	tankPosFilterAll: "Semua",

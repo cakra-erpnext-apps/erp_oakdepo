@@ -185,6 +185,13 @@ const routes = [
 		component: () => import("@/pages/PositionHistory.vue"),
 	},
 	{
+		// Leak Check — wajib ada sebelum tank gate-out (gate.mark_gate_out).
+		path: "/leak-check",
+		name: "LeakCheck",
+		meta: { menuKey: "leak" },
+		component: () => import("@/pages/LeakCheck.vue"),
+	},
+	{
 		path: "/position-fix",
 		name: "KalmarPositionFix",
 		meta: { menuKey: "posFix" },

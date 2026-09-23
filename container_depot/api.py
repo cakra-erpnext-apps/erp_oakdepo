@@ -1450,7 +1450,7 @@ def _resolve_file_disk_path(file_url: str) -> str | None:
 @frappe.whitelist()
 def download_doc_photos(doctype: str, name: str):
 	"""Package and download all photos of an Inspection, Repair Order, Cleaning Order,
-	or Container Position as a single ZIP archive.
+	Container Position or Leak Check as a single ZIP archive.
 	"""
 	if not frappe.has_permission(doctype, "read", doc=name):
 		frappe.throw(_("Tidak memiliki izin untuk mengakses dokumen ini."), frappe.PermissionError)
@@ -1504,6 +1504,13 @@ def download_doc_photos(doctype: str, name: str):
 			if p.photo:
 				caption = (p.caption or "pos").replace("/", "-").strip()
 				photos.append((f"position_{caption}_{p.name}.jpg", p.photo))
+
+	elif doctype == "Leak Check":
+		for i, p in enumerate(doc.get("photos") or [], 1):
+			if p.photo:
+				tag = "bocor" if p.is_leak else "aman"
+				caption = (p.caption or "").replace("/", "-").strip()
+				photos.append((f"leak_{i}_{tag}{'_' + caption if caption else ''}.jpg", p.photo))
 
 	if not photos:
 		frappe.throw(_("Tidak ada foto pada dokumen ini untuk diunduh."))

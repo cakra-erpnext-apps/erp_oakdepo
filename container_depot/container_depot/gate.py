@@ -252,6 +252,22 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 			_("Container {0} masih punya order yang belum selesai — {1}.").format(doc.name, listed)
 		)
 
+	# Leak Check wajib sebelum keluar — satu per kunjungan, apa pun hasilnya (foto bocor hanya
+	# ditandai, tidak menahan). Tidak menyentuh order mana pun; ditolak di sini saja.
+	from container_depot.container_depot.doctype.leak_check.leak_check import (
+		has_leak_check_this_visit,
+		open_leak_check,
+	)
+
+	if not has_leak_check_this_visit(doc.name):
+		pending = open_leak_check(doc.name)
+		frappe.throw(
+			_("Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.").format(
+				doc.container_no or doc.name, f" ({pending})" if pending else ""
+			),
+			title=_("Leak Check belum ada"),
+		)
+
 	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is reviewed and
 	# submitted clean (out_outcome = Ready To Load). Unfinished work is already refused above
 	# (order_muat._validate_no_open_work applies the same rule when the bon is made).

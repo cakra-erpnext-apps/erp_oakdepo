@@ -1779,6 +1779,9 @@ FIELD_ROLE_MATRIX = [
 	# sempat membukanya — sementara yang tahu bay-nya salah tulis adalah yang sedang berdiri
 	# di sana.
 	("Container Position Template", ("rwcd",  "rwcd",  "rwcd", "rwcd",   "rwcd", "rwcd", "rwcd")),
+	# Leak Check: Team Survey dan di atasnya (SPV; Admin Ops & Management lewat
+	# _office_role_perms). Wajib ada sebelum gate-out (gate.mark_gate_out); menu `leak`.
+	("Leak Check",                  ("",      "",      "",     "",       "",     "rwc",  "rwc")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 ]
@@ -2503,6 +2506,9 @@ NOTIFICATION_RULES = [
 	# pekerjaan mereka; lihat test_field_teams_are_only_told_on_handoff.
 	("position_order_pending", "Cek letak tank", "Tank masuk jadwal survey tapi letaknya belum pernah dicatat (atau catatannya lebih tua dari booking-nya).",
 		["Team Kalmar", "SPV Lapangan", "Admin Ops"]),
+	# Leak Check order lahir dari bon Bongkar, satu per container — handoff Team Survey.
+	("leak_check_created", "Leak Check dibuat", "Leak Check otomatis dibuat dari bon Bongkar — tank menunggu dicek kebocorannya (wajib sebelum keluar).",
+		["Team Survey", "SPV Lapangan", "Admin Ops"]),
 	("position_surveyed", "Tank siap disurvey", "Tank sudah turun ke ground level dan letaknya dicatat — menunggu surveyor menutup survey.",
 		["Team Survey", "SPV Lapangan", "Admin Ops"]),
 	# Bukan sekadar pengawasan, tidak seperti versi lamanya: penutupan survey inilah yang

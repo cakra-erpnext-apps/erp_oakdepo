@@ -64,6 +64,7 @@ _MENU = [
 	("surveyPos",    "/survey-orders",   "Survey Order",       "submit"),
 	("posFix",       "/position-fix",    "Survey Order",       "write"),
 	("tankPos",      "/tank-position",   "Container Position", "create"),
+	("leak",         "/leak-check",      "Leak Check",         "create"),
 ]
 
 MENU_KEYS = [key for key, _route, _dt, _ptype in _MENU]

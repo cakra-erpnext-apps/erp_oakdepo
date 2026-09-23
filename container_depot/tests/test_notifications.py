@@ -254,7 +254,8 @@ class TestNotificationRouting(FrappeTestCase):
 			# arriving — is Team Survey's too, because the calendar it points at is their
 			# screen; Kalmar learns about the same day one tank at a time, through a route
 			# they can actually open.
-			"Team Survey": {"survey_order_scheduled", "position_surveyed"},
+			# `leak_check_created`: the Leak Check order born on the Tank In bon IS their job.
+			"Team Survey": {"survey_order_scheduled", "position_surveyed", "leak_check_created"},
 			# `position_order_pending` is the step BEFORE `position_survey_pending` and
 			# belongs to the same crew: the tank has to be found before it can be brought
 			# down, and the finding is theirs. Every other field team may correct a position

@@ -109,7 +109,7 @@ class TestRoleMenu(FrappeTestCase):
 		)
 		# What matters is the negative: no gate, no EIR, no M&R, and nothing from the survey
 		# family — including its LIST, which keys on Survey Order read that Cleaning lacks.
-		for forbidden in ("gate", "eir", "mr", "surveyList", "surveyPos", "posFix"):
+		for forbidden in ("gate", "eir", "mr", "surveyList", "surveyPos", "posFix", "leak"):
 			self.assertNotIn(forbidden, self._menu_as(USERS["Team Cleaning"]))
 
 	def test_spv_gets_all_menus(self):
@@ -119,8 +119,9 @@ class TestRoleMenu(FrappeTestCase):
 		# SEVERAL doctypes at once, and `surveyList` is the Survey Order list the calendar used
 		# to be. A count assertion rather than a set comparison on purpose — it fails loudly
 		# when a menu is added without anyone deciding who should hold it.
-		# Eleven since Periodic Test got its own menu (`periodic`, 2026-09-23): Team Periodic.
-		self.assertEqual(len(MENU_KEYS), 11)
+		# Eleven since Leak Check (`leak`, 2026-09-23): Team Survey and above.
+		# Twelve since Periodic Test got its own menu (`periodic`, 2026-09-23): Team Periodic.
+		self.assertEqual(len(MENU_KEYS), 12)
 
 	def test_office_role_gets_empty_menu(self):
 		# Cashier holds real DocPerms (Container read, Gate Entry read) but no field role,
@@ -373,6 +374,9 @@ class TestRoleMenu(FrappeTestCase):
 		# may look up which day a tank is scheduled on without gaining the right to close it.
 		self.assertIn("surveyList", survey)
 		self.assertIn("surveyList", kalmar)
+		# Leak Check: Team Survey and above, not Kalmar.
+		self.assertIn("leak", survey)
+		self.assertNotIn("leak", kalmar)
 
 	def test_new_role_needs_no_code_change(self):
 		# The whole point of the checkbox: an admin adds a role in the UI, grants it a

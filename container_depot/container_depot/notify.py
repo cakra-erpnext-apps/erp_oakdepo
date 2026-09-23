@@ -376,6 +376,19 @@ def notify_eir_created(inspection):
 	)
 
 
+def notify_leak_check_created(leak_check):
+	"""Fire when a Leak Check order is born (one per container on a Tank In bon). Creation is
+	the handoff here, as with ``eir_created``: nothing stands between the order and the work."""
+	cno = leak_check.container_no or leak_check.container
+	notify(
+		doctype="Leak Check",
+		name=leak_check.name,
+		subject=f"Leak Check • {cno} — tank masuk, siap dicek",
+		branch=_depot_branch(leak_check.get("depot")),
+		event_key="leak_check_created",
+	)
+
+
 def notify_eir_submitted(inspection, container):
 	"""Fire when an EIR (EIR-In / EIR-Out) is submitted — tells the crew a tank was
 	inspected so cleaning / M&R can pick it up."""

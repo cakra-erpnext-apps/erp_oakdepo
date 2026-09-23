@@ -22,6 +22,10 @@ class OrderBongkar(Document):
 
 	def on_update(self):
 		_reconcile_codes(self)
+		# A bon sent back to draft (revert_order_to_draft) may lose a row: its Leak Check
+		# order goes with it now, not at the next submit.
+		if self.docstatus == 0:
+			_leak_checks(self, "release_removed_rows")
 
 	def on_submit(self):
 		# Sync depot/status first so the activity log + ex_vessel see the arrived tank.
@@ -39,12 +43,15 @@ class OrderBongkar(Document):
 		_record_gate_in(self)
 		# Auto-create the per-container draft EIRs + stamp each container's latest voucher.
 		_provision_eirs(self)
+		# One Leak Check order per container (leak_check.provision_for_order_bongkar).
+		_leak_checks(self, "provision_for_order_bongkar")
 		from container_depot.container_depot.notify import notify_order_gate
 		notify_order_gate(self, "in")
 
 	def on_cancel(self):
 		_release_codes(self)
 		_release_eirs(self, "EIR-In")
+		_leak_checks(self, "release_for_cancelled_order")
 		_release_gate_in(self)
 		# LAST: the arrival itself. After the EIRs are released, so a draft EIR this bon
 		# opened no longer counts as work holding the tank here.
@@ -67,6 +74,15 @@ def _provision_eirs(order: Document):
 		provision_eirs_for_order_bongkar(order.name)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), f"provision EIRs for {order.name}")
+
+
+def _leak_checks(order: Document, fn: str):
+	"""Provision / release this bon's Leak Check orders. Best-effort, like the EIRs."""
+	try:
+		from container_depot.container_depot.doctype.leak_check import leak_check
+		getattr(leak_check, fn)(order.name)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"Leak Check {fn} for {order.name}")
 
 
 def _release_eirs(order: Document, inspection_type: str):

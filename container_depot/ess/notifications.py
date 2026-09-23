@@ -42,6 +42,7 @@ _BRANCH_SOURCE = {
 	"Container Booking": ("field", "branch"),
 	"Inspection": ("depot", "depot"),
 	"Container": ("depot", "depot"),
+	"Leak Check": ("depot", "depot"),
 }
 
 

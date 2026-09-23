@@ -35,7 +35,7 @@ def get_data():
 			},
 			{
 				"label": "Pekerjaan Depo",
-				"items": ["Inspection", "Cleaning Order", "Repair Order"],
+				"items": ["Inspection", "Cleaning Order", "Repair Order", "Leak Check"],
 			},
 			{"label": "Billing", "items": ["Sales Invoice"]},
 		],

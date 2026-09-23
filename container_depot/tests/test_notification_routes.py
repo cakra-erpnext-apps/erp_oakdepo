@@ -67,6 +67,7 @@ EVENT_DOCTYPES = [
 	# Per TANK, and so on the Container: the walk this asks for is per tank, and the bell
 	# deep-links to that tank's own record form.
 	("position_order_pending", "Container"),
+	("leak_check_created", "Leak Check"),
 	("position_surveyed", "Survey Order"),
 	("position_confirmed", "Survey Order"),
 	("gate_out", "Gate Entry"),

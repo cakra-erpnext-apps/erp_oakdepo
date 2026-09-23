@@ -506,3 +506,23 @@ img.oak-grid-photo:hover {
 		--bg-color: var(--gray-900);
 	}
 }
+
+/*
+ * Leak Check photo grid — same treatment as M&R's work photos (thumbnail row, row click opens
+ * the carousel in leak_check.js). Scoped by route because the table's fieldname is the generic
+ * `photos`. A photo flagged as leaking gets a red frame.
+ */
+[data-route^="Form/Leak Check"] [data-fieldname="photos"] .grid-body .grid-row .grid-static-col {
+	height: 64px;
+}
+
+[data-route^="Form/Leak Check"] [data-fieldname="photos"] .grid-body .grid-row .grid-static-col[data-fieldtype="Attach Image"] .static-area {
+	display: flex;
+	align-items: center;
+	height: 100%;
+	overflow: hidden;
+}
+
+img.oak-grid-photo.oak-grid-photo-leak {
+	border: 2px solid var(--red-500, #e53e3e);
+}

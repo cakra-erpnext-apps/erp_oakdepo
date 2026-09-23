@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_days, now_datetime
 
 from container_depot.ess.inventory import derive_status
 from container_depot.container_depot import eir
 from container_depot.container_depot.eir import revert_to_draft
 from container_depot.tests.test_api import ensure_test_customer
+from container_depot.tests._leak_check import drop_leak_checks, make_leak_check
 from container_depot.tests.test_eir import _make_order_muat
 
 PREFIX = "GOTU"
@@ -33,7 +35,7 @@ def _container(no, status):
 	return no
 
 
-def _eir_out(container, *, damage=False):
+def _eir_out(container, *, damage=False, leak_check=True):
 	"""Submit an EIR-Out for the tank — the approval that gates it out when it is clean.
 
 	``damage`` scores it ``Hold Pending Clearance`` instead, which must NOT release the tank.
@@ -46,6 +48,8 @@ def _eir_out(container, *, damage=False):
 	"""
 	if not eir.latest_voucher_for_container(container, "EIR-Out"):
 		_make_order_muat(ensure_test_customer("Gate Out Test Principal"), container)
+	if leak_check:
+		make_leak_check(container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
@@ -71,6 +75,7 @@ class TestGateOut(FrappeTestCase):
 		frappe.db.delete("Container Movement", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
+		drop_leak_checks(["like", f"{PREFIX}%"])
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 
 	def test_a_clean_eir_out_takes_the_tank_out(self):
@@ -122,6 +127,28 @@ class TestGateOut(FrappeTestCase):
 			_eir_out(c)
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 		self.assertFalse(frappe.db.exists("Container Movement", {"container": c, "to_status": "Gate_Out"}))
+
+	def test_no_leak_check_this_visit_refuses_the_departure(self):
+		"""Leak Check is mandatory at the exit — one filed before the tank's arrival does not
+		count. A flagged leak does NOT hold the tank; it is only recorded."""
+		c = _container(f"{PREFIX}9990009", "Available")
+		frappe.db.set_value("Container", c, "eir_in_date", now_datetime())
+		stale = make_leak_check(c)
+		frappe.db.set_value("Leak Check", stale, "recorded_on", add_days(now_datetime(), -1))
+
+		with self.assertRaisesRegex(frappe.ValidationError, "Leak Check"):
+			_eir_out(c, leak_check=False)
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Available")
+
+		leak = make_leak_check(c, is_leak=1)
+		self.assertEqual(frappe.db.get_value("Leak Check", leak, "has_leak"), 1)
+		_eir_out(c, leak_check=False)
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
+
+	def test_leak_check_needs_a_photo(self):
+		c = _container(f"{PREFIX}9990010", "Available")
+		with self.assertRaises(frappe.ValidationError):
+			frappe.get_doc({"doctype": "Leak Check", "container": c, "photos": []}).insert(ignore_permissions=True)
 
 	def test_a_second_eir_out_on_a_departed_tank_is_a_no_op(self):
 		c = _container(f"{PREFIX}9990004", "Available")
@@ -177,6 +204,7 @@ class TestBonCompletion(FrappeTestCase):
 		frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Order Container Item", {"container": ["like", f"{PREFIX}%"]})
+		drop_leak_checks(["like", f"{PREFIX}%"])
 		frappe.db.delete("Container", {"name": ["like", f"{PREFIX}%"]})
 
 	def test_the_bon_completes_once_its_last_tank_is_out(self):

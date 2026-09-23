@@ -26,19 +26,20 @@ export const MODULES = {
 	tankPos: { key: "tankPos", to: "/tank-position", icon: "map-pin", title: labels.tankPosTitle, tone: "bg-leaf-50 text-leaf-600" },
 	surveyList: { key: "surveyList", to: "/survey-orders", icon: "list", title: labels.navSurveyList, tone: "bg-brand-50 text-brand-600" },
 	posFix: { key: "posFix", to: "/position-fix", icon: "arrow-down-circle", title: labels.navPosFix, tone: "bg-leaf-50 text-leaf-600" },
+	leak: { key: "leak", to: "/leak-check", icon: "droplet", title: labels.navLeak, tone: "bg-brand-50 text-brand-600" },
 }
 
 // Beranda's two shortcut grids. "Operasional" is the work done per DOCUMENT (a bon, an EIR,
 // an order); "Yard" is the work done per TANK, standing in front of it.
 export const GROUP_OPS = ["schedule", "gate", "eir", "cleaning", "mr", "periodic"]
-export const GROUP_YARD = ["monitor", "tankPos", "surveyList", "posFix"]
+export const GROUP_YARD = ["monitor", "tankPos", "surveyList", "posFix", "leak"]
 
 // Which modules earn a tab in the bottom bar, most-used first. The bar takes the first few
 // of these that the account actually holds; everything else moves into "Lainnya".
 //
 // Gate / EIR / M&R lead because they are the three screens a shift is spent inside, and the
 // order is what decides the bar for an account that holds everything (SPV Lapangan).
-export const TAB_ORDER = ["gate", "eir", "mr", "periodic", "cleaning", "monitor", "schedule", "surveyList", "posFix", "tankPos"]
+export const TAB_ORDER = ["gate", "eir", "mr", "periodic", "cleaning", "monitor", "schedule", "surveyList", "posFix", "tankPos", "leak"]
 
 /** The modules this account may open, in catalogue order, filtered by the server's menu. */
 export function modulesFor(keys, menu) {

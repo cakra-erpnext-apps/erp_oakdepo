@@ -22,6 +22,7 @@ from frappe.utils import add_days, today
 from container_depot.container_depot import eir
 from container_depot.container_depot.doctype.container import container
 from container_depot.tests.test_api import ensure_test_customer
+from container_depot.tests._leak_check import drop_leak_checks, make_leak_check
 from container_depot.tests.test_eir import _make_order_muat
 
 PREFIX = "EOUT"
@@ -104,6 +105,7 @@ def _submit_eir_out(container, *, has_damage=False, order_muat=None):
 	"""
 	if not order_muat and not eir.latest_voucher_for_container(container, "EIR-Out"):
 		_make_order_muat(ensure_test_customer("EIR-Out Shipper"), container)
+	make_leak_check(container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
@@ -134,6 +136,7 @@ class TestEirOut(FrappeTestCase):
 		frappe.db.delete("Container Movement", {"container": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Gate Entry", {"container_no": ["like", f"{PREFIX}%"]})
 		frappe.db.delete("Inspection", {"container": ["like", f"{PREFIX}%"]})
+		drop_leak_checks(["like", f"{PREFIX}%"])
 		orders = frappe.get_all(
 			"Survey Order Tank",
 			filters={"container": ["like", f"{PREFIX}%"]}, pluck="parent", distinct=True,
@@ -230,6 +233,7 @@ class TestEirOut(FrappeTestCase):
 			eo.submit()
 
 		_make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+		make_leak_check(c)
 		frappe.get_doc("Inspection", eo.name).submit()
 		self.assertEqual(frappe.db.get_value("Inspection", eo.name, "docstatus"), 1)
 
@@ -274,6 +278,7 @@ class TestEirOut(FrappeTestCase):
 		_eir_in(c)
 		_finish_cleaning(c)
 		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+		make_leak_check(c)
 		eo = _eir_out_draft(c, order_muat=om)
 		eir.start_eir(eo)
 		eir.save_draft(inspection=eo, inspection_type="EIR-Out", seals=seals)
