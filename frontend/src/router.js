@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router"
-import { session, redirectToLogin } from "@/data/session"
+import { session, redirectToLogin, checkSessionUser } from "@/data/session"
 import { installBackGuard } from "@/utils/backstack"
 import { fetchMenu, menu } from "@/data/menu"
 
@@ -269,6 +269,7 @@ installBackGuard(router)
 //    only fill with 403s. The menu is fetched once and cached, so this awaits a request
 //    on the first navigation only.
 router.beforeEach(async (to, from, next) => {
+	if (!checkSessionUser()) return
 	if (!session.isLoggedIn) {
 		redirectToLogin()
 		return

@@ -2,6 +2,7 @@ import { createApp } from "vue"
 import App from "./App.vue"
 import router from "./router"
 import { pruneReads } from "@/data/cache"
+import { watchSessionUser } from "@/data/session"
 import { initTheme } from "@/utils/theme"
 import { initHaptics } from "@/utils/haptics"
 
@@ -22,6 +23,7 @@ initTheme()
 // One delegated listener for the whole app — see utils/haptics.js for why it is not a
 // per-button directive.
 initHaptics()
+watchSessionUser()
 
 const app = createApp(App)
 
