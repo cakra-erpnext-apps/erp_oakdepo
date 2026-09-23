@@ -269,9 +269,10 @@ def mr_bypass_approval(repair_order=None, note=None):
 
 @frappe.whitelist(methods=["POST"])
 def mr_forward_to_team(repair_order=None):
-	"""POST /api/v1/ess/mr-forward-to-team — Admin Ops hands an approved M&R to the workshop:
-	Approved -> Pending. Only then does it appear on the PWA worklist."""
-	_require_admin_ops()
+	"""POST /api/v1/ess/mr-forward-to-team — hand the M&R to the workshop: Draft / Approved ->
+	Pending. Only then does it appear on the PWA worklist. Open to everyone holding the M&R
+	menu, like the Cleaning Order's own "Teruskan ke Team"."""
+	require_menu("mr")
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.forward_to_team(repair_order)
 

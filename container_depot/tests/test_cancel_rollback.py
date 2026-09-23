@@ -107,11 +107,17 @@ class TestCleaningOrderCancel(_Base):
 	def test_cancel_takes_the_order_out_of_the_billing_sweep(self):
 		"""``consolidated_billing._cleaning_lines`` selects on ``status == "Completed"`` and
 		never looks at docstatus, so an order whose status the cancel left alone was billed
-		afterwards as if it had never been voided."""
+		afterwards as if it had never been voided. A submitted order cannot be cancelled —
+		it goes back to Draft, then the Cancel button ends it."""
+		from container_depot.container_depot import cleaning
+
 		c = self._container("0000001")
 		name = self._completed_order(c)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.get_doc("Cleaning Order", name).cancel()
 
-		frappe.get_doc("Cleaning Order", name).cancel()
+		cleaning.revert_to_draft(name)
+		cleaning.cancel_order(name)
 
 		self.assertEqual(frappe.db.get_value("Cleaning Order", name, "status"), "Cancelled")
 

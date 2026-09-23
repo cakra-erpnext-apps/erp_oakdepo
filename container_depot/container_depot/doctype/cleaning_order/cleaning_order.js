@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
-// "Metode Cleaning (Service)" is shaped exactly like the M&R's Service & Parts grid: a row is
+// "Cleaning & Parts" is shaped exactly like the M&R's Service & Parts grid: a row is
 // a LINE — an item from the whole catalogue (most-used first, no contract narrowing), a qty,
 // its own currency, a unit rate — and it is NOT typed in the grid. The child carries
 // `editable_grid: 0`, so the grid is a plain list and a click on a row opens its own form,
@@ -54,13 +54,39 @@ frappe.ui.form.on('Cleaning Order', {
 		}
 		// The other half of the PWA's "Ajukan Revisi": the request only notifies: THIS is
 		// where Admin Ops acts on it. Also offered without a request — Admin Ops may spot the
-		// mistake themselves. The server enforces doc.check_permission("cancel"): un-submitting
-		// is cancelling, and that stays away from the field roles.
-		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
+		// mistake themselves. It is the ONLY way back from a submitted order — Frappe's own
+		// Cancel is taken away here — so everyone holding the menu (write) gets it.
+		if (frm.doc.docstatus === 1) frm.page.clear_secondary_action();
+		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'write')) {
 			frm.add_custom_button(
 				frm.doc.revision_requested ? __('Setujui Revisi') : __('Kembalikan ke Draft'),
 				() => revert_to_draft(frm),
 			).addClass(frm.doc.revision_requested ? 'btn-primary' : '');
+		}
+		// Cancel, the same red button the M&R has — drafts only; a submitted order goes back
+		// to Draft first (before_cancel refuses it). Frappe's "Discard" menu item is removed:
+		// the server refuses it (before_discard), so this is the one way to end a draft.
+		frm.page.menu
+			.find('.menu-item-label')
+			.filter((_, el) => $(el).text().trim() === __('Discard'))
+			.closest('li')
+			.remove();
+		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'write')) {
+			frm.add_custom_button(__('Cancel'), () =>
+				frappe.prompt(
+					[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
+					(v) =>
+						frappe.confirm(
+							__('Batalkan cleaning order ini? Pekerjaan dianggap tidak jadi dan tank dilepas dari order ini.'),
+							() =>
+								frappe
+									.call('container_depot.container_depot.cleaning.cancel_order', { name: frm.doc.name, note: v.note })
+									.then(() => frm.reload_doc())
+						),
+					__('Cancel'),
+					__('Batalkan')
+				)
+			).addClass('btn-danger');
 		}
 		// Waiting on THIS reviewer: the field is done, Submit is the last step.
 		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
@@ -102,6 +128,7 @@ frappe.ui.form.on('Cleaning Order', {
 			[__('Reference EIR'), link('Inspection', frm.doc.inspection)],
 			[__('Container Booking'), link('Container Booking', frm.doc.container_booking)],
 			[__('Sales Invoice'), link('Sales Invoice', frm.doc.sales_invoice)],
+			[__('Stock Entry (Part)'), link('Stock Entry', frm.doc.stock_entry)],
 		]);
 	},
 	container(frm) {
@@ -112,8 +139,22 @@ frappe.ui.form.on('Cleaning Order', {
 		frm.trigger('_set_queries');
 	},
 	_set_queries(frm) {
-		frm.set_query('cleaning_item', 'cleaning_services', () => ({
-			query: 'container_depot.container_depot.doctype.cleaning_order.cleaning_order.cleaning_item_query',
+		// Same as the M&R: Jenis narrows the picker to services (Jasa) or stock items (Part),
+		// and a part is offered only if the row's gudang holds it.
+		frm.set_query('cleaning_item', 'cleaning_services', (doc, cdt, cdn) => {
+			const row = locals[cdt][cdn] || {};
+			return {
+				query: 'container_depot.container_depot.doctype.cleaning_order.cleaning_order.cleaning_item_query',
+				filters: {
+					container: frm.doc.container || '',
+					line_type: row.line_type || '',
+					warehouse: row.warehouse || '',
+				},
+			};
+		});
+		// Real, enabled warehouses of the company, scoped to the container's branch.
+		frm.set_query('warehouse', 'cleaning_services', () => ({
+			query: 'container_depot.container_depot.doctype.repair_order.repair_order.used_item_warehouse_query',
 			filters: { container: frm.doc.container || '' },
 		}));
 	},
@@ -130,7 +171,7 @@ frappe.ui.form.on('Cleaning Order', {
 		if (!frappe.perm.has_perm(frm.doctype, 0, 'write')) return;
 		frm.add_custom_button(__('Teruskan ke Team'), () => {
 			if (!(frm.doc.cleaning_services || []).length) {
-				frappe.msgprint(__('Pilih minimal satu metode cleaning (Service) dulu.'));
+				frappe.msgprint(__('Pilih minimal satu item Cleaning & Parts dulu.'));
 				return;
 			}
 			frm.set_value('status', 'Pending');
@@ -425,6 +466,15 @@ function open_qc_carousel(frm, slides, start) {
 }
 
 frappe.ui.form.on('Cleaning Order Service', {
+	line_type(frm, cdt, cdn) {
+		// Jenis narrows the picker, so an item chosen under the other Jenis no longer fits.
+		const row = locals[cdt][cdn] || {};
+		// Only a part draws from a gudang.
+		if (row.line_type !== 'Part' && row.warehouse) frappe.model.set_value(cdt, cdn, 'warehouse', null);
+		if (!row.cleaning_item) return;
+		if (row.line_type === _item_line_type[row.cleaning_item]) return;
+		frappe.model.set_value(cdt, cdn, 'cleaning_item', null);
+	},
 	cleaning_item(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.cleaning_item) {
@@ -446,7 +496,9 @@ frappe.ui.form.on('Cleaning Order Service', {
 				// Mata uang hanya DIISI, tidak pernah ditimpa: pilihan operator atas baris
 				// ini harus bertahan waktu itemnya diganti (server melakukan hal sama).
 				const picked = locals[cdt][cdn] || {};
+				if (d.line_type) _item_line_type[row.cleaning_item] = d.line_type;
 				const patch = {
+					line_type: d.line_type || picked.line_type,
 					rate: d.rate || 0,
 					manhour_rate: d.manhour_rate || 0,
 					item_name: d.item_name,
@@ -479,6 +531,10 @@ frappe.ui.form.on('Cleaning Order Service', {
 	// No `cleaning_services_add` here: the child carries `editable_grid: 0`, so Frappe opens a
 	// freshly added row's form by itself (Grid.add_new_row).
 });
+
+// Jenis each picked item turned out to be (from service_pricing), so a Jenis the pick itself
+// sets does not read as the operator switching Jenis and clear the item again.
+const _item_line_type = {};
 
 // Total Cost of one line = Qty x Item Rate. Tarif Manhour stays out of it on purpose (see the
 // note at the top of this file).

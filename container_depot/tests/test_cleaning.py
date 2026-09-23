@@ -149,10 +149,12 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		cno = self._container("MHRCLEAN001")
 		co = frappe.get_doc({
 			"doctype": "Cleaning Order", "container": cno, "status": "Service Setup",
-			"cleaning_services": [{"cleaning_item": item}],
+			# A wrong Jenis is overruled by the Item master: a non-stock item is a Jasa.
+			"cleaning_services": [{"cleaning_item": item, "line_type": "Part"}],
 		}).insert(ignore_permissions=True)
 		self._orders.append(co.name)
 		row = co.cleaning_services[0]
+		self.assertEqual(row.line_type, "Jasa")
 		self.assertAlmostEqual(flt(row.rate), tariff, msg="tarif service dari price list")
 		self.assertAlmostEqual(flt(row.manhour_rate), labour, msg="tarif manhour dari price list")
 		self.assertAlmostEqual(flt(co.cleaning_total), tariff)
@@ -327,6 +329,19 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertFalse(row.revision_requested, "the request has been actioned")
 		# Open work again -> the tank is not free to leave.
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
+
+	def test_cancel_ends_a_draft_and_bare_discard_is_refused(self):
+		"""One way to end an order, same as the M&R: the Cancel button. A draft goes to
+		docstatus 2 / Cancelled and lets the tank go; Frappe's own Discard is refused."""
+		c = self._container("CLNCNCL0001", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.get_doc("Cleaning Order", co).discard()
+
+		cleaning.cancel_order(co, note="salah tank")
+		row = frappe.db.get_value("Cleaning Order", co, ["docstatus", "status"], as_dict=True)
+		self.assertEqual((row.docstatus, row.status), (2, "Cancelled"))
+		self.assertNotEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
 	def test_revert_refuses_an_order_that_is_already_invoiced(self):
 		c = self._container("CLNRVRT0002", status="In_Depot", depot="OAK1")

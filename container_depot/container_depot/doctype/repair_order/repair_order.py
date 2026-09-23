@@ -309,8 +309,7 @@ class RepairOrder(Document):
 	def calculate_totals(self):
 		"""Cost each Service & Parts line from the item alone:
 
-		    Amount Item Rate    = quantity × item_rate
-		    Total Cost (amount) = Amount Item Rate
+		    Total Cost (amount) = quantity × item_rate
 
 		**Labour is not costed here.** It is charged on the invoice, which stamps every billed
 		line with the manhour its contract books for that item and totals them once in the
@@ -383,8 +382,7 @@ class RepairOrder(Document):
 			if row.item and not flt(row.item_rate):
 				row.item_rate = breakdown.get("item_rate") or 0.0
 			# Derived amounts (read-only in the UI). Labour is the invoice's job.
-			row.item_amount = flt(row.quantity or 0.0) * flt(row.item_rate)
-			row.amount = row.item_amount
+			row.amount = flt(row.quantity or 0.0) * flt(row.item_rate)
 			row.manhour = flt(breakdown.get("manhour"))
 			# Tarif Manhour is the INPUT, and it is taken AS IT STANDS from the owner's rate
 			# card — no hours arithmetic on the order, the same bargain Cleaning Order strikes
@@ -492,7 +490,9 @@ def used_item_warehouse_query(doctype, txt, searchfield, start, page_len, filter
 
 	from container_depot.container_depot import mr
 
-	rows = mr.list_warehouses(repair_order=(filters or {}).get("repair_order"))["warehouses"]
+	# ``container`` lets the Cleaning Order's Cleaning & Parts grid share this picker.
+	filters = filters or {}
+	rows = mr.list_warehouses(repair_order=filters.get("repair_order"), container=filters.get("container"))["warehouses"]
 	needle = (txt or "").strip().lower()
 	if needle and needle != "undefined":
 		rows = [r for r in rows if needle in (r.name or "").lower() or needle in (r.warehouse_name or "").lower()]

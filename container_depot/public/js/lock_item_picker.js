@@ -17,7 +17,7 @@ frappe.provide("oak");
 // doctype -> [[grid fieldname or null for a header field, link fieldname], ...]
 const ITEM_PICKERS = {
 	"Container Booking": [[null, "lift_item"]], // Lift Service
-	"Cleaning Order": [["cleaning_services", "cleaning_item"]], // Metode Cleaning (Service)
+	"Cleaning Order": [["cleaning_services", "cleaning_item"]], // Cleaning & Parts
 	"Repair Order": [["used_items", "item"]], // Item (Service / Part)
 	"Sales Invoice": [["items", "item_code"]],
 };

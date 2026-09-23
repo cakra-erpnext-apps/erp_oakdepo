@@ -53,6 +53,7 @@
   "assigned_to",
   "completed_by",
   "sales_invoice",
+  "stock_entry",
   "cleaning_item",
   "cleaning_rate"
  ],
@@ -102,13 +103,13 @@
   {
    "fieldname": "service_section",
    "fieldtype": "Section Break",
-   "label": "Metode Cleaning"
+   "label": "Cleaning & Parts"
   },
   {
    "description": "Wajib sebelum diteruskan ke team. Tarif & tarif manhour dari kontrak pemilik tank, bisa diubah.",
    "fieldname": "cleaning_services",
    "fieldtype": "Table",
-   "label": "Metode Cleaning (Service)",
+   "label": "Cleaning & Parts",
    "options": "Cleaning Order Service"
   },
   {
@@ -372,7 +373,7 @@
    "label": "Cleaning End"
   },
   {
-   "description": "Opsional. Terisi otomatis saat order dibuat \u2014 isi manual hanya untuk mencatat cuci lama yang baru diinput.",
+   "description": "Opsional. Terisi otomatis saat order dibuat — isi manual hanya untuk mencatat cuci lama yang baru diinput.",
    "fieldname": "order_created",
    "fieldtype": "Datetime",
    "label": "Order Date"
@@ -414,6 +415,15 @@
    "read_only": 1
   },
   {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Stock Entry (Part)",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
    "description": "Deprecated — diganti tabel Metode Cleaning (Service).",
    "fieldname": "cleaning_item",
    "fieldtype": "Link",
@@ -452,7 +462,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-22 12:30:00.000000",
+ "modified": "2026-09-23 15:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

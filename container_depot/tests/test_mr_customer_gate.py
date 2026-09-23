@@ -145,11 +145,6 @@ class TestMrCustomerGate(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			mr.publish_to_owner(ro.name)
 
-	def test_publish_needs_at_least_one_item(self):
-		ro = self._draft(with_items=False)
-		with self.assertRaises(frappe.ValidationError):
-			mr.publish_to_owner(ro.name)
-
 	def test_the_two_editable_statuses_are_the_two_the_depot_owns(self):
 		"""Draft and Revision Requested — the estimate is only ever edited while it is
 		NOT in front of the owner."""

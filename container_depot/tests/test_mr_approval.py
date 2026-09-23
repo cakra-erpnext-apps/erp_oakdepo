@@ -348,6 +348,18 @@ class TestMRApproval(FrappeTestCase):
 		mr.bypass_approval(ro2)
 		self.assertEqual(frappe.db.get_value("Repair Order", ro2, "status"), "Approved")
 
+	def test_forward_from_draft_approves_and_issues_parts(self):
+		"""Owner approval is cut for now: a Draft goes straight to the team, like a Cleaning
+		Order, approved on the owner's behalf with its parts out of stock."""
+		wh = self._stocked(5)
+		_, ro = self._draft_ro("MRAFWD00001")
+		mr.save_mr_order(repair_order=ro, used_items=[{"item": _PART, "quantity": 2, "warehouse": wh}], submit=False)
+		mr.forward_to_team(ro)
+		doc = frappe.get_doc("Repair Order", ro)
+		self.assertEqual(doc.status, "Pending")
+		self.assertEqual(doc.used_items[0].decision, "Approved")
+		self.assertTrue(doc.stock_entry)
+
 	def test_submit_direct_refuses_a_settled_order(self):
 		_, ro = self._draft_ro("MRASUB00004")
 		mr.submit_direct(ro)
@@ -481,8 +493,7 @@ class TestMRApproval(FrappeTestCase):
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
 		self.assertEqual(flt(row.item_rate), 10.0)       # the contract Rate, NOT material_cost
-		self.assertEqual(flt(row.item_amount), 20.0)     # 2 × 10
-		self.assertEqual(flt(row.amount), 20.0)          # labour excluded
+		self.assertEqual(flt(row.amount), 20.0)          # 2 × 10, labour excluded
 		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 20.0)
 		# Labour is taken AS IT STANDS: the rate card's tariff, never hours × tariff. The
 		# multiplication belongs to the invoice header, which reads this tariff back and the
@@ -495,8 +506,7 @@ class TestMRApproval(FrappeTestCase):
 		doc.used_items[0].item_rate = 15.0
 		doc.save(ignore_permissions=True)
 		row = frappe.get_doc("Repair Order", ro).used_items[0]
-		self.assertEqual(flt(row.item_amount), 30.0)     # 2 × 15
-		self.assertEqual(flt(row.amount), 30.0)
+		self.assertEqual(flt(row.amount), 30.0)          # 2 × 15
 		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 30.0)
 
 	def test_mr_is_billed_item_by_item_so_the_invoice_can_charge_labour(self):
@@ -563,7 +573,6 @@ class TestMRApproval(FrappeTestCase):
 		d = mr.get_mr_order_detail(ro)
 		self.assertEqual(d["status"], "Pending Approval")
 		self.assertEqual(flt(d["used_items"][0]["item_rate"]), 100.0)
-		self.assertEqual(flt(d["used_items"][0]["item_amount"]), 100.0)
 		self.assertEqual(flt(d["used_items"][0]["amount"]), 100.0)  # labour (0) + item (100)
 		self.assertEqual(d["used_items"][0]["decision"], "Pending")
 		self.assertEqual(flt(d["total_cost"]), 100.0)

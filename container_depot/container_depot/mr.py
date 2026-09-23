@@ -526,7 +526,7 @@ def get_mr_order_detail(repair_order) -> dict:
 		# Labour + item breakdown; `amount` is the line's Total Cost. Labour never enters it:
 		# `manhour_rate` is the tariff as it stands, `manhour` the hours the invoice bills.
 		"manhour": r.manhour, "manhour_rate": r.manhour_rate,
-		"item_rate": r.item_rate, "item_amount": r.item_amount,
+		"item_rate": r.item_rate,
 		"amount": r.amount, "currency": r.currency,
 		# Stock at THIS row's gudang. Never a company-wide total: that would promise stock the
 		# line cannot actually issue.
@@ -716,6 +716,16 @@ def bypass_approval(repair_order, note=None):
 		frappe.throw(
 			_("Bypass hanya dari Draft / Revision Requested (status: {0}).").format(ro.status)
 		)
+	_approve_directly(ro, _clean(note) or _("Disetujui langsung oleh Admin Ops (bypass owner)."))
+	ro.save()
+	from container_depot.container_depot.notify import notify_repair_order_decided
+	notify_repair_order_decided(ro.name)
+	return {"success": True, "name": ro.name, "status": ro.status, "total_cost": ro.total_cost}
+
+
+def _approve_directly(ro, note) -> None:
+	"""Approve on the owner's behalf: still-Pending lines become Approved and the parts leave
+	stock. Mutates ``ro``; the caller saves."""
 	for r in ro.used_items:
 		if r.decision not in ("Approved", "Rejected"):
 			r.decision = "Approved"
@@ -723,15 +733,11 @@ def bypass_approval(repair_order, note=None):
 	if ro.used_items and not any(r.decision == "Approved" for r in ro.used_items):
 		frappe.throw(_("Minimal satu item harus disetujui."))
 	ro.status = "Approved"
-	ro.owner_note = _clean(note) or _("Disetujui langsung oleh Admin Ops (bypass owner).")
+	ro.owner_note = note
 	ro.requested_on = ro.requested_on or now_datetime()
 	ro.decided_on = now_datetime()
 	ro.decided_by = frappe.session.user
 	issue_parts_on_approval(ro)
-	ro.save()
-	from container_depot.container_depot.notify import notify_repair_order_decided
-	notify_repair_order_decided(ro.name)
-	return {"success": True, "name": ro.name, "status": ro.status, "total_cost": ro.total_cost}
 
 
 def _apply_line_decisions(ro, line_decisions) -> None:
@@ -850,15 +856,21 @@ def return_parts_stock(ro) -> None:
 
 	Mutates ``ro`` in place; the caller saves.
 	"""
-	name = ro.get("stock_entry")
+	cancel_stock_entry(ro.get("stock_entry"))
+	ro.stock_entry = None
+
+
+def cancel_stock_entry(name) -> None:
+	"""Cancel a submitted Stock Entry, if there is one. Shared with the Cleaning Order."""
 	if not name or not frappe.db.exists("Stock Entry", name):
-		ro.stock_entry = None
 		return
 	se = frappe.get_doc("Stock Entry", name)
 	if se.docstatus == 1:
 		se.flags.ignore_permissions = True
+		# A submitted Cleaning Order still links it while it is being reverted/cancelled, and
+		# Frappe refuses to cancel a doc a submitted doc points at. The link IS this reversal.
+		se.flags.ignore_links = True
 		se.cancel()
-	ro.stock_entry = None
 
 
 def _assert_not_billed(ro) -> None:
@@ -966,6 +978,12 @@ def forward_to_team(repair_order):
 	"""
 	ro = frappe.get_doc("Repair Order", repair_order)
 	_guard_container_branch(ro.container)
+	# ponytail: owner approval is cut while the customer portal is not live, so Draft goes
+	# straight to the team like a Cleaning Order — approved on the owner's behalf here.
+	# Restore by dropping this branch and MR_OWNER_APPROVAL=false in repair_order.js.
+	if ro.status in MR_EDITABLE_STATUSES:
+		_approve_directly(ro, _("Diteruskan langsung ke team (persetujuan owner belum dipakai)."))
+		ro.save()  # one legal edge at a time: Draft -> Approved, then -> Pending below
 	if ro.status != "Approved":
 		frappe.throw(
 			_("Hanya M&R yang sudah disetujui owner yang bisa diteruskan ke team (status: {0}).").format(ro.status)
@@ -1285,8 +1303,14 @@ def assert_stock_available(ro):
 	catching the shortfall while the estimate is being typed, naming the part and the
 	numbers, instead of a raw Stock Entry error after the user presses Selesai.
 	"""
+	assert_stock_covers(_requested_stock_qty(ro))
+
+
+def assert_stock_covers(want) -> None:
+	"""Throw one message naming every ``{(item, gudang): qty}`` the gudang cannot cover.
+	Shared with the Cleaning Order, whose parts face the same guard."""
 	short = []
-	for (item_code, warehouse), qty in _requested_stock_qty(ro).items():
+	for (item_code, warehouse), qty in want.items():
 		if not warehouse:
 			continue  # no gudang resolved yet — stock is unknowable, see the docstring
 		have = _on_hand(item_code, warehouse)
@@ -1320,6 +1344,12 @@ def _issue_parts_stock(ro) -> str | None:
 				_("Baris {0} ({1}) belum punya Gudang. Pilih gudangnya dulu.").format(r.idx, r.item)
 			)
 		lines.append((r.item, flt(r.quantity), item.stock_uom, wh))
+	return issue_material(lines, f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container}")
+
+
+def issue_material(lines, remarks) -> str | None:
+	"""Submit one Material Issue for ``[(item, qty, uom, gudang)]``; ``None`` when empty.
+	Shared with the Cleaning Order."""
 	if not lines:
 		return None
 
@@ -1335,7 +1365,7 @@ def _issue_parts_stock(ro) -> str | None:
 	warehouses = {wh for *_, wh in lines}
 	if len(warehouses) == 1:
 		se.from_warehouse = next(iter(warehouses))
-	se.remarks = f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container}"
+	se.remarks = remarks
 	for item_code, qty, uom, wh in lines:
 		se.append("items", {
 			"item_code": item_code, "qty": qty, "s_warehouse": wh,

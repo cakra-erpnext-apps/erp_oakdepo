@@ -60,13 +60,21 @@ function mr_approve(frm) {
 // the money, this settles that the depot is ready to start. Only now does the job appear on
 // the PWA worklist.
 function mr_forward_to_team(frm) {
+	const from_draft = ['Draft', 'Revision Requested'].includes(frm.doc.status);
 	mr_call(
 		frm,
 		'container_depot.ess.repairs.mr_forward_to_team',
 		{},
-		__('Teruskan M&R ini ke team repair? Order akan muncul di worklist PWA dan bisa mulai dikerjakan.')
+		from_draft
+			? __('Teruskan M&R ini ke team repair? Estimasi langsung disetujui, part KELUAR dari stok, dan order muncul di worklist PWA.')
+			: __('Teruskan M&R ini ke team repair? Order akan muncul di worklist PWA dan bisa mulai dikerjakan.')
 	);
 }
+
+// ponytail: owner approval is cut until the customer portal is live — Draft goes straight to
+// the team, like a Cleaning Order (mr.forward_to_team approves on the owner's behalf). Flip to
+// true, and drop that branch in mr.forward_to_team, to bring "Kirim ke Owner" back.
+const MR_OWNER_APPROVAL = false;
 
 // Desk signs off on the WORK and closes the job. Nothing moves in the warehouse here — the
 // parts went out at approval. This is the irreversible step all the same: a Completed M&R can
@@ -290,7 +298,12 @@ frappe.ui.form.on('Repair Order', {
 		// Status intro banner — says where the M&R stands AND names the button that moves it,
 		// so the label on screen and the sentence above it are the same words.
 		const intros = {
-			Draft: [__('Draft — meja Admin Ops. Susun estimasi di Service & Parts, lalu Kirim ke Owner.'), 'blue'],
+			Draft: [
+				MR_OWNER_APPROVAL
+					? __('Draft — meja Admin Ops. Susun estimasi di Service & Parts, lalu Kirim ke Owner.')
+					: __('Draft — meja Admin Ops. Susun Service & Parts, lalu Teruskan ke Team.'),
+				'blue',
+			],
 			'Pending Approval': [__('Sudah di web customer, menunggu keputusan owner. Admin Ops masih bisa Tarik dari Owner.'), 'orange'],
 			'Revision Requested': [__('Owner minta revisi. Perbaiki itemnya, lalu Kirim ke Owner lagi.'), 'orange'],
 			Approved: [__('Disetujui owner dan part sudah keluar dari stok. Teruskan ke Team agar masuk worklist PWA, atau Selesaikan Langsung kalau pekerjaannya sudah selesai.'), 'green'],
@@ -394,10 +407,10 @@ frappe.ui.form.on('Repair Order', {
 		// team works in the PWA → Pending Review → Desk finalises).
 		const next = {
 			// The Admin-Ops gate: nothing reaches the customer web until this is clicked.
-			Draft: is_admin_ops() ? ['Kirim ke Owner', mr_publish_to_owner] : null,
-			'Revision Requested': is_admin_ops() ? ['Kirim ke Owner', mr_publish_to_owner] : null,
+			Draft: MR_OWNER_APPROVAL ? (is_admin_ops() ? ['Kirim ke Owner', mr_publish_to_owner] : null) : ['Teruskan ke Team', mr_forward_to_team],
+			'Revision Requested': MR_OWNER_APPROVAL ? (is_admin_ops() ? ['Kirim ke Owner', mr_publish_to_owner] : null) : ['Teruskan ke Team', mr_forward_to_team],
 			'Pending Approval': ['Owner Setuju', mr_approve],
-			Approved: is_admin_ops() ? ['Teruskan ke Team', mr_forward_to_team] : null,
+			Approved: ['Teruskan ke Team', mr_forward_to_team],
 			// Pending / In Progress belong to the team in the PWA — Desk has nothing to press
 			// until the work comes back for review.
 			'Pending Review': ['Selesaikan M&R', mr_finalize],
@@ -451,7 +464,7 @@ frappe.ui.form.on('Repair Order', {
 		// takes: staff were re-opening orders the long way round because the short one was
 		// hidden. Order of appearance is the order they are added, so the primary next step
 		// stays first and Cancel stays last.
-		if (is_admin_ops() && ['Draft', 'Revision Requested'].includes(s)) {
+		if (MR_OWNER_APPROVAL && is_admin_ops() && ['Draft', 'Revision Requested'].includes(s)) {
 			mr_bypass_button(frm);
 		}
 		// The team's own correction, before Desk finalises it — nothing has left the
@@ -620,7 +633,6 @@ const USED_ROW_DERIVED = {
 	on_hand: null,
 	is_stock_item: 0,
 	item_rate: 0,
-	item_amount: 0,
 	amount: 0,
 	manhour: 0,
 	manhour_rate: 0,
@@ -703,11 +715,9 @@ frappe.ui.form.on('Repair Used Item', {
 
 function price_used_row(frm, cdt, cdn) {
 	const row = frappe.get_doc(cdt, cdn);
-	const item_amount = flt(row.quantity) * flt(row.item_rate);
-	frappe.model.set_value(cdt, cdn, 'item_amount', item_amount);
 	// Labour is an input, is NOT scaled by qty, and is NOT added to the line total — the
 	// invoice settles it in its own header. Nothing here derives from it.
-	frappe.model.set_value(cdt, cdn, 'amount', item_amount);
+	frappe.model.set_value(cdt, cdn, 'amount', flt(row.quantity) * flt(row.item_rate));
 	recompute_used_total(frm);
 }
 

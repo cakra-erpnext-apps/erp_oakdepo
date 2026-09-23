@@ -322,8 +322,9 @@ def revert_to_draft(name: str) -> dict:
 	from container_depot.container_depot.container_status import recompute_availability
 
 	doc = frappe.get_doc("Cleaning Order", name)
-	# Un-submitting is cancelling: same permission, so this stays away from the field roles.
-	doc.check_permission("cancel")
+	# The one way back from a submitted order (it cannot be cancelled), so it is open to
+	# whoever holds the Cleaning menu (write, ess.context._MENU) — like the M&R's reopen.
+	doc.check_permission("write")
 	if doc.docstatus != 1:
 		frappe.throw(_("Hanya cleaning order yang sudah disubmit yang bisa dikembalikan ke draft."))
 	# Billed work is settled work. Reopening it would let the wash be edited (or re-billed)
@@ -333,6 +334,12 @@ def revert_to_draft(name: str) -> dict:
 			"Cleaning order ini sudah masuk invoice {0}. Batalkan invoice-nya dulu sebelum "
 			"dikembalikan ke draft."
 		).format(doc.sales_invoice))
+
+	# The parts come back too: the lines are editable again, and the next Submit issues
+	# whatever they then say.
+	from container_depot.container_depot.mr import cancel_stock_entry
+
+	cancel_stock_entry(doc.get("stock_entry"))
 
 	# Back to work-in-progress: the wash is open again, so the tank is not free to leave.
 	# cleaning_end is cleared so the next sign-off re-times the finish; the signature and
@@ -345,6 +352,7 @@ def revert_to_draft(name: str) -> dict:
 			"cleaning_end": None,
 			"revision_requested": 0,
 			"revision_note": None,
+			"stock_entry": None,
 		},
 	)
 	# A backwards docstatus flip can never go through doc.save(), so no Version row is
@@ -370,6 +378,32 @@ def revert_to_draft(name: str) -> dict:
 		frappe.log_error(frappe.get_traceback(), "cleaning revert_to_draft activity log")
 
 	return {"name": doc.name, "docstatus": 0, "status": "In_Progress"}
+
+
+@frappe.whitelist()
+def cancel_order(name: str, note: str | None = None) -> dict:
+	"""The Desk "Cancel" button, the same one the M&R has: ends a DRAFT order, with an
+	optional reason on its timeline. A submitted one is refused: it goes back to Draft first.
+
+	A draft is ended through Frappe's discard (docstatus 2 without ever being submitted) —
+	the menu's own "Discard" is refused (``CleaningOrder.before_discard``) so this is the one
+	road, and ``on_discard`` runs the same clean-up as a cancel.
+	"""
+	from container_depot.container_depot.container_activity import log_doc_note
+
+	doc = frappe.get_doc("Cleaning Order", name)
+	# Whoever holds the Cleaning menu (write, ess.context._MENU) may end a draft — same as
+	# the M&R Cancel. A submitted one still needs Frappe's own cancel right (doc.cancel()).
+	doc.check_permission("write")
+	if doc.docstatus == 2:
+		frappe.throw(_("Cleaning order ini sudah dibatalkan."))
+	if doc.docstatus == 1:
+		frappe.throw(_("Cleaning order yang sudah disubmit tidak bisa di-Cancel. Kembalikan ke Draft dulu."))
+	doc.flags.oak_cancel = True
+	doc.discard()
+	note = (note or "").strip()
+	log_doc_note("Cleaning Order", doc.name, _("Dibatalkan oleh {0}").format(frappe.session.user) + (": " + note if note else ""))
+	return {"name": doc.name, "docstatus": 2, "status": "Cancelled"}
 
 
 def request_revision(cleaning_order, reason: str | None = None) -> dict:

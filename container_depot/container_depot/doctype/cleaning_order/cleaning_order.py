@@ -47,6 +47,7 @@ class CleaningOrder(Document):
 		if self.container and self.has_value_changed("container"):
 			assert_container_active(self.container)
 		self._guard_dates_after_invoice()
+		self._validate_parts_stock()
 		for p in self.get("qc_photos") or []:
 			if p.photo and not p.get("timestamp"):
 				p.timestamp = p.creation or frappe.utils.now_datetime()
@@ -68,6 +69,57 @@ class CleaningOrder(Document):
 					self.sales_invoice, ", ".join(changed)
 				)
 			)
+
+	def _parts(self) -> list:
+		"""``[(row, item, qty, uom, gudang)]`` for every stock item on the order — the parts
+		that leave the warehouse at Submit. Read off the Item master, not Jenis: validate runs
+		before ``_resolve_cleaning_services`` has set Jenis on a fresh row."""
+		from frappe.utils import flt
+
+		from container_depot.container_depot import mr
+
+		out = []
+		for row in self.cleaning_services or []:
+			if not row.cleaning_item or flt(row.quantity or 1) <= 0:
+				continue
+			item = frappe.db.get_value("Item", row.cleaning_item, ["is_stock_item", "stock_uom"], as_dict=True)
+			if item and item.is_stock_item:
+				out.append((row, row.cleaning_item, flt(row.quantity or 1), item.stock_uom,
+					row.warehouse or mr.default_warehouse(self)))
+		return out
+
+	def _validate_parts_stock(self):
+		"""Same guard as the M&R: a part goes on the order only if its gudang holds it, every
+		shortfall in one message. Skipped once the parts are out (``stock_entry``) — the
+		on-hand figure has already moved."""
+		if self.get("stock_entry") or self.docstatus == 2:
+			return
+		from container_depot.container_depot import mr
+		from container_depot.container_depot.user_branch import assert_in_user_branch
+
+		want = {}
+		for row, item, qty, _uom, wh in self._parts():
+			if row.warehouse:
+				assert_in_user_branch(branch=frappe.db.get_value("Warehouse", row.warehouse, "branch"))
+			want[(item, wh)] = want.get((item, wh), 0.0) + qty
+		mr.assert_stock_covers(want)
+
+	def _issue_parts(self):
+		"""Take the parts out of their gudang as one Material Issue. Unlike the M&R there is no
+		owner approval to wait for, and the lines stay editable until Submit, so Submit —
+		when the lines are frozen — is when the stock moves."""
+		if self.get("stock_entry"):
+			return
+		from container_depot.container_depot import mr
+
+		lines = []
+		for row, item, qty, uom, wh in self._parts():
+			if not wh:
+				frappe.throw(_("Baris {0} ({1}) belum punya Gudang. Pilih gudangnya dulu.").format(row.idx, item))
+			lines.append((item, qty, uom, wh))
+		self.stock_entry = mr.issue_material(
+			lines, f"Cleaning {self.order_id or self.name} • {self.container_no or self.container}"
+		)
 
 	def before_save(self):
 		"""Auto-populate container info + price the owner's chosen cleaning services."""
@@ -137,10 +189,12 @@ class CleaningOrder(Document):
 		from frappe.utils import flt
 
 		from container_depot import pricing
+		from container_depot.container_depot import mr
 
 		from container_depot.pricing_model import currency_for_customer
 
 		contract = contract_for_container(self.container)
+		default_wh = mr.default_warehouse(self)
 		principal = (
 			frappe.db.get_value("Container", self.container, "principal") if self.container else None
 		)
@@ -160,6 +214,16 @@ class CleaningOrder(Document):
 			if not row.cleaning_item:
 				row.rate = row.manhour_rate = 0
 			else:
+				# Jenis narrows the picker while the row is empty; once an item is chosen the
+				# Item master decides it, same as the M&R (a stock item is a Part).
+				row.line_type = _line_type(row.cleaning_item)
+				# Only a part draws from a gudang; a blank one takes the branch default, stamped
+				# so the grid shows the gudang actually used.
+				row.warehouse = (row.warehouse or default_wh) if row.line_type == "Part" else None
+				row.on_hand = (
+					f"{flt(mr._on_hand(row.cleaning_item, row.warehouse)):g}"
+					if row.warehouse and not self.stock_entry else None
+				)
 				if not row.item_name:
 					row.item_name = frappe.db.get_value("Item", row.cleaning_item, "item_name")
 				if not flt(row.rate):
@@ -238,6 +302,7 @@ class CleaningOrder(Document):
 		route always arrives with its real start time set, so this only fires on the
 		straight-to-Submit path.
 		"""
+		self._issue_parts()
 		if self.is_recleaning:
 			return
 		if not self.cleaning_start:
@@ -282,7 +347,11 @@ class CleaningOrder(Document):
 			notify_cleaning_forwarded_to_team(self.name)
 
 	def before_cancel(self):
-		"""Billed work cannot be un-done from here — the same refusal :func:`cleaning.revert_to_draft`
+		"""A submitted order is never cancelled — same as a Completed M&R, the only way back is
+		"Kembalikan ke Draft" (``cleaning.revert_to_draft``); a draft is then ended with the
+		Cancel button. The invoice refusal below is kept for the record; this throw comes first.
+
+		Billed work cannot be un-done from here — the same refusal :func:`cleaning.revert_to_draft`
 		makes, for the same reason.
 
 		A cancelled order is meant to read as work that never happened, and that is a claim
@@ -297,6 +366,19 @@ class CleaningOrder(Document):
 				  "sebelum order ini dibatalkan.").format(self.sales_invoice),
 				title=_("Sudah Ditagih"),
 			)
+		frappe.throw(
+			_("Cleaning order yang sudah disubmit tidak bisa di-Cancel. Kembalikan ke Draft dulu."),
+			title=_("Tidak Bisa Cancel"),
+		)
+
+	def before_discard(self):
+		# One way to end an order, same as the M&R: the red Cancel button
+		# (``cleaning.cancel_order``), which asks why. The menu's bare Discard is refused.
+		if not self.flags.get("oak_cancel"):
+			frappe.throw(_("Pakai tombol Cancel untuk membatalkan cleaning order."))
+
+	def on_discard(self):
+		self.on_cancel()
 
 	def on_cancel(self):
 		# The status field is what the rest of the app reads — `container_open_orders`
@@ -305,6 +387,10 @@ class CleaningOrder(Document):
 		# cancelled order still read "Completed" and was billed on the next run as if it
 		# had never been voided. Mirrors `Inspection.on_cancel`.
 		self.db_set("status", "Cancelled", update_modified=False)
+		# The parts go back: cancelling the Material Issue keeps issue and reversal one pair.
+		from container_depot.container_depot.mr import cancel_stock_entry
+
+		cancel_stock_entry(self.get("stock_entry"))
 		# Cancelling (docstatus 2) takes the order out of `container_open_orders` — the
 		# tank it was holding In_Depot has to be recomputed, exactly as a delete does.
 		# The status-field route (status -> Cancelled) already goes through on_update.
@@ -419,22 +505,45 @@ def base_rate_for(item_code, contract) -> float:
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def cleaning_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""Items for the Cleaning Order's "Metode Cleaning (Service)" field: SELURUH katalog item.
+	"""Items for the Cleaning Order's "Cleaning & Parts" field: SELURUH katalog item.
 
 	Dulu disaring dua kali — anggota menu item "Cleaning" ∩ item yang punya baris tarif di
 	kontrak pemilik tank — sehingga tank yang pemiliknya belum punya kontrak
 	tidak menawarkan metode apa pun. Sejak 2026-09-07 penyaringan itu dilepas: apa
 	pun boleh dipilih, yang di luar kontrak masuk dengan tarif 0 untuk diisi Admin Ops
 	(``service_pricing``). Urutannya yang menggantikan: metode yang paling sering dipakai
-	muncul lebih dulu.
+	muncul lebih dulu. Jenis baris (Jasa / Part) mempersempit ke item non-stok / stok.
 	"""
 	from container_depot.container_depot import item_catalog
 
+	from frappe.utils import flt
+
+	from container_depot.container_depot import mr
+
+	filters = filters or {}
+	line_type = filters.get("line_type")
+	query = {}
+	if line_type in ("Jasa", "Part"):
+		query["is_stock_item"] = 1 if line_type == "Part" else 0
+	# Same as the M&R picker: a part the row's gudang cannot supply is not offered.
+	warehouse = filters.get("warehouse") or mr.default_warehouse(frappe._dict(container=filters.get("container")))
+	empty = mr._out_of_stock_items(warehouse)
+	if empty:
+		query["name"] = ["not in", list(empty)]
 	rows = item_catalog.search_items(
-		txt=txt, context="cleaning", start=start, page_length=page_len,
-		fields=["name as item_code", "item_name"],
+		txt=txt, context="cleaning", start=start, page_length=page_len, filters=query,
+		fields=["name as item_code", "item_name", "stock_uom", "is_stock_item"],
 	)
-	return [[r["item_code"], r.get("item_name")] for r in rows]
+	out = []
+	for r in rows:
+		if not r.get("is_stock_item"):
+			hint = _("Jasa")
+		elif warehouse:
+			hint = _("Stok {0} {1}").format(f"{flt(mr._on_hand(r['item_code'], warehouse)):g}", r.get("stock_uom") or "").strip()
+		else:
+			hint = _("Pilih Gudang dulu")
+		out.append([r["item_code"], r.get("item_name"), hint])
+	return out
 
 
 # ---------------------------------------------------------------------------
@@ -465,5 +574,10 @@ def service_pricing(container=None, item_code=None) -> dict:
 		# tidak pernah menimpa pilihan operator saat itemnya diganti.
 		"currency": currency,
 		"item_name": frappe.db.get_value("Item", item_code, "item_name") if item_code else None,
+		"line_type": _line_type(item_code) if item_code else None,
 		"contract": contract,
 	}
+
+
+def _line_type(item_code) -> str:
+	return "Part" if frappe.db.get_value("Item", item_code, "is_stock_item") else "Jasa"
