@@ -198,16 +198,20 @@ def periods_for_many(containers: list[dict]) -> dict[str, list[dict]]:
 
 
 def _anchor_to_eir(periods: list[dict], eir) -> list[dict]:
-	"""The newest visit runs on the tank's own EIR dates: in = ``eir_in_date``, out =
-	``eir_out_date`` (only once the tank is Gate_Out).
+	"""A visit with no gate record runs on the tank's own EIR dates: in = ``eir_in_date``,
+	out = ``eir_out_date`` (only once the tank is Gate_Out).
 
-	Gate Entry writes both fields at the gate, so for a gated tank this changes nothing. It
-	matters for a tank injected by import: its Container Movement is stamped when the import
-	ran, not when the tank moved, while the EIR dates are what the operator set. Only the
-	LAST visit is touched (both fields are overwritten on re-entry), and a date that does
-	not fit — before the previous visit's exit, or out before in — is ignored.
+	This is for tanks injected by import: their Container Movement is stamped when the
+	import ran, not when the tank moved, while the EIR dates are what the operator set.
+
+	A Gate Entry visit is never touched. Submitting an EIR-In / EIR-Out survey also stamps
+	these fields — with the survey's submit time, which trails the gate-in and precedes the
+	gate-out — so on a gated tank they would move the gate's dates to the survey's.
+
+	Only the LAST visit is touched (both fields are overwritten on re-entry), and a date
+	that does not fit — before the previous visit's exit, or out before in — is ignored.
 	"""
-	if not periods or not eir:
+	if not periods or not eir or periods[-1].get("ref"):
 		return periods
 	last = dict(periods[-1])
 	prev_end = periods[-2]["end"] if len(periods) > 1 else None

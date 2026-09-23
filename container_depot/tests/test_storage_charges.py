@@ -232,6 +232,17 @@ class TestStorageCharges(FrappeTestCase):
 		self.assertEqual(row["stay_days"], 16)
 		self.assertEqual(storage.days_in_depot(doc.name, add_days(today(), -30), today()), 16)
 
+	def test_eir_survey_dates_do_not_move_a_gate_entry_visit(self):
+		"""An EIR survey submitted days after gate-in stamps eir_in_date late; the gate wins."""
+		cno = f"{PREFIX}GATEEIR"
+		gated = add_days(today(), -10)
+		doc = _container(cno, "In_Depot", self.customer)
+		_gate_entry(cno, gated)
+		frappe.db.set_value("Container", doc.name, "eir_in_date", f"{add_days(today(), -7)} 09:00:00")
+		row = self._row(doc.name)
+		self.assertEqual(getdate(row["in_date"]), getdate(gated))
+		self.assertEqual(row["source"], storage.SRC_GATE)
+
 	def test_report_columns_shape(self):
 		columns, _ = execute({})
 		names = {c["fieldname"] for c in columns}
