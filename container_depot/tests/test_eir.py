@@ -553,6 +553,21 @@ class TestEirDraft(FrappeTestCase):
 		d2 = eir.open_draft(container_no="EIRD1000005")
 		self.assertNotEqual(d2["inspection"], d["inspection"])
 
+	def test_list_eirs_status_search_and_counts(self):
+		# The PWA list: todo → doing on Mulai, search by tank no, type filter, counts unfiltered.
+		_make_container("EIRD1000031")
+		d = eir.open_draft(container_no="EIRD1000031")
+		names = lambda **kw: [r["name"] for r in eir.list_eirs(page_length=50, **kw)["items"]]  # noqa: E731
+		self.assertIn(d["inspection"], names(status="todo", search="EIRD1000031"))
+		self.assertEqual(names(search="EIRD1000031", inspection_type="EIR-Out"), [])
+		eir.start_eir(d["inspection"])
+		self.assertEqual(names(status="doing", search="EIRD1000031"), [d["inspection"]])
+		self.assertEqual(names(status="todo", search="EIRD1000031"), [])
+		res = eir.list_eirs(status="review", search="EIRD1000031", sort="newest")
+		self.assertEqual(res["total"], 0)
+		self.assertGreaterEqual(res["counts"]["doing"], 1)  # pills ignore the filter
+		self.assertEqual(res["counts"]["all"], sum(res["counts"][k] for k in ("todo", "doing", "review")))
+
 	def test_withdraw_review_returns_to_editable_draft(self):
 		# Operator pulls a Pending-Review EIR back to Draft themselves (no Admin Ops), fixes
 		# it, and re-sends. It must leave the review list, re-enter the worklist, and stay 0.

@@ -87,6 +87,16 @@ def eir_pending(search=None, start=0, page_length=20):
 
 
 @frappe.whitelist(methods=["GET"])
+def eir_list(status=None, search=None, inspection_type=None, depot=None, principal=None, day=None,
+			 sort=None, start=0, page_length=20):
+	"""GET — open EIRs (In + Out, draft + Pending Review) for the PWA list: status pills
+	(todo / doing / review), search, filters, priority sort, paging. See ``eir.list_eirs``."""
+	require_menu("eir")
+	return eir.list_eirs(status=status, search=search, inspection_type=inspection_type, depot=depot,
+						 principal=principal, day=day, sort=sort, start=start, page_length=page_length)
+
+
+@frappe.whitelist(methods=["GET"])
 def eir_open(inspection=None):
 	"""GET /api/v1/ess/eir-open — open an existing draft EIR by name (read-only, no create).
 

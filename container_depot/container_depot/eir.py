@@ -2082,6 +2082,107 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 	return {"items": items, "total": total, "start": start, "page_length": page_length}
 
 
+# Pil daftar EIR (PWA): open = docstatus 0. "Selesai" tinggal di Riwayat (list_my_eirs).
+EIR_TODO, EIR_DOING, EIR_REVIEW = "todo", "doing", "review"
+
+
+def _eir_state(r) -> str:
+	if r.status == "Pending Review":
+		return EIR_REVIEW
+	return EIR_DOING if r.work_started_on else EIR_TODO
+
+
+def list_eirs(status=None, search=None, inspection_type=None, depot=None, principal=None,
+			  day=None, sort=None, start=0, page_length=20) -> dict:
+	"""Open EIRs (In + Out, draft + Pending Review) in the user's branch — the PWA list, same
+	shape as ``leak_check.list_leak_checks``.
+
+	Default sort = ``worklist.sort_by_priority`` (the order the worklist always had);
+	``sort="newest"`` = creation desc. Each row carries ``group`` — the date the screen groups
+	on: the target day (urgent / survey / lift-on) under priority, the creation day otherwise
+	("" = no target yet, "urgent" = tier 0). ``day`` matches either date. ``counts`` ignore every filter."""
+	start = max(0, cint(start))
+	page_length = min(max(1, cint(page_length or 20)), 50)
+	scope = {"docstatus": 0, "inspection_type": ["in", ["EIR-In", "EIR-Out"]]}
+	allowed = get_user_depots()
+	if allowed is not None:
+		scope["depot"] = ["in", allowed or [""]]
+
+	filters = dict(scope)
+	if inspection_type in ("EIR-In", "EIR-Out"):
+		filters["inspection_type"] = inspection_type
+	if depot:
+		filters["depot"] = depot if allowed is None or depot in allowed else ""
+	if principal:
+		filters["container_principal"] = principal
+	term = str(search or "").strip()
+	if term.lower() in ("undefined", "null", "none"):
+		term = ""
+	or_filters = None
+	if term:
+		s = f"%{term}%"
+		or_filters = [[f, "like", s] for f in (
+			"container_no", "inspection_id", "name", "referred_voucher", "reff_doc", "container_booking",
+		)]
+
+	rows = frappe.get_all(
+		"Inspection", filters=filters, or_filters=or_filters,
+		fields=[
+			"name", "inspection_id", "container", "container_no", "container_principal",
+			"inspection_type", "status", "tank_status", "referred_voucher", "voucher_doctype",
+			"depot", "reff_doc", "container_booking", "emkl", "shipper", "eir_date", "creation",
+			"modified", "inspector", "work_started_on", "work_started_by",
+			"target_lift_on", "target_survey_on", "target_urgent_on",
+		],
+		order_by="creation desc", limit_page_length=0,
+	)
+	if status in (EIR_TODO, EIR_DOING, EIR_REVIEW):
+		rows = [r for r in rows if _eir_state(r) == status]
+	for r in rows:
+		r["state"] = _eir_state(r)
+		r["day"] = str(getdate(r.creation))
+		due = r.target_urgent_on or r.target_survey_on or r.target_lift_on
+		r["due"] = str(due) if due else ""
+	if day:
+		d = str(getdate(day))
+		rows = [r for r in rows if d in (r["day"], r["due"])]
+
+	# Whole list, then sort, then slice — same as list_pending_eirs (bounded by the yard).
+	if sort == "newest":
+		for r in rows:
+			r["group"] = r["day"]
+		items = rows[start:start + page_length]
+	else:
+		for r in rows:
+			# Tier mendesak = satu grup sendiri: tanggalnya bisa sama dengan tanggal survey biasa.
+			r["group"] = "urgent" if r.target_urgent_on else r["due"]
+		items = _by_lift_on(rows, start, page_length)
+	day_counts: dict = {}
+	for r in rows:
+		day_counts[r["group"]] = day_counts.get(r["group"], 0) + 1
+	total = len(rows)
+	items = _stamp_who(_stamp_worker(items))
+	for it in items:
+		for k in ("creation", "modified", "work_started_on"):
+			it[k] = str(it[k]) if it.get(k) else None
+
+	counts = {"all": 0, EIR_TODO: 0, EIR_DOING: 0, EIR_REVIEW: 0, "EIR-In": 0, "EIR-Out": 0}
+	for r in frappe.get_all("Inspection", filters=scope,
+							fields=["status", "work_started_on", "inspection_type"], limit_page_length=0):
+		counts["all"] += 1
+		counts[_eir_state(r)] += 1
+		counts[r.inspection_type] += 1
+
+	def opts(field):
+		return sorted({v for v in frappe.get_all("Inspection", filters=scope, pluck=field, distinct=True) if v})
+
+	return {
+		"items": items, "total": total, "start": start, "page_length": page_length,
+		"counts": counts, "day_counts": day_counts,
+		"depots": opts("depot"), "principals": opts("container_principal"),
+	}
+
+
 def open_draft_by_name(inspection: str) -> dict:
 	"""Open an existing draft EIR by name and return it with the master-derived header.
 

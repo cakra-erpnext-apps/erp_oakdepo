@@ -80,51 +80,41 @@
 			</div>
 		</template>
 
-		<!-- =================== WORKLIST + LANDING =================== -->
+		<!-- =================== DAFTAR =================== -->
+		<!-- Tata letak = Jadwal Survey (SurveyOrderList): cari, pil status, filter + urut, grup
+		     per tanggal target. Yang sedang dikerjakan jadi kartu besar; sisanya baris ringkas.
+		     EIR yang sudah selesai tinggal di Riwayat. -->
 		<template v-else>
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<div class="flex items-center gap-2">
-					<span class="oak-icon-tile h-9 w-9 bg-leaf-50 text-leaf-600"><Icon name="search-check" :size="20" /></span>
-					<div class="min-w-0">
-						<h1 class="text-lg font-extrabold leading-tight tracking-tight">{{ labels.eirTitle }}</h1>
-						<p class="truncate text-xs text-gray-500">{{ labels.eirCombinedSubtitle }}</p>
-					</div>
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.eirTitle }}</h1>
+					<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.eirCombinedSubtitle }}</p>
 				</div>
 				<!-- Sedang memilih batch: satu-satunya jalan keluar berada di tempat yang sama
-				     dengan pintu masuknya. Sortir & Riwayat menepi — keduanya membawa operator
-				     ke layar lain, yang berarti pilihan yang sedang disusun hilang. -->
+				     dengan pintu masuknya. Sortir & Riwayat menepi — keduanya pindah layar, dan
+				     pilihan yang sedang disusun ikut hilang. -->
 				<button
 					v-if="selectMode"
-					class="oak-btn oak-btn-secondary border-brand-300 px-3 py-2 text-brand-700"
+					class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 border-brand-300 px-3 text-brand-700"
 					@click="toggleSelectMode"
 				>
-					<Icon name="x" :size="16" /> {{ labels.eirSelectCancel }}
+					<Icon name="x" :size="15" /> {{ labels.eirSelectCancel }}
 				</button>
-				<div v-else class="flex items-center gap-2">
-					<!-- "Pilih" duduk di kepala halaman, bukan di kepala satu bagian: batch boleh
-					     mencampur tank yang sedang dikerjakan dengan yang belum disentuh, dan
-					     keduanya kini hidup di bagian yang berbeda. -->
-					<button class="oak-btn oak-btn-secondary px-3 py-2" @click="toggleSelectMode">
-						<Icon name="check-square" :size="16" /> {{ labels.eirSelect }}
+				<div v-else class="flex shrink-0 items-center gap-2">
+					<button class="oak-btn oak-btn-secondary min-h-[44px] px-3" @click="toggleSelectMode">
+						<Icon name="check-square" :size="15" /> {{ labels.eirSelect }}
 					</button>
-					<router-link to="/eir/sort" class="oak-btn oak-btn-secondary px-3 py-2">
-						<Icon name="layers" :size="16" /> {{ labels.eirSortOpen }}
+					<router-link to="/eir/sort" class="oak-btn oak-btn-secondary min-h-[44px] px-3" :aria-label="labels.eirSortOpen">
+						<Icon name="layers" :size="15" />
 					</router-link>
-					<router-link to="/eir/history" class="oak-btn oak-btn-secondary px-3 py-2">
-						<Icon name="clock" :size="16" /> {{ labels.eirHistory }}
+					<router-link to="/eir/history" class="oak-btn oak-btn-secondary min-h-[44px] px-3">
+						<Icon name="clock" :size="15" /> {{ labels.navHistory }}
 					</router-link>
 				</div>
 			</div>
 
-			<!-- Batch yang sedang terbuka. Tanpa baris ini batch adalah pekerjaan yang tidak
-			     terlihat di mana pun begitu operator menekan Kembali dari form: daftarnya
-			     kembali seperti semula, tidak ada jalan pulang selain memilih ulang, dan
-			     satu-satunya kesimpulan yang masuk akal adalah "batch-nya tidak tersimpan".
-			     Ia memang tersimpan — yang hilang cuma pintunya.
-
-			     Yang dipajang nomor tank-nya, bukan nomor bon: "Batch ORD-BKR-2026-00020"
-			     tidak memberi tahu siapa pun tank mana yang ada di dalamnya, dan nomor tank
-			     itulah yang tertulis di badan tangki dan di kertas yang dipegang sopir. -->
+			<!-- Batch yang sedang terbuka — pintu pulang ke batch setelah Kembali dari form.
+			     Yang dipajang nomor tank-nya, bukan nomor bon: itulah yang tertulis di tangki. -->
 			<div
 				v-if="openBatchRows.length > 1 && !selectMode"
 				class="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3"
@@ -146,146 +136,31 @@
 				</button>
 			</div>
 
-			<!-- SATU kotak cari dan SATU saringan arah untuk keempat bagian di bawah. Dulu
-			     keduanya hanya menyaring daftar pending, sementara bagian di bawahnya tetap
-			     memajang apa saja — jadi mencari satu nomor tank tetap berarti membacanya
-			     sendiri di daftar Selesai. Pencariannya dikirim ke server untuk keempat
-			     daftar; arah disaring di sini karena tiap baris sudah membawa jenisnya. -->
-			<div v-if="!selectMode" class="flex items-center gap-2">
-				<div class="relative min-w-0 flex-1">
-					<Icon name="search" :size="16" class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-					<input
-						v-model.trim="search"
-						type="text"
-						:placeholder="labels.eirPendingSearch"
-						class="oak-input pl-8 uppercase"
-						@input="onSearchInput"
-					/>
-				</div>
-				<!-- Masuk / Keluar: pekerjaan yang berbeda (tank datang vs pergi), sering
-				     dikerjakan berkelompok. -->
-				<div class="flex shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-					<button
-						v-for="f in DIR_FILTERS"
-						:key="f.key"
-						class="rounded-md px-2.5 py-1.5 text-[11px] font-bold transition"
-						:class="dirFilter === f.key ? 'bg-paper text-brand-700 shadow-sm' : 'text-gray-500'"
-						@click="dirFilter = f.key"
-					>
-						{{ f.label }}
-					</button>
-				</div>
-			</div>
+			<ListSearch v-model="search" :placeholder="labels.eirListSearch" @search="reload" />
 
-			<p v-if="fetchError" class="flex items-center gap-1.5 text-sm text-red-600">
-				<Icon name="alert-circle" :size="15" /> {{ fetchError }}
-			</p>
+			<StatPills :pills="pills" :model-value="f.status" @update:model-value="setStatus" />
 
-			<!-- Dua bagian untuk pekerjaan yang belum lepas tangan: yang sudah dipegang
-			     seseorang, dan yang belum disentuh siapa pun. Markupnya satu, dirender dua
-			     kali — barisnya memang sama, yang berbeda cuma isi dan judulnya. -->
-			<CollapseSection
-				v-for="s in pendingSections"
-				:key="s.key"
-				:title="s.title"
-				:icon="s.icon"
-				:tone="s.tone"
-				:chip="s.chip"
-				:count="s.rows.length"
-				:open="openSections[s.key]"
-				@update:open="openSections[s.key] = $event"
-			>
-				<div v-if="selectMode && s.rows.length" class="flex justify-end">
-					<button class="oak-btn oak-btn-accent px-3 py-1.5 text-xs" @click="selectAll(s.rows)">
-						{{ labels.eirBatchSelectAll }}
-					</button>
-				</div>
+			<FilterBar
+				:chips="activeChips"
+				:sort-label="f.sort === 'newest' ? labels.svSortNewest : labels.listSortPriority"
+				:show-clear="!!search"
+				@open="filterOpen = true"
+				@sort="toggleSort"
+				@clear-one="clearOne"
+				@clear-all="clearAll"
+			/>
 
-				<ul v-if="loadingPending && !pendingItems.length" class="space-y-2">
-					<li v-for="n in 3" :key="n" class="oak-skeleton h-14 rounded-xl"></li>
-				</ul>
-				<div v-else-if="!s.rows.length" class="flex flex-col items-center gap-1 py-4 text-center">
-					<span class="oak-icon-tile h-11 w-11 bg-gray-100 text-gray-300"><Icon name="inbox" :size="22" /></span>
-					<p class="text-sm font-semibold text-gray-500">{{ emptyFor(s) }}</p>
-					<!-- Kalimat kedua hanya untuk kosong yang sebenar-benarnya: kalau daftarnya
-					     kosong karena saringan, "dibuat otomatis dari bon" menjawab pertanyaan
-					     yang tidak sedang ditanya. -->
-					<p v-if="!pendingItems.length" class="text-xs text-gray-400">{{ labels.eirPendingEmptyHint }}</p>
-				</div>
-				<!-- Every draft is listed; the scroller reveals about 5 rows and the rest
-				     scroll. Rows are no longer a fixed 60px: the EIR number moved onto the row
-				     (see below), so the height follows the content instead of clipping it. -->
-				<div v-else class="max-h-[340px] overflow-y-auto overscroll-contain">
-					<ul class="divide-y divide-gray-100">
-						<li v-for="r in s.rows" :key="r.name">
-							<button class="flex min-h-[64px] w-full items-center gap-3 py-2 text-left" @click="rowClick(r)">
-								<!-- Select-mode tick box (replaces navigation while picking a batch). -->
-								<span
-									v-if="selectMode"
-									class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
-									:class="selected.has(r.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-300'"
-								>
-									<Icon v-if="selected.has(r.name)" name="check" :size="14" />
-								</span>
-								<span v-else class="oak-icon-tile h-9 w-9 shrink-0" :class="r._type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-amber-50 text-amber-600'">
-									<Icon :name="r._type === 'EIR-Out' ? 'log-out' : 'search-check'" :size="16" />
-								</span>
-								<div class="min-w-0 flex-1">
-									<!-- Nomor tank memiliki barisnya sendiri, nomor EIR-nya menepi ke
-									     kanan: keduanya identitas, tapi yang di-scan mata cuma yang
-									     kiri — dan nomor EIR yang dulu tidak ada di baris ini adalah
-									     satu-satunya cara mencocokkan layar dengan kertas. -->
-									<div class="flex items-baseline justify-between gap-2">
-										<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
-										<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
-									</div>
-									<!-- Pemilik · status · bon. Nomor bon ikut ke baris ini karena dialah
-									     yang menentukan tank mana yang layak dikerjakan bersama: batch
-									     dipilih dengan mata, dari daftar ini. -->
-									<p class="truncate text-[11px] text-gray-500">
-										{{ [r.container_principal, r.tank_status, r.referred_voucher].filter(Boolean).join(" · ") || "—" }}
-									</p>
-									<!-- Baris chip: arah, sejauh mana sudah dikerjakan, kapan tank ini
-									     ditunggu keluar, dan — kalau bonnya membawa lebih dari satu tank
-									     — bahwa membukanya berarti membuka satu batch. -->
-									<p class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-										<span
-											class="oak-chip shrink-0"
-											:class="r._type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'"
-										>
-											<Icon :name="r._type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="11" />
-											{{ r._type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
-										</span>
-										<span class="oak-chip shrink-0" :class="progressChip(r).tone">{{ progressChip(r).label }}</span>
-										<span v-if="bonSize(r) > 1" class="oak-chip shrink-0 bg-brand-100 text-brand-700">
-											<Icon name="layers" :size="11" />
-											{{ labels.eirBatchTitle }} {{ bonSize(r) }}
-										</span>
-										<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
-									</p>
-									<!-- Siapa yang sudah di dalamnya. EIR yang sudah ditekan "Mulai"
-									     tetap ada di daftar semua orang (dulu ia hilang dari daftar
-									     rekan), jadi baris inilah yang membedakan "boleh dilanjutkan
-									     bergantian" dari "dua orang mengisi tangki yang sama tanpa
-									     saling tahu". -->
-									<p
-										v-if="r.started_by_name"
-										class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400"
-									>
-										<Icon name="user" :size="11" class="shrink-0" />
-										{{ labels.eirWorkedBy.replace("{name}", r.started_by_name) }}
-									</p>
-								</div>
-							</button>
-						</li>
-					</ul>
-				</div>
-			</CollapseSection>
+			<FilterSheet
+				:open="filterOpen"
+				:value="f"
+				:options="options"
+				:fields="SHEET_FIELDS"
+				@close="filterOpen = false"
+				@apply="applyFilter"
+			/>
 
-			<!-- Satu bon, beberapa tank: data rujukan (kode booking, EMKL, truk, sopir) sama
-			     untuk semuanya, dan itulah yang membuat batch layak dibuka. Banner ini muncul
-			     hanya kalau yang dicentang memang satu bon — kalau campur, tidak ada yang
-			     boleh dijanjikan "diisi sekali untuk semua". -->
+			<!-- Satu bon, beberapa tank: data rujukan sama untuk semuanya — janji "diisi sekali"
+			     hanya boleh muncul kalau yang dicentang memang satu bon. -->
 			<div
 				v-if="selectMode && selected.size > 1 && sharedVoucher"
 				class="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-800"
@@ -299,106 +174,138 @@
 				</div>
 			</div>
 
-			<!-- Sent for review (Pending Review) — field operator submitted, awaiting Admin
-			     Ops's Desk Submit. Read-only detail, same as the completed list. -->
-			<CollapseSection
-				:title="labels.eirReviewList"
-				icon="clock"
-				tone="text-sky-500"
-				chip="bg-sky-100 text-sky-700"
-				:count="reviewRows.length"
-				:open="openSections.review"
-				@update:open="openSections.review = $event"
-			>
-				<ul v-if="reviewRes.loading && !reviewRows.length" class="space-y-2">
-					<li v-for="n in 2" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
-				</ul>
-				<p v-else-if="!reviewRows.length" class="py-2 text-center text-sm text-gray-400">{{ labels.eirReviewEmpty }}</p>
-				<ul v-else class="divide-y divide-gray-100">
-					<li v-for="r in reviewRows" :key="r.name">
-						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
-							<!-- Inisial orangnya, bukan ikon jam yang sama di setiap baris. Daftar
-							     ini branch-scoped: barisnya bisa milik siapa saja, dan "punya siapa
-							     yang ini" adalah hal pertama yang ditanya sebelum menariknya
-							     kembali. Jatuh balik ke ikon kalau EIR-nya belum berpemilik. -->
-							<span class="oak-icon-tile h-9 w-9 shrink-0 bg-sky-50 text-[11px] font-extrabold text-sky-700">
-								<template v-if="initials(r.inspector_name)">{{ initials(r.inspector_name) }}</template>
-								<Icon v-else name="clock" :size="16" />
-							</span>
-							<div class="min-w-0 flex-1">
-								<div class="flex items-baseline justify-between gap-2">
-									<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
-									<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
-								</div>
-								<p class="truncate text-[11px] text-gray-500">
-									{{ [r.container_principal, r.inspection_type, r.tank_status].filter(Boolean).join(" · ") }}
-								</p>
-								<p class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-									<span class="oak-chip shrink-0 bg-sky-100 text-sky-800">{{ labels.eirStatusPendingReview }}</span>
-									<LiftOnBadge :survey="r.target_survey_on" :target="r.target_lift_on" :urgent="r.target_urgent_on" />
-								</p>
-								<!-- Sudah berapa lama menunggu, dan pada siapa. Sebuah antrean review
-								     tanpa umur tidak bisa dibedakan mana yang baru masuk dan mana yang
-								     tertinggal sejak kemarin. -->
-								<p v-if="r.inspector_name || r.modified" class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400">
-									<Icon name="clock" :size="11" class="shrink-0" />
-									{{ [since(r.modified), r.inspector_name].filter(Boolean).join(" · ") }}
-								</p>
-							</div>
-							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
-						</button>
-					</li>
-				</ul>
-			</CollapseSection>
+			<SkeletonList v-if="listRes.loading && !items.length" :action="false" />
 
-			<!-- Completed (submitted) EIRs — In & Out -->
-			<CollapseSection
-				:title="labels.eirCompleteList"
-				icon="check-circle"
-				tone="text-leaf-600"
-				chip="bg-leaf-100 text-leaf-800"
-				:count="doneRows.length"
-				:open="openSections.done"
-				@update:open="openSections.done = $event"
-			>
-				<ul v-if="doneRes.loading && !doneRows.length" class="space-y-2">
-					<li v-for="n in 3" :key="n" class="oak-skeleton h-12 rounded-xl"></li>
-				</ul>
-				<p v-else-if="!doneRows.length" class="py-2 text-center text-sm text-gray-400">{{ labels.eirCompleteEmpty }}</p>
-				<ul v-else class="divide-y divide-gray-100">
-					<li v-for="r in doneRows" :key="r.name">
-						<button type="button" class="oak-press flex w-full items-center gap-3 py-2.5 text-left" @click="goCompleted(r)">
-							<span class="oak-icon-tile h-9 w-9 shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-50 text-brand-600' : 'bg-leaf-50 text-leaf-600'">
-								<Icon :name="r.inspection_type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="16" />
-							</span>
-							<div class="min-w-0 flex-1">
-								<div class="flex items-baseline justify-between gap-2">
-									<p class="truncate font-bold text-gray-900">{{ r.container_no || r.container }}</p>
-									<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ r.inspection_id || r.name }}</span>
-								</div>
-								<p class="truncate text-[11px] text-gray-500">
-									{{ [r.container_principal, r.inspection_type, r.tank_status].filter(Boolean).join(" · ") }}
-								</p>
-								<p v-if="r.inspector_name || r.modified" class="mt-0.5 flex items-center gap-1 truncate text-[11px] text-gray-400">
-									<Icon name="clock" :size="11" class="shrink-0" />
-									{{ [since(r.modified), r.inspector_name].filter(Boolean).join(" · ") }}
-								</p>
-							</div>
-							<span v-if="r.revision_requested" class="oak-chip shrink-0 bg-orange-100 text-orange-800">{{ labels.eirStatusRevision }}</span>
-							<span class="oak-chip shrink-0" :class="r.inspection_type === 'EIR-Out' ? 'bg-brand-100 text-brand-700' : 'bg-leaf-100 text-leaf-800'">
-								<Icon :name="r.inspection_type === 'EIR-Out' ? 'arrow-up-right' : 'arrow-down-left'" :size="11" />
-								{{ r.inspection_type === 'EIR-Out' ? labels.eirBadgeOut : labels.eirBadgeIn }}
-							</span>
-							<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />
-						</button>
-					</li>
-				</ul>
-				<router-link to="/eir/history" class="oak-link block text-center text-sm">{{ labels.eirListMore }}</router-link>
-			</CollapseSection>
+			<div v-else-if="failed" class="oak-card flex flex-col items-center gap-2 p-8 text-center">
+				<span class="oak-icon-tile h-12 w-12 bg-red-50 text-red-500"><Icon name="alert-circle" :size="24" /></span>
+				<p class="text-sm font-bold text-gray-900">{{ labels.monitorErrorTitle }}</p>
+				<button class="oak-btn oak-btn-primary mt-1 min-h-[44px] px-4" @click="reload">{{ labels.monitorRetry }}</button>
+			</div>
 
-			<!-- Aksi utama mode pilih, menempel di bawah: daftar pending bisa panjang, dan
-			     tombol yang ikut ter-scroll ke luar layar memaksa operator naik-turun untuk
-			     memastikan pilihannya sudah lengkap. -->
+			<div v-else-if="!items.length" class="oak-card flex flex-col items-center gap-1 p-8 text-center">
+				<span class="oak-icon-tile h-11 w-11 bg-gray-100 text-gray-300"><Icon name="inbox" :size="22" /></span>
+				<p class="text-sm font-semibold text-gray-500">{{ labels.eirListEmpty }}</p>
+				<!-- Kalimat kedua hanya untuk kosong yang sebenar-benarnya, bukan kosong karena saringan. -->
+				<p v-if="!counts.all" class="text-xs text-gray-400">{{ labels.eirPendingEmptyHint }}</p>
+			</div>
+
+			<div v-else class="space-y-4">
+				<section v-for="g in days" :key="g.date" class="space-y-2">
+					<div class="flex items-center justify-between gap-2 px-1">
+						<p class="flex min-w-0 items-center gap-1.5 truncate text-xs font-bold" :class="g.hot ? 'text-red-600' : 'text-gray-600'">
+							<span class="h-2 w-2 shrink-0 rounded-full" :class="g.hot ? 'bg-red-500' : 'bg-gray-400'"></span>
+							{{ g.label }}
+						</p>
+						<button
+							v-if="selectMode && g.rows.some(selectable)"
+							class="oak-press shrink-0 text-[11px] font-bold text-brand-600"
+							@click="selectAll(g.rows.filter(selectable))"
+						>
+							{{ labels.eirBatchSelectAll }}
+						</button>
+						<p v-else class="shrink-0 text-[11px] text-gray-400">{{ fill(labels.eirCount, { n: dayCounts[g.date] || g.rows.length }) }}</p>
+					</div>
+
+					<!-- Dikerjakan: kartu besar dengan tombol lanjut. -->
+					<button
+						v-for="o in g.running"
+						:key="o.name"
+						type="button"
+						class="oak-card oak-press block w-full space-y-2.5 p-4 text-left"
+						:class="selected.has(o.name) ? 'ring-2 ring-brand-500' : ''"
+						@click="open(o)"
+					>
+						<span class="flex items-start gap-2">
+							<span
+								v-if="selectMode"
+								class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
+								:class="selected.has(o.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-300'"
+							>
+								<Icon v-if="selected.has(o.name)" name="check" :size="14" />
+							</span>
+							<EirInfo :o="o" class="flex-1">
+								<span class="oak-chip shrink-0" :class="stateChip(o).tone">{{ stateChip(o).label }}</span>
+							</EirInfo>
+						</span>
+						<span class="flex flex-wrap items-center gap-1.5 text-[11px]">
+							<span class="oak-chip shrink-0" :class="dirChip(o).tone">
+								<Icon :name="dirChip(o).icon" :size="11" /> {{ dirChip(o).label }}
+							</span>
+							<span v-if="bonSize(o) > 1" class="oak-chip shrink-0 bg-brand-100 text-brand-700">
+								<Icon name="layers" :size="11" /> {{ labels.eirBatchTitle }} {{ bonSize(o) }}
+							</span>
+							<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
+						</span>
+						<span v-if="o.started_by_name" class="flex items-center gap-1.5 text-xs">
+							<Icon name="user" :size="13" class="shrink-0 text-gray-400" />
+							<span class="text-gray-400">{{ labels.svWorkedBy }}</span>
+							<span class="min-w-0 truncate font-semibold text-gray-700">{{ o.started_by_name }}</span>
+						</span>
+						<!-- Langkah hanya untuk EIR yang pernah dibuka di HP ini — "1/4" untuk tank
+						     yang dimulai rekan kemarin adalah tebakan. -->
+						<span v-if="hasStep(o.name)" class="block h-1.5 overflow-hidden rounded-full bg-gray-100">
+							<span class="block h-full rounded-full bg-brand-500" :style="{ width: `${((getStep(o.name) + 1) / STEP_COUNT) * 100}%` }"></span>
+						</span>
+						<span v-if="!selectMode" class="oak-btn oak-btn-primary min-h-[48px] w-full">
+							<Icon name="play-circle" :size="16" /> {{ labels.eirResume }}
+						</span>
+					</button>
+
+					<!-- Sisanya: baris ringkas. -->
+					<ul v-if="g.rest.length" class="oak-card divide-y divide-gray-100 overflow-hidden">
+						<li v-for="o in g.rest" :key="o.name">
+							<button
+								type="button"
+								class="oak-press flex min-h-[64px] w-full items-center gap-2 px-4 py-3 text-left"
+								:class="selectMode && !selectable(o) ? 'opacity-50' : ''"
+								@click="open(o)"
+							>
+								<span
+									v-if="selectMode && selectable(o)"
+									class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border"
+									:class="selected.has(o.name) ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-300'"
+								>
+									<Icon v-if="selected.has(o.name)" name="check" :size="14" />
+								</span>
+								<span class="min-w-0 flex-1">
+									<EirInfo :o="o">
+										<span class="oak-chip shrink-0" :class="stateChip(o).tone">{{ stateChip(o).label }}</span>
+									</EirInfo>
+									<span class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+										<span class="oak-chip shrink-0" :class="dirChip(o).tone">
+											<Icon :name="dirChip(o).icon" :size="11" /> {{ dirChip(o).label }}
+										</span>
+										<span v-if="selectable(o) && bonSize(o) > 1" class="oak-chip shrink-0 bg-brand-100 text-brand-700">
+											<Icon name="layers" :size="11" /> {{ labels.eirBatchTitle }} {{ bonSize(o) }}
+										</span>
+										<LiftOnBadge :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
+									</span>
+									<!-- Review: sudah berapa lama menunggu, dan pada siapa. -->
+									<span
+										v-if="o.state === 'review' && (o.inspector_name || o.modified)"
+										class="mt-1 flex items-center gap-1 truncate text-[11px] text-gray-400"
+									>
+										<Icon name="clock" :size="11" class="shrink-0" />
+										{{ [since(o.modified), o.inspector_name].filter(Boolean).join(" · ") }}
+									</span>
+								</span>
+								<Icon v-if="!selectMode" name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
+							</button>
+						</li>
+					</ul>
+				</section>
+
+				<button
+					v-if="items.length < total"
+					class="oak-btn oak-btn-secondary min-h-[48px] w-full"
+					:disabled="listRes.loading"
+					@click="loadMore"
+				>
+					{{ listRes.loading ? "…" : `${labels.svMore} (${items.length}/${total})` }}
+				</button>
+			</div>
+
+			<!-- Aksi utama mode pilih, menempel di bawah: daftar bisa panjang. -->
 			<div
 				v-if="selectMode && selected.size"
 				class="oak-footer -mx-4 border-t border-gray-200/80 bg-gray-50/95 px-4 py-3 backdrop-blur"
@@ -413,15 +320,21 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from "vue"
+import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
-import { since } from "@/utils/surveyStatus"
+import { fmtDate, since } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import EirBatchBar from "@/components/EirBatchBar.vue"
 import EirBatchSheet from "@/components/EirBatchSheet.vue"
-import CollapseSection from "@/components/CollapseSection.vue"
+import EirInfo from "@/components/EirInfo.vue"
+import SkeletonList from "@/components/SkeletonList.vue"
+import ListSearch from "@/components/list/ListSearch.vue"
+import StatPills from "@/components/list/StatPills.vue"
+import FilterBar from "@/components/list/FilterBar.vue"
+import FilterSheet from "@/components/list/FilterSheet.vue"
+import { daysFrom, fill, groupByDay, useSavedFilters } from "@/utils/listKit"
 import { cachedResource } from "@/data/cache"
 import { keepScrollForNextNavigation } from "@/router"
 import EirInForm from "@/pages/EirInForm.vue"
@@ -438,18 +351,9 @@ import {
 	tankNo,
 } from "@/utils/eirBatch"
 
+
 const route = useRoute()
 const router = useRouter()
-
-// "Budi Santoso" -> "BS". Dipakai sebagai penanda baris, bukan sebagai identitas: nama
-// lengkapnya tetap tertulis di baris waktu tepat di bawahnya, jadi inisial yang bertabrakan
-// antar dua orang tidak menyesatkan siapa pun — ia cuma membuat baris milik orang yang sama
-// terlihat berkelompok saat daftar di-scroll.
-function initials(name) {
-	const parts = String(name || "").trim().split(/\s+/).filter(Boolean)
-	if (!parts.length) return ""
-	return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase()
-}
 
 // One EIR menu for both directions. The worklist below merges pending EIR-In and EIR-Out
 // (each row badged by type); tapping opens the matching form component.
@@ -471,11 +375,14 @@ const search = ref("")
 const inItems = ref([])
 const outItems = ref([])
 
+// Pending EIR-In / EIR-Out (auto-created per bon) — the batch backbone: bon mates, batch rows
+// and the ?e= direction are read from these full, UNfiltered lists, so a search or filter on the
+// list below never splits a batch. The screen itself draws `eir_list`.
 // Pending EIR-In (auto-created per container when an Order Bongkar is submitted).
 const inRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_pending",
 	method: "GET",
-	makeParams: () => ({ search: search.value || undefined, page_length: 50 }),
+	makeParams: () => ({ page_length: 50 }),
 	auto: true,
 	onSuccess: (data) => (inItems.value = (data.items || []).map((x) => ({ ...x, _type: "EIR-In" }))),
 })
@@ -483,7 +390,7 @@ const inRes = cachedResource({
 const outRes = cachedResource({
 	url: "container_depot.ess.inspections.eir_out_pending",
 	method: "GET",
-	makeParams: () => ({ search: search.value || undefined, page_length: 50 }),
+	makeParams: () => ({ page_length: 50 }),
 	auto: true,
 	onSuccess: (data) => (outItems.value = (data.items || []).map((x) => ({ ...x, _type: "EIR-Out" }))),
 })
@@ -535,12 +442,6 @@ const openBatchLine = computed(() => {
 })
 const sentSummary = computed(() => sentRows())
 
-const loadingPending = computed(() => inRes.loading || outRes.loading)
-const fetchError = computed(() => {
-	const e = inRes.error || outRes.error
-	return e ? e.messages?.[0] || e.message : null
-})
-
 // Merge both queues, in the same three tiers the server sorts every worklist by
 // (container_depot.container_depot.worklist): the customer's lift-on date first, then the
 // inspection already in this surveyor's hands, then the rest newest-first.
@@ -574,68 +475,6 @@ const pendingItems = computed(() => {
 	return all
 })
 
-// Arah EIR (masuk / keluar) — saringan halaman, bukan saringan satu daftar: ia dipakai
-// keempat bagian di bawah. Pencariannya sendiri dikirim ke server (lihat makeParams di
-// tiap resource), jadi kotak cari dan pil arah ini bersama-sama menyaring SATU daftar
-// yang kebetulan digambar dalam empat bagian.
-const dirFilter = ref("all")
-const DIR_FILTERS = computed(() => [
-	{ key: "all", label: labels.eirFilterAll },
-	{ key: "EIR-In", label: labels.eirBadgeIn },
-	{ key: "EIR-Out", label: labels.eirBadgeOut },
-])
-const byDir = (rows, typeKey) =>
-	dirFilter.value === "all" ? rows : rows.filter((r) => r[typeKey] === dirFilter.value)
-
-const visiblePending = computed(() => byDir(pendingItems.value, "_type"))
-const reviewRows = computed(() => byDir(reviewItems.value, "inspection_type"))
-const doneRows = computed(() => byDir(doneItems.value, "inspection_type"))
-
-// Empat bagian, masing-masing bisa ditutup: pekerjaan yang sedang dipegang seseorang,
-// yang belum disentuh, yang sudah dikirim ke Adm Ops, dan yang sudah selesai. Sebelumnya
-// ketiganya berdesakan di satu halaman yang tidak bisa dipendekkan, dan bagian "sedang
-// dikerjakan" tidak ada sama sekali — ia tercampur di antrean "menunggu dikerjakan",
-// tempat yang persis salah untuk tank yang sudah ada orangnya.
-const pendingSections = computed(() => {
-	const rows = visiblePending.value
-	return [
-		{
-			key: "doing", title: labels.sectionDoing, icon: "play-circle",
-			tone: "text-brand-500", chip: "bg-brand-100 text-brand-700",
-			rows: rows.filter((r) => r.work_started_on), empty: labels.eirFilterEmptyStarted,
-		},
-		{
-			key: "todo", title: labels.sectionTodo, icon: "search-check",
-			tone: "text-amber-500", chip: "bg-amber-100 text-amber-800",
-			rows: rows.filter((r) => !r.work_started_on), empty: labels.eirFilterEmptyNotStarted,
-		},
-	]
-})
-
-// Yang terbuka saat halaman dibuka: pekerjaan yang belum lepas tangan. Review dan Selesai
-// tertutup — keduanya bacaan, bukan antrean, dan kepalanya sudah menyebut jumlahnya.
-const openSections = reactive({ doing: true, todo: true, review: false, done: false })
-
-// ?s=doing|todo|review|done — dikirim kartu Beranda ("EIR review" mendarat di bagian
-// review-nya, terbuka sendiri, sisanya tertutup). Tanpa ini kartu itu cuma membuka halaman
-// EIR dan operator harus mencari sendiri daftar yang angkanya barusan ia tekan.
-onMounted(() => {
-	const want = String(route.query.s || "")
-	// hasOwnProperty, bukan `in`: `?s=toString` lolos dari `in` dan akan menutup keempat
-	// bagian sekaligus.
-	if (!Object.prototype.hasOwnProperty.call(openSections, want)) return
-	Object.keys(openSections).forEach((k) => (openSections[k] = k === want))
-})
-
-/** Kalimat kosong satu bagian — yang menyebut saringan arah kalau memang itu penyebabnya. */
-function emptyFor(s) {
-	if (pendingItems.value.length) {
-		if (dirFilter.value === "EIR-In") return labels.eirFilterEmptyIn
-		if (dirFilter.value === "EIR-Out") return labels.eirFilterEmptyOut
-	}
-	return s.empty
-}
-
 // Sejauh mana satu EIR sudah dikerjakan. Langkahnya hanya dicetak untuk EIR yang memang
 // pernah dibuka di sesi ini — "Draft 1/4" untuk tank yang dimulai rekan kemarin adalah
 // tebakan, dan tebakan di worklist dibaca sebagai fakta.
@@ -657,41 +496,147 @@ const sharedVoucher = computed(() => {
 	return vouchers.size === 1 ? [...vouchers][0] : ""
 })
 
-let searchTimer = null
-function onSearchInput() {
-	clearTimeout(searchTimer)
-	searchTimer = setTimeout(reloadLists, 300)
-}
-// Satu kotak cari untuk empat daftar — jadi satu ketikan menyegarkan keempatnya.
 function reloadLists() {
 	inRes.reload()
 	outRes.reload()
-	reviewRes.reload()
-	doneRes.reload()
+	reload()
 }
 
-// Landing "recently submitted" — the caller's own latest completed EIRs (In & Out),
-// newest first (no date filter). Tapping one opens its read-only detail (+ revision).
-const LANDING_LIMIT = 5
-const doneItems = ref([])
-const doneRes = cachedResource({
-	url: "container_depot.ess.inspections.eir_history",
+// --- daftar (eir_list): cari, pil status, filter, urut, grup per tanggal --------------------
+// Filter disimpan per user di perangkat ini (utils/listKit); pencarian tidak.
+const PAGE = 20
+const SHEET_DEFAULTS = { type: "", day: "", depot: "", principal: "" }
+const TYPE_LABEL = { "EIR-In": labels.eirBadgeIn, "EIR-Out": labels.eirBadgeOut }
+const SHEET_FIELDS = [
+	{
+		key: "type", type: "scope",
+		choices: [{ key: "", label: labels.eirFilterAll }, { key: "EIR-In", label: labels.eirBadgeIn }, { key: "EIR-Out", label: labels.eirBadgeOut }],
+	},
+	{ key: "day", type: "date", label: labels.svChipDate },
+	{ key: "depot", type: "chips", list: "depots", label: labels.svChipDepot },
+	{ key: "principal", type: "select", list: "principals", label: labels.svChipPrincipal },
+]
+const f = useSavedFilters("eir", { ...SHEET_DEFAULTS, status: "", sort: "priority" })
+if (f.sort !== "newest") f.sort = "priority"
+// ?s=doing|todo|review — kartu Beranda mendarat di pil yang angkanya barusan ditekan.
+// "done" (EIR selesai) kini tinggal di Riwayat.
+if (["todo", "doing", "review"].includes(route.query.s)) f.status = route.query.s
+else if (route.query.s === "done") router.replace("/eir/history")
+const filterOpen = ref(false)
+
+const activeChips = computed(() =>
+	[
+		f.type && { key: "type", label: labels.eirTypeFilter, value: TYPE_LABEL[f.type] || f.type },
+		f.day && { key: "day", label: labels.svChipDate, value: fmtDate(f.day) },
+		f.depot && { key: "depot", label: labels.svChipDepot, value: f.depot },
+		f.principal && { key: "principal", label: labels.svChipPrincipal, value: f.principal },
+	].filter(Boolean)
+)
+function clearOne(key) {
+	f[key] = SHEET_DEFAULTS[key]
+	reload()
+}
+function applyFilter(draft) {
+	Object.assign(f, draft)
+	reload()
+}
+function clearAll() {
+	search.value = ""
+	Object.assign(f, SHEET_DEFAULTS, { status: "", sort: "priority" })
+	reload()
+}
+
+const items = ref([])
+const total = ref(0)
+const counts = ref({})
+const options = ref({ depots: [], principals: [] })
+const dayCounts = ref({})
+const failed = ref(false)
+const start = ref(0)
+
+// Angka pil dihitung server TANPA filter — pil adalah cara berpindah filter.
+const pills = computed(() => [
+	{ key: "", label: labels.svStatAll, count: counts.value.all || 0, tone: "text-gray-900" },
+	{ key: "todo", label: labels.listStatTodo, count: counts.value.todo || 0, tone: "text-amber-600" },
+	{ key: "doing", label: labels.sectionDoing, count: counts.value.doing || 0, tone: "text-brand-600" },
+	{ key: "review", label: labels.listStatReview, count: counts.value.review || 0, tone: "text-sky-600" },
+])
+
+// Grup = `group` dari server: tanggal target (Prioritas) atau tanggal EIR dibuat (Terbaru).
+// Urutan sepenuhnya dari server (worklist.sort_by_priority).
+const days = computed(() =>
+	groupByDay(items.value, (o) => o.group, {
+		running: (o) => o.state === "doing",
+		hot: (o) => o.group === "urgent" || (!!o.due && daysFrom(o.due) <= 0),
+	}).map((g) =>
+		g.date === "urgent" ? { ...g, label: labels.listUrgentGroup } : g.date ? g : { ...g, label: labels.listNoDueGroup }
+	)
+)
+
+const listRes = cachedResource({
+	url: "container_depot.ess.inspections.eir_list",
 	method: "GET",
-	makeParams: () => ({ docstatus: 1, page_length: LANDING_LIMIT, search: search.value || undefined }),
+	makeParams: () => ({
+		status: f.status || undefined,
+		search: search.value || undefined,
+		inspection_type: f.type || undefined,
+		day: f.day || undefined,
+		depot: f.depot || undefined,
+		principal: f.principal || undefined,
+		sort: f.sort,
+		start: start.value,
+		page_length: PAGE,
+	}),
 	auto: true,
-	onSuccess: (data) => (doneItems.value = data.items || []),
+	onSuccess(data) {
+		failed.value = false
+		const rows = (data?.items || []).map((x) => ({ ...x, _type: x.inspection_type }))
+		items.value = start.value ? [...items.value, ...rows] : rows
+		total.value = data?.total || 0
+		counts.value = data?.counts || {}
+		options.value = { depots: data?.depots || [], principals: data?.principals || [] }
+		dayCounts.value = data?.day_counts || {}
+	},
+	onError() {
+		failed.value = true
+	},
 })
 
-// "Diajukan Review" — the caller's own EIRs sent for review (Pending Review, still
-// docstatus 0), awaiting Admin Ops's Desk Submit. Read-only, opened like a completed one.
-const reviewItems = ref([])
-const reviewRes = cachedResource({
-	url: "container_depot.ess.inspections.eir_pending_review",
-	method: "GET",
-	makeParams: () => ({ page_length: 20, search: search.value || undefined }),
-	auto: true,
-	onSuccess: (data) => (reviewItems.value = data.items || []),
-})
+function reload() {
+	start.value = 0
+	listRes.reload()
+}
+function loadMore() {
+	start.value = items.value.length
+	listRes.reload()
+}
+function setStatus(key) {
+	f.status = key
+	reload()
+}
+function toggleSort() {
+	f.sort = f.sort === "newest" ? "priority" : "newest"
+	reload()
+}
+
+// Yang sedang review sudah lepas tangan: dibuka baca-saja, tidak ikut batch.
+const selectable = (o) => o.state !== "review"
+function open(o) {
+	if (!selectable(o)) {
+		if (!selectMode.value) goCompleted(o)
+		return
+	}
+	rowClick(o)
+}
+function stateChip(o) {
+	if (o.state === "review") return { label: labels.eirStatusPendingReview, tone: "bg-sky-100 text-sky-800" }
+	return progressChip(o)
+}
+function dirChip(o) {
+	return o._type === "EIR-Out"
+		? { label: labels.eirBadgeOut, icon: "arrow-up-right", tone: "bg-brand-100 text-brand-700" }
+		: { label: labels.eirBadgeIn, icon: "arrow-down-left", tone: "bg-leaf-100 text-leaf-800" }
+}
 
 function goItem(r) {
 	router.push({ query: { e: r.name, t: r._type === "EIR-Out" ? "out" : "in" } })
