@@ -160,7 +160,9 @@ function mr_submit_primary(frm) {
 	const empty = !(frm.doc.used_items || []).length;
 	const warn = empty
 		? __('Submit M&R ini sekarang? Service & Parts masih KOSONG — order ditutup tanpa tagihan.')
-		: __('Submit M&R ini sekarang? Order langsung SELESAI — owner tidak diminta menyetujui, order tidak diteruskan ke team, dan part yang disetujui KELUAR dari stok.');
+		: MR_OWNER_APPROVAL
+			? __('Submit M&R ini sekarang? Order langsung SELESAI — owner tidak diminta menyetujui, order tidak diteruskan ke team, dan part yang disetujui KELUAR dari stok.')
+			: __('Submit M&R ini sekarang? Order langsung SELESAI tanpa diteruskan ke team, dan part KELUAR dari stok.');
 	frm.page.set_primary_action(__('Submit'), () =>
 		mr_call(frm, 'container_depot.ess.repairs.mr_submit_direct', {}, warn)
 	);
@@ -305,8 +307,13 @@ frappe.ui.form.on('Repair Order', {
 				'blue',
 			],
 			'Pending Approval': [__('Sudah di web customer, menunggu keputusan owner. Admin Ops masih bisa Tarik dari Owner.'), 'orange'],
-			'Revision Requested': [__('Owner minta revisi. Perbaiki itemnya, lalu Kirim ke Owner lagi.'), 'orange'],
-			Approved: [__('Disetujui owner dan part sudah keluar dari stok. Teruskan ke Team agar masuk worklist PWA, atau Selesaikan Langsung kalau pekerjaannya sudah selesai.'), 'green'],
+			'Revision Requested': [
+				MR_OWNER_APPROVAL
+					? __('Owner minta revisi. Perbaiki itemnya, lalu Kirim ke Owner lagi.')
+					: __('Owner minta revisi. Perbaiki itemnya, lalu Teruskan ke Team.'),
+				'orange',
+			],
+			Approved: [__('Disetujui dan part sudah keluar dari stok. Teruskan ke Team agar masuk worklist PWA, atau Selesaikan Langsung kalau pekerjaannya sudah selesai.'), 'green'],
 			Rejected: [__('Ditolak owner.'), 'red'],
 			Pending: [__('Sudah di worklist PWA team repair, menunggu dikerjakan.'), 'blue'],
 			'In Progress': [__('Sedang dikerjakan di workshop.'), 'yellow'],
@@ -443,7 +450,7 @@ frappe.ui.form.on('Repair Order', {
 								frm,
 								'container_depot.ess.repairs.mr_reopen_completed',
 								{ note: v.note },
-								__('Buka kembali M&R ini? Status kembali ke In Progress dan tanggal selesai dihapus; estimasi, persetujuan owner dan part yang sudah keluar tetap.')
+								__('Buka kembali M&R ini? Status kembali ke In Progress dan tanggal selesai dihapus; estimasi, persetujuan dan part yang sudah keluar tetap.')
 							),
 						__('Buka Lagi M&R'),
 						__('Buka Lagi')

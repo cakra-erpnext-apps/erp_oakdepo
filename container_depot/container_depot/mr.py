@@ -986,7 +986,7 @@ def forward_to_team(repair_order):
 		ro.save()  # one legal edge at a time: Draft -> Approved, then -> Pending below
 	if ro.status != "Approved":
 		frappe.throw(
-			_("Hanya M&R yang sudah disetujui owner yang bisa diteruskan ke team (status: {0}).").format(ro.status)
+			_("Hanya M&R Draft atau yang sudah disetujui yang bisa diteruskan ke team (status: {0}).").format(ro.status)
 		)
 	ro.status = "Pending"
 	ro.save()
