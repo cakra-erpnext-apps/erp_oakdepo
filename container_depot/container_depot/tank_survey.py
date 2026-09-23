@@ -240,7 +240,7 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		"Container Booking",
 		booking_name,
 		["name", "direction", "booking_status", "docstatus", "depot", "branch",
-		 "survey_date", "plan_date", "principal", "surveyor", "survey_reff_doc"],
+		 "survey_date", "plan_date", "principal", "surveyor"],
 		as_dict=True,
 	)
 	if not booking or booking.direction != OUTBOUND:
@@ -275,10 +275,6 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		doc.plan_date = booking.plan_date
 		doc.principal = booking.principal
 		doc.surveyor = booking.surveyor
-		# Only when filled: a number typed on the Survey Order itself mirrors back onto the
-		# booking (survey_order.sync_booking_reff_doc), so a blank here means "not given".
-		if booking.survey_reff_doc:
-			doc.reff_doc = booking.survey_reff_doc
 		doc.branch = booking.branch
 		doc.depot = booking.depot
 		if not existing:
@@ -314,9 +310,6 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		# do on the next reopen — a finished day that gains a tank is a corrected booking, and
 		# ``refresh_progress`` reopens it from the row that is not done.
 		if doc.docstatus == 1 and not added and not any(plan):
-			# reff_doc is allow_on_submit — the one header field a finished day still takes.
-			if booking.survey_reff_doc and doc.reff_doc != doc.get_db_value("reff_doc"):
-				frappe.db.set_value(SCHEDULE, doc.name, "reff_doc", doc.reff_doc, update_modified=False)
 			return {"survey_order": doc.name, "tanks": []}
 		if doc.docstatus == 1:
 			frappe.db.set_value(SCHEDULE, doc.name, "docstatus", 0, update_modified=False)
@@ -483,7 +476,7 @@ def _filter_value(value):
 
 
 def list_all_survey_orders(status=None, from_date=None, to_date=None, search=None,
-						   principal=None, active_only=0, sort=None,
+						   principal=None, depot=None, active_only=0, sort=None,
 						   start=0, page_length=20) -> dict:
 	"""Every Survey Order, filterable — the standalone Jadwal Survey list.
 
@@ -516,6 +509,14 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 	principal = _filter_value(principal)
 	if principal:
 		filters["principal"] = principal
+	depot = _filter_value(depot)
+	if depot:
+		# Header ATAU baris: header Tank Out boleh kosong kalau pickup-nya dari dua depo.
+		filters["name"] = ["in", list(set(
+			frappe.get_all(SCHEDULE, filters={"depot": depot}, pluck="name", limit_page_length=0)
+			+ frappe.get_all(ROW, filters={"parenttype": SCHEDULE, "depot": depot},
+							 pluck="parent", limit_page_length=0)
+		)) or [""]]
 	if from_date:
 		filters["survey_date"] = [">=", str(getdate(from_date))]
 	if to_date:
@@ -534,6 +535,15 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 			[SCHEDULE, "principal", "like", like],
 			[SCHEDULE, "booking", "like", like],
 		]
+		# Reff Doc, Shipper & EMKL tinggal di booking-nya — dicari di sana, dibawa pulang lewat link.
+		bookings = frappe.get_all(
+			"Container Booking",
+			or_filters=[["reff_doc", "like", like], ["shipper", "like", like], ["customer", "like", like]],
+			pluck="name",
+			limit_page_length=0,
+		)
+		if bookings:
+			or_filters.append([SCHEDULE, "booking", "in", bookings])
 		parents = frappe.get_all(
 			ROW,
 			filters={"parenttype": SCHEDULE, "container_no": ["like", like]},
@@ -545,29 +555,68 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 			# two alternatives at once.
 			or_filters.append([SCHEDULE, "name", "in", list(set(parents))])
 
-	items = frappe.get_all(
-		SCHEDULE,
-		filters=filters,
-		or_filters=or_filters,
-		fields=[
-			"name", "booking", "principal", "surveyor", "status", "survey_date", "plan_date",
-			"target_urgent_on",
-			"depot", "branch", "tank_count", "lowered_count", "survey_done_count",
-			"per_surveyed", "container_summary", "docstatus",
-		],
-		# Newest day first: a list is browsed backwards from now, unlike the calendar which is
-		# read forwards from a date the user picked. `sort=due` membaliknya jadi tenggat
-		# terdekat duluan — itu yang dicari orang yang membuka daftar ini untuk BEKERJA, bukan
-		# untuk mencari jadwal yang sudah lewat.
-		order_by=(
-			"survey_date asc, creation asc"
-			if _filter_value(sort) == "due"
-			else "survey_date desc, creation desc"
-		),
-		limit_start=cint(start),
-		limit_page_length=cint(page_length),
+	due = _filter_value(sort) == "due"
+	if due and not (search or from_date or to_date or filters.get("status")):
+		# Tenggat terdekat tanpa saringan = kerjaan: hari ini ke depan, plus yang telat tapi
+		# belum selesai. Tanpa ini halaman pertama berisi jadwal selesai paling tua.
+		or_filters = [
+			[SCHEDULE, "survey_date", ">=", today()],
+			[SCHEDULE, "status", "in", [SCHEDULED, IN_PROGRESS]],
+		]
+
+	# Urutan: tanggal survey (Tenggat terdekat = maju, Terbaru = mundur), lalu dalam satu hari
+	# dikerjakan → terjadwal → selesai → batal. Frappe v16 menolak FIELD()/CASE di order_by,
+	# jadi kunci ringannya diurutkan di sini lalu halamannya diambil per nama.
+	# ponytail: semua kunci yang cocok dimuat; saringan "due" membatasinya ke kerjaan terbuka,
+	# "Terbaru" tanpa saringan memuat seluruh riwayat — pindah ke frappe.qb + Case kalau terasa.
+	keys = frappe.get_all(
+		SCHEDULE, filters=filters, or_filters=or_filters,
+		fields=["name", "survey_date", "status", "creation"], limit_page_length=0,
 	)
+	rank = {IN_PROGRESS: 0, SCHEDULED: 1, COMPLETED: 2, CANCELLED: 3}
+	keys.sort(key=lambda k: (rank.get(k.status, 4), k.creation))
+	keys.sort(key=lambda k: k.survey_date or getdate("1900-01-01"), reverse=not due)
+	total = len(keys)
+	day_counts = {}
+	for k in keys:
+		if k.status != CANCELLED and k.survey_date:
+			day_counts[str(k.survey_date)] = day_counts.get(str(k.survey_date), 0) + 1
+	page = [k.name for k in keys[cint(start):cint(start) + cint(page_length)]]
+	by_name = {
+		it.name: it for it in frappe.get_all(
+			SCHEDULE,
+			filters={"name": ["in", page]},
+			fields=[
+				"name", "booking", "principal", "surveyor", "status", "survey_date", "plan_date",
+				"target_urgent_on",
+				"depot", "branch", "tank_count", "lowered_count", "survey_done_count",
+				"per_surveyed", "container_summary", "docstatus",
+			],
+		)
+	} if page else {}
+	items = [by_name[n] for n in page if n in by_name]
+	# Reff Doc, Shipper & EMKL (customer booking) milik booking-nya, dan depo dari baris tank: header Tank Out boleh
+	# tanpa depo kalau satu pickup diambil dari dua depo satu branch.
+	bookings = {
+		b.name: b for b in frappe.get_all(
+			"Container Booking",
+			filters={"name": ["in", [it.booking for it in items if it.booking]]},
+			fields=["name", "reff_doc", "shipper", "customer"],
+		)
+	} if items else {}
+	row_depots = {}
+	for r in frappe.get_all(
+		ROW, filters={"parenttype": SCHEDULE, "parent": ["in", [it.name for it in items]]},
+		fields=["parent", "depot"], distinct=True, order_by="depot asc",
+	) if items else []:
+		if r.depot:
+			row_depots.setdefault(r.parent, []).append(r.depot)
 	for it in items:
+		b = bookings.get(it.booking) or {}
+		it["reff_doc"] = b.get("reff_doc")
+		it["shipper"] = b.get("shipper")
+		it["emkl"] = b.get("customer")
+		it["depot"] = it.get("depot") or ", ".join(row_depots.get(it.name, [])) or None
 		it["waiting_count"] = max((it.get("tank_count") or 0) - (it.get("lowered_count") or 0), 0)
 		# Mendesak dihitung sebelum tanggalnya jadi string: `_is_urgent` membaca tanggal.
 		it["days_to"] = _days_to(it)
@@ -575,23 +624,21 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 		for k in ("survey_date", "plan_date", "target_urgent_on"):
 			it[k] = str(it[k]) if it.get(k) else None
 
-	# `frappe.db.count` takes no or_filters, and faking the total from the page size breaks the
-	# "Muat lagi" button precisely when it is needed: a full page would report total == loaded
-	# and the button would vanish with results still unseen. A search does its own count.
-	if or_filters:
-		total = len(frappe.get_all(
-			SCHEDULE, filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
-		))
-	else:
-		total = frappe.db.count(SCHEDULE, filters)
-
 	# Prinsipal yang benar-benar punya jadwal di cakupan ini — pilihan untuk chip filter.
 	# Dikirim bersama daftarnya, bukan endpoint tersendiri: satu-satunya layar yang memakainya
 	# adalah layar ini, dan sebuah permintaan kedua di sinyal yard adalah jeda yang terasa.
 	principals = sorted({
 		p for p in frappe.get_all(SCHEDULE, filters=_depot_filter({}), pluck="principal", distinct=True) if p
 	})
-	return {"items": items, "total": total, "counts": _status_counts(), "principals": principals}
+	# Depo pilihan chip: dari header dan baris tank, dipotong ke cakupan user.
+	scope = get_user_depots()
+	depots = sorted({
+		d for d in frappe.get_all(SCHEDULE, pluck="depot", distinct=True)
+		+ frappe.get_all(ROW, filters={"parenttype": SCHEDULE}, pluck="depot", distinct=True)
+		if d and (scope is None or d in scope)
+	})
+	return {"items": items, "total": total, "counts": _status_counts(),
+			"principals": principals, "depots": depots, "day_counts": day_counts}
 
 
 def _status_counts() -> dict:
@@ -647,8 +694,6 @@ def get_survey_order_detail(name: str) -> dict:
 		"booking": doc.booking,
 		"principal": doc.principal,
 		"surveyor": doc.surveyor,
-		# The survey's OWN document number — not the booking's. Two papers meet on one pickup.
-		"reff_doc": doc.reff_doc,
 		"status": doc.status,
 		"docstatus": doc.docstatus,
 		"survey_date": str(doc.survey_date) if doc.survey_date else None,
