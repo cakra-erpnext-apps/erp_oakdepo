@@ -5,7 +5,7 @@
 				<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.svListTitle }}</h1>
 				<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.svListHint }}</p>
 			</div>
-			<router-link to="/survey-orders/history" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3">
+			<router-link to="/survey-orders/riwayat" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3">
 				<Icon name="clock" :size="15" /> {{ labels.navHistory }}
 			</router-link>
 		</div>

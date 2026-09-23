@@ -147,6 +147,14 @@ const routes = [
 		component: () => import("@/pages/SurveyTank.vue"),
 	},
 	{
+		// Riwayat JADWAL (Survey Order selesai / dibatalkan) — dibuka dari list Jadwal Survey.
+		// Beda dari /survey-orders/history di bawah, yang riwayat per TANK untuk Kalmar.
+		path: "/survey-orders/riwayat",
+		name: "SurveyOrderHistory",
+		meta: { menuKeys: ["surveyList", "surveyPos", "posFix"] },
+		component: () => import("@/pages/SurveyOrderHistory.vue"),
+	},
+	{
 		path: "/survey-orders/history",
 		name: "SurveyPositionHistory",
 		// Two owners, unlike every other route: this Riwayat lists the whole workflow and is

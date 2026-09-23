@@ -58,7 +58,7 @@ def survey_orders(date=None, start=0, page_length=20):
 @frappe.whitelist(methods=["GET"])
 def survey_order_list(status=None, from_date=None, to_date=None, search=None,
 					  principal=None, depot=None, surveyor=None, shipper=None, emkl=None,
-					  mine=0, active_only=0, sort=None,
+					  mine=0, history=0, active_only=0, sort=None,
 					  start=0, page_length=20):
 	"""GET /api/v1/ess/survey-order-list — the standalone Jadwal Survey list.
 
@@ -72,7 +72,7 @@ def survey_order_list(status=None, from_date=None, to_date=None, search=None,
 	return tank_survey.list_all_survey_orders(
 		status=status, from_date=from_date, to_date=to_date, search=search,
 		principal=principal, depot=depot, surveyor=surveyor, shipper=shipper, emkl=emkl,
-		mine=mine, active_only=active_only, sort=sort,
+		mine=mine, history=history, active_only=active_only, sort=sort,
 		start=start, page_length=page_length,
 	)
 

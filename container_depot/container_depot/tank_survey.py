@@ -480,7 +480,7 @@ def _filter_value(value):
 
 def list_all_survey_orders(status=None, from_date=None, to_date=None, search=None,
 						   principal=None, depot=None, surveyor=None, shipper=None, emkl=None,
-						   mine=0, active_only=0, sort=None,
+						   mine=0, history=0, active_only=0, sort=None,
 						   start=0, page_length=20) -> dict:
 	"""Every Survey Order, filterable — the standalone Jadwal Survey list.
 
@@ -503,7 +503,10 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 	# throws, and the whole list 500s instead of simply coming back unfiltered.
 	from_date = _filter_value(from_date)
 	to_date = _filter_value(to_date)
-	if status and status in SCHEDULE_STATUSES:
+	if cint(history):
+		# Riwayat jadwal: yang sudah selesai atau dibatalkan, dan hanya itu.
+		filters["status"] = ["in", [COMPLETED, CANCELLED]]
+	elif status and status in SCHEDULE_STATUSES:
 		filters["status"] = status
 	elif cint(active_only):
 		# "Aktif saja" hanya berlaku kalau tidak ada status yang dipilih: pilihan yang jelas

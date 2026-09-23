@@ -1407,6 +1407,8 @@ export const labels = {
 	svFilterShown: "{n} dari {total} tank",
 	svFilterEmpty: "Tidak ada tank untuk filter ini.",
 	svFilterShowAll: "Tampilkan semua tank",
+	svHistoryTitle: "Riwayat jadwal",
+	svHistoryHint: "Jadwal survey yang sudah selesai atau dibatalkan",
 	svEmkl: "EMKL",
 	svNoPrincipal: "Prinsipal belum diisi",
 	svProgressLine: "{d} dari {n} tank sudah disurvey",
