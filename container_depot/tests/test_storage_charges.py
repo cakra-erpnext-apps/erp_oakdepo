@@ -46,6 +46,7 @@ def _gate_entry(cno, gate_in, gate_out=None):
 def _cleanup():
 	for cno in frappe.get_all("Container", filters={"container_no": ["like", f"{PREFIX}%"]}, pluck="name"):
 		frappe.db.delete("Storage Charge", {"container": cno})
+		frappe.db.delete("Inspection", {"container": cno})
 		frappe.db.delete("Container Movement", {"container": cno})
 		frappe.db.delete("Container Activity", {"container": cno})
 		frappe.db.delete("Container", {"name": cno})
@@ -232,15 +233,27 @@ class TestStorageCharges(FrappeTestCase):
 		self.assertEqual(row["stay_days"], 16)
 		self.assertEqual(storage.days_in_depot(doc.name, add_days(today(), -30), today()), 16)
 
-	def test_eir_survey_dates_do_not_move_a_gate_entry_visit(self):
-		"""An EIR survey submitted days after gate-in stamps eir_in_date late; the gate wins."""
+	def test_storage_starts_at_the_submitted_eir_in_not_the_gate(self):
+		"""Gate says the tank came through; storage starts once the EIR-In is done."""
 		cno = f"{PREFIX}GATEEIR"
-		gated = add_days(today(), -10)
+		gated, inspected = add_days(today(), -10), add_days(today(), -7)
 		doc = _container(cno, "In_Depot", self.customer)
 		_gate_entry(cno, gated)
-		frappe.db.set_value("Container", doc.name, "eir_in_date", f"{add_days(today(), -7)} 09:00:00")
+		# The gate's own write to eir_in_date alone must not move anything.
+		frappe.db.set_value("Container", doc.name, "eir_in_date", f"{add_days(today(), -3)} 09:00:00")
 		row = self._row(doc.name)
 		self.assertEqual(getdate(row["in_date"]), getdate(gated))
+		self.assertIsNone(storage.stay_periods(doc.name, cno)[-1]["eir_in"])
+
+		eir = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In", "container": doc.name,
+			"eir_date": inspected,
+		}).insert(ignore_permissions=True)
+		eir.db_set({"docstatus": 1, "work_ended_on": f"{inspected} 14:00:00"})
+		row = self._row(doc.name)
+		self.assertEqual(getdate(row["gate_in"]), getdate(gated))
+		self.assertEqual(getdate(row["in_date"]), getdate(inspected))
+		self.assertEqual(row["stay_days"], 8)
 		self.assertEqual(row["source"], storage.SRC_GATE)
 
 	def test_report_columns_shape(self):
