@@ -496,6 +496,15 @@ const summaryRes = cachedResource({
 })
 const summary = computed(() => summaryRes.data || null)
 
+// Pindah layar sudah memuat ulang (beranda di-mount baru tiap kembali). Yang tidak: aplikasi
+// yang ditinggal di beranda lalu dibuka lagi — sementara itu order-nya ditutup di Desk atau
+// di HP lain, dan "Menunggu Anda" masih menyebutnya sampai operator pindah layar.
+function onVisible() {
+	if (document.visibilityState === "visible" && !summaryRes.loading) summaryRes.reload()
+}
+onMounted(() => document.addEventListener("visibilitychange", onVisible))
+onUnmounted(() => document.removeEventListener("visibilitychange", onVisible))
+
 const todayTiles = computed(() => {
 	const t = summary.value?.today
 	if (!t) return []
