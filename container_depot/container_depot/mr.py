@@ -273,10 +273,12 @@ def mr_item_search(search=None, repair_order=None, start=0, page_length=20, ware
 
 
 # --- worklist ----------------------------------------------------------------
-def list_open_mr_orders(start=0, page_length=20, search=None) -> dict:
+def list_open_mr_orders(start=0, page_length=20, search=None, job_type=None) -> dict:
 	"""Open M&R orders (Draft / Pending Approval / Approved / In Progress) — the PWA M&R
 	worklist. Depot-scoped to the caller's branch."""
 	filters = {"status": ["in", MR_OPEN_STATUSES]}
+	if job_type:
+		filters["job_type"] = job_type  # M&R vs Periodic Test — lihat mr_scope
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]
@@ -405,13 +407,15 @@ def _attach_decider_names(items) -> None:
 			i["decided_by_name"] = names.get(i["decided_by"], i["decided_by"])
 
 
-def list_mr_execution(start=0, page_length=20, search=None) -> dict:
+def list_mr_execution(start=0, page_length=20, search=None, job_type=None) -> dict:
 	"""Pending / In Progress M&R orders — the PWA execution worklist (start -> done).
 
 	An Approved order is NOT here: Admin Ops still has to hand it over (``forward_to_team``),
 	the same gate Cleaning Order puts in front of its team. Depot-scoped to the caller's
 	branch."""
 	filters = {"status": ["in", MR_EXECUTION_STATUSES]}
+	if job_type:
+		filters["job_type"] = job_type  # M&R vs Periodic Test — lihat mr_scope
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]
@@ -438,7 +442,7 @@ def list_mr_execution(start=0, page_length=20, search=None) -> dict:
 	return {"items": items, "total": total}
 
 
-def list_review_mr_orders(start=0, page_length=20, search=None) -> dict:
+def list_review_mr_orders(start=0, page_length=20, search=None, job_type=None) -> dict:
 	"""M&R orders awaiting Desk review — the PWA "Diajukan Review" list.
 
 	These were finished in the field: the team pressed "Kirim untuk Review" and the order is
@@ -451,6 +455,8 @@ def list_review_mr_orders(start=0, page_length=20, search=None) -> dict:
 	for something to do. Mirrors ``cleaning.list_review_cleaning_orders``.
 	"""
 	filters = {"status": "Pending Review"}
+	if job_type:
+		filters["job_type"] = job_type  # M&R vs Periodic Test — lihat mr_scope
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]
@@ -471,10 +477,12 @@ def list_review_mr_orders(start=0, page_length=20, search=None) -> dict:
 	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
 
 
-def list_mr_history(start=0, page_length=10, search=None) -> dict:
+def list_mr_history(start=0, page_length=10, search=None, job_type=None) -> dict:
 	"""Finished M&R orders (Completed / Rejected / Cancelled) — the PWA M&R "Riwayat" feed,
 	newest first, paginated + searchable, depot-scoped. Detail reuses ``get_mr_order_detail``."""
 	filters = {"status": ["in", ["Completed", "Rejected", "Cancelled"]]}
+	if job_type:
+		filters["job_type"] = job_type  # M&R vs Periodic Test — lihat mr_scope
 	depots = get_user_depots()
 	if depots is not None:
 		filters["depot"] = ["in", depots or [""]]

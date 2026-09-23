@@ -429,6 +429,11 @@ const TILE_CATALOG = [
 		value: (t) => t.mr_open, sub: (t) => sub(t.mr_approval, labels.homeTileMrSub),
 	},
 	{
+		key: "periodic", menu: "periodic", icon: "award", text: "text-amber-500",
+		label: labels.homeTilePeriodic, to: "/periodic",
+		value: (t) => t.periodic_open, sub: (t) => sub(t.periodic_approval, labels.homeTileMrSub),
+	},
+	{
 		key: "monitor", menu: "monitor", icon: "grid", text: "text-brand-500",
 		label: labels.homeTileMonitor, to: "/monitor",
 		value: (t) => t.depot_total, sub: () => ({ sub: labels.homeTileMonitorSub, subTone: "text-gray-400" }),
@@ -574,6 +579,8 @@ const WAIT = {
 	positionOrder: { icon: "map-pin", tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
 	cleaningReview: { icon: "droplet", tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
 	mrReview: { icon: "tool", tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
+	periodicApproval: { icon: "award", tone: "bg-amber-50 text-amber-600", to: "/periodic", one: labels.waitPeriodicApprovalOne, many: labels.waitPeriodicApprovalMany },
+	periodicReview: { icon: "award", tone: "bg-sky-50 text-sky-600", to: "/periodic?s=review", one: labels.waitPeriodicReviewOne, many: labels.waitPeriodicReviewMany },
 	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
 	scheduleOverdue: { icon: "calendar", tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
 }
@@ -621,6 +628,7 @@ const allHistory = [
 	{ key: "eir", to: "/eir/history", icon: "clipboard", title: labels.navEir },
 	{ key: "cleaning", to: "/cleaning/history", icon: "droplet", title: labels.navCleaning },
 	{ key: "mr", to: "/mr/history", icon: "tool", title: labels.navMr },
+	{ key: "periodic", to: "/periodic/history", icon: "award", title: labels.navPeriodic },
 	// Satu-satunya Riwayat dengan dua pemilik: ia memuat kedua sisi alur survey posisi.
 	{ keys: ["surveyList", "surveyPos", "posFix"], to: "/survey-orders/history", icon: "map-pin", title: labels.navSurveyList },
 	{ key: "monitor", to: "/monitor/history", icon: "activity", title: labels.navMonitor },

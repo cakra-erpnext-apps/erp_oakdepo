@@ -748,7 +748,7 @@ def set_tank_last_test(container=None, last_test_date=None):
 	muncul di mana-mana adalah field yang diisi sambil lalu. Izin sebenarnya tetap di
 	bawah: Container read + branch pemanggil (lihat ``container.set_last_test_date``).
 	"""
-	require_any_menu("eir", "mr", "monitor")
+	require_any_menu("eir", "mr", "periodic", "monitor")
 	from container_depot.container_depot.doctype.container.container import set_last_test_date
 
 	return set_last_test_date(container, last_test_date)
@@ -822,10 +822,11 @@ def get_dashboard_summary(depot=None):
 	if "cleaning" in menu:
 		pending["cleaning"] = cleaning.list_open_cleaning_orders(page_length=1)["total"]
 	if "mr" in menu:
-		mr_appr_filters = {"status": "Pending Approval"}
+		# M&R saja — Periodic Test punya menu sendiri (container_depot.mr_scope).
+		mr_appr_filters = {"status": "Pending Approval", "job_type": "Repair"}
 		if allowed is not None:
 			mr_appr_filters["depot"] = ["in", allowed or [""]]
-		pending["mr_open"] = mr.list_open_mr_orders(page_length=1)["total"]
+		pending["mr_open"] = mr.list_open_mr_orders(page_length=1, job_type="Repair")["total"]
 		pending["mr_approval"] = frappe.db.count("Repair Order", mr_appr_filters)
 	# The two halves swapped teams when the flow was reversed (lowering first, survey second),
 	# so the keys keep their names but not their contents: `position_survey` is now the tanks

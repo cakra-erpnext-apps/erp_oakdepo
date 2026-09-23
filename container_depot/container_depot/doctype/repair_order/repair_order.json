@@ -90,7 +90,9 @@
    "in_standard_filter": 1,
    "label": "Jenis Pekerjaan",
    "options": "Repair\nPeriodic Test",
-   "reqd": 1
+   "reqd": 1,
+   "set_only_once": 1,
+   "description": "Tidak bisa diganti setelah disimpan: M&R dan Periodic Test punya menu, tim, dan seri nomor sendiri."
   },
   {
    "depends_on": "eval:doc.job_type == \"Periodic Test\"",

@@ -1,7 +1,7 @@
 """Monthly categorized invoice generation (Tank Owner billing).
 
 Aggregates a prior month's depot activity into one OAK Monthly Invoice per
-(customer, period, category, CURRENCY): Cleaning / M&R / Storage. Each
+(customer, period, category, CURRENCY): Cleaning / M&R / Periodic Test / Storage. Each
 invoice's ``on_submit`` then issues a native ERPNext Sales Invoice with PPN.
 
 Currency is part of that key because an order prices each of its rows in the
@@ -26,7 +26,7 @@ from container_depot.pricing import CLEANING_ITEM, STORAGE_ITEM, resolve_tariff_
 # Lift on/off charges are billed at the BOOKING (Cash: paid at submit; TOP: swept
 # by consolidated_billing). The voucher (Order Bongkar/Muat) is operational only,
 # so there is no order-based billing category here.
-CATEGORIES = ("Cleaning", "M&R", "Storage")
+CATEGORIES = ("Cleaning", "M&R", "Periodic Test", "Storage")
 
 
 def _period_window(period=None):
@@ -73,7 +73,7 @@ def _is_postpaid(customer):
 # --------------------------------------------------------------------------- #
 # Category builders — each returns a list of OAK Monthly Invoice Item dicts.
 # --------------------------------------------------------------------------- #
-def _work_order_items(customer, from_date, to_date, doctype, party_field, label):
+def _work_order_items(customer, from_date, to_date, doctype, party_field, label, job_type=None):
 	"""Work-order charges for the monthly scheduler — ONE lump line per order.
 
 	Work orders (M&R) are a TOP arrangement in practice, so they are normally
@@ -94,7 +94,10 @@ def _work_order_items(customer, from_date, to_date, doctype, party_field, label)
 	lo, hi = _bounds(from_date, to_date)
 	rows = frappe.get_all(
 		doctype,
-		filters={"status": "Completed", party_field: customer, "completion_date": ["between", [lo, hi]]},
+		filters={
+			"status": "Completed", party_field: customer, "completion_date": ["between", [lo, hi]],
+			**({"job_type": job_type} if job_type else {}),
+		},
 		fields=["name", "container", "completion_date"],
 	)
 	fallback = _contract_currency(customer)
@@ -126,7 +129,14 @@ def _work_order_items(customer, from_date, to_date, doctype, party_field, label)
 
 
 def _mr_items(customer, from_date, to_date):
-	return _work_order_items(customer, from_date, to_date, "Repair Order", "principal", "M&R")
+	return _work_order_items(customer, from_date, to_date, "Repair Order", "principal", "M&R", "Repair")
+
+
+def _periodic_items(customer, from_date, to_date):
+	# Repair Order ber-job_type Periodic Test — kategorinya sendiri (container_depot/mr_scope.py).
+	return _work_order_items(
+		customer, from_date, to_date, "Repair Order", "principal", "Periodic Test", "Periodic Test"
+	)
 
 
 def _cleaning_items(customer, from_date, to_date):
@@ -219,6 +229,7 @@ def _days_in_depot(container, from_date, to_date):
 _BUILDERS = {
 	"Cleaning": _cleaning_items,
 	"M&R": _mr_items,
+	"Periodic Test": _periodic_items,
 	"Storage": _storage_items,
 }
 

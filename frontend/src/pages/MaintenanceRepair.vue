@@ -6,16 +6,16 @@
 		     button that competes with the action at the bottom. -->
 		<div class="flex items-center justify-between gap-2">
 			<div v-if="!order" class="min-w-0">
-				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">{{ labels.mrTitle }}</h1>
-				<p class="truncate text-sm text-gray-500">{{ labels.mrExecOrdersHint }}</p>
+				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">{{ kind.title }}</h1>
+				<p class="truncate text-sm text-gray-500">{{ kind.hint }}</p>
 			</div>
 			<div v-else class="flex min-w-0 items-center gap-2">
 				<button class="oak-press -ml-1 shrink-0 p-1 text-gray-500" :aria-label="labels.mrBack" @click="backToList">
 					<Icon name="chevron-left" :size="22" />
 				</button>
-				<h1 class="truncate text-lg font-extrabold tracking-tight text-gray-900">{{ labels.mrWorkTitle }}</h1>
+				<h1 class="truncate text-lg font-extrabold tracking-tight text-gray-900">{{ kind.workTitle }}</h1>
 			</div>
-			<router-link v-if="!order" to="/mr/history" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
+			<router-link v-if="!order" :to="`${kind.base}/history`" class="oak-btn oak-btn-secondary shrink-0 px-3 py-2">
 				<Icon name="clock" :size="16" /> {{ labels.navHistory }}
 			</router-link>
 			<span v-else-if="orderChip" class="oak-chip shrink-0" :class="orderChip.tone">{{ orderChip.label }}</span>
@@ -203,7 +203,7 @@
 						</button>
 					</li>
 				</ul>
-				<router-link to="/mr/history" class="oak-link block text-center text-sm">{{ labels.mrListMore }}</router-link>
+				<router-link :to="`${kind.base}/history`" class="oak-link block text-center text-sm">{{ labels.mrListMore }}</router-link>
 			</CollapseSection>
 		</template>
 
@@ -476,6 +476,12 @@ import { cachedResource } from "@/data/cache"
 const route = useRoute()
 const router = useRouter()
 
+// Menu M&R atau Periodic Test — satu halaman, dua menu (router.js meta; server:
+// container_depot/mr_scope.py). Tidak reaktif: App.vue me-remount halaman saat menunya berganti.
+const kind = route.meta.jobType === "Periodic Test"
+	? { jobType: "Periodic Test", base: "/periodic", title: labels.navPeriodic, hint: labels.ptExecOrdersHint, workTitle: labels.ptWorkTitle }
+	: { jobType: "Repair", base: "/mr", title: labels.mrTitle, hint: labels.mrExecOrdersHint, workTitle: labels.mrWorkTitle }
+
 const fmtDate = (v) =>
 	v
 		? new Date(String(v).slice(0, 10) + "T00:00:00").toLocaleDateString("id-ID", {
@@ -566,6 +572,7 @@ function doneChipClass(s) {
 const ordersRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_execution",
 	method: "GET",
+	makeParams: (p) => ({ ...p, job_type: kind.jobType }),
 	auto: true,
 	onSuccess: (data) => (allOrders.value = data.items || []),
 })
@@ -579,7 +586,7 @@ const reviewItems = ref([])
 const reviewRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_pending_review",
 	method: "GET",
-	makeParams: () => ({ search: search.value.trim() || undefined }),
+	makeParams: () => ({ search: search.value.trim() || undefined, job_type: kind.jobType }),
 	auto: true,
 	onSuccess: (data) => (reviewItems.value = data.items || []),
 })
@@ -588,7 +595,7 @@ const doneItems = ref([])
 const doneRes = cachedResource({
 	url: "container_depot.ess.repairs.mr_history",
 	method: "GET",
-	makeParams: () => ({ page_length: LANDING_LIMIT, search: search.value.trim() || undefined }),
+	makeParams: () => ({ page_length: LANDING_LIMIT, search: search.value.trim() || undefined, job_type: kind.jobType }),
 	auto: true,
 	onSuccess: (data) => (doneItems.value = data.items || []),
 })
@@ -596,7 +603,7 @@ const doneRes = cachedResource({
 // Finished (or field-done) work has no editable form to open — the Riwayat detail takes an
 // ?open= deep link and fetches the order straight from the server.
 function goFinished(r) {
-	router.push({ path: "/mr/history", query: { open: r.name } })
+	router.push({ path: `${kind.base}/history`, query: { open: r.name } })
 }
 
 const withdrawRes = createResource({

@@ -320,6 +320,7 @@ const MENU_LABELS = {
 	eir: labels.eir,
 	cleaning: labels.cleaningTitle,
 	mr: labels.mrTitleFull,
+	periodic: labels.ptTitleFull,
 	monitor: labels.monitorTitle,
 	schedule: labels.scheduleTitle,
 	surveyList: labels.surveyListTitle,

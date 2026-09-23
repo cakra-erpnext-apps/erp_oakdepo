@@ -54,7 +54,9 @@
 		<main class="flex-1 px-4 py-4 pb-28">
 			<router-view v-slot="{ Component }">
 				<transition name="page" mode="out-in">
-					<component :is="Component" />
+					<!-- key: /mr dan /periodic memakai komponen yang sama; tanpa key Vue hanya
+					     mem-patch-nya dan daftar menu sebelumnya tertinggal di layar. -->
+					<component :is="Component" :key="$route.meta.jobType" />
 				</transition>
 			</router-view>
 		</main>

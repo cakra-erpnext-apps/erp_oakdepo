@@ -33,7 +33,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 
-from container_depot.ess.context import _MENU, _may, has_field_role
+from container_depot.ess.context import _MENU, _may_menu, has_field_role
 
 # Longest-prefix wins, so `/survey-orders/history` resolves to its owner and never collides
 # with `/position-fix`. Built from _MENU so a new menu needs no second registration here.
@@ -105,12 +105,14 @@ def _cleaning(doctype, name):
 
 
 def _repair(doctype, name):
-	st = _state("Repair Order", name, ["status"])
+	st = _state("Repair Order", name, ["status", "job_type"])
 	if not st:
 		return None
+	# M&R dan Periodic Test: satu doctype, dua menu (container_depot.mr_scope).
+	base = "/periodic" if st.job_type == "Periodic Test" else "/mr"
 	if st.status in ("Completed", "Cancelled", "Rejected"):
-		return f"/mr/history?open={name}"
-	return f"/mr?o={name}"
+		return f"{base}/history?open={name}"
+	return f"{base}?o={name}"
 
 
 def _lowering_queue(doctype, name):
@@ -265,10 +267,10 @@ def can_open_menu(route: str, user: str = None) -> bool:
 	entry = menu_for_route(route)
 	if not entry:
 		return False
-	_key, doctype, ptype = entry
-	# `_may`, not `has_permission`: one _MENU entry (the universal Jadwal) has no doctype
+	key, doctype, ptype = entry
+	# `_may_menu`, not `has_permission`: one _MENU entry (the universal Jadwal) has no doctype
 	# gate at all and filters its contents instead.
-	return has_field_role(user) and _may(doctype, ptype, user=user)
+	return has_field_role(user) and _may_menu(key, doctype, ptype, user=user)
 
 
 def can_read_doc(doctype: str, name: str, user: str = None) -> bool:

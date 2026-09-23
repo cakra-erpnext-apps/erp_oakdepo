@@ -21,6 +21,7 @@ export const MODULES = {
 	eir: { key: "eir", to: "/eir", icon: "clipboard", title: labels.navEir, tone: "bg-leaf-50 text-leaf-600" },
 	cleaning: { key: "cleaning", to: "/cleaning", icon: "droplet", title: labels.navCleaning, tone: "bg-leaf-50 text-leaf-600" },
 	mr: { key: "mr", to: "/mr", icon: "tool", title: labels.navMr, tone: "bg-amber-50 text-amber-600" },
+	periodic: { key: "periodic", to: "/periodic", icon: "award", title: labels.navPeriodic, tone: "bg-amber-50 text-amber-600" },
 	monitor: { key: "monitor", to: "/monitor", icon: "grid", title: labels.navMonitor, tone: "bg-brand-50 text-brand-600" },
 	tankPos: { key: "tankPos", to: "/tank-position", icon: "map-pin", title: labels.tankPosTitle, tone: "bg-leaf-50 text-leaf-600" },
 	surveyList: { key: "surveyList", to: "/survey-orders", icon: "list", title: labels.navSurveyList, tone: "bg-brand-50 text-brand-600" },
@@ -29,7 +30,7 @@ export const MODULES = {
 
 // Beranda's two shortcut grids. "Operasional" is the work done per DOCUMENT (a bon, an EIR,
 // an order); "Yard" is the work done per TANK, standing in front of it.
-export const GROUP_OPS = ["schedule", "gate", "eir", "cleaning", "mr"]
+export const GROUP_OPS = ["schedule", "gate", "eir", "cleaning", "mr", "periodic"]
 export const GROUP_YARD = ["monitor", "tankPos", "surveyList", "posFix"]
 
 // Which modules earn a tab in the bottom bar, most-used first. The bar takes the first few
@@ -37,7 +38,7 @@ export const GROUP_YARD = ["monitor", "tankPos", "surveyList", "posFix"]
 //
 // Gate / EIR / M&R lead because they are the three screens a shift is spent inside, and the
 // order is what decides the bar for an account that holds everything (SPV Lapangan).
-export const TAB_ORDER = ["gate", "eir", "mr", "cleaning", "monitor", "schedule", "surveyList", "posFix", "tankPos"]
+export const TAB_ORDER = ["gate", "eir", "mr", "periodic", "cleaning", "monitor", "schedule", "surveyList", "posFix", "tankPos"]
 
 /** The modules this account may open, in catalogue order, filtered by the server's menu. */
 export function modulesFor(keys, menu) {

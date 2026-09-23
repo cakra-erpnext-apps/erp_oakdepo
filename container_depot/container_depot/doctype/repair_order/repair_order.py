@@ -8,6 +8,16 @@ import hashlib
 from container_depot.container_depot.booking_link import apply_booking_link
 
 class RepairOrder(Document):
+	def autoname(self):
+		# Periodic Test punya menu & tim sendiri (container_depot.mr_scope); nomornya ikut
+		# terpisah supaya satu nomor sudah mengatakan menu mana pemiliknya.
+		from frappe.model.naming import make_autoname
+
+		self.name = make_autoname(f"{self._id_prefix()}-.YYYY.-.#####", doc=self)
+
+	def _id_prefix(self):
+		return "PT" if self.job_type == "Periodic Test" else "RO"
+
 	def before_insert(self):
 		"""Generate unique repair order ID + stamp the creation time (list column)."""
 		self.repair_order_id = self.generate_repair_order_id()
@@ -18,7 +28,7 @@ class RepairOrder(Document):
 		"""Generate unique repair order ID"""
 		timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 		unique = hashlib.md5(f"{timestamp}{frappe.generate_hash()[:10]}".encode()).hexdigest()[:8].upper()
-		return f"RO-{unique}"
+		return f"{self._id_prefix()}-{unique}"
 
 	# Where an M&R stops. Mirrors the dead ends of ``mr.MR_STATUS_FLOW``: Cancelled has no
 	# edge out at all, Completed only -> In Progress (``mr.reopen_completed``), Rejected only

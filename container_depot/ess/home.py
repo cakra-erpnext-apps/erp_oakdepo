@@ -61,6 +61,7 @@ TILE_MENU = {
 	"eirReview": "eir",
 	"cleaning": "cleaning",
 	"mr": "mr",
+	"periodic": "periodic",
 	"monitor": "monitor",
 	"schedule": "schedule",
 	"survey": "surveyList",
@@ -295,20 +296,29 @@ def get_home_summary(tiles=None):
 			waiting.append(row)
 
 	# --- M&R: the queue that is waiting on a human decision, not on a wrench ---------
-	if "mr" in menu:
-		mr_approval = _scoped({"status": "Pending Approval"}, allowed)
-		if "mr" in want:
+	# Periodic Test = Repair Order ber-job_type lain, menu sendiri (container_depot.mr_scope);
+	# angkanya dihitung dengan cara yang sama, dengan kunci berawalan menunya.
+	from container_depot.container_depot.mr_scope import MENU_JOB_TYPE
+
+	for key, job_type in MENU_JOB_TYPE.items():
+		if key not in menu:
+			continue
+		mr_approval = _scoped({"status": "Pending Approval", "job_type": job_type}, allowed)
+		if key in want:
 			# Sama dengan angka yang dibaca dashboard Monitor (ess/inventory.py): satu
 			# sumber untuk "berapa order M&R yang masih berjalan", bukan dua filter yang
 			# lambat laun berselisih.
-			today_counts["mr_open"] = mr.list_open_mr_orders(page_length=1)["total"]
-			today_counts["mr_approval"] = frappe.db.count("Repair Order", mr_approval)
-		row = _queue("mrApproval", "Repair Order", mr_approval)
+			today_counts[f"{key}_open"] = mr.list_open_mr_orders(page_length=1, job_type=job_type)["total"]
+			today_counts[f"{key}_approval"] = frappe.db.count("Repair Order", mr_approval)
+		row = _queue(f"{key}Approval", "Repair Order", mr_approval)
 		if row:
 			waiting.append(row)
 		# Perbaikannya selesai, menunggu diperiksa & ditutup di Desk — lihat catatan di
 		# antrean review Cleaning di atas.
-		row = _queue("mrReview", "Repair Order", _scoped({"status": "Pending Review"}, allowed))
+		row = _queue(
+			f"{key}Review", "Repair Order",
+			_scoped({"status": "Pending Review", "job_type": job_type}, allowed),
+		)
 		if row:
 			waiting.append(row)
 

@@ -362,6 +362,52 @@ class TestConsolidatedBillingBooking(FrappeTestCase):
 				frappe.delete_doc("Item", service, force=True, ignore_permissions=True)
 			frappe.db.commit()
 
+	def test_periodic_test_bills_in_its_own_section(self):
+		"""Repair Order ber-job_type Periodic Test ditagih di seksi "Periodic Test", bukan M&R."""
+		from container_depot.consolidated_billing import collect_units
+
+		cno = "TESTPT00001"
+		frappe.db.delete("Repair Order", {"container": cno})
+		if frappe.db.exists("Container", cno):
+			frappe.db.delete("Container", cno)
+		cont = frappe.get_doc({
+			"doctype": "Container", "container_no": cno, "container_type": "ISO Tank",
+			"status": "Available", "principal": self.customer,
+		})
+		cont.flags.ignore_mandatory = True
+		cont.insert(ignore_permissions=True)
+		service = _ensure_service_item()
+		orders = {}
+		for job_type in ("Repair", "Periodic Test"):
+			ro = frappe.get_doc({
+				"doctype": "Repair Order", "container": cno, "job_type": job_type, "pt_type": "5Y",
+				"status": "Draft", "billing_status": "Unbilled",
+				"used_items": [{"item": service, "quantity": 1, "item_rate": 100000}],
+			})
+			ro.flags.ignore_mandatory = True
+			ro.insert(ignore_permissions=True)
+			frappe.db.set_value("Repair Order", ro.name, {
+				"status": "Completed", "completion_date": today(), "principal": self.customer,
+			}, update_modified=False)
+			orders[job_type] = ro.name
+
+		try:
+			by_cat = {}
+			for u in collect_units(self.customer):
+				for src in u["sources"]:
+					if src.get("dt") == "Repair Order":
+						by_cat.setdefault(u["category"], set()).add(src["name"])
+			self.assertEqual(by_cat.get("M&R"), {orders["Repair"]})
+			self.assertEqual(by_cat.get("Periodic Test"), {orders["Periodic Test"]})
+		finally:
+			for name in orders.values():
+				frappe.db.delete("Repair Used Item", {"parent": name, "parenttype": "Repair Order"})
+				frappe.db.delete("Repair Order", {"name": name})
+			frappe.db.delete("Container", cno)
+			if frappe.db.exists("Item", service):
+				frappe.delete_doc("Item", service, force=True, ignore_permissions=True)
+			frappe.db.commit()
+
 
 class TestConsolidatedBillingCashContract(FrappeTestCase):
 	"""A Cash-contract customer accrues nothing for the consolidated sweep.

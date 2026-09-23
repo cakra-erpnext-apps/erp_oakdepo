@@ -137,9 +137,22 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 		actor = frappe.session.user
 		created = 0
 		reached = []
+		# M&R dan Periodic Test berbagi doctype (container_depot.mr_scope): bel Periodic Test
+		# tidak boleh sampai ke Team Repair, dan sebaliknya.
+		job_type = None
+		if doctype == "Repair Order":
+			from container_depot.container_depot.mr_scope import PERIODIC, may_see
+
+			job_type = frappe.db.get_value("Repair Order", name, "job_type")
+			if job_type == PERIODIC:
+				# ponytail: judul tiap event M&R ditulis "M&R …"; satu ganti di sini daripada
+				# cabang di tiap notify_repair_*.
+				subject = subject.replace("M&R", "Periodic Test", 1)
 		for u in _recipients(branch, roles):
 			if u == actor:
 				continue  # the actor already saw the toast
+			if doctype == "Repair Order" and not may_see(job_type, u):
+				continue
 			frappe.get_doc({
 				"doctype": "Notification Log",
 				"for_user": u,

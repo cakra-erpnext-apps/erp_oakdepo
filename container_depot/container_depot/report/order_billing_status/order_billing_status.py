@@ -39,6 +39,9 @@ ORDER_TYPES = (
 )
 
 
+_SECTION_OF = {"Container Booking": "Booking", "Cleaning Order": "Cleaning"}
+
+
 def execute(filters=None):
 	filters = filters or {}
 	order_type = filters.get("order_type")
@@ -56,6 +59,13 @@ def execute(filters=None):
 	if not order_type or order_type == "Repair Order":
 		rows += _repair_rows(filters, ctx)
 
+	# Seksi tagihan = seksi di panel Tagihan Depot (consolidated_billing.CATEGORIES). Repair
+	# Order terbagi dua: M&R dan Periodic Test (job_type, lihat _work_order_rows).
+	for r in rows:
+		r.setdefault("section", _SECTION_OF.get(r["order_type"]))
+	if filters.get("section"):
+		rows = [r for r in rows if r["section"] == filters["section"]]
+
 	# payment_type / invoice_status are derived, so filter them after building rows.
 	pt = filters.get("payment_type")
 	inv = filters.get("invoice_status")
@@ -71,6 +81,7 @@ def execute(filters=None):
 def _columns():
 	return [
 		{"fieldname": "order_type", "label": "Order Type", "fieldtype": "Data", "width": 130},
+		{"fieldname": "section", "label": "Seksi", "fieldtype": "Data", "width": 110},
 		{"fieldname": "order", "label": "Order", "fieldtype": "Dynamic Link", "options": "order_type", "width": 150},
 		{"fieldname": "customer", "label": "Customer", "fieldtype": "Link", "options": "Customer", "width": 190},
 		{"fieldname": "date", "label": "Date", "fieldtype": "Date", "width": 100},
@@ -266,7 +277,7 @@ def _work_order_rows(filters, ctx, doctype, party_field):
 	recs = frappe.get_all(
 		doctype,
 		filters=f,
-		fields=["name", party_field, "completion_date", "total_cost", "billing_status", "sales_invoice"],
+		fields=["name", party_field, "completion_date", "total_cost", "billing_status", "sales_invoice", "job_type"],
 		ignore_permissions=True,
 	)
 	# Both carry a sales_invoice back-link (set on Generate), so the live invoice status
@@ -285,6 +296,7 @@ def _work_order_rows(filters, ctx, doctype, party_field):
 		rows += _split_rows(
 			{
 				"order_type": doctype,
+				"section": "Periodic Test" if r.job_type == "Periodic Test" else "M&R",
 				"order": r.name,
 				"customer": owner,
 				"date": getdate(r.completion_date),

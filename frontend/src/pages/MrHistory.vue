@@ -1,10 +1,11 @@
 <template>
 	<HistoryPage
-		:title="labels.mrHistoryTitle"
+		:title="kind.title"
 		icon="tool"
-		back-to="/mr"
-		:back-label="labels.mrTitleFull"
+		:back-to="kind.base"
+		:back-label="kind.backLabel"
 		list-url="container_depot.ess.repairs.mr_history"
+		:list-params="listParams"
 		detail-url="container_depot.ess.repairs.mr_order_detail"
 		detail-param="repair_order"
 		:search-placeholder="labels.mrHistorySearch"
@@ -230,7 +231,7 @@
 
 <script setup>
 import { ref } from "vue"
-import { useRouter } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels, repairStatusLabels } from "@/utils/labels"
 import { mrChip, workWindow } from "@/utils/mrStatus"
@@ -242,6 +243,13 @@ import MrDamageCard from "@/components/MrDamageCard.vue"
 import MrTimeline from "@/components/MrTimeline.vue"
 
 const router = useRouter()
+
+// Riwayat M&R atau Periodic Test — lihat `kind` di MaintenanceRepair.vue.
+const kind = useRoute().meta.jobType === "Periodic Test"
+	? { jobType: "Periodic Test", base: "/periodic", title: labels.ptHistoryTitle, backLabel: labels.ptTitleFull }
+	: { jobType: "Repair", base: "/mr", title: labels.mrHistoryTitle, backLabel: labels.mrTitleFull }
+// Satu objek tetap: HistoryPage mengawasi prop ini (deep) dan memuat ulang saat ia berganti.
+const listParams = { job_type: kind.jobType }
 
 // Pending Review -> In Progress. The order stops being a finished record the moment this
 // lands, so staying on the Riwayat screen would leave the operator looking at a page that no
@@ -256,7 +264,7 @@ function withdraw(d) {
 	withdrawRes.submit({ repair_order: d.name }, {
 		onSuccess: () => {
 			toast.success(labels.mrWithdrawReviewDone)
-			router.push({ path: "/mr", query: { o: d.name } })
+			router.push({ path: kind.base, query: { o: d.name } })
 		},
 	})
 }

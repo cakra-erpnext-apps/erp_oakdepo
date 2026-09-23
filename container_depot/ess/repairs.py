@@ -14,14 +14,28 @@ from __future__ import annotations
 
 import frappe
 
-from container_depot.ess.guard import require_menu
+from container_depot.ess.guard import require_any_menu, require_menu
 from container_depot.ess.idempotency import guarded
-from container_depot.container_depot import mr
+from container_depot.container_depot import mr, mr_scope
 from container_depot.container_depot.container_activity import log_doc_note
 
 # Allowed Repair Order status transitions — single source of truth in container_depot/mr.py
 # (the owner-approval state machine, shared by the controller, PWA, and Desk).
 REPAIR_TRANSITIONS = mr.MR_TRANSITIONS
+
+
+def _require_mr(repair_order=None, job_type=None) -> None:
+	"""Menu M&R atau Periodic Test — yang memiliki order ini (lihat container_depot.mr_scope).
+
+	Tanpa order dan tanpa jenis (riwayat per tank), salah satu menu cukup; baris yang tidak
+	boleh dilihat sudah disaring hook izin Repair Order.
+	"""
+	if repair_order and not job_type:
+		job_type = frappe.db.get_value("Repair Order", repair_order, "job_type")
+	if job_type:
+		require_menu(mr_scope.menu_for(job_type))
+	else:
+		require_any_menu("mr", "periodic")
 
 _ITEM_FIELDS = [
 	"part_description",
@@ -40,7 +54,7 @@ def get_tank_repairs(container):
 
 	GET /api/method/container_depot.ess.repairs.get_tank_repairs
 	"""
-	require_menu("mr")
+	require_any_menu("mr", "periodic")
 	frappe.has_permission("Container", doc=container, ptype="read", throw=True)
 
 	repairs = []
@@ -100,7 +114,7 @@ def set_repair_status(repair_order, status, note=None):
 
 	POST /api/method/container_depot.ess.repairs.set_repair_status
 	"""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 
 	doc = frappe.get_doc("Repair Order", repair_order)
@@ -157,7 +171,7 @@ BYPASS_ROLES = {"Admin Ops", "System Manager"}
 
 
 def _require_admin_ops() -> None:
-	require_menu("mr")
+	require_any_menu("mr", "periodic")
 	if set(frappe.get_roles(frappe.session.user)).isdisjoint(BYPASS_ROLES):
 		frappe.throw(
 			frappe._("Anda tidak berwenang menyetujui langsung (bypass owner)."),
@@ -166,38 +180,38 @@ def _require_admin_ops() -> None:
 
 
 @frappe.whitelist(methods=["GET"])
-def mr_orders(start=0, page_length=20, search=None):
+def mr_orders(start=0, page_length=20, search=None, job_type=mr_scope.REPAIR):
 	"""GET /api/v1/ess/mr-orders — open M&R worklist (depot-scoped)."""
-	require_menu("mr")
-	return mr.list_open_mr_orders(start=start, page_length=page_length, search=search)
+	_require_mr(job_type=job_type)
+	return mr.list_open_mr_orders(start=start, page_length=page_length, search=search, job_type=job_type)
 
 
 @frappe.whitelist(methods=["GET"])
-def mr_execution(start=0, page_length=20, search=None):
+def mr_execution(start=0, page_length=20, search=None, job_type=mr_scope.REPAIR):
 	"""GET /api/v1/ess/mr-execution — the PWA execution worklist: Approved / In Progress only."""
-	require_menu("mr")
-	return mr.list_mr_execution(start=start, page_length=page_length, search=search)
+	_require_mr(job_type=job_type)
+	return mr.list_mr_execution(start=start, page_length=page_length, search=search, job_type=job_type)
 
 
 @frappe.whitelist(methods=["GET"])
-def mr_pending_review(start=0, page_length=20, search=None):
+def mr_pending_review(start=0, page_length=20, search=None, job_type=mr_scope.REPAIR):
 	"""GET /api/v1/ess/mr-pending-review — M&R finished in the field, waiting for Desk to
 	check the work and close it. Kept out of the worklist: it is no longer the team's turn."""
-	require_menu("mr")
-	return mr.list_review_mr_orders(start=start, page_length=page_length, search=search)
+	_require_mr(job_type=job_type)
+	return mr.list_review_mr_orders(start=start, page_length=page_length, search=search, job_type=job_type)
 
 
 @frappe.whitelist(methods=["GET"])
-def mr_history(start=0, page_length=10, search=None):
+def mr_history(start=0, page_length=10, search=None, job_type=mr_scope.REPAIR):
 	"""GET /api/v1/ess/mr-history — finished (Completed/Rejected/Cancelled) M&R orders."""
-	require_menu("mr")
-	return mr.list_mr_history(start=start, page_length=page_length, search=search)
+	_require_mr(job_type=job_type)
+	return mr.list_mr_history(start=start, page_length=page_length, search=search, job_type=job_type)
 
 
 @frappe.whitelist(methods=["GET"])
 def mr_order_detail(repair_order=None):
 	"""GET /api/v1/ess/mr-order-detail — one M&R's damages (EIR copy) + used items."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	return mr.get_mr_order_detail(repair_order)
 
 
@@ -205,7 +219,7 @@ def mr_order_detail(repair_order=None):
 def mr_items(search=None, repair_order=None, start=0, page_length=20):
 	"""GET /api/v1/ess/mr-items — Item picker (service or part): seluruh katalog, yang paling
 	sering dipakai lebih dulu. Tidak dibatasi rate card pemilik tank."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	return mr.mr_item_search(search=search, repair_order=repair_order, start=start, page_length=page_length)
 
 
@@ -213,7 +227,7 @@ def mr_items(search=None, repair_order=None, start=0, page_length=20):
 def mr_item_pricing(repair_order=None, item=None):
 	"""Cost breakdown for one item (defaults a Desk line). Whitelisted for GET (PWA) and POST
 	(the Desk grid calls it via frappe.call, which defaults to POST)."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="read", throw=True)
 	return mr.item_pricing(repair_order, item)
 
@@ -243,7 +257,7 @@ def mr_withdraw_from_owner(repair_order=None, note=None):
 def mr_decision(repair_order=None, decision=None, line_decisions=None, note=None):
 	"""POST /api/v1/ess/mr-decision — record the owner's decision (Approved / Rejected /
 	Revision Requested), with optional per-line decisions (partial approval)."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.record_decision(repair_order, decision, line_decisions=line_decisions, note=note)
 
@@ -272,7 +286,7 @@ def mr_forward_to_team(repair_order=None):
 	"""POST /api/v1/ess/mr-forward-to-team — hand the M&R to the workshop: Draft / Approved ->
 	Pending. Only then does it appear on the PWA worklist. Open to everyone holding the M&R
 	menu, like the Cleaning Order's own "Teruskan ke Team"."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.forward_to_team(repair_order)
 
@@ -281,7 +295,7 @@ def mr_forward_to_team(repair_order=None):
 def mr_withdraw_review(repair_order=None):
 	"""POST /api/v1/ess/mr-withdraw-review — the team pulls a finished job back to fix it:
 	Pending Review -> In Progress. Nothing has left the warehouse yet."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.withdraw_review(repair_order)
 
@@ -293,7 +307,7 @@ def mr_request_revision(repair_order=None, reason=None, request_id=None):
 
 	Menu + write, not Admin Ops: asking is the team's job. Acting on it is not — that is
 	``mr_reopen_completed`` below."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return guarded(request_id, lambda: mr.request_revision(repair_order, reason=reason))
 
@@ -313,7 +327,7 @@ def mr_finalize(repair_order=None):
 	team reported it done), or Approved -> Completed (it never needed dispatching).
 
 	No stock moves here: the approved parts left the warehouse at approval."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
 	return mr.finalize_repair(repair_order)
 
@@ -333,7 +347,7 @@ def mr_submit_direct(repair_order=None, note=None):
 def mr_start(repair_order=None, request_id=None):
 	"""POST /api/v1/ess/mr-start — the team picks the job off its worklist: Pending -> In
 	Progress. Only a job Admin Ops has handed over (``forward_to_team``) is startable."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	return guarded(request_id, lambda: mr.start_repair(repair_order))
 
 
@@ -352,7 +366,7 @@ def mr_order_save(
 
 	``request_id`` makes a replay safe: a lost response followed by a naive retry would
 	otherwise raise a second sign-off under a second id — see ``ess/idempotency.py``."""
-	require_menu("mr")
+	_require_mr(repair_order)
 	return guarded(request_id, lambda: mr.save_mr_order(
 		repair_order=repair_order, used_items=used_items, work_photos=work_photos,
 		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit,

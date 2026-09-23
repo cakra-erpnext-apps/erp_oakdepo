@@ -119,7 +119,8 @@ class TestRoleMenu(FrappeTestCase):
 		# SEVERAL doctypes at once, and `surveyList` is the Survey Order list the calendar used
 		# to be. A count assertion rather than a set comparison on purpose — it fails loudly
 		# when a menu is added without anyone deciding who should hold it.
-		self.assertEqual(len(MENU_KEYS), 10)
+		# Eleven since Periodic Test got its own menu (`periodic`, 2026-09-23): Team Periodic.
+		self.assertEqual(len(MENU_KEYS), 11)
 
 	def test_office_role_gets_empty_menu(self):
 		# Cashier holds real DocPerms (Container read, Gate Entry read) but no field role,

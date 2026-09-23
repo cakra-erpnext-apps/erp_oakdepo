@@ -24,6 +24,13 @@ frappe.query_reports["Order Billing Status"] = {
 			].join("\n"),
 		},
 		{
+			// Seksi tagihan — Repair Order terbagi M&R dan Periodic Test.
+			fieldname: "section",
+			label: __("Seksi"),
+			fieldtype: "Select",
+			options: "\nBooking\nCleaning\nM&R\nPeriodic Test",
+		},
+		{
 			fieldname: "payment_type",
 			label: __("Payment Type"),
 			fieldtype: "Select",

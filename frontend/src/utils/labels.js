@@ -193,6 +193,7 @@ export const labels = {
 	homeTileEirOpenSub: "{n} EIR keluar menunggu",
 	homeTileMr: "M&R aktif",
 	homeTileMrSub: "{n} menunggu persetujuan",
+	homeTilePeriodic: "Periodic Test aktif",
 	homeTileMonitor: "Tank di depo",
 	homeTileMonitorSub: "semua tank aktif",
 	homeTileSchedule: "Jadwal hari ini",
@@ -225,6 +226,8 @@ export const labels = {
 	waitCleaningIdleMany: "{n} cleaning order belum dimulai",
 	waitMrApprovalOne: "M&R {ref} menunggu approval",
 	waitMrApprovalMany: "{n} M&R menunggu approval",
+	waitPeriodicApprovalOne: "Periodic Test {ref} menunggu approval",
+	waitPeriodicApprovalMany: "{n} Periodic Test menunggu approval",
 	waitLoweringMany: "{n} tank menunggu diturunkan",
 	waitSurveyReadyMany: "{n} tank siap disurvey",
 	waitPositionOrderMany: "{n} tank survey belum ada letaknya",
@@ -234,6 +237,8 @@ export const labels = {
 	waitCleaningReviewMany: "{n} cleaning order menunggu review",
 	waitMrReviewOne: "M&R {ref} menunggu review",
 	waitMrReviewMany: "{n} M&R menunggu review",
+	waitPeriodicReviewOne: "Periodic Test {ref} menunggu review",
+	waitPeriodicReviewMany: "{n} Periodic Test menunggu review",
 	// Pekerjaan terencana yang tanggalnya sudah lewat dan belum beres. Tanpa "{n} " di depan
 	// kalimatnya karena angka itu selalu jamak di sini — satu pun sudah terlambat.
 	waitScheduleOverdueMany: "{n} jadwal lewat tanggal belum beres",
@@ -894,6 +899,13 @@ export const labels = {
 	mrTitle: "M&R", // page + Home tile + nav title
 	mrTitleFull: "M&R (Maintenance & Repair)",
 	navMr: "M&R", // bottom-nav label
+	// Periodic Test — menu Team Periodic. Halamannya halaman M&R (Repair Order ber-job_type
+	// Periodic Test, lihat container_depot/mr_scope.py); hanya judul-judul ini yang berbeda.
+	navPeriodic: "Periodic Test",
+	ptTitleFull: "Periodic Test (Uji Berkala)",
+	ptExecOrdersHint: "Uji berkala siap dikerjakan",
+	ptWorkTitle: "Uji Berkala",
+	ptHistoryTitle: "Riwayat Periodic Test",
 	mrOrdersHint: "Pilih M&R untuk dikerjakan", // worklist hint
 	mrOrdersSearch: "Cari no. container / M&R…",
 	mrOrdersEmpty: "Tidak ada M&R terbuka.",

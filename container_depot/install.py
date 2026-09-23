@@ -1493,6 +1493,9 @@ FIELD_ROLES = [
 	"Team Kalmar",
 	"Team Cleaning",
 	"Team Repair",
+	# Uji berkala: alur & doctype sama dengan Team Repair (Repair Order), jenis pekerjaannya
+	# yang lain — container_depot.mr_scope memisahkan barisnya, menu PWA-nya `periodic`.
+	"Team Periodic",
 	"Team Survey",
 	"SPV Lapangan",
 ]
@@ -1778,6 +1781,15 @@ FIELD_ROLE_MATRIX = [
 	("Container Position Template", ("rwcd",  "rwcd",  "rwcd", "rwcd",   "rwcd", "rwcd", "rwcd")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
+]
+
+# Team Periodic memegang PERSIS izin Team Repair (disisipkan sebagai kolom kembarnya, bukan
+# kolom kedelapan yang diketik ulang di tiap baris): satu doctype, satu alur, dua jenis
+# pekerjaan — pemisahnya container_depot.mr_scope, bukan DocPerm.
+_REPAIR_COL = [r for r in FIELD_ROLES if r != "Team Periodic"].index("Team Repair")
+FIELD_ROLE_MATRIX = [
+	(dt, cols[: _REPAIR_COL + 1] + (cols[_REPAIR_COL],) + cols[_REPAIR_COL + 1 :])
+	for dt, cols in FIELD_ROLE_MATRIX
 ]
 
 # §8.2 — office roles, Container Depot module doctypes only (see COMPANION_ROLES for the
@@ -2444,7 +2456,7 @@ NOTIFICATION_RULES = [
 	("repair_order_service_setup", "M&R menunggu review", "Team repair selesai di PWA dan mengirim order untuk direview Admin Ops; part belum keluar gudang sampai Desk menyelesaikan.",
 		["Admin Ops", "SPV Lapangan"]),
 	("repair_order_forwarded", "M&R diteruskan ke team", "Admin Ops meneruskan M&R yang sudah disetujui owner — order masuk worklist PWA team repair.",
-		["Team Repair", "SPV Lapangan", "Admin Ops"]),
+		["Team Repair", "Team Periodic", "SPV Lapangan", "Admin Ops"]),
 	("repair_order_pending_approval", "M&R menunggu approval owner", "Estimasi M&R dikirim ke owner tank.",
 		["Admin Ops", "Management"]),
 	# An owner's "yes" is not yet a work order — dispatch is a separate decision Admin Ops takes

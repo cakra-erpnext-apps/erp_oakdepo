@@ -140,6 +140,16 @@ def _parse_kinds(kinds) -> set:
 	return {k for k in kinds if k in _BY_KIND}
 
 
+def _route(source, row):
+	if not source["route"]:
+		return None
+	route = source["route"].format(name=row.get("name"))
+	# Periodic Test = Repair Order dengan menu PWA sendiri (container_depot.mr_scope).
+	if source["kind"] == "repair" and row.get("job_type") == "Periodic Test":
+		route = route.replace("/mr", "/periodic", 1)
+	return route
+
+
 def _filters(source, start_date, end_date) -> dict:
 	"""Date window + not-cancelled + the caller's depots, for one source."""
 	f = {
@@ -153,6 +163,13 @@ def _filters(source, start_date, end_date) -> dict:
 	depots = get_user_depots()
 	if depots is not None:
 		f["depot"] = ["in", depots or [""]]
+	if source["doctype"] == "Repair Order":
+		# get_all melewati hook izin; Team Repair / Team Periodic hanya melihat jenisnya.
+		from container_depot.container_depot.mr_scope import allowed_job_types
+
+		job_types = allowed_job_types()
+		if job_types is not None:
+			f["job_type"] = ["in", sorted(job_types)]
 	return f
 
 
@@ -365,7 +382,7 @@ def _card(source, row, order, extras=None) -> dict:
 		"name": row.get("name"),
 		"status": status,
 		"done": 1 if status in source["done"] else 0,
-		"route": source["route"].format(name=row.get("name")) if source["route"] else None,
+		"route": _route(source, row),
 		# The day this was planned for. Carried on every card because the same card shape is
 		# reused by the overdue banner, where the date is the whole point.
 		"date": str(planned) if planned else None,

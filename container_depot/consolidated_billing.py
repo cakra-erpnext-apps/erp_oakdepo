@@ -248,6 +248,16 @@ _WORK_ORDERS = (
 		# M&R records the tank's owner and always bills them.
 		"party_field": "principal",
 		"label": "M&R",
+		"job_type": "Repair",
+	},
+	# Uji berkala: Repair Order yang sama, ditagih di seksinya sendiri (menu & tim Periodic
+	# Test terpisah dari M&R — container_depot/mr_scope.py).
+	{
+		"doctype": "Repair Order",
+		"child": "Repair Used Item",
+		"party_field": "principal",
+		"label": "Periodic Test",
+		"job_type": "Periodic Test",
 	},
 )
 
@@ -281,6 +291,7 @@ def _work_order_lines(customer, lo, hi, spec):
 			"status": "Completed",
 			spec["party_field"]: customer,
 			"completion_date": ["between", [lo, hi]],
+			**({"job_type": spec["job_type"]} if spec.get("job_type") else {}),
 		},
 		fields=["name", "sales_invoice"],
 	)
@@ -344,6 +355,11 @@ def _mr_lines(customer, lo, hi):
 	return _work_order_lines(customer, lo, hi, _WORK_ORDERS[0])
 
 
+def _periodic_lines(customer, lo, hi):
+	"""Completed, Unbilled Periodic Test orders (see :func:`_work_order_lines`)."""
+	return _work_order_lines(customer, lo, hi, _WORK_ORDERS[1])
+
+
 def _storage_lines(customer, from_date, to_date):
 	"""Storage days not yet billed (since each container's ``storage_billed_until``
 	watermark) × the Storage-per-Day tariff (contract currency).
@@ -390,13 +406,13 @@ def _storage_lines(customer, from_date, to_date):
 # Storage alone, …) and a window; everything downstream — preview, fill, the report's
 # selection — works off this registry rather than a hard-coded sweep.
 # --------------------------------------------------------------------------- #
-CATEGORIES = ("Booking", "Cleaning", "M&R", "Storage")
+CATEGORIES = ("Booking", "Cleaning", "M&R", "Periodic Test", "Storage")
 
 # Bookings carry their own ``payment_type``, so their TOP rows are billable for anyone.
 # The rest accrue at the container-owner level with no per-order payment type, and are
 # only swept for a postpaid customer — a pure-Cash customer's are the monthly scheduler's
 # to bill, and sweeping them here too would double-charge.
-_ACCRUAL_CATEGORIES = frozenset({"Cleaning", "M&R", "Storage"})
+_ACCRUAL_CATEGORIES = frozenset({"Cleaning", "M&R", "Periodic Test", "Storage"})
 
 # Storage is deliberately absent: alone among the categories it has no order document to
 # read, so it is built from plain dates rather than datetime bounds (see collect_units).
@@ -404,6 +420,7 @@ _BUILDERS = {
 	"Booking": _booking_lines,
 	"Cleaning": _cleaning_lines,
 	"M&R": _mr_lines,
+	"Periodic Test": _periodic_lines,
 }
 
 # Shared billing number across the per-currency invoices of one run (see _issue_group).

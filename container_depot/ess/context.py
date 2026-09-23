@@ -47,12 +47,17 @@ from container_depot.container_depot.user_branch import get_user_branches
 #
 # It is one entry rather than four because it is one screen; four keys would mean four tiles
 # racing to render the same calendar.
+#
+# `mr` and `periodic` share Repair Order write, like `posFix`/`surveyPos` share Survey Order.
+# What splits them is the job type the account may see (container_depot.mr_scope): Team Repair
+# gets M&R only, Team Periodic gets Periodic Test only, SPV / Admin Ops get both.
 
 _MENU = [
 	("gate",         "/gate",            "Order Bongkar",      "create"),
 	("eir",          "/eir",             "Inspection",         "write"),
 	("cleaning",     "/cleaning",        "Cleaning Order",     "write"),
 	("mr",           "/mr",              "Repair Order",       "write"),
+	("periodic",     "/periodic",        "Repair Order",       "write"),
 	("monitor",      "/monitor",         "Container",          "read"),
 	("schedule",     "/schedule",        None,                 "read"),
 	("surveyList",   "/survey-orders",   "Survey Order",       "read"),
@@ -76,6 +81,15 @@ def _may(dt, ptype, user=None) -> bool:
 		return True
 	names = dt if isinstance(dt, (tuple, list)) else (dt,)
 	return any(frappe.has_permission(name, ptype, user=user) for name in names)
+
+
+def _may_menu(key, dt, ptype, user=None) -> bool:
+	"""``_may`` plus the job-type split between the `mr` and `periodic` menus."""
+	if not _may(dt, ptype, user=user):
+		return False
+	from container_depot.container_depot.mr_scope import MENU_JOB_TYPE, may_see
+
+	return key not in MENU_JOB_TYPE or may_see(MENU_JOB_TYPE[key], user)
 
 
 def _field_roles() -> set:
@@ -132,7 +146,7 @@ def allowed_menu(user: str = None) -> list:
 	"""Menu keys this user may open. Empty for anyone without a field role."""
 	if not has_field_role(user):
 		return []
-	return [key for key, _route, dt, ptype in _MENU if _may(dt, ptype, user=user)]
+	return [key for key, _route, dt, ptype in _MENU if _may_menu(key, dt, ptype, user=user)]
 
 
 def depot_roles(user: str = None) -> list:

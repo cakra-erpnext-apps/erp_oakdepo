@@ -63,16 +63,30 @@ const routes = [
 		meta: { menuKey: "cleaning" },
 		component: () => import("@/pages/CleaningHistory.vue"),
 	},
+	// M&R dan Periodic Test: dua menu, dua tim, satu halaman — keduanya Repair Order yang
+	// dibedakan job_type (container_depot/mr_scope.py). `base` = awalan rute menu itu.
 	{
 		path: "/mr",
 		name: "MaintenanceRepair",
-		meta: { menuKey: "mr" },
+		meta: { menuKey: "mr", jobType: "Repair", base: "/mr" },
 		component: () => import("@/pages/MaintenanceRepair.vue"),
 	},
 	{
 		path: "/mr/history",
 		name: "MrHistory",
-		meta: { menuKey: "mr" },
+		meta: { menuKey: "mr", jobType: "Repair", base: "/mr" },
+		component: () => import("@/pages/MrHistory.vue"),
+	},
+	{
+		path: "/periodic",
+		name: "PeriodicTest",
+		meta: { menuKey: "periodic", jobType: "Periodic Test", base: "/periodic" },
+		component: () => import("@/pages/MaintenanceRepair.vue"),
+	},
+	{
+		path: "/periodic/history",
+		name: "PeriodicHistory",
+		meta: { menuKey: "periodic", jobType: "Periodic Test", base: "/periodic" },
 		component: () => import("@/pages/MrHistory.vue"),
 	},
 	{

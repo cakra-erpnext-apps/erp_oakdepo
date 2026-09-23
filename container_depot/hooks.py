@@ -101,6 +101,9 @@ permission_query_conditions = {
 	# an allowlist by report name, because `report` permission is per ref doctype and
 	# four of this app's reports share `Container Booking`. See customer_scope.
 	"Report": "container_depot.customer_scope.report_query",
+	# Team Repair hanya melihat M&R, Team Periodic hanya Periodic Test — satu doctype, dua
+	# menu. Lihat container_depot/mr_scope.py.
+	"Repair Order": "container_depot.container_depot.mr_scope.query_conditions",
 	# Daftar User bocor ke semua akun lewat izin `select` milik role `Desk User` — lihat
 	# user_directory.py. Picker (Assign To / Share / mention) sengaja tidak ikut disaring.
 	"User": "container_depot.user_directory.user_query",
@@ -117,6 +120,7 @@ has_permission = {
 	"Container Movement": "container_depot.customer_scope.container_movement_permission",
 	"Container Booking": "container_depot.customer_scope.container_booking_permission",
 	"Report": "container_depot.customer_scope.report_permission",
+	"Repair Order": "container_depot.container_depot.mr_scope.has_permission",
 	"*": "container_depot.desk_surface.foreign_doctype_permission",
 }
 
