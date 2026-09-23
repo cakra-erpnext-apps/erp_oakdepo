@@ -501,6 +501,139 @@ def list_mr_history(start=0, page_length=10, search=None, job_type=None) -> dict
 	return {"items": items, "total": frappe.db.count("Repair Order", filters)}
 
 
+# The PWA list (list + detail screen, same shape as Jadwal Survey / Leak Check): every order
+# that has reached the team — from the hand-over (Pending) to its end. Draft .. Approved stay
+# on Desk, exactly as on the old worklist.
+MR_LIST_STATUSES = ("Pending", "In Progress", "Pending Review", "Completed", "Rejected", "Cancelled")
+MR_ACTIVE_STATUSES = ("Pending", "In Progress", "Pending Review")
+# Inside one day: the job in hand first, then what is waiting, then what is off our hands.
+_MR_STATUS_ORDER = "field(status, 'In Progress', 'Pending', 'Pending Review', 'Completed', 'Rejected', 'Cancelled')"
+# The day a row is grouped under: its plan date, else the day it was made.
+_MR_DAY = "coalesce(plan_date, date(creation))"
+
+
+def _attach_photo_progress(items) -> None:
+	"""Stamp ``photo_done`` — lines of an In Progress order that already carry a photo. Same
+	rule as the form: a photo belongs to its row, or to the item when it names no row."""
+	names = [i["name"] for i in items if i.get("status") == "In Progress"]
+	if not names:
+		return
+	lines = frappe.get_all("Repair Used Item", filters={"parent": ["in", names], "decision": ["!=", "Rejected"]},
+		fields=["name", "parent", "item"])
+	photos = frappe.get_all("Repair Work Photo", filters={"parent": ["in", names]},
+		fields=["parent", "used_item", "item"])
+	rows = {(p.parent, p.used_item) for p in photos if p.used_item}
+	loose = {(p.parent, p.item) for p in photos if not p.used_item}
+	done: dict = {}
+	for ln in lines:
+		if (ln.parent, ln.name) in rows or (ln.parent, ln.item) in loose:
+			done[ln.parent] = done.get(ln.parent, 0) + 1
+	for i in items:
+		if i["name"] in names:
+			i["photo_done"] = done.get(i["name"], 0)
+
+
+def list_mr_orders(job_type=None, status=None, search=None, depot=None, principal=None, day=None,
+		active_only=False, sort=None, start=0, page_length=20) -> dict:
+	"""The PWA M&R / Periodic Test list: filter, search, sort, page — plus ``counts`` per status
+	WITHOUT the filter (the pills are how the filter changes), ``day_counts`` for the group
+	headers and the option lists for the filter sheet. Depot-scoped like the other lists;
+	``job_type`` splits M&R from Periodic Test exactly like them (see mr_scope)."""
+	from frappe.utils import getdate
+
+	scope = ["status in %(statuses)s"]
+	v = {"statuses": MR_LIST_STATUSES}
+	if job_type:
+		scope.append("job_type = %(job_type)s")
+		v["job_type"] = job_type
+	depots = get_user_depots()
+	if depots is not None:
+		scope.append("depot in %(depots)s")
+		v["depots"] = tuple(depots) or ("",)
+
+	where = list(scope)
+	if status in MR_LIST_STATUSES:
+		where.append("status = %(status)s")
+		v["status"] = status
+	elif _as_bool(active_only):
+		where.append("status in %(active)s")
+		v["active"] = MR_ACTIVE_STATUSES
+	if depot:
+		where.append("depot = %(depot)s")
+		v["depot"] = depot
+	if principal:
+		where.append("principal = %(principal)s")
+		v["principal"] = principal
+	if day:
+		where.append(f"{_MR_DAY} = %(day)s")
+		v["day"] = getdate(day)
+	search = (search or "").strip()
+	if search and search.lower() != "undefined":
+		where.append("(container_no like %(q)s or reff_doc like %(q)s or name like %(q)s or repair_order_id like %(q)s)")
+		v["q"] = f"%{search}%"
+
+	w, sw = " and ".join(where), " and ".join(scope)
+	priority = sort not in ("newest", "oldest")
+	direction = "asc" if sort == "oldest" else "desc"
+	# Prioritas (bawaan) = urutan worklist lama, ``worklist.sort_by_priority``: mendesak, lalu
+	# tanggal survey / muat terdekat, yang sedang dikerjakan dulu; yang sudah tutup di bawah.
+	# Dipaging di Python — daftar satu cabang terbatas oleh yard-nya.
+	order = "creation asc" if priority else f"day {direction}, {_MR_STATUS_ORDER}, creation {direction}"
+	limit = "" if priority else "limit %(start)s, %(pl)s"
+	items = frappe.db.sql(f"""
+		select name, repair_order_id, container, container_no, status, job_type, pt_type, principal,
+			depot, reff_doc, plan_date, creation, modified, inspection, technician, started_by,
+			start_date, completion_date, decided_by, target_lift_on, target_survey_on, target_urgent_on,
+			{_MR_DAY} as day
+		from `tabRepair Order` where {w}
+		order by {order}
+		{limit}""", {**v, "start": cint(start), "pl": cint(page_length) or 20}, as_dict=True)
+	closed = ("Completed", "Rejected", "Cancelled")
+	if priority:
+		items = sort_by_priority(items, lambda r: r.get("status") == "In Progress")
+		items.sort(key=lambda r: 1 if r.status in closed else 0)
+		for i in items:
+			due = i.target_urgent_on or i.target_survey_on or i.target_lift_on
+			i["group"] = (
+				str(i.day) if i.status in closed
+				else "urgent" if i.target_urgent_on
+				else str(getdate(due)) if due else ""
+			)
+		day_counts = {}
+		for i in items:
+			day_counts[i.group] = day_counts.get(i.group, 0) + 1
+		total = len(items)
+		items = items[cint(start):cint(start) + (cint(page_length) or 20)]
+	else:
+		day_counts = {str(d): n for d, n in frappe.db.sql(
+			f"select {_MR_DAY} as day, count(*) from `tabRepair Order` where {w} group by day", v)}
+		total = sum(day_counts.values())
+		for i in items:
+			i["group"] = str(i.day)
+	_attach_counts(items)
+	_attach_worker_names(items)
+	_attach_decider_names(items)
+	_attach_photo_progress(items)
+	for i in items:
+		for k in ("day", "plan_date", "creation", "modified", "start_date", "completion_date",
+				"target_lift_on", "target_survey_on", "target_urgent_on"):
+			i[k] = str(i[k]) if i.get(k) else None
+
+	counts = {"all": 0}
+	for st, n in frappe.db.sql(f"select status, count(*) from `tabRepair Order` where {sw} group by status", v):
+		counts[st] = n
+		counts["all"] += n
+
+	def distinct(field):
+		return [r[0] for r in frappe.db.sql(
+			f"select distinct {field} from `tabRepair Order` where {sw} and ifnull({field}, '') != '' order by {field}", v)]
+
+	return {
+		"items": items, "total": total, "counts": counts, "day_counts": day_counts,
+		"depots": distinct("depot"), "principals": distinct("principal"),
+	}
+
+
 # --- detail ------------------------------------------------------------------
 def get_mr_order_detail(repair_order) -> dict:
 	"""Everything the PWA form needs: the copied EIR Damages (Section 1, read-only, with
@@ -574,6 +707,14 @@ def get_mr_order_detail(repair_order) -> dict:
 		"started_by": ro.started_by,
 		"started_by_name": _fullname(ro.started_by),
 		"job_type": ro.job_type,
+		# The list card's facts (RepairOrderInfo) — the detail repeats the card it was opened from.
+		"pt_type": ro.pt_type,
+		"principal": ro.principal or c.principal,
+		"depot": ro.depot,
+		"plan_date": str(ro.plan_date) if ro.plan_date else None,
+		"creation": str(ro.creation),
+		"created_by_name": _fullname(ro.owner),
+		"item_count": sum(1 for r in ro.used_items if r.decision != "Rejected"),
 		# When the team handed the job to Desk. There is no field for it — but a Pending
 		# Review order is frozen (``save_mr_order`` refuses every write in that state), so its
 		# ``modified`` IS the moment it was submitted. Only sent while that holds; once it is

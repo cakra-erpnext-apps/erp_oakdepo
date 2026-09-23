@@ -209,6 +209,16 @@ def mr_history(start=0, page_length=10, search=None, job_type=mr_scope.REPAIR):
 
 
 @frappe.whitelist(methods=["GET"])
+def mr_list(job_type=mr_scope.REPAIR, status=None, search=None, depot=None, principal=None, day=None,
+		active_only=0, sort=None, start=0, page_length=20):
+	"""GET — the M&R / Periodic Test list screen (search, status pills, filter sheet, grouped by
+	day). Every order from the hand-over (Pending) to its end; see ``mr.list_mr_orders``."""
+	_require_mr(job_type=job_type)
+	return mr.list_mr_orders(job_type=job_type, status=status, search=search, depot=depot,
+		principal=principal, day=day, active_only=active_only, sort=sort, start=start, page_length=page_length)
+
+
+@frappe.whitelist(methods=["GET"])
 def mr_order_detail(repair_order=None):
 	"""GET /api/v1/ess/mr-order-detail — one M&R's damages (EIR copy) + used items."""
 	_require_mr(repair_order)
