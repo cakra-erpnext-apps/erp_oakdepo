@@ -785,13 +785,21 @@ def position_board(limit=8, group=None) -> dict:
     * TERDATA HARI INI — bukan pekerjaan, melainkan bukti bahwa layar ini dipakai; tanpa ini
       operator yang sudah membereskan lima tank melihat layar yang tampak sama saja.
 
-	Hanya tank yang sedang BERADA di depo. Tank yang sudah keluar tidak punya posisi untuk
-	dicari, dan menghitungnya cuma membuat angka "belum terdata" tidak pernah bisa nol.
+	Hanya tank yang sedang BERADA di depo **dan** ada di Survey Order milik booking Tank Out
+	yang sedang memegangnya (``Container.lift_on_booking``). Posisi baru jadi pekerjaan ketika
+	ada yang datang mengambil tank-nya; tank yang cuma berdiri menunggu tidak membuat siapa pun
+	berjalan ke tumpukan yang salah. Pencarian di atas tetap menjangkau semua tank.
+
+	Tiap baris membawa job-nya (Survey Order, booking, Reff Doc, customer, status baris survey)
+	dan diurut menurut prioritas yang sama dengan semua worklist lain
+	(``worklist.sort_by_priority``): mendesak dulu, lalu tanggal survey terdekat.
 
 	``group`` = satu angka di puncak layar ditekan: yang dikembalikan hanya daftar itu, dan
 	utuh — bukan potongan delapan baris. Angka di pil berjanji "sekian tank", dan pil yang
 	menampilkan delapan setelah menjanjikan dua puluh tujuh adalah pil yang berbohong.
 	"""
+	from container_depot.container_depot.worklist import sort_by_priority
+
 	limit = cint(limit) or 8
 	group = (group or "").strip().lower()
 	if group in ("", "all", "undefined", "null", "none"):
@@ -810,23 +818,37 @@ def position_board(limit=8, group=None) -> dict:
 		args["depots"] = tuple(depots or [""])
 	clause = " and ".join(where)
 
+	# Satu baris per tank: Survey Order terbaru milik booking yang memegangnya. Jadwal yang
+	# dibatalkan, atau baris tank yang dibatalkan dari jadwalnya, bukan job lagi.
 	rows = frappe.db.sql(
 		f"""
 		select c.name, c.container_no, c.principal, c.depot, c.status, c.current_location,
-		       c.location_updated_on, c.location_updated_by, c.eir_in_date
+		       c.location_updated_on, c.location_updated_by, c.eir_in_date,
+		       c.target_lift_on, c.target_survey_on, c.target_urgent_on,
+		       so.name as survey_order, so.booking,
+		       r.status as survey_status, b.reff_doc, b.customer
 		  from `tabContainer` c
+		  join `tabSurvey Order` so on so.booking = c.lift_on_booking
+		       and so.docstatus != 2 and so.status != 'Cancelled'
+		  join `tabSurvey Order Tank` r on r.parent = so.name and r.parenttype = 'Survey Order'
+		       and r.container = c.name and r.status != 'Cancelled'
+		  left join `tabContainer Booking` b on b.name = so.booking
 		 where {clause}
+		 order by so.creation desc
 		""",
 		args,
 		as_dict=True,
 	)
+	seen = set()
+	rows = [r for r in rows if not (r.name in seen or seen.add(r.name))]
 
 	stale_before = add_to_date(now_datetime(), days=-RECHECK_DAYS)
 	today_start = getdate()
 	recheck, missing, today_rows, located = [], [], [], []
 	for r in rows:
 		r["location_updated_on"] = str(r.location_updated_on) if r.location_updated_on else None
-		r["eir_in_date"] = str(r.eir_in_date) if r.eir_in_date else None
+		for k in ("eir_in_date", "target_lift_on", "target_survey_on", "target_urgent_on"):
+			r[k] = str(r[k]) if r.get(k) else None
 		if not (r.current_location or "").strip():
 			missing.append(r)
 			continue
@@ -837,6 +859,8 @@ def position_board(limit=8, group=None) -> dict:
 		if recorded and recorded < str(stale_before):
 			recheck.append(r)
 
+	# Urutan dasar tiap daftar, lalu prioritas job di atasnya. sort_by_priority stabil, jadi
+	# urutan dasar inilah yang memutus seri di dalam satu tanggal.
 	# Yang paling tua duluan di daftar "perlu dicek": itu yang paling mungkin sudah bohong.
 	recheck.sort(key=lambda r: r["location_updated_on"] or "")
 	# Yang paling lama di depo duluan di daftar "belum terdata": tank yang baru masuk sepuluh
@@ -847,6 +871,8 @@ def position_board(limit=8, group=None) -> dict:
 	# butuh dilihat siapa pun, dan daftar yang dibuka pada bacaan tersegar membuka pada baris
 	# yang paling tidak berguna.
 	located.sort(key=lambda r: r["location_updated_on"] or "")
+	for lst in (recheck, missing, located):
+		sort_by_priority(lst, lambda r: False)
 
 	counts = {
 		"all": len(rows),

@@ -42,7 +42,7 @@
 						<button
 							type="button"
 							class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50"
-							@click="open(r.name)"
+							@click="open(r.name, r)"
 						>
 							<span class="oak-icon-tile h-10 w-10 shrink-0" :class="r.current_location ? 'bg-leaf-50 text-leaf-600' : 'bg-gray-100 text-gray-400'">
 								<Icon :name="r.current_location ? 'map-pin' : 'help-circle'" :size="16" />
@@ -110,11 +110,12 @@
 						</div>
 						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
 							<li v-for="r in board.recheck" :key="r.name">
-								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name)">
+								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name, r)">
 									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-amber-50 text-amber-600"><Icon name="flag" :size="17" /></span>
 									<span class="min-w-0 flex-1">
 										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
 										<span class="block truncate text-[11px] text-gray-500">{{ recheckLine(r) }}</span>
+										<PositionJob :row="r" />
 									</span>
 									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
 									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
@@ -137,8 +138,9 @@
 								<div class="min-w-0 flex-1">
 									<p class="truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</p>
 									<p class="truncate text-[11px] text-gray-500">{{ missingLine(r) }}</p>
+									<PositionJob :row="r" />
 								</div>
-								<button class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-4 text-xs" @click="open(r.name)">
+								<button class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-4 text-xs" @click="open(r.name, r)">
 									{{ labels.tankPosRecordBtn }}
 								</button>
 							</li>
@@ -162,11 +164,12 @@
 						</div>
 						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
 							<li v-for="r in board.located" :key="r.name">
-								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name)">
+								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name, r)">
 									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="map-pin" :size="17" /></span>
 									<span class="min-w-0 flex-1">
 										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
 										<span class="block truncate text-[11px] text-gray-500">{{ recheckLine(r) }}</span>
+										<PositionJob :row="r" />
 									</span>
 									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
 									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
@@ -180,11 +183,12 @@
 						<p class="px-1 text-xs font-bold text-gray-500">{{ labels.tankPosSecToday }} · {{ board.today.length }}</p>
 						<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
 							<li v-for="r in board.today" :key="r.name">
-								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name)">
+								<button type="button" class="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition active:bg-gray-50" @click="open(r.name, r)">
 									<span class="oak-icon-tile h-10 w-10 shrink-0 bg-leaf-50 text-leaf-600"><Icon name="check-circle" :size="17" /></span>
 									<span class="min-w-0 flex-1">
 										<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ r.container_no || r.name }}</span>
 										<span class="block truncate text-[11px] text-gray-500">{{ todayLine(r) }}</span>
+										<PositionJob :row="r" />
 									</span>
 									<span class="oak-chip shrink-0 bg-gray-100 font-mono text-gray-600">{{ r.current_location }}</span>
 									<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
@@ -236,6 +240,14 @@
 								{{ tank.container_no || tank.container }}
 							</p>
 							<p class="truncate text-xs text-gray-500">{{ specLine }}</p>
+							<PositionJob v-if="job" :row="job" />
+							<router-link
+								v-if="job"
+								:to="`/survey-orders/order/${encodeURIComponent(job.survey_order)}`"
+								class="mt-1 inline-block text-xs font-bold text-brand-600"
+							>
+								{{ labels.tankPosOpenJob }}
+							</router-link>
 						</div>
 						<div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
 							<div class="min-w-0">
@@ -379,6 +391,7 @@ import PhotoTile from "@/components/PhotoTile.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import PositionTemplateChips from "@/components/PositionTemplateChips.vue"
+import PositionJob from "@/components/PositionJob.vue"
 
 const route = useRoute()
 const router = useRouter()
@@ -507,7 +520,12 @@ const detailRes = cachedResource({
 	},
 })
 
-function open(container) {
+// Baris papan yang ditekan — job-nya ditampilkan lagi di layar satu tank. Kosong saat tank
+// dibuka dari pencarian atau deep link: tidak semua tank sedang punya job.
+const job = ref(null)
+
+function open(container, row = null) {
+	job.value = row?.survey_order ? row : null
 	saved.value = null
 	saveError.value = ""
 	pending.value = true

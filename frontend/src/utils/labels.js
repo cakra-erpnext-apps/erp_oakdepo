@@ -1192,8 +1192,8 @@ export const labels = {
 	tankPosSecMore: "Lihat {n} lainnya",
 	tankPosEnteredAt: "masuk",
 	tankPosRecordBtn: "Catat",
-	tankPosBoardEmpty: "Semua tank sudah terdata",
-	tankPosBoardEmptyHint: "Posisi tercatat otomatis saat gate in, cleaning, dan lowering.",
+	tankPosBoardEmpty: "Tidak ada tank di jadwal survey",
+	tankPosBoardEmptyHint: "Daftar ini hanya berisi tank di Survey Order booking Tank Out. Tank lain tetap bisa dicari di atas.",
 	// Form perbarui posisi.
 	tankPosNewTitle: "Posisi baru",
 	tankPosTemplateFor: "Template posisi · depot {depot}",
@@ -1208,6 +1208,7 @@ export const labels = {
 	tankPosSavedTitle: "Posisi tersimpan · {label}",
 	tankPosDone: "Selesai",
 	tankPosNext: "Catat tank berikutnya",
+	tankPosOpenJob: "Buka jadwal survey →",
 	// --- Kelola template ------------------------------------------------------
 	tplTitle: "Template posisi",
 	tplShort: "Template", // tombol di papan, tempatnya sempit

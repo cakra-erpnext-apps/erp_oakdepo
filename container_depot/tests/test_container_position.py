@@ -568,7 +568,67 @@ class TestRecordingSeveralAtOnce(_Base):
 
 
 class TestThePositionBoard(_Base):
-	"""Layar pembuka: bukan "di mana tank X", tapi "apa yang belum beres soal posisi"."""
+	"""Layar pembuka: bukan "di mana tank X", tapi "apa yang belum beres soal posisi".
+
+	Hanya tank yang ada di Survey Order booking Tank Out yang memegangnya, jadi setiap tank
+	fixture di sini didaftarkan ke satu jadwal survey palsu (ditulis mentah — booking-nya
+	tidak perlu ada, yang dibaca papan cuma ``lift_on_booking`` = ``Survey Order.booking``).
+	"""
+
+	def setUp(self):
+		super().setUp()
+		self._orders = []
+
+	def tearDown(self):
+		orders = self._orders or [""]
+		frappe.db.delete("Survey Order Tank", {"parent": ["in", orders]})
+		frappe.db.delete("Survey Order", {"name": ["in", orders]})
+		super().tearDown()
+
+	def _container(self, cno, survey=True, survey_on=None, urgent_on=None, row_status="Waiting Lowering"):
+		c = super()._container(cno)
+		if not survey:
+			return c
+		booking = f"CPOS-BK-{cno}"
+		so = frappe.get_doc({
+			"doctype": "Survey Order", "name": f"CPOS-SO-{cno}", "booking": booking,
+			"status": "Scheduled", "survey_date": survey_on or today(), "depot": DEPOT,
+		})
+		so.db_insert()
+		frappe.get_doc({
+			"doctype": "Survey Order Tank", "name": f"CPOS-SOT-{cno}", "parent": so.name,
+			"parenttype": "Survey Order", "parentfield": "tanks", "idx": 1,
+			"container": c, "status": row_status,
+		}).db_insert()
+		self._orders.append(so.name)
+		frappe.db.set_value(
+			"Container", c,
+			{"lift_on_booking": booking, "target_survey_on": survey_on, "target_urgent_on": urgent_on},
+			update_modified=False,
+		)
+		return c
+
+	def test_only_tanks_on_a_survey_order_are_listed(self):
+		on = self._container("CPOS00000087")
+		off = self._container("CPOS00000088", survey=False)
+		names = [r["name"] for r in cp.position_board(group="missing")["missing"]]
+		self.assertIn(on, names)
+		self.assertNotIn(off, names)
+
+	def test_a_cancelled_survey_row_drops_the_tank(self):
+		c = self._container("CPOS00000089", row_status="Cancelled")
+		self.assertNotIn(c, [r["name"] for r in cp.position_board(group="missing")["missing"]])
+
+	def test_rows_carry_their_job_and_urgent_comes_first(self):
+		later = self._container("CPOS00000090", survey_on=add_days(today(), 1))
+		urgent = self._container("CPOS00000091", survey_on=add_days(today(), 5), urgent_on=add_days(today(), 3))
+		rows = cp.position_board(group="missing")["missing"]
+		names = [r["name"] for r in rows]
+		self.assertLess(names.index(urgent), names.index(later))
+		row = rows[names.index(urgent)]
+		self.assertEqual(row["survey_order"], "CPOS-SO-CPOS00000091")
+		self.assertEqual(row["booking"], "CPOS-BK-CPOS00000091")
+		self.assertEqual(row["survey_status"], "Waiting Lowering")
 
 	def test_a_tank_nobody_recorded_lands_in_belum_terdata(self):
 		c = self._container("CPOS00000080")
