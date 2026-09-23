@@ -251,7 +251,6 @@ class TestStorageCharges(FrappeTestCase):
 		}).insert(ignore_permissions=True)
 		eir.db_set({"docstatus": 1, "work_ended_on": f"{inspected} 14:00:00"})
 		row = self._row(doc.name)
-		self.assertEqual(getdate(row["gate_in"]), getdate(gated))
 		self.assertEqual(getdate(row["in_date"]), getdate(inspected))
 		self.assertEqual(row["stay_days"], 8)
 		self.assertEqual(row["source"], storage.SRC_GATE)

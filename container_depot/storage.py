@@ -137,7 +137,7 @@ def billable_now(period: dict, mode: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Stay periods — one dict per visit: {start, end, gate_in, eir_in, source, ref}
+# Stay periods — one dict per visit: {start, end, eir_in, source, ref}
 #
 # ``start`` is when storage starts — the visit's EIR-In, else its arrival (see
 # ``_with_eir``). ``end`` is None while the tank is still inside. ``ref`` is the document the dates were
@@ -224,7 +224,7 @@ def _eir_ins(containers: list[str]) -> dict[str, list]:
 
 
 def _with_eir(periods: list[dict], eir, eir_ins: list) -> list[dict]:
-	"""Split each visit's arrival into ``gate_in`` and ``eir_in``; storage starts at EIR-In.
+	"""Storage starts at EIR-In: ``start`` becomes the visit's first submitted EIR-In.
 
 	The gate only says the tank came through the gate. The tank is in storage once its
 	EIR-In inspection is done, so ``start`` — what every day count reads — becomes the first
@@ -241,7 +241,7 @@ def _with_eir(periods: list[dict], eir, eir_ins: list) -> list[dict]:
 	"""
 	out = []
 	for i, p in enumerate(periods):
-		p = {**p, "gate_in": p["start"] if p.get("ref") else None, "eir_in": None}
+		p = {**p, "eir_in": None}
 		lo = getdate(p["start"])
 		hi = getdate(p["end"]) if p["end"] else (getdate(periods[i + 1]["start"]) if i + 1 < len(periods) else None)
 		found = next((t for t in eir_ins if getdate(t) >= lo and (hi is None or getdate(t) <= hi)), None)
