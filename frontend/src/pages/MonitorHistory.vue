@@ -6,6 +6,7 @@
 		:back-label="labels.monitorTitle"
 		list-url="container_depot.ess.inventory.activity_history"
 		:list-params="listParams"
+		:date-of="(r) => r.activity_time"
 		detail-url="container_depot.ess.inventory.activity_detail"
 		detail-param="name"
 		:search-placeholder="labels.monitorHistorySearch"

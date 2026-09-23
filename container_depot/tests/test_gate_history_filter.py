@@ -66,3 +66,12 @@ class TestGateHistoryFilter(FrappeTestCase):
 	def test_junk_direction_is_ignored(self):
 		# "undefined" dari klien tidak boleh menyembunyikan seluruh riwayat.
 		self.assertEqual(self._tanks(direction="undefined", day="undefined"), self._tanks())
+
+	def test_day_without_direction_uses_creation(self):
+		# Saringan Tanggal di Riwayat Gate tanpa arah: tanggal voucher dibuat (semua dibuat hari ini).
+		self.assertEqual(self._tanks(day="today"), self._tanks())
+		self.assertEqual(self._tanks(day=add_days(today(), -1)), set())
+
+	def test_sort_follows_filtered_stamp(self):
+		rows = list_gate_history(search=PREFIX, page_length=50, direction="in", sort="oldest")["items"]
+		self.assertEqual([r.container_no for r in rows], [f"{PREFIX}OLD", f"{PREFIX}OUT", f"{PREFIX}IN"])

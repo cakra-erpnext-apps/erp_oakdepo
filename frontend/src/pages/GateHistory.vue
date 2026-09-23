@@ -10,16 +10,27 @@
 		:search-placeholder="labels.gateHistorySearch"
 		:count-label="labels.gateHistoryCount"
 		:list-params="listParams"
+		:date-of="dateOf"
 	>
-		<!-- Datang dari kartu Beranda: daftarnya sudah disaring persis seperti angka yang
-		     barusan ditekan. Chip-nya mengatakannya, dan sekali ketuk membuka riwayat penuh. -->
-		<template v-if="filterNote" #filters>
-			<div class="flex items-center gap-2">
-				<span class="oak-chip bg-brand-50 text-brand-700">
-					<Icon name="filter" :size="12" /> {{ filterNote }}
-				</span>
-				<router-link to="/gate/history" class="oak-link text-xs">{{ labels.gateHistoryAll }}</router-link>
-			</div>
+		<!-- Arah + tanggal hidup di query (?direction=in|out&day=today|YYYY-MM-DD) — kartu
+		     "Tank masuk/keluar" Beranda menautkan ke sini dengan saringan yang persis sama
+		     dengan angkanya; chip-nya mengatakannya, dan × membuka riwayat penuh. -->
+		<template #filters>
+			<FilterBar
+				:chips="activeChips"
+				:sort-label="sort.sort === 'oldest' ? labels.leakSortOldest : labels.svSortNewest"
+				@open="sheetOpen = true"
+				@sort="sort.sort = sort.sort === 'oldest' ? 'newest' : 'oldest'"
+				@clear-one="(k) => setQuery({ ...filter, [k]: '' })"
+				@clear-all="setQuery({})"
+			/>
+			<FilterSheet
+				:open="sheetOpen"
+				:value="{ ...filter, day: dayIso }"
+				:fields="SHEET_FIELDS"
+				@close="sheetOpen = false"
+				@apply="setQuery"
+			/>
 		</template>
 
 		<template #row="{ item }">
@@ -60,23 +71,56 @@
 </template>
 
 <script setup>
-import { computed } from "vue"
-import { useRoute } from "vue-router"
+import { computed, ref } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
+import FilterBar from "@/components/list/FilterBar.vue"
+import FilterSheet from "@/components/list/FilterSheet.vue"
+import { useSavedFilters } from "@/utils/listKit"
+import { fmtDate as fmtDateId } from "@/utils/surveyStatus"
 
-// ?direction=in|out&day=today — saringan opsional dari tautan mana pun, diteruskan apa adanya
-// ke server (gate.list_gate_history yang memutuskan cap waktu mana
-// yang dipakai). Tanpa query, halaman ini tetap riwayat gate yang penuh.
+// ?direction=in|out&day=today|YYYY-MM-DD — saringan dari tautan mana pun (Beranda), diteruskan
+// ke server (gate.list_gate_history yang memutuskan cap waktu mana yang dipakai, dan
+// mengurutkan menurut cap itu). Tanpa query, halaman ini tetap riwayat gate yang penuh.
 const route = useRoute()
-const dir = computed(() => (route.query.direction === "in" || route.query.direction === "out" ? route.query.direction : ""))
-const listParams = computed(() => (dir.value ? { direction: dir.value, day: route.query.day || undefined } : {}))
-const filterNote = computed(() => {
-	if (!dir.value) return ""
-	const what = dir.value === "in" ? labels.homeTileGateIn : labels.homeTileGateOut
-	return route.query.day === "today" ? `${what} · ${labels.gateHistoryToday}` : what
-})
+const router = useRouter()
+const filter = computed(() => ({
+	direction: route.query.direction === "in" || route.query.direction === "out" ? route.query.direction : "",
+	day: typeof route.query.day === "string" ? route.query.day : "",
+}))
+// Urutan disimpan per user; saringan tidak — itu milik tautan yang membuka halaman ini.
+const sort = useSavedFilters("gate-history", { sort: "newest" })
+const todayIso = () => new Date().toLocaleDateString("sv") // YYYY-MM-DD, jam lokal
+const dayIso = computed(() => (filter.value.day === "today" ? todayIso() : filter.value.day))
+const listParams = computed(() => ({ ...filter.value, sort: sort.sort }))
+const sheetOpen = ref(false)
+
+const DIR_LABEL = { in: labels.homeTileGateIn, out: labels.homeTileGateOut }
+const SHEET_FIELDS = [
+	{ key: "direction", type: "scope", choices: [{ key: "", label: labels.monitorAll }, { key: "in", label: DIR_LABEL.in }, { key: "out", label: DIR_LABEL.out }] },
+	{ key: "day", type: "date", label: labels.svChipDate },
+]
+const activeChips = computed(() =>
+	[
+		filter.value.direction && { key: "direction", label: labels.gateDirection, value: DIR_LABEL[filter.value.direction] },
+		filter.value.day && {
+			key: "day",
+			label: labels.svChipDate,
+			value: dayIso.value === todayIso() ? labels.homeToday : fmtDateId(dayIso.value),
+		},
+	].filter(Boolean)
+)
+function setQuery(f) {
+	const query = {}
+	if (f.direction) query.direction = f.direction
+	if (f.day) query.day = f.day
+	router.replace({ query })
+}
+// Grup per hari mengikuti cap waktu yang dipakai server untuk mengurutkan.
+const dateOf = (r) =>
+	({ in: r.gate_in_timestamp, out: r.gate_out_timestamp })[filter.value.direction] || r.creation
 
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
 const fmtDateTime = (v) => (v ? String(v).slice(0, 16).replace("T", " ") : "")

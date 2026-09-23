@@ -7,6 +7,7 @@
 		list-url="container_depot.ess.tank_survey.survey_history"
 		detail-url="container_depot.ess.tank_survey.survey_tank_detail"
 		detail-param="name"
+		:date-of="(r) => r.surveyed_on || r.creation"
 		:search-placeholder="labels.surveyPosSearch"
 		:count-label="labels.surveyPosHistoryCount"
 	>

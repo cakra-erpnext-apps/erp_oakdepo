@@ -7,6 +7,7 @@
 		list-url="container_depot.ess.cleaning.cleaning_history"
 		detail-url="container_depot.ess.cleaning.cleaning_order_detail"
 		detail-param="cleaning_order"
+		:date-of="(r) => r.order_created"
 		:search-placeholder="labels.cleaningOrdersSearch"
 		:count-label="labels.cleaningHistoryCount"
 	>

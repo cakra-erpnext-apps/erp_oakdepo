@@ -28,14 +28,16 @@ _LIST_FIELDS = [
 ]
 
 
-def list_gate_history(start=0, page_length=10, search=None, direction=None, day=None) -> dict:
+def list_gate_history(start=0, page_length=10, search=None, direction=None, day=None, sort=None) -> dict:
 	"""Gate Entry records (gate-in/out vouchers), newest first, paginated + searchable,
 	depot-scoped to the caller's branch.
 
 	``direction`` ("in" / "out") + ``day`` ("today" or a date) narrow the feed to the tanks
 	that came through that door on that day. Beranda's "Tank masuk" / "Tank keluar" tiles
 	link here with exactly the day and direction their number counts, so the list opens on
-	the rows behind the tile instead of on the whole history.
+	the rows behind the tile instead of on the whole history. ``day`` without a direction
+	filters on the voucher's creation date. Ordered by the filtered stamp (else creation),
+	newest first unless ``sort="oldest"`` — the PWA groups rows per day of that same stamp.
 	"""
 	filters = {}
 	depots = get_user_depots()
@@ -45,12 +47,13 @@ def list_gate_history(start=0, page_length=10, search=None, direction=None, day=
 	# satu kunjungan tank, dan cap mana yang terisi itulah yang memberi tahu pintu mana
 	# yang sudah dilewatinya.
 	stamp = {"in": "gate_in_timestamp", "out": "gate_out_timestamp"}.get(str(direction or "").strip().lower())
-	if stamp:
-		if day and str(day).strip().lower() not in ("undefined", "null", "none"):
-			d = getdate() if str(day).strip().lower() == "today" else getdate(day)
-			filters[stamp] = ["between", [d, d]]
-		else:
-			filters[stamp] = ["is", "set"]
+	has_day = day and str(day).strip().lower() not in ("undefined", "null", "none")
+	if has_day:
+		d = getdate() if str(day).strip().lower() == "today" else getdate(day)
+		# Tanpa arah: tanggal voucher dibuat (saringan Tanggal di Riwayat Gate).
+		filters[stamp or "creation"] = ["between", [d, d]]
+	elif stamp:
+		filters[stamp] = ["is", "set"]
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
@@ -62,7 +65,7 @@ def list_gate_history(start=0, page_length=10, search=None, direction=None, day=
 		}
 	items = frappe.get_all(
 		"Gate Entry", filters=filters, or_filters=or_filters,
-		fields=_LIST_FIELDS, order_by="creation desc",
+		fields=_LIST_FIELDS, order_by=f"{stamp or 'creation'} {'asc' if sort == 'oldest' else 'desc'}",
 		limit_start=cint(start), limit_page_length=cint(page_length),
 	)
 	return {"items": items, "total": frappe.db.count("Gate Entry", filters)}
