@@ -66,87 +66,21 @@
 				</div>
 			</div>
 
-			<!-- LANGKAH 1 — tandai lowered -->
-			<section v-if="canLower" class="oak-card space-y-3 border-brand-300 p-4">
-				<p class="text-sm font-extrabold text-gray-900">{{ labels.tankMarkLowered }}</p>
-
-				<!-- Kotak letak hanya muncul untuk tank yang belum pernah didata. Untuk yang
-				     sudah, "sudah turun" tidak mengubah letaknya, dan kotak terisi otomatis
-				     mengundang konfirmasi ulang atas posisi yang tidak ada yang mengeceknya. -->
-				<div v-if="!tank.located">
-					<label class="oak-label">{{ labels.tankPosNewLabel }}</label>
-					<textarea
-						v-model.trim="form.location_note"
-						rows="2"
-						class="oak-input"
-						:placeholder="labels.posLocationHint"
-					></textarea>
-					<p class="mt-1 text-[11px] text-amber-700">{{ labels.tankPosUnlocatedHint }}</p>
-				</div>
-
-				<div>
-					<label class="oak-label">
-						{{ labels.tankLoweringNote }} <span class="font-normal text-gray-400">{{ labels.tankPosOptional }}</span>
-					</label>
-					<textarea
-						v-model.trim="form.lowering_note"
-						rows="2"
-						class="oak-input"
-						:placeholder="labels.tankLoweringNoteHint"
-					></textarea>
-				</div>
-
-				<div>
-					<label class="oak-label">
-						{{ labels.tankLoweringPhotos }} <span class="font-normal text-gray-400">{{ labels.tankPosOptional }}</span>
-					</label>
-					<div class="grid grid-cols-3 gap-2">
-						<div v-for="(url, i) in photos" :key="i" class="relative aspect-square">
-							<img :src="photoSrc(url)" class="h-full w-full rounded-lg border border-gray-200 object-cover" />
-							<button
-								type="button"
-								class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"
-								:aria-label="labels.tplCancel"
-								@click="photos.splice(i, 1)"
-							>
-								<Icon name="x" :size="16" />
-							</button>
-						</div>
-						<PhotoTile v-for="it in photoQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
-						<input ref="camInput" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onPhotos" />
-						<button
-							type="button"
-							class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
-							:disabled="photoUploading"
-							@click="openCameraOrFallback"
-						>
-							<Icon v-if="photoUploading" name="loader" :size="22" class="animate-spin" />
-							<template v-else>
-								<Icon name="camera" :size="22" />
-								<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
-							</template>
-						</button>
-						<label class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100">
-							<Icon name="image" :size="22" />
-							<span class="text-xs font-medium">{{ labels.photoGallery }}</span>
-							<input type="file" accept="image/*" multiple class="hidden" :disabled="photoUploading" @change="onPhotos" />
-						</label>
-					</div>
-				</div>
-
-				<p v-if="lowerError" class="text-xs text-red-600">{{ lowerError }}</p>
+			<!-- LANGKAH 1 — tandai lowered: satu tombol, tanpa isian. Letak dicatat SEBELUM
+			     lowering di menu Letak Tank; biasanya ini dicentang langsung dari list. -->
+			<section v-if="canLower" class="oak-card space-y-2 border-brand-300 p-4">
 				<button
 					class="oak-btn oak-btn-primary min-h-[52px] w-full text-base"
 					:disabled="lowering"
 					@click="markLowered"
 				>
-					{{ lowering ? "…" : labels.tankMarkLowered }}
+					<Icon name="check" :size="18" /> {{ lowering ? "…" : labels.tankMarkLowered }}
 				</button>
 				<p class="text-center text-[11px] text-gray-400">{{ labels.tankAutoStamp }}</p>
 			</section>
 
 			<!-- Foto lowering yang sudah ada — patokan visual buat yang datang berikutnya. -->
-			<section v-if="!canLower && latestPhotos.length" class="oak-card space-y-2 p-4">
+			<section v-if="latestPhotos.length" class="oak-card space-y-2 p-4">
 				<div class="flex items-baseline justify-between gap-2">
 					<p class="text-sm font-extrabold text-gray-900">{{ labels.tankLoweringPhotos }}</p>
 					<p class="shrink-0 text-[11px] text-gray-400">{{ latestPhotos.length }} {{ labels.tankPosPhotoCount }}</p>
@@ -340,10 +274,11 @@ import { cachedResource } from "@/data/cache"
 import { send } from "@/data/send"
 import { openLightbox } from "@/utils/lightbox"
 import { uploadPhoto, photoSrc, post } from "@/data/send"
-import { serverSide, useServerDraft } from "@/utils/serverDraft"
+import { serverSide } from "@/utils/serverDraft"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import { shootOrFallback } from "@/utils/camera"
 import PhotoTile from "@/components/PhotoTile.vue"
+import { lowerTank } from "@/utils/lowering"
 import InteriorPhotos from "@/components/InteriorPhotos.vue"
 import {
 	DONE,
@@ -364,7 +299,7 @@ const pending = ref(true)
 const failed = ref(false)
 const error = ref("")
 
-const form = reactive({ location_note: "", lowering_note: "", notes: "" })
+const form = reactive({ notes: "" })
 
 // The pictures of the position shown at the top. Only the newest reading's — the older ones
 // belong to the Letak Tank screen, not to a surveyor asking where to walk.
@@ -478,22 +413,7 @@ function eventMeta(e) {
 	return parts.join(" · ")
 }
 
-// ---- foto lowering ----
-// Foto TANPA letak baru tetap tersimpan sebagai bacaan posisi memakai letak yang berlaku
-// (tank_survey.mark_lowered) — kalau tidak, jepretan operator hilang tanpa pesan apa pun.
-const photos = ref([])
-const photoUploading = ref(false)
-const photoQueue = usePhotoQueue()
-const camInput = ref(null)
-function openCameraOrFallback() {
-	return shootOrFallback(camInput, (file) => addPhotos([file]))
-}
-async function onPhotos(e) {
-	const files = Array.from(e.target.files || [])
-	e.target.value = ""
-	await addPhotos(files)
-}
-async function addPhotos(files, push = (url) => photos.value.push(url), queue = photoQueue, busy = photoUploading) {
+async function addPhotos(files, push, queue, busy) {
 	if (!files.length) return false
 	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
 	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
@@ -534,22 +454,6 @@ async function onInterior(e) {
 	const files = Array.from(e.target.files || [])
 	e.target.value = ""
 	await addInterior(files)
-}
-
-// Isian lowering (letak, catatan, foto) tersimpan otomatis di server sampai Tandai Lowered.
-const loweringDraft = useServerDraft(() => (tank.value?.status === WAITING ? `lowering:${tank.value.name}` : null))
-let loweringRestoring = false
-watch([() => form.location_note, () => form.lowering_note, photos], () => {
-	if (!loweringRestoring) loweringDraft.save({ location_note: form.location_note, lowering_note: form.lowering_note, photos: photos.value })
-}, { deep: true })
-async function restoreLowering(open) {
-	const d = open ? await loweringDraft.load() : null
-	if (d) {
-		form.location_note = d.location_note || form.location_note
-		form.lowering_note = d.lowering_note || form.lowering_note
-		photos.value = d.photos || []
-	}
-	nextTick(() => { loweringRestoring = false })
 }
 
 // Autosave: tiap tambah/hapus foto atau ubah deskripsi langsung tersimpan ke Survey Order,
@@ -602,12 +506,6 @@ const res = cachedResource({
 		pending.value = false
 		failed.value = false
 		tank.value = data
-		// Blank on purpose when the tank already has a location: this box means "the tank moved
-		// to HERE", and pre-filling it with the old place invites a re-confirmation of a
-		// position nobody re-checked.
-		loweringRestoring = true // reset di bawah bukan ketikan: jangan menimpa draft server
-		form.location_note = ""
-		form.lowering_note = data.lowering_note || ""
 		form.notes = data.survey_notes || ""
 		// Foto interior yang sudah tersimpan muncul lagi selama survey masih terbuka.
 		interiorPrefilling = true
@@ -617,7 +515,6 @@ const res = cachedResource({
 			: []
 		interiorSaved.value = true
 		nextTick(() => { interiorPrefilling = false })
-		restoreLowering(data.status === WAITING)
 	},
 	onError(err) {
 		pending.value = false
@@ -647,45 +544,12 @@ const canReopen = computed(
 
 // ---- step 1: tandai lowered ----
 const lowering = ref(false)
-const lowerError = ref("")
 
 async function markLowered() {
 	if (lowering.value || !tank.value) return
-	// Optional — unless nobody has ever located this tank. A tank that has just been put down
-	// by definition has a position to record, and "sudah turun" with no place leaves the
-	// surveyor nowhere to walk.
-	if (!tank.value.located && !form.location_note) {
-		lowerError.value = labels.posLocationRequired
-		return
-	}
-	if (!(await confirm({
-		title: labels.posLoweredConfirmYes,
-		message: labels.posLoweredConfirmMsg,
-		confirmLabel: labels.posLoweredConfirmYes,
-		cancelLabel: labels.confirmCancel,
-	}))) return
-
 	lowering.value = true
-	lowerError.value = ""
 	try {
-		await send({
-			url: "container_depot.ess.tank_survey.survey_lowered",
-			payload: {
-				name: tank.value.name,
-				location_note: form.location_note || undefined,
-				note: form.lowering_note || undefined,
-				photos: photos.value.length ? photos.value : undefined,
-			},
-		})
-		toast.success(labels.posLoweredDone, { title: tank.value.name })
-		loweringDraft.clear()
-		loweringRestoring = true
-		photos.value = []
-		nextTick(() => { loweringRestoring = false })
-		load()
-	} catch (e) {
-		lowerError.value = e?.message || labels.error
-		toast.error(lowerError.value)
+		if (await lowerTank(tank.value)) load()
 	} finally {
 		lowering.value = false
 	}

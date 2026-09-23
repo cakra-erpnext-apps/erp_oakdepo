@@ -138,6 +138,11 @@
 							<span class="h-1.5 w-1.5 rounded-full bg-current"></span>{{ statusLabel(o.status) }}
 						</span>
 					</SurveyOrderInfo>
+					<p v-if="o.worked_by?.length" class="flex items-center gap-1.5 text-xs">
+						<Icon name="user" :size="13" class="shrink-0 text-gray-400" />
+						<span class="text-gray-400">{{ labels.svWorkedBy }}</span>
+						<span class="min-w-0 truncate font-semibold text-gray-700">{{ o.worked_by.join(", ") }}</span>
+					</p>
 					<div class="h-1.5 overflow-hidden rounded-full bg-gray-100">
 						<div class="h-full rounded-full bg-brand-500" :style="{ width: `${o.per_surveyed || 0}%` }"></div>
 					</div>
@@ -229,7 +234,7 @@ const statusLabel = (s) => STATUS_LABEL[s] || s || "—"
 // Filter disimpan di perangkat ini, dikunci per user (handset berpindah tangan antar shift —
 // lihat utils/userPicks.js). Pencarian sengaja tidak ikut: itu pertanyaan sekali jalan.
 // `f` = semua yang diatur di sheet; status (pil angka) dan urutan punya tombolnya sendiri.
-const SHEET_DEFAULTS = { day: "", depot: "", principal: "", surveyor: "", shipper: "", emkl: "", activeOnly: false }
+const SHEET_DEFAULTS = { day: "", depot: "", principal: "", surveyor: "", shipper: "", emkl: "", mine: false, activeOnly: false }
 const STORE_KEY = `oak-survey-filters:${session.user || ""}`
 function readSaved() {
 	try {
@@ -272,6 +277,7 @@ const activeChips = computed(() =>
 		f.surveyor && { key: "surveyor", label: labels.svSurveyor, value: f.surveyor },
 		f.shipper && { key: "shipper", label: labels.shipper, value: f.shipper },
 		f.emkl && { key: "emkl", label: labels.svEmkl, value: f.emkl },
+		f.mine && { key: "mine", label: "", value: labels.svMine },
 		f.activeOnly && { key: "activeOnly", label: "", value: labels.svChipActive },
 	].filter(Boolean)
 )
@@ -363,6 +369,7 @@ const listRes = cachedResource({
 		surveyor: f.surveyor || undefined,
 		shipper: f.shipper || undefined,
 		emkl: f.emkl || undefined,
+		mine: f.mine ? 1 : 0,
 		active_only: f.activeOnly ? 1 : 0,
 		sort: sort.value,
 		start: start.value,

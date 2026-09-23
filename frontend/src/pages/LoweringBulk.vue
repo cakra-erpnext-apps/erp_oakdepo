@@ -75,17 +75,6 @@
 				</ul>
 			</section>
 
-			<!-- Tank yang letaknya belum pernah didata tidak bisa ditandai lowered: "sudah turun"
-			     sendirian meninggalkan surveyor tanpa tempat untuk berjalan. Dikatakan DI SINI,
-			     bukan sebagai kegagalan setelah tombol ditekan. -->
-			<div v-if="unlocated.length" class="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-				<Icon name="alert-triangle" :size="16" class="mt-0.5 shrink-0 text-amber-600" />
-				<div class="min-w-0">
-					<p class="text-xs font-bold text-amber-900">{{ fill(labels.bulkLowNeedPos, { n: unlocated.length }) }}</p>
-					<p class="mt-0.5 text-[11px] text-amber-800">{{ labels.bulkLowNeedPosHint }}</p>
-				</div>
-			</div>
-
 			<section class="oak-card space-y-2 p-4">
 				<div class="flex items-baseline justify-between gap-2">
 					<p class="text-sm font-extrabold text-gray-900">{{ labels.tankLoweringNote }}</p>
@@ -109,7 +98,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue"
+import { onMounted, ref } from "vue"
 import { useRouter } from "vue-router"
 import { send } from "@/data/send"
 import { labels } from "@/utils/labels"
@@ -124,8 +113,6 @@ const initial = ref(0)
 const note = ref("")
 const saving = ref(false)
 const done = ref(null)
-
-const unlocated = computed(() => picked.value.filter((t) => !t.located))
 
 function fill(tpl, vars) {
 	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)

@@ -39,6 +39,7 @@ See ``ess.context._MENU``.
 from __future__ import annotations
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 from container_depot.container_depot.doctype.container_booking.container_booking import (
@@ -55,6 +56,7 @@ CANCELLED = "Cancelled"
 
 class SurveyOrder(Document):
 	def validate(self):
+		self._refuse_hand_edited_tank_status()
 		# The depot each tank is actually standing in, filled once at insert. Read per ROW and
 		# not off the header: an outbound booking may collect from two depots of one branch,
 		# and then the header carries no depot at all — and the flat PWA queues scope on this
@@ -62,6 +64,43 @@ class SurveyOrder(Document):
 		for row in self.tanks or []:
 			if row.container and not row.depot:
 				row.depot = frappe.db.get_value("Container", row.container, "depot") or self.depot
+
+	def _refuse_hand_edited_tank_status(self):
+		"""Status tank hanya berubah lewat aksinya (lowering, survey, buka lagi) — di sanalah
+		stempel siapa/kapan ditulis, EIR-Out diterbitkan atau ditarik, dan notifikasi dikirim.
+		Mengubahnya dari form melewati semua itu: tank "kembali" ke Waiting Lowering tapi
+		EIR-Out-nya tetap berdiri dan bisa dipakai lewat gate.
+
+		Satu-satunya pengecualian adalah sinkron booking (tank dikeluarkan/dikembalikan ke
+		booking), yang menandai dirinya dengan ``flags.tank_status_by_system``.
+		"""
+		if self.is_new() or self.flags.tank_status_by_system:
+			return
+		saved = dict(frappe.get_all(
+			"Survey Order Tank", filters={"parent": self.name, "parenttype": "Survey Order"},
+			fields=["name", "status"], as_list=True,
+		))
+		for row in self.tanks or []:
+			if row.name in saved and row.status != saved[row.name]:
+				frappe.throw(_(
+					"Status tank {0} tidak bisa diubah dari form. Pakai tombol Tandai Lowered / "
+					"Selesai Survey / Buka lagi di PWA."
+				).format(row.container_no or row.container))
+
+	def on_update(self):
+		"""Angka & status header selalu dihitung ulang dari baris tank setelah disimpan.
+
+		Tombol PWA sudah memanggil ``refresh_progress`` sendiri, tapi baris tank juga bisa
+		diubah dari form Desk — tanpa ini header tetap "In Progress, 1 lowered" di atas tank
+		yang sudah dikembalikan ke Waiting Lowering. Nilainya juga ditulis ke dokumen di
+		memori supaya form yang baru disimpan langsung menampilkan angka yang benar.
+		"""
+		values = refresh_progress(self.name)
+		for k, v in (values or {}).items():
+			if k != "docstatus":
+				self.set(k, v)
+
+	on_update_after_submit = on_update
 
 	def before_cancel(self):
 		"""Cancelling the schedule cancels its tanks with it.

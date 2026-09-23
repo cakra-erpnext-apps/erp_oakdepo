@@ -490,20 +490,50 @@ class TestLocationIsReadNotStored(_Base):
 		)
 		self.assertEqual(frappe.db.count("Container Position", {"container": c}), 2)
 
-	def test_lowering_demands_a_location_only_for_a_tank_nobody_has_located(self):
-		""""Sudah turun" with no place leaves the surveyor nowhere to walk — but a tank whose
-		position is already on record does not need it retyped."""
+	def test_lowering_is_one_tick_even_for_a_tank_nobody_has_located(self):
+		"""Letak dicatat SEBELUM lowering (menu Letak Tank). Tank yang belum punya letak tetap
+		bisa diturunkan — Kalmar menemukannya sendiri — dan tidak ada letak kosong yang dicatat."""
 		blank = self._container("TSVLOC000004", located=None)
-		known = self._container("TSVLOC000005")
-		bk_blank = self._booking(blank)
-		bk_known = self._booking(known)
+		row = self._row(self._booking(blank))
 
+		ts.mark_lowered(row, photos=["/files/x.jpg"])
+
+		self.assertEqual(self._val(row, "status").status, ts.LOWERED)
+		self.assertFalse(frappe.db.get_value("Container", blank, "current_location"))
+		self.assertFalse(frappe.db.exists("Container Position", {"container": blank}))
+
+
+# ---------------------------------------------------------------------------
+class TestHeaderFollowsTheRows(_Base):
+	def test_the_form_cannot_change_a_tank_status(self):
+		"""Lewat form, tank bisa "kembali" ke Waiting Lowering tanpa EIR-Out-nya ditarik dan
+		tanpa stempel — jadi ditolak; perubahan status hanya lewat aksinya."""
+		c = self._container("TSVHDR000001")
+		bk = self._booking(c)
+		ts.mark_lowered(self._row(bk))
+
+		doc = frappe.get_doc(SCHEDULE, self._order(bk))
+		doc.tanks[0].status = ts.WAITING
 		with self.assertRaises(frappe.ValidationError):
-			ts.mark_lowered(self._row(bk_blank))
-		self.assertEqual(self._val(self._row(bk_blank), "status").status, ts.WAITING)
+			doc.save(ignore_permissions=True)
+		self.assertEqual(self._val(self._row(bk), "status").status, ts.LOWERED)
 
-		ts.mark_lowered(self._row(bk_known))
-		self.assertEqual(self._val(self._row(bk_known), "status").status, ts.LOWERED)
+	def test_a_system_save_recounts_the_header(self):
+		"""Save yang sah (sinkron booking) menghitung ulang header, dan form yang baru disimpan
+		ikut menampilkan angka yang benar."""
+		c = self._container("TSVHDR000002")
+		bk = self._booking(c)
+		ts.mark_lowered(self._row(bk))
+		self.assertEqual(self._progress(bk).status, "In Progress")
+
+		doc = frappe.get_doc(SCHEDULE, self._order(bk))
+		doc.tanks[0].status = ts.WAITING
+		doc.flags.tank_status_by_system = True
+		doc.save(ignore_permissions=True)
+
+		p = self._progress(bk)
+		self.assertEqual((p.status, p.lowered_count), ("Scheduled", 0))
+		self.assertEqual(doc.lowered_count, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -1097,9 +1127,8 @@ class TestMarkingSeveralLowered(_Base):
 			self.assertTrue(frappe.db.get_value(ROW, name, "lowered_on"))
 
 	def test_a_tank_that_cannot_be_marked_does_not_take_the_others_down(self):
-		"""Yang paling mungkin gagal adalah tank yang letaknya belum pernah didata. Membuang
-		pencatatan yang benar karenanya berarti membuang pekerjaan yang sudah dilakukan —
-		operatornya sudah naik reach stacker lagi."""
+		"""Membuang pencatatan yang benar karena satu baris gagal berarti membuang pekerjaan
+		yang sudah dilakukan — operatornya sudah naik reach stacker lagi."""
 		ok = self._container("TSVMANY00003")
 		row = self._row(self._booking(ok))
 		res = ts.mark_lowered_many([row, "baris-yang-tidak-ada"])

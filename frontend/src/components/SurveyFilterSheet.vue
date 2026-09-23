@@ -37,6 +37,17 @@
 					</button>
 				</div>
 
+				<!-- Kerjaan saya: jadwal yang tank-nya pernah saya turunkan atau survey. -->
+				<button
+					class="oak-press flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border px-3 text-sm font-bold transition"
+					:class="draft.mine ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
+					:aria-pressed="draft.mine"
+					@click="draft.mine = !draft.mine"
+				>
+					<span class="flex items-center gap-2"><Icon name="user" :size="16" /> {{ labels.svMine }}</span>
+					<Icon :name="draft.mine ? 'check-square' : 'square'" :size="18" />
+				</button>
+
 				<div class="space-y-1.5">
 					<p class="text-xs font-bold uppercase tracking-wide text-gray-400">{{ labels.svChipDate }}</p>
 					<div class="flex items-center gap-2">
@@ -94,6 +105,7 @@ import { computed, reactive, watch } from "vue"
 import { labels } from "@/utils/labels"
 import { useDismissOnBack } from "@/utils/backstack"
 import SearchSelect from "@/components/SearchSelect.vue"
+import Icon from "@/components/Icon.vue"
 
 const props = defineProps({
 	open: { type: Boolean, default: false },
@@ -103,7 +115,7 @@ const props = defineProps({
 })
 const emit = defineEmits(["close", "apply"])
 
-const EMPTY = { day: "", depot: "", principal: "", surveyor: "", shipper: "", emkl: "", activeOnly: false }
+const EMPTY = { day: "", depot: "", principal: "", surveyor: "", shipper: "", emkl: "", mine: false, activeOnly: false }
 const SCOPES = [
 	{ key: false, label: labels.monitorAll },
 	{ key: true, label: labels.svChipActive },

@@ -50,7 +50,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, get_first_day, get_last_day, getdate, now_datetime, today
+from frappe.utils import cint, get_first_day, get_last_day, get_fullname, getdate, now_datetime, today
 
 from container_depot.container_depot.container_position import _age, _attach_photos, _coerce_photos
 from container_depot.container_depot.doctype.survey_order.survey_order import (
@@ -327,6 +327,9 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		_apply_membership(doc, *plan)
 
 		is_new = doc.is_new()
+		# Sinkron booking boleh membatalkan / memulihkan baris tank (_apply_membership) —
+		# satu-satunya perubahan status baris lewat save yang diizinkan.
+		doc.flags.tank_status_by_system = True
 		doc.save(ignore_permissions=True)  # system automation on booking save
 		refresh_progress(doc.name)
 		if is_new:
@@ -477,7 +480,7 @@ def _filter_value(value):
 
 def list_all_survey_orders(status=None, from_date=None, to_date=None, search=None,
 						   principal=None, depot=None, surveyor=None, shipper=None, emkl=None,
-						   active_only=0, sort=None,
+						   mine=0, active_only=0, sort=None,
 						   start=0, page_length=20) -> dict:
 	"""Every Survey Order, filterable — the standalone Jadwal Survey list.
 
@@ -527,6 +530,16 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 		filters["booking"] = ["in", frappe.get_all(
 			"Container Booking", filters=party, pluck="name", limit_page_length=0
 		) or [""]]
+	if cint(mine):
+		# "Dikerjakan oleh saya" = user ini menurunkan ATAU mensurvey minimal satu tank-nya.
+		worked = set(frappe.get_all(
+			ROW, filters={"parenttype": SCHEDULE},
+			or_filters=[["lowered_by", "=", frappe.session.user], ["surveyed_by", "=", frappe.session.user]],
+			pluck="parent", limit_page_length=0,
+		))
+		if "name" in filters:  # sudah disempitkan oleh depo — irisannya
+			worked &= set(filters["name"][1])
+		filters["name"] = ["in", list(worked) or [""]]
 	if from_date:
 		filters["survey_date"] = [">=", str(getdate(from_date))]
 	if to_date:
@@ -618,19 +631,23 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 			fields=["name", "reff_doc", "shipper", "customer"],
 		)
 	} if items else {}
-	row_depots = {}
+	row_depots, row_workers = {}, {}
 	for r in frappe.get_all(
 		ROW, filters={"parenttype": SCHEDULE, "parent": ["in", [it.name for it in items]]},
-		fields=["parent", "depot"], distinct=True, order_by="depot asc",
+		fields=["parent", "depot", "lowered_by", "surveyed_by"], order_by="idx asc",
 	) if items else []:
-		if r.depot:
-			row_depots.setdefault(r.parent, []).append(r.depot)
+		if r.depot and r.depot not in row_depots.setdefault(r.parent, []):
+			row_depots[r.parent].append(r.depot)
+		for u in (r.lowered_by, r.surveyed_by):
+			if u and u not in row_workers.setdefault(r.parent, []):
+				row_workers[r.parent].append(u)
 	for it in items:
 		b = bookings.get(it.booking) or {}
 		it["reff_doc"] = b.get("reff_doc")
 		it["shipper"] = b.get("shipper")
 		it["emkl"] = b.get("customer")
-		it["depot"] = it.get("depot") or ", ".join(row_depots.get(it.name, [])) or None
+		it["depot"] = it.get("depot") or ", ".join(sorted(row_depots.get(it.name, []))) or None
+		it["worked_by"] = [get_fullname(u) for u in row_workers.get(it.name, [])]
 		it["waiting_count"] = max((it.get("tank_count") or 0) - (it.get("lowered_count") or 0), 0)
 		# Mendesak dihitung sebelum tanggalnya jadi string: `_is_urgent` membaca tanggal.
 		it["days_to"] = _days_to(it)
@@ -712,21 +729,42 @@ def get_survey_order_detail(name: str) -> dict:
 			"lowered_by": r.lowered_by, "lowered_on": r.lowered_on,
 			"surveyed_by": r.surveyed_by, "surveyed_on": r.surveyed_on,
 			"reopen_note": r.reopen_note, "eir_out": r.eir_out, "idx": r.idx,
+			"lowered_by_name": get_fullname(r.lowered_by) if r.lowered_by else None,
+			"surveyed_by_name": get_fullname(r.surveyed_by) if r.surveyed_by else None,
 		}
 		for r in (doc.tanks or [])
 	])
+	# Dikerjakan oleh = siapa saja yang menurunkan atau mensurvey tank di jadwal ini, urut
+	# kemunculan. Dirakit dari stempel baris — tidak ada field "pekerja" terpisah.
+	workers = list(dict.fromkeys(
+		n for t in sorted(tanks, key=lambda t: t.get("idx") or 0)
+		for n in (t["lowered_by_name"], t["surveyed_by_name"]) if n
+	))
 	rank = {WAITING: 0, LOWERED: 1, DONE: 2, CANCELLED: 3}
 	tanks.sort(key=lambda r: (rank.get(r.get("status"), 9), r.get("idx") or 0))
+	# Sama dengan kartu di list: Reff Doc, Shipper, EMKL dari booking; depo dari baris kalau
+	# header kosong (pickup dari dua depo).
+	booking = frappe.db.get_value(
+		"Container Booking", doc.booking, ["reff_doc", "shipper", "customer"], as_dict=True
+	) if doc.booking else None
+	booking = booking or frappe._dict()
 	return {
 		"name": doc.name,
 		"booking": doc.booking,
+		"reff_doc": booking.reff_doc,
+		# Jadwal lahir otomatis dari booking, jadi pembuatnya = yang menyimpan booking itu.
+		"created_by": get_fullname(doc.owner),
+		"created_on": str(doc.creation),
+		"worked_by": workers,
+		"shipper": booking.shipper,
+		"emkl": booking.customer,
 		"principal": doc.principal,
 		"surveyor": doc.surveyor,
 		"status": doc.status,
 		"docstatus": doc.docstatus,
 		"survey_date": str(doc.survey_date) if doc.survey_date else None,
 		"plan_date": str(doc.plan_date) if doc.plan_date else None,
-		"depot": doc.depot,
+		"depot": doc.depot or ", ".join(sorted({r.depot for r in doc.tanks or [] if r.depot})) or None,
 		"branch": doc.branch,
 		"tank_count": doc.tank_count,
 		"lowered_count": doc.lowered_count,
@@ -911,14 +949,12 @@ def _write(name, values, parent):
 def mark_lowered(name, location_note=None, note=None, photos=None) -> dict:
 	"""Tandai Lowered: the tank is on the ground (→ ``Lowered``).
 
-	``location_note`` is optional and, when given, is filed as a fresh ``Container Position``
-	reading rather than stored on this row — one channel for positions, so the master and its
-	timestamp stay the single answer to "where is it". The person who just put the tank down is
-	the one who knows, which is why the press offers it at all.
+	Satu centang dari list — tanpa letak. Letak dicatat SEBELUM lowering, di menu Letak Tank,
+	justru supaya Kalmar tahu harus ke mana; tank yang belum punya letak tetap boleh diturunkan
+	(Kalmar menemukannya sendiri), dan tidak ada yang wajib diisi ulang sesudahnya.
 
-	It becomes REQUIRED for a tank nobody has ever located. "Sudah turun" on its own leaves the
-	surveyor with nowhere to walk, and a tank that has just been moved by definition has a new
-	position to record.
+	``location_note`` / ``photos`` tetap diterima (opsional) dan, kalau ada, dicatat sebagai
+	bacaan ``Container Position`` baru — bukan di baris ini: satu saluran untuk letak.
 
 	Open to both field menus: normally the Kalmar operator on the reachstacker, but a surveyor
 	already standing at a tank that is plainly on the ground should not have to wait for
@@ -933,14 +969,12 @@ def mark_lowered(name, location_note=None, note=None, photos=None) -> dict:
 	row = _open_row(name, (WAITING, LOWERED), "write")
 	location_note = (str(location_note).strip() if location_note is not None else "")
 	current = frappe.db.get_value("Container", row.container, "current_location")
-	if not location_note and not current:
-		frappe.throw(_("Tank ini belum pernah didata letaknya — isi letaknya sekalian."))
 	# Foto tanpa letak baru TETAP menghasilkan satu bacaan posisi, memakai letak yang berlaku
-	# sekarang. Tanpa ini foto yang baru saja diambil operator hilang tanpa pesan apa pun —
+	# sekarang (kalau ada — tanpa letak sama sekali tidak ada bacaan yang bisa dicatat). Tanpa ini foto yang baru saja diambil operator hilang tanpa pesan apa pun —
 	# tidak ada tempat lain di app ini yang menyimpan gambar tank berdiri di tumpukannya. Dan
 	# ia memang bacaan yang sah: seseorang baru saja berdiri di sana dan melihatnya, jadi umur
 	# catatan letaknya pantas ikut segar.
-	if location_note or photos:
+	if location_note or (photos and current):
 		record_position(row.container, location_note or current, notes=note, photos=photos)
 
 	if row.status == WAITING:
@@ -1305,10 +1339,9 @@ def mark_lowered_many(names=None, note=None, photos=None) -> dict:
 	tank harus berdiri sendiri, karena besok salah satunya bisa dikembalikan ke lowering
 	sendirian dan riwayat gabungan tidak bisa menjelaskan yang mana.
 
-	Gagal di tengah TIDAK membatalkan yang sudah tercatat. Yang paling mungkin gagal adalah
-	tank yang letaknya belum pernah didata (``mark_lowered`` menolaknya), dan membuang empat
-	pencatatan yang benar karena tank kelima belum punya letak berarti membuang pekerjaan
-	yang sudah dilakukan — operatornya sudah naik reach stacker lagi.
+	Gagal di tengah TIDAK membatalkan yang sudah tercatat (misalnya baris yang sudah
+	dibatalkan): membuang empat pencatatan yang benar karena tank kelima gagal berarti membuang
+	pekerjaan yang sudah dilakukan — operatornya sudah naik reach stacker lagi.
 	"""
 	if isinstance(names, str):
 		try:

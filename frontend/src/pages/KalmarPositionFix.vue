@@ -135,6 +135,7 @@ import { RouterLink } from "vue-router"
 import { labels } from "@/utils/labels"
 import { since } from "@/utils/surveyStatus"
 import { setLoweringPreselect } from "@/utils/positionPick"
+import { lowerTank } from "@/utils/lowering"
 import Icon from "@/components/Icon.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
 import { cachedResource } from "@/data/cache"
@@ -179,6 +180,22 @@ function setGroup(key) {
 	boardRes.reload()
 }
 
+// Satu centang = lowered. Baris yang sedang dikirim dikunci supaya ketukan ganda tidak
+// mengirim dua kali.
+const busy = ref(new Set())
+async function tick(r) {
+	if (busy.value.has(r.name)) return
+	busy.value = new Set(busy.value).add(r.name)
+	const ok = await lowerTank(r)
+	const next = new Set(busy.value)
+	next.delete(r.name)
+	busy.value = next
+	if (ok) {
+		boardRes.reload()
+		if (search.value.trim()) searchRes.reload()
+	}
+}
+
 // Yang bisa ditandai sekaligus: semua yang masih menunggu, mendesak maupun tidak.
 const markable = computed(() => [...(board.value?.urgent || []), ...(board.value?.waiting || [])])
 function bulkFrom(rows) {
@@ -216,29 +233,29 @@ const TankRow = (p) => {
 	const meta = [r.principal, r.days_to === null || r.days_to === undefined ? null : dueWord(r)]
 		.filter(Boolean)
 		.join(" · ")
-	return h("li", {}, [
+	return h("li", { class: "flex items-center" }, [
 		h(
 			RouterLink,
-			{ to: `/survey-orders/tank/${r.name}`, class: "oak-press flex min-h-[64px] items-center gap-3 px-4 py-3" },
+			{ to: `/survey-orders/tank/${r.name}`, class: "oak-press flex min-h-[64px] min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-2" },
 			() => [
 				h("span", { class: `oak-icon-tile h-10 w-10 shrink-0 ${TONE[p.tone] || TONE.waiting}` }, [
 					h(Icon, { name: p.tone === "done" ? "check" : "arrow-down", size: 17 }),
 				]),
 				h("span", { class: "min-w-0 flex-1" }, [
-					h("span", { class: "flex items-center gap-2" }, [
-						h(
-							"span",
-							{ class: "min-w-0 truncate font-mono text-sm font-extrabold text-gray-900" },
-							r.container_no || r.container || labels.monitorNoNumber
-						),
-						r.located
-							? h(
-									"span",
-									{ class: "oak-chip shrink-0 bg-gray-100 font-mono text-gray-600" },
-									r.location_note
-								)
-							: null,
-					]),
+					// Nomor tank sendirian di barisnya — tidak boleh terpotong, itu yang dicocokkan
+					// Kalmar dengan cat di badan tank. Letaknya di baris sendiri di bawahnya.
+					h(
+						"span",
+						{ class: "block truncate font-mono text-sm font-extrabold text-gray-900" },
+						r.container_no || r.container || labels.monitorNoNumber
+					),
+					r.located
+						? h(
+								"span",
+								{ class: "mt-0.5 flex items-center gap-1 text-xs font-bold text-gray-700" },
+								[h(Icon, { name: "map-pin", size: 12, class: "shrink-0 text-gray-400" }), h("span", { class: "truncate" }, r.location_note)]
+							)
+						: null,
 					h("span", { class: "block truncate text-[11px] text-gray-500" }, meta),
 					h("span", { class: "mt-1 flex flex-wrap items-center gap-1.5" }, [
 						r.reopen_note
@@ -254,9 +271,21 @@ const TankRow = (p) => {
 							: null,
 					]),
 				]),
-				h(Icon, { name: "chevron-right", size: 18, class: "shrink-0 text-gray-300" }),
 			]
 		),
+		// Centang = selesai lowering. Di luar link supaya ketukannya tidak membuka detail.
+		p.tone === "done"
+			? h(Icon, { name: "chevron-right", size: 18, class: "mr-4 shrink-0 text-gray-300" })
+			: h(
+					"button",
+					{
+						class: "oak-press mr-3 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-leaf-500 text-leaf-600 disabled:opacity-40",
+						"aria-label": `${labels.tankMarkLowered} ${r.container_no || ""}`,
+						disabled: busy.value.has(r.name),
+						onClick: () => tick(r),
+					},
+					[h(Icon, { name: busy.value.has(r.name) ? "loader" : "check", size: 22, class: busy.value.has(r.name) ? "animate-spin" : "" })]
+				),
 	])
 }
 TankRow.props = ["row", "tone"]
