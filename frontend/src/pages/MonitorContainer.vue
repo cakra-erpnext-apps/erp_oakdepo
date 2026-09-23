@@ -54,7 +54,7 @@
 
 		<!-- Chip filter. Semuanya membuka sheet yang sama: di HP, empat kontrol terpisah di
 		     baris ini berarti empat target sentuh sempit yang saling bersebelahan. -->
-		<div class="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+		<div class="-mx-1 flex gap-1.5 oak-scroll-x px-1 pb-1">
 			<button
 				v-for="c in chips"
 				:key="c.key"

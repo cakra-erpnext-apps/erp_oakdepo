@@ -476,7 +476,8 @@ def _filter_value(value):
 
 
 def list_all_survey_orders(status=None, from_date=None, to_date=None, search=None,
-						   principal=None, depot=None, active_only=0, sort=None,
+						   principal=None, depot=None, surveyor=None, shipper=None, emkl=None,
+						   active_only=0, sort=None,
 						   start=0, page_length=20) -> dict:
 	"""Every Survey Order, filterable — the standalone Jadwal Survey list.
 
@@ -517,6 +518,15 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 			+ frappe.get_all(ROW, filters={"parenttype": SCHEDULE, "depot": depot},
 							 pluck="parent", limit_page_length=0)
 		)) or [""]]
+	surveyor = _filter_value(surveyor)
+	if surveyor:
+		filters["surveyor"] = surveyor
+	# Shipper & EMKL (customer booking) tinggal di booking — disaring lewat booking-nya.
+	party = {k: v for k, v in (("shipper", _filter_value(shipper)), ("customer", _filter_value(emkl))) if v}
+	if party:
+		filters["booking"] = ["in", frappe.get_all(
+			"Container Booking", filters=party, pluck="name", limit_page_length=0
+		) or [""]]
 	if from_date:
 		filters["survey_date"] = [">=", str(getdate(from_date))]
 	if to_date:
@@ -534,6 +544,8 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 			[SCHEDULE, "name", "like", like],
 			[SCHEDULE, "principal", "like", like],
 			[SCHEDULE, "booking", "like", like],
+			[SCHEDULE, "depot", "like", like],
+			[SCHEDULE, "surveyor", "like", like],
 		]
 		# Reff Doc, Shipper & EMKL tinggal di booking-nya — dicari di sana, dibawa pulang lewat link.
 		bookings = frappe.get_all(
@@ -544,9 +556,11 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 		)
 		if bookings:
 			or_filters.append([SCHEDULE, "booking", "in", bookings])
+		# Baris tank: nomor tank, dan depo per baris (header Tank Out bisa tanpa depo).
 		parents = frappe.get_all(
 			ROW,
-			filters={"parenttype": SCHEDULE, "container_no": ["like", like]},
+			filters={"parenttype": SCHEDULE},
+			or_filters=[["container_no", "like", like], ["container", "like", like], ["depot", "like", like]],
 			pluck="parent",
 			limit_page_length=0,
 		)
@@ -637,8 +651,22 @@ def list_all_survey_orders(status=None, from_date=None, to_date=None, search=Non
 		+ frappe.get_all(ROW, filters={"parenttype": SCHEDULE}, pluck="depot", distinct=True)
 		if d and (scope is None or d in scope)
 	})
+	surveyors = sorted({
+		s for s in frappe.get_all(SCHEDULE, filters=_depot_filter({}), pluck="surveyor", distinct=True) if s
+	})
+	# Pilihan Shipper & EMKL: dari booking yang punya jadwal di cakupan ini.
+	scoped_bookings = frappe.get_all(
+		SCHEDULE, filters=_depot_filter({"booking": ["is", "set"]}), pluck="booking", distinct=True
+	)
+	parties = frappe.get_all(
+		"Container Booking", filters={"name": ["in", scoped_bookings or [""]]},
+		fields=["shipper", "customer"],
+	)
 	return {"items": items, "total": total, "counts": _status_counts(),
-			"principals": principals, "depots": depots, "day_counts": day_counts}
+			"principals": principals, "depots": depots, "surveyors": surveyors,
+			"shippers": sorted({p.shipper for p in parties if p.shipper}),
+			"emkls": sorted({p.customer for p in parties if p.customer}),
+			"day_counts": day_counts}
 
 
 def _status_counts() -> dict:

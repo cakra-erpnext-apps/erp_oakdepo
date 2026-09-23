@@ -54,107 +54,54 @@
 			</button>
 		</div>
 
-		<!-- Chip filter. Tiap chip membuka barisnya sendiri di bawah, bukan sheet: yang diatur
-		     di sini cuma satu nilai per chip, dan sheet untuk satu pilihan adalah dua ketukan
-		     untuk pekerjaan satu ketukan. -->
-		<div class="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-			<!-- Tanggal: ketuk chip langsung membuka kalender bawaan HP, tanpa panel. Inputnya
-			     ada tapi tak terlihat — showPicker() butuh elemen yang ter-render. -->
-			<span
-				class="relative flex min-h-[40px] shrink-0 items-center rounded-full border text-xs font-bold transition"
-				:class="dateOn ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
-			>
-				<button class="oak-press flex h-full items-center gap-1.5 px-3" @click="pickDay">
-					<Icon name="calendar" :size="13" /> {{ day ? fmtDate(day) : labels.svChipDate }}
-				</button>
-				<button
-					v-if="dateOn"
-					class="oak-press -ml-1.5 flex h-full items-center pr-3"
-					:aria-label="labels.monitorFilterReset"
-					@click="clearDay"
-				>
-					<Icon name="x" :size="13" />
-				</button>
-				<input
-					ref="dayInput"
-					v-model="day"
-					type="date"
-					tabindex="-1"
-					aria-hidden="true"
-					class="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
-					@change="reload"
-				/>
-			</span>
+		<!-- Filter: dua tombol selebar layar, bukan deretan chip yang lari ke kanan. Semua
+		     saringan tinggal di satu sheet; yang sedang aktif tampil di bawahnya sebagai chip
+		     yang turun baris (wrap) — terlihat semua tanpa digeser, dan tiap chip bisa di-×. -->
+		<div class="grid grid-cols-2 gap-2">
 			<button
-				class="oak-press flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition"
-				:class="principal ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
-				@click="panel = panel === 'principal' ? '' : 'principal'"
+				class="oak-press flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold transition"
+				:class="activeChips.length ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-700'"
+				@click="sheetOpen = true"
 			>
-				<Icon name="briefcase" :size="13" /> {{ principal || labels.svChipPrincipal }}
+				<Icon name="sliders" :size="15" /> {{ labels.monitorFilterTitle }}
+				<span v-if="activeChips.length" class="rounded-full bg-brand-500 px-1.5 text-[11px] font-extrabold text-white">
+					{{ activeChips.length }}
+				</span>
 			</button>
 			<button
-				v-if="depots.length > 1 || depot"
-				class="oak-press flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition"
-				:class="depot ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
-				@click="panel = panel === 'depot' ? '' : 'depot'"
-			>
-				<Icon name="map-pin" :size="13" /> {{ depot || labels.svChipDepot }}
-			</button>
-			<button
-				class="oak-press flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition"
-				:class="activeOnly ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
-				:aria-pressed="activeOnly"
-				@click="toggleActive"
-			>
-				<Icon name="filter" :size="13" /> {{ labels.svChipActive }}
-			</button>
-			<button
-				class="oak-press flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition"
-				:class="sort !== 'due' ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-600'"
+				class="oak-press flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-paper px-3 text-sm font-bold text-gray-700"
 				@click="toggleSort"
 			>
-				<Icon name="sliders" :size="13" />
-				{{ labels.svChipSort }}: {{ sort === "due" ? labels.svSortDue : labels.svSortNewest }}
+				<Icon name="arrow-down" :size="15" /> {{ sort === "due" ? labels.svSortDue : labels.svSortNewest }}
 			</button>
 		</div>
 
-		<div v-if="panel === 'principal'" class="oak-card flex flex-wrap gap-1.5 p-3">
+		<div v-if="activeChips.length || search" class="flex flex-wrap gap-1.5">
 			<button
-				class="oak-press min-h-[38px] rounded-full border px-3 text-xs font-bold"
-				:class="!principal ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 text-gray-600'"
-				@click="setPrincipal('')"
+				v-for="c in activeChips"
+				:key="c.key"
+				class="oak-press flex min-h-[34px] max-w-full items-center gap-1 rounded-full border border-brand-500 bg-brand-500/10 pl-3 pr-2 text-xs font-bold text-brand-700"
+				:aria-label="`${labels.monitorFilterReset} ${c.label}`"
+				@click="clearOne(c.key)"
 			>
-				{{ labels.monitorAll }}
+				<span class="truncate"><span class="font-semibold opacity-70">{{ c.label }}</span> {{ c.value }}</span>
+				<Icon name="x" :size="13" class="shrink-0" />
 			</button>
 			<button
-				v-for="p in principals"
-				:key="p"
-				class="oak-press min-h-[38px] rounded-full border px-3 text-xs font-bold"
-				:class="principal === p ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 text-gray-600'"
-				@click="setPrincipal(p)"
+				class="oak-press min-h-[34px] rounded-full px-2 text-xs font-bold text-red-600"
+				@click="clearAll"
 			>
-				{{ p }}
+				{{ labels.svClearAll }}
 			</button>
 		</div>
 
-		<div v-if="panel === 'depot'" class="oak-card flex flex-wrap gap-1.5 p-3">
-			<button
-				class="oak-press min-h-[38px] rounded-full border px-3 text-xs font-bold"
-				:class="!depot ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 text-gray-600'"
-				@click="setDepot('')"
-			>
-				{{ labels.monitorAll }}
-			</button>
-			<button
-				v-for="d in depots"
-				:key="d"
-				class="oak-press min-h-[38px] rounded-full border px-3 text-xs font-bold"
-				:class="depot === d ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 text-gray-600'"
-				@click="setDepot(d)"
-			>
-				{{ d }}
-			</button>
-		</div>
+		<SurveyFilterSheet
+			:open="sheetOpen"
+			:value="f"
+			:options="options"
+			@close="sheetOpen = false"
+			@apply="applyFilter"
+		/>
 
 		<SkeletonList v-if="listRes.loading && !items.length" :action="false" />
 
@@ -179,30 +126,18 @@
 					<p class="shrink-0 text-[11px] text-gray-400">{{ fill(labels.svOrderCount, { n: dayCounts[g.date] || g.rows.length }) }}</p>
 				</div>
 
-				<!-- Berjalan: kartu besar. -->
+				<!-- Dikerjakan: kartu besar. -->
 				<router-link
 					v-for="o in g.running"
 					:key="o.name"
 					:to="`/survey-orders/order/${o.name}`"
 					class="oak-card oak-press block space-y-2.5 p-4"
 				>
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0">
-							<p class="truncate text-base font-extrabold leading-tight text-gray-900">
-								{{ o.principal || labels.svNoPrincipal }}
-							</p>
-							<p v-for="x in parties(o)" :key="x.k" class="truncate text-sm">
-								<span class="text-gray-400">{{ x.k }}</span> <span class="font-semibold text-gray-700">{{ x.v }}</span>
-							</p>
-						</div>
+					<SurveyOrderInfo :o="o">
 						<span class="oak-chip flex shrink-0 items-center gap-1" :class="chip(o.status)">
 							<span class="h-1.5 w-1.5 rounded-full bg-current"></span>{{ statusLabel(o.status) }}
 						</span>
-					</div>
-					<p class="truncate text-xs text-gray-500">
-						<span class="font-mono text-sm font-bold text-gray-900">{{ docNo(o) }}</span>
-						<template v-for="m in meta(o)" :key="m"> · {{ m }}</template>
-					</p>
+					</SurveyOrderInfo>
 					<div class="h-1.5 overflow-hidden rounded-full bg-gray-100">
 						<div class="h-full rounded-full bg-brand-500" :style="{ width: `${o.per_surveyed || 0}%` }"></div>
 					</div>
@@ -218,20 +153,9 @@
 				<ul v-if="g.rest.length" class="oak-card divide-y divide-gray-100 overflow-hidden">
 					<li v-for="o in g.rest" :key="o.name">
 						<router-link :to="`/survey-orders/order/${o.name}`" class="oak-press flex min-h-[64px] items-center gap-2 px-4 py-3">
-							<span class="min-w-0 flex-1">
-								<span class="block truncate font-mono text-sm font-extrabold text-gray-900">{{ docNo(o) }}</span>
-								<span class="block truncate text-xs">
-									<span :class="o.principal ? 'font-semibold text-gray-700' : 'text-amber-600'">
-										{{ o.principal || labels.svNoPrincipal }}
-									</span>
-									<span class="text-gray-500"><template v-for="m in meta(o)" :key="m"> · {{ m }}</template></span>
-								</span>
-								<span v-for="x in parties(o)" :key="x.k" class="block truncate text-xs">
-									<span class="text-gray-400">{{ x.k }}</span> <span class="font-semibold text-gray-700">{{ x.v }}</span>
-								</span>
-							</span>
-							<span class="oak-chip shrink-0" :class="chip(o.status)">{{ statusLabel(o.status) }}</span>
-							<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />
+							<SurveyOrderInfo :o="o" class="flex-1">
+								<span class="oak-chip shrink-0" :class="chip(o.status)">{{ statusLabel(o.status) }}</span>
+							</SurveyOrderInfo>
 						</router-link>
 					</li>
 				</ul>
@@ -274,11 +198,14 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from "vue"
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
+import SurveyOrderInfo from "@/components/SurveyOrderInfo.vue"
+import SurveyFilterSheet from "@/components/SurveyFilterSheet.vue"
 import { cachedResource } from "@/data/cache"
+import { session } from "@/data/session"
 import { fmtDate } from "@/utils/surveyStatus"
 
 const PAGE = 20
@@ -299,26 +226,78 @@ const STATUS_LABEL = {
 }
 const statusLabel = (s) => STATUS_LABEL[s] || s || "—"
 
+// Filter disimpan di perangkat ini, dikunci per user (handset berpindah tangan antar shift —
+// lihat utils/userPicks.js). Pencarian sengaja tidak ikut: itu pertanyaan sekali jalan.
+// `f` = semua yang diatur di sheet; status (pil angka) dan urutan punya tombolnya sendiri.
+const SHEET_DEFAULTS = { day: "", depot: "", principal: "", surveyor: "", shipper: "", emkl: "", activeOnly: false }
+const STORE_KEY = `oak-survey-filters:${session.user || ""}`
+function readSaved() {
+	try {
+		const v = JSON.parse(localStorage.getItem(STORE_KEY) || "null")
+		return v && typeof v === "object" ? v : {}
+	} catch {
+		return {}
+	}
+}
+const saved = readSaved()
+
 const search = ref("")
-const status = ref("")
-const day = ref("")
-const principal = ref("")
-const depot = ref("")
-const activeOnly = ref(false)
-const sort = ref("due")
-// Chip mana yang barisnya sedang terbuka — satu saja, karena dua baris filter terbuka
-// bersamaan mendorong daftarnya ke bawah lipatan di HP.
-const panel = ref("")
+const status = ref(saved.status || "")
+const sort = ref(saved.sort === "newest" ? "newest" : "due")
+const f = reactive({ ...SHEET_DEFAULTS, ...pick(saved, Object.keys(SHEET_DEFAULTS)) })
+const sheetOpen = ref(false)
+
+function pick(obj, keys) {
+	return Object.fromEntries(keys.filter((k) => k in obj).map((k) => [k, obj[k]]))
+}
+
+watch(
+	() => ({ ...f, status: status.value, sort: sort.value }),
+	(v) => {
+		try {
+			localStorage.setItem(STORE_KEY, JSON.stringify(v))
+		} catch {
+			/* mode privat: filter tetap berlaku sampai halaman ditutup */
+		}
+	}
+)
+
+// Chip filter aktif, dalam urutan sheet. Label pendek di depan supaya "OAK1" atau nama PT
+// tetap jelas milik saringan yang mana.
+const activeChips = computed(() =>
+	[
+		f.day && { key: "day", label: labels.svChipDate, value: fmtDate(f.day) },
+		f.depot && { key: "depot", label: labels.svChipDepot, value: f.depot },
+		f.principal && { key: "principal", label: labels.svChipPrincipal, value: f.principal },
+		f.surveyor && { key: "surveyor", label: labels.svSurveyor, value: f.surveyor },
+		f.shipper && { key: "shipper", label: labels.shipper, value: f.shipper },
+		f.emkl && { key: "emkl", label: labels.svEmkl, value: f.emkl },
+		f.activeOnly && { key: "activeOnly", label: "", value: labels.svChipActive },
+	].filter(Boolean)
+)
+function clearOne(key) {
+	f[key] = SHEET_DEFAULTS[key]
+	reload()
+}
+function applyFilter(draft) {
+	Object.assign(f, draft)
+	reload()
+}
+function clearAll() {
+	search.value = ""
+	status.value = ""
+	sort.value = "due"
+	Object.assign(f, SHEET_DEFAULTS)
+	reload()
+}
+
 const items = ref([])
 const total = ref(0)
 const counts = ref({})
-const principals = ref([])
-const depots = ref([])
+const options = ref({ depots: [], principals: [], surveyors: [], shippers: [], emkls: [] })
 const dayCounts = ref({})
 const failed = ref(false)
 const start = ref(0)
-
-const dateOn = computed(() => Boolean(day.value))
 
 // Empat pil. Angkanya datang dari hitungan TANPA filter (lihat _status_counts di server).
 const pills = computed(() => [
@@ -367,12 +346,6 @@ function dayLabel(iso) {
 
 // Nomor yang dicocokkan dengan kertas: Reff Doc kalau ada, booking kalau belum.
 const docNo = (o) => o.reff_doc || o.booking || o.name
-const parties = (o) =>
-	[
-		{ k: labels.shipper, v: o.shipper },
-		{ k: labels.svEmkl, v: o.emkl },
-	].filter((x) => x.v)
-const meta = (o) => [o.depot, fill(labels.svTankCount, { n: o.tank_count || 0 })].filter(Boolean)
 
 function fill(tpl, vars) {
 	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
@@ -382,12 +355,15 @@ const listRes = cachedResource({
 	method: "GET",
 	makeParams: () => ({
 		status: status.value || undefined,
-		from_date: day.value || undefined,
-		to_date: day.value || undefined,
+		from_date: f.day || undefined,
+		to_date: f.day || undefined,
 		search: search.value || undefined,
-		principal: principal.value || undefined,
-		depot: depot.value || undefined,
-		active_only: activeOnly.value ? 1 : 0,
+		principal: f.principal || undefined,
+		depot: f.depot || undefined,
+		surveyor: f.surveyor || undefined,
+		shipper: f.shipper || undefined,
+		emkl: f.emkl || undefined,
+		active_only: f.activeOnly ? 1 : 0,
 		sort: sort.value,
 		start: start.value,
 		page_length: PAGE,
@@ -400,8 +376,13 @@ const listRes = cachedResource({
 		items.value = start.value ? [...items.value, ...(data?.items || [])] : data?.items || []
 		total.value = data?.total || 0
 		counts.value = data?.counts || {}
-		principals.value = data?.principals || []
-		depots.value = data?.depots || []
+		options.value = {
+			depots: data?.depots || [],
+			principals: data?.principals || [],
+			surveyors: data?.surveyors || [],
+			shippers: data?.shippers || [],
+			emkls: data?.emkls || [],
+		}
 		dayCounts.value = data?.day_counts || {}
 	},
 	onError() {
@@ -424,35 +405,6 @@ function setStatus(key) {
 	reload()
 }
 
-const dayInput = ref(null)
-function pickDay() {
-	const el = dayInput.value
-	try {
-		el.showPicker()
-	} catch {
-		el.focus()
-		el.click()
-	}
-}
-function clearDay() {
-	day.value = ""
-	reload()
-}
-
-function setPrincipal(p) {
-	principal.value = p
-	panel.value = ""
-	reload()
-}
-function setDepot(d) {
-	depot.value = d
-	panel.value = ""
-	reload()
-}
-function toggleActive() {
-	activeOnly.value = !activeOnly.value
-	reload()
-}
 function toggleSort() {
 	sort.value = sort.value === "due" ? "newest" : "due"
 	reload()

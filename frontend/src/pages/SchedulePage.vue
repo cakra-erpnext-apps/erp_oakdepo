@@ -108,7 +108,7 @@
 		     screen. Filtering happens here rather than on the server precisely so the counts
 		     stay honest: asking the server for one kind would leave nothing to count the
 		     others with. -->
-		<section v-if="chips.length > 1" class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+		<section v-if="chips.length > 1" class="-mx-1 flex gap-2 oak-scroll-x px-1 pb-1">
 			<button
 				v-for="c in chips"
 				:key="c.kind || 'all'"

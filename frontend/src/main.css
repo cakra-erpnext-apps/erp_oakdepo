@@ -367,6 +367,17 @@
 		@apply border-gray-200 bg-paper text-gray-600 hover:bg-gray-50;
 	}
 
+	/* Baris chip yang digeser jari: batang scroll disembunyikan — di HP ia cuma garis abu
+	   yang memakan tempat, dan chip yang terpotong di tepi sudah memberi tahu bisa digeser. */
+	.oak-scroll-x {
+		@apply overflow-x-auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+	.oak-scroll-x::-webkit-scrollbar {
+		display: none;
+	}
+
 	/* Status pill -------------------------------------------------------- */
 	.oak-chip {
 		@apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
