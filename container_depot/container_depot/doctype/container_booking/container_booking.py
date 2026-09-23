@@ -293,6 +293,7 @@ class ContainerBooking(Document):
 		# Before, not on_cancel: on_cancel has already voided the codes and reversed the
 		# payment by the time it runs, so a throw there would leave the unwinding half done.
 		_block_if_bon_raised(self.name, _("dibatalkan"))
+		_block_if_child_submitted(self.name)
 		# Cancel is not an action on a submitted booking either — same rule as editing, and
 		# for the same reason: what Submit set in motion is undone by stepping back through
 		# Kembali ke Draft (which refuses once a bon exists / a code was used at the gate),
@@ -316,9 +317,9 @@ class ContainerBooking(Document):
 		1. ``booking_status`` → ``Cancelled`` (system-managed).
 		2. Every still-``Active`` Booking Code is voided — a cancelled booking must
 		   not keep live 72h gate-access codes.
-		3. The auto-created Sales Invoice is cancelled but kept linked (a draft is marked
-		   Cancelled in place; a submitted one has its Payment Entries reversed then is
-		   cancelled), and ``payment_status`` is set to Cancelled.
+		3. A draft Sales Invoice is cancelled but kept linked (finance on only; a submitted
+		   one blocks the cancel in ``before_cancel``), and ``payment_status`` is set to
+		   Cancelled.
 		4. Pre-arrival containers are unwound (phantom deleted / flipped tank
 		   reverted) — see ``_release_pre_arrival_containers``.
 		"""
@@ -769,8 +770,10 @@ class ContainerBooking(Document):
 	#
 	# The survey pair is outbound-only and does ride this mechanism: asked once in the header,
 	# copied down, still editable per tank because one booking's tanks are routinely surveyed
-	# on different days by different parties.
+	# on different days by different parties. Shipper rides it in both directions: optional
+	# in the header, copied down, overridable per tank for a booking hauled for two factories.
 	HEADER_TO_LINE = {
+		"shipper": "shipper",
 		"survey_date": "survey_date",
 		"surveyor": "surveyor",
 	}
@@ -794,31 +797,32 @@ class ContainerBooking(Document):
 		  whole reason the value is kept on the line at all.
 		"""
 		before = None if self.is_new() else self.get_doc_before_save()
-		# Rows this save is ADDING. They cannot have been edited by anyone — what they carry
-		# is the field's own default, which must not be mistaken for an intention. A
-		# brand-new booking has no before-image at all, so every row of it is new.
-		existing = {r.name for r in ((before.get("items") if before else None) or [])}
+		# No special case for rows this save adds: none of these fields has a default, so a
+		# value on a new row was typed (or copied by the form) on purpose.
 		for header_field, line_field in self.HEADER_TO_LINE.items():
 			if header_field in self.OUTBOUND_ONLY and self.direction != "Tank Out":
 				continue
 			value = self.get(header_field)
 			if not value:
 				continue
-			is_date = header_field != "surveyor"
+			is_date = header_field == "survey_date"
 			previous = before.get(header_field) if before else None
 			if is_date:
 				# Compare as dates: the stored value is a date object, the form sends a string.
 				value = getdate(value)
 				previous = getdate(previous) if previous else None
 			for row in self.items or []:
-				if row.name not in existing:
-					row.set(line_field, value)
-					continue
 				current = row.get(line_field)
 				if is_date and current:
 					current = getdate(current)
 				if not current or (previous and current == previous):
 					row.set(line_field, value)
+		# Tank In: the row Depo IS the header's — the tank has not arrived, so whatever its
+		# master says (fetch_from) is where it stood last time, not where it is going. Read-only
+		# on the row, so there is no hand-typed value to protect. Tank Out keeps the fetch.
+		if self.direction == "Tank In" and self.depot:
+			for row in self.items or []:
+				row.depot = self.depot
 
 	def _require_plan_date(self):
 		"""An outbound booking must say which day it is for.
@@ -835,9 +839,8 @@ class ContainerBooking(Document):
 		"""
 		if self.direction == "Tank Out" and not self.plan_date:
 			frappe.throw(
-				_("<b>Plan Date</b> wajib diisi untuk booking Tank Out — tanggal ini yang dipakai "
-				  "yard untuk memprioritaskan pekerjaan tank sebelum diambil."),
-				title=_("Tanggal Rencana Belum Diisi"),
+				_("Isi <b>Pick up Date</b>. Booking Tank Out wajib punya tanggal ambil tank."),
+				title=_("Pick up Date Belum Diisi"),
 			)
 
 	def _validate_survey_before_plan(self):
@@ -867,11 +870,11 @@ class ContainerBooking(Document):
 		if not late:
 			return
 		frappe.throw(
-			_("<b>Survey Date</b> tidak boleh lewat dari <b>Plan Date</b> ({0}) — survey dikerjakan "
-			  "sebelum tank diambil.<br>Perbaiki: {1}").format(
+			_("<b>Survey Date</b> harus sama dengan atau sebelum <b>Pick up Date</b> ({0}).<br>"
+			  "Ubah Survey Date di: {1}").format(
 				frappe.utils.formatdate(plan), ", ".join(late)
 			),
-			title=_("Tanggal Survey Melewati Rencana Ambil"),
+			title=_("Survey Date Lewat Pick up Date"),
 		)
 
 	def _resolve_pricing_context(self):
@@ -1410,53 +1413,20 @@ class ContainerBooking(Document):
 			self.payment_status = target
 
 	def _cancel_invoice_keep_link(self):
-		"""Cancel the booking's auto-created Sales Invoice but KEEP it linked, so the
-		cancelled invoice stays visible on the booking for audit:
+		"""Cancel the booking's DRAFT Sales Invoice but KEEP it linked, so the cancelled
+		invoice stays visible on the booking for audit. Marked Cancelled in place (docstatus
+		2): a draft has no ledger impact.
 
-		* **Draft** auto-invoice (never submitted, no ledger impact) → mark it Cancelled
-		  in place (docstatus 2) so it shows as a cancelled invoice on the booking.
-		* **Submitted** → reverse settlement first (cancel its submitted Payment Entries),
-		  then cancel the invoice (its GL is reversed).
-
-		Best-effort: a failure is logged and never blocks the booking cancel. The
-		``sales_invoice`` link is left intact either way."""
-		si = self.sales_invoice
-		if not si or not frappe.db.exists("Sales Invoice", si):
+		Finance off: no invoice activity at all. A SUBMITTED invoice is never reached here —
+		``_block_if_child_submitted`` refuses the booking cancel until finance cancels it."""
+		if not finance.is_enabled():
 			return
-		docstatus = frappe.db.get_value("Sales Invoice", si, "docstatus")
-		if docstatus == 2:
-			return  # already cancelled
-		try:
-			if docstatus == 1:
-				self._cancel_linked_payments(si)
-				inv = frappe.get_doc("Sales Invoice", si)
-				inv.flags.ignore_permissions = True
-				inv.cancel()
-			else:
-				frappe.db.set_value(
-					"Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
-				)
-		except Exception:
-			frappe.log_error(frappe.get_traceback(), f"booking invoice cancel failed: {self.name}")
-
-	def _cancel_linked_payments(self, sales_invoice):
-		"""Cancel every submitted Payment Entry that settles ``sales_invoice`` so the
-		invoice can then be cancelled (a paid invoice can't be cancelled while live
-		payments still reference it)."""
-		payments = frappe.get_all(
-			"Payment Entry Reference",
-			filters={
-				"reference_doctype": "Sales Invoice",
-				"reference_name": sales_invoice,
-				"docstatus": 1,
-			},
-			pluck="parent",
+		si = self.sales_invoice
+		if not si or frappe.db.get_value("Sales Invoice", si, "docstatus") != 0:
+			return
+		frappe.db.set_value(
+			"Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
 		)
-		for pe in set(payments):
-			if frappe.db.get_value("Payment Entry", pe, "docstatus") == 1:
-				doc = frappe.get_doc("Payment Entry", pe)
-				doc.flags.ignore_permissions = True
-				doc.cancel()
 
 	# ---- helpers --------------------------------------------------------
 	def _sync_payment_type_from_contract(self):
@@ -2160,6 +2130,38 @@ def _block_if_bon_raised(booking: str, action: str) -> None:
 		)
 
 
+def _block_if_child_submitted(booking: str) -> None:
+	"""Cancelling a booking closes the documents it created by itself (Survey Order, the
+	EIR-Outs that survey raised, the draft Sales Invoice) — see
+	``tank_survey.close_survey_order_with_booking`` and ``_cancel_invoice_keep_link``. A
+	SUBMITTED one is finished work, so the booking waits until someone cancels it on purpose.
+	EIR-Out first: Frappe refuses to cancel a Survey Order a submitted EIR-Out still links to.
+	The Sales Invoice only counts while finance (Aktifkan Finance) is on.
+	"""
+	orders = frappe.get_all(
+		"Survey Order", filters={"booking": booking, "docstatus": ["!=", 2]}, fields=["name", "docstatus"]
+	)
+	eirs = frappe.get_all(
+		"Inspection",
+		filters={"survey_order": ["in", [o.name for o in orders] or [""]], "docstatus": 1},
+		pluck="name",
+	)
+	blocking = [_("EIR-Out {0}").format(e) for e in eirs] + [
+		_("Survey Order {0}").format(o.name) for o in orders if o.docstatus == 1
+	]
+	si = frappe.db.get_value("Container Booking", booking, "sales_invoice")
+	if si and finance.is_enabled() and frappe.db.get_value("Sales Invoice", si, "docstatus") == 1:
+		blocking.append(_("Sales Invoice {0}").format(si))
+	if blocking:
+		frappe.throw(
+			_("Booking ini belum bisa dibatalkan. Dokumen turunannya sudah disubmit: {0}.<br>"
+			  "Cancel dokumen tersebut dulu (sesuai urutan di atas), lalu batalkan booking ini lagi.").format(
+				", ".join(blocking)
+			),
+			title=_("Cancel Dokumen Turunan Dulu"),
+		)
+
+
 @frappe.whitelist()
 def revision_state(booking: str) -> dict:
 	"""What the form script needs to know before it lets anyone touch a Confirmed booking.
@@ -2216,6 +2218,7 @@ def void_draft(booking):
 	# booking, and `revert_booking_to_draft` refuses to reopen one that has raised any —
 	# so this only fires if some other path put the pair in that state.
 	_block_if_bon_raised(doc.name, _("dibatalkan"))
+	_block_if_child_submitted(doc.name)
 	# Statuses FIRST, exactly as `on_cancel` orders it, and the order is load-bearing:
 	# cancelling the invoice fires `resync_booking_on_invoice_cancel`, which drops the link
 	# from any booking that is not itself cancelled. Marking the booking first is what makes

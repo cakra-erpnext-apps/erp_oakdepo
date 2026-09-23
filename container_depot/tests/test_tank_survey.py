@@ -46,6 +46,7 @@ def _purge(containers, bookings=()):
 		frappe.db.delete("Notification Log", {"document_type": SCHEDULE, "document_name": ["in", orders]})
 		frappe.db.delete("Comment", {"reference_doctype": SCHEDULE, "reference_name": ["in", orders]})
 		frappe.db.delete(ROW, {"parent": ["in", orders]})
+		frappe.db.delete("Survey Order Photo", {"parent": ["in", orders]})
 	# Bel — SEMUA yang bisa dibangkitkan modul ini, satu per doctype yang ditunjuknya. Ini yang
 	# dulu tertinggal: fixture-nya terhapus, lonceng operator tetap menyimpan barisnya, dan
 	# yang menekannya sampai ke dokumen yang sudah tidak ada. Dihapus sebelum dokumennya,
@@ -161,6 +162,11 @@ class TestTheSurveysOwnReffDoc(_Base):
 		doc.reff_doc = None
 		doc.save(ignore_permissions=True)
 		self.assertIsNone(frappe.db.get_value("Container Booking", b, "survey_reff_doc"))
+
+	def test_typed_on_the_booking_it_goes_down_to_the_survey(self):
+		c = self._container("SVREFF00003")
+		b = self._booking(c, survey_reff_doc="SURV-BOOK")
+		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(b), "reff_doc"), "SURV-BOOK")
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +384,41 @@ class TestProvisioning(_Base):
 
 		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(bk), "status"), "Cancelled")
 		self.assertEqual(self._val(row, "status").status, ts.CANCELLED)
+		# Truly cancelled, not a draft that only says so.
+		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(bk), "docstatus"), 2)
+
+	def test_void_cancels_the_draft_eir_out_and_waits_for_a_submitted_one(self):
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			void_draft,
+		)
+
+		# Two tanks, one surveyed: the day stays a draft, so only the EIR-Out can block.
+		bk = self._booking(self._container("TSVPROV00010"), self._container("TSVPROV00011"))
+		row = self._row(bk)
+		ts.mark_lowered(row)
+		ts.finish_survey(row)
+		eir = frappe.db.get_value(ROW, row, "eir_out")
+		self.assertTrue(eir)
+
+		frappe.db.set_value("Inspection", eir, "docstatus", 1)
+		with self.assertRaises(frappe.ValidationError):
+			void_draft(bk)
+		self.assertNotEqual(frappe.db.get_value("Container Booking", bk, "booking_status"), "Cancelled")
+
+		frappe.db.set_value("Inspection", eir, "docstatus", 0)
+		void_draft(bk)
+		self.assertEqual(frappe.db.get_value("Inspection", eir, "docstatus"), 2)
+		self.assertEqual(frappe.db.get_value(SCHEDULE, self._order(bk), "docstatus"), 2)
+
+	def test_a_submitted_survey_order_blocks_the_void(self):
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			void_draft,
+		)
+
+		bk = self._booking(self._container("TSVPROV00012"))
+		frappe.db.set_value(SCHEDULE, self._order(bk), "docstatus", 1)
+		with self.assertRaisesRegex(frappe.ValidationError, "Survey Order"):
+			void_draft(bk)
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +574,42 @@ class TestActions(_Base):
 		self.assertEqual(d.status, ts.LOWERED)
 		self.assertEqual(d.lowered_on, first)
 		self.assertEqual(frappe.db.get_value("Container", c, "current_location"), "salah baca tadi, kiri B4")
+
+	def test_interior_photos_land_on_the_order_with_their_descriptions(self):
+		bk = self._booking(self._container("TSVINT00001"))
+		row = self._row(bk)
+		ts.mark_lowered(row)
+		ts.finish_survey(row, photos=[
+			{"photo": "/files/a.jpg", "caption": "dinding bersih"}, {"photo": "/files/b.jpg"},
+		])
+		got = frappe.get_all(
+			"Survey Order Photo", filters={"parent": self._order(bk)},
+			fields=["photo", "caption", "container_no", "survey_tank"], order_by="idx asc",
+		)
+		self.assertEqual([(g.photo, g.caption) for g in got], [("/files/a.jpg", "dinding bersih"), ("/files/b.jpg", None)])
+		self.assertEqual({g.survey_tank for g in got}, {row})
+		self.assertEqual(len(ts.get_tank_detail(row)["interior_photos"]), 2)
+		# ...and the EIR-Out the survey raised shows the same photos.
+		from container_depot.container_depot.eir import view_eir
+
+		eir = frappe.db.get_value(ROW, row, "eir_out")
+		self.assertEqual(
+			[p["caption"] for p in view_eir(eir)["interior_photos"]], ["dinding bersih", None]
+		)
+
+	def test_interior_photos_autosave_and_survive_a_close_without_photos(self):
+		bk = self._booking(self._container("TSVINT00002"))
+		row = self._row(bk)
+		ts.mark_lowered(row)
+		ts.save_interior_photos(row, photos='[{"photo": "/files/c.jpg", "caption": "atas"}]')
+		ts.save_interior_photos(row, photos=[{"photo": "/files/c.jpg", "caption": "atas kiri"}])
+		ts.finish_survey(row)  # no photos sent: the autosaved set stays
+		self.assertEqual(
+			[(p.photo, p.caption) for p in ts.get_tank_detail(row)["interior_photos"]],
+			[("/files/c.jpg", "atas kiri")],
+		)
+		with self.assertRaises(frappe.ValidationError):  # closed: no more autosave
+			ts.save_interior_photos(row, photos=[])
 
 	def test_a_survey_cannot_be_closed_before_the_tank_is_down(self):
 		"""The whole reason the flow was reversed: a tank stacked three high cannot be inspected,

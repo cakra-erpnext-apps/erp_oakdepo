@@ -139,13 +139,23 @@ def survey_lowered(name=None, location_note=None, note=None, photos=None, reques
 
 
 @frappe.whitelist(methods=["POST"])
-def survey_finish(name=None, notes=None, request_id=None):
+def survey_finish(name=None, notes=None, photos=None, request_id=None):
 	"""POST /api/v1/ess/survey-finish — Selesai Survey (→ Survey Done).
 
 	The surveyor's alone (`surveyPos` = submit permission). This is the press that raises the
-	tank's EIR-Out, so a replay must not be able to run it twice — hence ``request_id``."""
+	tank's EIR-Out, so a replay must not be able to run it twice — hence ``request_id``.
+	``photos``: interior photos, ``[{photo, caption}]``."""
 	require_menu("surveyPos")
-	return guarded(request_id, lambda: tank_survey.finish_survey(name, notes=notes))
+	return guarded(request_id, lambda: tank_survey.finish_survey(name, notes=notes, photos=photos))
+
+
+@frappe.whitelist(methods=["POST"])
+def survey_interior_save(name=None, photos=None, request_id=None):
+	"""POST /api/v1/ess/survey-interior-save — autosave the interior photos of an open survey.
+
+	``photos`` is the tank's whole set, ``[{photo, caption}]``; it replaces what is stored."""
+	require_menu("surveyPos")
+	return guarded(request_id, lambda: tank_survey.save_interior_photos(name, photos=photos))
 
 
 @frappe.whitelist(methods=["POST"])

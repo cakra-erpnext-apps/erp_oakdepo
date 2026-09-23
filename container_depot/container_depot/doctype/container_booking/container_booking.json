@@ -11,14 +11,17 @@
   "column_break_1",
   "depot",
   "reff_doc",
-  "survey_reff_doc",
   "plan_date",
-  "survey_date",
   "urgent_date",
   "urgent_reason",
+  "survey_section",
+  "survey_date",
   "surveyor",
+  "column_break_survey",
+  "survey_reff_doc",
   "parties_section",
   "customer",
+  "shipper",
   "column_break_parties",
   "principal",
   "items_section",
@@ -65,18 +68,6 @@
    "label": "Booking"
   },
   {
-   "default": "Tank In",
-   "description": "Wajib. Tank In = masuk depo, Tank Out = keluar. Tidak bisa diubah setelah simpan.",
-   "fieldname": "direction",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Direction",
-   "options": "Tank In\nTank Out",
-   "reqd": 1,
-   "set_only_once": 1
-  },
-  {
    "description": "Wajib.",
    "fieldname": "branch",
    "fieldtype": "Link",
@@ -87,11 +78,23 @@
    "in_list_view": 1
   },
   {
+   "default": "Tank In",
+   "description": "Wajib. Tank In = tank masuk depo. Tank Out = tank keluar depo. Tidak bisa diubah setelah disimpan.",
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Direction",
+   "options": "Tank In\nTank Out",
+   "reqd": 1,
+   "set_only_once": 1
+  },
+  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
   },
   {
-   "description": "Tank In: wajib. Tank Out: tidak dipakai — depo dibaca per baris container.",
+   "description": "Wajib untuk Tank In. Depo tujuan tank. Turun ke Depo tiap baris container.",
    "fieldname": "depot",
    "fieldtype": "Link",
    "label": "Depot",
@@ -102,7 +105,7 @@
    "in_list_view": 1
   },
   {
-   "description": "Opsional. No. dokumen referensi customer untuk booking ini. Ikut turun ke EIR lewat bon; Cleaning & M&R punya Reff Doc-nya sendiri.",
+   "description": "Opsional. Nomor dokumen referensi dari customer. Turun ke EIR.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "label": "Reff Doc",
@@ -110,31 +113,15 @@
    "in_list_view": 1
   },
   {
-   "depends_on": "survey_reff_doc",
-   "description": "No. dokumen survey dari Survey Order booking ini. Terisi sendiri — diubah di Survey Order-nya.",
-   "fieldname": "survey_reff_doc",
-   "fieldtype": "Data",
-   "label": "Reff Doc Survey",
-   "no_copy": 1,
-   "read_only": 1
-  },
-  {
-   "description": "Tanggal rencana pekerjaan. Wajib untuk Tank Out — ini satu-satunya deadline yang dipakai yard untuk memprioritaskan pekerjaan tank.",
+   "description": "Tanggal rencana tank diambil. Wajib untuk Tank Out.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
-   "label": "Plan Date",
+   "label": "Pick up Date",
    "mandatory_depends_on": "eval:doc.direction=='Tank Out'"
   },
   {
-   "depends_on": "eval:doc.direction=='Tank Out'",
-   "description": "Tanggal survei sebelum tank diambil. Turun ke tiap baris container.",
-   "fieldname": "survey_date",
-   "fieldtype": "Date",
-   "label": "Survey Date"
-  },
-  {
    "depends_on": "urgent_date",
-   "description": "Tenggat mendesak — dipasang lewat tombol Prioritas Mendesak, bukan diketik. Selama terisi, semua pekerjaan booking ini (cleaning, M&R, survey, EIR) naik ke paling atas worklist, di atas booking lain yang tanggal survey-nya lebih awal.",
+   "description": "Terisi lewat tombol Prioritas Mendesak. Selama terisi, pekerjaan tank booking ini tampil paling atas di worklist.",
    "fieldname": "urgent_date",
    "fieldtype": "Date",
    "in_list_view": 1,
@@ -144,7 +131,7 @@
   },
   {
    "depends_on": "urgent_reason",
-   "description": "Kenapa booking ini didahulukan.",
+   "description": "Alasan booking ini didahulukan.",
    "fieldname": "urgent_reason",
    "fieldtype": "Small Text",
    "label": "Alasan Mendesak",
@@ -153,12 +140,36 @@
   },
   {
    "depends_on": "eval:doc.direction=='Tank Out'",
-   "description": "Pihak yang mensurvei. Turun ke tiap baris container.",
+   "fieldname": "survey_section",
+   "fieldtype": "Section Break",
+   "label": "Survey"
+  },
+  {
+   "description": "Wajib untuk Tank Out. Tanggal survei tank, paling lambat Pick up Date. Default hari ini. Turun ke tiap baris container dan Survey Order.",
+   "fieldname": "survey_date",
+   "fieldtype": "Date",
+   "label": "Survey Date",
+   "mandatory_depends_on": "eval:doc.direction=='Tank Out'"
+  },
+  {
+   "description": "Wajib untuk Tank Out. Pihak yang menyurvei tank. Turun ke tiap baris container dan Survey Order.",
    "fieldname": "surveyor",
    "ignore_user_permissions": 1,
    "fieldtype": "Link",
    "label": "Surveyor",
-   "options": "Customer"
+   "options": "Customer",
+   "mandatory_depends_on": "eval:doc.direction=='Tank Out'"
+  },
+  {
+   "fieldname": "column_break_survey",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Opsional. Nomor dokumen survey. Turun ke Survey Order.",
+   "fieldname": "survey_reff_doc",
+   "fieldtype": "Data",
+   "label": "Reff Doc Survey",
+   "no_copy": 1
   },
   {
    "fieldname": "parties_section",
@@ -178,11 +189,19 @@
    "allow_on_submit": 1
   },
   {
+   "description": "Opsional. Pabrik / pemilik muatan. Turun ke Shipper tiap baris container.",
+   "fieldname": "shipper",
+   "fieldtype": "Link",
+   "ignore_user_permissions": 1,
+   "label": "Shipper",
+   "options": "Customer"
+  },
+  {
    "fieldname": "column_break_parties",
    "fieldtype": "Column Break"
   },
   {
-   "description": "Wajib. Pemilik tank; memfilter pilihan container.",
+   "description": "Wajib. Pemilik tank. Hanya tank milik Principal ini yang bisa dipilih di baris container.",
    "fieldname": "principal",
    "ignore_user_permissions": 1,
    "fieldtype": "Link",
@@ -206,27 +225,13 @@
    "allow_on_submit": 1
   },
   {
-   "fieldname": "pricing_section",
-   "fieldtype": "Section Break",
-   "label": "Biaya"
-  },
-  {
-   "description": "Opsional. Kosong = tanpa invoice.",
-   "fieldname": "charges",
-   "no_copy": 1,
-   "fieldtype": "Table",
-   "label": "Charges",
-   "options": "Container Booking Charge",
-   "allow_on_submit": 1
-  },
-  {
    "fieldname": "payment_section",
    "fieldtype": "Section Break",
    "label": "Pembayaran"
   },
   {
    "default": "Cash",
-   "description": "Wajib. Cash harus lunas sebelum disetujui; TOP ditagih belakangan.",
+   "description": "Wajib. Cash: harus lunas sebelum booking disetujui. TOP: ditagih belakangan.",
    "fieldname": "payment_type",
    "no_copy": 1,
    "fieldtype": "Select",
@@ -234,6 +239,30 @@
    "label": "Payment Type",
    "options": "Cash\nTOP",
    "reqd": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "fieldname": "pricing_section",
+   "fieldtype": "Section Break",
+   "label": "Biaya"
+  },
+  {
+   "fieldname": "currency",
+   "no_copy": 1,
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Mata Uang",
+   "options": "Currency",
+   "read_only": 1,
+   "allow_on_submit": 1
+  },
+  {
+   "description": "Opsional. Kalau kosong, booking ini tidak membuat invoice.",
+   "fieldname": "charges",
+   "no_copy": 1,
+   "fieldtype": "Table",
+   "label": "Charges",
+   "options": "Container Booking Charge",
    "allow_on_submit": 1
   },
   {
@@ -286,7 +315,7 @@
   },
   {
    "default": "Draft",
-   "description": "Diatur alur booking. Pengajuan = draft customer yang sudah diajukan ke Admin Ops (sama dengan Draft untuk internal). Completed = semua container-nya sudah keluar gate.",
+   "description": "Terisi otomatis. Pengajuan = draft dari customer yang sudah dikirim. Completed = semua container sudah keluar gate.",
    "fieldname": "booking_status",
    "no_copy": 1,
    "fieldtype": "Select",
@@ -309,7 +338,7 @@
    "hidden": 1
   },
   {
-   "description": "Berapa container booking ini yang sudah masuk bon. Diisi otomatis dari Booking Code.",
+   "description": "Terisi otomatis. Jumlah container booking ini yang sudah punya bon.",
    "fieldname": "bon_status",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -323,7 +352,7 @@
   {
    "default": "Unpaid",
    "depends_on": "eval:doc.payment_type=='Cash' || doc.booking_status=='Cancelled'",
-   "description": "Hanya untuk booking Cash. Ditandai manual selama finance mati, dari Sales Invoice-nya saat finance aktif.",
+   "description": "Hanya untuk booking Cash. Status pembayaran booking ini.",
    "fieldname": "payment_status",
    "no_copy": 1,
    "fieldtype": "Select",
@@ -354,7 +383,7 @@
   },
   {
    "depends_on": "eval:doc.requested_by_customer",
-   "description": "Perusahaan yang mengajukan booking ini lewat akun portal-nya. Kosong = dibuat staff OAK.",
+   "description": "Customer yang mengajukan booking ini lewat portal. Kosong = dibuat staff OAK.",
    "fieldname": "requested_by_customer",
    "fieldtype": "Link",
    "options": "Customer",
@@ -383,7 +412,7 @@
    "read_only": 1
   },
   {
-   "description": "Ringkasan untuk list view. Filter Containers di list mencari di kolom ini.",
+   "description": "Ringkasan nomor container booking ini, untuk list view dan filter Containers.",
    "fieldname": "container_summary",
    "no_copy": 1,
    "fieldtype": "Data",
@@ -394,7 +423,7 @@
    "hidden": 1
   },
   {
-   "description": "Jumlah container yang sudah dibonkan, mis. 3/5.",
+   "description": "Jumlah container yang sudah punya bon, contoh 3/5.",
    "fieldname": "bon_summary",
    "fieldtype": "Data",
    "label": "Bon (Jumlah)",
@@ -406,7 +435,7 @@
   {
    "default": "0",
    "depends_on": "eval:doc.direction=='Tank Out'",
-   "description": "Persentase container booking ini yang sudah Gate-Out.",
+   "description": "Persentase container booking ini yang sudah keluar gate.",
    "fieldname": "per_fulfilled",
    "fieldtype": "Percent",
    "in_list_view": 1,
@@ -416,7 +445,7 @@
    "allow_on_submit": 1
   },
   {
-   "description": "Tank In = Lift Off, Tank Out = Lift On.",
+   "description": "Terisi otomatis. Tank In = Lift Off, Tank Out = Lift On.",
    "fieldname": "lift_type",
    "no_copy": 1,
    "fieldtype": "Select",
@@ -424,16 +453,6 @@
    "label": "Lift Type",
    "options": "\nLift On\nLift Off",
    "read_only": 1
-  },
-  {
-   "fieldname": "currency",
-   "no_copy": 1,
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Mata Uang",
-   "options": "Currency",
-   "read_only": 1,
-   "allow_on_submit": 1
   },
   {
    "description": "Dari kontrak aktif customer.",
@@ -466,7 +485,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-23 09:00:00.000000",
+ "modified": "2026-09-23 16:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

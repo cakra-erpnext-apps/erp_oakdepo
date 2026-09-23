@@ -190,7 +190,7 @@ async function uploadBlob(blob, name) {
 	return data.message.file_url
 }
 
-async function post(url, args) {
+export async function post(url, args) {
 	const res = await request(`/api/method/${url}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },

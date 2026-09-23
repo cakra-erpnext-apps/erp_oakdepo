@@ -1370,6 +1370,30 @@ def open_draft(container=None, container_no=None, inspection_type="EIR-In") -> d
 	return _draft_payload(doc, header)
 
 
+def survey_interior_photos(doc) -> list:
+	"""Interior photos the survey took of this EIR-Out's tank, ``[{photo, caption}]``.
+
+	Read from the Survey Order (``Survey Order Photo``), never copied: the survey owns them,
+	and a redone survey replaces them there.
+	"""
+	if not (doc.get("survey_order") and doc.get("survey_tank")):
+		return []
+	return frappe.get_all(
+		"Survey Order Photo",
+		filters={"parent": doc.survey_order, "survey_tank": doc.survey_tank},
+		fields=["photo", "caption"],
+		order_by="idx asc",
+	)
+
+
+@frappe.whitelist()
+def get_survey_interior_photos(inspection: str) -> list:
+	"""Desk Inspection form: the survey's interior photos for this EIR-Out."""
+	doc = frappe.get_doc("Inspection", inspection)
+	doc.check_permission("read")
+	return survey_interior_photos(doc)
+
+
 def open_eir_out(inspection: str) -> dict:
 	"""Open a draft EIR-Out for editing (worklist → form) with its EIR-In comparison."""
 	payload = open_draft_by_name(inspection)
@@ -1380,6 +1404,7 @@ def open_eir_out(inspection: str) -> dict:
 	payload["seals"] = [
 		{"seal_no": s.seal_no, "remarks": s.remarks} for s in (doc.get("out_seals") or [])
 	]
+	payload["interior_photos"] = survey_interior_photos(doc)
 	return payload
 
 
@@ -2165,6 +2190,7 @@ def view_eir(inspection: str) -> dict:
 		"finding_count": sum(1 for d in damages if d["is_finding"]),
 		"photos": photos,
 		"photo_count": len(photos),
+		"interior_photos": survey_interior_photos(doc),
 		"fittings": [
 			{
 				"fitting_item": f.fitting_item,

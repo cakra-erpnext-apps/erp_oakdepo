@@ -1337,6 +1337,9 @@ export const labels = {
 	tankLoweringNoteHint: "mis. diturunkan pakai reach stacker",
 	tankAutoStamp: "Waktu dan nama pencatat disimpan otomatis",
 	tankLoweringPhotos: "Foto lowering",
+	tankInteriorPhotos: "Foto interior",
+	tankInteriorCaption: "Deskripsi foto…",
+	tankInteriorSaving: "Menyimpan…",
 	tankDoSurvey: "Lakukan survey",
 	tankSurveyNote: "Catatan survey",
 	tankSurveyNoteHint: "Temuan saat survey",
@@ -1377,7 +1380,7 @@ export const labels = {
 	// Detail jadwal.
 	svDetailTitle: "Detail jadwal",
 	svScheduleDate: "Jadwal survey",
-	svPickupDate: "Pickup",
+	svPickupDate: "Pick up Date",
 	svSurveyor: "Surveyor",
 	svReffDoc: "Reff Doc Survey", // survey's own customer document no. (not the booking's)
 	svStatLowered: "Lowered",

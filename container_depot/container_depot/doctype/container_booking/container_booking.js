@@ -78,16 +78,26 @@ frappe.ui.form.on('Container Booking', {
 		if (frm.is_new() && !frm.doc.plan_date) {
 			frm.set_value('plan_date', frappe.datetime.get_today());
 		}
+		frm.trigger('_default_survey_date');
+	},
+	// Survey Date defaults to today on a NEW Tank Out, same form-only reasoning as Plan Date.
+	// Switched back to Tank In, the unused value is dropped.
+	_default_survey_date(frm) {
+		if (!frm.is_new()) return;
+		const out = frm.doc.direction === 'Tank Out';
+		if (out && !frm.doc.survey_date) frm.set_value('survey_date', frappe.datetime.get_today());
+		if (!out && frm.doc.survey_date) frm.set_value('survey_date', null);
 	},
 	refresh(frm) {
 		frm._prev_customer = frm.doc.customer;
+		frm._prev_header = Object.fromEntries(HEADER_TO_LINE.map((f) => [f, frm.doc[f]]));
 		frm.trigger('_set_queries');
 		frm.trigger('_depot_mode');
+		frm.trigger('_setup_items_grid');
 		frm.trigger('_render_system_facts');
 		frm.trigger('_lock_actions');
 		frm.trigger('_set_grid_import_button');
 		frm.trigger('_mark_new_containers');
-		frm.trigger('_toggle_out_columns');
 		frm.trigger('_flag_open_conflicts');
 		frm.trigger('_apply_submit_lock');
 		frm.trigger('_apply_billing_lock');
@@ -297,23 +307,15 @@ frappe.ui.form.on('Container Booking', {
 			},
 		});
 	},
-	direction(frm) {
-		frm.trigger('_toggle_out_columns');
+	// Header → rows, live. Server twin: _cascade_header_defaults.
+	shipper(frm) {
+		_cascade_header(frm, 'shipper');
 	},
-	// The survey pair only means something on the way out — the tank is arriving on the way
-	// in, and there is no pickup to survey for. `depends_on` already hides them in the
-	// expanded row; this keeps the grid COLUMNS tidy too.
-	//
-	// set_column_disp_in_list_view is a grid-local override, so Order Bongkar's grid — which
-	// shares this child doctype — is unaffected.
-	//
-	// The line's date needs no toggle any more: it is the realisation, which means the same
-	// thing in both directions (the day this container's bon came out).
-	_toggle_out_columns(frm) {
-		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
-		if (!grid || !grid.set_column_disp_in_list_view) return;
-		grid.set_column_disp_in_list_view(['survey_date', 'surveyor'], frm.doc.direction === 'Tank Out');
-		grid.refresh();
+	survey_date(frm) {
+		_cascade_header(frm, 'survey_date');
+	},
+	surveyor(frm) {
+		_cascade_header(frm, 'surveyor');
 	},
 	// Which tanks already have a bon. Nothing on a submitted booking is editable any more
 	// (_apply_submit_lock), so this is not about protecting the rows — it is about reading
@@ -663,9 +665,12 @@ frappe.ui.form.on('Container Booking', {
 								row.condition = ln.condition;
 								// Straight from the master, like the picker — nobody types a depot.
 								row.depot = ln.depot;
-								// add_child doesn't fire items_add — default the EMKL here too.
-								// Shipper is left blank on purpose: see _sync_row_emkl.
+								// add_child doesn't fire items_add — apply its defaults here too.
 								row.emkl = frm.doc.customer;
+								if (frm.doc.direction === 'Tank In' && frm.doc.depot) row.depot = frm.doc.depot;
+								HEADER_TO_LINE.forEach((f) => {
+									if (frm.doc[f] && _header_applies(frm, f)) row[f] = frm.doc[f];
+								});
 								if (ln.container) row.container = ln.container;
 								if (ln.cargo) row.cargo = ln.cargo;
 								// Set here, re-derived from the Container's own created_by_booking
@@ -820,6 +825,7 @@ frappe.ui.form.on('Container Booking', {
 		}));
 		frm.set_query('surveyor', own_parties({ is_surveyor: 1 }));
 		frm.set_query('emkl', 'items', own_parties());
+		frm.set_query('shipper', own_parties());
 		frm.set_query('shipper', 'items', own_parties());
 		frm.set_query('surveyor', 'items', own_parties({ is_surveyor: 1 }));
 		// Cara memasukkan sesuatu KE dalam buku alamat itu TIDAK duduk di toolbar: barisnya
@@ -896,6 +902,13 @@ frappe.ui.form.on('Container Booking', {
 		if (frm.doc.depot) frm.set_value('depot', null);
 		frm.trigger('_set_queries');
 	},
+	depot(frm) {
+		// Tank In: the row Depo is the header's, full stop (server: _cascade_header_defaults).
+		if (frm.doc.direction !== 'Tank In') return;
+		(frm.doc.items || []).forEach((row) => {
+			frappe.model.set_value(row.doctype, row.name, 'depot', frm.doc.depot);
+		});
+	},
 	customer(frm) {
 		// A new customer means a different rate card. Charges are cleared rather than
 		// re-priced so one booking can never end up mixing two price lists — the operator
@@ -950,6 +963,7 @@ frappe.ui.form.on('Container Booking', {
 		if (frm.doc.direction === 'Tank Out' && frm.doc.depot) frm.set_value('depot', null);
 		frm.trigger('_set_queries');
 		frm.trigger('_depot_mode');
+		frm.trigger('_default_survey_date');
 		frm.trigger('_flag_open_conflicts');
 	},
 	// Everything the system fills in by itself — status, totals, the invoice it raised, the
@@ -987,36 +1001,54 @@ frappe.ui.form.on('Container Booking', {
 		const out = frm.doc.direction === 'Tank Out';
 		frm.set_df_property('depot', 'hidden', out ? 1 : 0);
 		frm.set_df_property('depot', 'read_only', out ? 1 : 0);
-		// Mirror image on the rows. The row Depo is fetched from each tank's master —
-		// where it is standing right now — so it only answers something on a Tank Out.
-		// A Tank In tank has not arrived yet: the column is blank on every row and the
-		// header field above is the answer, so drop the column entirely.
+		// One date field, named for what happens on that day: the tank is picked up (Tank Out)
+		// or dropped off (Tank In).
+		frm.set_df_property('plan_date', 'label', out ? __('Pick up Date') : __('Drop off Date'));
+		frm.set_df_property(
+			'plan_date',
+			'description',
+			out
+				? __('Tanggal rencana tank diambil. Wajib untuk Tank Out.')
+				: __('Tanggal rencana tank diantar ke depo.')
+		);
 		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
-		const row_df = grid && grid.get_docfield('depot');
-		const hide = out ? 0 : 1;
-		if (row_df && row_df.hidden !== hide) {
-			grid.update_docfield_property('depot', 'hidden', hide);
-			row_df.hidden = hide;
-			// Also on the shared meta docfield: a grid whose columns the user has configured
-			// by hand (the gear in the header) reads THOSE objects, not the per-doc copies.
-			const meta_df = frappe.meta.get_docfield('Container Booking Item', 'depot');
-			if (meta_df) meta_df.hidden = hide;
-			// `hidden` alone changes nothing: setup_visible_columns() returns early while
-			// this.visible_columns is non-empty, so the painted header survives a plain
-			// refresh(). Clearing it is what forces the columns to be recomputed.
-			grid.visible_columns = [];
-			// ...and recomputing them is only half of it. refresh() rebuilds the HEADER from
-			// scratch (make_head() throws the old header row away) but REUSES the data rows,
-			// and a reused row only ever gains cells: grid_row.setup_columns() adds a column
-			// it does not have and refreshes the ones it does, never dropping one that has
-			// left visible_columns nor resizing one that changed width. So the header lost
-			// Depo while every painted row kept it — nine rows one cell out of step with
-			// their own header, which read as two columns under the single "Condition" label.
-			// Throwing the rows away is what makes them repaint against the new column set.
-			(grid.grid_rows || []).forEach((row) => row.wrapper && row.wrapper.remove());
-			grid.grid_rows = [];
+		if (grid) {
+			grid.update_docfield_property(
+				'realisation_date',
+				'label',
+				out ? __('Realisation Pickup Date') : __('Realisation Drop off Date')
+			);
 			grid.refresh();
 		}
+	},
+	// Container grid is fixed: same columns for everyone. Grid-local, so Order Bongkar (same
+	// child doctype) keeps Frappe's defaults. In `setup`, before the grid first computes its
+	// columns — later, a saved per-user column set would already be painted.
+	setup(frm) {
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (!grid) return;
+		// Configure Columns off: ignore any per-user column set already saved, and hide the
+		// gear (visibility, not display, so the header keeps its width). The header row is
+		// rebuilt on every grid refresh, hence a class on the wrapper instead of on the button.
+		grid.setup_user_defined_columns = function () {
+			this.user_defined_columns = [];
+		};
+		$(frm.fields_dict.items.wrapper).addClass('cb-fixed-columns');
+		if (!document.getElementById('cb-fixed-columns-css')) {
+			$('<style id="cb-fixed-columns-css">')
+				.text('.cb-fixed-columns .grid-heading-row .grid-static-col.pointer{visibility:hidden;pointer-events:none}')
+				.appendTo('head');
+		}
+	},
+	// The Editing Row shows every field.
+	_setup_items_grid(frm) {
+		const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+		if (!grid) return;
+		// The site hides empty read-only fields (Realisation Date before the bon, Depo before
+		// the header is set); get_status short-circuits that for the Editing Row.
+		['depot', 'realisation_date', 'is_new_container'].forEach((f) =>
+			grid.update_docfield_property(f, 'get_status', () => 'Read')
+		);
 	},
 	_set_queries(frm) {
 		frm.set_query('depot', () => ({ filters: { branch: frm.doc.branch || '' } }));
@@ -1082,19 +1114,6 @@ frappe.ui.form.on('Container Booking', {
 		(frm.doc.charges || []).forEach((row) => {
 			if (!row._qty_touched) frappe.model.set_value(row.doctype, row.name, 'qty', count);
 		});
-	},
-	// Grid row add / remove events fire on the PARENT form.
-	items_add(frm, cdt, cdn) {
-		// EMKL starts at the booking's Customer (Bill To) so the common case — one
-		// transporter for the whole booking — costs no typing; the row stays editable for a
-		// booking split across several EMKL. Shipper stays blank (see _sync_row_emkl).
-		if (frm.doc.customer) frappe.model.set_value(cdt, cdn, 'emkl', frm.doc.customer);
-		frm.trigger('_sync_charge_qty');
-	},
-	items_remove(frm) {
-		frm.trigger('_sync_charge_qty');
-		// A removed row may have cleared the last conflict — re-check.
-		frm.trigger('_flag_open_conflicts');
 	},
 	charges_add(frm, cdt, cdn) {
 		// The picker is scoped to the customer's price list, so a charge without a customer
@@ -1172,11 +1191,53 @@ frappe.ui.form.on('Container Booking Charge', {
 	},
 });
 
+// Header fields copied down onto every row — mirror of HEADER_TO_LINE in container_booking.py.
+// A row follows while it is blank or still holds the previous header value; a row someone
+// typed by hand is left alone.
+const HEADER_TO_LINE = ['shipper', 'survey_date', 'surveyor'];
+const _header_applies = (frm, f) => f === 'shipper' || frm.doc.direction === 'Tank Out';
+
+function _cascade_header(frm, f) {
+	frm._prev_header = frm._prev_header || {};
+	const prev = frm._prev_header[f];
+	frm._prev_header[f] = frm.doc[f];
+	if (!frm.doc[f] || !_header_applies(frm, f)) return;
+	(frm.doc.items || []).forEach((row) => {
+		if (!row[f] || (prev && row[f] === prev)) {
+			frappe.model.set_value(row.doctype, row.name, f, frm.doc[f]);
+		}
+	});
+}
+
 // A container line's own field change fires on the child-doctype handler.
 frappe.ui.form.on('Container Booking Item', {
+	// Grid row add / remove fire on the CHILD doctype (script_manager.trigger passes the
+	// row's doctype) — registered on the parent form they never run.
+	items_add(frm, cdt, cdn) {
+		// EMKL starts at the booking's Customer (Bill To) so the common case — one
+		// transporter for the whole booking — costs no typing; the row stays editable for a
+		// booking split across several EMKL. Shipper follows the header Shipper, never Bill To.
+		if (frm.doc.customer) frappe.model.set_value(cdt, cdn, 'emkl', frm.doc.customer);
+		if (frm.doc.direction === 'Tank In' && frm.doc.depot) {
+			frappe.model.set_value(cdt, cdn, 'depot', frm.doc.depot);
+		}
+		HEADER_TO_LINE.forEach((f) => {
+			if (frm.doc[f] && _header_applies(frm, f)) frappe.model.set_value(cdt, cdn, f, frm.doc[f]);
+		});
+		frm.trigger('_sync_charge_qty');
+	},
+	items_remove(frm) {
+		frm.trigger('_sync_charge_qty');
+		// A removed row may have cleared the last conflict — re-check.
+		frm.trigger('_flag_open_conflicts');
+	},
 	container(frm, cdt, cdn) {
 		_reject_duplicate_container(frm, cdt, cdn, 'container');
 		frm.trigger('_flag_open_conflicts');
+		// Runs after the client fetch_from wrote the master's depot — Tank In overrides it.
+		if (frm.doc.direction === 'Tank In' && frm.doc.depot) {
+			frappe.model.set_value(cdt, cdn, 'depot', frm.doc.depot);
+		}
 	},
 	container_no(frm, cdt, cdn) {
 		_reject_duplicate_container(frm, cdt, cdn, 'container_no');

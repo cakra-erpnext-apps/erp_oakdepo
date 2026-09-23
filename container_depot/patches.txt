@@ -141,4 +141,5 @@ container_depot.patches.v1_09.cleaning_service_qty
 container_depot.patches.v1_10.drop_cleaning_currency_lock
 container_depot.patches.v1_10.backfill_monthly_invoice_currency
 container_depot.patches.v1_11.drop_amend_without_amended_from
+container_depot.patches.v1_12.close_cancelled_booking_survey_orders
 container_depot.patches.v1_13.cleaning_service_line_type

@@ -1,0 +1,62 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "module": "Container Depot",
+ "name": "Survey Order Photo",
+ "modified": "2026-09-23 17:00:00.000000",
+ "creation": "2026-09-23 17:00:00.000000",
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "container_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Container",
+   "read_only": 1
+  },
+  {
+   "columns": 3,
+   "fieldname": "photo",
+   "fieldtype": "Attach Image",
+   "in_list_view": 1,
+   "label": "Foto",
+   "reqd": 1
+  },
+  {
+   "columns": 4,
+   "fieldname": "caption",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Deskripsi"
+  },
+  {
+   "columns": 1,
+   "fieldname": "taken_on",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Waktu",
+   "read_only": 1
+  },
+  {
+   "fieldname": "survey_tank",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Survey Tank",
+   "read_only": 1
+  }
+ ],
+ "field_order": [
+  "container_no",
+  "photo",
+  "caption",
+  "taken_on",
+  "survey_tank"
+ ]
+}

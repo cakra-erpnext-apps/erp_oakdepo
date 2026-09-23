@@ -150,10 +150,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref } from "vue"
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { send, uploadPhoto, photoSrc } from "@/data/send"
+import { useServerDraft } from "@/utils/serverDraft"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
 import { usePhotoQueue } from "@/utils/photoQueue"
@@ -249,6 +250,14 @@ async function addPhotos(files) {
 }
 
 // --- simpan ---
+// Isian yang belum disimpan (tank terpilih, letak, foto) tersimpan otomatis di server dan
+// muncul lagi kalau layar ini ditutup lalu dibuka ulang.
+const draft = useServerDraft(() => "position_bulk:main")
+let restoring = true
+watch([target, picked, photos], () => {
+	if (!restoring) draft.save({ target: target.value, picked: picked.value, photos: photos.value })
+}, { deep: true })
+
 async function save() {
 	if (!canSave.value || saving.value) return
 	saving.value = true
@@ -264,6 +273,7 @@ async function save() {
 		// Gagal sebagian dilaporkan apa adanya. Yang tercatat tetap tercatat — membatalkan
 		// semuanya karena satu tank sudah keluar depo berarti membuang pekerjaan yang benar,
 		// dan operatornya sudah berjalan pergi.
+		draft.clear()
 		const failed = res?.failed || []
 		if (failed.length) toast.error(fill(labels.bulkPartial, { n: failed.length }))
 		else toast.success(labels.tankPosSaved, { title: target.value.trim() })
@@ -283,11 +293,20 @@ function goBack() {
 // Dibuka dari daftar "belum terdata" dengan tank-nya sudah terpilih — di situlah orang
 // memutuskan untuk mencatat beberapa sekaligus. Barisnya dititipkan utuh (utils/positionPick),
 // bukan dicari ulang dari nomornya.
-onMounted(() => {
+onMounted(async () => {
 	const rows = takePreselect()
-	if (!rows.length) return
-	picked.value = rows
-	pickerOpen.value = false
+	const d = await draft.load()
+	if (d) {
+		target.value = d.target || ""
+		photos.value = d.photos || []
+		picked.value = d.picked || []
+	}
+	// Dibuka dari "belum terdata": pilihan tank itulah yang berlaku, bukan pilihan draft.
+	if (rows.length) {
+		picked.value = rows
+		pickerOpen.value = false
+	} else if (picked.value.length) pickerOpen.value = false
+	nextTick(() => { restoring = false })
 })
 onBeforeUnmount(() => clearTimeout(timer))
 </script>

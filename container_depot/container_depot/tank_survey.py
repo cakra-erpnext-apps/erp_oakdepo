@@ -52,7 +52,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, get_first_day, get_last_day, getdate, now_datetime, today
 
-from container_depot.container_depot.container_position import _age, _attach_photos
+from container_depot.container_depot.container_position import _age, _attach_photos, _coerce_photos
 from container_depot.container_depot.doctype.survey_order.survey_order import (
 	COMPLETED,
 	IN_PROGRESS,
@@ -195,6 +195,33 @@ def _apply_membership(doc, drop: list, cancel: list, restore: list) -> None:
 			row.status = _true_status(row)
 
 
+def close_survey_order_with_booking(name: str) -> None:
+	"""The booking was voided: its Survey Order and the draft EIR-Outs it raised go with it.
+
+	Marked, never deleted — the rows are the record that somebody walked the yard. A draft is
+	set Cancelled directly (docstatus 2): Frappe cannot cancel a draft. A SUBMITTED schedule
+	or EIR-Out is never reached here: ``container_booking._block_if_child_submitted`` refuses
+	the booking's cancel until someone cancels those by hand.
+	"""
+	from container_depot.container_depot.notify import revoke
+
+	frappe.db.set_value(SCHEDULE, name, "status", CANCELLED, update_modified=False)
+	frappe.db.set_value(
+		ROW, {"parent": name, "status": ["!=", DONE]}, "status", CANCELLED, update_modified=False
+	)
+	if frappe.db.get_value(SCHEDULE, name, "docstatus") == 0:
+		frappe.db.set_value(SCHEDULE, name, "docstatus", 2, update_modified=False)
+		frappe.db.sql("UPDATE `tabSurvey Order Tank` SET docstatus=2 WHERE parent=%s", name)
+		revoke(SCHEDULE, name)
+	for eir in frappe.get_all(
+		"Inspection", filters={"survey_order": name, "docstatus": 0}, pluck="name"
+	):
+		frappe.db.set_value(
+			"Inspection", eir, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
+		)
+		revoke("Inspection", eir)
+
+
 def provision_survey_order_for_booking(booking_name: str) -> dict:
 	"""Keep one ``Survey Order`` and one tank row per container in step with a Tank Out booking.
 
@@ -213,7 +240,7 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		"Container Booking",
 		booking_name,
 		["name", "direction", "booking_status", "docstatus", "depot", "branch",
-		 "survey_date", "plan_date", "principal", "surveyor"],
+		 "survey_date", "plan_date", "principal", "surveyor", "survey_reff_doc"],
 		as_dict=True,
 	)
 	if not booking or booking.direction != OUTBOUND:
@@ -223,14 +250,8 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 	existing = frappe.db.get_value(SCHEDULE, {"booking": booking.name, "docstatus": ["!=", 2]}, "name")
 
 	if dead:
-		# A called-off day is marked, never deleted: the rows underneath are the record that
-		# somebody walked the yard, and a job that was cancelled is worth being able to see.
 		if existing:
-			frappe.db.set_value(SCHEDULE, existing, "status", CANCELLED, update_modified=False)
-			frappe.db.set_value(
-				ROW, {"parent": existing, "status": ["!=", DONE]}, "status", CANCELLED,
-				update_modified=False,
-			)
+			close_survey_order_with_booking(existing)
 		return {"survey_order": existing, "tanks": []}
 	if not booking.survey_date:
 		return {"survey_order": existing, "tanks": []}
@@ -254,6 +275,10 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		doc.plan_date = booking.plan_date
 		doc.principal = booking.principal
 		doc.surveyor = booking.surveyor
+		# Only when filled: a number typed on the Survey Order itself mirrors back onto the
+		# booking (survey_order.sync_booking_reff_doc), so a blank here means "not given".
+		if booking.survey_reff_doc:
+			doc.reff_doc = booking.survey_reff_doc
 		doc.branch = booking.branch
 		doc.depot = booking.depot
 		if not existing:
@@ -289,6 +314,9 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		# do on the next reopen — a finished day that gains a tank is a corrected booking, and
 		# ``refresh_progress`` reopens it from the row that is not done.
 		if doc.docstatus == 1 and not added and not any(plan):
+			# reff_doc is allow_on_submit — the one header field a finished day still takes.
+			if booking.survey_reff_doc and doc.reff_doc != doc.get_db_value("reff_doc"):
+				frappe.db.set_value(SCHEDULE, doc.name, "reff_doc", doc.reff_doc, update_modified=False)
 			return {"survey_order": doc.name, "tanks": []}
 		if doc.docstatus == 1:
 			frappe.db.set_value(SCHEDULE, doc.name, "docstatus", 0, update_modified=False)
@@ -752,6 +780,12 @@ def get_tank_detail(name: str) -> dict:
 		limit_page_length=1,
 	)
 	out["position_photos"] = _attach_photos(latest)[0]["photos"] if latest else []
+	out["interior_photos"] = frappe.get_all(
+		INTERIOR_PHOTO,
+		filters={"parent": row.parent, "survey_tank": row.name},
+		fields=["photo", "caption"],
+		order_by="idx asc",
+	)
 	# Seberapa mendesak, dalam kata yang sama dengan papan pembukanya — supaya spanduk merah
 	# "pickup besok" di layar ini dan bagian "Mendesak" di daftar tidak pernah berselisih.
 	out["days_to"] = _days_to(out)
@@ -850,7 +884,7 @@ def mark_lowered(name, location_note=None, note=None, photos=None) -> dict:
 	return {"success": True, "name": name, "status": LOWERED, "location_note": location_note or None}
 
 
-def finish_survey(name, notes=None) -> dict:
+def finish_survey(name, notes=None, photos=None) -> dict:
 	"""Selesai Survey: the surveyor closes this tank (→ ``Survey Done``).
 
 	Notes are OPTIONAL, unlike the location one step earlier. This press records a judgement —
@@ -876,6 +910,7 @@ def finish_survey(name, notes=None) -> dict:
 		"survey_notes": notes,
 		"reopen_note": None,
 	}, row.parent)
+	_save_interior_photos(row, photos)
 
 	eir_out = None
 	try:
@@ -889,6 +924,51 @@ def finish_survey(name, notes=None) -> dict:
 	notify_survey_done(_notify_payload(name), eir_out=eir_out)
 
 	return {"success": True, "name": name, "status": DONE, "eir_out": eir_out}
+
+
+INTERIOR_PHOTO = "Survey Order Photo"
+
+
+def _save_interior_photos(row, photos) -> None:
+	"""Interior photos of this tank, each with its own description, onto the Survey Order.
+
+	Always the tank's WHOLE set, replacing what was there: the phone autosaves it on every
+	change (:func:`save_interior_photos`), and closing sends it once more. ``None`` = keep.
+	Written with db_insert, like every other write here: the schedule may already be
+	submitted, and re-running its validation from a tank action is not this press's business.
+	"""
+	if photos is None:
+		return
+	frappe.db.delete(INTERIOR_PHOTO, {"parent": row.parent, "survey_tank": row.name})
+	photos = _coerce_photos(photos)
+	if not photos:
+		return
+	idx = frappe.db.sql(
+		"select coalesce(max(idx), 0) from `tabSurvey Order Photo` where parent=%s", row.parent
+	)[0][0]
+	now = now_datetime()
+	for p in photos:
+		idx += 1
+		frappe.get_doc({
+			"doctype": INTERIOR_PHOTO,
+			"parent": row.parent,
+			"parenttype": SCHEDULE,
+			"parentfield": "interior_photos",
+			"idx": idx,
+			"survey_tank": row.name,
+			"container_no": row.container_no,
+			"photo": p["photo"],
+			"caption": p["caption"],
+			"taken_on": now,
+		}).db_insert()
+
+
+def save_interior_photos(name, photos=None) -> dict:
+	"""Autosave of the interior photos while the survey is still open (tank ``Lowered``), so a
+	photo is on the server the moment it is taken — not only when the survey is closed."""
+	row = _open_row(name, (LOWERED,), "submit")
+	_save_interior_photos(row, photos if photos is not None else [])
+	return {"success": True, "name": name}
 
 
 def _notify_payload(name) -> dict:

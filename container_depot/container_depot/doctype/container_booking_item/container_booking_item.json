@@ -8,17 +8,17 @@
  "field_order": [
   "container",
   "container_no",
-  "is_new_container",
   "depot",
   "condition",
   "cargo",
-  "emkl",
   "shipper",
+  "emkl",
+  "realisation_date",
+  "is_new_container",
   "truck_plate",
   "driver",
   "driver_phone",
   "ro",
-  "realisation_date",
   "survey_date",
   "surveyor",
   "remarks",
@@ -27,7 +27,7 @@
  "fields": [
   {
    "columns": 2,
-   "description": "Dari master Container, difilter ke Principal booking.",
+   "description": "Pilih dari master Container. Hanya tank milik Principal booking ini yang muncul.",
    "fieldname": "container",
    "search_index": 1,
    "fieldtype": "Link",
@@ -49,12 +49,14 @@
    "in_list_view": 1
   },
   {
-   "default": "0",
-   "description": "Master Container ini dibuat oleh booking ini (nomor belum terdaftar sebelumnya).",
-   "fieldname": "is_new_container",
-   "fieldtype": "Check",
-   "label": "Container Baru",
-   "no_copy": 1,
+   "columns": 1,
+   "description": "Tidak bisa diubah. Tank In: sama dengan Depo di header. Tank Out: depo tempat tank berada sekarang, dari master Container.",
+   "fetch_from": "container.depot",
+   "fieldname": "depot",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Depo",
+   "options": "Depot",
    "read_only": 1
   },
   {
@@ -79,7 +81,18 @@
   },
   {
    "columns": 1,
-   "description": "EMKL / angkutan (trucking) yang menarik container ini. Default: Customer (Bill To) booking.",
+   "description": "Pabrik / pemilik muatan. Default dari Shipper di header; bisa diubah per baris.",
+   "fieldname": "shipper",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Shipper",
+   "options": "Customer",
+   "allow_on_submit": 1,
+   "ignore_user_permissions": 1
+  },
+  {
+   "columns": 1,
+   "description": "EMKL / trucking yang mengangkut container ini. Default dari Customer (Bill To); bisa diubah per baris.",
    "fieldname": "emkl",
    "fieldtype": "Link",
    "in_list_view": 1,
@@ -90,14 +103,21 @@
   },
   {
    "columns": 1,
-   "description": "Pabrik / pemilik muatan yang memerintah EMKL. Diisi manual — tidak ikut Bill To.",
-   "fieldname": "shipper",
-   "fieldtype": "Link",
+   "description": "Terisi otomatis dengan tanggal bon container ini dibuat. Kosong lagi kalau bon di-void.",
+   "fieldname": "realisation_date",
+   "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "Shipper",
-   "options": "Customer",
-   "allow_on_submit": 1,
-   "ignore_user_permissions": 1
+   "label": "Realisation Pickup Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Tercentang kalau nomor container ini belum terdaftar, sehingga master Container-nya dibuat otomatis oleh booking ini.",
+   "fieldname": "is_new_container",
+   "fieldtype": "Check",
+   "label": "Container Baru",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "truck_plate",
@@ -124,35 +144,30 @@
    "allow_on_submit": 1
   },
   {
-   "columns": 1,
-   "description": "Tanggal bon container ini terbit — terisi sendiri saat bon-nya digenerate, dan kosong lagi kalau bon-nya di-void. Rencananya ada di Plan Date (header).",
-   "fieldname": "realisation_date",
-   "fieldtype": "Date",
-   "in_list_view": 1,
-   "label": "Realisation Date",
-   "read_only": 1
-  },
-  {
    "depends_on": "eval:parent.direction=='Tank Out'",
-   "description": "Tanggal survei sebelum tank diambil. Turun dari header; bisa diubah per baris.",
+   "description": "Wajib untuk Tank Out. Default dari Survey Date di header; bisa diubah per baris.",
    "fieldname": "survey_date",
    "fieldtype": "Date",
-   "label": "Survey Date"
+   "label": "Survey Date",
+   "mandatory_depends_on": "eval:parent.direction=='Tank Out'"
   },
   {
    "depends_on": "eval:parent.direction=='Tank Out'",
-   "description": "Pihak yang mensurvei tank ini. Turun dari header; bisa diubah per baris.",
+   "description": "Wajib untuk Tank Out. Default dari Surveyor di header; bisa diubah per baris.",
    "fieldname": "surveyor",
    "fieldtype": "Link",
    "label": "Surveyor",
    "options": "Customer",
-   "ignore_user_permissions": 1
+   "ignore_user_permissions": 1,
+   "mandatory_depends_on": "eval:parent.direction=='Tank Out'"
   },
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks / Note",
-   "allow_on_submit": 1
+   "allow_on_submit": 1,
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "booking_code",
@@ -161,22 +176,11 @@
    "label": "Booking Code",
    "options": "Booking Code",
    "read_only": 1
-  },
-  {
-   "columns": 1,
-   "description": "Depo tempat tank ini berdiri sekarang, dari master Container. Tank Out: tiap baris bisa beda depo selama masih satu Branch.",
-   "fetch_from": "container.depot",
-   "fieldname": "depot",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Depo",
-   "options": "Depot",
-   "read_only": 1
   }
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-09-18 10:05:00.000000",
+ "modified": "2026-09-23 14:30:00.000000",
  "module": "Container Depot",
  "name": "Container Booking Item",
  "sort_field": "creation",

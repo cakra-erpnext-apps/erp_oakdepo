@@ -362,10 +362,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, reactive, ref } from "vue"
+import { computed, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { send, uploadPhoto, photoSrc } from "@/data/send"
+import { useServerDraft } from "@/utils/serverDraft"
 import { labels } from "@/utils/labels"
 import { since, fmtDateTime } from "@/utils/surveyStatus"
 import { toast } from "@/utils/toast"
@@ -497,6 +498,7 @@ const detailRes = cachedResource({
 		// gambar tumpukan yang mungkin sudah ditinggalkan tank-nya.
 		form.photos = []
 		for (const url of Object.keys(photoNotes)) delete photoNotes[url]
+		restoreDraft()
 	},
 	onError(err) {
 		pending.value = false
@@ -538,6 +540,27 @@ function finish() {
 	backToList()
 }
 
+// Isian yang belum disimpan (letak, catatan, foto + keterangannya) tersimpan otomatis di server
+// per tank, dan muncul lagi kalau layar ini ditutup lalu dibuka ulang.
+const draft = useServerDraft(() => (tank.value?.container ? `position:${tank.value.container}` : null))
+let restoring = true
+async function restoreDraft() {
+	restoring = true
+	const d = await draft.load()
+	if (d) {
+		form.location_note = d.location_note ?? form.location_note
+		form.notes = d.notes || ""
+		form.photos = d.photos || []
+		Object.assign(photoNotes, d.captions || {})
+	}
+	nextTick(() => { restoring = false })
+}
+watch([() => form.location_note, () => form.notes, () => form.photos, photoNotes], () => {
+	if (!restoring && !pending.value) {
+		draft.save({ location_note: form.location_note, notes: form.notes, photos: form.photos, captions: photoNotes })
+	}
+}, { deep: true })
+
 // ---- simpan ----
 const saving = ref(false)
 const saveError = ref("")
@@ -562,6 +585,7 @@ async function save() {
 					: undefined,
 			},
 		})
+		draft.clear()
 		saved.value = { ...res, container: tank.value.container_no || c }
 	} catch (e) {
 		saveError.value = e?.message || labels.error

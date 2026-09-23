@@ -147,6 +147,10 @@
 
 			<!-- Album inspeksi: foto keliling tank dan foto bagian yang diperiksa tapi tidak
 			     rusak — sama seperti tabel Foto per Item di Desk. -->
+			<section v-if="(data.interior_photos || []).length" class="oak-card p-4">
+				<InteriorPhotos :photos="data.interior_photos" />
+			</section>
+
 			<section class="oak-card space-y-2 p-4">
 				<p class="oak-section-title">{{ labels.eirPhotosTitle }} ({{ data.photo_count || 0 }})</p>
 				<p v-if="!(data.photos || []).length" class="text-sm text-gray-400">{{ labels.eirNoPhotos }}</p>
@@ -231,6 +235,7 @@ import { groupByCompartment } from "@/utils/fittings"
 import { fmtDate, fmtDateShort } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
+import InteriorPhotos from "@/components/InteriorPhotos.vue"
 
 const router = useRouter()
 

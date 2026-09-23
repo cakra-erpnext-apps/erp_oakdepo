@@ -69,7 +69,7 @@ def _rows(filters) -> list:
 
 def _columns() -> list:
 	return [
-		{"fieldname": "plan_date", "label": "Tanggal Rencana", "fieldtype": "Date", "width": 120},
+		{"fieldname": "plan_date", "label": "Pick up Date", "fieldtype": "Date", "width": 120},
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 170},
 		{"fieldname": "customer", "label": "Customer", "fieldtype": "Link",

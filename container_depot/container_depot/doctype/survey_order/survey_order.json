@@ -28,7 +28,9 @@
   "per_surveyed",
   "summary_section",
   "container_summary",
-  "tanks"
+  "tanks",
+  "interior_section",
+  "interior_photos"
  ],
  "fields": [
   {
@@ -69,7 +71,7 @@
   },
   {
    "allow_on_submit": 1,
-   "description": "Opsional. No. dokumen survey dari customer / surveyor untuk jadwal ini \u2014 berdiri sendiri, bukan Reff Doc booking. Ikut tampil di form Tank Out.",
+   "description": "Opsional. No. dokumen survey dari customer / surveyor untuk jadwal ini — berdiri sendiri, bukan Reff Doc booking. Ikut tampil di form Tank Out.",
    "fieldname": "reff_doc",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -105,7 +107,7 @@
    "fetch_from": "booking.plan_date",
    "fieldname": "plan_date",
    "fieldtype": "Date",
-   "label": "Rencana Pickup",
+   "label": "Pick up Date",
    "read_only": 1
   },
   {
@@ -192,11 +194,24 @@
    "fieldtype": "Table",
    "label": "Tank",
    "options": "Survey Order Tank"
+  },
+  {
+   "fieldname": "interior_section",
+   "fieldtype": "Section Break",
+   "label": "Foto Interior"
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Foto interior tank dari step survey, satu deskripsi per foto.",
+   "fieldname": "interior_photos",
+   "fieldtype": "Table",
+   "label": "Foto Interior",
+   "options": "Survey Order Photo"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-11 14:00:00.000000",
+ "modified": "2026-09-23 17:00:00.000000",
  "module": "Container Depot",
  "name": "Survey Order",
  "search_fields": "booking, principal, survey_date, status",

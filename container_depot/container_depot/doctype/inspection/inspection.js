@@ -22,6 +22,7 @@ frappe.ui.form.on('Inspection', {
 
 	refresh(frm) {
 		set_signature_preview(frm);
+		render_survey_interior(frm);
 		render_system_facts(frm);
 		// Field operator submitted from the PWA → awaiting Admin Ops review. Prompt the
 		// reviewer to check + Submit (the native Submit finalizes it).
@@ -1374,5 +1375,30 @@ function prefill_from_container(frm) {
 				);
 			}
 		},
+	});
+}
+
+// Foto interior dari survey yang menerbitkan EIR-Out ini — dibaca dari Survey Order, hanya tampil.
+function render_survey_interior(frm) {
+	const field = frm.fields_dict.survey_interior_html;
+	if (!field || frm.doc.inspection_type !== 'EIR-Out' || !frm.doc.survey_tank) return;
+	frappe.call({
+		method: 'container_depot.container_depot.eir.get_survey_interior_photos',
+		args: { inspection: frm.doc.name },
+	}).then((r) => {
+		const photos = r.message || [];
+		const esc = frappe.utils.escape_html;
+		field.$wrapper.html(
+			`<div class="form-label">${__('Foto Interior (Survey)')}</div>` +
+				(photos.length
+					? `<div style="display:flex;flex-wrap:wrap;gap:10px;">${photos
+							.map(
+								(p) => `<a href="${esc(p.photo)}" target="_blank" style="width:140px;">
+									<img src="${esc(p.photo)}" style="width:140px;height:140px;object-fit:cover;border-radius:6px;border:1px solid var(--border-color);">
+									<div class="text-muted small" style="margin-top:2px;">${esc(p.caption || '')}</div></a>`
+							)
+							.join('')}</div>`
+					: `<div class="text-muted small">${__('Survey tidak menyertakan foto interior.')}</div>`)
+		);
 	});
 }

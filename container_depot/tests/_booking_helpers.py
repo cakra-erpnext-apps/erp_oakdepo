@@ -123,4 +123,9 @@ def cancel_submitted_booking(booking: str) -> str:
 	)
 
 	revert_booking_to_draft(booking)
+	# A submitted invoice blocks the cancel (finance on) until finance cancels it — the
+	# operator's first step, stood in for here without the Payment Entry round trip.
+	si = frappe.db.get_value("Container Booking", booking, "sales_invoice")
+	if si and frappe.db.get_value("Sales Invoice", si, "docstatus") == 1:
+		frappe.db.set_value("Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"})
 	return void_draft(booking)

@@ -188,6 +188,17 @@ class TestTankInFlow(FrappeTestCase):
 		self.assertEqual(hit["currency"], "IDR")  # follows the contract currency
 		self.assertEqual(charge_pricing(None, "Lift Off")["rate"], 0)
 
+	def test_header_shipper_and_depot_cascade_to_rows(self):
+		# Shipper: blank rows follow the header, a hand-picked row keeps its own — also on a
+		# never-saved booking. Tank In Depo: always the header's, whatever the master said.
+		doc = self._booking(
+			self.customer, direction="Tank In", depot="Depot Baru", shipper="Pabrik A",
+			items=[{"container_no": "A", "depot": "Depot Lama"}, {"container_no": "B", "shipper": "Pabrik B"}],
+		)
+		doc._cascade_header_defaults()
+		self.assertEqual([r.shipper for r in doc.items], ["Pabrik A", "Pabrik B"])
+		self.assertEqual([r.depot for r in doc.items], ["Depot Baru", "Depot Baru"])
+
 	def test_currency_follows_the_contract(self):
 		# The actual bug: a USD contract must format charge rates in USD, not the system
 		# default. No exchange-rate conversion — the contract currency is used as-is.
@@ -579,6 +590,37 @@ class TestTankInFlow(FrappeTestCase):
 			frappe.db.get_value("Sales Invoice", si, "docstatus"), 2,
 			"the draft invoice is cancelled (kept), not deleted",
 		)
+
+	def test_void_draft_waits_for_a_submitted_invoice(self):
+		# Finance on: a submitted invoice is finance's to cancel, so the booking waits.
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+
+		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
+		b.insert(ignore_permissions=True)
+		si = _bill(b)
+		frappe.db.set_value("Sales Invoice", si, "docstatus", 1)
+		try:
+			with self.assertRaisesRegex(frappe.ValidationError, "Sales Invoice"):
+				void_draft(b.name)
+		finally:
+			frappe.db.set_value("Sales Invoice", si, "docstatus", 0)
+
+	def test_void_draft_with_finance_off_leaves_the_invoice_alone(self):
+		from unittest.mock import patch
+
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+
+		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
+		b.insert(ignore_permissions=True)
+		si = _bill(b)
+		frappe.db.set_value("Sales Invoice", si, "docstatus", 1)
+		try:
+			with patch("container_depot.finance.is_enabled", return_value=False):
+				void_draft(b.name)
+			self.assertEqual(frappe.db.get_value("Sales Invoice", si, "docstatus"), 1)
+			self.assertEqual(frappe.db.get_value("Container Booking", b.name, "booking_status"), "Cancelled")
+		finally:
+			frappe.db.set_value("Sales Invoice", si, "docstatus", 0)
 
 	def test_void_draft_requires_the_cancel_permission(self):
 		"""A read-only account must not be able to void a booking.

@@ -58,6 +58,11 @@
 				</div>
 			</section>
 
+			<!-- Foto interior dari survey yang menerbitkan EIR-Out ini. -->
+			<section v-if="(header?.interior_photos || []).length" class="oak-card p-4">
+				<InteriorPhotos :photos="header.interior_photos" />
+			</section>
+
 			<!-- Comparison vs last EIR-In -->
 			<section class="oak-card overflow-hidden">
 				<div class="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
@@ -412,6 +417,7 @@ import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import Icon from "@/components/Icon.vue"
 import PhotoMark from "@/components/PhotoMark.vue"
 import PhotoTile from "@/components/PhotoTile.vue"
+import InteriorPhotos from "@/components/InteriorPhotos.vue"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import EirFormHeader from "@/components/EirFormHeader.vue"

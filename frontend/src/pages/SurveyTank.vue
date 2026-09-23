@@ -172,6 +172,53 @@
 				<p class="text-sm font-extrabold text-gray-900">{{ labels.tankDoSurvey }}</p>
 				<div>
 					<label class="oak-label">
+						{{ labels.tankInteriorPhotos }} <span class="font-normal text-gray-400">{{ labels.tankPosOptional }}</span>
+						<span v-if="interior.length" class="float-right text-[11px] font-normal text-gray-400">
+							{{ interiorSaved ? labels.eirAutosaveShort : labels.tankInteriorSaving }}
+						</span>
+					</label>
+					<div class="grid grid-cols-3 items-start gap-2">
+						<div v-for="(p, i) in interior" :key="p.photo" class="space-y-1">
+							<div class="relative aspect-square">
+								<img
+									:src="photoSrc(p.photo)"
+									class="h-full w-full rounded-lg border border-gray-200 object-cover"
+									@click="openLightbox(interior.map((x) => ({ src: photoSrc(x.photo), caption: x.caption })), i)"
+								/>
+								<button
+									type="button"
+									class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"
+									:aria-label="labels.tplCancel"
+									@click="interior.splice(i, 1)"
+								>
+									<Icon name="x" :size="16" />
+								</button>
+							</div>
+							<input v-model="p.caption" type="text" class="oak-input px-2 py-1.5 text-xs" :placeholder="labels.tankInteriorCaption" />
+						</div>
+						<PhotoTile v-for="it in interiorQueue.items" :key="it.id" :item="it" tile="aspect-square w-full" />
+						<input ref="interiorCam" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onInterior" />
+						<button
+							type="button"
+							class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100"
+							:disabled="interiorUploading"
+							@click="shootInterior"
+						>
+							<Icon v-if="interiorUploading" name="loader" :size="22" class="animate-spin" />
+							<template v-else>
+								<Icon name="camera" :size="22" />
+								<span class="text-xs font-medium">{{ labels.photoCamera }}</span>
+							</template>
+						</button>
+						<label class="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-brand-300 bg-brand-50 text-brand-600 active:bg-brand-100">
+							<Icon name="image" :size="22" />
+							<span class="text-xs font-medium">{{ labels.photoGallery }}</span>
+							<input type="file" accept="image/*" multiple class="hidden" :disabled="interiorUploading" @change="onInterior" />
+						</label>
+					</div>
+				</div>
+				<div>
+					<label class="oak-label">
 						{{ labels.tankSurveyNote }} <span class="font-normal text-gray-400">{{ labels.tankPosOptional }}</span>
 					</label>
 					<textarea v-model.trim="form.notes" rows="2" class="oak-input" :placeholder="labels.tankSurveyNoteHint"></textarea>
@@ -179,7 +226,7 @@
 				<p v-if="finishError" class="text-xs text-red-600">{{ finishError }}</p>
 				<button
 					class="oak-btn oak-btn-primary min-h-[52px] w-full text-base"
-					:disabled="finishing"
+					:disabled="finishing || interiorUploading"
 					@click="finishSurvey"
 				>
 					{{ finishing ? "…" : labels.tankFinishSurvey }}
@@ -194,6 +241,7 @@
 					<span class="text-xs text-gray-500">{{ labels.tankDraftEirOut }}</span>
 					<span class="truncate font-mono text-sm font-bold text-gray-900">{{ tank.eir_out || "—" }}</span>
 				</div>
+				<InteriorPhotos v-if="tank.interior_photos?.length" :photos="tank.interior_photos" class="border-t border-gray-100 pt-2" />
 				<div v-if="tank.survey_notes" class="border-t border-gray-100 pt-2">
 					<p class="text-xs text-gray-500">{{ labels.tankSurveyNote }}</p>
 					<p class="mt-0.5 whitespace-pre-line text-sm text-gray-800">{{ tank.survey_notes }}</p>
@@ -280,7 +328,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from "vue"
+import { computed, nextTick, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
 import { toast } from "@/utils/toast"
@@ -291,10 +339,12 @@ import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import { cachedResource } from "@/data/cache"
 import { send } from "@/data/send"
 import { openLightbox } from "@/utils/lightbox"
-import { uploadPhoto, photoSrc } from "@/data/send"
+import { uploadPhoto, photoSrc, post } from "@/data/send"
+import { serverSide, useServerDraft } from "@/utils/serverDraft"
 import { usePhotoQueue } from "@/utils/photoQueue"
 import { shootOrFallback } from "@/utils/camera"
 import PhotoTile from "@/components/PhotoTile.vue"
+import InteriorPhotos from "@/components/InteriorPhotos.vue"
 import {
 	DONE,
 	LOWERED,
@@ -443,32 +493,107 @@ async function onPhotos(e) {
 	e.target.value = ""
 	await addPhotos(files)
 }
-async function addPhotos(files) {
+async function addPhotos(files, push = (url) => photos.value.push(url), queue = photoQueue, busy = photoUploading) {
 	if (!files.length) return false
 	// `last` adalah jawaban untuk viewfinder: strip di dalam kamera menandai jepretan ini dari
 	// nilai yang dikembalikan (lihat utils/camera.js), jadi kegagalan yang ditelan di sini akan
 	// tampil sebagai "terkirim" pada foto yang tidak ke mana-mana.
 	let last = false
-	photoQueue.clearFailed()
-	photoUploading.value = true
+	queue.clearFailed()
+	busy.value = true
 	try {
 		for (const f of files) {
-			const id = photoQueue.add(f)
+			const id = queue.add(f)
 			try {
 				last = await uploadPhoto(f)
-				photos.value.push(last)
-				photoQueue.done(id)
+				push(last)
+				queue.done(id)
 			} catch {
 				last = false
 				toast.error(labels.error)
-				photoQueue.fail(id)
+				queue.fail(id)
 			}
 		}
 	} finally {
-		photoUploading.value = false
+		busy.value = false
 	}
 	return last
 }
+
+// ---- foto interior (step survey): tiap foto membawa deskripsinya sendiri ----
+const interior = ref([])
+const interiorUploading = ref(false)
+const interiorQueue = usePhotoQueue()
+const interiorCam = ref(null)
+const addInterior = (files) =>
+	addPhotos(files, (url) => interior.value.push({ photo: url, caption: "" }), interiorQueue, interiorUploading)
+function shootInterior() {
+	return shootOrFallback(interiorCam, (file) => addInterior([file]))
+}
+async function onInterior(e) {
+	const files = Array.from(e.target.files || [])
+	e.target.value = ""
+	await addInterior(files)
+}
+
+// Isian lowering (letak, catatan, foto) tersimpan otomatis di server sampai Tandai Lowered.
+const loweringDraft = useServerDraft(() => (tank.value?.status === WAITING ? `lowering:${tank.value.name}` : null))
+let loweringRestoring = false
+watch([() => form.location_note, () => form.lowering_note, photos], () => {
+	if (!loweringRestoring) loweringDraft.save({ location_note: form.location_note, lowering_note: form.lowering_note, photos: photos.value })
+}, { deep: true })
+async function restoreLowering(open) {
+	const d = open ? await loweringDraft.load() : null
+	if (d) {
+		form.location_note = d.location_note || form.location_note
+		form.lowering_note = d.lowering_note || form.lowering_note
+		photos.value = d.photos || []
+	}
+	nextTick(() => { loweringRestoring = false })
+}
+
+// Autosave: tiap tambah/hapus foto atau ubah deskripsi langsung tersimpan ke Survey Order,
+// jadi foto tidak hilang kalau halaman ditutup sebelum Selesai survey. Satu kiriman sekali
+// jalan — kiriman lama yang tiba belakangan tidak boleh menimpa yang lebih baru.
+const interiorSaved = ref(true)
+let interiorTimer = null
+let interiorSaving = false
+let interiorAgain = false
+let interiorPrefilling = false
+const interiorPayload = () =>
+	interior.value.map((p) => ({ photo: p.photo, caption: (p.caption || "").trim() || undefined }))
+function scheduleInteriorSave() {
+	if (interiorPrefilling) return
+	interiorSaved.value = false
+	clearTimeout(interiorTimer)
+	interiorTimer = setTimeout(saveInterior, 800)
+}
+async function saveInterior() {
+	interiorTimer = null
+	if (tank.value?.status !== LOWERED) return
+	if (interiorSaving) {
+		interiorAgain = true
+		return
+	}
+	interiorSaving = true
+	try {
+		// Foto yang masih terparkir di HP ikut terkirim saat Selesai survey (lewat `send`).
+		await post("container_depot.ess.tank_survey.survey_interior_save", {
+			name: tank.value.name,
+			photos: serverSide(interiorPayload()),
+		})
+		interiorSaved.value = !interiorAgain
+	} catch {
+		// Sinyal putus: perubahan berikutnya, atau Selesai survey, mengirim set lengkapnya lagi.
+	} finally {
+		interiorSaving = false
+		if (interiorAgain) {
+			interiorAgain = false
+			scheduleInteriorSave()
+		}
+	}
+}
+watch(interior, scheduleInteriorSave, { deep: true })
 
 const res = cachedResource({
 	url: "container_depot.ess.tank_survey.survey_tank_detail",
@@ -480,9 +605,19 @@ const res = cachedResource({
 		// Blank on purpose when the tank already has a location: this box means "the tank moved
 		// to HERE", and pre-filling it with the old place invites a re-confirmation of a
 		// position nobody re-checked.
+		loweringRestoring = true // reset di bawah bukan ketikan: jangan menimpa draft server
 		form.location_note = ""
 		form.lowering_note = data.lowering_note || ""
 		form.notes = data.survey_notes || ""
+		// Foto interior yang sudah tersimpan muncul lagi selama survey masih terbuka.
+		interiorPrefilling = true
+		clearTimeout(interiorTimer)
+		interior.value = data.status === LOWERED
+			? (data.interior_photos || []).map((p) => ({ photo: p.photo, caption: p.caption || "" }))
+			: []
+		interiorSaved.value = true
+		nextTick(() => { interiorPrefilling = false })
+		restoreLowering(data.status === WAITING)
 	},
 	onError(err) {
 		pending.value = false
@@ -543,7 +678,10 @@ async function markLowered() {
 			},
 		})
 		toast.success(labels.posLoweredDone, { title: tank.value.name })
+		loweringDraft.clear()
+		loweringRestoring = true
 		photos.value = []
+		nextTick(() => { loweringRestoring = false })
 		load()
 	} catch (e) {
 		lowerError.value = e?.message || labels.error
@@ -567,6 +705,11 @@ async function finishSurvey() {
 
 	finishing.value = true
 	finishError.value = ""
+	clearTimeout(interiorTimer)
+	interiorAgain = false
+	// Autosave yang sedang terbang harus mendarat dulu: kalau tiba sesudah tank ditutup,
+	// server menolaknya (tank sudah bukan Lowered) dan muncul pesan error palsu.
+	while (interiorSaving) await new Promise((r) => setTimeout(r, 100))
 	const d = tank.value
 	try {
 		await send({
@@ -574,6 +717,8 @@ async function finishSurvey() {
 			payload: {
 				name: d.name,
 				notes: form.notes || undefined,
+				// Set lengkap sekali lagi: menutup celah autosave yang belum sempat terkirim.
+				photos: interiorPayload(),
 			},
 		})
 		toast.success(labels.surveyFinishDone, { title: d.name })
