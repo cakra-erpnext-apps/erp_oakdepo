@@ -119,7 +119,7 @@ def _columns():
 		 "options": "Cargo", "width": 120},
 		{"fieldname": "in_date", "label": "In Date", "fieldtype": "Date", "width": 100},
 		{"fieldname": "days_in_depo", "label": "Days In Depo", "fieldtype": "Int", "width": 110},
-		{"fieldname": "target_lift_on", "label": "Target Lift-On", "fieldtype": "Date", "width": 110},
+		{"fieldname": "target_lift_on", "label": "Plan Pickup Date", "fieldtype": "Date", "width": 110},
 	]
 	return cols
 

@@ -85,7 +85,7 @@ def _columns() -> list:
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 160},
 		{"fieldname": "requested_on", "label": "Diminta", "fieldtype": "Date", "width": 100},
-		{"fieldname": "target_lift_on", "label": "Target Lift-On", "fieldtype": "Date", "width": 115},
+		{"fieldname": "target_lift_on", "label": "Plan Pickup Date", "fieldtype": "Date", "width": 115},
 		{"fieldname": "survey_date", "label": "Jadwal Survei", "fieldtype": "Date", "width": 110},
 		{"fieldname": "lowered_on", "label": "Turun (Lowered)", "fieldtype": "Date", "width": 120},
 		{"fieldname": "surveyed_on", "label": "Survei Selesai", "fieldtype": "Date", "width": 115},
