@@ -1,18 +1,10 @@
 <template>
 	<div class="mx-auto w-full max-w-lg space-y-4 md:max-w-2xl">
-		<div class="flex items-center gap-2">
-			<button
-				class="oak-press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-500"
-				:aria-label="labels.surveyPosBack"
-				@click="goBack"
-			>
-				<Icon name="chevron-left" :size="22" />
-			</button>
-			<h1 class="min-w-0 flex-1 truncate text-lg font-extrabold tracking-tight text-gray-900">
-				{{ labels.svDetailTitle }}
-			</h1>
-			<span v-if="order" class="oak-chip shrink-0" :class="orderChipClass">{{ orderStatusLabel }}</span>
-		</div>
+		<DetailHeader
+			:title="labels.svDetailTitle"
+			:chip="order ? { label: orderStatusLabel, cls: orderChipClass } : null"
+			@back="goBack"
+		/>
 
 		<SkeletonDetail v-if="pending" :cells="4" :sections="2" />
 
@@ -219,6 +211,7 @@ import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SurveyOrderInfo from "@/components/SurveyOrderInfo.vue"
+import DetailHeader from "@/components/list/DetailHeader.vue"
 import { cachedResource } from "@/data/cache"
 import { session } from "@/data/session"
 import { menu } from "@/data/menu"

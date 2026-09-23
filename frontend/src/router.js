@@ -195,9 +195,21 @@ const routes = [
 	{
 		// Leak Check — wajib ada sebelum tank gate-out (gate.mark_gate_out).
 		path: "/leak-check",
+		name: "LeakCheckList",
+		meta: { menuKey: "leak" },
+		component: () => import("@/pages/LeakCheckList.vue"),
+	},
+	{
+		path: "/leak-check/new",
 		name: "LeakCheck",
 		meta: { menuKey: "leak" },
 		component: () => import("@/pages/LeakCheck.vue"),
+	},
+	{
+		path: "/leak-check/:name",
+		name: "LeakCheckDetail",
+		meta: { menuKey: "leak" },
+		component: () => import("@/pages/LeakCheckDetail.vue"),
 	},
 	{
 		path: "/position-fix",

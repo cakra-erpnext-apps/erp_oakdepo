@@ -1,14 +1,15 @@
 <template>
+	<!-- Nomor tank = judulnya: yang dicari surveyor di yard adalah tanknya. -->
 	<OrderInfo
-		:title="o.reff_doc || o.booking || o.name"
+		:title="o.container_no || o.container"
 		:principal="o.principal"
-		:meta="[o.depot, labels.svTankCount.replace('{n}', o.tank_count || 0)]"
+		:meta="[o.depot, o.status === 'Completed' ? fill(labels.leakPhotoCount, { n: o.photo_count || 0 }) : '']"
 		:parties="[
-			{ k: labels.svSurveyor, v: o.surveyor },
+			{ k: labels.reffDoc, v: o.reff_doc },
 			{ k: labels.shipper, v: o.shipper },
 			{ k: labels.svEmkl, v: o.emkl },
 		]"
-		:ids="[o.reff_doc && o.booking, o.name]"
+		:ids="[o.booking, o.order_bongkar, o.name]"
 	>
 		<slot />
 	</OrderInfo>
@@ -16,8 +17,8 @@
 
 <script setup>
 import { labels } from "@/utils/labels"
+import { fill } from "@/utils/listKit"
 import OrderInfo from "@/components/list/OrderInfo.vue"
 
-// Booking hanya kalau judulnya sudah Reff Doc — kalau tidak, booking itulah judulnya.
 defineProps({ o: { type: Object, required: true } })
 </script>

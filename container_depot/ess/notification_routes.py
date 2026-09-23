@@ -174,7 +174,7 @@ def _tank_position(doctype, name):
 
 
 def _leak(doctype, name):
-	return "/leak-check"
+	return f"/leak-check/{name}"
 
 
 def _none(doctype, name):

@@ -161,3 +161,118 @@ def _release(order_name: str, wanted) -> dict:
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"release Leak Check {lc.name} on {order_name}")
 	return out
+
+
+# ---------------------------------------------------------------------------
+# PWA list / detail — same shape as the Jadwal Survey list (tank_survey.list_all_survey_orders)
+# ---------------------------------------------------------------------------
+LEAK = "leak"  # pseudo-status for the "Bocor" pill
+
+
+def _scope() -> dict:
+	from container_depot.container_depot.user_branch import get_user_depots
+
+	depots = get_user_depots()
+	return {} if depots is None else {"depot": ["in", depots or [""]]}
+
+
+def _booking_parties(bookings) -> dict:
+	"""{booking: {reff_doc, customer, shipper}} — read live, so a Reff Doc corrected on the
+	booking is what every Leak Check shows."""
+	if not bookings:
+		return {}
+	return {
+		b.name: b
+		for b in frappe.get_all(
+			"Container Booking", filters={"name": ["in", list(bookings)]},
+			fields=["name", "reff_doc", "customer", "shipper"],
+		)
+	}
+
+
+def list_leak_checks(status=None, search=None, depot=None, principal=None, day=None,
+					 sort=None, start=0, page_length=20) -> dict:
+	from frappe.utils import cint, getdate
+
+	scope = _scope()
+	filters = dict(scope)
+	if status in (OPEN, COMPLETED):
+		filters["status"] = status
+	elif status == LEAK:
+		filters["has_leak"] = 1
+	if depot:
+		filters["depot"] = depot if "depot" not in scope or depot in scope["depot"][1] else ""
+	if principal:
+		filters["principal"] = principal
+	if day:
+		d = getdate(day)
+		filters["creation"] = ["between", [d, d]]
+	or_filters = None
+	search = (search or "").strip()
+	if search:
+		like = f"%{search}%"
+		bookings = frappe.get_all("Container Booking", filters={"reff_doc": ["like", like]}, pluck="name")
+		or_filters = [["container_no", "like", like], ["name", "like", like],
+					  ["order_bongkar", "like", like], ["booking", "like", like]]
+		if bookings:
+			or_filters.append(["booking", "in", bookings])
+
+	order = "creation asc" if sort == "oldest" else "creation desc"
+	fields = ["name", "container", "container_no", "depot", "principal", "status", "has_leak",
+			  "booking", "order_bongkar", "creation", "recorded_on", "recorded_by", "remarks"]
+	items = frappe.get_all("Leak Check", filters=filters, or_filters=or_filters, fields=fields,
+						   order_by=order, limit_start=cint(start), limit_page_length=cint(page_length))
+	total = len(frappe.get_all("Leak Check", filters=filters, or_filters=or_filters, pluck="name"))
+	day_counts: dict = {}
+	for c in frappe.get_all("Leak Check", filters=filters, or_filters=or_filters, pluck="creation"):
+		k = str(getdate(c))
+		day_counts[k] = day_counts.get(k, 0) + 1
+
+	names = [i.name for i in items]
+	photos: dict = {}
+	for p in frappe.get_all("Leak Check Photo", filters={"parent": ["in", names or [""]], "parenttype": "Leak Check"},
+							fields=["parent", "is_leak"]):
+		c = photos.setdefault(p.parent, [0, 0])
+		c[0] += 1
+		c[1] += p.is_leak or 0
+	parties = _booking_parties({i.booking for i in items if i.booking})
+	for it in items:
+		b = parties.get(it.booking) or {}
+		it["reff_doc"], it["emkl"], it["shipper"] = b.get("reff_doc"), b.get("customer"), b.get("shipper")
+		it["photo_count"], it["leak_count"] = photos.get(it.name, [0, 0])
+		it["day"] = str(getdate(it.creation))
+		it["recorded_by_name"] = frappe.utils.get_fullname(it.recorded_by) if it.recorded_by else None
+		for k in ("creation", "recorded_on"):
+			it[k] = str(it[k]) if it.get(k) else None
+
+	# Pills count WITHOUT the current filter (same reason as tank_survey._status_counts): they
+	# are how the filter gets changed.
+	counts = {"all": 0, OPEN: 0, COMPLETED: 0, LEAK: 0}
+	for r in frappe.get_all("Leak Check", filters=scope, fields=["status", "has_leak"], limit_page_length=0):
+		counts["all"] += 1
+		counts[r.status] = counts.get(r.status, 0) + 1
+		counts[LEAK] += 1 if r.has_leak else 0
+	return {
+		"items": items, "total": total, "counts": counts, "day_counts": day_counts,
+		"depots": sorted({d for d in frappe.get_all("Leak Check", filters=scope, pluck="depot", distinct=True) if d}),
+		"principals": sorted({p for p in frappe.get_all("Leak Check", filters=scope, pluck="principal", distinct=True) if p}),
+	}
+
+
+def get_leak_check_detail(name: str) -> dict:
+	from container_depot.container_depot.user_branch import assert_in_user_branch
+
+	doc = frappe.get_doc("Leak Check", name)
+	assert_in_user_branch(depot=doc.depot)
+	b = _booking_parties([doc.booking] if doc.booking else []).get(doc.booking) or {}
+	return {
+		"name": doc.name, "container": doc.container, "container_no": doc.container_no,
+		"depot": doc.depot, "principal": doc.principal, "status": doc.status, "has_leak": doc.has_leak,
+		"booking": doc.booking, "order_bongkar": doc.order_bongkar, "remarks": doc.remarks,
+		"reff_doc": b.get("reff_doc"), "emkl": b.get("customer"), "shipper": b.get("shipper"),
+		"creation": str(doc.creation), "recorded_on": str(doc.recorded_on) if doc.recorded_on else None,
+		"recorded_by": frappe.utils.get_fullname(doc.recorded_by) if doc.recorded_by else None,
+		"photos": [{"photo": p.photo, "caption": p.caption or "", "is_leak": p.is_leak} for p in doc.photos],
+		"photo_count": len(doc.photos),
+		"can_edit": doc.status == OPEN and frappe.has_permission("Leak Check", "write", doc=doc),
+	}

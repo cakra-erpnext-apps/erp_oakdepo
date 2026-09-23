@@ -12,93 +12,25 @@
 
 		<!-- Mencari nomor jadwal, prinsipal, DAN nomor tank (server menyisir tabel anaknya):
 		     yang dipegang orang yang bertanya "hari apa tank itu" adalah nomor tanknya. -->
-		<div class="relative">
-			<Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-			<input
-				v-model="search"
-				type="search"
-				class="oak-input pl-10 pr-10"
-				:placeholder="labels.svListSearch"
-				autocorrect="off"
-				spellcheck="false"
-				@input="onSearchInput"
-			/>
-			<button
-				v-if="search"
-				class="oak-press absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-400"
-				:aria-label="labels.tplCancel"
-				@click="search = ''; reload()"
-			>
-				<Icon name="x" :size="16" />
-			</button>
-		</div>
+		<ListSearch v-model="search" :placeholder="labels.svListSearch" @search="reload" />
 
-		<!-- Empat angka yang bisa dipencet. Angkanya dihitung TANPA filter yang sedang berlaku,
-		     supaya pil tetap bisa dipakai berpindah justru saat pencarian sedang mempersempit —
-		     pil yang semuanya berbunyi 0 begitu diketik adalah pil yang tidak bisa dinavigasi. -->
-		<div class="grid grid-cols-4 gap-1.5">
-			<button
-				v-for="p in pills"
-				:key="p.key || 'all'"
-				class="oak-press flex min-h-[68px] flex-col items-center justify-center rounded-xl border px-1 py-2 transition"
-				:class="status === p.key ? 'border-brand-500 bg-brand-500/10' : 'border-gray-200 bg-paper'"
-				:aria-pressed="status === p.key"
-				@click="setStatus(status === p.key ? '' : p.key)"
-			>
-				<span class="text-lg font-extrabold leading-none" :class="status === p.key ? 'text-brand-700' : p.tone">
-					{{ p.count }}
-				</span>
-				<span class="mt-1 truncate text-[11px] font-semibold" :class="status === p.key ? 'text-brand-700' : 'text-gray-500'">
-					{{ p.label }}
-				</span>
-			</button>
-		</div>
+		<StatPills :pills="pills" :model-value="f.status" @update:model-value="setStatus" />
 
-		<!-- Filter: dua tombol selebar layar, bukan deretan chip yang lari ke kanan. Semua
-		     saringan tinggal di satu sheet; yang sedang aktif tampil di bawahnya sebagai chip
-		     yang turun baris (wrap) — terlihat semua tanpa digeser, dan tiap chip bisa di-×. -->
-		<div class="grid grid-cols-2 gap-2">
-			<button
-				class="oak-press flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 text-sm font-bold transition"
-				:class="activeChips.length ? 'border-brand-500 bg-brand-500/10 text-brand-700' : 'border-gray-200 bg-paper text-gray-700'"
-				@click="sheetOpen = true"
-			>
-				<Icon name="sliders" :size="15" /> {{ labels.monitorFilterTitle }}
-				<span v-if="activeChips.length" class="rounded-full bg-brand-500 px-1.5 text-[11px] font-extrabold text-white">
-					{{ activeChips.length }}
-				</span>
-			</button>
-			<button
-				class="oak-press flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-gray-200 bg-paper px-3 text-sm font-bold text-gray-700"
-				@click="toggleSort"
-			>
-				<Icon name="arrow-down" :size="15" /> {{ sort === "due" ? labels.svSortDue : labels.svSortNewest }}
-			</button>
-		</div>
+		<FilterBar
+			:chips="activeChips"
+			:sort-label="f.sort === 'due' ? labels.svSortDue : labels.svSortNewest"
+			:show-clear="!!search"
+			@open="sheetOpen = true"
+			@sort="toggleSort"
+			@clear-one="clearOne"
+			@clear-all="clearAll"
+		/>
 
-		<div v-if="activeChips.length || search" class="flex flex-wrap gap-1.5">
-			<button
-				v-for="c in activeChips"
-				:key="c.key"
-				class="oak-press flex min-h-[34px] max-w-full items-center gap-1 rounded-full border border-brand-500 bg-brand-500/10 pl-3 pr-2 text-xs font-bold text-brand-700"
-				:aria-label="`${labels.monitorFilterReset} ${c.label}`"
-				@click="clearOne(c.key)"
-			>
-				<span class="truncate"><span class="font-semibold opacity-70">{{ c.label }}</span> {{ c.value }}</span>
-				<Icon name="x" :size="13" class="shrink-0" />
-			</button>
-			<button
-				class="oak-press min-h-[34px] rounded-full px-2 text-xs font-bold text-red-600"
-				@click="clearAll"
-			>
-				{{ labels.svClearAll }}
-			</button>
-		</div>
-
-		<SurveyFilterSheet
+		<FilterSheet
 			:open="sheetOpen"
 			:value="f"
 			:options="options"
+			:fields="SHEET_FIELDS"
 			@close="sheetOpen = false"
 			@apply="applyFilter"
 		/>
@@ -203,15 +135,18 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
+import { computed, ref } from "vue"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SurveyOrderInfo from "@/components/SurveyOrderInfo.vue"
-import SurveyFilterSheet from "@/components/SurveyFilterSheet.vue"
+import ListSearch from "@/components/list/ListSearch.vue"
+import StatPills from "@/components/list/StatPills.vue"
+import FilterBar from "@/components/list/FilterBar.vue"
+import FilterSheet from "@/components/list/FilterSheet.vue"
 import { cachedResource } from "@/data/cache"
-import { session } from "@/data/session"
 import { fmtDate } from "@/utils/surveyStatus"
+import { daysFrom, fill, groupByDay, useSavedFilters } from "@/utils/listKit"
 
 const PAGE = 20
 
@@ -231,41 +166,24 @@ const STATUS_LABEL = {
 }
 const statusLabel = (s) => STATUS_LABEL[s] || s || "—"
 
-// Filter disimpan di perangkat ini, dikunci per user (handset berpindah tangan antar shift —
-// lihat utils/userPicks.js). Pencarian sengaja tidak ikut: itu pertanyaan sekali jalan.
-// `f` = semua yang diatur di sheet; status (pil angka) dan urutan punya tombolnya sendiri.
+// Semua saringan di sheet (SHEET_FIELDS) + pil status + urutan, disimpan per user di perangkat
+// ini (utils/listKit). Pencarian sengaja tidak ikut: itu pertanyaan sekali jalan.
 const SHEET_DEFAULTS = { day: "", depot: "", principal: "", surveyor: "", shipper: "", emkl: "", mine: false, activeOnly: false }
-const STORE_KEY = `oak-survey-filters:${session.user || ""}`
-function readSaved() {
-	try {
-		const v = JSON.parse(localStorage.getItem(STORE_KEY) || "null")
-		return v && typeof v === "object" ? v : {}
-	} catch {
-		return {}
-	}
-}
-const saved = readSaved()
-
+const SHEET_FIELDS = [
+	{ key: "activeOnly", type: "scope", empty: false, choices: [{ key: false, label: labels.monitorAll }, { key: true, label: labels.svChipActive }] },
+	// Kerjaan saya: jadwal yang tank-nya pernah saya turunkan atau survey.
+	{ key: "mine", type: "toggle", icon: "user", label: labels.svMine },
+	{ key: "day", type: "date", label: labels.svChipDate },
+	{ key: "depot", type: "chips", list: "depots", label: labels.svChipDepot },
+	{ key: "principal", type: "select", list: "principals", label: labels.svChipPrincipal },
+	{ key: "surveyor", type: "select", list: "surveyors", label: labels.svSurveyor },
+	{ key: "shipper", type: "select", list: "shippers", label: labels.shipper },
+	{ key: "emkl", type: "select", list: "emkls", label: labels.svEmkl },
+]
+const f = useSavedFilters("survey", { ...SHEET_DEFAULTS, status: "", sort: "due" })
+if (f.sort !== "newest") f.sort = "due"
 const search = ref("")
-const status = ref(saved.status || "")
-const sort = ref(saved.sort === "newest" ? "newest" : "due")
-const f = reactive({ ...SHEET_DEFAULTS, ...pick(saved, Object.keys(SHEET_DEFAULTS)) })
 const sheetOpen = ref(false)
-
-function pick(obj, keys) {
-	return Object.fromEntries(keys.filter((k) => k in obj).map((k) => [k, obj[k]]))
-}
-
-watch(
-	() => ({ ...f, status: status.value, sort: sort.value }),
-	(v) => {
-		try {
-			localStorage.setItem(STORE_KEY, JSON.stringify(v))
-		} catch {
-			/* mode privat: filter tetap berlaku sampai halaman ditutup */
-		}
-	}
-)
 
 // Chip filter aktif, dalam urutan sheet. Label pendek di depan supaya "OAK1" atau nama PT
 // tetap jelas milik saringan yang mana.
@@ -291,9 +209,7 @@ function applyFilter(draft) {
 }
 function clearAll() {
 	search.value = ""
-	status.value = ""
-	sort.value = "due"
-	Object.assign(f, SHEET_DEFAULTS)
+	Object.assign(f, SHEET_DEFAULTS, { status: "", sort: "due" })
 	reload()
 }
 
@@ -318,49 +234,25 @@ const cancelled = computed(() => items.value.filter((o) => o.status === "Cancell
 
 // Satu grup per tanggal survey. Urutan sepenuhnya dari server: tanggal, lalu dalam satu hari
 // dikerjakan → terjadwal → selesai.
-const days = computed(() => {
-	const out = []
-	for (const o of items.value) {
-		if (o.status === "Cancelled") continue
-		const key = o.survey_date || ""
-		let g = out[out.length - 1]
-		if (!g || g.date !== key) {
-			g = { date: key, label: dayLabel(key), hot: false, rows: [], running: [], rest: [] }
-			out.push(g)
+const days = computed(() =>
+	groupByDay(
+		items.value.filter((o) => o.status !== "Cancelled"),
+		(o) => o.survey_date,
+		{
+			running: (o) => o.status === "In Progress",
+			hot: (o) => o.urgent || (o.survey_date && daysFrom(o.survey_date) <= 0 && o.status !== "Completed"),
 		}
-		g.rows.push(o)
-		;(o.status === "In Progress" ? g.running : g.rest).push(o)
-		if (o.urgent || (key && daysFrom(key) <= 0 && o.status !== "Completed")) g.hot = true
-	}
-	return out
-})
-
-function daysFrom(iso) {
-	const t = new Date()
-	t.setHours(0, 0, 0, 0)
-	return Math.round((new Date(`${iso}T00:00:00`) - t) / 86400000)
-}
-// "Hari ini · Rab, 23 Sep", "Kam, 2 Okt · 9 hari lagi".
-function dayLabel(iso) {
-	if (!iso) return "—"
-	const name = new Date(`${iso}T00:00:00`).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" })
-	const d = daysFrom(iso)
-	if (d === 0) return `${labels.homeToday} · ${name}`
-	if (d === 1) return `${labels.svTomorrow} · ${name}`
-	return `${name} · ${d > 0 ? fill(labels.svDaysAhead, { n: d }) : fill(labels.svDaysAgo, { n: -d })}`
-}
+	)
+)
 
 // Nomor yang dicocokkan dengan kertas: Reff Doc kalau ada, booking kalau belum.
 const docNo = (o) => o.reff_doc || o.booking || o.name
 
-function fill(tpl, vars) {
-	return Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tpl)
-}
 const listRes = cachedResource({
 	url: "container_depot.ess.tank_survey.survey_order_list",
 	method: "GET",
 	makeParams: () => ({
-		status: status.value || undefined,
+		status: f.status || undefined,
 		from_date: f.day || undefined,
 		to_date: f.day || undefined,
 		search: search.value || undefined,
@@ -371,7 +263,7 @@ const listRes = cachedResource({
 		emkl: f.emkl || undefined,
 		mine: f.mine ? 1 : 0,
 		active_only: f.activeOnly ? 1 : 0,
-		sort: sort.value,
+		sort: f.sort,
 		start: start.value,
 		page_length: PAGE,
 	}),
@@ -408,20 +300,12 @@ function loadMore() {
 }
 
 function setStatus(key) {
-	status.value = key
+	f.status = key
 	reload()
 }
 
 function toggleSort() {
-	sort.value = sort.value === "due" ? "newest" : "due"
+	f.sort = f.sort === "due" ? "newest" : "due"
 	reload()
 }
-
-// Debounced so a tank number typed a character at a time is one query, not twelve.
-let searchTimer = null
-function onSearchInput() {
-	clearTimeout(searchTimer)
-	searchTimer = setTimeout(reload, 300)
-}
-onBeforeUnmount(() => clearTimeout(searchTimer))
 </script>
