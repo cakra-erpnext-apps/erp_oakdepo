@@ -24,6 +24,10 @@
 					<span class="truncate">{{ item.summary || statusMove(item) || "—" }}</span>
 					<span class="shrink-0">{{ fmtDateTime(item.activity_time) }}</span>
 				</div>
+				<p v-if="item.performed_by_name" class="mt-0.5 truncate text-xs text-gray-500">
+					<span class="text-gray-400">{{ labels.monitorWorkedBy }}</span>
+					<span class="font-semibold text-gray-700">{{ item.performed_by_name }}</span>
+				</p>
 			</div>
 		</template>
 
@@ -105,7 +109,7 @@ function statusMove(a) {
 function cells(d) {
 	return [
 		{ label: labels.monitorRefDoc, value: d.reference_name },
-		{ label: labels.monitorPerformedBy, value: d.performed_by },
+		{ label: labels.monitorPerformedBy, value: d.performed_by_name },
 		{ label: labels.cleaningClient, value: d.principal },
 		{ label: labels.depotLabel, value: d.depot },
 	]

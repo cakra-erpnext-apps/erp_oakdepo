@@ -148,22 +148,26 @@ _STATE_RANK = {"draft": 1, "pending": 2, "in_progress": 3}
 def _driving_orders(names):
 	"""Map container -> the order that drives its Monitor bucket: the most-advanced
 	(in_progress > pending > draft) Cleaning/M&R order, as
-	``{"state", "kind", "doctype", "name", "status"}``. Restricted to ``names``."""
+	``{"state", "kind", "doctype", "name", "status", "by"}``. Restricted to ``names``.
+
+	``by`` = nama lengkap orang yang menekan "Mulai" di order itu (Cleaning ``assigned_to``,
+	M&R ``started_by``, EIR ``work_started_by``), atau None kalau belum ada yang memulai —
+	supaya tab "Dikerjakan" di Monitor menjawab OLEH SIAPA, bukan hanya apa."""
 	if not names:
 		return {}
 	rows = []
 	for r in frappe.get_all(
 		"Cleaning Order",
 		filters={"container": ["in", names], "status": ["in", list(_CLEANING_STATE)]},
-		fields=["name", "container", "status"],
+		fields=["name", "container", "status", "assigned_to as by"],
 	):
-		rows.append((r.container, _CLEANING_STATE[r.status], "Cleaning", "Cleaning Order", r.name, r.status))
+		rows.append((r.container, _CLEANING_STATE[r.status], "Cleaning", "Cleaning Order", r.name, r.status, r.by))
 	for r in frappe.get_all(
 		"Repair Order",
 		filters={"container": ["in", names], "status": ["in", list(_REPAIR_STATE)]},
-		fields=["name", "container", "status"],
+		fields=["name", "container", "status", "started_by as by"],
 	):
-		rows.append((r.container, _REPAIR_STATE[r.status], "M&R", "Repair Order", r.name, r.status))
+		rows.append((r.container, _REPAIR_STATE[r.status], "M&R", "Repair Order", r.name, r.status, r.by))
 	# EIR yang SUDAH DISENTUH. Sebuah EIR-In draft lahir sendiri bersama tank-nya, jadi
 	# menghitung setiap draft berarti menyebut seluruh isi depo "sedang dikerjakan" — tapi
 	# `work_started_on` hanya ada kalau seseorang benar-benar membuka dan memulainya, dan itu
@@ -175,14 +179,23 @@ def _driving_orders(names):
 	for r in frappe.get_all(
 		"Inspection",
 		filters={"container": ["in", names], "docstatus": 0, "work_started_on": ["is", "set"]},
-		fields=["name", "container", "inspection_type"],
+		fields=["name", "container", "inspection_type", "work_started_by as by"],
 	):
-		rows.append((r.container, "draft", "EIR", "Inspection", r.name, r.inspection_type or "EIR"))
+		rows.append((r.container, "draft", "EIR", "Inspection", r.name, r.inspection_type or "EIR", r.by))
 	out = {}
-	for container, state, kind, doctype, name, status in rows:
+	for container, state, kind, doctype, name, status, by in rows:
 		cur = out.get(container)
 		if cur is None or _STATE_RANK[state] > _STATE_RANK[cur["state"]]:
-			out[container] = {"state": state, "kind": kind, "doctype": doctype, "name": name, "status": status}
+			out[container] = {"state": state, "kind": kind, "doctype": doctype, "name": name, "status": status, "by": by}
+	# Satu lookup User untuk sehalaman, bukan satu per baris.
+	emails = {d["by"] for d in out.values() if d["by"]}
+	if emails:
+		names = dict(
+			frappe.get_all("User", filters={"name": ["in", list(emails)]}, fields=["name", "full_name"], as_list=True)
+		)
+		for d in out.values():
+			if d["by"]:
+				d["by"] = names.get(d["by"]) or d["by"]
 	return out
 
 
@@ -190,7 +203,13 @@ def _order_ref(drv):
 	"""The frontend link payload for a driving order (or None)."""
 	if not drv:
 		return None
-	return {"kind": drv["kind"], "doctype": drv["doctype"], "name": drv["name"], "status": drv["status"]}
+	return {
+		"kind": drv["kind"],
+		"doctype": drv["doctype"],
+		"name": drv["name"],
+		"status": drv["status"],
+		"by": drv.get("by"),
+	}
 
 
 def _last_activity(names):

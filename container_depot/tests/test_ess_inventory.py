@@ -337,6 +337,25 @@ class TestEssInventory(FrappeTestCase):
 		self.assertIsNone(rows["ESST1000003"]["order"])
 		self.assertIsNone(rows["ESST1000002"]["order"])
 
+	def test_driving_order_names_who_started_it(self):
+		# Tab "Dikerjakan": nama lengkap orang yang menekan "Mulai", None sebelum ada.
+		co = frappe.db.get_value("Cleaning Order", {"container": "ESST1000004"}, "name")
+		frappe.db.set_value("Cleaning Order", co, "assigned_to", "Administrator", update_modified=False)
+		full = frappe.db.get_value("User", "Administrator", "full_name") or "Administrator"
+		rows = {i["container_no"]: i for i in get_tank_list(depot=ESS_DEPOT)["items"]}
+		self.assertEqual(rows["ESST1000004"]["order"]["by"], full)
+		self.assertIsNone(rows["ESST1000001"]["order"]["by"])  # Pending, belum dimulai
+
+	def test_history_names_who_did_it(self):
+		# Riwayat Monitor: nama lengkap pelaku, di feed dan di detailnya.
+		from container_depot.ess.inventory import activity_detail, activity_history
+
+		row = self._activity("ESST1000006")
+		full = frappe.db.get_value("User", "Administrator", "full_name") or "Administrator"
+		item = next(i for i in activity_history(container="ESST1000006")["items"] if i["name"] == row.name)
+		self.assertEqual(item["performed_by_name"], full)
+		self.assertEqual(activity_detail(row.name)["performed_by_name"], full)
+
 	def test_tank_list_search(self):
 		res = get_tank_list(depot=ESS_DEPOT, search="ESST1000002")
 		self.assertEqual([i["container_no"] for i in res["items"]], ["ESST1000002"])

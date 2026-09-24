@@ -1496,6 +1496,7 @@ export const labels = {
 	monitorSearch: "Cari nomor container atau voucher", // search placeholder
 	monitorAll: "Semua", // all statuses
 	filterToday: "Hari ini",
+	monitorWorkedBy: "Dikerjakan oleh", // Monitor: siapa yang menekan "Mulai" di order-nya
 	monitorAllPrincipals: "Semua Prinsipal", // principal filter default
 	monitorAllDepots: "Semua Depot", // depot filter default
 	monitorEmpty: "Tidak ada container untuk filter ini.", // empty state

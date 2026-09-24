@@ -206,6 +206,18 @@ def annotate_voided(rows) -> list:
 	return rows
 
 
+def _with_performer_names(rows) -> list:
+	"""Stamp ``performed_by_name`` (nama lengkap) — Riwayat menyebut siapa yang mengerjakan,
+	bukan alamat email. Satu lookup User untuk sehalaman."""
+	emails = {r.get("performed_by") for r in rows if r.get("performed_by")}
+	names = dict(
+		frappe.get_all("User", filters={"name": ["in", list(emails)]}, fields=["name", "full_name"], as_list=True)
+	) if emails else {}
+	for r in rows:
+		r["performed_by_name"] = names.get(r.get("performed_by")) or r.get("performed_by")
+	return rows
+
+
 # ---------------------------------------------------------------------------
 # Riwayat (history): read the Container Activity timeline.
 # ---------------------------------------------------------------------------
@@ -239,7 +251,7 @@ def list_activity_history(start=0, page_length=10, search=None, container=None) 
 		limit_start=cint(start), limit_page_length=cint(page_length),
 	)
 	return {
-		"items": annotate_voided(items),
+		"items": _with_performer_names(annotate_voided(items)),
 		"total": frappe.db.count("Container Activity", filters),
 	}
 
@@ -252,7 +264,7 @@ def get_activity_detail(name) -> dict:
 		frappe.throw("name is required.")
 	a = frappe.get_doc("Container Activity", name)
 	assert_in_user_branch(depot=a.depot)
-	return annotate_voided([{
+	return _with_performer_names(annotate_voided([{
 		"name": a.name,
 		"container": a.container,
 		"activity_type": a.activity_type,
@@ -265,4 +277,4 @@ def get_activity_detail(name) -> dict:
 		"activity_time": str(a.activity_time) if a.activity_time else None,
 		"depot": a.depot,
 		"principal": a.principal,
-	}])[0]
+	}]))[0]
