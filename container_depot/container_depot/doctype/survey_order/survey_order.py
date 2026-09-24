@@ -217,3 +217,29 @@ def refresh_progress(name: str) -> dict:
 	values["docstatus"] = 1 if status == COMPLETED else 0
 	frappe.db.set_value("Survey Order", name, values, update_modified=False)
 	return values
+
+
+@frappe.whitelist()
+def create_from_booking(booking: str) -> str:
+	"""Add manual dari Desk: jadwalnya tetap dibuat oleh sinkron booking, bukan dari form.
+
+	Form kosong tidak bisa menyusun tank, tanggal, principal, dan surveyor sendiri. Semua itu
+	milik booking, dan sinkron booking akan menimpa apa pun yang diketik tangan. Jadi form
+	hanya memilih booking, lalu memanggil jalur yang sama dengan penyimpanan booking. Kalau
+	booking sudah punya jadwal, jadwal itu yang dibuka (tidak ada duplikat).
+	"""
+	from container_depot.container_depot.tank_survey import (
+		OUTBOUND,
+		provision_survey_order_for_booking,
+	)
+
+	frappe.has_permission(SCHEDULE, "create", throw=True)
+	b = frappe.db.get_value("Container Booking", booking, ["direction", "survey_date"], as_dict=True)
+	if not b or b.direction != OUTBOUND:
+		frappe.throw(_("Survey Order hanya bisa dibuat dari booking Tank Out."))
+	if not b.survey_date:
+		frappe.throw(_("Booking {0} belum punya Tanggal Survey. Isi dulu di booking-nya.").format(booking))
+	name = provision_survey_order_for_booking(booking)["survey_order"]
+	if not name:
+		frappe.throw(_("Gagal membuat Survey Order dari booking {0}. Lihat Error Log.").format(booking))
+	return name
