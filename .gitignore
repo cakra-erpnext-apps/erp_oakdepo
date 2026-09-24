@@ -33,3 +33,4 @@ restore/
 
 # Backup site yang ditarik keluar volume oleh scripts/reset-site.sh
 _backups/
+nginx/conf.d/maintenance.on

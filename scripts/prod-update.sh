@@ -26,6 +26,16 @@ if [ "$SKIP_GIT_PULL" != "1" ]; then
   git pull --ff-only origin "$branch"
 fi
 
+# Halaman maintenance selama update, bukan 502 (nginx/conf.d/default.conf). Berkasnya
+# terlihat nginx lewat bind mount; trap menghapusnya juga saat script gagal di tengah jalan.
+MAINT="$ROOT/nginx/conf.d/maintenance.on"
+trap 'rm -f "$MAINT"' EXIT
+log "maintenance on"
+# Dibaca halaman maintenance: jam mulai + perkiraan selesai. MAINT_MINUTES=30 kalau lama.
+printf 'start=%s\nminutes=%s\n' "$(date +%s)" "${MAINT_MINUTES:-15}" > "$MAINT"
+# Reload, bukan restart: memuat default.conf hasil git pull tanpa memutus koneksi.
+docker exec erp_oakdepo_prod-frontend-1 sh -c 'nginx -t -q && nginx -s reload'
+
 if [ "$BUILD_IMAGE" = "1" ]; then
   log "build image $IMAGE"
   docker build -t "$IMAGE" .
@@ -121,12 +131,25 @@ docker exec erp_oakdepo_prod-backend-1 bash -lc "
 
 log "restart oakdepo services"
 docker restart \
-  erp_oakdepo_prod-frontend-1 \
   erp_oakdepo_prod-backend-1 \
   erp_oakdepo_prod-websocket-1 \
   erp_oakdepo_prod-queue-short-1 \
   erp_oakdepo_prod-queue-long-1 \
   erp_oakdepo_prod-scheduler-1 >/dev/null
+
+# Reload setelah restart: nginx me-resolve nama `backend` hanya saat start/reload, dan
+# container yang di-recreate bisa dapat IP baru. Restart frontend (cara lama) memutus
+# nginx itu sendiri, dan proxy di depannya membalas 502 — persis yang mau dihindari.
+docker exec erp_oakdepo_prod-frontend-1 sh -c 'nginx -t -q && nginx -s reload'
+
+log "wait for backend"
+for _ in $(seq 1 60); do
+  docker exec erp_oakdepo_prod-frontend-1 wget -q -O /dev/null --header "Host: $SITE" http://backend:8000/api/method/ping && break
+  sleep 2
+done
+
+log "maintenance off"
+rm -f "$MAINT"
 
 log "verify"
 sleep 5
