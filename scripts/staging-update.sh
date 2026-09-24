@@ -44,7 +44,11 @@ log "maintenance on"
 # Dibaca halaman maintenance: jam mulai + perkiraan selesai. MAINT_MINUTES=30 kalau lama.
 printf 'start=%s\nminutes=%s\n' "$(date +%s)" "${MAINT_MINUTES:-15}" > "$MAINT"
 # Reload, bukan restart: memuat default.conf hasil git pull tanpa memutus koneksi.
-docker exec erp_oakdepo_staging-frontend-1 sh -c 'nginx -t -q && nginx -s reload'
+# Boleh gagal: kalau container backend sedang mati, `nginx -t` menolak upstream
+# "backend:8000" (host not found) — dan justru langkah recreate di bawah yang
+# menghidupkannya lagi. Tanpa `||` script berhenti di sini dan situs tetap mati.
+docker exec erp_oakdepo_staging-frontend-1 sh -c 'nginx -t -q && nginx -s reload' \
+  || echo "reload nginx gagal (backend mati?) — lanjut tanpa halaman maintenance"
 
 if [ "$BUILD_IMAGE" = "1" ]; then
   log "build image $IMAGE"
