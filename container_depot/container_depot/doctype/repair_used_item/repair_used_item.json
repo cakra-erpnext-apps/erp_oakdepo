@@ -86,8 +86,9 @@
    "fieldtype": "Select",
    "label": "Owner Decision",
    "options": "Pending\nApproved\nRejected",
-   "in_list_view": 1,
-   "columns": 1
+   "in_list_view": 0,
+   "columns": 1,
+   "hidden": 1
   },
   {
    "fieldname": "section_cost",
@@ -169,7 +170,9 @@
    "description": "Diisi owner. Alasan baris ditolak / catatan.",
    "fieldname": "owner_remark",
    "fieldtype": "Small Text",
-   "label": "Owner Remark"
+   "label": "Owner Remark",
+   "hidden": 1,
+   "in_list_view": 0
   },
   {
    "fieldname": "remark",
@@ -198,7 +201,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-23 10:00:00.000000",
+ "modified": "2026-09-24 08:38:40.000000",
  "module": "Container Depot",
  "name": "Repair Used Item",
  "owner": "Administrator",

@@ -146,7 +146,7 @@
    "fieldtype": "Section Break"
   },
   {
-   "description": "Wajib sebelum diajukan ke owner. Tarif dari kontrak pemilik tank, bisa diubah.",
+   "description": "Tarif dari kontrak pemilik tank, bisa diubah.",
    "fieldname": "used_items",
    "fieldtype": "Table",
    "label": "Service & Parts",
@@ -186,7 +186,7 @@
   },
   {
    "default": "Draft",
-   "description": "Diatur alur M&R. Draft = meja Admin Ops. Approved = disetujui owner, part sudah keluar gudang. Pending = sudah diteruskan ke team, muncul di PWA. Pending Review = team selesai, menunggu pengecekan Desk.",
+   "description": "Diatur alur M&R. Draft = meja Admin Ops. Pending = sudah diteruskan ke team (part keluar gudang), muncul di PWA. Pending Review = team selesai, menunggu pengecekan Desk.",
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
@@ -396,7 +396,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-24 14:00:00.000000",
+ "modified": "2026-09-24 14:01:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

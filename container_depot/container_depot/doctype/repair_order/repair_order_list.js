@@ -40,7 +40,7 @@ frappe.listview_settings["Repair Order"] = {
 	// Ten statuses, and without this map Frappe falls back to `guess_colour`, which paints
 	// most of them the same grey and gives "Rejected" the same red as "Cancelled" but also
 	// hands red to plain drafts. Colour convention, shared by every Container Depot list:
-	//   grey   — Draft: belum diajukan ke owner, masih bisa diubah
+	//   grey   — Draft: belum diteruskan ke team, masih bisa diubah
 	//   red    — Cancelled / Rejected: mati, tidak diteruskan
 	//   blue   — Completed: the terminal "done" state (M&R selesai dan ditutup)
 	//   others — the stages in between; Approved is green rather than blue because the
