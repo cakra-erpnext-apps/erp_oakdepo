@@ -131,8 +131,12 @@ def get_config():
 
 
 @frappe.whitelist(methods=["POST"])
-def subscribe(subscription):
+def subscribe(subscription, muted=None):
 	"""POST — register (or refresh) this browser for the logged-in user.
+
+	``muted`` — jenis notifikasi (event_key, dipisah koma) yang dimatikan operator di
+	perangkat ini. Sumbernya localStorage HP itu (utils/notifMute.js), dikirim ulang tiap
+	subscribe, jadi baris ini selalu mengikuti orang yang sedang login di HP tersebut.
 
 	Upsert by endpoint hash: browsers hand back the same endpoint on every app load, and a
 	re-subscribe after a permission re-grant must not pile up duplicate rows that would
@@ -159,6 +163,7 @@ def subscribe(subscription):
 		"enabled": 1,
 		"failure_count": 0,
 		"last_used": now_datetime(),
+		"muted_events": ",".join(_muted(muted)),
 	}
 
 	name = frappe.db.exists(SUBSCRIPTION_DOCTYPE, {"endpoint_hash": hash_endpoint(endpoint)})
@@ -174,6 +179,16 @@ def subscribe(subscription):
 		doc.insert(ignore_permissions=True)
 	frappe.db.commit()
 	return {"success": True, "name": doc.name}
+
+
+def _muted(value) -> list[str]:
+	"""Daftar event_key dari param klien (list, JSON, atau dipisah koma)."""
+	if isinstance(value, str):
+		try:
+			value = json.loads(value)
+		except ValueError:
+			value = value.split(",")
+	return [str(v).strip() for v in (value or []) if str(v).strip()]
 
 
 @frappe.whitelist(methods=["POST"])
@@ -238,7 +253,9 @@ def send_test(endpoint: str | None = None):
 # ---------------------------------------------------------------------------
 
 
-def push_to_users(users: list[str], *, title: str, body: str = "", url: str = "/depot", tag: str = ""):
+def push_to_users(
+	users: list[str], *, title: str, body: str = "", url: str = "/depot", tag: str = "", event_key: str | None = None
+):
 	"""Queue a push for everyone in ``users``. Safe to call from a document hook.
 
 	Enqueued, and ``after_commit``: talking to FCM/Mozilla takes network round-trips per
@@ -257,6 +274,7 @@ def push_to_users(users: list[str], *, title: str, body: str = "", url: str = "/
 			body=body,
 			url=url,
 			tag=tag,
+			event_key=event_key,
 		)
 	except Exception:
 		frappe.log_error(title="Depot push enqueue failed", message=frappe.get_traceback())
@@ -269,8 +287,12 @@ def deliver(
 	url: str = "/depot",
 	tag: str = "",
 	endpoint: str | None = None,
+	event_key: str | None = None,
 ):
 	"""Background job — send one payload to every live subscription of every user.
+
+	Perangkat yang mematikan ``event_key`` (``muted_events``) dilewati — pilihan per HP,
+	bukan per orang: HP gate boleh diam soal M&R sementara HP kantor orang yang sama tidak.
 
 	``endpoint`` narrows it to that one browser, and only for :func:`send_test`. Real
 	events never pass it: an event is addressed to a person, and a person answers on
@@ -292,9 +314,11 @@ def deliver(
 	rows = frappe.get_all(
 		SUBSCRIPTION_DOCTYPE,
 		filters=filters,
-		fields=["name", "endpoint", "p256dh", "auth", "failure_count"],
+		fields=["name", "endpoint", "p256dh", "auth", "failure_count", "muted_events"],
 		limit_page_length=0,
 	)
+	if event_key:
+		rows = [r for r in rows if event_key not in (r.muted_events or "").split(",")]
 	if not rows:
 		return 0
 

@@ -257,6 +257,22 @@ class TestHomeSummary(FrappeTestCase):
 			self._waiting_count(before, "cleaningIdle"),
 		)
 
+	def test_waiting_follows_the_operators_order(self):
+		# Susunan operator (utils/homeWaiting.js): hanya kunci yang dipilih, urut sesuai
+		# pilihannya — bukan tertua di atas — dan tidak terpotong oleh antrean lain.
+		idle = self._container("HOME0000031")
+		frappe.get_doc({"doctype": "Cleaning Order", "container": idle, "status": "Pending"}).insert(
+			ignore_permissions=True
+		)
+		co = frappe.get_doc(
+			{"doctype": "Cleaning Order", "container": self._container("HOME0000032"), "status": "Pending"}
+		).insert(ignore_permissions=True)
+		frappe.db.set_value("Cleaning Order", co.name, "status", "Pending Review", update_modified=False)
+
+		for order in (["cleaningReview", "cleaningIdle"], ["cleaningIdle", "cleaningReview"]):
+			res = get_home_summary(waiting=",".join(order))
+			self.assertEqual([r["key"] for r in res["waiting"]], order)
+
 	def test_mr_review_queue(self):
 		c = self._container("HOME0000040")
 		before = get_home_summary()

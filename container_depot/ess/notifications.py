@@ -101,7 +101,7 @@ def _unread_count(filters, allowed=None):
 
 
 @frappe.whitelist(methods=["GET"])
-def list_notifications(limit=20):
+def list_notifications(limit=20, muted=None):
 	"""GET /api/method/…list_notifications — the caller's notifications (newest
 	first) plus the unread count for the bell badge.
 
@@ -112,26 +112,35 @@ def list_notifications(limit=20):
 	Administrator / System Manager see ALL users' notifications (depot-wide oversight),
 	not just their own per-user feed.
 
+	``muted`` — event_key yang dimatikan operator di perangkat ini (dipisah koma, lihat
+	``push.subscribe``): baris dan badge-nya ikut hilang dari bel HP tersebut.
+
 	Never returns everything. ``limit`` is clamped to ``_MAX_LIMIT`` however large a caller
 	asks, and the unread badge is capped rather than counted — see the constants above."""
 	_require_authenticated_user()
 	user = frappe.session.user
 	limit = min(max(int(limit or _DEFAULT_LIMIT), 1), _MAX_LIMIT)
+	from container_depot.ess.push import _muted
+
+	# get_all menerjemahkan `not in` jadi ifnull(...) not in, jadi log tanpa depot_event
+	# (notifikasi bawaan Frappe) tetap tampil.
+	mute = {"depot_event": ["not in", muted]} if (muted := _muted(muted)) else {}
 
 	if _sees_all_notifications(user):
 		items = frappe.get_all(
 			"Notification Log",
+			filters=mute,
 			fields=_LOG_FIELDS,
 			order_by="creation desc",
 			limit=limit,
 		)
 		# The widest read in the app: every user's log, unfiltered. Capping the badge
 		# matters most here.
-		return {"items": _with_openable(items, user), "unread": _unread_count({"read": 0})}
+		return {"items": _with_openable(items, user), "unread": _unread_count({"read": 0, **mute})}
 
 	items = frappe.get_all(
 		"Notification Log",
-		filters={"for_user": user},
+		filters={"for_user": user, **mute},
 		fields=_LOG_FIELDS,
 		order_by="creation desc",
 		limit=limit,
@@ -139,14 +148,45 @@ def list_notifications(limit=20):
 
 	allowed = get_user_branches(user)
 	if allowed is None:  # all branches -> no filtering
-		unread = _unread_count({"for_user": user, "read": 0})
+		unread = _unread_count({"for_user": user, "read": 0, **mute})
 		return {"items": _with_openable(items, user), "unread": unread}
 
 	allowed = set(allowed)
 	items = [it for it in items if _in_allowed_branch(it, allowed)]
 	# Recompute unread off the branch-filtered set so the badge matches the feed.
-	unread = _unread_count({"for_user": user, "read": 0}, allowed)
+	unread = _unread_count({"for_user": user, "read": 0, **mute}, allowed)
 	return {"items": _with_openable(items, user), "unread": unread}
+
+
+@frappe.whitelist(methods=["GET"])
+def event_options():
+	"""GET — jenis notifikasi yang bisa sampai ke pemanggil, untuk diatur per perangkat.
+
+	Hanya rule yang aktif dan salah satu rolenya dipegang pemanggil: jenis yang memang
+	tidak pernah ia terima tidak perlu dimatikan. Pengawas (``_sees_all_notifications``)
+	melihat semuanya, sama seperti belnya.
+	"""
+	_require_authenticated_user()
+	user = frappe.session.user
+	rules = frappe.get_all(
+		"Depot Notification Rule",
+		filters={"enabled": 1},
+		fields=["name", "event_key", "label"],
+		order_by="label asc",
+		limit_page_length=0,
+	)
+	if not _sees_all_notifications(user):
+		mine = set(frappe.get_roles(user))
+		roles = {}
+		for r in frappe.get_all(
+			"Depot Notification Role",
+			filters={"parenttype": "Depot Notification Rule"},
+			fields=["parent", "role"],
+			limit_page_length=0,
+		):
+			roles.setdefault(r.parent, set()).add(r.role)
+		rules = [r for r in rules if roles.get(r.name, set()) & mine]
+	return [{"key": r.event_key, "label": r.label or r.event_key} for r in rules]
 
 
 def _with_openable(items, user):

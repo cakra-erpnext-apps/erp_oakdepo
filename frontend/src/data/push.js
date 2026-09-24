@@ -8,6 +8,8 @@
 // Permission must be asked from a user gesture — that is why nothing here runs on load.
 
 import { reactive } from "vue"
+import { session } from "@/data/session"
+import { mutedEvents } from "@/utils/notifMute"
 
 const state = reactive({
 	supported: false,
@@ -90,7 +92,7 @@ export async function refreshPushState() {
 		if (subscription) {
 			// Swallowed: a network blip here must not report the device as unsubscribed
 			// and drag the gate up over a working phone. The next load retries.
-			await api("subscribe", { subscription: subscription.toJSON() }).catch(() => {})
+			await api("subscribe", { subscription: subscription.toJSON(), muted: mutedEvents(session.user) }).catch(() => {})
 		}
 	} catch (e) {
 		state.subscribed = false
@@ -186,7 +188,7 @@ export async function enablePush() {
 				applicationServerKey: urlBase64ToUint8Array(cfg.public_key),
 			}))
 
-		await api("subscribe", { subscription: subscription.toJSON() })
+		await api("subscribe", { subscription: subscription.toJSON(), muted: mutedEvents(session.user) })
 		state.subscribed = true
 		return true
 	} catch (e) {

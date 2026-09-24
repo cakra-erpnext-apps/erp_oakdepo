@@ -105,3 +105,9 @@ class TestDepotPushSubscription(FrappeTestCase):
 
 	def test_deliver_without_an_endpoint_reaches_both_devices(self):
 		self.assertEqual(set(self._rows_pushed()), {self.name1, self.name2})
+
+	def test_a_device_that_muted_the_event_is_skipped(self):
+		# Mute per HP: device two silenced M&R, device one did not — same person.
+		frappe.db.set_value(push.SUBSCRIPTION_DOCTYPE, self.name2, "muted_events", "eir_created,repair_order_created")
+		self.assertEqual(self._rows_pushed(event_key="repair_order_created"), [self.name1])
+		self.assertEqual(set(self._rows_pushed(event_key="gate_out")), {self.name1, self.name2})

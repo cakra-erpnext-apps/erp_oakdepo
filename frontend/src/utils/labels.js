@@ -62,6 +62,7 @@ export const labels = {
 	pushServerOff: "Notifikasi HP belum disiapkan di server. Hubungi admin.",
 	pushFailed: "Gagal mengaktifkan notifikasi.",
 	pushTest: "Tes",
+	notifTypesHint: "Jenis notifikasi yang diterima HP ini. Yang dimatikan tidak berbunyi dan tidak muncul di lonceng — hanya di HP ini.",
 	pushTestSent: "Notifikasi percobaan dikirim. Cek layar HP Anda.",
 	pushTestNoDevice: "Tidak ada perangkat terdaftar. Matikan lalu aktifkan lagi notifikasinya.",
 	pushTestFailed: "Gagal mengirim notifikasi percobaan.",
@@ -218,6 +219,12 @@ export const labels = {
 	homeWaiting: "Menunggu Anda",
 	homeWaitingCount: "{n} item",
 	homeWaitingEmpty: "Tidak ada yang menunggu. Antrean Anda bersih.",
+	homeWaitingTitle: "Atur antrean",
+	homeWaitingHint: "Centang antrean yang ingin Anda lihat, urutkan dengan panah. Tersimpan di HP ini untuk akun Anda.",
+	homeWaitingUp: "Naikkan",
+	homeWaitingDown: "Turunkan",
+	homeWaitingSaved: "Antrean beranda diperbarui",
+	homeWaitingResetDone: "Antrean beranda kembali ke bawaan",
 	waitEirReviewOne: "EIR {ref} menunggu review",
 	waitEirReviewMany: "{n} EIR menunggu review",
 	waitEirOpenOne: "EIR {ref} belum dikerjakan",
@@ -1488,6 +1495,7 @@ export const labels = {
 	monitorTitle: "Monitor container", // page title
 	monitorSearch: "Cari nomor container atau voucher", // search placeholder
 	monitorAll: "Semua", // all statuses
+	filterToday: "Hari ini",
 	monitorAllPrincipals: "Semua Prinsipal", // principal filter default
 	monitorAllDepots: "Semua Depot", // depot filter default
 	monitorEmpty: "Tidak ada container untuk filter ini.", // empty state

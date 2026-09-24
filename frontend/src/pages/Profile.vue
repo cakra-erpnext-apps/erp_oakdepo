@@ -156,6 +156,33 @@
 				</div>
 				<p v-if="pushNote" class="mt-3 text-xs font-medium text-amber-700">{{ pushNote }}</p>
 			</div>
+			<!-- Jenis notifikasi — per HP ini (utils/notifMute.js). Langsung tersimpan tiap
+			     ketukan: tidak ada yang rusak kalau salah pilih, dan tombol Simpan yang
+			     terlupa berarti HP tetap berbunyi untuk hal yang sudah dimatikan. -->
+			<div v-if="eventOptions.length" class="oak-card overflow-hidden">
+				<p class="px-4 pt-3 text-xs text-gray-500">{{ labels.notifTypesHint }}</p>
+				<div class="divide-y divide-gray-100">
+					<button
+						v-for="e in eventOptions"
+						:key="e.key"
+						type="button"
+						class="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm text-gray-700 transition active:bg-gray-50"
+						:aria-pressed="!muted.includes(e.key)"
+						@click="toggleEvent(e.key)"
+					>
+						<span class="min-w-0 flex-1">{{ e.label }}</span>
+						<span
+							class="inline-flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition"
+							:class="muted.includes(e.key) ? 'bg-gray-300' : 'bg-brand-600'"
+						>
+							<span
+								class="h-4 w-4 rounded-full bg-paper shadow transition"
+								:class="muted.includes(e.key) ? 'translate-x-0' : 'translate-x-4'"
+							></span>
+						</span>
+					</button>
+				</div>
+			</div>
 		</section>
 
 		<!-- Ubah password — collapsed by default, same tap-to-expand card Home uses for its
@@ -240,6 +267,8 @@ import { isIos, isStandalone } from "@/utils/install"
 import { labels, passwordFeedbackLabel } from "@/utils/labels"
 import { compressPhoto } from "@/utils/photo"
 import { toast } from "@/utils/toast"
+import { mutedEvents, setMuted } from "@/utils/notifMute"
+import { createResource } from "frappe-ui"
 import Icon from "@/components/Icon.vue"
 import emblem from "@/assets/oak-emblem.png"
 
@@ -248,6 +277,21 @@ onMounted(() => {
 	fetchMenu()
 	refreshPushState()
 })
+
+// --- Jenis notifikasi (per HP) ---------------------------------------------------------
+const eventsRes = createResource({
+	url: "container_depot.ess.notifications.event_options",
+	method: "GET",
+	auto: true,
+})
+const eventOptions = computed(() => eventsRes.data || [])
+const muted = computed(() => mutedEvents(session.user))
+function toggleEvent(key) {
+	const now = muted.value
+	setMuted(session.user, now.includes(key) ? now.filter((k) => k !== key) : [...now, key])
+	// Salinan di server (push saat aplikasi tertutup) — subscribe ulang membawa daftar baru.
+	refreshPushState()
+}
 
 const ctx = computed(() => userContext.data || null)
 const email = computed(() => ctx.value?.user || session.user || "—")

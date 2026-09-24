@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from "vue"
+import { onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import dayjs from "dayjs"
@@ -91,6 +91,8 @@ import Icon from "@/components/Icon.vue"
 import { labels } from "@/utils/labels"
 import { toast, toastSoundOn, setToastSound } from "@/utils/toast"
 import { useDismissOnBack } from "@/utils/backstack"
+import { session } from "@/data/session"
+import { mutedEvents } from "@/utils/notifMute"
 
 dayjs.extend(relativeTime)
 dayjs.locale("id")
@@ -122,9 +124,12 @@ const markReadRes = createResource({ url: "container_depot.ess.notifications.mar
 const markAllRes = createResource({ url: "container_depot.ess.notifications.mark_all_read", method: "POST" })
 const openRes = createResource({ url: "container_depot.ess.notifications.open_target", method: "POST" })
 
+// Jenis yang dimatikan di HP ini (Profil) ikut hilang dari daftar dan badge-nya.
+const muted = () => mutedEvents(session.user).join(",") || undefined
 function load() {
-	listRes.submit({ limit: 20 })
+	listRes.submit({ limit: 20, muted: muted() })
 }
+watch(muted, load)
 
 function toggle() {
 	open.value = !open.value

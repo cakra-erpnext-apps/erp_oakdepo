@@ -367,6 +367,35 @@ class TestPwaNotificationEndpoints(FrappeTestCase):
 			for name in made:
 				frappe.delete_doc("Notification Log", name, ignore_permissions=True, force=True)
 
+	def test_muted_events_drop_out_of_this_devices_bell(self):
+		# Mute per HP (utils/notifMute.js): the event disappears, a log with no depot_event
+		# (Frappe's own notifications) must not.
+		from container_depot.ess import notifications
+
+		def log(event):
+			return frappe.get_doc({
+				"doctype": "Notification Log", "subject": f"Mute {event}", "for_user": frappe.session.user,
+				"type": "Alert", "read": 0, "depot_event": event,
+			}).insert(ignore_permissions=True).name
+
+		muted, kept, plain = log("zz_muted"), log("zz_kept"), log(None)
+		names = {i["name"] for i in notifications.list_notifications(limit=50, muted="zz_muted")["items"]}
+		self.assertNotIn(muted, names)
+		self.assertTrue({kept, plain} <= names)
+
+	def test_event_options_follow_the_callers_roles(self):
+		from container_depot.ess import notifications
+
+		_user(FINANCE_USER, "Finance")
+		try:
+			frappe.set_user(FINANCE_USER)
+			keys = {o["key"] for o in notifications.event_options()}
+		finally:
+			frappe.set_user("Administrator")
+			frappe.delete_doc("User", FINANCE_USER, ignore_permissions=True, force=True)
+		self.assertIn("invoice_submitted", keys)
+		self.assertNotIn("cleaning_order_forwarded", keys)
+
 	def test_mark_all_read(self):
 		from container_depot.ess import notifications
 

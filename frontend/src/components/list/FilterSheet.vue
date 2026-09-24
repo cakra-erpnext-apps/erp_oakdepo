@@ -55,7 +55,15 @@
 					<div v-else-if="fl.type === 'date'" class="space-y-1.5">
 						<p class="text-xs font-bold uppercase tracking-wide text-gray-400">{{ fl.label }}</p>
 						<div class="flex items-center gap-2">
-							<input v-model="draft[fl.key]" type="date" class="oak-input min-h-[44px] flex-1" />
+							<input v-model="draft[fl.key]" type="date" class="oak-input min-h-[44px] min-w-0 flex-1" />
+							<!-- Pintasan "Hari ini": saringan paling sering, tanpa membuka kalender. -->
+							<button
+								class="oak-press min-h-[44px] shrink-0 rounded-xl border px-3 text-xs font-bold transition"
+								:class="draft[fl.key] === todayIso() ? on : off"
+								@click="draft[fl.key] = todayIso()"
+							>
+								{{ labels.filterToday }}
+							</button>
 							<button v-if="draft[fl.key]" class="oak-press shrink-0 px-2 text-xs font-bold text-gray-500" @click="draft[fl.key] = ''">
 								{{ labels.monitorAll }}
 							</button>
@@ -140,6 +148,9 @@ function withCount(key, o) {
 	const n = countOf(key, value)
 	return n == null ? label : `${label} (${n})`
 }
+
+// Tanggal lokal HP (YYYY-MM-DD), bukan toISOString() yang UTC — jam 00–07 WIB jadi kemarin.
+const todayIso = () => new Date().toLocaleDateString("sv-SE")
 
 const on = "border-brand-500 bg-brand-500/10 text-brand-700"
 const off = "border-gray-200 bg-paper text-gray-600"

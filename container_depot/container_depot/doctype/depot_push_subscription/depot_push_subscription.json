@@ -18,7 +18,8 @@
   "p256dh",
   "auth",
   "device_section",
-  "user_agent"
+  "user_agent",
+  "muted_events"
  ],
  "fields": [
   {
@@ -106,11 +107,18 @@
    "fieldtype": "Small Text",
    "label": "User Agent",
    "read_only": 1
+  },
+  {
+   "description": "Jenis notifikasi (event_key, dipisah koma) yang dimatikan operator untuk perangkat ini — diatur dari Profil di PWA.",
+   "fieldname": "muted_events",
+   "fieldtype": "Small Text",
+   "label": "Muted Events",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-10 09:00:00.000000",
+ "modified": "2026-09-24 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Depot Push Subscription",

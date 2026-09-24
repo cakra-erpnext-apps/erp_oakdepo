@@ -204,16 +204,87 @@
 			     dipajang di kanan, bukan jumlahnya: tiga cleaning order yang baru dibuat
 			     semenit lalu bukan masalah, satu yang menganggur sejak awal shift iya. -->
 			<section v-if="summary">
-				<div class="mb-2 flex items-end justify-between px-1">
-					<p class="oak-eyebrow">{{ labels.homeWaiting }}</p>
-					<p v-if="waiting.length" class="text-xs text-gray-400">
-						{{ fill(labels.homeWaitingCount, { n: waiting.length }) }}
-					</p>
+				<div class="mb-2 flex items-end justify-between gap-2 px-1">
+					<p class="oak-eyebrow">{{ editWaiting ? labels.homeWaitingTitle : labels.homeWaiting }}</p>
+					<div v-if="!editWaiting" class="-my-2.5 flex shrink-0 items-center gap-0.5">
+						<p v-if="waiting.length" class="px-1 text-xs text-gray-400">
+							{{ fill(labels.homeWaitingCount, { n: waiting.length }) }}
+						</p>
+						<button
+							v-if="availableWaits.length > 1"
+							class="oak-link px-2 py-2.5 text-xs"
+							@click="startEditWaiting"
+						>
+							{{ labels.homeTilesEdit }}
+						</button>
+					</div>
 				</div>
+
+				<!-- Mode atur: semua antrean yang boleh dilihat akun ini, termasuk yang sekarang
+				     kosong — susunan dipilih sekali, bukan tiap kali antreannya kebetulan terisi.
+				     Centang = tampil, panah = urutan. -->
+				<template v-if="editWaiting">
+					<p class="mb-2 px-1 text-[11px] leading-snug text-gray-500">{{ labels.homeWaitingHint }}</p>
+					<div class="oak-card divide-y divide-gray-100 overflow-hidden">
+						<div
+							v-for="(k, i) in waitDraft"
+							:key="k.key"
+							class="flex items-center gap-2 py-1.5 pl-3.5 pr-1.5"
+						>
+							<button
+								type="button"
+								class="flex min-w-0 flex-1 items-center gap-3 py-1.5 text-left"
+								:class="k.on ? '' : 'opacity-45'"
+								:aria-pressed="k.on"
+								@click="k.on = !k.on"
+							>
+								<span
+									class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+									:class="k.on ? 'border-brand-600 bg-brand-600 text-white' : 'border-gray-300'"
+								>
+									<Icon v-if="k.on" name="check" :size="12" />
+								</span>
+								<span class="oak-icon-tile h-8 w-8" :class="WAIT[k.key].tone">
+									<Icon :name="WAIT[k.key].icon" :size="15" />
+								</span>
+								<span class="min-w-0 flex-1 text-sm font-semibold text-gray-800">{{ waitName(k.key) }}</span>
+							</button>
+							<button
+								type="button"
+								class="oak-btn oak-btn-ghost h-9 w-9 shrink-0 px-0"
+								:disabled="i === 0"
+								:aria-label="labels.homeWaitingUp"
+								@click="moveWait(i, -1)"
+							>
+								<Icon name="chevron-up" :size="16" />
+							</button>
+							<button
+								type="button"
+								class="oak-btn oak-btn-ghost h-9 w-9 shrink-0 px-0"
+								:disabled="i === waitDraft.length - 1"
+								:aria-label="labels.homeWaitingDown"
+								@click="moveWait(i, 1)"
+							>
+								<Icon name="chevron-down" :size="16" />
+							</button>
+						</div>
+					</div>
+					<div class="mt-3 flex items-center gap-2">
+						<button class="oak-btn oak-btn-secondary flex-1 py-2.5" @click="editWaiting = false">
+							{{ labels.navTabsCancel }}
+						</button>
+						<button class="oak-btn oak-btn-ghost shrink-0 px-3 py-2.5 text-xs" @click="resetWaitingToDefault">
+							{{ labels.navTabsReset }}
+						</button>
+						<button class="oak-btn oak-btn-primary flex-1 py-2.5" @click="saveWaiting">
+							{{ labels.navTabsSave }}
+						</button>
+					</div>
+				</template>
 				<!-- Kosong tetap ditampilkan, tidak disembunyikan: "tidak ada yang menunggu"
 				     adalah jawaban yang dicari operator di awal shift, dan bagian yang hilang
 				     begitu saja terbaca seperti data yang belum termuat. -->
-				<p v-if="!waiting.length" class="oak-card px-3.5 py-3 text-sm text-gray-400">
+				<p v-else-if="!waiting.length" class="oak-card px-3.5 py-3 text-sm text-gray-400">
 					{{ labels.homeWaitingEmpty }}
 				</p>
 				<div v-else class="oak-card divide-y divide-gray-100 overflow-hidden">
@@ -294,6 +365,7 @@ import {
 	resetTiles,
 	setTiles,
 } from "@/utils/homeTiles"
+import { pickedWaiting, resetWaiting, setWaiting } from "@/utils/homeWaiting"
 import Icon from "@/components/Icon.vue"
 
 const router = useRouter()
@@ -486,6 +558,11 @@ const wantedTiles = computed(() =>
 	editTiles.value ? availableTiles.value.map((c) => c.key) : tileKeys.value
 )
 
+// Susunan "Menunggu Anda" — `null` = belum pernah diatur (semua antrean, urutan server).
+// Array kosong tidak dikirim sebagai "sembunyikan semua" ke server: param kosong berarti
+// bawaan, jadi `waiting` yang kosong disaring di klien (lihat `waiting` di bawah).
+const waitKeys = computed(() => pickedWaiting(session.user))
+
 // --- Ringkasan beranda -------------------------------------------------------------
 // Satu GET untuk kartu "Hari ini" + antrean "Menunggu Anda" (ess/home.py). Lewat
 // cachedResource, jadi di titik mati sinyal beranda masih menampilkan angka terakhir
@@ -496,7 +573,10 @@ const summaryRes = cachedResource({
 	// Kartu yang dipilih operator ikut ke server: yang tidak tampil tidak dihitung sama
 	// sekali (lihat _wanted_tiles di ess/home.py). Ia juga jadi bagian kunci cache, jadi
 	// mengubah pilihan tidak menampilkan angka milik susunan yang lama.
-	makeParams: () => ({ tiles: wantedTiles.value.join(",") || undefined }),
+	makeParams: () => ({
+		tiles: wantedTiles.value.join(",") || undefined,
+		waiting: waitKeys.value?.join(",") || undefined,
+	}),
 	auto: true,
 })
 const summary = computed(() => summaryRes.data || null)
@@ -567,25 +647,25 @@ function tileValue(c) {
 // menyebut tank (antrean berisi satu) dan yang menyebut jumlah — server hanya mengirim
 // `ref` ketika antreannya memang tinggal satu.
 const WAIT = {
-	eirReview: { icon: MODULES.eir.icon, tone: "bg-amber-50 text-amber-600", to: "/eir?s=review", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
-	eirOpen: { icon: MODULES.eir.icon, tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
-	eirOut: { icon: "log-out", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", many: labels.waitEirOutMany },
-	cleaningIdle: { icon: MODULES.cleaning.icon, tone: "bg-leaf-50 text-leaf-600", to: "/cleaning?s=todo", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
-	mrApproval: { icon: MODULES.mr.icon, tone: "bg-amber-50 text-amber-600", to: "/mr", one: labels.waitMrApprovalOne, many: labels.waitMrApprovalMany },
-	lowering: { icon: MODULES.posFix.icon, tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
-	surveyReady: { icon: MODULES.surveyList.icon, tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
+	eirReview: { menu: "eir", icon: MODULES.eir.icon, tone: "bg-amber-50 text-amber-600", to: "/eir?s=review", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
+	eirOpen: { menu: "eir", icon: MODULES.eir.icon, tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
+	eirOut: { menu: "eir", icon: "log-out", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", many: labels.waitEirOutMany },
+	cleaningIdle: { menu: "cleaning", icon: MODULES.cleaning.icon, tone: "bg-leaf-50 text-leaf-600", to: "/cleaning?s=todo", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
+	mrApproval: { menu: "mr", icon: MODULES.mr.icon, tone: "bg-amber-50 text-amber-600", to: "/mr", one: labels.waitMrApprovalOne, many: labels.waitMrApprovalMany },
+	lowering: { menu: "posFix", icon: MODULES.posFix.icon, tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
+	surveyReady: { menu: "surveyPos", icon: MODULES.surveyList.icon, tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
 	// Bukan "tank tanpa letak" (itu ratusan dan tidak ada tenggatnya) — hanya yang surveinya
 	// sudah dijadwalkan. Warnanya ikut keluarga yard, bukan abu: ini pekerjaan, bukan catatan.
-	positionOrder: { icon: MODULES.tankPos.icon, tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
-	cleaningReview: { icon: MODULES.cleaning.icon, tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
-	mrReview: { icon: MODULES.mr.icon, tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
-	periodicApproval: { icon: MODULES.periodic.icon, tone: "bg-amber-50 text-amber-600", to: "/periodic", one: labels.waitPeriodicApprovalOne, many: labels.waitPeriodicApprovalMany },
-	periodicReview: { icon: MODULES.periodic.icon, tone: "bg-sky-50 text-sky-600", to: "/periodic?s=review", one: labels.waitPeriodicReviewOne, many: labels.waitPeriodicReviewMany },
+	positionOrder: { menu: "tankPos", icon: MODULES.tankPos.icon, tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
+	cleaningReview: { menu: "cleaning", icon: MODULES.cleaning.icon, tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
+	mrReview: { menu: "mr", icon: MODULES.mr.icon, tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
+	periodicApproval: { menu: "periodic", icon: MODULES.periodic.icon, tone: "bg-amber-50 text-amber-600", to: "/periodic", one: labels.waitPeriodicApprovalOne, many: labels.waitPeriodicApprovalMany },
+	periodicReview: { menu: "periodic", icon: MODULES.periodic.icon, tone: "bg-sky-50 text-sky-600", to: "/periodic?s=review", one: labels.waitPeriodicReviewOne, many: labels.waitPeriodicReviewMany },
 	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
-	scheduleOverdue: { icon: MODULES.schedule.icon, tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
+	scheduleOverdue: { menu: "schedule", icon: MODULES.schedule.icon, tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
 }
 const waiting = computed(() =>
-	(summary.value?.waiting || [])
+	(waitKeys.value?.length === 0 ? [] : summary.value?.waiting || [])
 		.map((w) => {
 			const def = WAIT[w.key]
 			if (!def) return null // kunci baru dari server yang belum punya kalimat di sini
@@ -601,6 +681,43 @@ const waiting = computed(() =>
 		})
 		.filter(Boolean)
 )
+
+// --- Atur "Menunggu Anda" -----------------------------------------------------------
+const availableWaits = computed(() => Object.keys(WAIT).filter((k) => menu.has(WAIT[k].menu)))
+const editWaiting = ref(false)
+const waitDraft = ref([])
+
+/** "EIR menunggu review" — kalimat `many` tanpa angkanya. */
+function waitName(key) {
+	const t = WAIT[key].many.replace("{n} ", "")
+	return t.charAt(0).toUpperCase() + t.slice(1)
+}
+function startEditWaiting() {
+	const picked = waitKeys.value
+	const all = availableWaits.value
+	// Yang dipilih dulu sesuai urutannya, sisanya (tersembunyi / antrean baru) di bawah.
+	const on = picked ? picked.filter((k) => all.includes(k)) : all
+	waitDraft.value = [
+		...on.map((key) => ({ key, on: true })),
+		...all.filter((k) => !on.includes(k)).map((key) => ({ key, on: false })),
+	]
+	editWaiting.value = true
+}
+function moveWait(i, d) {
+	const a = waitDraft.value
+	;[a[i], a[i + d]] = [a[i + d], a[i]]
+}
+function saveWaiting() {
+	setWaiting(session.user, waitDraft.value.filter((k) => k.on).map((k) => k.key))
+	editWaiting.value = false
+	toast.success(labels.homeWaitingSaved)
+}
+function resetWaitingToDefault() {
+	resetWaiting(session.user)
+	editWaiting.value = false
+	toast.success(labels.homeWaitingResetDone)
+}
+watch(waitKeys, () => summaryRes.reload())
 
 // --- Pintasan menu -----------------------------------------------------------------
 // Katalog modul bersama (data/modules.js): bar bawah dan sheet "Lainnya" menggambar dari

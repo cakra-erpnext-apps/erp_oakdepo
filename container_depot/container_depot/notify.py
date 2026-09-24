@@ -203,7 +203,7 @@ def _push(users, subject, doctype=None, name=None, event_key=None):
 		# The PWA runs on history mode with base `/depot`, so its routes are served under it.
 		route = route_for(doctype, name, event_key)
 		url = f"/depot{route}" if route else "/depot"
-		push.push_to_users(users, title="Depot OAK", body=subject, url=url, tag=tag)
+		push.push_to_users(users, title="Depot OAK", body=subject, url=url, tag=tag, event_key=event_key)
 	except Exception:
 		frappe.log_error(title="Depot push dispatch failed", message=frappe.get_traceback())
 

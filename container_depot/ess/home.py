@@ -74,13 +74,8 @@ TILE_MENU = {
 DEFAULT_TILES = ("gateIn", "gateOut", "eirReview", "cleaning")
 
 
-def _wanted_tiles(tiles, menu: set) -> set:
-	"""Kartu yang diminta klien, disaring permission. Param kosong = empat bawaan.
-
-	Menu tetap yang berkuasa: kunci yang dikirim tanpa hak menunya dibuang diam-diam,
-	sama seperti tab bar bawah. Klien hanya boleh memilih dari apa yang sudah boleh
-	dibukanya.
-	"""
+def _keys(tiles) -> list:
+	"""Param daftar kunci dari klien (dipisah koma, atau list) -> list kunci, urutan dijaga."""
 	if isinstance(tiles, str):
 		asked = [t.strip() for t in tiles.split(",") if t.strip()]
 	elif isinstance(tiles, (list, tuple)):
@@ -89,7 +84,17 @@ def _wanted_tiles(tiles, menu: set) -> set:
 		asked = []
 	# "undefined" / "null" — lihat catatan _NOT_A_VALUE di tank_survey.py: frappe-ui
 	# sempat mengirim string itu untuk param yang tidak diisi.
-	asked = [t for t in asked if t.lower() not in ("undefined", "null", "none")]
+	return [t for t in asked if t.lower() not in ("undefined", "null", "none")]
+
+
+def _wanted_tiles(tiles, menu: set) -> set:
+	"""Kartu yang diminta klien, disaring permission. Param kosong = empat bawaan.
+
+	Menu tetap yang berkuasa: kunci yang dikirim tanpa hak menunya dibuang diam-diam,
+	sama seperti tab bar bawah. Klien hanya boleh memilih dari apa yang sudah boleh
+	dibukanya.
+	"""
+	asked = _keys(tiles)
 	if not asked:
 		asked = list(DEFAULT_TILES)
 	return {t for t in asked if TILE_MENU.get(t) in menu}
@@ -167,13 +172,18 @@ def _active_booking_codes(allowed) -> list:
 
 
 @frappe.whitelist(methods=["GET"])
-def get_home_summary(tiles=None):
+def get_home_summary(tiles=None, waiting=None):
 	"""GET /api/v1/ess/home-summary — ``{success, menu, today, waiting}``.
 
 	``tiles`` adalah daftar kunci kartu yang akan ditampilkan Beranda (dipisah koma, lihat
 	``TILE_MENU``). Hanya kartu itu yang dihitung; tanpa param, empat kartu bawaan. Angka
 	yang sudah terlanjur dihitung untuk "Menunggu Anda" dipakai ulang, tidak dihitung dua
 	kali.
+
+	``waiting`` adalah susunan "Menunggu Anda" milik operator (dipisah koma, kunci antrean
+	yang mau dilihat, urut sesuai pilihannya — utils/homeWaiting.js). Tanpa param: semua
+	antrean, tertua di atas. Pemotongan MAX_WAITING jatuh SETELAH susunan itu, jadi antrean
+	yang ia taruh di atas tidak pernah terpotong.
 
 	A caller with no field role gets ``{"success": True, "menu": []}`` and nothing else:
 	the PWA is open to them, it is simply empty, and Beranda already has a card that says
@@ -195,6 +205,7 @@ def get_home_summary(tiles=None):
 	)
 
 	allowed = get_user_depots()  # None = unrestricted; [] = no depot at all
+	order = _keys(waiting)
 	out = {"success": True, "menu": sorted(menu), "today": {}, "waiting": []}
 	today_counts = out["today"]
 	waiting = out["waiting"]
@@ -401,5 +412,8 @@ def get_home_summary(tiles=None):
 	# no age at all (the survey worklists, which are dated rather than aged) sorts under
 	# the timed ones rather than above them.
 	waiting.sort(key=lambda r: (r["age"] is None, -(r["age"] or 0), -r["count"]))
+	if order:
+		# Susunan operator menang: yang tidak ia pilih dibuang, sisanya ikut urutannya.
+		waiting[:] = sorted((r for r in waiting if r["key"] in order), key=lambda r: order.index(r["key"]))
 	del waiting[MAX_WAITING:]
 	return out
