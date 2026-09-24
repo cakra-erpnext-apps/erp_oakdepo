@@ -69,6 +69,24 @@ frappe.listview_settings["Repair Order"] = {
 	// which widens the two dates to 00:00:00 / 23:59:59 for the Datetime column.
 	// Added in onload (not via custom_filter_configs) so it lands AFTER the doctype's own
 	// standard filters rather than ahead of them.
+	// Dua menu sidebar, satu doctype (lihat container_depot/mr_scope.py): judul dan menu yang
+	// menyala mengikuti filter job_type, supaya M&R dan Periodic Test tidak terbaca satu menu.
+	refresh(listview) {
+		const jt = listview.filters.find((f) => f[1] === "job_type" && f[2] === "=")?.[3];
+		const title = { Repair: __("M&R (Maintenance & Repair)"), "Periodic Test": __("Periodic Test") }[jt];
+		listview.page.set_title(title || listview.page_title);
+		frappe.app.sidebar?.set_active_workspace_item();
+		// plan_date milik kedua jenis; labelnya ikut menu. Salinan df, bukan df meta — label
+		// meta dipakai juga oleh form dan list lain.
+		const plan = { Repair: __("Repair Plan Date"), "Periodic Test": __("Periodic Plan Date") }[jt] || __("Plan Date");
+		listview.page.fields_dict.plan_date?.$input?.attr("placeholder", plan);
+		const col = listview.columns.find((c) => c.df?.fieldname === "plan_date");
+		if (col && col.df.label !== plan) {
+			col.df = { ...col.df, label: plan };
+			listview.render_header(true);
+		}
+	},
+
 	onload(listview) {
 		const filter_area = listview.filter_area;
 		listview.page.add_field(

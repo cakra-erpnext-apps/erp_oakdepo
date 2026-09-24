@@ -211,6 +211,14 @@ frappe.ui.form.on('Repair Order', {
 	onload(frm) {
 		frm.trigger('_set_queries');
 	},
+	_job_type_ui(frm) {
+		// Satu doctype, dua menu (mr_scope.py). Jenisnya ditentukan menu tempat order dibuat —
+		// filter job_type list mengisinya ke order baru — bukan dipilih di form. Setelah simpan
+		// field ini memang set_only_once.
+		frm.set_df_property('job_type', 'read_only', 1);
+		frm.set_df_property('plan_date', 'label',
+			frm.doc.job_type === 'Periodic Test' ? __('Periodic Plan Date') : __('Repair Plan Date'));
+	},
 	_set_queries(frm) {
 		// Retired tanks (Active off) are out of the fleet and never offered.
 		frm.set_query('container', () => ({ filters: { is_active: 1 } }));
@@ -271,6 +279,7 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_set_queries');
 		frm.trigger('_refresh_on_hand');
 		frm.trigger('_render_system_facts');
+		frm.trigger('_job_type_ui');
 		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
 		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
 		container_depot.tank_position.button(frm);
@@ -527,9 +536,10 @@ frappe.ui.form.on('Repair Order', {
 		const locked = !frm.is_new() && MR_FINAL_STATUSES.includes(frm.doc.status);
 		// The three auto-stamped dates are NOT here: they are read_only on the doctype
 		// itself (and only shown at all once stamped, via depends_on), so handing them back
-		// on reopen would be the one thing that makes them typeable.
+		// on reopen would be the one thing that makes them typeable. job_type neither: it is
+		// always locked (_job_type_ui) — the menu decides it, not the form.
 		[
-			'container', 'depot', 'plan_date', 'job_type', 'pt_type', 'last_test_date', 'technician', 'reff_doc',
+			'container', 'depot', 'plan_date', 'pt_type', 'last_test_date', 'technician', 'reff_doc',
 			'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
 		// Nothing left to change means nothing to Save — Frappe would otherwise keep offering
