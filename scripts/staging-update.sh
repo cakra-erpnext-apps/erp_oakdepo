@@ -26,6 +26,16 @@ if [ "$SKIP_GIT_PULL" != "1" ]; then
   git pull --ff-only origin "$branch"
 fi
 
+# Hitung mundur di semua layar Desk + PWA supaya user sempat Save (container_depot/maintenance.py),
+# lalu tunggu selama itu sebelum halaman maintenance naik. MAINT_WARN_SECONDS=0 = lewati.
+WARN="${MAINT_WARN_SECONDS:-30}"
+if [ "$WARN" -gt 0 ]; then
+  log "announce maintenance ($WARN s)"
+  docker exec erp_oakdepo_staging-backend-1 bash -lc "cd /home/frappe/frappe-bench && bench --site '$SITE' execute container_depot.maintenance.announce --kwargs '{\"seconds\": $WARN}'" \
+    || echo "announce gagal — lanjut tanpa hitung mundur"
+  sleep "$WARN"
+fi
+
 # Halaman maintenance selama update, bukan 502 (nginx/conf.d/default.conf). Berkasnya
 # terlihat nginx lewat bind mount; trap menghapusnya juga saat script gagal di tengah jalan.
 MAINT="$ROOT/nginx/conf.d/maintenance.on"

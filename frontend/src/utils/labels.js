@@ -131,6 +131,9 @@ export const labels = {
 	// Desk access — see menu.deskAccess.
 	openDesk: "Buka Desk",
 	openDeskHint: "Kelola booking, tarif, dan laporan di ERPNext.",
+	// Countdown before maintenance (container_depot.maintenance.announce).
+	maintenanceSoon: (seconds) => `Maintenance dimulai dalam ${seconds} detik. Simpan pekerjaan Anda sekarang.`,
+	maintenanceNow: "Maintenance sedang berjalan. Aplikasi akan kembali setelah selesai.",
 	// --- Status koneksi (data/link.js) ---
 	// The send queue and the local drafts were removed on 2026-08-18: everything is saved
 	// straight to the server and a failure is reported on the spot, so none of the labels

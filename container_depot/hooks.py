@@ -53,6 +53,8 @@ extend_bootinfo = [
 	"container_depot.desk_surface.prune_boot_can_read",
 	# Layar /desk: sisakan ikon Container Depot + Depot OAK (Mobile) untuk akun non-admin.
 	"container_depot.desk_surface.prune_desktop_icons",
+	# Hitung mundur maintenance yang sedang jalan — halaman yang di-refresh tetap melihatnya.
+	"container_depot.maintenance.boot",
 	# Frappe appends every sidebar Section Break without testing it, so a role that may
 	# read six doctypes still gets all eleven headings. Drop the ones left empty.
 	"container_depot.boot.prune_empty_sidebar_sections",
@@ -448,6 +450,9 @@ app_include_js = [
 	# keyboardnya) untuk order, jejak gate/yard dan dokumen penagihan — dibatalkan lewat
 	# Cancel/Void, tidak dihapus; order baru dibuat dari menunya, tidak disalin.
 	"/assets/container_depot/js/no_delete_duplicate.js?v=3",
+	# container_depot.maintenance_countdown — bar hitung mundur sebelum maintenance, dikirim
+	# container_depot.maintenance.announce lewat realtime (lihat file-nya).
+	"/assets/container_depot/js/maintenance_notice.js?v=2",
 ]
 
 # include js, css files in header of web template

@@ -64,6 +64,13 @@ self.addEventListener("push", (event) => {
 		// A push with a non-JSON body is not worth dropping — show the raw text.
 		data = { body: event.data ? event.data.text() : "" }
 	}
+	// Maintenance heads-up: an open app draws its own countdown (MaintenanceBanner.vue);
+	// the OS notification below still covers a closed or backgrounded one.
+	if (data.tag === "oak-maintenance") {
+		self.clients
+			.matchAll({ type: "window" })
+			.then((list) => list.forEach((c) => c.postMessage({ type: "oak-maintenance", seconds: data.seconds })))
+	}
 	event.waitUntil(
 		self.registration.showNotification(data.title || "Depot OAK", {
 			body: data.body || "",
