@@ -110,7 +110,7 @@
 							<span class="min-w-0 flex-1">
 								<span class="block truncate font-mono text-sm font-bold text-gray-500 line-through">{{ o.reff_doc || o.name }}</span>
 								<span class="block truncate text-xs text-gray-400">
-									{{ [o.container_no, o.container_principal, fmtDate(o.order_created)].filter(Boolean).join(" · ") }}
+									{{ [o.container_no, o.container_principal, fmtDate(o.plan_date || o.order_created)].filter(Boolean).join(" · ") }}
 								</span>
 							</span>
 							<Icon name="chevron-right" :size="18" class="shrink-0 text-gray-300" />

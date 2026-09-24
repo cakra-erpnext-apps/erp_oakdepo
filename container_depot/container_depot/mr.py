@@ -575,8 +575,8 @@ def list_mr_orders(job_type=None, status=None, search=None, depot=None, principa
 	w, sw = " and ".join(where), " and ".join(scope)
 	priority = sort not in ("newest", "oldest")
 	direction = "asc" if sort == "oldest" else "desc"
-	# Prioritas (bawaan) = urutan worklist lama, ``worklist.sort_by_priority``: mendesak, lalu
-	# tanggal survey / muat terdekat, yang sedang dikerjakan dulu; yang sudah tutup di bawah.
+	# Prioritas (bawaan) = ``worklist.sort_by_priority``: mendesak, lalu Repair Plan Date
+	# terdekat, yang sedang dikerjakan dulu; yang sudah tutup di bawah.
 	# Dipaging di Python — daftar satu cabang terbatas oleh yard-nya.
 	order = "creation asc" if priority else f"day {direction}, {_MR_STATUS_ORDER}, creation {direction}"
 	limit = "" if priority else "limit %(start)s, %(pl)s"
@@ -590,15 +590,10 @@ def list_mr_orders(job_type=None, status=None, search=None, depot=None, principa
 		{limit}""", {**v, "start": cint(start), "pl": cint(page_length) or 20}, as_dict=True)
 	closed = ("Completed", "Rejected", "Cancelled")
 	if priority:
-		items = sort_by_priority(items, lambda r: r.get("status") == "In Progress")
+		items = sort_by_priority(items, lambda r: r.get("status") == "In Progress", date_of=lambda r: r.day)
 		items.sort(key=lambda r: 1 if r.status in closed else 0)
 		for i in items:
-			due = i.target_urgent_on or i.target_survey_on or i.target_lift_on
-			i["group"] = (
-				str(i.day) if i.status in closed
-				else "urgent" if i.target_urgent_on
-				else str(getdate(due)) if due else ""
-			)
+			i["group"] = "urgent" if i.target_urgent_on and i.status not in closed else str(i.day)
 		day_counts = {}
 		for i in items:
 			day_counts[i.group] = day_counts.get(i.group, 0) + 1

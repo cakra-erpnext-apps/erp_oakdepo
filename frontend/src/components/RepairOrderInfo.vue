@@ -6,7 +6,7 @@
 		:title="o.reff_doc || o.name"
 		:principal="o.principal"
 		:meta="[o.depot, o.container_no || o.container, jobLabel, fill(labels.mrItemsN, { n: o.item_count || 0 })]"
-		:parties="[{ k: labels.mrFlowApproved, v: o.decided_by_name }]"
+		:parties="[{ k: labels.mrPlanDate, v: o.plan_date && fmtDate(o.plan_date) }, { k: labels.mrFlowApproved, v: o.decided_by_name }]"
 		:ids="[o.reff_doc && o.name, o.repair_order_id, o.inspection]"
 	>
 		<slot />
@@ -16,6 +16,7 @@
 <script setup>
 import { computed } from "vue"
 import { labels } from "@/utils/labels"
+import { fmtDate } from "@/utils/surveyStatus"
 import { fill } from "@/utils/listKit"
 import OrderInfo from "@/components/list/OrderInfo.vue"
 

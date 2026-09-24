@@ -90,6 +90,17 @@ class TestWorklistOrder(FrappeTestCase):
 		]
 		self.assertEqual(self._order(rows), ["survey-sooner", "pickup-sooner"])
 
+	def test_date_of_replaces_the_booking_deadline(self):
+		"""Cleaning and M&R sort by the order's own plan date (``date_of``); urgency still
+		outranks it."""
+		rows = [
+			{**_row("plan-later", survey=add_days(today(), 1)), "plan": add_days(today(), 5)},
+			{**_row("plan-sooner", survey=add_days(today(), 9)), "plan": add_days(today(), 2)},
+			{**_row("urgent", urgent=add_days(today(), 7)), "plan": add_days(today(), 8)},
+		]
+		sort_by_priority(rows, lambda r: False, date_of=lambda r: r["plan"])
+		self.assertEqual([r["name"] for r in rows], ["urgent", "plan-sooner", "plan-later"])
+
 	def test_a_booking_with_no_survey_day_still_has_its_pickup(self):
 		"""The fallback matters as much as the rule: a booking whose survey nobody has
 		scheduled yet still has a truck coming, and dropping it to the bottom would hide it."""

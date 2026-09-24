@@ -315,7 +315,7 @@ def list_cleaning_orders(status=None, search=None, depot=None, principal=None, c
 		filters["cleaning_type"] = cleaning_type
 	if day:
 		d = getdate(day)
-		filters["order_created"] = ["between", [d, d]]
+		filters["plan_date"] = d
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
@@ -327,10 +327,12 @@ def list_cleaning_orders(status=None, search=None, depot=None, principal=None, c
 	# orders are a few thousand rows at most — two cheap columns each.
 	# ponytail: whole-scope scan per page; move to SQL CASE ordering if the table gets big.
 	rows = frappe.get_all("Cleaning Order", filters=filters, or_filters=or_filters,
-						  fields=["name", "status", "order_created", "creation", "target_lift_on",
+						  fields=["name", "status", "plan_date", "order_created", "creation", "target_lift_on",
 								  "target_survey_on", "target_urgent_on"], limit_page_length=0)
+	# The list's day is the order's Cleaning Plan Date — the day the wash is scheduled for, not
+	# the day the order happened to be generated.
 	for r in rows:
-		r["day"] = str(getdate(r.order_created or r.creation))
+		r["day"] = str(getdate(r.plan_date or r.order_created or r.creation))
 	if sort in ("newest", "oldest"):
 		newest = sort == "newest"
 		# Stable sorts, least significant first: time, then status rank (always ascending), then day.
@@ -340,27 +342,24 @@ def list_cleaning_orders(status=None, search=None, depot=None, principal=None, c
 		for r in rows:
 			r["group"] = r.day
 	else:
-		# Default = the order the worklist always had (worklist.sort_by_priority): urgent, then
-		# nearest survey / pickup day, started first. Finished orders sink below the open ones.
+		# Default = worklist.sort_by_priority: urgent, then nearest plan date, started first.
+		# Finished orders sink below the open ones.
 		from container_depot.container_depot.worklist import sort_by_priority
 
 		rows.sort(key=lambda r: str(r.order_created or r.creation))
-		rows = sort_by_priority(rows, lambda r: r.status == "In_Progress")
+		rows = sort_by_priority(rows, lambda r: r.status == "In_Progress", date_of=lambda r: r.day)
 		rows.sort(key=lambda r: 1 if r.status in ("Completed", "Cancelled") else 0)
 		for r in rows:
-			due = r.target_urgent_on or r.target_survey_on or r.target_lift_on
-			if r.status in ("Completed", "Cancelled"):
-				r["group"] = r.day
-			else:
-				# "urgent" = tier mendesak sendiri; "" = belum ada tanggal target.
-				r["group"] = "urgent" if r.target_urgent_on else (str(getdate(due)) if due else "")
+			# "urgent" = tier mendesak sendiri.
+			open_urgent = r.target_urgent_on and r.status not in ("Completed", "Cancelled")
+			r["group"] = "urgent" if open_urgent else r.day
 	day_counts: dict = {}
 	for r in rows:
 		day_counts[r.group] = day_counts.get(r.group, 0) + 1
 	page = rows[cint(start):cint(start) + (cint(page_length) or 20)]
 
 	fields = ["name", "order_id", "reff_doc", "container", "container_no", "container_principal",
-			  "status", "docstatus", "cleaning_type", "last_cargo", "depot", "order_created", "cleaning_start",
+			  "status", "docstatus", "cleaning_type", "last_cargo", "depot", "plan_date", "order_created", "cleaning_start",
 			  "cleaning_end", "assigned_to", "revision_requested", "target_lift_on", "target_survey_on",
 			  "target_urgent_on"]
 	by_name = {
@@ -597,6 +596,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		"order_id": co.order_id,
 		"status": co.status,
 		"docstatus": co.docstatus,
+		"plan_date": str(co.plan_date) if co.plan_date else None,
 		"container": co.container,
 		"container_no": co.container_no or c.container_no,
 		# A standing revision request — the Riwayat detail shows it instead of offering the

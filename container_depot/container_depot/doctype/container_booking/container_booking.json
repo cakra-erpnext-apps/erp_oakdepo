@@ -472,11 +472,11 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-23 20:00:00.000000",
+ "modified": "2026-09-24 12:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",
- "sort_field": "creation",
+ "sort_field": "plan_date",
  "sort_order": "DESC",
  "title_field": "customer",
  "track_changes": 1

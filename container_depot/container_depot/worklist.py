@@ -68,7 +68,7 @@ def priority_date(row):
 	return row.get("target_survey_on") or row.get("target_lift_on")
 
 
-def sort_by_priority(items: list, started, start=0, page_length=None) -> list:
+def sort_by_priority(items: list, started, start=0, page_length=None, date_of=None) -> list:
 	"""Order ``items`` by the four tiers above, then slice one page out of them.
 
 	Urgent rows are ordered among themselves by their urgent day — the tier lifts them above
@@ -78,12 +78,15 @@ def sort_by_priority(items: list, started, start=0, page_length=None) -> list:
 	dikerjakan" (a status, or the stamp its Mulai writes), so the order always agrees with
 	the Belum / Dikerjakan split the same screen shows.
 
+	``date_of`` replaces :func:`priority_date` for tier 1 — the Cleaning and M&R lists pass
+	the order's own plan date, which is the day the depot scheduled that job for.
+
 	Python's sort is stable, so whatever the query's own ``order_by`` decided still settles
 	ties inside a tier — that is where "oldest first" comes from, not from this function.
 	"""
 	items.sort(key=lambda r: (
 		0 if urgent_date(r) else 1,
-		getdate(urgent_date(r) or priority_date(r) or _NO_DATE),
+		getdate(urgent_date(r) or (date_of or priority_date)(r) or _NO_DATE),
 		0 if started(r) else 1,
 	))
 	pl = cint(page_length or 0)

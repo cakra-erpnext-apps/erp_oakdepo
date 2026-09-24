@@ -230,7 +230,7 @@
    "fieldname": "target_lift_on",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "Target Lift-On",
+   "label": "Plan Out Date",
    "no_copy": 1,
    "read_only": 1,
    "hidden": 1
@@ -396,12 +396,12 @@
   }
  ],
  "links": [],
- "modified": "2026-09-23 18:00:00.000000",
+ "modified": "2026-09-24 13:30:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",
  "search_fields": "repair_order_id, container, status",
- "sort_field": "creation",
+ "sort_field": "plan_date",
  "sort_order": "DESC",
  "title_field": "container_no",
  "track_changes": 1
