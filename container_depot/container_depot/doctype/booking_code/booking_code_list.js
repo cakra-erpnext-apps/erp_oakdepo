@@ -24,6 +24,13 @@ frappe.listview_settings["Booking Code"] = {
 			Expired: "orange",
 			Cancelled: "red",
 		};
-		return [__(doc.state), colours[doc.state] || "gray", `state,=,${doc.state}`];
+		const labels = {
+			Active: "Aktif",
+			Used: "Terpakai",
+			Reissued: "Diterbitkan Ulang",
+			Expired: "Kedaluwarsa",
+			Cancelled: "Dibatalkan",
+		};
+		return [__(labels[doc.state] || doc.state), colours[doc.state] || "gray", `state,=,${doc.state}`];
 	},
 };

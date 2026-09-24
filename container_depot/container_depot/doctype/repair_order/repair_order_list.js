@@ -49,16 +49,16 @@ frappe.listview_settings["Repair Order"] = {
 	// name the same status the same way.
 	get_indicator(doc) {
 		const map = {
-			Draft: [__("Draf"), "gray", "status,=,Draft"],
+			Draft: container_depot.status_pill("draft", "status,=,Draft"),
 			"Pending Approval": [__("Menunggu Persetujuan"), "orange", "status,=,Pending Approval"],
 			Approved: [__("Disetujui"), "green", "status,=,Approved"],
 			Rejected: [__("Ditolak"), "red", "status,=,Rejected"],
-			"Revision Requested": [__("Minta Revisi"), "pink", "status,=,Revision Requested"],
-			Pending: [__("Siap Dikerjakan"), "orange", "status,=,Pending"],
-			"In Progress": [__("Dikerjakan"), "yellow", "status,=,In Progress"],
-			"Pending Review": [__("Menunggu Review"), "purple", "status,=,Pending Review"],
-			Completed: [__("Selesai"), "blue", "status,=,Completed"],
-			Cancelled: [__("Dibatalkan"), "red", "status,=,Cancelled"],
+			"Revision Requested": container_depot.status_pill("revision", "status,=,Revision Requested"),
+			Pending: container_depot.status_pill("ready", "status,=,Pending"),
+			"In Progress": container_depot.status_pill("doing", "status,=,In Progress"),
+			"Pending Review": container_depot.status_pill("review", "status,=,Pending Review"),
+			Completed: container_depot.status_pill("done", "status,=,Completed"),
+			Cancelled: container_depot.status_pill("cancelled", "status,=,Cancelled"),
 		};
 		return map[doc.status] || [__(doc.status || "-"), "gray", `status,=,${doc.status || ""}`];
 	},

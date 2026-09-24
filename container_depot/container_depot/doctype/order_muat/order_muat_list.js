@@ -22,16 +22,16 @@ frappe.listview_settings["Order Muat"] = {
 	has_indicator_for_cancelled: 1,
 
 	get_indicator(doc) {
-		if (doc.docstatus === 0) return [__("Draf"), "gray", "docstatus,=,0"];
+		if (doc.docstatus === 0) return container_depot.status_pill("draft", "docstatus,=,0");
 		if (doc.docstatus === 2) return [__("Void"), "red", "docstatus,=,2"];
 		const map = {
 			// Bon sudah terbit, EIR belum jalan.
 			Issued: [__("Diterbitkan"), "orange", "order_status,=,Issued"],
 			"EIR In Progress": [__("EIR Berjalan"), "yellow", "order_status,=,EIR In Progress"],
 			"Ready To Load": [__("Siap Muat"), "green", "order_status,=,Ready To Load"],
-			Completed: [__("Selesai"), "blue", "order_status,=,Completed"],
+			Completed: container_depot.status_pill("done", "order_status,=,Completed"),
 			// Ditahan — EIR menemukan masalah; bukan batal, hanya berhenti sementara.
-			Hold: [__("Ditahan"), "purple", "order_status,=,Hold"],
+			Hold: [__("Ditahan"), "pink", "order_status,=,Hold"],
 		};
 		return map[doc.order_status] || [__(doc.order_status || "-"), "gray", `order_status,=,${doc.order_status || ""}`];
 	},

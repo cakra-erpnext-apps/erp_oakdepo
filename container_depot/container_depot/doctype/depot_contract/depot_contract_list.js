@@ -19,6 +19,7 @@ frappe.listview_settings["Depot Contract"] = {
 			Amended: "blue",
 		};
 		const colour = COLOURS[doc.status] || "grey";
-		return [__(doc.status), colour, `status,=,${doc.status}`];
+		const LABELS = { Draft: "Draf", Active: "Aktif", Expired: "Kedaluwarsa", Amended: "Diganti" };
+		return [__(LABELS[doc.status] || doc.status), colour, `status,=,${doc.status}`];
 	},
 };

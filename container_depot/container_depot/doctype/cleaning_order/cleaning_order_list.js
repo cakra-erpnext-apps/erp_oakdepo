@@ -44,13 +44,13 @@ frappe.listview_settings["Cleaning Order"] = {
 	get_indicator(doc) {
 		// A cancelled document is cancelled whatever stage its status was left at.
 		if (doc.docstatus === 2) {
-			return [__("Dibatalkan"), "red", "docstatus,=,2"];
+			return container_depot.status_pill("cancelled", "docstatus,=,2");
 		}
 		// A finished order the field asked to reopen (PWA "Ajukan Revisi") needs Admin Ops,
 		// so it outranks the plain "Selesai" badge — otherwise the request leaves no mark
 		// anywhere in the list.
 		if (doc.docstatus === 1 && doc.revision_requested) {
-			return [__("Revisi Diminta"), "orange", "revision_requested,=,1"];
+			return container_depot.status_pill("revision", "revision_requested,=,1");
 		}
 		// Colour convention, shared by every Container Depot list: grey = draft /
 		// belum jalan, red = dibatalkan or void, blue = the terminal "done" state,
@@ -61,13 +61,13 @@ frappe.listview_settings["Cleaning Order"] = {
 			// Belum diteruskan — Admin Ops masih memilih metode cleaning (ini drafnya).
 			"Service Setup": [__("Belum Diteruskan"), "gray", "status,=,Service Setup"],
 			// Sudah diteruskan ke operator cuci, menunggu dikerjakan.
-			Pending: [__("Menunggu Operator"), "orange", "status,=,Pending"],
+			Pending: container_depot.status_pill("ready", "status,=,Pending"),
 			// Operator sedang mengerjakan.
-			In_Progress: [__("Dikerjakan"), "yellow", "status,=,In_Progress"],
+			In_Progress: container_depot.status_pill("doing", "status,=,In_Progress"),
 			// Selesai di lapangan, menunggu Admin Ops memeriksa lalu Submit.
-			"Pending Review": [__("Menunggu Review"), "purple", "status,=,Pending Review"],
-			Completed: [__("Selesai"), "blue", "status,=,Completed"],
-			Cancelled: [__("Dibatalkan"), "red", "status,=,Cancelled"],
+			"Pending Review": container_depot.status_pill("review", "status,=,Pending Review"),
+			Completed: container_depot.status_pill("done", "status,=,Completed"),
+			Cancelled: container_depot.status_pill("cancelled", "status,=,Cancelled"),
 		};
 		return map[doc.status] || [__(doc.status), "gray", `status,=,${doc.status}`];
 	},

@@ -26,7 +26,7 @@ const STATUS_OPTIONS = [
 	{ value: 'Draft', label: __('Draf') },
 	{ value: 'Pending Review', label: __('Menunggu Review') },
 	{ value: 'Submitted', label: __('Selesai') },
-	{ value: 'Cancelled', label: __('Batal') },
+	{ value: 'Cancelled', label: __('Dibatalkan') },
 ];
 
 frappe.listview_settings['Inspection'] = {
@@ -83,21 +83,21 @@ frappe.listview_settings['Inspection'] = {
 	// blue = the terminal submitted state, any other colour = a stage in between. So a
 	// draft EIR is no longer alarming red, and a cancelled one no longer quiet grey.
 	get_indicator(doc) {
-		if (doc.docstatus === 2) return [__('Batal'), 'red', 'docstatus,=,2'];
+		if (doc.docstatus === 2) return container_depot.status_pill('cancelled', 'docstatus,=,2');
 		// A submitted EIR with a pending revision request stands out (needs Admin Ops).
 		if (doc.docstatus === 1 && doc.revision_requested) {
-			return [__('Revisi Diminta'), 'orange', 'revision_requested,=,1'];
+			return container_depot.status_pill('revision', 'revision_requested,=,1');
 		}
-		if (doc.docstatus === 1) return [__('Selesai'), 'blue', 'docstatus,=,1'];
+		if (doc.docstatus === 1) return container_depot.status_pill('done', 'docstatus,=,1');
 		// Field operator submitted → awaiting Admin Ops review + final submit.
 		if (doc.status === 'Pending Review') {
-			return [__('Menunggu Review'), 'purple', 'status,=,Pending Review'];
+			return container_depot.status_pill('review', 'status,=,Pending Review');
 		}
 		// "Mulai" pressed in the PWA (start_eir stamps work_started_on) but not yet sent for
 		// review — the same belum / dikerjakan split the PWA worklist shows, so a draft that
 		// somebody is actually standing at the tank filling in no longer reads as untouched.
-		if (doc.work_started_on) return [__('Dikerjakan'), 'yellow', 'work_started_on,is,set'];
-		return [__('Draf'), 'gray', 'docstatus,=,0'];
+		if (doc.work_started_on) return container_depot.status_pill('doing', 'work_started_on,is,set');
+		return container_depot.status_pill('draft', 'docstatus,=,0');
 	},
 
 	// "Dibuat" as a column. Mulai Pengerjaan / Dimulai Oleh are ordinary docfields and get

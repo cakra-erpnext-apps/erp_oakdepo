@@ -2,10 +2,10 @@ frappe.listview_settings["Storage Charge"] = {
 	add_fields: ["status"],
 	get_indicator(doc) {
 		return {
-			Berjalan: [__("Berjalan"), "blue", "status,=,Berjalan"],
-			Unpaid: [__("Unpaid"), "orange", "status,=,Unpaid"],
-			"Partly Paid": [__("Partly Paid"), "yellow", "status,=,Partly Paid"],
-			Paid: [__("Paid"), "green", "status,=,Paid"],
+			Berjalan: [__("Berjalan"), "yellow", "status,=,Berjalan"],
+			Unpaid: [__("Belum Dibayar"), "orange", "status,=,Unpaid"],
+			"Partly Paid": [__("Dibayar Sebagian"), "purple", "status,=,Partly Paid"],
+			Paid: [__("Lunas"), "blue", "status,=,Paid"],
 		}[doc.status];
 	},
 };

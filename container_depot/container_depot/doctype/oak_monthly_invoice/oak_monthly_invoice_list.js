@@ -15,9 +15,9 @@ frappe.listview_settings["OAK Monthly Invoice"] = {
 
 	get_indicator(doc) {
 		if (doc.docstatus === 2 || doc.status === "Cancelled") {
-			return [__("Dibatalkan"), "red", "status,=,Cancelled"];
+			return container_depot.status_pill("cancelled", "status,=,Cancelled");
 		}
-		if (doc.docstatus === 0) return [__("Draf"), "gray", "docstatus,=,0"];
+		if (doc.docstatus === 0) return container_depot.status_pill("draft", "docstatus,=,0");
 		if (doc.status === "Paid") return [__("Lunas"), "blue", "status,=,Paid"];
 		return [__("Belum Dibayar"), "orange", "status,=,Unpaid"];
 	},

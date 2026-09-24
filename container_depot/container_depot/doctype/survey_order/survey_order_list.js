@@ -1,10 +1,9 @@
-// Survey Order list — pill status yang sama dengan PWA, plus penanda prioritas.
+// Survey Order list — pill status standar (public/js/status_pill.js), plus penanda prioritas.
 //
 // Pill bawaan Frappe untuk doctype submittable (Draft / Submitted) tidak berarti apa-apa di
-// sini: jadwal submit sendiri saat semua tank selesai, jadi "Draft" = Terjadwal ATAU
-// Dikerjakan. `get_indicator` membaca `status` dengan label yang sama dengan PWA, dan warna
-// standar Desk app ini (lihat repair_order_list.js): menunggu dikerjakan = orange,
-// Dikerjakan = yellow, Selesai = blue, Dibatalkan = red. Juga dipakai di kepala form.
+// sini: jadwal submit sendiri saat semua tank selesai, jadi "Draft" = Siap Dikerjakan ATAU
+// Dikerjakan. `get_indicator` membaca `status` dan memetakannya ke kosakata standar yang sama
+// dengan Cleaning / Repair Order. Juga dipakai di kepala form.
 //
 // Urgensinya dipasang di booking dan turun ke BARIS tank, jadi headernya meringkas tanggal
 // mendesak paling dekat di antara tank-nya (`survey_order.refresh_urgency`) — satu tank
@@ -19,10 +18,10 @@
 const PRIORITY = { urgent: "target_urgent_on", survey: "survey_date", due: "plan_date" };
 
 const STATUS = {
-	Scheduled: ["Terjadwal", "orange"],
-	"In Progress": ["Dikerjakan", "yellow"],
-	Completed: ["Selesai", "blue"],
-	Cancelled: ["Dibatalkan", "red"],
+	Scheduled: "ready",
+	"In Progress": "doing",
+	Completed: "done",
+	Cancelled: "cancelled",
 };
 
 frappe.listview_settings["Survey Order"] = {
@@ -32,7 +31,7 @@ frappe.listview_settings["Survey Order"] = {
 
 	get_indicator(doc) {
 		const s = STATUS[doc.status];
-		return s && [__(s[0]), s[1], `status,=,${doc.status}`];
+		return s && container_depot.status_pill(s, `status,=,${doc.status}`);
 	},
 
 	formatters: {

@@ -49,10 +49,9 @@ const BON_COLOURS = {
 // most of it — while the states the depot actually works by (Pending Payment, Blocked)
 // showed up in neither. Teaching the indicator to read booking_status collapses them.
 //
-// Colour convention, shared by every Container Depot list: grey = draft, red =
-// dibatalkan / void, blue = the terminal "confirmed / submitted" state, any other
-// colour = a stage in between. Blocked is a hold, not a cancellation, so it stays out
-// of red — it gets pink, which still shouts across a list.
+// Colour convention: the shared standard in public/js/status_pill.js. Blocked is a hold,
+// not a cancellation, so it stays out of red — it gets pink, which still shouts across a
+// list.
 const STATUS_COLOURS = {
 	Draft: 'grey',
 	// A customer's draft that has been handed over ("Ajukan"). Purple because it is nobody's
@@ -61,12 +60,22 @@ const STATUS_COLOURS = {
 	Pengajuan: 'purple',
 	'Pending Payment': 'orange',
 	'Pending Confirmation': 'yellow',
-	Confirmed: 'blue',
-	// Every tank on it has left. Green rather than blue: Confirmed is where a booking starts
-	// being work, this is where it stops being work at all.
-	Completed: 'green',
+	// Standar warna (public/js/status_pill.js): green = disetujui / siap, blue = tahap akhir.
+	Confirmed: 'green',
+	Completed: 'blue',
 	Cancelled: 'red',
 	Blocked: 'pink',
+};
+
+// Label pill dalam kosakata standar; nilai tersimpan tetap bahasa Inggris.
+const STATUS_LABELS = {
+	Draft: 'Draf',
+	'Pending Payment': 'Menunggu Pembayaran',
+	'Pending Confirmation': 'Menunggu Konfirmasi',
+	Confirmed: 'Dikonfirmasi',
+	Completed: 'Selesai',
+	Cancelled: 'Dibatalkan',
+	Blocked: 'Diblokir',
 };
 
 // Tenggat booking ini, urut seperti `container_depot/worklist.py` mengurutkannya. Di sinilah
@@ -145,9 +154,9 @@ frappe.listview_settings['Container Booking'] = {
 	// was the widest thing in the row.
 	hide_name_filter: true,
 	get_indicator(doc) {
-		if (doc.docstatus === 2) return [__('Cancelled'), 'red', 'docstatus,=,2'];
+		if (doc.docstatus === 2) return container_depot.status_pill('cancelled', 'docstatus,=,2');
 		const status = doc.booking_status || 'Draft';
-		return [__(status), STATUS_COLOURS[status] || 'grey', `booking_status,=,${status}`];
+		return [__(STATUS_LABELS[status] || status), STATUS_COLOURS[status] || 'grey', `booking_status,=,${status}`];
 	},
 	onload(listview) {
 		container_depot.priority_column(listview, PRIORITY.urgent);

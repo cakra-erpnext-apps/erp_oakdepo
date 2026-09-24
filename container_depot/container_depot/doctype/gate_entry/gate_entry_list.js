@@ -38,7 +38,7 @@ frappe.listview_settings['Gate Entry'] = {
 			EIR_Completed: [__('EIR Selesai'), 'purple', 'status,=,EIR_Completed'],
 			// The terminal, and the only state that occurs today.
 			Gate_Out_Completed: [__('Keluar'), 'blue', 'status,=,Gate_Out_Completed'],
-			Cancelled: [__('Batal'), 'red', 'status,=,Cancelled'],
+			Cancelled: container_depot.status_pill('cancelled', 'status,=,Cancelled'),
 		};
 		return map[doc.status] || [doc.status || __('Draf'), 'gray', 'status,=,' + (doc.status || '')];
 	},
