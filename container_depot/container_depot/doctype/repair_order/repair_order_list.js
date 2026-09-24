@@ -63,12 +63,6 @@ frappe.listview_settings["Repair Order"] = {
 		return map[doc.status] || [__(doc.status || "-"), "gray", `status,=,${doc.status || ""}`];
 	},
 
-	// A Datetime field with in_standard_filter would only give an "=" box, which is useless
-	// for a created-on search. Add a DateRange control instead: its value is a [from, to]
-	// pair and its `between` condition is what get_standard_filters passes to the server,
-	// which widens the two dates to 00:00:00 / 23:59:59 for the Datetime column.
-	// Added in onload (not via custom_filter_configs) so it lands AFTER the doctype's own
-	// standard filters rather than ahead of them.
 	// Dua menu sidebar, satu doctype (lihat container_depot/mr_scope.py): judul dan menu yang
 	// menyala mengikuti filter job_type, supaya M&R dan Periodic Test tidak terbaca satu menu.
 	refresh(listview) {
@@ -87,6 +81,12 @@ frappe.listview_settings["Repair Order"] = {
 		}
 	},
 
+	// A Datetime field with in_standard_filter would only give an "=" box, which is useless
+	// for a created-on search. Add a DateRange control instead: its value is a [from, to]
+	// pair and its `between` condition is what get_standard_filters passes to the server,
+	// which widens the two dates to 00:00:00 / 23:59:59 for the Datetime column.
+	// Added in onload (not via custom_filter_configs) so it lands AFTER the doctype's own
+	// standard filters rather than ahead of them.
 	onload(listview) {
 		const filter_area = listview.filter_area;
 		listview.page.add_field(

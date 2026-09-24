@@ -403,7 +403,7 @@ app_include_js = [
 	# Sidebar Desk: backport perbaikan Frappe untuk sidebar yang hilang saat workspace
 	# di-refresh, plus aturan "menu Container Depot tetap di sidebar Container Depot"
 	# (lihat file-nya).
-	"/assets/container_depot/js/sidebar_workspace_fix.js?v=2",
+	"/assets/container_depot/js/sidebar_workspace_fix.js?v=3",
 	# container_depot.render_system_facts — the shared sidebar block every depot document
 	# shows its system-filled facts in (see the file).
 	"/assets/container_depot/js/system_facts.js?v=2",

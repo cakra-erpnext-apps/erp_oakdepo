@@ -96,4 +96,45 @@
 		// Bukan menu app ini (atau ada yang tidak beres di atas) → serahkan ke Frappe.
 		return set_workspace_sidebar.call(this, router);
 	};
+
+	// --- 3. Dua menu, satu doctype, dibedakan route_options ----------------------------------
+	// "M&R" dan "Periodic Test" sama-sama Repair Order (lihat mr_scope.py), bedanya cuma
+	// ?job_type=. `is_route_in_sidebar` Frappe mencocokkan path saja (query dibuang), jadi
+	// dua item itu kembar dan yang terakhir — Periodic Test — selalu menyala, di menu mana pun
+	// user berada. Untuk doctype yang punya item ber-query, pilih item yang query-nya cocok
+	// dengan filter list / isi dokumen yang sedang dibuka. Filter list baru terpasang sesudah
+	// rute berganti, jadi list/form doctype itu memanggil `set_active_workspace_item()` lagi
+	// di `refresh`-nya.
+	function current_values(doctype) {
+		const view = frappe.get_route()[0];
+		if (view === "List" && window.cur_list?.doctype === doctype) {
+			const eq = cur_list.filters.filter((f) => f[2] === "=");
+			return Object.fromEntries(eq.map((f) => [f[1], f[3]]));
+		}
+		if (view === "Form" && window.cur_frm?.doctype === doctype) return cur_frm.doc;
+		return {};
+	}
+
+	const is_route_in_sidebar = Sidebar.prototype.is_route_in_sidebar;
+	Sidebar.prototype.is_route_in_sidebar = function () {
+		const [view, doctype] = frappe.get_route();
+		const base = ["List", "Form"].includes(view) && `/desk/${frappe.router.slug(doctype)}`;
+		const twins = $(".item-anchor")
+			.toArray()
+			.filter((a) => {
+				const [path, query] = (a.getAttribute("href") || "").split("?");
+				return base && query && path.replace(/\/view\/list$/, "") === base;
+			});
+		if (!twins.length) return is_route_in_sidebar.call(this);
+
+		const values = current_values(doctype);
+		const hit = twins.find((a) =>
+			[...new URLSearchParams(a.getAttribute("href").split("?")[1])].every(
+				([k, v]) => String(values[k] ?? "") === v
+			)
+		);
+		if (this.active_item) this.active_item.removeClass("active-sidebar");
+		this.active_item = hit ? $(hit).parent() : null;
+		return !!hit;
+	};
 })();

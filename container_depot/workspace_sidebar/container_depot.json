@@ -293,7 +293,7 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "wrench",
-   "filters": "[[\"Repair Order\", \"job_type\", \"=\", \"Repair\", false]]"
+   "route_options": "{\"job_type\": \"Repair\"}"
   },
   {
    "child": 1,
@@ -306,7 +306,7 @@
    "show_arrow": 0,
    "type": "Link",
    "icon": "gauge",
-   "filters": "[[\"Repair Order\", \"job_type\", \"=\", \"Periodic Test\", false]]"
+   "route_options": "{\"job_type\": \"Periodic Test\"}"
   },
   {
    "child": 1,
@@ -792,7 +792,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-24 10:30:00.000000",
+ "modified": "2026-09-24 14:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

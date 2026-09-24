@@ -276,6 +276,9 @@ frappe.ui.form.on('Repair Order', {
 		});
 	},
 	refresh(frm) {
+		// M&R atau Periodic Test — nyalakan menu sidebar yang sesuai job_type order ini
+		// (lihat public/js/sidebar_workspace_fix.js).
+		frappe.app.sidebar?.set_active_workspace_item();
 		frm.trigger('_set_queries');
 		frm.trigger('_refresh_on_hand');
 		frm.trigger('_render_system_facts');
