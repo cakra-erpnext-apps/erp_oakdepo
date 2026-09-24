@@ -2,7 +2,7 @@
 	<!-- One column while the operator is still picking containers, two once the truck form
 	     opens — a permanently split screen would leave half of it empty for the half of the
 	     job that is just scanning. -->
-	<div class="mx-auto w-full max-w-lg" :class="step === 'container' ? '' : 'md:max-w-5xl'">
+	<div class="mx-auto w-full max-w-lg" :class="step === 'container' ? 'md:max-w-2xl' : 'md:max-w-5xl'">
 		<!-- Page header. The direction chip is READ, never chosen: a booking already knows
 		     whether its tank is coming in or going out, and the operator scanning it is
 		     reporting a truck at the barrier, not deciding what the truck is doing. The old
@@ -250,35 +250,39 @@
 							     tap and three. -->
 							<ul class="space-y-2">
 								<li v-for="c in detail.containers" :key="c.booking_code">
-									<component
-										:is="pickable(c) ? 'button' : 'div'"
-										class="oak-card block w-full p-3 text-left transition"
+									<!-- A native <button>, never <component :is="'button'">: frappe-ui registers a
+									     global `Button`, and Vue resolves the dynamic 'button' to it — its
+									     inline-flex/justify-center/h-7 classes squash the card into a centred strip. -->
+									<button
+										type="button"
+										class="oak-card block w-full p-3.5 text-left transition disabled:cursor-default"
 										:class="[
 											selected.includes(c.booking_code)
 												? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
 												: '',
-											pickable(c) ? 'oak-press' : 'opacity-90',
+											pickable(c) ? 'oak-press' : selectable(c) ? 'opacity-50' : '',
 										]"
-										@click="pickable(c) && toggle(c)"
+										:disabled="!pickable(c)"
+										@click="toggle(c)"
 									>
 										<div class="flex items-center gap-3">
 											<span
 												v-if="selectable(c)"
-												class="oak-icon-tile h-5 w-5 shrink-0 rounded-md border-2 transition"
+												class="oak-icon-tile h-6 w-6 shrink-0 rounded-lg border-2 transition"
 												:class="
 													selected.includes(c.booking_code)
 														? 'border-brand-600 bg-brand-600 text-white'
 														: 'border-gray-300 text-transparent'
 												"
 											>
-												<Icon name="check" :size="13" :stroke="3" />
+												<Icon name="check" :size="15" :stroke="3" />
 											</span>
 											<span v-else class="oak-icon-tile h-8 w-8 shrink-0 bg-gray-100 text-gray-400">
 												<Icon name="package" :size="16" />
 											</span>
 											<div class="min-w-0 flex-1">
 												<p
-													class="truncate font-semibold"
+													class="truncate text-base font-bold tracking-wide"
 													:class="c.container_no || c.container ? 'text-gray-900' : 'text-gray-400'"
 												>
 													{{ c.container_no || c.container || labels.gateNoNumber }}
@@ -328,7 +332,7 @@
 												</li>
 											</ul>
 										</div>
-									</component>
+									</button>
 								</li>
 							</ul>
 						</template>
