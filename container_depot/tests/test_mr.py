@@ -722,8 +722,9 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		self.assertEqual(mr._out_of_stock_items(None), set())
 
 	def test_part_cannot_exceed_stock_on_hand(self):
-		"""Stock must exist before a part can be put on the M&R — and the demand is summed
-		per item, so two rows of one part are a single demand of two."""
+		"""A Draft may hold a part its gudang cannot cover (a copied line lands anyway), but
+		the order cannot leave Draft until the stock is there — and the demand is summed per
+		item, so two rows of one part are a single demand of two."""
 		self._ensure_item()
 		warehouse = self._ensure_warehouse()
 		self._receive_stock(warehouse, 1)
@@ -731,26 +732,23 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
 		self._orders.append(ro)
 
-		with self.assertRaises(frappe.ValidationError):
-			mr.save_mr_order(
-				repair_order=ro, used_items=[{"item": _ITEM, "quantity": 2, "warehouse": warehouse}],
-				submit=False,
-			)
-		with self.assertRaises(frappe.ValidationError):
-			mr.save_mr_order(
-				repair_order=ro,
-				used_items=[
-					{"item": _ITEM, "quantity": 1, "warehouse": warehouse},
-					{"item": _ITEM, "quantity": 1, "warehouse": warehouse},
-				],
-				submit=False,
-			)
+		for used_items in (
+			[{"item": _ITEM, "quantity": 2, "warehouse": warehouse}],
+			[
+				{"item": _ITEM, "quantity": 1, "warehouse": warehouse},
+				{"item": _ITEM, "quantity": 1, "warehouse": warehouse},
+			],
+		):
+			self.assertTrue(mr.save_mr_order(repair_order=ro, used_items=used_items, submit=False)["success"])
+			with self.assertRaises(frappe.ValidationError):
+				mr.forward_to_team(ro)
+			self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Draft")
 		# Exactly what is on hand goes through.
-		res = mr.save_mr_order(
+		mr.save_mr_order(
 			repair_order=ro, used_items=[{"item": _ITEM, "quantity": 1, "warehouse": warehouse}],
 			submit=False,
 		)
-		self.assertTrue(res["success"])
+		self.assertTrue(mr.forward_to_team(ro)["success"])
 
 	def test_owner_rejected_line_is_not_checked_against_stock(self):
 		"""A rejected line is never issued, so it must not be counted against stock either
@@ -782,13 +780,14 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
 		self._orders.append(ro)
 
-		# Pointing the row at B (empty) is refused even though A has plenty.
+		# Pointing the row at B (empty) cannot leave Draft even though A has plenty.
+		mr.save_mr_order(
+			repair_order=ro,
+			used_items=[{"item": _ITEM, "quantity": 1, "warehouse": wh_b}],
+			submit=False,
+		)
 		with self.assertRaises(frappe.ValidationError):
-			mr.save_mr_order(
-				repair_order=ro,
-				used_items=[{"item": _ITEM, "quantity": 1, "warehouse": wh_b}],
-				submit=False,
-			)
+			mr.publish_to_owner(ro)
 		# Pointing it at A goes through, and the row keeps its own gudang.
 		mr.save_mr_order(
 			repair_order=ro,

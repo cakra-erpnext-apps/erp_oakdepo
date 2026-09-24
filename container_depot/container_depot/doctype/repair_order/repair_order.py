@@ -172,9 +172,10 @@ class RepairOrder(Document):
 		"""
 		if self.get("stock_entry") or self.status in ("Completed", "Cancelled", "Rejected"):
 			return
-		from container_depot.container_depot.mr import assert_stock_available
+		from container_depot.container_depot.mr import MR_EDITABLE_STATUSES, assert_stock_available
 
-		assert_stock_available(self)
+		# Still being estimated: warn only, so copied lines land. Leaving Draft refuses.
+		assert_stock_available(self, warn=self.status in MR_EDITABLE_STATUSES)
 
 	def _validate_status_transition(self):
 		"""Enforce the owner-approval status machine (MR_TRANSITIONS). The transition

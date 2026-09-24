@@ -476,8 +476,9 @@ doctype_js = {
 	# "Barang Masuk" — restrict the item picker to stockable items (see the file).
 	"Purchase Receipt": "public/js/purchase_receipt.js",
 	"Container Booking": "public/js/lock_item_picker.js",
-	"Cleaning Order": "public/js/lock_item_picker.js",
-	"Repair Order": "public/js/lock_item_picker.js",
+	# charge_copy — "Ambil Charges" / "Simpan sebagai Template" (see the file).
+	"Cleaning Order": ["public/js/lock_item_picker.js", "public/js/charge_copy.js"],
+	"Repair Order": ["public/js/lock_item_picker.js", "public/js/charge_copy.js"],
 	# Rapikan form User baru + guard handler Role Profiles bawaan (lihat file-nya).
 	"User": "public/js/user.js",
 	# Tab "Portal Users" versi depot, menggantikan milik ERPNext (lihat file-nya).

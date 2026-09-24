@@ -102,7 +102,8 @@ class CleaningOrder(Document):
 			if row.warehouse:
 				assert_in_user_branch(branch=frappe.db.get_value("Warehouse", row.warehouse, "branch"))
 			want[(item, wh)] = want.get((item, wh), 0.0) + qty
-		mr.assert_stock_covers(want)
+		# Service Setup = still being put together: warn only. "Teruskan ke Team" refuses.
+		mr.assert_stock_covers(want, warn=self.status == "Service Setup")
 
 	def _issue_parts(self):
 		"""Take the parts out of their gudang as one Material Issue. Unlike the M&R there is no

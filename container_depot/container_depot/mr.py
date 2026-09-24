@@ -1433,7 +1433,7 @@ def on_hand_map(items, warehouse) -> dict:
 	return {code: _on_hand(code, warehouse) for code in stockable}
 
 
-def assert_stock_available(ro):
+def assert_stock_available(ro, warn=False):
 	"""Refuse an M&R whose gudang cannot cover its parts — stock must exist before the part
 	can be put on the order.
 
@@ -1447,12 +1447,17 @@ def assert_stock_available(ro):
 	catching the shortfall while the estimate is being typed, naming the part and the
 	numbers, instead of a raw Stock Entry error after the user presses Selesai.
 	"""
-	assert_stock_covers(_requested_stock_qty(ro))
+	assert_stock_covers(_requested_stock_qty(ro), warn=warn)
 
 
-def assert_stock_covers(want) -> None:
+def assert_stock_covers(want, warn=False) -> None:
 	"""Throw one message naming every ``{(item, gudang): qty}`` the gudang cannot cover.
-	Shared with the Cleaning Order, whose parts face the same guard."""
+	Shared with the Cleaning Order, whose parts face the same guard.
+
+	``warn`` = the order is still being put together (Draft / Service Setup): the shortfall
+	is shown but the save goes through, so a line copied from another order or a Charge
+	Template lands on the order anyway. The step that moves the order on runs this again
+	without ``warn`` and refuses."""
 	short = []
 	for (item_code, warehouse), qty in want.items():
 		if not warehouse:
@@ -1463,7 +1468,14 @@ def assert_stock_covers(want) -> None:
 			short.append(
 				_("{0} di {1} — diminta {2}, tersedia {3}").format(label, warehouse, flt(qty), flt(have))
 			)
-	if short:
+	if short and warn:
+		frappe.msgprint(
+			_("Stok tidak cukup — order ini belum bisa diteruskan sampai stoknya ada:<br>{0}").format(
+				"<br>".join(short)
+			),
+			title=_("Stok Tidak Cukup"), indicator="orange",
+		)
+	elif short:
 		frappe.throw(
 			_("Stok tidak cukup:<br>{0}").format("<br>".join(short)), title=_("Stok Tidak Cukup")
 		)

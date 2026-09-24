@@ -1782,6 +1782,10 @@ FIELD_ROLE_MATRIX = [
 	# Leak Check: Team Survey dan di atasnya (SPV; Admin Ops & Management lewat
 	# _office_role_perms). Wajib ada sebelum gate-out (gate.mark_gate_out); menu `leak`.
 	("Leak Check",                  ("",      "",      "",     "",       "",     "rwc",  "rwc")),
+	# Charge Template: daftar baris siap-salin milik tim yang menyusun Service & Parts —
+	# Cleaning, Repair (+ Periodic, kolom kembarnya) dan SPV. `d` karena template yang salah
+	# cuma merugikan penyalin berikutnya; order yang sudah menyalinnya menyimpan barisnya sendiri.
+	("Charge Template",             ("",      "",      "",     "rwcd",   "rwcd", "",     "rwcd")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 ]
