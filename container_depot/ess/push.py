@@ -288,7 +288,6 @@ def deliver(
 	tag: str = "",
 	endpoint: str | None = None,
 	event_key: str | None = None,
-	extra: dict | None = None,
 ):
 	"""Background job — send one payload to every live subscription of every user.
 
@@ -323,8 +322,7 @@ def deliver(
 	if not rows:
 		return 0
 
-	# ``extra`` rides along for the service worker (maintenance countdown: ``seconds``).
-	payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag or "depot", **(extra or {})})
+	payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag or "depot"})
 	sent = 0
 	for row in rows:
 		if _send_one(row, payload, private):
