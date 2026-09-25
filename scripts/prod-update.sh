@@ -157,10 +157,22 @@ docker restart \
 docker exec erp_oakdepo_prod-frontend-1 sh -c 'nginx -t -q && nginx -s reload'
 
 log "wait for backend"
+up=0
 for _ in $(seq 1 60); do
-  docker exec erp_oakdepo_prod-frontend-1 wget -q -O /dev/null --header "Host: $SITE" http://backend:8000/api/method/ping && break
+  if docker exec erp_oakdepo_prod-frontend-1 wget -q -O /dev/null --header "Host: $SITE" http://backend:8000/api/method/ping; then
+    up=1
+    break
+  fi
   sleep 2
 done
+# Backend tidak pernah hidup: jangan lapor DONE. Log-nya dicetak di sini supaya penyebabnya
+# terbaca tanpa masuk ke server lagi; situs menampilkan halaman maintenance (502) sampai beres.
+if [ "$up" != "1" ]; then
+  echo "BACKEND TIDAK HIDUP setelah 120 detik. Status + log terakhir:"
+  dc ps
+  docker logs --tail 80 erp_oakdepo_prod-backend-1 || true
+  exit 1
+fi
 
 log "maintenance off"
 rm -f "$MAINT"
