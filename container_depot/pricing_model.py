@@ -36,9 +36,8 @@ def active_contract(customer: str | None) -> str | None:
 	somebody's job to negotiate is not a default, and a visible 0 is the version the
 	operator can see and fix.
 
-	Newest first by ``valid_from``: a site briefly holding two Active contracts for one
-	customer (an amendment mid-flight) prices on the later agreement rather than on
-	whichever row the database happened to return first.
+	Depot Contract allows one Active contract per customer (_validate_single_active);
+	``valid_from desc`` only settles legacy rows that predate that guard.
 	"""
 	if not customer:
 		return None

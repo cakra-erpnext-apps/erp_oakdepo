@@ -27,6 +27,7 @@ class DepotContract(Document):
 	def validate(self):
 		self._validate_status_transition()
 		self._validate_amendment()
+		self._validate_single_active()
 		self._validate_date_window()
 		self._validate_payment_type()
 		self._validate_currency_vs_base_contract()
@@ -144,6 +145,32 @@ class DepotContract(Document):
 				_("{0} has already been amended. Amend its replacement instead.").format(
 					self.amends_contract
 				)
+			)
+
+	def _validate_single_active(self):
+		"""A customer has exactly one live contract — its tariff lines are THE rate card, and
+		get_active_contract would otherwise pick one of two silently. Checked only on the move
+		into Active; the one Active contract allowed to coexist for that instant is the one
+		this amendment is about to retire (see _supersede_amended_contract). Two amendments
+		of the same source trip this too: the second finds the first already Active."""
+		before = self.get_doc_before_save()
+		if self.status != "Active" or (before and before.status == "Active"):
+			return
+		clash = frappe.db.get_value(
+			"Depot Contract",
+			{
+				"customer": self.customer,
+				"status": "Active",
+				"name": ["not in", [self.name, self.amends_contract or ""]],
+			},
+			"name",
+		)
+		if clash:
+			frappe.throw(
+				_(
+					"{0} already has an Active contract ({1}). Only one contract may be active — "
+					"Amend {1} to change its terms, or Invalid it first."
+				).format(self.customer, clash)
 			)
 
 	def _validate_date_window(self):

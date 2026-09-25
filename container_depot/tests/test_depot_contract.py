@@ -208,25 +208,6 @@ class TestDepotContract(FrappeTestCase):
 		c.save(ignore_permissions=True)
 		self.assertEqual(pricing_model.resolve_price("Lift Off", c.name), 300000)
 
-	def test_the_newest_active_contract_is_the_one_that_prices(self):
-		"""Two Active contracts for one customer is a transient state (an amendment
-		mid-flight), and the later agreement is the one that counts. It used to be settled by
-		disabling the older contract's published list; now the resolver orders by
-		``valid_from``."""
-		from container_depot import pricing_model
-
-		c1 = _make_contract(
-			status="Active",
-			valid_from=add_days(today(), -10),
-			tariff_lines=[{"item": "Lift Off", "rate": 250000}],
-		)
-		c1.insert(ignore_permissions=True)
-		c2 = _make_contract(status="Active", tariff_lines=[{"item": "Lift Off", "rate": 260000}])
-		c2.insert(ignore_permissions=True)
-		customer = ensure_test_customer(CUSTOMER_NAME)
-		self.assertEqual(pricing_model.active_contract(customer), c2.name)
-		self.assertEqual(pricing_model.resolve_price("Lift Off", c2.name), 260000)
-
 	def test_void_takes_the_rate_card_out_of_service(self):
 		from container_depot import pricing_model
 
@@ -397,6 +378,29 @@ class TestDepotContract(FrappeTestCase):
 		)
 		with self.assertRaises(frappe.ValidationError):
 			second.insert(ignore_permissions=True)
+
+	def test_only_one_active_contract_per_customer(self):
+		from container_depot.container_depot.doctype.depot_contract.depot_contract import set_status
+
+		src = self._active_contract()
+		# A fresh (non-amendment) contract cannot go live beside src...
+		rival = _make_contract(status="Draft", tariff_lines=[{"item": "Lift Off", "rate": 1}])
+		rival.insert(ignore_permissions=True)
+		with self.assertRaises(frappe.ValidationError):
+			set_status(rival.name, "Active")
+		# ...nor can a second amendment of src once the first one has replaced it.
+		a1, a2 = (
+			_make_contract(status="Draft", amends_contract=src.name,
+				tariff_lines=[{"item": "Lift Off", "rate": r}]).insert(ignore_permissions=True)
+			for r in (2, 3)
+		)
+		set_status(a1.name, "Active")
+		with self.assertRaises(frappe.ValidationError):
+			set_status(a2.name, "Active")
+		active = frappe.get_all(
+			"Depot Contract", {"customer": src.customer, "status": "Active"}, pluck="name"
+		)
+		self.assertEqual(active, [a1.name])
 
 	# --- delete guard (Duplicate/Delete are off in the form) --------------
 	def test_draft_is_deletable_but_active_is_not(self):
