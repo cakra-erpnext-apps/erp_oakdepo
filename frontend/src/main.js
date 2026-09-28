@@ -2,6 +2,7 @@ import { createApp } from "vue"
 import App from "./App.vue"
 import router from "./router"
 import { pruneReads } from "@/data/cache"
+import { pruneStashedPhotos } from "@/data/send"
 import { watchSessionUser } from "@/data/session"
 import { initTheme } from "@/utils/theme"
 import { installLangHeader } from "@/utils/lang"
@@ -81,5 +82,6 @@ router.isReady().then(async () => {
 	// Also drops anything cached under a previous login — depot handsets change hands
 	// between shifts and one operator's branch-scoped worklist is not the next one's.
 	pruneReads()
+	pruneStashedPhotos()
 	app.mount("#app")
 })

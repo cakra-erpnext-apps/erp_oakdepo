@@ -24,7 +24,7 @@
 import { reactive } from "vue"
 
 import { link, noteLinkDown, noteLinkUp, noteSessionExpired } from "@/data/link"
-import { STORE_BLOBS, idbDelete, idbGet, idbPut, uid } from "@/utils/idb"
+import { STORE_BLOBS, idbDelete, idbGet, idbGetAll, idbPut, uid } from "@/utils/idb"
 import { compressPhoto } from "@/utils/photo"
 import { labels } from "@/utils/labels"
 import { dismissKey, toast } from "@/utils/toast"
@@ -34,8 +34,9 @@ const LOCAL_PREFIX = "local:"
 // --- stashed photos ---------------------------------------------------------
 
 // Object URLs for the stashed photos, so a template renders a not-yet-uploaded photo with
-// the same `:src` it uses for an uploaded one. Rebuilt by `hydratePreviews` after a reload,
-// because object URLs die with the document that made them.
+// the same `:src` it uses for an uploaded one. They die with the page, and so does every
+// reference to a stashed photo (drafts are server-side and never carry `local:` refs), which
+// is why pruneStashedPhotos can throw old ones away.
 const previews = reactive({})
 
 /** Park a picked photo locally and return the placeholder that stands in for its URL. */
@@ -82,20 +83,24 @@ export function photoSrc(ref) {
 	return previews[ref] || ""
 }
 
-/** Re-open object URLs for `refs` after a reload, so the form shows its photos again. */
-export async function hydratePreviews(refs) {
-	for (const ref of refs || []) {
-		if (!isLocalRef(ref) || previews[ref]) continue
-		try {
-			const row = await idbGet(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
-			if (row) previews[ref] = URL.createObjectURL(row.blob)
-		} catch {
-			/* a blob that will not load simply renders as a gap */
+const dropBlob = (ref) => idbDelete(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
+
+// A parked photo is only reachable from the form that took it, in the page that took it.
+// One still here after a reload was never sent and never will be — it only eats storage.
+// ponytail: age instead of "everything" so a second open tab keeps its fresh photos.
+const STASH_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
+/** Delete parked photos that failed to send and can no longer be sent. Run at startup. */
+export async function pruneStashedPhotos() {
+	try {
+		const cutoff = Date.now() - STASH_MAX_AGE_MS
+		for (const row of (await idbGetAll(STORE_BLOBS)) || []) {
+			if ((row.created_at || 0) < cutoff) await idbDelete(STORE_BLOBS, row.id)
 		}
+	} catch {
+		/* best effort */
 	}
 }
-
-const dropBlob = (ref) => idbDelete(STORE_BLOBS, ref.slice(LOCAL_PREFIX.length))
 
 // --- the send ---------------------------------------------------------------
 
