@@ -1086,7 +1086,6 @@ export const labels = {
 	statusUnpaid: "Belum bayar",
 	statusArrived: "Sudah masuk",
 	statusLeft: "Sudah keluar",
-	scheduleNoTime: "—", // belum dimulai: tidak ada jam yang benar untuk ditulis
 	// Kosakata status standar — utils/statusPill.js (cermin public/js/status_pill.js di Desk).
 	stageDraft: "Draf",
 	stageReady: "Siap Dikerjakan",
@@ -1101,6 +1100,7 @@ export const labels = {
 	bkStatusPendingConfirmation: "Menunggu Konfirmasi",
 	bkStatusConfirmed: "Dikonfirmasi",
 	bkStatusBlocked: "Diblokir",
+	scheduleNoTime: "—", // belum dimulai: tidak ada jam yang benar untuk ditulis
 	// Spanduk "yang tertinggal". Satu kalimat, dan kalimatnya menyebut jenisnya kalau semua
 	// yang tertinggal memang satu jenis — "1 booking belum beres" bisa langsung ditindak,
 	// "1 agenda belum beres" masih harus dibuka dulu.
