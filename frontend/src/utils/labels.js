@@ -538,6 +538,7 @@ export const labels = {
 	camDone: "Selesai", // close the viewfinder
 	camClose: "Tutup kamera", // aria-label on the X
 	camTorch: "Senter", // torch / flashlight toggle
+	camZoom: "Zoom", // aria-label on the 1× / 2× pill
 	camStarting: "Menyalakan kamera…", // Starting camera…
 	camCount: "foto diambil", // follows a number: "3 foto diambil"
 	// Rol foto di dalam viewfinder: satu petak per jepretan, dengan nasib unggahannya.

@@ -7,14 +7,34 @@
 			<!-- Viewfinder. object-cover so the frame fills a phone of any aspect ratio; the
 			     capture below reads the raw video, never this element, so nothing is lost to
 			     the crop the operator sees. -->
-			<div class="relative flex-1 overflow-hidden">
+			<div
+				class="relative flex-1 touch-none overflow-hidden"
+				@touchstart="pinchStart"
+				@touchmove="pinchMove"
+				@touchend="pinchEnd"
+				@touchcancel="pinchEnd"
+			>
+				<!-- Digital zoom scales the element; hardware zoom (zoomCap set) comes zoomed in
+				     the stream already and must not be scaled a second time. -->
 				<video
 					ref="video"
 					class="h-full w-full object-cover"
+					:style="!zoomCap && zoom > 1 ? { transform: `scale(${zoom})` } : null"
 					autoplay
 					playsinline
 					muted
 				></video>
+
+				<!-- Tap cycles 1× → 2× → 4×; pinch sets anything in between. -->
+				<button
+					v-if="!starting"
+					type="button"
+					class="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs font-semibold tabular-nums text-white backdrop-blur transition active:scale-95"
+					:aria-label="labels.camZoom"
+					@click="cycleZoom"
+				>
+					{{ zoomLabel }}
+				</button>
 
 				<!-- Satu kedip putih tiap jepretan. Bukan hiasan: di halaman yang shutter-nya
 				     tidak berbunyi dan tidak bergetar, kedipan inilah satu-satunya tanda
@@ -140,7 +160,17 @@ const starting = ref(false)
 const flash = ref(false)
 const hasTorch = ref(false)
 const torchOn = ref(false)
+const zoom = ref(1)
+// `{ min, max }` when the camera zooms optically/natively (Chrome on Android); null means
+// digital zoom — the preview is scaled and the capture cropped to match. iOS Safari lands
+// here: it has no zoom constraint.
+const zoomCap = ref(null)
+const DIGITAL_MAX = 4 // past this a cropped 1080p frame is too soft to read a serial
 let stream = null
+
+const zoomMin = computed(() => zoomCap.value?.min ?? 1)
+const zoomMax = computed(() => zoomCap.value?.max ?? DIGITAL_MAX)
+const zoomLabel = computed(() => `${zoom.value < 10 ? zoom.value.toFixed(1).replace(/\.0$/, "") : Math.round(zoom.value)}×`)
 
 const tally = computed(() => rollTally())
 
@@ -185,11 +215,13 @@ async function start() {
 	starting.value = true
 	hasTorch.value = false
 	torchOn.value = false
+	zoom.value = 1
+	zoomCap.value = null
 	try {
 		// `ideal`, never `exact`: a tablet with only a front camera must still be able to
 		// take the picture rather than throw OverconstrainedError at the surveyor.
 		stream = await navigator.mediaDevices.getUserMedia({
-			video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+			video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: true },
 			audio: false,
 		})
 		// Closed again while the permission sheet was up — the operator changed their mind,
@@ -198,7 +230,12 @@ async function start() {
 		video.value.srcObject = stream
 		await video.value.play().catch(() => {})
 		const track = stream.getVideoTracks()[0]
-		hasTorch.value = !!track?.getCapabilities?.().torch
+		const caps = track?.getCapabilities?.() || {}
+		hasTorch.value = !!caps.torch
+		if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+			zoomCap.value = { min: caps.zoom.min, max: caps.zoom.max }
+			zoom.value = track.getSettings?.().zoom ?? caps.zoom.min
+		}
 	} catch {
 		// Denied, no device, or the camera is held by another app. Hand the caller back a
 		// `false` so it opens the phone's own camera instead — see utils/camera.js. No error
@@ -228,6 +265,51 @@ async function toggleTorch() {
 	}
 }
 
+let zoomBusy = false
+let zoomWanted = null
+async function setZoom(z) {
+	z = Math.min(zoomMax.value, Math.max(zoomMin.value, z))
+	zoom.value = z
+	if (!zoomCap.value) return
+	// A pinch fires touchmove every frame; applyConstraints is async and slow on some
+	// handsets. Keep one in flight and let the latest value win instead of queueing dozens.
+	zoomWanted = z
+	if (zoomBusy) return
+	zoomBusy = true
+	try {
+		while (zoomWanted !== null) {
+			const next = zoomWanted
+			zoomWanted = null
+			await stream?.getVideoTracks()[0]?.applyConstraints({ advanced: [{ zoom: next }] })
+		}
+	} catch {
+		// Claimed zoom then refused it: drop to digital so the pinch still does something.
+		zoomCap.value = null
+		zoom.value = 1
+	} finally {
+		zoomBusy = false
+	}
+}
+
+function cycleZoom() {
+	const steps = [1, 2, 4].map((s) => s * zoomMin.value).filter((s) => s <= zoomMax.value)
+	const next = steps.find((s) => s > zoom.value + 0.05) ?? steps[0]
+	setZoom(next)
+}
+
+let pinch = null
+const gap = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+function pinchStart(e) {
+	if (e.touches.length === 2) pinch = { d: gap(e.touches), z: zoom.value }
+}
+function pinchMove(e) {
+	if (!pinch || e.touches.length !== 2) return
+	setZoom(pinch.z * (gap(e.touches) / pinch.d))
+}
+function pinchEnd(e) {
+	if (e.touches.length < 2) pinch = null
+}
+
 function shoot() {
 	const el = video.value
 	if (!el?.videoWidth) return
@@ -236,9 +318,14 @@ function shoot() {
 	// closeCamera and drop the photo without a word.
 	const onShot = cameraState._onShot
 	const canvas = document.createElement("canvas")
-	canvas.width = el.videoWidth
-	canvas.height = el.videoHeight
-	canvas.getContext("2d").drawImage(el, 0, 0)
+	// Digital zoom: keep the centre 1/zoom of the frame, the same part the scaled preview
+	// shows. Hardware zoom is already in the frame, so it is drawn whole.
+	const crop = zoomCap.value ? 1 : zoom.value
+	const sw = Math.round(el.videoWidth / crop)
+	const sh = Math.round(el.videoHeight / crop)
+	canvas.width = sw
+	canvas.height = sh
+	canvas.getContext("2d").drawImage(el, (el.videoWidth - sw) / 2, (el.videoHeight - sh) / 2, sw, sh, 0, 0, sw, sh)
 	blink()
 	// Encoded from the frame that was just grabbed, not from the upload: the tile has to be
 	// on the strip before the first byte leaves, and a 96 px JPEG costs a few kB, so a whole
