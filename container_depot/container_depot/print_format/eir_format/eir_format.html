@@ -95,6 +95,8 @@
   .oak-doc .signbox td { border: 1px solid #cfdac2; height: 54px; vertical-align: top; padding: 4px 7px !important; text-align: center; }
   .oak-doc .kv td { padding: 1px 0 !important; }
   .oak-doc .signbox .cap { font-size: 7.5px; letter-spacing: .8px; color: #8a949d; text-transform: uppercase; }
+  .oak-doc .signbox .sig { height: 36px; }
+  .oak-doc .signbox .who { font-size: 9px; }
 </style>
 
 {#- One item's fill-in boxes on a single line: "IN 3 inch · OUT 3 inch", or just the value
@@ -378,15 +380,29 @@
       This equipment was delivered / received in good condition, except as noted above.
     </p>
 
+    {#- Delivered by = whoever prints and hands the EIR over; Received by = the EMKL, whose
+        name comes off the bon, or off the booking row until the bon exists
+        (eir.booking_party_for_eir_out). Same in both directions: the EIR always goes from
+        the depot to the trucker. -#}
+    {%- set delivered = frappe.get_fullname(frappe.session.user) -%}
+    {%- set received = doc.get("emkl") %}
     <table class="signbox">
       <tr>
         <td style="width:33.4%;">
           <div class="cap">EIR fill / inspect by</div>
-          {%- if doc.get("inspector_signature") %}<img src="{{ doc.inspector_signature }}" style="max-height:34px; margin-top:2px;">{% endif %}
-          <div style="font-size:9px; margin-top:2px;">{{ doc.get("inspector") or "&mdash;" }}</div>
+          <div class="sig">{%- if doc.get("inspector_signature") %}<img src="{{ doc.inspector_signature }}" style="max-height:34px;">{% endif %}</div>
+          <div class="who">{{ doc.get("inspector") or "&mdash;" }}</div>
         </td>
-        <td style="width:33.3%;"><div class="cap">Delivered by</div></td>
-        <td style="width:33.3%;"><div class="cap">Received by</div></td>
+        <td style="width:33.3%;">
+          <div class="cap">Delivered by</div>
+          <div class="sig"></div>
+          <div class="who">{{ delivered or "&mdash;" }}</div>
+        </td>
+        <td style="width:33.3%;">
+          <div class="cap">Received by</div>
+          <div class="sig"></div>
+          <div class="who">{{ received or "&mdash;" }}</div>
+        </td>
       </tr>
     </table>
   </div>

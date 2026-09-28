@@ -424,8 +424,38 @@ def provision_eir_out_for_survey(survey_tank: str) -> str | None:
 		snap = fetch_voucher(voucher, "EIR-Out", container=container)
 		eir.tank_status = snap.get("tank_status") or eir.tank_status
 		eir.cargo = snap.get("cargo") or eir.cargo
+	else:
+		eir.update(booking_party_for_eir_out(row.parent, container))
 	eir.insert(ignore_permissions=True)  # system automation on survey close
 	return eir.name
+
+
+def booking_party_for_eir_out(survey_order: str, container: str) -> dict:
+	"""EMKL / shipper / truck / driver for an EIR-Out that has no bon yet, read from the tank's
+	row on the survey's Container Booking.
+
+	The EIR-Out is raised at survey close, before the Order Muat exists, so without this the
+	printed EIR says "Received by —" until the bon is cut. The booking row already names the
+	EMKL; the bon, once submitted, overwrites all of it via :func:`_apply_voucher`.
+	"""
+	booking = frappe.db.get_value("Survey Order", survey_order, "booking")
+	if not booking:
+		return {}
+	item = frappe.db.get_value(
+		"Container Booking Item",
+		{"parent": booking, "parenttype": "Container Booking", "container": container},
+		["emkl", "shipper", "truck_plate", "driver", "driver_phone"],
+		as_dict=True,
+	)
+	if not item:
+		return {}
+	return {
+		"emkl": item.emkl,
+		"shipper": item.shipper,
+		"truck_no": item.truck_plate,
+		"driver": item.driver,
+		"driver_phone": item.driver_phone,
+	}
 
 
 def attach_order_muat_to_eirs(order_name: str) -> dict:
