@@ -137,4 +137,27 @@
 		this.active_item = hit ? $(hit).parent() : null;
 		return !!hit;
 	};
+
+	// --- 4. Dropdown header sidebar: <img src="undefined"> ----------------------------------
+	// `SidebarHeader.add_app_item` (Frappe 16.18.3, masih sama di 16.27.1) merender
+	// `<img src="${item.icon_url}">` untuk setiap item tanpa `icon`. Item yang ikonnya dari
+	// `desktop_icon()` hanya punya `icon_html`, jadi src-nya jadi "undefined". Akibatnya setiap
+	// render sidebar meminta /undefined, dan server membalas halaman 404 HTML sekitar 140 kB
+	// lewat uplink yang sempit. Solusinya: pakai data URI kosong agar tidak ada request, lalu
+	// ganti <img> itu dengan `icon_html`.
+	const Header = frappe.ui?.SidebarHeader;
+	if (Header) {
+		const BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+		const add_app_item = Header.prototype.add_app_item;
+		Header.prototype.add_app_item = function (item) {
+			if (item.icon || item.icon_url) return add_app_item.call(this, item);
+			add_app_item.call(this, { ...item, icon_url: BLANK });
+			const $img = this.dropdown_menu
+				.children(".dropdown-menu-item")
+				.last()
+				.find(`img.logo[src="${BLANK}"]`);
+			if (item.icon_html) $img.replaceWith(item.icon_html);
+			else $img.remove();
+		};
+	}
 })();
