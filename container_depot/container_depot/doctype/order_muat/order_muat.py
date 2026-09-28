@@ -14,6 +14,7 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 	_sync_booking,
 	_sync_container_summary,
 	_validate_booking_code,
+	_validate_tank_position,
 )
 
 
@@ -22,6 +23,7 @@ class OrderMuat(Document):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank Out")
 		_sync_container_summary(self)
+		_validate_tank_position(self, present=True)
 		self._validate_no_open_work()
 
 	def on_update(self):

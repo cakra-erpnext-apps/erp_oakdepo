@@ -1182,7 +1182,27 @@ def _find_active_bookings_for_container(raw) -> list[dict]:
 	rows = _query("bc.container_no = %(val)s", raw)
 	if not rows:
 		rows = _query("bc.container_no LIKE %(val)s", "%{0}%".format(raw))
-	return rows
+	return _physically_possible(rows)
+
+
+def _physically_possible(rows) -> list[dict]:
+	"""A tank may carry one open Tank In AND one open Tank Out (booked ahead of the other
+	move). Where a scan finds both for the same tank, only one can happen now: a tank that
+	is here can only leave, one that is not can only arrive — so the other is dropped rather
+	than offered as a choice. A lone match is left alone; its bon says why if it cannot go."""
+	from container_depot.container_depot.container_status import PRESENT
+
+	by_tank = {}
+	for r in rows:
+		by_tank.setdefault(r.container_no, set()).add(r.direction)
+	out = []
+	for r in rows:
+		if len(by_tank[r.container_no]) > 1:
+			present = frappe.db.get_value("Container", {"container_no": r.container_no}, "status") in PRESENT
+			if r.direction != ("Tank Out" if present else "Tank In"):
+				continue
+		out.append(r)
+	return out
 
 
 @frappe.whitelist()

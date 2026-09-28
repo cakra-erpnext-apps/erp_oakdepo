@@ -473,10 +473,15 @@ frappe.ui.form.on('Container Booking', {
 		const base = 'container_depot.container_depot.doctype.container_booking.container_booking';
 		const outbound = frm.doc.direction === 'Tank Out';
 		Promise.all([
-			frappe.xcall(`${base}.open_booking_conflicts`, { booking: frm.doc.name, containers: payload }),
+			frappe.xcall(`${base}.open_booking_conflicts`, {
+				booking: frm.doc.name,
+				containers: payload,
+				direction: frm.doc.direction || null,
+			}),
 			frappe.xcall(`${base}.status_direction_warnings`, {
 				direction: frm.doc.direction || null,
 				containers: payload,
+				booking: frm.doc.name,
 			}),
 			// Outbound only, and NOT a blocker — see below.
 			outbound ? frappe.xcall(`${base}.out_work_warnings`, { containers: payload }) : [],

@@ -180,6 +180,7 @@ class TestOutboundFulfilment(FrappeTestCase):
 				{"bookings": tuple(self._bookings)},
 			)
 		for b in self._bookings:
+			frappe.db.delete("Booking Code", {"booking": b})
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
 		if self._containers:
@@ -201,6 +202,12 @@ class TestOutboundFulfilment(FrappeTestCase):
 		self._bookings.append(doc.name)
 		if submitted:
 			frappe.db.set_value("Container Booking", doc.name, "docstatus", 1, update_modified=False)
+		# Each tank already on a bon (code Used) — % Keluar only counts a departure made on it.
+		for c in containers:
+			frappe.get_doc({
+				"doctype": "Booking Code", "state": "Used", "booking": doc.name,
+				"direction": "Tank Out", "container": c, "container_no": c,
+			}).insert(ignore_permissions=True)
 		return doc.name
 
 	def _container(self, cno):
@@ -232,6 +239,18 @@ class TestOutboundFulfilment(FrappeTestCase):
 		state = self._per(bk)
 		self.assertEqual(state.per_fulfilled, 100)
 		self.assertEqual(state.booking_status, "Completed")
+
+	def test_a_tank_still_on_its_way_in_is_not_counted_out(self):
+		"""Booked out ahead of its arrival, a returning tank still reads Gate_Out from its last
+		visit. With no bon on this booking it has not left on it — counting it closed a
+		two-tank booking the moment the other tank went."""
+		a, b = self._container("LIFTFUL0005"), self._container("LIFTFUL0006")
+		bk = self._booking([a, b])
+		frappe.db.delete("Booking Code", {"booking": bk, "container": b})  # b: not bonned yet
+		for c in (a, b):
+			frappe.db.set_value("Container", c, "status", "Gate_Out")
+		self.assertFalse(lift_on.refresh_fulfilment(bk))
+		self.assertEqual(self._per(bk).per_fulfilled, 50)
 
 	def test_a_draft_never_closes(self):
 		"""Closing is a thing that happens to a booking that started; a draft has not."""

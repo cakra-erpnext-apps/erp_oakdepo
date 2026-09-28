@@ -323,3 +323,107 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		)
 
 		self.assertEqual(status_direction_warnings("Tank In", [{"container_no": "NOSUCH0000000"}]), [])
+
+	# --- opposite directions: one open Tank In AND one open Tank Out per tank ----
+	# Booked ahead of the other move, never two in the same direction, and the bon keeps
+	# them in physical order — so a tank can never come in twice or go out twice.
+
+	def test_tank_on_its_way_in_can_be_booked_out(self):
+		inbound = self._book(C_IN)
+		self.assertEqual(frappe.db.get_value("Container", C_IN, "status"), "Booked")
+		outbound = self._book(C_IN, "Tank Out")  # must not raise
+		self.assertEqual(outbound.docstatus, 1)
+		self.assertEqual(frappe.db.count("Booking Code", {"container_no": C_IN, "state": "Active"}), 2)
+
+		# ...but never a second one out.
+		with self.assertRaises(frappe.ValidationError) as cm:
+			self._book(C_IN, "Tank Out")
+		self.assertIn(outbound.name, str(cm.exception))
+		self.assertNotIn(inbound.name, str(cm.exception))
+
+	def test_a_tank_nobody_is_bringing_in_still_cannot_be_booked_out(self):
+		name = self._available_container(C_OUT)
+		frappe.db.set_value("Container", name, "status", "Gate_Out", update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			self._book(C_OUT, "Tank Out")
+
+	def test_tank_here_can_be_booked_back_in(self):
+		self._arrived_container(C_OUT)
+		outbound = self._book(C_OUT, "Tank Out")
+		self._book(C_OUT, "Tank In")  # must not raise
+		# The tank did not move: booking its return is paperwork, not an arrival.
+		self.assertEqual(frappe.db.get_value("Container", C_OUT, "status"), "In_Depot")
+
+		with self.assertRaises(frappe.ValidationError):
+			self._book(C_OUT, "Tank In")
+		self.assertTrue(outbound.name)
+
+	def test_tank_here_without_an_outbound_still_cannot_be_booked_in(self):
+		self._arrived_container(C_OUT)
+		with self.assertRaises(frappe.ValidationError):
+			self._book(C_OUT, "Tank In")
+
+	def test_bon_muat_waits_for_the_tank_to_arrive(self):
+		from container_depot.container_depot.order_generation import make_order
+
+		self._book(C_IN)
+		outbound = self._book(C_IN, "Tank Out")
+		code = frappe.db.get_value("Booking Code", {"booking": outbound.name}, "name")
+		with self.assertRaises(frappe.ValidationError) as cm:
+			make_order(outbound.name, [code])
+		self.assertIn("belum ada di depo", str(cm.exception))
+
+	def test_bon_bongkar_waits_for_the_tank_to_leave(self):
+		self._arrived_container(C_OUT)
+		self._book(C_OUT, "Tank Out")
+		inbound = self._book(C_OUT, "Tank In")
+		with self.assertRaises(frappe.ValidationError) as cm:
+			self._bon(inbound)
+		self.assertIn("masih ada di depo", str(cm.exception))
+
+	def test_gate_scan_offers_only_the_move_that_can_happen_now(self):
+		from container_depot.api import _find_active_bookings_for_container
+
+		self._book(C_IN)
+		self._book(C_IN, "Tank Out")
+		# Not here yet: only arriving is possible.
+		self.assertEqual({r.direction for r in _find_active_bookings_for_container(C_IN)}, {"Tank In"})
+
+		self._arrived_container(C_OUT)
+		self._book(C_OUT, "Tank Out")
+		self._book(C_OUT, "Tank In")
+		# Here: only leaving is possible.
+		self.assertEqual({r.direction for r in _find_active_bookings_for_container(C_OUT)}, {"Tank Out"})
+
+	def test_voiding_the_outbound_a_return_is_waiting_for_is_refused(self):
+		"""Tank still here, booked out and back in. Voiding the Tank Out would leave the
+		Tank In live on a tank that never left — a bon off it logs a second arrival."""
+		self._arrived_container(C_OUT)
+		outbound = self._book(C_OUT, "Tank Out")
+		inbound = self._book(C_OUT, "Tank In")
+		with self.assertRaises(frappe.ValidationError) as cm:
+			cancel_submitted_booking(outbound.name)
+		msg = str(cm.exception)
+		self.assertIn(inbound.name, msg)
+		self.assertIn("Langkah selanjutnya", msg)
+
+		# The named next step works: void the return first, then the outbound goes. (The
+		# refused attempt already stepped it back to draft, so only the void is left.)
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+
+		cancel_submitted_booking(inbound.name)
+		void_draft(outbound.name)  # must not raise
+
+	def test_voiding_the_inbound_a_pickup_is_waiting_for_is_refused(self):
+		inbound = self._book(C_IN)
+		outbound = self._book(C_IN, "Tank Out")
+		with self.assertRaises(frappe.ValidationError) as cm:
+			cancel_submitted_booking(inbound.name)
+		self.assertIn(outbound.name, str(cm.exception))
+
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+
+		cancel_submitted_booking(outbound.name)
+		void_draft(inbound.name)  # must not raise
+		# Born for the inbound booking, so voiding it drops the phantom master outright.
+		self.assertFalse(frappe.db.exists("Container", C_IN))

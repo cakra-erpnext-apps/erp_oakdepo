@@ -325,9 +325,11 @@ def refresh_fulfilment(booking: str) -> bool:
 	carries at most two tanks — so a five-tank booking spends most of its life somewhere in
 	between, and looked exactly like one nobody had started.
 
-	No "was already out" baseline is needed here, unlike the Gate Out Plan this came from: a
-	Tank Out booking can only be submitted for tanks that are PRESENT, so a row that reads
-	``Gate_Out`` left on this booking's watch.
+	A row counts as out only when it reads ``Gate_Out`` AND this booking's code for it is
+	``Used`` (on a bon). ``Gate_Out`` alone is not enough since a tank may be booked out
+	ahead of its arrival: a tank coming BACK is still ``Gate_Out`` from its last visit, and
+	counting it closed the booking before it had arrived, let alone left. A Tank Out bon
+	needs the tank PRESENT, so a used code on a departed tank means it left on this booking.
 
 	Deliberately ``db.set_value`` and never ``doc.save()``: this runs from inside an
 	unrelated document's save (the gate-out), where re-running the booking's validation
@@ -347,7 +349,12 @@ def refresh_fulfilment(booking: str) -> bool:
 	if not listed:
 		frappe.db.set_value("Container Booking", booking, "per_fulfilled", 0, update_modified=False)
 		return False
-	away = frappe.db.count("Container", {"name": ["in", listed], "status": "Gate_Out"})
+	bonned = frappe.get_all(
+		"Booking Code",
+		filters={"booking": booking, "state": "Used", "container": ["in", listed]},
+		pluck="container",
+	)
+	away = frappe.db.count("Container", {"name": ["in", bonned or [""]], "status": "Gate_Out"})
 	per = round(away * 100.0 / len(listed), 2)
 	updates = {"per_fulfilled": per}
 	# Only a live, submitted booking closes. A draft has not started, and Cancelled /

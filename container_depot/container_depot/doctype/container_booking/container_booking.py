@@ -1478,7 +1478,7 @@ class ContainerBooking(Document):
 				failures.append(_("Container {0} not found.").format(item.container))
 		# Status readiness — shared with the draft warning so the two never disagree.
 		for m in _find_status_mismatches(
-			"Tank Out", [(i.container, i.container_no) for i in (self.items or [])]
+			"Tank Out", [(i.container, i.container_no) for i in (self.items or [])], self.name
 		):
 			failures.append(_describe_out_block(m))
 
@@ -1504,7 +1504,7 @@ class ContainerBooking(Document):
 		of THIS form.
 		"""
 		conflicts = _find_booking_conflicts(
-			self.name, [(i.container, i.container_no) for i in (self.items or [])]
+			self.name, [(i.container, i.container_no) for i in (self.items or [])], self.direction
 		)
 		if conflicts:
 			frappe.throw(
@@ -1523,7 +1523,7 @@ class ContainerBooking(Document):
 				"Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk."
 			).format(m["container_no"], m["status"])
 			for m in _find_status_mismatches(
-				"Tank In", [(i.container, i.container_no) for i in (self.items or [])]
+				"Tank In", [(i.container, i.container_no) for i in (self.items or [])], self.name
 			)
 		]
 		if failures:
@@ -1730,6 +1730,8 @@ def booking_container_query(doctype, txt, searchfield, start, page_len, filters)
 	the worst moment to find out. Open work (cleaning / repair) is NOT
 	filtered here: those tanks are legitimately being prepared for this very booking, the
 	draft warning names the orders, and ``_validate_out_ready`` blocks the submit.
+	Also offered: a tank still on its way IN on a live Tank In booking of the Branch — it
+	may be booked out ahead of its arrival (see ``_find_status_mismatches``).
 
 	**Tank In** is left open: an inbound tank is by definition not in the depot, and a
 	number the master does not know yet is registered on save.
@@ -1758,23 +1760,49 @@ def booking_container_query(doctype, txt, searchfield, start, page_len, filters)
 	if txt and txt.lower() != "undefined":
 		cond["name"] = ["like", f"%{txt}%"]
 	or_filters = None
-	if direction == "Tank Out":
-		cond["status"] = ["in", list(PRESENT)]
-		if branch:
-			depots = frappe.get_all("Depot", filters={"branch": branch}, pluck="name")
-			# A tank whose master carries no depot at all (legacy / imported data) is still
-			# offered — refusing it would hide real tanks the depot is holding.
-			or_filters = [["depot", "in", depots or [""]], ["depot", "is", "not set"]]
-	return frappe.get_all(
-		"Container",
-		filters=cond,
-		or_filters=or_filters,
-		fields=["name", "status", "depot"],
-		order_by="container_no asc",
-		limit_start=cint(start),
-		limit_page_length=cint(page_len),
-		as_list=True,
+	if direction != "Tank Out":
+		return frappe.get_all(
+			"Container", filters=cond, fields=["name", "status", "depot"],
+			order_by="container_no asc", limit_start=cint(start),
+			limit_page_length=cint(page_len), as_list=True,
+		)
+	incoming = dict(cond, status=["not in", list(PRESENT)], name=["in", _incoming_containers(branch)])
+	if txt and txt.lower() != "undefined":
+		incoming["container_no"] = ["like", f"%{txt}%"]
+	cond["status"] = ["in", list(PRESENT)]
+	if branch:
+		depots = frappe.get_all("Depot", filters={"branch": branch}, pluck="name")
+		# A tank whose master carries no depot at all (legacy / imported data) is still
+		# offered — refusing it would hide real tanks the depot is holding.
+		or_filters = [["depot", "in", depots or [""]], ["depot", "is", "not set"]]
+	# Two sets merged in Python — present tanks (depot-scoped) and incoming ones (booking-
+	# scoped) cannot share one or_filters. Each fetches up to the end of the page.
+	upto = cint(start) + cint(page_len)
+	rows = frappe.get_all(
+		"Container", filters=cond, or_filters=or_filters, fields=["name", "status", "depot"],
+		order_by="container_no asc", limit_page_length=upto, as_list=True,
+	) + frappe.get_all(
+		"Container", filters=incoming, fields=["name", "status", "depot"],
+		order_by="container_no asc", limit_page_length=upto, as_list=True,
 	)
+	return sorted(rows)[cint(start):upto]
+
+
+def _incoming_containers(branch=None) -> list[str]:
+	"""Tanks on a live Tank In booking (draft or submitted) — candidates for a Tank Out
+	booked ahead of their arrival. Whether each is still on its way is left to the caller."""
+	return frappe.db.sql_list(
+		"""
+		SELECT DISTINCT i.container
+		FROM `tabContainer Booking Item` i
+		JOIN `tabContainer Booking` b ON b.name = i.parent AND i.parenttype = 'Container Booking'
+		WHERE b.direction = 'Tank In' AND b.docstatus < 2
+		  AND IFNULL(b.booking_status, '') NOT IN ('Cancelled', 'Completed')
+		  AND i.container IS NOT NULL
+		  AND (%(branch)s = '' OR b.branch = %(branch)s)
+		""",
+		{"branch": branch or ""},
+	) or [""]
 
 
 @frappe.whitelist()
@@ -2130,6 +2158,57 @@ def _block_if_bon_raised(booking: str, action: str) -> None:
 		)
 
 
+def _block_if_partner_waits(doc) -> None:
+	"""Refuse to void a booking that an opposite booking on the same tank is waiting for.
+
+	The pair is not stored anywhere — it is read the same way the booking gates read it
+	(:func:`_find_booking_conflicts` in the opposite direction). What makes the partner
+	depend on THIS booking is where the tank stands:
+
+	* this = **Tank Out**, tank still here — the partner Tank In was only accepted because
+	  this booking takes the tank away first. Voiding it would leave a live Tank In code on
+	  a tank that never left, and a bon off it would log the tank arriving twice.
+	* this = **Tank In**, tank not here yet — the partner Tank Out is waiting for this
+	  booking to bring the tank in; without it the tank sits ``Booked`` for good.
+
+	The operator is told which booking to void first, so the next step is on the screen.
+	"""
+	from container_depot.container_depot.container_status import PRESENT
+
+	waiting = []
+	for item in doc.items or []:
+		if not item.container:
+			continue
+		present = frappe.db.get_value("Container", item.container, "status") in PRESENT
+		if present != (doc.direction == "Tank Out"):
+			continue
+		for c in _find_booking_conflicts(
+			doc.name, [(item.container, item.container_no)], _OPPOSITE.get(doc.direction)
+		):
+			waiting.append((c["container_no"], c["booking"]))
+	if not waiting:
+		return
+	partner_direction = _OPPOSITE.get(doc.direction)
+	move = _("keluar") if doc.direction == "Tank Out" else _("masuk")
+	lines = [
+		_("Container <b>{0}</b> sudah dijadwalkan {1} lewat booking {2}, dan booking itu "
+		  "menunggu tank ini {3} lewat booking ini.").format(
+			cno, partner_direction, frappe.utils.get_link_to_form("Container Booking", partner), move
+		)
+		for cno, partner in dict.fromkeys(waiting)
+	]
+	partners = ", ".join(dict.fromkeys(p for _c, p in waiting))
+	frappe.throw(
+		"<br>".join(lines)
+		+ "<br><br>"
+		+ _("<b>Langkah selanjutnya:</b> batalkan dulu booking {0}, lalu batalkan booking {1} ini lagi. "
+		    "Kalau booking {0} tetap dibutuhkan, jangan batalkan booking ini — ubah saja jadwalnya.").format(
+			partners, doc.name
+		),
+		title=_("Booking Masih Ditunggu Booking Lain"),
+	)
+
+
 def _block_if_child_submitted(booking: str) -> None:
 	"""Cancelling a booking closes the documents it created by itself (Survey Order, the
 	EIR-Outs that survey raised, the draft Sales Invoice) — see
@@ -2219,6 +2298,7 @@ def void_draft(booking):
 	# so this only fires if some other path put the pair in that state.
 	_block_if_bon_raised(doc.name, _("dibatalkan"))
 	_block_if_child_submitted(doc.name)
+	_block_if_partner_waits(doc)
 	# Statuses FIRST, exactly as `on_cancel` orders it, and the order is load-bearing:
 	# cancelling the invoice fires `resync_booking_on_invoice_cancel`, which drops the link
 	# from any booking that is not itself cancelled. Marking the booking first is what makes
@@ -2671,11 +2751,14 @@ def _draft_still_holds(direction, status) -> bool:
 	tank still standing here is PRESENT, so two outbound drafts both hold it.
 	"""
 	if direction == "Tank Out":
-		return status in PRESENT
+		# ``Booked`` too: a tank booked out ahead of its arrival (see _find_status_mismatches).
+		# ponytail: a tank coming BACK stays Gate_Out, so two outbound drafts on it only
+		# collide at submit (the Active code) — widen here if the early warning matters.
+		return status in PRESENT or status == "Booked"
 	return status not in PRESENT
 
 
-def _draft_booking_holders(exclude_booking, keys, status=None) -> list[dict]:
+def _draft_booking_holders(exclude_booking, keys, status=None, direction=None) -> list[dict]:
 	"""Live DRAFT bookings carrying one of ``keys`` (container name / number).
 
 	A draft has no Booking Code yet — those are issued at submit — so the code-based test
@@ -2695,15 +2778,22 @@ def _draft_booking_holders(exclude_booking, keys, status=None) -> list[dict]:
 		  AND b.docstatus = 0
 		  AND IFNULL(b.booking_status, '') != 'Cancelled'
 		  AND (i.container IN %(keys)s OR i.container_no IN %(keys)s)
+		  AND (%(direction)s = '' OR b.direction = %(direction)s)
 		""",
-		{"exclude": exclude_booking or "", "keys": tuple(keys)},
+		{"exclude": exclude_booking or "", "keys": tuple(keys), "direction": direction or ""},
 		as_dict=True,
 	)
 	return [r for r in rows if _draft_still_holds(r.direction, status)]
 
 
-def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
+def _find_booking_conflicts(exclude_booking, containers, direction=None) -> list[dict]:
 	"""Containers already spoken for by ANOTHER non-cancelled booking.
+
+	``direction`` narrows it to bookings making the SAME move. A tank may carry one open
+	Tank In and one open Tank Out at once — booked out before it arrives, or booked back in
+	before it leaves — but never two of the same, which is what would let it come in or go
+	out twice. The bon and the gate keep the two in physical order (a Tank Out bon needs the
+	tank PRESENT, a Tank In bon needs it away). ``None`` = every direction.
 
 	Two ways a booking can hold a tank, and both count:
 
@@ -2731,17 +2821,20 @@ def _find_booking_conflicts(exclude_booking, containers) -> list[dict]:
 		status = frappe.db.get_value(
 			"Container", container or {"container_no": container_no}, "status"
 		)
+		code_filters = {"state": ["in", ("Active", "Used")], "booking": ["!=", exclude_booking or ""]}
+		if direction:
+			code_filters["direction"] = direction
 		rows = [
 			r
 			for r in frappe.get_all(
 				"Booking Code",
-				filters={"state": ["in", ("Active", "Used")], "booking": ["!=", exclude_booking or ""]},
+				filters=code_filters,
 				or_filters=[["container", "in", keys], ["container_no", "in", keys]],
 				fields=["name", "booking", "direction", "state"],
 			)
 			if r.state == "Active" or _code_still_holds(r, status)
 		]
-		rows += _draft_booking_holders(exclude_booking, keys, status)
+		rows += _draft_booking_holders(exclude_booking, keys, status, direction)
 		for r in rows:
 			label = container_no or container
 			key = (label, r.booking)
@@ -2775,12 +2868,34 @@ def _code_still_holds(code, status) -> bool:
 	  ``validate`` (``_mark_pre_arrival``), so by the time this runs the booking has
 	  already overwritten the very fact being tested.
 	* **Tank Out** — submitting the bon does NOT move the tank; it leaves at the gate,
-	  which is what puts it outside ``PRESENT``. A Tank Out booking never touches the
-	  container's status, so reading it here is safe.
+	  which is what puts it outside ``PRESENT``. Status alone is not enough though: a tank
+	  that left on this code and has since come BACK is PRESENT again, and reading only
+	  the status revived the old code and refused its next outbound booking. So the code
+	  is also spent once the EIR-Out cut against its bon was submitted (that submit IS the
+	  gate-out — ``Inspection.on_submit`` → ``gate.mark_gate_out``). Legacy departures
+	  with no such EIR still fall back to the status alone.
 	"""
 	if code.get("direction") == "Tank Out":
-		return status in PRESENT
+		return status in PRESENT and not _departed_for_code(code.get("name"))
 	return not _bon_submitted_for_code(code.get("name"))
+
+
+def _departed_for_code(code: str) -> bool:
+	"""Did the tank on this Tank Out code leave on it — a submitted EIR-Out on its bon?"""
+	row = frappe.db.get_value("Booking Code", code, ["container"], as_dict=True) if code else None
+	if not row or not row.container:
+		return False
+	bons = frappe.get_all(
+		"Order Container Item",
+		filters={"parenttype": "Order Muat", "booking_code": code},
+		pluck="parent",
+	)
+	return bool(bons) and bool(frappe.db.exists("Inspection", {
+		"inspection_type": "EIR-Out",
+		"docstatus": 1,
+		"container": row.container,
+		"referred_voucher": ["in", bons],
+	}))
 
 
 def _bon_submitted_for_code(code: str) -> bool:
@@ -2801,7 +2916,7 @@ def _bon_submitted_for_code(code: str) -> bool:
 
 
 @frappe.whitelist()
-def open_booking_conflicts(booking=None, containers=None) -> list[dict]:
+def open_booking_conflicts(booking=None, containers=None, direction=None) -> list[dict]:
 	"""Draft-time early warning for the form: which of the given containers are already
 	held by another active booking (see :func:`_find_booking_conflicts`). Purely
 	informational — Submit is where it is actually blocked — so it never throws.
@@ -2810,7 +2925,7 @@ def open_booking_conflicts(booking=None, containers=None) -> list[dict]:
 	"""
 	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
 	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
-	return _find_booking_conflicts(booking, pairs)
+	return _find_booking_conflicts(booking, pairs, direction)
 
 
 def _describe_booking_conflict(conflict) -> str:
@@ -2879,7 +2994,10 @@ def out_work_warnings(containers=None) -> list[dict]:
 	return out
 
 
-def _find_status_mismatches(direction, containers) -> list[dict]:
+_OPPOSITE = {"Tank In": "Tank Out", "Tank Out": "Tank In"}
+
+
+def _find_status_mismatches(direction, containers, exclude_booking=None) -> list[dict]:
 	"""Containers whose CURRENT master status conflicts with the booking direction —
 	the single source of truth for the submit status gates AND the draft early warning,
 	so the two can never disagree. Mirrors the physical Lift service:
@@ -2899,6 +3017,11 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 	now that unfinished work is not a mismatch; it is kept so the shape of the answer (and
 	every caller reading it) stays the same. What the yard still owes is asked separately,
 	of :func:`out_work_warnings`.
+
+	**Unless the opposite move is already booked.** A tank not here yet may be booked out
+	while a Tank In is bringing it, and a tank still here may be booked back in while a
+	Tank Out is taking it away — one of each direction (see :func:`_find_booking_conflicts`).
+	``exclude_booking`` is the booking being judged, so it never counts as its own opposite.
 	"""
 	from container_depot.container_depot.container_status import PRESENT
 
@@ -2924,6 +3047,10 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 			# see lift_on.py), and the refusal moved to where the tank actually leaves: the
 			# bon (Order Muat._validate_no_open_work) and the gate.
 			bad = status not in PRESENT
+		if bad and _find_booking_conflicts(
+			exclude_booking, [(name, container_no)], _OPPOSITE.get(direction)
+		):
+			bad = False
 		if bad:
 			out.append({
 				"container_no": container_no or name,
@@ -2935,7 +3062,7 @@ def _find_status_mismatches(direction, containers) -> list[dict]:
 
 
 @frappe.whitelist()
-def status_direction_warnings(direction=None, containers=None) -> list[dict]:
+def status_direction_warnings(direction=None, containers=None, booking=None) -> list[dict]:
 	"""Draft-time early warning: containers whose status will be refused for the chosen
 	Direction (see :func:`_find_status_mismatches`). Never throws — Submit is where it is
 	blocked.
@@ -2947,7 +3074,7 @@ def status_direction_warnings(direction=None, containers=None) -> list[dict]:
 	resolved = direction or "Tank In"
 	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
 	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
-	return _find_status_mismatches(resolved, pairs)
+	return _find_status_mismatches(resolved, pairs, booking)
 
 
 # --- Container import (Desk grid "Import Excel") ------------------------------
@@ -3094,7 +3221,9 @@ def _import_block(master, direction, principal, allowed_depots) -> str | None:
 		)
 	if direction != "Tank Out":
 		return None
-	if master.status not in PRESENT:
+	if master.status not in PRESENT and not _find_booking_conflicts(
+		None, [(master.name, master.name)], "Tank In"
+	):
 		return _("{0}: tidak ada di depo (status {1}) — dilewati").format(
 			master.name, master.status or "-"
 		)
@@ -3228,7 +3357,7 @@ def parse_container_xlsx(
 		if container:
 			blocked = _import_block(master, direction, principal, out_depots)
 			if not blocked:
-				clash = _find_booking_conflicts(booking, [(container, cno)])
+				clash = _find_booking_conflicts(booking, [(container, cno)], direction)
 				if clash:
 					blocked = _("{0}: sudah terikat booking {1} — dilewati").format(
 						cno, ", ".join(dict.fromkeys(c["booking"] for c in clash))

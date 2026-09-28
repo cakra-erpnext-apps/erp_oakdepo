@@ -4,6 +4,7 @@ from frappe.model.document import Document
 from frappe.utils import cint, now_datetime
 
 from container_depot.container_depot.doctype.container_booking.container_booking import (
+	_find_booking_conflicts,
 	build_container_summary,
 	refresh_bon_status,
 )
@@ -19,6 +20,7 @@ class OrderBongkar(Document):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank In")
 		_sync_container_summary(self)
+		_validate_tank_position(self, present=False)
 
 	def on_update(self):
 		_reconcile_codes(self)
@@ -100,6 +102,45 @@ def _release_eirs(order: Document, inspection_type: str):
 def _order_rows(doc: Document):
 	"""Authoritative container rows for an order (the ``containers`` child table)."""
 	return doc.get("containers") or []
+
+
+def _validate_tank_position(doc: Document, present: bool):
+	"""A bon moves a tank, so it must find the tank on the side it moves it from: a Tank In
+	bon (``present=False``) needs it away, a Tank Out bon (``present=True``) needs it here.
+
+	The booking no longer guarantees this. One tank may carry an open Tank In and an open
+	Tank Out at once (booked ahead of the other move — see ``_find_booking_conflicts``), so
+	the bon is where "not yet" is said, and what stops a tank coming in or going out twice.
+
+	A Tank In bon on a tank already here is refused only while a Tank Out is still booked on
+	it — the booked-back-in case this guard exists for. Without one, a present tank getting a
+	Tank In bon is the long-standing tolerated path (a re-submit, a hand-registered master)
+	and is left alone, as is a bon re-submitted over its own arrival (``last_order_bongkar``).
+	"""
+	from container_depot.container_depot.container_status import PRESENT
+
+	for row in _order_rows(doc):
+		if not row.get("container"):
+			continue
+		cur = frappe.db.get_value(
+			"Container", row.container, ["status", "last_order_bongkar"], as_dict=True
+		)
+		if not cur or (cur.status in PRESENT) == present:
+			continue
+		if not present and (
+			cur.last_order_bongkar == doc.name
+			or not _find_booking_conflicts(None, [(row.container, row.get("container_no"))], "Tank Out")
+		):
+			continue
+		message = (
+			_("Row {0} ({1}): tank belum ada di depo (status {2}) — bon muat baru bisa dibuat setelah tank masuk.")
+			if present else
+			_("Row {0} ({1}): tank masih ada di depo (status {2}) — bon bongkar baru bisa dibuat setelah tank keluar.")
+		)
+		frappe.throw(
+			message.format(row.idx, row.get("container_no") or row.container, cur.status or "-"),
+			title=_("Posisi Tank Tidak Sesuai"),
+		)
 
 
 def _sync_container_summary(doc: Document):
