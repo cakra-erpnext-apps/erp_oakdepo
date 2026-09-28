@@ -63,7 +63,7 @@
 							<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ r.container_no }}</span>
 							<span class="block truncate text-[11px] text-gray-500">{{ doneLine(r) }}</span>
 						</span>
-						<span class="oak-chip shrink-0 bg-sky-100 text-sky-700">{{ labels.eirStatusPendingReview }}</span>
+						<span class="oak-chip shrink-0" :class="pill('review').cls">{{ labels.eirStatusPendingReview }}</span>
 					</li>
 				</ul>
 
@@ -323,6 +323,7 @@
 import { computed, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
+import { pill } from "@/utils/statusPill"
 import { fmtDate, since } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"
@@ -475,17 +476,13 @@ const pendingItems = computed(() => {
 	return all
 })
 
-// Sejauh mana satu EIR sudah dikerjakan. Langkahnya hanya dicetak untuk EIR yang memang
-// pernah dibuka di sesi ini — "Draft 1/4" untuk tank yang dimulai rekan kemarin adalah
-// tebakan, dan tebakan di worklist dibaca sebagai fakta.
+// Sejauh mana satu EIR sudah dikerjakan — Draf / Dikerjakan seperti inspection_list.js di Desk.
+// Langkahnya hanya dicetak untuk EIR yang memang pernah dibuka di sesi ini — "Dikerjakan 1/4"
+// untuk tank yang dimulai rekan kemarin adalah tebakan, dan tebakan di worklist dibaca sebagai fakta.
 function progressChip(r) {
-	if (!r.work_started_on) return { label: labels.eirBatchNotStarted, tone: "bg-gray-100 text-gray-500" }
-	if (hasStep(r.name))
-		return {
-			label: `${labels.eirDraftStep} ${getStep(r.name) + 1}/${STEP_COUNT}`,
-			tone: "bg-brand-100 text-brand-700",
-		}
-	return { label: labels.eirChipStarted, tone: "bg-amber-100 text-amber-800" }
+	const { label, cls } = pill(r.work_started_on ? "doing" : "draft")
+	const step = r.work_started_on && hasStep(r.name) ? ` ${getStep(r.name) + 1}/${STEP_COUNT}` : ""
+	return { label: label + step, tone: cls }
 }
 
 // Bon yang sama untuk semua yang dicentang — atau kosong kalau campur.
@@ -629,7 +626,7 @@ function open(o) {
 	rowClick(o)
 }
 function stateChip(o) {
-	if (o.state === "review") return { label: labels.eirStatusPendingReview, tone: "bg-sky-100 text-sky-800" }
+	if (o.state === "review") return { label: labels.eirStatusPendingReview, tone: pill("review").cls }
 	return progressChip(o)
 }
 function dirChip(o) {

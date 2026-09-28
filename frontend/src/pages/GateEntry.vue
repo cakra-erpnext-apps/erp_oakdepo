@@ -153,8 +153,8 @@
 								<p class="min-w-0 truncate text-base font-extrabold text-gray-900">
 									{{ detail.customer_name || detail.customer }}
 								</p>
-								<span class="oak-chip shrink-0" :class="statusChip">
-									<Icon name="check-circle" :size="12" />{{ detail.booking_status }}
+								<span class="oak-chip shrink-0" :class="statusChip.cls">
+									<Icon name="check-circle" :size="12" />{{ statusChip.label }}
 								</span>
 							</div>
 							<dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 text-sm">
@@ -515,6 +515,7 @@ import { useRoute } from "vue-router"
 import { createResource } from "frappe-ui"
 import { Html5Qrcode } from "html5-qrcode"
 import { labels, gateDirection } from "@/utils/labels"
+import { bookingPill } from "@/utils/statusPill"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import GateField from "@/components/GateField.vue"
@@ -729,13 +730,8 @@ const bookingFacts = computed(() => {
 	]
 })
 
-// Confirmed bookings are the normal case and get the quiet green; anything else is a state
-// the operator may need to think about, so it is amber rather than pretending to be fine.
-const statusChip = computed(() =>
-	detail.value?.booking_status === "Confirmed"
-		? "bg-leaf-50 text-leaf-700"
-		: "bg-amber-50 text-amber-700"
-)
+// Same words and colours as the Desk booking list (container_booking_list.js).
+const statusChip = computed(() => bookingPill(detail.value?.booking_status))
 
 const panelGroups = computed(() => {
 	if (!valid.value) return []

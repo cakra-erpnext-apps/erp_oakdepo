@@ -8,6 +8,7 @@
 // there needs exactly one entry here.
 
 import { labels, repairStatusLabels } from "@/utils/labels"
+import { STAGE, tone } from "@/utils/statusPill"
 
 export const KIND = {
 	// Colours follow the rest of the app rather than the calendar's own taste: a droplet is
@@ -30,19 +31,20 @@ export function kindLabel(item) {
 	return labels.kindBooking
 }
 
+// Survey and cleaning read exactly as their Desk lists do (utils/statusPill.js).
 const SURVEY = {
-	Scheduled: labels.statusPlanned,
-	"In Progress": labels.statusRunning,
-	Completed: labels.surveyOrderStatusCompleted,
-	Cancelled: labels.surveyOrderStatusCancelled,
+	Scheduled: STAGE.ready.label,
+	"In Progress": STAGE.doing.label,
+	Completed: STAGE.done.label,
+	Cancelled: STAGE.cancelled.label,
 }
 const CLEANING = {
-	"Service Setup": labels.statusSetup,
-	Pending: labels.statusQueued,
-	In_Progress: labels.statusRunning,
-	"Pending Review": labels.cleaningStatusPendingReview,
-	Completed: labels.cleaningStatusCompleted,
-	Cancelled: labels.cleaningStatusCancelled,
+	"Service Setup": labels.cleaningNotStarted,
+	Pending: STAGE.ready.label,
+	In_Progress: STAGE.doing.label,
+	"Pending Review": STAGE.review.label,
+	Completed: STAGE.done.label,
+	Cancelled: STAGE.cancelled.label,
 }
 const BOOKING = {
 	Draft: labels.statusPlanned,
@@ -50,13 +52,21 @@ const BOOKING = {
 	"Pending Confirmation": labels.statusQueued,
 	Confirmed: labels.statusPlanned,
 	Completed: labels.scheduleDone,
-	Cancelled: labels.surveyOrderStatusCancelled,
+	Cancelled: STAGE.cancelled.label,
 }
 
-// Which words mean "someone is on it right now" and which mean "still waiting" — the chip's
-// colour, not its text, is what a crew reads across a list of five.
-const RUNNING = new Set([labels.statusRunning])
-const WAITING = new Set([labels.statusQueued, labels.cleaningStatusPendingReview, labels.statusNoBon])
+// The chip's colour per word, by the Desk colour rule — the colour, not the text, is what a
+// crew reads across a list of five. Keyed by the translated label, so two statuses that read
+// the same always paint the same.
+const COLOUR = new Map([
+	...Object.values(STAGE).map((s) => [s.label, s.colour]),
+	[labels.statusQueued, "orange"],
+	[labels.statusNoBon, "orange"],
+	[labels.statusUnpaid, "orange"],
+	[repairStatusLabels["Pending Approval"], "orange"],
+	[repairStatusLabels.Approved, "green"],
+	[repairStatusLabels.Rejected, "red"],
+])
 
 /**
  * The one-word state of a card, plus the tone to paint it.
@@ -82,12 +92,5 @@ export function statusChip(item) {
 	} else {
 		label = repairStatusLabels[item.status] || item.status
 	}
-	const tone = item.done
-		? "bg-leaf-100 text-leaf-800"
-		: RUNNING.has(label)
-			? "bg-blue-100 text-blue-800"
-			: WAITING.has(label)
-				? "bg-amber-100 text-amber-800"
-				: "bg-gray-100 text-gray-600"
-	return { label: label || "—", tone }
+	return { label: label || "—", tone: tone(item.done ? "blue" : COLOUR.get(label)) }
 }

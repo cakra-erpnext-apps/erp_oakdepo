@@ -414,6 +414,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from "vue"
 import { createResource } from "frappe-ui"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
+import { pill } from "@/utils/statusPill"
 import { saveToast, toast } from "@/utils/toast"
 import { confirm } from "@/utils/confirm"
 import { shootOrFallback } from "@/utils/camera"
@@ -611,7 +612,7 @@ const batchStatus = computed(() =>
 				done: true,
 				line: `${labels.eirBatchSentAt} ${clock(sent.at)} · ${sent.damages || 0} ${labels.eirReviewDamage}`,
 				chip: labels.eirStatusPendingReview,
-				tone: "bg-sky-100 text-sky-700",
+				tone: pill("review").cls,
 			}
 		if (n === props.inspection)
 			return {

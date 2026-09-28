@@ -6,34 +6,27 @@
 // sama) pada akhirnya berselisih, dan operator jadi menghafal warna per layar.
 import { labels, repairStatusLabels } from "@/utils/labels"
 import { LOCALE } from "@/utils/lang"
+import { tone } from "@/utils/statusPill"
 
-// Warna per status. Satu nada per arti, bukan per nama status: apa pun yang masih menunggu
-// orang lain berwarna langit, yang ada di tangan operator berwarna brand, yang sudah beres
-// hijau, yang gagal merah.
-const TONE = {
-	Draft: "bg-gray-100 text-gray-600",
-	"Pending Approval": "bg-amber-100 text-amber-800",
-	Approved: "bg-leaf-100 text-leaf-800",
-	Rejected: "bg-red-100 text-red-700",
-	"Revision Requested": "bg-orange-100 text-orange-800",
-	Pending: "bg-gray-100 text-gray-600",
-	"In Progress": "bg-brand-100 text-brand-700",
-	"Pending Review": "bg-sky-100 text-sky-800",
-	Completed: "bg-leaf-100 text-leaf-800",
-	Cancelled: "bg-gray-200 text-gray-600",
+// Warna per status, sama dengan repair_order_list.js di Desk (aturan warnanya di statusPill.js).
+const COLOUR = {
+	Draft: "gray",
+	"Pending Approval": "orange",
+	Approved: "green",
+	Rejected: "red",
+	"Revision Requested": "pink",
+	Pending: "orange",
+	"In Progress": "yellow",
+	"Pending Review": "purple",
+	Completed: "blue",
+	Cancelled: "red",
 }
 
-/**
- * Chip status satu order: `{ label, tone }`.
- *
- * "Pending" sengaja dibaca **Belum mulai**, bukan "Siap Dikerjakan" seperti di Desk. Di layar
- * ini pertanyaannya bukan "boleh dikerjakan?" — semua yang sampai sini boleh — melainkan
- * "sudah dipegang orang belum?", dan itu yang harus dijawab chip-nya.
- */
+/** Chip status satu order: `{ label, tone }`. */
 export function mrChip(status) {
 	return {
-		label: status === "Pending" ? labels.mrStatusNotStarted : repairStatusLabels[status] || status || "—",
-		tone: TONE[status] || "bg-gray-100 text-gray-600",
+		label: repairStatusLabels[status] || status || "—",
+		tone: tone(COLOUR[status]),
 	}
 }
 

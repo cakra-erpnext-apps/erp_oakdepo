@@ -53,6 +53,10 @@ export default {
 				// no colour whatsoever. Defined here, they finally paint.
 				sky: ramp("sky"),
 				indigo: ramp("indigo"),
+				// frappe-ui ships purple / pink only as fixed light-mode hexes; the status
+				// chips (utils/statusPill.js) need them to follow the theme like the rest.
+				purple: ramp("purple"),
+				pink: ramp("pink"),
 			},
 			fontFamily: {
 				sans: ['"Plus Jakarta Sans Variable"', ...defaultTheme.fontFamily.sans],

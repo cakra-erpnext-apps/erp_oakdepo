@@ -74,6 +74,7 @@
 import { computed, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
+import { tone } from "@/utils/statusPill"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 import FilterBar from "@/components/list/FilterBar.vue"
@@ -128,12 +129,15 @@ const fmtDateTime = (v) => (v ? String(v).slice(0, 16).replace("T", " ") : "")
 function statusText(s) {
 	return labels.gateStatus?.[s] || s || "—"
 }
-function statusClass(s) {
-	if (s === "Gate_Out_Completed") return "bg-gray-200 text-gray-600"
-	if (s === "Cancelled") return "bg-red-100 text-red-700"
-	if (s === "EIR_Completed" || s === "Gate_In_Completed") return "bg-leaf-100 text-leaf-800"
-	return "bg-amber-100 text-amber-800"
+// Sama dengan gate_entry_list.js di Desk.
+const GATE_COLOUR = {
+	Active: "orange",
+	Gate_In_Completed: "green",
+	EIR_Completed: "purple",
+	Gate_Out_Completed: "blue",
+	Cancelled: "red",
 }
+const statusClass = (s) => tone(GATE_COLOUR[s])
 function cells(d) {
 	return [
 		{ label: labels.gateTruck, value: d.truck_plate },

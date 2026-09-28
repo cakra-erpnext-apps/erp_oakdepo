@@ -16,7 +16,7 @@
 			     menghitungnya sendiri. Hilang begitu EIR belum dimulai — di situ chip-nya
 			     mengatakan hal yang lebih berguna. -->
 			<span v-if="elapsed" class="oak-chip shrink-0 bg-blue-100 font-mono text-blue-700">{{ elapsed }}</span>
-			<span v-else-if="!startedMs" class="oak-chip shrink-0 bg-gray-100 text-gray-500">{{ labels.eirBatchNotStarted }}</span>
+			<span v-else-if="!startedMs" class="oak-chip shrink-0" :class="pill('draft').cls">{{ pill("draft").label }}</span>
 		</div>
 
 		<template v-if="steps.length">
@@ -42,6 +42,7 @@
 <script setup>
 import { onBeforeUnmount, ref, watch } from "vue"
 import { labels } from "@/utils/labels"
+import { pill } from "@/utils/statusPill"
 import Icon from "@/components/Icon.vue"
 
 const props = defineProps({

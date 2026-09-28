@@ -7,11 +7,12 @@
 // an operator who cannot tell whether two screens are talking about the same thing stops
 // trusting both. The mapping is data, so it lives in one place.
 //
-// The colour convention is the app's own, and it is about WHO IS BLOCKED, not about
-// progress: amber = somebody still has to do something, blue/green = nobody does.
+// Colours follow the Desk status rule (utils/statusPill.js): waiting for the Kalmar = orange,
+// on the ground and ready to survey = green, surveyed = blue (terminal), cancelled = red.
 
 import { labels } from "@/utils/labels"
 import { LOCALE } from "@/utils/lang"
+import { tone } from "@/utils/statusPill"
 
 export const WAITING = "Waiting Lowering"
 export const LOWERED = "Lowered"
@@ -31,23 +32,16 @@ export function statusLabel(status) {
 
 /** Chip background + text, for a status shown beside a tank number. */
 export function chipClass(status) {
-	return (
-		{
-			[WAITING]: "bg-amber-100 text-amber-800",
-			[LOWERED]: "bg-leaf-100 text-leaf-700",
-			[DONE]: "bg-brand-100 text-brand-700",
-			[CANCELLED]: "bg-red-100 text-red-700",
-		}[status] || "bg-gray-100 text-gray-600"
-	)
+	return tone({ [WAITING]: "orange", [LOWERED]: "green", [DONE]: "blue", [CANCELLED]: "red" }[status])
 }
 
 /** The round icon tile in front of a tank row. */
 export function tileClass(status) {
 	return (
 		{
-			[WAITING]: "bg-amber-50 text-amber-600",
+			[WAITING]: "bg-orange-50 text-orange-600",
 			[LOWERED]: "bg-leaf-50 text-leaf-600",
-			[DONE]: "bg-brand-50 text-brand-600",
+			[DONE]: "bg-blue-50 text-blue-600",
 			[CANCELLED]: "bg-red-50 text-red-500",
 		}[status] || "bg-gray-100 text-gray-400"
 	)

@@ -137,6 +137,7 @@
 <script setup>
 import { computed, ref } from "vue"
 import { labels } from "@/utils/labels"
+import { tone } from "@/utils/statusPill"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import SurveyOrderInfo from "@/components/SurveyOrderInfo.vue"
@@ -151,13 +152,8 @@ import { daysFrom, fill, groupByDay, useSavedFilters } from "@/utils/listKit"
 const PAGE = 20
 
 // Chip status membawa teksnya sendiri, jadi tetap terbaca walau warnanya pudar di bawah matahari.
-const STATUS_STYLE = {
-	Scheduled: { chip: "bg-blue-100 text-blue-700" },
-	"In Progress": { chip: "bg-amber-100 text-amber-800" },
-	Completed: { chip: "bg-leaf-100 text-leaf-700" },
-	Cancelled: { chip: "bg-red-100 text-red-700" },
-}
-const chip = (s) => STATUS_STYLE[s]?.chip || "bg-gray-100 text-gray-600"
+// Warnanya sama dengan survey_order_list.js di Desk.
+const chip = (s) => tone({ Scheduled: "orange", "In Progress": "yellow", Completed: "blue", Cancelled: "red" }[s])
 const STATUS_LABEL = {
 	Scheduled: labels.svStatScheduled,
 	"In Progress": labels.svStatRunning,

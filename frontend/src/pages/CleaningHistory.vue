@@ -23,7 +23,7 @@
 						{{ item.order_id }}<span v-if="item.service_count"> · {{ item.service_count }} {{ labels.cleaningServicesCount }}</span>
 					</span>
 					<span class="shrink-0 flex items-center gap-1.5">
-						<span v-if="item.revision_requested" class="oak-chip bg-orange-100 text-orange-800">{{ labels.cleaningStatusRevision }}</span>
+						<span v-if="item.revision_requested" class="oak-chip" :class="pill('revision').cls">{{ labels.cleaningStatusRevision }}</span>
 						{{ fmtDate(item.cleaning_end || item.order_created) }}
 					</span>
 				</div>
@@ -171,6 +171,7 @@
 import { ref } from "vue"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
+import { pill, tone } from "@/utils/statusPill"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
@@ -213,10 +214,7 @@ function statusText(s) {
 	return s || "—"
 }
 function statusClass(s) {
-	if (s === "Completed") return "bg-leaf-100 text-leaf-800"
-	if (s === "Cancelled") return "bg-red-100 text-red-700"
-	if (s === "Pending Review") return "bg-sky-100 text-sky-800"
-	return "bg-gray-200 text-gray-600"
+	return tone({ Completed: "blue", Cancelled: "red", "Pending Review": "purple" }[s])
 }
 
 /** `Mulai 14:56 – 15:22 · 26 mnt`, or just the start when the wash has no end yet. */

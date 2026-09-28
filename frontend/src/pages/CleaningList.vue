@@ -87,7 +87,7 @@
 								</CleaningOrderInfo>
 								<span v-if="isOpen(o) || o.revision_requested" class="flex flex-wrap items-center gap-1.5">
 									<LiftOnBadge v-if="isOpen(o)" :survey="o.target_survey_on" :target="o.target_lift_on" :urgent="o.target_urgent_on" />
-									<span v-if="o.revision_requested" class="oak-chip bg-orange-100 text-orange-800">{{ labels.cleaningStatusRevision }}</span>
+									<span v-if="o.revision_requested" class="oak-chip" :class="pill('revision').cls">{{ labels.cleaningStatusRevision }}</span>
 								</span>
 							</span>
 						</router-link>
@@ -135,6 +135,7 @@
 import { computed, ref } from "vue"
 import { useRoute } from "vue-router"
 import { labels } from "@/utils/labels"
+import { pill } from "@/utils/statusPill"
 import Icon from "@/components/Icon.vue"
 import SkeletonList from "@/components/SkeletonList.vue"
 import LiftOnBadge from "@/components/LiftOnBadge.vue"

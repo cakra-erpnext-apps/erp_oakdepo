@@ -76,6 +76,7 @@
 <script setup>
 import { computed } from "vue"
 import { labels } from "@/utils/labels"
+import { pill } from "@/utils/statusPill"
 import { useDismissOnBack } from "@/utils/backstack"
 import { STEP_COUNT, getStep } from "@/utils/eirBatch"
 import Icon from "@/components/Icon.vue"
@@ -119,7 +120,7 @@ const countLine = computed(() => {
 	const todo = props.rows.filter((r) => !r.sent && !r.work_started_on).length
 	const sent = props.rows.filter((r) => r.sent).length
 	const parts = [`${n} ${labels.eirBadge}`]
-	if (draft) parts.push(`${draft} ${labels.eirStatusDraft.toLowerCase()}`)
+	if (draft) parts.push(`${draft} ${labels.stageDoing.toLowerCase()}`)
 	if (todo) parts.push(`${todo} ${labels.eirBatchNotStarted.toLowerCase()}`)
 	if (sent) parts.push(`${sent} ${labels.eirBatchSentWord.toLowerCase()}`)
 	return parts.join(" · ")
@@ -134,9 +135,9 @@ function stateLine(r) {
 }
 
 function stateChip(r) {
-	if (r.sent) return { label: labels.eirBatchSentWord, tone: "bg-leaf-100 text-leaf-700" }
-	if (r.work_started_on) return { label: labels.eirStatusDraft, tone: "bg-brand-100 text-brand-700" }
-	return { label: labels.eirBatchTodoWord, tone: "bg-gray-100 text-gray-500" }
+	// Sama dengan inspection_list.js: terkirim = Menunggu Review, dimulai = Dikerjakan, sisanya Draf.
+	const { label, cls } = pill(r.sent ? "review" : r.work_started_on ? "doing" : "draft")
+	return { label, tone: cls }
 }
 
 function clock(ms) {

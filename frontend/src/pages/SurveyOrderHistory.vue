@@ -57,6 +57,7 @@
 <script setup>
 import { onBeforeUnmount, ref } from "vue"
 import { labels } from "@/utils/labels"
+import { tone } from "@/utils/statusPill"
 import { cachedResource } from "@/data/cache"
 import { fmtDate } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
@@ -64,7 +65,7 @@ import SkeletonList from "@/components/SkeletonList.vue"
 import SurveyOrderInfo from "@/components/SurveyOrderInfo.vue"
 
 const PAGE = 20
-const CHIP = { Completed: "bg-leaf-100 text-leaf-700", Cancelled: "bg-red-100 text-red-700" }
+const CHIP = { Completed: tone("blue"), Cancelled: tone("red") }
 const LABEL = { Completed: labels.svStatDone, Cancelled: labels.svCancelledGroup }
 
 const search = ref("")

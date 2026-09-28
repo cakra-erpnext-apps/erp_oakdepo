@@ -208,6 +208,7 @@
 import { computed, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { labels } from "@/utils/labels"
+import { tone } from "@/utils/statusPill"
 import Icon from "@/components/Icon.vue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import SurveyOrderInfo from "@/components/SurveyOrderInfo.vue"
@@ -340,15 +341,7 @@ const orderStatusLabel = computed(() => {
 	return map[order.value?.status] || order.value?.status || "—"
 })
 
-const orderChipClass = computed(() => {
-	const map = {
-		Scheduled: "bg-blue-100 text-blue-700",
-		"In Progress": "bg-amber-100 text-amber-800",
-		Completed: "bg-leaf-100 text-leaf-700",
-		Cancelled: "bg-red-100 text-red-700",
-	}
-	return map[order.value?.status] || "bg-gray-100 text-gray-600"
-})
+const orderChipClass = computed(() => tone({ Scheduled: "orange", "In Progress": "yellow", Completed: "blue", Cancelled: "red" }[order.value?.status]))
 
 // Berapa tank yang sudah di bawah dan menunggu surveyor.
 const readyCount = computed(

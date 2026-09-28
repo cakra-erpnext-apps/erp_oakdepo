@@ -1,12 +1,14 @@
 import { labels, statusLabels } from "@/utils/labels"
 import { STEP_COUNT, hasStep, getStep } from "@/utils/eirBatch"
+import { tone } from "@/utils/statusPill"
 
-const CHIP = {
-	available: "bg-leaf-100 text-leaf-800",
-	draft: "bg-gray-100 text-gray-700",
-	pending: "bg-amber-100 text-amber-800",
-	in_progress: "bg-blue-100 text-blue-800",
-	gate_out: "bg-gray-200 text-gray-700",
+// Warna bucket mengikuti aturan status Desk (statusPill.js / container_list.js).
+const COLOUR = {
+	available: "green",
+	draft: "gray",
+	pending: "orange",
+	in_progress: "yellow",
+	gate_out: "blue",
 }
 
 // Chip status satu tank — sama di baris daftar dan di kepala detail. EIR yang sedang
@@ -15,7 +17,7 @@ const CHIP = {
 export function tankChip(c) {
 	if (c.order?.kind === "EIR") {
 		const step = hasStep(c.order.name) ? ` ${getStep(c.order.name) + 1}/${STEP_COUNT}` : ""
-		return { label: `${labels.monitorDraftEir}${step}`, cls: "bg-brand-100 text-brand-700" }
+		return { label: `${labels.monitorDraftEir}${step}`, cls: tone("yellow") }
 	}
-	return { label: statusLabels[c.status] || c.status || "—", cls: CHIP[c.status] || "bg-gray-100 text-gray-600" }
+	return { label: statusLabels[c.status] || c.status || "—", cls: tone(COLOUR[c.status]) }
 }

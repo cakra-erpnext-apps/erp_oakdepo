@@ -445,7 +445,6 @@ export const labels = {
 	eirBatchVoucherHint: "data voucher diisi sekali untuk semua.",
 	eirVoucherForCount: "berlaku untuk {n} EIR",
 	eirVoucherFromBatch: "sudah terisi dari batch",
-	eirDraftStep: "Draft", // chip baris worklist: "Draft 2/4"
 	// Langkah form EIR — nama langkah dipakai bar progres DAN tombol "Lanjut · <langkah>"
 	eirRequired: "wajib", // penanda kecil di kartu yang tidak boleh dilewat
 	eirNoFittings: "Tidak ada kotak kelengkapan untuk tank ini.",
@@ -686,11 +685,11 @@ export const labels = {
 	gateOrder: "Order",
 	gateEir: "EIR",
 	gateStatus: {
-		Active: "Aktif",
-		Gate_In_Completed: "Gate-In Selesai",
+		Active: "Di Depo",
+		Gate_In_Completed: "Masuk",
 		EIR_Completed: "EIR Selesai",
-		Gate_Out_Completed: "Gate-Out Selesai",
-		Cancelled: "Batal",
+		Gate_Out_Completed: "Keluar",
+		Cancelled: "Dibatalkan",
 	},
 
 	// Cleaning history
@@ -698,7 +697,7 @@ export const labels = {
 	cleaningHistoryDesc: "Cleaning order selesai / batal",
 	cleaningHistoryCount: "cleaning order",
 	cleaningStatusCompleted: "Selesai",
-	cleaningStatusCancelled: "Batal",
+	cleaningStatusCancelled: "Dibatalkan",
 	cleaningDateIssue: "Tgl. Terbit",
 	cleaningPlaceIssue: "Tempat Terbit",
 	cleaningSignedBy: "Ditandatangani",
@@ -771,7 +770,7 @@ export const labels = {
 	next: "Berikutnya", // Next
 	eirStatusDraft: "Draf", // Draft
 	eirStatusSubmitted: "Selesai", // Submitted (finalised by Admin Ops)
-	eirStatusCancelled: "Batal", // Cancelled
+	eirStatusCancelled: "Dibatalkan", // Cancelled
 	eirStatusPendingReview: "Menunggu Review", // Pending Review (sent for Admin Ops review)
 	eirStatusRevision: "Revisi Diminta", // Submitted EIR with a pending revision request
 	// Quick lists on the checklist landing (latest drafts / completed)
@@ -792,7 +791,6 @@ export const labels = {
 	// Worklist status split — a draft EIR is "belum" until Mulai stamps work_started_on,
 	// then "dikerjakan"; submitted ones live in the Selesai section below.
 	eirFilterAll: "Semua", // All
-	eirChipStarted: "Dikerjakan", // row badge for an in-progress EIR
 	eirFilterEmptyStarted: "Belum ada EIR yang sedang dikerjakan.", // no in-progress EIRs
 	eirFilterEmptyNotStarted: "Semua EIR sudah mulai dikerjakan. 🎉", // nothing left unstarted
 	eirFilterEmptyIn: "Tidak ada EIR masuk di daftar ini.", // no EIR-In under the current filter
@@ -822,7 +820,7 @@ export const labels = {
 	cleaningStartFirst: "Mulai cleaning dulu sebelum bisa diselesaikan.", // gate hint
 	cleaningStartGate: "Order ini belum dimulai. Mulai dulu untuk mengisi detail cleaning.", // detail-access gate
 	// --- Cleaning: redesain layar (2026-09-08) --------------------------------
-	cleaningNotStarted: "Belum mulai", // chip di header order yang belum dijalankan
+	cleaningNotStarted: "Belum Diteruskan", // Service Setup: Admin Ops belum memilih metode
 	cleaningRequested: "Layanan diminta", // apa yang diminta Admin Ops (read-only bagi petugas)
 	cleaningStartAuto: "Waktu mulai dicatat otomatis",
 	// Tiga langkah pengisian, ditampilkan sebagai chip centang di puncak form. Bukan alur
@@ -1020,7 +1018,7 @@ export const labels = {
 	mrReopenRequested: "Menunggu Admin Ops membuka order", // standing request banner
 	// --- M&R redesign (worklist -> order -> form kerja -> riwayat) ---
 	mrWorkTitle: "Perbaikan", // header of one order's screen
-	mrStatusNotStarted: "Belum mulai", // Pending chip on the order header
+	mrStatusNotStarted: "Siap Dikerjakan", // Pending — filter tab, same word as the chip
 	mrDamagesCount: "{n} temuan EIR", // worklist subtitle: how much the EIR found
 	mrFindingsCount: "{n} temuan", // section counter
 	mrApprovedBy: "disetujui {name}", // worklist subtitle: who let this job through
@@ -1082,14 +1080,26 @@ export const labels = {
 	scheduleDone: "selesai",
 	// Status pendek untuk chip di garis waktu Jadwal (peta lengkapnya di utils/scheduleKind.js)
 	statusQueued: "Antre",
-	statusRunning: "Berlangsung",
 	statusPlanned: "Dijadwalkan",
-	statusSetup: "Set layanan",
 	statusNoBon: "Belum dibon",
 	statusUnpaid: "Belum bayar",
 	statusArrived: "Sudah masuk",
 	statusLeft: "Sudah keluar",
 	scheduleNoTime: "—", // belum dimulai: tidak ada jam yang benar untuk ditulis
+	// Kosakata status standar — utils/statusPill.js (cermin public/js/status_pill.js di Desk).
+	stageDraft: "Draf",
+	stageReady: "Siap Dikerjakan",
+	stageDoing: "Dikerjakan",
+	stageReview: "Menunggu Review",
+	stageRevision: "Revisi Diminta",
+	stageDone: "Selesai",
+	stageCancelled: "Dibatalkan",
+	// Status Container Booking, sama dengan container_booking_list.js
+	bkStatusSubmitted: "Pengajuan",
+	bkStatusPendingPayment: "Menunggu Pembayaran",
+	bkStatusPendingConfirmation: "Menunggu Konfirmasi",
+	bkStatusConfirmed: "Dikonfirmasi",
+	bkStatusBlocked: "Diblokir",
 	// Spanduk "yang tertinggal". Satu kalimat, dan kalimatnya menyebut jenisnya kalau semua
 	// yang tertinggal memang satu jenis — "1 booking belum beres" bisa langsung ditindak,
 	// "1 agenda belum beres" masih harus dibuka dulu.
@@ -1137,15 +1147,15 @@ export const labels = {
 	surveyOrderTankTotal: "tank total",
 	surveyOrderTankUnit: "tank",
 	surveyOrderEmptyTanks: "Belum ada tank pada jadwal ini.",
-	surveyOrderStatusScheduled: "Terjadwal",
+	surveyOrderStatusScheduled: "Siap Dikerjakan",
 	surveyOrderStatusProgress: "Dikerjakan",
 	surveyOrderStatusCompleted: "Selesai",
-	surveyOrderStatusCancelled: "Batal",
+	surveyOrderStatusCancelled: "Dibatalkan",
 	// Status tank — dipakai kalender, worklist Kalmar, riwayat. Tiga status, satu kosakata.
 	surveyPosStatusWaiting: "Menunggu Lowering",
 	surveyPosStatusLowered: "Lowered",
 	surveyPosStatusDone: "Survey Done",
-	surveyPosStatusCancelled: "Batal",
+	surveyPosStatusCancelled: "Dibatalkan",
 	// --- Posisi Tank (Container Position) — menu berdiri sendiri, semua tim lapangan ---
 	tankPosTitle: "Posisi tank",
 	tankPosHint: "Cari atau scan tank untuk perbarui posisinya",
@@ -1187,7 +1197,7 @@ export const labels = {
 	mrPlanDate: "Tanggal rencana",
 	leakManualTitle: "Leak Check manual",
 	leakSearch: "Cari no. tank, Reff Doc, booking…",
-	leakStatOpen: "Belum dicek",
+	leakStatOpen: "Siap Dikerjakan",
 	leakSafe: "Aman",
 	leakSortOldest: "Terlama",
 	leakEmpty: "Belum ada Leak Check.",
@@ -1433,7 +1443,7 @@ export const labels = {
 	svListHint: "Jadwal survey tank out",
 	svListSearch: "Cari no. tank, reff doc, nama PT…",
 	svStatAll: "Semua",
-	svStatScheduled: "Terjadwal",
+	svStatScheduled: "Siap Dikerjakan",
 	svStatRunning: "Dikerjakan",
 	svStatDone: "Selesai",
 	svSecUrgent: "Mendesak",
@@ -1642,24 +1652,11 @@ export const labels = {
 // Canonical Monitor status buckets — order-state per container (Indonesian / English).
 // Keys match the server-derived `status` buckets from the ESS endpoints.
 export const statusLabels = {
-	available: "Available", // no open order
-	draft: "Draft", // M&R created, not submitted
-	pending: "Pending", // queued / awaiting approval
+	available: "Siap Keluar", // no open order
+	draft: "Draf", // M&R created, not submitted
+	pending: "Siap Dikerjakan", // queued / awaiting approval
 	in_progress: "Dikerjakan", // cleaning / M&R started
-	gate_out: "Keluar", // Gate Out
-}
-
-// Tailwind chip colours per bucket (frappe-ui theme tokens).
-export const statusColors = {
-	available: "bg-leaf-100 text-leaf-800",
-	draft: "bg-gray-100 text-gray-700",
-	pending: "bg-amber-100 text-amber-800",
-	in_progress: "bg-blue-100 text-blue-800",
-	gate_out: "bg-gray-200 text-gray-700",
-}
-
-export function statusLabel(bucket) {
-	return statusLabels[bucket] || bucket || "—"
+	gate_out: "Sudah Keluar", // Gate Out
 }
 
 // Repair Order raw statuses -> Indonesian (English fallback via the raw value).
@@ -1668,7 +1665,7 @@ export const repairStatusLabels = {
 	"Pending Approval": "Menunggu Persetujuan",
 	Approved: "Disetujui",
 	Rejected: "Ditolak",
-	"Revision Requested": "Minta Revisi",
+	"Revision Requested": "Revisi Diminta",
 	// Handed to the team but not picked up yet — the depot PWA worklist's "Belum".
 	Pending: "Siap Dikerjakan",
 	"In Progress": "Dikerjakan",

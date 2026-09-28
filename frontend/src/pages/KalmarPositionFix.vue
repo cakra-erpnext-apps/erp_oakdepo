@@ -103,6 +103,7 @@
 import { computed, h, onMounted, ref } from "vue"
 import { useRoute, useRouter, RouterLink } from "vue-router"
 import { labels } from "@/utils/labels"
+import { tone } from "@/utils/statusPill"
 import { since, fmtDate } from "@/utils/surveyStatus"
 import { setLoweringPreselect } from "@/utils/positionPick"
 import { lowerTank } from "@/utils/lowering"
@@ -261,9 +262,9 @@ function onSearch() {
 const TankRow = ({ r }) => {
 	const waiting = r.status === WAITING
 	const chips = [
-		r.reopen_note ? h("span", { class: "oak-chip shrink-0 bg-orange-100 text-orange-800" }, labels.posReopenNote) : null,
+		r.reopen_note ? h("span", { class: ["oak-chip shrink-0", tone("pink")] }, labels.posReopenNote) : null,
 		waiting && r.urgent ? h("span", { class: "oak-chip shrink-0 bg-red-100 text-red-700" }, labels.lowStatUrgent) : null,
-		waiting ? null : h("span", { class: "oak-chip shrink-0 bg-leaf-100 text-leaf-700" }, labels.lowStatLowered),
+		waiting ? null : h("span", { class: ["oak-chip shrink-0", tone("green")] }, labels.lowStatLowered),
 	]
 	return h("li", { class: "flex items-center" }, [
 		h(

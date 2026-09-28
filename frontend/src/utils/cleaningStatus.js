@@ -1,12 +1,17 @@
 import { labels } from "@/utils/labels"
+import { pill, tone } from "@/utils/statusPill"
 
-// Chip satu Cleaning Order — teksnya ikut, supaya tetap terbaca walau warnanya pudar di bawah matahari.
+// Chip satu Cleaning Order, sama dengan cleaning_order_list.js di Desk — teksnya ikut, supaya
+// tetap terbaca walau warnanya pudar di bawah matahari.
 const CHIPS = {
-	In_Progress: { label: labels.cleaningInProgress, cls: "bg-amber-100 text-amber-800" },
-	"Pending Review": { label: labels.cleaningStatusPendingReview, cls: "bg-sky-100 text-sky-800" },
-	Completed: { label: labels.cleaningStatusCompleted, cls: "bg-leaf-100 text-leaf-800" },
-	Cancelled: { label: labels.cleaningStatusCancelled, cls: "bg-red-100 text-red-700" },
+	Pending: pill("ready"),
+	In_Progress: pill("doing"),
+	"Pending Review": pill("review"),
+	Completed: pill("done"),
+	Cancelled: pill("cancelled"),
 }
+// Service Setup: Admin Ops belum memilih metode — draf-nya order cuci.
+const NOT_FORWARDED = { label: labels.cleaningNotStarted, cls: tone("gray") }
 export function cleaningChip(o) {
-	return CHIPS[o?.status] || { label: labels.cleaningNotStarted, cls: "bg-gray-100 text-gray-600" }
+	return CHIPS[o?.status] || NOT_FORWARDED
 }

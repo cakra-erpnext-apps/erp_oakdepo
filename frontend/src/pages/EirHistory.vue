@@ -228,6 +228,7 @@ import { ref } from "vue"
 import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
+import { tone } from "@/utils/statusPill"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { photoSrc } from "@/data/send"
@@ -296,11 +297,11 @@ function statusText(r) {
 	return labels.eirStatusDraft
 }
 function statusClass(r) {
-	if (r.docstatus === 2) return "bg-gray-200 text-gray-600"
-	if (r.docstatus === 1 && r.revision_requested) return "bg-orange-100 text-orange-800"
-	if (r.docstatus === 1) return "bg-leaf-100 text-leaf-800"
-	if (r.status === "Pending Review") return "bg-sky-100 text-sky-800"
-	return "bg-amber-100 text-amber-800"
+	if (r.docstatus === 2) return tone("red")
+	if (r.docstatus === 1 && r.revision_requested) return tone("pink")
+	if (r.docstatus === 1) return tone("blue")
+	if (r.status === "Pending Review") return tone("purple")
+	return tone("gray")
 }
 // Header facts, EMPTY ONES DROPPED — see the grid's own comment for why a phone cannot
 // afford a row that only says "—".
