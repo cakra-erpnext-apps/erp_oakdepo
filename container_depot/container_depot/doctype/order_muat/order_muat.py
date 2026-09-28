@@ -15,6 +15,7 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 	_sync_container_summary,
 	_validate_booking_code,
 	_validate_tank_position,
+	refresh_bon_status,
 )
 
 
@@ -25,6 +26,10 @@ class OrderMuat(Document):
 		_sync_container_summary(self)
 		_validate_tank_position(self, present=True)
 		self._validate_no_open_work()
+
+	def on_update_after_submit(self):
+		# Tgl. Muat stays editable after submit — see OrderBongkar.on_update_after_submit.
+		refresh_bon_status(self.get("booking"))
 
 	def on_update(self):
 		_reconcile_codes(self)

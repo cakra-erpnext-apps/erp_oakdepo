@@ -236,7 +236,7 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 				)
 
 		head = frappe.db.get_value(
-			"Container Booking", booking, ["customer", "principal", "plan_date"], as_dict=True
+			"Container Booking", booking, ["customer", "principal"], as_dict=True
 		) or frappe._dict()
 		customer = head.customer
 		order = frappe.new_doc(order_doctype)
@@ -253,14 +253,11 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		if direction == "Tank In":
 			order.principal = head.principal
 			order.ex_vessel = vehicle_data.get("ex_vessel")
-			# Actual unload date for the bon: what the gate typed, else the day the booking
-			# planned, else today. Read off the HEADER now — the booking line holds the
-			# realisation, which is the date this very bon is about to write there.
-			order.tanggal_bongkar = (
-				vehicle_data.get("tanggal_bongkar_actual")
-				or head.plan_date
-				or today()
-			)
+			# Actual unload date for the bon: what the gate typed, else today. Never the
+			# booking's Plan Date — that is an estimate, and this date becomes the line's
+			# realisation (``refresh_line_realisation``), so an untouched field would record
+			# the estimate as what actually happened.
+			order.tanggal_bongkar = vehicle_data.get("tanggal_bongkar_actual") or today()
 			_build_bongkar_rows(order, booking, codes, by_name, vehicle_data)
 		else:
 			# A remark may arrive per container (``{code: text}``, the Desk dialog) or as one
@@ -275,16 +272,10 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 			order.driver_phone = vehicle_data.get("driver_phone")
 			order.ro = vehicle_data.get("ro")
 			order.destination = vehicle_data.get("destination")
-			# The bon's load date: what the dialog / gate typed, else the booking's own Plan
-			# Date. Falling straight through to today was how an outbound bon prepared a week
-			# ahead came out stamped with the day it was printed — so today is the last
-			# resort, not the second one.
-			order.tanggal_muat = (
-				vehicle_data.get("tanggal_muat")
-				or vehicle_data.get("tanggal")
-				or head.plan_date
-				or today()
-			)
+			# The bon's load date: what the dialog / gate typed, else today — never the Plan
+			# Date, for the same reason as the unload date above: it becomes the line's
+			# realisation, and the Plan Date is only the estimate.
+			order.tanggal_muat = vehicle_data.get("tanggal_muat") or vehicle_data.get("tanggal") or today()
 			for c in codes:
 				r = by_name[c]
 				order.append("containers", {

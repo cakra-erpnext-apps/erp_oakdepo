@@ -186,9 +186,10 @@
    "reqd": 1
   },
   {
+   "allow_on_submit": 1,
    "columns": 2,
    "default": "Today",
-   "description": "Opsional. Default hari ini.",
+   "description": "Opsional. Default hari ini; tetap bisa dikoreksi setelah submit.",
    "fieldname": "eir_date",
    "fieldtype": "Date",
    "in_list_view": 1,
@@ -769,7 +770,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-24 14:00:00.000000",
+ "modified": "2026-09-28 16:33:20.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

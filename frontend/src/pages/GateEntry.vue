@@ -726,7 +726,9 @@ const bookingFacts = computed(() => {
 		{ k: labels.principal, v: d.principal_name || d.principal || "—" },
 		{ k: `${labels.branch} / ${labels.depot}`, v: [d.branch, d.depot].filter(Boolean).join(" · ") || "—" },
 		{ k: labels.cargo, v: bookingCargo.value || "—" },
-		{ k: isOut.value ? labels.vDateMuat : labels.vDateBongkar, v: fmtDateShort(d.plan_date) },
+		// The booking's Plan Date is the estimate — labelled as such, not as the bon's
+		// Tanggal Bongkar / Muat, which the form below fills with the real day.
+		{ k: isOut.value ? labels.svPickupDate : labels.vDropOffDate, v: fmtDateShort(d.plan_date) },
 	]
 })
 
@@ -871,12 +873,10 @@ function openGenerate() {
 		// line or stays blank rather than inheriting the payer's name.
 		emkl: line.emkl || detail.value.customer || "",
 		shipper: line.shipper || "",
-		// The booking's own Plan Date wins over today, in both directions: a booking prepared
-		// a week ahead already says which day it is for, and the gate is where that day
-		// arrives — not where it is decided again. Read off the booking, not the line: the
-		// line carries the realisation, which is the date this bon is about to produce.
-		tanggal_bongkar_actual: detail.value.plan_date || today,
-		tanggal_muat: detail.value.plan_date || today,
+		// Unload / load date: today, not the booking's Plan Date — it becomes the line's
+		// realisation, and the Plan Date is only the estimate.
+		tanggal_bongkar_actual: today,
+		tanggal_muat: today,
 		remarks: "",
 	}
 	// One id per intended bon, minted when the form opens rather than when Generate is

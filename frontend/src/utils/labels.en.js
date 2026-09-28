@@ -334,6 +334,7 @@ export const labels = {
 	vShipper: "Shipper (Factory)",
 	vDestination: "Destination",
 	vDateBongkar: "Unloading Date",
+	vDropOffDate: "Drop off Date",
 	vDateMuat: "Loading Date",
 	cancelBtn: "Cancel",
 	backBtn: "Back",

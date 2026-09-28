@@ -1597,14 +1597,14 @@ function open_generate_dialog(frm) {
 					...(out
 						? [
 							{ fieldname: 'destination', fieldtype: 'Data', label: __('Destination') },
-							{ fieldname: 'tanggal_muat', fieldtype: 'Date', label: __('Tgl. Muat'), default: frm.doc.plan_date || frappe.datetime.get_today() },
+							{ fieldname: 'tanggal_muat', fieldtype: 'Date', label: __('Tgl. Muat'), default: frappe.datetime.get_today() },
 						]
 						: [
 							{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
 							{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
-							// Actual unload date for the bon. Defaults to the booking's own Plan Date so a
-							// voucher prepared a week ahead is not stamped with the day it was printed.
-							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frm.doc.plan_date || frappe.datetime.get_today() },
+							// Actual unload date for the bon — today, not the Plan Date: it becomes the
+							// line's realisation, and the Plan Date is only the estimate.
+							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
 						]),
 					{ fieldtype: 'Column Break' },
 					{ fieldname: 'truck_plate', fieldtype: 'Data', label: __('Truck Number'), reqd: 1 },

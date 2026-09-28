@@ -388,6 +388,7 @@ export const labels = {
 	vShipper: "Shipper (Pabrik)", // the factory that ordered the haul — a different party
 	vDestination: "Tujuan", // Destination
 	vDateBongkar: "Tanggal Bongkar",
+	vDropOffDate: "Drop off Date",
 	vDateMuat: "Tanggal Muat",
 	cancelBtn: "Batal", // Cancel
 	backBtn: "Kembali", // one step back in a multi-step flow (Gate)

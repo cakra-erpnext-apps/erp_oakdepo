@@ -101,6 +101,9 @@
    "label": "Destination"
   },
   {
+   "allow_on_submit": 1,
+   "default": "Today",
+   "description": "Actual load date for this bon. Defaults to today — never the booking's Plan Date, which is only the estimate. Becomes the booking line's Realisation Date.",
    "fieldname": "tanggal_muat",
    "fieldtype": "Date",
    "label": "Tgl. Muat"
@@ -193,7 +196,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-24 14:00:00.000000",
+ "modified": "2026-09-28 16:33:20.000000",
  "module": "Container Depot",
  "name": "Order Muat",
  "search_fields": "booking, container_summary, truck_plate, emkl, destination",

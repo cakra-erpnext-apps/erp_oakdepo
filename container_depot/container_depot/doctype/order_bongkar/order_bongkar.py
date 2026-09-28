@@ -22,6 +22,11 @@ class OrderBongkar(Document):
 		_sync_container_summary(self)
 		_validate_tank_position(self, present=False)
 
+	def on_update_after_submit(self):
+		# Tanggal Bongkar stays editable after submit (a mistyped realisation is corrected in
+		# place); the booking lines read their Realisation Date from it.
+		refresh_bon_status(self.get("booking"))
+
 	def on_update(self):
 		_reconcile_codes(self)
 		# A bon sent back to draft (revert_order_to_draft) may lose a row: its Leak Check

@@ -673,14 +673,15 @@ class TestGenerateOrderFromBookingAPI(FrappeTestCase):
 		)
 		self.assertEqual(str(frappe.db.get_value("Order Bongkar", name, "tanggal_bongkar")), "2026-07-01")
 
-	def test_bongkar_date_falls_back_to_the_bookings_plan(self):
-		"""No date typed at the gate → the day the booking was written for. Falling through
-		to today was how a bon prepared a week ahead came out stamped with its print date."""
+	def test_bongkar_date_falls_back_to_today_not_the_plan(self):
+		"""No date typed at the gate → today. The Plan Date is an estimate, and the bon's
+		date becomes the line's realisation — falling back to it recorded the estimate as
+		what actually happened."""
 		booking, codes = _booking_with_codes(
 			code_direction="Tank In", count=1, prefix="MCAE0", plan_date="2026-07-02"
 		)
 		name = make_order(booking, codes)
-		self.assertEqual(str(frappe.db.get_value("Order Bongkar", name, "tanggal_bongkar")), "2026-07-02")
+		self.assertEqual(str(frappe.db.get_value("Order Bongkar", name, "tanggal_bongkar")), today())
 
 	def test_order_bongkar_carries_booking_principal(self):
 		# The voucher inherits the booking's Principal (Tank Owner) on its header.
@@ -1301,6 +1302,21 @@ class TestBonCoverage(FrappeTestCase):
 
 		void_order(name, "Order Bongkar")
 		self.assertFalse(realised(0), "the voided bon took its date back")
+
+	def test_a_mistyped_bon_date_is_corrected_on_the_submitted_bon(self):
+		"""Tanggal Bongkar stays editable after submit — no Kembalikan ke Draft round-trip —
+		and the booking line's Realisation Date follows the correction."""
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=1, prefix="MCRFX0")
+		name = make_order(
+			booking, codes, vehicle_data={"tanggal_bongkar_actual": "2026-07-05"}, submit=True
+		)
+		bon = frappe.get_doc("Order Bongkar", name)
+		bon.tanggal_bongkar = "2026-07-06"
+		bon.save()  # update after submit
+		cno = frappe.db.get_value("Booking Code", codes[0], "container_no")
+		self.assertEqual(str(frappe.db.get_value(
+			"Container Booking Item", {"parent": booking, "container_no": cno}, "realisation_date"
+		)), "2026-07-06")
 
 
 class TestPlanDateCascade(FrappeTestCase):
