@@ -526,3 +526,50 @@ img.oak-grid-photo:hover {
 img.oak-grid-photo.oak-grid-photo-leak {
 	border: 2px solid var(--red-500, #e53e3e);
 }
+
+/*
+ * Skeleton Desk selama pindah menu (route_loading.js): halaman lama disembunyikan sampai
+ * halaman baru siap, supaya klik sidebar di server lambat tidak terlihat seperti tidak jalan.
+ */
+body.cd-route-loading #body > .page-container {
+	display: none !important;
+}
+
+.cd-route-skeleton {
+	padding-top: var(--padding-lg, 20px);
+	padding-bottom: var(--padding-lg, 20px);
+}
+
+.cd-route-skeleton .cd-sk-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: var(--margin-lg, 20px);
+}
+
+.cd-route-skeleton .cd-sk-card {
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md, 8px);
+	background: var(--card-bg);
+	padding: var(--padding-md, 15px);
+}
+
+.cd-sk {
+	background-color: var(--skeleton-bg, var(--gray-100));
+	border-radius: var(--border-radius, 6px);
+	animation: cd-sk-pulse 1.2s ease-in-out infinite;
+}
+
+.cd-sk-title { width: 220px; height: 24px; }
+.cd-sk-btn { width: 96px; height: 28px; }
+.cd-sk-row { height: 18px; margin: 14px 0; }
+.cd-sk-row:nth-child(3n + 2) { width: 85%; }
+.cd-sk-row:nth-child(3n) { width: 65%; }
+
+@keyframes cd-sk-pulse {
+	50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cd-sk { animation: none; }
+}

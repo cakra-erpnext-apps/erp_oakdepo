@@ -389,7 +389,7 @@ jinja = {
 # sudah menyimpannya perlu URL baru untuk mau mengambil versi baru. nginx sekarang
 # menyuruh revalidasi berkas bernama tetap (nginx/conf.d/default.conf), jadi angka
 # ini tidak perlu dinaikkan lagi setiap kali mengubah skrip.
-app_include_css = "/assets/container_depot/css/container_depot.css?v=3"
+app_include_css = "/assets/container_depot/css/container_depot.css?v=4"
 # notification_click — ask whether the recipient may open a notification's document before
 # following the link, so a Desk bell tap gives a plain reason instead of Frappe's
 # "Insufficient Permission" page. Fails open; see the file.
@@ -403,7 +403,7 @@ app_include_js = [
 	# Sidebar Desk: backport perbaikan Frappe untuk sidebar yang hilang saat workspace
 	# di-refresh, plus aturan "menu Container Depot tetap di sidebar Container Depot"
 	# (lihat file-nya).
-	"/assets/container_depot/js/sidebar_workspace_fix.js?v=4",
+	"/assets/container_depot/js/sidebar_workspace_fix.js?v=5",
 	# container_depot.render_system_facts — the shared sidebar block every depot document
 	# shows its system-filled facts in (see the file).
 	"/assets/container_depot/js/system_facts.js?v=2",
@@ -448,6 +448,9 @@ app_include_js = [
 	# keyboardnya) untuk order, jejak gate/yard dan dokumen penagihan — dibatalkan lewat
 	# Cancel/Void, tidak dihapus; order baru dibuat dari menunya, tidak disalin.
 	"/assets/container_depot/js/no_delete_duplicate.js?v=3",
+	# Skeleton selama pindah menu Desk — halaman lama tidak lagi diam tanpa tanda saat server
+	# lambat menyiapkan halaman baru (lihat file-nya).
+	"/assets/container_depot/js/route_loading.js?v=2",
 ]
 
 # include js, css files in header of web template

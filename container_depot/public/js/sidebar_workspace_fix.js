@@ -108,7 +108,7 @@
 	function current_values(doctype) {
 		const view = frappe.get_route()[0];
 		if (view === "List" && window.cur_list?.doctype === doctype) {
-			const eq = cur_list.filters.filter((f) => f[2] === "=");
+			const eq = (cur_list.filters || []).filter((f) => f[2] === "=");
 			return Object.fromEntries(eq.map((f) => [f[1], f[3]]));
 		}
 		if (view === "Form" && window.cur_frm?.doctype === doctype) return cur_frm.doc;
