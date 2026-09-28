@@ -42,6 +42,7 @@ never widens what a branch-scoped account can see.
 from __future__ import annotations
 
 import frappe
+from frappe import _
 from frappe.utils import add_days, cint, get_first_day, get_last_day, getdate, today
 
 from container_depot.container_depot.user_branch import get_user_depots
@@ -433,7 +434,7 @@ def _card(source, row, order, extras=None) -> dict:
 				x for x in (
 					row.get("principal") or row.get("customer"),
 					extras.get("cargo"),
-					f"truk {extras['truck']}" if extras.get("truck") else None,
+					_("truk {0}").format(extras["truck"]) if extras.get("truck") else None,
 				) if x
 			),
 			# The direction IS the instruction here — "Tank Out" means trucks are coming to

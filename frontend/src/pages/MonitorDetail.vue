@@ -157,6 +157,7 @@ import { computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 import { openLightbox } from "@/utils/lightbox"
 import { since, fmtDateTime } from "@/utils/surveyStatus"
 import { fill } from "@/utils/listKit"
@@ -193,7 +194,7 @@ const specLine = computed(() => {
 	return parts.filter(Boolean).join(" · ")
 })
 function num(v) {
-	return new Intl.NumberFormat("id-ID").format(v)
+	return new Intl.NumberFormat(LOCALE).format(v)
 }
 
 function orderIcon(label) {
@@ -201,7 +202,7 @@ function orderIcon(label) {
 }
 function orderLine(o) {
 	const started = o.since ? `${labels.monitorProcessStart} ${String(o.since).slice(11, 16)}` : null
-	return [started, o.by, o.status].filter(Boolean).join(" · ")
+	return [started, o.by, o.status_label || o.status].filter(Boolean).join(" · ")
 }
 
 // Rutenya datang dari server (`ess/inventory._open_orders`), bukan dari peta doctype di sini:

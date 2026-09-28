@@ -163,6 +163,25 @@
 					</p>
 				</div>
 
+				<!-- Bahasa: switching reloads the app (utils/lang.js). Option names stay in their
+				     own language so a reader stuck in the wrong one can still find theirs. -->
+				<div>
+					<p class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+						{{ labels.langTitle }}
+					</p>
+					<div class="grid grid-cols-2 gap-2">
+						<button
+							v-for="opt in langOptions"
+							:key="opt.lang"
+							class="oak-toggle flex items-center justify-center gap-1.5"
+							:class="LANG === opt.lang ? 'oak-toggle-on' : 'oak-toggle-off'"
+							@click="setLang(opt.lang).catch(() => toast.error(labels.sendOffline))"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+
 				<div>
 					<p class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
 						{{ labels.moreAccount }}
@@ -243,6 +262,7 @@ import { MAX_TABS, pickedTabs, resetTabs, setTabs } from "@/utils/navTabs"
 import { toast } from "@/utils/toast"
 import { useDismissOnBack } from "@/utils/backstack"
 import { setTheme, theme } from "@/utils/theme"
+import { LANG, setLang } from "@/utils/lang"
 import { labels } from "@/utils/labels"
 import Icon from "@/components/Icon.vue"
 
@@ -290,6 +310,10 @@ const rolesLine = computed(() => {
 	return rest > 0 ? `${shown}, ${labels.moreRolesRest.replace("{n}", rest)}` : shown
 })
 
+const langOptions = [
+	{ lang: "id", label: "Indonesia" },
+	{ lang: "en", label: "English" },
+]
 const themeOptions = [
 	{ mode: "system", icon: "smartphone", label: labels.themeSystem },
 	{ mode: "light", icon: "sun", label: labels.themeLight },

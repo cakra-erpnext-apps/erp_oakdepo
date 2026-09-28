@@ -467,7 +467,7 @@ const photoUploading = ref(false)
 
 const specLine = computed(() =>
 	[tank.value?.principal, [tank.value?.container_type, tank.value?.size].filter(Boolean).join(" "),
-		tank.value?.depot ? `depot ${tank.value.depot}` : null]
+		tank.value?.depot ? labels.depotOf.replace("{d}", tank.value.depot) : null]
 		.filter(Boolean)
 		.join(" · ")
 )

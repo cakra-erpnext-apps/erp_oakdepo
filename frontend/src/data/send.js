@@ -172,7 +172,7 @@ async function uploadStashed(ref) {
 		// The blob is gone (evicted, or already uploaded and the substitution lost). Nothing
 		// can bring it back, so fail loudly rather than saving an EIR with a dangling
 		// `local:` reference in it.
-		throw named("Rejected", "Foto tidak ditemukan di penyimpanan lokal.")
+		throw named("Rejected", labels.sendPhotoMissing)
 	}
 	const fileUrl = await uploadBlob(stored.blob, stored.name)
 	uploaded.set(ref, fileUrl)
@@ -209,11 +209,11 @@ async function request(url, opts) {
 	} catch (e) {
 		// fetch only rejects on a transport failure — exactly the dropped-signal case.
 		// Anything the server answered, however badly, lands below.
-		throw named("Offline", e?.message || "Tidak ada koneksi ke server.")
+		throw named("Offline", e?.message || labels.sendOffline)
 	}
 	if (res.ok) return res
-	if (res.status === 401 || res.status === 403) throw named("SessionExpired", "Sesi berakhir, login lagi.")
-	if (res.status >= 500) throw named("Offline", `Server tidak merespons (${res.status}).`)
+	if (res.status === 401 || res.status === 403) throw named("SessionExpired", labels.sendSessionExpired)
+	if (res.status >= 500) throw named("Offline", labels.sendServerDown.replace("{status}", res.status))
 	const { message } = await readError(res)
 	throw named("Rejected", message)
 }

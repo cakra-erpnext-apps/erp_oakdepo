@@ -234,6 +234,7 @@ import { ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels, repairStatusLabels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 import { mrChip, workWindow } from "@/utils/mrStatus"
 import { openLightbox } from "@/utils/lightbox"
 import { toast } from "@/utils/toast"
@@ -311,7 +312,7 @@ function fmtMonthYear(v) {
 	const d = new Date(String(v).slice(0, 10) + "T00:00:00")
 	return Number.isNaN(d.getTime())
 		? String(v).slice(0, 7)
-		: d.toLocaleDateString("id-ID", { month: "short", year: "numeric" })
+		: d.toLocaleDateString(LOCALE, { month: "short", year: "numeric" })
 }
 
 function statusText(s) {

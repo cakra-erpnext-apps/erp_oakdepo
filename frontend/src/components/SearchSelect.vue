@@ -71,6 +71,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import Icon from "@/components/Icon.vue"
 import { useDismissOnBack } from "@/utils/backstack"
+import { labels } from "@/utils/labels"
 
 const props = defineProps({
 	modelValue: { type: [String, Number], default: "" },
@@ -78,10 +79,10 @@ const props = defineProps({
 	optionValue: { type: Function, default: null }, // (opt) => value ; default: opt.value | opt
 	optionLabel: { type: Function, default: null }, // (opt) => label ; default: opt.label | opt
 	groupBy: { type: Function, default: null }, // (opt) => group name (optional)
-	placeholder: { type: String, default: "Pilih…" },
-	searchPlaceholder: { type: String, default: "Cari…" },
+	placeholder: { type: String, default: labels.selectPlaceholder },
+	searchPlaceholder: { type: String, default: labels.selectSearch },
 	clearLabel: { type: String, default: "" },
-	emptyLabel: { type: String, default: "Tidak ada hasil." },
+	emptyLabel: { type: String, default: labels.selectEmpty },
 	triggerClass: { type: String, default: "" },
 	disabled: { type: Boolean, default: false },
 })

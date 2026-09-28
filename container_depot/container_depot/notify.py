@@ -24,8 +24,10 @@ save nothing. Do not "make them consistent".
 from __future__ import annotations
 
 import frappe
+from frappe import _
 
 from container_depot.container_depot.user_branch import _SKIP_USERS, get_user_branches
+from container_depot.depot_lang import frappe_langs_for
 
 _RULE_CACHE_KEY = "depot_notification_rules"
 
@@ -126,6 +128,10 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 	``event_key`` selects the routing rule. Passing none keeps the old branch-only
 	behaviour, which no caller in this module does — every event is routed.
 
+	``subject`` is a string, or a zero-arg callable returning one. A callable is evaluated
+	once per recipient language (the user default ``depot_lang``, see ``depot_lang.py``),
+	so each person reads the bell and the push in their own language, not the actor's.
+
 	Best-effort: never let a notification failure abort the submit that triggered it.
 	"""
 	try:
@@ -136,45 +142,69 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 				return 0  # event disabled, or notifications switched off entirely
 		actor = frappe.session.user
 		created = 0
-		reached = []
 		# M&R dan Periodic Test berbagi doctype (container_depot.mr_scope): bel Periodic Test
 		# tidak boleh sampai ke Team Repair, dan sebaliknya.
-		job_type = None
+		job_type = periodic = None
 		if doctype == "Repair Order":
 			from container_depot.container_depot.mr_scope import PERIODIC, may_see
 
 			job_type = frappe.db.get_value("Repair Order", name, "job_type")
-			if job_type == PERIODIC:
-				# ponytail: judul tiap event M&R ditulis "M&R …"; satu ganti di sini daripada
-				# cabang di tiap notify_repair_*.
-				subject = subject.replace("M&R", "Periodic Test", 1)
-		for u in _recipients(branch, roles):
-			if u == actor:
-				continue  # the actor already saw the toast
-			if doctype == "Repair Order" and not may_see(job_type, u):
-				continue
-			frappe.get_doc({
-				"doctype": "Notification Log",
-				"for_user": u,
-				"from_user": actor,
-				"type": notification_type,
-				"document_type": doctype,
-				"document_name": name,
-				# Stamped so a tap on the bell can be routed exactly rather than guessed from
-				# the doctype — see ess/notification_routes.py for why that is not enough.
-				"depot_event": event_key,
-				"subject": subject,
-			}).insert(ignore_permissions=True)
-			created += 1
-			reached.append(u)
-		# Same recipients, second surface: the bell needs someone to be looking, push
-		# reaches the phone in a pocket. Recipients are resolved once, here — push must
-		# never re-decide who gets told, or a routing change lands on one surface only.
-		_push(reached, subject, doctype, name, event_key)
+			periodic = job_type == PERIODIC
+		recipients = [
+			u for u in _recipients(branch, roles)
+			# the actor already saw the toast
+			if u != actor and (doctype != "Repair Order" or may_see(job_type, u))
+		]
+		groups = {}
+		if callable(subject):
+			for u, lang in frappe_langs_for(recipients).items():
+				groups.setdefault(lang, []).append(u)
+		elif recipients:
+			groups[None] = recipients
+		for lang, users in groups.items():
+			text = _in_lang(subject, lang)
+			if periodic:
+				# ponytail: judul tiap event M&R ditulis "M&R …" (juga dalam bahasa Inggris);
+				# satu ganti di sini daripada cabang di tiap notify_repair_*.
+				text = text.replace("M&R", "Periodic Test", 1)
+			for u in users:
+				frappe.get_doc({
+					"doctype": "Notification Log",
+					"for_user": u,
+					"from_user": actor,
+					"type": notification_type,
+					"document_type": doctype,
+					"document_name": name,
+					# Stamped so a tap on the bell can be routed exactly rather than guessed from
+					# the doctype — see ess/notification_routes.py for why that is not enough.
+					"depot_event": event_key,
+					"subject": text,
+				}).insert(ignore_permissions=True)
+				created += 1
+			# Same recipients, second surface: the bell needs someone to be looking, push
+			# reaches the phone in a pocket. Recipients are resolved once, here — push must
+			# never re-decide who gets told, or a routing change lands on one surface only.
+			_push(users, text, doctype, name, event_key)
 		return created
 	except Exception:
 		frappe.log_error(title="Depot notify failed", message=frappe.get_traceback())
 		return 0
+
+
+def _in_lang(subject, lang):
+	"""``subject`` itself, or the callable's result with ``_()`` answering in ``lang``.
+
+	Not ``frappe.translate.print_language``: it restores the language without a
+	``finally``, so a subject that raises would leave the rest of the request in the
+	recipient's language."""
+	if not callable(subject):
+		return subject
+	prev = getattr(frappe.local, "lang", None)
+	frappe.local.lang = lang
+	try:
+		return subject()
+	finally:
+		frappe.local.lang = prev
 
 
 def _push(users, subject, doctype=None, name=None, event_key=None):
@@ -365,12 +395,14 @@ def notify_eir_created(inspection):
 	cno = inspection.container_no or inspection.container
 	# The direction is the whole point of the message: it tells the crew which checklist
 	# they are about to work and whether the tank is arriving or leaving.
-	arah = "tank masuk" if inspection.inspection_type == "EIR-In" else "tank akan keluar"
-	subject = f"{inspection.inspection_type} • {cno} — {arah}, siap diperiksa"
+	itype = inspection.inspection_type
 	notify(
 		doctype="Inspection",
 		name=inspection.name,
-		subject=subject,
+		subject=lambda: (
+			_("{0} • {1} — tank masuk, siap diperiksa") if itype == "EIR-In"
+			else _("{0} • {1} — tank akan keluar, siap diperiksa")
+		).format(itype, cno),
 		branch=_depot_branch(inspection.get("depot")),
 		event_key="eir_created",
 	)
@@ -383,7 +415,7 @@ def notify_leak_check_created(leak_check):
 	notify(
 		doctype="Leak Check",
 		name=leak_check.name,
-		subject=f"Leak Check • {cno} — tank masuk, siap dicek",
+		subject=lambda: _("Leak Check • {0} — tank masuk, siap dicek").format(cno),
 		branch=_depot_branch(leak_check.get("depot")),
 		event_key="leak_check_created",
 	)
@@ -392,11 +424,11 @@ def notify_leak_check_created(leak_check):
 def notify_eir_submitted(inspection, container):
 	"""Fire when an EIR (EIR-In / EIR-Out) is submitted — tells the crew a tank was
 	inspected so cleaning / M&R can pick it up."""
-	subject = f"{inspection.inspection_type} • {container.container_no}"
+	itype, cno = inspection.inspection_type, container.container_no
 	notify(
 		doctype="Inspection",
 		name=inspection.name,
-		subject=subject,
+		subject=lambda: _("{0} • {1}").format(itype, cno),
 		branch=_depot_branch(container.get("depot")),
 		event_key="eir_submitted",
 	)
@@ -409,11 +441,11 @@ def notify_eir_pending_review(inspection):
 	final Desk Submit. Reviewers only — the field crew already finished their part."""
 	who = frappe.session.user
 	cno = inspection.container_no or inspection.container
-	subject = f"{inspection.inspection_type} • {cno} — menunggu review Admin Ops (oleh {who})"
+	itype = inspection.inspection_type
 	notify(
 		doctype="Inspection",
 		name=inspection.name,
-		subject=subject,
+		subject=lambda: _("{0} • {1} — menunggu review Admin Ops (oleh {2})").format(itype, cno, who),
 		branch=_depot_branch(inspection.get("depot")),
 		event_key="eir_pending_review",
 	)
@@ -427,11 +459,10 @@ def notify_cleaning_pending_review(cleaning_order):
 	final Desk Submit — the crew notification only comes later, when that Submit lands."""
 	who = frappe.session.user
 	cno = cleaning_order.container_no or cleaning_order.container
-	subject = f"Cleaning • {cno} — menunggu review Admin Ops (oleh {who})"
 	notify(
 		doctype="Cleaning Order",
 		name=cleaning_order.name,
-		subject=subject,
+		subject=lambda: _("Cleaning • {0} — menunggu review Admin Ops (oleh {1})").format(cno, who),
 		branch=_depot_branch(cleaning_order.get("depot")),
 		event_key="cleaning_pending_review",
 	)
@@ -449,11 +480,11 @@ def notify_cleaning_order_created(cleaning_order):
 	)
 	if not co:
 		return
-	subject = f"Cleaning Order • {co.container_no or co.container} — perlu metode cleaning"
+	cno = co.container_no or co.container
 	notify(
 		doctype="Cleaning Order",
 		name=co.name,
-		subject=subject,
+		subject=lambda: _("Cleaning Order • {0} — perlu metode cleaning").format(cno),
 		branch=_depot_branch(co.depot),
 		event_key="cleaning_order_created",
 	)
@@ -471,11 +502,11 @@ def notify_cleaning_forwarded_to_team(cleaning_order):
 	)
 	if not co:
 		return
-	subject = f"Cleaning • {co.container_no or co.container} — diteruskan ke team, siap dikerjakan"
+	cno = co.container_no or co.container
 	notify(
 		doctype="Cleaning Order",
 		name=co.name,
-		subject=subject,
+		subject=lambda: _("Cleaning • {0} — diteruskan ke team, siap dikerjakan").format(cno),
 		branch=_depot_branch(co.depot),
 		event_key="cleaning_order_forwarded",
 	)
@@ -492,11 +523,11 @@ def notify_repair_order_created(repair_order):
 	)
 	if not ro:
 		return
-	subject = f"M&R • {ro.container_no or ro.container} — perlu perbaikan"
+	cno = ro.container_no or ro.container
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
-		subject=subject,
+		subject=lambda: _("M&R • {0} — perlu perbaikan").format(cno),
 		branch=_depot_branch(ro.depot),
 		event_key="repair_order_created",
 	)
@@ -511,11 +542,11 @@ def notify_repair_forwarded_to_team(repair_order):
 	)
 	if not ro:
 		return
-	subject = f"M&R • {ro.container_no or ro.container} — diteruskan ke team, siap dikerjakan"
+	cno = ro.container_no or ro.container
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
-		subject=subject,
+		subject=lambda: _("M&R • {0} — diteruskan ke team, siap dikerjakan").format(cno),
 		branch=_depot_branch(ro.depot),
 		event_key="repair_order_forwarded",
 	)
@@ -539,12 +570,11 @@ def notify_repair_pending_review(repair_order):
 	)
 	if not ro:
 		return
-	who = frappe.session.user
-	subject = f"M&R • {ro.container_no or ro.container} — menunggu review Admin Ops (oleh {who})"
+	cno, who = ro.container_no or ro.container, frappe.session.user
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
-		subject=subject,
+		subject=lambda: _("M&R • {0} — menunggu review Admin Ops (oleh {1})").format(cno, who),
 		branch=_depot_branch(ro.depot),
 		event_key="repair_order_service_setup",
 	)
@@ -567,15 +597,11 @@ def notify_repair_revision_requested(repair_order, reason=None):
 	)
 	if not ro:
 		return 0
-	subject = frappe._("Minta revisi M&R • {0} • oleh {1}").format(
-		ro.container_no or ro.container, frappe.session.user
-	)
-	if reason:
-		subject += f" — {reason}"
+	args = (ro.container_no or ro.container, frappe.session.user, reason)
 	return notify(
 		doctype="Repair Order",
 		name=ro.name,
-		subject=subject,
+		subject=lambda: (_("Minta revisi M&R • {0} • oleh {1} — {2}") if reason else _("Minta revisi M&R • {0} • oleh {1}")).format(*args),
 		branch=_depot_branch(ro.depot),
 		event_key="repair_revision_requested",
 	)
@@ -597,15 +623,11 @@ def notify_eir_revision_requested(inspection, reason=None):
 	)
 	if not ins:
 		return 0
-	subject = frappe._("Minta revisi EIR • {0} • oleh {1}").format(
-		ins.container_no or ins.container, frappe.session.user
-	)
-	if reason:
-		subject += f" — {reason}"
+	args = (ins.container_no or ins.container, frappe.session.user, reason)
 	return notify(
 		doctype="Inspection",
 		name=ins.name,
-		subject=subject,
+		subject=lambda: (_("Minta revisi EIR • {0} • oleh {1} — {2}") if reason else _("Minta revisi EIR • {0} • oleh {1}")).format(*args),
 		branch=_depot_branch(ins.depot),
 		event_key="eir_revision_requested",
 	)
@@ -622,15 +644,11 @@ def notify_cleaning_revision_requested(cleaning_order, reason=None):
 	)
 	if not co:
 		return 0
-	subject = frappe._("Minta revisi cleaning • {0} • oleh {1}").format(
-		co.container_no or co.container, frappe.session.user
-	)
-	if reason:
-		subject += f" — {reason}"
+	args = (co.container_no or co.container, frappe.session.user, reason)
 	return notify(
 		doctype="Cleaning Order",
 		name=co.name,
-		subject=subject,
+		subject=lambda: (_("Minta revisi cleaning • {0} • oleh {1} — {2}") if reason else _("Minta revisi cleaning • {0} • oleh {1}")).format(*args),
 		branch=_depot_branch(co.depot),
 		event_key="cleaning_revision_requested",
 	)
@@ -645,14 +663,11 @@ def notify_repair_order_pending_approval(repair_order):
 	)
 	if not ro:
 		return
-	subject = (
-		f"M&R • {ro.container_no or ro.container} — "
-		f"menunggu persetujuan owner (est. {ro.total_cost or 0})"
-	)
+	cno, cost = ro.container_no or ro.container, ro.total_cost or 0
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
-		subject=subject,
+		subject=lambda: _("M&R • {0} — menunggu persetujuan owner (est. {1})").format(cno, cost),
 		branch=_depot_branch(ro.depot),
 		event_key="repair_order_pending_approval",
 	)
@@ -670,11 +685,11 @@ def notify_repair_order_decided(repair_order):
 	)
 	if not ro:
 		return
-	subject = f"M&R • {ro.container_no or ro.container} — owner: {ro.status}"
+	cno, status = ro.container_no or ro.container, ro.status
 	notify(
 		doctype="Repair Order",
 		name=ro.name,
-		subject=subject,
+		subject=lambda: _("M&R • {0} — owner: {1}").format(cno, status),
 		branch=_depot_branch(ro.depot),
 		event_key="repair_order_decided",
 	)
@@ -689,15 +704,16 @@ def notify_order_gate(order, direction):
 	nos = [r.get("container_no") or r.get("container") for r in rows if (r.get("container_no") or r.get("container"))]
 	if not nos:
 		return
-	gate = "Gate In" if direction == "in" else "Gate Out"
-	bon = "Bongkar" if direction == "in" else "Muat"
-	subject = f"{gate} • {', '.join(nos)} • {bon} — siap print"
+	cnos = ", ".join(nos)
 	# One function, two events: inbound and outbound bons go to different people (Team
 	# Kalmar cares about the outbound one, nobody needs both), so they route separately.
 	notify(
 		doctype=order.doctype,
 		name=order.name,
-		subject=subject,
+		subject=lambda: (
+			_("Gate In • {0} • Bongkar — siap print") if direction == "in"
+			else _("Gate Out • {0} • Muat — siap print")
+		).format(cnos),
 		branch=order.get("branch"),
 		event_key="order_gate_in" if direction == "in" else "order_gate_out",
 	)
@@ -711,11 +727,11 @@ def notify_order_muat_survey(order):
 	nos = [r.get("container_no") or r.get("container") for r in rows if (r.get("container_no") or r.get("container"))]
 	if not nos:
 		return
-	subject = f"EIR-Out • {', '.join(nos)} — siap survey keluar"
+	cnos = ", ".join(nos)
 	notify(
 		doctype=order.doctype,
 		name=order.name,
-		subject=subject,
+		subject=lambda: _("EIR-Out • {0} — siap survey keluar").format(cnos),
 		branch=order.get("branch"),
 		event_key="order_muat_survey",
 	)
@@ -734,11 +750,10 @@ def notify_survey_order_scheduled(order):
 	"""
 	when = order.get("survey_date")
 	who = order.get("principal") or ""
-	subject = f"Jadwal Survey • {when} — {who}".rstrip(" —")
 	notify(
 		doctype=DOCTYPE_SURVEY,
 		name=order.get("name"),
-		subject=subject,
+		subject=lambda: (_("Jadwal Survey • {0} — {1}") if who else _("Jadwal Survey • {0}")).format(when, who),
 		branch=order.get("branch") or _depot_branch(order.get("depot")),
 		event_key="survey_order_scheduled",
 	)
@@ -757,16 +772,15 @@ def notify_waiting_lowering(survey, *, reopened=False):
 	subject differs, because "turunkan lagi" and "turunkan" are not the same news.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
-	if reopened:
-		subject = f"Lowering • {cno} — dibuka lagi, tank perlu diturunkan ulang"
-	else:
-		subject = f"Lowering • {cno} — turunkan tank (booking Tank Out)"
 	notify(
 		doctype=DOCTYPE_SURVEY,
 		# The schedule, not the tank row — see DOCTYPE_SURVEY. `survey_order` is what the tank
 		# payload carries; `name` is the fallback for a caller that already passes a schedule.
 		name=survey.get("survey_order") or survey.get("name"),
-		subject=subject,
+		subject=lambda: (
+			_("Lowering • {0} — dibuka lagi, tank perlu diturunkan ulang") if reopened
+			else _("Lowering • {0} — turunkan tank (booking Tank Out)")
+		).format(cno),
 		branch=_depot_branch(survey.get("depot")),
 		event_key="position_survey_pending",
 	)
@@ -791,11 +805,10 @@ def notify_position_order(tank):
 	"""
 	cno = tank.get("container_no") or tank.get("container")
 	when = tank.get("survey_date")
-	subject = f"Cek letak tank • {cno}" + (f" — survey {when}" if when else "")
 	notify(
 		doctype="Container",
 		name=tank.get("container"),
-		subject=subject,
+		subject=lambda: (_("Cek letak tank • {0} — survey {1}") if when else _("Cek letak tank • {0}")).format(cno, when),
 		branch=_depot_branch(tank.get("depot")),
 		event_key="position_order_pending",
 	)
@@ -816,15 +829,17 @@ def notify_position_lowered(survey, *, reopened=False):
 	note = (survey.get("location_note") or "").strip().replace("\n", " ")
 	if len(note) > 60:
 		note = note[:57] + "…"
-	tail = f" • {note}" if note else ""
-	head = "dibuka lagi, survey diulang" if reopened else "sudah turun, siap disurvey"
-	subject = f"Survey Posisi • {cno} — {head}{tail}"
 	notify(
 		doctype=DOCTYPE_SURVEY,
 		# The schedule, not the tank row — see DOCTYPE_SURVEY. `survey_order` is what the tank
 		# payload carries; `name` is the fallback for a caller that already passes a schedule.
 		name=survey.get("survey_order") or survey.get("name"),
-		subject=subject,
+		subject=lambda: (
+			(_("Survey Posisi • {0} — dibuka lagi, survey diulang • {1}") if note
+			 else _("Survey Posisi • {0} — dibuka lagi, survey diulang")) if reopened
+			else (_("Survey Posisi • {0} — sudah turun, siap disurvey • {1}") if note
+				  else _("Survey Posisi • {0} — sudah turun, siap disurvey"))
+		).format(cno, note),
 		branch=_depot_branch(survey.get("depot")),
 		event_key="position_surveyed",
 	)
@@ -839,14 +854,15 @@ def notify_survey_done(survey, *, eir_out=None):
 	a document that appears in a worklist with nothing having announced it.
 	"""
 	cno = survey.get("container_no") or survey.get("container")
-	tail = f" • EIR-Out {eir_out}" if eir_out else ""
-	subject = f"Survey Posisi • {cno} — survey selesai{tail}"
 	notify(
 		doctype=DOCTYPE_SURVEY,
 		# The schedule, not the tank row — see DOCTYPE_SURVEY. `survey_order` is what the tank
 		# payload carries; `name` is the fallback for a caller that already passes a schedule.
 		name=survey.get("survey_order") or survey.get("name"),
-		subject=subject,
+		subject=lambda: (
+			_("Survey Posisi • {0} — survey selesai • EIR-Out {1}") if eir_out
+			else _("Survey Posisi • {0} — survey selesai")
+		).format(cno, eir_out),
 		branch=_depot_branch(survey.get("depot")),
 		event_key="position_confirmed",
 	)
@@ -857,12 +873,13 @@ def notify_eir_out_hold(container_no, order_muat=None, reason=None, *, depot=Non
 	Supervisor (+ admin) to clear it (Fase G.4)."""
 	if not container_no:
 		return
-	tail = f" • {reason}" if reason else ""
-	subject = f"HOLD • {container_no}{tail} — perlu clearance Supervisor"
 	notify(
 		doctype="Order Muat" if order_muat else "Container",
 		name=order_muat or container_no,
-		subject=subject,
+		subject=lambda: (
+			_("HOLD • {0} • {1} — perlu clearance Supervisor") if reason
+			else _("HOLD • {0} — perlu clearance Supervisor")
+		).format(container_no, reason),
 		branch=_depot_branch(depot) if depot else None,
 		event_key="eir_out_hold",
 	)
@@ -874,11 +891,13 @@ def notify_gate_out(container_no, *, gate_entry=None, depot=None, when=None):
 	if not container_no:
 		return
 	ts = frappe.utils.format_datetime(when) if when else ""
-	subject = f"Gate Out • {container_no} • isotank keluar depo {ts}".strip()
 	notify(
 		doctype="Gate Entry",
 		name=gate_entry,
-		subject=subject,
+		subject=lambda: (
+			_("Gate Out • {0} • isotank keluar depo {1}") if ts
+			else _("Gate Out • {0} • isotank keluar depo")
+		).format(container_no, ts),
 		branch=_depot_branch(depot) if depot else None,
 		event_key="gate_out",
 	)
@@ -889,12 +908,14 @@ def notify_booking_created(booking):
 	admin / Cashier know a new booking (and, for Cash, a payment to collect) exists."""
 	customer = frappe.db.get_value("Customer", booking.customer, "customer_name") if booking.get("customer") else None
 	pay = booking.get("payment_type") or "Cash"
-	tail = " • bayar di kasir" if pay == "Cash" else ""
-	subject = f"Booking baru {booking.name} • {customer or booking.get('customer') or '-'} • {booking.get('direction') or 'Tank In'} • {pay}{tail}"
+	args = (booking.name, customer or booking.get("customer") or "-", booking.get("direction") or "Tank In", pay)
 	notify(
 		doctype="Container Booking",
 		name=booking.name,
-		subject=subject,
+		subject=lambda: (
+			_("Booking baru {0} • {1} • {2} • {3} • bayar di kasir") if pay == "Cash"
+			else _("Booking baru {0} • {1} • {2} • {3}")
+		).format(*args),
 		branch=booking.get("branch"),
 		event_key="booking_created",
 	)
@@ -903,11 +924,11 @@ def notify_booking_created(booking):
 def notify_booking_submitted(booking):
 	"""Fire when a Container Booking is confirmed (submitted)."""
 	customer = frappe.db.get_value("Customer", booking.customer, "customer_name") if booking.get("customer") else None
-	subject = f"Booking dikonfirmasi {booking.name} • {customer or booking.get('customer') or '-'} • {booking.get('direction') or 'Tank In'}"
+	args = (booking.name, customer or booking.get("customer") or "-", booking.get("direction") or "Tank In")
 	notify(
 		doctype="Container Booking",
 		name=booking.name,
-		subject=subject,
+		subject=lambda: _("Booking dikonfirmasi {0} • {1} • {2}").format(*args),
 		branch=booking.get("branch"),
 		event_key="booking_submitted",
 	)
@@ -930,15 +951,13 @@ def notify_booking_revision_requested(booking, reason=None):
 	if not row:
 		return 0
 	customer = frappe.db.get_value("Customer", row.customer, "customer_name") if row.customer else None
-	subject = frappe._("Minta revisi booking • {0} • {1}").format(
-		row.name, customer or row.customer or "-"
-	)
-	if reason:
-		subject += f" — {reason}"
+	args = (row.name, customer or row.customer or "-", reason)
 	return notify(
 		doctype="Container Booking",
 		name=row.name,
-		subject=subject,
+		subject=lambda: (
+			_("Minta revisi booking • {0} • {1} — {2}") if reason else _("Minta revisi booking • {0} • {1}")
+		).format(*args),
 		branch=row.branch,
 		event_key="booking_revision_requested",
 	)
@@ -956,15 +975,14 @@ def notify_booking_urgent(booking, urgent_on, reason=None):
 	the question the bell is answered for, and a subject that only names the booking would send
 	the reader to the document to find out.
 	"""
-	tail = f" • alasan: {reason}" if reason else ""
-	subject = (
-		f"MENDESAK {booking.name} • {_customer_name(booking.get('customer'))} • "
-		f"target {urgent_on}{tail}"
-	)
+	args = (booking.name, _customer_name(booking.get("customer")), urgent_on, reason)
 	notify(
 		doctype="Container Booking",
 		name=booking.name,
-		subject=subject,
+		subject=lambda: (
+			_("MENDESAK {0} • {1} • target {2} • alasan: {3}") if reason
+			else _("MENDESAK {0} • {1} • target {2}")
+		).format(*args),
 		branch=booking.get("branch"),
 		event_key="booking_urgent",
 	)
@@ -982,24 +1000,30 @@ def notify_contract_created(contract):
 	waiting to be activated (nothing can be priced or booked until it is)."""
 	# A contract seeded straight to Active (patches, data import) is already live, so
 	# only a real Draft gets the "waiting" call to action.
-	tail = " — menunggu aktivasi" if contract.get("status") == "Draft" else ""
-	subject = (
-		f"Kontrak baru {contract.name} • {_customer_name(contract.get('customer'))} • "
-		f"{contract.get('payment_type') or '-'}{tail}"
-	)
+	draft = contract.get("status") == "Draft"
+	args = (contract.name, _customer_name(contract.get("customer")), contract.get("payment_type") or "-")
 	# Contracts carry no branch or depot: they are per-customer commercial paperwork
 	# that applies depot-wide, so this is a global event.
-	notify(doctype="Depot Contract", name=contract.name, subject=subject, event_key="contract_created")
+	notify(
+		doctype="Depot Contract",
+		name=contract.name,
+		subject=lambda: (
+			_("Kontrak baru {0} • {1} • {2} — menunggu aktivasi") if draft else _("Kontrak baru {0} • {1} • {2}")
+		).format(*args),
+		event_key="contract_created",
+	)
 
 
 def notify_contract_activated(contract):
 	"""Fire when a Depot Contract goes Active — its tariff is now live, so bookings
 	can price off it."""
-	subject = (
-		f"Kontrak aktif {contract.name} • {_customer_name(contract.get('customer'))} • "
-		f"berlaku s/d {contract.get('valid_to') or '-'}"
+	args = (contract.name, _customer_name(contract.get("customer")), contract.get("valid_to") or "-")
+	notify(
+		doctype="Depot Contract",
+		name=contract.name,
+		subject=lambda: _("Kontrak aktif {0} • {1} • berlaku s/d {2}").format(*args),
+		event_key="contract_activated",
 	)
-	notify(doctype="Depot Contract", name=contract.name, subject=subject, event_key="contract_activated")
 
 
 def notify_invoice_submitted(invoice, method=None):
@@ -1011,12 +1035,14 @@ def notify_invoice_submitted(invoice, method=None):
 	"""
 	outstanding = frappe.utils.flt(invoice.get("outstanding_amount"))
 	money = frappe.utils.fmt_money(outstanding, currency=invoice.get("currency"))
-	tail = "lunas" if outstanding <= 0 else f"sisa {money} • jatuh tempo {invoice.get('due_date') or '-'}"
-	subject = f"Invoice {invoice.name} • {_customer_name(invoice.get('customer'))} • {tail}"
+	args = (invoice.name, _customer_name(invoice.get("customer")), money, invoice.get("due_date") or "-")
 	notify(
 		doctype="Sales Invoice",
 		name=invoice.name,
-		subject=subject,
+		subject=lambda: (
+			_("Invoice {0} • {1} • lunas") if outstanding <= 0
+			else _("Invoice {0} • {1} • sisa {2} • jatuh tempo {3}")
+		).format(*args),
 		branch=invoice.get("branch"),
 		event_key="invoice_submitted",
 	)

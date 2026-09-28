@@ -10,6 +10,8 @@ enforces auth: a Guest is bounced to the standard Frappe login and returned to
 import frappe
 from frappe.boot import load_translations
 
+from container_depot.depot_lang import get_user_lang
+
 no_cache = 1
 
 # DECIDED (handoff §5.5, 2026-08-06): /depot stays open to every logged-in user, and this
@@ -66,6 +68,8 @@ def get_boot():
 		}
 	)
 	bootinfo.lang = frappe.local.lang
+	# The PWA's own Indonesian / English choice (depot_lang.py), read by frontend/src/utils/lang.js.
+	bootinfo.depot_lang = get_user_lang()
 	load_translations(bootinfo)
 	return bootinfo
 

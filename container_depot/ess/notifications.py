@@ -186,7 +186,8 @@ def event_options():
 		):
 			roles.setdefault(r.parent, set()).add(r.role)
 		rules = [r for r in rules if roles.get(r.name, set()) & mine]
-	return [{"key": r.event_key, "label": r.label or r.event_key} for r in rules]
+	# Rule labels are seeded in Indonesian (install.py); translated per reader, never stored.
+	return [{"key": r.event_key, "label": _(r.label or r.event_key)} for r in rules]
 
 
 def _with_openable(items, user):

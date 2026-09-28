@@ -609,7 +609,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		# rate/total is NOT sent to the depot PWA (billing-only); ``cleaning_services`` is what's
 		# chosen on this order, ``cleaning_items`` the full pickable catalogue for this owner.
 		"cleaning_services": [
-			{"item_code": r.cleaning_item, "item_name": r.item_name}
+			{"item_code": r.cleaning_item, "item_name": _(r.item_name)}
 			for r in co.cleaning_services
 		],
 		"cleaning_items": _cleaning_item_options(),

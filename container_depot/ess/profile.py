@@ -19,6 +19,7 @@ import re
 import frappe
 from frappe import _
 
+from container_depot import depot_lang
 from container_depot.api import _require_authenticated_user
 
 # Big enough for a phone frame that skipped compression, small enough that a bad upload on
@@ -126,6 +127,16 @@ def remove_profile_photo():
 	frappe.db.set_value("User", user, "user_image", None, update_modified=False)
 	_drop_previous_avatar(user, previous, None)
 	return {"user_image": None}
+
+
+@frappe.whitelist(methods=["POST"])
+def set_language(lang: str):
+	"""POST — the caller's PWA language, ``id`` or ``en`` (see depot_lang.py)."""
+	_require_authenticated_user()
+	if lang not in ("id", "en"):
+		frappe.throw(_("Unknown language: {0}").format(lang))
+	frappe.defaults.set_user_default(depot_lang.DEFAULT_KEY, lang, frappe.session.user)
+	return {"lang": lang}
 
 
 def _drop_previous_avatar(user: str, previous: str | None, current: str | None) -> None:

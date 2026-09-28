@@ -78,6 +78,8 @@ before_request = [
 	# A report list filter guards the MENU only; `query_report.run` never touches it.
 	# Hold the same allowlist at the one choke point every report run passes. See boot.py.
 	"container_depot.boot.patch_query_report_customer_scope",
+	# The PWA's Indonesian / English switch rides in on a header. See depot_lang.py.
+	"container_depot.depot_lang.set_pwa_language",
 ]
 
 # What "open" means for the depot's work orders, on the Connections badges and the Desk

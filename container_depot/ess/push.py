@@ -240,7 +240,7 @@ def send_test(endpoint: str | None = None):
 	sent = deliver(
 		[frappe.session.user],
 		title="Depot OAK",
-		body="Notifikasi percobaan. Kalau ini muncul, notifikasi HP Anda sudah aktif.",
+		body=frappe._("Notifikasi percobaan. Kalau ini muncul, notifikasi HP Anda sudah aktif."),
 		url="/depot",
 		tag="depot-test",
 		endpoint=endpoint,

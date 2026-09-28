@@ -638,10 +638,12 @@ def get_mr_order_detail(repair_order) -> dict:
 	_guard_container_branch(ro.container)
 	c = frappe.db.get_value("Container", ro.container, _CONTAINER_FIELDS, as_dict=True) or frappe._dict()
 
-	dmg_desc = {d.name: d.description for d in frappe.get_all("Inspection Damage Code", fields=["name", "description"])}
-	rep_desc = {r.name: r.description for r in frappe.get_all("Inspection Repair Code", fields=["name", "description"])}
+	from container_depot.container_depot.eir import component_label
+
+	dmg_desc = {d.name: _(d.description) for d in frappe.get_all("Inspection Damage Code", fields=["name", "description"])}
+	rep_desc = {r.name: _(r.description) for r in frappe.get_all("Inspection Repair Code", fields=["name", "description"])}
 	damages = [{
-		"area": d.area, "component": d.component,
+		"area": _(d.area), "component": component_label(d.component),
 		"damage_code": d.damage_code, "damage_desc": dmg_desc.get(d.damage_code),
 		"repair_code": d.repair_code, "repair_desc": rep_desc.get(d.repair_code),
 		"damage_description": d.damage_description,
@@ -652,7 +654,7 @@ def get_mr_order_detail(repair_order) -> dict:
 		# The child row id. The PWA stamps it onto every evidence photo it takes, so a photo
 		# still points at the right line when one item appears on the order twice.
 		"name": r.name,
-		"item": r.item, "item_name": r.item_name, "is_stock_item": r.is_stock_item,
+		"item": r.item, "item_name": _(r.item_name), "is_stock_item": r.is_stock_item,
 		"quantity": r.quantity, "remark": r.remark,
 		# The gudang this line is issued from — chosen per row on the Desk form.
 		"warehouse": r.warehouse,
@@ -740,7 +742,7 @@ def get_mr_order_detail(repair_order) -> dict:
 		"used_items": used_items,
 		# Evidence photos, in their own table — keyed to the line they prove.
 		"work_photos": [{
-			"name": p.name, "photo": p.photo, "item": p.item, "item_name": p.item_name,
+			"name": p.name, "photo": p.photo, "item": p.item, "item_name": _(p.item_name),
 			"caption": p.caption, "used_item": p.used_item,
 			"timestamp": p.get("timestamp") or p.creation,
 		} for p in (ro.work_photos or [])],

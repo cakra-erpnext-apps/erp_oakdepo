@@ -242,7 +242,7 @@
 								class="oak-card flex items-center gap-1.5 px-4 py-2 text-xs text-amber-800"
 							>
 								<Icon name="alert-triangle" :size="14" class="shrink-0" />
-								<span><b>{{ outReady.length }}</b> dari <b>{{ detail.containers.length }}</b> {{ labels.gateOutReadyCount }}</span>
+								<span><b>{{ outReady.length }}</b> {{ labels.gateOutReadyOf }} <b>{{ detail.containers.length }}</b> {{ labels.gateOutReadyCount }}</span>
 							</p>
 							<!-- One tappable card per container rather than a checkbox in a list row: this
 							     is pressed with a glove on, in daylight, against the number painted on the

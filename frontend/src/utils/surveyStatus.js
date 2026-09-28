@@ -11,6 +11,7 @@
 // progress: amber = somebody still has to do something, blue/green = nobody does.
 
 import { labels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 
 export const WAITING = "Waiting Lowering"
 export const LOWERED = "Lowered"
@@ -68,10 +69,9 @@ export function statusIcon(status) {
 	)
 }
 
-const MONTHS = [
-	"Januari", "Februari", "Maret", "April", "Mei", "Juni",
-	"Juli", "Agustus", "September", "Oktober", "November", "Desember",
-]
+// Month names in the display language; for id-ID Intl gives exactly "Januari" … "Desember".
+const monthFmt = new Intl.DateTimeFormat(LOCALE, { month: "long" })
+export const MONTHS = Array.from({ length: 12 }, (_, i) => monthFmt.format(new Date(2000, i, 1)))
 
 /** `2026-09-04` -> `4 September 2026`. Parsed by hand, never through `new Date(string)`,
  *  which reads a bare date as UTC and so shows the day before west of Greenwich. */
@@ -114,12 +114,12 @@ export function since(v) {
 	const then = parseServerDateTime(v)
 	if (!then) return String(v)
 	const mins = Math.round((Date.now() - then.getTime()) / 60000)
-	if (mins < 1) return "Baru saja"
-	if (mins < 60) return `${mins} menit lalu`
+	if (mins < 1) return labels.sinceJustNow
+	if (mins < 60) return labels.sinceMinutes.replace("{n}", mins)
 	const hours = Math.round(mins / 60)
-	if (hours < 24) return `${hours} jam lalu`
+	if (hours < 24) return labels.sinceHours.replace("{n}", hours)
 	const days = Math.round(hours / 24)
-	if (days < 30) return `${days} hari lalu`
+	if (days < 30) return labels.sinceDays.replace("{n}", days)
 	return fmtDate(v)
 }
 

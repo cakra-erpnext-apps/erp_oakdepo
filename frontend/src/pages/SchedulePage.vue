@@ -180,12 +180,10 @@ import SkeletonList from "@/components/SkeletonList.vue"
 import ScheduleRow from "@/components/ScheduleRow.vue"
 import { KIND, KIND_ORDER } from "@/utils/scheduleKind"
 import { cachedResource } from "@/data/cache"
+import { MONTHS } from "@/utils/surveyStatus"
+import { LOCALE } from "@/utils/lang"
 
-const DOW = ["Sn", "Sl", "Rb", "Km", "Jm", "Sb", "Mg"]
-const MONTHS = [
-	"Januari", "Februari", "Maret", "April", "Mei", "Juni",
-	"Juli", "Agustus", "September", "Oktober", "November", "Desember",
-]
+const DOW = labels.scheduleDow.split(",")
 
 /** `YYYY-MM-DD` for a Date, in LOCAL time — never `toISOString`, which converts to UTC first
  *  and so turns every WIB morning before 07:00 into yesterday. */
@@ -229,7 +227,9 @@ const periodLabel = computed(() => {
 	return `${MONTHS[d.getMonth()]} ${d.getFullYear()} · ${fill(labels.scheduleWeek, { n: isoWeek(d) })}`
 })
 const monthLabel = computed(() => `${MONTHS[anchor.value.getMonth()]} ${anchor.value.getFullYear()}`)
-const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
+// Sunday first, as getDay() counts; 2000-01-02 was a Sunday. id-ID gives "Minggu" … "Sabtu".
+const dayFmt = new Intl.DateTimeFormat(LOCALE, { weekday: "long" })
+const DAY_NAMES = Array.from({ length: 7 }, (_, i) => dayFmt.format(new Date(2000, 0, 2 + i)))
 const dayLabel = computed(() => {
 	const d = parse(selected.value)
 	return `${DAY_NAMES[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`

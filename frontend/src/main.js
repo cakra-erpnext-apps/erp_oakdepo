@@ -4,6 +4,7 @@ import router from "./router"
 import { pruneReads } from "@/data/cache"
 import { watchSessionUser } from "@/data/session"
 import { initTheme } from "@/utils/theme"
+import { installLangHeader } from "@/utils/lang"
 import { initHaptics } from "@/utils/haptics"
 
 import {
@@ -16,6 +17,8 @@ import {
 
 import "./main.css"
 
+// First: every /api call from here on carries the display language (utils/lang.js).
+installLangHeader()
 // Before anything renders: the inline snippet in index.html already stamped the theme
 // onto <html> so the boot splash paints in it; this takes the same state over and keeps
 // tracking the OS setting from here on.

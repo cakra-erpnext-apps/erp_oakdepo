@@ -1,4 +1,5 @@
 import { cachedResource } from "@/data/cache"
+import { labels } from "@/utils/labels"
 
 // Active user's branch scope (for headers / labels). One module-level resource, so it is
 // fetched once per app load. No frappe-ui `cache:` here: that persists to IndexedDB under a
@@ -14,6 +15,6 @@ export const userContext = cachedResource({
 export function branchLabel() {
 	const d = userContext.data
 	if (!d) return ""
-	if (d.all_branches) return "Semua Branch"
-	return (d.branches || []).join(", ") || "Semua Branch"
+	if (d.all_branches) return labels.allBranches
+	return (d.branches || []).join(", ") || labels.allBranches
 }

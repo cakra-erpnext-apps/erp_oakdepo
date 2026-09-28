@@ -18,7 +18,7 @@
 				<div class="flex items-center justify-between gap-2">
 					<p class="truncate font-semibold" :class="item.voided ? 'text-gray-400 line-through' : 'text-gray-900'">{{ item.container }}</p>
 					<span v-if="item.voided" class="oak-chip shrink-0 bg-red-50 text-red-600">{{ labels.activityVoided }}</span>
-					<span v-else class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ item.activity_type }}</span>
+					<span v-else class="oak-chip shrink-0 bg-gray-100 text-gray-600">{{ item.activity_type_label || item.activity_type }}</span>
 				</div>
 				<div class="mt-0.5 flex items-center justify-between gap-2 text-xs text-gray-500">
 					<span class="truncate">{{ item.summary || statusMove(item) || "—" }}</span>
@@ -41,7 +41,7 @@
 					<span
 						class="oak-chip shrink-0"
 						:class="data.voided ? 'bg-red-50 text-red-600' : 'bg-brand-50 text-brand-600'"
-					>{{ data.voided ? labels.activityVoided : data.activity_type }}</span>
+					>{{ data.voided ? labels.activityVoided : data.activity_type_label || data.activity_type }}</span>
 				</div>
 
 				<p v-if="data.voided" class="rounded-xl bg-red-50 p-3 text-sm text-red-700">
@@ -53,9 +53,9 @@
 				<div v-if="data.from_status || data.to_status" class="rounded-xl border border-gray-100 p-3">
 					<p class="mb-1 text-xs font-bold uppercase tracking-wide text-gray-400">{{ labels.storageStatusMove }}</p>
 					<p class="text-sm font-medium text-gray-800">
-						{{ data.from_status || "—" }}
+						{{ data.from_status_label || data.from_status || "—" }}
 						<Icon name="arrow-right" :size="14" class="mx-1 inline text-gray-400" />
-						{{ data.to_status || "—" }}
+						{{ data.to_status_label || data.to_status || "—" }}
 					</p>
 				</div>
 
@@ -103,7 +103,7 @@ function actIcon(t) {
 	return ICONS[t] || "activity"
 }
 function statusMove(a) {
-	if (a.from_status || a.to_status) return `${a.from_status || "—"} → ${a.to_status || "—"}`
+	if (a.from_status || a.to_status) return `${a.from_status_label || a.from_status || "—"} → ${a.to_status_label || a.to_status || "—"}`
 	return ""
 }
 function cells(d) {

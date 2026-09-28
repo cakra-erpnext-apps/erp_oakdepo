@@ -700,6 +700,9 @@ def _open_orders(container):
 
 	for o in orders:
 		o["route"] = route_for(o["doctype"], o["name"])
+		# `label` stays raw ("EIR-In" / "Cleaning" / "M&R" — the Monitor keys its icon on it
+		# and they read the same in both languages); the order's status is display-only.
+		o["status_label"] = frappe._(o["status"])
 	names = [o["name"] for o in orders]
 	started = {}
 	for a in frappe.get_all(

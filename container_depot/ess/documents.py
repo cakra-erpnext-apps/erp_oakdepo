@@ -13,6 +13,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 import frappe
+from frappe import _
 
 from container_depot.api import _require_authenticated_user
 
@@ -88,7 +89,7 @@ def get_tank_documents(container):
 	):
 		documents.append(
 			{
-				"category": "Laporan Cuci",
+				"category": _("Laporan Cuci"),
 				"label": r.order_id or r.name,
 				"doctype": "Cleaning Order",
 				"name": r.name,
@@ -108,7 +109,7 @@ def get_tank_documents(container):
 	):
 		documents.append(
 			{
-				"category": "Estimasi Perbaikan",
+				"category": _("Estimasi Perbaikan"),
 				"label": r.name,
 				"doctype": "Repair Order",
 				"name": r.name,
@@ -122,8 +123,8 @@ def get_tank_documents(container):
 	# Order Bongkar reuses the booking's Container Booking Item child; Order Muat still
 	# carries its own Order Container Item rows.
 	for doctype, category, child in (
-		("Order Bongkar", "Bon Bongkar", "Container Booking Item"),
-		("Order Muat", "Bon Muat", "Order Container Item"),
+		("Order Bongkar", _("Bon Bongkar"), "Container Booking Item"),
+		("Order Muat", _("Bon Muat"), "Order Container Item"),
 	):
 		# Find the bons that include this container, then load each parent once.
 		parents = frappe.get_all(

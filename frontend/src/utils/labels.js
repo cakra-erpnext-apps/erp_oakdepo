@@ -1,5 +1,10 @@
-// Indonesian-primary UI labels with English fallback (PRD §7 Localisation).
+// UI labels. Indonesian is the source and the default; labels.en.js carries the English
+// copy under the same keys and is laid over these at startup when the device language is
+// English (utils/lang.js). A key missing from labels.en.js shows in Indonesian.
 // Keep this as the single source of label strings so pages stay translatable.
+import { LANG } from "./lang"
+import * as en from "./labels.en"
+
 export const labels = {
 	appName: "Depot OAK",
 	home: "Beranda", // Home
@@ -1604,6 +1609,34 @@ export const labels = {
 	storageSearchTank: "Cari nomor container…", // search containers in a zone
 	storageShowing: "menampilkan", // "X dari Y menampilkan"
 	storageOf: "dari", // X dari Y
+	// --- moved in for i18n (2026-09-28)
+	close: "Tutup", // generic close (lightbox)
+	remove: "Hapus", // generic remove (photo tile)
+	confirmTitle: "Konfirmasi", // confirm() default title
+	confirmYes: "Ya", // confirm() default OK button
+	selectEmpty: "Tidak ada hasil.", // SearchSelect: no match
+	liftUrgent: "MENDESAK", // lift-on badge prefix
+	liftOverdue: "Lewat {d} hr", // lift-on badge: d days overdue
+	liftToday: "Hari-H", // lift-on badge: pickup today
+	liftDaysLeft: "H-{d}", // lift-on badge: d days to pickup
+	sinceJustNow: "Baru saja",
+	sinceMinutes: "{n} menit lalu",
+	sinceHours: "{n} jam lalu",
+	sinceDays: "{n} hari lalu",
+	scheduleDow: "Sn,Sl,Rb,Km,Jm,Sb,Mg", // calendar column heads, Monday first, comma-separated
+	dueToday: "hari ini", // "Pickup hari ini, belum diturunkan"
+	dueTomorrow: "besok",
+	tankPosAt: "posisi {p}", // identity line: where the tank sits
+	tankSurveyorBy: "surveyor {s}",
+	depotOf: "depot {d}", // spec line: which depot
+	eirInIntoDepot: "masuk depo {d}", // EIR-In identity line
+	gateOutReadyOf: "dari", // "3 dari 5 container siap keluar"
+	allBranches: "Semua Branch", // header scope when the account is not branch-limited
+	sendPhotoMissing: "Foto tidak ditemukan di penyimpanan lokal.",
+	sendOffline: "Tidak ada koneksi ke server.",
+	sendSessionExpired: "Sesi berakhir, login lagi.",
+	sendServerDown: "Server tidak merespons ({status}).",
+	langTitle: "Bahasa / Language", // language switch (More sheet); both names so a lost reader finds it
 }
 
 // Canonical Monitor status buckets — order-state per container (Indonesian / English).
@@ -1643,21 +1676,6 @@ export const repairStatusLabels = {
 	"Pending Review": "Menunggu Review",
 	Completed: "Selesai",
 	Cancelled: "Dibatalkan",
-}
-
-export const billingLabels = {
-	Unbilled: "Belum Ditagih",
-	"Client Billed": "Ditagih ke Klien",
-	"Principal Billed": "Ditagih ke Prinsipal",
-	Completed: "Selesai",
-}
-
-export function repairStatusLabel(s) {
-	return repairStatusLabels[s] || s || "—"
-}
-
-export function billingLabel(s) {
-	return billingLabels[s] || s || "—"
 }
 
 export const directionLabels = {
@@ -1703,37 +1721,6 @@ export function gateDirection(s) {
 		}
 	)
 }
-
-// Format a number as Indonesian Rupiah.
-export function rupiah(v) {
-	if (v === null || v === undefined || v === "") return "—"
-	return "Rp " + Number(v).toLocaleString("id-ID")
-}
-
-// Yard Zone category -> Indonesian label (keys match the server `category` enum).
-export const categoryLabels = {
-	"Empty Dirty Queue": "Antrean Cuci (Empty Dirty)",
-	"Cleaning Bay": "Cleaning Bay",
-	Ready: "Tank Ready",
-	"Empty Clean": "Empty Clean",
-	Workshop: "Workshop (Repair)",
-	Survey: "Survey",
-	Gate: "Gate",
-}
-
-export function categoryLabel(c) {
-	return categoryLabels[c] || c || "—"
-}
-
-// Placement-relevant rules distilled from the OAK Isotank Workflow SOP — shown in
-// the in-app "Panduan SOP" panel so the operator doesn't need the PDF on hand.
-export const storageSopRules = [
-	"Empty Dirty: tumpuk di Blok Kiri (antrean cuci); pasca-cuci pindah ke Blok Kanan sebagai Ready, dikelompokkan per principal.",
-	"Empty Clean: letakkan di area siap pakai (Blok Kiri); bila penuh, alihkan ke Blok Kanan.",
-	"OAK 2 hanya menerima Empty Clean (principal Bertschi & Eway).",
-	"Stacking: maksimal 5 tumpuk ke atas; normal 5 baris, boleh sampai 6 baris saat depo penuh.",
-	"Susun isotank hanya setelah Teknisi Foto & EIR selesai.",
-]
 
 // Frappe's password-strength feedback (frappe/utils/password_strength.py, plus a few
 // that come straight from the zxcvbn package) arrives in English. Its strings go
@@ -1790,4 +1777,21 @@ export const passwordFeedback = {
 export function passwordFeedbackLabel(text) {
 	const t = String(text || "").trim()
 	return passwordFeedback[t] || passwordFeedback[t.replace(/\.$/, "")] || t
+}
+
+function overlay(into, from) {
+	for (const [k, v] of Object.entries(from || {})) {
+		if (v && typeof v === "object" && !Array.isArray(v)) overlay((into[k] ??= {}), v)
+		else into[k] = v
+	}
+}
+
+if (LANG === "en") {
+	overlay(labels, en.labels)
+	overlay(statusLabels, en.statusLabels)
+	overlay(repairStatusLabels, en.repairStatusLabels)
+	overlay(directionLabels, en.directionLabels)
+	overlay(gateDirections, en.gateDirections)
+	// Frappe's password feedback already arrives in English.
+	for (const k of Object.keys(passwordFeedback)) delete passwordFeedback[k]
 }

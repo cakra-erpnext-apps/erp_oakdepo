@@ -32,7 +32,7 @@
 							@change="pickChoice(r, $event.target.value)"
 						>
 							<option value="">—</option>
-							<option v-for="o in r.options" :key="o" :value="o">{{ o }}</option>
+							<option v-for="o in r.options" :key="o" :value="o">{{ r.option_labels?.[o] || o }}</option>
 							<option value="__other__">{{ labels.fittingOther }}</option>
 						</select>
 						<template v-else-if="isChoice(r)">

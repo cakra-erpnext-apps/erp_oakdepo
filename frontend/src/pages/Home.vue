@@ -358,6 +358,7 @@ import { cachedResource } from "@/data/cache"
 import { fetchMenu, menu } from "@/data/menu"
 import { GROUP_OPS, GROUP_YARD, MODULES, modulesFor } from "@/data/modules"
 import { labels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 import { toast } from "@/utils/toast"
 import {
 	DEFAULT_TILES,
@@ -408,13 +409,13 @@ onMounted(() => {
 onUnmounted(() => clearInterval(clock))
 
 const todayLine = computed(() => {
-	const d = new Intl.DateTimeFormat("id-ID", {
+	const d = new Intl.DateTimeFormat(LOCALE, {
 		weekday: "long",
 		day: "numeric",
 		month: "short",
 		year: "numeric",
 	}).format(now.value)
-	const t = new Intl.DateTimeFormat("id-ID", {
+	const t = new Intl.DateTimeFormat(LOCALE, {
 		hour: "2-digit",
 		minute: "2-digit",
 	}).format(now.value)
@@ -689,7 +690,7 @@ const waitDraft = ref([])
 
 /** "EIR menunggu review" — kalimat `many` tanpa angkanya. */
 function waitName(key) {
-	const t = WAIT[key].many.replace("{n} ", "")
+	const t = WAIT[key].many.replace("{n}", "").replace(/\s+/g, " ").trim()
 	return t.charAt(0).toUpperCase() + t.slice(1)
 }
 function startEditWaiting() {

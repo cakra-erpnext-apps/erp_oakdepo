@@ -19,7 +19,7 @@
 				<button
 					type="button"
 					class="rounded-full bg-white/10 p-2 transition hover:bg-white/20"
-					aria-label="Tutup"
+					:aria-label="labels.close"
 					@click.stop="closeLightbox"
 				>
 					<Icon name="x" :size="22" />
@@ -32,7 +32,7 @@
 					v-if="lightbox.images.length > 1"
 					type="button"
 					class="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
-					aria-label="Sebelumnya"
+					:aria-label="labels.prev"
 					@click.stop="prevImage"
 				>
 					<Icon name="chevron-left" :size="26" />
@@ -49,7 +49,7 @@
 					v-if="lightbox.images.length > 1"
 					type="button"
 					class="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20"
-					aria-label="Berikutnya"
+					:aria-label="labels.next"
 					@click.stop="nextImage"
 				>
 					<Icon name="chevron-right" :size="26" />
@@ -75,6 +75,7 @@ import { computed, onMounted, onUnmounted, watch } from "vue"
 import { lightbox, closeLightbox, nextImage, prevImage } from "@/utils/lightbox"
 import { useDismissOnBack } from "@/utils/backstack"
 import Icon from "@/components/Icon.vue"
+import { labels } from "@/utils/labels"
 
 const current = computed(() => lightbox.images[lightbox.index] || { src: "", caption: "" })
 

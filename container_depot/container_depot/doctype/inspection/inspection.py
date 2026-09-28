@@ -1,5 +1,5 @@
 import frappe
-from frappe import _
+from frappe import _, _lt
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
@@ -62,7 +62,7 @@ class Inspection(Document):
 		if self.inspection_type == "EIR-In":
 			exterior_views = [p.photo_view for p in self.exterior_photos if p.photo_view in ["Front", "Back", "Left", "Right"]]
 			if 0 < len(exterior_views) < 4:
-				frappe.msgprint(f"Warning: Only {len(exterior_views)} exterior photos uploaded. 4 views (Front, Back, Left, Right) recommended for EIR-In.")
+				frappe.msgprint(_("Warning: Only {0} exterior photos uploaded. 4 views (Front, Back, Left, Right) recommended for EIR-In.").format(len(exterior_views)))
 
 		# Bulk "foto cepat" (item_photos without a checklist item) still need sorting.
 		# Recomputed on every save — including when the admin assigns the last one → 0 —
@@ -487,7 +487,9 @@ class Inspection(Document):
 		"""
 		reasons = []
 		if self.has_damage:
-			reasons.append("ada temuan kerusakan")
+			# Lazy: the hold notice is phrased in each RECIPIENT's language (notify._in_lang
+			# formats it per language), so the reason must not be translated here.
+			reasons.append(_lt("ada temuan kerusakan"))
 
 		outcome = "Ready To Load" if not reasons else "Hold Pending Clearance"
 		self.db_set("out_outcome", outcome, update_modified=False)
@@ -504,4 +506,8 @@ class Inspection(Document):
 		else:
 			if order_muat:
 				frappe.db.set_value("Order Muat", order_muat, "order_status", "Hold", update_modified=False)
-			notify_eir_out_hold(self.container_no, order_muat, ", ".join(reasons), depot=self.depot)
+			notify_eir_out_hold(
+				self.container_no, order_muat,
+				reasons[0] if len(reasons) == 1 else ", ".join(map(str, reasons)),
+				depot=self.depot,
+			)

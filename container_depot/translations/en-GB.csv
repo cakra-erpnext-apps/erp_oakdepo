@@ -1,0 +1,417 @@
+<b>Dibayar dari</b> harus akun Kas/Bank milik {0}.,<b>Paid from</b> must be a Cash/Bank account of {0}.
+<b>Survey Date</b> harus sama dengan atau sebelum <b>Pick up Date</b> ({0}).<br>Ubah Survey Date di: {1},<b>Survey Date</b> must be on or before the <b>Pick up Date</b> ({0}).<br>Change the Survey Date in: {1}
+Aksi ini hanya untuk {0}.,This action is only for {0}.
+Aksi tidak dikenal: {0},Unknown action: {0}
+"Akun Kas/Bank belum terisi. Pilih akunnya, atau isi akun default di Mode of Payment.","The Cash/Bank account is empty. Pick the account, or set a default account on the Mode of Payment."
+Alasan: {0},Reason: {0}
+Ambil Tagihan,Fetch Charges
+Anda tidak berwenang menyetujui langsung (bypass owner).,You are not allowed to approve directly (bypassing the owner).
+Anda tidak boleh membuat booking untuk principal {0}.,You may not create bookings for principal {0}.
+Anda tidak boleh mendaftarkan tank untuk principal {0}.,You may not register tanks for principal {0}.
+Anda tidak punya akses Depot OAK. Hubungi admin.,You don't have access to Depot OAK. Contact an admin.
+Anda tidak punya akses ke menu ini.,You don't have access to this menu.
+Anda tidak punya akses menu ini.,You don't have access to this menu.
+Anda tidak punya akses untuk membuat {0}.,You don't have access to create {0}.
+Anda tidak punya izin membuka dokumen ini.,You don't have permission to open this document.
+Approval EIR: {0} — dari M&R {1} ({2}) oleh {3},EIR approval: {0} — from M&R {1} ({2}) by {3}
+Baris charge {0}: Service <b>{1}</b> sudah dinonaktifkan — pilih service lain.,Charge row {0}: Service <b>{1}</b> has been disabled — pick another service.
+Baris charge {0}: Service <b>{1}</b> tidak ada di master Item.,Charge row {0}: Service <b>{1}</b> is not in the Item master.
+Baris container diubah — {0},Container rows changed — {0}
+Baris {0} ({1}),Row {0} ({1})
+Baris {0} ({1}) belum punya Gudang. Pilih gudangnya dulu.,Row {0} ({1}) has no Warehouse yet. Pick the warehouse first.
+Baris {0} ditagih dari {1} dan tidak bisa dihapus. Perbaiki ordernya lalu batalkan & ambil tagihan ulang.,"Row {0} is billed from {1} and cannot be deleted. Fix the order, then cancel & fetch the charges again."
+Baris {0} ditagih dari {1}: {2} tidak bisa diubah di invoice. Perbaiki ordernya lalu ambil tagihan ulang.,"Row {0} is billed from {1}: {2} cannot be changed on the invoice. Fix the order, then fetch the charges again."
+"Baris {0}: Credit Note terisi, Credit Account belum.",Row {0}: Credit Note is filled in but Credit Account is not.
+"Baris {0}: Debit Note terisi, Debit Account belum.",Row {0}: Debit Note is filled in but Debit Account is not.
+Baris {0}: isi <b>Kurs ke IDR</b> untuk {1} (belum ada di Currency Exchange).,Row {0}: fill in the <b>Rate to IDR</b> for {1} (not in Currency Exchange yet).
+Beda Branch,Different Branch
+Beda Principal,Different Principal
+Belum Lunas,Unpaid
+Belum ada depot yang bisa dikelola template-nya.,There is no depot whose templates you can manage yet.
+Biaya Manhour dihapus — Hour diset 0. Isi Hour lagi untuk menagihkannya kembali.,Manhour charge removed — Hour set to 0. Fill in Hour again to bill it again.
+Bill To {0} bukan pihak yang Anda daftarkan.,Bill To {0} is not a party you registered.
+"Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak bisa di-Cancel maupun dikembalikan ke Draft.<br><br>Batalkan dulu EIR-Out / gate-out tank-nya: bon akan kembali ke <b>Issued</b> dan kedua tombolnya muncul lagi.","Voucher <b>{0}</b> is already <b>{1}</b> — the tank has passed the gate, so this voucher cannot be cancelled or returned to Draft.<br><br>Cancel the tank's EIR-Out / gate-out first: the voucher goes back to <b>Issued</b> and both buttons appear again."
+"Bon <b>{0}</b> sudah disubmit dan tidak bisa langsung di-Cancel. Kembalikan ke Draft dulu, lalu Cancel.","Voucher <b>{0}</b> is already submitted and cannot be cancelled directly. Return it to Draft first, then Cancel."
+Bon Bongkar,Unloading Voucher
+Bon Bongkar terbit,Unloading Voucher issued
+Bon Muat,Loading Voucher
+Bon Muat terbit,Loading Voucher issued
+Bon Sudah Selesai,Voucher Already Completed
+Bon muat belum ada,No loading voucher yet
+"Bon {0} dibatalkan / container dilepas dari bon — link bon dilepas, foto dipertahankan.","Voucher {0} cancelled / container removed from the voucher — voucher link removed, photos kept."
+"Bon {0} dibatalkan — link bon dilepas, isian EIR dipertahankan.","Voucher {0} cancelled — voucher link removed, EIR entries kept."
+"Booking <b>Cash</b> ini masih <b>{0}</b>. Tekan <b>Tandai Lunas</b> dulu setelah pembayarannya diterima, baru submit.","This <b>Cash</b> booking is still <b>{0}</b>. Press <b>Tandai Lunas</b> (mark as paid) once the payment is received, then submit."
+Booking Cash ini belum dibuatkan invoice — tekan <b>Generate Invoice</b> dulu.,No invoice has been made for this Cash booking yet — press <b>Generate Invoice</b> first.
+"Booking TOP ditagih lewat invoice bulanan, bukan per booking. Jalankan penagihan konsolidasi untuk {0} — booking ini otomatis ikut.","TOP bookings are billed through the monthly invoice, not per booking. Run consolidated billing for {0} — this booking is included automatically."
+Booking TOP tidak dibuatkan invoice per-booking — ditagih belakangan lewat consolidated billing.,TOP bookings do not get a per-booking invoice — they are billed later through consolidated billing.
+Booking Terkunci,Booking Locked
+Booking Tidak Cocok,Booking Mismatch
+Booking baru,New booking
+Booking baru {0} • {1} • {2} • {3},New booking {0} • {1} • {2} • {3}
+Booking baru {0} • {1} • {2} • {3} • bayar di kasir,New booking {0} • {1} • {2} • {3} • pay at the cashier
+Booking belum disubmit / dikonfirmasi — hubungi admin sebelum generate bon.,The booking is not submitted / confirmed yet — contact an admin before generating a voucher.
+Booking diajukan oleh {0},Booking requested by {0}
+Booking dikonfirmasi,Booking confirmed
+Booking dikonfirmasi {0} • {1} • {2},Booking confirmed {0} • {1} • {2}
+Booking ditandai MENDESAK,Booking marked URGENT
+"Booking ini belum bisa dibatalkan. Dokumen turunannya sudah disubmit: {0}.<br>Cancel dokumen tersebut dulu (sesuai urutan di atas), lalu batalkan booking ini lagi.","This booking cannot be cancelled yet. Its follow-up documents are already submitted: {0}.<br>Cancel those documents first (in the order above), then cancel this booking again."
+Booking ini bukan pengajuan Anda.,This booking was not requested by you.
+Booking ini di luar branch Anda.,This booking is outside your branch.
+Booking ini sudah batal / selesai — tidak ada lagi yang bisa didahulukan.,This booking is already cancelled / completed — there is nothing left to prioritise.
+Booking ini sudah berstatus {0}.,This booking is already {0}.
+Booking ini sudah dibatalkan.,This booking has already been cancelled.
+Booking ini sudah diproses.,This booking has already been processed.
+Booking ini sudah punya Sales Invoice {0}.,This booking already has Sales Invoice {0}.
+Booking ini tidak bisa {0}: bon sudah pernah terbit ({1}).,This booking cannot be {0}: a voucher has already been issued ({1}).
+Booking ini tidak menagihkan apa pun (Total Charges 0) — tidak ada yang bisa di-invoice.,This booking charges nothing (Total Charges 0) — there is nothing to invoice.
+Booking ini tidak menagihkan apa pun (Total Charges 0) — tidak ada yang di-invoice.,This booking charges nothing (Total Charges 0) — nothing is invoiced.
+Booking terkunci,Booking locked
+"Booking yang sudah disetujui tidak bisa dikembalikan ke <b>belum lunas</b>. Kalau memang salah tandai, kembalikan dulu ke draft lewat <b>Kembali ke Draft (pembayaran tetap)</b>.","An approved booking cannot be set back to <b>unpaid</b>. If it was marked by mistake, return it to draft first with <b>Kembali ke Draft (pembayaran tetap)</b> (back to draft, payment kept)."
+Booking {0} belum punya Tanggal Survey. Isi dulu di booking-nya.,Booking {0} has no Survey Date yet. Fill it in on the booking first.
+"Booking {0} sudah disubmit dan tidak bisa langsung dibatalkan. Kembali ke Draft dulu, lalu batalkan draft-nya.","Booking {0} is already submitted and cannot be cancelled directly. Return it to Draft first, then cancel the draft."
+Booking {0} sudah disubmit — isinya tidak bisa diubah lagi. Pakai <b>Kembali ke Draft</b> dulu kalau memang harus dikoreksi.,Booking {0} is already submitted — its contents can no longer be changed. Use <b>Kembali ke Draft</b> (back to draft) first if it really must be corrected.
+Buat Invoice,Create Invoice
+Bypass hanya dari Draft / Revision Requested (status: {0}).,Bypass is only possible from Draft / Revision Requested (status: {0}).
+Cancel Dokumen Turunan Dulu,Cancel Follow-up Documents First
+Cek letak tank,Check tank position
+Cek letak tank • {0},Check tank position • {0}
+Cek letak tank • {0} — survey {1},Check tank position • {0} — survey {1}
+Cleaning Order dibuat,Cleaning Order created
+Cleaning Order sudah dikirim untuk review Admin Ops.,Cleaning Order has been sent for Admin Ops review.
+Cleaning Order sudah dikirim untuk review. Tarik kembali dulu kalau mau diperbaiki.,Cleaning Order has already been sent for review. Withdraw it first if you want to fix it.
+Cleaning Order sudah selesai.,Cleaning Order is already completed.
+Cleaning Order • {0} — perlu metode cleaning,Cleaning Order • {0} — needs a cleaning method
+Cleaning diteruskan ke team,Cleaning forwarded to the team
+Cleaning menunggu review,Cleaning awaiting review
+Cleaning order dikembalikan ke draft oleh {0} (dari Completed).,Cleaning order returned to draft by {0} (from Completed).
+Cleaning order ini sudah dibatalkan.,This cleaning order has already been cancelled.
+Cleaning order ini sudah masuk invoice {0}. Batalkan invoice-nya dulu sebelum dikembalikan ke draft.,This cleaning order is already on invoice {0}. Cancel the invoice first before returning it to draft.
+Cleaning order ini sudah masuk invoice {0}. Batalkan invoice-nya dulu sebelum order ini dibatalkan.,This cleaning order is already on invoice {0}. Cancel the invoice first before cancelling this order.
+Cleaning order yang sudah disubmit tidak bisa di-Cancel. Kembalikan ke Draft dulu.,A submitted cleaning order cannot be cancelled. Return it to Draft first.
+Cleaning {0} dibatalkan,Cleaning {0} cancelled
+Cleaning {0} dikembalikan ke draft,Cleaning {0} returned to draft
+"Cleaning • {0} — diteruskan ke team, siap dikerjakan","Cleaning • {0} — forwarded to the team, ready to work on"
+Cleaning • {0} — menunggu review Admin Ops (oleh {1}),Cleaning • {0} — awaiting Admin Ops review (by {1})
+Container Belum Siap Keluar,Container Not Ready to Leave
+"Container Booking {0} tidak memuat container {1}. Pilih booking yang benar, atau kosongkan kalau order ini berdiri sendiri.","Container Booking {0} does not include container {1}. Pick the correct booking, or leave it empty if this order stands on its own."
+Container Kosong,No Containers
+Container Sudah Dibooking,Container Already Booked
+Container berikut bukan milik Principal <b>{0}</b>:,The following containers do not belong to Principal <b>{0}</b>:
+Container ini tidak ada di Branch {0}:,These containers are not in Branch {0}:
+Container wajib diisi.,Container is required.
+Container {0} belum bisa dinonaktifkan:,Container {0} cannot be deactivated yet:
+Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.,Container {0} has not had a Leak Check{1}. The surveyor must fill in the Leak Check before the tank leaves.
+Container {0} belum punya EIR-Out bersih (Ready To Load). Surveyor harus submit EIR-Out dulu.,Container {0} has no clean EIR-Out (Ready To Load) yet. The surveyor must submit the EIR-Out first.
+Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk.,Container {0} is still in the depot (status {1}) — an inbound booking cannot be made.
+Container {0} masih punya order yang belum selesai — {1}.,Container {0} still has unfinished orders — {1}.
+Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — batalkan booking itu dulu atau terbitkan bon-nya.,"Container {0} is still tied to booking {1} ({2}), which has no voucher yet — cancel that booking first or issue its voucher."
+Container {0} sudah ada di depo (status {1}) — tidak bisa gate-in lagi.,Container {0} is already in the depot (status {1}) — it cannot gate in again.
+"Container {0} sudah dibonkan lewat booking {1} ({2}), tapi tank-nya belum {3} depo — submit bon itu dulu, atau batalkan kalau tank-nya memang tidak jadi.","Container {0} already has a voucher from booking {1} ({2}), but the tank has not {3} the depot yet — submit that voucher first, or cancel it if the tank is not coming after all."
+Container {0} sudah non-aktif (keluar dari armada) — tidak bisa dipakai untuk transaksi baru.,Container {0} is inactive (left the fleet) — it cannot be used for new transactions.
+Container {0} sudah terdaftar — pilih dari daftar.,Container {0} is already registered — pick it from the list.
+Container {0} tidak ada di depo (status {1}) — tidak bisa dibuat booking keluar.,Container {0} is not in the depot (status {1}) — an outbound booking cannot be made.
+Container {0} tidak ada di depo (status {1}) — tidak bisa gate-out.,Container {0} is not in the depot (status {1}) — it cannot gate out.
+Container {0} tidak ditemukan.,Container {0} not found.
+Customer minta booking dibuka lagi,Customer asks to reopen a booking
+Customer wajib diisi.,Customer is required.
+Dari {0},From {0}
+Data ini hanya bisa dibuka di ERPNext (Desk).,This data can only be opened in ERPNext (Desk).
+Depot {0} di luar cakupan branch Anda.,Depot {0} is outside your branch scope.
+Di luar branch Anda.,Outside your branch.
+Dibatalkan oleh {0},Cancelled by {0}
+Diselesaikan langsung dari Desk (submit).,Completed directly from the Desk (submit).
+Disetujui langsung oleh Admin Ops (bypass owner).,Approved directly by Admin Ops (owner bypassed).
+Ditandai MENDESAK untuk {0}.,Marked URGENT for {0}.
+Diteruskan langsung ke team (persetujuan owner belum dipakai).,Forwarded directly to the team (owner approval not in use yet).
+Dokumen yang dipilih memakai akun {0} berbeda: {1}. Pisahkan jadi beberapa Payment Entry.,The selected documents use different {0} accounts: {1}. Split them into several Payment Entries.
+Dokumen {0} tidak bisa dihubungkan ke kasbon.,Document {0} cannot be linked to a Pending Cash.
+Dokumennya sudah tidak ada.,The document no longer exists.
+Draft key tidak valid.,Invalid draft key.
+Draft terlalu besar.,The draft is too large.
+EIR dibuat,EIR created
+EIR dikembalikan ke draft oleh {0} (dari Submitted).,EIR returned to draft by {0} (from Submitted).
+EIR disubmit,EIR submitted
+EIR ditarik dari review untuk diperbaiki oleh {0},EIR withdrawn from review for fixing by {0}
+EIR menunggu review,EIR awaiting review
+EIR-Out jatuh tempo,EIR-Out due
+"EIR-Out {0} belum bisa disubmit: bon muat untuk tank <b>{1}</b> belum terbit.<br>Generate Bon dulu dari booking Tank Out-nya — bon itu yang mengisi truk, sopir, EMKL dan shipper ke EIR ini, sekaligus membuka submit-nya.","EIR-Out {0} cannot be submitted yet: the loading voucher for tank <b>{1}</b> has not been issued.<br>Generate the voucher from its Tank Out booking first — that voucher fills the truck, driver, EMKL and shipper into this EIR and unlocks its submit."
+EIR-Out • {0} — siap survey keluar,EIR-Out • {0} — ready for outbound survey
+Estimasi Perbaikan,Repair Estimate
+File foto fisik tidak ditemukan di server.,The photo file was not found on the server.
+File foto kosong.,The photo file is empty.
+Filter tidak dikenal: {0},Unknown filter: {0}
+Finance sedang dimatikan — {0} tidak tersedia. Aktifkan di <b>Depot Finance Settings</b>.,Finance is turned off — {0} is not available. Enable it in <b>Depot Finance Settings</b>.
+"Finance sudah aktif — status bayar mengikuti Sales Invoice-nya. Catat Payment Entry di invoice itu, jangan diubah manual di sini.",Finance is active — the payment status follows the Sales Invoice. Record a Payment Entry against that invoice; do not change it manually here.
+"Format foto harus JPG, PNG, atau WEBP.","Photo format must be JPG, PNG, or WEBP."
+Foto bukti #{0}: item {1} tidak ada di Service & Parts order ini.,Evidence photo #{0}: item {1} is not in this order's Service & Parts.
+Foto bukti tidak bisa diubah saat status {0}.,Evidence photos cannot be changed while the status is {0}.
+Foto terlalu besar (maks {0} MB).,Photo is too large (max {0} MB).
+Gagal membuat Survey Order dari booking {0}. Lihat Error Log.,Could not create a Survey Order from booking {0}. See the Error Log.
+"Ganti Branch booking, atau pilih container dari depo Branch ini.","Change the booking's Branch, or pick containers from this Branch's depots."
+Ganti Principal booking atau keluarkan baris itu.,Change the booking's Principal or remove those rows.
+Gate In • {0} • Bongkar — siap print,Gate In • {0} • Unloading — ready to print
+Gate Out • {0} • Muat — siap print,Gate Out • {0} • Loading — ready to print
+Gate Out • {0} • isotank keluar depo,Gate Out • {0} • isotank left the depot
+Gate Out • {0} • isotank keluar depo {1},Gate Out • {0} • isotank left depot {1}
+HOLD • {0} — perlu clearance Supervisor,HOLD • {0} — needs Supervisor clearance
+HOLD • {0} • {1} — perlu clearance Supervisor,HOLD • {0} • {1} — needs Supervisor clearance
+Hanya EIR yang berstatus 'Menunggu Review' yang bisa ditarik untuk diperbaiki.,Only EIRs with status 'Pending Review' can be withdrawn for fixing.
+Hanya EIR yang sudah disubmit yang bisa dikembalikan ke draft.,Only submitted EIRs can be returned to draft.
+Hanya EIR yang sudah selesai (submitted) yang bisa diajukan revisi.,A revision can only be requested for a completed (submitted) EIR.
+Hanya M&R Draft atau yang sudah disetujui yang bisa diteruskan ke team (status: {0}).,Only Draft or approved M&Rs can be forwarded to the team (status: {0}).
+Hanya M&R yang menunggu review yang bisa ditarik kembali (status: {0}).,Only M&Rs awaiting review can be withdrawn (status: {0}).
+Hanya M&R yang sedang menunggu keputusan owner yang bisa ditarik (status: {0}).,Only M&Rs awaiting the owner's decision can be withdrawn (status: {0}).
+Hanya M&R yang sudah selesai yang bisa diajukan revisi (status: {0}).,A revision can only be requested for a completed M&R (status: {0}).
+Hanya M&R yang sudah selesai yang bisa dibuka kembali (status: {0}).,Only completed M&Rs can be reopened (status: {0}).
+Hanya SPV ke atas dan Admin Ops yang boleh mengatur prioritas mendesak.,"Only SPV and above, and Admin Ops, may set urgent priority."
+Hanya akun customer yang bisa menambah pihak dari form ini.,Only customer accounts can add parties from this form.
+Hanya akun customer yang bisa mendaftarkan tank dari form ini.,Only customer accounts can register tanks from this form.
+Hanya booking berstatus Draft yang bisa dibuatkan invoice.,Only Draft bookings can be invoiced.
+Hanya booking yang belum disubmit yang bisa dikembalikan ke Draft.,Only bookings that are not yet submitted can be returned to Draft.
+Hanya booking yang sudah dikonfirmasi yang bisa diminta revisi.,A revision can only be requested for a confirmed booking.
+Hanya booking yang sudah disubmit yang bisa dikembalikan ke draft.,Only submitted bookings can be returned to draft.
+Hanya cleaning order yang sudah disubmit yang bisa dikembalikan ke draft.,Only submitted cleaning orders can be returned to draft.
+Hanya cleaning order yang sudah selesai (submitted) yang bisa diajukan revisi.,A revision can only be requested for a completed (submitted) cleaning order.
+Hanya draft yang bisa di-generate ulang — batalkan invoice-nya dulu.,Only drafts can be regenerated — cancel the invoice first.
+Hanya kasbon Draft yang bisa di-Validate.,Only a Draft Pending Cash can be validated.
+Hanya kasbon Validated yang belum dibayar yang bisa di-Invalidate.,Only an unpaid Validated Pending Cash can be invalidated.
+Hanya kasbon Validated yang bisa dibayar.,Only a Validated Pending Cash can be paid.
+Hanya order berstatus 'Menunggu Review' yang bisa ditarik untuk diperbaiki.,Only orders with status 'Pending Review' can be withdrawn for fixing.
+Import hanya untuk principal yang boleh Anda booking-kan.,Import is only for principals you may book for.
+Invoice Belum Dibuat,Invoice Not Created Yet
+Invoice Sudah Disubmit,Invoice Already Submitted
+Invoice ini milik {0} — satu invoice hanya untuk satu customer.,This invoice belongs to {0} — one invoice is for one customer only.
+Invoice terbit,Invoice issued
+Invoice untuk booking ini sudah dibuat. Tekan <b>Kembali ke Draft (batalkan invoice)</b> dulu kalau mau mengubah charges atau customer.,"The invoice for this booking has already been created. Press <b>Kembali ke Draft (batalkan invoice)</b> (back to draft, cancel invoice) first if you want to change the charges or customer."
+Invoice {0} • {1} • lunas,Invoice {0} • {1} • paid
+Invoice {0} • {1} • sisa {2} • jatuh tempo {3},Invoice {0} • {1} • {2} outstanding • due {3}
+"Isi <b>Akun Uang Muka</b> di Pending Cash Type {0}, atau Default Advance Paid Account di Company.","Fill in the <b>Advance Account</b> on Pending Cash Type {0}, or the Default Advance Paid Account on the Company."
+Isi <b>Dibayar dari (Kas/Bank)</b> sebelum kasbon dibayar.,Fill in <b>Paid from (Cash/Bank)</b> before the Pending Cash is paid.
+Isi <b>Pick up Date</b>. Booking Tank Out wajib punya tanggal ambil tank.,Fill in the <b>Pick up Date</b>. A Tank Out booking must have a tank pick-up date.
+Isi Principal (Tank Owner) dulu sebelum import file Tank In.,Fill in the Principal (Tank Owner) before importing a Tank In file.
+Isi akun <b>{0}</b> ({1}) di Depot Finance Settings dulu.,Fill in the <b>{0}</b> account ({1}) in Depot Finance Settings first.
+Isi akun <b>{0}</b> di Depot Finance Settings dulu.,Fill in the <b>{0}</b> account in Depot Finance Settings first.
+Isi dulu kurs invoice {0} ke IDR — baris {1} ({2}) dikonversi lewat kurs itu.,Fill in invoice {0}'s exchange rate to IDR first — row {1} ({2}) is converted with that rate.
+Isi dulu letak container-nya.,Fill in the container's position first.
+Isi dulu posisinya.,Fill in the position first.
+Isi minimal satu container.,Add at least one container.
+Isotank keluar depo,Isotank left the depot
+Item hanya bisa diubah saat Draft / Revision Requested.,Items can only be changed while Draft / Revision Requested.
+Jadwal Survey • {0},Survey Schedule • {0}
+Jadwal Survey • {0} — {1},Survey Schedule • {0} — {1}
+Jadwal survey terbit,Survey schedule issued
+Jasa,Service
+Jenis pihak tidak dikenal: {0},Unknown party type: {0}
+Journal Entry {0} dibatalkan ({1}).,Journal Entry {0} cancelled ({1}).
+Kasbon <b>{0}</b> belum dibayar atau sudah Void.,Pending Cash <b>{0}</b> is not paid yet or is already Void.
+Kasbon <b>{0}</b> sudah habis dipakai di Payment Entry lain.,Pending Cash <b>{0}</b> is already fully used on other Payment Entries.
+Kasbon <b>{0}</b> tidak punya jurnal pembayaran (belum Paid?).,Pending Cash <b>{0}</b> has no payment journal (not Paid yet?).
+"Kasbon <b>{0}</b>: dipakai {1}, sisanya {2}.","Pending Cash <b>{0}</b>: {1} used, {2} remaining."
+Kasbon harus Validated sebelum dibayar.,Pending Cash must be Validated before it is paid.
+Kasbon ini belum dibayar.,This Pending Cash is not paid yet.
+Kasbon ini dipakai di Payment Entry {0} — batalkan/hapus itu dulu.,This Pending Cash is used on Payment Entry {0} — cancel/delete that first.
+Kasbon ini sudah Void.,This Pending Cash is already Void.
+Kasbon ini sudah {0} — isinya tidak bisa diubah lagi. Field yang berubah: {1},This Pending Cash is already {0} — its contents can no longer be changed. Changed fields: {1}
+Kasbon ini tidak Void.,This Pending Cash is not Void.
+Kasbon yang sudah dibayar tidak bisa dihapus — pakai Void.,A paid Pending Cash cannot be deleted — use Void.
+Kembalikan ke Draft Dulu,Return to Draft First
+Keputusan hanya bisa direkam saat Pending Approval (status: {0}).,A decision can only be recorded while Pending Approval (status: {0}).
+Keputusan tidak valid: {0}.,Invalid decision: {0}.
+Kode / kontainer tidak ditemukan: {0},Code / container not found: {0}
+"Kode <b>{0}</b> hanya boleh huruf, angka, titik, strip dan garis bawah.","Code <b>{0}</b> may only contain letters, digits, dots, hyphens and underscores."
+Kontrak aktif {0} • {1} • berlaku s/d {2},Contract active {0} • {1} • valid until {2}
+Kontrak baru {0} • {1} • {2},New contract {0} • {1} • {2}
+Kontrak baru {0} • {1} • {2} — menunggu aktivasi,New contract {0} • {1} • {2} — awaiting activation
+Kontrak depo aktif,Depot contract active
+Kontrak depo dibuat,Depot contract created
+Kurs {0} ke IDR belum diisi (Exchange Rate masih 1). Isi dulu sebelum submit.,The {0} to IDR rate is not filled in (Exchange Rate is still 1). Fill it in before submitting.
+Langganan notifikasi tidak lengkap.,The notification subscription is incomplete.
+Laporan Cuci,Wash Report
+Leak Check belum ada,No Leak Check yet
+Leak Check dibuat,Leak Check created
+Leak Check {0} sudah selesai.,Leak Check {0} is already completed.
+"Leak Check • {0} — tank masuk, siap dicek","Leak Check • {0} — tank in, ready to check"
+Leak check wajib minimal satu foto.,A leak check needs at least one photo.
+"Lowering • {0} — dibuka lagi, tank perlu diturunkan ulang","Lowering • {0} — reopened, the tank must be lowered again"
+Lowering • {0} — turunkan tank (booking Tank Out),Lowering • {0} — lower the tank (Tank Out booking)
+M&R dibuat,M&R created
+M&R dibuka kembali ke In Progress oleh {0},M&R reopened to In Progress by {0}
+M&R dikembalikan ke Draft dari {0} oleh {1},M&R returned to Draft from {0} by {1}
+M&R diselesaikan langsung dari Disetujui (tanpa diteruskan ke team) oleh {0},M&R completed directly from Approved (without forwarding to the team) by {0}
+M&R diteruskan ke team,M&R forwarded to the team
+M&R hanya bisa dikirim ke owner dari Draft / Revision Requested (status: {0}).,An M&R can only be sent to the owner from Draft / Revision Requested (status: {0}).
+M&R hanya bisa diselesaikan dari Disetujui atau Menunggu Review (status: {0}).,An M&R can only be completed from Approved or Pending Review (status: {0}).
+M&R harus In Progress untuk diselesaikan (status: {0}).,The M&R must be In Progress to be completed (status: {0}).
+M&R harus diteruskan ke team dulu sebelum dikerjakan (status: {0}).,The M&R must be forwarded to the team before work starts (status: {0}).
+M&R ini sudah ditagih ({0}). Tanggalnya ({1}) tidak bisa diubah — batalkan dulu tagihannya kalau tanggalnya memang salah.,This M&R is already billed ({0}). Its date ({1}) cannot be changed — cancel the billing first if the date really is wrong.
+M&R ini sudah masuk invoice — pembukaan kembali harus lewat proses billing.,This M&R is already on an invoice — reopening must go through the billing process.
+M&R ini sudah selesai.,This M&R is already completed.
+M&R menunggu approval owner,M&R awaiting owner approval
+M&R menunggu review,M&R awaiting review
+M&R sedang menunggu review Desk — tarik kembali dulu kalau mau diubah.,The M&R is awaiting Desk review — withdraw it first if you want to change it.
+M&R sudah {0} — tidak bisa di-submit.,The M&R is already {0} — it cannot be submitted.
+M&R sudah {0}.,The M&R is already {0}.
+M&R terkunci,M&R locked
+M&R yang sudah selesai hanya bisa dibuka kembali lewat Setujui Revisi (Admin Ops).,A completed M&R can only be reopened through Approve Revision (Admin Ops).
+M&R {0} sudah {1} — isinya tidak bisa diubah lagi. Buka dulu ordernya kalau memang harus dikoreksi.,M&R {0} is already {1} — its contents can no longer be changed. Reopen the order first if it really must be corrected.
+M&R {0} tidak bisa dikembalikan ke Draft (part sudah dikeluarkan / order sudah ditutup).,M&R {0} cannot be returned to Draft (parts already issued / order already closed).
+"M&R • {0} — diteruskan ke team, siap dikerjakan","M&R • {0} — forwarded to the team, ready to work on"
+M&R • {0} — menunggu persetujuan owner (est. {1}),M&R • {0} — awaiting owner approval (est. {1})
+M&R • {0} — menunggu review Admin Ops (oleh {1}),M&R • {0} — awaiting Admin Ops review (by {1})
+M&R • {0} — perlu perbaikan,M&R • {0} — needs repair
+MENDESAK {0} • {1} • target {2},URGENT {0} • {1} • target {2}
+MENDESAK {0} • {1} • target {2} • alasan: {3},URGENT {0} • {1} • target {2} • reason: {3}
+Maksimal 50 tank sekali simpan.,At most 50 tanks per save.
+Maksimal 50 tank sekali tandai.,At most 50 tanks can be marked at once.
+Masih ada EIR draft untuk container {0}: {1}. Submit dulu semua draft sebelum mengembalikan EIR ini ke draft.,There are still draft EIRs for container {0}: {1}. Submit all drafts first before returning this EIR to draft.
+Mata Uang Charges Campur,Mixed Charge Currencies
+"Mata uang {0} datang dari rate card kontrak — biasanya baris lain yang disamakan, atau pisahkan jadi booking sendiri.","Currency {0} comes from the contract rate card — usually the other rows are aligned to it, or split them into a separate booking."
+Menu tidak dikenal: {0},Unknown menu: {0}
+Minimal satu item harus disetujui untuk meng-approve M&R.,At least one item must be approved to approve the M&R.
+Minimal satu item harus disetujui.,At least one item must be approved.
+Minta revisi EIR • {0} • oleh {1},EIR revision request • {0} • by {1}
+Minta revisi EIR • {0} • oleh {1} — {2},EIR revision request • {0} • by {1} — {2}
+Minta revisi M&R • {0} • oleh {1},M&R revision request • {0} • by {1}
+Minta revisi M&R • {0} • oleh {1} — {2},M&R revision request • {0} • by {1} — {2}
+Minta revisi booking • {0} • {1},Booking revision request • {0} • {1}
+Minta revisi booking • {0} • {1} — {2},Booking revision request • {0} • {1} — {2}
+Minta revisi cleaning • {0} • oleh {1},Cleaning revision request • {0} • by {1}
+Minta revisi cleaning • {0} • oleh {1} — {2},Cleaning revision request • {0} • by {1} — {2}
+Minta revisi oleh {0},Revision requested by {0}
+Mode Expense / Income hanya untuk akun Kas/Bank {0}.,Expense / Income mode is only for Cash/Bank account {0}.
+Mode Expense / Income: baris {0} belum punya Account.,Expense / Income mode: row {0} has no Account yet.
+Mode Expense / Income: isi minimal satu baris (Account + Amount).,Expense / Income mode: fill in at least one row (Account + Amount).
+Mode of Payment <b>Settlement</b>: pilih <b>Akun Settlement</b>.,Mode of Payment <b>Settlement</b>: pick the <b>Settlement Account</b>.
+Nama pihak wajib diisi.,Party name is required.
+Nominal kasbon harus lebih dari 0.,The Pending Cash amount must be more than 0.
+Nomor container wajib diisi.,Container number is required.
+Notifikasi ini tidak menunjuk ke dokumen.,This notification does not point to a document.
+"Notifikasi percobaan. Kalau ini muncul, notifikasi HP Anda sudah aktif.","Test notification. If you can see this, phone notifications are working."
+Notifikasi tidak ditemukan.,Notification not found.
+Order Bongkar,Order Bongkar
+Order Muat,Order Muat
+Order ini belum punya baris Service & Parts.,This order has no Service & Parts rows yet.
+Order ini sudah masuk invoice {0}. Tanggalnya ({1}) tidak bisa diubah — batalkan dulu invoicenya kalau tanggalnya memang salah.,This order is already on invoice {0}. Its date ({1}) cannot be changed — cancel the invoice first if the date really is wrong.
+Order yang dipilih sudah ditagih atau tidak menagihkan apa pun.,The selected orders are already billed or charge nothing.
+Owner memutuskan M&R,Owner decided on M&R
+Pakai tombol Cancel untuk membatalkan cleaning order.,Use the Cancel button to cancel a cleaning order.
+"Perbaikan data setelah bon terbit dilakukan lewat bon-nya, bukan lewat booking.","Once a voucher is issued, data corrections are made on the voucher, not on the booking."
+Permintaan buka kembali M&R oleh {0},M&R reopen request by {0}
+Permintaan revisi EIR oleh {0},EIR revision request by {0}
+Permintaan revisi cleaning oleh {0},Cleaning revision request by {0}
+Pick up Date Belum Diisi,Pick up Date Not Filled In
+Pilih <b>Principal / Tank Owner</b> dulu — tank ini milik siapa.,Pick the <b>Principal / Tank Owner</b> first — who owns this tank.
+Pilih <b>Principal / Tank Owner</b> — tank siapa yang mau diambil.,Pick the <b>Principal / Tank Owner</b> — whose tank is being picked up.
+Pilih Gudang Sumber Part dulu,Pick the Part Source Warehouse first
+Pilih Gudang dulu,Pick a Warehouse first
+Pilih dulu tank-nya.,Pick the tank first.
+Posisi Tank Tidak Sesuai,Tank Position Mismatch
+Posisi tidak boleh kosong.,Position cannot be empty.
+Potongan & biaya hanya bisa dipakai untuk hutang dalam {0}.,Deductions & charges can only be used for payables in {0}.
+Principal Belum Diisi,Principal Not Filled In
+Prioritas mendesak hanya berlaku untuk booking Tank Out.,Urgent priority only applies to Tank Out bookings.
+Register tidak dikenal: {0},Unknown register: {0}
+Row {0} ({1}): masih ada order yang belum selesai — {2}.,Row {0} ({1}): there are still unfinished orders — {2}.
+Row {0} ({1}): tank belum ada di depo (status {2}) — bon muat baru bisa dibuat setelah tank masuk.,Row {0} ({1}): the tank is not in the depot yet (status {2}) — a loading voucher can only be made after the tank arrives.
+Row {0} ({1}): tank masih ada di depo (status {2}) — bon bongkar baru bisa dibuat setelah tank keluar.,Row {0} ({1}): the tank is still in the depot (status {2}) — an unloading voucher can only be made after the tank leaves.
+Rule aktif wajib punya minimal satu role penerima. Matikan 'Aktif' untuk menonaktifkan event ini.,An active rule must have at least one recipient role. Untick 'Aktif' to disable this event.
+Sales Invoice gagal dibuat (apakah site sudah siap untuk invoicing?).,Could not create the Sales Invoice (is the site ready for invoicing?).
+Sales Invoice {0} sudah disubmit ({1}) — batalkan invoice-nya dulu (pembayarannya ikut dibalik) sebelum booking bisa kembali ke Draft.,Sales Invoice {0} is already submitted ({1}) — cancel the invoice first (its payment is reversed too) before the booking can go back to Draft.
+"Sales Invoice {0} sudah disubmit — charges / customer booking ini tidak bisa diubah lagi. Batalkan invoice-nya dulu, atau batalkan booking ini dan buat yang baru.","Sales Invoice {0} is already submitted — this booking's charges / customer can no longer be changed. Cancel the invoice first, or cancel this booking and create a new one."
+"Samakan mata uang semua baris, atau pisahkan jadi booking sendiri.","Use the same currency on every row, or split them into a separate booking."
+"Satu booking hanya bisa ditagih dalam satu mata uang, tapi baris charge-nya campur: {0}.<br>{1}","A booking can only be billed in one currency, but its charge rows are mixed: {0}.<br>{1}"
+Section tidak dikenal: {0},Unknown section: {0}
+Service Nonaktif,Service Disabled
+Service Tidak Dikenal,Unknown Service
+Status M&R {0} → {1} oleh {2},M&R status {0} → {1} by {2}
+Status bayar diubah manual: {0} → {1},Payment status changed manually: {0} → {1}
+Status bayar hanya bisa Paid atau Unpaid.,Payment status can only be Paid or Unpaid.
+Status booking ini <b>{0}</b> — aksi itu tidak berlaku di status ini.,This booking's status is <b>{0}</b> — that action does not apply in this status.
+Status tank {0} tidak bisa diubah dari form. Pakai tombol Tandai Lowered / Selesai Survey / Buka lagi di PWA.,Tank {0}'s status cannot be changed from the form. Use the Mark Lowered / Finish Survey / Reopen buttons in the PWA.
+Stok Tidak Cukup,Insufficient Stock
+Stok tidak cukup — order ini belum bisa diteruskan sampai stoknya ada:<br>{0},Insufficient stock — this order cannot be forwarded until the stock is available:<br>{0}
+Stok tidak cukup:<br>{0},Insufficient stock:<br>{0}
+Stok {0} {1},Stock {0} {1}
+Submit langsung dari Desk oleh {0}: {1},Submitted directly from the Desk by {0}: {1}
+Sudah Ditagih,Already Billed
+Survey Date Lewat Pick up Date,Survey Date After Pick up Date
+Survey Order hanya bisa dibuat dari booking Tank Out.,A Survey Order can only be created from a Tank Out booking.
+"Survey Posisi • {0} — dibuka lagi, survey diulang","Position Survey • {0} — reopened, survey to be redone"
+"Survey Posisi • {0} — dibuka lagi, survey diulang • {1}","Position Survey • {0} — reopened, survey to be redone • {1}"
+"Survey Posisi • {0} — sudah turun, siap disurvey","Position Survey • {0} — lowered, ready for survey"
+"Survey Posisi • {0} — sudah turun, siap disurvey • {1}","Position Survey • {0} — lowered, ready for survey • {1}"
+Survey Posisi • {0} — survey selesai,Position Survey • {0} — survey finished
+Survey Posisi • {0} — survey selesai • EIR-Out {1},Position Survey • {0} — survey finished • EIR-Out {1}
+Survey selesai — EIR-Out terbit,Survey finished — EIR-Out issued
+Survey tank ini sudah selesai.,This tank's survey is already finished.
+Tanda MENDESAK dicabut.,URGENT mark removed.
+Tanggal awal ({0}) melewati tanggal akhir ({1}).,The start date ({0}) is after the end date ({1}).
+Tanggal uji ({0}) lebih awal dari tanggal pembuatan tank ({1}).,The test date ({0}) is earlier than the tank's manufacture date ({1}).
+Tanggal uji tidak boleh di masa depan.,The test date cannot be in the future.
+Tanggal uji wajib diisi.,The test date is required.
+Tank Masih Terpakai,Tank Still in Use
+Tank Non-Aktif,Inactive Tank
+Tank di-HOLD,Tank on HOLD
+Tank menunggu lowering,Tank awaiting lowering
+Tank siap disurvey,Tank ready for survey
+Tank {0} statusnya {1} — belum ada yang bisa dibuka lagi.,Tank {0} is {1} — there is nothing to reopen yet.
+"Tank {0} statusnya {1}, bukan {2}.","Tank {0} is {1}, not {2}."
+Tank {0} sudah tidak ada di depo — tidak ada letak yang bisa dicek.,Tank {0} is no longer in the depot — there is no position to check.
+Tank {0} tidak ada di jadwal survey manapun.,Tank {0} is not on any survey schedule.
+Team minta EIR dibuka lagi,Team asks to reopen an EIR
+Team minta M&R dibuka lagi,Team asks to reopen an M&R
+Team minta cleaning dibuka lagi,Team asks to reopen a cleaning
+"Tekan ""Mulai"" dulu sebelum mengisi EIR ini.","Press ""Start"" before filling in this EIR."
+Template “{0}” sudah ada di depot ini.,Template “{0}” already exists in this depot.
+Tgl. Tes Terakhir diperbarui ke {0} dari uji berkala {1},Last Test Date updated to {0} from periodic test {1}
+Tidak Bisa Cancel,Cannot Cancel
+Tidak ada Company default untuk mengeluarkan part dari stok.,There is no default Company to issue parts from stock.
+Tidak ada foto pada dokumen ini untuk diunduh.,This document has no photos to download.
+Tidak ada foto yang dikirim.,No photos were sent.
+Tidak ada order yang dipilih.,No orders selected.
+Tidak bisa dibatalkan lunasnya,Paid status cannot be undone
+Tidak bisa dikembalikan ke draft: sudah ada container yang diproses di gate (Booking Code {0}).,Cannot return to draft: a container has already been processed at the gate (Booking Code {0}).
+Tidak bisa diubah manual,Cannot be changed manually
+Tidak bisa mengubah status M&R dari {0} ke {1}.,Cannot change the M&R status from {0} to {1}.
+Tidak boleh {0} Survey Order.,Not permitted to {0} Survey Order.
+Tidak memiliki izin untuk mengakses dokumen ini.,No permission to access this document.
+Tipe,Type
+Ukuran,Size
+ada temuan kerusakan,damage found
+containers harus berupa array JSON.,containers must be a JSON array.
+dibatalkan,cancelled
+dikembalikan ke draft,returned to draft
+diminta revisi,sent back for revision
+hutang,payable
+keluar dari,left
+keluar: {0},removed: {0}
+masih ada di depo (status {0}) — gate-out dulu,still in the depot (status {0}) — gate it out first
+masih tercantum di Container Booking {0},still listed on Container Booking {0}
+masuk ke,entered
+masuk: {0},added: {0}
+name wajib diisi.,name is required.
+names harus berupa array JSON.,names must be a JSON array.
+names harus berupa array.,names must be an array.
+piutang,receivable
+truk {0},truck {0}
+{0} baris,{0} rows
+"{0} di {1} — diminta {2}, tersedia {3}","{0} in {1} — requested {2}, available {3}"
+{0} dibatalkan,{0} cancelled
+{0} dibuka lagi oleh {1},{0} reopened by {1}
+{0} dikembalikan ke draft,{0} returned to draft
+{0} sudah terdaftar — pilih dari daftar.,{0} is already registered — pick it from the list.
+{0} tidak punya baris charge.,{0} has no charge rows.
+{0} {1} ({2}) belum selesai,{0} {1} ({2}) not finished yet
+{0} {1} tidak punya baris Service & Parts.,{0} {1} has no Service & Parts rows.
+{0} · belum ada bon,{0} · no voucher yet
+{0} — depo {1} (Branch {2}),{0} — depot {1} (Branch {2})
+{0} • {1} — menunggu review Admin Ops (oleh {2}),{0} • {1} — awaiting Admin Ops review (by {2})
+"{0} • {1} — tank akan keluar, siap diperiksa","{0} • {1} — tank going out, ready for inspection"
+"{0} • {1} — tank masuk, siap diperiksa","{0} • {1} — tank in, ready for inspection"
+"{0}: ada di depo {1}, di luar Branch booking — dilewati","{0}: in depot {1}, outside the booking's Branch — skipped"
+{0}: cargo {1} tidak dikenal — dikosongkan,{0}: unknown cargo {1} — left blank
+{0}: container non-aktif — dilewati,{0}: inactive container — skipped
+{0}: kondisi {1} tidak dikenal — dilewati,{0}: unknown condition {1} — skipped
+{0}: milik principal lain ({1}) — dilewati,{0}: belongs to another principal ({1}) — skipped
+{0}: sudah terikat booking {1} — dilewati,{0}: already tied to booking {1} — skipped
+{0}: tidak ada di depo (status {1}) — dilewati,{0}: not in the depot (status {1}) — skipped

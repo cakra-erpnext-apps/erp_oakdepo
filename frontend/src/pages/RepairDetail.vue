@@ -276,6 +276,7 @@ import { useRoute, useRouter } from "vue-router"
 import { isLocalRef, photoSrc, send, uploadPhoto } from "@/data/send"
 import { cachedResource } from "@/data/cache"
 import { labels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 import { toast } from "@/utils/toast"
 import { openLightbox } from "@/utils/lightbox"
 import { shootOrFallback } from "@/utils/camera"
@@ -368,7 +369,7 @@ function fmtMonthYear(v) {
 	const d = new Date(String(v).slice(0, 10) + "T00:00:00")
 	return Number.isNaN(d.getTime())
 		? String(v).slice(0, 7)
-		: d.toLocaleDateString("id-ID", { month: "short", year: "numeric" })
+		: d.toLocaleDateString(LOCALE, { month: "short", year: "numeric" })
 }
 
 // Jenis tank, muatan terakhir, dan EIR asalnya — prinsipal & nomor tank sudah di kartu info.

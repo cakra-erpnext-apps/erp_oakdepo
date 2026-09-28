@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.model.document import Document
 import datetime
 import hashlib
@@ -37,14 +38,14 @@ class GateEntry(Document):
 				as_dict=True,
 			)
 			if not bc:
-				frappe.throw(f"Booking Code {self.booking_code} not found.")
+				frappe.throw(_("Booking Code {0} not found.").format(self.booking_code))
 			if bc.state not in ("Active", "Used"):
 				frappe.throw(
-					f"Booking Code {self.booking_code} state is {bc.state}; cannot pass the gate."
+					_("Booking Code {0} state is {1}; cannot pass the gate.").format(self.booking_code, bc.state)
 				)
 			if bc.container_no and self.container_no and bc.container_no.upper() != self.container_no.upper():
 				frappe.throw(
-					f"Container {self.container_no} does not match Booking Code container {bc.container_no}."
+					_("Container {0} does not match Booking Code container {1}.").format(self.container_no, bc.container_no)
 				)
 
 	def before_submit(self):
@@ -64,8 +65,9 @@ class GateEntry(Document):
 			# Inbound rule: a tank must NOT already be inside a depot to gate in.
 			if container.status in PRESENT:
 				frappe.throw(
-					f"Container {container.container_no or container.name} sudah ada di depo "
-					f"(status {container.status}) — tidak bisa gate-in lagi."
+					_("Container {0} sudah ada di depo (status {1}) — tidak bisa gate-in lagi.").format(
+						container.container_no or container.name, container.status
+					)
 				)
 			container.status = IN_DEPOT
 			container.eir_in_date = self.gate_in_timestamp or datetime.datetime.now()

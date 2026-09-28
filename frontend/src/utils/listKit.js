@@ -3,6 +3,7 @@
 
 import { reactive, watch } from "vue"
 import { labels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 import { session } from "@/data/session"
 
 export function fill(tpl, vars) {
@@ -49,7 +50,7 @@ export function daysFrom(iso) {
 export function dayLabel(iso) {
 	if (iso === "urgent") return labels.listUrgentGroup
 	if (!iso) return labels.listNoDueGroup
-	const name = new Date(`${iso}T00:00:00`).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" })
+	const name = new Date(`${iso}T00:00:00`).toLocaleDateString(LOCALE, { weekday: "short", day: "numeric", month: "short" })
 	const d = daysFrom(iso)
 	if (d === 0) return `${labels.homeToday} · ${name}`
 	if (d === 1) return `${labels.svTomorrow} · ${name}`

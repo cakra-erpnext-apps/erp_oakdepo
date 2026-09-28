@@ -1,7 +1,7 @@
 <template>
 	<span v-if="due" class="oak-chip shrink-0 whitespace-nowrap" :class="chipClass">
 		<Icon :name="urgent ? 'alert-triangle' : liftIcon(due)" :size="11" />
-		<template v-if="urgent">MENDESAK · </template>{{ hMinus(due) }} · {{ fmtDayMonth(due) }}
+		<template v-if="urgent">{{ labels.liftUrgent }} · </template>{{ hMinus(due) }} · {{ fmtDayMonth(due) }}
 	</span>
 </template>
 
@@ -29,6 +29,7 @@
 // paling mahal, memakan ~45 px di baris chip yang harus berbagi dengan status dan voucher.
 // Yang tersisa justru dua hal yang benar-benar dibaca: seberapa mendesak, dan tanggal berapa.
 import { computed } from "vue"
+import { labels } from "@/utils/labels"
 
 import { hMinus, liftChipClass, liftIcon } from "@/utils/liftOn"
 import { fmtDayMonth } from "@/utils/surveyStatus"

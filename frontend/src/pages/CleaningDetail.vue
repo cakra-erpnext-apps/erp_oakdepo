@@ -168,7 +168,7 @@
 								<button
 									type="button"
 									class="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white shadow active:bg-black"
-									:aria-label="labels.remove || 'Hapus'"
+									:aria-label="labels.remove"
 									@click="removeQcPhoto(i)"
 								>
 									<Icon name="x" :size="16" />

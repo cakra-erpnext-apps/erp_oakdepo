@@ -3,6 +3,7 @@
 // taps the confirm button, false otherwise. The single <ConfirmHost> mounted in
 // App.vue renders the modal. Used to gate irreversible submits (a 2-step "Anda yakin?").
 import { reactive } from "vue"
+import { labels } from "@/utils/labels"
 
 export const confirmState = reactive({
 	open: false,
@@ -16,10 +17,10 @@ export const confirmState = reactive({
 
 export function confirm(opts = {}) {
 	return new Promise((resolve) => {
-		confirmState.title = opts.title || "Konfirmasi"
+		confirmState.title = opts.title || labels.confirmTitle
 		confirmState.message = opts.message || ""
-		confirmState.confirmLabel = opts.confirmLabel || "Ya"
-		confirmState.cancelLabel = opts.cancelLabel || "Batal"
+		confirmState.confirmLabel = opts.confirmLabel || labels.confirmYes
+		confirmState.cancelLabel = opts.cancelLabel || labels.confirmCancel
 		confirmState.danger = !!opts.danger
 		confirmState._resolve = resolve
 		confirmState.open = true

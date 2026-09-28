@@ -14,6 +14,7 @@ so it can never break the primary action it is recording.
 from __future__ import annotations
 
 import frappe
+from frappe import _
 from frappe.utils import now_datetime
 
 
@@ -215,6 +216,9 @@ def _with_performer_names(rows) -> list:
 	) if emails else {}
 	for r in rows:
 		r["performed_by_name"] = names.get(r.get("performed_by")) or r.get("performed_by")
+		# Raw values stay for logic (icons key on activity_type); the *_label is for display.
+		for k in ("activity_type", "from_status", "to_status"):
+			r[f"{k}_label"] = _(r.get(k))
 	return rows
 
 
@@ -261,7 +265,7 @@ def get_activity_detail(name) -> dict:
 	from container_depot.container_depot.user_branch import assert_in_user_branch
 
 	if not name:
-		frappe.throw("name is required.")
+		frappe.throw(_("name is required."))
 	a = frappe.get_doc("Container Activity", name)
 	assert_in_user_branch(depot=a.depot)
 	return _with_performer_names(annotate_voided([{

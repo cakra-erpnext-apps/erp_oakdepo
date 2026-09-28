@@ -571,7 +571,7 @@ const headerTitle = computed(() =>
 // memang satu bon — bahwa datanya sudah diisi di tank sebelumnya.
 const identityLine = computed(() => {
 	const parts = [header.value?.principal]
-	if (header.value?.depot) parts.push(`${labels.eirBadgeIn.toLowerCase()} ${labels.depot.toLowerCase()} ${header.value.depot}`)
+	if (header.value?.depot) parts.push(labels.eirInIntoDepot.replace("{d}", header.value.depot))
 	return parts.filter(Boolean).join(" · ")
 })
 

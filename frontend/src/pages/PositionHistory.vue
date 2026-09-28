@@ -127,7 +127,7 @@ const tank = computed(() => res.data || null)
 const history = computed(() => tank.value?.history || [])
 
 const headLine = computed(() =>
-	[tank.value?.principal, tank.value?.depot ? `depot ${tank.value.depot}` : null]
+	[tank.value?.principal, tank.value?.depot ? fill(labels.depotOf, { d: tank.value.depot }) : null]
 		.filter(Boolean)
 		.join(" · ")
 )

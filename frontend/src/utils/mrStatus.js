@@ -5,6 +5,7 @@
 // terpisah di tiap halaman (yang memang sempat ada: tiga peta warna berbeda untuk status yang
 // sama) pada akhirnya berselisih, dan operator jadi menghafal warna per layar.
 import { labels, repairStatusLabels } from "@/utils/labels"
+import { LOCALE } from "@/utils/lang"
 
 // Warna per status. Satu nada per arti, bukan per nama status: apa pun yang masih menunggu
 // orang lain berwarna langit, yang ada di tangan operator berwarna brand, yang sudah beres
@@ -47,7 +48,7 @@ export function fmtStamp(dt) {
 	const d = parseDt(dt)
 	if (!d || Number.isNaN(d.getTime())) return String(dt).slice(0, 16).replace("T", " ")
 	return (
-		d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }) + " " + clockOf(dt)
+		d.toLocaleDateString(LOCALE, { day: "numeric", month: "short" }) + " " + clockOf(dt)
 	)
 }
 

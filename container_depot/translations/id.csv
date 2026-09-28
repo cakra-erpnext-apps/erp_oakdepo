@@ -1,0 +1,376 @@
+(copy an Item Name from the Item Master sheet),(salin Item Name dari sheet Item Master)
+(no owner),(tanpa owner)
+A Container Booking cannot be deleted — use Cancel to void it instead.,Container Booking tidak bisa dihapus — pakai Cancel untuk membatalkannya.
+A contract cannot amend itself.,Kontrak tidak bisa meng-amend dirinya sendiri.
+"A {0} contract cannot be deleted. Use Invalid to cancel it, or Amend to replace it.","Kontrak {0} tidak bisa dihapus. Pakai Invalid untuk membatalkannya, atau Amend untuk menggantinya."
+A {0} invoice for {1} / {2} in {3} already exists ({4}).,Invoice {0} untuk {1} / {2} di {3} sudah ada ({4}).
+ARD (Wear & Tear),ARD (Aus Pemakaian)
+Acceptable,Baik
+Airline Connection,Sambungan Airline
+Airline Valve,Valve Airline
+All containers on one bon must share the same direction.,Semua container dalam satu bon harus searah.
+An Active contract must declare at least one tariff line.,Kontrak Active wajib punya minimal satu baris tarif.
+An Order Bongkar cannot be deleted — use Cancel to void it instead.,Order Bongkar tidak bisa dihapus — pakai Cancel untuk membatalkannya.
+An Order Muat cannot be deleted — use Void to cancel it instead.,Order Muat tidak bisa dihapus — pakai Void untuk membatalkannya.
+An amendment must keep the Customer of {0} ({1}).,Amendment harus tetap memakai Customer dari {0} ({1}).
+An order must have between 1 and {0} containers (got {1}).,Satu order harus berisi 1 sampai {0} container (saat ini {1}).
+Anti Slip Surface,Permukaan Anti Selip
+Approved,Disetujui
+Authentication required.,Autentikasi diperlukan.
+Available,Tersedia
+Bad Maintenance,Perawatan Buruk
+Ball,Ball
+Ball Valve,Ball Valve
+Barrel Internal Surface,Permukaan Dalam Barrel
+Bent,Bengkok
+Blast & Paint,Blasting & Cat
+Blocked,Tersumbat
+Bolt,Baut
+Bolts,Baut
+Booked,Dibooking
+Booking,Booking
+Booking Code not found.,Booking Code tidak ditemukan.
+Booking Code {0} does not belong to booking {1}.,Booking Code {0} bukan milik booking {1}.
+"Booking Code {0} is for {1}, not {2}.","Booking Code {0} untuk {1}, bukan {2}."
+Booking Code {0} is listed more than once.,Booking Code {0} tercantum lebih dari sekali.
+Booking Code {0} not found.,Booking Code {0} tidak ditemukan.
+Booking Code {0} state is {1}.,Status Booking Code {0} adalah {1}.
+Booking Code {0} state is {1}; cannot pass the gate.,Status Booking Code {0} adalah {1}; tidak bisa melewati gate.
+Booking Code {0} state is {1}; must be Active.,Status Booking Code {0} adalah {1}; harus Active.
+Booking Code(s) not found: {0},Booking Code tidak ditemukan: {0}
+Booking still has a live Sales Invoice {0}. Cancel it first.,Booking masih punya Sales Invoice aktif {0}. Batalkan dulu invoice-nya.
+Booking {0} not found.,Booking {0} tidak ditemukan.
+Bottom Discharge,Bottom Discharge
+Bottom Outlet Flange,Flange Outlet Bawah
+Bottom Outlet Pipe,Pipa Outlet Bawah
+Bottom Rail,Rel Bawah
+Bottom Valve Body,Body Valve Bawah
+Bottom Valve Cap,Tutup Valve Bawah
+Bottom Valve Chain,Rantai Valve Bawah
+Bottom Valve Flange,Flange Valve Bawah
+Bottom Valve Handle,Handle Valve Bawah
+Bottom Valve Seat,Seat Valve Bawah
+Bottom Valve Stem,Stem Valve Bawah
+Broken,Patah
+Btm Dis Connection,Sambungan Btm Dis
+Butterfly Valve,Butterfly Valve
+Cabinet Drain,Drain Kabinet
+Cabinet Internal Cleanliness,Kebersihan Dalam Kabinet
+Calibration Chart,Tabel Kalibrasi
+Calling user is not linked to a Self Service Terminal.,User ini tidak terhubung ke Self Service Terminal.
+Cancelled,Dibatalkan
+Cannot change contract status from {0} to {1}.,Status kontrak tidak bisa diubah dari {0} ke {1}.
+Cannot change status from {0} to {1}.,Status tidak bisa diubah dari {0} ke {1}.
+Cannot move contract from {0} to {1}.,Kontrak tidak bisa dipindah dari {0} ke {1}.
+Cap,Tutup
+Chassis Mount Area,Area Dudukan Chassis
+Chemical Attack,Korosi Kimia
+Cleaning,Cleaning
+Cleaning Order {0} not found.,Cleaning Order {0} tidak ditemukan.
+Completed,Selesai
+Container Activity entries are append-only.,"Entri Container Activity hanya bisa ditambah, tidak bisa diubah."
+Container Activity is append-only and cannot be deleted.,Container Activity hanya bisa ditambah dan tidak bisa dihapus.
+Container {0} does not match Booking Code container {1}.,Container {0} tidak sesuai dengan container Booking Code {1}.
+Container {0} is already on row {1} — each container may appear only once.,Container {0} sudah ada di baris {1} — tiap container hanya boleh muncul sekali.
+Container {0} is no longer pending (state {1}).,Container {0} sudah tidak pending (status {1}).
+Container {0} is not on booking {1}.,Container {0} tidak ada di booking {1}.
+Container {0} is not on {1} {2}.,Container {0} tidak ada di {1} {2}.
+Container {0} not found.,Container {0} tidak ditemukan.
+Contaminated,Terkontaminasi
+Contract currency {0} must match the Base Contract currency {1}.,Mata uang kontrak {0} harus sama dengan mata uang Base Contract {1}.
+Contract {0} belongs to a different customer.,Kontrak {0} milik customer lain.
+Contract {0} has been superseded by this amendment.,Kontrak {0} sudah digantikan oleh amendment ini.
+Contract {0} is not Active (status={1}).,Kontrak {0} tidak Active (status={1}).
+Contract {0} not found.,Kontrak {0} tidak ditemukan.
+Could not create a Sales Invoice (is the site invoice-ready?).,Sales Invoice gagal dibuat (apakah site sudah siap untuk invoicing?).
+Cracked,Retak
+Credit Limit must be greater than zero for {0} contracts.,Credit Limit harus lebih dari nol untuk kontrak {0}.
+Cross Member,Balok Melintang
+Dented,Penyok
+Dented & Holed,Penyok & Berlubang
+Deodorise,Hilangkan Bau
+Dip Pipe,Dip Pipe
+Discoloration,Perubahan Warna
+Dismantle & Clean,Bongkar & Bersihkan
+Draft,Draf
+Drain Hose,Selang Drain
+Drain Line,Jalur Drain
+Drain Valve,Valve Drain
+Dry out,Keringkan
+Duplicate Container,Container Ganda
+Duplicate tariff line for Item {0} (UoM {1}).,Baris tarif ganda untuk Item {0} (UoM {1}).
+EIR {0} is no longer a draft.,EIR {0} sudah bukan draf.
+Flange,Flange
+Foot Valve,Foot Valve
+Foreign Fitting,Fitting Asing
+Foreign Mark,Tanda Asing
+Forklift Pocket,Kantong Forklift
+Free & Ease,Bebaskan & Lancarkan
+Front,Depan
+Front Airline Cap,Tutup Airline Depan
+Front Barrel Head,Head Barrel Depan
+Front Barrel Weld Seam,Sambungan Las Barrel Depan
+Front Bottom Rail,Rel Bawah Depan
+Front CSC Plate,Pelat CSC Depan
+Front Cladding,Cladding Depan
+Front Cross Member,Balok Melintang Depan
+Front Data Plate,Pelat Data Depan
+Front Diagonal Support,Penyangga Diagonal Depan
+Front Earth Point,Titik Grounding Depan
+Front End Frame,Rangka Ujung Depan
+Front Frame Weld Area,Area Las Rangka Depan
+Front IMO Marking,Marking IMO Depan
+Front Insulation Cover,Penutup Insulasi Depan
+Front Left Corner Post,Tiang Sudut Kiri Depan
+Front Lower Corner Casting,Corner Casting Bawah Depan
+Front Marking Area,Area Marking Depan
+Front Mounting Area,Area Dudukan Depan
+Front Paint Condition,Kondisi Cat Depan
+Front Right Corner Post,Tiang Sudut Kanan Depan
+Front Shell Support Saddle,Saddle Penyangga Shell Depan
+Front Steam Pipe Cap,Tutup Pipa Steam Depan
+Front TIR Fitting,Fitting TIR Depan
+Front Top Rail,Rel Atas Depan
+Front Underside Area,Area Bawah Depan
+Front Upper Corner Casting,Corner Casting Atas Depan
+GRP Infil,Isi GRP
+Gate In,Gate In
+Gate Out,Gate Out
+Gate_Out,Keluar
+Generate Invoice,Generate Invoice
+Gouged,Tergores Dalam
+Grind Smooth,Gerinda Halus
+Header,Header
+Hit Overhead,Terbentur dari Atas
+Holed / Cut,Berlubang / Terpotong
+IN,MASUK
+Improper Repair - New,Perbaikan Tidak Sesuai - Baru
+Improper Repair - Old,Perbaikan Tidak Sesuai - Lama
+In Progress,Dikerjakan
+In_Depot,Di Depo
+In_Progress,Dikerjakan
+Insert,Sisipkan
+Inspection (EIR),Inspeksi (EIR)
+Internal Arc Strike,Bekas Busur Las Dalam
+Internal Barrel Surface,Permukaan Dalam Barrel
+Internal Bottom Area,Area Dasar Dalam
+Internal Burn Mark,Bekas Terbakar Dalam
+Internal Chemical Attack,Korosi Kimia Dalam
+Internal Chloride Attack,Korosi Klorida Dalam
+Internal Drain Area,Area Drain Dalam
+Internal Moisture,Kelembapan Dalam
+Internal Odor,Bau Dalam
+Internal Passivation,Pasivasi Dalam
+Internal Roof Area,Area Atap Dalam
+Internal Shell,Shell Dalam
+Internal Surface Finish,Finishing Permukaan Dalam
+Internal Weld Seam,Sambungan Las Dalam
+Invalid Booking Code format.,Format Booking Code tidak valid.
+Invalid container_no format.,Format container_no tidak valid.
+Invalid status filter: {0},Filter status tidak valid: {0}
+Invalid webhook signature.,Signature webhook tidak valid.
+Item for {0}: container link required for Tank Out.,Item untuk {0}: link container wajib diisi untuk Tank Out.
+LEFT,KIRI
+LONG,PANJANG
+Leakage,Bocor
+Left Barrel Side Wall,Dinding Samping Barrel Kiri
+Left Barrel Surface,Permukaan Barrel Kiri
+Left Barrel Weld Seam,Sambungan Las Barrel Kiri
+Left Side,Sisi Kiri
+Left Side Airline Pipe,Pipa Airline Sisi Kiri
+Left Side Cladding,Cladding Sisi Kiri
+Left Side Insulation Cover,Penutup Insulasi Sisi Kiri
+Left Side Marking,Marking Sisi Kiri
+Left Side Paint,Cat Sisi Kiri
+Left Side Rail,Rel Sisi Kiri
+Left Side Steam Pipe,Pipa Steam Sisi Kiri
+Left Side Support,Penyangga Sisi Kiri
+Left Side Underside,Bagian Bawah Sisi Kiri
+Loose,Longgar
+Lowering,Lowering
+Malformed OAK QR payload.,Isi QR OAK tidak valid.
+Manhole,Manhole
+Manlid,Manlid
+Manlid Cover,Tutup Manlid
+Manlid Cover Locking,Pengunci Tutup Manlid
+Manlid Seal,Seal Manlid
+Manufacturers Defect,Cacat Pabrik
+Megohm Failure,Gagal Uji Megohm
+Missing,Hilang
+Modify,Modifikasi
+No Action,Tidak Ada Tindakan
+No file provided.,Tidak ada file yang dikirim.
+No rows found in the pasted text.,Tidak ada baris di teks yang ditempel.
+Not your notification.,Ini bukan notifikasi Anda.
+OUT,KELUAR
+Only a confirmed booking can regenerate its invoice.,Hanya booking yang sudah dikonfirmasi yang bisa membuat ulang invoice-nya.
+Only a draft booking can be cancelled here.,Hanya booking draf yang bisa dibatalkan di sini.
+Only a submitted order can be returned to draft.,Hanya order yang sudah disubmit yang bisa dikembalikan ke draft.
+Order Bongkar {0} not found.,Order Bongkar {0} tidak ditemukan.
+Order {0} is already voided.,Order {0} sudah di-void.
+Other,Lainnya
+Out of Calibration,Tidak Terkalibrasi
+Out of ISO,Di Luar Standar ISO
+PSV Body,Body PSV
+PSV Seal,Seal PSV
+Passive,Pasivasi
+Patching,Tambal
+Payment Terms is required for {0} contracts.,Payment Terms wajib diisi untuk kontrak {0}.
+Pending,Siap Dikerjakan
+Pending Approval,Menunggu Persetujuan
+Pending Review,Menunggu Review
+Photo row {0} not found on EIR {1}.,Baris foto {0} tidak ditemukan di EIR {1}.
+Pitted,Pitting
+Polish Clean,Poles & Bersihkan
+Pressure Gauge,Pressure Gauge
+Provide a container number (or a booking_code / order_bongkar / order_muat).,Isi nomor container (atau booking_code / order_bongkar / order_muat).
+RIGHT,KANAN
+Rear,Belakang
+Rear Barrel Head,Head Barrel Belakang
+Rear Barrel Weld Seam,Sambungan Las Barrel Belakang
+Rear Bottom Rail,Rel Bawah Belakang
+Rear Cladding,Cladding Belakang
+Rear Corner Casting,Corner Casting Belakang
+Rear Corner Post,Tiang Sudut Belakang
+Rear Drain Area,Area Drain Belakang
+Rear End Frame,Rangka Ujung Belakang
+Rear Handrail,Handrail Belakang
+Rear Ladder,Tangga Belakang
+Rear Ladder Weld,Las Tangga Belakang
+Rear Paint Condition,Kondisi Cat Belakang
+Rear Protection Bumper,Bumper Pelindung Belakang
+Rear TIR Fitting,Fitting TIR Belakang
+Rear Top Rail,Rel Atas Belakang
+Rear Underside Area,Area Bawah Belakang
+Regenerate Invoice,Regenerate Invoice
+Rejected,Ditolak
+Release,Release
+Remove,Lepas
+Renew,Ganti Baru
+Repair,Perbaikan
+Resecure,Kencangkan Ulang
+Revision Requested,Minta Revisi
+Right Barrel Side Wall,Dinding Samping Barrel Kanan
+Right Barrel Surface,Permukaan Barrel Kanan
+Right Barrel Weld Seam,Sambungan Las Barrel Kanan
+Right Side,Sisi Kanan
+Right Side Airline Pipe,Pipa Airline Sisi Kanan
+Right Side Cladding,Cladding Sisi Kanan
+Right Side Insulation Cover,Penutup Insulasi Sisi Kanan
+Right Side Marking,Marking Sisi Kanan
+Right Side Paint,Cat Sisi Kanan
+Right Side Rail,Rel Sisi Kanan
+Right Side Steam Pipe,Pipa Steam Sisi Kanan
+Right Side Support,Penyangga Sisi Kanan
+Right Side Underside,Bagian Bawah Sisi Kanan
+Row {0}: Booking Code is required.,Baris {0}: Booking Code wajib diisi.
+Rusted,Berkarat
+SHORT,PENDEK
+SST Activity Log entries are append-only.,"Entri SST Activity Log hanya bisa ditambah, tidak bisa diubah."
+SST Activity Log is append-only and cannot be deleted.,SST Activity Log hanya bisa ditambah dan tidak bisa dihapus.
+Saddle Area,Area Saddle
+Sales Invoice {0} is not submitted.,Sales Invoice {0} belum disubmit.
+Sales Invoice {0} status is {1}; must be Paid.,Status Sales Invoice {0} adalah {1}; harus Paid.
+Saturated,Jenuh
+Seal,Seal
+Secondary Valve,Valve Sekunder
+Section,Ganti Section
+Seized,Macet
+Select between 1 and {0} containers.,Pilih 1 sampai {0} container.
+Service Setup,Service Setup
+Side,Samping
+Special Repairs,Perbaikan Khusus
+Spill Box,Spill Box
+Spill Box Cover,Tutup Spill Box
+Spill Box Drain,Drain Spill Box
+Spill Box Hinge,Engsel Spill Box
+Spill Box Seal,Seal Spill Box
+Status Change,Perubahan Status
+Steam Clean,Cuci Steam
+Steam Pipe,Pipa Steam
+Straighten,Luruskan
+Straighten & Weld,Luruskan & Las
+Strap,Strap
+Survey,Survey
+TOP credit block: outstanding {0} exceeds credit limit {1}.,Blokir kredit TOP: outstanding {0} melebihi credit limit {1}.
+TOP credit block: {0} overdue Sales Invoice(s) for customer.,Blokir kredit TOP: customer punya {0} Sales Invoice yang lewat jatuh tempo.
+Tariff lines can only be imported while the contract is a Draft.,Baris tarif hanya bisa diimpor selama kontrak masih Draft.
+Test,Uji
+Test / Calibrate,Uji / Kalibrasi
+The same container was selected more than once.,Container yang sama dipilih lebih dari sekali.
+Thermometer,Termometer
+This booking was cancelled and cannot be confirmed. Create a new one.,Booking ini sudah dibatalkan dan tidak bisa dikonfirmasi. Buat booking baru.
+This method is only meant for developer mode.,Method ini hanya untuk developer mode.
+Top,Atas
+Top Cladding,Cladding Atas
+Top Dis Blind Flange,Blind Flange Top Dis
+Top Discharge,Top Discharge
+Top Platform,Platform Atas
+Top Rail Weld,Las Rel Atas
+Top Safety Rail,Rel Pengaman Atas
+Top Surface Shell,Permukaan Atas Shell
+Top Valve Body,Body Valve Atas
+Top Valve Cabinet,Kabinet Valve Atas
+Top Valve Cabinet Door,Pintu Kabinet Valve Atas
+Top Valve Cabinet Lock,Kunci Kabinet Valve Atas
+Top Valve Flange,Flange Valve Atas
+Top Valve Handle,Handle Valve Atas
+Top Valve Seat,Seat Valve Atas
+Top Valve Stem,Stem Valve Atas
+Top Valve Thread,Ulir Valve Atas
+Top Walkway Grating,Grating Walkway Atas
+Torn,Robek
+Underframe,Rangka Bawah
+Underframe Airline Pipe,Pipa Airline Rangka Bawah
+Underframe Corrosion,Korosi Rangka Bawah
+Underframe Steam Pipe,Pipa Steam Rangka Bawah
+Underframe Weld,Las Rangka Bawah
+Ungrouped,Tanpa Grup
+Unknown checklist item_code for photo: {0},item_code checklist untuk foto tidak dikenal: {0}
+Unknown checklist item_code: {0},item_code checklist tidak dikenal: {0}
+Unknown item: {0},Item tidak dikenal: {0}
+Unknown language: {0},Bahasa tidak dikenal: {0}
+Unserviceable,Tidak Layak Pakai
+Unsupported order doctype: {0},Doctype order tidak didukung: {0}
+Untransferable Stain,Noda Tidak Bisa Dihilangkan
+Vacuum Valve,Valve Vakum
+Valid To must be on or after Valid From.,Valid To harus sama dengan atau sesudah Valid From.
+Valve Tagging,Label Valve
+Walkway Mounting,Dudukan Walkway
+Walkway Support,Penyangga Walkway
+Walkways,Walkway
+"Warning: Only {0} exterior photos uploaded. 4 views (Front, Back, Left, Right) recommended for EIR-In.","Peringatan: baru {0} foto eksterior yang diunggah. Untuk EIR-In disarankan 4 sisi (Depan, Belakang, Kiri, Kanan)."
+Wash Out,Bilas
+Waste Material,Sisa Material
+Webhook is not configured (missing container_depot_webhook_secret).,Webhook belum dikonfigurasi (container_depot_webhook_secret belum diisi).
+Webhook payload too large.,Payload webhook terlalu besar.
+Weld,Las
+Wire Brush & Paint,Sikat Kawat & Cat
+You don't have access to Report: {0},Anda tidak punya akses ke Report: {0}
+cleaning_order is required.,cleaning_order wajib diisi.
+code is required.,code wajib diisi.
+container is required.,container wajib diisi.
+container_no is required.,container_no wajib diisi.
+inspection is required.,inspection wajib diisi.
+inspection_type must be EIR-In or EIR-Out.,inspection_type harus EIR-In atau EIR-Out.
+invoicing,penagihan
+item_code is required to assign a section.,item_code wajib diisi untuk menentukan section.
+items must be a JSON array.,items harus berupa array JSON.
+items must be a list.,items harus berupa list.
+lines must be a JSON array.,lines harus berupa array JSON.
+lines must be a list of checklist rows.,lines harus berupa list baris checklist.
+name is required.,name wajib diisi.
+photos must be a JSON array.,photos harus berupa array JSON.
+photos must be a list.,photos harus berupa list.
+qr_data is required.,qr_data wajib diisi.
+repair_order is required.,repair_order wajib diisi.
+selected_codes must be a JSON array of Booking Code names.,selected_codes harus berupa array JSON berisi nama Booking Code.
+selected_codes must be a list of Booking Code names.,selected_codes harus berupa list nama Booking Code.
+tank must be a JSON object.,tank harus berupa objek JSON.
+"{0} already has an Active contract ({1}). Only one contract may be active — Amend {1} to change its terms, or Invalid it first.","{0} sudah punya kontrak Active ({1}). Hanya satu kontrak yang boleh aktif — Amend {1} untuk mengubah ketentuannya, atau Invalid-kan dulu."
+{0} has already been amended. Amend its replacement instead.,{0} sudah di-amend. Amend penggantinya saja.
+{0} is not an EIR-Out.,{0} bukan EIR-Out.
+{0} is not an EIR.,{0} bukan EIR.
+{0} is still a Draft — edit that contract directly instead of amending it.,"{0} masih Draft — ubah kontrak itu langsung, jangan di-amend."
+{0} {1} is not submitted yet.,{0} {1} belum disubmit.
+{0} {1} not found.,{0} {1} tidak ditemukan.

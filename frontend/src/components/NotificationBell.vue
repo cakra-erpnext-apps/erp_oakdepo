@@ -93,9 +93,10 @@ import { toast, toastSoundOn, setToastSound } from "@/utils/toast"
 import { useDismissOnBack } from "@/utils/backstack"
 import { session } from "@/data/session"
 import { mutedEvents } from "@/utils/notifMute"
+import { LANG } from "@/utils/lang"
 
 dayjs.extend(relativeTime)
-dayjs.locale("id")
+dayjs.locale(LANG === "en" ? "en" : "id")
 
 const router = useRouter()
 const open = ref(false)

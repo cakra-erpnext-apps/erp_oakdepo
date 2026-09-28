@@ -418,7 +418,7 @@ class TestUrgentPriority(FrappeTestCase):
 		self.assertEqual(kwargs["name"], doc.name)
 		# Alasannya ikut di subject: "kenapa ini di atas antrean saya" adalah pertanyaan yang
 		# lonceng ini dijawab untuknya.
-		self.assertIn("Kapal maju sehari", kwargs["subject"])
+		self.assertIn("Kapal maju sehari", kwargs["subject"]())
 
 	def test_a_field_role_may_not_declare_urgency(self):
 		"""An urgency every role can grant is one every role will grant, and a queue where

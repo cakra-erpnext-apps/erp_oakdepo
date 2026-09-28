@@ -8,6 +8,8 @@
 // The stamp is a plain date, so it is compared date-to-date in local time: parsing it as
 // "YYYY-MM-DDT00:00:00" (rather than letting Date treat a bare date as UTC) keeps H-0 on the
 // day the customer actually comes, in Jakarta rather than in London.
+import { labels } from "@/utils/labels"
+
 export const liftDays = (v) => {
 	if (!v) return null
 	const target = new Date(String(v).slice(0, 10) + "T00:00:00")
@@ -18,9 +20,9 @@ export const liftDays = (v) => {
 export const hMinus = (v) => {
 	const d = liftDays(v)
 	if (d === null) return ""
-	if (d < 0) return `Lewat ${-d} hr`
-	if (d === 0) return "Hari-H"
-	return `H-${d}`
+	if (d < 0) return labels.liftOverdue.replace("{d}", -d)
+	if (d === 0) return labels.liftToday
+	return labels.liftDaysLeft.replace("{d}", d)
 }
 
 /**

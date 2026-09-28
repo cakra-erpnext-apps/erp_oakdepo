@@ -75,18 +75,27 @@ def get_eir_masters() -> dict:
 		order_by="sequence asc",
 	)
 	_attach_allowed_codes(checklist)
+	# Master data is stored once, in one language; the PWA reads it in the operator's
+	# (depot_lang.py). Translated here, at output, so the stored value never changes —
+	# the client posts back only item_code / codes / fitting_item, never these words.
+	for c in checklist:
+		c["area"], c["item_name"] = _(c["area"]), _(c["item_name"])
 	damage_codes = frappe.get_all(
 		"Inspection Damage Code",
 		filters={"is_active": 1},
 		fields=["name as code", "description"],
 		order_by="code asc",
 	)
+	for d in damage_codes:
+		d["description"] = _(d["description"])
 	repair_codes = frappe.get_all(
 		"Inspection Repair Code",
 		filters={"is_active": 1},
 		fields=["name as code", "description"],
 		order_by="code asc",
 	)
+	for r in repair_codes:
+		r["description"] = _(r["description"])
 	# Kelengkapan tank (kotak isian pada form EIR cetak). Bukan checklist kerusakan —
 	# lihat ``eir_fitting_data``; the PWA renders one input per row, grouped by compartment.
 	fittings = frappe.get_all(
@@ -107,6 +116,10 @@ def get_eir_masters() -> dict:
 	)
 	for f in fittings:
 		f["options"] = [o for o in (f.get("options") or "").split("\n") if o.strip()]
+		# `options` stay raw: the picked one is posted back and stored as the value.
+		f["option_labels"] = {o: _(o) for o in f["options"]}
+		for k in ("compartment", "item_label", "slot_label"):
+			f[k] = _(f[k])
 	# Active cargos for the EIR's "set last cargo" picker (name == cargo_name).
 	cargos = frappe.get_all("Cargo", filters={"is_active": 1}, pluck="name", order_by="name asc")
 	# Pilihan Tipe / Ukuran untuk kolom Data Tank yang bisa diisi dari EIR — dibaca dari
@@ -125,6 +138,15 @@ def get_eir_masters() -> dict:
 		"cargos": cargos,
 		"tank_options": tank_options,
 	}
+
+
+def component_label(component: str | None) -> str | None:
+	"""A stored component ("1. Front Top Rail") in the reader's language: the printed-number
+	prefix kept, the part name translated. Display only — the stored text never changes."""
+	if not component:
+		return component
+	no, sep, rest = component.partition(". ")
+	return f"{no}. {_(rest)}" if sep else _(component)
 
 
 def _voucher_doctype(inspection_type: str | None) -> str:
@@ -573,9 +595,9 @@ def get_eir_out_reference(inspection) -> dict:
 					continue
 				damages.append({
 					"item": d.checklist_item,
-					"item_name": names.get(d.checklist_item) or d.checklist_item,
-					"area": d.area,
-					"component": d.component,
+					"item_name": _(names.get(d.checklist_item) or d.checklist_item),
+					"area": _(d.area),
+					"component": component_label(d.component),
 					"damage_type": d.damage_type,
 					"repair_code": d.repair_code,
 					"damage_description": d.damage_description,
@@ -587,9 +609,9 @@ def get_eir_out_reference(inspection) -> dict:
 			# an unanswered box is not a recorded zero.
 			fittings = [
 				{
-					"compartment": r.compartment,
-					"item_label": r.item_label,
-					"slot_label": r.slot_label,
+					"compartment": _(r.compartment),
+					"item_label": _(r.item_label),
+					"slot_label": _(r.slot_label),
 					"uom": r.uom,
 					"value": r.value,
 				}
@@ -2245,7 +2267,7 @@ def view_eir(inspection: str) -> dict:
 		frappe.throw(_("{0} is not an EIR.").format(inspection))
 	_guard_container_branch(doc.container)
 	names = {
-		r.item_code: r.item_name
+		r.item_code: _(r.item_name)
 		for r in frappe.get_all("Inspection Checklist Item", fields=["item_code", "item_name"])
 	}
 	# Evidence per finding, and the walk-around album on its own — the same two lists the
@@ -2261,7 +2283,7 @@ def view_eir(inspection: str) -> dict:
 	# Codes are keys, not words: "v" / "X" mean nothing on a phone. The Desk grid shows the
 	# master's description because a Link renders its title; the PWA has to be handed it.
 	code_names = {
-		dt: {c.name: c.description for c in frappe.get_all(dt, fields=["name", "description"])}
+		dt: {c.name: _(c.description) for c in frappe.get_all(dt, fields=["name", "description"])}
 		for dt in ("Inspection Damage Code", "Inspection Repair Code")
 	}
 
@@ -2325,10 +2347,10 @@ def view_eir(inspection: str) -> dict:
 		"fittings": [
 			{
 				"fitting_item": f.fitting_item,
-				"compartment": f.compartment,
+				"compartment": _(f.compartment),
 				"printed_no": f.printed_no,
-				"item_label": f.item_label,
-				"slot_label": f.slot_label,
+				"item_label": _(f.item_label),
+				"slot_label": _(f.slot_label),
 				"value": f.value,
 				"uom": f.uom,
 			}

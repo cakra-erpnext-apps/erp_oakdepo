@@ -26,6 +26,7 @@ import { createResource } from "frappe-ui"
 import { STORE_READS, idbDelete, idbGet, idbGetAll, idbPut } from "@/utils/idb"
 import { sessionUser } from "@/data/session"
 import { noteLinkDown, noteLinkUp } from "@/data/link"
+import { LANG } from "@/utils/lang"
 
 // A worklist is worth showing a day later ("these are the tanks I was working"). A week later
 // it is fiction. Pruned on startup.
@@ -34,7 +35,9 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 // grow with every distinct query an operator ever typed. Newest kept.
 const MAX_ENTRIES = 300
 
-const keyFor = (name, params) => `${sessionUser() || "?"}|${name}|${JSON.stringify(params || {})}`
+// Language is part of the key: the server answers in it (utils/lang.js), and a list cached in
+// Indonesian must not come back after switching to English.
+const keyFor = (name, params) => `${sessionUser() || "?"}|${LANG}|${name}|${JSON.stringify(params || {})}`
 
 /**
  * Drop the params a page meant to leave OUT of the request.
@@ -166,7 +169,8 @@ export function cachedResource(options) {
 export async function pruneReads() {
 	try {
 		const cutoff = Date.now() - MAX_AGE_MS
-		const mine = `${sessionUser() || "?"}|`
+		// Other language too: its entries can never be read again (keyFor).
+		const mine = `${sessionUser() || "?"}|${LANG}|`
 		const kept = []
 		for (const row of (await idbGetAll(STORE_READS)) || []) {
 			const expired = (row.saved_at || 0) < cutoff

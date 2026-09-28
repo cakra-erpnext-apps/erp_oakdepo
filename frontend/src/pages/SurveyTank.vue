@@ -319,8 +319,8 @@ const identityLine = computed(() => {
 	const sch = t.schedule || {}
 	return [
 		t.principal,
-		t.located ? `posisi ${t.location_note}` : labels.tankPosUnlocated,
-		sch.surveyor ? `surveyor ${sch.surveyor}` : null,
+		t.located ? fill(labels.tankPosAt, { p: t.location_note }) : labels.tankPosUnlocated,
+		sch.surveyor ? fill(labels.tankSurveyorBy, { s: sch.surveyor }) : null,
 		sch.plan_date ? `${labels.lowPickup} ${fmtDate(sch.plan_date)}` : null,
 	]
 		.filter(Boolean)
@@ -385,10 +385,10 @@ const banner = computed(() => {
 function dueWord(t) {
 	const d = t.days_to
 	if (d === null || d === undefined) return "—"
-	if (d < 0) return `lewat ${-d} hari`
-	if (d === 0) return "hari ini"
-	if (d === 1) return "besok"
-	return `${d} hari lagi`
+	if (d < 0) return fill(labels.svDaysAgo, { n: -d })
+	if (d === 0) return labels.dueToday
+	if (d === 1) return labels.dueTomorrow
+	return fill(labels.svDaysAhead, { n: d })
 }
 
 // Kalimat tiap kejadian riwayat.
