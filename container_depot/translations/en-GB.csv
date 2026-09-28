@@ -41,6 +41,7 @@ Bon muat belum ada,No loading voucher yet
 "Bon {0} dibatalkan / container dilepas dari bon — link bon dilepas, foto dipertahankan.","Voucher {0} cancelled / container removed from the voucher — voucher link removed, photos kept."
 "Bon {0} dibatalkan — link bon dilepas, isian EIR dipertahankan.","Voucher {0} cancelled — voucher link removed, EIR entries kept."
 "Booking <b>Cash</b> ini masih <b>{0}</b>. Tekan <b>Tandai Lunas</b> dulu setelah pembayarannya diterima, baru submit.","This <b>Cash</b> booking is still <b>{0}</b>. Press <b>Tandai Lunas</b> (mark as paid) once the payment is received, then submit."
+Booking Cash belum dibayar — bayar ke kasir dulu sebelum generate bon.,Cash booking not paid yet — pay at the cashier before generating the voucher.
 Booking Cash ini belum dibuatkan invoice — tekan <b>Generate Invoice</b> dulu.,No invoice has been made for this Cash booking yet — press <b>Generate Invoice</b> first.
 "Booking TOP ditagih lewat invoice bulanan, bukan per booking. Jalankan penagihan konsolidasi untuk {0} — booking ini otomatis ikut.","TOP bookings are billed through the monthly invoice, not per booking. Run consolidated billing for {0} — this booking is included automatically."
 Booking TOP tidak dibuatkan invoice per-booking — ditagih belakangan lewat consolidated billing.,TOP bookings do not get a per-booking invoice — they are billed later through consolidated billing.
