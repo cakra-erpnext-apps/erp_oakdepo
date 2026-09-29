@@ -20,7 +20,7 @@ from frappe.utils import cint, flt, getdate, now_datetime, time_diff_in_seconds,
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
-from container_depot.container_depot.worklist import sort_by_priority
+from container_depot.container_depot.worklist import priority_date, sort_by_priority
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 # Damage code "v" = Acceptable — it is recorded as a condition but does not mean
@@ -1831,7 +1831,16 @@ def _by_lift_on(items: list, start: int, page_length: int) -> list:
 	screen's Belum / Dikerjakan split reads, so the list order and the filter tabs can never
 	disagree. Everything else about the ordering lives in ``worklist.sort_by_priority``.
 	"""
-	return sort_by_priority(items, lambda r: bool(r.get("work_started_on")), start, page_length)
+	return sort_by_priority(items, lambda r: bool(r.get("work_started_on")), start, page_length, date_of=_eir_due)
+
+
+def _eir_due(row):
+	"""The day an EIR is worked to: the outbound booking's date (``priority_date``), else —
+	for an EIR-In — its own EIR Date. A tank coming IN has no pickup deadline (targets are
+	stamped by Tank Out bookings only, lift_on.py), and the EIR Date is the day it is being
+	checked in — so it sorts and groups by that instead of falling into "Tanpa target
+	tanggal". Rows without ``inspection_type`` (the EIR-Out list) never take this branch."""
+	return priority_date(row) or (row.get("eir_date") if row.get("inspection_type") == "EIR-In" else None)
 
 
 def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
@@ -2193,7 +2202,7 @@ def list_eirs(status=None, search=None, inspection_type=None, depot=None, princi
 	for r in rows:
 		r["state"] = _eir_state(r)
 		r["day"] = str(getdate(r.creation))
-		due = r.target_urgent_on or r.target_survey_on or r.target_lift_on
+		due = r.target_urgent_on or _eir_due(r)
 		r["due"] = str(due) if due else ""
 	if day:
 		d = str(getdate(day))

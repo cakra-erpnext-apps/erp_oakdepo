@@ -178,6 +178,18 @@ class TestWorklistOrder(FrappeTestCase):
 		("container_depot", "tank_survey.py", "_list_rows"),
 	]
 
+	def test_eir_in_without_a_booking_date_works_to_its_eir_date(self):
+		"""A tank coming in has no pickup deadline — Tank Out bookings are the only source of
+		the target dates — so an EIR-In is worked to its own EIR Date instead of sinking into
+		"Tanpa target tanggal". A booking date still wins, and EIR-Out never falls back."""
+		from container_depot.container_depot.eir import _eir_due
+
+		d, later = today(), add_days(today(), 5)
+		self.assertEqual(_eir_due({"inspection_type": "EIR-In", "eir_date": d}), d)
+		self.assertEqual(_eir_due({"inspection_type": "EIR-In", "eir_date": d, "target_lift_on": later}), later)
+		self.assertIsNone(_eir_due({"inspection_type": "EIR-Out", "eir_date": d}))
+		self.assertIsNone(_eir_due({"eir_date": d}))  # the EIR-Out list carries no inspection_type
+
 	def test_every_worklist_sorts_through_the_shared_rule(self):
 		"""One habit has to cover every queue: an operator who learns that the top of the
 		cleaning list is the next pickup must be able to read the M&R list the same way.
