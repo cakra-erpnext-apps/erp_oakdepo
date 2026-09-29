@@ -1647,6 +1647,9 @@ export const labels = {
 	sendOffline: "Tidak ada koneksi ke server.",
 	sendSessionExpired: "Sesi berakhir, login lagi.",
 	sendServerDown: "Server tidak merespons ({status}).",
+	announceTitle: "Pengumuman",
+	announceOk: "Mengerti",
+	announceNext: "Mengerti · {n} lagi",
 	langTitle: "Bahasa / Language", // language switch (More sheet); both names so a lost reader finds it
 }
 

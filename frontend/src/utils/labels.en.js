@@ -1492,6 +1492,9 @@ export const labels = {
 	sendOffline: "No connection to the server.",
 	sendSessionExpired: "Session expired, log in again.",
 	sendServerDown: "Server is not responding ({status}).",
+	announceTitle: "Announcement",
+	announceOk: "Got it",
+	announceNext: "Got it · {n} more",
 	langTitle: "Language / Bahasa",
 }
 

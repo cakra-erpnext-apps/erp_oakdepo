@@ -65,6 +65,7 @@
 		<!-- Notifikasi wajib aktif: renders itself only when this device can be pushed to
 		     and is not subscribed yet. Overlays everything until it is. -->
 		<NotifGate v-if="session.isLoggedIn" />
+		<AnnouncementHost v-if="session.isLoggedIn" />
 		<ToastHost />
 		<LightboxHost />
 		<ConfirmHost />
@@ -86,6 +87,7 @@ import NotificationBell from "@/components/NotificationBell.vue"
 import ToastHost from "@/components/ToastHost.vue"
 import LightboxHost from "@/components/LightboxHost.vue"
 import ConfirmHost from "@/components/ConfirmHost.vue"
+import AnnouncementHost from "@/components/AnnouncementHost.vue"
 import CameraHost from "@/components/CameraHost.vue"
 import emblem from "@/assets/oak-emblem.png"
 

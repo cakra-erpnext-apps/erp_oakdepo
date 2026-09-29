@@ -56,6 +56,9 @@ extend_bootinfo = [
 	# Frappe appends every sidebar Section Break without testing it, so a role that may
 	# read six doctypes still gets all eleven headings. Drop the ones left empty.
 	"container_depot.boot.prune_empty_sidebar_sections",
+	# Pengumuman (Note → Notify On Login) tampil di Desk tanpa menunggu login ulang.
+	# See ess/announcements.py.
+	"container_depot.ess.announcements.refresh_desk_notes",
 ]
 
 # Warm the domain-restricted caches before boot so the Workspace Sidebar never
@@ -137,6 +140,10 @@ override_doctype_dashboards = {
 }
 
 doc_events = {
+	# Pengumuman manual: satu Note sampai ke Desk + PWA, dan push ke HP saat terbit.
+	"Note": {
+		"on_update": "container_depot.ess.announcements.push_on_publish",
+	},
 	# A party a PORTAL account keys in for its own booking (its EMKL, its shipper) is
 	# stamped with the company that created it — the only thing telling one customer's
 	# private address book from the depot's shared one. No-op for every internal account.
