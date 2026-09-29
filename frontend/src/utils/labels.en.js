@@ -1044,7 +1044,7 @@ export const labels = {
 	listSortFar: "Latest deadline",
 	listNoSurveyDate: "No survey date",
 	listUrgentOnly: "Urgent only",
-	eirListSearch: "Search tank no. / Reff Doc / booking / voucher…",
+	eirListSearch: "Search tank, Reff Doc, booking, voucher",
 	listStatTodo: "Not done",
 	eirTypeFilter: "EIR Type",
 	eirCount: "{n} EIRs",

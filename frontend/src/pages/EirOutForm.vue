@@ -30,7 +30,7 @@
 			<template v-if="!workStartedOn">
 				<section class="oak-section space-y-1">
 					<div class="flex items-baseline justify-between gap-2">
-						<p class="truncate font-mono text-base font-extrabold text-gray-900">{{ header.container_no }}</p>
+						<p class="[overflow-wrap:anywhere] font-mono text-base font-extrabold text-gray-900">{{ header.container_no }}</p>
 						<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ eirCode }}</span>
 					</div>
 					<p class="truncate text-xs text-gray-500">{{ identityLine }}</p>
@@ -320,7 +320,7 @@
 								<Icon :name="m.done ? 'check' : 'clock'" :size="13" />
 							</span>
 							<span class="min-w-0 flex-1">
-								<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ m.container_no }}</span>
+								<span class="block [overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ m.container_no }}</span>
 								<span class="block truncate text-[11px] text-gray-500">{{ m.line }}</span>
 							</span>
 							<span class="oak-chip shrink-0" :class="m.tone">{{ m.chip }}</span>

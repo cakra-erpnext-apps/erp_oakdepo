@@ -7,7 +7,7 @@
 		<section class="oak-card space-y-2 p-4">
 			<p class="text-sm font-extrabold text-gray-900">{{ labels.leakPickTank }}</p>
 			<div v-if="tank" class="flex items-center gap-3">
-				<p class="min-w-0 flex-1 truncate font-mono text-base font-extrabold text-gray-900">
+				<p class="min-w-0 flex-1 [overflow-wrap:anywhere] font-mono text-base font-extrabold text-gray-900">
 					{{ tank.container_no || tank.name }}
 				</p>
 				<button class="oak-btn oak-btn-secondary shrink-0 px-3 py-1.5 text-xs" @click="tank = null">
@@ -23,7 +23,7 @@
 							class="flex w-full items-center gap-2 py-2.5 text-left transition active:bg-gray-50"
 							@click="pick(r)"
 						>
-							<span class="min-w-0 flex-1 truncate font-mono text-sm font-bold text-gray-900">{{ r.container_no || r.name }}</span>
+							<span class="min-w-0 flex-1 [overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ r.container_no || r.name }}</span>
 							<span class="shrink-0 truncate text-[11px] text-gray-500">{{ r.principal }}</span>
 						</button>
 					</li>

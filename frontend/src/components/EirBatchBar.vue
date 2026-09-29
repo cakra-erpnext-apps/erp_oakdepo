@@ -28,7 +28,7 @@
 				     daftar tank dan memakan lagi ruang mati yang baru saja dibuat. Daftarnya
 				     boleh terpotong — versi lengkapnya ada di kepala sheet. -->
 				<button class="oak-press min-w-0 max-w-[62%] rounded-lg px-2 py-1 text-center" @click="emit('open')">
-					<span class="block truncate font-mono text-sm font-extrabold leading-tight">
+					<span class="block [overflow-wrap:anywhere] font-mono text-sm font-extrabold leading-tight">
 						{{ active?.container_no || active?.container || "—" }}
 					</span>
 					<span class="block truncate text-[11px] leading-tight text-brand-900/70">

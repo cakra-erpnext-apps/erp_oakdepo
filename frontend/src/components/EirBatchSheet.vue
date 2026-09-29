@@ -50,7 +50,7 @@
 							</span>
 							<span class="min-w-0 flex-1">
 								<span class="flex items-baseline gap-1.5">
-									<span class="truncate font-mono text-sm font-bold text-gray-900">{{ r.container_no || r.container }}</span>
+									<span class="[overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ r.container_no || r.container }}</span>
 									<span v-if="r.container_principal" class="truncate text-xs text-gray-500">· {{ r.container_principal }}</span>
 								</span>
 								<span class="block truncate text-[11px] text-gray-500">{{ stateLine(r) }}</span>

@@ -48,7 +48,7 @@
 			     lain satu baris. -->
 			<section class="oak-card space-y-2 p-4">
 				<div class="flex items-start justify-between gap-3">
-					<p class="min-w-0 truncate font-mono text-xl font-extrabold tracking-tight text-gray-900">
+					<p class="min-w-0 [overflow-wrap:anywhere] font-mono text-xl font-extrabold tracking-tight text-gray-900">
 						{{ tank.container_no || tank.container || labels.monitorNoNumber }}
 					</p>
 					<p class="shrink-0 font-mono text-[11px] text-gray-400">{{ tank.survey_order }}</p>
@@ -173,7 +173,7 @@
 				<p class="text-sm font-extrabold text-gray-900">{{ labels.tankResult }}</p>
 				<div class="flex items-baseline justify-between gap-2 border-t border-gray-100 pt-2">
 					<span class="text-xs text-gray-500">{{ labels.tankDraftEirOut }}</span>
-					<span class="truncate font-mono text-sm font-bold text-gray-900">{{ tank.eir_out || "—" }}</span>
+					<span class="[overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ tank.eir_out || "—" }}</span>
 				</div>
 				<InteriorPhotos v-if="tank.interior_photos?.length" :photos="tank.interior_photos" class="border-t border-gray-100 pt-2" />
 				<div v-if="tank.survey_notes" class="border-t border-gray-100 pt-2">

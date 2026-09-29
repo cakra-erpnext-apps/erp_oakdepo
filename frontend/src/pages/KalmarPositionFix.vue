@@ -5,7 +5,7 @@
 		<div class="flex items-start justify-between gap-3">
 			<div class="min-w-0">
 				<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.lowTitle }}</h1>
-				<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.lowHint }}</p>
+				<p class="mt-0.5 text-xs leading-snug text-gray-500">{{ labels.lowHint }}</p>
 			</div>
 			<router-link to="/survey-orders/history" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3">
 				<Icon name="clock" :size="15" /> {{ labels.navHistory }}

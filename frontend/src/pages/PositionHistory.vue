@@ -22,7 +22,7 @@
 		<template v-else-if="tank">
 			<section class="oak-card space-y-3 p-4">
 				<div class="min-w-0">
-					<p class="truncate font-mono text-xl font-extrabold tracking-tight text-gray-900">
+					<p class="[overflow-wrap:anywhere] font-mono text-xl font-extrabold tracking-tight text-gray-900">
 						{{ tank.container_no || tank.container }}
 					</p>
 					<p class="truncate text-xs text-gray-500">{{ headLine }}</p>
@@ -34,7 +34,7 @@
 				<div class="grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
 					<div class="min-w-0">
 						<p class="text-[11px] text-gray-400">{{ labels.tankPosCurrent }}</p>
-						<p class="truncate font-mono text-sm font-bold text-gray-900">{{ tank.location_note || "—" }}</p>
+						<p class="[overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ tank.location_note || "—" }}</p>
 					</div>
 					<div class="min-w-0">
 						<p class="text-[11px] text-gray-400">{{ labels.posHistMoveCount }}</p>

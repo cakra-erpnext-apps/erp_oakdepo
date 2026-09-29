@@ -33,7 +33,7 @@
 			<template v-if="!workStartedOn">
 				<section class="oak-section space-y-1">
 					<div class="flex items-baseline justify-between gap-2">
-						<p class="truncate font-mono text-base font-extrabold text-gray-900">{{ header.container_no }}</p>
+						<p class="[overflow-wrap:anywhere] font-mono text-base font-extrabold text-gray-900">{{ header.container_no }}</p>
 						<span class="shrink-0 font-mono text-[10px] text-gray-400">{{ eirCode }}</span>
 					</div>
 					<p class="truncate text-xs text-gray-500">{{ identityLine }}</p>
@@ -60,7 +60,7 @@
 				<dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl bg-gray-50 p-3 text-sm sm:grid-cols-3">
 					<div v-for="f in voucherCells" :key="f.label">
 						<dt class="text-xs text-gray-500">{{ f.label }}</dt>
-						<dd class="truncate font-semibold" :class="f.mono ? 'font-mono text-brand-600' : 'text-gray-800'">{{ f.value || "—" }}</dd>
+						<dd class="[overflow-wrap:anywhere] font-semibold" :class="f.mono ? 'font-mono text-brand-600' : 'text-gray-800'">{{ f.value || "—" }}</dd>
 					</div>
 				</dl>
 				<p class="text-[11px] text-gray-400">{{ labels.eirVoucherLocked }}</p>
@@ -306,7 +306,7 @@
 								<Icon :name="m.done ? 'check' : 'clock'" :size="13" />
 							</span>
 							<span class="min-w-0 flex-1">
-								<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ m.container_no }}</span>
+								<span class="block [overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ m.container_no }}</span>
 								<span class="block truncate text-[11px] text-gray-500">{{ m.line }}</span>
 							</span>
 							<span class="oak-chip shrink-0" :class="m.tone">{{ m.chip }}</span>

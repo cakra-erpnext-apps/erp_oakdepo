@@ -81,7 +81,7 @@
 						</div>
 
 						<div class="min-w-0 flex-1 py-1">
-							<p class="truncate font-mono text-sm font-bold" :class="t.used ? 'text-gray-900' : 'text-gray-400'">
+							<p class="[overflow-wrap:anywhere] font-mono text-sm font-bold" :class="t.used ? 'text-gray-900' : 'text-gray-400'">
 								{{ t.label }}
 							</p>
 							<p class="truncate text-[11px] text-gray-400">{{ usageLine(t) }}</p>
@@ -117,7 +117,7 @@
 			<ul class="oak-card divide-y divide-gray-100 overflow-hidden">
 				<li v-for="sg in suggestions" :key="sg.label" class="flex min-h-[60px] items-center gap-2 px-4 py-3">
 					<div class="min-w-0 flex-1">
-						<p class="truncate font-mono text-sm font-bold text-gray-900">{{ sg.label }}</p>
+						<p class="[overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ sg.label }}</p>
 						<p class="truncate text-[11px] text-gray-400">{{ fill(labels.tplSuggestTyped, { n: sg.typed }) }}</p>
 					</div>
 					<button class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-4 text-xs" :disabled="busy" @click="add(sg.label)">

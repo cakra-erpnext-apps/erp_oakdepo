@@ -1187,7 +1187,7 @@ export const labels = {
 	listSortFar: "Tenggat terjauh",
 	listNoSurveyDate: "Tanpa tanggal survey",
 	listUrgentOnly: "Mendesak saja",
-	eirListSearch: "Cari no. tank / Reff Doc / booking / voucher…",
+	eirListSearch: "Cari tank, Reff Doc, booking, voucher",
 	listStatTodo: "Belum dikerjakan",
 	eirTypeFilter: "Jenis EIR",
 	eirCount: "{n} EIR",

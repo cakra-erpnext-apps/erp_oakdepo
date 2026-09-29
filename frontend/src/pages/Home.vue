@@ -10,7 +10,7 @@
 					<p class="truncate text-xl font-extrabold tracking-tight text-gray-900">
 						{{ displayUser }}
 					</p>
-					<p class="mt-0.5 truncate text-xs text-gray-500">{{ todayLine }}</p>
+					<p class="mt-0.5 text-xs leading-snug text-gray-500">{{ todayLine }}</p>
 				</div>
 				<!-- Jumlahnya, bukan daftarnya: sepuluh chip peran memakan setengah layar dan
 				     tidak ada yang membacanya. Rinciannya satu ketukan jauhnya, di Profil. -->

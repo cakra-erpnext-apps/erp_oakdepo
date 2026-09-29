@@ -49,7 +49,7 @@
 							<Icon name="check" :size="14" />
 						</span>
 						<div class="min-w-0 flex-1">
-							<p class="truncate font-mono text-sm font-bold text-gray-900">
+							<p class="[overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">
 								{{ t.container_no || t.container }}
 							</p>
 							<p class="truncate text-[11px] text-gray-500">{{ line(t) }}</p>

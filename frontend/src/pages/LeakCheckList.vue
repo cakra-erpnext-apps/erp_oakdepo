@@ -5,7 +5,7 @@
 		<div class="flex items-start justify-between gap-3">
 			<div class="min-w-0">
 				<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.navLeak }}</h1>
-				<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.leakHint }}</p>
+				<p class="mt-0.5 text-xs leading-snug text-gray-500">{{ labels.leakHint }}</p>
 			</div>
 			<router-link to="/leak-check/new" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3">
 				<Icon name="plus" :size="15" /> {{ labels.leakManual }}

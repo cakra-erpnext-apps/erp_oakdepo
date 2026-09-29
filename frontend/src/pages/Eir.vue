@@ -60,7 +60,7 @@
 					<li v-for="r in sentSummary" :key="r.name" class="flex items-center gap-3 px-4 py-3">
 						<span class="oak-icon-tile h-7 w-7 bg-leaf-100 text-leaf-700"><Icon name="check" :size="15" /></span>
 						<span class="min-w-0 flex-1">
-							<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ r.container_no }}</span>
+							<span class="block [overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ r.container_no }}</span>
 							<span class="block truncate text-[11px] text-gray-500">{{ doneLine(r) }}</span>
 						</span>
 						<span class="oak-chip shrink-0" :class="pill('review').cls">{{ labels.eirStatusPendingReview }}</span>
@@ -85,10 +85,11 @@
 		     per tanggal target. Yang sedang dikerjakan jadi kartu besar; sisanya baris ringkas.
 		     EIR yang sudah selesai tinggal di Riwayat. -->
 		<template v-else>
-			<div class="flex items-start justify-between gap-3">
-				<div class="min-w-0">
+			<!-- flex-wrap: di HP sempit tiga tombol turun ke baris sendiri, judul tidak terlipat. -->
+			<div class="flex flex-wrap items-start justify-between gap-3">
+				<div class="min-w-[12rem] flex-1">
 					<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.eirTitle }}</h1>
-					<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.eirCombinedSubtitle }}</p>
+					<p class="mt-0.5 text-xs leading-snug text-gray-500">{{ labels.eirCombinedSubtitle }}</p>
 				</div>
 				<!-- Sedang memilih batch: satu-satunya jalan keluar berada di tempat yang sama
 				     dengan pintu masuknya. Sortir & Riwayat menepi — keduanya pindah layar, dan

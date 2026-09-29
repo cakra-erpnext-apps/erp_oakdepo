@@ -5,7 +5,7 @@
 		<div class="flex items-start justify-between gap-3">
 			<div class="min-w-0">
 				<h1 class="truncate text-xl font-extrabold tracking-tight text-gray-900">{{ title }}</h1>
-				<p v-if="view === 'list' && total" class="mt-0.5 truncate text-xs text-gray-500">{{ total }} {{ countLabel }}</p>
+				<p v-if="view === 'list' && total" class="mt-0.5 text-xs leading-snug text-gray-500">{{ total }} {{ countLabel }}</p>
 			</div>
 			<button v-if="view === 'detail'" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3" @click="closeDetail">
 				<Icon name="arrow-left" :size="15" /> {{ labels.cleaningBack }}

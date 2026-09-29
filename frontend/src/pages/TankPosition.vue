@@ -7,7 +7,7 @@
 			<div class="flex items-start justify-between gap-3">
 				<div class="min-w-0">
 					<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ labels.tankPosTitle }}</h1>
-					<p class="mt-0.5 truncate text-xs text-gray-500">{{ labels.tankPosHint }}</p>
+					<p class="mt-0.5 text-xs leading-snug text-gray-500">{{ labels.tankPosHint }}</p>
 				</div>
 				<!-- Jalan masuk "dari luar" ke daftar template — untuk yang datang memang untuk
 				     merapikan daftarnya, bukan untuk mencatat satu tank. Dari dalam form, panel
@@ -133,7 +133,7 @@
 					<!-- Identitas + posisi yang berlaku sekarang -->
 					<section class="oak-card space-y-3 p-4">
 						<div class="min-w-0">
-							<p class="truncate font-mono text-xl font-extrabold tracking-tight text-gray-900">
+							<p class="[overflow-wrap:anywhere] font-mono text-xl font-extrabold tracking-tight text-gray-900">
 								{{ tank.container_no || tank.container }}
 							</p>
 							<p class="truncate text-xs text-gray-500">{{ specLine }}</p>
@@ -149,7 +149,7 @@
 						<div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
 							<div class="min-w-0">
 								<p class="text-[11px] text-gray-400">{{ labels.tankPosCurrent }}</p>
-								<p class="truncate font-mono text-sm font-bold" :class="tank.located ? 'text-gray-900' : 'text-gray-400'">
+								<p class="[overflow-wrap:anywhere] font-mono text-sm font-bold" :class="tank.located ? 'text-gray-900' : 'text-gray-400'">
 									{{ tank.location_note || labels.tankPosUnlocated }}
 								</p>
 							</div>

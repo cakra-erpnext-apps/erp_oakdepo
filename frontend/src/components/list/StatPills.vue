@@ -13,7 +13,7 @@
 			<span class="text-lg font-extrabold leading-none" :class="modelValue === p.key ? 'text-brand-700' : p.tone">
 				{{ p.count }}
 			</span>
-			<span class="mt-1 truncate text-[11px] font-semibold" :class="modelValue === p.key ? 'text-brand-700' : 'text-gray-500'">
+			<span class="mt-1 text-center text-[11px] font-semibold leading-tight" :class="modelValue === p.key ? 'text-brand-700' : 'text-gray-500'">
 				{{ p.label }}
 			</span>
 		</button>

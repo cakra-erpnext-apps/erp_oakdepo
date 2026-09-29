@@ -66,7 +66,7 @@
 							@click="pick(r)"
 						>
 							<span class="min-w-0 flex-1">
-								<span class="block truncate font-mono text-sm font-bold text-gray-900">{{ r.container_no || r.name }}</span>
+								<span class="block [overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ r.container_no || r.name }}</span>
 								<span class="block truncate text-[11px] text-gray-500">{{ prevLine(r) }}</span>
 							</span>
 							<Icon :name="isPicked(r.name) ? 'check' : 'plus'" :size="16" class="shrink-0 text-gray-400" />
@@ -82,7 +82,7 @@
 						<Icon name="check" :size="13" />
 					</span>
 					<div class="min-w-0 flex-1">
-						<p class="truncate font-mono text-sm font-bold text-gray-900">{{ t.container_no || t.name }}</p>
+						<p class="[overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-900">{{ t.container_no || t.name }}</p>
 						<p class="truncate text-[11px] text-gray-500">{{ prevLine(t) }}</p>
 					</div>
 					<button

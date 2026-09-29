@@ -41,7 +41,7 @@
 					<button class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-gray-50" @click="openEir(r)">
 						<span class="oak-icon-tile h-9 w-9 shrink-0 bg-brand-50 text-brand-500"><Icon name="image" :size="16" /></span>
 						<div class="min-w-0 flex-1">
-							<p class="truncate font-semibold text-gray-900">{{ r.container_no || r.container }}</p>
+							<p class="font-semibold text-gray-900 [overflow-wrap:anywhere]">{{ r.container_no || r.container }}</p>
 							<p class="mt-0.5 truncate text-xs text-gray-500">
 								<span class="font-mono">{{ r.inspection_id || r.name }}</span> · {{ r.inspection_type }}
 							</p>

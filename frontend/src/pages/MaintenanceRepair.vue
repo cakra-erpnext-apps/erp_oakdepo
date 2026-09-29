@@ -13,7 +13,7 @@
 		<div class="flex items-start justify-between gap-3">
 			<div class="min-w-0">
 				<h1 class="text-xl font-extrabold tracking-tight text-gray-900">{{ kind.title }}</h1>
-				<p class="mt-0.5 truncate text-xs text-gray-500">{{ kind.hint }}</p>
+				<p class="mt-0.5 text-xs leading-snug text-gray-500">{{ kind.hint }}</p>
 			</div>
 			<router-link :to="`${kind.base}/history`" class="oak-btn oak-btn-secondary min-h-[44px] shrink-0 px-3">
 				<Icon name="clock" :size="15" /> {{ labels.navHistory }}
@@ -125,7 +125,7 @@
 					<li v-for="o in folded" :key="o.name">
 						<router-link :to="linkTo(o)" class="oak-press flex min-h-[56px] items-center gap-2 px-4 py-2.5">
 							<span class="min-w-0 flex-1">
-								<span class="block truncate font-mono text-sm font-bold text-gray-500 line-through">{{ o.reff_doc || o.name }}</span>
+								<span class="block [overflow-wrap:anywhere] font-mono text-sm font-bold text-gray-500 line-through">{{ o.reff_doc || o.name }}</span>
 								<span class="block truncate text-xs text-gray-400">
 									{{ [mrChip(o.status).label, o.container_no, o.principal, fmtDate(o.day)].filter(Boolean).join(" · ") }}
 								</span>
