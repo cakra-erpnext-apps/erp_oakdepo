@@ -2,6 +2,13 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on('Container', {
+	onload(frm) {
+		// A new tank is registered Gate_Out, whatever the list was filtered on: Frappe's
+		// "+ Add" copies every `=` filter into the new doc, so adding from the list filtered
+		// on "Dipesan" produced a master born Booked with no booking behind it. The field is
+		// locked on a new doc and Container.before_insert holds the same line server-side.
+		if (frm.is_new() && frm.doc.status !== 'Gate_Out') frm.set_value('status', 'Gate_Out');
+	},
 	refresh(frm) {
 		render_seal_history(frm);
 		link_last_orders(frm);

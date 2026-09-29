@@ -3,11 +3,27 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 
-from container_depot.container_depot.container_status import PRESENT, container_open_orders
+from container_depot.container_depot.container_status import GATE_OUT, PRESENT, container_open_orders
 from container_depot.state_machine import assert_transition, stage_for_status
 
 
 class Container(Document):
+	def before_insert(self):
+		"""A tank a PERSON registers is registered as ``Gate_Out`` — "known, not in my yard".
+
+		Every other status is a fact only the system can know: ``Booked`` means a Tank In
+		booking holds it, ``In_Depot`` / ``Available`` that it came through the gate. A
+		master born ``Booked`` by hand (the form's Status was editable) sat in the list as
+		"Dipesan" with no booking behind it, reserved by nobody and refused by the next.
+
+		The form locks the field on a new doc (``read_only_depends_on``); this holds the same
+		line for REST and Data Import. System code passes ``ignore_permissions`` (a booking's
+		pre-arrival master, the gate API) or ``in_status_automation``, and keeps its status.
+		"""
+		if self.flags.ignore_permissions or frappe.flags.in_status_automation or frappe.flags.in_test:
+			return
+		self.status = GATE_OUT
+
 	def validate(self):
 		# Container number is required (enforced by the field) but not length-checked —
 		# real depot data carries non-ISO / short numbers, so only presence is required.

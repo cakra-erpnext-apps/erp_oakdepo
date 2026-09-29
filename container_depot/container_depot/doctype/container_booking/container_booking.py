@@ -540,8 +540,12 @@ class ContainerBooking(Document):
 				frappe.flags.in_status_automation = False
 
 	def _container_held_by_other_booking(self, container):
-		"""True if a *different* non-cancelled Container Booking still has this
-		container on an item (so cancel must leave the reservation alone)."""
+		"""True if a *different* live **Tank In** booking still has this container on an
+		item (so cancel must leave the reservation alone).
+
+		Tank In only: ``Booked`` is the inbound reservation. Since one tank may carry an open
+		Tank In and an open Tank Out at once (b83d1fa), counting the Tank Out here kept a tank
+		whose arrival was called off ``Booked`` forever — "expected" by nobody."""
 		rows = frappe.db.sql(
 			"""
 			SELECT 1

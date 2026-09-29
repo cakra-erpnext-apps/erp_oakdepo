@@ -414,6 +414,23 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		cancel_submitted_booking(inbound.name)
 		void_draft(outbound.name)  # must not raise
 
+	def test_dropping_a_tank_off_the_inbound_releases_it_despite_a_pickup(self):
+		"""``Booked`` is the INBOUND reservation. A tank taken off its Tank In draft is not
+		coming any more; the Tank Out that also lists it used to count as "still held" and
+		left it ``Booked`` for good."""
+		name = frappe.get_doc({
+			"doctype": "Container", "container_no": C_IN, "container_type": "ISO Tank",
+			"status": "Gate_Out", "principal": self.customer,
+		}).insert(ignore_permissions=True).name
+		inbound = self._book(C_IN, submit=False)
+		self.assertEqual(frappe.db.get_value("Container", name, "status"), "Booked")
+		self._book(C_IN, "Tank Out")
+		inbound.reload()
+		inbound.items[0].container = None
+		inbound.items[0].container_no = C_OUT
+		inbound.save(ignore_permissions=True)
+		self.assertEqual(frappe.db.get_value("Container", name, "status"), "Gate_Out")
+
 	def test_voiding_the_inbound_a_pickup_is_waiting_for_is_refused(self):
 		inbound = self._book(C_IN)
 		outbound = self._book(C_IN, "Tank Out")

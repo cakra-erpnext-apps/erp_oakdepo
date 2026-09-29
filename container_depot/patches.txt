@@ -145,3 +145,4 @@ container_depot.patches.v1_12.close_cancelled_booking_survey_orders
 container_depot.patches.v1_13.cleaning_service_line_type
 container_depot.patches.v1_14.periodic_team_notified
 container_depot.patches.v1_15.eir_out_emkl_from_booking
+container_depot.patches.v1_17.release_orphan_booked_containers
