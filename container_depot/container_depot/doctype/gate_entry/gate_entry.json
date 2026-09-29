@@ -43,6 +43,7 @@
     {
       "default": "Active",
       "fieldname": "status",
+      "no_copy": 1,
       "fieldtype": "Select",
       "in_standard_filter": 1,
       "label": "Status",
@@ -147,6 +148,7 @@
     },
     {
       "fieldname": "inspection_status",
+      "no_copy": 1,
       "fieldtype": "Select",
       "label": "Inspection Status",
       "options": "Pending\nIn_Progress\nCompleted"
@@ -154,7 +156,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-09-24 14:00:00.000000",
+  "modified": "2026-09-29 13:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Entry",
   "search_fields": "gate_entry_id, container_no, booking_code, status",

@@ -34,6 +34,7 @@
     {
       "default": "Active",
       "fieldname": "state",
+      "no_copy": 1,
       "fieldtype": "Select",
       "in_standard_filter": 1,
       "label": "State",
@@ -128,7 +129,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-09-24 14:00:00.000000",
+  "modified": "2026-09-29 13:00:00.000000",
   "module": "Container Depot",
   "name": "Booking Code",
   "search_fields": "container_no, booking, direction, state",

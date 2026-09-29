@@ -149,6 +149,7 @@
   {
    "description": "Opsional. Terisi saat submit.",
    "fieldname": "signed_by",
+   "no_copy": 1,
    "fieldtype": "Link",
    "label": "Signed By",
    "options": "User"
@@ -189,6 +190,7 @@
    "default": "Service Setup",
    "description": "Diatur alur cleaning: Service Setup → Pending → In_Progress → Pending Review → Completed. Pending Review = operator sudah selesai di PWA, menunggu review + Submit Admin Ops.",
    "fieldname": "status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "hidden": 1,
    "in_standard_filter": 1,
@@ -202,6 +204,7 @@
    "default": "Not Required",
    "description": "Persetujuan pemilik tank untuk cuci ulang.",
    "fieldname": "approval_status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Tank Owner Approval",
@@ -462,7 +465,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-24 17:00:00.000000",
+ "modified": "2026-09-29 13:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

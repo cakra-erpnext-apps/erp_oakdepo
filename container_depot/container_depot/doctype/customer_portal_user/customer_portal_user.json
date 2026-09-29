@@ -38,6 +38,7 @@
     {
       "default": "Pending Approval",
       "fieldname": "approval_status",
+      "no_copy": 1,
       "fieldtype": "Select",
       "in_list_view": 1,
       "in_standard_filter": 1,
@@ -56,12 +57,13 @@
     },
     {
       "fieldname": "added_on",
+      "no_copy": 1,
       "fieldtype": "Date",
       "label": "Added On"
     }
   ],
   "links": [],
-  "modified": "2026-09-18 10:30:00.000000",
+  "modified": "2026-09-29 13:00:00.000000",
   "module": "Container Depot",
   "name": "Customer Portal User",
   "search_fields": "customer, user, approval_status",

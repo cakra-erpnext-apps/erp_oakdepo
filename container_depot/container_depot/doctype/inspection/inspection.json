@@ -226,6 +226,7 @@
    "bold": 1,
    "description": "Wajib sebelum submit.",
    "fieldname": "tank_status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "label": "Tank Status",
    "options": "\nEmpty Clean\nEmpty Dirty\nLaden"
@@ -410,6 +411,7 @@
   },
   {
    "fieldname": "approval_status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "label": "Principal Approval",
    "options": "Not Required\nPending\nApproved\nRejected"
@@ -428,6 +430,7 @@
    "default": "Draft",
    "description": "Diatur alur EIR: Draft → Pending Review → Submitted.",
    "fieldname": "status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Status",
@@ -770,7 +773,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-28 16:33:20.000000",
+ "modified": "2026-09-29 13:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

@@ -1,6 +1,11 @@
 """A container's status is the system's to set: a person registers a tank as Gate_Out, and a
 ``Booked`` tank no live Tank In booking holds is released by patch v1_17."""
 
+import glob
+import json
+import os
+import re
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -43,3 +48,24 @@ class TestContainerStatusGuard(FrappeTestCase):
 		self._new(status="Booked").insert(ignore_permissions=True)
 		execute()
 		self.assertEqual(frappe.db.get_value("Container", CNO, "status"), "Gate_Out")
+
+
+class TestStatusFieldsNeverPrefilled(FrappeTestCase):
+	def test_every_status_field_is_no_copy(self):
+		"""Frappe's list "+ Add" (and ?field=value URLs, and Connections "+") copy values into
+		a new doc through ``route_options`` — skipping only ``no_copy`` fields. A status left
+		without it is born whatever the list was filtered on: that is how a Container came
+		out "Dipesan" with no booking behind it. Every status / state field in this app's
+		doctypes must carry ``no_copy``."""
+		root = os.path.join(frappe.get_app_path("container_depot"), "container_depot", "doctype")
+		missing = []
+		for path in glob.glob(os.path.join(root, "*", "*.json")):
+			meta = json.load(open(path))
+			if meta.get("doctype") != "DocType" or meta.get("istable") or meta.get("issingle"):
+				continue
+			for f in meta.get("fields", []):
+				if f.get("fieldtype") in ("Section Break", "Column Break", "Tab Break", "HTML"):
+					continue
+				if re.search(r"(^|_)(status|state)$", f.get("fieldname", "")) and not f.get("no_copy"):
+					missing.append(f"{meta['name']}.{f['fieldname']}")
+		self.assertEqual(missing, [], "status fields a list filter can prefill on a new doc")

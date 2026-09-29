@@ -69,6 +69,7 @@
   },
   {
    "fieldname": "performed_by",
+   "no_copy": 1,
    "fieldtype": "Link",
    "label": "Performed By",
    "options": "User"
@@ -81,11 +82,13 @@
   },
   {
    "fieldname": "from_status",
+   "no_copy": 1,
    "fieldtype": "Data",
    "label": "From Status"
   },
   {
    "fieldname": "to_status",
+   "no_copy": 1,
    "fieldtype": "Data",
    "label": "To Status"
   },
@@ -122,7 +125,7 @@
  ],
  "in_create": 0,
  "links": [],
- "modified": "2026-08-11 18:00:00.000000",
+ "modified": "2026-09-29 13:00:00.000000",
  "module": "Container Depot",
  "name": "Container Activity",
  "permissions": [

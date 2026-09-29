@@ -63,6 +63,7 @@
   {
    "default": "Unpaid",
    "fieldname": "status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
@@ -139,7 +140,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-24 14:00:00.000000",
+ "modified": "2026-09-29 13:00:00.000000",
  "module": "Container Depot",
  "name": "OAK Monthly Invoice",
  "search_fields": "customer, period, category, status",

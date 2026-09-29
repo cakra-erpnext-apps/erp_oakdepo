@@ -35,6 +35,7 @@
   {
    "default": "Unknown",
    "fieldname": "printer_status",
+   "no_copy": 1,
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Printer Status",
@@ -42,13 +43,14 @@
   },
   {
    "fieldname": "last_heartbeat",
+   "no_copy": 1,
    "fieldtype": "Datetime",
    "in_list_view": 1,
    "label": "Last Heartbeat"
   }
  ],
  "links": [],
- "modified": "2026-08-07 10:00:00.000000",
+ "modified": "2026-09-29 13:00:00.000000",
  "module": "Container Depot",
  "name": "Self Service Terminal",
  "search_fields": "terminal_id, gate_location",
