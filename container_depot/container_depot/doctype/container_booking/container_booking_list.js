@@ -19,6 +19,10 @@ const FILTER_WIDTH = 180;
 // wraps on its own. Branch / Depot / Containers keep their COLUMNS and stay reachable
 // through the Filter button; ID is dropped from the row entirely (hide_name_filter).
 const FILTER_ORDER = [
+	// One box that finds a booking by anything a person would type: its number, customer,
+	// Reff Doc / DO, or a container / truck / driver on one of its rows (search_text,
+	// built on every save — see build_search_text).
+	'search_text',
 	'customer',
 	'direction',
 	'booking_status', // the Status column is this field
@@ -153,6 +157,9 @@ frappe.listview_settings['Container Booking'] = {
 	// its BKG number from here (the search bar and the Filter button both do it), and it
 	// was the widest thing in the row.
 	hide_name_filter: true,
+	custom_filter_configs: [
+		{ fieldname: 'search_text', fieldtype: 'Data', label: __('Cari booking, customer, container…'), condition: 'like' },
+	],
 	get_indicator(doc) {
 		if (doc.docstatus === 2) return container_depot.status_pill('cancelled', 'docstatus,=,2');
 		const status = doc.booking_status || 'Draft';
@@ -165,6 +172,7 @@ frappe.listview_settings['Container Booking'] = {
 	// in turn is idempotent, so re-running it on refresh cannot scramble the row.
 	refresh(listview) {
 		strip_bulk_cancel(listview);
+		tidy_search_box(listview);
 		const $form = listview.page && listview.page.page_form;
 		if (!$form || !$form.length) return;
 		// Prepended in REVERSE, so the row ends up in FILTER_ORDER with the filters on the
@@ -177,15 +185,29 @@ frappe.listview_settings['Container Booking'] = {
 			// One width for all of them. Frappe sizes each control to its own label, so
 			// eight filters wrapped onto two ragged lines with nothing lining up; a fixed
 			// width turns the wrap into a grid — the second row sits under the first.
+			// The Cari box gets double: it is the one people type a sentence-ish into.
+			const width = fieldname === 'search_text' ? FILTER_WIDTH * 2 : FILTER_WIDTH;
 			$control.css({
-				width: `${FILTER_WIDTH}px`,
-				'min-width': `${FILTER_WIDTH}px`,
-				'max-width': `${FILTER_WIDTH}px`,
+				width: `${width}px`,
+				'min-width': `${width}px`,
+				'max-width': `${width}px`,
 			});
 			$control.find('.form-control, .awesomplete').css({ width: '100%', 'max-width': '100%' });
 		});
 	},
 };
+
+// The Cari box is always a "contains" search, so Frappe's = / ≈ toggle beside it is noise
+// (and it wrapped onto a line of its own). And a search restored from the last visit comes
+// back as the stored pattern, `%OAKU24%`: show what the person typed. Setting it re-runs the
+// same filter (Frappe re-wraps the value in %), once, only right after a reload.
+function tidy_search_box(listview) {
+	const field = listview.page && listview.page.fields_dict && listview.page.fields_dict.search_text;
+	if (!field) return;
+	field.$wrapper.find('.match-type-dropdown-btn').closest('.input-group-btn').remove();
+	const value = field.get_value();
+	if (typeof value === 'string' && /^%.*%$/.test(value)) field.set_value(value.slice(1, -1));
+}
 
 // Actions -> Cancel can only fail from here, whichever rows are ticked. A draft is voided
 // through the booking's own Cancel button (`void_draft` — the native cancel cannot touch a

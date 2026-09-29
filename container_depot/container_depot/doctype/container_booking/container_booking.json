@@ -46,6 +46,7 @@
   "revision_requested",
   "revision_note",
   "container_summary",
+  "search_text",
   "bon_summary",
   "per_fulfilled",
   "lift_type",
@@ -410,6 +411,17 @@
    "hidden": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "Gabungan teks yang bisa dicari (no. booking, customer, principal, Reff Doc, DO, nomor container, EMKL, shipper, truk, sopir) untuk kotak Cari di list. Diisi otomatis tiap simpan.",
+   "fieldname": "search_text",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Search Text",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
    "description": "Jumlah container yang sudah punya bon, contoh 3/5.",
    "fieldname": "bon_summary",
    "fieldtype": "Data",
@@ -472,7 +484,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-28 15:47:04.000000",
+ "modified": "2026-09-29 14:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",
