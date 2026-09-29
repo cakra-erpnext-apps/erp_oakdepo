@@ -1,34 +1,20 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
-// The filter row and the columns say the same things in the same order.
+// The filter row is ONE box: Cari (search_text, built on every save — see
+// build_search_text) finds a booking by its number, customer, Reff Doc / DO, or a container /
+// truck / driver on one of its rows. Every other filter goes through Frappe's own Filter
+// button — the per-field quick filters were dropped (2026-09-29): six of them wrapped onto two
+// lines and people still did not know which box to type in.
 //
-// Frappe builds the two from the same doctype meta but assembles them differently: the
-// columns start with the title field (Customer) and end with the auto-appended ID, while
-// the filter row starts with ID and drops Customer wherever `field_order` happens to put
-// it. Reading down a booking list then meant re-finding each field in a different place.
-//
-// The columns are the fixed side (their order is meta order, and the title/ID slots cannot
-// be moved), so the filters are lined up to them here — a DOM reorder of controls Frappe
-// has already rendered, not a second set of filters.
-// Every quick filter is drawn this wide, so the row reads as an even strip.
-const FILTER_WIDTH = 180;
-
-// Only the four the depot actually filters by. Eight of them wrapped onto three ragged
-// lines — the Data ones (Containers, ID) each drag a "≈" condition toggle along, which
-// wraps on its own. Branch / Depot / Containers keep their COLUMNS and stay reachable
-// through the Filter button; ID is dropped from the row entirely (hide_name_filter).
-const FILTER_ORDER = [
-	// One box that finds a booking by anything a person would type: its number, customer,
-	// Reff Doc / DO, or a container / truck / driver on one of its rows (search_text,
-	// built on every save — see build_search_text).
-	'search_text',
-	'customer',
-	'direction',
-	'booking_status', // the Status column is this field
-	'bon_status',
-	'payment_status',
-];
+// CSS, not a DOM tweak in `refresh`: Frappe hangs its = / ≈ toggle on a Data filter from a
+// 100 ms timer, which a fast list load beats — the toggle then lands after the tidy-up. The
+// toggle is noise here (Cari is always "contains") and it wrapped onto a line of its own.
+frappe.dom.set_style(
+	`.page-form .frappe-control[data-fieldname="search_text"] { flex: 0 1 360px; width: 360px; max-width: 100%; }
+	.page-form .frappe-control[data-fieldname="search_text"] .input-group-btn { display: none; }`,
+	'container-booking-cari'
+);
 
 // Direction as a colour pill: green for Tank In (inbound), orange for Tank Out (outbound),
 // matching EIR's In / Out convention and the gate PWA.
@@ -168,43 +154,35 @@ frappe.listview_settings['Container Booking'] = {
 	onload(listview) {
 		container_depot.priority_column(listview, PRIORITY.urgent);
 	},
-	// Runs after every list load, i.e. after the filter area exists. Appending each control
-	// in turn is idempotent, so re-running it on refresh cannot scramble the row.
+	// Runs after every list load, i.e. after the filter area exists.
 	refresh(listview) {
 		strip_bulk_cancel(listview);
+		drop_title_filter(listview);
 		tidy_search_box(listview);
-		const $form = listview.page && listview.page.page_form;
-		if (!$form || !$form.length) return;
-		// Prepended in REVERSE, so the row ends up in FILTER_ORDER with the filters on the
-		// left and Frappe's own Filter button + sort selector left where they belong, at
-		// the right end. Appending instead pushed the filters PAST those buttons.
-		[...FILTER_ORDER].reverse().forEach((fieldname) => {
-			const $control = $form.find(`[data-fieldname="${fieldname}"]`).closest('.frappe-control');
-			if (!$control.length) return;
-			$control.prependTo($form);
-			// One width for all of them. Frappe sizes each control to its own label, so
-			// eight filters wrapped onto two ragged lines with nothing lining up; a fixed
-			// width turns the wrap into a grid — the second row sits under the first.
-			// The Cari box gets double: it is the one people type a sentence-ish into.
-			const width = fieldname === 'search_text' ? FILTER_WIDTH * 2 : FILTER_WIDTH;
-			$control.css({
-				width: `${width}px`,
-				'min-width': `${width}px`,
-				'max-width': `${width}px`,
-			});
-			$control.find('.form-control, .awesomplete').css({ width: '100%', 'max-width': '100%' });
-		});
 	},
 };
 
-// The Cari box is always a "contains" search, so Frappe's = / ≈ toggle beside it is noise
-// (and it wrapped onto a line of its own). And a search restored from the last visit comes
-// back as the stored pattern, `%OAKU24%`: show what the person typed. Setting it re-runs the
-// same filter (Frappe re-wraps the value in %), once, only right after a reload.
+// Frappe always puts the title field (Customer) in the filter row, in_standard_filter or not.
+// Customer is one of the things Cari finds, so the box goes — and so a customer filter does
+// not end up held by a control that is gone, Frappe is told there is no such control
+// (fields_dict): clicking a customer name, or a saved filter, lands under the Filter button.
+function drop_title_filter(listview) {
+	const page = listview.page;
+	const field = page && page.fields_dict && page.fields_dict.customer;
+	if (!field) return;
+	const value = field.get_value();
+	field.$wrapper.remove();
+	delete page.fields_dict.customer;
+	// `set`, not `add`: the rows on screen are already filtered by it — only the button changes.
+	if (value) listview.filter_area.set([[listview.doctype, 'customer', '=', value]]);
+}
+
+// A search restored from the last visit comes back as the stored pattern, `%OAKU24%`: show
+// what the person typed. Setting it re-runs the same filter (Frappe re-wraps the value in %),
+// once, only right after a reload.
 function tidy_search_box(listview) {
 	const field = listview.page && listview.page.fields_dict && listview.page.fields_dict.search_text;
 	if (!field) return;
-	field.$wrapper.find('.match-type-dropdown-btn').closest('.input-group-btn').remove();
 	const value = field.get_value();
 	if (typeof value === 'string' && /^%.*%$/.test(value)) field.set_value(value.slice(1, -1));
 }
