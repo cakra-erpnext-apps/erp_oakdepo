@@ -34,7 +34,11 @@ add_to_apps_screen = [
 # ------------
 
 after_install = "container_depot.install.after_install"
-after_migrate = "container_depot.install.after_migrate"
+after_migrate = [
+	"container_depot.install.after_migrate",
+	# The hidden search_text column behind every list's Cari box (see list_search.py).
+	"container_depot.list_search.after_migrate",
+]
 
 # Boot
 # ----
@@ -140,6 +144,11 @@ override_doctype_dashboards = {
 }
 
 doc_events = {
+	# Cari box: rebuild search_text of the listed doctypes (list_search.SEARCH_FIELDS) after
+	# every save, submit, cancel and db_set. A dict lookup for every other doctype.
+	"*": {
+		"on_change": "container_depot.list_search.refresh",
+	},
 	# Pengumuman manual: satu Note sampai ke Desk + PWA, dan push ke HP saat terbit.
 	"Note": {
 		"on_update": "container_depot.ess.announcements.push_on_publish",
@@ -460,6 +469,9 @@ app_include_js = [
 	# Skeleton selama pindah menu Desk — halaman lama tidak lagi diam tanpa tanda saat server
 	# lambat menyiapkan halaman baru (lihat file-nya).
 	"/assets/container_depot/js/route_loading.js?v=2",
+	# Satu kotak "Cari" menggantikan filter per kolom di setiap list yang punya kolom
+	# search_text (list_search.py) — filter lain lewat tombol Filter.
+	"/assets/container_depot/js/list_search.js?v=1",
 ]
 
 # include js, css files in header of web template

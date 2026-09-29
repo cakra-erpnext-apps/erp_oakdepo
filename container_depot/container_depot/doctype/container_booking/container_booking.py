@@ -64,26 +64,6 @@ EDITABLE_STATUSES = ("Draft", "Pengajuan")
 _SUMMARY_MAXLEN = 140
 
 
-def build_search_text(doc) -> str:
-	"""Everything a person types into the list's Cari box to find this booking, in one column.
-
-	Frappe's list filters are one-field-each; a booking is looked for by its number, its
-	customer, its Reff Doc / DO, or a container / truck / driver on one of its rows — the
-	last lot in a child table no list filter reaches. Denormalised here (like
-	``container_summary``) so the Cari box is a plain ``like`` filter: counts, group-by and
-	the other filters keep working natively. Shared with the backfill patch."""
-	parts = [
-		doc.get(f) for f in (
-			"name", "customer", "principal", "shipper", "surveyor", "requested_by_customer",
-			"reff_doc", "do_reference", "sales_name",
-		)
-	]
-	for row in doc.get("items") or []:
-		parts += [row.get(f) for f in ("container_no", "emkl", "shipper", "truck_plate", "driver", "ro")]
-	seen = dict.fromkeys(str(p).strip() for p in parts if p and str(p).strip())
-	return " · ".join(seen)
-
-
 def build_container_summary(container_nos) -> str:
 	"""Join container numbers into the list-view summary, truncating with a ``(+N)``
 	remainder marker so a long booking never exceeds the Data field length. Shared by
@@ -572,6 +552,7 @@ class ContainerBooking(Document):
 			FROM `tabContainer Booking Item` i
 			JOIN `tabContainer Booking` b ON b.name = i.parent
 			WHERE i.container = %s AND b.name != %s AND b.docstatus < 2
+				AND b.direction = 'Tank In' AND IFNULL(b.booking_status, '') != 'Cancelled'
 			LIMIT 1
 			""",
 			(container, self.name),
@@ -1149,7 +1130,6 @@ class ContainerBooking(Document):
 		view and search (a list column can't render a child table). Runs after
 		``_resolve_containers`` so every row already has a ``container_no``."""
 		self.container_summary = build_container_summary(
-		self.search_text = build_search_text(self)
 			[i.container_no for i in (self.items or []) if i.container_no]
 		)
 

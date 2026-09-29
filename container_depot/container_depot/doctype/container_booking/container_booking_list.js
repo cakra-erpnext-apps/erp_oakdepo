@@ -1,21 +1,6 @@
 // Copyright (c) 2026, Oak Depot Team and contributors
 // For license information, please see license.txt
 
-// The filter row is ONE box: Cari (search_text, built on every save — see
-// build_search_text) finds a booking by its number, customer, Reff Doc / DO, or a container /
-// truck / driver on one of its rows. Every other filter goes through Frappe's own Filter
-// button — the per-field quick filters were dropped (2026-09-29): six of them wrapped onto two
-// lines and people still did not know which box to type in.
-//
-// CSS, not a DOM tweak in `refresh`: Frappe hangs its = / ≈ toggle on a Data filter from a
-// 100 ms timer, which a fast list load beats — the toggle then lands after the tidy-up. The
-// toggle is noise here (Cari is always "contains") and it wrapped onto a line of its own.
-frappe.dom.set_style(
-	`.page-form .frappe-control[data-fieldname="search_text"] { flex: 0 1 360px; width: 360px; max-width: 100%; }
-	.page-form .frappe-control[data-fieldname="search_text"] .input-group-btn { display: none; }`,
-	'container-booking-cari'
-);
-
 // Direction as a colour pill: green for Tank In (inbound), orange for Tank Out (outbound),
 // matching EIR's In / Out convention and the gate PWA.
 const DIRECTION_COLOURS = {
@@ -139,13 +124,6 @@ frappe.listview_settings['Container Booking'] = {
 	// a cancelled booking read as live.
 	has_indicator_for_draft: 1,
 	has_indicator_for_cancelled: 1,
-	// Frappe puts an ID box at the FRONT of the quick filters. Nobody hunts a booking by
-	// its BKG number from here (the search bar and the Filter button both do it), and it
-	// was the widest thing in the row.
-	hide_name_filter: true,
-	custom_filter_configs: [
-		{ fieldname: 'search_text', fieldtype: 'Data', label: __('Cari booking, customer, container…'), condition: 'like' },
-	],
 	get_indicator(doc) {
 		if (doc.docstatus === 2) return container_depot.status_pill('cancelled', 'docstatus,=,2');
 		const status = doc.booking_status || 'Draft';
@@ -154,38 +132,10 @@ frappe.listview_settings['Container Booking'] = {
 	onload(listview) {
 		container_depot.priority_column(listview, PRIORITY.urgent);
 	},
-	// Runs after every list load, i.e. after the filter area exists.
 	refresh(listview) {
 		strip_bulk_cancel(listview);
-		drop_title_filter(listview);
-		tidy_search_box(listview);
 	},
 };
-
-// Frappe always puts the title field (Customer) in the filter row, in_standard_filter or not.
-// Customer is one of the things Cari finds, so the box goes — and so a customer filter does
-// not end up held by a control that is gone, Frappe is told there is no such control
-// (fields_dict): clicking a customer name, or a saved filter, lands under the Filter button.
-function drop_title_filter(listview) {
-	const page = listview.page;
-	const field = page && page.fields_dict && page.fields_dict.customer;
-	if (!field) return;
-	const value = field.get_value();
-	field.$wrapper.remove();
-	delete page.fields_dict.customer;
-	// `set`, not `add`: the rows on screen are already filtered by it — only the button changes.
-	if (value) listview.filter_area.set([[listview.doctype, 'customer', '=', value]]);
-}
-
-// A search restored from the last visit comes back as the stored pattern, `%OAKU24%`: show
-// what the person typed. Setting it re-runs the same filter (Frappe re-wraps the value in %),
-// once, only right after a reload.
-function tidy_search_box(listview) {
-	const field = listview.page && listview.page.fields_dict && listview.page.fields_dict.search_text;
-	if (!field) return;
-	const value = field.get_value();
-	if (typeof value === 'string' && /^%.*%$/.test(value)) field.set_value(value.slice(1, -1));
-}
 
 // Actions -> Cancel can only fail from here, whichever rows are ticked. A draft is voided
 // through the booking's own Cancel button (`void_draft` — the native cancel cannot touch a
