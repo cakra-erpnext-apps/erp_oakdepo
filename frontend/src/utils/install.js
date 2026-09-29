@@ -15,6 +15,8 @@
 // CANNOT install (an in-app browser, Chrome on iOS) how to get to a browser that can, which
 // is a real answer rather than a door into an unsupported mode.
 
+import { isAdministrator } from "@/data/session"
+
 export function isStandalone() {
 	return (
 		window.matchMedia("(display-mode: standalone)").matches ||
@@ -61,7 +63,7 @@ export function isIosNonSafari() {
 }
 
 export function mustInstall() {
-	return isMobile() && !isStandalone()
+	return isMobile() && !isStandalone() && !isAdministrator()
 }
 
 // Someone landing here more than once did not install the first time they were asked.

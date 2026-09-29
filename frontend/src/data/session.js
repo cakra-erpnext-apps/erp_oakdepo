@@ -9,6 +9,13 @@ export function sessionUser() {
 	return user
 }
 
+// Administrator is the developer / support account, used to check the app from a desktop
+// browser on dev. The install and notification gates exist for field handsets; blocking
+// this account behind them made checking the PWA on the web impossible.
+export function isAdministrator() {
+	return sessionUser() === "Administrator"
+}
+
 // Send the browser through the standard Frappe login, returning to /depot.
 export function redirectToLogin() {
 	window.location.href = "/login?redirect-to=/depot"

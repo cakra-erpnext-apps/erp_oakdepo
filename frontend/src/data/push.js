@@ -8,7 +8,7 @@
 // Permission must be asked from a user gesture — that is why nothing here runs on load.
 
 import { reactive } from "vue"
-import { session } from "@/data/session"
+import { isAdministrator, session } from "@/data/session"
 import { mutedEvents } from "@/utils/notifMute"
 
 const state = reactive({
@@ -143,6 +143,7 @@ export function snoozePushGate() {
  * operator out of the app over a switch that can never flip.
  */
 export async function pushGateNeeded() {
+	if (isAdministrator()) return false // dev / support account, see data/session.js
 	if (!pushSupported()) return false
 	if (gateSnoozed()) return false
 	state.supported = true
