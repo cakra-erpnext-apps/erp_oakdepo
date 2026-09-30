@@ -496,8 +496,7 @@ class TestMRApproval(FrappeTestCase):
 		self.assertEqual(flt(row.amount), 20.0)          # 2 × 10, labour excluded
 		self.assertEqual(flt(frappe.db.get_value("Repair Order", ro, "total_cost")), 20.0)
 		# Labour is taken AS IT STANDS: the rate card's tariff, never hours × tariff. The
-		# multiplication belongs to the invoice header, which reads this tariff back and the
-		# hours riding beside it (consolidated_billing._negotiated_manhour_hour).
+		# invoice line carries this tariff and the header meets it with the hours worked.
 		self.assertEqual(flt(row.manhour_rate), 5.0)     # Tariff Rate.manhour_rate, undoubled
 		self.assertEqual(flt(row.manhour), 2.0)          # Item.manhour, for the invoice
 

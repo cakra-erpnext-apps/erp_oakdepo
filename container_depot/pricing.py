@@ -12,20 +12,8 @@ from __future__ import annotations
 
 import frappe
 
-# Order type (portal vocabulary) -> canonical service Item code. None = not
-# priced by the contract tariff (the Cashier fills the rate in on the invoice).
-ITEM_FOR_ORDER_TYPE = {
-	"Lift On": "Lift On",
-	"Lift Off": "Lift Off",
-	"Periodic Test": "Periodic Test 2.5 Year",
-	"Leak Test": "Leak Test 1 Bar",
-	"Haulage": None,
-}
-
 # Canonical service Item codes used by the consolidated / monthly billing path.
 # These match the codes seeded by patches.v0_11.seed_service_items.
-LIFT_ON_ITEM = "Lift On"
-LIFT_OFF_ITEM = "Lift Off"
 STORAGE_ITEM = "Storage per Day"
 # Storage is priced PER SIZE — a 40ft eats twice the yard slot a 20ft does, so the rate
 # cards quote it per size. The generic ``Storage per Day`` above stays as the fallback:
@@ -36,111 +24,30 @@ STORAGE_ITEM_BY_SIZE = {
 	"40'": "Storage per Day 40FT",
 	"45'": "Storage per Day 45FT",
 }
-# Representative cleaning charge billed per Cleaning Order. Adjust to the grade a
-# customer's rate card actually negotiates if cleaning is priced per wash type.
-CLEANING_ITEM = "Standard Cleaning"
 
 # --------------------------------------------------------------------------- #
 # Labour (manhour)
 #
-# Labour has TWO halves, and they live in two different masters — that is the whole model:
+# What an hour of depot labour costs is on the RATE CARD, per service: ``Tariff Rate.
+# manhour_rate`` on the customer's contract. Orders carry it per row ("Tarif Manhour") and
+# the invoice carries it per line (Manhour). The invoice sums the lines' tariffs and meets
+# them once with the hours worked (Total Jam):
 #
-#   * **Jam** — how long a service takes. A property of the SERVICE, the same for everyone:
-#     ``Item.manhour`` (e.g. Standard Clean 0.5 h, Lift On 1.5 h).
-#   * **Tarif per jam** — what an hour of depot labour costs THIS customer. A property of
-#     the RATE CARD, negotiated per principal: ``Tariff Rate.manhour_rate`` on the
-#     customer's contract (e.g. OAK 4.50, Bertschi 4.00).
+#     Total = Total Price + (Biaya Manhour × Total Jam)
 #
-# Labour is never folded into a service's own rate. Each order keeps the two apart and
-# billing settles them once, in the invoice header:
-#
-#     Total = Total Price + (Total Jam × Tarif per Jam)
-#
-# Note the asymmetry, and that it is deliberate: a RATE is per unit, so the line multiplies
-# it by qty; the JAM a line books is the labour that line takes, whatever the quantity, so
-# the hours are summed as they stand and only the SUM meets the tariff — ``Tarif per Jam``,
-# which seeds from the customer's rate card and stays editable per invoice.
+# (``invoicing.apply_manhour_charge``). Labour is never folded into a service's own rate.
+# ``Item.manhour`` (standard hours of a service) is only read by the M&R costing.
 # --------------------------------------------------------------------------- #
-# Fallback labour tariff (money per hour) for a customer whose rate card carries none.
-DEFAULT_MANHOUR_HOUR = 4.0
 
 
 def manhour_for(item, contract):
-	"""Labour TARIFF (money per hour) one rate card charges for a service (0 when none).
-
-	This is the price of an hour, not a number of hours — the hours are on the Item
-	(:func:`manhour_hours_for`). Held per tariff line so each principal's contract can carry
-	its own figure.
-	"""
+	"""Labour TARIFF (money per hour) one rate card charges for a service (0 when none)."""
 	from frappe.utils import flt
 
 	from container_depot import pricing_model
 
 	row = pricing_model.tariff_row(item, contract)
 	return flt(row.manhour_rate) if row else 0.0
-
-
-def manhour_hours_for(item) -> float:
-	"""Standard labour HOURS one service takes (``Item.manhour``; 0 when it books none).
-
-	The same for every customer — what differs per customer is what an hour costs them
-	(:func:`manhour_for`).
-	"""
-	from frappe.utils import flt
-
-	if not item:
-		return 0.0
-	return flt(frappe.db.get_value("Item", item, "manhour"))
-
-
-def manhour_rate_for(customer) -> float:
-	"""The labour tariff (money per hour) to charge this customer's invoice.
-
-	A rate card states one price for an hour of depot labour, repeated on every line it
-	prices, so any non-zero figure on the customer's contract is that price — the most common
-	one wins if a stray line disagrees. Falls back to :data:`DEFAULT_MANHOUR_HOUR` when the
-	contract prices no labour at all.
-	"""
-	from collections import Counter
-
-	from frappe.utils import flt
-
-	from container_depot import pricing_model
-
-	contract = pricing_model.active_contract(customer)
-	if not contract:
-		return 0.0
-	rates = [
-		flt(r)
-		for r in frappe.get_all(
-			"Tariff Rate",
-			filters={"parent": contract, "parenttype": "Depot Contract"},
-			pluck="manhour_rate",
-		)
-		if flt(r)
-	]
-	if not rates:
-		return DEFAULT_MANHOUR_HOUR
-	return Counter(rates).most_common(1)[0][0]
-
-
-def invoice_manhours(customer, lines):
-	"""Labour hours each invoice line books, from the Item master.
-
-	Returns ``{index: hours}`` for the lines that take labour, so the caller can stamp each
-	line and let the header total them and meet the tariff once. Empty when the customer has
-	no active contract (nobody to charge labour to) or nothing billed books hours.
-	"""
-	from container_depot import pricing_model
-
-	if not pricing_model.active_contract(customer):
-		return {}
-	out = {}
-	for i, ln in enumerate(lines):
-		hours = manhour_hours_for(ln.get("item_code"))
-		if hours:
-			out[i] = hours
-	return out
 
 
 def resolve_tariff_rate(contract, item):
@@ -155,28 +62,6 @@ def resolve_tariff_rate(contract, item):
 	from container_depot import pricing_model
 
 	return pricing_model.resolve_price(item, contract) or 0
-
-
-def contract_for_order(order):
-	"""Resolve the Depot Contract behind an Order Bongkar / Muat via its code."""
-	if not order.get("booking_code"):
-		return None
-	booking = frappe.db.get_value("Booking Code", order.booking_code, "booking")
-	if not booking:
-		return None
-	return frappe.db.get_value("Container Booking", booking, "contract")
-
-
-def order_amount(order):
-	"""(total, unit_rate) for an order. Uses the order's own price_per_container
-	when set, else the contract tariff for the mapped service Item."""
-	qty = order.get("quantity") or 1
-	rate = order.get("price_per_container") or 0
-	if not rate:
-		contract = contract_for_order(order)
-		item = ITEM_FOR_ORDER_TYPE.get(order.get("order_type"))
-		rate = resolve_tariff_rate(contract, item)
-	return (rate or 0) * qty, (rate or 0)
 
 
 def storage_item_for(size: str | None) -> str:

@@ -1,33 +1,49 @@
 // Consolidated ("generate") Sales Invoice UX.
 //
 // A generated invoice carries a rollback manifest (custom field depot_billed_sources)
-// listing the depot orders it swept. Its line items are frozen server-side
-// (consolidated_billing.protect_consolidated_items). Here we surface a prominent,
-// visible button to discard/cancel the invoice — which rolls every order back to
-// un-invoiced (consolidated_billing.rollback_billed_sources). We do NOT hide any of
-// the standard Delete/Cancel actions in the ⋮ menu; this only adds a clearer button.
+// listing the depot orders it swept. The lines it billed (depot_source) are locked
+// server-side (consolidated_billing.protect_consolidated_items); the red Cancel gives every
+// order back (consolidated_billing.rollback_billed_sources). No banner explains the lock:
+// the server's message says it when someone tries (user, 2026-09-29: fewer notices).
 // --- Tagihan Depot: build the invoice from the depot's unbilled work ----------------
 //
-// "Ambil Tagihan" lists EVERY unbilled order the customer has — no section or date filter,
-// because the tick-list already is the filter and two ways to say the same thing is what
-// made this form unreadable. On an invoice that was already generated the same button
-// RE-runs: the server rolls the previous sweep back before collecting again, so pressing
-// it twice never double-charges.
+// Picking an Invoice Type opens "Pilih Order": EVERY unbilled order of that type the customer
+// has, as a report-style tick-list (Gabungan = every type, Manual = no list). The same list
+// stays one click away on the Pilih Order button. On a saved draft the list also shows the
+// orders it already bills, ticked, and the pick edits THAT invoice: unticked orders go back,
+// newly ticked ones are added (consolidated_billing._refill). One invoice, many orders.
 //
-// A run that picks up more than one currency yields more than one invoice — ERPNext
-// documents are single-currency — tied together by Nomor Tagihan. The dialog says so
-// before anything is created, so the operator is never surprised by a second document.
+// Currency: every line keeps the currency its order states. One run is ONE invoice in one
+// currency: the dialog asks which, and the other currencies are converted into it through
+// their kurs to IDR, the ledger's currency. No more invoice per currency (user, 2026-09-28).
+// One print format for an invoice, OAK Invoice (install.ensure_invoice_print): the rest are
+// disabled there, and Frappe's generated "Standard" goes from the list here.
+const get_print_formats = frappe.meta.get_print_formats;
+frappe.meta.get_print_formats = function (doctype) {
+	const list = get_print_formats.apply(this, arguments);
+	return doctype === "Sales Invoice" && list.length > 1 ? list.filter((f) => f !== "Standard") : list;
+};
+
 function money(amount, currency) {
 	return format_currency(amount, currency);
+}
+
+// The Invoice Type picked in the header decides which orders are offered. Gabungan = all.
+function type_categories(frm) {
+	const t = frm.doc.depot_invoice_type;
+	return t && t !== "Gabungan" ? JSON.stringify([t]) : null;
 }
 
 // Show what the filters matched, then let the operator commit. Preview and fill call the
 // same server-side collector, so this list is exactly what the invoice will carry.
 function preview_then_fill(frm) {
+	// A saved draft is edited in place by the server: save what is typed on it first.
+	if (!frm.is_new() && frm.is_dirty()) return frm.save().then(() => preview_then_fill(frm));
 	frappe.call({
 		method: "container_depot.consolidated_billing.preview_bill",
-		// No filters: show EVERYTHING unbilled for this customer and let the operator tick.
-		args: { customer: frm.doc.customer },
+		// Everything unbilled of this Invoice Type for the customer (plus what this draft
+		// already bills); the operator ticks.
+		args: { customer: frm.doc.customer, categories: type_categories(frm), sales_invoice: saved_draft(frm) },
 		freeze: true,
 		freeze_message: __("Menghitung tagihan…"),
 		callback: (r) => {
@@ -35,7 +51,8 @@ function preview_then_fill(frm) {
 			if (!p || !p.total_orders) {
 				frappe.msgprint({
 					title: __("Tidak ada yang ditagih"),
-					message: __("Tidak ada pekerjaan yang belum ditagih untuk {0}.", [
+					message: __("Tidak ada order {0} yang belum ditagih untuk {1}.", [
+						frappe.utils.escape_html(frm.doc.depot_invoice_type),
 						frappe.utils.escape_html(frm.doc.customer),
 					]),
 					indicator: "blue",
@@ -47,63 +64,83 @@ function preview_then_fill(frm) {
 	});
 }
 
-// The preview is a worksheet, not a receipt: every order is its own tickable row, so a run
-// can be narrowed down to individual orders instead of being all-or-nothing per section.
-// Only the ticked keys are sent; the server re-collects and filters by them.
+// The draft a pick edits in place; null = the pick raises a new invoice.
+function saved_draft(frm) {
+	return !frm.is_new() && frm.doc.docstatus === 0 ? frm.doc.name : null;
+}
+
+// The preview is a worksheet, not a receipt: every order is its own tickable row, laid out
+// like the Order Billing Status report (already narrowed to this customer and Invoice Type),
+// so a run can be narrowed down to individual orders. Only the ticked keys are sent; the
+// server re-collects and filters by them.
 function show_preview_dialog(frm, p) {
 	const rows = p.sections.flatMap((s) => s.rows.map((r) => ({ ...r, category: s.category })));
-
-	const body = p.sections
-		.map((s) => {
-			const cells = s.rows
-				.map(
-					(r) => `<tr>
-						<td style="padding:5px 8px;width:34px;">
-							<input type="checkbox" class="oak-bill-row" data-key="${frappe.utils.escape_html(r.key)}" checked>
-						</td>
-						<td style="padding:5px 8px;"><b>${frappe.utils.escape_html(r.label)}</b>
-							<div style="color:var(--text-muted);font-size:11px;">${frappe.utils.escape_html(r.detail || "")}</div>
-						</td>
-						<td style="padding:5px 8px;text-align:right;white-space:nowrap;">${money(r.amount, r.currency)}</td>
-					</tr>`
-				)
-				.join("");
-			return `<tr style="background:var(--control-bg);color:var(--text-color);">
-					<td style="padding:5px 8px;">
-						<input type="checkbox" class="oak-bill-section" data-section="${frappe.utils.escape_html(s.category)}" checked>
-					</td>
-					<td colspan="2" style="padding:5px 8px;"><b>${frappe.utils.escape_html(s.category)}</b>
-						<span style="color:var(--text-muted);">· ${s.rows.length} order</span></td>
-				</tr>${cells}`;
-		})
+	// Editing a draft: its own orders start ticked, the rest are there to add. A new invoice
+	// starts with everything ticked.
+	const editing = !!p.invoice_currency;
+	const esc = frappe.utils.escape_html;
+	const cell = "padding:5px 8px;";
+	const body = rows
+		.map(
+			(r) => `<tr class="oak-bill-tr${r.on_invoice ? " oak-bill-cur" : ""}" title="${esc(r.detail || "")}" data-date="${esc(r.date || "")}"
+					data-search="${esc([r.category, r.label, r.tank, r.detail].join(" ").toLowerCase())}">
+				<td style="${cell}width:34px;"><input type="checkbox" class="oak-bill-row" data-key="${esc(r.key)}"${!editing || r.on_invoice ? " checked" : ""}></td>
+				<td style="${cell}">${esc(r.category)}${r.on_invoice ? `<div class="text-muted small">${__("di invoice ini")}</div>` : ""}</td>
+				<td style="${cell}">${r.doctype && r.doctype !== "Storage Charge"
+					? `<a href="${frappe.utils.get_form_link(r.doctype, r.name)}" target="_blank">${esc(r.label)}</a>`
+					: esc(r.label)}</td>
+				<td style="${cell}">${esc(r.tank || "")}</td>
+				<td style="${cell}white-space:nowrap;">${r.date ? frappe.datetime.str_to_user(r.date) : ""}</td>
+				<td style="${cell}">${esc(r.currency)}</td>
+				<td style="${cell}text-align:right;white-space:nowrap;">${money(r.amount, r.currency)}</td>
+			</tr>`
+		)
 		.join("");
+	const th = (label, right) => `<th style="${cell}${right ? "text-align:right;" : ""}">${__(label)}</th>`;
 
 	const d = new frappe.ui.Dialog({
-		title: __("Pilih tagihan · {0}", [p.customer]),
+		title: __("Pilih Order {0} · {1}", [frm.doc.depot_invoice_type, p.customer]),
 		size: "large",
 		fields: [
+			// Narrow the list by the order's date (the Tanggal column); empty = no bound.
+			{ fieldtype: "Date", fieldname: "from_date", label: __("Dari Tanggal"), change: () => d.apply_filters && d.apply_filters() },
+			{ fieldtype: "Column Break" },
+			{ fieldtype: "Date", fieldname: "to_date", label: __("Sampai Tanggal"), change: () => d.apply_filters && d.apply_filters() },
+			{ fieldtype: "Section Break" },
 			{
 				fieldtype: "HTML",
 				fieldname: "picker",
 				options: `
 					<div style="font-size:13px;">
-						<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-							<span style="color:var(--text-muted);">${__("Centang order yang mau ditagih")}</span>
-							<span>
+						<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+							<input type="text" class="form-control oak-bill-search" style="max-width:260px;"
+								placeholder="${__("Cari order / tank")}">
+							<span style="margin-left:auto;white-space:nowrap;">
 								<button class="btn btn-xs btn-default oak-bill-all">${__("Pilih semua")}</button>
 								<button class="btn btn-xs btn-default oak-bill-none">${__("Kosongkan")}</button>
 							</span>
 						</div>
-						<div style="max-height:340px;overflow-y:auto;border:1px solid var(--border-color);border-radius:4px;">
+						<div style="max-height:360px;overflow:auto;border:1px solid var(--border-color);border-radius:4px;">
 							<table class="table" style="margin:0;">
+								<thead style="position:sticky;top:0;background:var(--control-bg);">
+									<tr><th style="${cell}"></th>${th("Seksi")}${th("Order")}${th("Tank")}${th("Tanggal")}${th("Mata Uang")}${th("Amount", true)}</tr>
+								</thead>
 								<tbody>${body}</tbody>
 							</table>
 						</div>
 						<div class="oak-bill-summary" style="margin-top:12px;"></div>
 					</div>`,
 			},
+			{
+				fieldtype: "Select",
+				fieldname: "bill_currency",
+				label: __("Ditagih dalam"),
+				options: [],
+				change: () => render_currency_block(d, p),
+			},
+			{ fieldtype: "HTML", fieldname: "kurs_html" },
 		],
-		primary_action_label: __("Buat Invoice"),
+		primary_action_label: editing ? __("Simpan ke Invoice") : __("Buat Invoice"),
 		primary_action() {
 			const keys = selected_keys(d);
 			if (!keys.length) {
@@ -114,25 +151,100 @@ function show_preview_dialog(frm, p) {
 				});
 				return;
 			}
+			const plan = currency_plan(d, p);
+			const kurs = read_kurs(d);
+			const missing = plan.need.filter((c) => !kurs[c]);
+			if (missing.length) {
+				frappe.msgprint({
+					title: __("Kurs belum diisi"),
+					message: __("Isi kurs ke {0} untuk: {1}", [p.company_currency, missing.join(", ")]),
+					indicator: "orange",
+				});
+				return;
+			}
 			d.hide();
-			run_fill(frm, keys);
+			run_fill(frm, keys, plan.currency, kurs);
 		},
 	});
 
+	d.ccys = [];
 	d.show();
-	wire_picker(d, rows);
+	wire_picker(d, rows, p);
 }
 
+// The invoice currency and the currencies whose kurs the run needs. IDR needs none.
+function currency_plan(d, p) {
+	const currency = d.get_value("bill_currency") || d.ccys[0] || p.company_currency;
+	const all = [...new Set([...d.ccys, currency])];
+	return { currency, need: all.filter((c) => c !== p.company_currency) };
+}
+
+// Which currency to bill in, and the kurs every currency on the bill converts at. Offered
+// whenever the selection is not plain company currency: even a single-currency USD run may
+// be billed in IDR.
+function render_currency_block(d, p) {
+	const base = p.company_currency;
+	const ccys = d.ccys;
+	const f = d.fields_dict;
+	// A customer whose receivable is foreign can only be billed in it (ERPNext rule). A draft
+	// being edited starts in its own currency.
+	const options = p.locked_currency
+		? [p.locked_currency]
+		: [...new Set([...ccys, base, p.invoice_currency].filter(Boolean))];
+	if (JSON.stringify(f.bill_currency.df.options) !== JSON.stringify(options)) {
+		const keep = d.get_value("bill_currency");
+		f.bill_currency.df.options = options;
+		f.bill_currency.refresh();
+		d.set_value(
+			"bill_currency",
+			options.includes(keep) ? keep
+				: options.length === 1 ? options[0]
+				: p.invoice_currency || (ccys.length === 1 ? ccys[0] : base)
+		);
+	}
+	f.bill_currency.$wrapper.toggle(!!(p.locked_currency || p.invoice_currency) || !(ccys.length === 1 && ccys[0] === base));
+	f.bill_currency.set_description(
+		p.locked_currency ? __("Piutang customer ini dalam {0}: invoice wajib {0}.", [p.locked_currency]) : ""
+	);
+	const prev = read_kurs(d);
+	const need = currency_plan(d, p).need;
+	f.kurs_html.$wrapper.html(
+		need.length
+			? `<div style="font-size:13px;margin-bottom:4px;color:var(--text-muted);">${__("Kurs ke {0}", [base])}</div>` +
+					need
+						.map(
+							(c) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+								<span style="width:70px;"><b>1 ${frappe.utils.escape_html(c)}</b> =</span>
+								<input type="text" class="form-control oak-kurs" data-ccy="${frappe.utils.escape_html(c)}"
+									style="max-width:180px;" value="${prev[c] || p.kurs[c] || ""}">
+								<span>${frappe.utils.escape_html(base)}</span>
+							</div>`
+						)
+						.join("")
+			: ""
+	);
+}
+
+function read_kurs(d) {
+	const out = {};
+	d.$wrapper.find(".oak-kurs").each((_, el) => {
+		const v = container_depot.parse_smart($(el).val())[1];
+		if (v) out[$(el).data("ccy")] = v;
+	});
+	return out;
+}
+
+// Only what the filters leave on screen is billed: a row filtered out is not picked.
 function selected_keys(d) {
 	return d.$wrapper
-		.find(".oak-bill-row:checked")
+		.find(".oak-bill-tr:not(.oak-bill-off) .oak-bill-row:checked")
 		.map((_, el) => $(el).data("key"))
 		.get();
 }
 
 // Totals are recomputed from the ticked rows rather than taken from the preview response,
 // so the figure under the table always matches what the primary action will bill.
-function wire_picker(d, rows) {
+function wire_picker(d, rows, p) {
 	const $w = d.$wrapper;
 	const by_key = Object.fromEntries(rows.map((r) => [r.key, r]));
 
@@ -145,6 +257,8 @@ function wire_picker(d, rows) {
 			totals[r.currency] = (totals[r.currency] || 0) + r.amount;
 		}
 		const ccys = Object.keys(totals);
+		d.ccys = ccys;
+		render_currency_block(d, p);
 		const lines = ccys
 			.map(
 				(c) =>
@@ -152,56 +266,65 @@ function wire_picker(d, rows) {
 					 <td style="padding:3px 8px;text-align:right;">${money(totals[c], c)}</td></tr>`
 			)
 			.join("");
-		const multi =
-			ccys.length > 1
-				? `<div class="alert alert-warning" style="margin:8px 0 0;">${__(
-						"Pilihan ini memuat {0} mata uang, jadi akan dibuat {0} Sales Invoice dengan <b>Nomor Tagihan yang sama</b> — satu dokumen per mata uang. Cetakannya tetap satu PDF, satu halaman per mata uang.",
-						[ccys.length]
-				  )}</div>`
-				: "";
 		$w.find(".oak-bill-summary").html(
 			keys.length
 				? `<div style="color:var(--text-muted);margin-bottom:4px;">${__("{0} order dipilih · nilai belum PPN", [
 						keys.length,
 				  ])}</div>
-				   <table class="table table-bordered" style="margin:0;"><tbody>${lines}</tbody></table>${multi}`
+				   <table class="table table-bordered" style="margin:0;"><tbody>${lines}</tbody></table>`
 				: `<div style="color:var(--text-muted);">${__("Belum ada order yang dipilih.")}</div>`
 		);
-		// A section box reflects its rows: checked only when every row under it is.
-		$w.find(".oak-bill-section").each((_, el) => {
-			const $sec = $(el);
-			const $rows = $sec.closest("tr").nextUntil("tr:has(.oak-bill-section)").find(".oak-bill-row");
-			$sec.prop("checked", $rows.length && $rows.filter(":checked").length === $rows.length);
-		});
 	}
 
-	$w.on("change", ".oak-bill-row", refresh);
-	$w.on("change", ".oak-bill-section", function () {
-		const on = $(this).prop("checked");
-		$(this).closest("tr").nextUntil("tr:has(.oak-bill-section)").find(".oak-bill-row").prop("checked", on);
+	// Search and the date range hide rows (and so leave them out of the bill); the two
+	// buttons act on what is left. The orders already on the draft always stay in view:
+	// hiding one would drop it from the invoice without anyone unticking it.
+	d.apply_filters = () => {
+		const q = ($w.find(".oak-bill-search").val() || "").trim().toLowerCase();
+		const from = d.get_value("from_date");
+		const to = d.get_value("to_date");
+		$w.find(".oak-bill-tr:not(.oak-bill-cur)").each((_, tr) => {
+			const date = $(tr).attr("data-date");
+			const on =
+				(!q || $(tr).attr("data-search").includes(q)) &&
+				(!date || ((!from || date >= from) && (!to || date <= to)));
+			$(tr).toggleClass("oak-bill-off", !on).toggle(on);
+		});
 		refresh();
-	});
+	};
+	$w.on("input", ".oak-bill-search", d.apply_filters);
+	$w.on("change", ".oak-bill-row", refresh);
 	$w.on("click", ".oak-bill-all", (e) => {
 		e.preventDefault();
-		$w.find(".oak-bill-row").prop("checked", true);
+		$w.find(".oak-bill-tr:not(.oak-bill-off) .oak-bill-row").prop("checked", true);
 		refresh();
 	});
 	$w.on("click", ".oak-bill-none", (e) => {
 		e.preventDefault();
-		$w.find(".oak-bill-row").prop("checked", false);
+		$w.find(".oak-bill-tr:not(.oak-bill-off) .oak-bill-row").prop("checked", false);
 		refresh();
 	});
 	refresh();
 }
 
-function run_fill(frm, keys) {
+function run_fill(frm, keys, currency, kurs) {
 	frappe.call({
 		method: "container_depot.consolidated_billing.fill_invoice",
 		args: {
 			customer: frm.doc.customer,
+			categories: type_categories(frm),
 			keys: JSON.stringify(keys),
-			// Only an already-generated draft is re-run in place; a fresh form just creates.
-			sales_invoice: frm.doc.depot_billed_sources && !frm.is_new() ? frm.doc.name : null,
+			currency: currency || null,
+			kurs: JSON.stringify(kurs || {}),
+			// A saved draft is edited in place; an unsaved form raises a new invoice.
+			sales_invoice: saved_draft(frm),
+			// What the form already says: an unsaved form is left behind for the new invoice.
+			header: JSON.stringify({
+				branch: frm.doc.branch,
+				customer_address: frm.doc.customer_address,
+				posting_date: frm.doc.posting_date,
+				depot_invoice_type: frm.doc.depot_invoice_type,
+			}),
 		},
 		freeze: true,
 		freeze_message: __("Membuat invoice…"),
@@ -212,14 +335,88 @@ function run_fill(frm, keys) {
 				frappe.msgprint({ title: __("Tidak ada yang ditagih"), indicator: "blue" });
 				return;
 			}
-			frappe.show_alert({
-				message: __("{0} invoice dibuat · Nomor Tagihan {1}", [invoices.length, out.group]),
-				indicator: "green",
-			});
-			// The re-run discarded this document and built new ones, so there is nothing here
-			// to refresh — go to the first of the freshly created set.
+			if (invoices[0] === frm.doc.name) {
+				frappe.show_alert({ message: __("Order invoice diperbarui"), indicator: "green" });
+				frm.reload_doc();
+				return;
+			}
+			frappe.show_alert({ message: __("Invoice {0} dibuat", [invoices[0]]), indicator: "green" });
 			frappe.set_route("Form", "Sales Invoice", invoices[0]);
 		},
+	});
+}
+
+// Attachment / Paid Attachment: several files each. They are the invoice's own File
+// attachments (also in the sidebar), grouped by attached_to_field — the hidden Attach field.
+const ATTACH_BOXES = { depot_attachment: __("Attachment"), depot_paid_attachment: __("Paid Attachment") };
+function render_attachments(frm) {
+	const esc = frappe.utils.escape_html;
+	const boxes = Object.entries(ATTACH_BOXES).filter(([key]) => frm.fields_dict[key + "_html"]);
+	const paint = (files) => {
+		for (const [key, label] of boxes) {
+			const $w = frm.fields_dict[key + "_html"].$wrapper;
+			const head = `<label class="control-label" style="padding-right:0;">${label}</label>`;
+			if (frm.is_new()) {
+				$w.html(`${head}<div class="text-muted small">${__("Simpan dulu untuk melampirkan file.")}</div>`);
+				continue;
+			}
+			const rows = (files[key] || [])
+				.map(
+					(f) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
+						<a href="${encodeURI(f.file_url)}" target="_blank" style="overflow:hidden;text-overflow:ellipsis;">${esc(f.file_name || f.file_url)}</a>
+						<a href="#" class="text-muted oak-att-del" data-name="${esc(f.name)}" title="${__("Hapus")}">&times;</a>
+					</div>`
+				)
+				.join("");
+			$w.html(`${head}<div style="margin-bottom:6px;">${rows}</div>
+				<button class="btn btn-xs btn-default oak-att-add">${__("Tambah file")}</button>`);
+			$w.find(".oak-att-add").on("click", () =>
+				new frappe.ui.FileUploader({
+					doctype: frm.doctype,
+					docname: frm.docname,
+					fieldname: key,
+					allow_multiple: true,
+					on_success: () => render_attachments(frm),
+				})
+			);
+			$w.find(".oak-att-del").on("click", (e) => {
+				e.preventDefault();
+				const fid = $(e.currentTarget).data("name");
+				frappe.confirm(__("Hapus file ini?"), () =>
+					frappe
+						.xcall("frappe.desk.form.utils.remove_attach", { fid, dt: frm.doctype, dn: frm.docname })
+						.then(() => render_attachments(frm))
+				);
+			});
+		}
+	};
+	if (frm.is_new()) return paint({});
+	frappe
+		.xcall("container_depot.invoicing.invoice_attachments", { sales_invoice: frm.doc.name })
+		.then((files) => paint(files || {}));
+}
+
+// Sumber Tagihan tab (erp_cakra's Connection tab): what this invoice bills, order by order.
+function render_sources(frm) {
+	const $w = frm.fields_dict.depot_sources_html.$wrapper;
+	if (!frm.doc.depot_billed_sources || frm.is_new()) return $w.empty();
+	frappe.call("container_depot.consolidated_billing.invoice_sources", { sales_invoice: frm.doc.name }).then((r) => {
+		const esc = frappe.utils.escape_html;
+		const rows = (r.message || [])
+			.map(
+				(s) => `<tr>
+					<td>${esc(__(s.doctype))}</td>
+					<td><a href="${frappe.utils.get_form_link(s.doctype, s.name)}">${esc(s.name)}</a></td>
+					<td>${esc(s.reff_doc || "")}</td>
+					<td>${esc(s.tank || "")}</td>
+					<td style="text-align:right;">${Object.entries(s.amounts).map(([c, a]) => money(a, c)).join("<br>")}</td>
+				</tr>`
+			)
+			.join("");
+		$w.html(`<table class="table table-bordered" style="margin:0;">
+			<thead><tr><th>${__("Jenis")}</th><th>${__("Nomor")}</th><th>${__("Reff Doc")}</th><th>${__("Tank")}</th>
+				<th style="text-align:right;">${__("Nominal")}</th></tr></thead>
+			<tbody>${rows}</tbody></table>`);
 	});
 }
 
@@ -242,169 +439,357 @@ frappe.ui.form.on("Sales Invoice", {
 	onload(frm) {
 		// Remember the party we were opened with, so a cancelled reset can put it back.
 		frm.doc.__onload_customer = frm.doc.customer;
+		// Invoice Date (posting_date) is always editable; ERPNext locks it unless this is on.
+		// Older drafts were saved with it off (the server forces it on too: header_rules).
+		if (frm.doc.docstatus === 0) frm.doc.set_posting_time = 1;
 	},
 
-	customer: reset_on_customer_change,
+	customer(frm) {
+		reset_on_customer_change(frm);
+		// Payment Term (a label) starts as the customer's contract states it.
+		if (frm.doc.docstatus !== 0 || !frm.doc.customer) return;
+		frappe
+			.call("container_depot.invoicing.contract_payment_term", { customer: frm.doc.customer })
+			.then((r) => r.message && frm.set_value("depot_payment_term", r.message));
+	},
+
+	// Customer first, then the type: picking it opens the order list straight away.
+	depot_invoice_type(frm) {
+		const t = frm.doc.depot_invoice_type;
+		if (!t || t === "Manual" || frm.doc.docstatus !== 0 || frm.doc.depot_billed_sources) return;
+		if (!frm.doc.customer) {
+			frappe.show_alert({ message: __("Isi Customer dulu untuk memilih order."), indicator: "orange" });
+			return;
+		}
+		preview_then_fill(frm);
+	},
+
+	setup(frm) {
+		// No "Get Items From": depot invoices are filled by Ambil Tagihan or typed by hand.
+		// ERPNext builds the whole dropdown in this one method, on refresh and on is_return.
+		frm.cscript.toggle_get_items = () => {};
+		// With editable_grid off, Frappe renders ERPNext's item card template (item_grid.html:
+		// Rate / Amount plus stacked details) instead of the columns. The M&R grid has none.
+		frm.fields_dict.items.grid.template = null;
+		// A line's rate is Harga × kurs, nothing else. ERPNext's item fetch, price-list and
+		// margin handlers all derive rate from the Price List through this one method (by
+		// plain assignment, no event), which billed a no-contract item at list price.
+		frm.cscript.apply_pricing_rule_on_item = (item) => line_rate(frm, item.doctype, item.name);
+		// The contract defaults go on AFTER ERPNext's own item fetch: in v16 that is a server
+		// round trip (process_item_selection) whose returned doc overwrites the row, so
+		// defaults applied first were wiped and the Price List rate billed instead. Calling
+		// ERPNext first puts its request in flight, and item_defaults waits for it.
+		const item_code = frm.cscript.item_code;
+		frm.cscript.item_code = function (doc, cdt, cdn) {
+			const out = item_code.apply(this, arguments);
+			item_defaults(frm, cdt, cdn);
+			return out;
+		};
+		// Create menu: the depot ships no goods (Delivery Note), does no factoring (Invoice
+		// Discounting) and runs no after-sales visits (Maintenance Schedule). ERPNext adds these
+		// in its cscript refresh, which runs after ours, so they come off right behind it.
+		// Same for Due Date's asterisk: left empty, the server fills it (the customer's Payment
+		// Terms, else the Invoice Date: SalesInvoice.set_missing_values).
+		const refresh = frm.cscript.refresh;
+		frm.cscript.refresh = function () {
+			const out = refresh.apply(this, arguments);
+			frm.toggle_reqd("due_date", false);
+			for (const label of ["Delivery Note", "Invoice Discounting", "Maintenance Schedule"]) {
+				frm.remove_custom_button(label, "Create");
+			}
+			return out;
+		};
+		// Ending an invoice is ONE red "Cancel", as on every depot form (cancel_button.js, user
+		// 2026-09-29): see refresh. So the "…" menu loses Discard and Delete, Frappe's grey Cancel
+		// goes, and so do the editor conveniences. Filtered where Frappe adds them, so their
+		// shortcuts go as well; the menu is rebuilt on every refresh_header. Duplicate is off
+		// natively (allow_copy).
+		const hidden_menu = new Set([
+			...["Discard", "Delete", "Toggle Sidebar", "Jump to field", "Show Links", "Copy to Clipboard",
+				"Remind Me", "Undo", "Redo", "Customize", "Edit DocType"].map((l) => __(l)),
+			__("New {0}", [__(frm.doctype)]),
+		]);
+		const add_menu_item = frm.page.add_menu_item;
+		frm.page.add_menu_item = function (label, ...rest) {
+			if (!hidden_menu.has(label)) return add_menu_item.call(this, label, ...rest);
+		};
+		if (frm.toolbar) frm.toolbar.can_cancel = () => false;
+		// Cancel must not offer to cancel the orders too ("Cancel All"): our on_cancel hooks
+		// unlink them (resync_booking_on_invoice_cancel, rollback_billed_sources) before
+		// Frappe's back-link check. Merged on every assignment: ERPNext's onload replaces the
+		// list and, on a cold open, lands after our refresh.
+		const keep = (list) => [...new Set([...(list || []), "Container Booking", "Cleaning Order"])];
+		let ignored = keep(frm.ignore_doctypes_on_cancel_all);
+		Object.defineProperty(frm, "ignore_doctypes_on_cancel_all", {
+			configurable: true,
+			get: () => ignored,
+			set: (list) => (ignored = keep(list)),
+		});
+	},
 
 	refresh(frm) {
-		if (frm.doc.docstatus === 0) {
-			const label = frm.doc.depot_billed_sources
-				? __("Ambil Tagihan Ulang")
-				: __("Ambil Tagihan");
-			frm.add_custom_button(label, () => {
-				if (!frm.doc.customer) {
-					frappe.msgprint({
-						title: __("Pilih Customer"),
-						message: __("Isi <b>Customer</b> dulu — tagihan dikumpulkan per customer."),
-						indicator: "orange",
-					});
-					return;
-				}
-				preview_then_fill(frm);
-			}).addClass("btn-primary");
+		lock_billed_lines(frm);
+		charge_hints(frm);
+		render_sources(frm);
+		render_attachments(frm);
+		// Required on the form; the picker only offers the user's own branches (User
+		// Permission on Branch). System drafts may still lack one — submit refuses them.
+		frm.toggle_reqd("branch", true);
+		// ponytail: required on the form only. Drafts the system raises for a customer with no
+		// Address still insert; add a before_submit check (like check_branch) if API submits matter.
+		frm.toggle_reqd("customer_address", true);
+		// Picked first; fixed once orders of that type are on the invoice (to change it: Cancel,
+		// which gives the orders back). Old drafts may still pick.
+		frm.toggle_reqd("depot_invoice_type", true);
+		frm.toggle_enable("depot_invoice_type", !(frm.doc.depot_billed_sources && frm.doc.depot_invoice_type));
+		// Like the M&R picker: the whole catalogue, most-used first.
+		// Set on refresh because ERPNext's selling controller sets its own on onload.
+		frm.set_query("item_code", "items", () => ({ query: "container_depot.invoicing.invoice_item_query" }));
+		// One red Cancel, first in the toolbar like on every depot form: a draft is discarded
+		// (kept, Cancelled), a submitted invoice cancelled. Both give the orders back
+		// (on_discard / on_cancel: rollback_billed_sources); a paid one refuses (check_no_payments).
+		if (!frm.is_new() && frm.doc.docstatus === 0 && frm.perm[0].write) {
+			container_depot.cancel_button(frm, () => frm._discard());
+		} else if (frm.doc.docstatus === 1 && frm.perm[0].cancel) {
+			container_depot.cancel_button(frm, () => frm.savecancel());
 		}
-
-		if (!frm.doc.depot_billed_sources) return; // only generated invoices
-
-		if (frm.doc.depot_bill_group) {
-			frm.add_custom_button(__("Lihat Satu Tagihan"), () =>
-				frappe.set_route("List", "Sales Invoice", { depot_bill_group: frm.doc.depot_bill_group })
-			);
-		}
-
-		frm.set_intro(
-			__(
-				"Faktur ini dibuat lewat Generate — item terkunci (tidak bisa diubah/dihapus). " +
-					"Untuk membatalkan, pakai tombol Batalkan & Kembalikan Order: semua order kembali " +
-					"ke status belum di-invoice dan bisa di-generate ulang."
-			),
-			"blue"
-		);
-
-		// These stand in for Frappe's own Delete and Cancel, which are permission-gated —
-		// so these are too, on the same rights. savetrash()/savecancel() would be refused
-		// server-side anyway; the point is not to offer a red button that cannot work.
-		if (frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, "delete")) {
-			// Draft → discard (delete). on_trash rolls the orders back and unblocks the delete.
-			frm.add_custom_button(__("Batalkan & Kembalikan Order"), () => frm.savetrash())
-				.removeClass("btn-default")
-				.addClass("btn-danger");
-		} else if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, "cancel")) {
-			// Submitted → cancel. on_cancel rolls the orders back.
-			frm.add_custom_button(__("Cancel & Kembalikan Order"), () => frm.savecancel())
-				.removeClass("btn-default")
-				.addClass("btn-danger");
-		}
+		// Pilih Order is a Button field under Invoice Type (install.py), not a toolbar button.
+		frm.set_df_property("depot_get_bill", "label", frm.doc.depot_billed_sources ? __("Tambah / Lepas Order") : __("Pilih Order"));
+		// Styled like the items grid's "Add row" (user, 2026-09-29); Frappe has no Button colour for it.
+		frm.fields_dict.depot_get_bill?.$input?.removeClass("btn-default").addClass("btn-secondary");
 	},
+
+	depot_get_bill: preview_then_fill,
+	// Print Rate is to IDR, like every kurs here; the print divides by it (OAK Invoice).
+	depot_print_currency(frm) {
+		const ccy = frm.doc.depot_print_currency;
+		if (!ccy || ccy === frm.doc.currency) return frm.set_value("depot_print_rate", 0);
+		frappe
+			.call("container_depot.invoicing.kurs_idr", { currency: ccy, date: frm.doc.posting_date })
+			.then((r) => frm.set_value("depot_print_rate", flt(r.message)));
+	},
+	depot_view_bill_group(frm) {
+		frappe.set_route("List", "Sales Invoice", { depot_bill_group: frm.doc.depot_bill_group });
+	},
+	// Draft: discard, on_trash rolls the orders back. Submitted: cancel, on_cancel does.
 });
 
-// --- Labour (manhour) -------------------------------------------------------------
-// Each line carries the manhour its contract books; the hours never touch that line's own
-// amount. The header totals them and charges them once:
+// --- Charges: labour, discount, PPN / PPh / Materai -----------------------------------
+// The server rebuilds all of this on save (invoicing.build_charges). This mirrors it so the
+// totals move as the user types instead of only after Save:
 //
-//     Total = Total Price + (Total Manhour × Hour)
+//     Net Total -> Manhour (Actual) -> PPN / PPh on (Net Total + Manhour) -> Materai
 //
-// Each item line carries the manhour its contract books (a column in the items grid). The
-// hours never touch that line's price; they are totalled under Total / Net Total and charged
-// once, as a "Manhour" row at the TOP of the tax table — first, so a percentage tax below it
-// lands on services + labour alike:
-//
-//     Total Price + Biaya Manhour  ->  tax on that sum  ->  Grand Total
-//
-// The row is created/updated here as you type so the Grand Total moves immediately; the
-// server writes the same numbers authoritatively on save (invoicing.apply_manhour_charge).
+// Each line carries its labour TARIFF per hour (never scaled by qty, never in its amount);
+// the header totals them and, with Tagih Manhour ticked, charges them once × Total Jam.
 const MANHOUR_CHARGE = "Manhour";
+const MANAGED_CHARGES = [MANHOUR_CHARGE, "PPN", "PPh 23", "Materai"];
 
-// Labour posts exactly where the item lines do — same revenue, just charged once as a flat
-// amount instead of per unit. Reading it off the lines (rather than resolving an account of
-// its own) means the two can never drift apart, and costs no server round-trip.
+// Labour posts exactly where the item lines do — same revenue, charged once as a flat amount.
 function item_posting(frm) {
 	const item = (frm.doc.items || []).find((i) => i.income_account);
 	return item ? { account: item.income_account, cost_center: item.cost_center } : null;
 }
 
-async function recalc_manhour(frm) {
-	// Manhour does NOT scale with qty — that is what sets it apart from the rate. The rate
-	// is per unit and multiplied by qty; the manhours are summed as they stand, and the
-	// SUM is multiplied by Hour, once.
-	let hours = 0;
-	for (const row of frm.doc.items || []) hours += flt(row.manhour);
-	const amount = hours * flt(frm.doc.manhour_hour);
-	frm.set_value("total_manhour", hours);
-	frm.set_value("manhour_amount", amount);
+// Tax accounts come from Depot Finance Settings; fetched once per form.
+function tax_accounts(frm) {
+	if (frm.__oak_tax_accounts) return Promise.resolve(frm.__oak_tax_accounts);
+	return frappe
+		.call("container_depot.invoicing.tax_accounts", { company: frm.doc.company })
+		.then((r) => (frm.__oak_tax_accounts = r.message || {}));
+}
 
-	let row = (frm.doc.taxes || []).find((t) => (t.description || "").trim() === MANHOUR_CHARGE);
-	if (!amount) {
-		if (row) {
-			// Put back what inserting the row changed, or the percentage below it would be
-			// left charging "On Previous Row Total" against a row that no longer exists.
-			for (const t of frm.doc.taxes || []) {
-				if (t.charge_type === "On Previous Row Total" && cint(t.row_id) === cint(row.idx)) {
-					t.charge_type = "On Net Total";
-					t.row_id = null;
-				}
-			}
-			frm.get_field("taxes").grid.grid_rows_by_docname[row.name].remove();
-			frm.refresh_field("taxes");
-		}
-		return;
-	}
-	if (!row) {
-		const posting = item_posting(frm);
-		if (!posting) return; // no income account on the lines yet — the server will report it
-		row = frm.add_child("taxes", {
+async function rebuild_charges(frm) {
+	if (frm.doc.docstatus !== 0) return;
+	const acc = await tax_accounts(frm);
+	// Σ the lines' labour tariffs (each in its own currency, through its kurs) × Total Jam when
+	// Tagih Manhour is ticked, as invoicing.apply_manhour_charge does on save.
+	const conv = flt(frm.doc.conversion_rate) || 1;
+	let tariff = 0;
+	for (const row of frm.doc.items || []) tariff += (flt(row.manhour) * (flt(row.depot_kurs) || conv)) / conv;
+	const labour = frm.doc.depot_bill_manhour ? tariff * flt(frm.doc.manhour_hour) : 0;
+	frm.doc.total_manhour = tariff;
+	frm.doc.manhour_amount = labour;
+
+	const [dmode, dnum] = container_depot.parse_smart(frm.doc.discount_input);
+	frm.doc.apply_discount_on = "Net Total";
+	frm.doc.additional_discount_percentage = dmode === "pct" ? dnum : 0;
+	frm.doc.discount_amount = dmode === "amt" ? dnum : 0;
+
+	const managed_accounts = [acc.ppn, acc.pph, acc.materai].filter(Boolean);
+	const kept = (frm.doc.taxes || []).filter(
+		(t) => !MANAGED_CHARGES.includes((t.description || "").trim()) && !managed_accounts.includes(t.account_head)
+	);
+	const posting = item_posting(frm);
+	const rows = [];
+	if (labour && posting) {
+		rows.push({
 			charge_type: "Actual",
 			description: MANHOUR_CHARGE,
 			account_head: posting.account,
-			tax_amount: 0,
-			// ERPNext will not book a Profit-and-Loss account without a Cost Center, so the
-			// row carries the lines' one too.
 			cost_center: posting.cost_center,
+			tax_amount: labour,
 		});
-		// Move it to the front and repoint any Net-Total percentage at it, exactly as the
-		// server does — otherwise the previewed total would differ from the saved one.
-		frm.doc.taxes = [row, ...frm.doc.taxes.filter((t) => t.name !== row.name)];
-		frm.doc.taxes.forEach((t, i) => (t.idx = i + 1));
-		for (const t of frm.doc.taxes) {
-			if (t.charge_type === "On Net Total") {
-				t.charge_type = "On Previous Row Total";
-				t.row_id = 1;
-			}
-		}
-		frm.refresh_field("taxes");
 	}
-	if (flt(row.tax_amount) !== amount) {
-		// Through the model so ERPNext's own handler re-totals the document.
-		frappe.model.set_value(row.doctype, row.name, "tax_amount", amount);
-	}
+	// Percentages stand on Net Total + labour when there is labour: "running total after row 1".
+	const basis = rows.length ? { charge_type: "On Previous Row Total", row_id: "1" } : { charge_type: "On Net Total" };
+	const add = (desc, account, mode, num, sign) => {
+		if (!num || !account) return;
+		const row = { description: desc, account_head: account, cost_center: posting && posting.cost_center };
+		if (mode === "pct") Object.assign(row, basis, { rate: sign * num });
+		else Object.assign(row, { charge_type: "Actual", tax_amount: sign * num });
+		rows.push(row);
+	};
+	if (!frm.doc.ignore_tax) add("PPN", acc.ppn, ...container_depot.parse_smart(frm.doc.tax_input), 1);
+	add("PPh 23", acc.pph, ...container_depot.parse_smart(frm.doc.pph_input), -1);
+	add("Materai", acc.materai, "amt", flt(frm.doc.materai), 1);
+
+	const kept_rows = kept.map((t) => {
+		const r = Object.assign({}, t);
+		delete r.name;
+		delete r.idx;
+		if (r.charge_type === "On Net Total") Object.assign(r, basis);
+		return r;
+	});
+	frm.clear_table("taxes");
+	for (const r of rows.concat(kept_rows)) frm.add_child("taxes", r);
+	frm.refresh_fields(["taxes", "total_manhour", "manhour_amount"]);
+	if (frm.cscript.calculate_taxes_and_totals) await frm.cscript.calculate_taxes_and_totals();
+	charge_hints(frm);
 }
 
-// Deleting the labour row in the grid is how a user says "don't bill labour on this
-// invoice". The row is derived, so on its own the deletion would not survive the next
-// recalc — zero the multiplier instead, which is what the server does too (see
-// invoicing._charge_row_deleted) and what typing an Hour again undoes.
-function honour_manhour_row_delete(frm) {
-	if (!flt(frm.doc.manhour_hour)) return; // already off — nothing to honour
-	if (!(frm.doc.items || []).some((i) => flt(i.manhour))) return; // no labour to bill
-	if ((frm.doc.taxes || []).some((t) => (t.description || "").trim() === MANHOUR_CHARGE)) return;
-	frm.set_value("manhour_hour", 0); // -> recalc_manhour: amount 0, so the row stays out
-	frappe.show_alert({
-		message: __("Biaya Manhour dihapus — Hour diset 0. Isi Hour lagi untuk menagihkannya kembali."),
-		indicator: "orange",
-	});
+// The erp_cakra hint: what each box came to, "= Rp X", under it. Read off the (hidden) tax
+// rows, so a saved or submitted invoice shows exactly what it charged.
+function charge_hints(frm) {
+	const charged = (match) =>
+		(frm.doc.taxes || []).filter((t) => match((t.description || "").trim())).reduce((s, t) => s + flt(t.tax_amount), 0);
+	const hint = (field, amount, filled) =>
+		frm.set_df_property(
+			field,
+			"description",
+			filled ? "= " + format_currency(amount, frm.doc.currency) : __('Ketik mis. "10%" atau "50000"')
+		);
+	hint("discount_input", frm.doc.discount_amount, frm.doc.discount_input);
+	hint("pph_input", -charged((d) => d === "PPh 23"), frm.doc.pph_input);
+	if (frm.doc.ignore_tax) frm.set_df_property("tax_input", "description", __("PPN tidak ditagih (Tanpa PPN)"));
+	else hint("tax_input", charged((d) => d.startsWith("PPN")), frm.doc.tax_input); // "PPN 11%": old template rows
+}
+
+// --- Per-line currency -------------------------------------------------------------------
+// rate = Harga × Kurs IDR baris / Kurs IDR invoice. A line in the invoice currency takes the
+// invoice kurs and its price as-is. The server does the same on save (invoicing.build_charges).
+function line_rate(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (!row) return;
+	if (!row.depot_currency) row.depot_currency = frm.doc.currency;
+	let rate;
+	if (row.depot_currency === frm.doc.currency) {
+		row.depot_kurs = flt(frm.doc.conversion_rate) || 1;
+		rate = flt(row.depot_price);
+	} else {
+		rate = (flt(row.depot_price) * flt(row.depot_kurs)) / (flt(frm.doc.conversion_rate) || 1);
+	}
+	if (flt(row.rate) !== flt(rate)) frappe.model.set_value(cdt, cdn, "rate", rate);
+	else frm.refresh_field("items");
+}
+
+function all_line_rates(frm) {
+	for (const row of frm.doc.items || []) line_rate(frm, row.doctype, row.name);
+}
+
+function fetch_kurs(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (!row.depot_currency || row.depot_currency === frm.doc.currency) return line_rate(frm, cdt, cdn);
+	// Same currency elsewhere on the invoice: reuse its kurs so one bill has one rate per currency.
+	const twin = (frm.doc.items || []).find(
+		(r) => r.name !== row.name && r.depot_currency === row.depot_currency && flt(r.depot_kurs)
+	);
+	if (twin) {
+		row.depot_kurs = twin.depot_kurs;
+		return line_rate(frm, cdt, cdn);
+	}
+	frappe
+		.call("container_depot.invoicing.kurs_idr", { currency: row.depot_currency, date: frm.doc.posting_date })
+		.then((r) => {
+			row.depot_kurs = flt(r.message);
+			line_rate(frm, cdt, cdn);
+		});
+}
+
+// A hand-picked item starts at its contract price (in the contract's currency), with the labour
+// tariff the contract row states. Only a starting point, like on the orders: edit freely. Waits for
+// ERPNext's own item fetch so that one cannot land on top of it, and re-reads the row after
+// it, since that fetch may have replaced the row object.
+function item_defaults(frm, cdt, cdn) {
+	const picked = locals[cdt][cdn];
+	if (!picked.item_code || picked.depot_source) return;
+	frappe.after_ajax(() =>
+		frappe
+			.call("container_depot.invoicing.item_defaults", {
+				customer: frm.doc.customer,
+				item_code: picked.item_code,
+				currency: frm.doc.currency,
+				posting_date: frm.doc.posting_date,
+			})
+			.then((r) => {
+				const d = r.message || {};
+				const row = locals[cdt][cdn];
+				if (!row || row.item_code !== picked.item_code) return; // re-picked meanwhile
+				Object.assign(row, {
+					depot_currency: d.depot_currency || frm.doc.currency,
+					depot_price: flt(d.depot_price),
+					depot_kurs: flt(d.depot_kurs),
+					manhour: flt(d.manhour),
+				});
+				line_rate(frm, cdt, cdn);
+				rebuild_charges(frm);
+			})
+	);
+}
+
+// Lines billed from an order are locked server-side; show them read-only in the grid too.
+const LOCKED_LINE_FIELDS = ["item_code", "qty", "depot_price", "depot_currency", "manhour"];
+function lock_billed_lines(frm) {
+	for (const row of frm.doc.items || []) {
+		if (!row.depot_source) continue;
+		for (const f of LOCKED_LINE_FIELDS) {
+			const df = frappe.meta.get_docfield(row.doctype, f, row.name);
+			if (df) df.read_only = 1;
+		}
+	}
 }
 
 frappe.ui.form.on("Sales Invoice", {
-	// No `company` handler any more: the charge row reads its account off the item lines
-	// every time, so there is no cached per-company account left to invalidate.
-	manhour_hour: recalc_manhour,
-	// Single-row delete and the grid's multi-select delete fire different events.
-	taxes_remove: honour_manhour_row_delete,
-	taxes_delete: honour_manhour_row_delete,
+	// ERPNext fetches the new currency's conversion_rate itself; re-derive after it lands.
+	currency: (frm) => frappe.after_ajax(() => all_line_rates(frm)),
+	conversion_rate(frm) {
+		all_line_rates(frm);
+		rebuild_charges(frm);
+	},
+	manhour_hour: rebuild_charges,
+	depot_bill_manhour: rebuild_charges,
+	discount_input: rebuild_charges,
+	tax_input: rebuild_charges,
+	ignore_tax: rebuild_charges,
+	pph_input: rebuild_charges,
+	materai: rebuild_charges,
+	// A line is filled in its own form, as on the M&R (editable_grid 0, install.py): labelled
+	// "Tutup", no Insert Above / Below.
+	items_on_form_rendered(frm) {
+		container_depot.grid_row_form(frm, "items");
+	},
 });
 
 frappe.ui.form.on("Sales Invoice Item", {
-	manhour: (frm) => recalc_manhour(frm),
-	qty: (frm) => recalc_manhour(frm),
-	items_remove: (frm) => recalc_manhour(frm),
+	depot_price: line_rate,
+	depot_kurs: line_rate,
+	depot_currency: fetch_kurs,
+	// The set_value route to the same thing (apply_pricing_rule_on_item covers the rest).
+	rate(frm, cdt, cdn) {
+		line_rate(frm, cdt, cdn);
+		rebuild_charges(frm);
+	},
+	manhour: (frm) => rebuild_charges(frm),
+	qty: (frm) => rebuild_charges(frm),
+	items_remove: (frm) => rebuild_charges(frm),
 });

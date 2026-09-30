@@ -46,6 +46,7 @@ COLUMNS = [
 	"Pelanggan",         # customer (Accurate code — see CUSTOMER_CODE_MAP)
 	"Termin",            # payment terms
 	"Mata Uang",         # currency
+	"Kurs",              # IDR per unit of the invoice currency (1 for IDR)
 	"Cabang",            # branch / depot
 	"Keterangan Faktur", # header remark
 	"Kode Barang",       # item code (Accurate code — see CODE_MAP)
@@ -56,6 +57,10 @@ COLUMNS = [
 	"Diskon (%)",        # line discount percent
 	"Kode Pajak",        # tax code (see TAX_CODE)
 	"Keterangan Detail", # line remark
+	"Diskon Faktur",     # invoice-level discount amount (header, repeated per line)
+	"Nilai PPN",         # PPN amount (header, repeated per line)
+	"PPh 23",            # PPh 23 withheld, positive (header, repeated per line)
+	"Materai",           # stamp duty (header, repeated per line)
 ]
 
 
@@ -87,16 +92,27 @@ def _collect_invoices(from_date, to_date, branch=None, invoices=None):
 
 def _rows_for_invoice(name):
 	"""One export row per Sales Invoice item line."""
+	from container_depot import invoicing
+
 	si = frappe.get_doc("Sales Invoice", name)
-	has_tax = bool(getattr(si, "taxes", None))
+
+	def charge(desc):
+		return sum(flt(t.tax_amount) for t in si.taxes if (t.description or "").strip() == desc)
+
+	ppn = charge(invoicing.PPN_CHARGE)
 	header = {
 		"No. Faktur": si.name,
 		"Tanggal Faktur": formatdate(si.posting_date, "dd/MM/yyyy"),
 		"Pelanggan": CUSTOMER_CODE_MAP.get(si.customer, si.customer),
-		"Termin": si.get("payment_terms_template") or "",
+		"Termin": si.get("depot_payment_term") or "",
 		"Mata Uang": si.currency,
+		"Kurs": flt(si.conversion_rate) or 1,
 		"Cabang": si.get("branch") or "",
 		"Keterangan Faktur": (si.get("remarks") or "").strip(),
+		"Diskon Faktur": flt(si.get("discount_amount")),
+		"Nilai PPN": ppn,
+		"PPh 23": -charge(invoicing.PPH_CHARGE),
+		"Materai": charge(invoicing.MATERAI_CHARGE),
 	}
 	rows = []
 	for it in si.items:
@@ -108,8 +124,23 @@ def _rows_for_invoice(name):
 			"Satuan": it.get("uom") or it.get("stock_uom") or "",
 			"Harga Satuan": flt(it.rate),
 			"Diskon (%)": flt(it.get("discount_percentage")),
-			"Kode Pajak": TAX_CODE if has_tax else "",
+			"Kode Pajak": TAX_CODE if ppn else "",
 			"Keterangan Detail": (it.description or "").strip(),
+		})
+		rows.append(row)
+	# Labour is revenue charged once in the invoice header (a "Manhour" tax row in ERPNext).
+	# Accurate has no such row, so it travels as one more line: hours worked × total tariff.
+	if flt(si.get("manhour_amount")):
+		row = dict(header)
+		row.update({
+			"Kode Barang": CODE_MAP.get(invoicing.MANHOUR_CHARGE, invoicing.MANHOUR_CHARGE),
+			"Nama Barang": invoicing.MANHOUR_CHARGE,
+			"Kuantitas": flt(si.manhour_hour),
+			"Satuan": "Jam",
+			"Harga Satuan": flt(si.total_manhour),
+			"Diskon (%)": 0,
+			"Kode Pajak": TAX_CODE if ppn else "",
+			"Keterangan Detail": "",
 		})
 		rows.append(row)
 	return rows

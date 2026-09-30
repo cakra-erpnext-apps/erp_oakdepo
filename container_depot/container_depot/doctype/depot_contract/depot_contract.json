@@ -75,6 +75,7 @@
       "fieldtype": "Column Break"
     },
     {
+      "default": "Both",
       "description": "Both = the customer may transact either way; the mode is chosen per booking.",
       "fieldname": "payment_type",
       "fieldtype": "Select",
@@ -211,7 +212,7 @@
     }
   ],
   "links": [],
-  "modified": "2026-09-24 14:00:00.000000",
+  "modified": "2026-09-29 15:00:00.000000",
   "module": "Container Depot",
   "name": "Depot Contract",
   "search_fields": "customer, status",

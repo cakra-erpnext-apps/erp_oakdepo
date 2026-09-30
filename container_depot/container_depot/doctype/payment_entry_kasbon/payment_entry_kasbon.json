@@ -1,0 +1,67 @@
+{
+ "actions": [],
+ "creation": "2026-09-28 10:00:00.000000",
+ "modified": "2026-09-28 10:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "istable": 1,
+ "editable_grid": 1,
+ "module": "Container Depot",
+ "name": "Payment Entry Kasbon",
+ "field_order": [
+  "pending_cash",
+  "pay_to",
+  "grand_total",
+  "outstanding",
+  "allocated"
+ ],
+ "fields": [
+  {
+   "fieldname": "pending_cash",
+   "fieldtype": "Link",
+   "options": "Pending Cash",
+   "label": "Kasbon",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "pay_to",
+   "fieldtype": "Link",
+   "options": "Supplier",
+   "label": "Penerima",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "label": "Nominal Kasbon",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Currency",
+   "label": "Sisa",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "allocated",
+   "fieldtype": "Currency",
+   "label": "Dipakai",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Kosong = seluruh sisa kasbon."
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

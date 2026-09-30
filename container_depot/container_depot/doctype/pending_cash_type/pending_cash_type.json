@@ -1,0 +1,84 @@
+{
+ "actions": [],
+ "autoname": "field:code",
+ "creation": "2026-09-28 10:00:00.000000",
+ "modified": "2026-09-28 14:57:17.567318",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Container Depot",
+ "name": "Pending Cash Type",
+ "naming_rule": "By fieldname",
+ "title_field": "title",
+ "show_title_field_in_link": 1,
+ "search_fields": "title",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "field_order": [
+  "code",
+  "title",
+  "numbering_code",
+  "column_break_1",
+  "advance_account",
+  "disabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Kode",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Masuk ke nomor kasbon PC-{kode}-OD-26-0001. Huruf, angka, . - _"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Nama",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "numbering_code",
+   "fieldtype": "Data",
+   "label": "Kode Nomor",
+   "description": "Kosong = pakai Kode."
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "advance_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Akun Uang Muka",
+   "description": "Didebit saat Pay. Kosong = akun uang muka default Company."
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Nonaktif",
+   "default": "0"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "links": [],
+ "states": []
+}

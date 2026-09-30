@@ -11,7 +11,23 @@
   "storage_free_days",
   "storage_billing_mode",
   "column_break_storage",
-  "storage_day_count"
+  "storage_day_count",
+  "tax_section",
+  "ppn_account",
+  "pph23_account",
+  "column_break_tax",
+  "materai_account",
+  "payment_section",
+  "pay_ppn_account",
+  "pay_pph_account",
+  "column_break_payment",
+  "admin_fee_account",
+  "materai_expense_account",
+  "invoice_bank_section",
+  "invoice_bank",
+  "invoice_account_no",
+  "column_break_invoice_bank",
+  "invoice_account_name"
  ],
  "fields": [
   {
@@ -21,7 +37,7 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Aktifkan Finance (Invoicing)",
-   "description": "Matikan untuk menjalankan depo tanpa invoice: harga & biaya tetap dicatat, tapi tidak ada Sales Invoice dibuat dan pembayaran tidak memblokir gate."
+   "description": "Mati = depo jalan tanpa invoice. Biaya tetap tercatat, gate tidak menunggu pembayaran."
   },
   {
    "depends_on": "eval:!doc.enable_finance",
@@ -38,7 +54,7 @@
    "fieldname": "finance_start_date",
    "fieldtype": "Date",
    "label": "Tagih Mulai Tanggal",
-   "description": "Batas bawah penagihan. Pekerjaan sebelum tanggal ini tidak ikut tersapu saat Generate Invoice. Kosongkan untuk menagih semua riwayat."
+   "description": "Pekerjaan sebelum tanggal ini tidak ditagih. Kosong = tagih semua."
   },
   {
    "fieldname": "storage_section",
@@ -50,7 +66,7 @@
    "fieldname": "storage_free_days",
    "fieldtype": "Int",
    "label": "Free Days (default)",
-   "description": "Jumlah hari pertama tiap kunjungan yang tidak ditagih. Dihitung dari tanggal masuk, per kunjungan — bukan per bulan. Bisa ditimpa per pelanggan di Depot Contract."
+   "description": "Hari gratis di awal tiap kunjungan. Bisa ditimpa di Depot Contract."
   },
   {
    "fieldname": "column_break_storage",
@@ -62,20 +78,110 @@
    "fieldtype": "Select",
    "label": "Cara Hitung Hari",
    "options": "Hari masuk & keluar dihitung\nHari keluar tidak dihitung",
-   "description": "Tank masuk 1 Jan dan keluar 3 Jan = 3 hari (masuk & keluar dihitung) atau 2 hari (hari keluar tidak dihitung)."
+   "description": "Masuk 1 Jan, keluar 3 Jan: 3 hari (hari keluar dihitung) atau 2 hari."
   },
   {
    "fieldname": "storage_billing_mode",
    "fieldtype": "Select",
    "label": "Cara Charge Storage (default)",
    "options": "Saat Tank Keluar\nBerjalan (Periodik)",
-   "description": "Dipakai untuk tank owner yang kontraknya tidak menentukan sendiri. <b>Saat Tank Keluar</b>: tagih sekali setelah gate-out. <b>Berjalan (Periodik)</b>: tagih jalan tiap periode meski tank belum keluar.",
+   "description": "Default bila kontrak tidak mengatur. <b>Saat Tank Keluar</b>: tagih sekali setelah keluar. <b>Berjalan</b>: tagih per periode selama tank di depo.",
    "default": "Saat Tank Keluar"
+  },
+  {
+   "fieldname": "tax_section",
+   "fieldtype": "Section Break",
+   "label": "Pajak Invoice",
+   "description": "Akun PPN / PPh 23 / Materai untuk Sales Invoice. Nilainya diisi per invoice."
+  },
+  {
+   "fieldname": "ppn_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Akun PPN Keluaran",
+   "description": "Kosong = akun Tax bernama \"Keluaran\"."
+  },
+  {
+   "fieldname": "pph23_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Akun PPh 23 Dibayar Dimuka",
+   "description": "Wajib bila invoice memakai PPh 23."
+  },
+  {
+   "fieldname": "column_break_tax",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "materai_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Akun Materai",
+   "description": "Wajib bila invoice menagih Materai."
+  },
+  {
+   "fieldname": "payment_section",
+   "fieldtype": "Section Break",
+   "label": "Potongan Payment Entry",
+   "description": "Akun Potongan & Biaya di Payment Entry. Receive memakai akun PPN / PPh 23 di atas."
+  },
+  {
+   "fieldname": "pay_ppn_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "PPN Masukan (Pay)"
+  },
+  {
+   "fieldname": "pay_pph_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Hutang PPh (Pay)"
+  },
+  {
+   "fieldname": "column_break_payment",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "admin_fee_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Biaya Admin Bank"
+  },
+  {
+   "fieldname": "materai_expense_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Biaya Materai"
+  },
+  {
+   "fieldname": "invoice_bank_section",
+   "fieldtype": "Section Break",
+   "label": "Rekening di Invoice",
+   "description": "Dicetak di kotak Pembayaran (Transfer) OAK Invoice."
+  },
+  {
+   "fieldname": "invoice_bank",
+   "fieldtype": "Data",
+   "label": "Bank"
+  },
+  {
+   "fieldname": "invoice_account_no",
+   "fieldtype": "Data",
+   "label": "No. Rekening"
+  },
+  {
+   "fieldname": "column_break_invoice_bank",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "invoice_account_name",
+   "fieldtype": "Data",
+   "label": "Atas Nama"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-08-26 13:00:00.000000",
+ "modified": "2026-09-30 09:30:00.000000",
  "module": "Container Depot",
  "name": "Depot Finance Settings",
  "permissions": [

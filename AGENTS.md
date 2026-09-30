@@ -196,21 +196,38 @@ Perintahnya ada di `README.md`. Yang tidak ada di sana:
 
 Semua ini keputusan eksplisit pemilik repo. Kalau kelihatan seperti bug, baca dulu alasannya.
 
-- **Kontrak satu-satunya sumber harga.** `Depot Contract` → `Tariff Rate`. Tanpa kontrak,
-  rate **0** dan kasir yang mengetik. Tidak ada fallback ke Price List site. Menu Price
-  List / Item Price / Product Bundle sudah dihapus dan app tidak lagi menyentuh keduanya.
-- **`Sales Invoice.conversion_rate` selalu 1** dan itu disengaja (`invoicing.py`) — finance
-  yang mengganti di draft. Mengisi master Currency Exchange tidak akan berpengaruh karena
-  baris itu menimpa nilainya. Jangan pernah set 0.
+- **Kontrak satu-satunya sumber harga — tapi hanya harga AWAL.** `Depot Contract` →
+  `Tariff Rate` mengisi baris saat baris itu dibuat (order, invoice manual, kunjungan
+  storage); sesudahnya invoice menagih apa yang tertulis di order, bukan kontrak hari ini.
+  Tanpa kontrak, rate **0** dan kasir yang mengetik. Tidak ada fallback ke Price List site.
+- **Kurs selalu ke IDR, dan buku besar IDR benar** (sejak 2026-09-28; sebelumnya
+  `conversion_rate` sengaja 1). Tiap baris Sales Invoice menyimpan mata uang, harga dan
+  kurs-ke-IDR-nya sendiri (`depot_currency` / `depot_price` / `depot_kurs`); rate invoice =
+  Harga × kurs baris / kurs invoice (`invoicing.build_charges`). Default kurs dari master
+  Currency Exchange, boleh diubah per invoice. Invoice valas tidak bisa di-submit di kurs 1
+  (`invoicing.check_kurs`). Jangan pernah set 0.
 - **Picker item terbuka ke seluruh katalog**, tidak disaring kontrak. Item di luar kontrak
   tetap tampil dengan rate 0. Urutannya "sering dipakai" (`item_catalog.py`). Penyempitan
   yang sengaja tersisa cuma: part stok 0 disembunyikan dari picker M&R.
 - **Satu Container Booking = satu payer.** Satu job dengan beberapa EMKL = booking terpisah
   dengan `reff_doc` yang sama sebagai pengikat. Jangan bangun "bill to per container".
   Alasan utamanya jalur lost-revenue di `consolidated_billing._booking_lines`.
-- **Multi-currency = invoice bersaudara yang berbagi `depot_bill_group`**, bukan baris beda
-  currency dalam satu dokumen (Sales Invoice Item tidak punya currency; grand_total, GL dan
-  AR akan rusak). Print format OAK Invoice merender satu grup jadi satu PDF.
+- **Satu tagihan = satu invoice = satu mata uang** (user, 2026-09-28: invoice kembar per
+  mata uang gampang salah). Ambil Tagihan menanyakan mata uang tagih; valas lain dikonversi
+  ke situ lewat kurs IDR (`consolidated_billing.bill_units`). Jangan hidupkan lagi opsi
+  "invoice terpisah per mata uang"; `depot_bill_group` tinggal untuk grup lama. Mau
+  dokumen dalam mata uang lain: Print Currency / Print Rate (cetak saja, buku tidak berubah).
+- **Pajak = kotak ringkas gaya erp_cakra** (Diskon / PPN / PPh 23 / Materai, "11%" atau
+  nominal) yang dibangun ulang jadi baris native tiap save. Urutannya: Net Total → Manhour →
+  PPN/PPh atas (Net + Manhour) → Materai. Template "OAK PPN 11%" tidak dipakai lagi.
+- **Manhour = tarif per baris × Total Jam** (keputusan user 2026-09-29, membalik model
+  "jam per baris × tarif header" dari 2026-09-28). Baris invoice membawa TARIF per jam (dari
+  Tarif Manhour order, kalau tidak ada dari baris kontrak), header menjumlahnya jadi Biaya
+  Manhour (`total_manhour`), dikali Total Jam (`manhour_hour`, default 4) = Total Manhour
+  (`manhour_amount`), ditagih sekali dan hanya kalau Tagih Manhour dicentang (default mati). Sama dengan
+  Cleaning Order yang menjumlah Tarif Manhour per baris. `Item.manhour` (jam standar) tidak
+  lagi dibaca invoice. Invoice lama dikonversi tanpa mengubah nominal (patch
+  `v1_16.manhour_tariff_per_line`: tarif baris = jam × tarif lama, Total Jam 1).
 - **Submit booking Tank Out cuma butuh tank HADIR di depo.** Order yang belum selesai bukan
   penolakan melainkan prioritas (tanggal muat distempel ke tank dan ke order). Penolakan
   keras pindah ke bon (`OrderMuat._validate_no_open_work`), lalu submit EIR-Out butuh bon
@@ -256,7 +273,7 @@ Jangan menyarankan, mencari, atau "memulihkan" ini. Semua dihapus atas permintaa
 | Gasket Inventory | v0_40 | gasket = Item biasa |
 | Container Leasing, Equipment Maintenance, Fuel Log, Survey Request | v0_41 | — |
 | Jembatan email→order, tarik email | v0_99 | — |
-| Port Sales Invoice dari erp_cakra | — | dibangun 2026-08-27/28 lalu **di-rollback penuh**; file rencananya bukan status terkini |
+| Port Sales Invoice dari erp_cakra (versi 2026-08) | — | di-rollback penuh; versi yang hidup sekarang port 2026-09-28 (`invoicing.build_charges`, `payment_entry.py`, Pending Cash) |
 
 Sengaja **dipertahankan** meski fiturnya hilang: `Container.last_test_date` (milik master
 tank, dibaca EIR dan print), opsi `Periodic Test` di OAK Monthly Invoice + item katalognya
@@ -267,13 +284,18 @@ tank, dibaca EIR dan print), opsi `Periodic Test` di OAK Monthly Invoice + item 
 
 ## 8. Utang yang masih terbuka
 
-- `pricing.DEFAULT_MANHOUR_HOUR = 4.0` dibaca sebagai rupiah-per-jam → biaya tenaga kerja
-  tertagih ~Rp 14 di invoice jutaan. Butuh rate sungguhan, idealnya pindah ke Depot Finance
-  Settings. Terkait: arti `manhour` (JAM menurut data, RATE menurut pembacaan user) belum
-  disepakati — selisihnya ~8×. **Selesaikan itu sebelum menyentuh billing tenaga kerja.**
-- Letterhead/bank/company di print format OAK Invoice masih hardcoded ke PT. Oasis Anugerah
-  Kasih.
-- `CLEANING_ITEM = "Standard Cleaning"` tidak ada di katalog (hanya jalur fallback).
+- Nama company di print format OAK Invoice masih hardcoded ke PT. Oasis Anugerah Kasih.
+  Alamat & telepon kop diambil dari master Branch invoice (kosong = alamat Medan), NPWP dari
+  Company, rekening bank dari Depot Finance Settings ("Rekening di Invoice"), Catatan dari
+  Terms and Conditions "OAK Invoice" (default selling terms company,
+  `install.ensure_invoice_print`), dan penandatangan = pembuat invoice (jabatan dari
+  Employee-nya). Semuanya diedit di master, bukan di template. Bahasa cetak = Print Language
+  invoice (default `id` lewat Customer); label template berbahasa Inggris dan diterjemahkan
+  di `translations/id.csv` dengan context "OAK Invoice".
+- Nomor invoice `INV-{kode cabang}-OAK-{yy}-####` diberikan saat INSERT, jadi draft yang
+  dibuang (Ambil Tagihan Ulang, Batalkan) meninggalkan lubang nomor. Kalau nomor harus
+  rapat, pindahkan penomoran ke submit. Kode cabang = `Branch.branch_code`, kosong = 3 huruf
+  pertama nama cabang; invoice tanpa cabang memakai abbr company.
 - Commercial cuma punya `read` di Container Booking, jadi peran yang menangani email
   customer belum bisa membuat booking lift-on. Keputusan kebijakan, bukan bug.
 - Tank terjepit (kasus PCVU2606202) ditunda ke rework EIR digital. Rencananya status item

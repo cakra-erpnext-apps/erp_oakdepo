@@ -176,11 +176,19 @@ doc_events = {
 	# Keep an Container Booking's payment_status in step with its Sales Invoice when
 	# a payment is recorded / reversed. Scoped to bookings only.
 	"Payment Entry": {
+		# Dokumen / Item grid -> references, Potongan & Biaya -> deductions, kasbon, settlement
+		# (container_depot/payment_entry.py).
+		"before_validate": ["container_depot.payment_entry.before_validate"],
+		# "No. Pembayaran" on the invoices a payment touches — drafts included.
+		"on_update": ["container_depot.payment_entry.sync_payment_links"],
+		"on_trash": ["container_depot.payment_entry.sync_payment_links"],
 		"on_submit": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
+			"container_depot.payment_entry.sync_payment_links",
 		],
 		"on_cancel": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
+			"container_depot.payment_entry.sync_payment_links",
 		],
 	},
 	# Keep a Container Booking pinned to a VALID Sales Invoice. EVERY handler below is a
@@ -190,14 +198,24 @@ doc_events = {
 	#   submit -> resync the booking's payment_status from the invoice
 	#   cancel -> mark the booking Unpaid so it can be regenerated
 	"Sales Invoice": {
-		# A generated (consolidated) invoice's line items are frozen — no manual add /
-		# remove / edit. No-op on ordinary invoices (no billed-sources manifest).
+		# Branch before naming: the number is INV-{branch}-OAK-{yy}-####.
+		"before_insert": ["container_depot.invoicing.default_branch"],
+		"autoname": ["container_depot.invoicing.autoname"],
+		# Line rates from their own currency + kurs, labour, discount and the PPN / PPh /
+		# Materai rows — all BEFORE ERPNext totals the document (invoicing.build_charges).
+		"before_validate": [
+			"container_depot.invoicing.header_rules",
+			"container_depot.invoicing.build_charges",
+			"container_depot.consolidated_billing.stamp_reff_docs",
+		],
+		# Lines billed from a depot order are locked: fix the order and re-generate.
 		"validate": [
 			"container_depot.consolidated_billing.protect_consolidated_items",
-			# Total the lines' manhours and charge them once: Total Price + (Manhour × Hour).
-			# No-op on an invoice whose lines book no labour.
-			"container_depot.invoicing.apply_manhour_charge",
 		],
+		# A foreign invoice may not post at kurs 1: the ledger books IDR.
+		"before_submit": ["container_depot.invoicing.check_kurs", "container_depot.invoicing.check_branch"],
+		# A paid invoice is cancelled only after its receipt (the erp_cakra rule).
+		"before_cancel": ["container_depot.invoicing.check_no_payments"],
 		"after_insert": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.relink_amended_invoice",
 		],
@@ -215,6 +233,11 @@ doc_events = {
 		# Discarding a generated DRAFT invoice rolls its orders back to un-invoiced.
 		# Runs before Frappe's link-integrity check, so it also unblocks the delete.
 		"on_trash": [
+			"container_depot.consolidated_billing.rollback_billed_sources",
+		],
+		# Frappe's Discard voids a draft (docstatus 2) without on_cancel: the same give-back.
+		"on_discard": [
+			"container_depot.container_depot.doctype.container_booking.container_booking.resync_booking_on_invoice_cancel",
 			"container_depot.consolidated_billing.rollback_billed_sources",
 		],
 	},
@@ -394,6 +417,8 @@ jinja = {
 		"container_depot.branding.get_logo_main",
 		"container_depot.branding.get_logo_pdf",
 		"container_depot.print_utils.qr_data_uri",
+		"container_depot.print_utils.invoice_groups",
+		"container_depot.print_utils.terbilang",
 	]
 }
 
@@ -492,11 +517,20 @@ web_include_js = ["/assets/container_depot/js/login_remember.js?v=2"]
 # website — set logo navbar web/portal dari env (lihat branding.py)
 update_website_context = "container_depot.branding.update_website_context"
 
-# Client script for standard ERPNext Sales Invoice — surfaces a visible
-# "Batalkan & Kembalikan Order" button on generated (consolidated) invoices.
+# Client script for standard ERPNext Sales Invoice — Pilih Order and the depot layout.
 # lock_item_picker — the service Item pickers only pick; no ad-hoc Item creation.
+# Payment Entry the erp_cakra way: number, Expense/Income mode, kasbon funding, settlement.
+override_doctype_class = {
+	"Payment Entry": "container_depot.payment_entry.DepotPaymentEntry",
+	# "Don't Post to GL" (sales_invoice.py).
+	"Sales Invoice": "container_depot.sales_invoice.DepotSalesInvoice",
+}
+
 doctype_js = {
-	"Sales Invoice": ["public/js/sales_invoice.js", "public/js/lock_item_picker.js"],
+	"Sales Invoice": ["public/js/smart_number.js", "public/js/sales_invoice.js", "public/js/lock_item_picker.js"],
+	"Payment Entry": ["public/js/smart_number.js", "public/js/payment_entry.js"],
+	# container_depot.pending_cash.run, shared by the kasbon form and its list.
+	"Pending Cash": "public/js/pending_cash_actions.js",
 	# "Barang Masuk" — restrict the item picker to stockable items (see the file).
 	"Purchase Receipt": "public/js/purchase_receipt.js",
 	"Container Booking": "public/js/lock_item_picker.js",
@@ -516,6 +550,7 @@ override_whitelisted_methods = {
 }
 
 doctype_list_js = {
+	"Pending Cash": "public/js/pending_cash_actions.js",
 	# Daftar User untuk akun tanpa izin `read` (lihat file-nya + user_directory.py).
 	"User": "public/js/user_list.js",
 }

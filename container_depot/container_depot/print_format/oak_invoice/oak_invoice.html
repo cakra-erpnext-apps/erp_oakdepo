@@ -1,15 +1,80 @@
 {#-
   INVOICE — one bill, one PDF, even when it is several documents underneath.
 
-  ERPNext invoices are single-currency, so a depot bill that picks up both IDR and USD
-  charges becomes two Sales Invoices sharing a Nomor Tagihan (depot_bill_group). Printing
-  any one of them renders the WHOLE group: a page per currency, the same billing number on
-  each. `_docs` is that group in a stable order; an ordinary invoice is simply a group of one.
+  Legacy: bills raised before 2026-09-28 could be split into one Sales Invoice per currency
+  sharing a Nomor Tagihan (depot_bill_group). Printing any one of them renders the WHOLE
+  group: a page per currency, the same billing number on each. `_docs` is that group in a
+  stable order; every invoice raised since is simply a group of one.
+
+  Print Currency (erp_cakra): an invoice may print in another currency than it was booked
+  in. Both kurs are to IDR, so every amount prints as amount x Kurs invoice / Print Rate.
+
+  Layout (user, 2026-09-30, "Invoice A4 – usulan layout baru"): the Branch that issues it
+  heads the page; the number strip; who pays and the invoice facts; the lines grouped as the
+  pick list groups the orders they bill (print_utils.invoice_groups), each with the customer's
+  reference and the tank — not our order number, which the customer does not reconcile by
+  (user, 2026-09-30; the Sumber Tagihan tab keeps it); then terbilang, the bank to transfer to
+  (Depot Finance Settings), the Terms and Conditions as Catatan, the totals as the form sums
+  them and the signature, coloured as the layout is (user, 2026-09-30: "warna dan design
+  ikutin mockup"). It is the only Sales Invoice print format (install.ensure_invoice_print).
+
+  Language: the labels are English, translated in translations/id.csv (context "OAK Invoice"),
+  so the page follows the Print Language picked in the print view — the invoice's own, which
+  is Indonesian unless its customer is set otherwise (user, 2026-09-30).
 
   Design system: container_depot/templates/print/oak_print.html
 -#}
 {%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
 {{ oak.styles() }}
+<style>
+  /* Frappe's print CSS pads every cell 6px !important; the invoice is denser (user's layout). */
+  .print-format .oak-doc td, .print-format .oak-doc th { padding: 1.5px 0 !important; }
+  .print-format .oak-doc .strip td { padding: 7px 12px !important; }
+  .print-format .oak-doc td.inv-l { padding: 0 16px 0 0 !important; vertical-align: top; }
+  .print-format .oak-doc .inv-lines th, .print-format .oak-doc .inv-lines td { padding: 3px 6px !important; line-height: 1.3; }
+  .print-format .oak-doc .inv-lines tr.grp td { padding-top: 6px !important; }
+  .print-format .oak-doc .inv-grand td { padding: 7px 10px !important; }
+  /* The user's layout: deep green bars and total, the due date in orange, soft grey rules. */
+  .oak-doc .doc-title { color: #2d6a4f; letter-spacing: 3px; }
+  .oak-doc .rule { border-bottom: 2px solid #2d6a4f; }
+  .oak-doc .inv-badge { background-color: #fff; color: #c62828; border: 1px solid #c62828; border-radius: 6px; padding: 2px 10px; }
+  .oak-doc .strip { background-color: #fff; border: 1px solid #d6dcd6; margin: 12px 0; }
+  .oak-doc .strip td { border-right: 1px solid #d6dcd6; }
+  .oak-doc .strip .k, .oak-doc .lbl, .oak-doc .kv .k { color: #6b7280; }
+  .oak-doc .strip td.due { background-color: #fdf0e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .strip td.due .k, .oak-doc .strip td.due .v { color: #a8501c; }
+  .oak-doc .inv-name { font-size: 13px; font-weight: 700; margin: 2px 0 1px; }
+  .oak-doc .inv-lines th, .oak-doc .inv-lines td { font-size: 9.5px; }
+  .oak-doc .inv-lines th { background-color: #2d6a4f; color: #fff; border: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .inv-lines td { border-bottom: 1px solid #e3e7e3; }
+  .oak-doc .inv-lines td.no { color: #6b7280; }
+  .oak-doc .inv-lines tr.grp td { background-color: #eef3ef; font-weight: 700; font-size: 9px; letter-spacing: .5px; border-bottom: 1px solid #d6dcd6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .inv-lines tr.grp .n { font-weight: 400; letter-spacing: 0; color: #6b7280; }
+  .oak-doc .inv-lines td.b { font-weight: 700; white-space: nowrap; }
+  .oak-doc .inv-box { padding: 7px 10px; margin-bottom: 8px; font-size: 9.5px; }
+  .oak-doc .inv-box .lbl { font-weight: 700; margin-bottom: 3px; }
+  .oak-doc .inv-words { background-color: #f4f5f4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .inv-pay { border: 1px solid #2d6a4f; }
+  .oak-doc .inv-pay .lbl { color: #2d6a4f; }
+  .oak-doc .inv-tot td { font-size: 10px; }
+  .oak-doc .inv-grand { background-color: #2d6a4f; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .inv-grand td { color: #fff; font-size: 12px; font-weight: 700; }
+  .oak-doc .inv-meterai { width: 60px; height: 60px; border: 1px dashed #9ca3af; color: #6b7280; text-align: center; font-size: 8px; white-space: nowrap; }
+  .oak-doc .foot { border-top-color: #d6dcd6; color: #6b7280; }
+  /* One footer each way: the PDF takes #footer-html (Frappe strips this class there), the
+     browser preview the in-flow .hidden-pdf one. Frappe's own rule for it is not loaded in
+     the Desk preview of a custom format, which printed both. */
+  .visible-pdf { display: none !important; }
+  .oak-doc .inv-wm { position: absolute; top: 330px; left: 0; width: 100%; text-align: center; z-index: 0;
+    font-size: 120px; font-weight: 700; letter-spacing: 16px; color: #e53935; opacity: .1;
+    -webkit-transform: rotate(-35deg); transform: rotate(-35deg); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+</style>
+
+{#- IDR prints whole rupiah (user's layout: "750.000"); other currencies keep their cents. -#}
+{%- macro num(v, ccy) -%}{{ frappe.utils.fmt_money(frappe.utils.flt(v), precision=0 if ccy == "IDR" else 2) }}{%- endmacro -%}
+{%- macro t(msg, a="", b="") -%}{{ _(msg, context="OAK Invoice").format(a, b) }}{%- endmacro -%}
+{%- macro tgl(d) -%}{% if d %}{{ frappe.utils.format_date(d, "d MMMM y") }}{% else %}&mdash;{% endif %}{%- endmacro -%}
+{%- macro kurs(k) -%}{{ frappe.utils.fmt_money(k, precision=0 if k % 1 == 0 else 2) }}{%- endmacro -%}
 
 {%- if doc.depot_bill_group -%}
   {%- set _names = frappe.get_all("Sales Invoice", filters={"depot_bill_group": doc.depot_bill_group, "docstatus": ["<", 2]}, pluck="name", order_by="creation asc") -%}
@@ -19,88 +84,170 @@
   {%- set _docs = [doc] -%}
 {%- endif -%}
 {%- set _bill_no = doc.depot_bill_group or doc.name -%}
+{%- set _bank = frappe.db.get_value("Depot Finance Settings", None, ["invoice_bank", "invoice_account_no", "invoice_account_name"], as_dict=True) -%}
 
 {%- for page in _docs %}
 {%- set _ccy = page.currency -%}
-{%- set _paid = (page.status == "Paid") -%}
+{%- set _fx = 1 -%}
+{%- set _rate = page.conversion_rate -%}
+{%- if page.depot_print_currency and page.depot_print_currency != page.currency and page.depot_print_rate -%}
+  {%- set _ccy = page.depot_print_currency -%}
+  {%- set _fx = (page.conversion_rate or 1) / page.depot_print_rate -%}
+  {%- set _rate = page.depot_print_rate -%}
+{%- endif -%}
+{%- set _base = frappe.db.get_value("Company", page.company, "default_currency") -%}
+{%- set _sym = frappe.db.get_value("Currency", _ccy, "symbol") or _ccy -%}
+{%- set _data = invoice_groups(page) -%}
+{%- set _groups = _data.groups -%}
+
+{#- The Branch's own address and phones (master Branch), else the head office. -#}
+{%- set _br = frappe.db.get_value("Branch", page.branch, ["branch_address", "branch_city", "branch_province", "branch_country", "branch_phone_1", "branch_phone_2"], as_dict=True) if page.branch else None -%}
+{%- set _addr = oak.HQ_ADDR -%}
+{%- if _br and _br.branch_address -%}
+  {%- set _place = [_br.branch_city, _br.branch_province] | select | join(", ") -%}
+  {%- set _phones = [_br.branch_phone_1, _br.branch_phone_2] | select | join(" / ") -%}
+  {%- set _addr = (_br.branch_address | e | replace("\n", "<br>")) ~ "<br>" ~ ([_place, _br.branch_country] | select | join(" &middot; ")) ~ ("<br>Telp : " ~ _phones if _phones else "") -%}
+{%- endif -%}
+{%- set _npwp = frappe.db.get_value("Company", page.company, "tax_id") -%}
+{%- if _npwp -%}{%- set _addr = _addr ~ "<br>NPWP : " ~ _npwp -%}{%- endif -%}
+
+{%- set _badge = "" -%}
+{%- if page.docstatus == 0 -%}{%- set _badge = '<span class="pill inv-badge">' ~ t("DRAFT – NOT FINAL") ~ '</span>' -%}
+{%- elif page.docstatus == 2 -%}{%- set _badge = '<span class="pill inv-badge">' ~ t("CANCELLED") ~ '</span>' -%}{%- endif -%}
+
 <div class="oak-doc"{% if not loop.first %} style="page-break-before:always;"{% endif %}>
+  {%- if page.docstatus == 1 %}
   {{ oak.watermark() }}
-  {{ oak.head("INVOICE", "", show_print_date=false) }}
+  {%- else %}
+  <div class="inv-wm">{{ t("DRAFT") if page.docstatus == 0 else t("VOID") }}</div>
+  {%- endif %}
+  {{ oak.head("INVOICE", "", show_print_date=false, title_size=26, address=_addr, badge=_badge) }}
 
   {{ oak.strip([
-    {"k": "Invoice No.", "v": _bill_no, "w": "30%"},
-    {"k": "Invoice Date", "v": oak.tanggal(page.posting_date), "w": "24%"},
-    {"k": "Due Date", "v": oak.tanggal(page.due_date), "w": "24%"},
-    {"k": "Currency", "v": _ccy, "w": "22%"},
+    {"k": t("Invoice No."), "v": _bill_no, "w": "28%"},
+    {"k": t("Invoice Date"), "v": tgl(page.posting_date), "w": "24%"},
+    {"k": t("Due Date") ~ (" (" ~ page.depot_payment_term ~ ")" if page.depot_payment_term else ""), "v": tgl(page.due_date), "w": "28%", "cls": "due"},
+    {"k": t("Currency"), "v": _ccy, "w": "20%"},
   ]) }}
 
-  <table class="band boxrow">
+  <table class="band">
     <tr>
-      <td class="box" style="width:52%;">
-        <div class="box-h">Invoice to</div>
-        <div style="font-size:13.5px; font-weight:700;">{{ page.customer_name or page.customer }}</div>
-        <div class="sub" style="margin-top:3px;">{{ page.address_display or "" }}</div>
+      <td class="inv-l" style="width:52%;">
+        <div class="lbl">{{ t("Bill To") }}</div>
+        <div class="inv-name">{{ page.customer_name or page.customer }}</div>
+        {#- One line, as the layout has it: the address template breaks every part. -#}
+        <div>{{ (page.address_display or "").replace("\n", "").split("<br>") | map("trim") | select | join(", ") }}</div>
+        {%- set _who = ([t("Tax ID") ~ " " ~ page.tax_id] if page.tax_id else []) + (["Attn: " ~ page.contact_display] if page.contact_display else []) %}
+        {%- if _who %}<div class="sub" style="margin-top:2px;">{{ _who | join(" &middot; ") }}</div>{% endif %}
       </td>
-      <td class="gut"></td>
-      <td class="box" style="width:46%;">
-        <div class="box-h">Detail</div>
+      <td style="width:48%; vertical-align:top; padding:0;">
         <table class="kv">
           {#- The billing number is the same on every page; the document number is not, so
               show it too when the bill spans more than one currency. -#}
           {%- if _docs | length > 1 %}
-          <tr><td class="k">Dokumen</td><td class="v">{{ page.name }} <span class="sub" style="font-weight:400;">({{ loop.index }}/{{ _docs | length }})</span></td></tr>
+          <tr><td class="k">{{ t("Document") }}</td><td class="v">{{ page.name }} <span class="sub" style="font-weight:400;">({{ loop.index }}/{{ _docs | length }})</span></td></tr>
           {%- endif %}
-          {#- A termin invoice is unreadable without its terms; the due date is in the strip. -#}
-          <tr><td class="k">Payment Terms</td><td class="v">{{ page.payment_terms_template or "&mdash;" }}</td></tr>
-          <tr><td class="k">Ref No</td><td class="v">{{ page.po_no or "&mdash;" }}</td></tr>
-          <tr><td class="k">Status</td><td class="v">{{ oak.status_pill(page.status) }}</td></tr>
-          <tr><td class="k">Format No</td><td class="v">FM-FIN-INV-02-01</td></tr>
+          {%- set _kinds = _groups | map(attribute="key") | select | list %}
+          <tr><td class="k">{{ t("Invoice Type") }}</td><td class="v">{{ page.depot_invoice_type or "&mdash;" }}{% if page.depot_invoice_type == "Gabungan" and _kinds | length > 1 %} ({{ _kinds | join(" &middot; ") }}){% endif %}</td></tr>
+          {%- if page.depot_delivery_term %}
+          <tr><td class="k">{{ t("Delivery Term") }}</td><td class="v">{{ page.depot_delivery_term }}</td></tr>
+          {%- endif %}
+          {#- The ledger books IDR: a foreign bill, or foreign lines, state the kurs they were booked at. -#}
+          {%- set _kurs = _data.kurs %}
+          {%- if _ccy != _base and _ccy not in _kurs %}{% set _ = _kurs.update({_ccy: [_rate]}) %}{% endif %}
+          {%- for c, ks in _kurs.items() %}
+          <tr><td class="k">{{ t("Exchange Rate {0}", c) }}</td><td class="v">{% for k in ks %}{{ kurs(k) }}{% if not loop.last %} / {% endif %}{% endfor %}</td></tr>
+          {%- endfor %}
         </table>
       </td>
     </tr>
   </table>
 
-  <table class="grid">
+  <table class="grid inv-lines" style="margin-top:10px;">
     <thead>
-      <tr><th class="sec-row" colspan="6">RINCIAN TAGIHAN</th></tr>
       <tr>
-        <th style="width:12%;">ITEM NO</th>
-        <th>ITEM DESCRIPTION</th>
-        <th style="width:7%;" class="ctr">QTY</th>
-        {#- Manhour sits beside the price, never inside it: the hours are totalled below. -#}
-        <th style="width:9%;" class="ctr">MANHOUR</th>
-        <th style="width:16%;" class="num">PRICE</th>
+        <th class="ctr" style="width:4%;">NO</th>
+        <th style="width:15%;">{{ t("CUST. REF") }}</th>
+        <th style="width:15%;">{{ t("TANK NO.") }}</th>
+        <th>{{ t("DESCRIPTION") }}</th>
+        <th class="ctr" style="width:6%;">QTY</th>
+        <th class="num" style="width:12%;">{{ t("PRICE") }}</th>
         {#- No DISCOUNT column: nothing in depot billing sets one, but ERPNext fills
-            discount_amount by itself with (price_list_rate - rate). Printing that put a
-            number on the invoice that TOTAL did not reflect — often negative — so the
-            arithmetic on the page could not be reconciled by the customer. -#}
-        <th style="width:18%;" class="num">TOTAL</th>
+            discount_amount by itself with (price_list_rate - rate); printing it put a number
+            on the page that the total did not reflect. -#}
+        <th class="num" style="width:13%;">{{ t("AMOUNT") }}</th>
       </tr>
     </thead>
     <tbody>
-      {%- for row in page.items %}
-      <tr>
-        <td class="mono" style="font-size:9.5px;">{{ row.item_code or "" }}</td>
-        <td>{{ row.description or row.item_name or "" }}</td>
-        {#- %g, not |int: manhour is fractional (0.5 / 1.5) and truncating it printed 0.
-            Whole quantities still print without decimals. -#}
-        <td class="ctr">{{ "%g" | format(row.qty or 0) }}</td>
-        <td class="ctr">{{ "%g" | format(row.manhour or 0) }}</td>
-        <td class="num">{{ oak.money(row.rate, _ccy) }}</td>
-        <td class="num">{{ oak.money(row.amount, _ccy) }}</td>
+      {%- set _n = namespace(i=0) %}
+      {%- for g in _groups %}
+      {%- if g.key or _groups | length > 1 %}
+      <tr class="grp">
+        <td colspan="5">{{ t(g.label) | upper }} <span class="n">&middot; {{ t("{0} items", g.rows | length) }}</span></td>
+        <td colspan="2" class="num">Subtotal {{ num(g.total * _fx, _ccy) }}</td>
       </tr>
+      {%- endif %}
+      {%- for x in g.rows %}
+      {%- set _n.i = _n.i + 1 %}
+      {%- set row = x.row %}
+      <tr>
+        <td class="ctr no">{{ _n.i }}</td>
+        <td>{{ x.cust_ref }}</td>
+        <td>{{ x.tank }}</td>
+        <td>{{ x.text }}
+          {#- A line priced in another currency shows what it was converted from. -#}
+          {%- if row.depot_currency and row.depot_currency != _ccy %}
+          <span class="sub">&middot; {{ row.depot_currency }} {{ num(row.depot_price, row.depot_currency) }} &times; {{ kurs(row.depot_kurs or 0) }}</span>
+          {%- endif %}
+        </td>
+        {#- %g, not |int: quantities can be fractional. -#}
+        <td class="ctr">{{ "%g" | format(row.qty or 0) }}</td>
+        <td class="num">{{ num((row.rate or 0) * _fx, _ccy) }}</td>
+        <td class="num b">{{ num((row.amount or 0) * _fx, _ccy) }}</td>
+      </tr>
+      {%- endfor %}
       {%- endfor %}
     </tbody>
   </table>
 
-  <table style="margin-top:10px;">
+  {#- Every charge row but labour is read off the tax table by its description (see
+      invoicing.build_charges). PPN is what is left, so an invoice written before the
+      PPh / Materai rows existed (template row "PPN 11%") still prints its tax. -#}
+  {%- set _pph = page.taxes | selectattr("description", "equalto", "PPh 23") | sum(attribute="tax_amount") -%}
+  {%- set _mat = page.taxes | selectattr("description", "equalto", "Materai") | sum(attribute="tax_amount") -%}
+  {%- set _ppn = (page.total_taxes_and_charges or 0) - (page.manhour_amount or 0) - _pph - _mat -%}
+  {%- set _dpp = (page.net_total or 0) + (page.manhour_amount or 0) -%}
+  {%- set _rounded = page.rounded_total and not page.disable_rounded_total -%}
+  {%- set _due = page.rounded_total if _rounded else page.grand_total -%}
+  {%- set _terms = page.terms or frappe.db.get_value("Terms and Conditions", frappe.db.get_value("Company", page.company, "default_selling_terms"), "terms") -%}
+
+  <table class="band" style="margin-top:12px;">
     <tr>
-      <td style="width:52%; vertical-align:top; padding-right:12px;">
-        <div class="box" style="min-height:90px;">
-          <div class="box-h">Remarks</div>
-          <div style="font-size:9.5px; white-space:pre-line;">{{ page.remarks or "&mdash;" }}</div>
+      <td class="inv-l" style="width:55%;">
+        <div class="inv-box inv-words">
+          <div class="lbl">{{ t("Amount in Words") }}</div>
+          <i>{{ terbilang((_due or 0) * _fx, _ccy) }}</i>
         </div>
-        {%- if _paid %}
+        {%- if _bank and _bank.invoice_account_no %}
+        <div class="inv-box inv-pay">
+          <div class="lbl">{{ t("Payment (Bank Transfer)") }}</div>
+          <table class="kv">
+            <tr><td class="k" style="width:28%;">{{ t("Bank") }}</td><td class="v">{{ _bank.invoice_bank or "" }}</td></tr>
+            <tr><td class="k">{{ t("Account No.") }}</td><td class="v">{{ _bank.invoice_account_no }}</td></tr>
+            <tr><td class="k">{{ t("Account Name") }}</td><td class="v">{{ _bank.invoice_account_name or "" }}</td></tr>
+          </table>
+          <div style="margin-top:3px;">{{ t("Put {0} in the transfer note.", "<b>" ~ _bill_no ~ "</b>") }}</div>
+        </div>
+        {%- endif %}
+        {#- The invoice's Terms and Conditions (Terms tab); an invoice raised without any
+            prints the company's default selling terms (install.ensure_invoice_print). -#}
+        {%- if _terms %}
+        <div class="terms"><b>{{ t("Notes") }}</b>{{ _terms }}</div>
+        {%- endif %}
+        {%- if page.remarks and page.remarks != "No Remarks" %}
+        <div class="terms" style="margin-top:6px; white-space:pre-line;"><b>{{ t("Remarks") }}</b><br>{{ page.remarks }}</div>
+        {%- endif %}
+        {%- if page.status == "Paid" %}
         <div style="margin-top:14px; padding-left:22px;">
           <div class="stamp">
             <div class="big">PAID</div>
@@ -109,81 +256,85 @@
         </div>
         {%- endif %}
       </td>
-      <td style="width:48%; vertical-align:top;">
-        <table>
-          <tr>
-            <td style="padding:5px 9px; font-weight:700; font-size:10.5px;">Total Price</td>
-            <td class="num" style="padding:5px 9px; font-weight:700; font-size:10.5px;">{{ oak.money(page.total, _ccy) }}</td>
-          </tr>
+      <td style="width:45%; vertical-align:top; padding:0;">
+        <table class="inv-tot">
+          <tr><td>Subtotal</td><td class="num">{{ num((page.total or 0) * _fx, _ccy) }}</td></tr>
           {%- if page.discount_amount %}
-          <tr>
-            <td style="padding:5px 9px; font-size:10.5px; color:#6b7580;">Diskon</td>
-            <td class="num" style="padding:5px 9px; font-size:10.5px;">{{ oak.money(page.discount_amount, _ccy) }}</td>
-          </tr>
+          <tr><td>{{ t("Discount") }}</td><td class="num">{{ num(page.discount_amount * _fx, _ccy) }}</td></tr>
           {%- endif %}
-          {%- if page.total_manhour %}
-          {#- Labour, settled once: the hours off every line x the Hour multiplier. Shaded
-              as one block so it reads as its own subtotal, not as part of Total Price. -#}
-          <tr style="background-color:#f4f6f4; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
-            <td style="padding:5px 9px; font-size:10.5px; color:#6b7580;">Total Manhour <span class="sub">&times; Hour {{ "%g" | format(page.manhour_hour or 0) }}</span></td>
-            <td class="num" style="padding:5px 9px; font-size:10.5px;">{{ "%g" | format(page.total_manhour) }} jam</td>
-          </tr>
-          <tr style="background-color:#f4f6f4; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
-            <td style="padding:5px 9px; font-weight:700; font-size:10.5px;">Biaya Manhour</td>
-            <td class="num" style="padding:5px 9px; font-weight:700; font-size:10.5px;">{{ oak.money(page.manhour_amount, _ccy) }}</td>
-          </tr>
-          {#- What tax is actually charged on: services + labour. -#}
-          <tr>
-            <td style="padding:5px 9px; font-weight:700; font-size:10.5px; border-top:1px solid #dfe3e6;">Subtotal</td>
-            <td class="num" style="padding:5px 9px; font-weight:700; font-size:10.5px; border-top:1px solid #dfe3e6;">{{ oak.money((page.total or 0) + (page.manhour_amount or 0), _ccy) }}</td>
-          </tr>
+          {%- if page.manhour_amount %}
+          {#- Labour, settled once: the lines' tariffs x the hours worked. -#}
+          <tr><td>Manhour <span class="sub">{{ t("{0} × {1} hours", num((page.total_manhour or 0) * _fx, _ccy), "%g" | format(page.manhour_hour or 0)) }}</span></td><td class="num">{{ num(page.manhour_amount * _fx, _ccy) }}</td></tr>
           {%- endif %}
-          {#- The labour charge rides in total_taxes_and_charges (it is an Actual charge
-              row), so net it out here — otherwise it would be shown twice. -#}
-          <tr>
-            <td style="padding:5px 9px; font-size:10.5px; color:#6b7580;">PPN</td>
-            <td class="num" style="padding:5px 9px; font-size:10.5px;">{{ oak.money((page.total_taxes_and_charges or 0) - (page.manhour_amount or 0), _ccy) }}</td>
-          </tr>
-          <tr class="total-row">
-            <td style="font-size:11.5px;">TOTAL</td>
-            <td class="num" style="font-size:11.5px;">{{ oak.money(page.grand_total, _ccy) }}</td>
-          </tr>
+          {%- if _ppn %}
+          {#- Coretax 04 (PMK 131/2024): 11% is PPN 12% on DPP Nilai Lain 11/12 of what it taxes. -#}
+          {%- if (page.coretax_code or "").startswith("04") and (page.tax_input or "").replace(" ", "") == "11%" %}
+          <tr><td>{{ t("Other Tax Base (11/12)") }}</td><td class="num">{{ num(_dpp * 11 / 12 * _fx, _ccy) }}</td></tr>
+          <tr><td>{{ t("VAT 12%") }}</td><td class="num">{{ num(_ppn * _fx, _ccy) }}</td></tr>
+          {%- else %}
+          <tr><td>{{ t("VAT") }}{% if "%" in (page.tax_input or "") %} {{ page.tax_input }}{% endif %}</td><td class="num">{{ num(_ppn * _fx, _ccy) }}</td></tr>
+          {%- endif %}
+          {%- endif %}
+          {%- if _pph %}
+          <tr><td>PPh 23</td><td class="num">{{ num(_pph * _fx, _ccy) }}</td></tr>
+          {%- endif %}
+          {%- if _mat %}
+          <tr><td>{{ t("Stamp Duty") }}</td><td class="num">{{ num(_mat * _fx, _ccy) }}</td></tr>
+          {%- endif %}
+          {#- Rounding to whole rupiah moves less than the page prints: show it only when it shows. -#}
+          {%- set _adj = num((page.rounding_adjustment or 0) * _fx, _ccy) if _rounded else "0" %}
+          {%- if _adj not in ("0", "-0", "0,00", "-0,00") %}
+          <tr><td>{{ t("Rounding") }}</td><td class="num">{{ _adj }}</td></tr>
+          {%- endif %}
         </table>
-      </td>
-    </tr>
-  </table>
+        <table class="inv-grand" style="margin-top:6px;">
+          <tr><td>GRAND TOTAL</td><td class="num">{{ _sym }} {{ num((_due or 0) * _fx, _ccy) }}</td></tr>
+        </table>
+        {#- What reaches the bank when the customer withholds PPh 23 (2% of the services) itself. -#}
+        {%- if not _pph and _ccy == _base and _dpp > 0 %}
+        {%- set _w = _dpp * 0.02 * _fx %}
+        <div class="sub" style="margin-top:4px;">{{ t("If PPh 23 (2%) of {0} is withheld, transfer {1}", _sym ~ " " ~ num(_w, _ccy), _sym ~ " " ~ num((_due or 0) * _fx - _w, _ccy)) }}</div>
+        {%- endif %}
 
-  <div class="band">
-  <table class="boxrow" style="margin-top:16px;">
-    <tr>
-      <td class="plain" style="width:36%;">
-        <div class="sign" style="text-align:left;">
-          <div class="cap">Created by,</div>
-          <div class="line" style="margin:52px 40px 3px 0;"></div>
-          <div>{{ frappe.db.get_value("User", page.owner, "full_name") or page.owner }}</div>
-          <div class="sub">PT. Oasis Anugerah Kasih</div>
+        <div class="sign" style="text-align:left; margin-top:12px;">
+          <div class="cap" style="padding-left:78px;">{{ t("Sincerely,") }}</div>
+          <table style="margin-top:6px;">
+            <tr>
+              {#- e-Meterai: a document over Rp 5 juta carries one. -#}
+              <td style="width:72px; vertical-align:bottom; padding:0;">
+                {%- if page.materai or (page.base_grand_total or 0) >= 5000000 %}
+                <div class="inv-meterai"><div style="padding-top:24px;">e-Meterai</div></div>
+                {%- endif %}
+              </td>
+              <td style="vertical-align:bottom; padding:0 0 0 6px;">
+                <div class="line" style="margin:48px 0 3px;"></div>
+                <div style="font-weight:700;">{{ frappe.db.get_value("User", page.owner, "full_name") or page.owner }}</div>
+                {%- set _job = frappe.db.get_value("Employee", {"user_id": page.owner, "status": "Active"}, "designation") %}
+                <div class="sub">{{ (_job ~ " &middot; ") if _job else "" }}PT. Oasis Anugerah Kasih</div>
+              </td>
+            </tr>
+          </table>
         </div>
       </td>
-      <td class="gut"></td>
-      <td class="box terms" style="width:62%;">
-        <div class="box-h">Note</div>
-        <ol>
-          <li>Batas pembatalan pembayaran lift off / lift on bisa dikembalikan pada tanggal yang sama.</li>
-          <li>Untuk revisi/batal invoice maksimal 3 hari setelah invoice terbit.</li>
-          <li>Pembayaran dapat transfer ke rekening :<br>
-            Bank BCA &middot; No. Rekening 195-612-323-3<br>
-            Atas Nama PT. Oasis Anugerah Kasih
-          </li>
-        </ol>
-      </td>
     </tr>
   </table>
 
-  <div class="foot">
+  <div class="foot hidden-pdf">
     {{ _bill_no }} &middot; {{ page.customer_name or page.customer }} &middot; FM-FIN-INV-02-01
-    &middot; dicetak {{ frappe.utils.format_datetime(frappe.utils.now(), "dd MMM yyyy HH:mm") }}
+    &middot; {{ t("printed {0}", frappe.utils.format_datetime(frappe.utils.now(), "dd MMM yyyy HH:mm")) }}
   </div>
-  </div>
-
 </div>
 {%- endfor %}
+
+{#- The PDF repeats this on every page, with the page number (Frappe's footer-html). -#}
+<div id="footer-html" class="visible-pdf">
+  <div class="oak-doc">
+    <table class="foot">
+      <tr>
+        <td>{{ _bill_no }} &middot; {{ doc.customer_name or doc.customer }} &middot; FM-FIN-INV-02-01
+          &middot; {{ t("printed {0}", frappe.utils.format_datetime(frappe.utils.now(), "dd MMM yyyy HH:mm")) }}</td>
+        <td class="num">{{ t("Page") }} <span class="page"></span> / <span class="topage"></span></td>
+      </tr>
+    </table>
+  </div>
+</div>

@@ -112,12 +112,12 @@ class TestCustomerDefaultInheritance(FrappeTestCase):
 		self.assertEqual(si.payment_terms_template, EOFM)
 
 	def test_override_per_invoice_field_is_editable(self):
-		# No property setter hides/read-onlys the override field on Sales Invoice.
+		# The depot's Payment Term is its own label; ERPNext's template is hidden.
 		meta = frappe.get_meta("Sales Invoice")
-		df = meta.get_field("payment_terms_template")
-		self.assertIsNotNone(df, "Sales Invoice has no payment_terms_template field")
-		self.assertFalse(df.hidden, "payment_terms_template is hidden")
-		self.assertFalse(df.read_only, "payment_terms_template is read-only")
+		df = meta.get_field("depot_payment_term")
+		self.assertIsNotNone(df, "Sales Invoice has no depot_payment_term field")
+		self.assertFalse(df.hidden or df.read_only, "depot_payment_term is not editable")
+		self.assertTrue(meta.get_field("payment_terms_template").hidden)
 
 	def test_override_beats_customer_default(self):
 		# Explicitly choosing a different template on the invoice wins over the
@@ -155,6 +155,12 @@ class TestContractBackfill(FrappeTestCase):
 
 	def tearDown(self):
 		frappe.db.rollback()
+		# The contract's notification commits, so the rollback alone leaves the customers behind.
+		for name in ("Billing TOP Backfill", "Billing Cash Backfill", "Billing Keep Backfill"):
+			_cleanup_customer_world(name)
+			frappe.db.delete("Notification Log", {"subject": ["like", f"%{name}%"]})
+			frappe.db.delete("Customer", {"name": name})
+		frappe.db.commit()
 
 	def test_top_contract_backfills_eofm(self):
 		customer = self._customer_with_contract("Billing TOP Backfill", "TOP")
@@ -266,3 +272,42 @@ class TestStatementIsReadOnly(FrappeTestCase):
 		self.assertEqual(
 			frappe.get_meta("Process Statement Of Accounts").is_submittable, 0
 		)
+
+
+class TestPaymentTermLabel(FrappeTestCase):
+	"""A depot invoice's Payment Term is a label from the contract; the Due Date is its own."""
+
+	CUSTOMER = "Billing Term Label Co"
+
+	def tearDown(self):
+		frappe.db.rollback()
+		# The contract's notification commits, so the rollback alone leaves the customer behind.
+		_cleanup_customer_world(self.CUSTOMER)
+		frappe.db.delete("Notification Log", {"subject": ["like", f"%{self.CUSTOMER}%"]})
+		frappe.db.delete("Customer", {"name": self.CUSTOMER})
+		frappe.db.commit()
+
+	def test_label_from_contract_and_nothing_behind_it(self):
+		from frappe.utils import add_days, today
+
+		from container_depot import invoicing
+
+		customer = ensure_test_customer(self.CUSTOMER)
+		_cleanup_customer_world(customer)
+		_make_active_contract(customer, payment_type="TOP", payment_terms="NET 45", credit_limit=1)
+		# A customer default template (v0_13's) must not reach a depot invoice.
+		frappe.db.set_value("Customer", customer, "payment_terms", EOFM)
+		lines = [{"item_code": "Lift Off", "qty": 1, "rate": 1000}]
+
+		si = frappe.get_doc("Sales Invoice", invoicing.create_draft_sales_invoice(customer, lines))
+		self.assertEqual((si.depot_payment_term, si.payment_terms_template), ("NET 45", None))
+		self.assertEqual(str(si.due_date), add_days(today(), 30))
+		# The Due Date is the user's: an empty one is 30 days out, a typed one stays.
+		si.due_date = add_days(today(), 7)
+		si.save()
+		self.assertEqual([str(r.due_date) for r in si.payment_schedule], [add_days(today(), 7)])
+
+		cash = frappe.get_doc(
+			"Sales Invoice", invoicing.create_draft_sales_invoice(customer, lines, payment_term="Cash")
+		)
+		self.assertEqual(cash.depot_payment_term, "Cash")

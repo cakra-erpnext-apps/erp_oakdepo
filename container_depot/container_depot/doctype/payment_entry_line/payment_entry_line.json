@@ -1,0 +1,167 @@
+{
+ "actions": [],
+ "creation": "2026-09-28 10:00:00.000000",
+ "modified": "2026-09-28 14:46:29.195857",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "istable": 1,
+ "editable_grid": 1,
+ "module": "Container Depot",
+ "name": "Payment Entry Line",
+ "field_order": [
+  "document_type",
+  "doc_label",
+  "document_no",
+  "date",
+  "description",
+  "account",
+  "cost_center",
+  "column_break_1",
+  "grand_total",
+  "outstanding",
+  "amount",
+  "notes_section",
+  "credit_amount",
+  "credit_account",
+  "column_break_2",
+  "debit_amount",
+  "debit_account",
+  "remark_section",
+  "remark"
+ ],
+ "fields": [
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "label": "Jenis",
+   "read_only": 1
+  },
+  {
+   "fieldname": "doc_label",
+   "fieldtype": "Data",
+   "label": "Tipe",
+   "read_only": 1,
+   "depends_on": "eval:doc.document_no"
+  },
+  {
+   "fieldname": "document_no",
+   "fieldtype": "Dynamic Link",
+   "options": "document_type",
+   "label": "Dokumen",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Tanggal",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "depends_on": "eval:doc.document_no"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Keterangan",
+   "in_list_view": 1,
+   "columns": 2,
+   "depends_on": "eval:!doc.document_no"
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Account",
+   "in_list_view": 1,
+   "columns": 2,
+   "depends_on": "eval:!doc.document_no"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "options": "Cost Center",
+   "label": "Cost Center",
+   "depends_on": "eval:!doc.document_no"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "label": "Total Dokumen",
+   "read_only": 1,
+   "depends_on": "eval:doc.document_no"
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Currency",
+   "label": "Sisa",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "depends_on": "eval:doc.document_no"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Dibayar",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Kosong = seluruh sisa. Expense/Income: nominal baris."
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Credit / Debit Note",
+   "depends_on": "eval:doc.document_no",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "credit_amount",
+   "fieldtype": "Currency",
+   "label": "Credit Note"
+  },
+  {
+   "fieldname": "credit_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Credit Account",
+   "mandatory_depends_on": "eval:doc.credit_amount"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "debit_amount",
+   "fieldtype": "Currency",
+   "label": "Debit Note"
+  },
+  {
+   "fieldname": "debit_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Debit Account",
+   "mandatory_depends_on": "eval:doc.debit_amount"
+  },
+  {
+   "fieldname": "remark_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Catatan"
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC"
+}

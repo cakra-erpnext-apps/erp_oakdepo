@@ -46,7 +46,7 @@ from frappe.utils import getdate, today
 from container_depot import storage, storage_charge
 from container_depot.container_depot.container_status import AVAILABLE, GATE_OUT, IN_DEPOT
 from container_depot.customer_scope import get_user_customers
-from container_depot.monthly_invoicing import _active_contract
+from container_depot.pricing_model import active_contract as _active_contract
 from container_depot.pricing import storage_rate_for
 
 STAY_RUNNING = "Masih Menginap"
@@ -150,7 +150,8 @@ def _data(filters):
 			entry = ledger.get(_ledger_key(c.name, period)) or {}
 			measured.append((period, entry, storage.measure(
 				period, from_date, to_date,
-				free_days=free_days[c.principal],
+				# The visit's own snapshot when the ledger has one: billing reads the same.
+				free_days=entry.get("free_days") if entry else free_days[c.principal],
 				billed_until=entry.get("billed_until"),
 				mode=mode_count,
 			)))
@@ -166,8 +167,12 @@ def _data(filters):
 		key = (c.principal, c.size)
 		if key not in rates:
 			rates[key] = _rate(c.principal, c.size)
-		rate, item, currency = rates[key]
 		for period, entry, row in shown:
+			# A visit bills at the rate stamped on it when it opened; the live contract is
+			# only the answer for a visit the ledger has not recorded yet.
+			rate, item, currency = (
+				(entry.rate, entry.storage_item, entry.currency) if entry and entry.get("rate") else rates[key]
+			)
 			rows.append({
 				"container": c.name,
 				"principal": c.principal,
@@ -211,7 +216,10 @@ def _ledger(containers):
 	for r in frappe.get_all(
 		"Storage Charge",
 		filters={"container": ["in", containers]},
-		fields=["name", "container", "gate_entry", "date_in_key", "billed_until", "status"],
+		fields=[
+			"name", "container", "gate_entry", "date_in_key", "billed_until", "status",
+			"free_days", "storage_item", "rate", "currency",
+		],
 	):
 		if r.gate_entry:
 			out[(r.container, r.gate_entry)] = r

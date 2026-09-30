@@ -971,9 +971,7 @@ class ContainerBooking(Document):
 			# kosong, sesudah itu milik orang yang mengetiknya — sama seperti Repair Order.
 			# ``currency_locked`` tinggal penanda "service ini ada tarifnya di kontrak".
 			#
-			# Yang TIDAK ikut longgar: satu booking tetap satu mata uang. Invoice-nya dibuat
-			# dengan ``currency=self.currency`` tanpa konversi (``_build_draft_invoice``), jadi
-			# baris campur akan ditagih dengan label yang salah — lihat
+			# Yang TIDAK ikut longgar: satu booking tetap satu mata uang — lihat
 			# ``_sync_currency_from_charges``.
 			resolved, locked = pricing_model.charge_currency(
 				self.customer, self.contract, row.item, row.get("currency")
@@ -1008,11 +1006,10 @@ class ContainerBooking(Document):
 	def _sync_currency_from_charges(self):
 		"""Mata uang dokumen = mata uang baris-baris charge-nya.
 
-		Satu Sales Invoice cuma bisa punya satu mata uang, dan ``_build_draft_invoice``
-		mengirim ``self.currency`` apa adanya (conversion rate 1, tanpa konversi kurs). Jadi
-		booking bercampur USD + IDR bukan sekadar tampilan yang aneh: baris USD-nya akan
-		ditagih sebagai IDR dengan angka yang sama. Ditolak di sini, sambil menyebut baris
-		mana yang beda, daripada lolos diam-diam ke invoice.
+		Booking Cash dibayar di kasir dalam SATU mata uang — ``_build_draft_invoice`` menagih
+		``self.currency`` — jadi booking bercampur USD + IDR ditolak di sini, sambil menyebut
+		baris mana yang beda. (Invoice sendiri bisa memuat baris beda mata uang lewat kurs,
+		tapi kasir dan gate membaca satu angka per booking.)
 
 		Baris yang ada di rate card kontrak disebut namanya dalam pesannya — itu mata uang
 		yang disepakati, jadi biasanya baris lain yang disamakan, bukan sebaliknya. Tapi
@@ -1336,6 +1333,8 @@ class ContainerBooking(Document):
 			remarks=f"Cash booking for {self.customer} ({self.direction}). Cashier to confirm payment.",
 			currency=self.currency,
 			branch=self.branch,
+			invoice_type="Booking",
+			payment_term="Cash",  # a per-booking invoice is always a Cash booking's
 		)
 
 	def _guard_locked_charges(self):
@@ -1402,6 +1401,8 @@ class ContainerBooking(Document):
 				remarks=f"Auto-generated from Container Booking {self.name}",
 				currency=self.currency,
 				branch=self.branch,
+				invoice_type="Booking",
+				payment_term="Cash",  # _auto_invoice skips TOP
 			)
 			if si:
 				self.db_set("sales_invoice", si, update_modified=False)
@@ -2659,6 +2660,8 @@ def regenerate_invoice(booking):
 		remarks=f"Regenerated for Container Booking {doc.name} after the previous invoice was cancelled.",
 		currency=doc.currency,
 		branch=doc.branch,
+		invoice_type="Booking",
+		payment_term="Cash",  # TOP is refused above
 	)
 	if not si:
 		frappe.throw(_("Could not create a Sales Invoice (is the site invoice-ready?)."))

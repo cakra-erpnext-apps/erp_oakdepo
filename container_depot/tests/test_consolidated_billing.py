@@ -5,8 +5,8 @@
   and linked back (``sales_invoice`` set, ``payment_status`` = Invoiced).
 - A Cash booking settles at the booking itself and is NOT swept.
 - The sweep is idempotent: a second run finds nothing new.
-- **Multi-currency**: a customer with USD + IDR orders gets ONE draft invoice per
-  currency, each billed in its own currency (never forced to the company default).
+- **Multi-currency**: a customer with USD + IDR orders gets ONE draft invoice; each line
+  keeps its own currency and is converted into the invoice's through its kurs to IDR.
 
 ``bill_customer`` returns the list of created Sales Invoice names (``[]`` = nothing).
 """
@@ -18,7 +18,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, today
 
 from container_depot import invoicing
-from container_depot.consolidated_billing import bill_customer
+from container_depot.consolidated_billing import bill_customer, fill_invoice
 from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
 from container_depot.tests.test_container_booking import (
@@ -186,28 +186,18 @@ class TestConsolidatedBillingBooking(FrappeTestCase):
 		cash.reload()
 		self.assertEqual(cash.sales_invoice, own_si, "Cash booking keeps its own invoice")
 
-	def test_multi_currency_one_invoice_per_currency(self):
+	def test_multi_currency_is_one_invoice(self):
 		usd = _make_booking(self.customer, self.contract, self.item, "TOP", 500, currency="USD")
 		idr = _make_booking(self.customer, self.contract, self.item, "TOP", 700000, currency="IDR")
 
-		sis = bill_customer(self.customer)
-		self.assertEqual(len(sis), 2, "one draft invoice per currency")
-		currencies = {frappe.db.get_value("Sales Invoice", s, "currency") for s in sis}
-		self.assertEqual(currencies, {"USD", "IDR"}, "each invoice billed in its own currency")
-
+		out = fill_invoice(self.customer, kurs={"USD": 16000})["invoices"]
+		self.assertEqual(len(out), 1, "one draft invoice, whatever the currencies")
 		usd.reload()
 		idr.reload()
-		self.assertEqual(
-			frappe.db.get_value("Sales Invoice", usd.sales_invoice, "currency"), "USD",
-			"USD booking linked to the USD invoice",
-		)
-		self.assertEqual(
-			frappe.db.get_value("Sales Invoice", idr.sales_invoice, "currency"), "IDR",
-			"IDR booking linked to the IDR invoice",
-		)
-		# The USD charge is billed at face value (conversion_rate 1, no FX to IDR).
-		usd_inv = frappe.get_doc("Sales Invoice", usd.sales_invoice)
-		self.assertTrue(any(abs(flt(r.rate) - 500) < 1 for r in usd_inv.items))
+		self.assertEqual((usd.sales_invoice, idr.sales_invoice), (out[0], out[0]))
+		inv = frappe.get_doc("Sales Invoice", out[0])
+		self.assertEqual(inv.currency, "IDR", "mixed currencies bill in the company's")
+		self.assertEqual(sorted(flt(r.rate) for r in inv.items), [700000.0, 8000000.0])
 
 	def test_discard_draft_rolls_back_orders(self):
 		booking = _make_booking(self.customer, self.contract, self.item, "TOP", 500000)
@@ -232,23 +222,6 @@ class TestConsolidatedBillingBooking(FrappeTestCase):
 		self.assertTrue(frappe.db.exists("Sales Invoice", sis2[0]))
 		booking.reload()
 		self.assertEqual(booking.sales_invoice, sis2[0], "booking re-linked to the regenerated invoice")
-
-	def test_discard_one_currency_rolls_back_only_that_currency(self):
-		usd = _make_booking(self.customer, self.contract, self.item, "TOP", 500, currency="USD")
-		idr = _make_booking(self.customer, self.contract, self.item, "TOP", 700000, currency="IDR")
-		sis = bill_customer(self.customer)
-		self.assertEqual(len(sis), 2)
-		usd.reload()
-		idr.reload()
-		usd_si, idr_si = usd.sales_invoice, idr.sales_invoice
-		self.assertTrue(usd_si and idr_si and usd_si != idr_si)
-
-		frappe.delete_doc("Sales Invoice", usd_si, ignore_permissions=True)
-		usd.reload()
-		idr.reload()
-		self.assertFalse(usd.sales_invoice, "USD booking rolled back on discard")
-		self.assertEqual(usd.payment_status, "Unpaid")
-		self.assertEqual(idr.sales_invoice, idr_si, "IDR booking untouched by USD discard")
 
 	def test_generated_invoice_items_cannot_be_deleted(self):
 		doc = frappe.get_doc({

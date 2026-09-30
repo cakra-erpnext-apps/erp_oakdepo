@@ -374,3 +374,41 @@ tank must be a JSON object.,tank harus berupa objek JSON.
 {0} is still a Draft — edit that contract directly instead of amending it.,"{0} masih Draft — ubah kontrak itu langsung, jangan di-amend."
 {0} {1} is not submitted yet.,{0} {1} belum disubmit.
 {0} {1} not found.,{0} {1} tidak ditemukan.
+DRAFT – NOT FINAL,DRAFT – BELUM FINAL,OAK Invoice
+CANCELLED,DIBATALKAN,OAK Invoice
+DRAFT,DRAFT,OAK Invoice
+VOID,BATAL,OAK Invoice
+Invoice No.,No. Invoice,OAK Invoice
+Invoice Date,Tanggal Invoice,OAK Invoice
+Due Date,Jatuh Tempo,OAK Invoice
+Currency,Mata Uang,OAK Invoice
+Bill To,Ditagihkan kepada,OAK Invoice
+Tax ID,NPWP,OAK Invoice
+Document,Dokumen,OAK Invoice
+Invoice Type,Tipe Invoice,OAK Invoice
+Exchange Rate {0},Kurs {0},OAK Invoice
+CUST. REF,REF CUST.,OAK Invoice
+TANK NO.,NO. TANK,OAK Invoice
+DESCRIPTION,DESKRIPSI,OAK Invoice
+PRICE,HARGA,OAK Invoice
+AMOUNT,JUMLAH,OAK Invoice
+Others,Lain-lain,OAK Invoice
+{0} items,{0} item,OAK Invoice
+Amount in Words,Terbilang,OAK Invoice
+Payment (Bank Transfer),Pembayaran (Transfer),OAK Invoice
+Account No.,No. Rekening,OAK Invoice
+Account Name,Atas Nama,OAK Invoice
+Put {0} in the transfer note.,Cantumkan {0} pada berita transfer.,OAK Invoice
+Notes,Catatan,OAK Invoice
+Remarks,Keterangan,OAK Invoice
+Discount,Diskon,OAK Invoice
+{0} × {1} hours,{0} × {1} jam,OAK Invoice
+Other Tax Base (11/12),DPP Nilai Lain (11/12),OAK Invoice
+VAT 12%,PPN 12%,OAK Invoice
+VAT,PPN,OAK Invoice
+Stamp Duty,Materai,OAK Invoice
+Rounding,Pembulatan,OAK Invoice
+"If PPh 23 (2%) of {0} is withheld, transfer {1}",Jika dipotong PPh 23 (2%) {0} → transfer {1},OAK Invoice
+"Sincerely,","Hormat kami,",OAK Invoice
+printed {0},dicetak {0},OAK Invoice
+Page,Hal.,OAK Invoice

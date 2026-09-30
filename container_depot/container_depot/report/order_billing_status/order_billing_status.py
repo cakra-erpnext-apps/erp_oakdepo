@@ -31,7 +31,8 @@ from __future__ import annotations
 import frappe
 from frappe.utils import flt, getdate
 
-from container_depot.monthly_invoicing import _active_contract, _is_postpaid
+from container_depot.consolidated_billing import _is_postpaid
+from container_depot.pricing_model import active_contract as _active_contract
 ORDER_TYPES = (
 	"Container Booking",
 	"Cleaning Order",

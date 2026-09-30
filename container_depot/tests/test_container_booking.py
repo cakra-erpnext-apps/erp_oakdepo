@@ -61,7 +61,10 @@ def _cleanup_customer_world(customer: str):
 		frappe.db.delete("Tariff Rate", {"parent": ("in", contracts)})
 		frappe.db.delete("Depot Contract", {"name": ("in", contracts)})
 	# Auto-created draft Cash invoices (B6) — drop drafts so they don't accumulate.
-	frappe.db.delete("Sales Invoice", {"customer": customer, "docstatus": 0})
+	drafts = frappe.get_all("Sales Invoice", filters={"customer": customer, "docstatus": 0}, pluck="name")
+	for dt in ("Sales Invoice Item", "Sales Taxes and Charges", "Payment Schedule"):
+		frappe.db.delete(dt, {"parent": ("in", drafts or [""]), "parenttype": "Sales Invoice"})
+	frappe.db.delete("Sales Invoice", {"name": ("in", drafts or [""])})
 	# Pre-arrival (Booked) phantom containers spawned by booking resolution (B6).
 	booked = frappe.get_all("Container", filters={"principal": customer, "status": "Booked"}, pluck="name")
 	if booked:

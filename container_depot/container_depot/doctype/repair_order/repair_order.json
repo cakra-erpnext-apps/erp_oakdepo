@@ -371,16 +371,17 @@
   {
    "description": "Jumlah numerik semua baris.",
    "fieldname": "total_cost",
-   "fieldtype": "Int",
+   "fieldtype": "Float",
    "label": "Total Cost (numeric)",
    "read_only": 1,
-   "hidden": 1
+   "hidden": 1,
+   "precision": "2"
   },
   {
    "default": "Unbilled",
    "fieldname": "billing_status",
-   "fieldtype": "Select",
    "no_copy": 1,
+   "fieldtype": "Select",
    "label": "Billing Status",
    "options": "Unbilled\nClient Billed\nPrincipal Billed\nCompleted",
    "reqd": 1,

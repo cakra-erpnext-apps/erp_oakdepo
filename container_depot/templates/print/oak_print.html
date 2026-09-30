@@ -109,7 +109,11 @@
 <div class="wm"><img src="{{ get_logo_pdf() }}"></div>
 {%- endmacro -%}
 
-{%- macro head(title, subtitle="", show_print_date=true, logo_h=70, title_size=0, title_wrap=false) -%}
+{%- set HQ_ADDR = "Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>Kota Medan, Sumatera Utara 20525 &middot; Indonesia<br>Telp : 061-42064205 / 061-48732784" -%}
+
+{#- address: the issuing office's lines (html), e.g. an invoice's Branch; default HQ_ADDR (Medan).
+    badge: html under the title, e.g. the invoice's DRAFT pill. -#}
+{%- macro head(title, subtitle="", show_print_date=true, logo_h=70, title_size=0, title_wrap=false, address="", badge="") -%}
 <table class="band">
   <tr>
     <td style="width:18%; vertical-align:middle; padding:0;">
@@ -118,14 +122,13 @@
     <td style="vertical-align:middle; padding:0 10px;">
       <div class="co-name">PT. Oasis Anugerah Kasih</div>
       <div class="co-meta">
-        Pulau Saparua No. B-5A KIM III, Tangkahan, Medan Labuhan<br>
-        Kota Medan, Sumatera Utara 20525 &middot; Indonesia<br>
-        Telp : 061-42064205 / 061-48732784
+        {{ address or HQ_ADDR }}
       </div>
     </td>
     <td style="width:27%; vertical-align:top; text-align:right; padding:0;">
       <div class="doc-title{% if title_wrap %} wrap{% endif %}"{% if title_size %} style="font-size:{{ title_size }}px;"{% endif %}>{{ title }}</div>
       {%- if subtitle %}<div class="doc-sub">{{ subtitle | upper }}</div>{% endif %}{#- pass literal "·", never &middot; — see styles() note -#}
+      {%- if badge %}<div style="margin-top:5px;">{{ badge }}</div>{% endif %}
       {%- if show_print_date %}<div class="doc-date">DICETAK {{ frappe.utils.format_datetime(frappe.utils.now(), "dd MMM yyyy HH:mm") | upper }}</div>{% endif %}
     </td>
   </tr>
@@ -133,12 +136,12 @@
 <div class="rule"></div>
 {%- endmacro -%}
 
-{#- cells: list of {"k": label, "v": value (html allowed), "w": optional width} -#}
+{#- cells: list of {"k": label, "v": value (html allowed), "w": optional width, "cls": optional class} -#}
 {%- macro strip(cells) -%}
 <table class="strip band">
   <tr>
     {%- for c in cells %}
-    <td{% if c.get("w") %} style="width:{{ c.w }};"{% endif %}>
+    <td{% if c.get("cls") %} class="{{ c.cls }}"{% endif %}{% if c.get("w") %} style="width:{{ c.w }};"{% endif %}>
       <div class="k">{{ c.k }}</div>
       <div class="v">{{ c.v }}</div>
     </td>

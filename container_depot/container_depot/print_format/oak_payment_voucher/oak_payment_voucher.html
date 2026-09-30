@@ -1,0 +1,109 @@
+{#-
+  PAYMENT / RECEIPT VOUCHER — what was paid, what it settled, and the journal it posted.
+  Ported from erp_cakra's "CMI Payment Voucher" (its GL table also listed cancelled rows).
+  Design system: container_depot/templates/print/oak_print.html
+-#}
+{%- import "container_depot/templates/print/oak_print.html" as oak with context -%}
+{{ oak.styles() }}
+{%- set _base = frappe.db.get_value("Company", doc.company, "default_currency") -%}
+{%- set _pay = doc.payment_type == "Pay" -%}
+{%- set _ccy = doc.paid_from_account_currency if _pay else doc.paid_to_account_currency -%}
+{%- set _amount = doc.paid_amount if _pay else doc.received_amount -%}
+{%- set _party = doc.party_name or doc.party or doc.depot_pay_to or "" -%}
+<div class="oak-doc">
+  {{ oak.watermark() }}
+  {{ oak.head("PAYMENT VOUCHER" if _pay else "RECEIPT VOUCHER", "", show_print_date=false) }}
+
+  {{ oak.strip([
+    {"k": "Voucher No.", "v": doc.name, "w": "34%"},
+    {"k": "Tanggal", "v": oak.tanggal(doc.posting_date), "w": "22%"},
+    {"k": "Dibayar ke" if _pay else "Diterima dari", "v": _party, "w": "26%"},
+    {"k": "Status", "v": ["Draft", "Submitted", "Cancelled"][doc.docstatus], "w": "18%"},
+  ]) }}
+
+  <table class="grid">
+    <thead>
+      <tr><th class="sec-row" colspan="4">RINCIAN</th></tr>
+      <tr>
+        <th style="width:26%;">DOKUMEN / AKUN</th>
+        <th>KETERANGAN</th>
+        <th style="width:18%;" class="num">SISA</th>
+        <th style="width:20%;" class="num">DIBAYAR</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for r in doc.depot_lines %}
+      <tr>
+        <td>{{ r.document_no or r.account or "" }}</td>
+        <td>{{ r.doc_label or r.description or "" }}{% if r.remark %}<div class="sub">{{ r.remark }}</div>{% endif %}</td>
+        <td class="num">{% if r.document_no %}{{ oak.money(r.outstanding, _ccy) }}{% endif %}</td>
+        <td class="num">{{ oak.money(r.amount, _ccy) }}</td>
+      </tr>
+      {%- endfor %}
+      {%- for d in doc.deductions %}
+      <tr>
+        <td>{{ d.account }}</td>
+        <td>{{ d.description or "" }}</td>
+        <td></td>
+        <td class="num">{{ oak.money(d.amount, _base) }}</td>
+      </tr>
+      {%- endfor %}
+      {%- for k in doc.depot_kasbon %}
+      <tr>
+        <td>{{ k.pending_cash }}</td>
+        <td>Dibayar dari kasbon {{ k.pay_to or "" }}</td>
+        <td></td>
+        <td class="num">({{ oak.money(k.allocated, _base) }})</td>
+      </tr>
+      {%- endfor %}
+      <tr class="total-row">
+        <td colspan="3">{{ "Total dibayar" if _pay else "Total diterima" }} ({{ doc.get("paid_from" if _pay else "paid_to") }})</td>
+        <td class="num">{{ oak.money(_amount, _ccy) }}</td>
+      </tr>
+      {%- if _ccy != _base %}
+      <tr>
+        <td colspan="3">Kurs {{ _ccy }} &rarr; {{ _base }}: {{ "{:,.2f}".format(doc.source_exchange_rate if _pay else doc.target_exchange_rate) }}</td>
+        <td class="num">{{ oak.money(doc.base_paid_amount if _pay else doc.base_received_amount, _base) }}</td>
+      </tr>
+      {%- endif %}
+    </tbody>
+  </table>
+
+  {%- set _gl = frappe.get_all("GL Entry", filters={"voucher_type": "Payment Entry", "voucher_no": doc.name, "is_cancelled": 0}, fields=["account", "debit", "credit", "remarks"], order_by="debit desc, creation asc") %}
+  {%- if _gl %}
+  <table class="grid" style="margin-top:10px;">
+    <thead>
+      <tr><th class="sec-row" colspan="3">JURNAL</th></tr>
+      <tr><th>AKUN</th><th style="width:20%;" class="num">DEBIT</th><th style="width:20%;" class="num">KREDIT</th></tr>
+    </thead>
+    <tbody>
+      {%- for g in _gl %}
+      <tr>
+        <td>{{ g.account }}</td>
+        <td class="num">{% if g.debit %}{{ oak.money(g.debit, _base) }}{% endif %}</td>
+        <td class="num">{% if g.credit %}{{ oak.money(g.credit, _base) }}{% endif %}</td>
+      </tr>
+      {%- endfor %}
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">{{ oak.money(_gl | sum(attribute="debit"), _base) }}</td>
+        <td class="num">{{ oak.money(_gl | sum(attribute="credit"), _base) }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {%- endif %}
+
+  {%- if doc.remarks %}
+  <div class="box" style="margin-top:10px;">
+    <div class="box-h">Catatan</div>
+    <div style="font-size:9.5px; white-space:pre-line;">{{ doc.remarks }}</div>
+  </div>
+  {%- endif %}
+
+  {{ oak.sign([
+    {"cap": "Dibuat oleh", "name": frappe.db.get_value("User", doc.owner, "full_name") or doc.owner},
+    {"cap": "Disetujui oleh", "name": ""},
+    {"cap": "Diterima oleh" if _pay else "Diserahkan oleh", "name": ""},
+  ]) }}
+  {{ oak.foot() }}
+</div>

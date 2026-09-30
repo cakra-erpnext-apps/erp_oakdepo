@@ -32,11 +32,9 @@ def after_install():
 	setup_role_profiles()
 	setup_property_setters()
 	ensure_payment_terms_templates()
+	ensure_invoice_print()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
-	# PPN template. An ensure_* rather than the old one-time patch, which ran before the
-	# setup wizard existed on a fresh site and left every invoice untaxed. See the docstring.
-	ensure_ppn_template()
 	# Store the finance master switch's default (on) the first time only, so a site that
 	# has turned invoicing off is never switched back on by a later migrate.
 	from container_depot import finance
@@ -76,11 +74,9 @@ def after_migrate():
 	# sync for existing sites on every migrate. See set_customer_payment_terms
 	# patch for wiring each customer's default from its Depot Contract mode.
 	ensure_payment_terms_templates()
+	ensure_invoice_print()
 	ensure_modes_of_payment()
 	ensure_multi_currency_billing()
-	# PPN template. An ensure_* rather than the old one-time patch, which ran before the
-	# setup wizard existed on a fresh site and left every invoice untaxed. See the docstring.
-	ensure_ppn_template()
 	# Store the finance master switch's default (on) the first time only, so a site that
 	# has turned invoicing off is never switched back on by a later migrate.
 	from container_depot import finance
@@ -383,9 +379,41 @@ CUSTOM_FIELDS = {
 			"label": "Branch",
 			"fieldtype": "Link",
 			"options": "Branch",
-			"insert_after": "customer",
+			"insert_after": "customer_section",
 			"in_standard_filter": 1,
-			"description": "Depot branch this invoice was raised for (carried from the Container Booking).",
+			"description": "",
+		},
+		# Header, two sections (user, 2026-09-29):
+		#   Branch  |  Customer (+ buttons)  |  Customer Address, Address
+		#   Invoice Type, Invoice Date, Due Date  |  Payment Term, Delivery Term, Tax Id  |
+		#   Company, Cost Center, Kode Transaksi Coretax, Don't Post to GL
+		# The standard fields are placed by INVOICE_FIELD_MOVES.
+		{"fieldname": "depot_cust_col1", "fieldtype": "Column Break", "insert_after": "branch"},
+		{"fieldname": "depot_cust_col2", "fieldtype": "Column Break", "insert_after": "depot_view_bill_group"},
+		{"fieldname": "depot_invoice_sb", "fieldtype": "Section Break", "insert_after": "tax_id"},
+		{
+			# Picked first: what this invoice bills, and so which orders Ambil Tagihan offers
+			# (consolidated_billing.CATEGORIES). Gabungan = every kind, Manual = typed lines
+			# only. Set by the system on the invoices it raises (bill_units, Cash bookings).
+			"fieldname": "depot_invoice_type",
+			"label": "Invoice Type",
+			"fieldtype": "Select",
+			"options": "\nBooking\nCleaning\nM&R\nPeriodic Test\nStorage\nGabungan\nManual",
+			"insert_after": "depot_invoice_sb",
+			"in_standard_filter": 1,
+		},
+		# The invoice's own actions live on the form, under the customer they act on, not in
+		# the toolbar (sales_invoice.js: labels, permissions and what each one does).
+		{
+			"fieldname": "depot_get_bill",
+			"label": "Pilih Order",
+			"fieldtype": "Button",
+			"button_color": "Primary",
+			# Placed under Invoice Type by INVOICE_FIELD_MOVES: picking the type opens the same
+			# list (sales_invoice.js), this reopens it.
+			"insert_after": "customer",
+			"hidden": 0,
+			"depends_on": "eval:doc.docstatus===0 && doc.customer && doc.depot_invoice_type && doc.depot_invoice_type!=='Manual'",
 		},
 		# --- Tagihan Depot (consolidated billing) -----------------------------------
 		# No filters live here any more. The operator presses Ambil Tagihan and gets EVERY
@@ -396,14 +424,181 @@ CUSTOM_FIELDS = {
 			"fieldname": "depot_bill_group",
 			"label": "Nomor Tagihan",
 			"fieldtype": "Data",
-			"insert_after": "branch",
+			"insert_after": "customer",
 			"read_only": 1,
 			"no_copy": 1,
-			# ERPNext invoices are single-currency, so a run that picks up both IDR and USD
-			# charges becomes two documents. This ties them together: the print format renders
-			# every member of a group as ONE pdf, a page per currency, under this number.
-			"description": "Invoice lain dengan nomor ini adalah bagian dari tagihan yang sama (mata uang berbeda).",
+			# Legacy: runs used to raise one invoice per currency, tied by this number, and the
+			# print still renders such a group as one PDF. Since 2026-09-28 a run is one invoice
+			# (consolidated_billing.bill_units) and nothing sets it.
+			"description": "",
 		},
+		{
+			"fieldname": "depot_view_bill_group",
+			"label": "Lihat Satu Tagihan",
+			"fieldtype": "Button",
+			"insert_after": "depot_bill_group",
+			"depends_on": "eval:doc.depot_bill_group",
+		},
+		# --- Print in another currency (erp_cakra's Print Currency / Print Rate) ---------
+		# Print only: the invoice and its ledger stay in Currency. The OAK Invoice print shows
+		# every amount × Kurs invoice / Print Rate, both to IDR. allow_on_submit: printing a
+		# submitted invoice in USD changes nothing that was booked.
+		{
+			"fieldname": "depot_print_currency",
+			"label": "Print Currency",
+			"fieldtype": "Link",
+			"options": "Currency",
+			"insert_after": "column_break2",
+			"allow_on_submit": 1,
+		},
+		{
+			"fieldname": "depot_print_rate",
+			"label": "Print Rate",
+			"fieldtype": "Float",
+			"precision": "6",
+			"insert_after": "depot_print_currency",
+			"allow_on_submit": 1,
+			"depends_on": "eval:doc.depot_print_currency && doc.depot_print_currency !== doc.currency",
+			"description": "",
+		},
+		# --- Sumber Tagihan: the orders and tanks this invoice bills (erp_cakra's Connection
+		# tab). Rendered by sales_invoice.js from consolidated_billing.invoice_sources; picking
+		# stays in Pilih Order. Tabs read Details, Terms, Sumber Tagihan (user, 2026-09-29):
+		# right after the Terms tab's last field.
+		{
+			"fieldname": "depot_sources_tab",
+			"label": "Sumber Tagihan",
+			"fieldtype": "Tab Break",
+			"insert_after": "terms",
+			"depends_on": "eval:doc.depot_billed_sources",
+		},
+		{"fieldname": "depot_sources_html", "fieldtype": "HTML", "insert_after": "depot_sources_tab"},
+		# --- Header, second section (layout: see depot_invoice_sb above) ---------------
+		{
+			# A label printed on the invoice, nothing more: the Due Date is set on its own
+			# (user, 2026-09-29). Named as the Depot Contract states it; a new invoice takes the
+			# customer's contract (invoicing.contract_payment_term).
+			"fieldname": "depot_payment_term",
+			"label": "Payment Term",
+			"fieldtype": "Select",
+			"options": "\nCash\nNET 30\nNET 45\nNET 60\nNET 90",
+			"insert_after": "depot_delivery_term",
+			"allow_on_submit": 1,
+			"description": 'Syarat pembayaran, mis. "Cash", "NET 30", "NET 45".',
+		},
+		{
+			"fieldname": "depot_delivery_term",
+			"label": "Delivery Term",
+			"fieldtype": "Data",
+			"insert_after": "due_date",
+			"description": 'Syarat penyerahan / incoterm, mis. "CIF", "FOB", "DDP".',
+		},
+		{
+			# Kode transaksi Faktur Pajak (Coretax DJP). 04 is the default since PMK 131/2024:
+			# PPN 12% on DPP Nilai Lain 11/12, which is the 11% this invoice charges.
+			"fieldname": "coretax_code",
+			"label": "Kode Transaksi Coretax",
+			"fieldtype": "Select",
+			"options": "\n".join([
+				"01 - Kepada Bukan Pemungut PPN",
+				"02 - Kepada Pemungut PPN Instansi Pemerintah",
+				"03 - Kepada Pemungut PPN Selain Instansi Pemerintah",
+				"04 - DPP Nilai Lain",
+				"05 - Besaran Tertentu",
+				"06 - Kepada Pemegang Paspor Luar Negeri",
+				"07 - PPN Tidak Dipungut / DTP",
+				"08 - Dibebaskan dari PPN",
+				"09 - Penyerahan Aktiva (Pasal 16D)",
+				"10 - Penyerahan Lainnya",
+			]),
+			"default": "04 - DPP Nilai Lain",
+			"insert_after": "column_break_14",
+		},
+		{
+			# Submit without a journal (sales_invoice.DepotSalesInvoice.make_gl_entries). no_copy:
+			# a list filter or Duplicate must never hand it to a new invoice unnoticed.
+			"fieldname": "dont_post_to_gl",
+			"label": "Don't Post to GL",
+			"fieldtype": "Check",
+			"default": "0",
+			"no_copy": 1,
+			"insert_after": "coretax_code",
+			"description": "",
+		},
+		# Remark + Attachment, under the totals. `remarks` is ERPNext's own (it also becomes the
+		# journal's remark), moved here by INVOICE_FIELD_MOVES.
+		{
+			"fieldname": "depot_remark_sb",
+			"label": "Remark",
+			"fieldtype": "Section Break",
+			"insert_after": "outstanding_amount",
+		},
+		{"fieldname": "depot_remark_col", "fieldtype": "Column Break", "insert_after": "depot_remark_sb"},
+		# Attachments take several files (user, 2026-09-29): the invoice's own File attachments,
+		# grouped by attached_to_field and listed by the HTML field (sales_invoice.js). The old
+		# single Attach field stays, hidden, as that key — and so File can still write back to
+		# it when a file is made private.
+		{
+			"fieldname": "depot_attachment",
+			"label": "Attachment",
+			"fieldtype": "Attach",
+			"insert_after": "depot_remark_col",
+			"hidden": 1,
+		},
+		{"fieldname": "depot_attachment_html", "fieldtype": "HTML", "insert_after": "depot_attachment"},
+		# --- Customer Paid (erp_cakra), under Remark:  Paid Date, No. Pembayaran | Notes |
+		# Paid Attachment. The date and the numbers come off the Payment Entries
+		# (payment_entry.sync_payment_links), never typed, so they cannot disagree with the
+		# ledger. Notes and the attachment (proof of transfer) are finance's own.
+		{
+			"fieldname": "depot_paid_sb",
+			"label": "Customer Paid",
+			"fieldtype": "Section Break",
+			"insert_after": "depot_attachment_html",
+			"collapsible": 1,
+			"collapsible_depends_on": "eval:doc.depot_paid_date",
+			"depends_on": "eval:doc.docstatus===1",
+		},
+		{
+			"fieldname": "depot_paid_date",
+			"label": "Paid Date",
+			"fieldtype": "Date",
+			"insert_after": "depot_paid_sb",
+			"read_only": 1,
+			"no_copy": 1,
+			"depends_on": "eval:doc.depot_paid_date",
+		},
+		{
+			# Payment Entries (drafts too) that settle this invoice. Also a list column.
+			"fieldname": "payment_no",
+			"label": "No. Pembayaran",
+			"fieldtype": "Data",
+			"insert_after": "depot_paid_date",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_list_view": 1,
+			"depends_on": "eval:doc.payment_no",
+		},
+		{"fieldname": "depot_paid_col", "fieldtype": "Column Break", "insert_after": "payment_no"},
+		{
+			"fieldname": "depot_paid_note",
+			"label": "Notes",
+			"fieldtype": "Small Text",
+			"insert_after": "depot_paid_col",
+			"allow_on_submit": 1,
+			"no_copy": 1,
+		},
+		{"fieldname": "depot_paid_col2", "fieldtype": "Column Break", "insert_after": "depot_paid_note"},
+		{
+			"fieldname": "depot_paid_attachment",
+			"label": "Paid Attachment",
+			"fieldtype": "Attach",
+			"insert_after": "depot_paid_col2",
+			"allow_on_submit": 1,
+			"no_copy": 1,
+			"hidden": 1,  # key for the list below, like depot_attachment
+		},
+		{"fieldname": "depot_paid_attachment_html", "fieldtype": "HTML", "insert_after": "depot_paid_attachment"},
 		{
 			# Internal rollback manifest for consolidated ("generate") invoices — a JSON
 			# list of the depot orders swept into this invoice. Drives roll-back of those
@@ -420,63 +615,390 @@ CUSTOM_FIELDS = {
 			"print_hide": 1,
 			"description": "Internal: depot orders swept into this consolidated invoice (rollback manifest).",
 		},
-		# --- Labour (manhour) -------------------------------------------------------
-		# Every item line carries the manhour its contract books for it (see the Sales
-		# Invoice Item field below). The hours are NOT priced into the line — they are
-		# totalled here and charged once, so the invoice reads:
+		# --- Labour, discount and tax (the erp_cakra layout) -------------------------
+		# Right under the item totals, one compact row each, no section titles:
 		#
-		#     Total Price + (Total Jam × Tarif per Jam) -> tax -> Grand Total
+		#     Biaya Manhour | Total Jam | Total Manhour [Tagih Manhour]   (only when lines carry labour)
+		#     Diskon        | PPh 23    | PPN [Tanpa PPN]  | Materai
 		#
-		# These live in the standard Totals block, right under Total / Net Total, so labour
-		# is read side by side with the price it accompanies instead of in a section of its
-		# own that has to be hunted for.
+		# Every line carries its labour TARIFF per hour; the tariffs are totalled and, when
+		# Tagih Manhour is ticked, charged once × Total Jam (the hours worked), outside the line
+		# amounts. Diskon / PPh 23 / PPN take "11%" or
+		# "50000"; invoicing.build_charges turns them into the native discount and Sales Taxes
+		# and Charges rows (hidden) on every save, so GL and grand total stay ERPNext's own.
+		# What each box came to is shown under it as "= Rp X" (sales_invoice.js).
 		{
-			"fieldname": "total_manhour",
-			"label": "Total Manhour (jam)",
-			"fieldtype": "Float",
-			"precision": "2",
+			"fieldname": "depot_manhour_sb",
+			"fieldtype": "Section Break",
+			"label": "",
 			"insert_after": "net_total",
-			"read_only": 1,
-			"description": "Jumlah JAM semua item (tidak dikali qty). Di luar Total.",
+			"depends_on": "eval:doc.total_manhour",
 		},
+		# Read left to right as the sum it is (user, 2026-09-29):
+		#     Biaya Manhour (Σ line tariffs) × Total Jam = Total Manhour (what is charged)
+		# The fieldnames are older than the labels: total_manhour holds the Biaya, manhour_amount
+		# the Total.
 		{
-			"fieldname": "manhour_hour",
-			"label": "Tarif per Jam",
-			"fieldtype": "Currency",
-			"options": "currency",
-			# NO default: the tariff is the customer's own (seeded from their rate card by
-			# invoicing.apply_manhour_charge). A hardcoded default would quietly bill every
-			# customer the same hourly rate — and, because the seed only fills a BLANK field,
-			# would stop the real rate from ever landing.
-			"default": "",
-			"insert_after": "total_manhour",
-			"description": "Tarif labour per jam, dari rate card pelanggan. Bisa diubah per invoice.",
-		},
-		{
-			"fieldname": "manhour_amount",
+			# Sum of the lines' labour tariffs, in the invoice currency.
+			"fieldname": "total_manhour",
 			"label": "Biaya Manhour",
 			"fieldtype": "Currency",
 			"options": "currency",
-			"insert_after": "manhour_hour",
+			"precision": "",
+			"insert_after": "depot_manhour_sb",
+			"read_only": 1,
+			"description": "",
+		},
+		{"fieldname": "depot_manhour_col", "fieldtype": "Column Break", "insert_after": "total_manhour"},
+		{
+			# The hours worked (user, 2026-09-29: 4 by default). The fieldname is from when this
+			# held the hourly tariff; 0 = no labour on this invoice.
+			"fieldname": "manhour_hour",
+			"label": "Total Jam",
+			"fieldtype": "Float",
+			"options": "",
+			"precision": "2",
+			"default": "4",
+			"depends_on": "eval:doc.depot_bill_manhour",
+			"insert_after": "depot_manhour_col",
+			"description": "",
+		},
+		{"fieldname": "depot_manhour_col2", "fieldtype": "Column Break", "insert_after": "manhour_hour"},
+		{
+			# Biaya × Jam: the one charge row (invoicing.apply_manhour_charge).
+			"fieldname": "manhour_amount",
+			"label": "Total Manhour",
+			"fieldtype": "Currency",
+			"options": "currency",
+			"depends_on": "eval:doc.depot_bill_manhour",
+			"insert_after": "depot_manhour_col2",
 			"read_only": 1,
 			"bold": 1,
-			"description": "Total Manhour × Tarif per Jam — masuk ke Grand Total.",
+			"description": "",
+		},
+		{
+			# Off by default (user, 2026-09-29): labour is billed only when someone says so.
+			# Under Total Manhour (the last column), like Tanpa PPN under PPN.
+			"fieldname": "depot_bill_manhour",
+			"label": "Tagih Manhour",
+			"fieldtype": "Check",
+			"default": "0",
+			"insert_after": "manhour_amount",
+		},
+		{
+			"fieldname": "depot_tax_section",
+			"label": "",
+			"fieldtype": "Section Break",
+			"insert_after": "depot_bill_manhour",
+		},
+		{
+			"fieldname": "discount_input",
+			"label": "Diskon",
+			"fieldtype": "Data",
+			"insert_after": "depot_tax_section",
+			"description": "",
+		},
+		{"fieldname": "depot_tax_col", "fieldtype": "Column Break", "insert_after": "discount_input"},
+		{
+			"fieldname": "pph_input",
+			"label": "PPh 23",
+			"fieldtype": "Data",
+			"insert_after": "depot_tax_col",
+			"description": "",
+		},
+		{"fieldname": "depot_tax_col2", "fieldtype": "Column Break", "insert_after": "pph_input"},
+		{
+			"fieldname": "tax_input",
+			"label": "PPN",
+			"fieldtype": "Data",
+			# No default (user, 2026-09-29): Diskon / PPh 23 / PPN / Materai all start empty.
+			# "" not a dropped key: live sites still carry the old "11%".
+			"default": "",
+			"insert_after": "depot_tax_col2",
+			"description": "",
+		},
+		{
+			"fieldname": "ignore_tax",
+			"label": "Tanpa PPN",
+			"fieldtype": "Check",
+			"insert_after": "tax_input",
+		},
+		{"fieldname": "depot_tax_col3", "fieldtype": "Column Break", "insert_after": "ignore_tax"},
+		{
+			"fieldname": "materai",
+			"label": "Materai",
+			"fieldtype": "Currency",
+			"options": "currency",
+			"insert_after": "depot_tax_col3",
 		},
 	],
-	# The manhour the contract books for this service. Shown in the items grid beside the
+	# The labour tariff per hour this service carries. Shown in the items grid beside the
 	# qty and summed into the invoice's Total Manhour; never folded into the line's amount,
-	# and never scaled by qty — unlike the rate, it is the labour the line books as a whole.
+	# and never scaled by qty.
 	"Sales Invoice Item": [
+		# Per-line currency (gaya erp_cakra). The line is priced in the currency its order or
+		# contract states; ``rate`` is derived into the invoice currency through IDR, which is
+		# the ledger's currency: rate = Harga × Kurs IDR baris / Kurs IDR invoice.
 		{
+			# Out of the grid (2026-09-30, room for Reff Doc): Harga already prints its symbol.
+			"fieldname": "depot_currency",
+			"label": "Mata Uang",
+			"fieldtype": "Link",
+			"options": "Currency",
+			"insert_after": "qty",
+			"in_list_view": 0,
+			"columns": 1,
+		},
+		{
+			"fieldname": "depot_price",
+			"label": "Harga",
+			"fieldtype": "Currency",
+			"options": "depot_currency",
+			"insert_after": "depot_currency",
+			"in_list_view": 1,
+			"columns": 2,
+		},
+		{
+			"fieldname": "depot_kurs",
+			"label": "Kurs ke IDR",
+			"fieldtype": "Float",
+			"precision": "6",
+			"insert_after": "depot_price",
+		},
+		{
+			# The line's labour tariff per hour, in its own currency (off the order, else the
+			# contract row). After Amount, like Tarif Manhour after Total Cost on an M&R line.
 			"fieldname": "manhour",
 			"label": "Manhour",
-			"fieldtype": "Float",
-			"precision": "2",
-			"insert_after": "qty",
+			"fieldtype": "Currency",
+			"options": "depot_currency",
+			"precision": "",
+			"insert_after": "amount",
 			"in_list_view": 1,
 			"columns": 1,
-			"description": "Manhour dari tarif kontrak — tidak dikali qty dan tidak menambah harga baris ini. Ditotal di header lalu dikali Hour.",
+			"description": "",
+		},
+		{
+			# Which depot order this line bills ("Cleaning Order|CO-0001", "Storage|TANK1").
+			# A line carrying it is locked: to change what is billed, fix the order and
+			# re-generate (consolidated_billing.protect_consolidated_items).
+			"fieldname": "depot_source",
+			"label": "Sumber",
+			"fieldtype": "Data",
+			"insert_after": "depot_kurs",
+			"read_only": 1,
+			"no_copy": 1,
+			"print_hide": 1,
+			"depends_on": "eval:doc.depot_source",
+		},
+		{
+			# The customer's own reference on that order (user, 2026-09-30), kept in step with
+			# the order while the invoice is a draft (consolidated_billing.stamp_reff_docs).
+			"fieldname": "depot_reff_doc",
+			"label": "Reff Doc",
+			"fieldtype": "Data",
+			"insert_after": "depot_source",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_list_view": 1,
+			"columns": 2,
+		},
+	],
+	"Purchase Invoice": [
+		{
+			"fieldname": "payment_no",
+			"label": "No. Pembayaran",
+			"fieldtype": "Data",
+			"insert_after": "supplier",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_list_view": 1,
+			"depends_on": "eval:doc.payment_no",
 		}
+	],
+	# --- Payment Entry, gaya erp_cakra (container_depot/payment_entry.py) ------------------
+	"Payment Entry": [
+		{
+			"fieldname": "depot_direct",
+			"label": "Expense / Income (tanpa party)",
+			"fieldtype": "Check",
+			"insert_after": "payment_type",
+			"description": "Langsung ke akun biaya/pendapatan, tanpa invoice.",
+		},
+		{
+			"fieldname": "depot_pay_to",
+			"label": "Dibayar ke / Diterima dari",
+			"fieldtype": "Data",
+			"insert_after": "depot_direct",
+			"depends_on": "eval:doc.depot_direct",
+		},
+		{
+			"fieldname": "branch",
+			"label": "Branch",
+			"fieldtype": "Link",
+			"options": "Branch",
+			"insert_after": "company",
+			"in_standard_filter": 1,
+		},
+		{
+			"fieldname": "depot_settlement_account",
+			"label": "Akun Settlement",
+			"fieldtype": "Link",
+			"options": "Account",
+			"insert_after": "mode_of_payment",
+			"depends_on": "eval:doc.mode_of_payment=='Settlement'",
+			"mandatory_depends_on": "eval:doc.mode_of_payment=='Settlement'",
+			"description": "Pengganti akun Kas/Bank.",
+		},
+		{
+			"fieldname": "depot_references",
+			"label": "Dokumen",
+			"fieldtype": "Data",
+			"insert_after": "party_name",
+			"read_only": 1,
+			"no_copy": 1,
+			"in_list_view": 1,
+			"depends_on": "eval:doc.depot_references",
+		},
+		{
+			"fieldname": "depot_lines_section",
+			"label": "Dokumen / Item",
+			"fieldtype": "Section Break",
+			"insert_after": "contact_email",
+		},
+		{
+			"fieldname": "depot_get_items",
+			"label": "Ambil Dokumen",
+			"fieldtype": "Button",
+			"insert_after": "depot_lines_section",
+			"depends_on": "eval:!doc.depot_direct && doc.party && doc.docstatus==0",
+		},
+		{
+			"fieldname": "depot_lines",
+			"label": "Dokumen / Item",
+			"fieldtype": "Table",
+			"options": "Payment Entry Line",
+			"insert_after": "depot_get_items",
+		},
+		{
+			"fieldname": "depot_charges_section",
+			"label": "Potongan & Biaya",
+			"fieldtype": "Section Break",
+			"insert_after": "depot_lines",
+			"collapsible": 1,
+		},
+		{
+			"fieldname": "depot_tax_input",
+			"label": "PPN",
+			"fieldtype": "Data",
+			"insert_after": "depot_charges_section",
+			"description": "11% dari total, atau nominal.",
+		},
+		{
+			"fieldname": "depot_pph_input",
+			"label": "PPh",
+			"fieldtype": "Data",
+			"insert_after": "depot_tax_input",
+			"description": "2% atau nominal. Pay: potong dari pembayaran. Receive: dipotong customer.",
+		},
+		{"fieldname": "depot_charges_col", "fieldtype": "Column Break", "insert_after": "depot_pph_input"},
+		{
+			"fieldname": "depot_materai",
+			"label": "Materai",
+			"fieldtype": "Currency",
+			"insert_after": "depot_charges_col",
+		},
+		{
+			"fieldname": "depot_admin_fee",
+			"label": "Biaya Admin",
+			"fieldtype": "Currency",
+			"insert_after": "depot_materai",
+		},
+		{"fieldname": "depot_charges_col2", "fieldtype": "Column Break", "insert_after": "depot_admin_fee"},
+		{
+			"fieldname": "depot_allocated",
+			"label": "Total Dokumen / Item",
+			"fieldtype": "Currency",
+			"insert_after": "depot_charges_col2",
+			"read_only": 1,
+			"no_copy": 1,
+		},
+		{
+			"fieldname": "depot_kasbon_section",
+			"label": "Kasbon (Pending Cash)",
+			"fieldtype": "Section Break",
+			"insert_after": "depot_allocated",
+			"collapsible": 1,
+			"depends_on": "eval:doc.payment_type=='Pay'",
+		},
+		{
+			"fieldname": "depot_get_kasbon",
+			"label": "Ambil Kasbon",
+			"fieldtype": "Button",
+			"insert_after": "depot_kasbon_section",
+			"depends_on": "eval:doc.docstatus==0",
+		},
+		{
+			"fieldname": "depot_kasbon",
+			"label": "Kasbon",
+			"fieldtype": "Table",
+			"options": "Payment Entry Kasbon",
+			"insert_after": "depot_get_kasbon",
+		},
+		{
+			"fieldname": "depot_kasbon_amount",
+			"label": "Dibayar dari Kasbon",
+			"fieldtype": "Currency",
+			"insert_after": "depot_kasbon",
+			"read_only": 1,
+			"no_copy": 1,
+			"depends_on": "eval:doc.depot_kasbon_amount",
+		},
+	],
+	# Reference rows rebuilt from the Dokumen / Item grid carry this flag; hand-made ones do not.
+	"Payment Entry Reference": [
+		{
+			"fieldname": "depot_from_line",
+			"label": "Dari Dokumen / Item",
+			"fieldtype": "Check",
+			"insert_after": "allocated_amount",
+			"hidden": 1,
+			"read_only": 1,
+		}
+	],
+	# Deduction rows built from the Potongan & Biaya boxes / Credit-Debit Notes (rebuilt each save).
+	"Payment Entry Deduction": [
+		{
+			"fieldname": "depot_auto",
+			"label": "Otomatis",
+			"fieldtype": "Check",
+			"insert_after": "description",
+			"hidden": 1,
+			"read_only": 1,
+		}
+	],
+	# Branch code in the invoice number: INV-{branch_code}-OAK-26-0001.
+	"Branch": [
+		{
+			"fieldname": "branch_code",
+			"label": "Kode Cabang",
+			"fieldtype": "Data",
+			"insert_after": "branch",
+			"description": "Untuk nomor INV-{kode}-OAK-26-0001. Kosong = 3 huruf awal nama cabang.",
+		},
+		# The branch's own address and phones, for the invoice it issues (user, 2026-09-29).
+		{"fieldname": "branch_address_sb", "fieldtype": "Section Break", "label": "Alamat & Kontak",
+			"insert_after": "branch_code"},
+		{"fieldname": "branch_address", "label": "Address", "fieldtype": "Small Text", "insert_after": "branch_address_sb"},
+		{"fieldname": "branch_city", "label": "Kota", "fieldtype": "Data", "insert_after": "branch_address"},
+		{"fieldname": "branch_province", "label": "Provinsi", "fieldtype": "Data", "insert_after": "branch_city"},
+		{"fieldname": "branch_contact_cb", "fieldtype": "Column Break", "insert_after": "branch_province"},
+		{"fieldname": "branch_country", "label": "Negara", "fieldtype": "Link", "options": "Country",
+			"default": "Indonesia", "insert_after": "branch_contact_cb"},
+		{"fieldname": "branch_phone_1", "label": "No. Telepon 1", "fieldtype": "Data", "options": "Phone",
+			"insert_after": "branch_country"},
+		{"fieldname": "branch_phone_2", "label": "No. Telepon 2", "fieldtype": "Data", "options": "Phone",
+			"insert_after": "branch_phone_1"},
 	],
 	# Back-link a Repair Order to the consolidated invoice it was billed into. Repair
 	# Order has no native invoice link (billing state lives in billing_status); this lets
@@ -630,6 +1152,12 @@ OBSOLETE_CUSTOM_FIELDS = [
 	("Sales Invoice", "depot_bill_mr"),
 	("Sales Invoice", "depot_bill_periodic"),
 	("Sales Invoice", "depot_bill_storage"),
+	# Jenis (Jasa / Part) on an invoice line (2026-09-29): an invoice moves no stock, so the
+	# line is just its Item.
+	("Sales Invoice Item", "line_type"),
+	# "Batalkan & Kembalikan Order" (2026-09-29): it only called Frappe's own Delete / Cancel,
+	# which already give the orders back (on_trash / on_cancel: rollback_billed_sources).
+	("Sales Invoice", "depot_rollback"),
 ]
 
 
@@ -699,18 +1227,91 @@ PROPERTY_SETTERS = [
 	("Order Bongkar", None, "default_print_format", "OAK Bon Bongkar", "Data"),
 	("Order Muat", None, "default_print_format", "OAK Bon Muat", "Data"),
 	("Depot Contract", None, "default_print_format", "OAK Depot Contract", "Data"),
+	# Print Language (user, 2026-09-30): Indonesian unless the customer says otherwise, and the
+	# invoice's own is the user's to change — before or after submit, it only picks the words
+	# the OAK Invoice prints in. Moved beside Print Currency by INVOICE_FIELD_MOVES.
+	("Customer", "language", "default", "id", "Text"),
+	("Sales Invoice", "language", "read_only", "0", "Check"),
+	("Sales Invoice", "language", "allow_on_submit", "1", "Check"),
+	# A line's rate is derived from its own Harga × kurs (invoicing.build_charges), so the
+	# box is read-only and left out of the grid — Harga is what the user types.
+	("Sales Invoice Item", "rate", "read_only", "1", "Check"),
+	("Sales Invoice Item", "rate", "in_list_view", "0", "Check"),
+	# The items grid reads like Service & Parts on the M&R / Cleaning Order: a plain list
+	# (Item | Qty | Harga | Reff Doc | Amount | Manhour), a click opens the line's
+	# own form. What that form shows is INVOICE_ITEM_FORM.
+	("Sales Invoice Item", None, "editable_grid", "0", "Check"),
+	("Sales Invoice Item", "item_code", "columns", "2", "Int"),
+	("Sales Invoice Item", "qty", "columns", "1", "Int"),
+	("Sales Invoice Item", "amount", "columns", "2", "Int"),
+	("Sales Invoice Item", "warehouse", "in_list_view", "0", "Check"),
+	# Accounting Details stays on the line's form so the user sees where it posts.
+	# ERPNext's boilerplate under Exchange Rate says nothing the label does not.
+	("Sales Invoice", "conversion_rate", "description", "", "Text"),
+	# Open, and just "Currency": the price-list fields in it are hidden (the contract prices).
+	("Sales Invoice", "currency_and_price_list", "collapsible", "0", "Check"),
+	("Sales Invoice", "currency_and_price_list", "label", "Currency", "Data"),
+	# Cost Center's section; a Customize Form save on dev (2026-09-10) had hidden it.
+	("Sales Invoice Item", "accounting_dimensions_section", "hidden", "0", "Check"),
+	# ERPNext's change_form_labels re-shows these on every refresh with toggle_display, which
+	# only flips `hidden`; a false depends_on keeps them down. They also count the Manhour
+	# row, so as a "tax total" they would mislead.
+	("Sales Invoice", "total_taxes_and_charges", "depends_on", "eval:0", "Data"),
+	# Tabs erp_cakra does without: POS / advances / write-off, the address & contact block
+	# (Customer Address moves to the header, INVOICE_FIELD_MOVES) and More Info (debit_to is
+	# derived; remarks already moved). A hidden Tab Break hides its whole pane.
+	("Sales Invoice", "payments_tab", "hidden", "1", "Check"),
+	("Sales Invoice", "contact_and_address_tab", "hidden", "1", "Check"),
+	("Sales Invoice", "more_info_tab", "hidden", "1", "Check"),
+	# Payment Schedule (Terms tab): one row the server derives from the Payment Term every
+	# draft save (invoicing.header_rules), so there is nothing to edit there (user, 2026-09-29).
+	("Sales Invoice", "payment_schedule_section", "hidden", "1", "Check"),
+	# No Duplicate (allow_copy is inverted: 1 = hide Copy): a copy would carry billed lines
+	# without their orders. The rest of the "…" menu is trimmed in sales_invoice.js.
+	("Sales Invoice", None, "allow_copy", "1", "Check"),
+	# No CSV Download / Upload under the items grid: lines come from the orders or are typed.
+	("Sales Invoice", "items", "allow_bulk_edit", "0", "Check"),
+	("Sales Invoice", "base_total_taxes_and_charges", "depends_on", "eval:0", "Data"),
+	# Advances are allocated in the Payments tab, which is hidden: this would always read 0.
+	("Sales Invoice", "total_advance", "depends_on", "eval:0", "Data"),
+	# Same trap: sales_invoice.js toggle_display()s it back. Stock leaves through the orders
+	# and Stock Entry, never through an invoice.
+	("Sales Invoice", "update_stock", "depends_on", "eval:0", "Data"),
+	# Payment Entry: the Dokumen / Item grid is the one place a payment is filled; the native
+	# references (and the buttons that fill them) are derived from it on save.
+	("Payment Entry", "section_break_14", "hidden", "1", "Check"),
+	("Payment Entry", "references", "hidden", "1", "Check"),
+	("Payment Entry", "get_outstanding_invoices", "hidden", "1", "Check"),
+	("Payment Entry", "get_outstanding_orders", "hidden", "1", "Check"),
+	("Payment Entry", None, "default_print_format", "OAK Payment Voucher", "Data"),
+	# Invoice header, the erp_cakra way: the posting date IS the invoice date (and is always
+	# editable — set_posting_time is forced on, invoicing.header_rules), no posting time.
+	("Sales Invoice", "posting_date", "label", "Invoice Date", "Data"),
+	("Sales Invoice", "due_date", "label", "Due Date", "Data"),
+	# ERPNext's Payment Terms Template drives the Due Date and the payment schedule. A depot
+	# invoice's Payment Term is only a label (depot_payment_term, user 2026-09-29): this one is
+	# hidden and kept empty on drafts (invoicing.header_rules).
+	("Sales Invoice", "payment_terms_template", "hidden", "1", "Check"),
+	("Sales Invoice", "set_posting_time", "default", "1", "Text"),
+	# The number is PE|RV-{bank}-{abbr}-{YYYY}-{roman}-#### (DepotPaymentEntry.autoname), and
+	# INV-{branch}-OAK-{yy}-#### on the invoice: Series picks nothing. erpnext.toggle_naming_series
+	# re-shows it on every refresh, so depends_on (which that does not touch) keeps it down.
+	("Payment Entry", "naming_series", "hidden", "1", "Check"),
+	("Payment Entry", "naming_series", "depends_on", "eval:0", "Data"),
+	("Sales Invoice", "naming_series", "depends_on", "eval:0", "Data"),
 ] + [
 	# Declutter the Sales Invoice form. UI-only: the fields stay in the DB and every
 	# controller still reads them — nothing is deleted, only hidden.
 	#
-	# Deliberately NOT hidden, unlike erp_cakra's much longer list: total / net_total /
-	# grand_total / taxes / taxes_and_charges. erp_cakra can hide the native totals because
-	# it replaced them with its own Amounts fields (Discount / PPh / Tax / Materai /
-	# Adjustment). This app has no replacement, so hiding them would leave an invoice with
-	# no visible total and no way to see or change its tax.
+	# Deliberately NOT hidden: total / net_total / grand_total. The tax table goes too, as in
+	# erp_cakra: the Pajak & Potongan boxes are the one place tax is set, and each shows the
+	# amount it came to beside it.
 	("Sales Invoice", fn, "hidden", "1", "Check")
 	for fn in (
 		# --- header noise -------------------------------------------------------
+		"naming_series",      # the number is INV-{branch}-OAK-{yy}-#### (invoicing.autoname)
+		"posting_time", "set_posting_time",  # Invoice Date only; always editable
+		"use_company_roundoff_cost_center",
 		"title",              # derived from the customer; just repeats it
 		"project",
 		"company_tax_id",
@@ -729,11 +1330,12 @@ PROPERTY_SETTERS = [
 		"packed_items", "product_bundle_help",
 		"total_qty", "total_net_weight",
 		"time_sheet_list", "timesheets", "total_billing_hours", "total_billing_amount",
-		# --- tax clutter (§ "rapikan tampilan pajak") ----------------------------
-		# The tax TABLE and its template stay; what goes is everything around them:
-		# withholding, shipping/incoterm, the native discount block, and the verbose
-		# tax-breakdown HTML that restates the table underneath it.
+		# --- tax clutter --------------------------------------------------------
+		# Tax rows are built from the Pajak & Potongan boxes on every save, so the table,
+		# its template picker and its total go, with withholding, shipping/incoterm, the
+		# native discount block and the tax-breakdown HTML.
 		"tax_category", "shipping_rule", "incoterm", "named_place",
+		"taxes_and_charges", "taxes", "total_taxes_and_charges",
 		"apply_tds", "tax_withholding_group", "ignore_tax_withholding_threshold",
 		"override_tax_withholding_entries", "tax_withholding_entries",
 		"other_charges_calculation",
@@ -776,7 +1378,83 @@ def setup_property_setters():
 	"""Apply app Property Setters on standard doctypes (idempotent)."""
 	for doctype, fieldname, prop, value, property_type in PROPERTY_SETTERS:
 		_set_property(doctype, fieldname, prop, value, property_type)
+	_tidy_invoice_item_form()
+	_arrange_invoice_fields()
 	frappe.db.commit()
+
+
+# Standard Sales Invoice fields moved into the header the erp_cakra way: (field, after).
+# Custom fields are placed by their own insert_after; these are ERPNext's, which only a
+# `field_order` Property Setter can move.
+INVOICE_FIELD_MOVES = [  # applied in order, each relative to the result of the one before
+	("customer_address", "depot_cust_col2"),  # out of the hidden Address & Contact tab
+	("address_display", "customer_address"),
+	("depot_invoice_sb", "address_display"),  # second section starts here
+	("depot_invoice_type", "depot_invoice_sb"),
+	("depot_get_bill", "depot_invoice_type"),  # Pilih Order, right under the type it lists
+	("depot_payment_term", "due_date"),
+	("column_break1", "due_date"),
+	("tax_id", "depot_delivery_term"),
+	("language", "depot_print_rate"),  # Print Language, out of More Info, beside Print Currency
+	("company", "column_break_14"),
+	("cost_center", "company"),  # out of the hidden Accounting Dimensions section
+	("remarks", "depot_remark_sb"),  # out of the More Info tab
+]
+
+
+def _arrange_invoice_fields():
+	"""Rebuilt from the natural order on every migrate, so a moved insert_after, a field a
+	newer ERPNext adds or a Customize Form save never leaves the layout pinned stale."""
+	import json
+
+	frappe.db.delete("Property Setter", {"doc_type": "Sales Invoice", "property": "field_order"})
+	frappe.clear_cache(doctype="Sales Invoice")
+	order = [df.fieldname for df in frappe.get_meta("Sales Invoice", cached=False).fields]
+	for field, after in INVOICE_FIELD_MOVES:
+		order.remove(field)
+		order.insert(order.index(after) + 1, field)
+	_set_property("Sales Invoice", None, "field_order", json.dumps(order), "Data")
+
+
+# The only fields an invoice line's form shows, in the order an M&R / Cleaning line is filled,
+# plus where it posts (Accounting Details, which the user asked to see). Everything else
+# ERPNext puts on Sales Invoice Item (~90 fields: UOM, price list, margin, stock,
+# references…) is still set and saved by ERPNext, just not shown.
+INVOICE_ITEM_FORM = {
+	"item_code", "item_name", "qty", "depot_currency", "depot_price", "depot_kurs",
+	"manhour", "depot_source", "depot_reff_doc", "amount", "income_account", "cost_center",
+}
+_BREAKS = ("Section Break", "Column Break", "Tab Break")
+
+
+def _tidy_invoice_item_form():
+	"""Hide the rest by ``depends_on = eval:0``, a whole section at a time where none of it stays.
+
+	``depends_on``, not ``hidden``: ERPNext flips ``hidden`` back on at runtime (base_* in a
+	foreign invoice, net_* with a discount, serial/batch), and depends_on outranks that. Read
+	from the meta on every migrate, so a field a future ERPNext adds is hidden too. Rebuilt
+	from scratch, so a field added to INVOICE_ITEM_FORM comes back.
+	"""
+	frappe.db.delete(
+		"Property Setter",
+		{"doc_type": "Sales Invoice Item", "property": "depends_on", "value": "eval:0"},
+	)
+	frappe.clear_cache(doctype="Sales Invoice Item")
+	sections, current = [], [None, []]
+	for df in frappe.get_meta("Sales Invoice Item").fields:
+		if df.fieldtype in ("Section Break", "Tab Break"):
+			sections.append(current)
+			current = [df.fieldname, []]
+		else:
+			current[1].append(df)
+	sections.append(current)
+	for section, fields in sections:
+		if section and not any(df.fieldname in INVOICE_ITEM_FORM for df in fields):
+			_set_property("Sales Invoice Item", section, "depends_on", "eval:0", "Data")
+			continue
+		for df in fields:
+			if df.fieldtype not in _BREAKS and df.fieldname not in INVOICE_ITEM_FORM:
+				_set_property("Sales Invoice Item", df.fieldname, "depends_on", "eval:0", "Data")
 
 
 # ---------------------------------------------------------------------------
@@ -1040,7 +1718,8 @@ def setup_inventory_dashboard():
 #   - Bayar langsung (Cash/Bank) -> Mode of Payment + Payment Entry.
 #   - Bayar nanti (termin)       -> Payment Terms Template on the invoice.
 # The DEFAULT lives on Customer.payment_terms (built-in field, flows into a new
-# Sales Invoice's payment_terms_template) and is overridable per invoice. The
+# Sales Invoice's payment_terms_template) and is overridable per invoice. Depot
+# invoices do not use it: their Payment Term is a label (depot_payment_term). The
 # statement side (Process Statement Of Accounts) is read-only and is NOT seeded
 # here — it never creates accounting documents. See BILLING_MODE.md.
 
@@ -1066,62 +1745,6 @@ PAYMENT_TERMS = {
 }
 
 
-def ensure_ppn_template():
-	"""Ensure the PPN Sales Taxes and Charges Template exists for EVERY company.
-
-	Every depot invoice is raised with ``taxes_and_charges = invoicing.PPN_TEMPLATE``; when
-	the template is missing, ``_resolve_tax_template`` returns None and the invoice goes out
-	with **no tax row at all** — silently, since a missing template is not an error to
-	ERPNext. So this has to be an ``ensure_*`` that runs on every migrate, not the one-time
-	patch it used to be (``patches.v0_9.seed_ppn_template``).
-
-	That patch is exactly why this exists: on a fresh site it runs during install, BEFORE the
-	setup wizard has created the company and its chart of accounts, hits its "no company"
-	early return, and is then logged as done forever. The tax account it was waiting for
-	arrives minutes later and the patch never looks again. Re-running the condition on every
-	migrate is what makes the seed survive that ordering.
-	"""
-	try:
-		if not frappe.db.exists("DocType", "Sales Taxes and Charges Template"):
-			return
-		from container_depot.invoicing import PPN_TEMPLATE
-
-		for company in frappe.get_all("Company", pluck="name"):
-			existing = frappe.db.get_value(
-				"Sales Taxes and Charges Template", {"title": PPN_TEMPLATE, "company": company}, "name"
-			)
-			# An EXISTING template with no rows is as broken as a missing one, and worse: it
-			# resolves, so the invoice is stamped with a template that charges nothing and no
-			# error is raised anywhere. Guard on the rows, not on the parent.
-			if existing and frappe.db.count("Sales Taxes and Charges", {"parent": existing}):
-				continue
-			account = _output_vat_account(company)
-			if not account:
-				# Unusual chart of accounts — skip this company rather than fail the migrate.
-				# The next migrate tries again, which is the whole point of being an ensure_*.
-				continue
-			row = {
-				"charge_type": "On Net Total",
-				"account_head": account,
-				"rate": 11,
-				"description": "PPN 11%",
-			}
-			if existing:
-				doc = frappe.get_doc("Sales Taxes and Charges Template", existing)
-				doc.append("taxes", row)
-				doc.save(ignore_permissions=True)
-			else:
-				frappe.get_doc({
-					"doctype": "Sales Taxes and Charges Template",
-					"title": PPN_TEMPLATE,
-					"company": company,
-					"taxes": [row],
-				}).insert(ignore_permissions=True)
-		frappe.db.commit()
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "container_depot PPN template seed failed")
-
-
 def _output_vat_account(company):
 	"""The company's output-VAT account (PPN Keluaran), else any liability tax account."""
 	return (
@@ -1137,6 +1760,51 @@ def _output_vat_account(company):
 		)
 		or frappe.db.get_value("Account", {"company": company, "account_type": "Tax"}, "name")
 	)
+
+
+INVOICE_PRINT_FORMAT = "OAK Invoice"
+INVOICE_TERMS = "OAK Invoice"
+INVOICE_TERMS_TEXT = """<ol>
+<li>Batas pembatalan pembayaran lift off / lift on bisa dikembalikan pada tanggal yang sama.</li>
+<li>Revisi / pembatalan invoice maksimal 3 hari setelah invoice terbit.</li>
+<li>Keberatan atas tagihan mohon disertai No. Tank dan Ref Customer terkait.</li>
+</ol>"""
+# The Pembayaran (Transfer) box; edited in Depot Finance Settings.
+INVOICE_BANK = {"invoice_bank": "BCA", "invoice_account_no": "195-612-323-3", "invoice_account_name": "PT. Oasis Anugerah Kasih"}
+
+
+def ensure_invoice_print():
+	"""One print format for a Sales Invoice, OAK Invoice (user, 2026-09-29): the default, and
+	every other one disabled — on every migrate, since a re-import of ERPNext's own formats
+	switches them back on.
+
+	Its Catatan box is the invoice's Terms and Conditions (Terms tab). A new invoice starts from
+	the company's default selling terms, seeded once as "OAK Invoice" (the Note the format used
+	to hardcode), so the owner edits it in Terms and Conditions rather than in the template. The
+	bank account it prints is seeded once into Depot Finance Settings, for the same reason."""
+	if not frappe.db.exists("Print Format", INVOICE_PRINT_FORMAT):
+		return
+	_set_property("Sales Invoice", None, "default_print_format", INVOICE_PRINT_FORMAT, "Data")
+	for name in frappe.get_all(
+		"Print Format",
+		filters={"doc_type": "Sales Invoice", "name": ["!=", INVOICE_PRINT_FORMAT], "disabled": 0},
+		pluck="name",
+	):
+		frappe.db.set_value("Print Format", name, "disabled", 1)
+	if not frappe.db.exists("Terms and Conditions", INVOICE_TERMS):
+		frappe.get_doc({
+			"doctype": "Terms and Conditions", "title": INVOICE_TERMS, "selling": 1, "terms": INVOICE_TERMS_TEXT,
+		}).insert(ignore_permissions=True)
+	for company in frappe.get_all("Company", filters={"default_selling_terms": ["is", "not set"]}, pluck="name"):
+		frappe.db.set_value("Company", company, "default_selling_terms", INVOICE_TERMS)
+	if not frappe.db.get_single_value("Depot Finance Settings", "invoice_account_no"):
+		frappe.db.set_single_value("Depot Finance Settings", INVOICE_BANK)
+	# Indonesian by default: an invoice without a Print Language prints in it, and it must be
+	# enabled to be offered in the print view's Language list at all.
+	frappe.db.set_value("Print Format", INVOICE_PRINT_FORMAT, "default_print_language", "id")
+	if frappe.db.exists("Language", "id"):
+		frappe.db.set_value("Language", "id", "enabled", 1)
+	frappe.db.commit()
 
 
 def ensure_payment_terms_templates():
@@ -1202,6 +1870,9 @@ def ensure_modes_of_payment():
 			return
 		_ensure_mode_of_payment("Cash", "Cash", companies, _cash_account)
 		_ensure_mode_of_payment("Bank Transfer", "Bank", companies, _bank_account)
+		# Settlement: the payment's Kas/Bank side is replaced by an account picked on the
+		# Payment Entry itself (payment_entry._prepare_sides), so it maps no default account.
+		_ensure_mode_of_payment("Settlement", "General", companies, lambda company: None)
 		frappe.db.commit()
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "container_depot mode-of-payment seed failed")
@@ -1655,7 +2326,7 @@ NO_MANUAL_CREATE = AUDIT_DOCTYPES | {"Gate Entry"}
 # operasional lain. Konsekuensinya disebut terang-terangan: tariff_lines sebuah kontrak
 # Active ADALAH tarif yang dibaca booking, cleaning dan M&R — jadi Admin Ops memegang
 # harga, bukan cuma jadwal.
-FINANCE_DOCTYPES = {"OAK Monthly Invoice", "Depot Finance Settings"}
+FINANCE_DOCTYPES = {"OAK Monthly Invoice", "Depot Finance Settings", "Pending Cash", "Pending Cash Type"}
 
 # Reference/config records. Admin Ops may correct them but not spawn new ones.
 MASTER_DOCTYPES = {
@@ -1811,6 +2482,9 @@ FIELD_ROLE_MATRIX = [
 # they are defined as "everything except…" rather than as a list.
 OFFICE_ROLE_MATRIX = {
 	"Cashier": {
+		# Kasbon: Cashier drafts and validates; paying it out is Finance's (pending_cash.PAY_ROLES).
+		"Pending Cash": "rwc",
+		"Pending Cash Type": "r",
 		"Storage Charge": "r",
 		"Container Booking": "r",
 		"Gate Entry": "r",
@@ -1828,6 +2502,8 @@ OFFICE_ROLE_MATRIX = {
 		"OAK Monthly Invoice": "rwcsxa",
 		"Depot Finance Settings": "rw",
 		"Depot Contract": "r",
+		"Pending Cash": "rwcd",
+		"Pending Cash Type": "rwcd",
 	},
 	"Commercial": {
 		"Storage Charge": "r",

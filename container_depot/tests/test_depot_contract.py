@@ -117,7 +117,7 @@ class TestDepotContract(FrappeTestCase):
 		self.assertEqual(b.payment_type, "Cash")
 
 	def test_both_contract_is_postpaid(self):
-		from container_depot.monthly_invoicing import _is_postpaid
+		from container_depot.consolidated_billing import _is_postpaid
 
 		cust = ensure_test_customer(CUSTOMER_NAME)
 		_make_contract(

@@ -15,7 +15,6 @@ rule for the other categories, which is enforced once in
 
 from __future__ import annotations
 
-from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
@@ -43,7 +42,7 @@ def _purge(customer):
 	frappe.db.delete("Repair Order", {"name": ("in", repairs or [""])})
 	frappe.db.delete("Cleaning Order Service", {"parent": ("in", orders or [""])})
 	frappe.db.delete("Cleaning Order", {"name": ("in", orders or [""])})
-	for log in ("Container Movement", "Container Activity"):
+	for log in ("Container Movement", "Container Activity", "Storage Charge"):
 		frappe.db.delete(log, {"container": ("in", containers or [""])})
 	frappe.db.delete("Container", {"name": ("in", containers or [""])})
 	frappe.db.commit()
@@ -147,18 +146,13 @@ class TestZeroTotalOrdersAreNotBilled(FrappeTestCase):
 		)
 
 	# ---- cleaning -------------------------------------------------------
-	def test_cleaning_priced_to_zero_does_not_fall_back_to_the_tariff(self):
+	def test_cleaning_priced_to_zero_bills_nothing(self):
 		"""Services were chosen and priced at 0 — a decision, not a missing price."""
 		self._cleaning(self._container("0000003"), [0, 0])
+		self.assertEqual(cb._cleaning_lines(self.customer, *WINDOW), [])
 
-		with patch.object(cb, "resolve_tariff_rate", return_value=500000):
-			self.assertEqual(cb._cleaning_lines(self.customer, *WINDOW), [])
-
-	def test_cleaning_with_no_service_still_falls_back_to_the_tariff(self):
-		"""No service row at all: the contract tariff is the answer, as it always was."""
+	def test_cleaning_with_no_service_bills_nothing(self):
+		"""The invoice bills what the order says. An order with no service line says nothing
+		— the contract is only ever a starting price for a line, never a charge of its own."""
 		self._cleaning(self._container("0000004"), [])
-
-		with patch.object(cb, "resolve_tariff_rate", return_value=500000):
-			units = cb._cleaning_lines(self.customer, *WINDOW)
-		self.assertEqual(len(units), 1)
-		self.assertEqual(units[0]["lines"][0]["rate"], 500000)
+		self.assertEqual(cb._cleaning_lines(self.customer, *WINDOW), [])

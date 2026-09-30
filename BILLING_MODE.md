@@ -52,6 +52,13 @@ Default per customer di-backfill dari `Depot Contract.payment_type`:
 Backfill **hanya** mengisi customer yang `payment_terms`-nya masih kosong, jadi
 edit manual owner tidak pernah ditimpa.
 
+> **Invoice depot tidak memakai template ini** (user, 2026-09-29). Field
+> `payment_terms_template` disembunyikan dan dikosongkan di draft
+> (`DepotSalesInvoice.set_payment_schedule`). Payment Term di invoice adalah label
+> `depot_payment_term` (Cash / NET 30 / 45 / 60 / 90, default dari kontrak Active:
+> `invoicing.contract_payment_term`) yang hanya tercetak. Due Date diisi bebas; kosong =
+> tanggal invoice + 30 hari (`invoicing.header_rules`).
+
 ---
 
 ## 3. Pembayaran
@@ -90,37 +97,53 @@ auto-create dan tidak ada efek akuntansi** dari "terlewat".
 
 ---
 
-## 4b. Multi-currency (1 company, invoice USD)
+## 4b. Multi-currency (1 company base IDR)
 
-Company tetap base **IDR** (GL & laporan IDR), tapi principal yang di-quote USD
-(price list OAK / Bertschi) bisa **diinvoice dalam USD** — fitur native ERPNext.
+Company tetap base **IDR** (GL & laporan IDR). Sejak 2026-09-28:
 
-Di-setup oleh:
-- `install.ensure_multi_currency_billing()` — menyalakan Accounts Settings
-  **"Allow multi-currency invoices against single party account"** sehingga satu
-  akun piutang IDR bisa menampung invoice USD (di-track per-party + exchange
-  rate). Base currency company **tidak** diubah.
-- `Customer.default_currency` — billing currency customer, diisi tangan di master.
-  Dulu ada patch `v0_13.set_customer_billing_currency` yang mengisinya dari currency
-  Price List customer; patch itu ikut turun bersama seluruh lapisan Price List
-  (2026-09-17). Customer yang punya kontrak memakai currency kontraknya dan tidak
-  membaca field ini sama sekali — lihat `pricing_model.currency_for_customer`.
+- Tiap baris Sales Invoice punya **Mata Uang, Harga, Kurs ke IDR** sendiri. Rate invoice =
+  Harga × kurs baris / kurs invoice, jadi invoice USD boleh memuat baris IDR (dan
+  sebaliknya). Kurs default dari master **Currency Exchange** (isi di sana), bisa diubah
+  per invoice. Invoice valas **tidak bisa di-submit di kurs 1**.
+- **Invoice Type dipilih dulu** (sejak 2026-09-29): Booking / Cleaning / M&R / Periodic Test /
+  Storage / Gabungan / Manual. Ambil Tagihan hanya menawarkan order jenis itu (Gabungan = semua,
+  Manual = tanpa Ambil Tagihan). Invoice buatan sistem terisi otomatis: tagihan bulanan per
+  kategori, booking Cash = Booking, run campuran = Gabungan.
+- **Satu tagihan = satu invoice = satu mata uang** (sejak 2026-09-28). Ambil Tagihan
+  menanyakan mata uang tagih bila pilihannya bukan murni IDR; valas lain dikonversi ke situ.
+  Tanpa pilihan (tagihan bulanan, Order Billing Status): satu mata uang ikut mata uang itu,
+  campuran jadi IDR. Invoice terpisah per mata uang (Nomor Tagihan) sudah tidak dibuat lagi;
+  grup lama masih tercetak satu PDF.
+- **Print Currency / Print Rate** (gaya erp_cakra): invoice boleh dicetak dalam mata uang
+  lain tanpa mengubah pembukuan. Print Rate = kurs 1 Print Currency ke IDR; nominal cetak =
+  nominal × kurs invoice / Print Rate.
+- Invoice valas dibukukan ke piutang bermata uang sama (`Piutang USD`, dibuat otomatis),
+  supaya Create > Payment keluar dalam USD. `ensure_multi_currency_billing()` tetap
+  menyalakan "Allow multi-currency invoices against single party account".
+- Bayar invoice USD dari bank IDR: isi exchange rate di Payment Entry; selisih kurs
+  dibukukan ERPNext.
 
-> Catatan: mengganti billing currency memakai `db.set_value` melewati guard "ubah
-> currency saat sudah ada transaksi". Di site yang sudah punya invoice IDR untuk
-> customer yang sama, review dulu sebelum menggantinya. Untuk bayar invoice USD via
-> akun bank IDR, isi exchange rate di Payment Entry (selisih kurs otomatis).
+## 4c. Payment Entry & kasbon (gaya erp_cakra)
+
+- Nomor `PE|RV-{bank}-{abbr}-{YYYY}-{bulan romawi}-0001` (`STL` untuk Settlement).
+- Grid **Dokumen / Item**: "Ambil Dokumen" menarik invoice outstanding party; mode
+  **Expense / Income** (tanpa party) = baris akun + nominal.
+- **Potongan & Biaya** (PPN, PPh, Materai, Biaya Admin) jadi baris Deductions. Akunnya di
+  Depot Finance Settings → Potongan Payment Entry.
+- **Pending Cash (kasbon)**: Draft → Validate (Cashier/Finance) → Pay (Finance, posting
+  Dr Uang Muka / Cr Kas-Bank). Payment Entry bisa memakai kasbon: kreditnya ke akun uang
+  muka, bukan bank.
 
 ## 5. Idempotency & lokasi kode
 
 - `container_depot/install.py`
   - `ensure_payment_terms_templates()` — Payment Term + Template (Immediate / Net
     30 / End of Following Month).
-  - `ensure_modes_of_payment()` — Cash + Bank Transfer, mapping akun per company.
+  - `ensure_modes_of_payment()` — Cash + Bank Transfer (mapping akun per company) + Settlement.
   - Dipanggil di **`after_install` dan `after_migrate`** → fresh install maupun
     site existing sama-sama ter-cover, dan tetap idempotent.
 - `container_depot/patches/v0_13/set_customer_payment_terms.py` — backfill default
   customer dari Depot Contract (terdaftar di `patches.txt`).
-- `container_depot/container_depot/tests/test_billing_mode.py` — test acceptance.
+- `container_depot/tests/test_billing_mode.py` — test acceptance.
 
 Semua `ensure_*` cek-exist sebelum create; aman dijalankan berulang.

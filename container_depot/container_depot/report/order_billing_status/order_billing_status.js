@@ -138,10 +138,7 @@ frappe.query_reports["Order Billing Status"] = {
 								return;
 							}
 							frappe.show_alert({
-								message: __("{0} invoice dibuat · Nomor Tagihan {1}", [
-									invoices.length,
-									out.group,
-								]),
+								message: __("Invoice {0} dibuat", [invoices[0]]),
 								indicator: "green",
 							});
 							frappe.set_route("Form", "Sales Invoice", invoices[0]);

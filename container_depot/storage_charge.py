@@ -67,7 +67,7 @@ def _status(period: dict, unbilled: int, billed: int) -> str:
 def sync(container: str, container_no: str | None = None) -> list[str]:
 	"""Create/refresh the ledger rows for one tank's visits. Returns their names."""
 	row = frappe.db.get_value(
-		"Container", container, ["container_no", "principal", "depot"], as_dict=True
+		"Container", container, ["container_no", "principal", "depot", "size"], as_dict=True
 	)
 	if not row:
 		return []
@@ -103,7 +103,9 @@ def _prune(container: str, keep: list[str]) -> None:
 
 
 def _upsert(container, row, period, mode, free_days, count_mode) -> str:
-	existing = frappe.db.get_value(DOCTYPE, _key(container, period), ["name", "billed_until"], as_dict=True)
+	existing = frappe.db.get_value(
+		DOCTYPE, _key(container, period), ["name", "billed_until", "rate"], as_dict=True
+	)
 	billed_until = existing.billed_until if existing else None
 
 	# Days, measured over the visit's own span rather than a reporting window: this ledger
@@ -129,16 +131,33 @@ def _upsert(container, row, period, mode, free_days, count_mode) -> str:
 		"status": _status(period, measured["chargeable_days"], billed),
 	}
 	if existing:
-		# billing_mode / free_days are snapshots taken when the visit opened — a contract
-		# renegotiated mid-stay must not silently restate what an existing visit was owed.
+		# billing_mode / free_days / rate are snapshots taken when the visit opened — a
+		# contract renegotiated mid-stay must not silently restate what an existing visit was
+		# owed. The one exception is a visit opened while the contract priced no storage at
+		# all: it takes the first rate that appears, the same rule the orders' lines follow.
+		if not existing.rate:
+			values.update(_price(row))
 		frappe.db.set_value(DOCTYPE, existing.name, values, update_modified=False)
 		return existing.name
 	doc = frappe.get_doc({
-		"doctype": DOCTYPE, "billing_mode": mode, "free_days": free_days, **values
+		"doctype": DOCTYPE, "billing_mode": mode, "free_days": free_days, **_price(row), **values
 	})
 	doc.flags.ignore_permissions = True
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+def _price(row) -> dict:
+	"""The owner's contract storage rate for this tank's size — what the visit will bill at."""
+	from container_depot import pricing, pricing_model
+
+	contract = pricing_model.active_contract(row.principal) if row.principal else None
+	rate, item = pricing.storage_rate_for(contract, row.size)
+	return {
+		"storage_item": item,
+		"rate": rate,
+		"currency": pricing_model.currency_for_customer(row.principal, contract),
+	}
 
 
 def _billed_days(period, free_days, billed_until, count_mode) -> int:

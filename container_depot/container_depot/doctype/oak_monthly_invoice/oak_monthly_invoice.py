@@ -65,7 +65,6 @@ class OAKMonthlyInvoice(Document):
 				lines,
 				due_days=30,
 				remarks=f"OAK {self.category} invoice {self.period} ({self.name})",
-				taxes_and_charges=invoicing.PPN_TEMPLATE,
 				# Billed at face value in the currency the work was priced in — never
 				# converted, and never silently read as the company default.
 				currency=self.currency or None,

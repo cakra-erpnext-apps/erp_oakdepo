@@ -1,24 +1,27 @@
-"""One order, two currencies: billed as two sibling invoices, rolled back one at a time.
+"""One order, two currencies: billed on ONE invoice, the other currency converted.
 
 A cleaning order and an M&R price each of their rows in the currency that row's tariff line
-states, so a single order can carry both USD and IDR work. An ERPNext Sales Invoice is
-single-currency, so such an order cannot be one invoice — it becomes one PER CURRENCY, tied
-together by the run's billing number.
+states, so a single order can carry both USD and IDR work. A run bills it onto one invoice:
+each line keeps its own currency and price and is converted into the invoice's through its
+kurs to IDR. Runs used to raise one invoice per currency; the user dropped that on
+2026-09-28 because two invoices for one bill were easy to get wrong.
 
-What that costs is the assumption the sweep used to make: that an order's ``sales_invoice``
-link answers "has this been billed". It cannot — it names one document — so the answer is
-read off the live rollback manifests instead (``consolidated_billing._billed_pairs``). These
-tests pin both halves of that: the split on the way in, and a rollback that gives back ONLY
-the currency whose invoice went away.
+The order's ``sales_invoice`` link still cannot say on its own whether an order is billed
+(the preview can tick one currency of an order alone), so that is read off the live rollback
+manifests (``consolidated_billing._billed_pairs``). These tests pin the one invoice on the
+way in, and a rollback that gives the order back whole.
 """
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import flt, today
 
 from container_depot import consolidated_billing as cb
+from container_depot import invoicing
 from container_depot import monthly_invoicing as mi
 from container_depot.tests.finance_fixture import require_finance
 from container_depot.tests.test_api import ensure_test_customer
@@ -41,11 +44,15 @@ def _purge(customer):
 	frappe.db.delete("Repair Order", {"name": ("in", repairs or [""])})
 	frappe.db.delete("Cleaning Order Service", {"parent": ("in", orders or [""])})
 	frappe.db.delete("Cleaning Order", {"name": ("in", orders or [""])})
-	for log in ("Container Movement", "Container Activity"):
+	for log in ("Container Movement", "Container Activity", "Storage Charge"):
 		frappe.db.delete(log, {"container": ("in", containers or [""])})
 	frappe.db.delete("Container", {"name": ("in", containers or [""])})
 	for si in frappe.get_all("Sales Invoice", filters={"customer": customer}, pluck="name"):
-		frappe.db.delete("Sales Invoice Item", {"parent": si})
+		for child in ("Sales Invoice Item", "Sales Taxes and Charges", "Payment Schedule", "Item Wise Tax Detail"):
+			frappe.db.delete(child, {"parent": si})
+		# A submitted-then-cancelled invoice leaves its journal behind.
+		for ledger in ("GL Entry", "Payment Ledger Entry"):
+			frappe.db.delete(ledger, {"voucher_no": si})
 		frappe.db.delete("Sales Invoice", {"name": si})
 	frappe.db.commit()
 
@@ -81,6 +88,8 @@ class TestOneOrderTwoCurrencies(FrappeTestCase):
 		_cleanup_customer_world(cls.customer)
 		if frappe.db.exists("Item", SERVICE_ITEM):
 			frappe.delete_doc("Item", SERVICE_ITEM, force=True, ignore_permissions=True)
+		frappe.db.delete("Notification Log", {"subject": ["like", f"%{CUSTOMER}%"]})  # "Kontrak baru …"
+		frappe.db.delete("Customer", {"name": cls.customer})  # last: everything above hangs off it
 		frappe.db.commit()
 		super().tearDownClass()
 
@@ -133,113 +142,168 @@ class TestOneOrderTwoCurrencies(FrappeTestCase):
 		}, update_modified=False)
 		return ro.name
 
-	def _invoices_by_currency(self, names):
-		return {frappe.db.get_value("Sales Invoice", si, "currency"): si for si in names}
+	def _bill(self, **kw):
+		"""One run at a fixed kurs, so no test depends on today's Currency Exchange."""
+		out = cb.fill_invoice(self.customer, kurs={"USD": 16000}, **kw)["invoices"]
+		self.assertLessEqual(len(out), 1, "one run, one invoice")
+		return frappe.get_doc("Sales Invoice", out[0]) if out else None
 
-	# ---- the split ------------------------------------------------------
-	def test_mixed_cleaning_order_bills_one_invoice_per_currency(self):
+	# ---- one invoice ----------------------------------------------------
+	def test_mixed_cleaning_order_bills_one_invoice(self):
 		order = self._cleaning(self._container("0000001"), [("USD", 160), ("IDR", 100000)])
 
-		invoices = self._invoices_by_currency(cb.bill_customer(self.customer))
-		self.assertEqual(set(invoices), {"USD", "IDR"}, "one invoice per currency of the order")
+		si = self._bill()
+		# Two currencies on the order: the invoice is in the company's, each line keeps its own.
+		self.assertEqual(si.currency, "IDR")
+		self.assertEqual(
+			sorted((r.depot_currency, flt(r.depot_price), flt(r.rate)) for r in si.items),
+			[("IDR", 100000.0, 100000.0), ("USD", 160.0, 2560000.0)],
+		)
+		self.assertIsNone(self._bill(), "the sweep is idempotent")
+		self.assertEqual(frappe.db.get_value("Cleaning Order", order, "sales_invoice"), si.name)
 
-		# Each invoice carries ONLY its own currency's work, at face value — the USD line is
-		# never re-read as 100000 rupiah, which is what a single invoice would have done.
-		usd = frappe.get_doc("Sales Invoice", invoices["USD"])
-		idr = frappe.get_doc("Sales Invoice", invoices["IDR"])
-		self.assertEqual([flt(r.rate) for r in usd.items], [160.0])
-		self.assertEqual([flt(r.rate) for r in idr.items], [100000.0])
+	def test_the_invoice_type_decides_which_orders_bill(self):
+		self._cleaning(self._container("0000009"), [("IDR", 100000)])
+		self.assertIsNone(self._bill(categories=["M&R"]), "an M&R invoice offers no cleaning")
+		self.assertEqual(self._bill(categories=["Cleaning"]).depot_invoice_type, "Cleaning")
 
-		# Both invoices are one bill: the run ties them under a single billing number.
-		groups = {frappe.db.get_value("Sales Invoice", si, cb.GROUP_FIELD) for si in invoices.values()}
-		self.assertEqual(len(groups), 1, "sibling invoices share one billing number")
-
-		# Nothing is left to bill, and a second run must not find the order again.
-		self.assertEqual(cb.bill_customer(self.customer), [], "the sweep is idempotent")
-		self.assertIn(
-			frappe.db.get_value("Cleaning Order", order, "sales_invoice"), set(invoices.values()),
-			"the order points at one of the invoices it is on",
+	def test_the_pick_list_shows_order_tank_and_date(self):
+		container = self._container("0000010")
+		order = self._cleaning(container, [("IDR", 100000)])
+		rows = [r for s in cb.preview_bill(self.customer, categories=["Cleaning"])["sections"] for r in s["rows"]]
+		# Gabungan: the client's null arrives as "" and means every type.
+		self.assertEqual(cb.preview_bill(self.customer, categories="")["total_orders"], 1)
+		self.assertEqual(
+			[(r["doctype"], r["name"], r["tank"], str(r["date"])) for r in rows],
+			[("Cleaning Order", order, container, today())],
 		)
 
-	def test_mixed_repair_order_bills_one_invoice_per_currency(self):
+	def test_the_form_header_travels_with_the_pick(self):
+		"""Picking from an unsaved form raises a new invoice: what the form said must survive."""
+		self._cleaning(self._container("0000011"), [("IDR", 100000)])
+		branch = frappe.db.get_value("Branch", {}, "name")
+		si = self._bill(categories=["Cleaning"], header={
+			"depot_invoice_type": "Gabungan", "posting_date": today(), "branch": branch,
+		})
+		self.assertEqual((si.depot_invoice_type, si.branch, str(si.posting_date)), ("Gabungan", branch, today()))
+
+	def test_picking_again_edits_the_same_invoice(self):
+		"""One invoice, many orders: a re-pick adds and drops orders on THIS draft."""
+		first = self._cleaning(self._container("0000012"), [("IDR", 100000)])
+		si = self._bill(categories=["Cleaning"])
+		second = self._cleaning(self._container("0000013"), [("IDR", 50000)])
+		rows = {
+			r["name"]: r
+			for s in cb.preview_bill(self.customer, categories=["Cleaning"], sales_invoice=si.name)["sections"]
+			for r in s["rows"]
+		}
+		self.assertEqual({n: r.get("on_invoice") for n, r in rows.items()}, {first: 1, second: None})
+
+		keys = [rows[first]["key"], rows[second]["key"]]
+		self.assertEqual(self._bill(categories=["Cleaning"], keys=keys, sales_invoice=si.name).name, si.name)
+		self.assertEqual(sorted(flt(r.depot_price) for r in frappe.get_doc("Sales Invoice", si.name).items), [50000, 100000])
+		self.assertEqual(frappe.db.get_value("Cleaning Order", second, "sales_invoice"), si.name)
+
+		self._bill(categories=["Cleaning"], keys=[rows[second]["key"]], sales_invoice=si.name)
+		self.assertEqual([flt(r.depot_price) for r in frappe.get_doc("Sales Invoice", si.name).items], [50000])
+		self.assertFalse(frappe.db.get_value("Cleaning Order", first, "sales_invoice"), "the dropped order goes back")
+
+		# The pick may move the draft into another currency: the IDR line converts at the kurs.
+		si = self._bill(categories=["Cleaning"], keys=[rows[second]["key"]], sales_invoice=si.name, currency="USD")
+		self.assertEqual((si.currency, flt(si.conversion_rate)), ("USD", 16000))
+		self.assertAlmostEqual(flt(si.items[0].rate), 50000 / 16000, places=2)
+
+	def test_cancelling_the_submitted_invoice_gives_the_order_back(self):
+		order = self._cleaning(self._container("0000010"), [("IDR", 100000)])
+		si = self._bill()
+		si.branch = si.branch or frappe.db.get_value("Branch", {}, "name")
+		si.save()
+		si.submit()
+		si.cancel()
+		self.assertFalse(frappe.db.get_value("Cleaning Order", order, "sales_invoice"))
+		self.assertEqual(len(self._bill().items), 1, "the order bills again")
+
+	def test_mixed_repair_order_bills_one_invoice(self):
 		self._repair(self._container("0000002"), [("USD", 25), ("IDR", 400000)])
 
-		invoices = self._invoices_by_currency(cb.bill_customer(self.customer))
-		self.assertEqual(set(invoices), {"USD", "IDR"})
-		usd = frappe.get_doc("Sales Invoice", invoices["USD"])
-		self.assertEqual([flt(r.rate) for r in usd.items], [25.0])
+		si = self._bill()
+		self.assertEqual(sorted(flt(r.rate) for r in si.items), [400000.0, 400000.0])
+		self.assertEqual({r.depot_currency for r in si.items}, {"USD", "IDR"})
 
-	# ---- the rollback ---------------------------------------------------
-	def test_discarding_one_invoice_gives_back_only_that_currency(self):
-		order = self._cleaning(self._container("0000003"), [("USD", 160), ("IDR", 100000)])
-		invoices = self._invoices_by_currency(cb.bill_customer(self.customer))
-		self.assertEqual(set(invoices), {"USD", "IDR"})
+	def test_a_single_currency_run_is_billed_in_that_currency(self):
+		self._cleaning(self._container("0000003"), [("USD", 160)])
+		si = self._bill()
+		self.assertEqual((si.currency, [flt(r.rate) for r in si.items]), ("USD", [160.0]))
 
-		frappe.delete_doc("Sales Invoice", invoices["USD"], ignore_permissions=True)
-
-		# The order is still billed — the IDR invoice stands — so its link moves to the
-		# survivor rather than being cleared. A cleared link would read as "never invoiced".
-		self.assertEqual(
-			frappe.db.get_value("Cleaning Order", order, "sales_invoice"), invoices["IDR"],
-			"the order follows the invoice that is still standing",
-		)
-
-		# Re-running bills back the USD half ONLY. Billing the IDR half a second time is the
-		# double-charge this whole mechanism exists to prevent.
-		again = self._invoices_by_currency(cb.bill_customer(self.customer))
-		self.assertEqual(set(again), {"USD"}, "only the rolled-back currency is billable again")
-		self.assertEqual(
-			[flt(r.rate) for r in frappe.get_doc("Sales Invoice", list(again.values())[0]).items],
-			[160.0],
-		)
+	def test_a_foreign_receivable_decides_the_currency(self):
+		"""ERPNext refuses any other currency once the customer's receivable is foreign."""
+		self._cleaning(self._container("0000008"), [("IDR", 160000)])
+		with patch.object(invoicing, "locked_currency", lambda customer, company=None: "USD"):
+			si = self._bill(currency="IDR")
+		self.assertEqual((si.currency, [flt(r.rate) for r in si.items]), ("USD", [10.0]))
 
 	# ---- the monthly (Cash-customer) path -------------------------------
-	def test_monthly_invoice_is_raised_once_per_currency(self):
-		"""The scheduler's OAK Monthly Invoice splits the same way the TOP sweep does.
+	def test_monthly_run_bills_through_the_same_builder_and_marks_the_order(self):
+		"""The monthly run uses Ambil Tagihan's own collector and invoice builder, so what it
+		bills lands on a manifest and the next run finds nothing left.
 
-		Driven through the builder + writer rather than through
-		``generate_monthly_invoices``, which walks EVERY tank owner on the site and would
-		raise invoices for customers this test has nothing to do with.
+		Driven through ``_collect`` + ``bill_units`` rather than ``generate_monthly_invoices``,
+		which walks EVERY tank owner on the site.
 		"""
 		order = self._cleaning(self._container("0000005"), [("USD", 160), ("IDR", 100000)])
-		items = mi._cleaning_items(self.customer, mi.getdate(today()), mi.getdate(today()))
-		mine = [i for i in items if i["reference_name"] == order]
-		self.assertEqual(
-			{i["currency"] for i in mine}, {"USD", "IDR"},
-			"each service line is tagged with the currency it was priced in",
-		)
+		day = mi.getdate(today())
 
-		created = {}
-		for ccy in ("USD", "IDR"):
-			name = mi.create_monthly_invoice(
-				self.customer, "2026-09", "Cleaning", today(), today(),
-				[i for i in mine if i["currency"] == ccy], ccy,
-			)
-			created[ccy] = frappe.get_doc("OAK Monthly Invoice", name)
-		try:
-			self.assertEqual(created["USD"].currency, "USD")
-			self.assertEqual(flt(created["USD"].subtotal), 160.0)
-			self.assertEqual(flt(created["IDR"].subtotal), 100000.0)
-			# The currency is only a grouping key on the item dicts — it is not a column on
-			# the child row, and writing it there would break the insert.
-			self.assertTrue(all(not r.get("currency") for r in created["USD"].items))
-		finally:
-			for doc in created.values():
-				frappe.db.delete("OAK Monthly Invoice Item", {"parent": doc.name})
-				frappe.db.delete("OAK Monthly Invoice", {"name": doc.name})
-			frappe.db.commit()
+		def mine():
+			return [
+				u for u in cb._collect(self.customer, ("Cleaning",), day, day, accrual=True)
+				if u["sources"][0]["name"] == order
+			]
 
-	def test_discarding_every_invoice_returns_the_order_to_unbilled(self):
+		out = cb.bill_units(self.customer, mine(), "Tagihan bulanan Cleaning (test)", kurs={"USD": 16000})
+		self.assertEqual(len(out["invoices"]), 1)
+		self.assertEqual(mine(), [], "a billed order is on a manifest: the next run skips it")
+
+	# ---- the chosen currency --------------------------------------------
+	def test_one_invoice_in_the_chosen_currency_converts_the_rest(self):
+		"""Billed in USD: the IDR line is converted through the kurs, the USD line is as-is."""
+		self._cleaning(self._container("0000006"), [("USD", 160), ("IDR", 100000)])
+		si = self._bill(currency="USD")
+		self.assertEqual(si.currency, "USD")
+		self.assertEqual(sorted(flt(r.rate) for r in si.items), [6.25, 160.0])
+
+		# The lines mirror the order: they cannot be edited on the invoice.
+		si.items[0].qty = 3
+		self.assertRaises(frappe.ValidationError, si.save)
+
+	def test_discarding_the_invoice_returns_the_order_to_unbilled(self):
 		order = self._cleaning(self._container("0000004"), [("USD", 160), ("IDR", 100000)])
-		invoices = self._invoices_by_currency(cb.bill_customer(self.customer))
-		for si in invoices.values():
-			frappe.delete_doc("Sales Invoice", si, ignore_permissions=True)
+		si = self._bill()
+		frappe.delete_doc("Sales Invoice", si.name, ignore_permissions=True)
 
 		self.assertFalse(
 			frappe.db.get_value("Cleaning Order", order, "sales_invoice"),
 			"nothing bills it any more, so the link is cleared",
 		)
+		self.assertEqual(len(self._bill().items), 2, "the whole order is billable again")
+
+	def test_frappe_discard_gives_the_order_back_too(self):
+		"""Discard voids a draft without on_cancel; the orders must not stay billed to it."""
+		order = self._cleaning(self._container("0000012"), [("IDR", 100000)])
+		si = self._bill()
+		si.discard()
+		self.assertFalse(frappe.db.get_value("Cleaning Order", order, "sales_invoice"))
+		self.assertFalse(frappe.db.get_value("Sales Invoice", si.name, "depot_billed_sources"))
+		self.assertEqual(len(self._bill().items), 1, "billable again")
+
+	def test_the_sources_tab_lists_the_order_and_its_tank(self):
+		container = self._container("0000007")
+		order = self._cleaning(container, [("USD", 160), ("IDR", 100000)])
+		frappe.db.set_value("Cleaning Order", order, "reff_doc", "CUST-PO-7")
+		si = self._bill()
 		self.assertEqual(
-			set(self._invoices_by_currency(cb.bill_customer(self.customer))), {"USD", "IDR"},
-			"the whole order is billable again",
+			cb.invoice_sources(si.name),
+			[{"doctype": "Cleaning Order", "name": order, "tank": container, "amounts": {"USD": 160.0, "IDR": 100000.0},
+				"reff_doc": "CUST-PO-7"}],
 		)
+		# Every line of it carries the customer's reference too.
+		self.assertEqual({r.depot_reff_doc for r in si.items}, {"CUST-PO-7"})
