@@ -692,6 +692,13 @@ PROPERTY_SETTERS = [
 	# falls back to the doctype default. The driver's copy is a separate pick from the
 	# dropdown ("OAK Booking Voucher"), one page per container.
 	("Container Booking", None, "default_print_format", "OAK Booking Confirmation", "Data"),
+	# Every other depot document the same way: Print opens its OAK format, not Standard.
+	("Inspection", None, "default_print_format", "EIR Format", "Data"),
+	("Cleaning Order", None, "default_print_format", "Cleaning Order Format", "Data"),
+	("Repair Order", None, "default_print_format", "OAK Repair Order", "Data"),
+	("Order Bongkar", None, "default_print_format", "OAK Bon Bongkar", "Data"),
+	("Order Muat", None, "default_print_format", "OAK Bon Muat", "Data"),
+	("Depot Contract", None, "default_print_format", "OAK Depot Contract", "Data"),
 ] + [
 	# Declutter the Sales Invoice form. UI-only: the fields stay in the DB and every
 	# controller still reads them — nothing is deleted, only hidden.
