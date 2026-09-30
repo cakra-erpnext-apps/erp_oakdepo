@@ -1,0 +1,220 @@
+{
+ "actions": [],
+ "autoname": "",
+ "creation": "2026-09-30 15:00:00.000000",
+ "modified": "2026-09-30 16:00:00.000000",
+ "modified_by": "Administrator",
+ "owner": "Administrator",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "module": "Container Depot",
+ "name": "Pending Cash Refund",
+ "naming_rule": "By script",
+ "allow_import": 0,
+ "track_changes": 1,
+ "search_fields": "party,pending_cash_no",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "field_order": [
+  "sb_basic",
+  "company",
+  "refund_date",
+  "party_type",
+  "cb_b1",
+  "party",
+  "cb_b2",
+  "bank_account",
+  "amount",
+  "sb_alloc",
+  "allocations",
+  "sb_note",
+  "remark",
+  "sb_state",
+  "validated",
+  "validated_by",
+  "validated_date",
+  "cb_state0",
+  "journal_entry",
+  "pending_cash_no",
+  "cb_state",
+  "void",
+  "void_by",
+  "void_datetime"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "Refund"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "refund_date",
+   "fieldtype": "Date",
+   "label": "Refund Date",
+   "reqd": 1,
+   "default": "Today",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "party_type",
+   "fieldtype": "Select",
+   "label": "Party Type",
+   "options": "Supplier\nCustomer",
+   "default": "Supplier",
+   "reqd": 1,
+   "in_standard_filter": 1,
+   "description": "Supplier: kasbon (Cash Outflow) yang uangnya kembali. Customer: deposit (Cash Inflow) yang kita kembalikan."
+  },
+  {
+   "fieldname": "cb_b1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "party",
+   "fieldtype": "Dynamic Link",
+   "label": "Supplier / Customer",
+   "options": "party_type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb_b2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Refund To Bank",
+   "options": "Bank Account",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Refund Amount",
+   "read_only": 1,
+   "in_list_view": 1,
+   "bold": 1
+  },
+  {
+   "fieldname": "sb_alloc",
+   "fieldtype": "Section Break",
+   "label": "Refund Pending Cash Item"
+  },
+  {
+   "fieldname": "allocations",
+   "fieldtype": "Table",
+   "options": "Pending Cash Refund Allocation"
+  },
+  {
+   "fieldname": "sb_note",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Note"
+  },
+  {
+   "fieldname": "sb_state",
+   "fieldtype": "Section Break",
+   "label": "Status",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "validated",
+   "fieldtype": "Check",
+   "label": "Validated",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_by",
+   "fieldtype": "Link",
+   "label": "Validated By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "validated_date",
+   "fieldtype": "Datetime",
+   "label": "Validated Date",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_state0",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "pending_cash_no",
+   "fieldtype": "Data",
+   "label": "PC",
+   "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "cb_state",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "void",
+   "fieldtype": "Check",
+   "label": "Void",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_by",
+   "fieldtype": "Link",
+   "label": "Void By",
+   "options": "User",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "void_datetime",
+   "fieldtype": "Datetime",
+   "label": "Void Date Time",
+   "read_only": 1,
+   "no_copy": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "links": [],
+ "states": []
+}

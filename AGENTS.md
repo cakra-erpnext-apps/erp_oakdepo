@@ -292,6 +292,14 @@ tank, dibaca EIR dan print), opsi `Periodic Test` di OAK Monthly Invoice + item 
   Employee-nya). Semuanya diedit di master, bukan di template. Bahasa cetak = Print Language
   invoice (default `id` lewat Customer); label template berbahasa Inggris dan diterjemahkan
   di `translations/id.csv` dengan context "OAK Invoice".
+- Payment Entry memakai form erp_cakra (`install.PAYMENT_FORM`; semua field lain disembunyikan
+  tiap migrate). Sisi bank diambil dari field **Bank** lewat Bank Account (rekening company),
+  jadi site butuh master Bank + Bank Account per rekening; deposit customer butuh Pending Cash
+  Type berarah Cash Inflow di akun kewajiban. Keduanya belum ada di prod.
+- Pending Cash juga bentuk erp_cakra: dibayar dari **Bank Account** (bukan akun GL lagi — patch
+  `v1_17.pending_cash_cakra` memetakan yang lama), Admin Charge / Materai memakai akun Biaya
+  Admin Bank / Biaya Materai di Depot Finance Settings (belum diisi di prod), dan refund adalah
+  dokumen **Pending Cash Refund** sendiri yang jurnalnya terbit saat Validate.
 - Nomor invoice `INV-{kode cabang}-OAK-{yy}-####` diberikan saat INSERT, jadi draft yang
   dibuang (Ambil Tagihan Ulang, Batalkan) meninggalkan lubang nomor. Kalau nomor harus
   rapat, pindahkan penomoran ke submit. Kode cabang = `Branch.branch_code`, kosong = 3 huruf

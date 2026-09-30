@@ -817,143 +817,260 @@ CUSTOM_FIELDS = {
 		}
 	],
 	# --- Payment Entry, gaya erp_cakra (container_depot/payment_entry.py) ------------------
+	# Laid out like erp_cakra's form (user, 2026-09-30): the order is PAYMENT_FORM, not the
+	# insert_after chain below, and every field ERPNext adds is hidden (_arrange_payment_form).
 	"Payment Entry": [
+		# General Information, four columns.
+		{"fieldname": "depot_info_sb", "fieldtype": "Section Break", "label": "General Information",
+			"insert_after": "payment_order_status"},
 		{
 			"fieldname": "depot_direct",
-			"label": "Expense / Income (tanpa party)",
+			"label": "Expense / Income",
 			"fieldtype": "Check",
-			"insert_after": "payment_type",
-			"description": "Langsung ke akun biaya/pendapatan, tanpa invoice.",
+			"insert_after": "depot_info_sb",
+			"description": "",
 		},
 		{
-			"fieldname": "depot_pay_to",
-			"label": "Dibayar ke / Diterima dari",
-			"fieldtype": "Data",
+			# Submit without a journal: a record only, the invoices it names stay outstanding.
+			"fieldname": "depot_dont_post_to_gl",
+			"label": "Dont Post To GL",
+			"fieldtype": "Check",
+			"default": "0",
+			"no_copy": 1,
 			"insert_after": "depot_direct",
-			"depends_on": "eval:doc.depot_direct",
+		},
+		{
+			# A marker, as in erp_cakra; nothing reads it.
+			"fieldname": "depot_confidential",
+			"label": "Confidential",
+			"fieldtype": "Check",
+			"insert_after": "depot_dont_post_to_gl",
 		},
 		{
 			"fieldname": "branch",
 			"label": "Branch",
 			"fieldtype": "Link",
 			"options": "Branch",
-			"insert_after": "company",
+			"insert_after": "depot_confidential",
 			"in_standard_filter": 1,
+		},
+		{"fieldname": "depot_info_cb1", "fieldtype": "Column Break", "insert_after": "branch"},
+		{
+			# The bank the money moves through: its company Bank Account fills the bank side
+			# (payment_entry._fill_bank_side). Replaced by Settlement Account in that mode.
+			"fieldname": "depot_bank",
+			"label": "Bank",
+			"fieldtype": "Link",
+			"options": "Bank",
+			"insert_after": "depot_info_cb1",
+			"depends_on": "eval:(doc.mode_of_payment || '').toLowerCase()!='settlement'",
+			"in_list_view": 1,
 		},
 		{
 			"fieldname": "depot_settlement_account",
-			"label": "Akun Settlement",
+			"label": "Settlement Account",
 			"fieldtype": "Link",
 			"options": "Account",
-			"insert_after": "mode_of_payment",
-			"depends_on": "eval:doc.mode_of_payment=='Settlement'",
-			"mandatory_depends_on": "eval:doc.mode_of_payment=='Settlement'",
-			"description": "Pengganti akun Kas/Bank.",
+			"insert_after": "depot_bank",
+			"depends_on": "eval:(doc.mode_of_payment || '').toLowerCase()=='settlement'",
+			"mandatory_depends_on": "eval:(doc.mode_of_payment || '').toLowerCase()=='settlement'",
+			"description": "",
 		},
 		{
+			"fieldname": "depot_pay_to",
+			"label": "Pay To",
+			"fieldtype": "Data",
+			"insert_after": "depot_settlement_account",
+			"depends_on": "eval:doc.depot_direct",
+		},
+		{"fieldname": "depot_info_cb2", "fieldtype": "Column Break", "insert_after": "depot_pay_to"},
+		{"fieldname": "depot_info_cb3", "fieldtype": "Column Break", "insert_after": "depot_info_cb2"},
+		{
+			# The document numbers the payment settles, for the list (a child table cannot be a column).
 			"fieldname": "depot_references",
-			"label": "Dokumen",
+			"label": "References",
 			"fieldtype": "Data",
 			"insert_after": "party_name",
 			"read_only": 1,
 			"no_copy": 1,
 			"in_list_view": 1,
-			"depends_on": "eval:doc.depot_references",
 		},
-		{
-			"fieldname": "depot_lines_section",
-			"label": "Dokumen / Item",
-			"fieldtype": "Section Break",
-			"insert_after": "contact_email",
-		},
-		{
-			"fieldname": "depot_get_items",
-			"label": "Ambil Dokumen",
-			"fieldtype": "Button",
-			"insert_after": "depot_lines_section",
-			"depends_on": "eval:!doc.depot_direct && doc.party && doc.docstatus==0",
-		},
-		{
-			"fieldname": "depot_lines",
-			"label": "Dokumen / Item",
-			"fieldtype": "Table",
-			"options": "Payment Entry Line",
-			"insert_after": "depot_get_items",
-		},
-		{
-			"fieldname": "depot_charges_section",
-			"label": "Potongan & Biaya",
-			"fieldtype": "Section Break",
-			"insert_after": "depot_lines",
-			"collapsible": 1,
-		},
-		{
-			"fieldname": "depot_tax_input",
-			"label": "PPN",
-			"fieldtype": "Data",
-			"insert_after": "depot_charges_section",
-			"description": "11% dari total, atau nominal.",
-		},
-		{
-			"fieldname": "depot_pph_input",
-			"label": "PPh",
-			"fieldtype": "Data",
-			"insert_after": "depot_tax_input",
-			"description": "2% atau nominal. Pay: potong dari pembayaran. Receive: dipotong customer.",
-		},
-		{"fieldname": "depot_charges_col", "fieldtype": "Column Break", "insert_after": "depot_pph_input"},
-		{
-			"fieldname": "depot_materai",
-			"label": "Materai",
-			"fieldtype": "Currency",
-			"insert_after": "depot_charges_col",
-		},
-		{
-			"fieldname": "depot_admin_fee",
-			"label": "Biaya Admin",
-			"fieldtype": "Currency",
-			"insert_after": "depot_materai",
-		},
-		{"fieldname": "depot_charges_col2", "fieldtype": "Column Break", "insert_after": "depot_admin_fee"},
-		{
-			"fieldname": "depot_allocated",
-			"label": "Total Dokumen / Item",
-			"fieldtype": "Currency",
-			"insert_after": "depot_charges_col2",
-			"read_only": 1,
-			"no_copy": 1,
-		},
+		# Pending Cash: the kasbon that funds a Pay, or the customer's deposit on a Receive.
 		{
 			"fieldname": "depot_kasbon_section",
-			"label": "Kasbon (Pending Cash)",
+			"label": "Pending Cash",
 			"fieldtype": "Section Break",
-			"insert_after": "depot_allocated",
-			"collapsible": 1,
-			"depends_on": "eval:doc.payment_type=='Pay'",
+			"collapsible": 0,  # was 1: create_custom_fields only updates what it is given
+			"insert_after": "depot_info_cb3",
+			# Pay draws on a kasbon, Receive on the customer's deposit (payment_entry._apply_kasbon).
+			"depends_on": "eval:['Pay','Receive'].includes(doc.payment_type)",
 		},
 		{
 			"fieldname": "depot_get_kasbon",
-			"label": "Ambil Kasbon",
+			"label": "Add Pending Cash",
 			"fieldtype": "Button",
 			"insert_after": "depot_kasbon_section",
 			"depends_on": "eval:doc.docstatus==0",
 		},
 		{
 			"fieldname": "depot_kasbon",
-			"label": "Kasbon",
+			"label": "",
 			"fieldtype": "Table",
 			"options": "Payment Entry Kasbon",
 			"insert_after": "depot_get_kasbon",
 		},
+		# Payment Item: the invoices a payment settles, or in Expense / Income the accounts.
+		{
+			"fieldname": "depot_lines_section",
+			"label": "Payment Item",
+			"fieldtype": "Section Break",
+			"insert_after": "depot_kasbon",
+		},
+		{
+			"fieldname": "depot_get_items",
+			"label": "Add Items",
+			"fieldtype": "Button",
+			"insert_after": "depot_lines_section",
+			"depends_on": "eval:!doc.depot_direct && doc.party && doc.docstatus==0",
+		},
+		{
+			"fieldname": "depot_lines",
+			"label": "",
+			"fieldtype": "Table",
+			"options": "Payment Entry Line",
+			"insert_after": "depot_get_items",
+		},
+		# Accumulation, four columns: Amount Tax | PPh | Materai + Pending Cash Amount |
+		# Biaya Admin + the totals.
+		{
+			"fieldname": "depot_charges_section",
+			"label": "Accumulation",
+			"fieldtype": "Section Break",
+			"collapsible": 0,  # was 1: create_custom_fields only updates what it is given
+			"insert_after": "depot_lines",
+		},
+		{
+			"fieldname": "depot_tax_input",
+			"label": "Amount Tax",
+			"fieldtype": "Data",
+			"insert_after": "depot_charges_section",
+			"description": 'Ketik mis. "11%" atau "150000"',
+		},
+		{"fieldname": "depot_charges_col", "fieldtype": "Column Break", "insert_after": "depot_tax_input"},
+		{
+			"fieldname": "depot_pph_input",
+			"label": "PPh",
+			"fieldtype": "Data",
+			"insert_after": "depot_charges_col",
+			"description": 'Ketik mis. "2%" atau "50000"',
+		},
+		{"fieldname": "depot_charges_col2", "fieldtype": "Column Break", "insert_after": "depot_pph_input"},
+		{
+			"fieldname": "depot_materai",
+			"label": "Materai",
+			"fieldtype": "Currency",
+			"insert_after": "depot_charges_col2",
+		},
 		{
 			"fieldname": "depot_kasbon_amount",
-			"label": "Dibayar dari Kasbon",
+			"label": "Pending Cash Amount",
 			"fieldtype": "Currency",
-			"insert_after": "depot_kasbon",
+			"insert_after": "depot_materai",
 			"read_only": 1,
 			"no_copy": 1,
-			"depends_on": "eval:doc.depot_kasbon_amount",
+			"depends_on": "eval:['Pay','Receive'].includes(doc.payment_type)",
 		},
+		{"fieldname": "depot_charges_col3", "fieldtype": "Column Break", "insert_after": "depot_kasbon_amount"},
+		{
+			"fieldname": "depot_admin_fee",
+			"label": "Biaya Admin",
+			"fieldtype": "Currency",
+			"insert_after": "depot_charges_col3",
+		},
+		{
+			"fieldname": "depot_allocated",
+			"label": "Item Total Amount",
+			"fieldtype": "Currency",
+			"insert_after": "depot_admin_fee",
+			"read_only": 1,
+			"no_copy": 1,
+		},
+		{
+			# What actually moves through the bank: the amount less what a kasbon funds.
+			"fieldname": "depot_bank_amount",
+			"label": "Bank Amount Paid",
+			"fieldtype": "Currency",
+			"insert_after": "received_amount",
+			"read_only": 1,
+			"no_copy": 1,
+		},
+		# Additional: Remark | Internal Remark, then Attachment.
+		{"fieldname": "depot_remark_sb", "fieldtype": "Section Break", "label": "Additional",
+			"insert_after": "auto_repeat"},
+		{
+			# Becomes the document's remarks (and the journal's).
+			"fieldname": "depot_remark_note",
+			"label": "Remark",
+			"fieldtype": "Small Text",
+			"insert_after": "depot_remark_sb",
+		},
+		{"fieldname": "depot_add_cb", "fieldtype": "Column Break", "insert_after": "depot_remark_note"},
+		{
+			"fieldname": "depot_internal_remark",
+			"label": "Internal Remark",
+			"fieldtype": "Small Text",
+			"print_hide": 1,
+			"insert_after": "depot_add_cb",
+		},
+		{"fieldname": "depot_attach_sb", "fieldtype": "Section Break", "label": "", "insert_after": "depot_internal_remark"},
+		{
+			"fieldname": "depot_attachment",
+			"label": "Attachment",
+			"fieldtype": "Attach",
+			"insert_after": "depot_attach_sb",
+		},
+		# Advance Payable: an advance on Purchase Orders (Pay only). Each row becomes a native
+		# reference to its order (payment_entry._apply_advance), so ERPNext books the advance
+		# and keeps the order's Advance Paid; the Purchase Invoice takes it off later.
+		{
+			"fieldname": "depot_adv_tab",
+			"label": "Advance Payable",
+			"fieldtype": "Tab Break",
+			"insert_after": "depot_attachment",
+			"depends_on": "eval:doc.payment_type=='Pay' && !doc.depot_direct",
+		},
+		{
+			"fieldname": "depot_get_advance",
+			"label": "Add Purchase Order",
+			"fieldtype": "Button",
+			"insert_after": "depot_adv_tab",
+			"depends_on": "eval:doc.party && doc.docstatus==0",
+		},
+		{
+			"fieldname": "depot_advance",
+			"label": "",
+			"fieldtype": "Table",
+			"options": "Payment Entry Advance",
+			"insert_after": "depot_get_advance",
+		},
+		{
+			"fieldname": "depot_advance_amount",
+			"label": "Advance Amount",
+			"fieldtype": "Currency",
+			"insert_after": "depot_advance",
+			"read_only": 1,
+			"no_copy": 1,
+		},
+	],
+	# The bank a new Payment Entry starts from.
+	"Bank": [
+		{
+			"fieldname": "depot_default_bank",
+			"label": "Default Bank",
+			"fieldtype": "Check",
+			"insert_after": "bank_name",
+			"description": "Dipilih otomatis di Payment Entry baru.",
+		}
 	],
 	# Reference rows rebuilt from the Dokumen / Item grid carry this flag; hand-made ones do not.
 	"Payment Entry Reference": [
@@ -1380,6 +1497,7 @@ def setup_property_setters():
 		_set_property(doctype, fieldname, prop, value, property_type)
 	_tidy_invoice_item_form()
 	_arrange_invoice_fields()
+	_arrange_payment_form()
 	frappe.db.commit()
 
 
@@ -1414,6 +1532,76 @@ def _arrange_invoice_fields():
 		order.remove(field)
 		order.insert(order.index(after) + 1, field)
 	_set_property("Sales Invoice", None, "field_order", json.dumps(order), "Data")
+
+
+# The Payment Entry form, erp_cakra's layout (user, 2026-09-30: "masih sangat beda jauh"):
+# these fields, in this order, and nothing else. Every other field — ERPNext's accounts,
+# amounts, allocation, taxes, withholding, cheque, more-info — is hidden: it is still filled
+# and saved by ERPNext's controller and payment_entry.py, only not shown.
+PAYMENT_FORM = [
+	"depot_info_sb",
+	"payment_type", "depot_direct", "depot_dont_post_to_gl", "depot_confidential", "branch",
+	"depot_info_cb1",
+	# Bank and Settlement Account share a slot: one shows per mode of payment.
+	"posting_date", "depot_bank", "depot_settlement_account", "party", "depot_pay_to", "reference_no",
+	"depot_info_cb2",
+	"mode_of_payment",
+	"depot_info_cb3",
+	"cost_center",
+	"depot_kasbon_section", "depot_get_kasbon", "depot_kasbon",
+	"depot_lines_section", "depot_get_items", "depot_lines",
+	"depot_charges_section", "depot_tax_input",
+	"depot_charges_col", "depot_pph_input",
+	"depot_charges_col2", "depot_materai", "depot_kasbon_amount",
+	"depot_charges_col3", "depot_admin_fee", "depot_allocated", "paid_amount", "depot_bank_amount",
+	# Where the cuts, notes and rounding the payment books are seen and audited.
+	"deductions_or_loss_section", "deductions",
+	"depot_remark_sb", "depot_remark_note", "depot_add_cb", "depot_internal_remark",
+	"depot_attach_sb", "depot_attachment",
+	"depot_adv_tab", "depot_get_advance", "depot_advance", "depot_advance_amount",
+]
+# Fields the form must not demand: payment_entry.py fills them before saving (the amount too,
+# when it is left empty — the Pay / Receive button is the way to see it first).
+PAYMENT_NOT_MANDATORY = (
+	"paid_amount", "paid_from", "paid_to", "paid_from_account_currency", "paid_to_account_currency",
+	"reference_no", "reference_date", "source_exchange_rate", "target_exchange_rate",
+	"received_amount", "base_paid_amount", "base_received_amount",
+)
+PAYMENT_LABELS = {
+	"posting_date": "Date",
+	"party": "Pay To",  # "Received From" on a Receive (payment_entry.js)
+	"reference_no": "Reference",
+	"paid_amount": "Amount",  # "Amount Paid (IDR)" / "Amount Received (IDR)" (payment_entry.js)
+}
+
+
+def _arrange_payment_form():
+	"""PAYMENT_FORM first and shown; everything after it hidden. Rebuilt on every migrate from
+	the natural order, like _arrange_invoice_fields, so a field a newer ERPNext adds lands
+	hidden instead of in the middle of a section."""
+	import json
+
+	dt = "Payment Entry"
+	frappe.db.delete("Property Setter", {"doc_type": dt, "property": "field_order"})
+	frappe.clear_cache(doctype=dt)
+	natural = [df.fieldname for df in frappe.get_meta(dt, cached=False).fields]
+	rest = [f for f in natural if f not in PAYMENT_FORM]
+	_set_property(dt, None, "field_order", json.dumps(PAYMENT_FORM + rest), "Data")
+	for f in PAYMENT_FORM:
+		_set_property(dt, f, "hidden", "0", "Check")
+	for f in rest:
+		_set_property(dt, f, "hidden", "1", "Check")
+	for f in PAYMENT_NOT_MANDATORY:
+		_set_property(dt, f, "reqd", "0", "Check")
+		_set_property(dt, f, "mandatory_depends_on", "", "Data")
+	for f, label in PAYMENT_LABELS.items():
+		_set_property(dt, f, "label", label, "Data")
+	# The sections a payment is read through: always open, whatever ERPNext's conditions.
+	for f in ("deductions_or_loss_section", "posting_date", "mode_of_payment", "paid_amount", "cost_center", "reference_no"):
+		_set_property(dt, f, "depends_on", "", "Data")
+	_set_property(dt, "deductions_or_loss_section", "collapsible", "0", "Check")
+	_set_property(dt, "mode_of_payment", "reqd", "1", "Check")
+	_set_property(dt, "mode_of_payment", "default", "Bank Transfer", "Text")
 
 
 # The only fields an invoice line's form shows, in the order an M&R / Cleaning line is filled,
@@ -2326,7 +2514,7 @@ NO_MANUAL_CREATE = AUDIT_DOCTYPES | {"Gate Entry"}
 # operasional lain. Konsekuensinya disebut terang-terangan: tariff_lines sebuah kontrak
 # Active ADALAH tarif yang dibaca booking, cleaning dan M&R — jadi Admin Ops memegang
 # harga, bukan cuma jadwal.
-FINANCE_DOCTYPES = {"OAK Monthly Invoice", "Depot Finance Settings", "Pending Cash", "Pending Cash Type"}
+FINANCE_DOCTYPES = {"OAK Monthly Invoice", "Depot Finance Settings", "Pending Cash", "Pending Cash Type", "Pending Cash Refund"}
 
 # Reference/config records. Admin Ops may correct them but not spawn new ones.
 MASTER_DOCTYPES = {
@@ -2485,6 +2673,7 @@ OFFICE_ROLE_MATRIX = {
 		# Kasbon: Cashier drafts and validates; paying it out is Finance's (pending_cash.PAY_ROLES).
 		"Pending Cash": "rwc",
 		"Pending Cash Type": "r",
+		"Pending Cash Refund": "r",
 		"Storage Charge": "r",
 		"Container Booking": "r",
 		"Gate Entry": "r",
@@ -2504,6 +2693,7 @@ OFFICE_ROLE_MATRIX = {
 		"Depot Contract": "r",
 		"Pending Cash": "rwcd",
 		"Pending Cash Type": "rwcd",
+		"Pending Cash Refund": "rwcd",
 	},
 	"Commercial": {
 		"Storage Charge": "r",
@@ -3007,7 +3197,8 @@ META_PERM_DOCTYPES = {"DocType", "DocField", "DocPerm", "Custom DocPerm"}
 
 
 def _link_targets() -> set[str]:
-	"""Every doctype OUTSIDE Container Depot that a Container Depot form links to.
+	"""Every doctype OUTSIDE Container Depot that a Container Depot form — or a field this app
+	adds to another form — links to.
 
 	Child tables are walked into rather than listed: a picker on a grid row is still a picker.
 	Dynamic Link is skipped — its target is a value in a sibling field, so there is no doctype
@@ -3031,6 +3222,9 @@ def _link_targets() -> set[str]:
 	depot = _depot_doctypes()
 	for doctype in depot:
 		walk(doctype)
+	# The pickers this app adds to other apps' forms (Payment Entry's Bank, …) are ours too.
+	for fields in CUSTOM_FIELDS.values():
+		targets.update(f["options"] for f in fields if f.get("fieldtype") == "Link" and f.get("options"))
 	return targets - set(depot) - META_PERM_DOCTYPES
 
 

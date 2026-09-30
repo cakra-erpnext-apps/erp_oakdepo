@@ -2,7 +2,7 @@
  "actions": [],
  "autoname": "",
  "creation": "2026-09-28 10:00:00.000000",
- "modified": "2026-09-28 14:46:29.195857",
+ "modified": "2026-09-30 16:05:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -12,206 +12,367 @@
  "naming_rule": "By script",
  "allow_import": 1,
  "track_changes": 1,
- "title_field": "pay_to",
- "search_fields": "pay_to,pending_cash_type,status",
+ "search_fields": "pay_to,receive_from,pending_cash_type,status",
  "sort_field": "modified",
  "sort_order": "DESC",
  "field_order": [
+  "sb_basic",
   "pending_cash_type",
+  "direction",
+  "cb_basic",
   "date",
-  "pay_to",
-  "total",
-  "column_break_1",
-  "status",
-  "bank_account",
   "cost_center",
   "branch",
   "company",
-  "paid_section",
+  "cb_basic2",
+  "pay_to",
+  "receive_from",
+  "total",
+  "stamp_duty",
+  "admin_fee",
+  "net_amount_paid",
+  "cb_basic3",
+  "sb_others",
+  "confidential",
+  "cb_others",
+  "dont_post_to_gl",
+  "sb_paid",
+  "bank_account",
+  "cb_paid",
   "paid_date",
-  "column_break_2",
+  "cb_paid2",
   "paid_notes",
-  "connection_section",
+  "sb_refund",
+  "refund_table",
+  "refunded_amount",
+  "refund_bank",
+  "refund_date",
+  "sb_connection",
   "modul",
+  "cb_connection",
   "number",
-  "column_break_3",
+  "cb_connection2",
   "connection_party",
-  "detail_section",
+  "sb_remark",
   "detail",
-  "remark",
   "attachment",
-  "state_section",
+  "cb_detail",
+  "remark",
+  "sb_state",
+  "status",
+  "need_connection",
   "validated",
   "validated_by",
   "validated_date",
-  "column_break_4",
+  "cb_state1",
   "paid",
   "paid_by",
   "journal_entry",
-  "column_break_5",
+  "cb_state2",
   "void",
   "void_by",
-  "void_datetime"
+  "void_datetime",
+  "payment_no",
+  "settled"
  ],
  "fields": [
   {
+   "fieldname": "sb_basic",
+   "fieldtype": "Section Break",
+   "label": "General Information"
+  },
+  {
    "fieldname": "pending_cash_type",
    "fieldtype": "Link",
+   "label": "Type",
    "options": "Pending Cash Type",
-   "label": "Jenis Kasbon",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "set_only_once": 1
+   "read_only_depends_on": "eval:!doc.__islocal"
+  },
+  {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "label": "Cash Flow Direction",
+   "options": "Cash Outflow\nCash Inflow",
+   "default": "Cash Outflow",
+   "read_only": 1,
+   "fetch_from": "pending_cash_type.direction",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb_basic",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "date",
    "fieldtype": "Date",
-   "label": "Tanggal",
+   "label": "Date",
    "reqd": 1,
    "default": "Today",
    "in_list_view": 1
   },
   {
-   "fieldname": "pay_to",
-   "fieldtype": "Link",
-   "options": "Supplier",
-   "label": "Dibayar ke",
-   "reqd": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "total",
-   "fieldtype": "Currency",
-   "label": "Nominal",
-   "reqd": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "column_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Status",
-   "options": "Draft\nValidated\nPaid\nVoid",
-   "default": "Draft",
-   "read_only": 1,
-   "no_copy": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "bank_account",
-   "fieldtype": "Link",
-   "options": "Account",
-   "label": "Dibayar dari (Kas/Bank)",
-   "description": "Akun Kas/Bank yang dikredit saat Pay. Wajib sebelum Pay."
-  },
-  {
    "fieldname": "cost_center",
    "fieldtype": "Link",
-   "options": "Cost Center",
    "label": "Cost Center",
+   "options": "Cost Center",
    "reqd": 1
   },
   {
    "fieldname": "branch",
    "fieldtype": "Link",
-   "options": "Branch",
    "label": "Branch",
-   "in_standard_filter": 1
+   "options": "Branch",
+   "in_standard_filter": 1,
+   "fetch_from": "pending_cash_type.branch",
+   "fetch_if_empty": 1
   },
   {
    "fieldname": "company",
    "fieldtype": "Link",
-   "options": "Company",
    "label": "Company",
+   "options": "Company",
    "reqd": 1,
    "hidden": 1
   },
   {
-   "fieldname": "paid_section",
+   "fieldname": "cb_basic2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pay_to",
+   "fieldtype": "Link",
+   "label": "Pay To",
+   "options": "Supplier",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "depends_on": "eval:doc.direction!='Cash Inflow'",
+   "mandatory_depends_on": "eval:doc.direction!='Cash Inflow'"
+  },
+  {
+   "fieldname": "receive_from",
+   "fieldtype": "Link",
+   "label": "Receive From",
+   "options": "Customer",
+   "in_standard_filter": 1,
+   "depends_on": "eval:doc.direction=='Cash Inflow'",
+   "mandatory_depends_on": "eval:doc.direction=='Cash Inflow'",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Currency",
+   "label": "Amount Paid",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "stamp_duty",
+   "fieldtype": "Currency",
+   "label": "Materai",
+   "default": "0"
+  },
+  {
+   "fieldname": "admin_fee",
+   "fieldtype": "Currency",
+   "label": "Admin Charge",
+   "default": "0"
+  },
+  {
+   "fieldname": "net_amount_paid",
+   "fieldtype": "Currency",
+   "label": "Net Amount Paid",
+   "read_only": 1,
+   "bold": 1,
+   "description": "Amount Paid + Admin Charge + Materai: yang keluar dari bank (deposit: Amount Paid dikurangi keduanya)."
+  },
+  {
+   "fieldname": "cb_basic3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sb_others",
    "fieldtype": "Section Break",
-   "label": "Pembayaran",
+   "label": "Others",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "confidential",
+   "fieldtype": "Check",
+   "label": "Confidential",
+   "default": "0",
+   "description": "Hanya pembuatnya dan Finance / Accounts Manager yang bisa melihat."
+  },
+  {
+   "fieldname": "cb_others",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "dont_post_to_gl",
+   "fieldtype": "Check",
+   "label": "Don't Post to GL",
+   "default": "0",
+   "description": "Dicatat tanpa jurnal. Tidak bisa dipakai di Payment Entry maupun di-refund."
+  },
+  {
+   "fieldname": "sb_paid",
+   "fieldtype": "Section Break",
+   "label": "Paid",
    "depends_on": "eval:doc.paid || doc.paid_date"
+  },
+  {
+   "fieldname": "bank_account",
+   "fieldtype": "Link",
+   "label": "Bank Account",
+   "options": "Bank Account",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb_paid",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "paid_date",
    "fieldtype": "Date",
-   "label": "Tanggal Bayar",
+   "label": "Date",
    "read_only": 1,
-   "no_copy": 1
+   "in_list_view": 1
   },
   {
-   "fieldname": "column_break_2",
+   "fieldname": "cb_paid2",
    "fieldtype": "Column Break"
   },
   {
    "fieldname": "paid_notes",
    "fieldtype": "Small Text",
-   "label": "Catatan Bayar",
+   "label": "Notes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_refund",
+   "fieldtype": "Section Break",
+   "label": "Refund",
+   "depends_on": "eval:doc.paid"
+  },
+  {
+   "fieldname": "refund_table",
+   "fieldtype": "HTML",
+   "label": "Refunds"
+  },
+  {
+   "fieldname": "refunded_amount",
+   "fieldtype": "Currency",
+   "label": "Refund Total",
    "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1,
    "no_copy": 1
   },
   {
-   "fieldname": "connection_section",
+   "fieldname": "refund_bank",
+   "fieldtype": "Link",
+   "label": "Refund Bank",
+   "options": "Bank Account",
+   "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "refund_date",
+   "fieldtype": "Date",
+   "label": "Refund Date",
+   "read_only": 1,
+   "hidden": 1,
+   "in_list_view": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "sb_connection",
    "fieldtype": "Section Break",
-   "label": "Koneksi",
-   "collapsible": 1
+   "label": "Connection",
+   "depends_on": "eval:doc.need_connection || doc.modul"
   },
   {
    "fieldname": "modul",
    "fieldtype": "Select",
-   "label": "Dokumen",
-   "options": "\nContainer Booking\nRepair Order\nCleaning Order\nPurchase Order"
+   "label": "Modul",
+   "options": "\nContainer Booking\nRepair Order\nCleaning Order\nPurchase Order",
+   "mandatory_depends_on": "eval:doc.need_connection"
+  },
+  {
+   "fieldname": "cb_connection",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "number",
    "fieldtype": "Dynamic Link",
+   "label": "Source No",
    "options": "modul",
-   "label": "Nomor",
-   "depends_on": "eval:doc.modul",
-   "mandatory_depends_on": "eval:doc.modul"
+   "depends_on": "modul",
+   "in_list_view": 1,
+   "mandatory_depends_on": "eval:doc.need_connection || doc.modul"
   },
   {
-   "fieldname": "column_break_3",
+   "fieldname": "cb_connection2",
    "fieldtype": "Column Break"
   },
   {
    "fieldname": "connection_party",
    "fieldtype": "Data",
-   "label": "Pihak di Dokumen",
+   "label": "Customer / Vendor",
    "read_only": 1,
-   "depends_on": "eval:doc.connection_party"
+   "depends_on": "number"
   },
   {
-   "fieldname": "detail_section",
+   "fieldname": "sb_remark",
    "fieldtype": "Section Break",
-   "label": "Keterangan"
+   "label": "Remark"
   },
   {
    "fieldname": "detail",
    "fieldtype": "Small Text",
-   "label": "Keperluan"
-  },
-  {
-   "fieldname": "remark",
-   "fieldtype": "Small Text",
-   "label": "Catatan"
+   "label": "Detail"
   },
   {
    "fieldname": "attachment",
    "fieldtype": "Attach",
-   "label": "Lampiran"
+   "label": "Attachment"
   },
   {
-   "fieldname": "state_section",
+   "fieldname": "cb_detail",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  },
+  {
+   "fieldname": "sb_state",
    "fieldtype": "Section Break",
-   "label": "Riwayat Status",
-   "collapsible": 1
+   "label": "Status",
+   "hidden": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nValidated\nPaid\nCompleted\nVoid",
+   "default": "Draft",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "need_connection",
+   "fieldtype": "Check",
+   "label": "Connection Wajib",
+   "read_only": 1,
+   "fetch_from": "pending_cash_type.need_connection"
   },
   {
    "fieldname": "validated",
@@ -223,22 +384,21 @@
   {
    "fieldname": "validated_by",
    "fieldtype": "Link",
+   "label": "Validated By",
    "options": "User",
-   "label": "Validated oleh",
-   "depends_on": "eval:doc.validated_by",
    "read_only": 1,
+   "in_list_view": 1,
    "no_copy": 1
   },
   {
    "fieldname": "validated_date",
    "fieldtype": "Datetime",
-   "label": "Validated pada",
-   "depends_on": "eval:doc.validated_date",
+   "label": "Validated Date",
    "read_only": 1,
    "no_copy": 1
   },
   {
-   "fieldname": "column_break_4",
+   "fieldname": "cb_state1",
    "fieldtype": "Column Break"
   },
   {
@@ -251,23 +411,22 @@
   {
    "fieldname": "paid_by",
    "fieldtype": "Link",
+   "label": "Paid By",
    "options": "User",
-   "label": "Dibayar oleh",
-   "depends_on": "eval:doc.paid_by",
    "read_only": 1,
+   "in_list_view": 1,
    "no_copy": 1
   },
   {
    "fieldname": "journal_entry",
    "fieldtype": "Link",
-   "options": "Journal Entry",
    "label": "Journal Entry",
-   "depends_on": "eval:doc.journal_entry",
+   "options": "Journal Entry",
    "read_only": 1,
    "no_copy": 1
   },
   {
-   "fieldname": "column_break_5",
+   "fieldname": "cb_state2",
    "fieldtype": "Column Break"
   },
   {
@@ -280,19 +439,33 @@
   {
    "fieldname": "void_by",
    "fieldtype": "Link",
+   "label": "Void By",
    "options": "User",
-   "label": "Void oleh",
-   "depends_on": "eval:doc.void_by",
    "read_only": 1,
    "no_copy": 1
   },
   {
    "fieldname": "void_datetime",
    "fieldtype": "Datetime",
-   "label": "Void pada",
-   "depends_on": "eval:doc.void_datetime",
+   "label": "Void Date Time",
    "read_only": 1,
    "no_copy": 1
+  },
+  {
+   "fieldname": "payment_no",
+   "fieldtype": "Data",
+   "label": "Payment",
+   "read_only": 1,
+   "in_list_view": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "settled",
+   "fieldtype": "Check",
+   "label": "Completed",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Sudah dipakai Payment Entry yang ter-submit."
   }
  ],
  "permissions": [

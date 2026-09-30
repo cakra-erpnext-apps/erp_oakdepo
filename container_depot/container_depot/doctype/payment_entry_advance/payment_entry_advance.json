@@ -1,7 +1,7 @@
 {
  "actions": [],
- "creation": "2026-09-28 10:00:00.000000",
- "modified": "2026-09-30 15:00:00.000000",
+ "creation": "2026-09-30 14:00:00.000000",
+ "modified": "2026-09-30 14:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -9,27 +9,27 @@
  "istable": 1,
  "editable_grid": 1,
  "module": "Container Depot",
- "name": "Payment Entry Kasbon",
+ "name": "Payment Entry Advance",
  "field_order": [
-  "pending_cash",
-  "pay_to",
-  "customer",
+  "purchase_order",
+  "supplier",
+  "date",
   "grand_total",
   "outstanding",
   "allocated"
  ],
  "fields": [
   {
-   "fieldname": "pending_cash",
+   "fieldname": "purchase_order",
    "fieldtype": "Link",
-   "options": "Pending Cash",
+   "options": "Purchase Order",
    "label": "Document No",
    "reqd": 1,
    "in_list_view": 1,
    "columns": 3
   },
   {
-   "fieldname": "pay_to",
+   "fieldname": "supplier",
    "fieldtype": "Link",
    "options": "Supplier",
    "label": "Supplier",
@@ -38,10 +38,9 @@
    "columns": 2
   },
   {
-   "fieldname": "customer",
-   "fieldtype": "Link",
-   "options": "Customer",
-   "label": "Customer",
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Tanggal",
    "read_only": 1
   },
   {
@@ -65,11 +64,12 @@
    "fieldtype": "Currency",
    "label": "Allocated Amount",
    "in_list_view": 1,
-   "columns": 2,
-   "description": "Kosong = seluruh sisa kasbon."
+   "columns": 2
   }
  ],
  "permissions": [],
  "sort_field": "modified",
- "sort_order": "DESC"
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
 }

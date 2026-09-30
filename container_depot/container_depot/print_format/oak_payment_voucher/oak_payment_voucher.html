@@ -48,10 +48,19 @@
         <td class="num">{{ oak.money(d.amount, _base) }}</td>
       </tr>
       {%- endfor %}
+      {%- for a in doc.get("depot_advance") or [] %}
+      <tr>
+        <td>{{ a.purchase_order }}</td>
+        <td>Uang muka Purchase Order</td>
+        <td class="num">{{ oak.money(a.outstanding, _ccy) }}</td>
+        <td class="num">{{ oak.money(a.allocated, _ccy) }}</td>
+      </tr>
+      {%- endfor %}
+      {#- Pending Cash: a Pay drawn from a kasbon, a Receive from the customer's deposit. -#}
       {%- for k in doc.depot_kasbon %}
       <tr>
         <td>{{ k.pending_cash }}</td>
-        <td>Dibayar dari kasbon {{ k.pay_to or "" }}</td>
+        <td>{{ "Dibayar dari kasbon" if _pay else "Dipotong dari deposit" }} {{ k.pay_to or k.customer or "" }}</td>
         <td></td>
         <td class="num">({{ oak.money(k.allocated, _base) }})</td>
       </tr>
@@ -91,6 +100,10 @@
       </tr>
     </tbody>
   </table>
+  {%- endif %}
+
+  {%- if doc.get("depot_dont_post_to_gl") %}
+  <div class="sub" style="margin-top:8px;">Tidak dijurnal (Dont Post To GL).</div>
   {%- endif %}
 
   {%- if doc.remarks %}

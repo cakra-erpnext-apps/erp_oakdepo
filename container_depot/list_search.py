@@ -53,7 +53,8 @@ SEARCH_FIELDS: dict[str, list[str]] = {
 	# Invoicing & pembayaran
 	"Sales Invoice": ["customer", "customer_name", "po_no", "items.item_name", "items.depot_source"],
 	"Payment Entry": ["party", "party_name", "reference_no", "depot_references", "references.reference_name"],
-	"Pending Cash": ["pay_to", "pending_cash_type", "number", "connection_party", "detail", "remark"],
+	"Pending Cash": ["pay_to", "receive_from", "pending_cash_type", "number", "connection_party", "payment_no", "detail", "remark"],
+	"Pending Cash Refund": ["party", "pending_cash_no", "remark"],
 	"Pending Cash Type": ["title"],
 	"Storage Charge": ["container", "principal", "gate_entry", "sales_invoice"],
 	# Kontrak & tarif

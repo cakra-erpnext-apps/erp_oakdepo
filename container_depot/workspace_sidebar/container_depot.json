@@ -382,7 +382,7 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Pending Cash (Kasbon)",
+   "label": "Pending Cash",
    "link_to": "Pending Cash",
    "link_type": "DocType",
    "show_arrow": 0,
@@ -394,7 +394,19 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Jenis Kasbon",
+   "label": "Pending Cash Refund",
+   "link_to": "Pending Cash Refund",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "undo-2"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Pending Cash Type",
    "link_to": "Pending Cash Type",
    "link_type": "DocType",
    "show_arrow": 0,
@@ -828,7 +840,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-24 16:30:00.000000",
+ "modified": "2026-09-30 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

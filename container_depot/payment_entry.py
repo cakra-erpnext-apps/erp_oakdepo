@@ -16,12 +16,18 @@ What the depot's Payment Entry adds (ported from erp_cakra ``overrides/payment_e
 * **Kasbon** (``depot_kasbon``): a paid Pending Cash can fund the payment. The credit then goes
   to the advance account the kasbon debited, not to the bank a second time.
 * **Settlement** mode of payment: the bank side is replaced by a chosen account.
+* **Bank**: the bank picked on the form fills the bank side through its company Bank Account.
+* The **amount** is the user's (typed, or the Pay / Receive button); left empty it is worked
+  out from the lines. Paying more leaves the rest unallocated — ERPNext's own advance. A tail
+  under Rp 1 against the invoices goes to a "Pembulatan" deduction.
+* **Dont Post To GL**: submitted without a journal.
 * Cheque / reference number is not mandatory.
 
+The form is erp_cakra's layout (install.PAYMENT_FORM, public/js/payment_entry.js).
+
 Deliberately NOT ported: erp_cakra's foreign-currency Expense Note path (this app has no
-Expense Note), Validate/Void workflow, "Dont Post to GL" and the candidate cache (it was shared
-across users and read with ignore_permissions — here every call is permission-checked and
-branch-scoped instead).
+Expense Note), Validate/Void workflow and the candidate cache (it was shared across users and
+read with ignore_permissions — here every call is permission-checked and branch-scoped instead).
 """
 
 from __future__ import annotations
@@ -44,6 +50,10 @@ from container_depot.invoicing import parse_smart
 
 _ROMAN = ("", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
 SETTLEMENT = "Settlement"
+ROUNDING = "Pembulatan"
+# Only the sub-rupiah tail of a decimal price is absorbed; more than this is a typing mistake
+# and ERPNext's "Difference Amount must be zero" should stop it.
+ROUNDING_LIMIT = 1.0
 
 # Header boxes -> deduction rows: (amount getter, description, account key, Pay direction).
 # Pay: +1 = the account is debited and the bank pays more (PPN, Materai, Admin); -1 = it is
@@ -93,6 +103,19 @@ class DepotPaymentEntry(PaymentEntry):
 		abbr = frappe.get_cached_value("Company", self.company, "abbr")
 		prefix = "-".join([kind] + ([seg] if seg else []) + [abbr, str(d.year), _ROMAN[d.month]]) + "-"
 		self.name = prefix + getseries(prefix, 4)
+
+	def make_gl_entries(self, *args, **kwargs):
+		"""Dont Post To GL: a record only. No ledger, so the invoices it names stay outstanding."""
+		if self.get("depot_dont_post_to_gl"):
+			return
+		return super().make_gl_entries(*args, **kwargs)
+
+	def set_title(self):
+		"""Expense / Income has no party: the title is who was paid (Pay To), not "None"."""
+		if self.get("depot_direct"):
+			self.title = self.get("depot_pay_to") or _("Expense / Income")
+			return
+		return super().set_title()
 
 	def validate_transaction_reference(self):
 		"""Cheque / reference no. is not required: most payments are recorded before the bank
@@ -144,49 +167,59 @@ class DepotPaymentEntry(PaymentEntry):
 				"remarks": " - ".join(x for x in (r.get("description"), r.get("remark")) if x) or self.remarks,
 			}, item=r))
 
-	def add_bank_gl_entries(self, gl_entries):
-		"""Pay funded by kasbon: the kasbon's advance account is credited instead of the bank.
+	def _bank_side(self):
+		"""(GL side, account, account currency, rate, company-currency amount) of the bank."""
+		if self.payment_type == "Receive":
+			return "debit", self.paid_to, self.paid_to_account_currency, flt(self.target_exchange_rate) or 1, flt(self.base_received_amount)
+		return "credit", self.paid_from, self.paid_from_account_currency, flt(self.source_exchange_rate) or 1, flt(self.base_paid_amount)
 
-		The kasbon already took the money out of the bank when it was paid (Dr Uang Muka / Cr
-		Bank); charging the bank again would pay the same money twice. What the kasbon does not
-		cover comes from the bank; what it over-covers goes back into it.
+	def add_bank_gl_entries(self, gl_entries):
+		"""Funded by Pending Cash: its advance / deposit account takes the bank's place.
+
+		The money already moved when it was paid — a kasbon out of the bank (Dr Uang Muka / Cr
+		Bank), a deposit into it (Dr Bank / Cr Deposit). Charging the bank again would move it
+		twice. So a Pay credits the advance and a Receive debits the deposit; the bank takes what
+		they do not cover, and what they over-cover goes back the other way.
 		"""
-		funding = _kasbon_funding(self) if self.payment_type == "Pay" else []
+		funding = _kasbon_funding(self)
 		if not funding:
 			return super().add_bank_gl_entries(gl_entries)
+		side, bank, bank_ccy, rate, total = self._bank_side()
+		against = self.party or (self.paid_from if side == "debit" else self.paid_to)
 		for f in funding:
 			gl_entries.append(self.get_gl_dict({
 				"account": f["account"],
 				"party_type": f["party_type"],
 				"party": f["party"],
-				"against": self.party or self.paid_to,
+				"against": against,
 				"account_currency": frappe.get_cached_value("Account", f["account"], "account_currency"),
-				"credit": f["amount"],
-				"credit_in_account_currency": f["amount"],
+				side: f["amount"],
+				f"{side}_in_account_currency": f["amount"],
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
-		from_bank = flt(self.base_paid_amount) - sum(f["amount"] for f in funding)
+		from_bank = total - sum(f["amount"] for f in funding)
 		if abs(from_bank) > 0.005:
-			side = "credit" if from_bank > 0 else "debit"
+			bank_side = side if from_bank > 0 else ("credit" if side == "debit" else "debit")
 			gl_entries.append(self.get_gl_dict({
-				"account": self.paid_from,
-				"account_currency": self.paid_from_account_currency,
-				"against": self.party or self.paid_to,
-				side: abs(from_bank),
-				f"{side}_in_account_currency": abs(from_bank) / (flt(self.source_exchange_rate) or 1),
+				"account": bank,
+				"account_currency": bank_ccy,
+				"against": against,
+				bank_side: abs(from_bank),
+				f"{bank_side}_in_account_currency": abs(from_bank) / rate,
 				"cost_center": self.cost_center,
 				"post_net_value": True,
 			}, item=self))
 
 	def _kasbon_against(self, gl_entries, start):
 		"""The party rows' "against" names the accounts that actually paid them."""
-		funding = _kasbon_funding(self) if self.payment_type == "Pay" else []
+		funding = _kasbon_funding(self)
 		if not funding:
 			return
+		_side, bank, _ccy, _rate, total = self._bank_side()
 		accounts = list(dict.fromkeys(f["account"] for f in funding))
-		if flt(self.base_paid_amount) - sum(f["amount"] for f in funding) > 0.005:
-			accounts.append(self.paid_from)
+		if total - sum(f["amount"] for f in funding) > 0.005:
+			accounts.append(bank)
 		for row in gl_entries[start:]:
 			if row.get("party"):
 				row["against"] = ", ".join(accounts)
@@ -199,15 +232,22 @@ def before_validate(doc, method=None):
 	if doc.payment_type not in ("Pay", "Receive"):
 		return
 	_prepare_sides(doc)
+	if not doc.get("depot_direct") and not doc.get("party_type"):
+		# The form hides Party Type: it follows the direction.
+		doc.party_type = "Customer" if doc.payment_type == "Receive" else "Supplier"
 	if not doc.branch:
 		from container_depot.invoicing import default_branch
 
 		default_branch(doc)
 	_lines_from_references(doc)
 	_derive_references(doc)
+	_apply_advance(doc)
 	_apply_components(doc)
 	_apply_amounts(doc)
+	_apply_rounding(doc)
 	_apply_kasbon(doc)
+	_apply_remark(doc)
+	doc.depot_bank_amount = _bank_amount(doc)
 	doc.depot_references = ", ".join(dict.fromkeys(r.reference_name for r in doc.get("references") or []))
 
 
@@ -223,8 +263,26 @@ def _prepare_sides(doc):
 
 
 def _fill_bank_side(doc):
-	"""Fill the bank side from the mode of payment, else the company's default bank / cash."""
+	"""The bank side (Pay: paid_from, Receive: paid_to), the erp_cakra way: from the Bank picked
+	on the form, through its company Bank Account; without one, from the mode of payment's
+	account, else the company's default bank / cash. Settlement has put its account there."""
 	side = _bank_field(doc)
+	if _is_settlement(doc):
+		doc.depot_bank = doc.bank_account = None
+	elif doc.get("depot_bank"):
+		current = frappe.db.get_value("Bank Account", doc.bank_account, "bank") if doc.get("bank_account") else None
+		if current != doc.depot_bank:
+			ba = frappe.db.get_value(
+				"Bank Account",
+				{"bank": doc.depot_bank, "company": doc.company, "is_company_account": 1, "disabled": 0},
+				["name", "account"], as_dict=True,
+			)
+			if not ba:
+				frappe.throw(_("Bank <b>{0}</b> belum punya Bank Account (rekening company).").format(doc.depot_bank))
+			doc.bank_account = ba.name
+			doc.set(side, ba.account)
+		elif not doc.get(side):
+			doc.set(side, frappe.db.get_value("Bank Account", doc.bank_account, "account"))
 	if not doc.get(side):
 		acc = None
 		if doc.get("mode_of_payment"):
@@ -235,8 +293,17 @@ def _fill_bank_side(doc):
 			"Company", doc.company, "default_cash_account"
 		)
 		if not acc:
-			frappe.throw(_("Akun Kas/Bank belum terisi. Pilih akunnya, atau isi akun default di Mode of Payment."))
+			frappe.throw(_("Akun Kas/Bank belum terisi. Pilih <b>Bank</b>, atau isi akun default di Mode of Payment."))
 		doc.set(side, acc)
+	if not _is_settlement(doc) and not doc.get("depot_bank"):
+		# An account that came some other way still names its bank, so the form shows it.
+		ba = frappe.db.get_value(
+			"Bank Account", {"account": doc.get(side), "company": doc.company, "is_company_account": 1},
+			["name", "bank"], as_dict=True,
+		)
+		if ba:
+			doc.bank_account = doc.bank_account or ba.name
+			doc.depot_bank = ba.bank
 	for cur_f, acc_f in (("paid_from_account_currency", "paid_from"), ("paid_to_account_currency", "paid_to")):
 		if doc.get(acc_f) and not doc.get(cur_f):
 			doc.set(cur_f, frappe.get_cached_value("Account", doc.get(acc_f), "account_currency"))
@@ -418,11 +485,13 @@ def _apply_components(doc):
 
 
 def _apply_amounts(doc):
-	"""Paid / received from the lines, so ERPNext's difference comes out at zero by itself.
+	"""Paid / received, so ERPNext's difference comes out at zero by itself.
 
-	Receive: the party side (paid, party currency) is what the invoices are cleared by less the
-	cuts; the bank (received) gets that. Pay: the party side (received) is the allocation; the
-	bank (paid) pays it plus the components.
+	The amount is the user's (erp_cakra): typed, or set by the Pay / Receive button; only an
+	empty one is worked out here. Receive: the party side (paid, party currency) is what the
+	invoices are cleared by less the cuts; the bank (received) gets that. Pay: the bank (paid)
+	pays the allocation plus the components; the party side (received) is the rest of it. More
+	than the lines is left unallocated: ERPNext's own advance to the party.
 	"""
 	adj = sum(flt(d.amount) for d in doc.get("deductions") or [] if d.get("depot_auto"))
 	if doc.get("depot_direct"):
@@ -440,13 +509,137 @@ def _apply_amounts(doc):
 	src = flt(doc.source_exchange_rate) or 1
 	tgt = flt(doc.target_exchange_rate) or 1
 	if doc.payment_type == "Receive":
-		doc.paid_amount = alloc - adj / src
+		if not flt(doc.paid_amount):
+			doc.paid_amount = alloc - adj / src
 		doc.received_amount = doc.paid_amount * src / tgt
 	else:
 		if adj and doc.paid_to_account_currency != _company_currency(doc):
 			frappe.throw(_("Potongan & biaya hanya bisa dipakai untuk hutang dalam {0}.").format(_company_currency(doc)))
-		doc.received_amount = alloc
-		doc.paid_amount = (alloc * tgt + adj) / src
+		if not flt(doc.paid_amount):
+			doc.paid_amount = (alloc * tgt + adj) / src
+		doc.received_amount = (doc.paid_amount * src - adj) / tgt
+
+
+def _apply_rounding(doc):
+	"""A sub-rupiah tail between the bank and the invoices -> a "Pembulatan" deduction to the
+	company's Round Off account: the bank moves whole rupiah, an invoice priced in decimals
+	does not. Rebuilt on every save (flagged depot_auto, dropped by _apply_components)."""
+	if doc.get("depot_direct") or not doc.get("references"):
+		return
+	alloc = sum(flt(r.allocated_amount) for r in doc.references)
+	adj = sum(flt(d.amount) for d in doc.get("deductions") or [] if not d.get("is_exchange_gain_loss"))
+	if doc.payment_type == "Pay":
+		resid = flt(doc.paid_amount) - (alloc + adj)
+	else:
+		resid = (alloc - adj) - flt(doc.paid_amount)
+	resid = flt(resid, 2)
+	if not resid or abs(resid) > ROUNDING_LIMIT:
+		return
+	account, cost_center = frappe.get_cached_value("Company", doc.company, ["round_off_account", "round_off_cost_center"])
+	if not account:
+		frappe.throw(_("Selisih pembulatan {0}: isi <b>Round Off Account</b> di Company {1}.").format(resid, doc.company))
+	doc.append("deductions", {
+		"account": account, "cost_center": cost_center or doc.cost_center, "amount": resid,
+		"description": ROUNDING, "depot_auto": 1,
+	})
+	if doc.payment_type == "Pay":
+		doc.received_amount = flt(doc.received_amount) - resid
+
+
+def _apply_remark(doc):
+	"""Remark is the document's remarks (and the journal's); custom_remarks stops ERPNext
+	writing its own "Amount X paid to ..." over it."""
+	note = (doc.get("depot_remark_note") or "").strip()
+	if note:
+		doc.remarks = note
+		doc.custom_remarks = 1
+
+
+def _bank_amount(doc):
+	"""What actually moves through the bank, in company currency: the amount less what a
+	kasbon funds (the same arithmetic as DepotPaymentEntry.add_bank_gl_entries)."""
+	if doc.payment_type == "Receive":
+		base = flt(doc.received_amount) * (flt(doc.target_exchange_rate) or 1)
+	else:
+		base = flt(doc.paid_amount) * (flt(doc.source_exchange_rate) or 1)
+	return flt(base - flt(doc.get("depot_kasbon_amount")), 2)
+
+
+# --------------------------------------------------------------------------- #
+# Advance Payable — an advance on Purchase Orders
+# --------------------------------------------------------------------------- #
+def _apply_advance(doc):
+	"""Advance Payable rows -> native references to their Purchase Orders.
+
+	ERPNext then books the payment as the advance it is (to the supplier's payable, or to the
+	company's advance account when it books advances separately), keeps each order's Advance
+	Paid, and lets the Purchase Invoice take it off later. A payment is an advance OR the
+	settlement of invoices, never both (erp_cakra's rule): an advance has no invoice to
+	balance against."""
+	if doc.payment_type != "Pay" or doc.get("depot_direct"):
+		doc.set("depot_advance", [])
+		doc.depot_advance_amount = 0
+		return
+	rows = [r for r in doc.get("depot_advance") or [] if r.get("purchase_order")]
+	doc.depot_advance_amount = 0
+	if not rows:
+		return
+	if any(r.get("document_no") for r in doc.get("depot_lines") or []) or doc.get("depot_kasbon"):
+		frappe.throw(_("Uang muka Purchase Order tidak bisa digabung dengan Payment Item / Pending Cash dalam satu Payment Entry. Buat Payment Entry terpisah."))
+	from erpnext.accounts.doctype.payment_entry.payment_entry import get_reference_details
+
+	for r in rows:
+		po = frappe.db.get_value(
+			"Purchase Order", r.purchase_order, ["supplier", "transaction_date", "docstatus", "status"], as_dict=True
+		)
+		if not po or po.docstatus != 1 or po.status in ("Closed", "On Hold", "Completed"):
+			frappe.throw(_("Purchase Order <b>{0}</b> belum submit atau sudah ditutup.").format(r.purchase_order))
+		if doc.party and po.supplier != doc.party:
+			frappe.throw(_("Purchase Order <b>{0}</b> milik supplier <b>{1}</b>, bukan <b>{2}</b>.").format(
+				r.purchase_order, po.supplier, doc.party))
+		ref = get_reference_details(
+			"Purchase Order", r.purchase_order, doc.paid_to_account_currency or _company_currency(doc), doc.party_type, doc.party
+		)
+		left = flt(ref.outstanding_amount)
+		if left <= 0.005:
+			frappe.throw(_("Purchase Order <b>{0}</b> sudah diberi uang muka penuh.").format(r.purchase_order))
+		r.supplier, r.date, r.grand_total, r.outstanding = po.supplier, po.transaction_date, flt(ref.total_amount), left
+		r.allocated = flt(r.allocated) if flt(r.allocated) > 0 else left
+		if r.allocated > left + 0.005:
+			frappe.throw(_("Uang muka Purchase Order <b>{0}</b> ({1}) melebihi sisanya ({2}).").format(
+				r.purchase_order, r.allocated, left))
+		doc.append("references", {
+			"reference_doctype": "Purchase Order",
+			"reference_name": r.purchase_order,
+			"total_amount": r.grand_total,
+			"outstanding_amount": left,
+			"allocated_amount": r.allocated,
+			"depot_from_line": 1,
+		})
+	doc.depot_advance_amount = sum(flt(r.allocated) for r in rows)
+	if not flt(doc.paid_amount):
+		doc.paid_amount = doc.depot_advance_amount
+	doc.received_amount = doc.paid_amount
+
+
+@frappe.whitelist()
+def get_purchase_orders(supplier, company, exclude=None):
+	"""Submitted Purchase Orders of one supplier still open to an advance, for "Add Purchase
+	Order": what is left is the order's total less its Advance Paid."""
+	frappe.has_permission("Payment Entry", "create", throw=True)
+	exclude = set(frappe.parse_json(exclude) or []) if exclude else set()
+	out = []
+	for po in frappe.get_list(
+		"Purchase Order",
+		filters={"supplier": supplier, "company": company, "docstatus": 1, "status": ["not in", ["Closed", "On Hold", "Completed"]]},
+		fields=["name", "transaction_date", "grand_total", "rounded_total", "advance_paid", "currency"],
+		order_by="transaction_date desc",
+	):
+		total = flt(po.rounded_total) or flt(po.grand_total)
+		left = total - flt(po.advance_paid)
+		if po.name not in exclude and left > 0.005:
+			out.append({**po, "total": total, "outstanding": left})
+	return out
 
 
 # --------------------------------------------------------------------------- #
@@ -466,9 +659,15 @@ def _kasbon_used(names, exclude_parent=None) -> dict:
 	return used
 
 
+def _direction(doc):
+	"""The Pending Cash a payment can draw on: a Pay a kasbon (out), a Receive a deposit (in)."""
+	return "Cash Inflow" if doc.payment_type == "Receive" else "Cash Outflow"
+
+
 def _apply_kasbon(doc):
-	"""Check each kasbon row against what is left of it; default = all that is left."""
-	if doc.payment_type != "Pay":
+	"""Check each Pending Cash row against what is left of it (less other payments and its
+	refunds). An empty row takes what is left, up to what this payment still needs."""
+	if doc.payment_type not in ("Pay", "Receive"):
 		doc.set("depot_kasbon", [])
 		doc.depot_kasbon_amount = 0
 		return
@@ -479,34 +678,53 @@ def _apply_kasbon(doc):
 	info = {
 		k.name: k for k in frappe.get_all(
 			"Pending Cash", filters={"name": ["in", [r.pending_cash for r in rows]]},
-			fields=["name", "total", "paid", "void", "pay_to"], ignore_permissions=True,
+			fields=["name", "total", "paid", "void", "pay_to", "receive_from", "direction", "refunded_amount", "dont_post_to_gl"],
+			ignore_permissions=True,
 		)
 	}
 	used = _kasbon_used(info, exclude_parent=doc.name)
+	want = _direction(doc)
+	need = flt(doc.paid_amount)
 	for r in rows:
 		k = info.get(r.pending_cash)
 		if not k or not k.paid or k.void:
-			frappe.throw(_("Kasbon <b>{0}</b> belum dibayar atau sudah Void.").format(r.pending_cash))
-		left = flt(k.total) - flt(used.get(k.name))
+			frappe.throw(_("Pending Cash <b>{0}</b> belum dibayar atau sudah Void.").format(r.pending_cash))
+		if k.dont_post_to_gl:
+			# No journal, so no advance / deposit for this payment to close.
+			frappe.throw(_("Pending Cash <b>{0}</b> tidak diposting ke GL — tidak bisa dipakai di Payment Entry.").format(k.name))
+		if (k.direction or "Cash Outflow") != want:
+			frappe.throw(_("Pending Cash <b>{0}</b> berarah <b>{1}</b>: tidak bisa dipakai di Payment Entry {2}.").format(
+				k.name, k.direction or "Cash Outflow", doc.payment_type))
+		if want == "Cash Inflow" and k.receive_from != doc.party:
+			frappe.throw(_("Deposit <b>{0}</b> milik <b>{1}</b>, bukan <b>{2}</b>.").format(k.name, k.receive_from, doc.party))
+		left = flt(k.total) - flt(used.get(k.name)) - flt(k.refunded_amount)
 		if left <= 0.005:
-			frappe.throw(_("Kasbon <b>{0}</b> sudah habis dipakai di Payment Entry lain.").format(k.name))
-		r.pay_to, r.grand_total, r.outstanding = k.pay_to, flt(k.total), left
-		r.allocated = flt(r.allocated) if flt(r.allocated) > 0 else left
+			frappe.throw(_("Pending Cash <b>{0}</b> sudah habis dipakai atau di-refund.").format(k.name))
+		r.pay_to, r.customer, r.grand_total, r.outstanding = k.pay_to, k.receive_from, flt(k.total), left
+		r.allocated = flt(r.allocated) if flt(r.allocated) > 0 else (min(left, need) if need > 0 else left)
 		if r.allocated > left + 0.005:
-			frappe.throw(_("Kasbon <b>{0}</b>: dipakai {1}, sisanya {2}.").format(k.name, r.allocated, left))
+			frappe.throw(_("Pending Cash <b>{0}</b>: dipakai {1}, sisanya {2}.").format(k.name, r.allocated, left))
+		need -= r.allocated
 	doc.depot_kasbon_amount = sum(flt(r.allocated) for r in rows)
 
 
 def _kasbon_funding(doc) -> list[dict]:
-	"""The advance credit each kasbon row stands for, read off the kasbon's OWN journal — the
-	row that has to be closed is the one that was posted, with its recipient as party."""
+	"""The advance / deposit each Pending Cash row stands for, read off its OWN journal — the
+	row that has to be closed is the one that was posted, with its party. A kasbon's advance
+	is the debit row, a deposit the credit row."""
+	if doc.payment_type not in ("Pay", "Receive"):
+		return []
+	posted = "credit" if doc.payment_type == "Receive" else "debit"
 	out = []
 	for r in doc.get("depot_kasbon") or []:
 		if not (flt(r.allocated) and r.pending_cash):
 			continue
 		je = frappe.db.get_value("Pending Cash", r.pending_cash, "journal_entry")
+		# The advance / deposit is the journal's first row; Admin Charge and Materai follow it
+		# on the same (debit) side of a kasbon.
 		side = je and frappe.db.get_value(
-			"Journal Entry Account", {"parent": je, "debit": [">", 0]}, ["account", "party_type", "party"], as_dict=True
+			"Journal Entry Account", {"parent": je, posted: [">", 0]}, ["account", "party_type", "party"], as_dict=True,
+			order_by="idx asc",
 		)
 		if not side:
 			frappe.throw(_("Kasbon <b>{0}</b> tidak punya jurnal pembayaran (belum Paid?).").format(r.pending_cash))
@@ -522,6 +740,12 @@ def sync_payment_links(doc, method=None):
 	before = doc.get_doc_before_save() if not doc.is_new() else None
 	if before:
 		rows += list(before.get("references") or [])
+	# The Pending Cash it draws on: its Payment column and Completed.
+	kasbon = {r.pending_cash for d in (doc, before) if d for r in d.get("depot_kasbon") or [] if r.get("pending_cash")}
+	if kasbon:
+		from container_depot.container_depot.doctype.pending_cash.pending_cash import sync_document_links
+
+		sync_document_links(kasbon)
 	targets = {
 		(r.reference_doctype, r.reference_name)
 		for r in rows
@@ -618,25 +842,36 @@ def get_payment_documents(party_type, party, company, payment_type, exclude=None
 
 
 @frappe.whitelist()
-def get_kasbon(supplier=None, company=None, exclude=None, exclude_parent=None):
-	"""Paid kasbon with something left to draw on, for the "Ambil Kasbon" dialog."""
+def default_bank():
+	"""The Bank ticked Default Bank, where a new payment starts."""
 	frappe.has_permission("Payment Entry", "create", throw=True)
-	filters = {"paid": 1, "void": 0}
-	if supplier:
+	return frappe.db.get_value("Bank", {"depot_default_bank": 1}, "name")
+
+
+@frappe.whitelist()
+def get_kasbon(supplier=None, company=None, exclude=None, exclude_parent=None, payment_type="Pay", customer=None):
+	"""Paid Pending Cash with something left, for "Add Pending Cash": a Pay draws on kasbon
+	(Cash Outflow), a Receive on the customer's own deposits (Cash Inflow)."""
+	frappe.has_permission("Payment Entry", "create", throw=True)
+	filters = {"paid": 1, "void": 0, "dont_post_to_gl": 0, "direction": "Cash Inflow" if payment_type == "Receive" else "Cash Outflow"}
+	if payment_type == "Receive":
+		filters["receive_from"] = customer or "-"
+	elif supplier:
 		filters["pay_to"] = supplier
 	if company:
 		filters["company"] = company
 	exclude = set(frappe.parse_json(exclude) or []) if exclude else set()
 	rows = [
 		r for r in frappe.get_list(
-			"Pending Cash", filters=filters, fields=["name", "pay_to", "total", "paid_date"], order_by="paid_date desc"
+			"Pending Cash", filters=filters,
+			fields=["name", "pay_to", "receive_from", "total", "refunded_amount", "paid_date"], order_by="paid_date desc",
 		)
 		if r.name not in exclude
 	]
 	used = _kasbon_used([r.name for r in rows], exclude_parent)
 	out = []
 	for r in rows:
-		left = flt(r.total) - flt(used.get(r.name))
+		left = flt(r.total) - flt(used.get(r.name)) - flt(r.refunded_amount)
 		if left > 0.005:
 			out.append({**r, "outstanding": left})
 	return out

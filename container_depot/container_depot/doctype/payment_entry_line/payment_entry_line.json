@@ -1,7 +1,7 @@
 {
  "actions": [],
  "creation": "2026-09-28 10:00:00.000000",
- "modified": "2026-09-28 14:46:29.195857",
+ "modified": "2026-09-30 13:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -36,13 +36,13 @@
    "fieldname": "document_type",
    "fieldtype": "Link",
    "options": "DocType",
-   "label": "Jenis",
+   "label": "Document Type",
    "read_only": 1
   },
   {
    "fieldname": "doc_label",
    "fieldtype": "Data",
-   "label": "Tipe",
+   "label": "Type",
    "read_only": 1,
    "depends_on": "eval:doc.document_no"
   },
@@ -50,7 +50,7 @@
    "fieldname": "document_no",
    "fieldtype": "Dynamic Link",
    "options": "document_type",
-   "label": "Dokumen",
+   "label": "Document No",
    "read_only": 1,
    "in_list_view": 1,
    "columns": 2
@@ -67,9 +67,7 @@
   {
    "fieldname": "description",
    "fieldtype": "Data",
-   "label": "Keterangan",
-   "in_list_view": 1,
-   "columns": 2,
+   "label": "Description",
    "depends_on": "eval:!doc.document_no"
   },
   {
@@ -77,8 +75,6 @@
    "fieldtype": "Link",
    "options": "Account",
    "label": "Account",
-   "in_list_view": 1,
-   "columns": 2,
    "depends_on": "eval:!doc.document_no"
   },
   {
@@ -95,14 +91,16 @@
   {
    "fieldname": "grand_total",
    "fieldtype": "Currency",
-   "label": "Total Dokumen",
+   "label": "Amount",
    "read_only": 1,
-   "depends_on": "eval:doc.document_no"
+   "depends_on": "eval:doc.document_no",
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "outstanding",
    "fieldtype": "Currency",
-   "label": "Sisa",
+   "label": "Unallocated Amount",
    "read_only": 1,
    "in_list_view": 1,
    "columns": 1,
@@ -111,7 +109,7 @@
   {
    "fieldname": "amount",
    "fieldtype": "Currency",
-   "label": "Dibayar",
+   "label": "Allocated Amount",
    "in_list_view": 1,
    "columns": 2,
    "description": "Kosong = seluruh sisa. Expense/Income: nominal baris."
@@ -126,13 +124,15 @@
   {
    "fieldname": "credit_amount",
    "fieldtype": "Currency",
-   "label": "Credit Note"
+   "label": "Credit Note",
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "credit_account",
    "fieldtype": "Link",
    "options": "Account",
-   "label": "Credit Account",
+   "label": "Akun Credit Note",
    "mandatory_depends_on": "eval:doc.credit_amount"
   },
   {
@@ -142,13 +142,15 @@
   {
    "fieldname": "debit_amount",
    "fieldtype": "Currency",
-   "label": "Debit Note"
+   "label": "Debit Note",
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "debit_account",
    "fieldtype": "Link",
    "options": "Account",
-   "label": "Debit Account",
+   "label": "Akun Debit Note",
    "mandatory_depends_on": "eval:doc.debit_amount"
   },
   {
@@ -158,7 +160,9 @@
   {
    "fieldname": "remark",
    "fieldtype": "Small Text",
-   "label": "Catatan"
+   "label": "Remark",
+   "in_list_view": 1,
+   "columns": 1
   }
  ],
  "permissions": [],

@@ -2,7 +2,7 @@
  "actions": [],
  "autoname": "field:code",
  "creation": "2026-09-28 10:00:00.000000",
- "modified": "2026-09-28 14:57:17.567318",
+ "modified": "2026-09-30 16:00:00.000000",
  "modified_by": "Administrator",
  "owner": "Administrator",
  "doctype": "DocType",
@@ -20,32 +20,42 @@
   "code",
   "title",
   "numbering_code",
+  "disabled",
   "column_break_1",
   "advance_account",
-  "disabled"
+  "direction",
+  "column_break_2",
+  "branch",
+  "need_connection"
  ],
  "fields": [
   {
    "fieldname": "code",
    "fieldtype": "Data",
-   "label": "Kode",
+   "label": "Name",
    "reqd": 1,
    "unique": 1,
    "in_list_view": 1,
-   "description": "Masuk ke nomor kasbon PC-{kode}-OD-26-0001. Huruf, angka, . - _"
+   "description": "Masuk ke nomor Pending Cash PC-{name}-OD-26-0001. Huruf, angka, . - _"
   },
   {
    "fieldname": "title",
    "fieldtype": "Data",
-   "label": "Nama",
+   "label": "Alias",
    "reqd": 1,
    "in_list_view": 1
   },
   {
    "fieldname": "numbering_code",
    "fieldtype": "Data",
-   "label": "Kode Nomor",
-   "description": "Kosong = pakai Kode."
+   "label": "Numbering Code",
+   "description": "Kosong = pakai Name."
+  },
+  {
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled",
+   "default": "0"
   },
   {
    "fieldname": "column_break_1",
@@ -55,14 +65,36 @@
    "fieldname": "advance_account",
    "fieldtype": "Link",
    "options": "Account",
-   "label": "Akun Uang Muka",
-   "description": "Didebit saat Pay. Kosong = akun uang muka default Company."
+   "label": "Advance Account",
+   "description": "Cash Outflow: akun Uang Muka (aset). Cash Inflow: akun Deposit Customer (kewajiban). Kosong = Default Advance Paid / Received Account di Company."
   },
   {
-   "fieldname": "disabled",
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "label": "Cash Flow Direction",
+   "options": "Cash Outflow\nCash Inflow",
+   "default": "Cash Outflow",
+   "in_list_view": 1,
+   "description": "Cash Outflow: kasbon / uang muka yang kita bayarkan. Cash Inflow: deposit / jaminan yang disetor customer."
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch",
+   "in_list_view": 1,
+   "description": "Default Branch Pending Cash tipe ini."
+  },
+  {
+   "fieldname": "need_connection",
    "fieldtype": "Check",
-   "label": "Nonaktif",
-   "default": "0"
+   "label": "Connection Wajib",
+   "default": "0",
+   "description": "Pending Cash tipe ini wajib ditautkan ke dokumen (section Connection)."
   }
  ],
  "permissions": [

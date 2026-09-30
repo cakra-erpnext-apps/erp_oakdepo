@@ -150,3 +150,4 @@ container_depot.patches.v1_16.manhour_tariff_per_line
 container_depot.patches.v1_16.bump_finance_form_scripts
 container_depot.patches.v1_16.invoice_print_language_id
 container_depot.patches.v1_17.release_orphan_booked_containers
+container_depot.patches.v1_17.pending_cash_cakra

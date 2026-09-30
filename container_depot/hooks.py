@@ -116,6 +116,8 @@ permission_query_conditions = {
 	# Daftar User bocor ke semua akun lewat izin `select` milik role `Desk User` — lihat
 	# user_directory.py. Picker (Assign To / Share / mention) sengaja tidak ikut disaring.
 	"User": "container_depot.user_directory.user_query",
+	# Pending Cash ber-centang Confidential: hanya pembuatnya + Finance (pending_cash.py).
+	"Pending Cash": "container_depot.container_depot.doctype.pending_cash.pending_cash.get_permission_query_conditions",
 	# SETIAP System User mewarisi doctype yang boleh dibaca role otomatis `All` / `Desk User`
 	# — tiket support app lain, ledger cuti, setelan integrasi. Dikosongkan di jalur daftar;
 	# akun customer dijawab aturannya sendiri. Lihat desk_surface.py.
@@ -130,6 +132,7 @@ has_permission = {
 	"Container Booking": "container_depot.customer_scope.container_booking_permission",
 	"Report": "container_depot.customer_scope.report_permission",
 	"Repair Order": "container_depot.container_depot.mr_scope.has_permission",
+	"Pending Cash": "container_depot.container_depot.doctype.pending_cash.pending_cash.has_permission",
 	"*": "container_depot.desk_surface.foreign_doctype_permission",
 }
 
@@ -181,7 +184,8 @@ doc_events = {
 		"before_validate": ["container_depot.payment_entry.before_validate"],
 		# "No. Pembayaran" on the invoices a payment touches — drafts included.
 		"on_update": ["container_depot.payment_entry.sync_payment_links"],
-		"on_trash": ["container_depot.payment_entry.sync_payment_links"],
+		# After the rows are gone, so a deleted draft drops out of the lists it was on.
+		"after_delete": ["container_depot.payment_entry.sync_payment_links"],
 		"on_submit": [
 			"container_depot.container_depot.doctype.container_booking.container_booking.on_payment_entry_change",
 			"container_depot.payment_entry.sync_payment_links",
@@ -529,8 +533,10 @@ override_doctype_class = {
 doctype_js = {
 	"Sales Invoice": ["public/js/smart_number.js", "public/js/sales_invoice.js", "public/js/lock_item_picker.js"],
 	"Payment Entry": ["public/js/smart_number.js", "public/js/payment_entry.js"],
-	# container_depot.pending_cash.run, shared by the kasbon form and its list.
+	# container_depot.pending_cash.run / doc_links / report, shared by the Pending Cash and
+	# Pending Cash Refund forms and lists.
 	"Pending Cash": "public/js/pending_cash_actions.js",
+	"Pending Cash Refund": "public/js/pending_cash_actions.js",
 	# "Barang Masuk" — restrict the item picker to stockable items (see the file).
 	"Purchase Receipt": "public/js/purchase_receipt.js",
 	"Container Booking": "public/js/lock_item_picker.js",
@@ -551,6 +557,7 @@ override_whitelisted_methods = {
 
 doctype_list_js = {
 	"Pending Cash": "public/js/pending_cash_actions.js",
+	"Pending Cash Refund": "public/js/pending_cash_actions.js",
 	# Daftar User untuk akun tanpa izin `read` (lihat file-nya + user_directory.py).
 	"User": "public/js/user_list.js",
 }
