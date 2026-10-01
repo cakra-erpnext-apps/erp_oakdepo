@@ -70,19 +70,19 @@
 						</div>
 					</div>
 
-					<!-- Sedikit pilihan (mis. depo): chip. -->
+					<!-- Sedikit pilihan (mis. depo): chip. Pilihan boleh string atau { value, label }. -->
 					<div v-else-if="fl.type === 'chips' && (options[fl.list] || []).length > 1" class="space-y-1.5">
 						<p class="text-xs font-bold uppercase tracking-wide text-gray-400">{{ fl.label }}</p>
 						<div class="flex flex-wrap gap-1.5">
 							<button
-								v-for="d in ['', ...options[fl.list]]"
-								:key="d || 'all'"
+								v-for="d in ['', ...options[fl.list]].map(asOption)"
+								:key="d.value || 'all'"
 								class="oak-press min-h-[38px] rounded-full border px-3 text-xs font-bold transition"
-								:class="draft[fl.key] === d ? on : off"
-								@click="draft[fl.key] = d"
+								:class="draft[fl.key] === d.value ? on : off"
+								@click="draft[fl.key] = d.value"
 							>
-								{{ d || labels.monitorAll }}
-								<span v-if="countOf(fl.key, d) != null" class="ml-1 font-semibold opacity-60">{{ countOf(fl.key, d) }}</span>
+								{{ d.label || labels.monitorAll }}
+								<span v-if="countOf(fl.key, d.value) != null" class="ml-1 font-semibold opacity-60">{{ countOf(fl.key, d.value) }}</span>
 							</button>
 						</div>
 					</div>
@@ -139,6 +139,7 @@ const props = defineProps({
 })
 const emit = defineEmits(["close", "apply", "draft"])
 
+const asOption = (o) => (typeof o === "object" ? o : { value: o, label: o })
 function countOf(key, value) {
 	return props.counts?.[key]?.[value]
 }

@@ -199,6 +199,52 @@ def _driving_orders(names):
 	return out
 
 
+# Filter "Menu" di Monitor: kunci menu PWA (ess.context._MENU) -> tank yang masih punya
+# pekerjaan TERBUKA di menu itu. Kuncinya sengaja kunci menu, bukan nama doctype, supaya PWA
+# bisa menyembunyikan pilihan yang menunya tidak boleh dibuka user ini.
+MENU_FILTERS = ("eir", "cleaning", "mr", "periodic", "posFix", "surveyList", "leak")
+
+
+def _open_menus(names):
+	"""container -> set kunci menu yang masih menahan pekerjaan terbuka atas tank itu.
+
+	Satu kueri per sumber untuk seluruh pemindaian. "Terbuka" = yang masih tampil di worklist
+	menu itu: EIR draft (In/Out), Cleaning / M&R / Periodic Test berstatus belum selesai, baris
+	survey yang menunggu lowering (posFix) atau menunggu disurvey (surveyList), Leak Check Open.
+	"""
+	from container_depot.container_depot.mr_scope import PERIODIC
+
+	out = {}
+	if not names:
+		return out
+
+	def add(container, key):
+		out.setdefault(container, set()).add(key)
+
+	for c in frappe.get_all("Inspection", filters={"container": ["in", names], "docstatus": 0}, pluck="container"):
+		add(c, "eir")
+	for c in frappe.get_all(
+		"Cleaning Order", filters={"container": ["in", names], "status": ["in", list(_CLEANING_STATE)]},
+		pluck="container",
+	):
+		add(c, "cleaning")
+	for r in frappe.get_all(
+		"Repair Order", filters={"container": ["in", names], "status": ["in", list(_REPAIR_STATE)]},
+		fields=["container", "job_type"],
+	):
+		add(r.container, "periodic" if r.job_type == PERIODIC else "mr")
+	for r in frappe.get_all(
+		"Survey Order Tank",
+		filters={"container": ["in", names], "parenttype": "Survey Order",
+				 "status": ["in", ["Waiting Lowering", "Lowered"]]},
+		fields=["container", "status"],
+	):
+		add(r.container, "posFix" if r.status == "Waiting Lowering" else "surveyList")
+	for c in frappe.get_all("Leak Check", filters={"container": ["in", names], "status": "Open"}, pluck="container"):
+		add(c, "leak")
+	return out
+
+
 def _order_ref(drv):
 	"""The frontend link payload for a driving order (or None)."""
 	if not drv:
@@ -296,6 +342,7 @@ def _scan(search=None):
 	names = [r.name for r in rows]
 	driving = _driving_orders(names)
 	activity = _last_activity(names)
+	menus = _open_menus(names)
 
 	out = []
 	for r in rows:
@@ -317,6 +364,7 @@ def _scan(search=None):
 			# lets the UI say "Draft M&R" and link straight to the order.
 			"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
 			"last_activity": activity.get(r.name),
+			"menus": sorted(menus.get(r.name, ())),
 		})
 	return out
 
@@ -325,8 +373,10 @@ def _scan(search=None):
 _PERIODS = {"today": 0, "7d": 7, "all": None}
 
 
-def _passes(row, depot=None, principal=None, status=None, cutoff=None):
+def _passes(row, depot=None, principal=None, status=None, cutoff=None, menu=None):
 	"""Apakah satu baris lolos filter yang dipilih? Dipakai daftar dan penghitung faset."""
+	if menu and menu not in row["menus"]:
+		return False
 	if depot and row["depot"] != depot:
 		return False
 	if principal and row["principal"] != principal:
@@ -338,6 +388,14 @@ def _passes(row, depot=None, principal=None, status=None, cutoff=None):
 		if not la.get("time") or la["time"][:10] < cutoff:
 			return False
 	return True
+
+
+def _menu_filter(menu):
+	"""Kunci menu yang sah untuk filter, atau None. Kunci asing ditolak, bukan diabaikan."""
+	menu = _clean(menu)
+	if menu and menu not in MENU_FILTERS:
+		frappe.throw(frappe._("Invalid menu filter: {0}").format(menu), frappe.ValidationError)
+	return menu
 
 
 def _cutoff(period):
@@ -418,7 +476,7 @@ def get_inventory_summary(depot=None):
 @frappe.whitelist(methods=["GET"])
 def get_tank_list(
 	search=None, principal=None, status=None, depot=None,
-	today=0, period=None, sort=None, start=0, page_length=50,
+	today=0, period=None, sort=None, start=0, page_length=50, menu=None,
 ):
 	"""Searchable / filterable / paginated tank list with derived status.
 
@@ -450,13 +508,14 @@ def get_tank_list(
 	cutoff = _cutoff(period)
 
 	principal = _clean(principal)
+	menu = _menu_filter(menu)
 	# Disaring dua kali dari satu pemindaian: sekali TANPA pil status (itu yang dihitung
 	# keempat pil di puncak layar dan kepala tiap kelompok), sekali dengan (itu isi daftarnya).
 	# Kalau angka pil datang dari endpoint lain, ia akan menghitung dunia yang sedikit berbeda
 	# dari daftar di bawahnya — dan yang membaca tidak punya cara tahu yang mana yang benar.
 	scoped = [
 		r for r in _scan(search)
-		if _passes(r, depot=depot, principal=principal, cutoff=cutoff)
+		if _passes(r, depot=depot, principal=principal, cutoff=cutoff, menu=menu)
 	]
 	groups = {g: 0 for g in GROUPS}
 	for r in scoped:
@@ -478,7 +537,7 @@ def get_tank_list(
 
 
 @frappe.whitelist(methods=["GET"])
-def get_tank_facets(search=None, principal=None, status=None, depot=None, period=None):
+def get_tank_facets(search=None, principal=None, status=None, depot=None, period=None, menu=None):
 	"""Berapa tank di balik tiap pilihan di sheet filter, plus total untuk tombol Terapkan.
 
 	Tiap faset dihitung dengan pilihannya SENDIRI diabaikan — itu yang membuat angka di
@@ -493,11 +552,12 @@ def get_tank_facets(search=None, principal=None, status=None, depot=None, period
 	principal = _clean(principal)
 	depot = _clean(depot)
 	status = _clean(status)
+	menu = _menu_filter(menu)
 	cutoff = _cutoff(period)
 	rows = _scan(search)
 
 	def count(**skip):
-		f = {"depot": depot, "principal": principal, "status": status, "cutoff": cutoff}
+		f = {"depot": depot, "principal": principal, "status": status, "cutoff": cutoff, "menu": menu}
 		f.update(skip)
 		return [r for r in rows if _passes(r, **f)]
 
@@ -512,6 +572,11 @@ def get_tank_facets(search=None, principal=None, status=None, depot=None, period
 	groups = {g: 0 for g in GROUPS}
 	for r in count(status=None):
 		groups[r["group"]] += 1
+
+	by_menu = {k: 0 for k in MENU_FILTERS}
+	for r in count(menu=None):
+		for k in r["menus"]:
+			by_menu[k] += 1
 
 	labels = (
 		{c.name: c.customer_name for c in frappe.get_all(
@@ -538,6 +603,7 @@ def get_tank_facets(search=None, principal=None, status=None, depot=None, period
 			{"name": k, "label": labels.get(k) or k, "count": v}
 			for k, v in sorted(by_principal.items(), key=lambda kv: (-kv[1], kv[0]))
 		],
+		"menus": by_menu,
 	}
 
 

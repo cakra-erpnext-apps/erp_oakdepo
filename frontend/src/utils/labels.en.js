@@ -1383,6 +1383,8 @@ export const labels = {
 	monitorFilterReset: "Reset",
 	monitorFilterDepot: "Depot",
 	monitorFilterPrincipal: "Principal · tank owner",
+	monitorFilterMenu: "Menu · open work",
+	monitorChipMenu: "Menu",
 	monitorFilterPeriod: "Activity period",
 	monitorPeriodToday: "Today",
 	monitorPeriod7: "7 days",

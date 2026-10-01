@@ -360,6 +360,19 @@ class TestEssInventory(FrappeTestCase):
 		res = get_tank_list(depot=ESS_DEPOT, search="ESST1000002")
 		self.assertEqual([i["container_no"] for i in res["items"]], ["ESST1000002"])
 
+	def test_tank_list_menu_filter(self):
+		"""Filter per menu PWA: tank yang masih punya pekerjaan terbuka di menu itu."""
+		def nos(menu):
+			return {i["container_no"] for i in get_tank_list(depot=ESS_DEPOT, menu=menu)["items"]}
+
+		self.assertEqual(nos("cleaning"), {"ESST1000001", "ESST1000004"})
+		self.assertEqual(nos("mr"), {"ESST1000005", "ESST1000006"})
+		self.assertEqual(nos("periodic"), set())
+		facets = get_tank_facets(menu="cleaning")
+		self.assertGreaterEqual(facets["menus"]["mr"], 2)  # faset menu mengabaikan pilihannya sendiri
+		with self.assertRaises(frappe.ValidationError):
+			get_tank_list(depot=ESS_DEPOT, menu="not_a_menu")
+
 	def test_tank_list_rejects_bad_status(self):
 		with self.assertRaises(frappe.ValidationError):
 			get_tank_list(depot=ESS_DEPOT, status="not_a_bucket")

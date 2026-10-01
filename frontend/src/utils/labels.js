@@ -1538,6 +1538,8 @@ export const labels = {
 	// Ditulis lengkap: "Prinsipal" sendirian sering dikira principal pelayaran, padahal
 	// yang disaring adalah customer pemilik tank (Container.principal).
 	monitorFilterPrincipal: "Prinsipal · tank owner",
+	monitorFilterMenu: "Menu · pekerjaan terbuka",
+	monitorChipMenu: "Menu",
 	monitorFilterPeriod: "Periode aktivitas",
 	monitorPeriodToday: "Hari ini",
 	monitorPeriod7: "7 hari",

@@ -129,6 +129,7 @@ import { useRoute } from "vue-router"
 import { cachedResource } from "@/data/cache"
 import { labels, statusLabels } from "@/utils/labels"
 import { userContext, branchLabel } from "@/data/context"
+import { menu } from "@/data/menu"
 import { fill, useSavedFilters } from "@/utils/listKit"
 import { tankChip } from "@/utils/monitorStatus"
 import Icon from "@/components/Icon.vue"
@@ -143,7 +144,18 @@ const PAGE = 50
 const route = useRoute()
 
 // Saringan di sheet + pil status + urutan, disimpan per user di perangkat ini (listKit).
-const SHEET_DEFAULTS = { depot: "", principal: "", period: "all", sort: "activity" }
+const SHEET_DEFAULTS = { menu: "", depot: "", principal: "", period: "all", sort: "activity" }
+// Filter per menu aplikasi: tank yang masih punya pekerjaan terbuka di menu itu
+// (ess.inventory.MENU_FILTERS). Hanya menu yang boleh dibuka user ini yang ditawarkan.
+const MENU_LABELS = {
+	eir: labels.navEir,
+	cleaning: labels.navCleaning,
+	mr: labels.navMr,
+	periodic: labels.navPeriodic,
+	posFix: labels.navPosFix,
+	surveyList: labels.navSurveyList,
+	leak: labels.navLeak,
+}
 const PERIOD_LABELS = {
 	today: labels.monitorPeriodToday,
 	"7d": labels.monitorPeriod7,
@@ -156,6 +168,7 @@ const SORT_LABELS = {
 }
 const toChoices = (m) => Object.entries(m).map(([key, label]) => ({ key, label }))
 const SHEET_FIELDS = [
+	{ key: "menu", type: "chips", list: "menus", label: labels.monitorFilterMenu },
 	{ key: "depot", type: "chips", list: "depots", label: labels.monitorFilterDepot },
 	{ key: "principal", type: "select", list: "principals", label: labels.monitorFilterPrincipal },
 	{ key: "period", type: "scope", label: labels.monitorFilterPeriod, choices: toChoices(PERIOD_LABELS), empty: "all" },
@@ -173,6 +186,7 @@ function loadFacets(draft) {
 	facetsRes.submit({
 		search: search.value || "",
 		status: f.status || "",
+		menu: draft.menu || "",
 		principal: draft.principal || "",
 		depot: draft.depot || "",
 		period: draft.period || "all",
@@ -184,6 +198,7 @@ const facetCounts = computed(() => {
 	return {
 		depot: { "": d.all, ...Object.fromEntries((d.depots || []).map((r) => [r.code, r.count])) },
 		principal: Object.fromEntries((d.principals || []).map((r) => [r.name, r.count])),
+		menu: { "": d.all, ...(d.menus || {}) },
 	}
 })
 watch(sheetOpen, (open) => open && loadFacets(f))
@@ -219,6 +234,9 @@ const depotsRes = cachedResource({
 const options = computed(() => ({
 	depots: (depotsRes.data?.depots || []).map((d) => d.code),
 	principals: principals.value.map((p) => ({ value: p.name, label: p.label })),
+	menus: Object.keys(MENU_LABELS)
+		.filter((k) => menu.has(k))
+		.map((k) => ({ value: k, label: MENU_LABELS[k] })),
 }))
 
 const tankRes = cachedResource({
@@ -227,6 +245,7 @@ const tankRes = cachedResource({
 	makeParams: () => ({
 		search: search.value || "",
 		status: f.status || "",
+		menu: f.menu || "",
 		principal: f.principal || "",
 		depot: f.depot || "",
 		period: f.period || "all",
@@ -291,6 +310,7 @@ const principalLabel = computed(
 // Urutan tidak jadi chip: sudah tertulis di tombol urut FilterBar.
 const activeChips = computed(() =>
 	[
+		f.menu && { key: "menu", label: labels.monitorChipMenu, value: MENU_LABELS[f.menu] || f.menu },
 		f.depot && { key: "depot", label: labels.monitorFilterDepot, value: f.depot },
 		f.principal && { key: "principal", label: labels.monitorChipPrincipal, value: principalLabel.value },
 		f.period !== "all" && { key: "period", label: labels.monitorFilterPeriod, value: PERIOD_LABELS[f.period] || f.period },
@@ -326,7 +346,7 @@ const groups = computed(() => {
 })
 
 const anyFilter = computed(
-	() => Boolean(search.value) || Boolean(f.status) || Boolean(f.depot) || Boolean(f.principal) || f.period !== "all"
+	() => Boolean(search.value) || Boolean(f.status) || Boolean(f.menu) || Boolean(f.depot) || Boolean(f.principal) || f.period !== "all"
 )
 
 // --- Aksi ----------------------------------------------------------------------------
