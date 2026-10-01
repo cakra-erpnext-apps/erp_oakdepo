@@ -255,7 +255,11 @@ class TestNotificationRouting(FrappeTestCase):
 			# screen; Kalmar learns about the same day one tank at a time, through a route
 			# they can actually open.
 			# `leak_check_created`: the Leak Check order born on the Tank In bon IS their job.
-			"Team Survey": {"survey_order_scheduled", "position_surveyed", "leak_check_created"},
+			# `repair_order_forwarded`: since 2026-10-01 they also work Periodic Test — the
+			# dispatch is their handoff, and mr_scope keeps the M&R ones off their bell.
+			"Team Survey": {
+				"survey_order_scheduled", "position_surveyed", "leak_check_created", "repair_order_forwarded",
+			},
 			# `position_order_pending` is the step BEFORE `position_survey_pending` and
 			# belongs to the same crew: the tank has to be found before it can be brought
 			# down, and the finding is theirs. Every other field team may correct a position

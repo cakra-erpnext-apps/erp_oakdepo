@@ -55,7 +55,7 @@ through the `/depot` PWA and are bounced out of `/app` on purpose.
 | Team Kalmar | Position Fix · Monitor |
 | Team Cleaning | Cleaning · Monitor |
 | Team Repair | M&R · Uji Periodik · Monitor |
-| Team Survey | Survey Posisi · Monitor |
+| Team Survey | Survey Posisi · Leak Check · Periodic Test · Monitor |
 | SPV Lapangan | all of them |
 
 Monitor is the read-only yard browser and follows Container read, which every field role

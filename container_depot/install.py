@@ -2682,7 +2682,9 @@ FIELD_ROLE_MATRIX = [
 	("Booking Code",                ("r",     "",      "",     "",       "",     "",     "r")),
 	("Inspection",                  ("",      "rwcs",  "r",    "r",      "r",    "r",    "rwcs")),
 	("Cleaning Order",              ("",      "r",     "r",    "rwcs",   "",     "",     "rwcs")),
-	("Repair Order",                ("",      "r",     "r",    "",       "rwc",  "",     "rwc")),
+	# Team Survey `rwc` = menu Periodic Test (mandor 2026-10-01); mr_scope.TEAM_JOB_TYPE
+	# membatasinya ke job_type Periodic Test, jadi M&R tetap bukan menunya.
+	("Repair Order",                ("",      "r",     "r",    "",       "rwc",  "rwc",  "rwc")),
 	# ALUR DIBALIK (2026-09-03): lowering dulu (Kalmar), baru survey ditutup (Surveyor). Semua
 	# statusnya ada di Survey Order (per baris tank), jadi izinnya juga di situ. Kalmar `rw` —
 	# menandai lowered adalah sebuah save; Team Survey `rws` — menutup tank terakhir di satu hari
@@ -2710,7 +2712,7 @@ FIELD_ROLE_MATRIX = [
 	# Charge Template: daftar baris siap-salin milik tim yang menyusun Service & Parts —
 	# Cleaning, Repair (+ Periodic, kolom kembarnya) dan SPV. `d` karena template yang salah
 	# cuma merugikan penyalin berikutnya; order yang sudah menyalinnya menyimpan barisnya sendiri.
-	("Charge Template",             ("",      "",      "",     "rwcd",   "rwcd", "",     "rwcd")),
+	("Charge Template",             ("",      "",      "",     "rwcd",   "rwcd", "rwcd", "rwcd")),
 	("Container Activity",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 	("Container Movement",          ("r",     "r",     "r",    "r",      "r",    "r",    "r")),
 ]
@@ -3399,7 +3401,7 @@ NOTIFICATION_RULES = [
 	("repair_order_service_setup", "M&R menunggu review", "Team repair selesai di PWA dan mengirim order untuk direview Admin Ops; part belum keluar gudang sampai Desk menyelesaikan.",
 		["Admin Ops", "SPV Lapangan"]),
 	("repair_order_forwarded", "M&R diteruskan ke team", "Admin Ops meneruskan M&R yang sudah disetujui owner — order masuk worklist PWA team repair.",
-		["Team Repair", "Team Periodic", "SPV Lapangan", "Admin Ops"]),
+		["Team Repair", "Team Periodic", "Team Survey", "SPV Lapangan", "Admin Ops"]),
 	("repair_order_pending_approval", "M&R menunggu approval owner", "Estimasi M&R dikirim ke owner tank.",
 		["Admin Ops", "Management"]),
 	# An owner's "yes" is not yet a work order — dispatch is a separate decision Admin Ops takes

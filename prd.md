@@ -124,7 +124,7 @@ seeding + assignment procedure in `STRUCTURE.md § Role model`.
 | Team Kalmar | Operator Kalmar | Cocokkan no. tank vs bon, ACC "udah turun" | Position Fix · Monitor |
 | Team Cleaning | — | Kerjakan Cleaning Order + QC | Cleaning · Monitor |
 | Team Repair | — | Kerjakan M&R + uji periodik | M&R · Uji Periodik · Monitor |
-| Team Survey | Surveyor | Rekam posisi tank (Lift On) | Survey Posisi · Monitor |
+| Team Survey | Surveyor | Rekam posisi tank (Lift On), leak check, uji periodik | Survey Posisi · Leak Check · Periodic Test · Monitor |
 | Security (gate) | Security | Arahkan supir, tanda tangan bon | Gate · Monitor |
 | SPV Lapangan | Ops Supervisor | Awasi seluruh alur lapangan | semua menu |
 

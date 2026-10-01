@@ -20,7 +20,9 @@ import frappe
 REPAIR = "Repair"
 PERIODIC = "Periodic Test"
 
-TEAM_JOB_TYPE = {"Team Repair": REPAIR, "Team Periodic": PERIODIC}
+# Team Survey ikut memegang Periodic Test (permintaan mandor 2026-10-01): surveyor yang sama
+# mengerjakan survey, leak check, dan uji berkala — tetap TANPA M&R.
+TEAM_JOB_TYPE = {"Team Repair": REPAIR, "Team Periodic": PERIODIC, "Team Survey": PERIODIC}
 
 # Menu PWA -> jenis pekerjaan yang dikerjakannya, dan kebalikannya untuk rute notifikasi.
 MENU_JOB_TYPE = {"mr": REPAIR, "periodic": PERIODIC}

@@ -17,6 +17,7 @@ from container_depot.tests.test_eir import _make_container
 USERS = {
 	"Team Repair": "mrs-repair@example.com",
 	"Team Periodic": "mrs-periodic@example.com",
+	"Team Survey": "mrs-survey@example.com",
 	"SPV Lapangan": "mrs-spv@example.com",
 }
 
@@ -84,11 +85,19 @@ class TestMrScope(FrappeTestCase):
 		self.assertIn("periodic", menu)
 		self.assertNotIn("mr", menu)
 
+		# Mandor 2026-10-01: surveyor = survey + leak check + periodic, tanpa M&R.
+		self._as("Team Survey")
+		menu = set(allowed_menu())
+		self.assertTrue({"periodic", "leak", "surveyPos"} <= menu)
+		self.assertNotIn("mr", menu)
+
 		self._as("SPV Lapangan")
 		self.assertTrue({"mr", "periodic"} <= set(allowed_menu()))
 
 	def test_list_and_document_split(self):
-		for role, own, other in (("Team Repair", REPAIR, PERIODIC), ("Team Periodic", PERIODIC, REPAIR)):
+		for role, own, other in (
+			("Team Repair", REPAIR, PERIODIC), ("Team Periodic", PERIODIC, REPAIR), ("Team Survey", PERIODIC, REPAIR),
+		):
 			with self.subTest(role=role):
 				self._as(role)
 				seen = set(frappe.get_list("Repair Order", filters={"container": self.container}, pluck="name"))
@@ -123,6 +132,7 @@ class TestMrScope(FrappeTestCase):
 			pluck="for_user",
 		))
 		self.assertIn(USERS["Team Periodic"], got)
+		self.assertIn(USERS["Team Survey"], got)
 		self.assertNotIn(USERS["Team Repair"], got)
 		self.assertIn(USERS["SPV Lapangan"], got)
 		subject = frappe.db.get_value(
