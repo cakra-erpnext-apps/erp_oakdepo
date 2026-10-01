@@ -177,10 +177,15 @@ class Inspection(Document):
 		is assigned after the fact on two paths: the surveyor picking a bon in the PWA, and
 		a cancelled bon being replaced. Read-only in the form, so there is no operator edit
 		to preserve here — unlike the orders downstream.
+
+		With NO bon yet the value stamped at birth is kept: an EIR-Out raised straight from a
+		no-survey booking (``eir.provision_eir_out_for_booking``) knows its booking before any
+		bon exists, and that link is how the booking finds its drafts again.
 		"""
 		from container_depot.container_depot.booking_link import booking_of_voucher
 
-		self.container_booking = booking_of_voucher(self.voucher_doctype, self.referred_voucher)
+		if self.referred_voucher:
+			self.container_booking = booking_of_voucher(self.voucher_doctype, self.referred_voucher)
 
 	# Photo tables on this doctype, as (child table fieldname, image fieldname).
 	PHOTO_TABLES = (("exterior_photos", "photo_url"), ("item_photos", "photo"))

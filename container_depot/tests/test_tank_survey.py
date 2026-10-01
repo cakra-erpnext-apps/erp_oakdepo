@@ -1229,3 +1229,84 @@ class TestTheListFilters(_Base):
 		self._booking(c, survey_date=add_days(today(), 1))
 		after = ts.list_all_survey_orders(page_length=1)["counts"]["urgent"]
 		self.assertEqual(after, before + 1)
+
+
+# ---------------------------------------------------------------------------
+class TestWithoutSurvey(_Base):
+	"""``use_survey`` = 0: no Survey Order — the booking raises each tank's EIR-Out draft itself."""
+
+	def _eirs(self, booking):
+		return frappe.get_all(
+			"Inspection",
+			filters={"container_booking": booking, "inspection_type": "EIR-Out", "docstatus": 0},
+			pluck="container",
+		)
+
+	def _save(self, booking, **values):
+		"""Change the booking the way a correction lands, then re-run what on_update runs."""
+		doc = frappe.get_doc("Container Booking", booking)
+		doc.update(values)
+		doc.flags.ignore_validate = True
+		doc.flags.ignore_mandatory = True
+		doc.save(ignore_permissions=True)
+
+	def test_the_booking_raises_the_eir_out_directly(self):
+		a = self._container("TSVNOSV00001")
+		b = self._container("TSVNOSV00002")
+		bk = self._booking(a, b, survey_date="", use_survey=0)
+
+		self.assertFalse(frappe.db.exists(SCHEDULE, {"booking": bk}))
+		self.assertEqual(sorted(self._eirs(bk)), sorted([a, b]))
+		# Idempotent: another save raises no second draft.
+		self._save(bk, remarks="x")
+		self.assertEqual(frappe.db.count("Inspection", {"container": a, "inspection_type": "EIR-Out"}), 1)
+
+	def test_a_dropped_tank_takes_its_untouched_draft_with_it(self):
+		a = self._container("TSVNOSV00003")
+		b = self._container("TSVNOSV00004")
+		bk = self._booking(a, b, survey_date="", use_survey=0)
+		doc = frappe.get_doc("Container Booking", bk)
+		self._save(bk, items=[r for r in doc.items if r.container == a])
+		self.assertEqual(self._eirs(bk), [a])
+		self.assertFalse(frappe.db.exists("Inspection", {"container": b, "inspection_type": "EIR-Out"}))
+
+	def test_switching_survey_on_withdraws_the_drafts(self):
+		a = self._container("TSVNOSV00005")
+		bk = self._booking(a, survey_date="", use_survey=0)
+		self._save(bk, use_survey=1, survey_date=add_days(today(), 1))
+		self.assertEqual(self._eirs(bk), [])
+		self.assertTrue(frappe.db.exists(SCHEDULE, {"booking": bk, "docstatus": ["!=", 2]}))
+
+	def test_switching_survey_off_calls_the_schedule_off_and_raises_the_drafts(self):
+		a = self._container("TSVNOSV00006")
+		bk = self._booking(a)
+		self._save(bk, use_survey=0)
+		self.assertEqual(frappe.db.get_value(SCHEDULE, {"booking": bk}, "status"), ts.CANCELLED)
+		self.assertEqual(self._eirs(bk), [a])
+
+	def test_survey_cannot_be_switched_off_once_a_tank_is_lowered(self):
+		a = self._container("TSVNOSV00007")
+		bk = self._booking(a)
+		ts.mark_lowered(self._row(bk))
+		doc = frappe.get_doc("Container Booking", bk)
+		doc.use_survey = 0
+		with self.assertRaises(frappe.ValidationError):
+			doc._drop_survey_when_off()
+
+	def test_a_voided_booking_withdraws_its_drafts(self):
+		a = self._container("TSVNOSV00008")
+		bk = self._booking(a, survey_date="", use_survey=0)
+		frappe.db.set_value("Container Booking", bk, "booking_status", "Cancelled")
+		frappe.get_doc("Container Booking", bk)._provision_survey_order()
+		self.assertEqual(self._eirs(bk), [])
+
+	def test_a_cancelled_bon_never_deletes_the_booking_s_eir_out(self):
+		"""Nothing would raise it again: the next bon only adopts an existing draft."""
+		from container_depot.container_depot import eir
+
+		a = self._container("TSVNOSV00009")
+		bk = self._booking(a, survey_date="", use_survey=0)
+		eo = frappe.db.get_value("Inspection", {"container_booking": bk}, "name")
+		frappe.db.set_value("Inspection", eo, {"voucher_doctype": "Order Muat", "referred_voucher": "OM-GONE"})
+		self.assertEqual(eir.release_eirs_for_cancelled_order("OM-GONE", "EIR-Out")["detached"], [eo])
+		self.assertEqual(frappe.db.get_value("Inspection", eo, "container_booking"), bk)

@@ -1210,6 +1210,65 @@ class TestTankOutGating(FrappeTestCase):
 			frappe.delete_doc("Cleaning Order", co.name, force=True, ignore_permissions=True)
 
 
+class TestTankOutWithoutSurvey(FrappeTestCase):
+	"""``use_survey`` = 0: a Tank Out with no Survey Date / Surveyor saves AND submits through
+	the full validation, and the EIR-Out draft is waiting without any Survey Order."""
+
+	CUSTOMER = "Phase3 NoSurvey Customer"
+	CONTAINER = "TSTU3334457"
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.customer = ensure_test_customer(cls.CUSTOMER)
+		_cleanup_customer_world(cls.customer)
+		cls.contract = _make_active_contract(
+			cls.customer, payment_type="TOP", credit_limit=1, payment_terms="NET 30"
+		)
+		if not frappe.db.exists("Container", cls.CONTAINER):
+			frappe.get_doc({
+				"doctype": "Container", "container_no": cls.CONTAINER, "container_type": "ISO Tank",
+				"status": "Available", "principal": cls.customer,
+			}).insert(ignore_permissions=True)
+
+	@classmethod
+	def tearDownClass(cls):
+		_cleanup_customer_world(cls.customer)
+		eirs = frappe.get_all("Inspection", filters={"container": cls.CONTAINER}, pluck="name")
+		frappe.db.delete("Notification Log", {"document_type": "Inspection", "document_name": ("in", eirs or [""])})
+		frappe.db.delete("Inspection", {"container": cls.CONTAINER})
+		frappe.db.delete("Container Activity", {"container": cls.CONTAINER})
+		frappe.db.delete("Container", {"container_no": cls.CONTAINER})
+		frappe.db.commit()
+		super().tearDownClass()
+
+	def test_submits_with_no_survey_filled_in(self):
+		b = frappe.get_doc({
+			"doctype": "Container Booking",
+			"direction": "Tank Out",
+			"use_survey": 0,
+			"customer": self.customer,
+			"contract": self.contract,
+			"plan_date": today(),
+			# Typed before the box was unticked: the save must drop them, header and row.
+			"survey_date": today(),
+			"surveyor": self.customer,
+			"items": [{"container": self.CONTAINER, "survey_date": today(), "surveyor": self.customer}],
+		})
+		b.insert(ignore_permissions=True)
+		b.submit()
+		b.reload()
+
+		self.assertEqual((b.docstatus, b.booking_status), (1, "Confirmed"))
+		self.assertFalse(b.survey_date or b.surveyor)
+		self.assertFalse(b.items[0].survey_date or b.items[0].surveyor)
+		self.assertFalse(frappe.db.exists("Survey Order", {"booking": b.name, "docstatus": ["!=", 2]}))
+		self.assertTrue(frappe.db.exists("Inspection", {
+			"container": self.CONTAINER, "inspection_type": "EIR-Out", "docstatus": 0,
+			"container_booking": b.name,
+		}))
+
+
 class TestTankOutDepotDerivation(FrappeTestCase):
 	"""Tank Out never asks for a Depot — the tank is already somewhere and its master says
 	where, per row. The header keeps a depot only when every tank agrees; two depots of ONE

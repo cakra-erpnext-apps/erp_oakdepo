@@ -15,6 +15,7 @@
   "urgent_date",
   "urgent_reason",
   "survey_section",
+  "use_survey",
   "survey_date",
   "surveyor",
   "parties_section",
@@ -142,20 +143,28 @@
    "label": "Survey"
   },
   {
-   "description": "Wajib untuk Tank Out. Tanggal survei tank, paling lambat Pick up Date. Default hari ini. Turun ke tiap baris container dan Survey Order.",
+   "default": "1",
+   "fieldname": "use_survey",
+   "fieldtype": "Check",
+   "label": "Pakai Survey"
+  },
+  {
+   "description": "Wajib untuk Tank Out yang pakai survey. Tanggal survei tank, paling lambat Pick up Date. Default hari ini. Turun ke tiap baris container dan Survey Order.",
    "fieldname": "survey_date",
    "fieldtype": "Date",
    "label": "Survey Date",
-   "mandatory_depends_on": "eval:doc.direction=='Tank Out'"
+   "mandatory_depends_on": "eval:doc.direction=='Tank Out' && doc.use_survey",
+   "depends_on": "use_survey"
   },
   {
-   "description": "Wajib untuk Tank Out. Pihak yang menyurvei tank. Turun ke tiap baris container dan Survey Order.",
+   "description": "Wajib untuk Tank Out yang pakai survey. Pihak yang menyurvei tank. Turun ke tiap baris container dan Survey Order.",
    "fieldname": "surveyor",
    "ignore_user_permissions": 1,
    "fieldtype": "Link",
    "label": "Surveyor",
    "options": "Customer",
-   "mandatory_depends_on": "eval:doc.direction=='Tank Out'"
+   "mandatory_depends_on": "eval:doc.direction=='Tank Out' && doc.use_survey",
+   "depends_on": "use_survey"
   },
   {
    "fieldname": "parties_section",
@@ -466,7 +475,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-29 16:30:00.000000",
+ "modified": "2026-10-01 13:30:17.693792",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

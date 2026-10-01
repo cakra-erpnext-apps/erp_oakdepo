@@ -138,6 +138,7 @@ class ContainerBooking(Document):
 		self._validate_depot_in_branch()
 		self._sync_lift_type()
 		self._require_plan_date()
+		self._drop_survey_when_off()
 		self._cascade_header_defaults()
 		self._validate_survey_before_plan()
 		self._resolve_pricing_context()
@@ -288,6 +289,14 @@ class ContainerBooking(Document):
 			provision_survey_order_for_booking(self.name)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"provision survey order for {self.name}")
+		# Tanpa survey (use_survey = 0) EIR-Out lahir di sini, langsung dari booking. Sama
+		# seperti jadwal survey: idempoten, mengikuti baris & void booking dua arah.
+		try:
+			from container_depot.container_depot.eir import provision_eir_out_for_booking
+
+			provision_eir_out_for_booking(self.name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"provision EIR-Out for booking {self.name}")
 
 	def before_cancel(self):
 		# Before, not on_cancel: on_cancel has already voided the codes and reversed the
@@ -828,6 +837,32 @@ class ContainerBooking(Document):
 		if self.direction == "Tank In" and self.depot:
 			for row in self.items or []:
 				row.depot = self.depot
+
+	def _drop_survey_when_off(self):
+		"""Tank Out tanpa survey: kosongkan pasangan survey di header dan baris.
+
+		Tanggal survey adalah tenggat yang dibaca worklist (lift_on) dan dicek terhadap Pick
+		up Date; tanggal untuk survey yang tidak akan pernah ada hanya mengurutkan antrean
+		dengan tenggat palsu. Mematikan survey yang sudah berjalan (ada tank yang sudah
+		diturunkan / disurvey) ditolak: pekerjaan lapangannya tidak boleh dibatalkan diam-diam.
+		"""
+		if self.direction != "Tank Out" or cint(self.use_survey):
+			return
+		if not self.is_new() and frappe.db.exists("Survey Order Tank", {
+			"parenttype": "Survey Order",
+			"parent": ["in", frappe.get_all(
+				"Survey Order", filters={"booking": self.name, "docstatus": ["!=", 2]}, pluck="name"
+			) or [""]],
+			"status": ["in", ["Lowered", "Survey Done"]],
+		}):
+			frappe.throw(
+				_("Survey booking ini sudah berjalan (ada tank yang sudah diturunkan / disurvey). "
+				  "<b>Pakai Survey</b> tidak bisa dimatikan lagi."),
+				title=_("Survey Sudah Berjalan"),
+			)
+		self.survey_date = self.surveyor = None
+		for row in self.items or []:
+			row.survey_date = row.surveyor = None
 
 	def _require_plan_date(self):
 		"""An outbound booking must say which day it is for.

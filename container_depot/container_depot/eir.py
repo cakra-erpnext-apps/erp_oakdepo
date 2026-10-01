@@ -428,15 +428,22 @@ def provision_eir_out_for_survey(survey_tank: str) -> str | None:
 		)
 		return existing
 
+	booking = frappe.db.get_value("Survey Order", row.parent, "booking")
+	return _new_eir_out(container, row.depot, booking, survey_tank=survey_tank, survey_order=row.parent)
+
+
+def _new_eir_out(container: str, depot: str | None, booking: str | None, **links) -> str:
+	"""Insert one draft EIR-Out. Shared by its only two birthplaces: a closed survey
+	(:func:`provision_eir_out_for_survey`) and a Tank Out booking WITHOUT survey
+	(:func:`provision_eir_out_for_booking`). ``links`` = the fields that say which one."""
 	eir = frappe.new_doc("Inspection")
 	eir.inspection_type = "EIR-Out"
 	eir.container = container
 	eir.inspector = frappe.session.user
 	cdepot, ccargo = frappe.db.get_value("Container", container, ["depot", "last_cargo"]) or (None, None)
-	eir.depot = row.depot or cdepot
+	eir.depot = depot or cdepot
 	eir.cargo = ccargo
-	eir.survey_tank = survey_tank
-	eir.survey_order = row.parent
+	eir.update(links)
 	# Baseline EIR-In for the comparison panel.
 	eir.reference_eir_in = latest_eir_in(container)
 	# Only if the yard ran out of order and the bon is already out; normally None.
@@ -447,20 +454,98 @@ def provision_eir_out_for_survey(survey_tank: str) -> str | None:
 		eir.tank_status = snap.get("tank_status") or eir.tank_status
 		eir.cargo = snap.get("cargo") or eir.cargo
 	else:
-		eir.update(booking_party_for_eir_out(row.parent, container))
-	eir.insert(ignore_permissions=True)  # system automation on survey close
+		eir.update(booking_item_party(booking, container))
+	eir.insert(ignore_permissions=True)  # system automation (survey close / booking save)
 	return eir.name
 
 
-def booking_party_for_eir_out(survey_order: str, container: str) -> dict:
-	"""EMKL / shipper / truck / driver for an EIR-Out that has no bon yet, read from the tank's
-	row on the survey's Container Booking.
+def provision_eir_out_for_booking(booking_name: str) -> dict:
+	"""Tank Out TANPA survey (``use_survey`` = 0): satu draft EIR-Out per tank, langsung dari
+	booking — tempat lahir kedua di samping survey yang selesai.
 
-	The EIR-Out is raised at survey close, before the Order Muat exists, so without this the
-	printed EIR says "Received by —" until the bon is cut. The booking row already names the
-	EMKL; the bon, once submitted, overwrites all of it via :func:`_apply_voucher`.
+	Dipanggil tiap booking disimpan (juga draft, cancel dan void), jadi total dan idempoten:
+
+	* booking hidup tanpa survey → tank yang belum punya EIR-Out dari booking ini dibuatkan
+	  (draft EIR-Out terbuka yang sudah ada untuk tank itu diadopsi, bukan disaingi);
+	* tank yang keluar dari booking, survey dinyalakan lagi, atau booking di-void → draft milik
+	  booking ini ditarik: yang belum disentuh (belum "Mulai", belum ada bon) dihapus, yang
+	  sudah diisi dibiarkan dengan catatan — aturan yang sama dengan reopen survey.
+
+	Penandanya ``Inspection.container_booking``, distempel saat lahir; ``stamp_container_booking``
+	mempertahankannya selama EIR belum punya bon. Draft ini tetap baru bisa disubmit setelah bon
+	muat terbit (``Inspection.before_submit``) — bon itulah yang mengadopsinya.
 	"""
-	booking = frappe.db.get_value("Survey Order", survey_order, "booking")
+	b = frappe.db.get_value(
+		"Container Booking", booking_name,
+		["name", "direction", "use_survey", "booking_status", "docstatus"], as_dict=True,
+	)
+	if not b or b.direction != "Tank Out":
+		return {"created": [], "withdrawn": []}
+	live = not cint(b.use_survey) and b.booking_status != "Cancelled" and cint(b.docstatus) != 2
+	items = frappe.get_all(
+		"Container Booking Item",
+		filters={"parent": b.name, "parenttype": "Container Booking"},
+		fields=["container", "depot"], order_by="idx asc",
+	)
+	wanted = {r.container: r.depot for r in items if r.container} if live else {}
+	out = {"created": [], "withdrawn": []}
+
+	mine = frappe.get_all(
+		"Inspection",
+		filters={"container_booking": b.name, "inspection_type": "EIR-Out", "docstatus": ["!=", 2],
+				 "survey_tank": ["is", "not set"]},
+		fields=["name", "container", "docstatus", "work_started_on", "referred_voucher"],
+	)
+	have = set()
+	for e in mine:
+		if e.container in wanted:
+			have.add(e.container)
+			continue
+		if e.docstatus != 0:
+			continue
+		try:
+			if not e.work_started_on and not e.referred_voucher:
+				frappe.delete_doc("Inspection", e.name, ignore_permissions=True)
+			else:
+				log_doc_note("Inspection", e.name, _(
+					"Booking {0} tidak lagi meminta EIR-Out ini — isian dipertahankan."
+				).format(b.name))
+			out["withdrawn"].append(e.name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"withdraw EIR-Out {e.name} of {b.name}")
+
+	for container, depot in wanted.items():
+		if container in have:
+			continue
+		try:
+			existing = frappe.db.get_value(
+				"Inspection",
+				{"container": container, "docstatus": 0, "inspection_type": "EIR-Out"},
+				"name",
+			)
+			if existing:
+				frappe.db.set_value("Inspection", existing, "container_booking", b.name, update_modified=False)
+				out["created"].append(existing)
+			else:
+				out["created"].append(_new_eir_out(container, depot, b.name, container_booking=b.name))
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"provision EIR-Out for {container} on {b.name}")
+	return out
+
+
+def booking_party_for_eir_out(survey_order: str, container: str) -> dict:
+	""":func:`booking_item_party` for a survey-born EIR-Out (kept for patch v1_15)."""
+	return booking_item_party(frappe.db.get_value("Survey Order", survey_order, "booking"), container)
+
+
+def booking_item_party(booking: str | None, container: str) -> dict:
+	"""EMKL / shipper / truck / driver for an EIR-Out that has no bon yet, read from the tank's
+	row on its Container Booking.
+
+	The EIR-Out is raised before the Order Muat exists, so without this the printed EIR says
+	"Received by —" until the bon is cut. The booking row already names the EMKL; the bon, once
+	submitted, overwrites all of it via :func:`_apply_voucher`.
+	"""
 	if not booking:
 		return {}
 	item = frappe.db.get_value(
@@ -742,7 +827,7 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
 	drafts = frappe.get_all(
 		"Inspection",
 		filters={"referred_voucher": order_name, "docstatus": 0, "inspection_type": inspection_type},
-		fields=["name", "container", "work_started_on", "survey_tank"],
+		fields=["name", "container", "work_started_on"],
 	)
 	out = {"repointed": [], "deleted": [], "detached": []}
 	for d in drafts:
@@ -755,12 +840,12 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
 				_apply_voucher(doc, replacement)
 				doc.save(ignore_permissions=True)
 				out["repointed"].append(d.name)
-			# An EIR-Out raised by a position survey is NOT this bon's to delete. The bon only
-			# ever adopted it (``attach_order_muat_to_eirs``); the document belongs to the
-			# survey that closed, and deleting it would silently retract a finished field
-			# inspection because an unrelated piece of paperwork was voided. It is detached
-			# instead, and the next bon for the same tank adopts it again.
-			elif not d.work_started_on and not d.survey_tank:
+			# An EIR-Out is NEVER this bon's to delete. The bon only ever adopted it
+			# (``attach_order_muat_to_eirs``); the document belongs to the survey that closed
+			# or to the no-survey booking that raised it, and deleting it would leave the tank
+			# with no EIR-Out at all — nothing raises a second one. It is detached instead,
+			# and the next bon for the same tank adopts it again.
+			elif not d.work_started_on and inspection_type != "EIR-Out":
 				frappe.delete_doc("Inspection", d.name, ignore_permissions=True)
 				out["deleted"].append(d.name)
 			else:

@@ -84,7 +84,7 @@ frappe.ui.form.on('Container Booking', {
 	// Switched back to Tank In, the unused value is dropped.
 	_default_survey_date(frm) {
 		if (!frm.is_new()) return;
-		const out = frm.doc.direction === 'Tank Out';
+		const out = frm.doc.direction === 'Tank Out' && frm.doc.use_survey;
 		if (out && !frm.doc.survey_date) frm.set_value('survey_date', frappe.datetime.get_today());
 		if (!out && frm.doc.survey_date) frm.set_value('survey_date', null);
 	},
@@ -306,6 +306,17 @@ frappe.ui.form.on('Container Booking', {
 				);
 			},
 		});
+	},
+	// Tanpa survey: Survey Date + Surveyor dikosongkan di header dan semua baris.
+	// Server twin: _drop_survey_when_off.
+	use_survey(frm) {
+		if (!frm.doc.use_survey) {
+			frm.set_value({ survey_date: null, surveyor: null });
+			(frm.doc.items || []).forEach((row) => {
+				frappe.model.set_value(row.doctype, row.name, { survey_date: null, surveyor: null });
+			});
+		}
+		frm.trigger('_default_survey_date');
 	},
 	// Header → rows, live. Server twin: _cascade_header_defaults.
 	shipper(frm) {

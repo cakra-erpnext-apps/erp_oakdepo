@@ -240,13 +240,16 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 		"Container Booking",
 		booking_name,
 		["name", "direction", "booking_status", "docstatus", "depot", "branch",
-		 "survey_date", "plan_date", "principal", "surveyor"],
+		 "survey_date", "plan_date", "principal", "surveyor", "use_survey"],
 		as_dict=True,
 	)
 	if not booking or booking.direction != OUTBOUND:
 		return {"survey_order": None, "tanks": []}
 
 	dead = booking.booking_status == "Cancelled" or int(booking.docstatus or 0) == 2
+	# Tanpa survey: jadwal yang mungkin sudah terbit dipanggil pulang, sama seperti void.
+	# EIR-Out-nya lahir langsung dari booking (eir.provision_eir_out_for_booking).
+	dead = dead or not cint(booking.use_survey)
 	existing = frappe.db.get_value(SCHEDULE, {"booking": booking.name, "docstatus": ["!=", 2]}, "name")
 
 	if dead:
