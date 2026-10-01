@@ -555,6 +555,9 @@ override_whitelisted_methods = {
 	"frappe.desk.search.get_names_for_mentions": "container_depot.user_directory.get_names_for_mentions",
 }
 
+# Print view: the invoice's print fields beside the preview (see the file).
+page_js = {"print": "public/js/print_view.js"}
+
 doctype_list_js = {
 	"Pending Cash": "public/js/pending_cash_actions.js",
 	"Pending Cash Refund": "public/js/pending_cash_actions.js",

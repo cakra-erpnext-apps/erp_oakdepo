@@ -50,6 +50,7 @@
   .oak-doc .inv-lines td.no { color: #6b7280; }
   .oak-doc .inv-lines tr.grp td { background-color: #eef3ef; font-weight: 700; font-size: 9px; letter-spacing: .5px; border-bottom: 1px solid #d6dcd6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .oak-doc .inv-lines tr.grp .n { font-weight: 400; letter-spacing: 0; color: #6b7280; }
+  .oak-doc .inv-lines tr.grp-sub td { font-weight: 700; border-bottom: 1px solid #d6dcd6; }
   .oak-doc .inv-lines td.b { font-weight: 700; white-space: nowrap; }
   .oak-doc .inv-box { padding: 7px 10px; margin-bottom: 8px; font-size: 9.5px; }
   .oak-doc .inv-box .lbl { font-weight: 700; margin-bottom: 3px; }
@@ -59,7 +60,10 @@
   .oak-doc .inv-tot td { font-size: 10px; }
   .oak-doc .inv-grand { background-color: #2d6a4f; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .oak-doc .inv-grand td { color: #fff; font-size: 12px; font-weight: 700; }
-  .oak-doc .inv-meterai { width: 60px; height: 60px; border: 1px dashed #9ca3af; color: #6b7280; text-align: center; font-size: 8px; white-space: nowrap; }
+  /* Room to sign and stamp (user, 2026-10-01: no e-Meterai box, a bigger signing space). */
+  .oak-doc .inv-sign { width: 250px; margin: 14px 0 0 auto; text-align: center; font-size: 10px; }
+  .oak-doc .inv-sign .line { margin: 90px 0 4px; }
+  .oak-doc .inv-sign .who { font-size: 11px; font-weight: 700; }
   .oak-doc .foot { border-top-color: #d6dcd6; color: #6b7280; }
   /* One footer each way: the PDF takes #footer-html (Frappe strips this class there), the
      browser preview the in-flow .hidden-pdf one. Frappe's own rule for it is not loaded in
@@ -89,11 +93,9 @@
 {%- for page in _docs %}
 {%- set _ccy = page.currency -%}
 {%- set _fx = 1 -%}
-{%- set _rate = page.conversion_rate -%}
 {%- if page.depot_print_currency and page.depot_print_currency != page.currency and page.depot_print_rate -%}
   {%- set _ccy = page.depot_print_currency -%}
   {%- set _fx = (page.conversion_rate or 1) / page.depot_print_rate -%}
-  {%- set _rate = page.depot_print_rate -%}
 {%- endif -%}
 {%- set _base = frappe.db.get_value("Company", page.company, "default_currency") -%}
 {%- set _sym = frappe.db.get_value("Currency", _ccy, "symbol") or _ccy -%}
@@ -121,7 +123,8 @@
   {%- else %}
   <div class="inv-wm">{{ t("DRAFT") if page.docstatus == 0 else t("VOID") }}</div>
   {%- endif %}
-  {{ oak.head("INVOICE", "", show_print_date=false, title_size=26, address=_addr, badge=_badge) }}
+  {#- Invoice Title (erp_cakra): the heading the user gave it, e.g. DEBIT NOTE. -#}
+  {{ oak.head((page.depot_invoice_title | e) if page.depot_invoice_title else "INVOICE", "", show_print_date=false, title_size=26, address=_addr, badge=_badge) }}
 
   {{ oak.strip([
     {"k": t("Invoice No."), "v": _bill_no, "w": "28%"},
@@ -147,28 +150,23 @@
           {%- if _docs | length > 1 %}
           <tr><td class="k">{{ t("Document") }}</td><td class="v">{{ page.name }} <span class="sub" style="font-weight:400;">({{ loop.index }}/{{ _docs | length }})</span></td></tr>
           {%- endif %}
-          {%- set _kinds = _groups | map(attribute="key") | select | list %}
-          <tr><td class="k">{{ t("Invoice Type") }}</td><td class="v">{{ page.depot_invoice_type or "&mdash;" }}{% if page.depot_invoice_type == "Gabungan" and _kinds | length > 1 %} ({{ _kinds | join(" &middot; ") }}){% endif %}</td></tr>
           {%- if page.depot_delivery_term %}
           <tr><td class="k">{{ t("Delivery Term") }}</td><td class="v">{{ page.depot_delivery_term }}</td></tr>
           {%- endif %}
-          {#- The ledger books IDR: a foreign bill, or foreign lines, state the kurs they were booked at. -#}
-          {%- set _kurs = _data.kurs %}
-          {%- if _ccy != _base and _ccy not in _kurs %}{% set _ = _kurs.update({_ccy: [_rate]}) %}{% endif %}
-          {%- for c, ks in _kurs.items() %}
-          <tr><td class="k">{{ t("Exchange Rate {0}", c) }}</td><td class="v">{% for k in ks %}{{ kurs(k) }}{% if not loop.last %} / {% endif %}{% endfor %}</td></tr>
-          {%- endfor %}
         </table>
       </td>
     </tr>
   </table>
 
+  {#- Cust. Ref and Tank No. print only when ticked on the invoice (user, 2026-10-01: off by default). -#}
+  {%- set _ref, _tank = page.depot_print_cust_ref, page.depot_print_tank %}
+  {%- set _cols = 5 + (1 if _ref else 0) + (1 if _tank else 0) %}
   <table class="grid inv-lines" style="margin-top:10px;">
     <thead>
       <tr>
         <th class="ctr" style="width:4%;">NO</th>
-        <th style="width:15%;">{{ t("CUST. REF") }}</th>
-        <th style="width:15%;">{{ t("TANK NO.") }}</th>
+        {%- if _ref %}<th style="width:15%;">{{ t("CUST. REF") }}</th>{% endif %}
+        {%- if _tank %}<th style="width:15%;">{{ t("TANK NO.") }}</th>{% endif %}
         <th>{{ t("DESCRIPTION") }}</th>
         <th class="ctr" style="width:6%;">QTY</th>
         <th class="num" style="width:12%;">{{ t("PRICE") }}</th>
@@ -181,10 +179,11 @@
     <tbody>
       {%- set _n = namespace(i=0) %}
       {%- for g in _groups %}
-      {%- if g.key or _groups | length > 1 %}
+      {#- Each group under its name, its subtotal under its lines (user, 2026-10-01). -#}
+      {%- set _titled = g.key or _groups | length > 1 %}
+      {%- if _titled %}
       <tr class="grp">
-        <td colspan="5">{{ t(g.label) | upper }} <span class="n">&middot; {{ t("{0} items", g.rows | length) }}</span></td>
-        <td colspan="2" class="num">Subtotal {{ num(g.total * _fx, _ccy) }}</td>
+        <td colspan="{{ _cols }}">{{ t(g.label) | upper }} <span class="n">&middot; {{ t("{0} items", g.rows | length) }}</span></td>
       </tr>
       {%- endif %}
       {%- for x in g.rows %}
@@ -192,8 +191,8 @@
       {%- set row = x.row %}
       <tr>
         <td class="ctr no">{{ _n.i }}</td>
-        <td>{{ x.cust_ref }}</td>
-        <td>{{ x.tank }}</td>
+        {%- if _ref %}<td>{{ x.cust_ref }}</td>{% endif %}
+        {%- if _tank %}<td>{{ x.tank }}</td>{% endif %}
         <td>{{ x.text }}
           {#- A line priced in another currency shows what it was converted from. -#}
           {%- if row.depot_currency and row.depot_currency != _ccy %}
@@ -201,11 +200,18 @@
           {%- endif %}
         </td>
         {#- %g, not |int: quantities can be fractional. -#}
-        <td class="ctr">{{ "%g" | format(row.qty or 0) }}</td>
+        {#- x.qty / x.amount: a merged line (Merge Same Lines) adds up the lines it stands for. -#}
+        <td class="ctr">{{ "%g" | format(x.qty) }}</td>
         <td class="num">{{ num((row.rate or 0) * _fx, _ccy) }}</td>
-        <td class="num b">{{ num((row.amount or 0) * _fx, _ccy) }}</td>
+        <td class="num b">{{ num(x.amount * _fx, _ccy) }}</td>
       </tr>
       {%- endfor %}
+      {%- if _titled %}
+      <tr class="grp-sub">
+        <td colspan="{{ _cols - 1 }}" class="num">Subtotal {{ t(g.label) }}</td>
+        <td class="num">{{ num(g.total * _fx, _ccy) }}</td>
+      </tr>
+      {%- endif %}
       {%- endfor %}
     </tbody>
   </table>
@@ -296,24 +302,12 @@
         <div class="sub" style="margin-top:4px;">{{ t("If PPh 23 (2%) of {0} is withheld, transfer {1}", _sym ~ " " ~ num(_w, _ccy), _sym ~ " " ~ num((_due or 0) * _fx - _w, _ccy)) }}</div>
         {%- endif %}
 
-        <div class="sign" style="text-align:left; margin-top:12px;">
-          <div class="cap" style="padding-left:78px;">{{ t("Sincerely,") }}</div>
-          <table style="margin-top:6px;">
-            <tr>
-              {#- e-Meterai: a document over Rp 5 juta carries one. -#}
-              <td style="width:72px; vertical-align:bottom; padding:0;">
-                {%- if page.materai or (page.base_grand_total or 0) >= 5000000 %}
-                <div class="inv-meterai"><div style="padding-top:24px;">e-Meterai</div></div>
-                {%- endif %}
-              </td>
-              <td style="vertical-align:bottom; padding:0 0 0 6px;">
-                <div class="line" style="margin:48px 0 3px;"></div>
-                <div style="font-weight:700;">{{ frappe.db.get_value("User", page.owner, "full_name") or page.owner }}</div>
-                {%- set _job = frappe.db.get_value("Employee", {"user_id": page.owner, "status": "Active"}, "designation") %}
-                <div class="sub">{{ (_job ~ " &middot; ") if _job else "" }}PT. Oasis Anugerah Kasih</div>
-              </td>
-            </tr>
-          </table>
+        <div class="sign inv-sign">
+          <div class="cap">{{ t("Sincerely,") }}</div>
+          <div class="line"></div>
+          <div class="who">{{ frappe.db.get_value("User", page.owner, "full_name") or page.owner }}</div>
+          {%- set _job = frappe.db.get_value("Employee", {"user_id": page.owner, "status": "Active"}, "designation") %}
+          <div class="sub">{{ (_job ~ " &middot; ") if _job else "" }}PT. Oasis Anugerah Kasih</div>
         </div>
       </td>
     </tr>

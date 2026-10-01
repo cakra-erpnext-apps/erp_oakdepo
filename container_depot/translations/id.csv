@@ -385,8 +385,6 @@ Currency,Mata Uang,OAK Invoice
 Bill To,Ditagihkan kepada,OAK Invoice
 Tax ID,NPWP,OAK Invoice
 Document,Dokumen,OAK Invoice
-Invoice Type,Tipe Invoice,OAK Invoice
-Exchange Rate {0},Kurs {0},OAK Invoice
 CUST. REF,REF CUST.,OAK Invoice
 TANK NO.,NO. TANK,OAK Invoice
 DESCRIPTION,DESKRIPSI,OAK Invoice

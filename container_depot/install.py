@@ -383,14 +383,15 @@ CUSTOM_FIELDS = {
 			"in_standard_filter": 1,
 			"description": "",
 		},
-		# Header, two sections (user, 2026-09-29):
+		# Header, three sections (user, 2026-09-29; the last two 2026-10-01):
 		#   Branch  |  Customer (+ buttons)  |  Customer Address, Address
-		#   Invoice Type, Invoice Date, Due Date  |  Payment Term, Delivery Term, Tax Id  |
-		#   Company, Cost Center, Kode Transaksi Coretax, Don't Post to GL
-		# The standard fields are placed by INVOICE_FIELD_MOVES.
+		#   Invoice:  Invoice Type, Invoice Title  |  Invoice Date, Due Date
+		#   Payment Term, Delivery Term  |  Cost Center, Kode Transaksi Coretax, Don't Post to GL
+		# The standard fields are placed by INVOICE_FIELD_MOVES; Company and Tax Id are not
+		# shown (PROPERTY_SETTERS).
 		{"fieldname": "depot_cust_col1", "fieldtype": "Column Break", "insert_after": "branch"},
 		{"fieldname": "depot_cust_col2", "fieldtype": "Column Break", "insert_after": "depot_view_bill_group"},
-		{"fieldname": "depot_invoice_sb", "fieldtype": "Section Break", "insert_after": "tax_id"},
+		{"fieldname": "depot_invoice_sb", "fieldtype": "Section Break", "label": "Invoice", "insert_after": "tax_id"},
 		{
 			# Picked first: what this invoice bills, and so which orders Ambil Tagihan offers
 			# (consolidated_billing.CATEGORIES). Gabungan = every kind, Manual = typed lines
@@ -399,6 +400,9 @@ CUSTOM_FIELDS = {
 			"label": "Invoice Type",
 			"fieldtype": "Select",
 			"options": "\nBooking\nCleaning\nM&R\nPeriodic Test\nStorage\nGabungan\nManual",
+			# A new invoice is typed by hand until a type that lists orders is picked
+			# (user, 2026-10-01). System invoices set their own (invoicing.create_draft_sales_invoice).
+			"default": "Manual",
 			"insert_after": "depot_invoice_sb",
 			"in_standard_filter": 1,
 		},
@@ -415,6 +419,16 @@ CUSTOM_FIELDS = {
 			"hidden": 0,
 			"depends_on": "eval:doc.docstatus===0 && doc.customer && doc.depot_invoice_type && doc.depot_invoice_type!=='Manual'",
 		},
+		{
+			# The print's heading (erp_cakra's Invoice Title), e.g. "DEBIT NOTE". Empty = INVOICE.
+			"fieldname": "depot_invoice_title",
+			"label": "Invoice Title",
+			"fieldtype": "Data",
+			"insert_after": "depot_get_bill",
+			"allow_on_submit": 1,
+			"description": 'Judul di print out, mis. "DEBIT NOTE". Kosong = INVOICE.',
+		},
+		{"fieldname": "depot_terms_sb", "fieldtype": "Section Break", "insert_after": "due_date"},
 		# --- Tagihan Depot (consolidated billing) -----------------------------------
 		# No filters live here any more. The operator presses Ambil Tagihan and gets EVERY
 		# unbilled order the customer has, then ticks the ones to bill in the dialog — the
@@ -460,6 +474,35 @@ CUSTOM_FIELDS = {
 			"allow_on_submit": 1,
 			"depends_on": "eval:doc.depot_print_currency && doc.depot_print_currency !== doc.currency",
 			"description": "",
+		},
+		{
+			# Optional print columns (user, 2026-10-01: off by default). allow_on_submit: they
+			# change the page, not what was billed. Also in the print view's sidebar.
+			"fieldname": "depot_print_cust_ref",
+			"label": "Print Ref Cust.",
+			"fieldtype": "Check",
+			"default": "0",
+			"insert_after": "language",
+			"allow_on_submit": 1,
+			"description": "Tampilkan kolom REF CUST. di print.",
+		},
+		{
+			"fieldname": "depot_print_tank",
+			"label": "Print No. Tank",
+			"fieldtype": "Check",
+			"default": "0",
+			"insert_after": "depot_print_cust_ref",
+			"allow_on_submit": 1,
+			"description": "Tampilkan kolom NO. TANK di print.",
+		},
+		{
+			"fieldname": "depot_print_merge",
+			"label": "Merge Same Lines",
+			"fieldtype": "Check",
+			"default": "0",
+			"insert_after": "depot_print_tank",
+			"allow_on_submit": 1,
+			"description": "Di print, baris dengan deskripsi dan harga sama digabung jadi satu (qty dijumlah).",
 		},
 		# --- Sumber Tagihan: the orders and tanks this invoice bills (erp_cakra's Connection
 		# tab). Rendered by sales_invoice.js from consolidated_billing.invoice_sources; picking
@@ -647,6 +690,8 @@ CUSTOM_FIELDS = {
 			"precision": "",
 			"insert_after": "depot_manhour_sb",
 			"read_only": 1,
+			# Shown with the rest of the sum, once Tagih Manhour is ticked (user, 2026-10-01).
+			"depends_on": "eval:doc.depot_bill_manhour",
 			"description": "",
 		},
 		{"fieldname": "depot_manhour_col", "fieldtype": "Column Break", "insert_after": "total_manhour"},
@@ -1416,6 +1461,11 @@ PROPERTY_SETTERS = [
 	("Payment Entry", "naming_series", "hidden", "1", "Check"),
 	("Payment Entry", "naming_series", "depends_on", "eval:0", "Data"),
 	("Sales Invoice", "naming_series", "depends_on", "eval:0", "Data"),
+	# Not part of the header the user laid out (2026-10-01). One company runs the site, and
+	# Tax Id is the customer's own, fetched. depends_on, because ERPNext's hide_company and
+	# toggle_display only flip `hidden`.
+	("Sales Invoice", "company", "depends_on", "eval:0", "Data"),
+	("Sales Invoice", "tax_id", "depends_on", "eval:0", "Data"),
 ] + [
 	# Declutter the Sales Invoice form. UI-only: the fields stay in the DB and every
 	# controller still reads them — nothing is deleted, only hidden.
@@ -1510,12 +1560,21 @@ INVOICE_FIELD_MOVES = [  # applied in order, each relative to the result of the 
 	("depot_invoice_sb", "address_display"),  # second section starts here
 	("depot_invoice_type", "depot_invoice_sb"),
 	("depot_get_bill", "depot_invoice_type"),  # Pilih Order, right under the type it lists
-	("depot_payment_term", "due_date"),
-	("column_break1", "due_date"),
+	("depot_invoice_title", "depot_get_bill"),
+	("column_break1", "depot_invoice_title"),  # Invoice Date, Due Date: the second column
+	("depot_terms_sb", "due_date"),  # third section
+	("depot_payment_term", "depot_terms_sb"),
+	("depot_delivery_term", "depot_payment_term"),
 	("tax_id", "depot_delivery_term"),
+	("column_break_14", "tax_id"),
 	("language", "depot_print_rate"),  # Print Language, out of More Info, beside Print Currency
+	("depot_print_cust_ref", "language"),
+	("depot_print_tank", "depot_print_cust_ref"),
+	("depot_print_merge", "depot_print_tank"),
 	("company", "column_break_14"),
 	("cost_center", "company"),  # out of the hidden Accounting Dimensions section
+	("coretax_code", "cost_center"),
+	("dont_post_to_gl", "coretax_code"),
 	("remarks", "depot_remark_sb"),  # out of the More Info tab
 ]
 

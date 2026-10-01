@@ -16,6 +16,11 @@ class DepotSalesInvoice(SalesInvoice):
 			return
 		return super().make_gl_entries(*args, **kwargs)
 
+	def get_print_settings(self):
+		# The print view's Compact Item Print / Print UOM after Quantity / Print taxes with zero
+		# amount: the OAK Invoice reads none of them (user, 2026-10-01).
+		return []
+
 	def set_payment_schedule(self):
 		# ERPNext fills the template from the customer's default (set_missing_values, inside
 		# validate) and would then date the schedule — and check the Due Date — against it. The

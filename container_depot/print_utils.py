@@ -87,15 +87,17 @@ def invoice_groups(doc):
 	"""An invoice's lines as OAK Invoice prints them: grouped like the pick list, each line with
 	the order it bills (Ref OAK), the customer's reference on that order and its tank.
 
-	    {"groups": [{"key", "label", "rows": [{"row", "ref", "cust_ref", "tank", "text"}], "total"}],
-	     "kurs": {"USD": [17922.0, ...]}}
+	    {"groups": [{"key", "label", "rows": [{"row", "ref", "cust_ref", "tank", "text", "qty", "amount"}], "total"}]}
 
 	``cust_ref`` is the line's own Reff Doc (frozen at submit), else its order's today.
 
-	``kurs`` is every line currency but the ledger's own, with the kurs its lines were billed at.
+	With Merge Same Lines ticked (user, 2026-10-01), lines of a group that print the same —
+	description, price (and its currency and kurs), and the Ref Cust. / No. Tank when those
+	columns print — become one, their qty and amount added up. Print only: the ledger keeps
+	every line.
 	"""
-	base = frappe.get_cached_value("Company", doc.company, "default_currency")
-	facts, groups, kurs = {}, {}, {}
+	facts, groups, seen = {}, {}, {}
+	merge = doc.get("depot_print_merge")
 	for r in doc.items:
 		src = r.get("depot_source") or ""
 		if src not in facts:
@@ -104,16 +106,20 @@ def invoice_groups(doc):
 		g = groups.setdefault(key, {"key": key, "label": _INVOICE_GROUPS.get(key, key), "rows": [], "total": 0})
 		# An order's line reads "Cleaning CO-0001 · Standard Clean": the order has its own column.
 		text = (r.description or r.item_name or "").split(" · ", 1)[-1] if ref else (r.description or r.item_name or "")
-		g["rows"].append({"row": r, "ref": ref, "cust_ref": r.get("depot_reff_doc") or cust_ref, "tank": tank, "text": text})
-		g["total"] += flt(r.amount)
-		ccy = r.get("depot_currency")
-		if ccy and ccy != base and flt(r.get("depot_kurs")) not in kurs.setdefault(ccy, []):
-			kurs[ccy].append(flt(r.depot_kurs))
+		x = {"row": r, "ref": ref, "cust_ref": r.get("depot_reff_doc") or cust_ref, "tank": tank, "text": text,
+			"qty": flt(r.qty), "amount": flt(r.amount)}
+		g["total"] += x["amount"]
+		if merge:
+			same = (key, text, flt(r.rate), r.get("depot_currency") or "", flt(r.get("depot_price")), flt(r.get("depot_kurs")),
+				x["cust_ref"] if doc.get("depot_print_cust_ref") else "", tank if doc.get("depot_print_tank") else "")
+			if m := seen.get(same):
+				m["qty"] += x["qty"]
+				m["amount"] += x["amount"]
+				continue
+			seen[same] = x
+		g["rows"].append(x)
 	order = list(_INVOICE_GROUPS)
-	return {
-		"groups": sorted(groups.values(), key=lambda g: order.index(g["key"]) if g["key"] in order else len(order)),
-		"kurs": {c: sorted(k) for c, k in kurs.items()},
-	}
+	return {"groups": sorted(groups.values(), key=lambda g: order.index(g["key"]) if g["key"] in order else len(order))}
 
 
 _CURRENCY_WORDS = {"IDR": "rupiah", "USD": "dolar Amerika Serikat", "SGD": "dolar Singapura", "EUR": "euro"}

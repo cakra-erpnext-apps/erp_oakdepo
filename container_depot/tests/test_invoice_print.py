@@ -56,13 +56,33 @@ class TestInvoicePrint(FrappeTestCase):
 		self.assertEqual([r["ref"] for r in rest["rows"]], ["", "GONE-1"])
 		# An order line drops its "Booking X ·" prefix: the order has its own column.
 		self.assertEqual([r["text"] for r in rest["rows"]], ["Materai tempel", "Lift Off"])
-		self.assertEqual(out["kurs"], {"USD": [17922.0]})
+
+	def test_merge_same_lines_adds_up_the_qty(self):
+		si = _invoice()
+		si.append("items", {"item_name": "Materai tempel", "description": "Materai tempel", "qty": 2, "rate": 10000, "amount": 20000})
+		si.append("items", {"item_name": "Materai tempel", "description": "Materai tempel", "qty": 1, "rate": 12000, "amount": 12000})
+		self.assertEqual(len(invoice_groups(si)["groups"][1]["rows"]), 4)
+		si.depot_print_merge = 1
+		rows = invoice_groups(si)["groups"][1]["rows"]
+		# Same description and price: one line, qty and amount added; another price stays apart.
+		self.assertEqual([(r["text"], r["qty"], r["amount"]) for r in rows],
+			[("Materai tempel", 3.0, 30000.0), ("Lift Off", 1.0, 179220.0), ("Materai tempel", 1.0, 12000.0)])
+		self.assertEqual(invoice_groups(si)["groups"][1]["total"], 221220.0)
+		# A printed Ref Cust. / No. Tank column joins the match: another ref stays its own line.
+		si.items[0].depot_reff_doc, si.items[3].depot_reff_doc = "PO-1", "PO-2"
+		self.assertEqual(len(invoice_groups(si)["groups"][1]["rows"]), 3)
+		si.depot_print_cust_ref = 1
+		self.assertEqual([r["cust_ref"] for r in invoice_groups(si)["groups"][1]["rows"]], ["PO-1", "", "PO-2", ""])
 
 	def test_renders_in_its_print_language(self):
 		self._lang("id")
 		html = frappe.get_print("Sales Invoice", None, "OAK Invoice", doc=_invoice())
 		for text in ("INVOICE", "DRAFT – BELUM FINAL", "STORAGE", "LAIN-LAIN", "Terbilang", "Jatuh Tempo", "rupiah", "footer-html"):
 			self.assertIn(text, html)
+		# Invoice Type and the kurs rows are off the page (user, 2026-10-01); a foreign line
+		# still states its kurs on the line itself.
+		self.assertNotIn("Tipe Invoice", html)
+		self.assertNotIn("Kurs USD", html)
 		self._lang("en")
 		html = frappe.get_print("Sales Invoice", None, "OAK Invoice", doc=_invoice())
 		for text in ("DRAFT – NOT FINAL", "OTHERS", "Amount in Words", "Due Date", "only."):
@@ -70,6 +90,14 @@ class TestInvoicePrint(FrappeTestCase):
 		self.assertNotIn("Terbilang", html)
 		# Our order number stays off the page: the customer reconciles by their own reference.
 		self.assertNotIn("GONE-1", html)
+		# Invoice Title heads the page in place of INVOICE.
+		si = _invoice()
+		si.depot_invoice_title = "DEBIT NOTE"
+		self.assertIn("DEBIT NOTE", frappe.get_print("Sales Invoice", None, "OAK Invoice", doc=si))
+		# Cust. Ref / Tank No. columns print only when ticked.
+		self.assertNotIn("TANK NO.", html)
+		si.depot_print_tank = 1
+		self.assertIn("TANK NO.", frappe.get_print("Sales Invoice", None, "OAK Invoice", doc=si))
 
 	def test_order_lines_carry_the_reff_doc(self):
 		si = _invoice()
