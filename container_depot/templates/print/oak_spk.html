@@ -1,0 +1,153 @@
+{#-
+  SPK (Surat Perintah Kerja) — the crew's work sheet, one per order.
+
+  A plain copy of the yard's paper form "Perintah Cuci Tank Container" (user, 2026-10-01:
+  "jangan ada design sama sekali, sesuai mockup"): centred title, `label : value` lines, one
+  black-ruled table with OK / NO columns, the finish line, two signatures, the Perhatian
+  notice and the supervisor's sign-off. No letterhead, no colour, no panels, no prices.
+
+      {% import "container_depot/templates/print/oak_spk.html" as spk with context %}
+      {{ spk.styles() }}
+      <div class="spk">
+        {{ spk.title("PERINTAH CUCI TANK CONTAINER") }}
+        {{ spk.header([("Tanggal", ...), ("Kepada", ...)], aside={1: date}) }}
+        {{ spk.steps("Cara Pencucian", rows) }}
+        ...
+      </div>
+-#}
+
+{%- macro styles() -%}
+<style>
+  .spk { font-family: Calibri, Carlito, Arial, sans-serif; font-size: 11.5px; color: #000; line-height: 1.3; }
+  .spk table { border-collapse: collapse; width: 100%; }
+  /* Frappe's print sheet forces `padding: 6px !important` on every cell. */
+  .spk td, .spk th { padding: 1px 4px !important; border: none; vertical-align: top !important; }
+  .spk .title { text-align: center; font-weight: 700; font-size: 15px; margin: 4px 0 18px; }
+  .spk .hdr td.k { width: 92px; font-weight: 700; white-space: nowrap; }
+  .spk .hdr td.c { width: 10px; }
+  .spk .hdr td.r { text-align: right; font-weight: 700; white-space: nowrap; }
+  .spk .line { margin-top: 2px; }
+  .spk .line td { font-weight: 700; white-space: nowrap; }
+  .spk .sec { text-align: center; font-weight: 700; margin: 16px 0 6px; }
+  .spk .grid td, .spk .grid th { border: 1px solid #000 !important; padding: 1px 6px !important; height: 15px; }
+  .spk .grid th { text-align: center; font-weight: 700; color: #000 !important; background: none !important; }
+  .spk .grid .ctr { text-align: center; }
+  .spk .after { margin-top: 14px; }
+  .spk .sig td { text-align: center; width: 50%; }
+  .spk .sig .gap { height: 46px; }
+  .spk .note { margin-top: 18px; }
+  .spk .note .gap { height: 9px; }
+  .spk .b { font-weight: 700; }
+  .spk .u { text-decoration: underline; }
+</style>
+{%- endmacro -%}
+
+{%- set BULAN = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"] -%}
+{#- "02 Desember 2025", the form's own date style. -#}
+{%- macro tanggal(d) -%}
+  {%- if d -%}{%- set x = frappe.utils.getdate(d) -%}{{ "%02d" % x.day }} {{ BULAN[x.month] }} {{ x.year }}{%- endif -%}
+{%- endmacro -%}
+
+{%- macro fullname(user) -%}
+  {%- if user -%}{{ frappe.db.get_value("User", user, "full_name") or user }}{%- endif -%}
+{%- endmacro -%}
+
+{%- macro title(text) -%}<div class="title">{{ text }}</div>{%- endmacro -%}
+
+{#- rows = [(label, value)]; aside = {row_index: html} printed bold at the right of that row
+    (the paper form carries its date on the "Kepada" line). -#}
+{%- macro header(rows, aside={}) -%}
+<table class="hdr">
+  {%- for k, v in rows %}
+  <tr>
+    <td class="k">{{ k }}</td><td class="c">:</td><td>{{ v or "" }}</td>
+    <td class="r">{{ aside.get(loop.index0) or "" }}</td>
+  </tr>
+  {%- endfor %}
+</table>
+{%- endmacro -%}
+
+{#- One line of `label : value` pairs side by side, e.g. Start / Finish, the gas readings. -#}
+{%- macro line(cells) -%}
+<table class="line">
+  <tr>
+    {%- for k, v in cells %}
+    <td style="width:{{ (100 / (cells | length)) | round(0, 'floor') | int }}%;">{{ k }} : <span style="font-weight:400;">{{ v or "" }}</span></td>
+    {%- endfor %}
+  </tr>
+</table>
+{%- endmacro -%}
+
+{#- The step table, laid out like the form: number + bold line, optional English line under
+    it, an empty spacer row between steps.
+    rows = [{"text": ..., "en": optional, "extra": optional}], extra = optional column caption. -#}
+{%- macro steps(caption, rows, ok="OK", no="NO", extra=None, blank=1) -%}
+<div class="sec">{{ caption }}</div>
+<table class="grid">
+  <tr>
+    <th style="width:9%;">No</th>
+    <th>Description</th>
+    {%- if extra %}<th style="width:14%;">{{ extra }}</th>{% endif %}
+    <th style="width:9%;">{{ ok }}</th>
+    <th style="width:9%;">{{ no }}</th>
+  </tr>
+  {%- for r in rows %}
+  <tr>
+    <td class="ctr">{{ loop.index }}</td>
+    <td class="b">{{ r.text }}</td>
+    {%- if extra %}<td class="ctr">{{ r.get("extra") or "" }}</td>{% endif %}
+    <td></td><td></td>
+  </tr>
+  {%- if r.get("en") %}
+  <tr><td></td><td>{{ r.en }}</td>{% if extra %}<td></td>{% endif %}<td></td><td></td></tr>
+  {%- endif %}
+  {%- if not loop.last %}
+  <tr><td></td><td></td>{% if extra %}<td></td>{% endif %}<td></td><td></td></tr>
+  {%- endif %}
+  {%- endfor %}
+  {%- for _ in range(blank if rows else 3) %}
+  <tr><td></td><td></td>{% if extra %}<td></td>{% endif %}<td></td><td></td></tr>
+  {%- endfor %}
+</table>
+{%- endmacro -%}
+
+{#- Two signatures, caption on top and "(  name  )" at the bottom, like the form. -#}
+{%- macro sign(left_cap, right_cap, left_name=None, right_name=None) -%}
+{%- set blank = "&nbsp;" * 22 -%}
+<table class="sig after">
+  <tr><td>{{ left_cap }}</td><td>{{ right_cap }}</td></tr>
+  <tr><td class="gap"></td><td class="gap"></td></tr>
+  <tr><td>( {{ left_name or blank }} )</td><td>( {{ right_name or blank }} )</td></tr>
+</table>
+{%- endmacro -%}
+
+{#- Perhatian. extra = job-specific (id, en) pairs placed after the PPE line. -#}
+{%- macro notice(extra=(), ppe=("Harap Menggunakan Masker, Sarung tangan dan Sepatu Boot", "Must use a mask, Gloves and Boots")) -%}
+<div class="note">
+  <div>Perhatian :</div>
+  <div>" {{ ppe[0] }}</div>
+  <div>&nbsp;&nbsp;{{ ppe[1] }}</div>
+  {%- for id_line, en_line in extra %}
+  <div class="gap"></div>
+  <div>" {{ id_line }}</div>
+  <div>&nbsp;&nbsp;{{ en_line }}</div>
+  {%- endfor %}
+  <div class="gap"></div>
+  <div class="b">" BILA ADA KERAGUAN HARAP MENGHUBUNGI SUPERVISOR, KEPALA BAGIAN TANK, ATAU GENERAL MANAGER.</div>
+  <div>&nbsp;&nbsp;If There is doubt please report to the Supervisor, The Chief of Tank or General Manager</div>
+  <div class="gap"></div>
+  <div class="b">UTAMAKAN KESELAMATAN DIRI ANDA &amp; LINGKUNGAN</div>
+  <div>PRIORITIZING THE SAFETY OF YOURSELF AND THE ENVIRONMENT.</div>
+</div>
+{%- endmacro -%}
+
+{#- "Jakarta, / Ricko / Supervisor Operasional" — the city comes from the order's depot. -#}
+{%- macro closing(depot=None, issuer=None, role="Supervisor Operasional") -%}
+{%- set city = (frappe.db.get_value("Depot", depot, "city") if depot else None) or "" -%}
+<div class="note">
+  <div class="b">{{ (city ~ ",") if city else "&nbsp;" }}</div>
+  <div style="height:40px;"></div>
+  <div class="b u">{{ fullname(issuer) }}</div>
+  <div class="b">{{ role }}</div>
+</div>
+{%- endmacro -%}

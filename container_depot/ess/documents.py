@@ -17,9 +17,11 @@ from frappe import _
 
 from container_depot.api import _require_authenticated_user
 
-# Only the Cleaning Order has a custom print format in this app; the rest
-# render with Frappe's Standard format (format omitted).
+# Named explicitly: the doctype default for both is now the crew's SPK (install.py
+# PROPERTY_SETTERS), while this list hands out the customer's certificate and the owner's
+# estimate. Everything else renders with its doctype default (format omitted).
 CLEANING_ORDER_FORMAT = "Cleaning Order Format"
+REPAIR_ORDER_FORMAT = "OAK Repair Order"
 
 
 def _pdf_url(doctype, name, fmt=None):
@@ -115,8 +117,8 @@ def get_tank_documents(container):
 				"name": r.name,
 				"status": r.status,
 				"date": _date(r.creation),
-				"view_url": _view_url("Repair Order", r.name),
-				"pdf_url": _pdf_url("Repair Order", r.name),
+				"view_url": _view_url("Repair Order", r.name, REPAIR_ORDER_FORMAT),
+				"pdf_url": _pdf_url("Repair Order", r.name, REPAIR_ORDER_FORMAT),
 			}
 		)
 

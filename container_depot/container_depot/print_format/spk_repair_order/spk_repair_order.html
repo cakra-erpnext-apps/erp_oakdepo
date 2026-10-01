@@ -1,0 +1,78 @@
+{#-
+  SPK REPAIR / SPK PERIODIC TEST — the technician's sheet for one Repair Order, in the plain
+  layout of the paper SPK (see oak_spk.html). One format for both job types (one doctype,
+  two menus — see mr_scope): title, readings and verdict follow `job_type`.
+
+  Description rows: the EIR damage findings first, then every part / service line the owner
+  did NOT reject. No prices — the owner's copy is OAK Repair Order.
+-#}
+{%- import "container_depot/templates/print/oak_spk.html" as spk with context -%}
+{{ spk.styles() }}
+
+{%- set _pt = doc.get("job_type") == "Periodic Test" -%}
+{%- set c = frappe.get_doc("Container", doc.container) if doc.get("container") else {} -%}
+{%- set _tech = frappe.db.get_value("Employee", doc.technician, "employee_name") if doc.get("technician") else None -%}
+{%- set _crew = _tech or spk.fullname(doc.get("started_by")) or None -%}
+{%- set _rows = [] -%}
+{%- for d in (doc.get("damages") or []) -%}
+  {%- set _ = _rows.append({
+    "text": (d.get("component") or d.get("area") or "") ~ ((" — " ~ d.location) if d.get("location") else ""),
+    "en": [d.get("damage_code"), d.get("repair_code"), d.get("damage_description")] | select | join(" / "),
+  }) -%}
+{%- endfor -%}
+{%- for r in (doc.get("used_items") or []) if r.get("decision") != "Rejected" -%}
+  {%- set _qty = frappe.utils.flt(r.get("quantity")) -%}
+  {%- set _ = _rows.append({
+    "text": r.get("item_name") or r.get("item"),
+    "en": r.get("remark") or r.get("owner_remark"),
+    "extra": ("%g" % _qty) if _qty else "",
+  }) -%}
+{%- endfor -%}
+{%- set _dt = "dd-MM-yyyy HH:mm" -%}
+
+<div class="spk">
+  {{ spk.title("PERINTAH PERIODIC TEST TANK CONTAINER" if _pt else "PERINTAH PERBAIKAN TANK CONTAINER") }}
+
+  {%- set _head = [
+    ("Tanggal", spk.tanggal(doc.get("plan_date"))),
+    ("Kepada", _crew),
+    ("Dari", spk.fullname(doc.owner)),
+    ("Tank No", doc.get("container_no") or doc.get("container")),
+    ("Principal", doc.get("principal") or c.get("principal")),
+    ("Last cargo", c.get("last_cargo")),
+  ] -%}
+  {%- if _pt -%}
+    {%- set _ = _head.append(("Jenis Test", doc.get("pt_type"))) -%}
+    {%- set _ = _head.append(("Last Test", spk.tanggal(doc.get("last_test_date") or c.get("last_test_date")))) -%}
+  {%- else -%}
+    {%- set _ = _head.append(("Ref. EIR", doc.get("inspection"))) -%}
+  {%- endif %}
+  {{ spk.header(_head, aside={1: spk.tanggal(doc.get("order_created") or doc.creation)}) }}
+
+  {{ spk.line([
+    ("Start", frappe.utils.format_datetime(doc.start_date, _dt) if doc.get("start_date") else ""),
+    ("Finish", frappe.utils.format_datetime(doc.completion_date, _dt) if doc.get("completion_date") else ""),
+  ]) }}
+  {%- if _pt %}
+  {{ spk.line([("Test Pressure (bar)", ""), ("Durasi (menit)", ""), ("No. Gauge", ""), ("Suhu", "")]) }}
+  {%- endif %}
+
+  {{ spk.steps("Cara Pengerjaan", _rows, extra="Qty") }}
+
+  <div class="after">
+    <div>Tanggal Selesai ( Finish Date ) : {{ frappe.utils.format_datetime(doc.completion_date, _dt) if doc.get("completion_date") else "" }}</div>
+    <div>{{ "Hasil Test : Pass / Fail" if _pt else "Status Tank : Acceptable / Rework" }}</div>
+  </div>
+
+  {{ spk.sign("Teknisi Periodic Test" if _pt else "Teknisi Repair", "(Q.C )", _crew) }}
+
+  {{ spk.notice([
+    ("Naikkan tekanan bertahap, jangan melebihi tekanan uji; jauhi katup dan manhole selama tank bertekanan.",
+     "Raise the pressure gradually, never above test pressure; keep clear of valves and manhole while pressurised"),
+  ] if _pt else [
+    ("Pastikan tank kosong, bersih dan bebas gas; pekerjaan panas (las / gerinda) hanya dengan izin supervisor.",
+     "Make sure the tank is empty, clean and gas-free; hot work only with the supervisor's permit"),
+  ]) }}
+
+  {{ spk.closing(doc.get("depot"), doc.owner) }}
+</div>

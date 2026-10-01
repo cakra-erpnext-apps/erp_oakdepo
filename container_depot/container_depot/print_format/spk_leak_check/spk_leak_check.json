@@ -1,0 +1,10 @@
+{
+ "custom_format": 1,
+ "doc_type": "Leak Check",
+ "doctype": "Print Format",
+ "module": "Container Depot",
+ "name": "SPK Leak Check",
+ "print_format_type": "Jinja Template",
+ "standard": "Yes",
+ "modified": "2026-10-01 14:22:27.000000"
+}

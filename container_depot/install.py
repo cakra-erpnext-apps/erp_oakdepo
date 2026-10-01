@@ -1384,11 +1384,16 @@ PROPERTY_SETTERS = [
 	("Container Booking", None, "default_print_format", "OAK Booking Confirmation", "Data"),
 	# Every other depot document the same way: Print opens its OAK format, not Standard.
 	("Inspection", None, "default_print_format", "EIR Format", "Data"),
-	("Cleaning Order", None, "default_print_format", "Cleaning Order Format", "Data"),
-	("Repair Order", None, "default_print_format", "OAK Repair Order", "Data"),
+	# Cleaning / Repair Order print the crew's SPK (user, 2026-10-01); the customer's
+	# certificate and the owner's M&R estimate stay a pick from the dropdown.
+	("Cleaning Order", None, "default_print_format", "SPK Cleaning", "Data"),
+	("Repair Order", None, "default_print_format", "SPK Repair Order", "Data"),
 	("Order Bongkar", None, "default_print_format", "OAK Bon Bongkar", "Data"),
 	("Order Muat", None, "default_print_format", "OAK Bon Muat", "Data"),
 	("Depot Contract", None, "default_print_format", "OAK Depot Contract", "Data"),
+	# Same for these two; they have no other format at all.
+	("Leak Check", None, "default_print_format", "SPK Leak Check", "Data"),
+	("Survey Order", None, "default_print_format", "SPK Survey", "Data"),
 	# Print Language (user, 2026-09-30): Indonesian unless the customer says otherwise, and the
 	# invoice's own is the user's to change — before or after submit, it only picks the words
 	# the OAK Invoice prints in. Moved beside Print Currency by INVOICE_FIELD_MOVES.

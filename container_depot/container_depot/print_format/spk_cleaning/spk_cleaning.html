@@ -1,0 +1,58 @@
+{#-
+  SPK CLEANING — "Perintah Cuci Tank Container", the wash crew's sheet for one Cleaning
+  Order, laid out exactly like the paper form (plain, no design — see oak_spk.html).
+
+  Cara Pencucian = the order's Instruksi Cleaning, one step per line; with none written, the
+  order's service (Jasa) lines stand in as the steps. Readings, start / finish and the
+  verdict stay blank for the crew. The customer's certificate is Cleaning Order Format.
+-#}
+{%- import "container_depot/templates/print/oak_spk.html" as spk with context -%}
+{{ spk.styles() }}
+
+{%- set c = frappe.get_doc("Container", doc.container) if doc.get("container") else {} -%}
+{%- set _jasa = (doc.get("cleaning_services") or []) | selectattr("line_type", "ne", "Part") | list -%}
+{%- set _steps = [] -%}
+{%- for line in (doc.get("cleaning_instructions") or "").splitlines() -%}
+  {%- if line.strip() -%}{%- set _ = _steps.append({"text": line.strip()}) -%}{%- endif -%}
+{%- endfor -%}
+{%- if not _steps -%}
+  {%- for r in _jasa -%}{%- set _ = _steps.append({"text": r.get("item_name") or r.get("cleaning_item"), "en": r.get("remark")}) -%}{%- endfor -%}
+{%- endif -%}
+{%- set _method = _jasa | map(attribute="item_name") | select | join(", ") -%}
+{%- set _dt = "dd-MM-yyyy HH:mm" -%}
+
+<div class="spk">
+  {{ spk.title("PERINTAH CUCI TANK CONTAINER") }}
+
+  {{ spk.header([
+    ("Tanggal", spk.tanggal(doc.get("plan_date"))),
+    ("Kepada", spk.fullname(doc.get("assigned_to"))),
+    ("Dari", spk.fullname(doc.get("created_by") or doc.owner)),
+    ("Tank No", doc.get("container_no") or doc.get("container")),
+    ("Principal", doc.get("container_principal") or c.get("principal")),
+    ("Last cargo", doc.get("last_cargo") or c.get("last_cargo")),
+    ("Metode", _method or doc.get("cleaning_type")),
+  ], aside={1: spk.tanggal(doc.get("order_created") or doc.creation)}) }}
+
+  {{ spk.line([
+    ("Start Cleaning", frappe.utils.format_datetime(doc.cleaning_start, _dt) if doc.get("cleaning_start") else ""),
+    ("Finish Cleaning", frappe.utils.format_datetime(doc.cleaning_end, _dt) if doc.get("cleaning_end") else ""),
+  ]) }}
+  {{ spk.line([("#. CO", ""), ("#. H2S", ""), ("#. L.E.L", ""), ("#. O2", "")]) }}
+
+  {{ spk.steps("Cara Pencucian", _steps) }}
+
+  <div class="after">
+    <div>Tanggal Selesai Cuci ( Finish Cleaning Date ) : {{ frappe.utils.format_datetime(doc.cleaning_end, _dt) if doc.get("cleaning_end") else "" }}</div>
+    <div>Status Tank : Acceptable / Rework</div>
+  </div>
+
+  {{ spk.sign("Crew Cleaning", "(Q.C Cleaning )", spk.fullname(doc.get("assigned_to"))) }}
+
+  {{ spk.notice([
+    ("Sarung tangan dan sarung kaki dapat menggunakan kantong plastik yang sesuai dengan ukurannya.",
+     "Gloves and glove foot can use the plastic bags that fit the size"),
+  ]) }}
+
+  {{ spk.closing(doc.get("depot"), doc.get("created_by") or doc.owner) }}
+</div>

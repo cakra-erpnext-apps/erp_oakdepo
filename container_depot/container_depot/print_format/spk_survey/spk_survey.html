@@ -1,0 +1,51 @@
+{#-
+  SPK SURVEY — the surveyor's sheet for one day's Survey Order (Tank Out), in the plain
+  layout of the paper SPK (see oak_spk.html): every live tank on the schedule with where it
+  stands right now (read off the Container master, never stored on the schedule) and OK / NO
+  to tick.
+-#}
+{%- import "container_depot/templates/print/oak_spk.html" as spk with context -%}
+{{ spk.styles() }}
+
+{%- set _tanks = (doc.get("tanks") or []) | rejectattr("status", "equalto", "Cancelled") | list -%}
+{%- set _where = {} -%}
+{%- if _tanks -%}
+  {%- for t in frappe.get_all("Container", filters={"name": ["in", _tanks | map(attribute="container") | list]}, fields=["name", "current_location"]) -%}
+    {%- set _ = _where.update({t.name: t.current_location}) -%}
+  {%- endfor -%}
+{%- endif -%}
+{%- set _rows = [] -%}
+{%- for t in _tanks -%}
+  {%- set _ = _rows.append({"text": t.get("container_no") or t.container, "en": _where.get(t.container)}) -%}
+{%- endfor -%}
+{%- set _depot = doc.get("depot") or (_tanks[0].get("depot") if _tanks else None) -%}
+{%- set _surveyor = frappe.db.get_value("Customer", doc.surveyor, "customer_name") if doc.get("surveyor") else None -%}
+
+<div class="spk">
+  {{ spk.title("PERINTAH SURVEY TANK CONTAINER") }}
+
+  {{ spk.header([
+    ("Tanggal", spk.tanggal(doc.get("survey_date"))),
+    ("Kepada", _surveyor or doc.get("surveyor")),
+    ("Dari", spk.fullname(doc.owner)),
+    ("Principal", doc.get("principal")),
+    ("Booking", doc.get("booking")),
+    ("Pick up Date", spk.tanggal(doc.get("plan_date"))),
+    ("Jumlah Tank", _tanks | length),
+  ], aside={1: spk.tanggal(doc.creation)}) }}
+
+  {{ spk.steps("Daftar Tank", _rows) }}
+
+  <div class="after">
+    <div>Catatan :</div>
+  </div>
+
+  {{ spk.sign("Surveyor", "(Operator Kalmar )", _surveyor) }}
+
+  {{ spk.notice([
+    ("Survey hanya pada tank yang sudah diturunkan ke ground level; jangan naik ke tumpukan.",
+     "Survey only lowered tanks; never climb the stack"),
+  ]) }}
+
+  {{ spk.closing(_depot, doc.owner) }}
+</div>

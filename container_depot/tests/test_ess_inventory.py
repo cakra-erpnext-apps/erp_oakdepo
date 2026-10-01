@@ -400,6 +400,9 @@ class TestEssInventory(FrappeTestCase):
 
 		rep = get_tank_documents("ESST1000006")
 		self.assertIn("Estimasi Perbaikan", {d["category"] for d in rep["documents"]})
+		# The doctype default is the crew's SPK; the estimate is asked for by name.
+		est = next(d for d in rep["documents"] if d["category"] == "Estimasi Perbaikan")
+		self.assertIn("format=OAK+Repair+Order", est["pdf_url"])
 
 	def test_pdf_url_uses_cleaning_order_format(self):
 		url = _pdf_url("Cleaning Order", "CO-2026-00001", "Cleaning Order Format")
