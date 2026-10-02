@@ -505,25 +505,19 @@ frappe.ui.form.on('Container Booking', {
 			outbound ? frappe.xcall(`${base}.out_work_warnings`, { containers: payload }) : [],
 		])
 			.then(([conflicts, mismatches, pending]) => {
+				// [reason, container_no, hint] — one reason per line, its tanks listed under it,
+				// then what to change. Conflicts come worded by the server, so the banner says
+				// exactly what Submit will say.
 				const lines = [];
-				(conflicts || []).forEach((c) => {
-					// A bon that exists but has not been submitted holds the tank just as
-					// firmly, and is undone differently — say which one it is, or the
-					// operator goes looking for a bon that is already sitting there.
-					lines.push(
-						c.state === 'Used'
-							? __('Container {0} sudah dibonkan lewat booking {1} ({2}), tapi tank-nya belum bergerak — submit bon itu dulu.', [c.container_no, c.booking, c.direction || '-'])
-							: __('Container {0} is already on booking {1} ({2}).', [c.container_no, c.booking, c.direction || '-'])
-					);
-				});
+				(conflicts || []).forEach((c) => lines.push([c.reason, c.container_no, c.hint || '']));
 				(mismatches || []).forEach((m) => {
-					if (m.direction === 'Tank In') {
-						lines.push(__('Container {0} is already in the depot (status {1}) — a Tank In (Lift Off) will be refused.', [m.container_no, m.status]));
-					} else {
-						lines.push(
-							__('Container {0} tidak ada di depo (status {1}) — booking keluar akan ditolak.', [m.container_no, m.status])
-						);
-					}
+					lines.push([
+						m.direction === 'Tank In'
+							? __('Container berikut sudah ada di depo (status {0}) — booking masuk akan ditolak:', [m.status])
+							: __('Container berikut tidak ada di depo (status {0}) — booking keluar akan ditolak:', [m.status]),
+						m.container_no,
+						'',
+					]);
 				});
 				// Unfinished work is NOT one of the lines above any more. An outbound booking
 				// is how the depot learns a pickup is coming, so it is accepted and the work
@@ -542,7 +536,19 @@ frappe.ui.form.on('Container Booking', {
 					return;
 				}
 				const blocks = [];
-				if (lines.length) blocks.push(`<b>${__('Akan ditolak saat Submit:')}</b><br>${lines.join('<br>')}`);
+				if (lines.length) {
+					const groups = new Map();
+					lines.forEach(([reason, no, hint]) => {
+						const key = reason + hint;
+						if (!groups.has(key)) groups.set(key, { reason, hint, nos: [] });
+						groups.get(key).nos.push(no);
+					});
+					const listed = [...groups.values()]
+						.map(({ reason, hint, nos }) =>
+							`${reason}<ul>${nos.map((n) => `<li><b>${frappe.utils.escape_html(n)}</b></li>`).join('')}</ul>${hint}`)
+						.join('');
+					blocks.push(`<b>${__('Akan ditolak saat Submit:')}</b><br>${listed}`);
+				}
 				if (prep.length) {
 					blocks.push(
 						`<b>${__('Belum selesai — akan diprioritaskan untuk tanggal muat booking ini:')}</b><br>${prep.join('<br>')}`

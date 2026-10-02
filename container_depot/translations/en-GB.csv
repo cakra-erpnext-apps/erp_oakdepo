@@ -1,3 +1,4 @@
+(tanpa nomor),(no number)
 <b>Dibayar dari</b> harus akun Kas/Bank milik {0}.,<b>Paid from</b> must be a Cash/Bank account of {0}.
 <b>Survey Date</b> harus sama dengan atau sebelum <b>Pick up Date</b> ({0}).<br>Ubah Survey Date di: {1},<b>Survey Date</b> must be on or before the <b>Pick up Date</b> ({0}).<br>Change the Survey Date in: {1}
 Aksi ini hanya untuk {0}.,This action is only for {0}.
@@ -71,12 +72,15 @@ Booking terkunci,Booking locked
 Booking {0} belum punya Tanggal Survey. Isi dulu di booking-nya.,Booking {0} has no Survey Date yet. Fill it in on the booking first.
 "Booking {0} sudah disubmit dan tidak bisa langsung dibatalkan. Kembali ke Draft dulu, lalu batalkan draft-nya.","Booking {0} is already submitted and cannot be cancelled directly. Return it to Draft first, then cancel the draft."
 Booking {0} sudah disubmit — isinya tidak bisa diubah lagi. Pakai <b>Kembali ke Draft</b> dulu kalau memang harus dikoreksi.,Booking {0} is already submitted — its contents can no longer be changed. Use <b>Kembali ke Draft</b> (back to draft) first if it really must be corrected.
+"Booking {0} yang salah — buka, hapus tank ini dari sana atau Cancel booking itu, lalu submit lagi booking ini.","Booking {0} is the wrong one — open it, remove this tank there or Cancel that booking, then submit this booking again."
+"Booking {0} yang salah — buka, klik <b>Kembali ke Draft</b>, hapus tank ini dari sana atau Cancel booking itu, lalu submit lagi booking ini.","Booking {0} is the wrong one — open it, click <b>Kembali ke Draft</b> (back to draft), remove this tank there or Cancel that booking, then submit this booking again."
 Buat Invoice,Create Invoice
 Bypass hanya dari Draft / Revision Requested (status: {0}).,Bypass is only possible from Draft / Revision Requested (status: {0}).
 Cancel Dokumen Turunan Dulu,Cancel Follow-up Documents First
 Cek letak tank,Check tank position
 Cek letak tank • {0},Check tank position • {0}
 Cek letak tank • {0} — survey {1},Check tank position • {0} — survey {1}
+"Cek nomor tank-nya, atau <b>hapus baris tank itu dari booking ini</b>.","Check the tank number, or <b>remove that tank's row from this booking</b>."
 Cleaning Order dibuat,Cleaning Order created
 Cleaning Order sudah dikirim untuk review Admin Ops.,Cleaning Order has been sent for Admin Ops review.
 Cleaning Order sudah dikirim untuk review. Tarik kembali dulu kalau mau diperbaiki.,Cleaning Order has already been sent for review. Withdraw it first if you want to fix it.
@@ -96,21 +100,28 @@ Cleaning • {0} — menunggu review Admin Ops (oleh {1}),Cleaning • {0} — a
 Container Belum Siap Keluar,Container Not Ready to Leave
 "Container Booking {0} tidak memuat container {1}. Pilih booking yang benar, atau kosongkan kalau order ini berdiri sendiri.","Container Booking {0} does not include container {1}. Pick the correct booking, or leave it empty if this order stands on its own."
 Container Kosong,No Containers
+Container Masih di Depo,Container Still in the Depot
 Container Sudah Dibooking,Container Already Booked
+Container berikut belum terdaftar — Tank Out wajib memakai tank dari master:,The following containers are not registered — a Tank Out must use a tank from the master:
 Container berikut bukan milik Principal <b>{0}</b>:,The following containers do not belong to Principal <b>{0}</b>:
+Container berikut masih ada di depo (status {0}) — tidak bisa dibuat booking masuk:,The following containers are still in the depot (status {0}) — an inbound booking cannot be made:
+"Container berikut sudah ada di booking {0} lain yang masih Draft, {1}:","The following containers are already on another {0} booking that is still a Draft, {1}:"
+"Container berikut sudah ada di booking {0} lain yang sudah Confirmed (belum ada bon), {1}:","The following containers are already on another {0} booking that is Confirmed (no voucher yet), {1}:"
+Container berikut sudah ada di depo (status {0}) — booking masuk akan ditolak:,The following containers are already in the depot (status {0}) — an inbound booking will be refused:
+"Container berikut sudah dijadwalkan {0} lewat booking {1}, dan booking itu menunggu tank-nya {2} lewat booking ini:","The following containers are already scheduled {0} on booking {1}, and that booking is waiting for them to {2} through this booking:"
+"Container berikut sudah punya booking {0} lain, {1}, dan sudah dibuatkan bon {2}:","The following containers already have another {0} booking, {1}, with voucher {2} already issued:"
+Container berikut tidak ada di depo (status {0}) — booking keluar akan ditolak:,The following containers are not in the depot (status {0}) — an outbound booking will be refused:
+Container berikut tidak ada di depo (status {0}) — tidak bisa dibuat booking keluar:,The following containers are not in the depot (status {0}) — an outbound booking cannot be made:
+Container berikut tidak ditemukan:,The following containers were not found:
 Container ini tidak ada di Branch {0}:,These containers are not in Branch {0}:
 Container wajib diisi.,Container is required.
 Container {0} belum bisa dinonaktifkan:,Container {0} cannot be deactivated yet:
 Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.,Container {0} has not had a Leak Check{1}. The surveyor must fill in the Leak Check before the tank leaves.
 Container {0} belum punya EIR-Out bersih (Ready To Load). Surveyor harus submit EIR-Out dulu.,Container {0} has no clean EIR-Out (Ready To Load) yet. The surveyor must submit the EIR-Out first.
-Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk.,Container {0} is still in the depot (status {1}) — an inbound booking cannot be made.
 Container {0} masih punya order yang belum selesai — {1}.,Container {0} still has unfinished orders — {1}.
-Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — batalkan booking itu dulu atau terbitkan bon-nya.,"Container {0} is still tied to booking {1} ({2}), which has no voucher yet — cancel that booking first or issue its voucher."
 Container {0} sudah ada di depo (status {1}) — tidak bisa gate-in lagi.,Container {0} is already in the depot (status {1}) — it cannot gate in again.
-"Container {0} sudah dibonkan lewat booking {1} ({2}), tapi tank-nya belum {3} depo — submit bon itu dulu, atau batalkan kalau tank-nya memang tidak jadi.","Container {0} already has a voucher from booking {1} ({2}), but the tank has not {3} the depot yet — submit that voucher first, or cancel it if the tank is not coming after all."
 Container {0} sudah non-aktif (keluar dari armada) — tidak bisa dipakai untuk transaksi baru.,Container {0} is inactive (left the fleet) — it cannot be used for new transactions.
 Container {0} sudah terdaftar — pilih dari daftar.,Container {0} is already registered — pick it from the list.
-Container {0} tidak ada di depo (status {1}) — tidak bisa dibuat booking keluar.,Container {0} is not in the depot (status {1}) — an outbound booking cannot be made.
 Container {0} tidak ada di depo (status {1}) — tidak bisa gate-out.,Container {0} is not in the depot (status {1}) — it cannot gate out.
 Container {0} tidak ditemukan.,Container {0} not found.
 Customer minta booking dibuka lagi,Customer asks to reopen a booking
@@ -316,6 +327,7 @@ Row {0} ({1}): masih ada order yang belum selesai — {2}.,Row {0} ({1}): there 
 Row {0} ({1}): tank belum ada di depo (status {2}) — bon muat baru bisa dibuat setelah tank masuk.,Row {0} ({1}): the tank is not in the depot yet (status {2}) — a loading voucher can only be made after the tank arrives.
 Row {0} ({1}): tank masih ada di depo (status {2}) — bon bongkar baru bisa dibuat setelah tank keluar.,Row {0} ({1}): the tank is still in the depot (status {2}) — an unloading voucher can only be made after the tank leaves.
 Rule aktif wajib punya minimal satu role penerima. Matikan 'Aktif' untuk menonaktifkan event ini.,An active rule must have at least one recipient role. Untick 'Aktif' to disable this event.
+Salah nomor — <b>hapus baris tank itu dari booking ini</b>.,Wrong number — <b>remove that tank's row from this booking</b>.
 Sales Invoice gagal dibuat (apakah site sudah siap untuk invoicing?).,Could not create the Sales Invoice (is the site ready for invoicing?).
 Sales Invoice {0} sudah disubmit ({1}) — batalkan invoice-nya dulu (pembayarannya ikut dibalik) sebelum booking bisa kembali ke Draft.,Sales Invoice {0} is already submitted ({1}) — cancel the invoice first (its payment is reversed too) before the booking can go back to Draft.
 "Sales Invoice {0} sudah disubmit — charges / customer booking ini tidak bisa diubah lagi. Batalkan invoice-nya dulu, atau batalkan booking ini dan buat yang baru.","Sales Invoice {0} is already submitted — this booking's charges / customer can no longer be changed. Cancel the invoice first, or cancel this booking and create a new one."
@@ -353,6 +365,10 @@ Tanggal uji wajib diisi.,The test date is required.
 Tank Masih Terpakai,Tank Still in Use
 Tank Non-Aktif,Inactive Tank
 Tank di-HOLD,Tank on HOLD
+Tank ini memang lewat booking {0} — <b>hapus baris tank ini dari booking yang sedang Anda buat</b>.,The tank really goes through booking {0} — <b>remove this tank's row from the booking you are making</b>.
+Tank keluar dulu lewat bon {0} (EIR-Out lalu gate-out); booking keluar baru bisa dibuat sesudahnya.,"The tank leaves on voucher {0} first (EIR-Out, then gate-out); a new outbound booking is possible only after that."
+"Tank masih di depo: buat dulu booking keluar-nya, baru booking masuk ini bisa di-submit.","The tank is still in the depot: make its outbound booking first, then this inbound booking can be submitted."
+Tank masuk dulu lewat bon {0} (submit bon itu).,The tank comes in on voucher {0} first (submit that voucher).
 Tank menunggu lowering,Tank awaiting lowering
 Tank siap disurvey,Tank ready for survey
 Tank {0} statusnya {1} — belum ada yang bisa dibuka lagi.,Tank {0} is {1} — there is nothing to reopen yet.
@@ -378,7 +394,9 @@ Tidak boleh {0} Survey Order.,Not permitted to {0} Survey Order.
 Tidak memiliki izin untuk mengakses dokumen ini.,No permission to access this document.
 Tipe,Type
 Ukuran,Size
+Yang bisa dilakukan:,What you can do:
 ada temuan kerusakan,damage found
+bon-nya,its voucher
 containers harus berupa array JSON.,containers must be a JSON array.
 dibatalkan,cancelled
 dikembalikan ke draft,returned to draft

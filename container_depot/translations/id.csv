@@ -169,7 +169,6 @@ Invalid Booking Code format.,Format Booking Code tidak valid.
 Invalid container_no format.,Format container_no tidak valid.
 Invalid status filter: {0},Filter status tidak valid: {0}
 Invalid webhook signature.,Signature webhook tidak valid.
-Item for {0}: container link required for Tank Out.,Item untuk {0}: link container wajib diisi untuk Tank Out.
 LEFT,KIRI
 LONG,PANJANG
 Leakage,Bocor

@@ -753,9 +753,9 @@ class ContainerBooking(Document):
 		if wrong:
 			frappe.throw(
 				_("Container ini tidak ada di Branch {0}:").format(self.branch)
-				+ "<br>"
-				+ "<br>".join(wrong)
-				+ "<br><br>"
+				+ "<ul>"
+				+ "".join(f"<li>{w}</li>" for w in wrong)
+				+ "</ul>"
 				+ _("Ganti Branch booking, atau pilih container dari depo Branch ini."),
 				title=_("Beda Branch"),
 			)
@@ -1175,9 +1175,9 @@ class ContainerBooking(Document):
 			return
 		frappe.throw(
 			_("Container berikut bukan milik Principal <b>{0}</b>:").format(self.principal)
-			+ "<br>"
-			+ "<br>".join(f"<b>{no}</b> — milik {owner}" for no, owner in wrong)
-			+ "<br><br>"
+			+ "<ul>"
+			+ "".join(f"<li><b>{no}</b> — milik {owner}</li>" for no, owner in wrong)
+			+ "</ul>"
 			+ _("Ganti Principal booking atau keluarkan baris itu."),
 			title=_("Beda Principal"),
 		)
@@ -1553,18 +1553,17 @@ class ContainerBooking(Document):
 		saved (so the booking can be prepared while the yard finishes up); only the submit
 		is blocked, and it names the exact orders standing in the way.
 		"""
-		failures: list[str] = []
+		failures: list[tuple[str, str]] = []
 		# Submit-only hard requirement: a Tank Out must reference a real, existing tank
 		# (unlike Tank In, it never auto-creates one).
 		for item in self.items or []:
 			if not item.container:
-				failures.append(
-					_("Item for {0}: container link required for Tank Out.").format(
-						item.container_no or "(no number)"
-					)
-				)
+				failures.append((
+					_("Container berikut belum terdaftar — Tank Out wajib memakai tank dari master:"),
+					item.container_no or _("(tanpa nomor)"),
+				))
 			elif not frappe.db.exists("Container", item.container):
-				failures.append(_("Container {0} not found.").format(item.container))
+				failures.append((_("Container berikut tidak ditemukan:"), item.container))
 		# Status readiness — shared with the draft warning so the two never disagree.
 		for m in _find_status_mismatches(
 			"Tank Out", [(i.container, i.container_no) for i in (self.items or [])], self.name
@@ -1572,7 +1571,11 @@ class ContainerBooking(Document):
 			failures.append(_describe_out_block(m))
 
 		if failures:
-			frappe.throw("<br><br>".join(failures), title=_("Container Belum Siap Keluar"))
+			frappe.throw(
+				_listed(failures)
+				+ _todo(_("Cek nomor tank-nya, atau <b>hapus baris tank itu dari booking ini</b>.")),
+				title=_("Container Belum Siap Keluar"),
+			)
 
 	def _validate_no_open_booking(self):
 		"""SUBMIT gate: a container must not already be spoken for by another booking.
@@ -1597,7 +1600,7 @@ class ContainerBooking(Document):
 		)
 		if conflicts:
 			frappe.throw(
-				"<br>".join(_describe_booking_conflict(c) for c in conflicts),
+				_listed(_describe_booking_conflict(c) for c in conflicts),
 				title=_("Container Sudah Dibooking"),
 			)
 
@@ -1608,15 +1611,25 @@ class ContainerBooking(Document):
 		Shares ``_find_status_mismatches`` with the draft warning; a brand-new pre-arrival
 		tank has no master yet, so it is skipped there and created fresh on save."""
 		failures = [
-			_(
-				"Container {0} masih ada di depo (status {1}) — tidak bisa dibuat booking masuk."
-			).format(m["container_no"], m["status"])
+			(
+				_("Container berikut masih ada di depo (status {0}) — tidak bisa dibuat booking masuk:").format(
+					m["status"]
+				),
+				m["container_no"],
+			)
 			for m in _find_status_mismatches(
 				"Tank In", [(i.container, i.container_no) for i in (self.items or [])], self.name
 			)
 		]
 		if failures:
-			frappe.throw("<br>".join(failures))
+			frappe.throw(
+				_listed(failures)
+				+ _todo(
+					_("Tank masih di depo: buat dulu booking keluar-nya, baru booking masuk ini bisa di-submit."),
+					_("Salah nomor — <b>hapus baris tank itu dari booking ini</b>."),
+				),
+				title=_("Container Masih di Depo"),
+			)
 
 	def _enforce_payment_rules(self):
 		"""**Cash / walk-in (no contract): the money is in before the booking is
@@ -2280,17 +2293,19 @@ def _block_if_partner_waits(doc) -> None:
 		return
 	partner_direction = _OPPOSITE.get(doc.direction)
 	move = _("keluar") if doc.direction == "Tank Out" else _("masuk")
-	lines = [
-		_("Container <b>{0}</b> sudah dijadwalkan {1} lewat booking {2}, dan booking itu "
-		  "menunggu tank ini {3} lewat booking ini.").format(
-			cno, partner_direction, frappe.utils.get_link_to_form("Container Booking", partner), move
+	lines = _listed(
+		(
+			_("Container berikut sudah dijadwalkan {0} lewat booking {1}, dan booking itu "
+			  "menunggu tank-nya {2} lewat booking ini:").format(
+				partner_direction, frappe.utils.get_link_to_form("Container Booking", partner), move
+			),
+			cno,
 		)
 		for cno, partner in dict.fromkeys(waiting)
-	]
+	)
 	partners = ", ".join(dict.fromkeys(p for _c, p in waiting))
 	frappe.throw(
-		"<br>".join(lines)
-		+ "<br><br>"
+		lines
 		+ _("<b>Langkah selanjutnya:</b> batalkan dulu booking {0}, lalu batalkan booking {1} ini lagi. "
 		    "Kalau booking {0} tetap dibutuhkan, jangan batalkan booking ini — ubah saja jadwalnya.").format(
 			partners, doc.name
@@ -2489,6 +2504,7 @@ def revert_booking_to_draft(booking):
 	)
 	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=0 WHERE parent=%s", doc.name)
 	return {"booking": doc.name, "docstatus": 0, "booking_status": "Pending Confirmation"}
+
 
 
 # ---- customer-raised bookings ----------------------------------------------
@@ -2940,8 +2956,25 @@ def _find_booking_conflicts(exclude_booking, containers, direction=None) -> list
 				"booking": r.booking,
 				"direction": r.direction,
 				"state": r.get("state") or "Draft",
+				# Which bon to open — "sudah dibonkan" alone left the operator hunting for it.
+				"bon": _bon_for_code(r.name) if r.get("state") == "Used" else None,
 			})
 	return out
+
+
+def _bon_for_code(code: str) -> list | None:
+	"""``[doctype, name]`` of the live (not voided) bon carrying this Booking Code."""
+	for doctype, child in _BON_CONTAINER_TABLES:
+		parents = frappe.get_all(
+			child, filters={"parenttype": doctype, "booking_code": code}, pluck="parent"
+		)
+		live = parents and frappe.get_all(
+			doctype, filters={"name": ["in", parents], "docstatus": ["<", 2]},
+			pluck="name", order_by="creation desc", limit=1,
+		)
+		if live:
+			return [doctype, live[0]]
+	return None
 
 
 def _code_still_holds(code, status) -> bool:
@@ -3019,31 +3052,78 @@ def open_booking_conflicts(booking=None, containers=None, direction=None) -> lis
 	"""
 	rows = frappe.parse_json(containers) if isinstance(containers, str) else (containers or [])
 	pairs = [(r.get("container"), r.get("container_no")) for r in rows]
-	return _find_booking_conflicts(booking, pairs, direction)
+	conflicts = _find_booking_conflicts(booking, pairs, direction)
+	for c in conflicts:
+		# Worded here, once, so the form banner says exactly what Submit will say.
+		c["reason"], _no, c["hint"] = _describe_booking_conflict(c)
+	return conflicts
 
 
-def _describe_booking_conflict(conflict) -> str:
-	"""Why one container is not free to be booked, in terms the operator can act on.
+def _listed(failures) -> str:
+	"""``(reason, container_no[, hint])`` tuples as one message: each reason once, its tanks
+	listed under it, then what the operator can do about them.
 
-	The two holds need different instructions, so they are not said the same way: a
-	booking with no bon yet is undone by cancelling it, while a bon that already exists is
-	undone by submitting it (the tank moves and the hold lifts by itself) or by voiding it.
-	Saying "belum dibuatkan bon" over a tank that HAS one sent the operator looking for a
-	document that was already sitting there.
+	Three tanks held by the same booking used to repeat the whole sentence three times, and
+	the one thing that differed — the tank number — was lost in the middle of it (user,
+	2026-10-02: "listkan validasi message seperti ini" / "agar user bisa tau ubah yang mana").
 	"""
-	if conflict.get("state") == "Used":
-		moved = _("keluar dari") if conflict.get("direction") == "Tank Out" else _("masuk ke")
-		return _(
-			"Container {0} sudah dibonkan lewat booking {1} ({2}), tapi tank-nya belum {3} depo — "
-			"submit bon itu dulu, atau batalkan kalau tank-nya memang tidak jadi."
-		).format(conflict["container_no"], conflict["booking"], conflict.get("direction") or "-", moved)
-	return _(
-		"Container {0} masih terikat booking {1} ({2}) yang belum dibuatkan bon — "
-		"batalkan booking itu dulu atau terbitkan bon-nya."
-	).format(conflict["container_no"], conflict["booking"], conflict.get("direction") or "-")
+	groups: dict[tuple[str, str], list[str]] = {}
+	for reason, container_no, *hint in failures:
+		groups.setdefault((reason, hint[0] if hint else ""), []).append(container_no)
+	return "".join(
+		f"{reason}<ul>{''.join(f'<li><b>{no}</b></li>' for no in nos)}</ul>{hint}"
+		for (reason, hint), nos in groups.items()
+	)
 
 
-def _describe_out_block(mismatch) -> str:
+def _todo(*steps) -> str:
+	return "<b>" + _("Yang bisa dilakukan:") + "</b><ul>" + "".join(f"<li>{s}</li>" for s in steps) + "</ul>"
+
+
+def _describe_booking_conflict(conflict) -> tuple[str, str, str]:
+	"""``(reason, container_no, hint)``: which document holds the tank, and what to change.
+
+	The reason names the holding booking — and its bon, when there is one — as links, so
+	the operator opens the right document instead of guessing. The hint offers the two
+	real ways out: the row in THIS booking is the mistake (remove it), or the other booking
+	is (undo it there). How that other booking is undone depends on how far it got:
+
+	* **Draft** — edit or Cancel it.
+	* **Active** (confirmed, no bon) — Kembali ke Draft, then edit or Cancel.
+	* **Used** (a bon exists) — the booking is frozen for good (:func:`_block_if_bon_raised`),
+	  so the only way forward is the bon itself: the tank moves on it. Per direction
+	  (:func:`_code_still_holds`): a Tank In bon's submit IS the arrival, but a Tank Out
+	  bon's submit moves nothing — the hold lifts at the gate-out. "Submit bon itu dulu" on
+	  a Tank Out sent the operator to a submit that changed nothing.
+	"""
+	booking = frappe.utils.get_link_to_form("Container Booking", conflict["booking"])
+	out = conflict.get("direction") == "Tank Out"
+	move = conflict.get("direction") or "-"
+	remove = _("Tank ini memang lewat booking {0} — <b>hapus baris tank ini dari booking yang sedang Anda buat</b>.").format(booking)
+	state = conflict.get("state")
+	if state == "Used":
+		bon = frappe.utils.get_link_to_form(*conflict["bon"]) if conflict.get("bon") else _("bon-nya")
+		reason = _("Container berikut sudah punya booking {0} lain, {1}, dan sudah dibuatkan bon {2}:").format(
+			move, booking, bon
+		)
+		finish = (
+			_("Tank keluar dulu lewat bon {0} (EIR-Out lalu gate-out); booking keluar baru bisa dibuat sesudahnya.")
+			if out
+			else _("Tank masuk dulu lewat bon {0} (submit bon itu).")
+		).format(bon)
+		return reason, conflict["container_no"], _todo(remove, finish)
+	if state == "Draft":
+		reason = _("Container berikut sudah ada di booking {0} lain yang masih Draft, {1}:").format(move, booking)
+		undo = _("Booking {0} yang salah — buka, hapus tank ini dari sana atau Cancel booking itu, lalu submit lagi booking ini.")
+	else:
+		reason = _("Container berikut sudah ada di booking {0} lain yang sudah Confirmed (belum ada bon), {1}:").format(
+			move, booking
+		)
+		undo = _("Booking {0} yang salah — buka, klik <b>Kembali ke Draft</b>, hapus tank ini dari sana atau Cancel booking itu, lalu submit lagi booking ini.")
+	return reason, conflict["container_no"], _todo(remove, undo.format(booking))
+
+
+def _describe_out_block(mismatch) -> tuple[str, str]:
 	"""Why one container cannot be booked out: it is not in the depot.
 
 	The only reason left. Unfinished work used to be the other one and is not a refusal any
@@ -3052,8 +3132,8 @@ def _describe_out_block(mismatch) -> str:
 	bon and at the gate, which is where "not ready to move" actually belongs.
 	"""
 	return _(
-		"Container {0} tidak ada di depo (status {1}) — tidak bisa dibuat booking keluar."
-	).format(mismatch["container_no"], mismatch["status"])
+		"Container berikut tidak ada di depo (status {0}) — tidak bisa dibuat booking keluar:"
+	).format(mismatch["status"]), mismatch["container_no"]
 
 
 @frappe.whitelist()

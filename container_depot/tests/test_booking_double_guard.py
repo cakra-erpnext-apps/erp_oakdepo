@@ -373,6 +373,28 @@ class TestBookingDoubleGuard(FrappeTestCase):
 			make_order(outbound.name, [code])
 		self.assertIn("belum ada di depo", str(cm.exception))
 
+	def test_a_bon_muat_on_the_outbound_still_lets_the_return_be_booked(self):
+		"""The screenshot case (user, 2026-10-02): tanks booked out and already on a bon
+		muat that is not submitted yet. Booking them back IN is the agreed 1 In + 1 Out;
+		only a SECOND Tank Out is refused."""
+		from container_depot.container_depot.order_generation import make_order
+
+		self._arrived_container(C_OUT)
+		outbound = self._book(C_OUT, "Tank Out")
+		make_order(outbound.name, frappe.get_all("Booking Code", {"booking": outbound.name}, pluck="name"))
+		self.assertEqual(frappe.db.get_value("Booking Code", {"booking": outbound.name}, "state"), "Used")
+
+		self._book(C_OUT, "Tank In")  # must not raise
+		with self.assertRaises(frappe.ValidationError) as cm:
+			self._book(C_OUT, "Tank Out")
+		# Names what to open — the holding booking AND its bon — and what to change.
+		msg = str(cm.exception)
+		bon = frappe.db.get_value("Order Muat", {"booking": outbound.name}, "name")
+		self.assertIn(outbound.name, msg)
+		self.assertIn(bon, msg)
+		self.assertIn("hapus baris tank ini", msg)
+		self.assertIn("gate-out", msg)  # not "submit bon": that moves nothing on a Tank Out
+
 	def test_bon_bongkar_waits_for_the_tank_to_leave(self):
 		self._arrived_container(C_OUT)
 		self._book(C_OUT, "Tank Out")
@@ -444,3 +466,16 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		void_draft(inbound.name)  # must not raise
 		# Born for the inbound booking, so voiding it drops the phantom master outright.
 		self.assertFalse(frappe.db.exists("Container", C_IN))
+
+
+class TestRefusalListed(FrappeTestCase):
+	"""Several tanks refused for one reason: the sentence once, the tanks listed under it."""
+
+	def test_same_reason_is_said_once(self):
+		from container_depot.container_depot.doctype.container_booking.container_booking import _listed
+
+		self.assertEqual(
+			_listed([("Terikat BKG-1:", "AAAU1"), ("Tidak di depo:", "BBBU2"), ("Terikat BKG-1:", "CCCU3")]),
+			"Terikat BKG-1:<ul><li><b>AAAU1</b></li><li><b>CCCU3</b></li></ul>"
+			"Tidak di depo:<ul><li><b>BBBU2</b></li></ul>",
+		)
