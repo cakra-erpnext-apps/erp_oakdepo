@@ -1039,8 +1039,10 @@ class TestConfirmedBookingIsLocked(FrappeTestCase):
 		self.assertNotEqual(doc.remarks, "revisi catatan")
 
 	def test_a_row_cannot_be_edited(self):
+		# Truck / driver stay editable and follow the bon (2026-10-02, test_booking_bon_sync);
+		# the rest of the row does not.
 		doc, _codes = self._confirmed("MCRVB0")
-		doc.items[0].driver = "Sopir Baru"
+		doc.items[0].condition = "LADEN"
 		self._refuses(doc)
 
 	def test_a_row_cannot_be_added(self):

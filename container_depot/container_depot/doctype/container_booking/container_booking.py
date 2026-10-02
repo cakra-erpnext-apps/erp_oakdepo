@@ -241,13 +241,61 @@ class ContainerBooking(Document):
 	# this hook, so nothing internal is caught by the throw below.
 
 	def before_update_after_submit(self):
+		# Except the truck / driver detail on the container lines, which stays editable and
+		# carries over to the bon (order_generation.sync_lines_to_bons, user 2026-10-02).
+		from container_depot.container_depot.order_generation import LINE_SYNC_FIELDS, assert_lines_editable
+
+		if not self._changed_besides(LINE_SYNC_FIELDS):
+			assert_lines_editable(self)
+			return
 		frappe.throw(
 			_(
-				"Booking {0} sudah disubmit — isinya tidak bisa diubah lagi. "
-				"Pakai <b>Kembali ke Draft</b> dulu kalau memang harus dikoreksi."
+				"Booking {0} sudah disubmit — yang masih bisa diubah hanya No. Truk, Driver, No. HP "
+				"Driver, RO, Remarks, EMKL dan Shipper di baris container. Pakai <b>Kembali ke Draft</b> "
+				"kalau yang lain memang harus dikoreksi, atau muat ulang form kalau booking ini baru "
+				"berubah di tempat lain."
 			).format(self.name),
 			title=_("Booking terkunci"),
 		)
+
+	def on_update_after_submit(self):
+		from container_depot.container_depot.order_generation import sync_lines_to_bons
+
+		sync_lines_to_bons(self)
+
+	def _changed_besides(self, line_fields) -> bool:
+		"""Did this update-after-submit touch anything but ``line_fields`` of existing lines?
+
+		Every ``allow_on_submit`` value is compared with the saved one — including the
+		system-kept ones (bon status, % Keluar): a form opened before a bon came out still holds
+		the old values, and saving them back would undo what the system wrote since."""
+		before = self.get_doc_before_save()
+		if not before:
+			return True
+
+		def norm(df, v):
+			if df.fieldtype in ("Int", "Float", "Currency", "Percent", "Check"):
+				return flt(v)
+			if df.fieldtype == "Date":
+				return str(getdate(v)) if v else ""
+			return v or ""
+
+		def differs(new, old, skip=()):
+			return any(
+				norm(df, new.get(df.fieldname)) != norm(df, old.get(df.fieldname))
+				for df in new.meta.fields
+				if df.allow_on_submit and df.fieldtype not in ("Table", "Table MultiSelect") and df.fieldname not in skip
+			)
+
+		if differs(self, before):
+			return True
+		for table, skip in (("items", line_fields), ("charges", ())):
+			new, old = self.get(table) or [], before.get(table) or []
+			if [r.name for r in new] != [r.name for r in old] or any(
+				differs(n, o, skip) for n, o in zip(new, old)
+			):
+				return True
+		return False
 
 	def on_update(self):
 		# A row the operator deleted (or repointed at another tank) leaves its container
@@ -2167,7 +2215,8 @@ def refresh_line_realisation(booking: str) -> None:
 			FROM `tabBooking Code` bc
 			JOIN `tab{child}` c ON c.booking_code = bc.name AND c.parenttype = %(parent_dt)s
 			JOIN `tab{parent_dt}` p ON p.name = c.parent
-			WHERE bc.booking = %(booking)s AND bc.state = 'Used'
+			-- A voided bon keeps its row and code link; only the live one dates the line.
+			WHERE bc.booking = %(booking)s AND bc.state = 'Used' AND p.docstatus < 2
 			""".format(date_field=date_field, child=child, parent_dt=parent_dt),
 			{"booking": booking, "parent_dt": parent_dt},
 		) or []:
@@ -3527,6 +3576,7 @@ def related_orders(booking: str) -> list:
 			"container": r.container,
 			"container_no": r.container_no,
 			"target_lift_on": plan_date,
+			"booking": booking,
 		}
 		for r in rows
 	])
@@ -3557,6 +3607,11 @@ def _work_for(booking: str, container: str) -> list:
 	# Coerce before comparing: Inspection dates a Date and the work orders a Datetime, and
 	# Python refuses to order the two against each other. Undated rows sort last rather
 	# than blowing up the panel.
+	# The bon this booking raised for the tank (Bongkar on this inbound panel).
+	orders += [
+		{"doctype": b["doctype"], "name": b["name"], "label": b["kind"], "status": b["status"], "date": b["date"]}
+		for b in tank_documents.booking_bons(booking, container)
+	]
 	orders.sort(key=lambda o: (o["date"] is None, get_datetime(o["date"]) if o["date"] else None))
 	return orders
 

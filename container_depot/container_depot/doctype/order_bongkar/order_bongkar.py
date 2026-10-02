@@ -29,6 +29,7 @@ class OrderBongkar(Document):
 
 	def on_update(self):
 		_reconcile_codes(self)
+		_sync_lines(self)
 		# A bon sent back to draft (revert_order_to_draft) may lose a row: its Leak Check
 		# order goes with it now, not at the next submit.
 		if self.docstatus == 0:
@@ -54,6 +55,9 @@ class OrderBongkar(Document):
 		_leak_checks(self, "provision_for_order_bongkar")
 		from container_depot.container_depot.notify import notify_order_gate
 		notify_order_gate(self, "in")
+		# A re-submit after an edit: the drafts and the gate log above were kept, not re-made.
+		from container_depot.container_depot.order_generation import refresh_bon_followers
+		refresh_bon_followers(self.doctype, self.name)
 
 	def on_cancel(self):
 		_release_codes(self)
@@ -70,6 +74,12 @@ class OrderBongkar(Document):
 		# actions are stripped in the form script; raw maintenance
 		# (frappe.db.delete) bypasses this guard.
 		frappe.throw(_("An Order Bongkar cannot be deleted — use Cancel to void it instead."))
+
+
+def _sync_lines(order: Document):
+	"""Truck / driver edited on the bon → the booking line follows (order_generation)."""
+	from container_depot.container_depot.order_generation import sync_bon_to_lines
+	sync_bon_to_lines(order)
 
 
 def _provision_eirs(order: Document):

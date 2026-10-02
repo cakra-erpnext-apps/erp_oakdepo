@@ -6,8 +6,9 @@ opened to ask once the truck is on its way: what still has to happen to these ta
 
 The kinds, in the order an operator thinks about them: the Cleaning / M&R work behind
 readiness, the EIRs recording the tank's condition, the Survey Order that goes and finds it
-in the yard, the Leak Check, and the bookings it moves under. The bons are left out (user,
-2026-10-02): a bon's status follows the paperwork, not the tank, and read as ambiguous here.
+in the yard, the Leak Check, and the bookings it moves under. Bons only when the panel is
+asked for one booking (:func:`booking_bons`): every bon the tank ever rode on read as
+ambiguous (user, 2026-10-02), the bons of the booking being looked at do not.
 
 Two different questions are answered side by side and must not be confused:
 
@@ -314,6 +315,53 @@ def _job_done(job, tank_status: str | None) -> bool:
 
 
 
+# A booking's bons, one table per direction: make_order picks the bon from the code's
+# direction, so a booking's bons always run its own way — Bongkar in, Muat out.
+_BONS = (
+	("Bon Bongkar", "Order Bongkar", "Container Booking Item"),
+	("Bon Muat", "Order Muat", "Order Container Item"),
+)
+
+
+def booking_bons(booking: str | None, container: str) -> list:
+	"""The bons ``booking`` raised for this tank, newest first — same line shape as an order.
+
+	Never ``blocks``: the bon is the way through the gate, not something in front of it.
+	Done at ``Completed`` — the Bongkar once every tank has its EIR-In, the Muat at gate-out."""
+	out = []
+	if not booking or not container:
+		return out
+	for kind, doctype, child in _BONS:
+		if not frappe.has_permission(doctype, "read"):
+			continue
+		for r in frappe.db.sql(
+			f"""
+			select p.name, p.docstatus, p.order_status as status, p.creation
+			  from `tab{child}` r
+			  join `tab{doctype}` p on p.name = r.parent
+			 where p.booking = %s and r.container = %s and r.parenttype = %s and r.parentfield = 'containers'
+			 order by p.creation desc
+			""",
+			(booking, container, doctype),
+			as_dict=True,
+		):
+			cancelled = r.docstatus == 2
+			done = not cancelled and r.status == "Completed"
+			out.append({
+				"kind": kind,
+				"doctype": doctype,
+				"name": r.name,
+				# A bon brought back by Kembalikan ke Draft keeps order_status Issued.
+				"status": _("Cancelled") if cancelled else "Draft" if r.docstatus == 0 else r.status,
+				"date": r.creation,
+				"blocks": False,
+				"open": not cancelled and not done,
+				"done": done,
+				"cancelled": cancelled,
+			})
+	return out
+
+
 def documents_for(container: str, tank_status: str | None = None) -> list:
 	"""The whole dossier for one tank, filtered to what the caller may actually read.
 
@@ -342,8 +390,8 @@ def documents_for(container: str, tank_status: str | None = None) -> list:
 def dossier(rows) -> list:
 	"""One entry per listed tank: its live status, its documents, and the two counts.
 
-	``rows``: iterable of dicts carrying ``container`` (+ optionally ``container_no`` and a
-	target date), in the order they should be shown.
+	``rows``: iterable of dicts carrying ``container`` (+ optionally ``container_no``, a
+	target date and the ``booking`` whose bons to add), in the order they should be shown.
 	"""
 	out = []
 	for r in rows:
@@ -351,7 +399,7 @@ def dossier(rows) -> list:
 		if not container:
 			continue
 		tank_status = frappe.db.get_value("Container", container, "status")
-		orders = documents_for(container, tank_status)
+		orders = documents_for(container, tank_status) + booking_bons(r.get("booking"), container)
 		out.append({
 			"container": container,
 			"container_no": r.get("container_no") or container,

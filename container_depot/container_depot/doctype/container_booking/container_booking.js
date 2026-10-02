@@ -340,9 +340,10 @@ frappe.ui.form.on('Container Booking', {
 		grid.refresh();
 	},
 	// A submitted booking is closed — mirror `before_update_after_submit`, which refuses
-	// every change to it. Frappe would otherwise render these fields editable (they carry
-	// `allow_on_submit`, which they keep so the server can answer with a sentence that says
-	// what to do instead of core's "not allowed to change X after submission").
+	// every change but the lines' truck / driver detail. Frappe would otherwise render these
+	// fields editable (they carry `allow_on_submit`, which they keep so the server can answer
+	// with a sentence that says what to do instead of core's "not allowed to change X after
+	// submission").
 	//
 	// Reversible on purpose: one form object serves every booking the user opens, and
 	// Kembali ke Draft brings this very document back to docstatus 0, so the unlocked branch
@@ -350,9 +351,15 @@ frappe.ui.form.on('Container Booking', {
 	_apply_submit_lock(frm) {
 		const locked = frm.doc.docstatus === 1;
 		[
-			'branch', 'depot', 'reff_doc', 'customer', 'principal', 'items', 'charges',
+			'branch', 'depot', 'reff_doc', 'customer', 'principal', 'charges',
 			'payment_type', 'do_reference', 'do_document', 'sales_name', 'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
+		// Except the lines' truck / driver detail, which stays open and follows the bon both
+		// ways (server: order_generation.LINE_SYNC_FIELDS). The tank on the line stays frozen.
+		const items = frm.fields_dict.items && frm.fields_dict.items.grid;
+		['container', 'condition', 'cargo'].forEach(
+			(f) => items && items.update_docfield_property(f, 'read_only', locked ? 1 : 0)
+		);
 		_lock_grid(frm, 'items', locked);
 		_lock_grid(frm, 'charges', locked);
 	},

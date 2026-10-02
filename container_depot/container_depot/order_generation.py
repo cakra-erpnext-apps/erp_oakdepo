@@ -459,3 +459,159 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 		(doc.name, doctype),
 	)
 	return doc.name
+
+
+# ---------------------------------------------------------------------------
+# Bon <-> booking line: one truck, one driver, kept in two places
+# ---------------------------------------------------------------------------
+# Edited on either side, the other follows (user, 2026-10-02): the booking line after Submit
+# (``ContainerBooking.before_update_after_submit`` lets exactly these through), the bon while
+# it is a draft — at Generate, or after Kembalikan ke Draft.
+#
+# An Order Bongkar row IS a Container Booking Item, so the names match the line's. The Order
+# Muat carries truck and driver once, on its header, for every tank on it — so one line's edit
+# reaches its siblings too — and leaves the parties out: one header EMKL cannot stand for lines
+# that may name two. Condition and cargo stay out as well: they are booking facts the codes
+# and the price were cut from.
+LINE_SYNC_FIELDS = ("truck_plate", "driver", "driver_phone", "ro", "remarks", "emkl", "shipper")
+# booking line field -> Order Muat header field
+_MUAT_HEADER = {"truck_plate": "truck_plate", "driver": "driver_name", "driver_phone": "driver_phone", "ro": "ro"}
+
+
+def _diff(new, old, fields) -> dict:
+	"""``{target field: value}`` of what ``new`` changed from ``old`` — everything set, when
+	there is no ``old``. ``fields``: names, or ``{target: source}``."""
+	pairs = fields.items() if isinstance(fields, dict) else [(f, f) for f in fields]
+	if old is None:
+		return {t: new.get(s) for t, s in pairs if new.get(s) not in (None, "")}
+	return {t: new.get(s) for t, s in pairs if (new.get(s) or None) != (old.get(s) or None)}
+
+
+def live_bon_row(code: str | None):
+	"""The live (not voided) bon row carrying ``code``: ``{doctype, bon, row, status}``."""
+	for doctype, child in (("Order Bongkar", "Container Booking Item"), ("Order Muat", "Order Container Item")):
+		rows = code and frappe.db.sql(
+			f"""
+			select r.name as row, r.parent as bon, p.order_status as status
+			  from `tab{child}` r join `tab{doctype}` p on p.name = r.parent
+			 where r.booking_code = %s and r.parenttype = %s and p.docstatus < 2
+			 limit 1
+			""",
+			(code, doctype),
+			as_dict=True,
+		)
+		if rows:
+			return frappe._dict(doctype=doctype, **rows[0])
+	return None
+
+
+def _set_lines(codes, values: dict) -> None:
+	if not values:
+		return
+	for line in frappe.get_all(
+		"Container Booking Item",
+		filters={"parenttype": "Container Booking", "booking_code": ["in", list(codes) or [""]]},
+		pluck="name",
+	):
+		frappe.db.set_value("Container Booking Item", line, values, update_modified=False)
+
+
+def sync_bon_to_lines(bon) -> None:
+	"""Bon saved (Generate, or an edit after Kembalikan ke Draft) → its booking lines follow."""
+	before = bon.get_doc_before_save()
+	old_rows = {r.name: r for r in (before.get("containers") or [])} if before else {}
+	rows = [r for r in bon.get("containers") or [] if r.booking_code]
+	if bon.doctype == "Order Bongkar":
+		for r in rows:
+			_set_lines([r.booking_code], _diff(r, old_rows.get(r.name) if before else None, LINE_SYNC_FIELDS))
+		return
+	head = _diff(bon, before, _MUAT_HEADER)
+	_set_lines([r.booking_code for r in rows], head)
+	for r in rows:
+		_set_lines([r.booking_code], _diff(r, old_rows.get(r.name) if before else None, ("remarks",)))
+
+
+def sync_lines_to_bons(booking) -> None:
+	"""Booking line edited after Submit → the live bon carrying that tank follows, and what
+	still copies the bon after it (:func:`refresh_bon_followers`)."""
+	before = booking.get_doc_before_save()
+	old = {r.name: r for r in (before.items if before else [])}
+	touched = set()
+	for line in booking.items or []:
+		changed = _diff(line, old[line.name], LINE_SYNC_FIELDS) if line.name in old else {}
+		bon = changed and live_bon_row(line.booking_code)
+		if not bon:
+			continue
+		if bon.doctype == "Order Bongkar":
+			frappe.db.set_value("Container Booking Item", bon.row, changed)
+		else:
+			if "remarks" in changed:
+				frappe.db.set_value("Order Container Item", bon.row, "remarks", changed["remarks"])
+			head = {f: v for f, v in changed.items() if f in _MUAT_HEADER}
+			if head:
+				frappe.db.set_value("Order Muat", bon.bon, {_MUAT_HEADER[f]: v for f, v in head.items()})
+				_set_lines(
+					frappe.get_all(
+						"Order Container Item", filters={"parent": bon.bon, "parenttype": "Order Muat"}, pluck="booking_code"
+					),
+					head,
+				)
+		touched.add((bon.doctype, bon.bon))
+	for doctype, name in touched:
+		refresh_bon_followers(doctype, name)
+
+
+def assert_lines_editable(booking) -> None:
+	"""A line whose bon has CLOSED is history on both sides: the bon itself can no longer be
+	reopened (:func:`_assert_order_undoable`), so its line may not drift from it either."""
+	before = booking.get_doc_before_save()
+	old = {r.name: r for r in (before.items if before else [])}
+	for line in booking.items or []:
+		if line.name not in old or not _diff(line, old[line.name], LINE_SYNC_FIELDS):
+			continue
+		bon = live_bon_row(line.booking_code)
+		if bon and bon.status in ORDER_TERMINAL_STATUS:
+			frappe.throw(
+				_("Tank {0} sudah selesai di bon {1} ({2}) — datanya tidak bisa diubah lagi.").format(
+					line.container_no, bon.bon, bon.status
+				),
+				title=_("Bon Sudah Selesai"),
+			)
+
+
+def refresh_bon_followers(doctype: str, bon: str) -> None:
+	"""What copied the bon's truck / driver / parties and is still open follows it: the draft
+	EIRs (their read-only snapshot), the gate log of a Tank In visit still under way, and the
+	EMKL / Shipper mirrored on the Container master. A submitted EIR and a closed gate record
+	are history and stay as they were. A draft bon is followed at its submit."""
+	if frappe.db.get_value(doctype, bon, "docstatus") != 1:
+		return
+	from container_depot.container_depot import last_orders
+	from container_depot.container_depot.eir import fetch_voucher
+	from container_depot.container_depot.gate import GATE_ENTRY_CLOSED
+
+	child = "Container Booking Item" if doctype == "Order Bongkar" else "Order Container Item"
+	itype = "EIR-In" if doctype == "Order Bongkar" else "EIR-Out"
+	for e in frappe.get_all(
+		"Inspection",
+		filters={"referred_voucher": bon, "docstatus": 0, "inspection_type": itype},
+		fields=["name", "container"],
+	):
+		snap = fetch_voucher(bon, itype, container=e.container)
+		frappe.db.set_value("Inspection", e.name, {
+			"truck_no": snap["truck_no"], "driver": snap["driver"], "driver_phone": snap["driver_phone"],
+			"emkl": snap["emkl"], "shipper": snap["shipper"],
+		})
+	fields = ["container", "container_no", "truck_plate", "driver"] if doctype == "Order Bongkar" else ["container"]
+	for row in frappe.get_all(child, filters={"parent": bon, "parenttype": doctype}, fields=fields):
+		if doctype == "Order Bongkar":
+			for ge in frappe.get_all(
+				"Gate Entry",
+				filters={
+					"order_doctype": doctype, "order_ref": bon, "container_no": row.container_no,
+					"status": ["not in", GATE_ENTRY_CLOSED], "docstatus": ["<", 2],
+				},
+				pluck="name",
+			):
+				frappe.db.set_value("Gate Entry", ge, {"truck_plate": row.truck_plate, "driver_name": row.driver})
+		last_orders.refresh_container(row.container, only=doctype)
