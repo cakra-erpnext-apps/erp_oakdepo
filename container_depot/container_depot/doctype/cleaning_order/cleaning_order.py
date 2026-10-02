@@ -53,10 +53,10 @@ class CleaningOrder(Document):
 				p.timestamp = p.creation or frappe.utils.now_datetime()
 
 	# Tanggal yang menentukan PERIODE TAGIHAN. consolidated_billing / monthly_invoicing
-	# memilih order lewat rentang ``cleaning_end``, jadi menggesernya setelah order masuk
-	# invoice memindahkan pekerjaan itu ke bulan lain — atau membuatnya hilang dari kedua
-	# bulan sekaligus. ``plan_date`` tidak ikut dikunci: ia rencana, tidak dibaca penagihan.
-	_BILLING_DATES = ("order_created", "cleaning_end")
+	# memilih order lewat rentang ``plan_date`` (Tanggal Cleaning — tanggal order itu sendiri,
+	# bukan selesainya cucian), jadi menggesernya setelah order masuk invoice memindahkan
+	# pekerjaan itu ke bulan lain — atau membuatnya hilang dari kedua bulan sekaligus.
+	_BILLING_DATES = ("order_created", "plan_date")
 
 	def _guard_dates_after_invoice(self):
 		if self.is_new() or not self.sales_invoice:

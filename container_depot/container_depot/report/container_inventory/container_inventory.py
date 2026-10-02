@@ -304,13 +304,19 @@ def _visit_facts(names: list[str]) -> dict[str, dict]:
 	)).items():
 		out[c]["available_date"] = r.movement_timestamp
 
-	for c, r in _newest(frappe.get_all(
-		"Survey Order Tank",
-		filters={"container": ["in", names], "parenttype": "Survey Order", "surveyed_on": ["is", "set"]},
-		fields=["container", "surveyed_on"],
-		order_by="surveyed_on asc", limit_page_length=0,
+	# The Survey Order's own date (Tanggal Survey), for tanks it has surveyed — not the moment
+	# the surveyor pressed Selesai (user, 2026-10-02).
+	for c, r in _newest(frappe.db.sql(
+		"""
+		SELECT t.container, o.survey_date
+		FROM `tabSurvey Order Tank` t
+		JOIN `tabSurvey Order` o ON o.name = t.parent AND t.parenttype = 'Survey Order'
+		WHERE t.container IN %(names)s AND t.surveyed_on IS NOT NULL AND o.survey_date IS NOT NULL
+		ORDER BY t.surveyed_on ASC
+		""",
+		{"names": names or [""]}, as_dict=True,
 	)).items():
-		out[c]["survey_date"] = r.surveyed_on
+		out[c]["survey_date"] = r.survey_date
 
 	# Outbound: the export reference + shipper off the newest live Tank Out booking, the seals
 	# off the newest EIR-Out.

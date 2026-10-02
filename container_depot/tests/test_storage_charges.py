@@ -233,8 +233,8 @@ class TestStorageCharges(FrappeTestCase):
 		self.assertEqual(row["stay_days"], 16)
 		self.assertEqual(storage.days_in_depot(doc.name, add_days(today(), -30), today()), 16)
 
-	def test_storage_starts_at_the_submitted_eir_in_not_the_gate(self):
-		"""Gate says the tank came through; storage starts once the EIR-In is done."""
+	def test_storage_starts_at_the_eir_in_date_not_the_gate(self):
+		"""Gate says the tank came through; storage starts on the date set on the EIR-In."""
 		cno = f"{PREFIX}GATEEIR"
 		gated, inspected = add_days(today(), -10), add_days(today(), -7)
 		doc = _container(cno, "In_Depot", self.customer)
@@ -249,11 +249,24 @@ class TestStorageCharges(FrappeTestCase):
 			"doctype": "Inspection", "inspection_type": "EIR-In", "container": doc.name,
 			"eir_date": inspected,
 		}).insert(ignore_permissions=True)
-		eir.db_set({"docstatus": 1, "work_ended_on": f"{inspected} 14:00:00"})
+		# Submitted today, days after the inspection: the EIR's own date still counts.
+		eir.db_set({"docstatus": 1, "work_ended_on": f"{today()} 14:00:00"})
 		row = self._row(doc.name)
 		self.assertEqual(getdate(row["in_date"]), getdate(inspected))
 		self.assertEqual(row["stay_days"], 8)
 		self.assertEqual(row["source"], storage.SRC_GATE)
+
+	def test_an_eir_dated_before_the_gate_does_not_start_the_stay(self):
+		"""A draft EIR-In carries its bon's day until someone changes it — not an arrival."""
+		cno = f"{PREFIX}EARLYEIR"
+		gated = add_days(today(), -5)
+		doc = _container(cno, "In_Depot", self.customer)
+		_gate_entry(cno, gated)
+		frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In", "container": doc.name,
+			"eir_date": add_days(today(), -9),
+		}).insert(ignore_permissions=True).db_set("docstatus", 1)
+		self.assertEqual(getdate(storage.stay_periods(doc.name, cno)[-1]["start"]), getdate(gated))
 
 	def test_report_columns_shape(self):
 		columns, _ = execute({})

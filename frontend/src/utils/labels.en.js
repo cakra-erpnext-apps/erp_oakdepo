@@ -1052,7 +1052,7 @@ export const labels = {
 	cleaningListSearch: "Search tank no. / Reff Doc / order…",
 	cleaningListEmpty: "No cleaning orders.",
 	cleaningContinue: "Continue cleaning",
-	mrPlanDate: "Planned date",
+	mrPlanDate: "M&R date",
 	leakManualTitle: "Manual Leak Check",
 	leakSearch: "Search tank no., Reff Doc, booking…",
 	leakStatOpen: "Ready",

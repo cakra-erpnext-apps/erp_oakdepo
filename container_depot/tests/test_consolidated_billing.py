@@ -382,6 +382,53 @@ class TestConsolidatedBillingBooking(FrappeTestCase):
 			frappe.db.commit()
 
 
+	def test_mr_bills_in_the_period_of_its_own_date_not_its_completion(self):
+		"""Tanggal M&R (plan_date) picks the billing period; completion_date is only when the
+		work ended (user, 2026-10-02)."""
+		from frappe.utils import add_days
+
+		from container_depot.consolidated_billing import collect_units
+
+		cno = "TESTMRDATE01"
+		frappe.db.delete("Repair Order", {"container": cno})
+		if frappe.db.exists("Container", cno):
+			frappe.db.delete("Container", cno)
+		cont = frappe.get_doc({
+			"doctype": "Container", "container_no": cno, "container_type": "ISO Tank",
+			"status": "Available", "principal": self.customer,
+		})
+		cont.flags.ignore_mandatory = True
+		cont.insert(ignore_permissions=True)
+		service = _ensure_service_item()
+		dated = add_days(today(), -40)
+		ro = frappe.get_doc({
+			"doctype": "Repair Order", "container": cno, "job_type": "Repair", "status": "Draft",
+			"billing_status": "Unbilled", "plan_date": dated,
+			"used_items": [{"item": service, "quantity": 1, "item_rate": 100000}],
+		})
+		ro.flags.ignore_mandatory = True
+		ro.insert(ignore_permissions=True)
+		frappe.db.set_value("Repair Order", ro.name, {
+			"status": "Completed", "completion_date": today(), "principal": self.customer,
+		}, update_modified=False)
+
+		def billed(lo, hi):
+			return any(
+				src.get("name") == ro.name
+				for u in collect_units(self.customer, ["M&R"], lo, hi) for src in u["sources"]
+			)
+
+		try:
+			self.assertTrue(billed(add_days(dated, -1), add_days(dated, 1)))
+			self.assertFalse(billed(add_days(today(), -1), today()))
+		finally:
+			frappe.db.delete("Repair Used Item", {"parent": ro.name, "parenttype": "Repair Order"})
+			frappe.db.delete("Repair Order", {"name": ro.name})
+			frappe.db.delete("Container", cno)
+			if frappe.db.exists("Item", service):
+				frappe.delete_doc("Item", service, force=True, ignore_permissions=True)
+			frappe.db.commit()
+
 class TestConsolidatedBillingCashContract(FrappeTestCase):
 	"""A Cash-contract customer accrues nothing for the consolidated sweep.
 

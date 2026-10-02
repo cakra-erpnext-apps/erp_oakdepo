@@ -211,7 +211,8 @@ def _cleaning_lines(customer, lo, hi):
 	pairs = _billed_pairs(customer)
 	rows = frappe.get_all(
 		"Cleaning Order",
-		filters={"status": "Completed", "cleaning_end": ["between", [lo, hi]]},
+		# The order's own date (Tanggal Cleaning), not when the wash ended (user, 2026-10-02).
+		filters={"status": "Completed", "plan_date": ["between", [lo, hi]]},
 		fields=["name", "container", "currency", "sales_invoice"],
 	)
 	units = []
@@ -290,7 +291,8 @@ def _work_order_lines(customer, lo, hi, spec):
 		filters={
 			"status": "Completed",
 			spec["party_field"]: customer,
-			"completion_date": ["between", [lo, hi]],
+			# The order's own date (Tanggal M&R), not when the work ended (user, 2026-10-02).
+			"plan_date": ["between", [lo, hi]],
 			**({"job_type": spec["job_type"]} if spec.get("job_type") else {}),
 		},
 		fields=["name", "sales_invoice"],
@@ -1024,8 +1026,8 @@ def _give_back(src, doc):
 # Tagihan tab. The dates are the ones Order Billing Status shows.
 _ROW_FACTS = {
 	"Container Booking": ("container_summary", "creation"),
-	"Cleaning Order": ("container", "cleaning_end"),
-	"Repair Order": ("container", "completion_date"),
+	"Cleaning Order": ("container", "plan_date"),
+	"Repair Order": ("container", "plan_date"),
 }
 
 

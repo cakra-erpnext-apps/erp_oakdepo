@@ -63,7 +63,7 @@ frappe.listview_settings["Repair Order"] = {
 		frappe.app.sidebar?.set_active_workspace_item();
 		// plan_date milik kedua jenis; labelnya ikut menu. Salinan df, bukan df meta — label
 		// meta dipakai juga oleh form dan list lain.
-		const plan = { Repair: __("Repair Plan Date"), "Periodic Test": __("Periodic Plan Date") }[jt] || __("Plan Date");
+		const plan = { Repair: __("Tanggal M&R"), "Periodic Test": __("Tanggal Periodic Test") }[jt] || __("Tanggal");
 		const col = listview.columns.find((c) => c.df?.fieldname === "plan_date");
 		if (col && col.df.label !== plan) {
 			col.df = { ...col.df, label: plan };

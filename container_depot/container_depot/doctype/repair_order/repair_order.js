@@ -217,7 +217,7 @@ frappe.ui.form.on('Repair Order', {
 		// field ini memang set_only_once.
 		frm.set_df_property('job_type', 'read_only', 1);
 		frm.set_df_property('plan_date', 'label',
-			frm.doc.job_type === 'Periodic Test' ? __('Periodic Plan Date') : __('Repair Plan Date'));
+			frm.doc.job_type === 'Periodic Test' ? __('Tanggal Periodic Test') : __('Tanggal M&R'));
 	},
 	_set_queries(frm) {
 		// Retired tanks (Active off) are out of the fleet and never offered.

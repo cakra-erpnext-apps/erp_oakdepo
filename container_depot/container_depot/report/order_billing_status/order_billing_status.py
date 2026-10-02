@@ -237,11 +237,11 @@ def _booking_rows(filters, ctx):
 
 def _cleaning_rows(filters, ctx):
 	f = {"status": "Completed"}
-	_apply_date(f, "cleaning_end", filters)
+	_apply_date(f, "plan_date", filters)
 	recs = frappe.get_all(
 		"Cleaning Order",
 		filters=f,
-		fields=["name", "container", "cleaning_end", "cleaning_total", "currency", "sales_invoice"],
+		fields=["name", "container", "plan_date", "cleaning_total", "currency", "sales_invoice"],
 		ignore_permissions=True,
 	)
 	want_customer = filters.get("customer")
@@ -256,7 +256,7 @@ def _cleaning_rows(filters, ctx):
 				"order_type": "Cleaning Order",
 				"order": r.name,
 				"customer": owner,
-				"date": getdate(r.cleaning_end),
+				"date": getdate(r.plan_date),
 				"payment_type": "TOP" if _postpaid(owner, ctx) else "Cash",
 				"invoice_status": _si_status(r.sales_invoice),
 				"sales_invoice": r.sales_invoice,
@@ -274,11 +274,11 @@ def _work_order_rows(filters, ctx, doctype, party_field):
 	f = {"status": "Completed"}
 	if filters.get("customer"):
 		f[party_field] = filters["customer"]
-	_apply_date(f, "completion_date", filters)
+	_apply_date(f, "plan_date", filters)
 	recs = frappe.get_all(
 		doctype,
 		filters=f,
-		fields=["name", party_field, "completion_date", "total_cost", "billing_status", "sales_invoice", "job_type"],
+		fields=["name", party_field, "plan_date", "total_cost", "billing_status", "sales_invoice", "job_type"],
 		ignore_permissions=True,
 	)
 	# Both carry a sales_invoice back-link (set on Generate), so the live invoice status
@@ -300,7 +300,7 @@ def _work_order_rows(filters, ctx, doctype, party_field):
 				"section": "Periodic Test" if r.job_type == "Periodic Test" else "M&R",
 				"order": r.name,
 				"customer": owner,
-				"date": getdate(r.completion_date),
+				"date": getdate(r.plan_date),
 				"payment_type": "TOP" if _postpaid(owner, ctx) else "Cash",
 				"invoice_status": _status(r),
 				"sales_invoice": r.sales_invoice,

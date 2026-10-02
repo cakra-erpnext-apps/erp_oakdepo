@@ -329,7 +329,7 @@ def list_cleaning_orders(status=None, search=None, depot=None, principal=None, c
 	rows = frappe.get_all("Cleaning Order", filters=filters, or_filters=or_filters,
 						  fields=["name", "status", "plan_date", "order_created", "creation", "target_lift_on",
 								  "target_survey_on", "target_urgent_on"], limit_page_length=0)
-	# The list's day is the order's Cleaning Plan Date — the day the wash is scheduled for, not
+	# The list's day is the order's Tanggal Cleaning (``plan_date``) — the order's own date, not
 	# the day the order happened to be generated.
 	for r in rows:
 		r["day"] = str(getdate(r.plan_date or r.order_created or r.creation))

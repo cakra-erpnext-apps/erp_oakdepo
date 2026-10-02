@@ -575,7 +575,7 @@ def list_mr_orders(job_type=None, status=None, search=None, depot=None, principa
 	w, sw = " and ".join(where), " and ".join(scope)
 	priority = sort not in ("newest", "oldest")
 	direction = "asc" if sort == "oldest" else "desc"
-	# Prioritas (bawaan) = ``worklist.sort_by_priority``: mendesak, lalu Repair Plan Date
+	# Prioritas (bawaan) = ``worklist.sort_by_priority``: mendesak, lalu Tanggal M&R
 	# terdekat, yang sedang dikerjakan dulu; yang sudah tutup di bawah.
 	# Dipaging di Python — daftar satu cabang terbatas oleh yard-nya.
 	order = "creation asc" if priority else f"day {direction}, {_MR_STATUS_ORDER}, creation {direction}"

@@ -102,10 +102,10 @@ class RepairOrder(Document):
 		)
 
 	# Tanggal yang menentukan PERIODE TAGIHAN: consolidated_billing / monthly_invoicing
-	# memilih order lewat rentang ``completion_date``, jadi menggesernya setelah order
-	# ditagih memindahkan pekerjaan itu ke bulan lain — atau membuatnya hilang dari kedua
-	# bulan sekaligus. ``plan_date`` tidak ikut dikunci: ia rencana, tidak dibaca penagihan.
-	_BILLING_DATES = ("order_created", "completion_date")
+	# memilih order lewat rentang ``plan_date`` (Tanggal M&R — tanggal order itu sendiri,
+	# bukan selesainya pekerjaan), jadi menggesernya setelah order ditagih memindahkan
+	# pekerjaan itu ke bulan lain — atau membuatnya hilang dari kedua bulan sekaligus.
+	_BILLING_DATES = ("order_created", "plan_date")
 
 	def _guard_dates_after_billing(self):
 		if self.is_new() or (self.billing_status or "Unbilled") == "Unbilled":

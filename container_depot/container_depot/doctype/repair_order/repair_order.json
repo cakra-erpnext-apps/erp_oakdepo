@@ -76,11 +76,11 @@
   },
   {
    "default": "Today",
-   "description": "Rencana tanggal pengerjaan. Realisasinya di Completion Date.",
+   "description": "Tanggal order ini — default hari ini, ganti kalau pekerjaannya di hari lain. Tanggal inilah yang dipakai tagihan & laporan; jam mulai/selesai dicatat sendiri di Start/Completion Date.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
    "in_standard_filter": 1,
-   "label": "Repair Plan Date"
+   "label": "Tanggal M&R"
   },
   {
    "default": "Repair",
@@ -399,7 +399,7 @@
   }
  ],
  "links": [],
- "modified": "2026-09-29 13:00:00.000000",
+ "modified": "2026-10-02 18:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

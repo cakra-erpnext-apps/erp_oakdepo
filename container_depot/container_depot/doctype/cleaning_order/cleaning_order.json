@@ -445,11 +445,11 @@
   },
   {
    "default": "Today",
-   "description": "Wajib. Rencana tanggal cuci — default hari ini, ganti kalau dijadwalkan lain hari. Realisasinya di Cleaning End.",
+   "description": "Wajib. Tanggal order ini — default hari ini, ganti kalau cuciannya di hari lain. Tanggal inilah yang dipakai tagihan & laporan; jam mulai/selesai dicatat sendiri di Cleaning Start/End.",
    "fieldname": "plan_date",
    "fieldtype": "Date",
    "in_standard_filter": 1,
-   "label": "Cleaning Plan Date",
+   "label": "Tanggal Cleaning",
    "reqd": 1
   },
   {
@@ -465,7 +465,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-29 13:00:00.000000",
+ "modified": "2026-10-02 18:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

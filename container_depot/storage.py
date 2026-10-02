@@ -202,10 +202,13 @@ def periods_for_many(containers: list[dict]) -> dict[str, list[dict]]:
 
 
 def _eir_ins(containers: list[str]) -> dict[str, list]:
-	"""``{container: [submitted EIR-In times, oldest first]}``.
+	"""``{container: [submitted EIR-In dates, oldest first]}``.
 
-	The time is ``work_ended_on`` — stamped when the EIR is submitted, i.e. when the
-	inspection finished — falling back to the EIR's own ``eir_date``.
+	The date is the EIR's own ``eir_date`` — the day the operator set on it — never when it
+	happened to be submitted (user, 2026-10-02): an EIR dated yesterday and submitted today
+	starts storage yesterday. Submits run days behind on the floor, and counting from them
+	made a tank's stay shrink the moment its paperwork caught up. ``work_ended_on`` is only
+	the fallback for an EIR saved without a date.
 	"""
 	out: dict[str, list] = {}
 	if not containers:
@@ -215,7 +218,7 @@ def _eir_ins(containers: list[str]) -> dict[str, list]:
 		filters={"container": ["in", containers], "inspection_type": "EIR-In", "docstatus": 1},
 		fields=["container", "work_ended_on", "eir_date"],
 	):
-		when = r.work_ended_on or r.eir_date
+		when = r.eir_date or r.work_ended_on
 		if when:
 			out.setdefault(r.container, []).append(when)
 	for times in out.values():
@@ -230,6 +233,10 @@ def _with_eir(periods: list[dict], eir, eir_ins: list) -> list[dict]:
 	EIR-In inspection is done, so ``start`` — what every day count reads — becomes the first
 	submitted EIR-In inside the visit. A visit with no EIR-In yet keeps the gate date as its
 	start, so its days do not silently vanish; ``eir_in`` stays empty to show it.
+
+	"Inside the visit" starts at the gate stamp, so an EIR dated before it is ignored: a draft
+	EIR-In is born when its bon is issued and carries the bon's day until somebody changes it,
+	and that day is not when the tank arrived.
 
 	A visit with no gate record (a tank injected by import — its Container Movement is
 	stamped when the import ran) has no Inspection either, so it takes the operator-set
