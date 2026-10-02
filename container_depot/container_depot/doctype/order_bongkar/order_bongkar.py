@@ -601,6 +601,37 @@ def _release_codes(doc: Document):
 	refresh_bon_status(doc.get("booking"))
 
 
+def sync_completion(eir) -> None:
+	"""Close the Tank In bon once every tank on it has its EIR-In submitted; reopen it when
+	one is reverted or voided.
+
+	An Order Bongkar had no ending at all: it sat at ``Issued`` (orange "Diterbitkan") long
+	after its tanks were unloaded and inspected, so a finished bon read as one still waiting
+	(user, 2026-10-02). The mirror of the Order Muat, which closes at its last gate-out.
+
+	Only ``Issued`` ↔ ``Completed`` is moved. A completed bon is terminal
+	(``order_generation.ORDER_TERMINAL_STATUS``), so undoing it means reverting the EIR-In
+	first — which is exactly what reopens it here.
+	"""
+	if eir.get("inspection_type") != "EIR-In" or eir.get("voucher_doctype") != "Order Bongkar":
+		return
+	name = eir.get("referred_voucher")
+	bon = name and frappe.db.get_value("Order Bongkar", name, ["docstatus", "order_status"], as_dict=True)
+	if not bon or bon.docstatus != 1 or bon.order_status not in ("Issued", "Completed"):
+		return
+	tanks = {c for c in frappe.get_all(
+		"Container Booking Item", filters={"parent": name, "parenttype": "Order Bongkar"}, pluck="container"
+	) if c}
+	inspected = set(frappe.get_all(
+		"Inspection",
+		filters={"referred_voucher": name, "inspection_type": "EIR-In", "docstatus": 1},
+		pluck="container",
+	))
+	target = "Completed" if tanks and tanks <= inspected else "Issued"
+	if target != bon.order_status:
+		frappe.db.set_value("Order Bongkar", name, "order_status", target, update_modified=False)
+
+
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def pending_container_query(doctype, txt, searchfield, start, page_len, filters):

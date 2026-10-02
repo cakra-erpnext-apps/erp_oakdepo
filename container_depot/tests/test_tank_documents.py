@@ -134,8 +134,11 @@ class TestTankDossier(FrappeTestCase):
 		self.assertEqual(by_name[svo.name]["kind"], "Survey")
 		self.assertEqual(by_name[svo.name]["status"], "Lowered")
 		self.assertTrue(by_name[svo.name]["open"])
-		# The survey PRODUCES the EIR-Out at the gate; it is not a gate of its own.
-		self.assertFalse(by_name[svo.name]["blocks"])
+		# With every order mandatory the EIR-Out waits for this survey (2026-10-02), so it holds
+		# the gate-out; switched off it is listed, open, and holds nothing.
+		from container_depot.container_depot.order_policy import enforce_all
+
+		self.assertEqual(by_name[svo.name]["blocks"], enforce_all())
 
 	def test_a_booking_line_carries_the_direction_it_is_grouped_by(self):
 		"""The panel keeps the latest of each kind, and a tank's inbound and outbound

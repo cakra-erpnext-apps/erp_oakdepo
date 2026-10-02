@@ -375,7 +375,13 @@ def latest_eir_in(container: str | None) -> str | None:
 
 
 def provision_eir_out_for_survey(survey_tank: str) -> str | None:
-	"""Raise the tank's DRAFT EIR-Out the moment its survey row is CLOSED.
+	"""Tie the tank's EIR-Out to its survey row the moment the row is CLOSED.
+
+	**Since 2026-10-02 the EIR-Out is born with the booking** (:func:`provision_eir_out_for_booking`),
+	so closing a survey normally finds that draft and claims it rather than raising one. A
+	survey finished after the tank already left (switch "Wajibkan Semua Order" OFF) points at
+	the EIR-Out it left on. Raising a fresh one is now only the fallback for a booking whose
+	provisioning never ran. What follows is the original reasoning, still true of the draft:
 
 	``survey_tank`` is a ``Survey Order Tank`` row name — one tank on one day's schedule. This
 	is where an EIR-Out is born. It used to be born at the loading bon (Order Muat) instead,
@@ -429,13 +435,20 @@ def provision_eir_out_for_survey(survey_tank: str) -> str | None:
 		return existing
 
 	booking = frappe.db.get_value("Survey Order", row.parent, "booking")
+	left_on = booking and frappe.db.get_value(
+		"Inspection",
+		{"container": container, "container_booking": booking, "inspection_type": "EIR-Out", "docstatus": 1},
+		"name",
+	)
+	if left_on:
+		return left_on
 	return _new_eir_out(container, row.depot, booking, survey_tank=survey_tank, survey_order=row.parent)
 
 
 def _new_eir_out(container: str, depot: str | None, booking: str | None, **links) -> str:
-	"""Insert one draft EIR-Out. Shared by its only two birthplaces: a closed survey
-	(:func:`provision_eir_out_for_survey`) and a Tank Out booking WITHOUT survey
-	(:func:`provision_eir_out_for_booking`). ``links`` = the fields that say which one."""
+	"""Insert one draft EIR-Out. Born from the Tank Out booking
+	(:func:`provision_eir_out_for_booking`); a closed survey only falls back to it
+	(:func:`provision_eir_out_for_survey`). ``links`` = the fields that say which one."""
 	eir = frappe.new_doc("Inspection")
 	eir.inspection_type = "EIR-Out"
 	eir.container = container
@@ -460,16 +473,25 @@ def _new_eir_out(container: str, depot: str | None, booking: str | None, **links
 
 
 def provision_eir_out_for_booking(booking_name: str) -> dict:
-	"""Tank Out TANPA survey (``use_survey`` = 0): satu draft EIR-Out per tank, langsung dari
-	booking — tempat lahir kedua di samping survey yang selesai.
+	"""Satu draft EIR-Out per tank, langsung dari booking Tank Out — dengan atau tanpa survey.
+
+	Sejak 2026-10-02 (permintaan user) EIR-Out lahir bersama Survey Order, bukan menunggu
+	survey selesai: survey yang tidak dikerjakan tidak boleh lagi membuat tank tidak punya
+	EIR-Out sama sekali. Survey yang ditutup belakangan memakai EIR-Out ini
+	(:func:`provision_eir_out_for_survey`); kapan ia boleh disubmit diputuskan
+	``Inspection.before_submit`` + saklar "Wajibkan Semua Order".
 
 	Dipanggil tiap booking disimpan (juga draft, cancel dan void), jadi total dan idempoten:
 
-	* booking hidup tanpa survey → tank yang belum punya EIR-Out dari booking ini dibuatkan
-	  (draft EIR-Out terbuka yang sudah ada untuk tank itu diadopsi, bukan disaingi);
-	* tank yang keluar dari booking, survey dinyalakan lagi, atau booking di-void → draft milik
-	  booking ini ditarik: yang belum disentuh (belum "Mulai", belum ada bon) dihapus, yang
-	  sudah diisi dibiarkan dengan catatan — aturan yang sama dengan reopen survey.
+	* booking hidup → tank yang belum punya EIR-Out dari booking ini dibuatkan (draft EIR-Out
+	  terbuka yang sudah ada untuk tank itu diadopsi, bukan disaingi). "Punya" = EIR-Out yang
+	  distempel booking ini, lahir dari survey-nya, atau menempel di bon muat-nya — jadi tank
+	  yang sudah keluar lewat jalur lama tidak dibuatkan EIR-Out kedua. Tank berstatus
+	  Gate_Out juga dilewati: ia sudah pergi;
+	* tank yang keluar dari booking, atau booking di-void → draft milik booking ini ditarik:
+	  yang belum disentuh (belum "Mulai", belum ada bon) dihapus, yang sudah diisi dibiarkan
+	  dengan catatan. Draft yang sudah diklaim survey (``survey_tank``) diurus jadwalnya
+	  (``tank_survey.close_survey_order_with_booking``).
 
 	Penandanya ``Inspection.container_booking``, distempel saat lahir; ``stamp_container_booking``
 	mempertahankannya selama EIR belum punya bon. Draft ini tetap baru bisa disubmit setelah bon
@@ -481,7 +503,7 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 	)
 	if not b or b.direction != "Tank Out":
 		return {"created": [], "withdrawn": []}
-	live = not cint(b.use_survey) and b.booking_status != "Cancelled" and cint(b.docstatus) != 2
+	live = b.booking_status != "Cancelled" and cint(b.docstatus) != 2
 	items = frappe.get_all(
 		"Container Booking Item",
 		filters={"parent": b.name, "parenttype": "Container Booking"},
@@ -492,16 +514,14 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 
 	mine = frappe.get_all(
 		"Inspection",
-		filters={"container_booking": b.name, "inspection_type": "EIR-Out", "docstatus": ["!=", 2],
-				 "survey_tank": ["is", "not set"]},
-		fields=["name", "container", "docstatus", "work_started_on", "referred_voucher"],
+		filters={"container_booking": b.name, "inspection_type": "EIR-Out", "docstatus": ["!=", 2]},
+		fields=["name", "container", "docstatus", "work_started_on", "referred_voucher", "survey_tank"],
 	)
-	have = set()
+	have = _eir_outs_of_booking(b.name)
 	for e in mine:
 		if e.container in wanted:
-			have.add(e.container)
 			continue
-		if e.docstatus != 0:
+		if e.docstatus != 0 or e.survey_tank:
 			continue
 		try:
 			if not e.work_started_on and not e.referred_voucher:
@@ -514,23 +534,56 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"withdraw EIR-Out {e.name} of {b.name}")
 
+	gone = set(
+		frappe.get_all(
+			"Container", filters={"name": ["in", list(wanted) or [""]], "status": "Gate_Out"}, pluck="name"
+		)
+	)
 	for container, depot in wanted.items():
-		if container in have:
+		if container in have or container in gone:
 			continue
 		try:
 			existing = frappe.db.get_value(
 				"Inspection",
 				{"container": container, "docstatus": 0, "inspection_type": "EIR-Out"},
-				"name",
+				["name", "container_booking"],
+				as_dict=True,
 			)
+			if existing and existing.container_booking not in (None, "", b.name) and _booking_live(
+				existing.container_booking
+			):
+				# Another live booking's EIR-Out: not ours to take, and a rival draft would hand
+				# the PWA two for one tank. This booking gets its own once that one is settled.
+				continue
 			if existing:
-				frappe.db.set_value("Inspection", existing, "container_booking", b.name, update_modified=False)
-				out["created"].append(existing)
+				frappe.db.set_value("Inspection", existing.name, "container_booking", b.name, update_modified=False)
+				out["created"].append(existing.name)
 			else:
 				out["created"].append(_new_eir_out(container, depot, b.name, container_booking=b.name))
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"provision EIR-Out for {container} on {b.name}")
 	return out
+
+
+def _booking_live(booking: str) -> bool:
+	row = frappe.db.get_value("Container Booking", booking, ["booking_status", "docstatus"], as_dict=True)
+	return bool(row) and row.booking_status != "Cancelled" and cint(row.docstatus) != 2
+
+
+def _eir_outs_of_booking(booking: str) -> set:
+	"""Tanks that already have a live EIR-Out for this booking, whichever way it was born:
+	stamped by the booking, raised by its survey, or carried by its bon muat."""
+	surveys = frappe.get_all("Survey Order", filters={"booking": booking}, pluck="name")
+	bons = frappe.get_all("Order Muat", filters={"booking": booking, "docstatus": ["!=", 2]}, pluck="name")
+	have = set()
+	for field, values in (("container_booking", [booking]), ("survey_order", surveys), ("referred_voucher", bons)):
+		if values:
+			have.update(frappe.get_all(
+				"Inspection",
+				filters={field: ["in", values], "inspection_type": "EIR-Out", "docstatus": ["!=", 2]},
+				pluck="container",
+			))
+	return have
 
 
 def booking_party_for_eir_out(survey_order: str, container: str) -> dict:
@@ -2544,8 +2597,10 @@ def revert_to_draft(name: str) -> dict:
 	# after the docstatus flip, because a still-submitted EIR is invisible to
 	# `container_open_orders`. Booked / Gate_Out are left alone by the recompute.
 	from container_depot.container_depot.container_status import recompute_availability
+	from container_depot.container_depot.doctype.order_bongkar.order_bongkar import sync_completion
 
 	recompute_availability(doc.container)
+	sync_completion(doc)  # a reverted EIR-In reopens its bon
 
 	# Append an inverse activity for the audit trail (the on_submit one stays — the log
 	# is append-only). Never let a logging failure block the revert.

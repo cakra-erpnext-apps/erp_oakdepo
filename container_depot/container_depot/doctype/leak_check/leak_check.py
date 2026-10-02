@@ -51,11 +51,20 @@ def has_leak_check_this_visit(container: str) -> bool:
 	"""A Completed Leak Check filed since the tank's arrival (``Container.eir_in_date``).
 
 	No arrival stamp (an imported tank) = any Completed Leak Check on the tank counts.
+
+	A previous visit's order finished late does not count either: each visit owns its own Leak
+	Check (user, 2026-10-02), and one raised before the tank last left belongs to that stay
+	(``container_status.last_departure``).
 	"""
+	from container_depot.container_depot.container_status import last_departure
+
 	arrived = frappe.db.get_value("Container", container, "eir_in_date")
 	filters = {"container": container, "status": COMPLETED}
 	if arrived:
 		filters["recorded_on"] = [">=", get_datetime(arrived)]
+	since = last_departure(container)
+	if since:
+		filters["creation"] = [">", since]
 	return bool(frappe.db.exists("Leak Check", filters))
 
 
@@ -83,8 +92,10 @@ def _bon_containers(order_name: str) -> list[str]:
 def provision_for_order_bongkar(order_name: str) -> list:
 	"""Submit-time: one Open Leak Check per container on the bon.
 
-	Idempotent. A container that already has an Open Leak Check (from any bon) or one raised
-	by THIS bon before (a revert-to-draft + re-submit) gets nothing new. Rows dropped while
+	Idempotent: a container that already has one raised by THIS bon (a revert-to-draft +
+	re-submit) gets nothing new. An Open one left by an earlier bon does not count — that is
+	the previous visit's, still open to finish later, and this visit needs its own (user,
+	2026-10-02); ``open_leak_check`` hands the newest, this one, to the PWA. Rows dropped while
 	the bon was back in draft are released first (:func:`release_removed_rows`). Best-effort
 	per container: one failure is logged and never blocks the bon submit.
 	"""
@@ -92,9 +103,7 @@ def provision_for_order_bongkar(order_name: str) -> list:
 	booking = frappe.db.get_value("Order Bongkar", order_name, "booking")
 	created = []
 	for container in _bon_containers(order_name):
-		if open_leak_check(container) or frappe.db.exists(
-			"Leak Check", {"container": container, "order_bongkar": order_name}
-		):
+		if frappe.db.exists("Leak Check", {"container": container, "order_bongkar": order_name}):
 			continue
 		try:
 			doc = frappe.new_doc("Leak Check")

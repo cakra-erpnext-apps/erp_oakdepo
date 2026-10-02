@@ -1,0 +1,45 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enforce_all_orders",
+  "enforce_note"
+ ],
+ "fields": [
+  {
+   "bold": 1,
+   "default": "1",
+   "fieldname": "enforce_all_orders",
+   "fieldtype": "Check",
+   "label": "Wajibkan Semua Order",
+   "description": "Centang = semua order wajib selesai sebelum tank keluar (Survey, Leak Check, Cleaning, M&R). Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In, EIR-Out dan pembayaran."
+  },
+  {
+   "depends_on": "eval:!doc.enforce_all_orders",
+   "fieldname": "enforce_note",
+   "fieldtype": "HTML",
+   "label": "Catatan",
+   "options": "<div class=\"alert alert-warning\">Order wajib <b>OFF</b>. Survey, Leak Check, Cleaning dan M&R tetap lahir dan tetap bisa diselesaikan kapan saja, tapi tidak lagi menahan bon muat, EIR-Out maupun gate-out. Statusnya tidak diubah.</div>"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-02 12:00:00.000000",
+ "module": "Container Depot",
+ "name": "Depot Operation Settings",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

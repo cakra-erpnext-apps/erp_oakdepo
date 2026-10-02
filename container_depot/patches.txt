@@ -152,3 +152,5 @@ container_depot.patches.v1_16.invoice_print_language_id
 container_depot.patches.v1_17.release_orphan_booked_containers
 container_depot.patches.v1_17.pending_cash_cakra
 container_depot.patches.v1_17.survey_team_periodic
+container_depot.patches.v1_18.eir_out_born_with_booking
+container_depot.patches.v1_18.complete_inspected_bongkar

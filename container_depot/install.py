@@ -39,6 +39,10 @@ def after_install():
 	# has turned invoicing off is never switched back on by a later migrate.
 	from container_depot import finance
 	finance.ensure_defaults()
+	# Same for "Wajibkan Semua Order": an unstored Check renders unticked, so a form opened
+	# before anyone saved it showed OFF while every order was still mandatory.
+	from container_depot.container_depot import order_policy
+	order_policy.ensure_defaults()
 	setup_workspace()
 	setup_notification_rules()
 	sync_desktop_icons()
@@ -81,6 +85,10 @@ def after_migrate():
 	# has turned invoicing off is never switched back on by a later migrate.
 	from container_depot import finance
 	finance.ensure_defaults()
+	# Same for "Wajibkan Semua Order": an unstored Check renders unticked, so a form opened
+	# before anyone saved it showed OFF while every order was still mandatory.
+	from container_depot.container_depot import order_policy
+	order_policy.ensure_defaults()
 	# Workspace Sidebar JSON isn't picked up by Frappe's standard module-sync,
 	# so we re-import the file every migrate. Idempotent (force=True replaces
 	# the existing rows in-place).

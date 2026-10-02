@@ -52,8 +52,10 @@ from container_depot.container_depot import report_kit
 from container_depot.container_depot.container_status import (
 	DONE_CLEANING,
 	DONE_REPAIR,
+	PRESENT,
 	readiness_label,
 )
+from container_depot.container_depot.order_policy import enforce_all
 from container_depot.customer_scope import get_user_customers
 from container_depot.state_machine import IN_DEPO_STAGES
 
@@ -114,7 +116,8 @@ def execute(filters=None):
 			"export_ref": out_job.get("reff_doc"),
 			"shipper": out_job.get("shipper"),
 			"seal_no": v.get("seal_no") if this_visit("eir_out_on") else None,
-			"readiness": readiness_label(c.status, work),
+			# Switch OFF: only the mandatory draft EIR-In holds a tank (order_policy).
+			"readiness": readiness_label(c.status, work if enforce_all() else [w for w in work if w == "EIR-In"]),
 			"inventory_stage": c.inventory_stage,
 			"status": c.status,
 			"open_orders": len(work),
@@ -347,24 +350,25 @@ def _open_work(names: list[str]) -> dict[str, list[str]]:
 	"""``{container: [label, ...]}`` for work that still holds the tank.
 
 	Mirrors :func:`container_status.container_open_orders` exactly — a draft EIR-In plus
-	any unfinished Cleaning / M&R — but resolved for the whole result set
-	in four queries instead of four per row.
+	any unfinished Cleaning / M&R of THIS visit (created after ``last_departure``) — but
+	resolved for the whole result set in five queries instead of five per row.
 	"""
 	if not names:
 		return {}
 	out: dict[str, list[str]] = {}
+	since = _last_departures(names)
 
-	def add(container, label):
-		if container:
-			out.setdefault(container, []).append(label)
+	def add(row, label):
+		if row.container and (row.container not in since or row.creation > since[row.container]):
+			out.setdefault(row.container, []).append(label)
 
 	for row in frappe.get_all(
 		"Inspection",
 		filters={"container": ["in", names], "inspection_type": "EIR-In", "docstatus": 0},
-		fields=["container"],
+		fields=["container", "creation"],
 		limit_page_length=0,
 	):
-		add(row.container, "EIR-In")
+		add(row, "EIR-In")
 	for doctype, done, label in (
 		("Cleaning Order", DONE_CLEANING, "Cleaning"),
 		("Repair Order", DONE_REPAIR, "M&R"),
@@ -376,10 +380,42 @@ def _open_work(names: list[str]) -> dict[str, list[str]]:
 				"status": ["not in", list(done)],
 				"docstatus": ["<", 2],
 			},
-			fields=["container"],
+			fields=["container", "creation"],
 			limit_page_length=0,
 		):
-			add(row.container, label)
+			add(row, label)
+	return out
+
+
+def _last_departures(names: list[str]) -> dict:
+	"""``{container: last gate-out}`` for the tanks back in the yard —
+	:func:`container_status.last_departure` for the whole result set at once."""
+	present = {
+		r.container_no or r.name: r.name
+		for r in frappe.get_all(
+			"Container",
+			filters={"name": ["in", names], "status": ["in", PRESENT]},
+			fields=["name", "container_no"],
+			limit_page_length=0,
+		)
+	}
+	out = {}
+	if not present:
+		return out
+	for g in frappe.get_all(
+		"Gate Entry",
+		filters={
+			"container_no": ["in", list(present)],
+			"docstatus": ["<", 2],
+			"status": ["!=", "Cancelled"],
+			"gate_out_timestamp": ["is", "set"],
+		},
+		fields=["container_no", "gate_out_timestamp"],
+		limit_page_length=0,
+	):
+		c = present[g.container_no]
+		if c not in out or g.gate_out_timestamp > out[c]:
+			out[c] = g.gate_out_timestamp
 	return out
 
 

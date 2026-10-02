@@ -12,7 +12,8 @@ Saving a Container Booking (Tank Out) provisions the whole thing::
         -> Survey Order                    one per booking: the day's field job
             -> Survey Order Tank           one row per tank, Waiting Lowering
                 -> mark_lowered()          Kalmar, or a surveyor already at the tank
-                -> finish_survey()         Surveyor only -> raises the tank's EIR-Out
+                -> finish_survey()         Surveyor only -> claims the tank's EIR-Out
+                                           (born with the booking since 2026-10-02)
 
 LOWERING COMES FIRST, AND WHY THAT IS A REVERSAL
 ------------------------------------------------
@@ -220,6 +221,26 @@ def close_survey_order_with_booking(name: str) -> None:
 			"Inspection", eir, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
 		)
 		revoke("Inspection", eir)
+
+
+def unfinished_survey_row(booking: str | None, container: str):
+	"""The tank's survey row on ``booking`` while it is still short of ``Survey Done`` —
+	what an EIR-Out waits for when every order is mandatory (``Inspection._wait_for_survey``).
+	``None`` when the booking uses no survey, or the row is closed or called off."""
+	if not booking or not container or not cint(frappe.db.get_value("Container Booking", booking, "use_survey")):
+		return None
+	rows = frappe.db.sql(
+		"""
+		select r.name, r.parent, r.status
+		  from `tabSurvey Order Tank` r
+		  join `tabSurvey Order` p on p.name = r.parent
+		 where p.booking = %s and p.docstatus < 2 and r.container = %s and r.status not in %s
+		 limit 1
+		""",
+		(booking, container, (DONE, CANCELLED)),
+		as_dict=True,
+	)
+	return rows[0] if rows else None
 
 
 def provision_survey_order_for_booking(booking_name: str) -> dict:
@@ -1004,9 +1025,10 @@ def finish_survey(name, notes=None, photos=None) -> dict:
 	"I have looked at this tank" — and demanding evidence for it would only teach the crew to
 	type a full stop into the box.
 
-	Closing is what raises the tank's EIR-Out (``eir.provision_eir_out_for_survey``). That draft
-	is deliberately born WITHOUT a bon: the bon does not exist yet, and the EIR-Out cannot be
-	submitted until it does (``Inspection.before_submit``). Best-effort, so an EIR hiccup never
+	Closing ties the tank's EIR-Out to this row (``eir.provision_eir_out_for_survey``). Since
+	2026-10-02 that EIR-Out is born with the booking, not here — a survey nobody does can no
+	longer leave a tank without one. With "Wajibkan Semua Order" ON it is this close that lets
+	the EIR-Out be submitted (``Inspection.before_submit``). Best-effort, so an EIR hiccup never
 	costs the surveyor the survey they just finished.
 	"""
 	if frappe.db.get_value(ROW, name, "status") == DONE:
@@ -1114,6 +1136,10 @@ def _reopen(name, target, sources, clear, note, subject, notifier) -> dict:
 
 	The position is never touched by either. It is not this document's to retract — the tank is
 	standing where the last reading says it is, whatever anyone got wrong about the paperwork.
+
+	Nor is the EIR-Out (user, 2026-10-02). It is born with the booking, not with this survey, so
+	a reopen no longer takes it back; with "Wajibkan Semua Order" ON it simply cannot be
+	submitted again until the survey is closed again (``Inspection.before_submit``).
 	"""
 	from container_depot.container_depot.container_activity import log_doc_note
 
@@ -1143,41 +1169,8 @@ def _reopen(name, target, sources, clear, note, subject, notifier) -> dict:
 	# The row change leaves no Version row of its own, so the schedule's timeline is the only
 	# trace the Desk would otherwise have of the reopen.
 	log_doc_note(SCHEDULE, row.parent, f"{row.container_no or row.container}: {line}")
-	_withdraw_eir_out(name, row.eir_out, line)
 	notifier(_notify_payload(name), reopened=True)
 	return {"success": True, "name": name, "status": target}
-
-
-def _withdraw_eir_out(row_name, eir_out, why) -> None:
-	"""Take back the EIR-Out a now-reopened survey raised.
-
-	The EIR-Out exists because the survey said the tank had been checked. Reopening withdraws
-	that statement, so the paperwork it authorised must not stay standing — an EIR-Out is what
-	lets a tank through the gate (``gate.mark_gate_out``), and one left behind by a retracted
-	survey is exactly the document nobody would think to look at twice.
-
-	Only an UNTOUCHED draft is deleted. Once a surveyor has started filling it in the work is
-	theirs, and it is left alone with a note on its timeline instead — the same rule
-	``eir.release_eirs_for_cancelled_order`` applies to a cancelled bon. A submitted EIR-Out is
-	never touched at all; by then the tank has been through the gate and history is history.
-	"""
-	from container_depot.container_depot.container_activity import log_doc_note
-
-	if not eir_out:
-		return
-	frappe.db.set_value(ROW, row_name, "eir_out", None, update_modified=False)
-	row = frappe.db.get_value(
-		"Inspection", eir_out, ["name", "docstatus", "work_started_on", "referred_voucher"], as_dict=True
-	)
-	if not row or row.docstatus != 0:
-		return
-	try:
-		if not row.work_started_on and not row.referred_voucher:
-			frappe.delete_doc("Inspection", row.name, ignore_permissions=True)
-		else:
-			log_doc_note("Inspection", row.name, why)
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), f"withdraw EIR-Out for survey tank {row_name}")
 
 
 def reopen_lowering(name, note=None) -> dict:

@@ -52,14 +52,20 @@ def container_open_orders(container: str) -> list[dict]:
     has no cleaning to finish, so nothing holds it — readiness is the ABSENCE of open work,
     never the presence of a completed record.
 
+    Only THIS visit's work counts (:func:`last_departure`): an order a previous visit left
+    open stays open, under its own booking, to be finished later — it does not hold the
+    tank's next stay (user, 2026-10-02).
+
     Returns ``[{doctype, name, label, status}]`` — empty when the tank is free to go.
     """
     if not container:
         return []
+    since = last_departure(container)
+    visit = {"creation": [">", since]} if since else {}
     out = []
     for row in frappe.get_all(
         "Inspection",
-        filters={"container": container, "inspection_type": "EIR-In", "docstatus": 0},
+        filters={"container": container, "inspection_type": "EIR-In", "docstatus": 0, **visit},
         fields=["name", "modified"],
         order_by="modified desc",
     ):
@@ -70,7 +76,7 @@ def container_open_orders(container: str) -> list[dict]:
     ):
         for row in frappe.get_all(
             doctype,
-            filters={"container": container, "status": ["not in", done], "docstatus": ["<", 2]},
+            filters={"container": container, "status": ["not in", done], "docstatus": ["<", 2], **visit},
             fields=["name", "status"],
             order_by="modified desc",
         ):
@@ -78,6 +84,34 @@ def container_open_orders(container: str) -> list[dict]:
                 {"doctype": doctype, "name": row.name, "label": label, "status": row.status}
             )
     return out
+
+
+def last_departure(container: str):
+    """When a tank that is back in the yard last left it — the line between this visit's
+    orders and the previous one's. Anything created before it belongs to an earlier stay.
+
+    Read off the Gate Entry the gate-out stamped (``gate.mark_gate_out``). Undoing a departure
+    clears that stamp (``gate.reopen_gate_entry_for_eir``), so an undone exit never splits a
+    visit in two.
+
+    ``None`` while the tank is not in the yard, or never left: nothing is drawn, every order
+    counts. That keeps a departed tank's unfinished work holding its retirement
+    (``Container._guard_deactivation``) — the work is still open, just not this visit's.
+    """
+    row = frappe.db.get_value("Container", container, ["container_no", "status"], as_dict=True)
+    if not row or row.status not in PRESENT:
+        return None
+    return frappe.db.get_value(
+        "Gate Entry",
+        {
+            "container_no": row.container_no or container,
+            "docstatus": ["<", 2],
+            "status": ["!=", "Cancelled"],
+            "gate_out_timestamp": ["is", "set"],
+        },
+        "gate_out_timestamp",
+        order_by="gate_out_timestamp desc",
+    )
 
 
 def readiness_label(status: str | None, blockers: list[str]) -> str:

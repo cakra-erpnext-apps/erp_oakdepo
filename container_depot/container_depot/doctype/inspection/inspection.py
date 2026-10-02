@@ -268,6 +268,9 @@ class Inspection(Document):
 
 		before_status = frappe.db.get_value("Container", self.container, "status")
 		recompute_availability(self.container)
+		from container_depot.container_depot.doctype.order_bongkar.order_bongkar import sync_completion
+
+		sync_completion(self)  # a voided EIR-In reopens its bon
 		# An inverse entry on the tank's timeline, exactly as `eir.revert_to_draft` writes one:
 		# the log is append-only, so the void is recorded as its own event rather than by
 		# rewriting the submit that it undoes. The submit's row stays — it did happen — and
@@ -313,6 +316,7 @@ class Inspection(Document):
 		"""
 		if self.inspection_type != "EIR-Out":
 			return
+		self._wait_for_survey()
 		voucher = self.get("referred_voucher")
 		if voucher and frappe.db.get_value("Order Muat", voucher, "docstatus") == 1:
 			return
@@ -328,6 +332,29 @@ class Inspection(Document):
 			).format(self.name, self.container_no or self.container),
 			title=_("Bon muat belum ada"),
 		)
+
+	def _wait_for_survey(self):
+		"""With "Wajibkan Semua Order" ON, an EIR-Out waits for its tank's survey.
+
+		Since 2026-10-02 the EIR-Out is born with the booking, alongside the Survey Order,
+		instead of out of the finished survey — so the order the two used to run in by
+		construction is held here instead. Only a booking that uses a survey has a row to wait
+		for; OFF lets the EIR-Out go without it and leaves the row exactly as it is.
+		"""
+		from container_depot.container_depot.order_policy import enforce_all
+		from container_depot.container_depot.tank_survey import unfinished_survey_row
+
+		if not enforce_all():
+			return
+		row = unfinished_survey_row(self.get("container_booking"), self.container)
+		if row:
+			frappe.throw(
+				_(
+					"EIR-Out {0} belum bisa disubmit: survey tank <b>{1}</b> di jadwal {2} masih "
+					"<b>{3}</b>. Selesaikan survey-nya dulu."
+				).format(self.name, self.container_no or self.container, row.parent, _(row.status)),
+				title=_("Survey belum selesai"),
+			)
 
 	def on_submit(self):
 		"""Update container status + last cargo when inspection is submitted"""
@@ -403,8 +430,10 @@ class Inspection(Document):
 		# Cleaning/Repair orders exist, recompute In_Depot vs Available for the tank.
 		if self.inspection_type == "EIR-In":
 			from container_depot.container_depot.container_status import recompute_availability
+			from container_depot.container_depot.doctype.order_bongkar.order_bongkar import sync_completion
 
 			recompute_availability(self.container)
+			sync_completion(self)
 
 		# A clean EIR-Out submitted = the tank has LEFT the depot. This approval is the ONLY
 		# thing that declares a departure (the operator-pressed "ACC Keluar" queue is gone),

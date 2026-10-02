@@ -18,7 +18,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, getdate, now_datetime
 
-from container_depot.container_depot.container_status import PRESENT, container_open_orders
+from container_depot.container_depot.container_status import PRESENT
+from container_depot.container_depot.order_policy import blocking_orders, enforce_all
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 _LIST_FIELDS = [
@@ -248,7 +249,7 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 				doc.name, doc.status
 			)
 		)
-	open_orders = container_open_orders(doc.name)
+	open_orders = blocking_orders(doc.name)
 	if open_orders:
 		listed = ", ".join(f"{o['label']} {o['name']} ({o.get('status') or '-'})" for o in open_orders)
 		frappe.throw(
@@ -256,13 +257,14 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 		)
 
 	# Leak Check wajib sebelum keluar — satu per kunjungan, apa pun hasilnya (foto bocor hanya
-	# ditandai, tidak menahan). Tidak menyentuh order mana pun; ditolak di sini saja.
+	# ditandai, tidak menahan). Tidak menyentuh order mana pun; ditolak di sini saja. Saklar
+	# "Wajibkan Semua Order" OFF melepasnya (order_policy).
 	from container_depot.container_depot.doctype.leak_check.leak_check import (
 		has_leak_check_this_visit,
 		open_leak_check,
 	)
 
-	if not has_leak_check_this_visit(doc.name):
+	if enforce_all() and not has_leak_check_this_visit(doc.name):
 		pending = open_leak_check(doc.name)
 		frappe.throw(
 			_("Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.").format(

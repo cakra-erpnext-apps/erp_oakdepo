@@ -1833,11 +1833,13 @@ function _dossier_body(orders) {
 function _dossier_line(o) {
 	const esc = frappe.utils.escape_html;
 	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
-	// Orange = unfinished AND holding the gate-out back (only Cleaning / M&R can). Blue =
-	// unfinished but not in the way: a draft EIR, a booking still being prepared. Green =
-	// finished. Grey = cancelled — history, neither a warning nor a clearance.
-	const tone = o.blocks ? 'orange' : o.cancelled ? 'gray' : o.open ? 'blue' : 'green';
-	const kind = o.detail ? `${o.kind} · ${o.detail}` : o.kind;
+	// The app-wide status colours (status_pill.js): blue = finished, the terminal state; red =
+	// cancelled; grey = a draft nobody has started; orange = still waiting on someone. Holding
+	// the gate-out back is said in words, not another colour — this visit's work, and only
+	// while every order is mandatory.
+	const tone = o.cancelled ? 'red' : !o.open ? 'blue' : o.status === 'Draft' ? 'gray' : 'orange';
+	let kind = o.detail ? `${o.kind} · ${o.detail}` : o.kind;
+	if (o.blocks) kind += ` · ${__('menahan gate-out')}`;
 	return `<div class="d-flex align-items-center" style="gap: .5rem; padding: 2px 0;">
 		<span class="indicator-pill ${tone}">${esc(o.status || '—')}</span>
 		<span style="min-width: 11rem;">${link}</span>
@@ -1866,16 +1868,17 @@ function _lock_summary(bons, coverage) {
 }
 
 // --- Work per container ----------------------------------------------------
-// Colour follows meaning, not doctype: a finished job is green wherever it came from, an
-// open one amber, a dead one grey. The four work doctypes each spell "done" differently,
-// so map the words rather than asking every caller to remember which is which.
+// Colour follows meaning, not doctype, in the app-wide colours (status_pill.js): a finished
+// job is blue wherever it came from, an open one orange, a dead one red. The work doctypes
+// each spell "done" differently, so map the words rather than asking every caller to
+// remember which is which.
 const _WORK_DONE = ['Completed', 'Submitted', 'Approved', 'Passed', 'Closed'];
 const _WORK_DEAD = ['Cancelled', 'Rejected', 'Void'];
 
 function _work_indicator(status) {
-	if (_WORK_DEAD.includes(status)) return 'gray';
-	if (_WORK_DONE.includes(status)) return 'green';
-	return 'orange';
+	if (_WORK_DEAD.includes(status)) return 'red';
+	if (_WORK_DONE.includes(status)) return 'blue';
+	return status === 'Draft' ? 'gray' : 'orange';
 }
 
 function _work_html(groups) {

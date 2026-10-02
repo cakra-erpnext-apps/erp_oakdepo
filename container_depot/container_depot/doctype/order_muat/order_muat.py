@@ -100,13 +100,15 @@ class OrderMuat(Document):
 		prioritised instead (:mod:`lift_on`). The bon is different: it is the paper a driver
 		is handed to take the tank away, so here the answer has to be no.
 		"""
-		from container_depot.container_depot.container_status import container_open_orders
+		# Which open work counts is the "Wajibkan Semua Order" switch's call: OFF leaves only
+		# a draft EIR-In holding the bon (order_policy).
+		from container_depot.container_depot.order_policy import blocking_orders
 
 		for row in _order_rows(self):
 			container = row.get("container")
 			if not container:
 				continue
-			open_orders = container_open_orders(container)
+			open_orders = blocking_orders(container)
 			if not open_orders:
 				continue
 			listed = ", ".join(f"{o['label']} {o['name']} ({o.get('status') or '-'})" for o in open_orders)

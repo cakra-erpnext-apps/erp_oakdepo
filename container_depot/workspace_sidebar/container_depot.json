@@ -345,6 +345,18 @@
    "icon": "droplet"
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Depot Operation Settings",
+   "link_to": "Depot Operation Settings",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "list-checks"
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "receipt",
@@ -840,7 +852,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-09-30 16:00:00.000000",
+ "modified": "2026-10-02 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",

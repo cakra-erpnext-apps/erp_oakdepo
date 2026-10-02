@@ -416,3 +416,8 @@ truk {0},truck {0}
 {0}: milik principal lain ({1}) — dilewati,{0}: belongs to another principal ({1}) — skipped
 {0}: sudah terikat booking {1} — dilewati,{0}: already tied to booking {1} — skipped
 {0}: tidak ada di depo (status {1}) — dilewati,{0}: not in the depot (status {1}) — skipped
+EIR-Out {0} belum bisa disubmit: survey tank <b>{1}</b> di jadwal {2} masih <b>{3}</b>. Selesaikan survey-nya dulu.,EIR-Out {0} cannot be submitted yet: the survey of tank <b>{1}</b> on schedule {2} is still <b>{3}</b>. Finish the survey first.
+Survey belum selesai,Survey not finished
+menahan gate-out,holding the gate-out
+Wajibkan Semua Order,Make Every Order Mandatory
+"Centang = semua order wajib selesai sebelum tank keluar (Survey, Leak Check, Cleaning, M&R). Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In, EIR-Out dan pembayaran.","Ticked = every order must be finished before a tank leaves (Survey, Leak Check, Cleaning, M&R). Unticked = only Booking, Bon, Gate, EIR-In, EIR-Out and payment are mandatory."

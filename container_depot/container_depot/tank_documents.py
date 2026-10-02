@@ -4,16 +4,18 @@
 it can be opened instead of hunted for, and it answers the question a Tank Out booking is
 opened to ask once the truck is on its way: what still has to happen to these tanks?
 
-Seven kinds, in the order an operator thinks about them: the Cleaning / M&R work behind
+The kinds, in the order an operator thinks about them: the Cleaning / M&R work behind
 readiness, the EIRs recording the tank's condition, the Survey Order that goes and finds it
-in the yard, and the Booking / Bongkar / Muat paperwork it moves under.
+in the yard, the Leak Check, and the bookings it moves under. The bons are left out (user,
+2026-10-02): a bon's status follows the paperwork, not the tank, and read as ambiguous here.
 
 Two different questions are answered side by side and must not be confused:
 
-* ``open``   — unfinished. Everything here is tracked on that basis.
-* ``blocks`` — unfinished AND standing between the tank and the gate. Only Cleaning and M&R
-  can. A draft EIR is unfinished paperwork; an open Tank Out booking is the very way out.
-  Counting either as a blocker would hold up every tank forever.
+* ``open``   — unfinished. Everything here is tracked on that basis, statuses as they are.
+* ``blocks`` — unfinished AND standing between the tank and the gate: this visit's Cleaning,
+  M&R, survey and Leak Check — and only while "Wajibkan Semua Order" is ON (:mod:`order_policy`).
+  A draft EIR is unfinished paperwork; an open Tank Out booking is the very way out. Work a
+  previous visit left open is listed but never blocks (``container_status.last_departure``).
 
 Read live, never stored: the answer must not be able to age.
 
@@ -26,6 +28,9 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
+
+from container_depot.container_depot.container_status import last_departure
+from container_depot.container_depot.order_policy import enforce_all
 
 # A Cleaning / Repair order in one of these no longer blocks gate-out (work is finished).
 _CLEANING_DONE = ("Completed", "Cancelled")
@@ -44,7 +49,7 @@ def _tank_orders(container: str) -> list:
 	kept — "which orders touched this tank" is the question, and a cancelled order that used
 	to block is worth seeing.
 	"""
-	out = []
+	out, since = [], last_departure(container)
 	for kind, doctype, done in (
 		("Cleaning", "Cleaning Order", _CLEANING_DONE),
 		("M&R", "Repair Order", _MR_DONE),
@@ -52,22 +57,51 @@ def _tank_orders(container: str) -> list:
 		for r in frappe.get_all(
 			doctype,
 			filters={"container": container},
-			fields=["name", "status", "docstatus"],
+			fields=["name", "status", "docstatus", "creation"],
 			order_by="creation desc",
 		):
 			cancelled = r.docstatus == 2
-			blocks = not cancelled and r.status not in done
+			is_open = not cancelled and r.status not in done
 			out.append({
 				"kind": kind,
 				"doctype": doctype,
 				"name": r.name,
 				"status": _("Cancelled") if cancelled else r.status,
-				# Work that must finish before the tank can leave: open means blocking here.
-				"blocks": blocks,
-				"open": blocks,
-				"done": not blocks and not cancelled,
+				# Work that must finish before the tank can leave.
+				"blocks": _holds(is_open, r.creation, since),
+				"open": is_open,
+				"done": not is_open and not cancelled,
 				"cancelled": cancelled,
 			})
+	return out
+
+
+def _holds(is_open: bool, created, since) -> bool:
+	"""Open work that stands between the tank and the gate: this visit's (created after
+	``since`` = :func:`last_departure`), and only while the switch is ON."""
+	return is_open and enforce_all() and (not since or created > since)
+
+
+def _tank_leak_checks(container: str) -> list:
+	"""The tank's Leak Checks, newest first — one per visit, raised Open on the Tank In bon."""
+	out, since = [], last_departure(container)
+	for r in frappe.get_all(
+		"Leak Check",
+		filters={"container": container},
+		fields=["name", "status", "creation"],
+		order_by="creation desc",
+	):
+		is_open = r.status != "Completed"
+		out.append({
+			"kind": "Leak Check",
+			"doctype": "Leak Check",
+			"name": r.name,
+			"status": r.status,
+			"blocks": _holds(is_open, r.creation, since),
+			"open": is_open,
+			"done": not is_open,
+			"cancelled": False,
+		})
 	return out
 
 
@@ -118,14 +152,12 @@ def _tank_surveys(container: str) -> list:
 	is also what the field screens write. Reached through the child table for the same reason
 	the bons are — one join, on an indexed ``container``.
 
-	Never ``blocks``: the survey is what PRODUCES the EIR-Out at the gate, not a gate of its
-	own, and a lift-on has been allowed to go ahead without one since the readiness model was
-	cut back to "the tank is present". An unfinished survey is still exactly what an operator
-	preparing a pickup came to this panel to see, which is why it is tracked as ``open``.
+	``blocks`` only while "Wajibkan Semua Order" is ON: then the EIR-Out — born with the
+	booking since 2026-10-02 — waits for this tank's survey (``Inspection.before_submit``).
 	"""
 	rows = frappe.db.sql(
 		"""
-		select p.name, p.docstatus, r.status
+		select p.name, p.docstatus, p.creation, r.status
 		  from `tabSurvey Order Tank` r
 		  join `tabSurvey Order` p on p.name = r.parent
 		 where r.container = %s and r.parenttype = 'Survey Order' and r.parentfield = 'tanks'
@@ -134,7 +166,7 @@ def _tank_surveys(container: str) -> list:
 		(container,),
 		as_dict=True,
 	)
-	out = []
+	out, since = [], last_departure(container)
 	for r in rows:
 		cancelled = r.docstatus == 2 or r.status == "Cancelled"
 		done = not cancelled and r.status == _SURVEY_DONE
@@ -143,7 +175,8 @@ def _tank_surveys(container: str) -> list:
 			"doctype": "Survey Order",
 			"name": r.name,
 			"status": _("Cancelled") if cancelled else r.status,
-			"blocks": False,
+			# ON: the EIR-Out cannot be submitted before its survey (Inspection.before_submit).
+			"blocks": _holds(not cancelled and not done, r.creation, since),
 			"open": not cancelled and not done,
 			"done": done,
 			"cancelled": cancelled,
@@ -163,8 +196,6 @@ def _tank_surveys(container: str) -> list:
 # does not need one — bongkar is unloading (inbound) and muat is loading (outbound), always.
 _TANK_JOBS = (
 	("Booking", "Container Booking", "Container Booking Item", "items", "booking_status", "p.direction"),
-	("Bongkar", "Order Bongkar", "Container Booking Item", "containers", "order_status", "'Tank In'"),
-	("Muat", "Order Muat", "Order Container Item", "containers", "order_status", "'Tank Out'"),
 )
 
 
@@ -294,7 +325,7 @@ def documents_for(container: str, tank_status: str | None = None) -> list:
 	readable = {
 		dt
 		for dt in ("Cleaning Order", "Repair Order", "Inspection", "Survey Order",
-				   "Container Booking", "Order Bongkar", "Order Muat")
+				   "Leak Check", "Container Booking")
 		if frappe.has_permission(dt, "read")
 	}
 	return [
@@ -302,6 +333,7 @@ def documents_for(container: str, tank_status: str | None = None) -> list:
 		for o in _tank_orders(container)
 		+ _tank_eirs(container)
 		+ _tank_surveys(container)
+		+ _tank_leak_checks(container)
 		+ _tank_jobs(container, tank_status)
 		if o["doctype"] in readable
 	]

@@ -3448,11 +3448,13 @@ def parse_container_xlsx(
 # This groups the same data the way the operator thinks about it: per container, in time
 # order.
 #
-# (doctype, date field, extra field shown after the doctype label)
+# (doctype, date field, extra field shown after the doctype label, field linking the booking)
 _WORK_SOURCES = (
-	("Inspection", "eir_date", "inspection_type"),
-	("Cleaning Order", "order_created", None),
-	("Repair Order", "order_created", None),
+	("Inspection", "eir_date", "inspection_type", "container_booking"),
+	("Cleaning Order", "order_created", None, "container_booking"),
+	("Repair Order", "order_created", None, "container_booking"),
+	# Born Open on the Tank In bon, which stamps its booking (leak_check.provision_for_order_bongkar).
+	("Leak Check", "creation", None, "booking"),
 )
 
 
@@ -3530,13 +3532,13 @@ def related_orders(booking: str) -> list:
 
 def _work_for(booking: str, container: str) -> list:
 	orders = []
-	for doctype, date_field, extra_field in _WORK_SOURCES:
+	for doctype, date_field, extra_field, link_field in _WORK_SOURCES:
 		fields = ["name", "status", date_field]
 		if extra_field:
 			fields.append(extra_field)
 		for doc in frappe.get_all(
 			doctype,
-			filters={"container_booking": booking, "container": container},
+			filters={link_field: booking, "container": container},
 			fields=fields,
 			order_by=f"{date_field} asc",
 		):
@@ -3560,6 +3562,9 @@ def _work_for(booking: str, container: str) -> list:
 def _unlinked_count(container: str) -> int:
 	"""Orders on this container attributed to no booking — candidates, not members."""
 	return sum(
-		frappe.db.count(doctype, {"container": container, "container_booking": ("is", "not set")})
-		for doctype, _date, _extra in _WORK_SOURCES
+		frappe.db.count(doctype, {"container": container, link_field: ("is", "not set")})
+		for doctype, _date, _extra, link_field in _WORK_SOURCES
+		# A hand-made Leak Check has no booking to be attributed to (booking_link covers the
+		# EIR-raised work orders only), so counting it would point at a fix that does not exist.
+		if link_field == "container_booking"
 	)

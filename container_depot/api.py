@@ -32,7 +32,7 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, now_datetime
 
 from container_depot import finance
-from container_depot.container_depot.container_status import container_open_orders
+from container_depot.container_depot.order_policy import blocking_orders
 from container_depot.container_depot.order_generation import BLOCK_MESSAGES, payment_block_reason
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_branches
 
@@ -1060,7 +1060,7 @@ def _booking_gate_detail(booking) -> dict:
 			# Work still holding this tank — the reason a gate-out would be refused, per
 			# container rather than for the booking as a whole. OPEN orders only: a finished
 			# one is history and would just be noise at the gate.
-			"open_orders": container_open_orders(c.container) if c.container else [],
+			"open_orders": blocking_orders(c.container) if c.container else [],
 		})
 	return {
 		"booking": b.name,

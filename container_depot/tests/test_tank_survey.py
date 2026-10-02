@@ -2,8 +2,8 @@
 
 Saving an outbound Container Booking schedules a day's work (``Survey Order``) with one row per
 tank at ``Waiting Lowering``. An Operator Kalmar — or a surveyor already standing there — drops
-the tank (``Lowered``); the surveyor then closes it (``Survey Done``), and THAT is what raises
-the tank's EIR-Out.
+the tank (``Lowered``); the surveyor then closes it (``Survey Done``), which claims the tank's
+EIR-Out — born with the booking since 2026-10-02.
 
 Two things are pinned here above all, because both were got wrong once:
 
@@ -881,14 +881,14 @@ class TestReopen(_Base):
 		self.assertEqual(frappe.db.get_value("Container", c, "current_location"), "sudah di ground slot")
 		self.assertEqual(frappe.db.count("Container Position", {"container": c}), 2)
 
-	def test_reopening_withdraws_the_untouched_eir_it_authorised(self):
-		"""The EIR-Out exists because the survey said the tank had been checked. Reopening
-		withdraws that statement, and an EIR-Out is what lets a tank through the gate."""
+	def test_reopening_keeps_the_eir_out(self):
+		"""Since 2026-10-02 the EIR-Out is born with the booking, not with the survey, so a
+		reopen no longer takes it back (user). With every order mandatory it just cannot be
+		submitted again until the survey is closed again."""
 		_c, _bk, row, eir = self._closed("TSVREOP00004")
-		self.assertTrue(frappe.db.exists("Inspection", eir))
 		ts.reopen_lowering(row, note="masih di atas")
-		self.assertFalse(frappe.db.exists("Inspection", eir))
-		self.assertIsNone(self._val(row, "eir_out").eir_out)
+		self.assertEqual(frappe.db.get_value("Inspection", eir, "docstatus"), 0)
+		self.assertEqual(self._val(row, "eir_out").eir_out, eir)
 
 	def test_a_started_eir_is_kept_and_only_noted(self):
 		"""Once a surveyor has started filling it in the work is theirs. Never silently destroy
@@ -1270,11 +1270,13 @@ class TestWithoutSurvey(_Base):
 		self.assertEqual(self._eirs(bk), [a])
 		self.assertFalse(frappe.db.exists("Inspection", {"container": b, "inspection_type": "EIR-Out"}))
 
-	def test_switching_survey_on_withdraws_the_drafts(self):
+	def test_switching_survey_on_keeps_the_drafts(self):
+		"""The EIR-Out is the booking's, survey or not (2026-10-02) — the survey only decides
+		when it may be submitted."""
 		a = self._container("TSVNOSV00005")
 		bk = self._booking(a, survey_date="", use_survey=0)
 		self._save(bk, use_survey=1, survey_date=add_days(today(), 1))
-		self.assertEqual(self._eirs(bk), [])
+		self.assertEqual(self._eirs(bk), [a])
 		self.assertTrue(frappe.db.exists(SCHEDULE, {"booking": bk, "docstatus": ["!=", 2]}))
 
 	def test_switching_survey_off_calls_the_schedule_off_and_raises_the_drafts(self):
