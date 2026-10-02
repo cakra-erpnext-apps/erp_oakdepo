@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.container_depot import report_kit
+
 # Survei yang masih menuntut pekerjaan seseorang: tank yang belum turun, dan tank yang sudah
 # turun tapi surveynya belum ditutup. Keduanya sama-sama menahan janji ke customer.
 OPEN_SURVEY = ("Waiting Lowering", "Lowered")
@@ -27,7 +29,8 @@ OPEN_SURVEY = ("Waiting Lowering", "Lowered")
 def execute(filters=None):
 	filters = filters or {}
 	rows = _rows(filters)
-	return _columns(), rows, None, None, _summary(rows)
+	columns, rows = report_kit.finish(_columns(), rows, filters, default="survey_date")
+	return columns, rows, None, None, _summary(rows)
 
 
 def _rows(filters) -> list:
@@ -44,12 +47,15 @@ def _rows(filters) -> list:
 	if filters.get("principal"):
 		where.append("c.principal = %(principal)s")
 		params["principal"] = filters["principal"]
-	if filters.get("from_date"):
+	# Only while the range is on its own column; on another date column
+	# report_kit.finish filters the rows instead.
+	frm, to = report_kit.native_range(filters, "survey_date")
+	if frm:
 		where.append("o.survey_date >= %(from_date)s")
-		params["from_date"] = filters["from_date"]
-	if filters.get("to_date"):
+		params["from_date"] = frm
+	if to:
 		where.append("o.survey_date <= %(to_date)s")
-		params["to_date"] = filters["to_date"]
+		params["to_date"] = to
 	if filters.get("only_outstanding"):
 		where.append("s.status IN %(open)s")
 		params["open"] = OPEN_SURVEY

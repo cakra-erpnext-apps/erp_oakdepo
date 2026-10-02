@@ -501,6 +501,9 @@ app_include_js = [
 	# Satu kotak "Cari" menggantikan filter per kolom di setiap list yang punya kolom
 	# search_text (list_search.py) — filter lain lewat tombol Filter.
 	"/assets/container_depot/js/list_search.js?v=1",
+	# container_depot.report_kit — "Cari" + rentang tanggal atas kolom tanggal pilihan untuk
+	# report depot, dan header kolom gaya sheet Excel (pasangan report_kit.py).
+	"/assets/container_depot/js/report_kit.js?v=3",
 ]
 
 # include js, css files in header of web template

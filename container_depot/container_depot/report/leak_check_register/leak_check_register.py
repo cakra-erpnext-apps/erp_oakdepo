@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.container_depot import report_kit
+
 
 def execute(filters=None):
 	filters = filters or {}
 	rows = _rows(filters)
-	return _columns(), rows, None, None, _summary(rows)
+	columns, rows = report_kit.finish(_columns(), rows, filters, default="recorded_on")
+	return columns, rows, None, None, _summary(rows)
 
 
 def _rows(filters) -> list:

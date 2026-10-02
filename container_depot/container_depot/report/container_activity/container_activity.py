@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.container_depot import report_kit
 from container_depot.customer_scope import container_sql_filter
 
 
 def execute(filters=None):
 	filters = filters or {}
-	return _columns(), _data(filters)
+	return report_kit.finish(_columns(), _data(filters), filters, default="activity_time")
 
 
 def _columns():
@@ -45,11 +46,12 @@ def _data(filters):
 		if filters.get(field):
 			where.append(f"`{field}` = %({field})s")
 			params[field] = filters[field]
+	# DATE(): a bare `activity_time <= '2026-10-01'` stops at midnight and loses that day.
 	if filters.get("from_date"):
-		where.append("activity_time >= %(from_date)s")
+		where.append("DATE(activity_time) >= %(from_date)s")
 		params["from_date"] = filters["from_date"]
 	if filters.get("to_date"):
-		where.append("activity_time <= %(to_date)s")
+		where.append("DATE(activity_time) <= %(to_date)s")
 		params["to_date"] = filters["to_date"]
 
 	clause = " WHERE " + " AND ".join(where)

@@ -26,13 +26,16 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.container_depot import report_kit
 from container_depot.container_depot.container_status import DONE_CLEANING
 
 
 def execute(filters, *, wash_type: str, item_code: str, date_label: str):
 	filters = filters or {}
-	rows = _rows(filters, wash_type, item_code)
-	return _columns(date_label), rows, None, None, _summary(rows)
+	columns, rows = report_kit.finish(
+		_columns(date_label), _rows(filters, wash_type, item_code), filters, default="order_date"
+	)
+	return columns, rows, None, None, _summary(rows)
 
 
 def _rows(filters, wash_type, item_code) -> list:
@@ -56,12 +59,15 @@ def _rows(filters, wash_type, item_code) -> list:
 	if filters.get("depot"):
 		where.append("COALESCE(NULLIF(co.depot, ''), c.depot) = %(depot)s")
 		params["depot"] = filters["depot"]
-	if filters.get("from_date"):
+	# Only while the range is on Order Date; on another date column report_kit.finish
+	# filters the rows instead.
+	frm, to = report_kit.native_range(filters, "order_date")
+	if frm:
 		where.append("DATE(co.order_created) >= %(from_date)s")
-		params["from_date"] = filters["from_date"]
-	if filters.get("to_date"):
+		params["from_date"] = frm
+	if to:
 		where.append("DATE(co.order_created) <= %(to_date)s")
-		params["to_date"] = filters["to_date"]
+		params["to_date"] = to
 	if filters.get("only_outstanding"):
 		where.append("co.status != 'Completed'")
 

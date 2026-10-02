@@ -2,6 +2,9 @@
 // punya tanggal lain apa pun, dan justru merekalah yang dicari di sini.
 frappe.query_reports["Container Booking Register"] = {
 	filters: [
+		...container_depot.report_kit.filters([
+			["order_date", "Order Date"],
+		]),
 		{ fieldname: "customer", label: __("Customer"), fieldtype: "Link", options: "Customer" },
 		{ fieldname: "principal", label: __("Principle"), fieldtype: "Link", options: "Customer" },
 		{ fieldname: "depot", label: __("Depot"), fieldtype: "Link", options: "Depot" },
@@ -12,10 +15,10 @@ frappe.query_reports["Container Booking Register"] = {
 			fieldtype: "Select",
 			options: "\nDraft\nPengajuan\nPending Payment\nPending Confirmation\nConfirmed\nCancelled\nBlocked",
 		},
-		{ fieldname: "from_date", label: __("Order Date Dari"), fieldtype: "Date" },
-		{ fieldname: "to_date", label: __("Order Date Sampai"), fieldtype: "Date" },
 		{ fieldname: "only_unpaid", label: __("Hanya yang belum dibayar"), fieldtype: "Check", default: 0 },
 	],
+
+	onload: container_depot.report_kit.onload,
 
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);

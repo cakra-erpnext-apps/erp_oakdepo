@@ -1,5 +1,8 @@
 frappe.query_reports["Lift On Register"] = {
 	filters: [
+		...container_depot.report_kit.filters([
+			["plan_date", "Pick up Date"],
+		]),
 		{ fieldname: "principal", label: __("Principle"), fieldtype: "Link", options: "Customer" },
 		{ fieldname: "customer", label: __("Customer"), fieldtype: "Link", options: "Customer" },
 		{ fieldname: "branch", label: __("Branch"), fieldtype: "Link", options: "Branch" },
@@ -9,10 +12,10 @@ frappe.query_reports["Lift On Register"] = {
 			fieldtype: "Select",
 			options: "\nDraft\nPengajuan\nPending Payment\nPending Confirmation\nConfirmed\nCompleted\nCancelled\nBlocked",
 		},
-		{ fieldname: "from_date", label: __("Pick up Date Dari"), fieldtype: "Date" },
-		{ fieldname: "to_date", label: __("Pick up Date Sampai"), fieldtype: "Date" },
 		{ fieldname: "only_open", label: __("Hanya yang belum selesai"), fieldtype: "Check", default: 0 },
 	],
+
+	onload: container_depot.report_kit.onload,
 
 	formatter(value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);

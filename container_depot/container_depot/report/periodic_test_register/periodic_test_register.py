@@ -30,6 +30,7 @@ from __future__ import annotations
 import frappe
 from frappe.utils import add_months, getdate
 
+from container_depot.container_depot import report_kit
 from container_depot.container_depot.container_status import DONE_REPAIR
 
 # Item code -> tipe uji. Item survey ikut, karena sertifikasi kelas mengikuti siklus yang
@@ -86,7 +87,8 @@ def execute(filters=None):
 			"status": o["status"],
 			"repair_order": o["repair_order"],
 		})
-	return _columns(), rows, None, None, _summary(rows)
+	columns, rows = report_kit.finish(_columns(), rows, filters, default="order_date")
+	return columns, rows, None, None, _summary(rows)
 
 
 def _orders(filters) -> list:
@@ -101,12 +103,15 @@ def _orders(filters) -> list:
 	if filters.get("depot"):
 		where.append("COALESCE(NULLIF(ro.depot, ''), c.depot) = %(depot)s")
 		params["depot"] = filters["depot"]
-	if filters.get("from_date"):
+	# Only while the range is on its own column; on another date column
+	# report_kit.finish filters the rows instead.
+	frm, to = report_kit.native_range(filters, "order_date")
+	if frm:
 		where.append("DATE(ro.order_created) >= %(from_date)s")
-		params["from_date"] = filters["from_date"]
-	if filters.get("to_date"):
+		params["from_date"] = frm
+	if to:
 		where.append("DATE(ro.order_created) <= %(to_date)s")
-		params["to_date"] = filters["to_date"]
+		params["to_date"] = to
 	if filters.get("only_outstanding"):
 		where.append("ro.status NOT IN %(done)s")
 		params["done"] = tuple(DONE_REPAIR)

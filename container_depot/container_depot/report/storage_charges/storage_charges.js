@@ -10,6 +10,13 @@
 // Laporan ini tidak membuat invoice apa pun.
 frappe.query_reports["Storage Charges"] = {
 	filters: [
+		...container_depot.report_kit.filters([
+			["in_date", "In Date"],
+			["out_date", "Out Date"],
+			["charge_from", "Tagih Dari"],
+			["charge_to", "Tagih s/d"],
+			["billed_until", "Ditagih s/d"],
+		]),
 		{
 			fieldname: "container",
 			label: __("Container"),
@@ -39,6 +46,7 @@ frappe.query_reports["Storage Charges"] = {
 	},
 
 	onload(report) {
+		container_depot.report_kit.onload(report);
 		report.page.add_inner_message(
 			"Laporan hitungan hari saja — tidak membuat invoice apa pun. " +
 				"Satu baris = kunjungan terbaru tiap tank; isi filter <b>Container</b> untuk " +

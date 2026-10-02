@@ -4,8 +4,23 @@
 //
 // Status/Type/Stage tetap Select (persis Select di Container), Principal/Depot Link supaya
 // daftarnya datang dari datanya sendiri, bukan salinan yang dijaga tangan.
+//
+// Kolom & judulnya mengikuti sheet "Tank Stock Report" yang sudah dipakai user; "Cari" dan
+// "Tanggal" (kolom tanggal mana yang disaring Dari/Sampai) dari container_depot.report_kit.
 frappe.query_reports["Container Inventory"] = {
 	filters: [
+		...container_depot.report_kit.filters([
+			["in_date", "In Depot"],
+			["cleaning_start", "Cleaning Start"],
+			["cleaning_end", "Cleaning End"],
+			["repair_start", "Start Repair"],
+			["available_date", "Available Date"],
+			["survey_date", "Survey Date"],
+			["out_date", "Depot Out"],
+			["target_lift_on", "Plan Pickup Date"],
+			["last_test_date", "Test"],
+			["next_test_date", "Next Test"],
+		]),
 		{
 			fieldname: "principal",
 			label: __("Principal"),
@@ -38,7 +53,8 @@ frappe.query_reports["Container Inventory"] = {
 		},
 		// Menyala secara default: yang dicari orang yang membuka "Inventory" adalah tank
 		// yang ADA di depo. Dimatikan untuk ikut melihat yang dipesan tapi belum tiba dan
-		// yang sudah keluar. Diabaikan saat Stage dipilih sendiri.
+		// yang sudah keluar. Diabaikan saat Stage dipilih sendiri, dan saat Tanggal = Depot
+		// Out (tank yang sudah keluar tidak pernah ada di depo).
 		{
 			fieldname: "in_depo_only",
 			label: __("Hanya yang ada di depo"),
@@ -58,6 +74,8 @@ frappe.query_reports["Container Inventory"] = {
 			default: 0,
 		},
 	],
+
+	onload: container_depot.report_kit.onload,
 
 	// A tank nobody is waiting on should not read the same as one with work stuck on it.
 	formatter(value, row, column, data, default_formatter) {

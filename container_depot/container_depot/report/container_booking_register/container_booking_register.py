@@ -15,13 +15,15 @@ from __future__ import annotations
 
 import frappe
 
+from container_depot.container_depot import report_kit
 from container_depot.customer_scope import booking_sql_filter
 
 
 def execute(filters=None):
 	filters = filters or {}
 	rows = _rows(filters)
-	return _columns(), rows, None, None, _summary(rows)
+	columns, rows = report_kit.finish(_columns(), rows, filters, default="order_date")
+	return columns, rows, None, None, _summary(rows)
 
 
 def _rows(filters) -> list:
@@ -40,12 +42,15 @@ def _rows(filters) -> list:
 		if filters.get(key):
 			where.append(clause)
 			params[key] = filters[key]
-	if filters.get("from_date"):
+	# Only while the range is on its own column; on another date column
+	# report_kit.finish filters the rows instead.
+	frm, to = report_kit.native_range(filters, "order_date")
+	if frm:
 		where.append("DATE(b.creation) >= %(from_date)s")
-		params["from_date"] = filters["from_date"]
-	if filters.get("to_date"):
+		params["from_date"] = frm
+	if to:
 		where.append("DATE(b.creation) <= %(to_date)s")
-		params["to_date"] = filters["to_date"]
+		params["to_date"] = to
 	if filters.get("only_unpaid"):
 		where.append("b.payment_status = 'Unpaid'")
 

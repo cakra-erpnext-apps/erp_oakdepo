@@ -44,6 +44,7 @@ import frappe
 from frappe.utils import getdate, today
 
 from container_depot import storage, storage_charge
+from container_depot.container_depot import report_kit
 from container_depot.container_depot.container_status import AVAILABLE, GATE_OUT, IN_DEPOT
 from container_depot.customer_scope import get_user_customers
 from container_depot.pricing_model import active_contract as _active_contract
@@ -59,7 +60,7 @@ STATUSES = (IN_DEPOT, AVAILABLE, GATE_OUT)
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
-	return _columns(), _data(filters)
+	return report_kit.finish(_columns(), _data(filters), filters, default="in_date")
 
 
 def _columns():
