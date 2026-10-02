@@ -2261,11 +2261,13 @@ def _block_if_child_submitted(booking: str) -> None:
 	orders = frappe.get_all(
 		"Survey Order", filters={"booking": booking, "docstatus": ["!=", 2]}, fields=["name", "docstatus"]
 	)
+	# Only when there is a survey: Frappe reads `in [""]` as `ifnull(survey_order, '') in ('')`,
+	# which matched EVERY submitted EIR without a survey (each EIR-In) and refused the void.
 	eirs = frappe.get_all(
 		"Inspection",
-		filters={"survey_order": ["in", [o.name for o in orders] or [""]], "docstatus": 1},
+		filters={"survey_order": ["in", [o.name for o in orders]], "docstatus": 1},
 		pluck="name",
-	)
+	) if orders else []
 	blocking = [_("EIR-Out {0}").format(e) for e in eirs] + [
 		_("Survey Order {0}").format(o.name) for o in orders if o.docstatus == 1
 	]
