@@ -75,10 +75,11 @@ def _record(container, photos, remarks=None, name=None):
 
 	name = name or open_leak_check(container)
 	doc = frappe.get_doc("Leak Check", name) if name else frappe.new_doc("Leak Check")
-	if doc.get("status") == "Completed":
+	if doc.docstatus != 0:
 		frappe.throw(_("Leak Check {0} sudah selesai.").format(doc.name))
 	doc.container = container
 	doc.remarks = (str(remarks).strip() if remarks else "") or None
 	doc.set("photos", rows)
-	doc.save()  # NOT ignore_permissions — DocPerm is the gate.
+	# Recording from the field IS finishing it — the same Submit the Desk form has.
+	doc.submit()  # NOT ignore_permissions — DocPerm is the gate.
 	return {"success": True, "name": doc.name, "has_leak": doc.has_leak}

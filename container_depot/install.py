@@ -2721,7 +2721,8 @@ FIELD_ROLE_MATRIX = [
 	("Container Position Template", ("rwcd",  "rwcd",  "rwcd", "rwcd",   "rwcd", "rwcd", "rwcd")),
 	# Leak Check: Team Survey dan di atasnya (SPV; Admin Ops & Management lewat
 	# _office_role_perms). Wajib ada sebelum gate-out (gate.mark_gate_out); menu `leak`.
-	("Leak Check",                  ("",      "",      "",     "",       "",     "rwc",  "rwc")),
+	# `s` sejak 2026-10-02: Submit yang menyelesaikannya (dari Desk maupun PWA).
+	("Leak Check",                  ("",      "",      "",     "",       "",     "rwcs", "rwcs")),
 	# Charge Template: daftar baris siap-salin milik tim yang menyusun Service & Parts —
 	# Cleaning, Repair (+ Periodic, kolom kembarnya) dan SPV. `d` karena template yang salah
 	# cuma merugikan penyalin berikutnya; order yang sudah menyalinnya menyimpan barisnya sendiri.

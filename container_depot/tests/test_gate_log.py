@@ -222,9 +222,13 @@ class TestGateLog(FrappeTestCase):
 		doc = frappe.get_doc("Leak Check", rows[0].name)
 		doc.append("photos", {"photo": "/files/leak-test.jpg", "is_leak": 1})
 		doc.save(ignore_permissions=True)
+		# Since 2026-10-02 a photo alone does not finish it — Submit does.
+		self.assertEqual(doc.status, "Open")
+		self.assertFalse(leak_check.has_leak_check_this_visit(c))
+		doc.submit()
 		self.assertEqual(doc.status, "Completed")
 		self.assertTrue(leak_check.has_leak_check_this_visit(c))
-		# ...and a completed check cannot be emptied back to open.
+		# ...and a submitted check cannot be emptied back out.
 		doc.photos = []
 		with self.assertRaises(frappe.ValidationError):
 			doc.save(ignore_permissions=True)
@@ -256,7 +260,7 @@ class TestGateLog(FrappeTestCase):
 		bon = _tank_in_bon(c)
 		doc = frappe.get_doc("Leak Check", self._leak(c)[0].name)
 		doc.append("photos", {"photo": "/files/leak-test.jpg"})
-		doc.save(ignore_permissions=True)
+		doc.submit()
 		revert_order_to_draft(bon)
 		void_order(bon)
 		rows = self._leak(c)

@@ -154,3 +154,4 @@ container_depot.patches.v1_17.pending_cash_cakra
 container_depot.patches.v1_17.survey_team_periodic
 container_depot.patches.v1_18.eir_out_born_with_booking
 container_depot.patches.v1_18.complete_inspected_bongkar
+container_depot.patches.v1_18.leak_check_submittable

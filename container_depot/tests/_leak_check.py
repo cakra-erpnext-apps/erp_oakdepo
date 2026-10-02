@@ -7,11 +7,13 @@ import frappe
 
 
 def make_leak_check(container: str, *, is_leak: int = 0) -> str:
+	"""A finished (submitted, Completed) Leak Check — what the gate counts."""
 	doc = frappe.get_doc({
 		"doctype": "Leak Check",
 		"container": container,
 		"photos": [{"photo": "/files/leak-test.jpg", "is_leak": is_leak}],
 	}).insert(ignore_permissions=True)
+	doc.submit()
 	return doc.name
 
 

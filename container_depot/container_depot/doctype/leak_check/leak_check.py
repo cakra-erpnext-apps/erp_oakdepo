@@ -4,10 +4,13 @@
 """Leak Check — photos of a tank, each flagged leaking or not. One order per container.
 
 Born ``Open`` when the Tank In bon (Order Bongkar) is submitted — one per container row, see
-:func:`provision_for_order_bongkar` — and ``Completed`` the moment it carries a photo. It holds
-no other order; its one consequence is at the exit: a tank may not gate out without a
-Completed Leak Check filed during its current visit (``gate.mark_gate_out`` via
-:func:`has_leak_check_this_visit`).
+:func:`provision_for_order_bongkar` — and ``Completed`` when it is SUBMITTED with at least one
+photo, from the Desk like every other order or from the PWA (user, 2026-10-02: it used to
+complete on any save with a photo, so the Desk had no Submit and a half-filled check could not
+be told from a finished one). Cancelling a submitted one makes it ``Cancelled``. It holds no
+other order; its one consequence is at the exit: a tank may not gate out without a Completed
+Leak Check filed during its current visit (``gate.mark_gate_out`` via
+:func:`has_leak_check_this_visit`), and only while every order is mandatory (``order_policy``).
 """
 
 import frappe
@@ -19,6 +22,7 @@ from container_depot.container_depot.container_status import assert_container_ac
 
 OPEN = "Open"
 COMPLETED = "Completed"
+CANCELLED = "Cancelled"
 
 
 class LeakCheck(Document):
@@ -26,19 +30,26 @@ class LeakCheck(Document):
 		if self.container and self.has_value_changed("container"):
 			assert_container_active(self.container)
 		self.has_leak = int(any(row.is_leak for row in self.photos))
-		if any(row.photo for row in self.photos):
-			self.status = COMPLETED
-			# Stamped at completion, not at birth: an order provisioned on the bon has not
-			# been checked by anybody yet.
-			self.recorded_by = self.recorded_by or frappe.session.user
-			self.recorded_on = self.recorded_on or now_datetime()
-			return
-		before = self.get_doc_before_save()
-		# A finished check cannot be emptied back out, and a hand-made one must carry
-		# evidence — only a bon-provisioned order may exist without photos.
-		if (before and before.status == COMPLETED) or (self.is_new() and not self.order_bongkar):
+		# A hand-made one must carry evidence — only a bon-provisioned order may be born empty.
+		if self.is_new() and not self.order_bongkar and not self._has_photo():
 			frappe.throw(_("Leak check wajib minimal satu foto."))
-		self.status = OPEN
+		if self.docstatus == 0:
+			self.status = OPEN  # photos alone no longer finish it: Submit does
+
+	def before_submit(self):
+		if not self._has_photo():
+			frappe.throw(_("Leak check wajib minimal satu foto."))
+		self.status = COMPLETED
+		# Stamped at completion, not at birth: an order provisioned on the bon has not been
+		# checked by anybody yet.
+		self.recorded_by = self.recorded_by or frappe.session.user
+		self.recorded_on = self.recorded_on or now_datetime()
+
+	def on_cancel(self):
+		self.db_set("status", CANCELLED)
+
+	def _has_photo(self) -> bool:
+		return any(row.photo for row in self.photos)
 
 	def after_insert(self):
 		if self.status == OPEN:
@@ -203,7 +214,7 @@ def list_leak_checks(status=None, search=None, depot=None, principal=None, day=N
 					 sort=None, start=0, page_length=20) -> dict:
 	from frappe.utils import cint, getdate
 
-	scope = _scope()
+	scope = {**_scope(), "docstatus": ["<", 2]}  # a cancelled check is history, not field work
 	filters = dict(scope)
 	if status in (OPEN, COMPLETED):
 		filters["status"] = status
