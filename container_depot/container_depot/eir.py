@@ -20,6 +20,7 @@ from frappe.utils import cint, flt, getdate, now_datetime, time_diff_in_seconds,
 
 from container_depot.container_depot.container_activity import log_doc_note
 from container_depot.container_depot.exceptions import AlreadySettled
+from container_depot.container_depot.laden import laden_containers
 from container_depot.container_depot.worklist import priority_date, sort_by_priority
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
@@ -509,7 +510,10 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 		filters={"parent": b.name, "parenttype": "Container Booking"},
 		fields=["container", "depot"], order_by="idx asc",
 	)
-	wanted = {r.container: r.depot for r in items if r.container} if live else {}
+	# A LADEN tank gets none: its bon is its departure (laden.py). A draft raised before the
+	# line was marked LADEN is withdrawn below like any other the booking no longer asks for.
+	laden = laden_containers(b.name)
+	wanted = {r.container: r.depot for r in items if r.container and r.container not in laden} if live else {}
 	out = {"created": [], "withdrawn": []}
 
 	mine = frappe.get_all(
@@ -815,6 +819,7 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 		filters={"parent": order_name, "parenttype": "Order Bongkar"},
 		pluck="container",
 	)
+	laden = laden_containers(order_name, "Order Bongkar")
 	created = []
 	for container in containers:
 		if not container:
@@ -823,6 +828,9 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 		frappe.db.set_value(
 			"Container", container, "last_order_bongkar", order_name, update_modified=False
 		)
+		# A LADEN tank is not inspected: no EIR-In, it is Available on arrival (laden.py).
+		if container in laden:
+			continue
 		# Dedup: never open a second EIR-In draft for a container (scoped to EIR-In so an
 		# EIR-Out draft from the load-out flow never blocks it).
 		if frappe.db.exists(

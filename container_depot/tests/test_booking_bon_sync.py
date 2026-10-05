@@ -41,9 +41,11 @@ def _purge():
 	inspections = frappe.get_all("Inspection", filters={"container": ["in", containers]}, pluck="name") or [""]
 	leaks = frappe.get_all("Leak Check", filters={"container": ["in", containers]}, pluck="name") or [""]
 	surveys = frappe.get_all("Survey Order", filters={"booking": ["in", bookings]}, pluck="name") or [""]
+	gates = frappe.get_all("Gate Entry", filters={"container_no": ["like", f"{PREFIX}%"]}, pluck="name") or [""]
+	contracts = frappe.get_all("Depot Contract", filters={"customer": CUSTOMER}, pluck="name") or [""]
 	for dt, names in (
 		("Container Booking", bookings), ("Inspection", inspections), ("Leak Check", leaks),
-		("Survey Order", surveys), *bons.items(),
+		("Survey Order", surveys), ("Gate Entry", gates), ("Depot Contract", contracts), *bons.items(),
 	):
 		frappe.db.delete("Notification Log", {"document_type": dt, "document_name": ["in", names]})
 		frappe.db.delete("Comment", {"reference_doctype": dt, "reference_name": ["in", names]})
@@ -65,6 +67,8 @@ def _purge():
 	frappe.db.delete("Tariff Rate", {"parent": ["in", frappe.get_all(
 		"Depot Contract", filters={"customer": CUSTOMER}, pluck="name") or [""]]})
 	frappe.db.delete("Depot Contract", {"customer": CUSTOMER})
+	# The booking's do_document points at a file that is not on disk.
+	frappe.db.delete("Error Log", {"method": "Error Attaching File", "error": ["like", "%/files/do.pdf%"]})
 	frappe.db.commit()
 
 

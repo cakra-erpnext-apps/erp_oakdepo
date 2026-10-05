@@ -280,6 +280,11 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 	if not booking.survey_date:
 		return {"survey_order": existing, "tanks": []}
 
+	# A LADEN tank is not surveyed: its bon is its departure (laden.py). Left out here, a row
+	# already on the schedule is called off like any tank taken off the booking.
+	from container_depot.container_depot.laden import laden_containers
+
+	laden = laden_containers(booking.name)
 	containers = [
 		r.container for r in frappe.get_all(
 			"Container Booking Item",
@@ -289,8 +294,13 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 			# any order it likes, and the surveyor's day then lists the same five tanks in a
 			# different sequence from the booking they were read off.
 			order_by="idx asc",
-		) if r.container
+		) if r.container and r.container not in laden
 	]
+	if laden and not containers:
+		# Every tank LADEN: no survey day at all.
+		if existing:
+			close_survey_order_with_booking(existing)
+		return {"survey_order": existing, "tanks": []}
 
 	try:
 		doc = frappe.get_doc(SCHEDULE, existing) if existing else frappe.new_doc(SCHEDULE)

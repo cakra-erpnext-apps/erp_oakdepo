@@ -377,9 +377,21 @@ def _order_child_doctype(doc):
 ORDER_TERMINAL_STATUS = ("Completed",)
 
 
+def order_undoable(doc) -> bool:
+	"""False once the bon has closed (ORDER_TERMINAL_STATUS) — unless every tank on it is LADEN.
+	Then no EIR closed it: an all-LADEN Bongkar is Completed at issue, an all-LADEN Muat at its
+	own submit, and Kembalikan ke Draft is the only way back (``laden.reverse_departures``)."""
+	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
+		return True
+	from container_depot.container_depot.laden import bon_laden
+
+	tanks = {r.container for r in doc.get("containers") or [] if r.container}
+	return bool(tanks) and tanks <= bon_laden(doc)
+
+
 def _assert_order_undoable(doc):
 	"""Refuse Cancel / Kembalikan ke Draft on a bon that has already closed — see ORDER_TERMINAL_STATUS."""
-	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
+	if order_undoable(doc):
 		return
 	frappe.throw(
 		_("Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak "
@@ -459,6 +471,11 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 	if doc.docstatus != 1:
 		frappe.throw(_("Only a submitted order can be returned to draft."))
 	_assert_order_undoable(doc)
+	if doctype == "Order Muat":
+		# Its submit sent the LADEN tanks out; back to draft brings them back.
+		from container_depot.container_depot.laden import reverse_departures
+
+		reverse_departures(doc)
 	child = _order_child_doctype(doc)
 	frappe.db.set_value(doctype, doc.name, {"docstatus": 0, "order_status": "Issued"})
 	frappe.db.sql(

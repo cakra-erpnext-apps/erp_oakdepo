@@ -91,12 +91,16 @@ def open_leak_check(container: str) -> str | None:
 # / release_eirs_for_cancelled_order).
 # ---------------------------------------------------------------------------
 def _bon_containers(order_name: str) -> list[str]:
+	"""The bon's tanks that owe a Leak Check — all but the LADEN ones (laden.py)."""
+	from container_depot.container_depot.laden import laden_containers
+
+	laden = laden_containers(order_name, "Order Bongkar")
 	return [
 		c for c in frappe.get_all(
 			"Container Booking Item",
 			filters={"parent": order_name, "parenttype": "Order Bongkar"},
 			pluck="container",
-		) if c
+		) if c and c not in laden
 	]
 
 

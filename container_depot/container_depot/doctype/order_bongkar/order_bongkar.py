@@ -10,12 +10,18 @@ from container_depot.container_depot.doctype.container_booking.container_booking
 )
 from container_depot.container_depot import last_orders
 from container_depot.container_depot.container_activity import log_container_activity
+from container_depot.container_depot.laden import bon_laden, bon_time, laden_containers, restamp
 
 # A single bon/voucher may carry at most this many containers.
 MAX_CONTAINERS_PER_ORDER = 2
 
 
 class OrderBongkar(Document):
+	def onload(self):
+		from container_depot.container_depot.order_generation import order_undoable
+
+		self.set_onload("undoable", order_undoable(self))
+
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank In")
@@ -26,6 +32,8 @@ class OrderBongkar(Document):
 		# Tanggal Bongkar stays editable after submit (a mistyped realisation is corrected in
 		# place); the booking lines read their Realisation Date from it.
 		refresh_bon_status(self.get("booking"))
+		# ...and so does a LADEN tank's arrival, which is dated by it.
+		restamp(self)
 
 	def on_update(self):
 		_reconcile_codes(self)
@@ -53,6 +61,10 @@ class OrderBongkar(Document):
 		_provision_eirs(self)
 		# One Leak Check order per container (leak_check.provision_for_order_bongkar).
 		_leak_checks(self, "provision_for_order_bongkar")
+		# An all-LADEN bon owes no EIR-In: it is done the moment it is issued.
+		refresh_completion(self.name)
+		# A re-submit reuses the gate log above, so a date corrected in draft lands here.
+		restamp(self)
 		from container_depot.container_depot.notify import notify_order_gate
 		notify_order_gate(self, "in")
 		# A re-submit after an edit: the drafts and the gate log above were kept, not re-made.
@@ -245,8 +257,9 @@ def _record_gate_in(order: Document):
 	from container_depot.container_depot.gate import open_gate_entry_for
 
 	depot = _booking_depot(order)
-	when = order.get("gate_in_time") or now_datetime()
+	laden = bon_laden(order)
 	for row in _order_rows(order):
+		when = _arrival_time(order, row.get("container") in laden)
 		container_no = row.get("container_no") or frappe.db.get_value(
 			"Container", row.get("container"), "container_no"
 		)
@@ -432,6 +445,7 @@ def _sync_container_arrival(order: Document):
 	from container_depot.container_depot.container_status import recompute_availability
 
 	depot = _booking_depot(order)
+	laden = bon_laden(order)
 	for row in _order_rows(order):
 		if not row.get("container"):
 			continue
@@ -446,13 +460,20 @@ def _sync_container_arrival(order: Document):
 		# Never overwritten: a tank that already carries an arrival date is on a visit that
 		# started before this bon, and that earlier timestamp is the true one.
 		if not container.eir_in_date:
-			container.eir_in_date = order.get("gate_in_time") or now_datetime()
+			container.eir_in_date = _arrival_time(order, row.container in laden)
 			changed = True
 		if changed:
 			container.save(ignore_permissions=True)
 		# In_Depot means "here WITH open work" — settle on the computed state so a tank
 		# that arrived with nothing open is not left looking busy (see container_status).
 		recompute_availability(row.container)
+
+
+def _arrival_time(order: Document, laden: bool):
+	"""When the tank came in: the bon's generate time — on the bon's own date (Tanggal Bongkar)
+	for a LADEN tank, which has no EIR-In to date its storage instead (laden.py)."""
+	when = order.get("gate_in_time") or now_datetime()
+	return bon_time(order.get("tanggal_bongkar"), when) if laden else when
 
 
 def _sync_booking(doc: Document):
@@ -625,7 +646,12 @@ def sync_completion(eir) -> None:
 	"""
 	if eir.get("inspection_type") != "EIR-In" or eir.get("voucher_doctype") != "Order Bongkar":
 		return
-	name = eir.get("referred_voucher")
+	refresh_completion(eir.get("referred_voucher"))
+
+
+def refresh_completion(name: str | None) -> None:
+	"""``Completed`` once every tank that owes an EIR-In has one submitted — a LADEN tank owes
+	none (laden.py), so an all-LADEN bon is done the moment it is issued."""
 	bon = name and frappe.db.get_value("Order Bongkar", name, ["docstatus", "order_status"], as_dict=True)
 	if not bon or bon.docstatus != 1 or bon.order_status not in ("Issued", "Completed"):
 		return
@@ -637,7 +663,8 @@ def sync_completion(eir) -> None:
 		filters={"referred_voucher": name, "inspection_type": "EIR-In", "docstatus": 1},
 		pluck="container",
 	))
-	target = "Completed" if tanks and tanks <= inspected else "Issued"
+	owed = tanks - laden_containers(name, "Order Bongkar")
+	target = "Completed" if tanks and owed <= inspected else "Issued"
 	if target != bon.order_status:
 		frappe.db.set_value("Order Bongkar", name, "order_status", target, update_modified=False)
 

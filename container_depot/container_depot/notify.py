@@ -722,8 +722,11 @@ def notify_order_gate(order, direction):
 def notify_order_muat_survey(order):
 	"""Fire when an Order Muat is submitted — tells the surveyor (+ ops) an EIR-Out is due
 	before the tank can load (Fase G.1). The EIR-Out drafts are auto-provisioned; this is
-	the signal to go work them from the EIR-Out worklist."""
-	rows = order.get("containers") or []
+	the signal to go work them from the EIR-Out worklist. A LADEN tank owes none (laden.py)."""
+	from container_depot.container_depot.laden import bon_laden
+
+	laden = bon_laden(order)
+	rows = [r for r in order.get("containers") or [] if r.get("container") not in laden]
 	nos = [r.get("container_no") or r.get("container") for r in rows if (r.get("container_no") or r.get("container"))]
 	if not nos:
 		return
