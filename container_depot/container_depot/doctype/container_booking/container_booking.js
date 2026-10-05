@@ -17,6 +17,14 @@ function _finance_on() {
 	return frappe.boot.depot_finance_enabled !== 0;
 }
 
+// Mirror of `ContainerBooking._charges_open`: charges (and their rates) stay editable until an
+// invoice carries them — Draft, Confirmed, bon raised or not (user 2026-10-05). Finance off
+// never invoices, so they never close.
+function _charges_open(frm) {
+	if (frm.doc.docstatus === 2 || frm.doc.booking_status === 'Cancelled') return false;
+	return !_finance_on() || !frm.doc.sales_invoice;
+}
+
 // Which payment states let a bon out, per payment type — a mirror of
 // `order_generation.BON_ALLOWED_PAYMENT`. The SERVER is the rule: `make_order` refuses
 // whatever this decides, from the Desk, the Gate PWA and the SST kiosk alike. This copy
@@ -209,6 +217,22 @@ frappe.ui.form.on('Container Booking', {
 				'btn-primary'
 			);
 		}
+		// The Confirmed twin of "Kembali ke Draft (batalkan invoice)": voids a still-draft
+		// invoice so the charges open again (cancel_draft_invoice). A draft invoice is the only
+		// one that leaves the booking at Unpaid — submitted reads Invoiced, settled Paid — and
+		// those go back through cancelling the payment, then the invoice.
+		if (
+			!frm.is_new() &&
+			may_write &&
+			_finance_on() &&
+			frm.doc.docstatus === 1 &&
+			frm.doc.booking_status !== 'Cancelled' &&
+			frm.doc.payment_type !== 'TOP' &&
+			frm.doc.sales_invoice &&
+			frm.doc.payment_status === 'Unpaid'
+		) {
+			frm.add_custom_button(__('Batalkan Invoice'), () => _confirm_cancel_draft_invoice(frm));
+		}
 		// Finance OFF: no invoice exists, so nothing can derive "sudah dibayar?" — the admin
 		// answers it. A toggle rather than a picker: the booking's current answer is already
 		// on the sidebar (Payment), so the button only has to say what pressing it does.
@@ -350,8 +374,9 @@ frappe.ui.form.on('Container Booking', {
 	// has to put every field back.
 	_apply_submit_lock(frm) {
 		const locked = frm.doc.docstatus === 1;
+		// Charges are not on this list: they follow the invoice, not the submit (_apply_billing_lock).
 		[
-			'branch', 'depot', 'reff_doc', 'customer', 'principal', 'charges',
+			'branch', 'depot', 'reff_doc', 'customer', 'principal',
 			'payment_type', 'do_reference', 'do_document', 'sales_name', 'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
 		// Except the lines' truck / driver detail, which stays open and follows the bon both
@@ -361,26 +386,31 @@ frappe.ui.form.on('Container Booking', {
 			(f) => items && items.update_docfield_property(f, 'read_only', locked ? 1 : 0)
 		);
 		_lock_grid(frm, 'items', locked);
-		_lock_grid(frm, 'charges', locked);
 	},
-	// Mirror the server lock in the UI: outside Draft the billing facts are frozen, so
-	// showing them as editable would only let the operator type into a field whose save
-	// is about to be refused. Everything else on the booking stays editable.
+	// Mirror the server lock (`_guard_locked_charges`): once an invoice carries the charges
+	// they are frozen, so showing them editable would only invite a save that is refused.
+	// Until then they stay open on a Confirmed booking too. The banner names the way back.
 	_apply_billing_lock(frm) {
-		// Draft-only: this runs AFTER _apply_submit_lock, so without the guard its "unlock"
-		// branch would hand charges / customer back on a submitted booking that just locked
-		// them.
-		if (frm.doc.docstatus !== 0) return;
-		const locked = !EDITABLE_STATUSES.concat('Cancelled').includes(frm.doc.booking_status);
-		frm.set_df_property('charges', 'read_only', locked ? 1 : 0);
-		frm.set_df_property('customer', 'read_only', locked ? 1 : 0);
-		if (locked) {
-			frm.dashboard.add_comment(
-				__('Charges terkunci — invoice sudah dibuat. Ubah lewat <b>Kembali ke Draft</b>.'),
-				'blue',
-				true
-			);
+		const open = _charges_open(frm);
+		frm.set_df_property('charges', 'read_only', open ? 0 : 1);
+		_lock_grid(frm, 'charges', !open);
+		// After submit the customer stays frozen with the rest of the header (_apply_submit_lock).
+		if (frm.doc.docstatus === 0) frm.set_df_property('customer', 'read_only', open ? 0 : 1);
+		let msg = '';
+		if (!open && frm.doc.sales_invoice && frm.doc.booking_status !== 'Cancelled') {
+			const si = frappe.utils.escape_html(frm.doc.sales_invoice);
+			if (frm.doc.payment_type === 'TOP') {
+				msg = __('Charges terkunci — sudah masuk tagihan {0}. Buang atau batalkan tagihan itu kalau charges perlu diubah.', [si]);
+			} else if (['Invoiced', 'Paid'].includes(frm.doc.payment_status)) {
+				msg = __('Charges terkunci — invoice {0} sudah disubmit. Batalkan pembayarannya lalu invoice-nya dulu, lalu <b>Regenerate Invoice</b>.', [si]);
+			} else {
+				msg = __('Charges terkunci — invoice {0} sudah dibuat. Ubah lewat <b>{1}</b>.', [
+					si,
+					frm.doc.docstatus === 0 ? __('Kembali ke Draft (batalkan invoice)') : __('Batalkan Invoice'),
+				]);
+			}
 		}
+		container_depot.form_message(frm, 'charges-lock', msg, 'blue');
 	},
 	_hoist_work_section(frm) {
 		// Frappe prepends the connections dashboard to whichever tab carries `show_dashboard`
@@ -1482,9 +1512,32 @@ function _confirm_rollback(frm) {
 	);
 }
 
+function _confirm_cancel_draft_invoice(frm) {
+	frappe.confirm(
+		__(
+			'Batalkan draft invoice {0}? Charges bisa diubah lagi, status bayar jadi Unpaid, dan bon / gate menunggu sampai invoice baru (Regenerate Invoice) dibayar.',
+			[frappe.utils.escape_html(frm.doc.sales_invoice)]
+		),
+		() => {
+			frappe.call({
+				method: 'container_depot.container_depot.doctype.container_booking.container_booking.cancel_draft_invoice',
+				args: { booking: frm.doc.name },
+				freeze: true,
+				freeze_message: __('Membatalkan invoice …'),
+				callback() {
+					frm.reload_doc();
+					frappe.show_alert({ message: __('Invoice dibatalkan — charges bisa diubah.'), indicator: 'orange' });
+				},
+			});
+		}
+	);
+}
+
 function _confirm_regenerate(frm) {
 	frappe.confirm(
-		__('The linked Sales Invoice was cancelled. Create a fresh draft invoice for this booking and link it?'),
+		__('Buat draft invoice baru dari charges booking ini sebesar {0}?', [
+			format_currency(frm.doc.charges_total, frm.doc.currency),
+		]),
 		() => {
 			frappe.call({
 				method: 'container_depot.container_depot.doctype.container_booking.container_booking.regenerate_invoice',

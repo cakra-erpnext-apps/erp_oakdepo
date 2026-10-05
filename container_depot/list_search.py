@@ -60,6 +60,7 @@ SEARCH_FIELDS: dict[str, list[str]] = {
 	# Kontrak & tarif
 	"Depot Contract": ["customer"],
 	"Charge Template": ["description", "items.item_name"],
+	"Booking Charge Template": ["customer", "description", "items.item_name"],
 	# Sparepart & stock
 	"Purchase Order": ["supplier", "supplier_name", "items.item_code", "items.item_name"],
 	"Purchase Receipt": ["supplier", "supplier_name", "items.item_code", "items.item_name"],

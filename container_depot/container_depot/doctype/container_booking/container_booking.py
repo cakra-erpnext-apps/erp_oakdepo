@@ -22,6 +22,10 @@ Carries the critical controllers:
    Cashier submits it, only cancelling the invoice (or the booking) reopens anything. See
    :func:`generate_invoice` / :func:`rollback_to_draft` / ``_guard_locked_charges``.
 
+   Charges themselves outlive submit (user 2026-10-05): they stay editable — Confirmed, bon
+   raised or not — until an invoice carries them. See ``_charges_open``; on a Confirmed Cash
+   booking the draft invoice is voided by **Batalkan Invoice** (:func:`cancel_draft_invoice`).
+
    Its counterpart on a SUBMITTED booking is **Kembali ke Draft (pembayaran tetap)** —
    same destination, opposite cost: that one undoes the submit and keeps the settled
    invoice, this one undoes the invoice. The two share a name because they share an
@@ -224,7 +228,7 @@ class ContainerBooking(Document):
 	# ---- a submitted booking is closed ---------------------------------------
 	# Submit is the point the booking becomes an operational fact: codes are issued, the
 	# invoice is raised, the depot is expecting these tanks. From here NOTHING on the
-	# document may change — not a truck plate, not a row, not the charges. The one way in is
+	# document may change — not a truck plate, not a row. The one way in is
 	# **Kembali ke Draft** (``revert_booking_to_draft``), which is itself refused once a bon
 	# has been raised or a code has been used at the gate.
 	#
@@ -242,18 +246,26 @@ class ContainerBooking(Document):
 
 	def before_update_after_submit(self):
 		# Except the truck / driver detail on the container lines, which stays editable and
-		# carries over to the bon (order_generation.sync_lines_to_bons, user 2026-10-02).
+		# carries over to the bon (order_generation.sync_lines_to_bons, user 2026-10-02) —
+		# and the charges, which stay open until an invoice carries them (``_charges_open``,
+		# user 2026-10-05), priced exactly as on a draft. Re-priced only when they moved, so
+		# a truck-plate edit never touches the money.
 		from container_depot.container_depot.order_generation import LINE_SYNC_FIELDS, assert_lines_editable
 
-		if not self._changed_besides(LINE_SYNC_FIELDS):
+		before = self.get_doc_before_save()
+		self.flags.charges_changed = bool(before) and _billing_signature(before) != _billing_signature(self)
+		if self.flags.charges_changed:
+			self._guard_locked_charges()
+			self._price_charges()
+		if not self._changed_besides(LINE_SYNC_FIELDS, skip_charges=self.flags.charges_changed):
 			assert_lines_editable(self)
 			return
 		frappe.throw(
 			_(
-				"Booking {0} sudah disubmit — yang masih bisa diubah hanya No. Truk, Driver, No. HP "
-				"Driver, RO, Remarks, EMKL dan Shipper di baris container. Pakai <b>Kembali ke Draft</b> "
-				"kalau yang lain memang harus dikoreksi, atau muat ulang form kalau booking ini baru "
-				"berubah di tempat lain."
+				"Booking {0} sudah disubmit — yang masih bisa diubah hanya Charges (selama belum "
+				"ada invoice) dan No. Truk, Driver, No. HP Driver, RO, Remarks, EMKL dan Shipper di "
+				"baris container. Pakai <b>Kembali ke Draft</b> kalau yang lain memang harus "
+				"dikoreksi, atau muat ulang form kalau booking ini baru berubah di tempat lain."
 			).format(self.name),
 			title=_("Booking terkunci"),
 		)
@@ -262,8 +274,30 @@ class ContainerBooking(Document):
 		from container_depot.container_depot.order_generation import sync_lines_to_bons
 
 		sync_lines_to_bons(self)
+		if self.flags.charges_changed:
+			self._reopen_cash_payment()
 
-	def _changed_besides(self, line_fields) -> bool:
+	def _reopen_cash_payment(self):
+		"""A Confirmed Cash booking whose charges just changed owes what they now say.
+
+		With finance on, Cash money is collected through an invoice raised BY HAND
+		(Regenerate Invoice, then the Cashier), so the stamp submit left no longer holds:
+		charges that bill something read Unpaid — the bon and the gate refuse until the new
+		invoice is paid — and charges that bill nothing read Paid, as submit stamps a booking
+		that bills nothing. Finance off leaves the hand-set label alone (Tandai Lunas), and
+		TOP is never asked about money here."""
+		if not finance.is_enabled() or (self.payment_type or "Cash") != "Cash" or self.sales_invoice:
+			return
+		target = "Unpaid" if self._billable_lines() else "Paid"
+		if self.payment_status == target:
+			return
+		self.db_set("payment_status", target, update_modified=False)
+		note = _("Charges diubah setelah Confirmed — status bayar jadi {0}.").format(_(target))
+		if target == "Unpaid":
+			note += " " + _("Buat invoice-nya lewat <b>Regenerate Invoice</b>, lalu bayar di kasir.")
+		log_doc_note(self.doctype, self.name, note)
+
+	def _changed_besides(self, line_fields, skip_charges=False) -> bool:
 		"""Did this update-after-submit touch anything but ``line_fields`` of existing lines?
 
 		Every ``allow_on_submit`` value is compared with the saved one — including the
@@ -287,9 +321,12 @@ class ContainerBooking(Document):
 				if df.allow_on_submit and df.fieldtype not in ("Table", "Table MultiSelect") and df.fieldname not in skip
 			)
 
-		if differs(self, before):
+		# Charges that were let through (``_guard_locked_charges``) and re-priced carry their
+		# derived header totals with them; otherwise they are compared like everything else.
+		if differs(self, before, ("charges_total", "currency") if skip_charges else ()):
 			return True
-		for table, skip in (("items", line_fields), ("charges", ())):
+		tables = (("items", line_fields),) if skip_charges else (("items", line_fields), ("charges", ()))
+		for table, skip in tables:
 			new, old = self.get(table) or [], before.get(table) or []
 			if [r.name for r in new] != [r.name for r in old] or any(
 				differs(n, o, skip) for n, o in zip(new, old)
@@ -1420,46 +1457,63 @@ class ContainerBooking(Document):
 			payment_term="Cash",  # a per-booking invoice is always a Cash booking's
 		)
 
+	def _charges_open(self) -> bool:
+		"""May the charges (and their rates) still change? Yes until an invoice carries them —
+		Draft, Confirmed, bon raised or not (user 2026-10-05).
+
+		Finance off raises no invoice, so they never close. A Cash booking closes at Generate /
+		Regenerate Invoice; a TOP booking once a consolidated bill sweeps it. Every way back
+		drops ``sales_invoice`` and so reopens them: Kembali ke Draft (batalkan invoice),
+		Batalkan Invoice, a cancelled invoice (``resync_booking_on_invoice_cancel``), a
+		discarded or cancelled consolidated bill (``_unmark_billed``)."""
+		return not finance.is_enabled() or not self.sales_invoice
+
 	def _guard_locked_charges(self):
-		"""Freeze the billing facts — charges, customer, currency — outside ``Draft``.
+		"""Freeze the billing facts — charges, customer, currency — once an invoice carries
+		them (``_charges_open``), on a draft and a Confirmed booking alike. The customer also
+		freezes at submit, with the rest of the header (``before_update_after_submit``).
 
-		``Draft`` is the only state where a booking is still being figured out; it carries
-		no invoice, so anything may change. Once **Generate Invoice** has run there is a
-		document the Cashier can act on, and the booking must not drift away from it. The
-		way back is deliberate, not accidental:
+		The way back is deliberate, never a side effect of a save, and the message names it:
 
-		* invoice still a draft  -> **Kembali ke Draft (batalkan invoice)** (voids the
-		  invoice, reopens the booking) — see :func:`rollback_to_draft`.
-		* invoice already submitted / paid -> cancel the invoice (and its payments) or the
-		  whole booking; the numbers are in the ledger by then.
+		* Cash, invoice still a draft -> **Kembali ke Draft (batalkan invoice)** on a draft
+		  booking (:func:`rollback_to_draft`), **Batalkan Invoice** on a Confirmed one
+		  (:func:`cancel_draft_invoice`); then Generate / Regenerate Invoice again.
+		* Cash, invoice submitted / paid -> cancel its payment, then the invoice; the booking
+		  drops the link by itself, then Regenerate Invoice.
+		* TOP -> discard or cancel the consolidated bill; the booking returns to the next run.
 
 		Everything that is not a billing fact — containers, DO reference, remarks, EMKL —
 		stays editable in every state, because none of it changes what was invoiced."""
-		if self.is_new() or self.docstatus != 0:
-			return
-		if self.booking_status in EDITABLE_STATUSES + ("Cancelled",):
+		if self.is_new() or self._charges_open():
 			return
 		before = self.get_doc_before_save()
 		if not before or _billing_signature(before) == _billing_signature(self):
 			return
-		submitted = (
-			self.sales_invoice
-			and frappe.db.get_value("Sales Invoice", self.sales_invoice, "docstatus") == 1
-		)
-		if submitted:
+		si = self.sales_invoice
+		if self.payment_type == "TOP":
+			frappe.throw(
+				_(
+					"Booking ini sudah masuk tagihan {0} — charges-nya tidak bisa diubah lagi. "
+					"Buang (kalau masih draft) atau batalkan tagihan itu dulu; booking ini kembali "
+					"terbuka dan ikut penagihan berikutnya."
+				).format(si),
+				title=_("Sudah Ditagih"),
+			)
+		if frappe.db.get_value("Sales Invoice", si, "docstatus") == 1:
 			frappe.throw(
 				_(
 					"Sales Invoice {0} sudah disubmit — charges / customer booking ini tidak bisa "
-					"diubah lagi. Batalkan invoice-nya dulu, atau batalkan booking ini dan buat "
-					"yang baru."
-				).format(self.sales_invoice),
+					"diubah lagi. Batalkan pembayarannya lalu invoice-nya dulu; sesudah itu charges "
+					"terbuka dan invoice dibuat ulang lewat <b>Regenerate Invoice</b>."
+				).format(si),
 				title=_("Invoice Sudah Disubmit"),
 			)
+		button = _("Kembali ke Draft (batalkan invoice)") if self.docstatus == 0 else _("Batalkan Invoice")
 		frappe.throw(
 			_(
-				"Invoice untuk booking ini sudah dibuat. Tekan <b>Kembali ke Draft "
-				"(batalkan invoice)</b> dulu kalau mau mengubah charges atau customer."
-			),
+				"Invoice {0} untuk booking ini sudah dibuat. Tekan <b>{1}</b> dulu kalau mau "
+				"mengubah charges atau customer."
+			).format(si, button),
 			title=_("Booking Terkunci"),
 		)
 
@@ -2726,11 +2780,46 @@ def resync_booking_on_invoice_cancel(doc, method=None):
 
 
 @frappe.whitelist()
+def cancel_draft_invoice(booking):
+	"""**Batalkan Invoice** — void a CONFIRMED Cash booking's still-draft Sales Invoice so its
+	charges open again (``_charges_open``).
+
+	The Confirmed counterpart of :func:`rollback_to_draft`: the booking keeps its status, only
+	the invoice goes, and it reads Unpaid — the bon and the gate wait — until Regenerate
+	Invoice raises the next one and the Cashier settles it. A submitted invoice is not touched
+	here: its payment is cancelled first, then the invoice itself, which unlinks it
+	(``resync_booking_on_invoice_cancel``). A TOP booking carries no per-booking draft; its
+	consolidated bill is discarded from the invoice."""
+	frappe.has_permission("Container Booking", ptype="write", throw=True)
+	finance.require_enabled(_("Batalkan Invoice"))
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.docstatus != 1 or doc.booking_status == "Cancelled":
+		frappe.throw(
+			_("Hanya booking Confirmed — booking Draft memakai <b>Kembali ke Draft (batalkan invoice)</b>.")
+		)
+	if doc.payment_type == "TOP":
+		frappe.throw(_("Booking TOP ditagih lewat tagihan gabungan — buang atau batalkan tagihan itu."))
+	si = doc.sales_invoice
+	if not si:
+		frappe.throw(_("Booking ini tidak punya invoice."))
+	if frappe.db.get_value("Sales Invoice", si, "docstatus") == 1:
+		frappe.throw(
+			_("Sales Invoice {0} sudah disubmit — batalkan pembayarannya lalu invoice-nya dari Sales Invoice.").format(si),
+			title=_("Invoice Sudah Disubmit"),
+		)
+	# Same void as rollback_to_draft: a draft has no ledger impact, it stays for audit.
+	frappe.db.set_value("Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False)
+	doc.db_set({"sales_invoice": None, "payment_status": "Unpaid"}, update_modified=False)
+	log_doc_note(doc.doctype, doc.name, _("Invoice draft {0} dibatalkan — charges bisa diubah lagi.").format(si))
+	return si
+
+
+@frappe.whitelist()
 def regenerate_invoice(booking):
-	"""Create a fresh DRAFT Sales Invoice for a confirmed booking whose linked invoice was
-	cancelled (or is gone), and re-link it — so the booking can be re-billed without amending
-	the dead invoice (which would leave a -1 duplicate the booking never follows). Scoped to
-	Container Booking only."""
+	"""Create a fresh DRAFT Sales Invoice for a confirmed booking with no live invoice — its
+	invoice was cancelled or voided (Batalkan Invoice), or its charges were added after submit
+	— and link it, so the booking can be re-billed without amending the dead invoice (which
+	would leave a -1 duplicate the booking never follows). Scoped to Container Booking only."""
 	frappe.has_permission("Container Booking", ptype="write", throw=True)
 	finance.require_enabled(_("Regenerate Invoice"))
 	doc = frappe.get_doc("Container Booking", booking)

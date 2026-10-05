@@ -542,8 +542,8 @@ doctype_js = {
 	"Pending Cash Refund": "public/js/pending_cash_actions.js",
 	# "Barang Masuk" — restrict the item picker to stockable items (see the file).
 	"Purchase Receipt": "public/js/purchase_receipt.js",
-	"Container Booking": "public/js/lock_item_picker.js",
 	# charge_copy — "Ambil Charges" / "Simpan sebagai Template" (see the file).
+	"Container Booking": ["public/js/lock_item_picker.js", "public/js/charge_copy.js"],
 	"Cleaning Order": ["public/js/lock_item_picker.js", "public/js/charge_copy.js"],
 	"Repair Order": ["public/js/lock_item_picker.js", "public/js/charge_copy.js"],
 	# Rapikan form User baru + guard handler Role Profiles bawaan (lihat file-nya).

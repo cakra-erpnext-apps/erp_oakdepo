@@ -1,0 +1,88 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:template_name",
+ "creation": "2026-10-05 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "customer",
+  "direction",
+  "disabled",
+  "column_break_1",
+  "description",
+  "section_items",
+  "items"
+ ],
+ "fields": [
+  {
+   "description": "Wajib. Nama yang dicari saat mengambil charges, mis. \"Lift Off Standar\".",
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Nama Template",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Pemilik template. Di booking, picker Ambil Charges default ke Customer (Bill To)-nya, tapi template customer lain tetap bisa dipilih.",
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer (Bill To)",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "description": "Template hanya ditawarkan ke booking dengan arah yang sama.",
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Direction",
+   "options": "Tank In\nTank Out",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Centang supaya tidak ditawarkan lagi di Ambil Charges.",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Nonaktif"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Keterangan"
+  },
+  {
+   "fieldname": "section_items",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "Daftar service yang disalin ke Charges Container Booking. Tarif tidak disimpan di sini: saat diambil, tarif dihitung dari kontrak Customer (Bill To) booking tujuan (di luar kontrak = 0). Qty ikut jumlah container.",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Charges",
+   "options": "Booking Charge Template Item",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Container Depot",
+ "name": "Booking Charge Template",
+ "owner": "Administrator",
+ "permissions": [],
+ "search_fields": "description",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "template_name",
+ "track_changes": 1
+}

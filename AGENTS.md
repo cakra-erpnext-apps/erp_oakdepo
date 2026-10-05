@@ -232,6 +232,14 @@ Semua ini keputusan eksplisit pemilik repo. Kalau kelihatan seperti bug, baca du
   penolakan melainkan prioritas (tanggal muat distempel ke tank dan ke order). Penolakan
   keras pindah ke bon (`OrderMuat._validate_no_open_work`), lalu submit EIR-Out butuh bon
   terbit, lalu gate.
+- **Charges booking terbuka sampai ada invoice, bukan sampai submit** (user 2026-10-05).
+  Confirmed dan sudah dibon pun charges/tarif masih boleh diubah; yang mengunci hanya
+  `sales_invoice` (`ContainerBooking._charges_open`). Finance off = tidak pernah terkunci.
+  Cash: invoice selalu dibuat manual (Generate / Regenerate); draft invoice dibuang lewat
+  **Batalkan Invoice** (booking Confirmed) atau Kembali ke Draft (booking Draft); invoice
+  yang sudah dibayar → batalkan pembayaran, lalu invoice. Charges berubah pada Cash Confirmed
+  tanpa invoice → status bayar Unpaid sampai invoice baru dibayar. TOP: terkunci selama ada
+  di tagihan gabungan. Customer (Bill To) tetap terkunci sejak submit.
 - **Booking Cash yang `payment_status ≠ Paid` diblokir di gate** dengan pesan "bayar ke
   kasir dulu" + nomor Sales Invoice. Pembayaran tetap lewat alur kasir, bukan di app gate.
 - **Letak tank hanya disimpan di master `Container`** (`current_location`,
