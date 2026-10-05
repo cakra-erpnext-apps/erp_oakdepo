@@ -138,6 +138,7 @@ export const labels = {
 	gateNoNumberChip: "Missing data",
 	gateAutofill: "Cargo and EMKL filled in automatically from the booking",
 	gateFromBooking: "from booking",
+	gateTankDetail: "Condition & cargo per tank",
 	gateExtra: "Additional details",
 	gateDoneTitle: "Voucher created",
 	gateDoneHint: "Hand the voucher to the driver. The next truck can be scanned right away.",

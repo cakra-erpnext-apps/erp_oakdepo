@@ -165,6 +165,7 @@ export const labels = {
 	gateNoNumberChip: "Data kurang",
 	gateAutofill: "Cargo dan EMKL terisi otomatis dari booking",
 	gateFromBooking: "dari booking",
+	gateTankDetail: "Kondisi & cargo per tank",
 	gateExtra: "Detail tambahan",
 	gateDoneTitle: "Bon berhasil dibuat",
 	gateDoneHint: "Serahkan bon ke sopir. Truk berikutnya bisa langsung discan.",

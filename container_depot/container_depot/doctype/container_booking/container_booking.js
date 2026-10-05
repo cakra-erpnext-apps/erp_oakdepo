@@ -1553,8 +1553,13 @@ const MAX_CONTAINERS_PER_ORDER = 2;
 // first picked container's booking line, and written back onto the booking lines on
 // Generate. Sent as vehicle_data to the server.
 const BONGKAR_DETAIL_FIELDS = [
-	'condition', 'cargo', 'emkl', 'shipper', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks',
+	'emkl', 'shipper', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks',
 ];
+// Condition and cargo are asked PER TANK, not per bon: one truck can bring a clean tank and
+// a dirty one, each with its own last cargo. One slot per tank the bon can hold, each filled
+// from its own booking line and sent as vehicle_data.lines = {booking_code: {...}}.
+const TANK_SLOTS = [1, 2];
+const CONDITION_OPTIONS = 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN';
 // A Tank Out voucher inherits only the parties + vehicle trio + R/O from the line. Condition
 // and cargo describe what was DROPPED OFF — they say nothing about a pick-up.
 const MUAT_DETAIL_FIELDS = ['emkl', 'shipper', 'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks'];
@@ -1574,6 +1579,7 @@ function open_generate_dialog(frm) {
 			const by_value = {};
 			pending.forEach(p => { by_value[p.container_no || p.booking_code] = p; });
 			let last_first = null;
+			const slot_tank = {};
 
 			// The server picks the bon type from the Booking Code's direction (Tank In →
 			// Order Bongkar, Tank Out → Order Muat). This dialog used to ask Tank In's
@@ -1611,8 +1617,20 @@ function open_generate_dialog(frm) {
 								last_first = first;
 								_fill_line_detail(d, by_value[first], detail_fields);
 							}
+							if (!out) _sync_tank_slots(d, picked, by_value, slot_tank);
 						},
 					},
+					...(out
+						? []
+						: [
+							{ fieldtype: 'Section Break', label: __('Kondisi & Cargo per Tank') },
+							...TANK_SLOTS.flatMap((i) => [
+								...(i > 1 ? [{ fieldtype: 'Column Break' }] : []),
+								{ fieldname: `tank_${i}`, fieldtype: 'HTML', hidden: 1 },
+								{ fieldname: `condition_${i}`, fieldtype: 'Select', label: __('Condition'), options: CONDITION_OPTIONS, hidden: 1 },
+								{ fieldname: `cargo_${i}`, fieldtype: 'Link', label: __('Cargo'), options: 'Cargo', hidden: 1 },
+							]),
+						]),
 					{ fieldtype: 'Section Break', label: __('Detail (auto-isi dari container pertama)') },
 					// Required set mirrors the PWA gate form (GateEntry.vue vehicleFields):
 					// truck/driver/phone identify the truck on the bon, so a voucher without
@@ -1624,8 +1642,6 @@ function open_generate_dialog(frm) {
 							{ fieldname: 'tanggal_muat', fieldtype: 'Date', label: __('Tgl. Muat'), default: frappe.datetime.get_today() },
 						]
 						: [
-							{ fieldname: 'condition', fieldtype: 'Select', label: __('Condition'), options: 'EMPTY CLEAN\nEMPTY DIRTY\nLADEN', reqd: 1 },
-							{ fieldname: 'cargo', fieldtype: 'Link', label: __('Cargo'), options: 'Cargo' },
 							// Actual unload date for the bon — today, not the Plan Date: it becomes the
 							// line's realisation, and the Plan Date is only the estimate.
 							{ fieldname: 'tanggal_bongkar_actual', fieldtype: 'Date', label: __('Tanggal Bongkar'), default: frappe.datetime.get_today() },
@@ -1683,6 +1699,10 @@ function open_generate_dialog(frm) {
 							tanggal_bongkar_actual: values.tanggal_bongkar_actual,
 						};
 						BONGKAR_DETAIL_FIELDS.forEach((f) => { vehicle_data[f] = values[f]; });
+						vehicle_data.lines = Object.fromEntries(codes.map((c, i) => [
+							c,
+							{ condition: values[`condition_${i + 1}`], cargo: values[`cargo_${i + 1}`] },
+						]));
 					}
 					submit_generation(frm, d, codes, vehicle_data);
 				},
@@ -1690,6 +1710,30 @@ function open_generate_dialog(frm) {
 			d.show();
 		},
 	});
+}
+
+// Show one condition/cargo slot per picked tank, headed by its container number. A slot is
+// (re)filled from the booking line only when a different tank lands in it, so a value the
+// operator changed survives picking or dropping the SECOND tank (dropping the first moves the
+// second into slot 1, which refills it from its own line).
+function _sync_tank_slots(d, picked, by_value, slot_tank) {
+	TANK_SLOTS.forEach((i) => {
+		const no = picked[i - 1];
+		const show = !!no && i <= MAX_CONTAINERS_PER_ORDER;
+		d.set_df_property(`tank_${i}`, 'hidden', show ? 0 : 1);
+		d.set_df_property(`condition_${i}`, 'hidden', show ? 0 : 1);
+		d.set_df_property(`condition_${i}`, 'reqd', show ? 1 : 0);
+		d.set_df_property(`cargo_${i}`, 'hidden', show ? 0 : 1);
+		if (!show || slot_tank[i] === no) return;
+		slot_tank[i] = no;
+		const line = by_value[no] || {};
+		d.fields_dict[`tank_${i}`].$wrapper.html(`<p class="font-weight-bold mb-2">${frappe.utils.escape_html(no)}</p>`);
+		d.set_value(`condition_${i}`, line.condition || 'EMPTY CLEAN');
+		d.set_value(`cargo_${i}`, line.cargo || '');
+	});
+	// The section was built with every slot hidden, so the layout marked it empty and hid
+	// it; set_df_property does not re-check that.
+	d.refresh_sections();
 }
 
 function _fill_line_detail(d, p, fields) {

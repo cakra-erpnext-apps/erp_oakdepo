@@ -427,6 +427,33 @@
 						</div>
 					</div>
 
+					<!-- Condition and cargo, one card per tank: one truck can bring a clean tank and a
+					     dirty one, each with its own last cargo. Each card starts from its OWN booking
+					     line, never from the first tank's. -->
+					<div v-if="!isOut" class="space-y-2">
+						<p class="oak-label">{{ labels.gateTankDetail }}</p>
+						<div v-for="t in selectedTanks" :key="t.booking_code" class="rounded-xl border border-gray-200 p-3">
+							<p class="mb-2 font-bold text-gray-900">{{ t.container_no || t.container }}</p>
+							<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<div v-for="f in tankFields(t.booking_code)" :key="f.key">
+									<label class="oak-label flex items-center justify-between gap-2">
+										<span>
+											{{ f.label }}
+											<span v-if="f.required" class="text-red-500">*</span>
+										</span>
+										<span
+											v-if="prefilled.includes(f.key)"
+											class="inline-flex items-center gap-1 font-normal normal-case text-gray-400"
+										>
+											<Icon name="clock" :size="11" />{{ labels.gateFromBooking }}
+										</span>
+									</label>
+									<GateField :field="f" v-model="tankLines[t.booking_code][f.name]" />
+								</div>
+							</div>
+						</div>
+					</div>
+
 					<!-- Everything the bon can carry but the barrier does not need typed. Collapsed by
 					     default and showing its VALUES while collapsed: most of it arrives from the
 					     booking already, so the operator's job is to notice a wrong one, not to fill
@@ -546,6 +573,8 @@ const selected = ref([])
 const step = ref("container") // "container" | "vehicle" | "done"
 const lastOrder = ref("")
 const vehicle = ref({})
+// Condition + cargo per selected tank, keyed by booking code — sent as vehicle_data.lines.
+const tankLines = ref({})
 // Which keys openGenerate() filled from the booking. Shown per field, because a plate the
 // booking supplied and one the operator typed look identical and need different amounts of
 // checking before a bon is issued.
@@ -653,8 +682,6 @@ const vehicleFields = computed(() => {
 			{ key: "driver", label: labels.driverName, inputType: "text", required: true, wide: true },
 			{ key: "driver_phone", label: labels.driverPhone, inputType: "tel", required: true },
 			{ key: "ro", label: labels.vRo, inputType: "text" },
-			{ key: "condition", label: labels.vCondition, type: "select", options: ["EMPTY CLEAN", "EMPTY DIRTY", "LADEN"], required: true },
-			{ key: "cargo", label: labels.cargo, type: "datalist", options: cargoOptions.value },
 			{ key: "tanggal_bongkar_actual", label: labels.vDateBongkar, inputType: "date" },
 			emklField.value,
 			shipperField.value,
@@ -674,8 +701,8 @@ const vehicleFields = computed(() => {
 	]
 })
 
-// The barrier needs four answers — plate, driver, phone, and (inbound) the tank's
-// condition. Everything else the bon can carry is real but not urgent, and most of it
+// The barrier needs four answers — plate, driver, phone, and (inbound) each tank's
+// condition, which the per-tank cards ask. Everything else the bon can carry is real but not urgent, and most of it
 // arrives from the booking already, so it goes behind one disclosure instead of turning
 // step 2 into a ten-field wall between the driver and the barrier.
 const primaryFields = computed(() => vehicleFields.value.filter((f) => f.required))
@@ -700,6 +727,20 @@ const selectedLabels = computed(() =>
 				.map((c) => c.container_no || c.container)
 				.join(", "),
 )
+
+// The picked tanks, in pick order, and the two fields each one is asked for.
+const selectedTanks = computed(() =>
+	!detail.value
+		? []
+		: selected.value.map((code) => detail.value.containers.find((c) => c.booking_code === code)).filter(Boolean),
+)
+const CONDITIONS = ["EMPTY CLEAN", "EMPTY DIRTY", "LADEN"]
+function tankFields(code) {
+	return [
+		{ key: `condition-${code}`, name: "condition", label: labels.vCondition, type: "select", options: CONDITIONS, required: true },
+		{ key: `cargo-${code}`, name: "cargo", label: labels.cargo, type: "datalist", options: cargoOptions.value },
+	]
+}
 
 // Direction drives the whole panel's colour + wording — GATE IN vs GATE OUT.
 const dirMeta = computed(() => gateDirection(detail.value && detail.value.direction))
@@ -864,8 +905,6 @@ function openGenerate() {
 		driver_name: line.driver || "",
 		driver_phone: line.driver_phone || "",
 		ro: line.ro || "",
-		condition: line.condition || "",
-		cargo: line.cargo || "",
 		destination: "",
 		ex_vessel: "",
 		// Only the EMKL falls back to the booking's Customer (Bill To). The Shipper is the
@@ -884,13 +923,21 @@ function openGenerate() {
 	// nothing happen, and presses it again — and the second press has to be recognised as the
 	// same bon. An id minted per click would issue two. See ess/idempotency.py.
 	requestId.value = uid()
+	tankLines.value = Object.fromEntries(
+		selectedTanks.value.map((t) => [t.booking_code, { condition: t.line?.condition || "", cargo: t.line?.cargo || "" }]),
+	)
 	// Everything that arrived from the booking rather than from the operator, recorded once
 	// here so the form can label those fields. Read after the object above is built, so a
 	// field the booking left empty is correctly NOT claimed as prefilled.
-	prefilled.value = Object.keys(vehicle.value).filter((k) => {
-		const v = vehicle.value[k]
-		return v != null && String(v).trim() !== ""
-	})
+	prefilled.value = [
+		...Object.keys(vehicle.value).filter((k) => {
+			const v = vehicle.value[k]
+			return v != null && String(v).trim() !== ""
+		}),
+		...Object.entries(tankLines.value).flatMap(([code, l]) =>
+			Object.keys(l).filter((k) => l[k]).map((k) => `${k}-${code}`),
+		),
+	]
 	extraOpen.value = false
 	step.value = "vehicle"
 }
@@ -908,6 +955,11 @@ function doGenerate() {
 		const filled = v != null && String(v).trim() !== ""
 		if (filled) vd[f.key] = v
 		else if (f.required) missing.push(f.label)
+	}
+	if (!isOut.value) {
+		vd.lines = tankLines.value
+		for (const t of selectedTanks.value)
+			if (!tankLines.value[t.booking_code]?.condition) missing.push(`${labels.vCondition} ${t.container_no || t.container}`)
 	}
 	if (missing.length) {
 		toast.error(`${labels.gateRequiredMissing}: ${missing.join(", ")}`)

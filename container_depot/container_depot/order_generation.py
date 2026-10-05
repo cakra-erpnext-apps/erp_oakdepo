@@ -126,7 +126,13 @@ PARTY_FIELDS = ("emkl", "shipper")
 def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 	"""Append one Container Booking Item row per selected container to an Order Bongkar,
 	carrying the booking line's detail with the voucher's dialog input overriding — and
-	write that detail back onto the booking line."""
+	write that detail back onto the booking line.
+
+	``vehicle_data["lines"]`` (``{booking_code: {condition, cargo}}``) is the per-tank part of
+	that input: one truck may bring a clean tank and a dirty one, each with its own last
+	cargo, so those two are asked per tank. A header-level value is still read after it, for a
+	cached PWA build that sends one condition for the whole bon."""
+	lines = vehicle_data.get("lines") or {}
 	for c in codes:
 		r = by_name[c]
 		item = frappe.db.get_value(
@@ -135,7 +141,8 @@ def _build_bongkar_rows(order, booking, codes, by_name, vehicle_data):
 			["name", "container", *BONGKAR_ROW_DETAIL, *PARTY_FIELDS],
 			as_dict=True,
 		) or frappe._dict()
-		detail = {f: (vehicle_data.get(f) or item.get(f)) for f in BONGKAR_ROW_DETAIL}
+		own = lines.get(c) or {}
+		detail = {f: (own.get(f) or vehicle_data.get(f) or item.get(f)) for f in BONGKAR_ROW_DETAIL}
 		# Per-row parties: the booking line's own EMKL / Shipper wins, the bon dialog's is
 		# only the fallback. Reversed from the fields above because that dialog value is a
 		# single header input — letting it win would flatten a booking deliberately split
@@ -180,7 +187,7 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 
 	``vehicle_data`` (optional dict): ``truck_plate``, ``driver_name``,
 	``driver_phone``, ``transporter``, ``ex_vessel`` (Tank In),
-	``destination`` (Tank Out).
+	``destination`` (Tank Out), ``lines`` (Tank In: ``{code: {condition, cargo}}``).
 
 	``submit``: when true (the user-facing "generate" actions), the bon is
 	submitted in the same transaction so it goes live immediately — its

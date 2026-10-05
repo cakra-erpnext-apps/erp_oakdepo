@@ -171,6 +171,29 @@ class TestMakeOrderCore(FrappeTestCase):
 		# All codes consumed.
 		self.assertEqual(_states(codes), ["Used", "Used"])
 
+	def test_two_tanks_keep_their_own_condition_and_cargo(self):
+		"""One truck, a clean tank and a dirty one with different last cargo: each bon row keeps
+		its own — from its booking line, or from the per-tank input written back onto that line."""
+		cargos = frappe.get_all("Cargo", pluck="name", limit=2)
+		if len(cargos) < 2:
+			self.skipTest("needs two Cargo records")
+		booking, codes = _booking_with_codes(code_direction="Tank In", count=2, prefix="MCCND0")
+		lines = frappe.get_all("Container Booking Item", {"parent": booking}, ["name", "container_no"],
+			order_by="container_no")
+		frappe.db.set_value("Container Booking Item", lines[0].name, {"condition": "EMPTY CLEAN", "cargo": cargos[0]})
+		frappe.db.set_value("Container Booking Item", lines[1].name, {"condition": "EMPTY DIRTY", "cargo": cargos[1]})
+
+		order = frappe.get_doc("Order Bongkar", make_order(booking, codes, vehicle_data={"lines": {
+			codes[0]: {"condition": "", "cargo": ""},
+			codes[1]: {"condition": "LADEN", "cargo": cargos[0]},
+		}}))
+		got = {r.booking_code: (r.condition, r.cargo) for r in order.containers}
+		self.assertEqual(got, {codes[0]: ("EMPTY CLEAN", cargos[0]), codes[1]: ("LADEN", cargos[0])})
+		self.assertEqual(
+			[tuple(frappe.db.get_value("Container Booking Item", l.name, ["condition", "cargo"])) for l in lines],
+			[("EMPTY CLEAN", cargos[0]), ("LADEN", cargos[0])],
+		)
+
 	def test_rejects_more_than_2(self):
 		booking, codes = _booking_with_codes(code_direction="Tank In", count=3, prefix="MCMAX0")
 		with self.assertRaises(frappe.ValidationError):
