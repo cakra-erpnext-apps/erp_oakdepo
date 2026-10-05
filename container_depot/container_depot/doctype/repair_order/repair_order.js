@@ -543,7 +543,7 @@ frappe.ui.form.on('Repair Order', {
 		// always locked (_job_type_ui) — the menu decides it, not the form.
 		[
 			'container', 'depot', 'plan_date', 'pt_type', 'last_test_date', 'technician', 'reff_doc',
-			'remarks',
+			'remarks', 'spk_crew_name', 'spk_qc_name', 'spk_signer_name', 'spk_signer_title',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
 		// Nothing left to change means nothing to Save — Frappe would otherwise keep offering
 		// the button on any non-submittable doc. Re-armed the moment the order is reopened.

@@ -141,13 +141,15 @@
 </div>
 {%- endmacro -%}
 
-{#- "Jakarta, / Ricko / Supervisor Operasional" — the city comes from the order's depot. -#}
-{%- macro closing(depot=None, issuer=None, role="Supervisor Operasional") -%}
+{#- "Jakarta, / Ricko / Supervisor Operasional" — the city comes from the order's depot. The
+    name and title come from the order's "Tanda Tangan SPK" fields (spk_signer_name /
+    spk_signer_title) when filled; empty = the order's creator, "Supervisor Operasional". -#}
+{%- macro closing(depot=None, issuer=None, doc=None) -%}
 {%- set city = (frappe.db.get_value("Depot", depot, "city") if depot else None) or "" -%}
 <div class="note">
   <div class="b">{{ (city ~ ",") if city else "&nbsp;" }}</div>
   <div style="height:40px;"></div>
-  <div class="b u">{{ fullname(issuer) }}</div>
-  <div class="b">{{ role }}</div>
+  <div class="b u">{{ (doc and doc.get("spk_signer_name")) or fullname(issuer) }}</div>
+  <div class="b">{{ (doc and doc.get("spk_signer_title")) or "Supervisor Operasional" }}</div>
 </div>
 {%- endmacro -%}

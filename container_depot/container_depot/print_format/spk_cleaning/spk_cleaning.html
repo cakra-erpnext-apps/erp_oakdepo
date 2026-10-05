@@ -47,12 +47,12 @@
     <div>Status Tank : Acceptable / Rework</div>
   </div>
 
-  {{ spk.sign("Crew Cleaning", "(Q.C Cleaning )", spk.fullname(doc.get("assigned_to"))) }}
+  {{ spk.sign("Crew Cleaning", "(Q.C Cleaning )", doc.get("spk_crew_name") or spk.fullname(doc.get("assigned_to")), doc.get("spk_qc_name")) }}
 
   {{ spk.notice([
     ("Sarung tangan dan sarung kaki dapat menggunakan kantong plastik yang sesuai dengan ukurannya.",
      "Gloves and glove foot can use the plastic bags that fit the size"),
   ]) }}
 
-  {{ spk.closing(doc.get("depot"), doc.get("created_by") or doc.owner) }}
+  {{ spk.closing(doc.get("depot"), doc.get("created_by") or doc.owner, doc) }}
 </div>

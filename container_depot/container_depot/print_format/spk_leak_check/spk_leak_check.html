@@ -40,12 +40,12 @@
     <div>Hasil : Tidak Bocor / Bocor</div>
   </div>
 
-  {{ spk.sign("Surveyor", "(Q.C )", spk.fullname(doc.get("recorded_by"))) }}
+  {{ spk.sign("Surveyor", "(Q.C )", doc.get("spk_crew_name") or spk.fullname(doc.get("recorded_by")), doc.get("spk_qc_name")) }}
 
   {{ spk.notice([
     ("Jangan melebihi tekanan uji; jauhi katup dan manhole selama tank bertekanan.",
      "Never exceed test pressure; keep clear of valves and manhole while pressurised"),
   ]) }}
 
-  {{ spk.closing(doc.get("depot"), doc.owner) }}
+  {{ spk.closing(doc.get("depot"), doc.owner, doc) }}
 </div>

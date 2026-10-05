@@ -61,3 +61,28 @@ class TestSpkPrint(FrappeTestCase):
 		html = _render(survey, "SPK Survey")
 		self.assertIn("SPKU0000003", html)
 		self.assertNotIn("SPKU0000004", html)
+
+	def test_signature_fields_override_the_automatic_names(self):
+		"""Tanda Tangan SPK: a filled field wins, an empty one keeps the automatic name."""
+		doc = frappe.new_doc("Cleaning Order")
+		html = _render(doc, "SPK Cleaning")
+		self.assertIn("Supervisor Operasional", html)
+
+		doc.spk_crew_name = "Andi Crew"
+		doc.spk_qc_name = "Budi QC"
+		doc.spk_signer_name = "Citra Spv"
+		doc.spk_signer_title = "Kepala Depo"
+		html = _render(doc, "SPK Cleaning")
+		for text in ("Andi Crew", "Budi QC", "Citra Spv", "Kepala Depo"):
+			self.assertIn(text, html)
+		self.assertNotIn("Supervisor Operasional", html)
+
+		for doctype, fmt in (("Repair Order", "SPK Repair Order"), ("Survey Order", "SPK Survey"), ("Leak Check", "SPK Leak Check")):
+			other = frappe.new_doc(doctype)
+			if doctype == "Repair Order":
+				other.job_type = "Repair"
+			other.spk_qc_name = "Dodi QC"
+			other.spk_signer_title = "Manajer Operasional"
+			html = _render(other, fmt)
+			self.assertIn("Dodi QC", html, fmt)
+			self.assertIn("Manajer Operasional", html, fmt)

@@ -40,12 +40,12 @@
     <div>Catatan :</div>
   </div>
 
-  {{ spk.sign("Surveyor", "(Operator Kalmar )", _surveyor) }}
+  {{ spk.sign("Surveyor", "(Operator Kalmar )", doc.get("spk_crew_name") or _surveyor, doc.get("spk_qc_name")) }}
 
   {{ spk.notice([
     ("Survey hanya pada tank yang sudah diturunkan ke ground level; jangan naik ke tumpukan.",
      "Survey only lowered tanks; never climb the stack"),
   ]) }}
 
-  {{ spk.closing(_depot, doc.owner) }}
+  {{ spk.closing(_depot, doc.owner, doc) }}
 </div>

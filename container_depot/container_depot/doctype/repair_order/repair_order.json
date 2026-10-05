@@ -26,6 +26,12 @@
   "photos_section",
   "work_photos",
   "remarks",
+  "spk_section",
+  "spk_crew_name",
+  "spk_qc_name",
+  "spk_column_break",
+  "spk_signer_name",
+  "spk_signer_title",
   "system_section",
   "repair_order_id",
   "status",
@@ -169,6 +175,40 @@
    "fieldtype": "Small Text",
    "label": "Remarks",
    "description": "Opsional."
+  },
+  {
+   "fieldname": "spk_section",
+   "fieldtype": "Section Break",
+   "label": "Tanda Tangan SPK",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "spk_crew_name",
+   "fieldtype": "Data",
+   "label": "Nama Teknisi",
+   "description": "Kosong: teknisi order ini, atau yang memulai pekerjaan."
+  },
+  {
+   "fieldname": "spk_qc_name",
+   "fieldtype": "Data",
+   "label": "Nama Q.C",
+   "description": "Kosong: dibiarkan kosong untuk tanda tangan basah."
+  },
+  {
+   "fieldname": "spk_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "spk_signer_name",
+   "fieldtype": "Data",
+   "label": "Nama Penandatangan",
+   "description": "Kosong: nama pembuat order."
+  },
+  {
+   "fieldname": "spk_signer_title",
+   "fieldtype": "Data",
+   "label": "Jabatan Penandatangan",
+   "description": "Kosong: Supervisor Operasional."
   },
   {
    "fieldname": "system_section",
@@ -399,7 +439,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-05 13:00:00.000000",
+ "modified": "2026-10-05 16:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

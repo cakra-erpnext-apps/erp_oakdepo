@@ -29,7 +29,13 @@
   "container_summary",
   "tanks",
   "interior_section",
-  "interior_photos"
+  "interior_photos",
+  "spk_section",
+  "spk_crew_name",
+  "spk_qc_name",
+  "spk_column_break",
+  "spk_signer_name",
+  "spk_signer_title"
  ],
  "fields": [
   {
@@ -199,12 +205,46 @@
    "fieldtype": "Table",
    "label": "Foto Interior",
    "options": "Survey Order Photo"
+  },
+  {
+   "fieldname": "spk_section",
+   "fieldtype": "Section Break",
+   "label": "Tanda Tangan SPK",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "spk_crew_name",
+   "fieldtype": "Data",
+   "label": "Nama Surveyor",
+   "description": "Kosong: nama perusahaan surveyor."
+  },
+  {
+   "fieldname": "spk_qc_name",
+   "fieldtype": "Data",
+   "label": "Nama Operator Kalmar",
+   "description": "Kosong: dibiarkan kosong untuk tanda tangan basah."
+  },
+  {
+   "fieldname": "spk_column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "spk_signer_name",
+   "fieldtype": "Data",
+   "label": "Nama Penandatangan",
+   "description": "Kosong: nama pembuat order."
+  },
+  {
+   "fieldname": "spk_signer_title",
+   "fieldtype": "Data",
+   "label": "Jabatan Penandatangan",
+   "description": "Kosong: Supervisor Operasional."
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-29 13:00:00.000000",
+ "modified": "2026-10-05 16:00:00.000000",
  "module": "Container Depot",
  "name": "Survey Order",
  "search_fields": "booking, principal, survey_date, status",

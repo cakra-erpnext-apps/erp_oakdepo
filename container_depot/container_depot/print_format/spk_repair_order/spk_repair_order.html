@@ -64,7 +64,7 @@
     <div>{{ "Hasil Test : Pass / Fail" if _pt else "Status Tank : Acceptable / Rework" }}</div>
   </div>
 
-  {{ spk.sign("Teknisi Periodic Test" if _pt else "Teknisi Repair", "(Q.C )", _crew) }}
+  {{ spk.sign("Teknisi Periodic Test" if _pt else "Teknisi Repair", "(Q.C )", doc.get("spk_crew_name") or _crew, doc.get("spk_qc_name")) }}
 
   {{ spk.notice([
     ("Naikkan tekanan bertahap, jangan melebihi tekanan uji; jauhi katup dan manhole selama tank bertekanan.",
@@ -74,5 +74,5 @@
      "Make sure the tank is empty, clean and gas-free; hot work only with the supervisor's permit"),
   ]) }}
 
-  {{ spk.closing(doc.get("depot"), doc.owner) }}
+  {{ spk.closing(doc.get("depot"), doc.owner, doc) }}
 </div>
