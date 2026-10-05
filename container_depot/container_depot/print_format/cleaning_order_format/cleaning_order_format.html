@@ -121,12 +121,12 @@
           {%- set _svc_total = _rows | sum(attribute="amount") -%}
           {%- set _mhr_total = _rows | sum(attribute="manhour_rate") -%}
           <tr>
-            <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Total Tarif Service</td>
-            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(_svc_total, _cur) }}</td>
+            <td style="padding:5px 9px !important; font-size:10px; color:#6b7580;">Total Tarif Service</td>
+            <td class="num" style="padding:5px 9px !important; font-size:10px; font-weight:600;">{{ oak.money(_svc_total, _cur) }}</td>
           </tr>
           <tr>
-            <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Biaya Manhour</td>
-            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ oak.money(_mhr_total, _cur) }}</td>
+            <td style="padding:5px 9px !important; font-size:10px; color:#6b7580;">Biaya Manhour</td>
+            <td class="num" style="padding:5px 9px !important; font-size:10px; font-weight:600;">{{ oak.money(_mhr_total, _cur) }}</td>
           </tr>
           <tr class="total-row">
             <td>TOTAL {{ _cur }}</td>
@@ -142,10 +142,10 @@
   {%- if _photos %}
   <table>
     <thead><tr><th class="sec-row">FOTO QC</th></tr></thead>
-    <tbody><tr><td style="padding:0;">
+    <tbody><tr><td style="padding:0 !important;">
       <table style="width:auto;"><tr>
         {%- for p in _photos %}
-        <td style="padding:0 8px 8px 0; vertical-align:top;">
+        <td style="padding:0 8px 8px 0 !important; vertical-align:top;">
           <img src="{{ p.photo }}" style="width:118px; height:118px; object-fit:cover; border:1px solid #e3e7ea;">
           {%- if p.get("caption") %}<div class="sub" style="width:118px;">{{ p.caption }}</div>{% endif %}
         </td>
@@ -188,7 +188,7 @@
             sheet can still be signed by hand. -#}
         {%- if doc.get("surveyor_signature") %}
         <div style="height:44px; margin-top:6px;"><img src="{{ doc.surveyor_signature }}" style="max-height:44px; object-fit:contain;"></div>
-        <div style="border-top:1px solid #9aa3ab; margin:0 24px 3px;"></div>
+        <div style="border-top:1px solid #111; margin:0 24px 3px;"></div>
         {%- else %}
         <div class="line"></div>
         {%- endif %}

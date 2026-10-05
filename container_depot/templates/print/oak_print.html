@@ -24,7 +24,16 @@
     .grid + th.sec-row               data table; the section caption belongs in the
                                      <thead> so it repeats and never orphans
     .num .ctr .mono .sub .lbl        cell and text helpers
-    .total-row                       the green total bar
+    .total-row                       the total bar
+
+  Black and white (user, 2026-10-05): lines and captions print black so a photocopy reads
+  like the original. Colour is left to the logo, the watermark and red warnings
+  (cancelled / rejected / draft).
+
+  Padding: Frappe's standard.css pads every `.print-format td/th` with !important (6px, a
+  Print Style may raise it to 10px), which beat every padding declared here. Each padding on
+  a td/th below therefore carries !important, and so must an inline one in a format.
+  A td that declares none keeps Frappe's.
 -#}
 
 {#- ============================ STYLES ============================ -#}
@@ -47,33 +56,33 @@
   .oak-doc .co-meta { font-size: 9.5px; color: #5c6670; line-height: 1.45; margin-top: 4px; }
   .oak-doc .doc-title { font-size: 16px; font-weight: 700; letter-spacing: 1.2px; color: #1f2328; white-space: nowrap; }
   .oak-doc .doc-title.wrap { white-space: normal; }
-  .oak-doc .doc-sub { font-size: 8.5px; letter-spacing: 1.1px; color: #6f9b3f; margin-top: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .doc-sub { font-size: 8.5px; letter-spacing: 1.1px; color: #555; margin-top: 3px; }
   .oak-doc .doc-date { font-size: 9px; color: #8a949d; letter-spacing: .6px; margin-top: 4px; }
-  .oak-doc .rule { border-bottom: 2px solid #6f9b3f; margin: 9px 0 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .rule { border-bottom: 2px solid #111; margin: 9px 0 0; }
 
   /* the number strip — a document is read number-first, so it is allowed to shout */
-  .oak-doc .strip { margin: 12px 0 14px; background-color: #f2f6ee; border-left: 4px solid #6f9b3f; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .oak-doc .strip td { padding: 9px 14px; vertical-align: top; border-right: 1px solid #dde5d4; }
+  .oak-doc .strip { margin: 12px 0 14px; border: 1px solid #111; }
+  .oak-doc .strip td { padding: 9px 14px !important; vertical-align: top; border-right: 1px solid #bbb; }
   .oak-doc .strip td:last-child { border-right: none; }
-  .oak-doc .strip .k { font-size: 8px; letter-spacing: 1px; color: #7d8a72; text-transform: uppercase; }
+  .oak-doc .strip .k { font-size: 8px; letter-spacing: 1px; color: #666; text-transform: uppercase; }
   .oak-doc .strip .v { font-size: 13px; font-weight: 700; margin-top: 2px; letter-spacing: .2px; white-space: nowrap; }
 
   /* panels */
-  .oak-doc .box { border: 1px solid #e3e7ea; padding: 9px 12px; }
-  .oak-doc .boxrow td.box { border: 1px solid #e3e7ea; padding: 9px 12px; vertical-align: top; }
-  .oak-doc .boxrow td.plain { border: none; padding: 0; vertical-align: top; }
-  .oak-doc .boxrow td.gut { width: 12px; border: none; padding: 0; }
-  .oak-doc .box-h { font-size: 8.5px; letter-spacing: 1px; color: #6f9b3f; text-transform: uppercase; font-weight: 700; padding-bottom: 5px; border-bottom: 1px solid #eef1f3; margin-bottom: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .oak-doc .kv td { padding: 2.5px 0; font-size: 10px; vertical-align: top; }
+  .oak-doc .box { border: 1px solid #111; padding: 9px 12px; }
+  .oak-doc .boxrow td.box { border: 1px solid #111; padding: 9px 12px !important; vertical-align: top; }
+  .oak-doc .boxrow td.plain { border: none; padding: 0 !important; vertical-align: top; }
+  .oak-doc .boxrow td.gut { width: 12px; border: none; padding: 0 6px !important; }  /* the padding is the gap: next to %-wide boxes a bare width collapses to 0 */
+  .oak-doc .box-h { font-size: 8.5px; letter-spacing: 1px; color: #111; text-transform: uppercase; font-weight: 700; padding-bottom: 5px; border-bottom: 1px solid #bbb; margin-bottom: 6px; }
+  .oak-doc .kv td { padding: 2.5px 0 !important; font-size: 10px; vertical-align: top; }
   .oak-doc .kv .k { color: #6b7580; width: 40%; }
   .oak-doc .kv .v { font-weight: 600; }
 
   /* data tables */
-  .oak-doc table th.sec-row { background: transparent; color: #6f9b3f; font-size: 9px; font-weight: 700; letter-spacing: 1.3px; text-align: left; padding: 14px 0 5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc table th.sec-row { background: transparent; color: #111; font-size: 9px; font-weight: 700; letter-spacing: 1.3px; text-align: left; padding: 14px 0 5px !important; border-top: none; border-bottom: 1px solid #111; }
   .oak-doc table th.sec-row .sub { font-weight: 400; letter-spacing: 0; margin-top: 2px; }
-  .oak-doc .grid th { background-color: #f0f3ed; color: #4a5a3a; font-weight: 700; font-size: 8.5px; letter-spacing: .6px; padding: 7px 8px; text-align: left; border-top: 1px solid #cfdac2; border-bottom: 1px solid #cfdac2; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .oak-doc .grid td { padding: 6px 8px; font-size: 10px; border-bottom: 1px solid #e8ebed; vertical-align: top; }
-  .oak-doc .total-row td { padding: 7px 9px; font-weight: 700; color: #fff; background-color: #6f9b3f; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .grid th { background: transparent; color: #111; font-weight: 700; font-size: 8.5px; letter-spacing: .6px; padding: 7px 8px !important; text-align: left; border-top: 1px solid #111; border-bottom: 1.5px solid #111; }
+  .oak-doc .grid td { padding: 6px 8px !important; font-size: 10px; border-bottom: 1px solid #ccc; vertical-align: top; }
+  .oak-doc .total-row td { padding: 7px 9px !important; font-weight: 700; color: #111; border-top: 1.5px solid #111; border-bottom: 1.5px solid #111; }
 
   /* helpers */
   /* th.num / th.ctr must out-rank `.grid th { text-align: left }` — otherwise a money
@@ -83,7 +92,7 @@
   .oak-doc .mono { font-family: 'Courier New', Courier, monospace; font-weight: 700; letter-spacing: .3px; }
   .oak-doc .sub { color: #7b858e; font-size: 9px; }
   .oak-doc .lbl { font-size: 8.5px; letter-spacing: 1px; color: #8a949d; text-transform: uppercase; }
-  .oak-doc .pill { display: inline-block; padding: 2px 8px; border-radius: 9px; font-size: 8.5px; font-weight: 700; letter-spacing: .4px; white-space: nowrap; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .pill { display: inline-block; padding: 1px 6px; border: 1px solid #111; font-size: 8px; font-weight: 700; letter-spacing: .5px; white-space: nowrap; color: #111; }
   .oak-doc .terms { font-size: 9px; color: #45505a; line-height: 1.5; }
   .oak-doc .terms ol, .oak-doc .terms ul { margin: 4px 0 0 14px; padding: 0; }
 
@@ -92,15 +101,15 @@
   .oak-doc .wm { position: absolute; top: 375px; left: 0; width: 100%; text-align: center; z-index: 0; }
   .oak-doc .wm img { width: 360px; max-width: 62%; opacity: 0.06; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-  .oak-doc .stamp { display: inline-block; border: 3px solid #2f7a30; color: #2f7a30; padding: 6px 22px 8px; text-align: center; -webkit-transform: rotate(-8deg); transform: rotate(-8deg); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .oak-doc .stamp { display: inline-block; border: 3px solid #111; color: #111; padding: 6px 22px 8px; text-align: center; -webkit-transform: rotate(-8deg); transform: rotate(-8deg); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .oak-doc .stamp .big { font-size: 34px; font-weight: 700; letter-spacing: 6px; line-height: 1.05; }
   .oak-doc .stamp .small { font-size: 9px; letter-spacing: 2px; margin-top: 1px; }
 
   .oak-doc .sign { text-align: center; font-size: 9.5px; }
   .oak-doc .sign .cap { color: #6b7580; }
-  .oak-doc .sign .line { border-top: 1px solid #9aa3ab; margin: 44px 24px 3px; }
+  .oak-doc .sign .line { border-top: 1px solid #111; margin: 44px 24px 3px; }
 
-  .oak-doc .foot { margin-top: 10px; padding-top: 6px; border-top: 1px solid #e3e7ea; font-size: 8.5px; color: #8a949d; }
+  .oak-doc .foot { margin-top: 10px; padding-top: 6px; border-top: 1px solid #999; font-size: 8.5px; color: #8a949d; }
 </style>
 {%- endmacro -%}
 
@@ -116,16 +125,16 @@
 {%- macro head(title, subtitle="", show_print_date=true, logo_h=70, title_size=0, title_wrap=false, address="", badge="") -%}
 <table class="band">
   <tr>
-    <td style="width:18%; vertical-align:middle; padding:0;">
+    <td style="width:18%; vertical-align:middle; padding:0 !important;">
       <img src="{{ get_logo_pdf() }}" style="max-height:{{ logo_h }}px; max-width:100%;">
     </td>
-    <td style="vertical-align:middle; padding:0 10px;">
+    <td style="vertical-align:middle; padding:0 10px !important;">
       <div class="co-name">PT. Oasis Anugerah Kasih</div>
       <div class="co-meta">
         {{ address or HQ_ADDR }}
       </div>
     </td>
-    <td style="width:27%; vertical-align:top; text-align:right; padding:0;">
+    <td style="width:27%; vertical-align:top; text-align:right; padding:0 !important;">
       <div class="doc-title{% if title_wrap %} wrap{% endif %}"{% if title_size %} style="font-size:{{ title_size }}px;"{% endif %}>{{ title }}</div>
       {%- if subtitle %}<div class="doc-sub">{{ subtitle | upper }}</div>{% endif %}{#- pass literal "·", never &middot; — see styles() note -#}
       {%- if badge %}<div style="margin-top:5px;">{{ badge }}</div>{% endif %}
@@ -150,29 +159,22 @@
 </table>
 {%- endmacro -%}
 
-{%- macro pill(text, bg, fg) -%}
-<span class="pill" style="background-color:{{ bg }}; color:{{ fg }};">{{ text }}</span>
+{#- An outlined tag. Black, except the red that warns (see status_pill). -#}
+{%- set RED = "#b3261e" -%}
+{%- macro pill(text, red=false) -%}
+<span class="pill"{% if red %} style="border-color:{{ RED }}; color:{{ RED }};"{% endif %}>{{ text }}</span>
 {%- endmacro -%}
 
-{#- Condition is what the yard acts on, so it is the one cell that carries colour:
-    clean tanks pass, dirty tanks queue for cleaning. -#}
 {%- macro cond_pill(condition) -%}
   {%- set c = (condition or "") | upper -%}
-  {%- if not c -%}&mdash;
-  {%- elif "CLEAN" in c -%}{{ pill(c, "#e7f2e0", "#2f7a30") }}
-  {%- elif "DIRTY" in c -%}{{ pill(c, "#fbeedd", "#9a5b00") }}
-  {%- elif "LADEN" in c -%}{{ pill(c, "#e2ecf7", "#1f5c99") }}
-  {%- else -%}{{ pill(c, "#f0f2f4", "#5c6670") }}{%- endif -%}
+  {%- if not c -%}&mdash;{%- else -%}{{ pill(c) }}{%- endif -%}
 {%- endmacro -%}
 
-{#- Status colours are shared so "Completed" is the same green on every document. -#}
+{#- The red statuses are shared so "Cancelled" warns the same way on every document. -#}
 {%- macro status_pill(status) -%}
   {%- set s = (status or "") | upper -%}
   {%- if not s -%}&mdash;
-  {%- elif s in ("CONFIRMED", "COMPLETED", "APPROVED", "ACTIVE", "PAID", "READY TO LOAD", "READY TO UNLOAD") -%}{{ pill(s, "#2f7a30", "#fff") }}
-  {%- elif s in ("CANCELLED", "BLOCKED", "REJECTED", "HOLD", "EXPIRED", "OVERDUE") -%}{{ pill(s, "#b3261e", "#fff") }}
-  {%- elif s in ("DRAFT",) -%}{{ pill(s, "#6b7280", "#fff") }}
-  {%- else -%}{{ pill(s, "#b26a00", "#fff") }}{%- endif -%}
+  {%- else -%}{{ pill(s, s in ("CANCELLED", "BLOCKED", "REJECTED", "HOLD", "EXPIRED", "OVERDUE")) }}{%- endif -%}
 {%- endmacro -%}
 
 {#- cols: list of {"cap": caption, "name": signatory, "sub": optional subline} -#}

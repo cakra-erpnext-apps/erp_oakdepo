@@ -131,9 +131,9 @@
           {{ row.get("item_name") or row.get("item") or "&mdash;" }}
           {#- The owner's verdict belongs against the line it decides, not in a summary. -#}
           {%- set _d = row.get("decision") %}
-          {%- if _d == "Approved" %}<div style="margin-top:3px;">{{ oak.pill("APPROVED", "#e7f2e0", "#2f7a30") }}</div>
-          {%- elif _d == "Rejected" %}<div style="margin-top:3px;">{{ oak.pill("REJECTED", "#f8e0de", "#b3261e") }}</div>
-          {%- elif _d %}<div style="margin-top:3px;">{{ oak.pill(_d | upper, "#f4ecdd", "#9a5b00") }}</div>{% endif %}
+          {%- if _d == "Approved" %}<div style="margin-top:3px;">{{ oak.pill("APPROVED") }}</div>
+          {%- elif _d == "Rejected" %}<div style="margin-top:3px;">{{ oak.pill("REJECTED", true) }}</div>
+          {%- elif _d %}<div style="margin-top:3px;">{{ oak.pill(_d | upper) }}</div>{% endif %}
           {%- if row.get("owner_remark") %}<div class="sub">{{ row.owner_remark }}</div>{% endif %}
         </td>
         <td class="ctr">{{ row.get("line_type") or "&mdash;" }}</td>
@@ -157,8 +157,8 @@
         <table>
           {%- if _mh_total %}
           <tr>
-            <td style="padding:5px 9px; font-size:10px; color:#6b7580;">Total Manhour</td>
-            <td class="num" style="padding:5px 9px; font-size:10px; font-weight:600;">{{ "%g" | format(_mh_total) }} jam</td>
+            <td style="padding:5px 9px !important; font-size:10px; color:#6b7580;">Total Manhour</td>
+            <td class="num" style="padding:5px 9px !important; font-size:10px; font-weight:600;">{{ "%g" | format(_mh_total) }} jam</td>
           </tr>
           {%- endif %}
           <tr class="total-row">
@@ -182,13 +182,13 @@
   {%- endfor -%}
   <table>
     <thead><tr><th class="sec-row">FOTO BUKTI PEKERJAAN</th></tr></thead>
-    <tbody><tr><td style="padding:0;">
+    <tbody><tr><td style="padding:0 !important;">
       {%- for key in groups %}
       <div style="margin-bottom:10px; page-break-inside:avoid;">
         <div class="lbl" style="margin-bottom:4px;">{{ key }}</div>
         <table style="width:auto;"><tr>
           {%- for row in _photos if (row.get("item_name") or row.get("item") or "Lain-lain") == key %}
-          <td style="padding:0 8px 8px 0; vertical-align:top;">
+          <td style="padding:0 8px 8px 0 !important; vertical-align:top;">
             <img src="{{ row.photo }}" style="width:118px; height:118px; object-fit:cover; border:1px solid #e3e7ea;">
             {%- if row.get("caption") %}<div class="sub" style="width:118px;">{{ row.caption }}</div>{% endif %}
           </td>
