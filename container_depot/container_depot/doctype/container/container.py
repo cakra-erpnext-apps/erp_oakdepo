@@ -32,10 +32,28 @@ class Container(Document):
 		# Internal automation (Repair/Cleaning/Inspection controllers) and
 		# migrations bypass via frappe.flags.in_status_automation.
 		if not self.is_new() and self.has_value_changed("status"):
+			self._guard_manual_status()
 			previous = self.get_doc_before_save()
 			assert_transition(previous.status if previous else None, self.status)
 
 		self._guard_deactivation()
+
+	def _guard_manual_status(self):
+		"""By hand, only the Administrator account may change a tank's status (user, 2026-10-05).
+
+		The form locks the field for everyone else (``read_only_depends_on``); this holds the
+		same line for REST, list bulk-edit and Data Import. System code passes
+		``ignore_permissions`` or ``in_status_automation`` and is never refused.
+		"""
+		if self.flags.ignore_permissions or frappe.flags.in_status_automation:
+			return
+		if frappe.session.user == "Administrator":
+			return
+		frappe.throw(
+			_("Status container hanya bisa diubah manual oleh akun Administrator."),
+			frappe.PermissionError,
+			title=_("Status Terkunci"),
+		)
 
 	def _guard_deactivation(self):
 		"""Refuse to retire a tank the depot is still holding or still working on.

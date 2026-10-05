@@ -42,6 +42,21 @@ class TestContainerStatusGuard(FrappeTestCase):
 			frappe.flags.in_test = True
 		self.assertEqual(doc.status, "Booked")
 
+	def test_only_the_administrator_changes_status_by_hand(self):
+		doc = self._new().insert(ignore_permissions=True)
+		doc.flags.ignore_permissions = False  # a Desk save arrives on a fresh doc
+		doc.status = "Available"
+		doc._guard_manual_status()  # Administrator: allowed
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				doc._guard_manual_status()
+			frappe.flags.in_status_automation = True  # system code: never refused
+			doc._guard_manual_status()
+		finally:
+			frappe.flags.in_status_automation = False
+			frappe.set_user("Administrator")
+
 	def test_patch_releases_a_booked_tank_no_booking_holds(self):
 		from container_depot.patches.v1_17.release_orphan_booked_containers import execute
 
