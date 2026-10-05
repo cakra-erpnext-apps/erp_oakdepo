@@ -3,7 +3,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import getdate, today
 
-from container_depot.container_depot import laden, last_orders
+from container_depot.container_depot import last_orders
 from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
 	_ensure_order_qr,
 	_log_order_activity,
@@ -21,11 +21,6 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 
 
 class OrderMuat(Document):
-	def onload(self):
-		from container_depot.container_depot.order_generation import order_undoable
-
-		self.set_onload("undoable", order_undoable(self))
-
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank Out")
@@ -36,7 +31,6 @@ class OrderMuat(Document):
 	def on_update_after_submit(self):
 		# Tgl. Muat stays editable after submit — see OrderBongkar.on_update_after_submit.
 		refresh_bon_status(self.get("booking"))
-		laden.restamp(self)
 
 	def on_update(self):
 		_reconcile_codes(self)
@@ -52,8 +46,6 @@ class OrderMuat(Document):
 		notify_order_gate(self, "out")
 		self._attach_eir_out()
 		notify_order_muat_survey(self)
-		# LAST: a LADEN tank has no EIR-Out to send it out — this submit is its gate-out.
-		laden.depart(self)
 
 	def _attach_eir_out(self):
 		"""Point each tank's EIR-Out at this bon and stamp the truck / driver / EMKL / shipper onto it.

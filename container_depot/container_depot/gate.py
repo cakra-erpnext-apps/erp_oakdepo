@@ -199,13 +199,12 @@ def _resolve_or_create_gate_entry(container_no, order_muat, depot, performed_by)
 	return doc
 
 
-def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by=None, laden_at=None) -> dict:
+def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by=None) -> dict:
 	"""Complete gate-out / load-complete for a tank — the final OUT step.
 
 	Called from ``Inspection.on_submit`` when a clean EIR-Out is submitted, which passes its
-	own name as ``eir_out``: the reviewed EIR-Out is what declares the tank gone. The one
-	exception is a LADEN tank (``laden.depart``, ``laden_at`` = Tgl. Muat): it has no EIR-Out
-	and no Leak Check, its Order Muat submit is the departure, dated by the bon.
+	own name as ``eir_out``. There is no other caller: the reviewed EIR-Out is what declares
+	the tank gone.
 
 	Moves the Container to ``Gate_Out`` (through the guarded state machine, so a Container
 	Movement is auto-logged and ``inventory_stage`` becomes ``Departed``), stamps the Gate
@@ -265,7 +264,7 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 		open_leak_check,
 	)
 
-	if not laden_at and enforce_all() and not has_leak_check_this_visit(doc.name):
+	if enforce_all() and not has_leak_check_this_visit(doc.name):
 		pending = open_leak_check(doc.name)
 		frappe.throw(
 			_("Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.").format(
@@ -281,14 +280,13 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 	# the fallback for a back-office/console call. Either way it stays the resolved name, not
 	# a bare exists(): it is the EIR that released this tank, so it is also what belongs in
 	# the Gate Entry's `eir_reference` below.
-	if not eir_out and not laden_at:
-		eir_out = frappe.db.get_value(
-			"Inspection",
-			{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},
-			"name",
-			order_by="modified desc",
-		)
-	if not eir_out and not laden_at:
+	eir_out = eir_out or frappe.db.get_value(
+		"Inspection",
+		{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},
+		"name",
+		order_by="modified desc",
+	)
+	if not eir_out:
 		frappe.throw(
 			_("Container {0} belum punya EIR-Out bersih (Ready To Load). Surveyor harus submit EIR-Out dulu.").format(
 				doc.name
@@ -296,7 +294,7 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 		)
 
 	prev = doc.status
-	ts = laden_at or now_datetime()
+	ts = now_datetime()
 	order_muat = _latest_order_muat(doc.name, doc.container_no)
 
 	# Payment, last of the readiness checks and deliberately not first: "belum dibayar" is
@@ -320,8 +318,6 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 	try:
 		# Move the tank through the guarded transition (auto-logs the Container Movement).
 		doc.status = "Gate_Out"
-		if laden_at:
-			doc.eir_out_date = ts  # what the EIR-Out writes for every other tank
 		frappe.flags.in_status_automation = True
 		try:
 			doc.save(ignore_permissions=True)
@@ -368,7 +364,6 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 			from_status=prev, to_status="Gate_Out",
 			summary="Gate-out / load complete" + (f" — {order_muat}" if order_muat else ""),
 			performed_by=performed_by,
-			activity_time=ts,
 		)
 
 		# The bon is the reason the tank left — close it once its LAST tank is out, so a
@@ -501,11 +496,7 @@ def reopen_gate_entry_for_eir(eir_out) -> str | None:
 	)
 	if not found:
 		return None
-	return reopen_gate_entry(found[0])
-
-
-def reopen_gate_entry(row) -> str:
-	"""Put a closed Gate Entry (``name`` + ``gate_in_timestamp``) back on an open visit."""
+	row = found[0]
 	frappe.db.set_value(
 		"Gate Entry", row.name,
 		{

@@ -130,8 +130,8 @@ function _lock_actions(frm) {
 	// order_generation.ORDER_TERMINAL_STATUS, which refuses both calls anyway — this is only
 	// so the operator is not offered a button that answers with a red box. The way back is
 	// to undo the EIR-Out / gate-out: that returns the bon to `Issued` and these buttons
-	// with it. An all-LADEN bon stays undoable — no EIR closed it (order_undoable).
-	const undoable = (frm.doc.__onload || {}).undoable ?? frm.doc.order_status !== 'Completed';
+	// with it.
+	const undoable = frm.doc.order_status !== 'Completed';
 	if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 1) {
 		frm.add_custom_button(__('Kembalikan ke Draft'), () => _confirm_revert(frm));
 	} else if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 0) {
