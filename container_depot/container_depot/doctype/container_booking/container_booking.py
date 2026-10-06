@@ -26,7 +26,7 @@ Carries the critical controllers:
    raised or not — until an invoice carries them. See ``_charges_open``; on a Confirmed Cash
    booking the draft invoice is voided by **Batalkan Invoice** (:func:`cancel_draft_invoice`).
 
-   Its counterpart on a SUBMITTED booking is **Kembali ke Draft (pembayaran tetap)** —
+   Its counterpart on a SUBMITTED booking is **Kembali ke Draft** —
    same destination, opposite cost: that one undoes the submit and keeps the settled
    invoice, this one undoes the invoice. The two share a name because they share an
    outcome, and are told apart by the qualifier; they never appear together, since each
@@ -261,7 +261,15 @@ class ContainerBooking(Document):
 		if self.flags.charges_changed:
 			self._guard_locked_charges()
 			self._price_charges()
-		if not self._changed_besides(LINE_SYNC_FIELDS, skip_charges=self.flags.charges_changed):
+		line_fields, header_fields = LINE_SYNC_FIELDS, ()
+		if self.flags.revision:
+			# Revisi Data (revision.save_revision) — the rules are revision.check's and
+			# :func:`revision_apply`'s; what is left here is that rows stay the same rows.
+			from container_depot.container_depot import revision
+
+			revision.check(self)
+			line_fields, header_fields = LINE_SYNC_FIELDS + REVISION_LINE_FIELDS, REVISION_FIELDS
+		if not self._changed_besides(line_fields, skip_charges=self.flags.charges_changed, skip_header=header_fields):
 			assert_lines_editable(self)
 			return
 		frappe.throw(
@@ -278,6 +286,8 @@ class ContainerBooking(Document):
 		from container_depot.container_depot.order_generation import sync_lines_to_bons
 
 		sync_lines_to_bons(self)
+		if self.flags.revision:
+			self._after_revision()
 		if self.flags.charges_changed:
 			self._reopen_cash_payment()
 		if self.flags.tank_removed:
@@ -286,7 +296,33 @@ class ContainerBooking(Document):
 			self.on_update()
 			refresh_bon_status(self.name)
 
-	def _reopen_cash_payment(self):
+	def onload(self):
+		from container_depot.container_depot import revision
+
+		state = revision.state(self)
+		if state:
+			si = self.sales_invoice if finance.is_enabled() else None
+			state["invoice"] = si
+			state["invoice_submitted"] = 1 if si and frappe.db.get_value("Sales Invoice", si, "docstatus") == 1 else 0
+		self.set_onload("revision_state", state)
+
+	def _after_revision(self):
+		"""What follows a Revisi Data, exactly as it follows the same edit on a draft: the
+		lift-on deadlines and the survey day read the dates, and a new payment type owes what
+		it now says. Then the timeline note and the answer to a pending request."""
+		from container_depot.container_depot import revision
+
+		before = self.get_doc_before_save()
+		lift_on.sync_booking_targets(self)
+		self._provision_survey_order()
+		if before and before.payment_type != self.payment_type:
+			if self.payment_type == "TOP" and finance.is_enabled():
+				# Submit's stamp for TOP: owed until a consolidated bill sweeps it.
+				self.db_set("payment_status", "Unpaid", update_modified=False)
+			self._reopen_cash_payment(_("Payment Type diubah ke {0}").format(self.payment_type))
+		revision.after(self)
+
+	def _reopen_cash_payment(self, why=None):
 		"""A Confirmed Cash booking whose charges just changed owes what they now say.
 
 		With finance on, Cash money is collected through an invoice raised BY HAND
@@ -301,12 +337,14 @@ class ContainerBooking(Document):
 		if self.payment_status == target:
 			return
 		self.db_set("payment_status", target, update_modified=False)
-		note = _("Charges diubah setelah Confirmed — status bayar jadi {0}.").format(_(target))
+		note = _("{0} setelah Confirmed — status bayar jadi {1}.").format(
+			why or _("Charges diubah"), _(target)
+		)
 		if target == "Unpaid":
 			note += " " + _("Buat invoice-nya lewat <b>Regenerate Invoice</b>, lalu bayar di kasir.")
 		log_doc_note(self.doctype, self.name, note)
 
-	def _changed_besides(self, line_fields, skip_charges=False) -> bool:
+	def _changed_besides(self, line_fields, skip_charges=False, skip_header=()) -> bool:
 		"""Did this update-after-submit touch anything but ``line_fields`` of existing lines?
 
 		Every ``allow_on_submit`` value is compared with the saved one — including the
@@ -332,7 +370,7 @@ class ContainerBooking(Document):
 
 		# Charges that were let through (``_guard_locked_charges``) and re-priced carry their
 		# derived header totals with them; otherwise they are compared like everything else.
-		if differs(self, before, ("charges_total", "currency") if skip_charges else ()):
+		if differs(self, before, (("charges_total", "currency") if skip_charges else ()) + tuple(skip_header)):
 			return True
 		tables = (("items", line_fields),) if skip_charges else (("items", line_fields), ("charges", ()))
 		for table, skip in tables:
@@ -565,7 +603,7 @@ class ContainerBooking(Document):
 		"""Void the gate codes of tanks a save just took off the booking.
 
 		Codes are issued at Submit and a submitted booking is frozen, so this only ever has
-		work to do in one window: after **Kembali ke Draft (pembayaran tetap)**
+		work to do in one window: after **Kembali ke Draft**
 		(:func:`revert_booking_to_draft`), which deliberately keeps the issued codes so a
 		re-submit re-confirms them rather than minting new ones. A row dropped in that window
 		used to leave its code ``Active`` — a live 72h gate pass for a tank this booking no
@@ -2409,7 +2447,20 @@ def _block_if_bon_raised(booking: str, action: str) -> None:
 				action, ", ".join(bons)
 			)
 			+ " "
-			+ _("Perbaikan data setelah bon terbit dilakukan lewat bon-nya, bukan lewat booking.")
+			+ _("Perbaikan data setelah bon terbit dilakukan lewat <b>Revisi Data</b>.")
+		)
+
+
+def _block_if_draft_invoice(doc) -> None:
+	"""A booking with an invoice is not cancelled (user, 2026-10-06) — Kembali ke Draft keeps
+	the payment, so a reopened booking can still hold one. A submitted invoice is refused by
+	``_block_if_child_submitted``; this is the draft one, which Cancel used to void quietly."""
+	si = doc.sales_invoice if finance.is_enabled() else None
+	if si and frappe.db.get_value("Sales Invoice", si, "docstatus") == 0:
+		frappe.throw(
+			_("Booking ini sudah punya invoice {0}. Batalkan invoice-nya dulu lewat "
+			  "<b>Kembali ke Draft (batalkan invoice)</b>, baru booking bisa di-Cancel.").format(si),
+			title=_("Batalkan Invoice Dulu"),
 		)
 
 
@@ -2556,6 +2607,7 @@ def void_draft(booking):
 	# booking, and `revert_booking_to_draft` refuses to reopen one that has raised any —
 	# so this only fires if some other path put the pair in that state.
 	_block_if_bon_raised(doc.name, _("dibatalkan"))
+	_block_if_draft_invoice(doc)
 	_block_if_child_submitted(doc.name)
 	_block_if_partner_waits(doc)
 	# Statuses FIRST, exactly as `on_cancel` orders it, and the order is load-bearing:
@@ -2606,9 +2658,10 @@ def void_draft(booking):
 def revert_booking_to_draft(booking):
 	"""Bring a SUBMITTED booking back to an editable draft WITHOUT touching its payment.
 
-	The form button is **Kembali ke Draft (pembayaran tetap)** — the qualifier IS the
-	difference from :func:`rollback_to_draft`, which reaches the same Draft by voiding the
-	invoice instead. The function keeps its own name for the same reason as that one.
+	The form button is **Kembali ke Draft**, shown only while no bon exists — after one, the
+	booking is corrected by Revisi Data instead (user, 2026-10-06), so the two never sit side
+	by side. Not to be confused with :func:`rollback_to_draft` (**Kembali ke Draft (batalkan
+	invoice)** on a draft), which reaches Draft by voiding the invoice.
 
 	Use case: a Cash booking was paid (and so auto-confirmed), but a data correction is
 	needed before the tank moves. Unlike Cancel — which reverses the Payment Entries and
@@ -2650,18 +2703,99 @@ def revert_booking_to_draft(booking):
 		{
 			"docstatus": 0,
 			"booking_status": "Pending Confirmation",
-			# This IS the answer to a pending "minta revisi" (:func:`request_revision`), so
-			# the flag goes with it — a banner that outlives the reopening would have the
-			# office chasing a request it has already granted. Cleared unconditionally:
-			# reopening a booking nobody asked about clears nothing.
-			"revision_requested": 0,
-			"revision_note": None,
 		},
 		update_modified=False,
 	)
 	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=0 WHERE parent=%s", doc.name)
+	# This IS the answer to a pending Minta Revisi (:func:`request_revision`) — told to
+	# whoever asked, so a banner does not outlive the reopening.
+	if cint(doc.revision_requested):
+		from container_depot.container_depot import revision
+
+		revision.close_request(doc, done=True)
 	return {"booking": doc.name, "docstatus": 0, "booking_status": "Pending Confirmation"}
 
+
+
+# ---- Revisi Data (container_depot/revision.py) -------------------------------
+# A booking with a bon is corrected in place: before the bon, Kembali ke Draft is the way back
+# (user, 2026-10-06), so the form never offers both. Only the header facts below move, and
+# nothing is unwound — the rows stay the same tanks. What follows the edit is what follows it
+# on a draft (``_after_revision``). The invoice locks single fields, not the booking: a Cash
+# booking is invoiced before its bon, so a booking-wide lock would leave it uncorrectable.
+REVISION_FIELDS = (
+	"plan_date", "reff_doc", "shipper", "survey_date", "surveyor", "payment_type",
+	"do_reference", "do_document", "sales_name", "remarks",
+)
+# ...and on the rows, what the header pushes down (HEADER_TO_LINE) beside LINE_SYNC_FIELDS.
+REVISION_LINE_FIELDS = ("survey_date", "surveyor")
+REVISION_LOCKED = (
+	"branch", "direction", "depot", "urgent_date", "urgent_reason", "use_survey", "customer",
+	"principal", "currency", "contract", "lift_type", "booking_status", "payment_status",
+	"sales_invoice", "block_reason", "requested_by_customer", "bon_status", "bon_summary",
+	"container_summary", "per_fulfilled",
+)
+# Printed on the invoice (consolidated_billing.cust_ref): frozen once it is submitted.
+_ON_THE_INVOICE = ("reff_doc", "do_reference")
+
+
+def revision_invoice(doc):
+	return None  # per field, in revision_apply
+
+
+def revision_blocker(doc):
+	if not _bons_raised(doc.name):
+		return _("Booking ini belum punya bon — koreksi lewat <b>Kembali ke Draft</b>.")
+	return None
+
+
+def revision_apply(doc, before) -> None:
+	from container_depot.container_depot.order_generation import (
+		LINE_SYNC_FIELDS,
+		ORDER_TERMINAL_STATUS,
+		live_bon_row,
+	)
+	from container_depot.container_depot.revision import _value
+
+	moved = {f for f in REVISION_FIELDS if _value(doc, f) != _value(before, f)}
+	si = doc.sales_invoice if finance.is_enabled() else None
+	if si:
+		frozen = {"payment_type"}
+		if frappe.db.get_value("Sales Invoice", si, "docstatus") == 1:
+			frozen |= set(_ON_THE_INVOICE)
+		if moved & frozen:
+			frappe.throw(
+				_("Sudah ada invoice {0} — {1} tidak bisa direvisi. Batalkan invoice-nya dulu.").format(
+					si, ", ".join(_(doc.meta.get_label(f)) for f in sorted(moved & frozen))
+				),
+				title=_("Terkunci Invoice"),
+			)
+	if "payment_type" in moved:
+		mode = frappe.db.get_value("Depot Contract", doc.contract, "payment_type") if doc.contract else None
+		if mode and mode != "Both" and mode != doc.payment_type:
+			frappe.throw(_("Kontrak {0} hanya {1}.").format(doc.contract, mode))
+
+	# A row the system wrote since the form was loaded (realisation, codes) keeps what the
+	# database says; only the line facts are the revision's.
+	old = {r.name: r for r in before.items}
+	editable = set(LINE_SYNC_FIELDS) | set(REVISION_LINE_FIELDS)
+	for row in doc.items:
+		prev = old.get(row.name)
+		if not prev:
+			continue
+		for df in row.meta.fields:
+			if df.fieldtype not in frappe.model.no_value_fields and df.fieldname not in editable:
+				row.set(df.fieldname, prev.get(df.fieldname))
+	doc._drop_survey_when_off()
+	doc._cascade_header_defaults()
+	# A tank whose bon has closed is history: the header no longer reaches its row.
+	for row in doc.items:
+		bon = live_bon_row(row.booking_code)
+		if row.name in old and bon and bon.status in ORDER_TERMINAL_STATUS:
+			for f in doc.HEADER_TO_LINE.values():
+				row.set(f, old[row.name].get(f))
+	doc._require_plan_date()
+	doc._validate_survey_before_plan()
 
 
 # ---- customer-raised bookings ----------------------------------------------
@@ -2712,18 +2846,16 @@ def submit_request(booking):
 
 @frappe.whitelist()
 def request_revision(booking, reason=None):
-	"""**Minta Revisi** — the customer asks for a CONFIRMED booking to be opened again.
+	"""**Minta Revisi** — the customer asks for a CONFIRMED booking to be corrected.
 
-	Mirrors ``mr.request_revision`` / ``cleaning.request_revision`` exactly, and for the same
-	reason: a confirmed booking is not editable from the outside, so this raises a REQUEST
-	rather than touching the document — a timeline note, a flag the Desk shows with its
-	reason, and a notification. Reopening stays a human decision on the office side, and it
-	already has its button: **Kembali ke Draft (pembayaran tetap)**
-	(:func:`revert_booking_to_draft`), which clears this flag when it runs.
-
-	Refused once a bon has been raised — that is the same wall the reopening itself hits, so
-	asking would only produce a request nobody can grant.
+	A request, not an edit (``revision.request``, the same on every menu): a timeline note, a
+	flag the Desk shows with its reason, and a notification. Answered by Kembali ke Draft
+	before a bon, by Revisi Data after one, or by Tolak Revisi — each tells the requester.
+	Concept only until the customer portal goes live (user, 2026-10-06).
 	"""
+	from container_depot.container_depot import revision
+	from container_depot.container_depot.notify import notify_booking_revision_requested
+
 	doc = frappe.get_doc("Container Booking", booking)
 	# `read`, not `write`: a Confirmed booking is outside the customer's editing window by
 	# design (`customer_scope.container_booking_permission`), and asking for a revision is
@@ -2732,22 +2864,7 @@ def request_revision(booking, reason=None):
 	if doc.docstatus != 1 or doc.booking_status != "Confirmed":
 		frappe.throw(_("Hanya booking yang sudah dikonfirmasi yang bisa diminta revisi."))
 	_assert_own_request(doc, ("Confirmed",))
-	_block_if_bon_raised(doc.name, _("diminta revisi"))
-
-	reason = (reason or "").strip()
-	note = _("Minta revisi oleh {0}").format(frappe.session.user)
-	if reason:
-		note += ": " + reason
-	log_doc_note("Container Booking", doc.name, note)
-	frappe.db.set_value(
-		"Container Booking", doc.name,
-		{"revision_requested": 1, "revision_note": note},
-		update_modified=False,
-	)
-	from container_depot.container_depot.notify import notify_booking_revision_requested
-
-	notify_booking_revision_requested(doc.name, reason=reason)
-	return {"booking": doc.name, "revision_requested": 1, "revision_note": note}
+	return revision.request(doc, reason, notify_booking_revision_requested)
 
 
 # ---- payment-status sync (booking ↔ its Sales Invoice) ----------------------
@@ -2793,7 +2910,7 @@ def set_payment_status(booking, status):
 	about real money that both the gate and the bon read
 	(``order_generation.BON_ALLOWED_PAYMENT``), so it is refused here and not merely hidden on
 	the form: a screen rule that the API does not share is not a rule. The way back is
-	**Kembali ke Draft (pembayaran tetap)**, still offered while no bon has been raised — and a
+	**Kembali ke Draft**, still offered while no bon has been raised — and a
 	draft may be toggled either way.
 
 	Every change is left as a comment so "who marked this paid, and when" has an answer."""
@@ -2819,7 +2936,7 @@ def set_payment_status(booking, status):
 			_(
 				"Booking yang sudah disetujui tidak bisa dikembalikan ke <b>belum lunas</b>. "
 				"Kalau memang salah tandai, kembalikan dulu ke draft lewat "
-				"<b>Kembali ke Draft (pembayaran tetap)</b>."
+				"<b>Kembali ke Draft</b>."
 			),
 			title=_("Tidak bisa dibatalkan lunasnya"),
 		)

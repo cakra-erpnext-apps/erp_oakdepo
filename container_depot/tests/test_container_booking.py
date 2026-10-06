@@ -573,26 +573,30 @@ class TestTankInFlow(FrappeTestCase):
 		self.assertEqual(si.branch, b.branch)
 		self.assertEqual(si.items[0].item_code, "Lift Off")   # charged Item, not generic service
 
-	def test_void_draft_cancels_invoice_and_marks_cancelled(self):
-		# Cancel on a draft voids it without deleting: the document reads Cancelled
-		# (docstatus 2), payment status flips to Cancelled, and the auto-created invoice
-		# is cancelled but KEPT linked & visible on the booking.
-		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+	def test_void_draft_waits_for_a_draft_invoice_too(self):
+		# A booking with an invoice is not cancelled (user, 2026-10-06) — the draft one used to
+		# be voided quietly by Cancel. Kembali ke Draft (batalkan invoice) first, then Cancel:
+		# the document reads Cancelled (docstatus 2) and payment status Cancelled.
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			rollback_to_draft,
+			void_draft,
+		)
 
 		b = self._booking(self.customer, charges=[{"item": "Lift Off"}])
 		b.insert(ignore_permissions=True)
 		si = _bill(b)
 		self.assertTrue(si and frappe.db.exists("Sales Invoice", si))
+		with self.assertRaisesRegex(frappe.ValidationError, "sudah punya invoice"):
+			void_draft(b.name)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si, "docstatus"), 0)
+
+		rollback_to_draft(b.name)
 		void_draft(b.name)
 		b.reload()
 		self.assertEqual(b.docstatus, 2, "voided booking reads as Cancelled, not Draft")
 		self.assertEqual(b.booking_status, "Cancelled")
 		self.assertEqual(b.payment_status, "Cancelled")
-		self.assertEqual(b.sales_invoice, si, "cancelled invoice stays linked & visible")
-		self.assertEqual(
-			frappe.db.get_value("Sales Invoice", si, "docstatus"), 2,
-			"the draft invoice is cancelled (kept), not deleted",
-		)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si, "docstatus"), 2, "kept, not deleted")
 
 	def test_void_draft_waits_for_a_submitted_invoice(self):
 		# Finance on: a submitted invoice is finance's to cancel, so the booking waits.

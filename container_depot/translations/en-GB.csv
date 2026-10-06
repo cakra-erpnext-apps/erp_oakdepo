@@ -68,7 +68,7 @@ Booking ini tidak bisa {0}: bon sudah pernah terbit ({1}).,This booking cannot b
 Booking ini tidak menagihkan apa pun (Total Charges 0) — tidak ada yang bisa di-invoice.,This booking charges nothing (Total Charges 0) — there is nothing to invoice.
 Booking ini tidak menagihkan apa pun (Total Charges 0) — tidak ada yang di-invoice.,This booking charges nothing (Total Charges 0) — nothing is invoiced.
 Booking terkunci,Booking locked
-"Booking yang sudah disetujui tidak bisa dikembalikan ke <b>belum lunas</b>. Kalau memang salah tandai, kembalikan dulu ke draft lewat <b>Kembali ke Draft (pembayaran tetap)</b>.","An approved booking cannot be set back to <b>unpaid</b>. If it was marked by mistake, return it to draft first with <b>Kembali ke Draft (pembayaran tetap)</b> (back to draft, payment kept)."
+"Booking yang sudah disetujui tidak bisa dikembalikan ke <b>belum lunas</b>. Kalau memang salah tandai, kembalikan dulu ke draft lewat <b>Kembali ke Draft</b>.","An approved booking cannot be set back to <b>unpaid</b>. If it was marked by mistake, return it to draft first with <b>Kembali ke Draft</b> (back to draft; the payment is kept)."
 Booking {0} belum punya Tanggal Survey. Isi dulu di booking-nya.,Booking {0} has no Survey Date yet. Fill it in on the booking first.
 "Booking {0} sudah disubmit dan tidak bisa langsung dibatalkan. Kembali ke Draft dulu, lalu batalkan draft-nya.","Booking {0} is already submitted and cannot be cancelled directly. Return it to Draft first, then cancel the draft."
 Booking {0} sudah disubmit — isinya tidak bisa diubah lagi. Pakai <b>Kembali ke Draft</b> dulu kalau memang harus dikoreksi.,Booking {0} is already submitted — its contents can no longer be changed. Use <b>Kembali ke Draft</b> (back to draft) first if it really must be corrected.
@@ -307,7 +307,7 @@ Order ini sudah masuk invoice {0}. Tanggalnya ({1}) tidak bisa diubah — batalk
 Order yang dipilih sudah ditagih atau tidak menagihkan apa pun.,The selected orders are already billed or charge nothing.
 Owner memutuskan M&R,Owner decided on M&R
 Pakai tombol Cancel untuk membatalkan cleaning order.,Use the Cancel button to cancel a cleaning order.
-"Perbaikan data setelah bon terbit dilakukan lewat bon-nya, bukan lewat booking.","Once a voucher is issued, data corrections are made on the voucher, not on the booking."
+"Perbaikan data setelah bon terbit dilakukan lewat <b>Revisi Data</b>.","Once a voucher is issued, data corrections are made with <b>Revisi Data</b>."
 Permintaan buka kembali M&R oleh {0},M&R reopen request by {0}
 Permintaan revisi EIR oleh {0},EIR revision request by {0}
 Permintaan revisi cleaning oleh {0},Cleaning revision request by {0}

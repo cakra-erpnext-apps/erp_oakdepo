@@ -16,7 +16,9 @@ A menu joins by an entry in ``_SPECS`` and a module that provides:
   system wrote when it finished);
 * ``revision_invoice(doc)`` — what has invoiced it, or None;
 * optionally ``revision_apply(doc, before)`` — what has to happen inside the save (re-issue
-  parts, re-price, move a ledger) beyond the field edit itself.
+  parts, re-price, move a ledger) beyond the field edit itself;
+* optionally ``revision_blocker(doc)`` — why Revisi Data is not the way to correct this one
+  yet (the booking: no bon yet, so Kembali ke Draft is), or None.
 
 The record is marked by ``doc.flags.revision``, set only here and by a menu's own PWA save
 when it was called with ``revise``. Flags never travel in a request payload (Frappe keeps
@@ -56,6 +58,15 @@ _SPECS = {
 		"label": _lt("M&R"),
 		"answered": "repair_revision_answered",
 	},
+	# Revisi Data only once a bon exists (before that Kembali ke Draft is the one way back), and
+	# the invoice locks single fields instead of the whole booking: a Cash booking is invoiced
+	# before its bon. Desk only.
+	"Container Booking": {
+		"module": "container_depot.container_depot.doctype.container_booking.container_booking",
+		"right": "cancel",
+		"label": _lt("Booking"),
+		"answered": "booking_revision_answered",
+	},
 }
 ADMIN_OPS_ROLES = {"Admin Ops", "System Manager"}
 
@@ -75,6 +86,8 @@ def is_finished(doc) -> bool:
 	"""Submitted, or for the non-submittable Repair Order: Completed."""
 	if doc.doctype == "Repair Order":
 		return doc.get("status") == "Completed"
+	if doc.doctype == "Container Booking":
+		return doc.docstatus == 1 and doc.get("booking_status") != "Cancelled"
 	return doc.docstatus == 1
 
 
@@ -89,6 +102,11 @@ def invoice_of(doc) -> str | None:
 	return _hooks(doc.doctype).revision_invoice(doc)
 
 
+def blocker_of(doc) -> str | None:
+	hooks = _hooks(doc.doctype)
+	return hooks.revision_blocker(doc) if hasattr(hooks, "revision_blocker") else None
+
+
 def locked_message(invoice) -> str:
 	return _(
 		"Order ini sudah diinvoice ({0}). Batalkan invoice-nya dulu, atau keluarkan order ini "
@@ -99,13 +117,16 @@ def locked_message(invoice) -> str:
 def state(doc) -> dict:
 	"""What the Desk and the PWA may offer on a finished order.
 
-	``{can_revise, locked, requested, note}`` — ``locked`` is the invoice that froze it.
-	Empty for an order that is not finished yet: there is nothing to revise.
+	``{can_revise, can_answer, locked, requested, note}`` — ``locked`` is the invoice that
+	froze it; ``can_answer`` (Tolak Revisi) is the right alone, ``can_revise`` also needs no
+	``revision_blocker``. Empty for an order that is not finished yet: there is nothing to revise.
 	"""
 	if not is_finished(doc):
 		return {}
+	right = has_right(doc.doctype)
 	return {
-		"can_revise": 1 if has_right(doc.doctype) else 0,
+		"can_revise": 1 if right and not blocker_of(doc) else 0,
+		"can_answer": 1 if right else 0,
 		"locked": invoice_of(doc),
 		"requested": cint(doc.get("revision_requested")),
 		"note": doc.get("revision_note"),
@@ -113,6 +134,8 @@ def state(doc) -> dict:
 
 
 def _guard_branch(doc) -> None:
+	if doc.doctype == "Container Booking":
+		return assert_in_user_branch(branch=doc.get("branch"), depot=doc.get("depot"))
 	depot = frappe.db.get_value("Container", doc.get("container"), "depot") if doc.get("container") else None
 	assert_in_user_branch(depot=depot)
 
@@ -124,6 +147,9 @@ def assert_can_revise(doc) -> None:
 	if not has_right(doc.doctype):
 		frappe.throw(_("Anda tidak berwenang melakukan Revisi Data."), frappe.PermissionError)
 	_guard_branch(doc)
+	blocker = blocker_of(doc)
+	if blocker:
+		frappe.throw(blocker)
 	invoice = invoice_of(doc)
 	if invoice:
 		frappe.throw(locked_message(invoice), title=_("Order Terkunci"))

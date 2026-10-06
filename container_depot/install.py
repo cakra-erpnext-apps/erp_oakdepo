@@ -3491,6 +3491,10 @@ NOTIFICATION_RULES = [
 	("booking_revision_requested", "Customer minta booking dibuka lagi",
 		"Customer mengajukan revisi atas booking yang sudah dikonfirmasi — Admin Ops yang memutuskan membukanya.",
 		["Admin Ops", "Cashier", "Commercial"]),
+	# Ke pengajunya saja (notify(users=...)), sama dengan *_revision_answered yang lain.
+	("booking_revision_answered", "Revisi booking dijawab",
+		"Admin Ops merevisi (Revisi Data / Kembali ke Draft) atau menolak revisi booking — dikirim ke pengajunya saja.",
+		["Admin Ops", "Cashier", "Commercial"]),
 	# Prioritas mendesak. Kantor saja, dan itu disengaja: menandai satu booking MENDESAK
 	# mengangkat tank-tanknya ke puncak ENAM worklist sekaligus, jadi membunyikannya ke semua
 	# kru lapangan berarti satu keputusan = lima lonceng, untuk pekerjaan yang belum tentu

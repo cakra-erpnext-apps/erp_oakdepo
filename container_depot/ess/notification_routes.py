@@ -216,6 +216,7 @@ _BY_EVENT = {
 	"booking_created": _none,
 	"booking_submitted": _none,
 	"booking_revision_requested": _none,
+	"booking_revision_answered": _none,
 	"booking_urgent": _none,
 	"contract_created": _none,
 	"contract_activated": _none,

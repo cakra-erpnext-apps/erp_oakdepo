@@ -962,7 +962,7 @@ def notify_booking_revision_requested(booking, reason=None):
 
 	Same shape and same reasoning as :func:`notify_repair_revision_requested`: the request
 	changes no status, so the bell IS the request. It reaches the desks that can act on it —
-	Admin Ops holds the **Kembali ke Draft (pembayaran tetap)** button, the Cashier is who
+	Admin Ops holds Kembali ke Draft / Revisi Data / Tolak Revisi, the Cashier is who
 	the money question comes back to if the charges move.
 
 	The reason travels in the subject: this is a request to judge, not to route, and a bare

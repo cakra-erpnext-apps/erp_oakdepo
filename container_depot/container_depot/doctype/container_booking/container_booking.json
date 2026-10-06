@@ -46,6 +46,7 @@
   "requested_by_customer",
   "revision_requested",
   "revision_note",
+  "revision_requested_by",
   "container_summary",
   "bon_summary",
   "per_fulfilled",
@@ -402,6 +403,17 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "Yang menekan Ajukan Revisi — dikabari saat revisi selesai atau ditolak.",
+   "fieldname": "revision_requested_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Revisi Diminta Oleh",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
    "description": "Ringkasan nomor container booking ini, untuk list view dan filter Containers.",
    "fieldname": "container_summary",
    "no_copy": 1,
@@ -475,7 +487,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-06 09:00:00.000000",
+ "modified": "2026-10-06 15:00:00.000000",
  "module": "Container Depot",
  "name": "Container Booking",
  "search_fields": "customer, branch, booking_status, container_summary",

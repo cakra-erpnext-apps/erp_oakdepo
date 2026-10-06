@@ -466,7 +466,7 @@ app_include_js = [
 	"/assets/container_depot/js/cancel_button.js?v=1",
 	# container_depot.revision — Revisi Data / Tolak Revisi on a finished order's form
 	# (container_depot/revision.py; see the file).
-	"/assets/container_depot/js/revision.js?v=1",
+	"/assets/container_depot/js/revision.js?v=2",
 	# Menu profil /desk: buang About / Frappe Support / Reset Desktop Layout (lihat file-nya).
 	"/assets/container_depot/js/desktop_menu_trim.js?v=1",
 	# Akun portal: "Daftarkan ... baru" ikut duduk di dalam picker Customer/Container, bukan

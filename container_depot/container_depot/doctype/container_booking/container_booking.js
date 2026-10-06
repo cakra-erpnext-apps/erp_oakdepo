@@ -113,7 +113,7 @@ frappe.ui.form.on('Container Booking', {
 		frm.trigger('_urgency_actions');
 		frm.trigger('_customer_view');
 		frm.trigger('_customer_actions');
-		frm.trigger('_revision_banner');
+		frm.trigger('_revision');
 		// Draft -> Pending Payment. Nothing is generated until this is pressed, so the
 		// operator can get the booking right before it reaches the Cashier's queue.
 		// Each button below mirrors the permission its endpoint enforces, so nobody is
@@ -312,7 +312,7 @@ frappe.ui.form.on('Container Booking', {
 				frm.trigger('_freeze_bon_rows');
 				if (!bons.length && may_cancel) {
 					// The only door out of a submitted booking, so it leads.
-					frm.add_custom_button(__('Kembali ke Draft (pembayaran tetap)'), () =>
+					frm.add_custom_button(__('Kembali ke Draft'), () =>
 						_confirm_revert(frm)
 					).addClass('btn-primary');
 				}
@@ -830,7 +830,15 @@ frappe.ui.form.on('Container Booking', {
 		// and a custom button that replaces it has to follow, or a read-only role (Finance,
 		// Management) is shown a destructive action it has no right to. The server enforces
 		// the same check in void_draft — this only keeps the screen honest.
-		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
+		//
+		// Not while an invoice is linked (server: _block_if_draft_invoice / _block_if_child_submitted):
+		// the charges-lock banner names how to cancel the invoice first.
+		if (
+			!frm.is_new() &&
+			frm.doc.docstatus === 0 &&
+			frappe.perm.has_perm(frm.doctype, 0, 'cancel') &&
+			!(_finance_on() && frm.doc.sales_invoice)
+		) {
 			container_depot.cancel_button(frm, () => _confirm_void(frm));
 		}
 	},
@@ -906,17 +914,19 @@ frappe.ui.form.on('Container Booking', {
 			frm.add_custom_button(__('Minta Revisi'), () => _open_revision_dialog(frm));
 		}
 	},
-	// The other side of the same request: what the office sees when one is pending. Not a
-	// status — the booking stays Confirmed — so without this the request would live only in
-	// a notification somebody has already clicked away.
-	_revision_banner(frm) {
+	// Revisi Data / Tolak Revisi (public/js/revision.js; server: revision.py and the
+	// REVISION_* block in container_booking.py). Offered only once a bon exists — before that
+	// the way back is Kembali ke Draft, so the form never shows both. A portal account only
+	// sees that its request is pending.
+	_revision(frm) {
+		if (!_is_customer()) {
+			container_depot.revision.setup(frm, { unlock: _booking_revision_unlock });
+			return;
+		}
 		if (!frm.doc.revision_requested) return container_depot.form_message(frm, 'revision', '');
-		const tail = _is_customer()
-			? __('OAK sudah diberi tahu.')
-			: __('Buka lagi lewat <b>Kembali ke Draft (pembayaran tetap)</b>, atau tolak lewat komentar.');
 		container_depot.form_message(
 			frm, 'revision',
-			`${__('Customer minta revisi')} — ${frappe.utils.escape_html(frm.doc.revision_note || '')} ${tail}`,
+			`${__('Minta revisi')} — ${frappe.utils.escape_html(frm.doc.revision_note || '')} ${__('OAK sudah diberi tahu.')}`,
 			'orange'
 		);
 	},
@@ -1454,9 +1464,27 @@ function _open_revision_dialog(frm) {
 	d.show();
 }
 
+// Revisi Data on a booking with a bon: only the header facts in REVISION_FIELDS
+// (container_booking.py) open; the rows and charges keep their own rules. An invoice freezes
+// Payment Type, and once submitted also what it prints (Reff Doc, DO Reference).
+const BOOKING_REVISION_FIELDS = [
+	'plan_date', 'reff_doc', 'shipper', 'survey_date', 'surveyor', 'payment_type',
+	'do_reference', 'do_document', 'sales_name', 'remarks',
+];
+function _booking_revision_unlock(frm) {
+	const st = (frm.doc.__onload || {}).revision_state || {};
+	const frozen = [];
+	if (st.invoice) frozen.push('payment_type');
+	if (st.invoice_submitted) frozen.push('reff_doc', 'do_reference');
+	BOOKING_REVISION_FIELDS.filter((f) => !frozen.includes(f)).forEach((f) => {
+		frm.set_df_property(f, 'allow_on_submit', 1);
+		frm.set_df_property(f, 'read_only', 0);
+	});
+}
+
 function _confirm_void(frm) {
 	frappe.confirm(
-		__('Cancel this booking? Its draft invoice and container reservations will be rolled back. The record is kept (not deleted).'),
+		__('Cancel this booking? Its container reservations will be rolled back. The record is kept (not deleted).'),
 		() => {
 			frappe.call({
 				method: 'container_depot.container_depot.doctype.container_booking.container_booking.void_draft',

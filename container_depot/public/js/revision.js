@@ -34,16 +34,17 @@ container_depot.revision = {
 			msg = __('Revisi diminta') + (st.note ? ': ' + st.note : '');
 		}
 		container_depot.form_message(frm, 'revision', msg, st.locked ? 'red' : 'orange');
-		if (!st.can_revise) return;
-		if (editing) {
+		if (st.can_revise && editing) {
 			this._unlock(frm, opts);
-		} else if (!st.locked) {
+		} else if (st.can_revise && !st.locked) {
 			frm.add_custom_button(__('Revisi Data'), () => {
 				frm.__revising = frm.doc.__last_sync_on;
 				frm.refresh();
 			});
 		}
-		if (st.requested) {
+		// can_answer: the right alone — a booking before its bon is answered by Kembali ke
+		// Draft, not by Revisi Data, but may still be turned down.
+		if ((st.can_answer ?? st.can_revise) && st.requested) {
 			frm.add_custom_button(__('Tolak Revisi'), () =>
 				frappe.prompt(
 					{ fieldname: 'reason', fieldtype: 'Small Text', label: __('Alasan'), reqd: 1 },
