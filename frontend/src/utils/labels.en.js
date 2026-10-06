@@ -974,6 +974,7 @@ export const labels = {
 	stageReview: "Awaiting Review",
 	stageRevision: "Revision Requested",
 	stageDone: "Completed",
+	stageClosed: "Closed",
 	stageCancelled: "Cancelled",
 	bkStatusSubmitted: "Submitted",
 	bkStatusPendingPayment: "Awaiting Payment",

@@ -12,7 +12,7 @@ frappe.listview_settings['Inspection'] = {
 	// Kedua tanggal tenggat ikut ditarik meski bukan kolom: tanpa itu pill prioritasnya akan
 	// menghitung mundur ke tanggal yang berbeda dari yang dipakai PWA, dan satu EIR akan
 	// terbaca H-5 di Desk tapi H-2 di HP.
-	add_fields: ['revision_requested', 'docstatus', 'status', 'work_started_on', ...Object.values(PRIORITY)],
+	add_fields: ['revision_requested', 'closed_by_admin', 'docstatus', 'status', 'work_started_on', ...Object.values(PRIORITY)],
 
 	// Direction as a colour, not a word to read: green In / orange Out, matching the gate
 	// PWA's GATE IN / GATE OUT so one habit covers both screens. The stored value stays
@@ -56,6 +56,7 @@ frappe.listview_settings['Inspection'] = {
 		if (doc.docstatus === 1 && doc.revision_requested) {
 			return container_depot.status_pill('revision', 'revision_requested,=,1');
 		}
+		if (doc.docstatus === 1 && doc.closed_by_admin) return container_depot.status_pill('closed', 'closed_by_admin,=,1');
 		if (doc.docstatus === 1) return container_depot.status_pill('done', 'docstatus,=,1');
 		// Field operator submitted → awaiting Admin Ops review + final submit.
 		if (doc.status === 'Pending Review') {

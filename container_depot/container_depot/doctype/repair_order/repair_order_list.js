@@ -13,7 +13,7 @@ frappe.listview_settings["Repair Order"] = {
 	// target_survey_on bukan kolom di sini, tapi dialah tenggat sebenarnya pekerjaan ini —
 	// tanpa ikut ditarik, pill prioritasnya akan menghitung mundur ke hari pickup sementara
 	// PWA menghitung ke hari survey, dan satu order akan terbaca H-5 di Desk tapi H-2 di HP.
-	add_fields: ["status", ...Object.values(PRIORITY)],
+	add_fields: ["status", "closed_by_admin", ...Object.values(PRIORITY)],
 	// Prioritas — dua bentuk sekaligus (lihat public/js/urgency_mark.js): pill di kolom
 	// Prioritas berisi hitung mundur beserta tanggalnya, persis kosakata PWA ("MENDESAK ·
 	// H-2 · 9 Sep"), bisa diklik untuk menyaring yang mendesak saja; plus awalan MENDESAK
@@ -39,6 +39,7 @@ frappe.listview_settings["Repair Order"] = {
 	// Labels mirror frontend/src/utils/labels.js (repairStatusLabels) so Desk and the PWA
 	// name the same status the same way.
 	get_indicator(doc) {
+		if (doc.status === "Completed" && doc.closed_by_admin) return container_depot.status_pill("closed", "closed_by_admin,=,1");
 		const map = {
 			Draft: container_depot.status_pill("draft", "status,=,Draft"),
 			"Pending Approval": [__("Menunggu Persetujuan"), "orange", "status,=,Pending Approval"],

@@ -2610,7 +2610,7 @@ def revert_to_draft(name: str) -> dict:
 
 	# Flip back to an editable draft (same record — editable in the PWA + Desk). Clear any
 	# pending revision request now that it has been actioned.
-	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": "Draft"})
+	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": "Draft", "closed_by_admin": 0})
 	# A pending Ajukan Revisi is answered by this — tell whoever asked.
 	if cint(doc.get("revision_requested")):
 		from container_depot.container_depot import revision

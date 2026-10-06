@@ -1138,6 +1138,7 @@ def reopen_completed(repair_order, note=None) -> dict:
 	# The order is open again, so the completion never happened. Left standing it would print
 	# on the record as a job that finished before it was worked.
 	ro.completion_date = None
+	ro.closed_by_admin = 0  # Tutup Order (closing.py) finished it; it is open again now
 	ro.flags.oak_reopen = True
 	ro.save()
 	log_doc_note("Repair Order", ro.name, msg)

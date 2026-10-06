@@ -467,6 +467,7 @@ def revert_to_draft(name: str) -> dict:
 			"status": "In_Progress",
 			"cleaning_end": None,
 			"stock_entry": None,
+			"closed_by_admin": 0,  # Tutup Order (closing.py) finished it; open again now
 		},
 	)
 	# A pending Ajukan Revisi is answered by this — tell whoever asked.

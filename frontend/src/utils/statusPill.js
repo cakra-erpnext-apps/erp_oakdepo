@@ -31,6 +31,8 @@ export const STAGE = {
 	review: { label: labels.stageReview, colour: "purple" },
 	revision: { label: labels.stageRevision, colour: "pink" },
 	done: { label: labels.stageDone, colour: "blue" },
+	// Tutup Order (closing.py) — selesai lewat Administrator. Sama dengan status_pill.js Desk.
+	closed: { label: labels.stageClosed, colour: "blue" },
 	cancelled: { label: labels.stageCancelled, colour: "red" },
 }
 

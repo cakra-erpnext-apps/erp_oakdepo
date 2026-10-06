@@ -460,13 +460,16 @@ app_include_js = [
 	# tidak menumpuk tiap kali `refresh` jalan (lihat file-nya).
 	"/assets/container_depot/js/form_message.js?v=2",
 	# container_depot.status_pill — kosakata + warna status standar semua list (lihat file-nya).
-	"/assets/container_depot/js/status_pill.js?v=1",
+	"/assets/container_depot/js/status_pill.js?v=2",
 	# container_depot.cancel_button — satu tombol merah "Cancel" di posisi yang sama di semua
 	# form Container Depot; Discard/Cancel bawaan Frappe dicabut (lihat file-nya).
 	"/assets/container_depot/js/cancel_button.js?v=1",
 	# container_depot.revision — Revisi Data / Tolak Revisi on a finished order's form
 	# (container_depot/revision.py; see the file).
 	"/assets/container_depot/js/revision.js?v=2",
+	# container_depot.close_order — "Tutup Order" (Administrator) on every order form
+	# (container_depot/container_depot/closing.py; see the file).
+	"/assets/container_depot/js/close_order.js?v=1",
 	# Menu profil /desk: buang About / Frappe Support / Reset Desktop Layout (lihat file-nya).
 	"/assets/container_depot/js/desktop_menu_trim.js?v=1",
 	# Akun portal: "Daftarkan ... baru" ikut duduk di dalam picker Customer/Container, bukan

@@ -136,7 +136,12 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 	event's rule then only decides WHETHER it is sent, not to whom.
 
 	Best-effort: never let a notification failure abort the submit that triggered it.
+
+	``frappe.flags.depot_mute_notify`` silences it — Tutup Order (closing.py) finishing a
+	backlog of orders would otherwise ring every bell once per order.
 	"""
+	if frappe.flags.get("depot_mute_notify"):
+		return 0
 	try:
 		roles = None
 		if event_key is not None:

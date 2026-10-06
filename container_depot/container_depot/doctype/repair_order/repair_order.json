@@ -55,7 +55,8 @@
   "totals",
   "total_cost",
   "billing_status",
-  "stock_entry"
+  "stock_entry",
+  "closed_by_admin"
  ],
  "fields": [
   {
@@ -457,10 +458,19 @@
    "options": "Stock Entry",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "fieldname": "closed_by_admin",
+   "fieldtype": "Check",
+   "label": "Ditutup Administrator",
+   "read_only": 1,
+   "no_copy": 1,
+   "depends_on": "eval:doc.closed_by_admin",
+   "description": "Diselesaikan langsung oleh Administrator lewat Tutup Order (dikerjakan di luar aplikasi). Alasannya ada di timeline."
   }
  ],
  "links": [],
- "modified": "2026-10-06 14:00:00.000000",
+ "modified": "2026-10-06 16:00:00.000000",
  "module": "Container Depot",
  "name": "Repair Order",
  "naming_rule": "Expression (BY ASSIGNMENT)",

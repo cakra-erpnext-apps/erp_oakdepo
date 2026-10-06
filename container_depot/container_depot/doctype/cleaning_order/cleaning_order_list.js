@@ -22,7 +22,7 @@ frappe.listview_settings["Cleaning Order"] = {
 	// target_survey_on bukan kolom di sini, tapi dialah tenggat sebenarnya pekerjaan ini —
 	// tanpa ikut ditarik, pill prioritasnya akan menghitung mundur ke hari pickup sementara
 	// PWA menghitung ke hari survey, dan satu order akan terbaca H-5 di Desk tapi H-2 di HP.
-	add_fields: ["status", "revision_requested", ...Object.values(PRIORITY)],
+	add_fields: ["status", "revision_requested", "closed_by_admin", ...Object.values(PRIORITY)],
 	// Prioritas — dua bentuk sekaligus (lihat public/js/urgency_mark.js): pill di kolom
 	// Prioritas berisi hitung mundur beserta tanggalnya, persis kosakata PWA ("MENDESAK ·
 	// H-2 · 9 Sep"), bisa diklik untuk menyaring yang mendesak saja; plus awalan MENDESAK
@@ -57,6 +57,7 @@ frappe.listview_settings["Cleaning Order"] = {
 		// any other colour = a stage in between. So Service Setup (docstatus 0, Admin
 		// Ops belum menentukan metode) is the draft here and takes grey, and Completed
 		// — not the mid-flow stages — is the one that gets blue.
+		if (doc.docstatus === 1 && doc.closed_by_admin) return container_depot.status_pill("closed", "closed_by_admin,=,1");
 		const map = {
 			// Belum diteruskan — Admin Ops masih memilih metode cleaning (ini drafnya).
 			"Service Setup": [__("Belum Diteruskan"), "gray", "status,=,Service Setup"],

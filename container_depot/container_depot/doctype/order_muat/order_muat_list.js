@@ -15,7 +15,7 @@
 //   blue   — Selesai: the terminal state
 //   others — the stages in between; Hold is a pause, not a cancellation, so it stays out of red
 frappe.listview_settings["Order Muat"] = {
-	add_fields: ["order_status"],
+	add_fields: ["order_status", "closed_by_admin"],
 	// Without these two, frappe.get_indicator returns its blanket "Draft"/"Cancelled" pill
 	// for docstatus 0/2 and bails out before get_indicator below is ever called.
 	has_indicator_for_draft: 1,
@@ -24,6 +24,7 @@ frappe.listview_settings["Order Muat"] = {
 	get_indicator(doc) {
 		if (doc.docstatus === 0) return container_depot.status_pill("draft", "docstatus,=,0");
 		if (doc.docstatus === 2) return [__("Void"), "red", "docstatus,=,2"];
+		if (doc.order_status === "Completed" && doc.closed_by_admin) return container_depot.status_pill("closed", "closed_by_admin,=,1");
 		const map = {
 			// Bon sudah terbit, EIR belum jalan.
 			Issued: [__("Diterbitkan"), "orange", "order_status,=,Issued"],

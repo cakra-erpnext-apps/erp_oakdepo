@@ -19,6 +19,8 @@ container_depot.STATUS = {
 	review: ['Menunggu Review', 'purple'],
 	revision: ['Revisi Diminta', 'pink'],
 	done: ['Selesai', 'blue'],
+	// Tutup Order (closing.py): selesai lewat Administrator, dikerjakan di luar aplikasi.
+	closed: ['Ditutup', 'blue'],
 	cancelled: ['Dibatalkan', 'red'],
 };
 

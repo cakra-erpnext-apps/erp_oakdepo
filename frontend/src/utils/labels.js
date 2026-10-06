@@ -1108,6 +1108,7 @@ export const labels = {
 	stageReview: "Menunggu Review",
 	stageRevision: "Revisi Diminta",
 	stageDone: "Selesai",
+	stageClosed: "Ditutup",
 	stageCancelled: "Dibatalkan",
 	// Status Container Booking, sama dengan container_booking_list.js
 	bkStatusSubmitted: "Pengajuan",

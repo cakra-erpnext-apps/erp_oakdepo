@@ -37,7 +37,8 @@ class LeakCheck(Document):
 			self.status = OPEN  # photos alone no longer finish it: Submit does
 
 	def before_submit(self):
-		if not self._has_photo():
+		# Tutup Order (closing.py): the check was done outside the app, so no photo here.
+		if not self._has_photo() and not self.flags.closing:
 			frappe.throw(_("Leak check wajib minimal satu foto."))
 		self.status = COMPLETED
 		# Stamped at completion, not at birth: an order provisioned on the bon has not been
