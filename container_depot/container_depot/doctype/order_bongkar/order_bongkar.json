@@ -78,21 +78,23 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "EMKL / angkutan. Defaults to the booking customer; can be overridden.",
+   "description": "Salinan dari baris booking — ubah di Container Booking.",
    "fieldname": "emkl",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "EMKL / Angkutan",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only": 1
   },
   {
-   "description": "Pabrik / pemilik muatan yang memerintah EMKL. Dari baris booking; boleh diubah.",
+   "description": "Salinan dari baris booking — ubah di Container Booking.",
    "fieldname": "shipper",
    "fieldtype": "Link",
    "in_standard_filter": 1,
    "label": "Shipper",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only": 1
   },
   {
    "description": "Tank Owner, carried from the booking.",
@@ -172,7 +174,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-02 13:00:00.000000",
+ "modified": "2026-10-05 16:45:00.000000",
  "module": "Container Depot",
  "name": "Order Bongkar",
  "search_fields": "booking, container_summary, emkl",

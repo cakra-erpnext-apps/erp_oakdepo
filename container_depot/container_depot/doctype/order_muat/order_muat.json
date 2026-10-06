@@ -50,7 +50,9 @@
   {
    "fieldname": "ro",
    "fieldtype": "Data",
-   "label": "R/O"
+   "label": "R/O",
+   "read_only": 1,
+   "description": "Salinan dari baris booking — ubah di Container Booking."
   },
   {
    "default": "Issued",
@@ -79,21 +81,23 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Pihak yang mengangkut / angkutan / EMKL. Pilih dari master Customer.",
+   "description": "Salinan dari baris booking — ubah di Container Booking.",
    "fieldname": "emkl",
    "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "EMKL / Angkutan",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only": 1
   },
   {
-   "description": "Pabrik / pemilik muatan yang memerintah EMKL. Dari baris booking; boleh diubah.",
+   "description": "Salinan dari baris booking — ubah di Container Booking.",
    "fieldname": "shipper",
    "fieldtype": "Link",
    "in_standard_filter": 1,
    "label": "Shipper",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only": 1
   },
   {
    "fieldname": "destination",
@@ -139,7 +143,9 @@
    "fieldname": "truck_plate",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "No. Pol (Truck Plate)"
+   "label": "No. Pol (Truck Plate)",
+   "read_only": 1,
+   "description": "Salinan dari baris booking — ubah di Container Booking."
   },
   {
    "fieldname": "column_break_2",
@@ -148,12 +154,16 @@
   {
    "fieldname": "driver_name",
    "fieldtype": "Data",
-   "label": "Supir (Driver)"
+   "label": "Supir (Driver)",
+   "read_only": 1,
+   "description": "Salinan dari baris booking — ubah di Container Booking."
   },
   {
    "fieldname": "driver_phone",
    "fieldtype": "Data",
-   "label": "Driver Phone"
+   "label": "Driver Phone",
+   "read_only": 1,
+   "description": "Salinan dari baris booking — ubah di Container Booking."
   },
   {
    "fieldname": "notes",
@@ -196,7 +206,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-02 13:00:00.000000",
+ "modified": "2026-10-05 16:45:00.000000",
  "module": "Container Depot",
  "name": "Order Muat",
  "search_fields": "booking, container_summary, truck_plate, emkl, destination",

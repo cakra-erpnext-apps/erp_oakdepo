@@ -274,22 +274,27 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 			remarks = vehicle_data.get("remarks") or {}
 			if isinstance(remarks, str):
 				remarks = {c: remarks for c in codes}
-			order.truck_plate = vehicle_data.get("truck_plate")
-			order.driver_name = vehicle_data.get("driver_name")
-			order.driver_phone = vehicle_data.get("driver_phone")
-			order.ro = vehicle_data.get("ro")
+			# Kept on the header too: a code whose booking line cannot be found (legacy data)
+			# leaves nothing for ``mirror_booking_lines`` to copy.
+			order.update({h: vehicle_data.get(h) for h in _MUAT_HEADER.values()})
 			order.destination = vehicle_data.get("destination")
 			# The bon's load date: what the dialog / gate typed, else today — never the Plan
 			# Date, for the same reason as the unload date above: it becomes the line's
 			# realisation, and the Plan Date is only the estimate.
 			order.tanggal_muat = vehicle_data.get("tanggal_muat") or vehicle_data.get("tanggal") or today()
+			# What the dialog typed goes onto the booking lines; the bon copies them back
+			# (``mirror_booking_lines``). Blanks never wipe what the line already says.
+			_set_lines(codes, {f: vehicle_data.get(h) for f, h in _MUAT_HEADER.items() if vehicle_data.get(h)})
 			for c in codes:
 				r = by_name[c]
+				note = remarks.get(r.name) if isinstance(remarks, dict) else None
+				if note:
+					_set_lines([c], {"remarks": note})
 				order.append("containers", {
 					"booking_code": r.name,
 					"container": r.container,
 					"container_no": r.container_no,
-					"remarks": remarks.get(r.name) if isinstance(remarks, dict) else None,
+					"remarks": note,
 				})
 		# validate() re-runs the Active/direction/scoping/count checks (and, for Muat,
 		# the finished-Cleaning-Order gate) as defense in depth.
@@ -469,18 +474,21 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 
 
 # ---------------------------------------------------------------------------
-# Bon <-> booking line: one truck, one driver, kept in two places
+# Bon = a copy of its booking lines
 # ---------------------------------------------------------------------------
-# Edited on either side, the other follows (user, 2026-10-02): the booking line after Submit
-# (``ContainerBooking.before_update_after_submit`` lets exactly these through), the bon while
-# it is a draft — at Generate, or after Kembalikan ke Draft.
+# The booking line is the one place a tank's truck, driver, condition, cargo, parties and
+# remarks live (user, 2026-10-05: "bon cuma salinan"). Generate writes what the dialog typed
+# onto the lines; the bon copies them on every save (:func:`mirror_booking_lines`) and again
+# whenever a line is edited after Submit (:func:`sync_lines_to_bons` —
+# ``ContainerBooking.before_update_after_submit`` lets exactly these fields through). The bon
+# form shows them read-only: a correction is made once, on the booking.
 #
-# An Order Bongkar row IS a Container Booking Item, so the names match the line's. The Order
-# Muat carries truck and driver once, on its header, for every tank on it — so one line's edit
-# reaches its siblings too — and leaves the parties out: one header EMKL cannot stand for lines
-# that may name two. Condition and cargo stay out as well: they are booking facts the codes
-# and the price were cut from.
-LINE_SYNC_FIELDS = ("truck_plate", "driver", "driver_phone", "ro", "remarks", "emkl", "shipper")
+# The Order Muat carries truck and driver once, on its header, for every tank on it — so one
+# line's edit reaches its sibling lines too. The Booking Code's Clean/Dirty tag and the
+# charges stay as they were cut when condition moves.
+LINE_SYNC_FIELDS = (
+	"truck_plate", "driver", "driver_phone", "ro", "remarks", "emkl", "shipper", "condition", "cargo",
+)
 # booking line field -> Order Muat header field
 _MUAT_HEADER = {"truck_plate": "truck_plate", "driver": "driver_name", "driver_phone": "driver_phone", "ro": "ro"}
 
@@ -523,24 +531,36 @@ def _set_lines(codes, values: dict) -> None:
 		frappe.db.set_value("Container Booking Item", line, values, update_modified=False)
 
 
-def sync_bon_to_lines(bon) -> None:
-	"""Bon saved (Generate, or an edit after Kembalikan ke Draft) → its booking lines follow."""
-	before = bon.get_doc_before_save()
-	old_rows = {r.name: r for r in (before.get("containers") or [])} if before else {}
+def mirror_booking_lines(bon) -> None:
+	"""Copy the booking lines onto the bon: each Order Bongkar row takes its line whole, an
+	Order Muat row its remarks and the Muat header the first tank's truck / driver / R-O. The
+	header EMKL / Shipper are the first tank's too — the bon's own default (the booking
+	customer, ``_resolve_emkl``) stands only where that line names none."""
 	rows = [r for r in bon.get("containers") or [] if r.booking_code]
-	if bon.doctype == "Order Bongkar":
-		for r in rows:
-			_set_lines([r.booking_code], _diff(r, old_rows.get(r.name) if before else None, LINE_SYNC_FIELDS))
-		return
-	head = _diff(bon, before, _MUAT_HEADER)
-	_set_lines([r.booking_code for r in rows], head)
+	lines = {
+		line.booking_code: line
+		for line in frappe.get_all(
+			"Container Booking Item",
+			filters={"parenttype": "Container Booking", "booking_code": ["in", [r.booking_code for r in rows] or [""]]},
+			fields=["booking_code", *LINE_SYNC_FIELDS],
+		)
+	}
+	row_fields = LINE_SYNC_FIELDS if bon.doctype == "Order Bongkar" else ("remarks",)
 	for r in rows:
-		_set_lines([r.booking_code], _diff(r, old_rows.get(r.name) if before else None, ("remarks",)))
+		if r.booking_code in lines:
+			r.update({f: lines[r.booking_code][f] for f in row_fields})
+	first = rows and lines.get(rows[0].booking_code)
+	if not first:
+		return
+	if bon.doctype == "Order Muat":
+		bon.update({h: first[f] for f, h in _MUAT_HEADER.items()})
+	bon.emkl = first.emkl or bon.emkl
+	bon.shipper = first.shipper or bon.shipper
 
 
 def sync_lines_to_bons(booking) -> None:
-	"""Booking line edited after Submit → the live bon carrying that tank follows, and what
-	still copies the bon after it (:func:`refresh_bon_followers`)."""
+	"""Booking line edited after Submit → the live bon carrying that tank copies it again, and
+	so does what still copies the bon after it (:func:`refresh_bon_followers`)."""
 	before = booking.get_doc_before_save()
 	old = {r.name: r for r in (before.items if before else [])}
 	touched = set()
@@ -550,22 +570,48 @@ def sync_lines_to_bons(booking) -> None:
 		if not bon:
 			continue
 		if bon.doctype == "Order Bongkar":
-			frappe.db.set_value("Container Booking Item", bon.row, changed)
+			_eir_in_follows(bon.row, changed)
 		else:
-			if "remarks" in changed:
-				frappe.db.set_value("Order Container Item", bon.row, "remarks", changed["remarks"])
+			# One truck for every tank on the bon: the sibling lines take it too.
 			head = {f: v for f, v in changed.items() if f in _MUAT_HEADER}
-			if head:
-				frappe.db.set_value("Order Muat", bon.bon, {_MUAT_HEADER[f]: v for f, v in head.items()})
-				_set_lines(
-					frappe.get_all(
-						"Order Container Item", filters={"parent": bon.bon, "parenttype": "Order Muat"}, pluck="booking_code"
-					),
-					head,
-				)
+			_set_lines(
+				frappe.get_all(
+					"Order Container Item", filters={"parent": bon.bon, "parenttype": "Order Muat"}, pluck="booking_code"
+				),
+				head,
+			)
 		touched.add((bon.doctype, bon.bon))
 	for doctype, name in touched:
+		# Written straight to the table: a submitted bon cannot be saved, and the copy is all
+		# that changes.
+		doc = frappe.get_doc(doctype, name)
+		mirror_booking_lines(doc)
+		doc.db_update()
+		for row in doc.containers:
+			row.db_update()
 		refresh_bon_followers(doctype, name)
+
+
+def _eir_in_follows(row: str, changed: dict) -> None:
+	"""Condition / cargo moved on an Order Bongkar row: the draft EIR-In it opened takes them
+	as its new defaults. Only on that move — a truck edit never resets what the surveyor set.
+	A submitted EIR is history and stays as it was."""
+	from container_depot.container_depot.eir import _CONDITION_TO_TANK_STATUS
+
+	values = {}
+	if changed.get("condition") in _CONDITION_TO_TANK_STATUS:
+		values["tank_status"] = _CONDITION_TO_TANK_STATUS[changed["condition"]]
+	if "cargo" in changed:
+		values["cargo"] = changed["cargo"]
+	if not values:
+		return
+	bon, container = frappe.db.get_value("Container Booking Item", row, ["parent", "container"])
+	for eir in frappe.get_all(
+		"Inspection",
+		filters={"referred_voucher": bon, "container": container, "inspection_type": "EIR-In", "docstatus": 0},
+		pluck="name",
+	):
+		frappe.db.set_value("Inspection", eir, values)
 
 
 def assert_lines_editable(booking) -> None:

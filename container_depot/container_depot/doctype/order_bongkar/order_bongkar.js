@@ -4,10 +4,11 @@
 // A single bon/voucher carries at most this many containers.
 const MAX_CONTAINERS_PER_ORDER = 2;
 
-// Vehicle/paperwork fields a second container inherits from the first row as an
-// editable default. Everything else (condition / cargo / Tgl. Bongkar / remarks)
-// defaults from that container's own booking line, not from row one.
-const MIRROR_FROM_FIRST_ROW = ['truck_plate', 'driver', 'driver_phone', 'ro'];
+// The bon is a copy of its booking lines (server: order_generation.mirror_booking_lines,
+// same list as LINE_SYNC_FIELDS) — shown, never typed here. Correct them on the booking.
+const LINE_FIELDS = [
+	'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks', 'emkl', 'shipper', 'condition', 'cargo',
+];
 
 frappe.ui.form.on('Order Bongkar', {
 	refresh(frm) {
@@ -26,6 +27,7 @@ frappe.ui.form.on('Order Bongkar', {
 			filters: { booking: frm.doc.booking },
 		}));
 		const grid = frm.fields_dict.containers.grid;
+		LINE_FIELDS.forEach((f) => grid.update_docfield_property(f, 'read_only', 1));
 		_bon_grid_columns(grid);
 		_lock_actions(frm);
 		_strip_row_buttons(frm);
@@ -40,18 +42,8 @@ frappe.ui.form.on('Order Bongkar', {
 	containers_remove(frm) {
 		_enforce_max_rows(frm);
 	},
-	containers_add(frm, cdt, cdn) {
+	containers_add(frm) {
 		_enforce_max_rows(frm);
-		// A second container mirrors the first row's truck / driver / R-O as an
-		// editable default; the rest comes from its own container's booking line.
-		const rows = frm.doc.containers || [];
-		if (rows.length <= 1) return;
-		const first = rows[0];
-		const row = locals[cdt][cdn];
-		if (!first || first.name === row.name) return;
-		MIRROR_FROM_FIRST_ROW.forEach((f) => {
-			if (first[f] && !row[f]) frappe.model.set_value(cdt, cdn, f, first[f]);
-		});
 	}
 });
 

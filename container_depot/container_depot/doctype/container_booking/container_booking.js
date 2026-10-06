@@ -316,6 +316,11 @@ frappe.ui.form.on('Container Booking', {
 						_confirm_revert(frm)
 					).addClass('btn-primary');
 				}
+				// Frozen by a bon: a wrongly entered tank comes off only through the
+				// Administrator account (server: remove_tank, which re-checks everything).
+				if (bons.length && frappe.session.user === 'Administrator') {
+					frm.add_custom_button(__('Hapus Tank (Administrator)'), () => _open_remove_tank(frm));
+				}
 				// ONE line for where this booking stands, lock and bon coverage together.
 				// They used to be two comments that said the same thing twice on a fully
 				// bonned booking — "terkunci karena bon sudah terbit", then "semua
@@ -379,12 +384,10 @@ frappe.ui.form.on('Container Booking', {
 			'branch', 'depot', 'reff_doc', 'customer', 'principal',
 			'payment_type', 'do_reference', 'do_document', 'sales_name', 'remarks',
 		].forEach((f) => frm.set_df_property(f, 'read_only', locked ? 1 : 0));
-		// Except the lines' truck / driver detail, which stays open and follows the bon both
-		// ways (server: order_generation.LINE_SYNC_FIELDS). The tank on the line stays frozen.
+		// Except the lines' truck / driver / condition / cargo detail, which stays open and follows
+		// the bon both ways (server: order_generation.LINE_SYNC_FIELDS). The tank on the line stays frozen.
 		const items = frm.fields_dict.items && frm.fields_dict.items.grid;
-		['container', 'condition', 'cargo'].forEach(
-			(f) => items && items.update_docfield_property(f, 'read_only', locked ? 1 : 0)
-		);
+		items && items.update_docfield_property('container', 'read_only', locked ? 1 : 0);
 		_lock_grid(frm, 'items', locked);
 	},
 	// Mirror the server lock (`_guard_locked_charges`): once an invoice carries the charges
@@ -1510,6 +1513,43 @@ function _confirm_rollback(frm) {
 			});
 		}
 	);
+}
+
+// Only tanks still waiting for a bon (Active code) are offered: one sitting on a live bon has
+// to come off that bon first. The server also refuses a tank already inspected through one.
+function _open_remove_tank(frm) {
+	const rows = (frm.doc.items || []).filter((r) => frm._pending_bon && frm._pending_bon.has(r.container_no));
+	if (!rows.length) {
+		frappe.msgprint(__('Tidak ada tank yang bisa dihapus: semua tank masih di bon. Keluarkan dulu dari bon (Kembalikan ke Draft, hapus barisnya) atau batalkan bonnya.'));
+		return;
+	}
+	const d = new frappe.ui.Dialog({
+		title: __('Hapus Tank dari Booking'),
+		fields: [
+			{
+				fieldname: 'line', fieldtype: 'Select', label: __('Tank'), reqd: 1,
+				options: rows.map((r) => ({ value: r.name, label: r.container_no })),
+			},
+			{
+				fieldtype: 'HTML',
+				options: `<p class="text-muted small">${__('Baris dan Booking Code-nya hilang dari booking ini, status Booked tank dilepas. Charges tidak berubah — sesuaikan sendiri kalau perlu.')}</p>`,
+			},
+		],
+		primary_action_label: __('Hapus'),
+		primary_action({ line }) {
+			frappe.call({
+				method: 'container_depot.container_depot.doctype.container_booking.container_booking.remove_tank',
+				args: { booking: frm.doc.name, line },
+				freeze: true,
+				callback(r) {
+					d.hide();
+					frm.reload_doc();
+					frappe.show_alert({ message: __('Tank {0} dihapus dari booking.', [r.message]), indicator: 'orange' });
+				},
+			});
+		},
+	});
+	d.show();
 }
 
 function _confirm_cancel_draft_invoice(frm) {

@@ -245,13 +245,17 @@ class ContainerBooking(Document):
 	# this hook, so nothing internal is caught by the throw below.
 
 	def before_update_after_submit(self):
-		# Except the truck / driver detail on the container lines, which stays editable and
-		# carries over to the bon (order_generation.sync_lines_to_bons, user 2026-10-02) —
+		# Except the truck / driver / condition / cargo detail on the container lines, which stays
+		# editable and carries over to the bon (order_generation.LINE_SYNC_FIELDS) —
 		# and the charges, which stay open until an invoice carries them (``_charges_open``,
 		# user 2026-10-05), priced exactly as on a draft. Re-priced only when they moved, so
 		# a truck-plate edit never touches the money.
 		from container_depot.container_depot.order_generation import LINE_SYNC_FIELDS, assert_lines_editable
 
+		if self.flags.tank_removed:
+			# :func:`remove_tank` — the Administrator, guarded there.
+			self._sync_container_summary()
+			return
 		before = self.get_doc_before_save()
 		self.flags.charges_changed = bool(before) and _billing_signature(before) != _billing_signature(self)
 		if self.flags.charges_changed:
@@ -263,8 +267,8 @@ class ContainerBooking(Document):
 		frappe.throw(
 			_(
 				"Booking {0} sudah disubmit — yang masih bisa diubah hanya Charges (selama belum "
-				"ada invoice) dan No. Truk, Driver, No. HP Driver, RO, Remarks, EMKL dan Shipper di "
-				"baris container. Pakai <b>Kembali ke Draft</b> kalau yang lain memang harus "
+				"ada invoice) dan No. Truk, Driver, No. HP Driver, RO, Remarks, EMKL, Shipper, Condition "
+				"dan Cargo di baris container. Pakai <b>Kembali ke Draft</b> kalau yang lain memang harus "
 				"dikoreksi, atau muat ulang form kalau booking ini baru berubah di tempat lain."
 			).format(self.name),
 			title=_("Booking terkunci"),
@@ -276,6 +280,11 @@ class ContainerBooking(Document):
 		sync_lines_to_bons(self)
 		if self.flags.charges_changed:
 			self._reopen_cash_payment()
+		if self.flags.tank_removed:
+			# The same release a row deleted on a draft gets: reservation, gate code, lift-on
+			# target, survey slot / draft EIR-Out — and the note naming the tank.
+			self.on_update()
+			refresh_bon_status(self.name)
 
 	def _reopen_cash_payment(self):
 		"""A Confirmed Cash booking whose charges just changed owes what they now say.
@@ -592,7 +601,8 @@ class ContainerBooking(Document):
 
 		* **Phantom** (``created_by_booking == this booking``) — a master that exists only
 		  because of this booking → delete it (force: the booking / its codes still point
-		  at it).
+		  at it). Unless another live booking names it (:meth:`_container_named_elsewhere`)
+		  — then it is kept as a tank that never came, like the case below.
 		* **Pre-existing** tank this booking merely flipped → back to ``Gate_Out``, the
 		  state it was reserved out of. Not ``Available``: a tank that never arrived is
 		  not standing in the yard, and saying so would put a phantom into the inventory
@@ -607,7 +617,7 @@ class ContainerBooking(Document):
 			return  # live / already moved on — never touch
 		if self._container_held_by_other_booking(container):
 			return  # another live booking still reserves it
-		if row.created_by_booking == self.name:
+		if row.created_by_booking == self.name and not self._container_named_elsewhere(container):
 			# Phantom born for this booking: drop the dangling links (item ref, booking
 			# codes, and the auto-logged status Movement), then delete.
 			if item is not None:
@@ -632,6 +642,26 @@ class ContainerBooking(Document):
 				tank.save(ignore_permissions=True)
 			finally:
 				frappe.flags.in_status_automation = False
+
+	def _container_named_elsewhere(self, container) -> bool:
+		"""Does another LIVE booking name the tank — either direction, a draft Tank Out booked
+		ahead of the arrival included? Deleting the master would leave its line pointing at
+		nothing. (A live bon cannot: :func:`remove_tank` refuses those, and the other roads
+		here — cancel, a draft row — run before any bon. Cancelled documents keep their
+		dangling link, as they always have.)"""
+		return bool(
+			frappe.db.sql(
+				"""
+				SELECT 1
+				FROM `tabContainer Booking Item` i
+				JOIN `tabContainer Booking` b ON b.name = i.parent
+				WHERE i.parenttype = 'Container Booking' AND i.container = %s AND b.name != %s
+					AND b.docstatus < 2 AND IFNULL(b.booking_status, '') != 'Cancelled'
+				LIMIT 1
+				""",
+				(container, self.name),
+			)
+		)
 
 	def _container_held_by_other_booking(self, container):
 		"""True if a *different* live **Tank In** booking still has this container on an
@@ -2109,6 +2139,74 @@ def rollback_to_draft(booking):
 	target = "Pengajuan" if doc.requested_by_customer else "Draft"
 	doc.db_set("booking_status", target, update_modified=False)
 	return {"booking_status": target, "cancelled_invoice": si}
+
+
+# --- Administrator: a wrongly entered tank off a frozen booking --------------------
+@frappe.whitelist(methods=["POST"])
+def remove_tank(booking, line):
+	"""Take one tank off a submitted booking — the Administrator account only (user, 2026-10-05).
+
+	Once a bon has been raised the booking is frozen for good (:func:`_bons_raised`), so a
+	wrongly entered tank had no way off it: the row stayed, the tank stayed ``Booked`` and the
+	booking never completed. Allowed only while the tank sits on no live bon — a voided one is
+	history, not a hold — and was never inspected through one (:func:`_tank_removal_blocker`).
+	Charges are left as they stand; they stay editable until an invoice carries them."""
+	if frappe.session.user != "Administrator":
+		frappe.throw(
+			_("Hanya akun Administrator yang bisa menghapus tank dari booking yang sudah disubmit."),
+			frappe.PermissionError,
+		)
+	doc = frappe.get_doc("Container Booking", booking)
+	if doc.docstatus != 1:
+		frappe.throw(_("Booking {0} belum disubmit — hapus barisnya langsung di form.").format(doc.name))
+	item = next((r for r in doc.items if r.name == line), None)
+	if not item:
+		frappe.throw(_("Baris itu tidak ada di booking {0}.").format(doc.name))
+	if len(doc.items) == 1:
+		frappe.throw(
+			_("Tank {0} satu-satunya di booking ini — booking tidak boleh kosong.").format(item.container_no),
+			title=_("Tank Tidak Bisa Dihapus"),
+		)
+	blocker = _tank_removal_blocker(item)
+	if blocker:
+		frappe.throw(blocker, title=_("Tank Tidak Bisa Dihapus"))
+	doc.remove(item)
+	for idx, row in enumerate(doc.items, 1):
+		row.idx = idx
+	doc.flags.tank_removed = True
+	# The row count of a submitted document is otherwise frozen by Frappe itself.
+	doc.flags.ignore_validate_update_after_submit = True
+	doc.save(ignore_permissions=True)
+	return item.container_no
+
+
+def _tank_removal_blocker(item) -> str | None:
+	"""Why ``item`` may not be taken off its booking, or ``None``."""
+	from container_depot.container_depot.order_generation import live_bon_row
+
+	code = item.booking_code
+	bon = live_bon_row(code)
+	if bon:
+		return _(
+			"Tank {0} masih di bon {1}. Keluarkan dulu dari bon itu (Kembalikan ke Draft, hapus "
+			"barisnya) atau batalkan bonnya."
+		).format(item.container_no, bon.bon)
+	if not code:
+		return None
+	if frappe.db.get_value("Booking Code", code, "state") == "Used":
+		return _("Booking Code tank {0} sudah terpakai di gate.").format(item.container_no)
+	bons = frappe.get_all(
+		"Container Booking Item", filters={"parenttype": "Order Bongkar", "booking_code": code}, pluck="parent"
+	) + frappe.get_all(
+		"Order Container Item", filters={"parenttype": "Order Muat", "booking_code": code}, pluck="parent"
+	)
+	if bons and frappe.db.exists(
+		"Inspection", {"referred_voucher": ["in", bons], "container": item.container, "docstatus": 1}
+	):
+		return _("Tank {0} sudah diperiksa (EIR) lewat booking ini — tank itu benar-benar bergerak.").format(
+			item.container_no
+		)
+	return None
 
 
 # --- "a bon was raised" — the point of no return ----------------------------------

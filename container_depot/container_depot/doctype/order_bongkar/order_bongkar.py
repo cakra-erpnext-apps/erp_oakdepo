@@ -19,6 +19,7 @@ class OrderBongkar(Document):
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank In")
+		_mirror_lines(self)
 		_sync_container_summary(self)
 		_validate_tank_position(self, present=False)
 
@@ -29,7 +30,6 @@ class OrderBongkar(Document):
 
 	def on_update(self):
 		_reconcile_codes(self)
-		_sync_lines(self)
 		# A bon sent back to draft (revert_order_to_draft) may lose a row: its Leak Check
 		# order goes with it now, not at the next submit.
 		if self.docstatus == 0:
@@ -76,10 +76,10 @@ class OrderBongkar(Document):
 		frappe.throw(_("An Order Bongkar cannot be deleted — use Cancel to void it instead."))
 
 
-def _sync_lines(order: Document):
-	"""Truck / driver edited on the bon → the booking line follows (order_generation)."""
-	from container_depot.container_depot.order_generation import sync_bon_to_lines
-	sync_bon_to_lines(order)
+def _mirror_lines(order: Document):
+	"""The bon is a copy of its booking lines (order_generation.mirror_booking_lines)."""
+	from container_depot.container_depot.order_generation import mirror_booking_lines
+	mirror_booking_lines(order)
 
 
 def _provision_eirs(order: Document):
@@ -553,32 +553,17 @@ def _validate_booking_code(doc: Document, expected_direction: str):
 				frappe.throw(
 					_("Booking Code {0} state is {1}; must be Active.").format(row.booking_code, bc.state)
 				)
-		# Auto-populate the row's container + booking-line detail from the booking line, so a
-		# manually added container inherits the booking's values (the generate path fills these
-		# too). The line's date is NOT among them: it is the realisation this bon is about to
-		# produce, and the bon already states it once in its own header.
+		# A manually added container takes its tank from the code / booking line; the rest of
+		# the line's detail is copied by ``_mirror_lines``.
 		if not row.get("container_no") and bc.container_no:
 			row.container_no = bc.container_no
-		item = (
-			frappe.db.get_value(
-				"Container Booking Item",
-				{"parent": bc.booking, "container_no": row.get("container_no")},
-				["container", "condition", "cargo", "truck_plate",
-				 "driver", "driver_phone", "ro", "remarks"],
-				as_dict=True,
-			)
-			if row.get("container_no")
-			else None
-		)
 		if not row.get("container"):
-			row.container = bc.container or (item.container if item else None)
-		if item:
-			for f in (
-				"condition", "cargo", "truck_plate",
-				"driver", "driver_phone", "ro", "remarks",
-			):
-				if not row.get(f) and item.get(f):
-					row.set(f, item.get(f))
+			row.container = bc.container or (
+				row.get("container_no")
+				and frappe.db.get_value(
+					"Container Booking Item", {"parent": bc.booking, "container_no": row.container_no}, "container"
+				)
+			)
 
 
 def _reconcile_codes(doc: Document):

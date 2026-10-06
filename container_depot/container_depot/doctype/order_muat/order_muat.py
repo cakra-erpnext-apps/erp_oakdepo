@@ -10,7 +10,7 @@ from container_depot.container_depot.doctype.order_bongkar.order_bongkar import 
 	_order_rows,
 	_reconcile_codes,
 	_release_codes,
-	_sync_lines,
+	_mirror_lines,
 	_release_eirs,
 	_sync_booking,
 	_sync_container_summary,
@@ -24,6 +24,7 @@ class OrderMuat(Document):
 	def validate(self):
 		_sync_booking(self)
 		_validate_booking_code(self, "Tank Out")
+		_mirror_lines(self)
 		_sync_container_summary(self)
 		_validate_tank_position(self, present=True)
 		self._validate_no_open_work()
@@ -34,7 +35,6 @@ class OrderMuat(Document):
 
 	def on_update(self):
 		_reconcile_codes(self)
-		_sync_lines(self)
 
 	def on_submit(self):
 		_log_order_activity(self, "Order Muat")
