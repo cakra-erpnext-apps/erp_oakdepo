@@ -1,4 +1,5 @@
-// "Delete" dan "Duplicate" dimatikan untuk dokumen operasional depo.
+// "Delete" dan "Duplicate" dimatikan untuk dokumen operasional depo; daftar juga kehilangan
+// tombol Actions (aksi massal) di semua modul (lihat bawah).
 //
 // Keduanya bawaan Frappe dan keduanya salah di sini, masing-masing karena alasan sendiri:
 //
@@ -71,20 +72,19 @@
 		});
 	}
 
-	// Daftar: Actions ▸ Delete (hapus massal). Disaring dari daftar item yang sudah dibangun
-	// Frappe, bukan dengan mencabut elemennya dari DOM setelah tergambar — menu itu dibangun
-	// ulang tiap kali daftar dimuat, dan yang berkedip sesaat lalu hilang lebih buruk
-	// daripada yang tidak pernah ada.
+	// Daftar: TANPA aksi massal (user, 2026-10-06), di semua daftar semua modul — List view dan
+	// Report view; form tidak tersentuh. Banyak aturan "tidak boleh" hanya hidup di tombol form
+	// (Cancel merah, Kembalikan ke Draft dulu), dan aksi massal melewatinya: bon Completed bisa
+	// ter-Cancel, puluhan invoice batal sekali klik, state Booking Code diganti massal — plus
+	// aksi massal yang ditambahkan ERPNext / app sendiri (Payment dari Sales Invoice, Close
+	// Purchase Order, Void Pending Cash …). Menyembunyikan tombol Actions menutup semuanya
+	// sekaligus; centang barisnya ikut disembunyikan (container_depot.css). Print dan Export
+	// tetap: menu ⋯ di Report view, untuk semua baris yang lolos filter.
 	const ListView = frappe.views?.ListView;
-	if (ListView?.prototype?.get_actions_menu_items) {
-		const original = ListView.prototype.get_actions_menu_items;
-		ListView.prototype.get_actions_menu_items = function () {
-			const items = original.apply(this, arguments);
-			if (!GUARDED.has(this.doctype)) return items;
-			// Label yang sama persis dengan yang dipasang Frappe, KONTEKS terjemahannya ikut:
-			// `__('Delete')` polos bisa menghasilkan string lain di Desk berbahasa Indonesia.
-			const label = __('Delete', null, 'Button in list view actions menu');
-			return items.filter((item) => item.label !== label);
+	if (ListView?.prototype?.toggle_actions_menu_button) {
+		const toggle = ListView.prototype.toggle_actions_menu_button;
+		ListView.prototype.toggle_actions_menu_button = function () {
+			return toggle.call(this, false);
 		};
 	}
 })();

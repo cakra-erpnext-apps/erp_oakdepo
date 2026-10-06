@@ -573,3 +573,14 @@ body.cd-route-loading #body > .page-container {
 @media (prefers-reduced-motion: reduce) {
 	.cd-sk { animation: none; }
 }
+
+/*
+ * Daftar tanpa aksi massal (no_delete_duplicate.js, user 2026-10-06): tombol Actions tidak
+ * pernah muncul, jadi centang baris tidak ada gunanya — disembunyikan di List view dan di
+ * kolom centang Report view (kolom 0 DataTable).
+ */
+.frappe-list .list-row-checkbox,
+.frappe-list .list-check-all,
+.frappe-list .dt-cell--col-0 input[type="checkbox"] {
+	display: none !important;
+}

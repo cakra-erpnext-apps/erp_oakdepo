@@ -436,7 +436,7 @@ jinja = {
 # sudah menyimpannya perlu URL baru untuk mau mengambil versi baru. nginx sekarang
 # menyuruh revalidasi berkas bernama tetap (nginx/conf.d/default.conf), jadi angka
 # ini tidak perlu dinaikkan lagi setiap kali mengubah skrip.
-app_include_css = "/assets/container_depot/css/container_depot.css?v=4"
+app_include_css = "/assets/container_depot/css/container_depot.css?v=5"
 # notification_click — ask whether the recipient may open a notification's document before
 # following the link, so a Desk bell tap gives a plain reason instead of Frappe's
 # "Insufficient Permission" page. Fails open; see the file.
@@ -491,10 +491,11 @@ app_include_js = [
 	# Matikan tombol "Edit" (pensil rename) di judul form + item menu "Rename" untuk semua
 	# doctype — nomor dokumen datang dari naming series, bukan diketik ulang.
 	"/assets/container_depot/js/no_rename.js?v=2",
-	# Matikan "Delete" + "Duplicate" (form ⋯ Menu, Actions ▸ Delete di daftar, dan pintasan
-	# keyboardnya) untuk order, jejak gate/yard dan dokumen penagihan — dibatalkan lewat
-	# Cancel/Void, tidak dihapus; order baru dibuat dari menunya, tidak disalin.
-	"/assets/container_depot/js/no_delete_duplicate.js?v=3",
+	# Matikan "Delete" + "Duplicate" (form ⋯ Menu dan pintasan keyboardnya) untuk order, jejak
+	# gate/yard dan dokumen penagihan — dibatalkan lewat Cancel/Void, tidak dihapus; order baru
+	# dibuat dari menunya, tidak disalin. Semua daftar (semua modul): tanpa tombol Actions /
+	# aksi massal dan tanpa centang baris.
+	"/assets/container_depot/js/no_delete_duplicate.js?v=4",
 	# Skeleton selama pindah menu Desk — halaman lama tidak lagi diam tanpa tanda saat server
 	# lambat menyiapkan halaman baru (lihat file-nya).
 	"/assets/container_depot/js/route_loading.js?v=2",
