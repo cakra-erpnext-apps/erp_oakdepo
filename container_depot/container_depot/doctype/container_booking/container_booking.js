@@ -1933,17 +1933,13 @@ function _dossier_html(tanks) {
 }
 
 // EVERY document the server found is rendered; what the lead answers is which ones are worth
-// reading first. Up front: the tank's LAST cleaning, last M&R, last EIR-In, last EIR-Out,
-// last survey, last booking of each direction, last bon — plus any older one still
+// reading first. Up front: the LAST cleaning, M&R, Leak Check, EIR-Out, survey and bon of
+// this booking's visit (tank_documents.py scopes the list) — plus any older one still
 // unfinished, which is rare (a cleaning left at Pending while a newer one was raised and
 // finished) and precisely what this panel exists to surface. The rest — superseded history
 // and voided paperwork — sits one click away rather than being dropped, because "sudah
 // pernah dicuci dua kali" is a real question and a document that is nowhere on the page
 // cannot be found from it.
-//
-// The lead is keyed on kind AND direction: a tank's inbound and outbound bookings are two
-// different events, and collapsing them into one "Booking" slot hid the arrival that every
-// order of the visit hangs off — the bug this panel was reported for.
 //
 // A voided document is never the representative of its kind: "the last thing that happened"
 // being a cancellation says nothing about the tank. Each producer returns its kind
@@ -1952,9 +1948,8 @@ function _dossier_rows(orders) {
 	const shown_kind = new Set();
 	return (orders || []).filter((o) => {
 		if (o.cancelled) return false;
-		const key = `${o.kind}\u0000${o.direction || ''}`;
-		if (!shown_kind.has(key)) {
-			shown_kind.add(key);
+		if (!shown_kind.has(o.kind)) {
+			shown_kind.add(o.kind);
 			return true;
 		}
 		return o.open;

@@ -3818,12 +3818,14 @@ def orders_by_container(booking: str):
 
 @frappe.whitelist()
 def related_orders(booking: str) -> list:
-	"""Per listed tank, EVERY document open against it — plus the finished ones as history.
+	"""Per listed tank, the documents THIS booking's gate-out asks for — open and finished.
 
 	The question a Tank Out booking is opened to ask once a truck is on its way: what still
-	has to happen to these tanks? :func:`orders_by_container` answers a different one —
-	which work was raised UNDER this booking (attribution) — and is what an inbound booking
-	shows, because on the way in there is no pickup to get ready for.
+	has to happen to these tanks? This visit's Cleaning / M&R / Leak Check and this booking's
+	EIR-Out, Survey and Bon Muat — never other bookings or the EIR-In (user, 2026-10-06).
+	:func:`orders_by_container` answers a different one — which work was raised UNDER this
+	booking (attribution) — and is what an inbound booking shows, because on the way in
+	there is no pickup to get ready for.
 
 	Ported from Gate Out Plan along with the rest of the lift-on preparation.
 	"""
