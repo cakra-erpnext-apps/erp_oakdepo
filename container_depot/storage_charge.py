@@ -45,6 +45,11 @@ def _key(container: str, period: dict) -> dict:
 	return {"container": container, "date_in_key": _date_in_key(period)}
 
 
+def billed_row(container: str, period: dict):
+	"""This visit's billing state ``{name, billed_until, sales_invoice}``, or None."""
+	return frappe.db.get_value(DOCTYPE, _key(container, period), ["name", "billed_until", "sales_invoice"], as_dict=True)
+
+
 def _date_in_key(period: dict) -> str:
 	return str(getdate(period["start"]))
 

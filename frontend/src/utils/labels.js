@@ -763,6 +763,14 @@ export const labels = {
 	eirReqRevisionReason: "Alasan revisi (opsional)", // Revision reason
 	eirReqRevisionSend: "Kirim Permintaan", // Send request
 	eirReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops", // Sent toast
+	// Revisi Data — an older EIR Admin Ops opened for correction in place
+	eirRevisionEdit: "Revisi Data", // Open the form in revision mode
+	eirRevisionBanner: "Revisi Data — EIR ini dikoreksi di tempat. Status tank dan dokumen lain tidak ikut berubah.",
+	eirRevisionSave: "Simpan Revisi", // Save + close the revision
+	eirRevisionHint: "Menyimpan koreksi dan menutup revisi.",
+	eirRevisionConfirm: "Simpan koreksi dan tutup revisi EIR ini?",
+	eirRevisionSaved: "Revisi tersimpan", // Saved toast
+	eirRevisionLocked: "Tidak bisa direvisi: storage kunjungan ini sudah diinvoice ({inv}).", // {inv} = invoice
 	// Withdraw a Pending-Review EIR back to Draft (operator fixes it themselves)
 	eirWithdrawReview: "Tarik & Perbaiki", // Withdraw from review + edit
 	eirWithdrawReviewHint: "Tarik EIR ini dari antrean review agar bisa diperbaiki, lalu kirim ulang.",

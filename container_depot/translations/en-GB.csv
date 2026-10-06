@@ -439,3 +439,14 @@ Survey belum selesai,Survey not finished
 menahan gate-out,holding the gate-out
 Wajibkan Semua Order,Make Every Order Mandatory
 "Centang = semua order wajib selesai sebelum tank keluar (Survey, Leak Check, Cleaning, M&R). Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In, EIR-Out dan pembayaran.","Ticked = every order must be finished before a tank leaves (Survey, Leak Check, Cleaning, M&R). Unticked = only Booking, Bon, Gate, EIR-In, EIR-Out and payment are mandatory."
+Storage kunjungan ini sudah diinvoice ({0}). Revisi baru bisa diajukan setelah invoice dibatalkan — hubungi Admin Ops.,This visit's storage is already invoiced ({0}). A revision can only be requested once the invoice is cancelled — contact Admin Ops.
+"Storage kunjungan ini sudah diinvoice ({0}). Batalkan invoice-nya dulu, atau keluarkan kunjungan ini dari invoice.","This visit's storage is already invoiced ({0}). Cancel the invoice first, or take this visit off the invoice."
+tagihan storage s/d {0},storage billed up to {0}
+EIR Terkunci,EIR Locked
+Tanggal EIR Terkunci,EIR Date Locked
+Tanggal EIR wajib diisi.,The EIR date is required.
+Tanggal EIR harus di dalam kunjungan tank ini: {0} s/d {1}.,The EIR date must fall inside this tank's visit: {0} to {1}.
+sekarang,now
+Revisi Data tidak boleh mengubah: {0}.,A data revision may not change: {0}.
+Revisi EIR dibuka • {0} • oleh {1},EIR opened for revision • {0} • by {1}
+Revisi EIR ditolak • {0} • oleh {1} — {2},EIR revision rejected • {0} • by {1} — {2}

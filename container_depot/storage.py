@@ -147,12 +147,51 @@ def stay_periods(container: str, container_no: str | None = None) -> list[dict]:
 	"""Every recorded depot visit of one tank, oldest first."""
 	container_no = container_no or frappe.db.get_value("Container", container, "container_no")
 	return _with_eir(
-		_gate_entry_periods(container_no)
-		or _movement_periods(container)
-		or _eir_periods(container),
+		_raw_periods(container, container_no),
 		frappe.db.get_value("Container", container, EIR_FIELDS, as_dict=True),
 		_eir_ins([container]).get(container, []),
 	)
+
+
+def _raw_periods(container: str, container_no: str | None) -> list[dict]:
+	return _gate_entry_periods(container_no) or _movement_periods(container) or _eir_periods(container)
+
+
+def visit_for(container: str, day, container_no: str | None = None, *, ref: str | None = None, earlier: bool = False):
+	"""The stay ``day`` belongs to: ``(period, lo, hi)``, or ``(None, None, None)``.
+
+	``period`` is the :func:`stay_periods` row (what the Storage Charge ledger is keyed on);
+	``lo`` / ``hi`` are the dates its EIR-In may carry — the same window :func:`_with_eir`
+	searches, from the gate-in day to the gate-out day (or the next arrival; ``hi`` None while
+	the tank is still inside).
+
+	``ref`` (a Gate Entry) wins when it names a visit. A day outside every window falls to the
+	next arrival, or with ``earlier`` to the last one before it: an EIR-In dated before its tank
+	came in belongs to the visit it was raised for, an EIR-Out dated after it left to the one
+	it closed.
+	"""
+	container_no = container_no or frappe.db.get_value("Container", container, "container_no")
+	raw = _raw_periods(container, container_no)
+	final = _with_eir(
+		raw,
+		frappe.db.get_value("Container", container, EIR_FIELDS, as_dict=True),
+		_eir_ins([container]).get(container, []),
+	)
+	windows = [
+		(getdate(p["start"]), getdate(p["end"]) if p["end"] else (getdate(raw[i + 1]["start"]) if i + 1 < len(raw) else None))
+		for i, p in enumerate(raw)
+	]
+	day = getdate(day)
+	pick = next((i for i, p in enumerate(final) if ref and p.get("ref") == ref), None)
+	if pick is None:
+		pick = next((i for i, (lo, hi) in enumerate(windows) if lo <= day and (hi is None or day <= hi)), None)
+	if pick is None:
+		before = [i for i, (lo, _hi) in enumerate(windows) if lo <= day]
+		after = [i for i, (lo, _hi) in enumerate(windows) if lo > day]
+		pick = (before[-1] if before else None) if earlier else (after[0] if after else None)
+	if pick is None:
+		return None, None, None
+	return final[pick], *windows[pick]
 
 
 def periods_for_many(containers: list[dict]) -> dict[str, list[dict]]:

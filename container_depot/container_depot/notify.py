@@ -122,7 +122,7 @@ def _recipients(branch, roles=None):
 	return out
 
 
-def notify(*, doctype, name, subject, branch=None, event_key=None, notification_type="Alert"):
+def notify(*, doctype, name, subject, branch=None, event_key=None, notification_type="Alert", users=None):
 	"""Create a Notification Log for every in-scope recipient. Returns the count.
 
 	``event_key`` selects the routing rule. Passing none keeps the old branch-only
@@ -131,6 +131,9 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 	``subject`` is a string, or a zero-arg callable returning one. A callable is evaluated
 	once per recipient language (the user default ``depot_lang``, see ``depot_lang.py``),
 	so each person reads the bell and the push in their own language, not the actor's.
+
+	``users`` names the recipients outright — an answer to the one person who asked — and the
+	event's rule then only decides WHETHER it is sent, not to whom.
 
 	Best-effort: never let a notification failure abort the submit that triggered it.
 	"""
@@ -151,7 +154,7 @@ def notify(*, doctype, name, subject, branch=None, event_key=None, notification_
 			job_type = frappe.db.get_value("Repair Order", name, "job_type")
 			periodic = job_type == PERIODIC
 		recipients = [
-			u for u in _recipients(branch, roles)
+			u for u in (users if users is not None else _recipients(branch, roles))
 			# the actor already saw the toast
 			if u != actor and (doctype != "Repair Order" or may_see(job_type, u))
 		]
@@ -630,6 +633,26 @@ def notify_eir_revision_requested(inspection, reason=None):
 		subject=lambda: (_("Minta revisi EIR • {0} • oleh {1} — {2}") if reason else _("Minta revisi EIR • {0} • oleh {1}")).format(*args),
 		branch=_depot_branch(ins.depot),
 		event_key="eir_revision_requested",
+	)
+
+
+def notify_eir_revision_answered(doc, user, opened, reason=None):
+	"""Tell the operator who pressed Ajukan Revisi what Admin Ops made of it — them only.
+
+	``opened``: the EIR is open for Revisi Data (the tap lands on it, ready to edit);
+	otherwise the request was turned down, and the reason travels in the subject.
+	"""
+	args = (doc.container_no or doc.container, frappe.session.user, reason)
+	if opened:
+		subject = lambda: _("Revisi EIR dibuka • {0} • oleh {1}").format(*args)
+	else:
+		subject = lambda: _("Revisi EIR ditolak • {0} • oleh {1} — {2}").format(*args)
+	return notify(
+		doctype="Inspection",
+		name=doc.name,
+		subject=subject,
+		event_key="eir_revision_answered",
+		users=[user],
 	)
 
 

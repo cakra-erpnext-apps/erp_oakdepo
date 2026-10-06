@@ -77,6 +77,8 @@
   "survey_tank",
   "revision_requested",
   "revision_note",
+  "revision_open",
+  "revision_requested_by",
   "exterior_photos",
   "order_section",
   "inspection_id",
@@ -654,6 +656,27 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "Admin Ops membuka EIR lama untuk Revisi Data: diedit di tempat, tetap Submitted, tanpa mengubah status tank.",
+   "fieldname": "revision_open",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Revisi Dibuka",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Yang menekan Ajukan Revisi — dikabari saat revisi dibuka atau ditolak.",
+   "fieldname": "revision_requested_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Revisi Diminta Oleh",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
    "description": "Legacy: foto luar dari API upload-evidence.",
    "fieldname": "exterior_photos",
    "fieldtype": "Table",
@@ -773,7 +796,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-29 13:00:00.000000",
+ "modified": "2026-10-06 10:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

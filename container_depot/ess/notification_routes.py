@@ -198,6 +198,7 @@ _BY_EVENT = {
 	"repair_order_decided": _repair,
 	"repair_revision_requested": _repair,
 	"eir_revision_requested": _eir,
+	"eir_revision_answered": _eir,
 	"cleaning_revision_requested": _cleaning,
 	"order_gate_in": _gate,
 	"order_gate_out": _gate,

@@ -7,7 +7,8 @@
 			:title="headerTitle"
 			:steps="workStartedOn ? STEPS : []"
 			:step="step"
-			:started-ms="startedMs"
+			:started-ms="revising ? 0 : startedMs"
+			:revision="revising"
 			:status="saveStatus"
 			@back="emit('back')"
 		/>
@@ -15,6 +16,12 @@
 		<!-- Rekan yang menyentuhnya terakhir. Di atas isian, bukan di bawahnya: yang perlu
 		     dibaca sebelum menimpa sesuatu tidak boleh berada di ujung gulungan. -->
 		<EditedBy :by="header?.updated_by" :name="header?.updated_by_name" :at="header?.updated_on" />
+
+		<!-- Revisi Data: EIR lama yang dibuka Adm Ops. Isinya dikoreksi di tempat — status tank
+		     dan dokumen lain tidak ikut berubah, jadi operator perlu tahu ini bukan EIR baru. -->
+		<p v-if="revising" class="oak-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+			{{ labels.eirRevisionBanner }}
+		</p>
 
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
 
@@ -464,6 +471,8 @@ function saveAndExit() {
 
 // ---- form state ----
 const header = ref(null)
+// Revisi Data (eir.open_draft_by_name → revision): a submitted EIR opened for correction.
+const revising = computed(() => !!header.value?.revision)
 const inspection = ref(null)
 const workStartedOn = ref("") // set once the operator presses Mulai; gates editing
 const reference = ref(null)
@@ -566,12 +575,14 @@ const batchStatus = computed(() =>
 )
 
 const submitLabel = computed(() => {
+	if (revising.value) return labels.eirRevisionSave
 	if (!batchMode.value) return labels.eirSendReview
 	const tail = unsentOthers.value.length ? "" : ` ${labels.eirSendClose}`
 	return `${labels.eirSendOne} ${header.value?.container_no || ""}${tail}`
 })
 
 const submitHint = computed(() => {
+	if (revising.value) return labels.eirRevisionHint
 	if (!batchMode.value) return ""
 	const parts = []
 	const sent = batch.names.filter((n) => batch.sent[n])
@@ -643,7 +654,8 @@ const openRes = cachedResource({
 		suppressSave.value = true
 		header.value = data
 		inspection.value = data.inspection
-		workStartedOn.value = data.work_started_on || ""
+		// A revision has no Mulai: the work was timed when the EIR was first done.
+		workStartedOn.value = data.work_started_on || (data.revision ? data.updated_on || "" : "")
 		// Mendarat di langkah tempat tank ini ditinggalkan (0 untuk yang belum pernah dibuka).
 		step.value = getStep(props.inspection)
 		// Dicatat juga saat langkahnya kebetulan 0: tanpa ini watcher di bawah tidak pernah
@@ -901,7 +913,7 @@ const saveRes = createResource({
 	onSuccess(data) {
 		// Server has it — the local draft has nothing left to protect (see EirInForm).
 		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
-		if (data.docstatus === 1 || data.pending_review) {
+		if (data.pending_review || (data.docstatus === 1 && !data.revision)) {
 			saveToast.close()
 			toast.success(
 				data.pending_review ? labels.eirSentForReview : labels.eirSubmitted,
@@ -975,11 +987,14 @@ async function submitEir() {
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		toast.success(labels.eirSentForReview, {
+		toast.success(revising.value ? labels.eirRevisionSaved : labels.eirSentForReview, {
 			title: eirCode.value || inspection.value,
 		})
-		noteSent()
-		emit("submitted", inspection.value)
+		// A revision is no batch member and queues nothing next.
+		if (!revising.value) {
+			noteSent()
+			emit("submitted", inspection.value)
+		}
 		emit("back")
 	} catch (e) {
 		toast.error(e?.message || labels.error)
@@ -1018,11 +1033,11 @@ watch([remarks, cargo, seals, bulkPhotos, photoNotes, fittings], scheduleSave, {
 async function confirmSubmit() {
 	// Ya / Batal, nothing else: what happens after the hand-off is Adm Ops' business, not
 	// something the field operator has to read past on every submit.
-	const ok = await confirm({
-		title: labels.eirOutConfirmReadyTitle,
-		confirmLabel: labels.eirSendReview,
-		cancelLabel: labels.confirmCancel,
-	})
+	const ok = await confirm(
+		revising.value
+			? { title: labels.eirRevisionSave, message: labels.eirRevisionConfirm, confirmLabel: labels.eirRevisionSave, cancelLabel: labels.confirmCancel }
+			: { title: labels.eirOutConfirmReadyTitle, confirmLabel: labels.eirSendReview, cancelLabel: labels.confirmCancel },
+	)
 	if (ok) doSave(true)
 }
 

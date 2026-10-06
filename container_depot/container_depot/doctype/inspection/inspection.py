@@ -225,6 +225,39 @@ class Inspection(Document):
 
 			recompute_availability(self.container)
 
+	def onload(self):
+		# What the Desk form may offer on a submitted EIR — Kembalikan ke Draft (newest only),
+		# Revisi Data (older ones), neither once its storage visit is invoiced.
+		if self.docstatus == 1:
+			from container_depot.container_depot.eir import revision_state
+
+			self.set_onload("revision_state", revision_state(self))
+
+	def before_update_after_submit(self):
+		from container_depot.container_depot.eir import check_update_after_submit
+
+		check_update_after_submit(self)
+
+	def on_update_after_submit(self):
+		from container_depot.container_depot.eir import after_update_after_submit
+
+		after_update_after_submit(self)
+
+	def before_cancel(self):
+		"""A void runs the same unwind as Kembalikan ke Draft, so it answers to the same two
+		rules: only the newest EIR, and only while its storage visit is not invoiced."""
+		from container_depot.container_depot.eir import locked_message, newer_eir, storage_invoice_lock
+
+		newer = newer_eir(self)
+		if newer:
+			frappe.throw(_(
+				"Sudah ada EIR yang lebih baru untuk tank ini ({0}). EIR lama tidak bisa dibatalkan "
+				"— pakai Revisi Data."
+			).format(newer), title=_("Bukan EIR Terbaru"))
+		invoice = storage_invoice_lock(self)
+		if invoice:
+			frappe.throw(locked_message(invoice), title=_("EIR Terkunci"))
+
 	def after_delete(self):
 		# A deleted draft EIR is work that no longer exists — give the tank back.
 		from container_depot.container_depot.container_status import recompute_availability

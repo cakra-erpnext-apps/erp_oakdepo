@@ -16,6 +16,8 @@
 			     menghitungnya sendiri. Hilang begitu EIR belum dimulai — di situ chip-nya
 			     mengatakan hal yang lebih berguna. -->
 			<span v-if="elapsed" class="oak-chip shrink-0 bg-blue-100 font-mono text-blue-700">{{ elapsed }}</span>
+			<!-- Revisi Data: EIR yang sudah selesai, dibuka untuk dikoreksi — bukan draf. -->
+			<span v-else-if="revision" class="oak-chip shrink-0" :class="pill('revision').cls">{{ labels.eirRevisionEdit }}</span>
 			<span v-else-if="!startedMs" class="oak-chip shrink-0" :class="pill('draft').cls">{{ pill("draft").label }}</span>
 		</div>
 
@@ -54,6 +56,7 @@ const props = defineProps({
 	// Titik nol penghitung waktu (ms). 0 = belum dimulai.
 	startedMs: { type: Number, default: 0 },
 	status: { type: String, default: "" },
+	revision: { type: Boolean, default: false },
 })
 const emit = defineEmits(["back"])
 

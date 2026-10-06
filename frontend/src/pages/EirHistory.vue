@@ -180,8 +180,20 @@
 			     only two actions on the screen, and a 120 px button in the corner of a handset
 			     is a target the operator has to aim at with a glove on. -->
 			<div class="flex flex-wrap items-center gap-2">
+				<!-- Adm Ops opened it for Revisi Data → straight into the form, which edits the
+				     submitted EIR in place. -->
 				<button
-					v-if="data.docstatus === 1 && revisionFor !== data.name"
+					v-if="data.docstatus === 1 && data.revision_open"
+					type="button"
+					class="oak-btn oak-btn-primary flex-1 px-3 py-2.5 sm:flex-none"
+					@click="router.push({ path: '/eir', query: { e: data.name, t: data.inspection_type === 'EIR-Out' ? 'out' : 'in' } })"
+				>
+					<Icon name="edit-3" :size="16" /> {{ labels.eirRevisionEdit }}
+				</button>
+				<!-- Storage already invoiced: neither way back is open, so no request either
+				     (the server refuses it too — eir.request_revision). -->
+				<button
+					v-else-if="data.docstatus === 1 && !data.revision_locked && revisionFor !== data.name"
 					type="button"
 					class="oak-btn oak-btn-secondary flex-1 px-3 py-2.5 sm:flex-none"
 					@click="openRevision(data.name)"
@@ -202,6 +214,9 @@
 			</div>
 			<p v-if="data.docstatus === 0 && data.status === 'Pending Review'" class="px-1 text-xs text-gray-400">
 				{{ labels.eirWithdrawReviewHint }}
+			</p>
+			<p v-if="data.docstatus === 1 && data.revision_locked && !data.revision_open" class="px-1 text-xs text-gray-500">
+				{{ labels.eirRevisionLocked.replace("{inv}", data.revision_locked) }}
 			</p>
 
 			<!-- Revision request: reason (optional) + send; notifies Admin Ops server-side. -->

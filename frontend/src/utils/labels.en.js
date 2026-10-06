@@ -668,6 +668,14 @@ export const labels = {
 	eirReqRevisionReason: "Revision reason (optional)",
 	eirReqRevisionSend: "Send Request",
 	eirReqRevisionSent: "Revision request sent to Admin Ops",
+	// Revisi Data
+	eirRevisionEdit: "Revise Data",
+	eirRevisionBanner: "Revising data — this EIR is corrected in place. The tank status and other documents do not change.",
+	eirRevisionSave: "Save Revision",
+	eirRevisionHint: "Saves the correction and closes the revision.",
+	eirRevisionConfirm: "Save the correction and close this EIR's revision?",
+	eirRevisionSaved: "Revision saved",
+	eirRevisionLocked: "Cannot be revised: this visit's storage is already invoiced ({inv}).",
 	// Withdraw a Pending-Review EIR
 	eirWithdrawReview: "Withdraw & Fix",
 	eirWithdrawReviewHint: "Withdraw this EIR from the review queue to fix it, then send it again.",
