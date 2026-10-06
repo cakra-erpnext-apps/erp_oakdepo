@@ -36,7 +36,7 @@
 			</div>
 		</template>
 
-		<template #detail="{ data }">
+		<template #detail="{ data, reload }">
 			<section class="oak-card space-y-3 p-4">
 				<div class="flex items-start gap-3">
 					<span class="oak-icon-tile h-11 w-11 shrink-0" :class="typeTile(data)">
@@ -180,26 +180,6 @@
 			     only two actions on the screen, and a 120 px button in the corner of a handset
 			     is a target the operator has to aim at with a glove on. -->
 			<div class="flex flex-wrap items-center gap-2">
-				<!-- Adm Ops opened it for Revisi Data → straight into the form, which edits the
-				     submitted EIR in place. -->
-				<button
-					v-if="data.docstatus === 1 && data.revision_open"
-					type="button"
-					class="oak-btn oak-btn-primary flex-1 px-3 py-2.5 sm:flex-none"
-					@click="router.push({ path: '/eir', query: { e: data.name, t: data.inspection_type === 'EIR-Out' ? 'out' : 'in' } })"
-				>
-					<Icon name="edit-3" :size="16" /> {{ labels.eirRevisionEdit }}
-				</button>
-				<!-- Storage already invoiced: neither way back is open, so no request either
-				     (the server refuses it too — eir.request_revision). -->
-				<button
-					v-else-if="data.docstatus === 1 && !data.revision_locked && revisionFor !== data.name"
-					type="button"
-					class="oak-btn oak-btn-secondary flex-1 px-3 py-2.5 sm:flex-none"
-					@click="openRevision(data.name)"
-				>
-					<Icon name="rotate-ccw" :size="16" /> {{ labels.eirReqRevision }}
-				</button>
 				<!-- Awaiting review → the operator can pull it back to Draft and fix it (no
 				     Admin Ops needed). Jumps straight into the editable form on success. -->
 				<button
@@ -215,31 +195,21 @@
 			<p v-if="data.docstatus === 0 && data.status === 'Pending Review'" class="px-1 text-xs text-gray-400">
 				{{ labels.eirWithdrawReviewHint }}
 			</p>
-			<p v-if="data.docstatus === 1 && data.revision_locked && !data.revision_open" class="px-1 text-xs text-gray-500">
-				{{ labels.eirRevisionLocked.replace("{inv}", data.revision_locked) }}
-			</p>
-
-			<!-- Revision request: reason (optional) + send; notifies Admin Ops server-side. -->
-			<section v-if="revisionFor === data.name" class="oak-card space-y-2 p-4">
-				<p class="oak-section-title">{{ labels.eirReqRevision }}</p>
-				<p class="text-xs text-gray-400">{{ labels.eirReqRevisionHint }}</p>
-				<textarea v-model.trim="revisionReason" rows="2" :placeholder="labels.eirReqRevisionReason" class="oak-input"></textarea>
-				<div class="flex items-center gap-2">
-					<button type="button" class="oak-btn oak-btn-primary px-3 py-2" :disabled="revisionRes.loading" @click="sendRevision(data.name)">
-						<Icon v-if="!revisionRes.loading" name="send" :size="16" />
-						{{ revisionRes.loading ? "…" : labels.eirReqRevisionSend }}
-					</button>
-					<button type="button" class="oak-btn oak-btn-secondary px-3 py-2" :disabled="revisionRes.loading" @click="revisionFor = ''">
-						{{ labels.confirmCancel }}
-					</button>
-				</div>
-			</section>
+			<!-- Ajukan Revisi / Revisi Data / Tolak Revisi — the shared shape (RevisionActions). -->
+			<RevisionActions
+				:state="data.revision"
+				doctype="Inspection"
+				:name="data.name"
+				request-url="container_depot.ess.inspections.eir_request_revision"
+				request-key="inspection"
+				:edit-to="{ path: '/eir', query: { e: data.name, t: data.inspection_type === 'EIR-Out' ? 'out' : 'in', revisi: '1' } }"
+				@changed="reload"
+			/>
 		</template>
 	</HistoryPage>
 </template>
 
 <script setup>
-import { ref } from "vue"
 import { useRouter } from "vue-router"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
@@ -250,6 +220,7 @@ import { photoSrc } from "@/data/send"
 import { groupByCompartment } from "@/utils/fittings"
 import { fmtDate, fmtDateShort } from "@/utils/surveyStatus"
 import Icon from "@/components/Icon.vue"
+import RevisionActions from "@/components/RevisionActions.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 import InteriorPhotos from "@/components/InteriorPhotos.vue"
 
@@ -277,29 +248,6 @@ const withdrawRes = createResource({
 })
 function withdrawReview(data) {
 	withdrawRes.submit({ inspection: data.name })
-}
-
-// Revision request: which EIR's reason box is open, its text, and the POST resource.
-const revisionFor = ref("")
-const revisionReason = ref("")
-function openRevision(name) {
-	revisionFor.value = name
-	revisionReason.value = ""
-}
-const revisionRes = createResource({
-	url: "container_depot.ess.inspections.eir_request_revision",
-	method: "POST",
-	onSuccess() {
-		toast.success(labels.eirReqRevisionSent)
-		revisionFor.value = ""
-		revisionReason.value = ""
-	},
-	onError(err) {
-		toast.error(err?.messages?.[0] || err?.message || labels.error)
-	},
-})
-function sendRevision(name) {
-	revisionRes.submit({ inspection: name, reason: revisionReason.value || undefined })
 }
 
 // Single status vocabulary, identical to the Desk list (inspection_list.js) so the two

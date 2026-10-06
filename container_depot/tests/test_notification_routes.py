@@ -58,6 +58,8 @@ EVENT_DOCTYPES = [
 	("eir_revision_requested", "Inspection"),
 	("eir_revision_answered", "Inspection"),
 	("cleaning_revision_requested", "Cleaning Order"),
+	("cleaning_revision_answered", "Cleaning Order"),
+	("repair_revision_answered", "Repair Order"),
 	("order_gate_in", "Order Bongkar"),
 	("order_gate_out", "Order Muat"),
 	("order_muat_survey", "Order Muat"),

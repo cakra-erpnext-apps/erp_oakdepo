@@ -13,7 +13,7 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, getdate, now_datetime, today
 
 from container_depot import storage, storage_charge
-from container_depot.container_depot import eir
+from container_depot.container_depot import eir, revision
 from container_depot.tests._leak_check import drop_leak_checks
 from container_depot.tests.test_gate_out import _container, _eir_out
 
@@ -76,54 +76,46 @@ class TestEirRevision(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 		self.assertEqual(frappe.db.get_value("Inspection", eir_in, "docstatus"), 1)
 
-	def test_revisi_data_edits_the_record_and_nothing_else(self):
+	def test_revisi_data_saves_in_place_and_moves_nothing(self):
+		"""One save, no 'sedang direvisi' state: the record changes, nothing else does."""
 		c, eir_in, eir_out = _visited_tank(f"{PREFIX}0000002")
-		# The newest one goes back to Draft instead — Revisi Data is for the older ones.
-		with self.assertRaisesRegex(frappe.ValidationError, "terbaru"):
-			eir.open_revision(eir_out)
+		state = eir.revision_state(frappe.get_doc("Inspection", eir_in))
+		self.assertEqual((state["can_revise"], state["locked"]), (1, None))
+		self.assertTrue(state["newer"])  # so no Kembalikan ke Draft for this one
+		self.assertFalse(revision.has_right("Inspection", user="Guest"))
 
-		eir.open_revision(eir_in)
 		doc = frappe.get_doc("Inspection", eir_in)
 		doc.remarks = "dikoreksi"
 		doc.tank_status = "Empty Dirty"
-		doc.save()
+		revision.save_revision(frappe.as_json(doc.as_dict()))
 
 		doc.reload()
-		self.assertEqual((doc.docstatus, doc.remarks, doc.tank_status), (1, "dikoreksi", "Empty Dirty"))
+		self.assertEqual((doc.docstatus, doc.status, doc.remarks, doc.tank_status), (1, "Submitted", "dikoreksi", "Empty Dirty"))
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 		# Empty Dirty on submit would file a wash; a revision files nothing.
 		self.assertFalse(frappe.db.exists("Cleaning Order", {"container": c}))
 
-		doc.referred_voucher = None
 		doc.inspection_type = "EIR-Out"
 		with self.assertRaisesRegex(frappe.ValidationError, "tidak boleh mengubah"):
-			doc.save()
-
-		eir.close_revision(eir_in)
-		doc = frappe.get_doc("Inspection", eir_in)
+			revision.save_revision(frappe.as_json(doc.as_dict()))
+		# Without the revision mark it is Frappe's own submitted-document rule again.
+		doc.reload()
 		doc.remarks = "lagi"
 		with self.assertRaises(frappe.ValidationError):
-			doc.save()  # closed: back to Frappe's own submitted-document rules
+			doc.save()
 
-	def test_the_pwa_saves_a_revision_and_simpan_revisi_closes_it(self):
+	def test_the_pwa_revision_is_one_save(self):
 		c, eir_in, _out = _visited_tank(f"{PREFIX}0000003")
-		frappe.db.set_value("Inspection", eir_in, {"revision_requested": 1, "revision_requested_by": "Administrator"})
-		eir.open_revision(eir_in)
-		self.assertEqual(eir.open_draft_by_name(eir_in)["revision"], 1)
+		self.assertEqual(eir.open_draft_by_name(eir_in, revise=1)["revision"], 1)
+		with self.assertRaises(frappe.ValidationError):
+			eir.open_draft_by_name(eir_in)  # no revise: it is not a draft
 
 		day = str(add_days(today(), -3))
-		autosave = eir.save_draft(inspection=eir_in, tank_status="Empty Clean", remarks="pwa", eir_date=day)
-		self.assertEqual((autosave["docstatus"], autosave["revision"]), (1, 1))
-
-		eir.save_draft(inspection=eir_in, tank_status="Empty Clean", remarks="pwa final", eir_date=day, submit=1)
-		row = frappe.db.get_value(
-			"Inspection", eir_in, ["docstatus", "remarks", "revision_open", "revision_requested", "status"], as_dict=True
-		)
-		self.assertEqual((row.docstatus, row.remarks, row.revision_open, row.revision_requested), (1, "pwa final", 0, 0))
-		self.assertEqual(row.status, "Submitted")
+		res = eir.save_draft(inspection=eir_in, tank_status="Empty Clean", remarks="pwa", eir_date=day, revise=1)
+		self.assertEqual((res["docstatus"], res["revision"]), (1, 1))
+		row = frappe.db.get_value("Inspection", eir_in, ["docstatus", "remarks", "status"], as_dict=True)
+		self.assertEqual((row.docstatus, row.remarks, row.status), (1, "pwa", "Submitted"))
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
-		with self.assertRaises(frappe.ValidationError):
-			eir.open_draft_by_name(eir_in)
 		with self.assertRaises(frappe.ValidationError):
 			eir.save_draft(inspection=eir_in, tank_status="Empty Clean", eir_date=day)
 
@@ -136,7 +128,7 @@ class TestEirRevision(FrappeTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
 			eir.revert_to_draft(eir_out)
 		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
-			eir.open_revision(eir_in)
+			revision.save_revision(frappe.as_json(frappe.get_doc("Inspection", eir_in).as_dict()))
 		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
 			eir.request_revision(eir_in, "foto salah")
 		# eir_date has always been editable after submit — the loophole this closes.
@@ -161,21 +153,26 @@ class TestEirRevision(FrappeTestCase):
 		date_in = frappe.db.get_value("Storage Charge", {"container": c}, "date_in")
 		self.assertEqual(getdate(date_in), getdate(add_days(today(), -1)))
 
-	def test_tolak_revisi_answers_the_request(self):
+	def test_a_request_is_answered_by_tolak_or_by_the_revision(self):
 		c, eir_in, _out = _visited_tank(f"{PREFIX}0000006")
 		eir.request_revision(eir_in, "salah foto")
 		self.assertEqual(frappe.db.get_value("Inspection", eir_in, "revision_requested_by"), "Administrator")
 
 		with self.assertRaisesRegex(frappe.ValidationError, "Alasan"):
-			eir.reject_revision(eir_in, "")
-		eir.reject_revision(eir_in, "foto sudah benar")
-
+			revision.reject("Inspection", eir_in, "")
+		revision.reject("Inspection", eir_in, "foto sudah benar")
 		row = frappe.db.get_value(
 			"Inspection", eir_in, ["revision_requested", "revision_note", "revision_requested_by"], as_dict=True
 		)
 		self.assertEqual((row.revision_requested, row.revision_note, row.revision_requested_by), (0, None, None))
 		with self.assertRaisesRegex(frappe.ValidationError, "Tidak ada permintaan"):
-			eir.reject_revision(eir_in, "lagi")
+			revision.reject("Inspection", eir_in, "lagi")
+
+		eir.request_revision(eir_in, "catatan salah")
+		doc = frappe.get_doc("Inspection", eir_in)
+		doc.remarks = "dibetulkan"
+		revision.save_revision(frappe.as_json(doc.as_dict()))
+		self.assertEqual(frappe.db.get_value("Inspection", eir_in, "revision_requested"), 0)
 
 
 class TestVisitFor(FrappeTestCase):

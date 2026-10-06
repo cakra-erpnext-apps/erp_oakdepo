@@ -97,13 +97,13 @@ def eir_list(status=None, search=None, inspection_type=None, depot=None, princip
 
 
 @frappe.whitelist(methods=["GET"])
-def eir_open(inspection=None):
+def eir_open(inspection=None, revise=None):
 	"""GET /api/v1/ess/eir-open — open an existing draft EIR by name (read-only, no create).
 
 	The worklist picks a pending EIR and this loads its header + saved checklist state.
 	"""
 	require_menu("eir")
-	return eir.open_draft_by_name(inspection=inspection)
+	return eir.open_draft_by_name(inspection=inspection, revise=revise)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -128,11 +128,11 @@ def eir_out_pending(search=None, start=0, page_length=20):
 
 
 @frappe.whitelist(methods=["GET"])
-def eir_out_open(inspection=None):
+def eir_out_open(inspection=None, revise=None):
 	"""GET /api/v1/ess/eir-out-open — open a draft EIR-Out (form) with its EIR-In comparison
 	+ cleaning-certificate validity + saved verification fields. See ``eir.open_eir_out``."""
 	require_menu("eir")
-	return eir.open_eir_out(inspection=inspection)
+	return eir.open_eir_out(inspection=inspection, revise=revise)
 
 
 @frappe.whitelist(methods=["GET"])
@@ -197,6 +197,7 @@ def eir_save_draft(
 	fittings=None,
 	tank=None,
 	submit=False,
+	revise=None,
 	request_id=None,
 ):
 	"""POST /api/v1/ess/eir-save-draft — auto-save (submit=1 finalizes) a draft EIR.
@@ -231,6 +232,7 @@ def eir_save_draft(
 		photos=photos,
 		tank=tank,
 		submit=submit,
+		revise=revise,
 	))
 
 

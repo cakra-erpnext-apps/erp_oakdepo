@@ -157,3 +157,4 @@ container_depot.patches.v1_18.complete_inspected_bongkar
 container_depot.patches.v1_18.leak_check_submittable
 container_depot.patches.v1_18.storage_from_eir_date
 container_depot.patches.v1_18.order_date_backfill
+container_depot.patches.v1_18.repair_revision_fields

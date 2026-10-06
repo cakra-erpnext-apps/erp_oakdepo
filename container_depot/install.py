@@ -3429,9 +3429,13 @@ NOTIFICATION_RULES = [
 		["Admin Ops", "SPV Lapangan"]),
 	# Sent to the one operator who asked, whatever their role (notify(users=...)): the roles
 	# below never receive it — they are only what an enabled rule requires.
-	("eir_revision_answered", "Revisi EIR dijawab", "Admin Ops membuka (Revisi Data) atau menolak revisi EIR — dikirim ke pengajunya saja.",
+	("eir_revision_answered", "Revisi EIR dijawab", "Admin Ops merevisi (Revisi Data / Kembalikan ke Draft) atau menolak revisi EIR — dikirim ke pengajunya saja.",
 		["Admin Ops", "SPV Lapangan"]),
 	("cleaning_revision_requested", "Team minta cleaning dibuka lagi", "Operator cuci mengajukan revisi atas Cleaning Order yang sudah disubmit — Admin Ops yang memutuskan membukanya.",
+		["Admin Ops", "SPV Lapangan"]),
+	("cleaning_revision_answered", "Revisi cleaning dijawab", "Admin Ops merevisi (Revisi Data / Kembalikan ke Draft) atau menolak revisi Cleaning Order — dikirim ke pengajunya saja.",
+		["Admin Ops", "SPV Lapangan"]),
+	("repair_revision_answered", "Revisi M&R dijawab", "Admin Ops merevisi (Revisi Data / Buka Lagi) atau menolak revisi M&R — dikirim ke pengajunya saja.",
 		["Admin Ops", "SPV Lapangan"]),
 	("order_gate_in", "Bon Bongkar terbit", "Order Bongkar disubmit — bon gate-in siap diprint.",
 		["Security", "SPV Lapangan", "Admin Ops"]),

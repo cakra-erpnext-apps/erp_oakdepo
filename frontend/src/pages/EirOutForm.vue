@@ -20,7 +20,7 @@
 		<!-- Revisi Data: EIR lama yang dibuka Adm Ops. Isinya dikoreksi di tempat — status tank
 		     dan dokumen lain tidak ikut berubah, jadi operator perlu tahu ini bukan EIR baru. -->
 		<p v-if="revising" class="oak-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-			{{ labels.eirRevisionBanner }}
+			{{ labels.revisionBanner }}
 		</p>
 
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
@@ -448,7 +448,11 @@ import {
 // There is no damage checklist here: a tank only reaches load-out once its work is
 // finished, so the surveyor records what the tank leaves WITH — photos and seal
 // numbers — not what is wrong with it. Findings belong to EIR-In.
-const props = defineProps({ inspection: { type: String, required: true } })
+const props = defineProps({
+	inspection: { type: String, required: true },
+	// Revisi Data (route ?revisi=1): edit this SUBMITTED EIR in place — one save, no autosave.
+	revise: { type: Boolean, default: false },
+})
 const emit = defineEmits(["back", "submitted"])
 
 // Empat langkah, kerangka yang sama dengan EIR-In (lihat komentarnya di sana). Isinya yang
@@ -575,14 +579,14 @@ const batchStatus = computed(() =>
 )
 
 const submitLabel = computed(() => {
-	if (revising.value) return labels.eirRevisionSave
+	if (revising.value) return labels.revisionSave
 	if (!batchMode.value) return labels.eirSendReview
 	const tail = unsentOthers.value.length ? "" : ` ${labels.eirSendClose}`
 	return `${labels.eirSendOne} ${header.value?.container_no || ""}${tail}`
 })
 
 const submitHint = computed(() => {
-	if (revising.value) return labels.eirRevisionHint
+	if (revising.value) return labels.revisionHint
 	if (!batchMode.value) return ""
 	const parts = []
 	const sent = batch.names.filter((n) => batch.sent[n])
@@ -952,6 +956,7 @@ function eirPayload(submit) {
 		seals: buildSeals(),
 		fittings: JSON.stringify(buildFittings()),
 		submit: submit ? 1 : 0,
+		revise: revising.value ? 1 : undefined,
 	}
 }
 
@@ -987,7 +992,7 @@ async function submitEir() {
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		toast.success(revising.value ? labels.eirRevisionSaved : labels.eirSentForReview, {
+		toast.success(revising.value ? labels.revisionSaved : labels.eirSentForReview, {
 			title: eirCode.value || inspection.value,
 		})
 		// A revision is no batch member and queues nothing next.
@@ -1016,6 +1021,8 @@ function flushPendingSave() {
 }
 
 function scheduleSave() {
+	// A revision is one deliberate save (Simpan Revisi), never a stream of autosaves.
+	if (revising.value) return
 	if (!inspection.value || suppressSave.value) return
 	savedOk.value = false
 	if (saveTimer) clearTimeout(saveTimer)
@@ -1035,13 +1042,13 @@ async function confirmSubmit() {
 	// something the field operator has to read past on every submit.
 	const ok = await confirm(
 		revising.value
-			? { title: labels.eirRevisionSave, message: labels.eirRevisionConfirm, confirmLabel: labels.eirRevisionSave, cancelLabel: labels.confirmCancel }
+			? { title: labels.revisionSave, message: labels.revisionConfirm, confirmLabel: labels.revisionSave, cancelLabel: labels.confirmCancel }
 			: { title: labels.eirOutConfirmReadyTitle, confirmLabel: labels.eirSendReview, cancelLabel: labels.confirmCancel },
 	)
 	if (ok) doSave(true)
 }
 
 onMounted(() => {
-	openRes.submit({ inspection: props.inspection })
+	openRes.submit({ inspection: props.inspection, revise: props.revise ? 1 : undefined })
 })
 </script>

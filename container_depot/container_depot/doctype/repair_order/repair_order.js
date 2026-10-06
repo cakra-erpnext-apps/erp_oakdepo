@@ -108,6 +108,39 @@ function mr_finalize_direct(frm) {
 // button is worth showing. Keep the two in step.
 const MR_DEPOT_ROLES = ['Admin Ops', 'System Manager'];
 
+// Mirrors mr.REVISION_LOCKED — what a revision may not change.
+const MR_REVISION_LOCKED = [
+	'container', 'depot', 'job_type', 'status', 'repair_order_id', 'inspection',
+	'container_booking', 'billing_status', 'sales_invoice', 'stock_entry', 'requested_on',
+	'decided_on', 'decided_by', 'revision_no', 'replaced_test_date',
+];
+
+// Revisi Data on a Completed M&R: hand back what _apply_final_lock / _lock_estimate_grid took.
+// Lines included — a changed part is issued again on save, if the gudang holds it (mr.revision_apply).
+function mr_unlock_for_revision(frm) {
+	[
+		'plan_date', 'pt_type', 'last_test_date', 'technician', 'reff_doc', 'remarks',
+		'spk_crew_name', 'spk_qc_name', 'spk_signer_name', 'spk_signer_title',
+	].forEach((f) => frm.set_df_property(f, 'read_only', 0));
+	const grid = frm.fields_dict.used_items && frm.fields_dict.used_items.grid;
+	if (grid) {
+		grid.cannot_add_rows = false;
+		grid.cannot_delete_rows = false;
+		['item', 'warehouse', 'quantity', 'currency', 'item_rate', 'manhour_rate', 'remark'].forEach((f) =>
+			grid.update_docfield_property(f, 'read_only', 0)
+		);
+		grid.refresh();
+	}
+	const photos = frm.fields_dict.work_photos && frm.fields_dict.work_photos.grid;
+	if (photos) {
+		photos.cannot_add_rows = false;
+		photos.cannot_delete_rows = false;
+		['photo', 'item', 'caption'].forEach((f) => photos.update_docfield_property(f, 'read_only', 0));
+		photos.refresh();
+	}
+	frm.enable_save();
+}
+
 function is_admin_ops() {
 	return MR_DEPOT_ROLES.some((role) => frappe.user.has_role(role));
 }
@@ -286,16 +319,6 @@ frappe.ui.form.on('Repair Order', {
 		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
 		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
 		container_depot.tank_position.button(frm);
-		// A "buka lagi" request raised from the PWA, with its reason — otherwise it reaches
-		// Admin Ops as a bell notification and leaves no trace on the order itself.
-		container_depot.form_message(
-			frm,
-			'reopen',
-			frm.doc.reopen_requested
-				? __('Team minta M&R ini dibuka lagi') + (frm.doc.reopen_note ? ': ' + frm.doc.reopen_note : '')
-				: '',
-			'orange'
-		);
 		// Status intro banner — says where the M&R stands AND names the button that moves it,
 		// so the label on screen and the sentence above it are the same words.
 		const intros = {
@@ -334,6 +357,9 @@ frappe.ui.form.on('Repair Order', {
 		frm.trigger('_mr_buttons');
 		mr_submit_primary(frm);
 		frm.trigger('_lock_estimate_grid');
+		// A trigger of its own, not a direct call: triggers run after this handler returns, and
+		// this has to come after the two locks above, which it lifts.
+		frm.trigger('_revision');
 		if (!frm.is_new() && ((frm.doc.work_photos || []).length || (frm.doc.damages || []).length)) {
 			frm.add_custom_button(__('Download Foto'), () => container_depot.download_doc_photos('Repair Order', frm.doc.name));
 		}
@@ -439,7 +465,7 @@ frappe.ui.form.on('Repair Order', {
 		// reached an invoice, so it is not offered here either.
 		if (is_admin_ops() && s === 'Completed' && (frm.doc.billing_status || 'Unbilled') === 'Unbilled') {
 			frm.add_custom_button(
-				frm.doc.reopen_requested ? __('Setujui Revisi') : __('Buka Lagi ke In Progress'),
+				__('Buka Lagi ke In Progress'),
 				() =>
 					frappe.prompt(
 						[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan (opsional)') }],
@@ -453,7 +479,7 @@ frappe.ui.form.on('Repair Order', {
 						__('Buka Lagi M&R'),
 						__('Buka Lagi')
 					)
-			).addClass(frm.doc.reopen_requested ? 'btn-primary' : '');
+			);
 		}
 
 		// The other road out of Approved, flat beside "Teruskan ke Team" because it is a peer
@@ -535,6 +561,11 @@ frappe.ui.form.on('Repair Order', {
 	//
 	// The two grids are NOT listed — _lock_estimate_grid already locks them per status, on a
 	// finer rule than this one (the estimate closes at Pending Approval, long before the end).
+	// Revisi Data / Tolak Revisi on a Completed order, and the banner for a pending Ajukan
+	// Revisi (container_depot.revision).
+	_revision(frm) {
+		container_depot.revision.setup(frm, { locked: MR_REVISION_LOCKED, unlock: mr_unlock_for_revision });
+	},
 	_apply_final_lock(frm) {
 		const locked = !frm.is_new() && MR_FINAL_STATUSES.includes(frm.doc.status);
 		// The three auto-stamped dates are NOT here: they are read_only on the doctype

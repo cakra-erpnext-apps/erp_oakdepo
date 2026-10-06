@@ -33,22 +33,8 @@ frappe.ui.form.on('Inspection', {
 				true,
 			);
 		}
-		// Surface a pending revision request (raised from the PWA) with its reason so
-		// Admin Ops sees why the operator wants this EIR reopened.
-		if (frm.doc.docstatus === 1 && frm.doc.revision_requested) {
-			frm.dashboard.add_comment(
-				__('Revisi diminta') + (frm.doc.revision_note ? ': ' + frm.doc.revision_note : ''),
-				'orange',
-				true,
-			);
-		}
-		// Desk-only ways back into a submitted EIR, on the cancel right (§8.1 keeps it away
-		// from the field roles; the server checks it again). See setup_revision.
-		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
-			setup_revision(frm);
-		} else {
-			container_depot.form_message(frm, 'eir-revision', '');
-		}
+		// Ways back into a submitted EIR (the server checks every right again). See setup_revision.
+		setup_revision(frm);
 		// A draft EIR ends through the shared red Cancel (Frappe's Discard, same server call),
 		// on the same cancel right as the rollback above. A submitted one never does — it goes
 		// back to Draft first.
@@ -75,7 +61,7 @@ frappe.ui.form.on('Inspection', {
 		// happens after submit — so lock the GRID instead: no Add Row, no delete, no typing in a
 		// cell. The sorter is untouched: it writes through frappe.model.set_value and saves with
 		// frm.save('Update'), neither of which consults the UI flag.
-		frm.set_df_property('item_photos', 'read_only', frm.doc.docstatus === 1 && !frm.doc.revision_open ? 1 : 0);
+		frm.set_df_property('item_photos', 'read_only', frm.doc.docstatus === 1 && !container_depot.revision._editing(frm) ? 1 : 0);
 		install_photo_thumbnails(frm);
 		bind_photo_grid_clicks(frm);
 		bind_damage_grid_clicks(frm);
@@ -273,53 +259,20 @@ function set_signature_preview(frm) {
 	);
 }
 
-// Which way back a submitted EIR offers, decided on the server (Inspection.onload →
-// eir.revision_state): the NEWEST EIR returns to Draft and its submit is undone; an OLDER one
-// is revised in place — still Submitted, the tank and every other document left as they
-// are — because undoing it would restore a status a later EIR has moved on from. Neither once
-// the visit's storage is invoiced. Tolak Revisi answers a request with a no.
+// The ways back into a submitted EIR, decided on the server (Inspection.onload →
+// eir.revision_state). Kembalikan ke Draft undoes the submit, so it is only for the NEWEST EIR
+// on the tank — undoing an older one would restore a status a later EIR has moved on from.
+// Revisi Data corrects any EIR in place (container_depot.revision). Neither once the visit's
+// storage is invoiced.
 function setup_revision(frm) {
 	const st = (frm.doc.__onload || {}).revision_state || {};
-	let msg = '';
-	if (st.locked) {
-		msg = __('Terkunci: storage kunjungan ini sudah diinvoice ({0}). Batalkan invoice-nya dulu, atau keluarkan kunjungan ini dari invoice.', [st.locked]);
-	} else if (frm.doc.revision_open) {
-		msg = __('Revisi Data terbuka — ubah isian lalu Update, tekan Selesai Revisi bila sudah. Status tank dan dokumen lain tidak ikut berubah.');
-		frm.add_custom_button(__('Selesai Revisi'), () => call_revision(frm, 'close_revision', {}, __('Revisi ditutup')));
-		unlock_for_revision(frm);
-	} else if (st.newer) {
-		frm.add_custom_button(__('Revisi Data'), () => frappe.confirm(
-			__('Sudah ada EIR yang lebih baru ({0}), jadi EIR ini tidak dikembalikan ke Draft tetapi direvisi di tempat: tetap Submitted, status tank dan dokumen lain tidak ikut berubah. Buka revisi?', [st.newer]),
-			() => call_revision(frm, 'open_revision', {}, __('Revisi dibuka')),
-		));
-	} else {
+	if (!st.newer && !st.locked && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 		frm.add_custom_button(__('Kembalikan ke Draft'), () => revert_to_draft(frm));
 	}
-	container_depot.form_message(frm, 'eir-revision', msg, st.locked ? 'red' : 'orange');
-	if (frm.doc.revision_requested || frm.doc.revision_open) {
-		frm.add_custom_button(__('Tolak Revisi'), () => frappe.prompt(
-			{ fieldname: 'reason', fieldtype: 'Small Text', label: __('Alasan'), reqd: 1 },
-			(v) => call_revision(frm, 'reject_revision', { reason: v.reason }, __('Revisi ditolak')),
-			__('Tolak Revisi'),
-			__('Tolak'),
-		));
-	}
+	container_depot.revision.setup(frm, { locked: REVISION_LOCKED });
 }
 
-function call_revision(frm, method, args, done) {
-	frappe.call({
-		method: `container_depot.container_depot.eir.${method}`,
-		args: { name: frm.doc.name, ...args },
-		freeze: true,
-		callback() {
-			frappe.show_alert({ message: done, indicator: 'green' });
-			frm.reload_doc();
-		},
-	});
-}
-
-// Mirrors eir.REVISION_LOCKED — what a revision may not change. The server is the rule; this
-// only keeps the form from offering it.
+// Mirrors eir.REVISION_LOCKED — what a revision may not change.
 const REVISION_LOCKED = [
 	'container', 'inspection_type', 'depot', 'referred_voucher', 'voucher_doctype',
 	'container_booking', 'survey_order', 'survey_tank', 'reference_eir_in', 'order_doctype',
@@ -328,21 +281,6 @@ const REVISION_LOCKED = [
 	'container_status_before_submit', 'container_last_cargo_before_submit',
 	'work_started_on', 'work_started_by', 'work_ended_on', 'work_duration',
 ];
-
-// Lift the submitted-form lock for the length of a revision: Frappe leaves a field typeable
-// on a submitted doc only when it is allow_on_submit, so say so — per form, and for the
-// grids per row copy (grid rows read frappe.meta.get_docfields(child, docname)).
-function unlock_for_revision(frm) {
-	frm.meta.fields.forEach((df) => {
-		if (REVISION_LOCKED.includes(df.fieldname) || df.read_only || df.hidden) return;
-		frm.set_df_property(df.fieldname, 'allow_on_submit', 1);
-		if (df.fieldtype === 'Table') {
-			frappe.meta.get_docfields(df.options, frm.doc.name).forEach((cdf) => {
-				cdf.allow_on_submit = 1;
-			});
-		}
-	});
-}
 
 // "Kembalikan ke Draft" — revert a submitted EIR to an editable draft. The server guards
 // that no other draft exists for the same container before flipping docstatus back to 0

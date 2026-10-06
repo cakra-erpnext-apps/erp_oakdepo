@@ -200,6 +200,8 @@ _BY_EVENT = {
 	"eir_revision_requested": _eir,
 	"eir_revision_answered": _eir,
 	"cleaning_revision_requested": _cleaning,
+	"cleaning_revision_answered": _cleaning,
+	"repair_revision_answered": _repair,
 	"order_gate_in": _gate,
 	"order_gate_out": _gate,
 	"order_muat_survey": _eir_pending,

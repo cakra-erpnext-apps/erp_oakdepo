@@ -2590,6 +2590,11 @@ def void_draft(booking):
 	# directly; child rows mirror the parent docstatus.
 	frappe.db.set_value("Container Booking", doc.name, "docstatus", 2, update_modified=False)
 	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=2 WHERE parent=%s", doc.name)
+	# Same reason, the tanks' cached `last_booking` is never rebuilt by a doc_event here —
+	# re-cache it now that the flip has dropped this booking out of the candidates.
+	from container_depot.container_depot import last_orders
+
+	last_orders.refresh_for_doc(doc)
 	# Cancelled through the button, not native submit->cancel, so the on_cancel
 	# doc_event never fires — clear the "Booking baru ..." notification here too.
 	from container_depot.container_depot.notify import revoke

@@ -35,7 +35,7 @@
 		     what was fitted, and the proof photos. Per-line prices stay out: the depot PWA has
 		     never shown them (see the module docstring in mr.py) and a Riwayat entry is not
 		     the place to start. -->
-		<template #detail="{ data }">
+		<template #detail="{ data, reload }">
 			<!-- Which tank, off which papers, and the three numbers the record is asked for:
 			     how much work, how long it took, and who did it. -->
 			<section class="oak-card space-y-3 p-4">
@@ -173,58 +173,17 @@
 				<p class="text-center text-xs text-gray-400">{{ labels.mrWithdrawReviewHint }}</p>
 			</template>
 
-			<!-- A CLOSED order cannot be pulled back by the team — it is Desk's record now — so
-			     they ask instead. One standing request is enough: once raised, the reason is
-			     shown in place of the button. Not offered once the order has reached an invoice;
-			     undoing that is an accounting decision and the server refuses it anyway, and a
-			     button that always throws is worse than no button. -->
-			<template v-else-if="data.status === 'Completed'">
-				<section v-if="data.reopen_requested" class="oak-card border-orange-200 bg-orange-50 space-y-1 p-4">
-					<p class="font-semibold text-orange-800">
-						<Icon name="rotate-ccw" :size="15" /> {{ labels.mrReopenRequested }}
-					</p>
-					<p v-if="data.reopen_note" class="whitespace-pre-line text-sm text-orange-900">{{ data.reopen_note }}</p>
-				</section>
-				<template v-else-if="(data.billing_status || 'Unbilled') === 'Unbilled'">
-					<button
-						v-if="revisionFor !== data.name"
-						type="button"
-						class="oak-btn oak-btn-secondary w-full py-2.5"
-						@click="revisionFor = data.name"
-					>
-						<Icon name="rotate-ccw" :size="16" /> {{ labels.mrReqRevision }}
-					</button>
-					<section v-else class="oak-card space-y-2 p-4">
-						<p class="oak-section-title">{{ labels.mrReqRevision }}</p>
-						<p class="text-xs text-gray-400">{{ labels.mrReqRevisionHint }}</p>
-						<textarea
-							v-model.trim="revisionReason"
-							rows="2"
-							:placeholder="labels.mrReqRevisionReason"
-							class="oak-input"
-						></textarea>
-						<div class="flex gap-2">
-							<button
-								type="button"
-								class="oak-btn oak-btn-primary px-3 py-2"
-								:disabled="revisionRes.loading"
-								@click="sendRevision(data)"
-							>
-								<Icon v-if="!revisionRes.loading" name="send" :size="16" />
-								{{ revisionRes.loading ? "…" : labels.mrReqRevisionSend }}
-							</button>
-							<button
-								type="button"
-								class="oak-btn oak-btn-secondary px-3 py-2"
-								:disabled="revisionRes.loading"
-								@click="revisionFor = ''"
-							>
-								{{ labels.mrBack }}
-							</button>
-						</div>
-					</section>
-				</template>
-			</template>
+			<!-- A CLOSED order is Desk's record: the team asks, Admin Ops revises or turns it down
+			     — the shared shape (RevisionActions). Nothing is offered once it is billed. -->
+			<RevisionActions
+				:state="data.revision"
+				doctype="Repair Order"
+				:name="data.name"
+				request-url="container_depot.ess.repairs.mr_request_revision"
+				request-key="repair_order"
+				:edit-to="{ path: kind.base, query: { o: data.name, revisi: '1' } }"
+				@changed="reload"
+			/>
 		</template>
 	</HistoryPage>
 </template>
@@ -239,6 +198,7 @@ import { mrChip, workWindow } from "@/utils/mrStatus"
 import { openLightbox } from "@/utils/lightbox"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
+import RevisionActions from "@/components/RevisionActions.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 import MrDamageCard from "@/components/MrDamageCard.vue"
 import MrTimeline from "@/components/MrTimeline.vue"
@@ -268,36 +228,6 @@ function withdraw(d) {
 			router.push({ path: kind.base, query: { o: d.name } })
 		},
 	})
-}
-
-// "Ajukan Revisi" on a CLOSED order — a request, not an action: it notifies Admin Ops and
-// flags the order, and nothing about the M&R moves until they decide. Same shape as the
-// cleaning Riwayat's, which is the screen the operators already know this from.
-const revisionFor = ref("")
-const revisionReason = ref("")
-const revisionRes = createResource({
-	url: "container_depot.ess.repairs.mr_request_revision",
-	method: "POST",
-	onError: (e) => toast.error(e?.messages?.[0] || e?.message || labels.error),
-})
-function sendRevision(d) {
-	// Read before the fields are cleared — the standing-request banner below is painted from
-	// it, and clearing first would show an empty reason for a request that had one.
-	const reason = revisionReason.value
-	revisionRes.submit(
-		{ repair_order: d.name, reason },
-		{
-			onSuccess: () => {
-				toast.success(labels.mrReqRevisionSent)
-				revisionFor.value = ""
-				revisionReason.value = ""
-				// Mirror the flag locally so the standing request replaces the button straight
-				// away, instead of leaving a form that would happily raise a second one.
-				d.reopen_requested = 1
-				d.reopen_note = reason
-			},
-		}
-	)
 }
 
 // Folded by default — on a closed job the findings are background, and the count on the

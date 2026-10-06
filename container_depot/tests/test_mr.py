@@ -432,10 +432,10 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		self.assertTrue(res["success"])
 		doc = frappe.get_doc("Repair Order", ro)
 		self.assertEqual(doc.status, "Completed")  # asking changes nothing
-		self.assertEqual(cint(doc.reopen_requested), 1)
-		self.assertIn("las belum rapi", doc.reopen_note)
+		self.assertEqual(cint(doc.revision_requested), 1)
+		self.assertIn("las belum rapi", doc.revision_note)
 		# The reason reaches the Desk on the order itself, not only in a bell notification.
-		self.assertEqual(mr.get_mr_order_detail(ro)["reopen_note"], doc.reopen_note)
+		self.assertEqual(mr.get_mr_order_detail(ro)["revision_note"], doc.revision_note)
 
 	def test_a_settled_order_refuses_a_plain_save(self):
 		"""Completed / Rejected / Cancelled are history. The doctype is not submittable, so
@@ -503,8 +503,8 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		# before it was worked.
 		self.assertIsNone(doc.completion_date)
 		# The request has been actioned, so the badge comes off.
-		self.assertEqual(cint(doc.reopen_requested), 0)
-		self.assertIsNone(doc.reopen_note)
+		self.assertEqual(cint(doc.revision_requested), 0)
+		self.assertIsNone(doc.revision_note)
 		# Estimate, approval and stock all untouched: same issue, same on-hand.
 		self.assertEqual(doc.stock_entry, se_name)
 		self.assertEqual(flt(mr._on_hand(_ITEM, warehouse)), 8.0)
@@ -514,6 +514,74 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		mr.finalize_repair(ro)
 		self.assertEqual(flt(mr._on_hand(_ITEM, warehouse)), 8.0)
 
+	def _draft_without_eir(self, cno):
+		"""A Draft M&R raised by hand — no EIR in between (the site's checklist codes have
+		drifted from the ones ``_eir_with_damage`` sends)."""
+		c = self._container(cno)
+		ro = frappe.get_doc({"doctype": "Repair Order", "container": c, "job_type": "Repair"}).insert(
+			ignore_permissions=True
+		).name
+		self._orders.append(ro)
+		return ro
+
+	def test_revisi_data_corrects_a_closed_order_and_reissues_parts(self):
+		"""Completed stays Completed; a changed part line is issued again if the gudang holds
+		it; the PWA saves photos the same way with ``revise``; billed = frozen."""
+		from container_depot.container_depot import revision
+
+		warehouse = self._ensure_warehouse()
+		self._ensure_item()
+		self._receive_stock(warehouse, 10)
+		ro = self._draft_without_eir("MRRVSD00001")
+		self._to_in_progress(ro, [{"item": _ITEM, "quantity": 2}], warehouse=warehouse)
+		old_se = frappe.db.get_value("Repair Order", ro, "stock_entry")
+		self._stock_entries.append(old_se)
+		mr.save_mr_order(repair_order=ro, submit=True)
+		mr.finalize_repair(ro)
+		self.assertEqual(flt(mr._on_hand(_ITEM, warehouse)), 8.0)
+
+		doc = frappe.get_doc("Repair Order", ro)
+		rate = doc.used_items[0].item_rate
+		doc.remarks = "dikoreksi"
+		doc.used_items[0].quantity = 3
+		revision.save_revision(frappe.as_json(doc.as_dict()))
+		doc = frappe.get_doc("Repair Order", ro)
+		self._stock_entries.append(doc.stock_entry)
+		self.assertEqual((doc.status, doc.remarks, flt(doc.used_items[0].quantity)), ("Completed", "dikoreksi", 3.0))
+		self.assertEqual(flt(doc.used_items[0].item_rate), flt(rate))
+		self.assertNotEqual(doc.stock_entry, old_se)
+		self.assertEqual(frappe.db.get_value("Stock Entry", old_se, "docstatus"), 2)
+		self.assertEqual(flt(mr._on_hand(_ITEM, warehouse)), 7.0)
+
+		mr.save_mr_order(repair_order=ro, remarks="dari pwa", revise=1)
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "remarks"), "dari pwa")
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.remarks = "tanpa tanda revisi"
+		with self.assertRaises(frappe.ValidationError):
+			doc.save()
+
+		frappe.db.set_value("Repair Order", ro, "billing_status", "Client Billed")
+		doc = frappe.get_doc("Repair Order", ro)
+		doc.remarks = "telat"
+		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
+			revision.save_revision(frappe.as_json(doc.as_dict()))
+		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
+			mr.request_revision(ro, reason="terlambat")
+
+	def test_tolak_revisi_on_a_closed_order(self):
+		from container_depot.container_depot import revision
+
+		self._ensure_service_item()
+		ro = self._draft_without_eir("MRRVSD00002")
+		self._to_in_progress(ro, [{"item": _SERVICE, "quantity": 1}])
+		mr.save_mr_order(repair_order=ro, submit=True)
+		mr.finalize_repair(ro)
+		mr.request_revision(ro, reason="foto kurang")
+		self.assertEqual(frappe.db.get_value("Repair Order", ro, "revision_requested_by"), "Administrator")
+		revision.reject("Repair Order", ro, "foto sudah lengkap")
+		row = frappe.db.get_value("Repair Order", ro, ["revision_requested", "revision_note", "status"], as_dict=True)
+		self.assertEqual((row.revision_requested, row.revision_note, row.status), (0, None, "Completed"))
+
 	def test_closing_again_clears_a_standing_request(self):
 		"""The request asked for exactly this round of work. Left set, the badge follows the
 		order into history and reads as an open question nobody answered."""
@@ -522,7 +590,7 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		mr.reopen_completed(ro)
 		mr.save_mr_order(repair_order=ro, submit=True)
 		mr.finalize_repair(ro)
-		self.assertEqual(cint(frappe.db.get_value("Repair Order", ro, "reopen_requested")), 0)
+		self.assertEqual(cint(frappe.db.get_value("Repair Order", ro, "revision_requested")), 0)
 
 	def test_a_billed_order_is_not_reopenable_from_here(self):
 		"""Un-finishing a job already on an invoice changes what the owner is charged.

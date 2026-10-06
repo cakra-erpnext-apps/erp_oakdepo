@@ -466,11 +466,14 @@ def revert_to_draft(name: str) -> dict:
 			"docstatus": 0,
 			"status": "In_Progress",
 			"cleaning_end": None,
-			"revision_requested": 0,
-			"revision_note": None,
 			"stock_entry": None,
 		},
 	)
+	# A pending Ajukan Revisi is answered by this — tell whoever asked.
+	if doc.get("revision_requested"):
+		from container_depot.container_depot import revision
+
+		revision.close_request(doc, done=True)
 	# A backwards docstatus flip can never go through doc.save(), so no Version row is
 	# written — put it on the order's timeline by hand.
 	log_doc_note("Cleaning Order", doc.name, _(
@@ -523,41 +526,53 @@ def cancel_order(name: str, note: str | None = None) -> dict:
 
 
 def request_revision(cleaning_order, reason: str | None = None) -> dict:
-	"""Operator asks Admin Ops to reopen a submitted Cleaning Order for revision.
+	"""The cleaning team asks Admin Ops to correct a submitted order ("Ajukan Revisi").
 
-	Mirrors :func:`container_depot.container_depot.eir.request_revision`. A submitted order
-	can't be edited from the PWA, so this raises a REQUEST rather than touching the work: it
-	drops an audit comment on the order's timeline, flags it so the Desk list shows "Revisi
-	Diminta" with the reason, and notifies Admin Ops (+ ops oversight) in the container's
-	branch. Reopening itself stays a human decision on the Desk side — cancelling the order
-	clears the flag (``CleaningOrder.on_cancel``).
+	A request, not an edit — the shared flow in ``revision.request``, which also refuses an
+	invoiced order. Admin Ops answers with Revisi Data, Kembalikan ke Draft or Tolak Revisi.
 	"""
 	from container_depot.container_depot import notify as _notify
-	from container_depot.container_depot.container_activity import log_doc_note
+	from container_depot.container_depot import revision
 
 	if not cleaning_order:
 		frappe.throw(_("cleaning_order is required."))
 	doc = frappe.get_doc("Cleaning Order", cleaning_order)
-	if doc.docstatus != 1:
-		frappe.throw(_("Hanya cleaning order yang sudah selesai (submitted) yang bisa diajukan revisi."))
-	_guard_container_branch(doc.container)
+	out = revision.request(doc, reason, _notify.notify_cleaning_revision_requested)
+	return {**out, "cleaning_order": doc.name}
 
-	reason = (reason or "").strip()
-	user = frappe.session.user
-	note = _("Permintaan revisi cleaning oleh {0}").format(user)
-	if reason:
-		note += ": " + reason
-	# Audit trail on the order's timeline (visible in Desk). Best-effort — the notification
-	# is what matters, so a comment-permission hiccup must not fail the request.
-	log_doc_note("Cleaning Order", doc.name, note)
 
-	# Raw set_value: the order is submitted, and both fields are allow_on_submit.
-	frappe.db.set_value(
-		"Cleaning Order", doc.name, {"revision_requested": 1, "revision_note": note},
-	)
+# --- Revisi Data hooks (revision.py) ---------------------------------------------------
+# What a revision may not change: the tank and the work it belongs to, where it stands, and
+# what the system wrote — the invoice, the parts issue, who raised it.
+REVISION_LOCKED = (
+	"container", "depot", "inspection", "container_booking", "status", "approval_status",
+	"order_id", "sales_invoice", "stock_entry", "created_by", "is_recleaning",
+)
 
-	sent = _notify.notify_cleaning_revision_requested(doc.name, reason=reason)
-	return {"success": True, "notified": sent, "cleaning_order": doc.name}
+
+def revision_invoice(doc) -> str | None:
+	return doc.get("sales_invoice")
+
+
+def _parts_key(doc) -> list:
+	return sorted((item, qty, wh or "") for _row, item, qty, _uom, wh in doc._parts())
+
+
+def revision_apply(doc, before) -> None:
+	"""Re-price the lines (a submitted update skips ``before_save``) and, when the PARTS
+	changed, issue them again: the old Material Issue is cancelled and a new one made for what
+	the order now says — refused, and the whole save with it, if the gudang cannot cover it
+	(user: "boleh ubah apapun asal stoknya tersedia")."""
+	doc._resolve_cleaning_services()
+	doc._derive_cleaning_type()
+	if _parts_key(doc) == _parts_key(before):
+		return
+	from container_depot.container_depot.mr import cancel_stock_entry
+
+	cancel_stock_entry(doc.get("stock_entry"))
+	doc.stock_entry = None
+	doc._validate_parts_stock()
+	doc._issue_parts()
 
 
 # Katalog "Metode Cleaning" yang ikut di payload detail order. Dibatasi jumlahnya karena
@@ -603,6 +618,8 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		# button a second time.
 		"revision_requested": 1 if co.get("revision_requested") else 0,
 		"revision_note": co.get("revision_note"),
+		# Revisi Data / Ajukan Revisi / Tolak — see revision.state.
+		"revision": _revision_state(co),
 		"inspection": co.inspection or _latest_eir(co.container),
 		"cleaning_type": co.cleaning_type,
 		# "Metode Cleaning" = one OR MORE billable Services from the Cleaning menu. The owner's
@@ -668,6 +685,12 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 	}
 
 
+def _revision_state(co) -> dict:
+	from container_depot.container_depot import revision
+
+	return revision.state(co)
+
+
 def _coerce_list(value) -> list:
 	if isinstance(value, str):
 		value = json.loads(value) if value.strip() else []
@@ -689,9 +712,13 @@ def save_cleaning_order(
 	signature=None,
 	qc_photos=None,
 	submit=False,
+	revise=False,
 ) -> dict:
 	"""Save the cleanliness detail onto a Cleaning Order and, when ``submit`` is true, send it
 	for review.
+
+	``revise`` saves a SUBMITTED order in place instead — Revisi Data from the PWA (see
+	``revision.py``): one save, the record only, by someone holding the right.
 
 	``submit`` from the PWA does NOT finalize the order. Exactly like the EIR flow, the
 	operator's "selesai" moves it to **Pending Review** (still docstatus 0) and pings Admin
@@ -703,12 +730,17 @@ def save_cleaning_order(
 	if not cleaning_order:
 		frappe.throw(_("cleaning_order is required."))
 	co = frappe.get_doc("Cleaning Order", cleaning_order)
-	if co.docstatus == 1:
+	revising = _as_bool(revise) and co.docstatus == 1
+	if revising:
+		from container_depot.container_depot import revision
+
+		revision.assert_can_revise(co)
+	elif co.docstatus == 1:
 		frappe.throw(_("Cleaning Order sudah selesai."), exc=AlreadySettled)
 	# Already handed to Admin Ops. The offline queue's worst case is a sign-off that reaches
 	# the server after the order was sent for review — AlreadySettled is what tells the PWA
 	# to park that row instead of retrying it for ever (see frontend/src/data/outbox.js).
-	if co.status == "Pending Review":
+	if co.status == "Pending Review" and not revising:
 		frappe.throw(
 			_("Cleaning Order sudah dikirim untuk review Admin Ops."), exc=AlreadySettled
 		)
@@ -753,6 +785,13 @@ def save_cleaning_order(
 	if not co.place_of_issue:
 		co.place_of_issue = _default_place_of_issue(frappe.session.user, co.depot)
 
+	if revising:
+		co.flags.revision = True
+		co.save()  # update after submit — CleaningOrder.before_update_after_submit polices it
+		return {
+			"success": True, "name": co.name, "order_id": co.order_id, "status": co.status,
+			"docstatus": co.docstatus, "pending_review": False, "revision": 1,
+		}
 	if _as_bool(submit):
 		# Field work is over: stamp when it ended and who did it, then hand the order to
 		# Admin Ops. before_submit leaves both alone (it only fills what is empty), so the

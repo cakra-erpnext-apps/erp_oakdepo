@@ -445,6 +445,12 @@ def void_order(name, doctype="Order Bongkar"):
 		f"UPDATE `tab{child}` SET docstatus = 2 WHERE parent = %s AND parenttype = %s",
 		(doc.name, doctype),
 	)
+	# Re-cache the tanks' "last bon" AFTER the flip. The `on_cancel` doc_event above already
+	# ran last_orders, but at that moment the bon was still docstatus 0 — so the rebuild
+	# picked this very bon again and the master kept pointing at a voided order.
+	from container_depot.container_depot import last_orders
+
+	last_orders.refresh_for_doc(doc)
 	return doc.name
 
 

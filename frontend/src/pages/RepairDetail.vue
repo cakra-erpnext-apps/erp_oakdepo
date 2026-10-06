@@ -24,6 +24,10 @@
 		<template v-else-if="order">
 			<!-- Rekan yang menyentuhnya terakhir — di atas kartu, sebelum apa pun diisi. -->
 			<EditedBy :by="order.updated_by" :name="order.updated_by_name" :at="order.updated_on" />
+			<!-- Revisi Data: a closed order corrected in place (container_depot/revision.py). -->
+			<p v-if="revising" class="oak-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+				{{ labels.revisionBanner }}
+			</p>
 
 			<section class="oak-card space-y-3 p-4">
 				<RepairOrderInfo :o="order" />
@@ -248,7 +252,7 @@
 
 			<!-- SUDAH MULAI: serahkan ke Desk. Ini TIDAK menutup order. -->
 			<template v-else-if="isInProgress">
-				<p class="flex items-center justify-center gap-1.5 text-xs">
+				<p v-if="!revising" class="flex items-center justify-center gap-1.5 text-xs">
 					<span v-if="saveRes.loading" class="text-gray-400">{{ labels.savingDraft }}</span>
 					<span v-else-if="savedOk" class="inline-flex items-center gap-1 text-leaf-600">
 						<Icon name="check" :size="13" /> {{ labels.draftSaved }}
@@ -257,9 +261,9 @@
 				</p>
 				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="submitting" @click="confirmSubmit">
 					<Icon v-if="submitting" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.mrSubmitReview }}</span>
+					<span v-else>{{ revising ? labels.revisionSave : labels.mrSubmitReview }}</span>
 				</button>
-				<p class="text-center text-xs text-gray-400">{{ labels.mrSubmitReviewHint }}</p>
+				<p class="text-center text-xs text-gray-400">{{ revising ? labels.revisionHint : labels.mrSubmitReviewHint }}</p>
 			</template>
 		</template>
 
@@ -316,7 +320,17 @@ const suppressSave = ref(false) // bisukan auto-save saat detail sedang dimuat
 
 // "Pending" = sudah diserahkan Admin Ops, belum dipegang; tekan pertama tim adalah Mulai.
 const isPending = computed(() => order.value?.status === "Pending")
-const isInProgress = computed(() => order.value?.status === "In Progress")
+// Revisi Data (?revisi=1 from the Riwayat detail): a COMPLETED order's photos edited in place
+// and saved once with `revise` — the form behaves as if In Progress, minus autosave and the
+// hand-off. Lines and prices are corrected on the Desk.
+const revising = computed(
+	() =>
+		route.query.revisi === "1" &&
+		order.value?.status === "Completed" &&
+		!!order.value?.revision?.can_revise &&
+		!order.value?.revision?.locked
+)
+const isInProgress = computed(() => order.value?.status === "In Progress" || revising.value)
 const isInReview = computed(() => order.value?.status === "Pending Review")
 // Hanya baris yang disetujui yang relevan untuk tim lapangan.
 const repairLines = computed(() => used.value.filter((u) => u.decision !== "Rejected"))
@@ -596,7 +610,8 @@ function flushPendingSave() {
 }
 
 function scheduleSave() {
-	if (!order.value || suppressSave.value) return
+	// A revision is one deliberate save (Simpan Revisi), never a stream of autosaves.
+	if (!order.value || suppressSave.value || revising.value) return
 	savedOk.value = false
 	if (saveTimer) clearTimeout(saveTimer)
 	saveTimer = setTimeout(() => {
@@ -619,8 +634,8 @@ const submitting = ref(false)
 
 async function confirmSubmit() {
 	const ok = await confirm({
-		message: labels.mrSubmitReviewHint,
-		confirmLabel: labels.mrSubmitReview,
+		message: revising.value ? labels.revisionConfirm : labels.mrSubmitReviewHint,
+		confirmLabel: revising.value ? labels.revisionSave : labels.mrSubmitReview,
 		cancelLabel: labels.confirmCancel,
 	})
 	if (ok) submitForReview()
@@ -641,10 +656,13 @@ async function submitForReview() {
 				repair_order: o.name,
 				// Array, bukan string JSON: `send` harus menelusuri payload untuk menukar ref `local:`.
 				work_photos: workPhotos.value,
-				submit: 1,
+				submit: revising.value ? 0 : 1,
+				revise: revising.value ? 1 : undefined,
 			},
 		})
-		toast.success(labels.mrSubmittedReview, { title: o.repair_order_id || o.name })
+		toast.success(revising.value ? labels.revisionSaved : labels.mrSubmittedReview, {
+			title: o.repair_order_id || o.name,
+		})
 		goBack()
 	} catch (e) {
 		toast.error(e?.message || labels.error)

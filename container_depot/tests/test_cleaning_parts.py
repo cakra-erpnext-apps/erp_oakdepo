@@ -104,3 +104,32 @@ class TestCleaningParts(FrappeTestCase):
 		cleaning.revert_to_draft(co.name)
 		cleaning.cancel_order(co.name)
 		self.assertEqual(self._on_hand(), 5)
+
+	def test_revisi_data_reissues_changed_parts_while_stock_allows(self):
+		"""A revision may change the parts too — they are issued again, as long as the gudang
+		holds them (user, 2026-10-06)."""
+		from container_depot.container_depot import revision
+
+		co = self._order("CLNP0000003", 2)
+		co.submit()
+		old_se = frappe.db.get_value("Cleaning Order", co.name, "stock_entry")
+		self.assertEqual(self._on_hand(), 3)
+
+		doc = frappe.get_doc("Cleaning Order", co.name)
+		doc.cleaning_services[0].quantity = 4
+		revision.save_revision(frappe.as_json(doc.as_dict()))
+		self.assertEqual(frappe.db.get_value("Stock Entry", old_se, "docstatus"), 2)
+		self.assertNotEqual(frappe.db.get_value("Cleaning Order", co.name, "stock_entry"), old_se)
+		self.assertEqual(self._on_hand(), 1)
+		self.assertEqual(frappe.db.get_value("Cleaning Order", co.name, "docstatus"), 1)
+
+		doc = frappe.get_doc("Cleaning Order", co.name)
+		doc.cleaning_services[0].quantity = 9
+		frappe.db.savepoint("short")
+		with self.assertRaises(frappe.ValidationError):
+			revision.save_revision(frappe.as_json(doc.as_dict()))
+		frappe.db.rollback(save_point="short")
+		self.assertEqual(self._on_hand(), 1)
+		# Leave it the way tearDown can undo: back to Draft (parts return), then Cancel.
+		cleaning.revert_to_draft(co.name)
+		cleaning.cancel_order(co.name)

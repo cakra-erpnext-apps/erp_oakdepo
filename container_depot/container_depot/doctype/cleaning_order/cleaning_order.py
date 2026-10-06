@@ -434,10 +434,28 @@ class CleaningOrder(Document):
 		this completes the tank (-> Available, parked in the Cleaning Bay)."""
 		self._propagate_to_container(log_always=True)
 
+	def onload(self):
+		# Revisi Data / Tolak Revisi on the Desk form (public/js/revision.js).
+		if self.docstatus == 1:
+			from container_depot.container_depot import revision
+
+			self.set_onload("revision_state", revision.state(self))
+
+	def before_update_after_submit(self):
+		# Revisi Data — a corrected finished order, saved in place (revision.py).
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.check(self)
+
 	def on_update_after_submit(self):
 		"""Status / approval edits after submit also drive the container so a
 		re-clean can progress Pending -> In_Progress -> Completed over time."""
 		self._propagate_to_container()
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.after(self)
 
 	def _propagate_to_container(self, log_always=False):
 		"""Push this cleaning order's progress onto its container.

@@ -41,6 +41,7 @@
   "approval_status",
   "revision_requested",
   "revision_note",
+  "revision_requested_by",
   "is_recleaning",
   "container_no",
   "container_principal",
@@ -269,6 +270,17 @@
    "hidden": 1,
    "label": "Catatan Revisi",
    "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Yang menekan Ajukan Revisi — dikabari saat revisi selesai atau ditolak.",
+   "fieldname": "revision_requested_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Revisi Diminta Oleh",
+   "no_copy": 1,
+   "options": "User",
    "read_only": 1
   },
   {
@@ -505,7 +517,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-05 16:00:00.000000",
+ "modified": "2026-10-06 13:00:00.000000",
  "module": "Container Depot",
  "name": "Cleaning Order",
  "search_fields": "order_id, container_no, status",

@@ -922,6 +922,17 @@ class TestReopen(_Base):
 		self.assertEqual((p.status, p.docstatus, p.lowered_count, p.survey_done_count),
 						 ("Scheduled", 0, 0, 0))
 
+	def test_a_tank_that_has_left_cannot_be_reopened(self):
+		"""Its EIR-Out is submitted — the tank went out the gate. Reopening would queue a
+		departed tank for lowering and pull the day back to draft."""
+		_c, bk, row, eir = self._closed("TSVREOP00009")
+		frappe.db.set_value("Inspection", eir, {"docstatus": 1, "container_booking": bk})
+		for fn in (ts.reopen_lowering, ts.reopen_survey):
+			with self.assertRaises(frappe.ValidationError):
+				fn(row, note="salah")
+		self.assertEqual(self._val(row, "status").status, ts.DONE)
+		self.assertEqual(self._progress(bk).docstatus, 1)
+
 
 # ---------------------------------------------------------------------------
 class TestNotifications(_Base):

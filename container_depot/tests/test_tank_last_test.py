@@ -115,6 +115,29 @@ class TestTankLastTestDate(FrappeTestCase):
 
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -1)))
 
+	def test_reopening_the_test_takes_its_date_back(self):
+		"""Buka Lagi undoes the completion, so the date it wrote goes back to what it replaced."""
+		from container_depot.container_depot import mr
+
+		c = self._container("LTDU1000020")
+		set_last_test_date(c, add_days(today(), -100))
+		ro = self._periodic_test(c, completion_date=add_days(today(), -1))
+		self.assertEqual(self._last_test(c), getdate(add_days(today(), -1)))
+
+		mr.reopen_completed(ro.name)
+		self.assertEqual(self._last_test(c), getdate(add_days(today(), -100)))
+
+	def test_revisi_data_moves_the_test_date_with_the_completion(self):
+		from container_depot.container_depot import revision
+
+		c = self._container("LTDU1000021")
+		ro = self._periodic_test(c, completion_date=add_days(today(), -1))
+		doc = frappe.get_doc("Repair Order", ro.name)
+		doc.completion_date = add_days(today(), -5)
+		revision.save_revision(frappe.as_json(doc.as_dict()))
+		self.assertEqual(self._last_test(c), getdate(add_days(today(), -5)))
+		self.assertEqual(frappe.db.get_value("Repair Order", ro.name, "status"), "Completed")
+
 	# --- uji di luar depo -----------------------------------------------------
 	def test_typed_date_lands_on_the_master(self):
 		c = self._container("LTDU1000006")

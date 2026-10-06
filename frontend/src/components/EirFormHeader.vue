@@ -17,7 +17,7 @@
 			     mengatakan hal yang lebih berguna. -->
 			<span v-if="elapsed" class="oak-chip shrink-0 bg-blue-100 font-mono text-blue-700">{{ elapsed }}</span>
 			<!-- Revisi Data: EIR yang sudah selesai, dibuka untuk dikoreksi — bukan draf. -->
-			<span v-else-if="revision" class="oak-chip shrink-0" :class="pill('revision').cls">{{ labels.eirRevisionEdit }}</span>
+			<span v-else-if="revision" class="oak-chip shrink-0" :class="pill('revision').cls">{{ labels.revisionEdit }}</span>
 			<span v-else-if="!startedMs" class="oak-chip shrink-0" :class="pill('draft').cls">{{ pill("draft").label }}</span>
 		</div>
 

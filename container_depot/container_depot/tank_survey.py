@@ -1159,6 +1159,19 @@ def _reopen(name, target, sources, clear, note, subject, notifier) -> dict:
 		frappe.throw(_("Tank {0} statusnya {1} — belum ada yang bisa dibuka lagi.").format(
 			row.container_no or name, row.status
 		))
+	# A tank that has already LEFT is history, not a worklist item: reopening it would queue a
+	# departed tank for lowering and pull the day back to draft. "Left" = a SUBMITTED EIR-Out
+	# for this tank on this survey's booking — submitting the EIR-Out IS the gate-out, and it
+	# can only be submitted with a bon, which restamps `container_booking` from that bon. Not
+	# `Container.status == Gate_Out`: that is about whatever visit is current, and a tank that
+	# has since come back in would read as never having left.
+	if frappe.db.exists("Inspection", {
+		"inspection_type": "EIR-Out", "docstatus": 1, "container": row.container,
+		"container_booking": frappe.db.get_value(SCHEDULE, row.parent, "booking"),
+	}):
+		frappe.throw(_("Tank {0} sudah keluar depo — survey-nya tidak bisa dibuka lagi.").format(
+			row.container_no or row.container
+		))
 
 	note = (note or "").strip()
 	line = _("{0} dibuka lagi oleh {1}").format(subject, frappe.session.user)

@@ -1,0 +1,246 @@
+"""Revisi Data — correcting a finished order in place (user, 2026-10-06).
+
+Kembalikan ke Draft is the way to UNDO a submit; this is the way to CORRECT one. It is a
+single save with no "sedang direvisi" state in between: whoever holds the right edits the
+finished order and saves, the status stays exactly where it was, and nothing outside the
+record moves — the tank, the gate, the bon, the booking, the other orders. The one thing
+that follows the record is its own parts: a changed part line is issued again, as long as the
+gudang holds it. Everything is refused once the order is invoiced.
+
+The request side is the same on every menu too, so it lives here: the team's Ajukan Revisi,
+Admin Ops' Tolak Revisi, and the answer back to whoever asked.
+
+A menu joins by an entry in ``_SPECS`` and a module that provides:
+
+* ``REVISION_LOCKED`` — fields a revision may never change (what the order IS, and what the
+  system wrote when it finished);
+* ``revision_invoice(doc)`` — what has invoiced it, or None;
+* optionally ``revision_apply(doc, before)`` — what has to happen inside the save (re-issue
+  parts, re-price, move a ledger) beyond the field edit itself.
+
+The record is marked by ``doc.flags.revision``, set only here and by a menu's own PWA save
+when it was called with ``revise``. Flags never travel in a request payload (Frappe keeps
+``flags`` out of ``Document.update``), so a client cannot mark its own save as a revision.
+"""
+
+from __future__ import annotations
+
+import importlib
+
+import frappe
+from frappe import _, _lt
+from frappe.utils import cint
+
+from container_depot.container_depot.container_activity import log_doc_note
+from container_depot.container_depot.user_branch import assert_in_user_branch
+
+# right: a DocPerm ptype on the doctype, or "admin_ops" for the non-submittable Repair Order
+# (no cancel right to ask about — the M&R desk actions already gate on the role, see
+# ess/repairs.py BYPASS_ROLES).
+_SPECS = {
+	"Inspection": {
+		"module": "container_depot.container_depot.eir",
+		"right": "cancel",
+		"label": _lt("EIR"),
+		"answered": "eir_revision_answered",
+	},
+	"Cleaning Order": {
+		"module": "container_depot.container_depot.cleaning",
+		"right": "cancel",
+		"label": _lt("Cleaning"),
+		"answered": "cleaning_revision_answered",
+	},
+	"Repair Order": {
+		"module": "container_depot.container_depot.mr",
+		"right": "admin_ops",
+		"label": _lt("M&R"),
+		"answered": "repair_revision_answered",
+	},
+}
+ADMIN_OPS_ROLES = {"Admin Ops", "System Manager"}
+
+
+def _spec(doctype: str) -> dict:
+	spec = _SPECS.get(doctype)
+	if not spec:
+		frappe.throw(_("{0} tidak mendukung Revisi Data.").format(doctype))
+	return spec
+
+
+def _hooks(doctype: str):
+	return importlib.import_module(_spec(doctype)["module"])
+
+
+def is_finished(doc) -> bool:
+	"""Submitted, or for the non-submittable Repair Order: Completed."""
+	if doc.doctype == "Repair Order":
+		return doc.get("status") == "Completed"
+	return doc.docstatus == 1
+
+
+def has_right(doctype: str, user: str | None = None) -> bool:
+	right = _spec(doctype)["right"]
+	if right == "admin_ops":
+		return not set(frappe.get_roles(user or frappe.session.user)).isdisjoint(ADMIN_OPS_ROLES)
+	return bool(frappe.has_permission(doctype, right, user=user))
+
+
+def invoice_of(doc) -> str | None:
+	return _hooks(doc.doctype).revision_invoice(doc)
+
+
+def locked_message(invoice) -> str:
+	return _(
+		"Order ini sudah diinvoice ({0}). Batalkan invoice-nya dulu, atau keluarkan order ini "
+		"dari invoice."
+	).format(invoice)
+
+
+def state(doc) -> dict:
+	"""What the Desk and the PWA may offer on a finished order.
+
+	``{can_revise, locked, requested, note}`` — ``locked`` is the invoice that froze it.
+	Empty for an order that is not finished yet: there is nothing to revise.
+	"""
+	if not is_finished(doc):
+		return {}
+	return {
+		"can_revise": 1 if has_right(doc.doctype) else 0,
+		"locked": invoice_of(doc),
+		"requested": cint(doc.get("revision_requested")),
+		"note": doc.get("revision_note"),
+	}
+
+
+def _guard_branch(doc) -> None:
+	depot = frappe.db.get_value("Container", doc.get("container"), "depot") if doc.get("container") else None
+	assert_in_user_branch(depot=depot)
+
+
+def assert_can_revise(doc) -> None:
+	"""Finished, not invoiced, in the user's branch, and the user holds the right."""
+	if not is_finished(doc):
+		frappe.throw(_("Hanya order yang sudah selesai yang bisa direvisi."))
+	if not has_right(doc.doctype):
+		frappe.throw(_("Anda tidak berwenang melakukan Revisi Data."), frappe.PermissionError)
+	_guard_branch(doc)
+	invoice = invoice_of(doc)
+	if invoice:
+		frappe.throw(locked_message(invoice), title=_("Order Terkunci"))
+
+
+def check(doc) -> None:
+	"""The controller's before-save hook for a revision (``doc.flags.revision``).
+
+	Run against the record as it stands in the database, so the edit itself cannot unlock it.
+	"""
+	before = doc.get_doc_before_save()
+	if not before:
+		return
+	assert_can_revise(before)
+	if not is_finished(doc):
+		frappe.throw(_("Revisi Data tidak mengubah status order."))
+	hooks = _hooks(doc.doctype)
+	changed = [f for f in hooks.REVISION_LOCKED if _value(doc, f) != _value(before, f)]
+	if changed:
+		frappe.throw(_("Revisi Data tidak boleh mengubah: {0}.").format(
+			", ".join(_(doc.meta.get_label(f)) for f in changed)
+		))
+	# The field rules are ours for this save — REVISION_LOCKED above. Only meaningful on a
+	# submitted document; the Repair Order lets the flag through its own final-status lock.
+	doc.flags.ignore_validate_update_after_submit = True
+	if hasattr(hooks, "revision_apply"):
+		hooks.revision_apply(doc, before)
+
+
+def _value(doc, fieldname):
+	"""A field's value as the database means it — the Desk form sends dates as strings."""
+	df = doc.meta.get_field(fieldname)
+	value = doc.get(fieldname)
+	return (doc.cast(value, df) if df and value not in (None, "") else value) or None
+
+
+def after(doc) -> None:
+	"""The controller's after-save hook for a revision: say so on the timeline, and answer
+	whoever asked for it — the revision IS the answer."""
+	log_doc_note(doc.doctype, doc.name, _("Revisi Data oleh {0}.").format(frappe.session.user))
+	if cint(frappe.db.get_value(doc.doctype, doc.name, "revision_requested")):
+		close_request(doc, done=True)
+
+
+@frappe.whitelist(methods=["POST"])
+def save_revision(doc) -> dict:
+	"""Desk "Revisi Data" → Simpan: save the edited form of a finished order in place.
+
+	The Desk form's own Update would hit Frappe's submitted-document rules; this is the same
+	save with the revision mark on it. ``doc`` is the whole form, as Frappe's savedocs takes it.
+	"""
+	data = frappe.parse_json(doc)
+	current = frappe.get_doc(data.get("doctype"), data.get("name"))
+	assert_can_revise(current)
+	edited = frappe.get_doc(data)
+	if cint(edited.docstatus) != cint(current.docstatus) or edited.get("status") != current.get("status"):
+		frappe.throw(_("Revisi Data tidak mengubah status order."))
+	edited.flags.revision = True
+	edited.save()
+	return {"name": edited.name, "modified": str(edited.modified)}
+
+
+# --- Ajukan Revisi / Tolak Revisi ----------------------------------------------------
+def request(doc, reason: str | None, notify) -> dict:
+	"""The team's "Ajukan Revisi" on a finished order: a request, not an edit.
+
+	Refused on an invoiced order — neither way back is open there, so an accepted request
+	would only sit as "Revisi Diminta" with nothing anybody could do about it.
+	``notify(name, reason=...)`` rings the desk that acts on it.
+	"""
+	if not is_finished(doc):
+		frappe.throw(_("Hanya order yang sudah selesai yang bisa diajukan revisi."))
+	_guard_branch(doc)
+	invoice = invoice_of(doc)
+	if invoice:
+		frappe.throw(_(
+			"Order ini sudah diinvoice ({0}). Revisi baru bisa diajukan setelah invoice dibatalkan "
+			"— hubungi Admin Ops."
+		).format(invoice), title=_("Order Terkunci"))
+	reason = (reason or "").strip()
+	user = frappe.session.user
+	note = _("Permintaan revisi oleh {0}").format(user) + (": " + reason if reason else "")
+	log_doc_note(doc.doctype, doc.name, note)
+	# Raw set_value: the order is finished (submitted, or a locked Completed M&R).
+	frappe.db.set_value(
+		doc.doctype, doc.name,
+		{"revision_requested": 1, "revision_note": note, "revision_requested_by": user},
+		update_modified=False,
+	)
+	return {"success": True, "notified": notify(doc.name, reason=reason), "name": doc.name}
+
+
+@frappe.whitelist(methods=["POST"])
+def reject(doctype: str, name: str, reason: str | None = None) -> dict:
+	""""Tolak Revisi": answer a request with a no, and say why — to the one who asked."""
+	doc = frappe.get_doc(doctype, name)
+	if not has_right(doctype):
+		frappe.throw(_("Anda tidak berwenang menolak revisi."), frappe.PermissionError)
+	_guard_branch(doc)
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("Alasan penolakan wajib diisi."))
+	if not cint(doc.get("revision_requested")):
+		frappe.throw(_("Tidak ada permintaan revisi pada order ini."))
+	log_doc_note(doctype, name, _("Revisi ditolak oleh {0}: {1}").format(frappe.session.user, reason))
+	close_request(doc, done=False, reason=reason)
+	return {"name": name, "revision_requested": 0}
+
+
+def close_request(doc, done: bool, reason: str | None = None) -> None:
+	user = frappe.db.get_value(doc.doctype, doc.name, "revision_requested_by")
+	frappe.db.set_value(
+		doc.doctype, doc.name,
+		{"revision_requested": 0, "revision_note": None, "revision_requested_by": None},
+		update_modified=False,
+	)
+	if user:
+		from container_depot.container_depot.notify import notify_revision_answered
+
+		notify_revision_answered(doc, user, _spec(doc.doctype), done=done, reason=reason)

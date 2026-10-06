@@ -763,14 +763,20 @@ export const labels = {
 	eirReqRevisionReason: "Alasan revisi (opsional)", // Revision reason
 	eirReqRevisionSend: "Kirim Permintaan", // Send request
 	eirReqRevisionSent: "Permintaan revisi terkirim ke Admin Ops", // Sent toast
-	// Revisi Data — an older EIR Admin Ops opened for correction in place
-	eirRevisionEdit: "Revisi Data", // Open the form in revision mode
-	eirRevisionBanner: "Revisi Data — EIR ini dikoreksi di tempat. Status tank dan dokumen lain tidak ikut berubah.",
-	eirRevisionSave: "Simpan Revisi", // Save + close the revision
-	eirRevisionHint: "Menyimpan koreksi dan menutup revisi.",
-	eirRevisionConfirm: "Simpan koreksi dan tutup revisi EIR ini?",
-	eirRevisionSaved: "Revisi tersimpan", // Saved toast
-	eirRevisionLocked: "Tidak bisa direvisi: storage kunjungan ini sudah diinvoice ({inv}).", // {inv} = invoice
+	// Revisi Data — a finished order corrected in place (shared by EIR, Cleaning, M&R)
+	revisionEdit: "Revisi Data", // Open the form in revision mode
+	revisionBanner: "Revisi Data — order ini dikoreksi di tempat. Status order dan dokumen lain tidak ikut berubah.",
+	revisionSave: "Simpan Revisi", // Save the correction
+	revisionHint: "Langsung tersimpan — tidak ada status sedang direvisi.",
+	revisionConfirm: "Simpan koreksi ini? Status order dan dokumen lain tidak ikut berubah.",
+	revisionSaved: "Revisi tersimpan", // Saved toast
+	revisionLocked: "Tidak bisa direvisi: order ini sudah diinvoice ({inv}).", // {inv} = invoice
+	revisionRequested: "Revisi diminta", // A pending request, followed by its note
+	revisionReject: "Tolak Revisi", // Admin Ops turns a request down
+	revisionRejectHint: "Alasannya dikirim ke yang mengajukan.",
+	revisionRejectReason: "Alasan penolakan (wajib)",
+	revisionRejectSend: "Tolak", // Confirm the rejection
+	revisionRejected: "Revisi ditolak", // Rejected toast
 	// Withdraw a Pending-Review EIR back to Draft (operator fixes it themselves)
 	eirWithdrawReview: "Tarik & Perbaiki", // Withdraw from review + edit
 	eirWithdrawReviewHint: "Tarik EIR ini dari antrean review agar bisa diperbaiki, lalu kirim ulang.",

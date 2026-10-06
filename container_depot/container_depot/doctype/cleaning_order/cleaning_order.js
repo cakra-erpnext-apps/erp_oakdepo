@@ -43,26 +43,15 @@ frappe.ui.form.on('Cleaning Order', {
 		// "Minta Cek Letak": tank ini masuk antrean cek letak di PWA. Di sinilah pertanyaan
 		// "tank-nya di mana" benar-benar muncul — saat order yang memegangnya dibuka.
 		container_depot.tank_position.button(frm);
-		// A revision request raised from the PWA, with its reason — otherwise the request
-		// reaches Admin Ops as a bell notification and leaves no trace on the order itself.
-		if (frm.doc.docstatus === 1 && frm.doc.revision_requested) {
-			frm.dashboard.add_comment(
-				__('Revisi diminta') + (frm.doc.revision_note ? ': ' + frm.doc.revision_note : ''),
-				'orange',
-				true,
-			);
+		// The two ways back into a submitted order. Kembalikan ke Draft undoes the submit (the
+		// parts go back too) — the only way back to work, since Frappe's own Cancel is gone
+		// (public/js/cancel_button.js), so everyone holding the menu (write) gets it. Revisi Data
+		// corrects it in place, and Tolak Revisi answers a request from the PWA — both Admin Ops
+		// (container_depot.revision). Neither once the order is invoiced.
+		if (frm.doc.docstatus === 1 && !frm.doc.sales_invoice && frappe.perm.has_perm(frm.doctype, 0, 'write')) {
+			frm.add_custom_button(__('Kembalikan ke Draft'), () => revert_to_draft(frm));
 		}
-		// The other half of the PWA's "Ajukan Revisi": the request only notifies: THIS is
-		// where Admin Ops acts on it. Also offered without a request — Admin Ops may spot the
-		// mistake themselves. It is the ONLY way back from a submitted order — Frappe's own
-		// Cancel is gone (public/js/cancel_button.js) — so everyone holding the menu (write)
-		// gets it.
-		if (frm.doc.docstatus === 1 && frappe.perm.has_perm(frm.doctype, 0, 'write')) {
-			frm.add_custom_button(
-				frm.doc.revision_requested ? __('Setujui Revisi') : __('Kembalikan ke Draft'),
-				() => revert_to_draft(frm),
-			).addClass(frm.doc.revision_requested ? 'btn-primary' : '');
-		}
+		container_depot.revision.setup(frm, { locked: CLEANING_REVISION_LOCKED });
 		// Cancel, the same red button every depot form has — drafts only; a submitted order
 		// goes back to Draft first (before_cancel refuses it). Frappe's "Discard" is refused
 		// by the server too (before_discard), so this is the one way to end a draft.
@@ -175,7 +164,13 @@ frappe.ui.form.on('Cleaning Order', {
 	},
 });
 
-// "Setujui Revisi" / "Kembalikan ke Draft" — flip a submitted order back to an editable
+// Mirrors cleaning.REVISION_LOCKED — what a revision may not change.
+const CLEANING_REVISION_LOCKED = [
+	'container', 'depot', 'inspection', 'container_booking', 'status', 'approval_status',
+	'order_id', 'sales_invoice', 'stock_entry', 'created_by', 'is_recleaning',
+];
+
+// "Kembalikan ke Draft" — flip a submitted order back to an editable
 // draft (In_Progress), so it returns to the operator's PWA worklist and goes through review
 // again. The server refuses if the order is already on an invoice.
 function revert_to_draft(frm) {

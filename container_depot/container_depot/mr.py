@@ -721,10 +721,11 @@ def get_mr_order_detail(repair_order) -> dict:
 		# record of the job, and a repair with no dates reads as one that never happened.
 		"start_date": str(ro.start_date) if ro.start_date else None,
 		"completion_date": str(ro.completion_date) if ro.completion_date else None,
-		# A standing "buka lagi" request, so the PWA shows the reason instead of offering the
-		# button a second time.
-		"reopen_requested": cint(ro.reopen_requested),
-		"reopen_note": ro.reopen_note,
+		# A standing revision request, so the PWA shows the reason instead of offering the
+		# button a second time — and Revisi Data / Tolak for Admin Ops (revision.state).
+		"revision_requested": cint(ro.revision_requested),
+		"revision_note": ro.revision_note,
+		"revision": _revision_state(ro),
 		# Whether reopening is still free. Once billed it is an accounting decision, and a
 		# button that always throws is worse than no button.
 		"billing_status": ro.billing_status,
@@ -1032,20 +1033,67 @@ def _assert_not_billed(ro) -> None:
 		)
 
 
-def request_revision(repair_order, reason=None) -> dict:
-	"""The team asks Admin Ops to open a CLOSED M&R again ("Ajukan Revisi" in the PWA).
+# --- Revisi Data hooks (revision.py) ---------------------------------------------------
+# What a revision may not change: the tank and the job, where it stands, and what the system
+# and the billing wrote. completion_date stays correctable — a Periodic Test's test date then
+# follows it (``revision_apply``).
+REVISION_LOCKED = (
+	"container", "depot", "job_type", "status", "repair_order_id", "inspection",
+	"container_booking", "billing_status", "sales_invoice", "stock_entry", "requested_on",
+	"decided_on", "decided_by", "revision_no", "replaced_test_date",
+)
 
-	Mirrors ``cleaning.request_revision``: a closed order cannot be edited from the PWA, so
-	this raises a REQUEST rather than touching the work — an audit note on the timeline, a
-	flag the Desk shows with its reason, and a notification to Admin Ops. Reopening stays a
-	human decision on the Desk side (:func:`reopen_completed`).
+
+def _revision_state(ro) -> dict:
+	from container_depot.container_depot import revision
+
+	return revision.state(ro)
+
+
+def revision_invoice(ro) -> str | None:
+	if ro.get("sales_invoice"):
+		return ro.sales_invoice
+	billing = ro.get("billing_status") or "Unbilled"
+	return None if billing == "Unbilled" else _(billing)
+
+
+def _parts_key(ro) -> list:
+	out = []
+	for r in ro.get("used_items") or []:
+		if (r.get("decision") or "Pending") == "Rejected" or not r.item or flt(r.quantity) <= 0:
+			continue
+		if frappe.db.get_value("Item", r.item, "is_stock_item"):
+			out.append((r.item, flt(r.quantity), row_warehouse(ro, r) or ""))
+	return sorted(out)
+
+
+def revision_apply(ro, before) -> None:
+	"""Inside a Revisi Data save of a closed M&R. Prices are redone by ``before_save`` as on
+	any save. A changed PART line is issued again — the old Material Issue cancelled, a new one
+	for what the order now says, refused (and the whole save with it) when the gudang cannot
+	cover it (user: "boleh ubah apapun asal stoknya tersedia"). A moved completion date on a
+	Periodic Test takes the tank's test date along."""
+	if _parts_key(ro) != _parts_key(before):
+		return_parts_stock(ro)
+		assert_stock_available(ro)
+		ro.stock_entry = _issue_parts_stock(ro)
+	if str(ro.get("completion_date") or "") != str(before.get("completion_date") or ""):
+		ro.restore_test_date(before)
+
+
+def request_revision(repair_order, reason=None) -> dict:
+	"""The team asks Admin Ops to correct a CLOSED M&R ("Ajukan Revisi" in the PWA).
+
+	A request, not an edit — the shared flow in ``revision.request``, which also refuses a
+	billed order. Admin Ops answers with Revisi Data, Buka Lagi (:func:`reopen_completed`) or
+	Tolak Revisi.
 
 	Only from Completed. A job still in flight does not need asking: the team can pull it back
 	themselves (``withdraw_review``), and offering both would make the cheap, permissionless
 	route look like the expensive one.
 	"""
-	from container_depot.container_depot import notify as _notify
-	from container_depot.container_depot.container_activity import log_doc_note
+	from container_depot.container_depot import revision
+	from container_depot.container_depot.notify import notify_repair_revision_requested
 
 	if not repair_order:
 		frappe.throw(_("repair_order is required."))
@@ -1055,25 +1103,8 @@ def request_revision(repair_order, reason=None) -> dict:
 		frappe.throw(
 			_("Hanya M&R yang sudah selesai yang bisa diajukan revisi (status: {0}).").format(ro.status)
 		)
-	_assert_not_billed(ro)
-
-	reason = _clean(reason)
-	user = frappe.session.user
-	note = _("Permintaan buka kembali M&R oleh {0}").format(user)
-	if reason:
-		note += ": " + reason
-	# Best-effort audit trail — the notification is what carries the request, so a
-	# comment-permission hiccup must not fail it.
-	log_doc_note("Repair Order", ro.name, note)
-	frappe.db.set_value(
-		"Repair Order", ro.name,
-		{"reopen_requested": 1, "reopen_note": note},
-		update_modified=False,
-	)
-	from container_depot.container_depot.notify import notify_repair_revision_requested
-
-	sent = notify_repair_revision_requested(ro.name, reason=reason)
-	return {"success": True, "notified": sent, "repair_order": ro.name, "status": ro.status}
+	out = revision.request(ro, reason, notify_repair_revision_requested)
+	return {**out, "repair_order": ro.name, "status": ro.status}
 
 
 def reopen_completed(repair_order, note=None) -> dict:
@@ -1101,14 +1132,20 @@ def reopen_completed(repair_order, note=None) -> dict:
 	if note:
 		msg += ": " + note
 	ro.status = "In Progress"
+	# A Periodic Test's completion was the tank's new test date; the completion is undone, so
+	# is the date it wrote (RepairOrder.restore_test_date).
+	ro.restore_test_date(ro)
 	# The order is open again, so the completion never happened. Left standing it would print
 	# on the record as a job that finished before it was worked.
 	ro.completion_date = None
-	ro.reopen_requested = 0
-	ro.reopen_note = None
 	ro.flags.oak_reopen = True
 	ro.save()
 	log_doc_note("Repair Order", ro.name, msg)
+	# A pending Ajukan Revisi is answered by this — tell whoever asked.
+	if cint(ro.get("revision_requested")):
+		from container_depot.container_depot import revision
+
+		revision.close_request(ro, done=True)
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 
@@ -1216,8 +1253,9 @@ def finalize_repair(repair_order):
 	ro.status = "Completed"
 	# A standing request asked for exactly this round of work; it has been actioned and the
 	# order is closed again, so the badge comes off rather than following it into history.
-	ro.reopen_requested = 0
-	ro.reopen_note = None
+	ro.revision_requested = 0
+	ro.revision_note = None
+	ro.revision_requested_by = None
 	if not ro.completion_date:
 		ro.completion_date = now_datetime()
 	if not ro.start_date:
@@ -1319,12 +1357,54 @@ def _clean(value):
 	return ((value or "").strip() or None) if isinstance(value, str) else (value or None)
 
 
-def _apply_used_items(ro, used_items) -> None:
+def _save_revision(ro, used_items, work_photos, technician, reff_doc, remarks) -> dict:
+	from container_depot.container_depot import revision
+
+	revision.assert_can_revise(ro)
+	if used_items is not None:
+		_apply_used_items(ro, used_items, keep=True)
+		_assert_warehouses_in_user_branch(ro)
+	if work_photos is not None:
+		_apply_work_photos(ro, work_photos)
+	if technician is not None:
+		ro.technician = _clean(technician)
+	if reff_doc is not None:
+		ro.reff_doc = reff_doc
+	if remarks is not None:
+		ro.remarks = remarks
+	ro.flags.revision = True
+	ro.save()
+	return {
+		"success": True, "name": ro.name, "repair_order_id": ro.repair_order_id, "status": ro.status,
+		"total_cost": ro.total_cost, "stock_entry": ro.get("stock_entry"), "revision": 1,
+	}
+
+
+def _apply_used_items(ro, used_items, keep=False) -> None:
+	"""Replace the Used Items with what the caller sent.
+
+	``keep`` (a revision of a closed order) carries each line's existing row over — its agreed
+	price, its decision — matched by item in order, so correcting a quantity does not re-price
+	the line from today's contract."""
+	old = {}
+	for r in (ro.get("used_items") or []) if keep else []:
+		old.setdefault(r.item, []).append(r)
 	rows = []
 	for u in _coerce_list(used_items):
 		item = _clean(u.get("item"))
 		if not item:
 			continue  # a used-item line is meaningless without an Item
+		if old.get(item):
+			row = old[item].pop(0).as_dict()
+			for k in ("name", "idx", "creation", "modified", "owner", "modified_by", "parent", "parentfield", "parenttype"):
+				row.pop(k, None)
+			row.update({
+				"quantity": flt(u.get("quantity")) or 1,
+				"warehouse": _clean(u.get("warehouse")),
+				"remark": _clean(u.get("remark")),
+			})
+			rows.append(row)
+			continue
 		rows.append({
 			"item": item,
 			"quantity": flt(u.get("quantity")) or 1,
@@ -1550,6 +1630,7 @@ def save_mr_order(
 	reff_doc=None,
 	remarks=None,
 	submit=False,
+	revise=False,
 ) -> dict:
 	"""Save the M&R's Used Items (each with its own gudang) and its evidence photos and, when
 	``submit`` is true, hand the finished job to Desk for review (In Progress -> **Pending
@@ -1565,10 +1646,16 @@ def save_mr_order(
 	the job at all. Mirrors ``cleaning.save_cleaning_order``.
 
 	Used items may only be edited while Draft / Revision Requested; the copied ``damages`` are
-	read-only. Rates follow the owner's contract tariff (controller-computed)."""
+	read-only. Rates follow the owner's contract tariff (controller-computed).
+
+	``revise`` saves a COMPLETED order in place instead — Revisi Data from the PWA (see
+	``revision.py``): one save, the record only, by someone holding the right. Its lines keep
+	their agreed price; a changed part is issued again (:func:`revision_apply`)."""
 	if not repair_order:
 		frappe.throw(_("repair_order is required."))
 	ro = frappe.get_doc("Repair Order", repair_order)
+	if _as_bool(revise) and ro.status == "Completed":
+		return _save_revision(ro, used_items, work_photos, technician, reff_doc, remarks)
 	if ro.status in ("Completed", "Cancelled", "Rejected"):
 		frappe.throw(_("M&R sudah {0}.").format(ro.status), exc=AlreadySettled)
 	_guard_container_branch(ro.container)

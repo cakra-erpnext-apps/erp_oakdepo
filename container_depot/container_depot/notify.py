@@ -636,22 +636,22 @@ def notify_eir_revision_requested(inspection, reason=None):
 	)
 
 
-def notify_eir_revision_answered(doc, user, opened, reason=None):
-	"""Tell the operator who pressed Ajukan Revisi what Admin Ops made of it — them only.
+def notify_revision_answered(doc, user, spec, done, reason=None):
+	"""Tell whoever pressed Ajukan Revisi what became of it — them only (``revision.py``).
 
-	``opened``: the EIR is open for Revisi Data (the tap lands on it, ready to edit);
-	otherwise the request was turned down, and the reason travels in the subject.
+	``done``: the order was corrected (Revisi Data saved); otherwise the request was turned
+	down, and the reason travels in the subject.
 	"""
-	args = (doc.container_no or doc.container, frappe.session.user, reason)
-	if opened:
-		subject = lambda: _("Revisi EIR dibuka • {0} • oleh {1}").format(*args)
+	args = (spec["label"], doc.get("container_no") or doc.get("container") or doc.name, frappe.session.user, reason)
+	if done:
+		subject = lambda: _("Revisi {0} selesai • {1} • oleh {2}").format(*args)
 	else:
-		subject = lambda: _("Revisi EIR ditolak • {0} • oleh {1} — {2}").format(*args)
+		subject = lambda: _("Revisi {0} ditolak • {1} • oleh {2} — {3}").format(*args)
 	return notify(
-		doctype="Inspection",
+		doctype=doc.doctype,
 		name=doc.name,
 		subject=subject,
-		event_key="eir_revision_answered",
+		event_key=spec["answered"],
 		users=[user],
 	)
 

@@ -364,7 +364,7 @@ def mr_start(repair_order=None, request_id=None):
 @frappe.whitelist(methods=["POST"])
 def mr_order_save(
 	repair_order=None, used_items=None, work_photos=None, technician=None, reff_doc=None,
-	remarks=None, submit=False, request_id=None,
+	remarks=None, submit=False, revise=None, request_id=None,
 ):
 	"""POST /api/v1/ess/mr-order-save — save used items + fields. ``submit=1`` hands the
 	finished job to Desk for review (In Progress -> Pending Review); it does NOT close the
@@ -379,5 +379,5 @@ def mr_order_save(
 	_require_mr(repair_order)
 	return guarded(request_id, lambda: mr.save_mr_order(
 		repair_order=repair_order, used_items=used_items, work_photos=work_photos,
-		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit,
+		technician=technician, reff_doc=reff_doc, remarks=remarks, submit=submit, revise=revise,
 	))

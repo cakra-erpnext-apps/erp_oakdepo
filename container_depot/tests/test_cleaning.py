@@ -346,7 +346,57 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		# Open work again -> the tank is not free to leave.
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 
-	def test_cancel_ends_a_draft_and_bare_discard_is_refused(self):
+	def _submitted(self, cno):
+		c = self._container(cno, status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.start_cleaning(co)
+		cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		frappe.get_doc("Cleaning Order", co).submit()
+		return c, co
+
+	def test_revisi_data_corrects_a_submitted_order_in_place(self):
+		"""One save on the finished order — still Completed, the tank left as it was — and it
+		answers the request that asked for it. The PWA does the same with ``revise``."""
+		from container_depot.container_depot import revision
+
+		c, co = self._submitted("CLNRVSD0001")
+		tank = frappe.db.get_value("Container", c, "status")
+		cleaning.request_revision(co, reason="catatan salah")
+
+		doc = frappe.get_doc("Cleaning Order", co)
+		doc.remarks = "dikoreksi"
+		revision.save_revision(frappe.as_json(doc.as_dict()))
+		row = frappe.db.get_value(
+			"Cleaning Order", co, ["docstatus", "status", "remarks", "revision_requested"], as_dict=True
+		)
+		self.assertEqual((row.docstatus, row.status, row.remarks, row.revision_requested), (1, "Completed", "dikoreksi", 0))
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), tank)
+
+		cleaning.save_cleaning_order(cleaning_order=co, remarks="dari pwa", revise=1)
+		self.assertEqual(frappe.db.get_value("Cleaning Order", co, "remarks"), "dari pwa")
+		with self.assertRaises(AlreadySettled):
+			cleaning.save_cleaning_order(cleaning_order=co, remarks="tanpa revise")
+
+		doc = frappe.get_doc("Cleaning Order", co)
+		doc.order_id = "CO-LAIN"
+		with self.assertRaisesRegex(frappe.ValidationError, "tidak boleh mengubah"):
+			revision.save_revision(frappe.as_json(doc.as_dict()))
+
+	def test_an_invoiced_order_is_neither_revised_nor_requested(self):
+		from container_depot.container_depot import revision
+
+		_c, co = self._submitted("CLNRVSD0002")
+		frappe.db.set_value("Cleaning Order", co, "sales_invoice", "SINV-RVSD-0001")
+		doc = frappe.get_doc("Cleaning Order", co)
+		self.assertEqual(revision.state(doc)["locked"], "SINV-RVSD-0001")
+		doc.remarks = "telat"
+		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
+			revision.save_revision(frappe.as_json(doc.as_dict()))
+		with self.assertRaisesRegex(frappe.ValidationError, "diinvoice"):
+			cleaning.request_revision(co, reason="terlambat")
+		frappe.db.set_value("Cleaning Order", co, "sales_invoice", None)
+
+
 		"""One way to end an order, same as the M&R: the Cancel button. A draft goes to
 		docstatus 2 / Cancelled and lets the tank go; Frappe's own Discard is refused."""
 		c = self._container("CLNCNCL0001", status="In_Depot", depot="OAK1")

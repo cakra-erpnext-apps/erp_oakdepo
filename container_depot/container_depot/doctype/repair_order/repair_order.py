@@ -36,7 +36,14 @@ class RepairOrder(Document):
 	_FINAL_STATUSES = ("Completed", "Rejected", "Cancelled")
 
 	def validate(self):
-		self._guard_final_status()
+		# Revisi Data — a corrected Completed order, saved in place (revision.py). It is the one
+		# write the final-status lock lets through, and it answers to revision.check instead.
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.check(self)
+		else:
+			self._guard_final_status()
 		# A retired tank takes no new work (container_status.assert_container_active);
 		# only checked when the link is set or moved, so a finished order stays editable
 		# after its tank leaves the fleet.
@@ -53,6 +60,11 @@ class RepairOrder(Document):
 		# Selalu tampilkan nilai master terbaru, bukan salinan yang tersimpan di order.
 		if self.job_type == "Periodic Test" and self.container:
 			self.last_test_date = frappe.db.get_value("Container", self.container, "last_test_date")
+		# Revisi Data / Tolak Revisi on the Desk form (public/js/revision.js).
+		if self.status == "Completed":
+			from container_depot.container_depot import revision
+
+			self.set_onload("revision_state", revision.state(self))
 
 	def _push_last_test_date(self):
 		"""Tanggal uji yang diketik di form ditulis ke master tank (uji di vendor / depo lain).
@@ -262,6 +274,10 @@ class RepairOrder(Document):
 		recompute_availability(self.container)
 		self._revoke_notifications_if_cancelled()
 		self._stamp_last_test_date()
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.after(self)
 
 	def _stamp_last_test_date(self):
 		"""Uji berkala yang SELESAI di depo ini adalah tanggal uji baru tank itu.
@@ -290,6 +306,8 @@ class RepairOrder(Document):
 		current = frappe.db.get_value("Container", self.container, "last_test_date")
 		if current and getdate(current) >= tested:
 			return
+		# Remembered so undoing this completion can put it back (``restore_test_date``).
+		self.db_set("replaced_test_date", current, update_modified=False)
 		# ``db.set_value``, bukan doc.save: Container disimpan di tengah save Repair Order
 		# ini, dan menyimpan master di sana memanggil balik recompute_availability. Karena
 		# itu tidak ada baris Version — catatan timeline-nya yang menggantikan.
@@ -298,6 +316,32 @@ class RepairOrder(Document):
 			"Container", self.container,
 			frappe._("Tgl. Tes Terakhir diperbarui ke {0} dari uji berkala {1}").format(
 				frappe.format(tested, "Date"), self.name
+			),
+		)
+
+	def restore_test_date(self, completed):
+		"""Undo what ``_stamp_last_test_date`` wrote for ``completed`` (this order as it stood
+		when it was Completed) — on Buka Lagi, or when Revisi Data moves the completion date.
+
+		Only while the tank still carries exactly that date: a later test, or a hand
+		correction since, is newer news and stays.
+		"""
+		if self.job_type != "Periodic Test" or not (self.container and completed.get("completion_date")):
+			return
+		from frappe.utils import getdate
+
+		from container_depot.container_depot.container_activity import log_doc_note
+
+		current = frappe.db.get_value("Container", self.container, "last_test_date")
+		if not current or getdate(current) != getdate(completed.completion_date):
+			return
+		previous = self.get("replaced_test_date") or None
+		frappe.db.set_value("Container", self.container, "last_test_date", previous)
+		self.replaced_test_date = None
+		log_doc_note(
+			"Container", self.container,
+			frappe._("Tgl. Tes Terakhir dikembalikan ke {0} — penyelesaian uji berkala {1} dibatalkan").format(
+				frappe.format(previous, "Date") if previous else "—", self.name
 			),
 		)
 

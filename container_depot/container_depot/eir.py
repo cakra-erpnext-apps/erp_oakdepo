@@ -1584,9 +1584,9 @@ def get_survey_interior_photos(inspection: str) -> list:
 	return survey_interior_photos(doc)
 
 
-def open_eir_out(inspection: str) -> dict:
+def open_eir_out(inspection: str, revise=None) -> dict:
 	"""Open a draft EIR-Out for editing (worklist → form) with its EIR-In comparison."""
-	payload = open_draft_by_name(inspection)
+	payload = open_draft_by_name(inspection, revise=revise)
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.inspection_type != "EIR-Out":
 		frappe.throw(_("{0} is not an EIR-Out.").format(inspection))
@@ -1736,8 +1736,12 @@ def save_draft(
 	fittings=None,
 	tank=None,
 	submit=False,
+	revise=False,
 ) -> dict:
 	"""Update an existing draft EIR — the PWA auto-save (and finalize) action.
+
+	``revise`` saves a SUBMITTED EIR in place instead — Revisi Data from the PWA (see
+	``revision.py``): one save, the record only, by someone holding the right.
 
 	The PWA owns the draft's checklist state, so ``damage_log`` + ``item_photos`` (and
 	the EIR-creator ``inspector_signature``) are replaced wholesale from the payload. The
@@ -1754,9 +1758,11 @@ def save_draft(
 	should not take the correction down with it.
 	"""
 	doc = frappe.get_doc("Inspection", inspection)
-	# Revisi Data: a submitted EIR Admin Ops opened for correction saves through here too —
-	# the record only, nothing outside it (see the end of this module).
-	revising = doc.docstatus == 1 and cint(doc.get("revision_open"))
+	revising = _as_bool(revise) and doc.docstatus == 1
+	if revising:
+		from container_depot.container_depot import revision
+
+		revision.assert_can_revise(doc)
 	if doc.docstatus != 0 and not revising:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	# Branch, on the save as well as on the open. It used to lean on the claim gate that sat
@@ -1818,20 +1824,15 @@ def save_draft(
 		doc.set("fittings", _build_fitting_rows(_coerce_lines(fittings), _fitting_items()))
 
 	if revising:
-		# Simpan Revisi closes it; an auto-save keeps it open. Closed in the same save — the
-		# controller reads revision_open from the database, so this save still passes as one.
-		if submit:
-			doc.update(_close_revision_values())
+		doc.flags.revision = True
 		doc.save()  # update after submit — Inspection.before_update_after_submit polices it
-		if submit:
-			log_doc_note("Inspection", doc.name, _("Revisi Data disimpan dan ditutup oleh {0}.").format(frappe.session.user))
 		return {
 			"success": True,
 			"inspection": doc.name,
 			"docstatus": doc.docstatus,
 			"status": doc.status,
 			"pending_review": False,
-			"revision": 0 if submit else 1,
+			"revision": 1,
 			"has_damage": doc.has_damage,
 			"damage_rows": len(damage_rows),
 			"photo_rows": len(photo_rows),
@@ -2408,7 +2409,7 @@ def list_eirs(status=None, search=None, inspection_type=None, depot=None, princi
 	}
 
 
-def open_draft_by_name(inspection: str) -> dict:
+def open_draft_by_name(inspection: str, revise=None) -> dict:
 	"""Open an existing draft EIR by name and return it with the master-derived header.
 
 	The PWA worklist picks a pending (auto-created) EIR from ``list_pending_eirs`` and this
@@ -2420,13 +2421,17 @@ def open_draft_by_name(inspection: str) -> dict:
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.inspection_type not in ("EIR-In", "EIR-Out"):
 		frappe.throw(_("{0} is not an EIR.").format(inspection))
-	revising = doc.docstatus == 1 and cint(doc.get("revision_open"))
+	# Revisi Data: the same form, editing a submitted EIR in place (see revision.py).
+	revising = _as_bool(revise) and doc.docstatus == 1
+	if revising:
+		from container_depot.container_depot import revision
+
+		revision.assert_can_revise(doc)
 	if doc.docstatus != 0 and not revising:
 		frappe.throw(_("EIR {0} is no longer a draft.").format(inspection), exc=AlreadySettled)
 	_guard_container_branch(doc.container)
 	header = prefill(container=doc.container)
 	payload = _draft_payload(doc, header)
-	# Revisi Data: the same form, editing a submitted EIR in place (see the end of this module).
 	payload["revision"] = 1 if revising else 0
 	return payload
 
@@ -2505,9 +2510,8 @@ def view_eir(inspection: str) -> dict:
 		"docstatus": doc.docstatus,
 		"revision_requested": 1 if doc.get("revision_requested") else 0,
 		"revision_note": doc.get("revision_note"),
-		"revision_open": 1 if doc.get("revision_open") else 0,
-		# The invoice that froze this EIR — the PWA shows it in place of Ajukan Revisi.
-		"revision_locked": storage_invoice_lock(doc) if doc.docstatus == 1 else None,
+		# Revisi Data / Ajukan Revisi / Tolak — see revision.state.
+		"revision": revision_state(doc),
 		"eir_date": str(doc.eir_date) if doc.eir_date else None,
 		"depot": doc.depot,
 		"reff_doc": doc.get("reff_doc"),
@@ -2540,50 +2544,23 @@ def view_eir(inspection: str) -> dict:
 
 
 def request_revision(inspection: str, reason: str | None = None) -> dict:
-	"""Operator asks Admin Ops to reopen a submitted EIR for edit/revision.
+	"""Operator asks Admin Ops to correct a submitted EIR ("Ajukan Revisi").
 
-	A submitted EIR can't be edited in the PWA, so this raises a request instead of
-	touching the record: it drops an audit comment on the EIR timeline and notifies Admin
-	Ops (+ ops oversight) in the container's branch via a Notification Log. Reopening
-	itself stays a human decision on the Desk side (``revert_to_draft``).
+	A request, not an edit — the shared flow in ``revision.request``: refused on an invoiced
+	visit, a timeline note, the "Revisi Diminta" flag with its reason, and a notification to
+	Admin Ops (+ ops oversight) in the container's branch. Admin Ops answers with Revisi Data,
+	Kembalikan ke Draft, or Tolak Revisi.
 	"""
 	from container_depot.container_depot import notify as _notify
+	from container_depot.container_depot import revision
 
 	if not inspection:
 		frappe.throw(_("inspection is required."))
 	doc = frappe.get_doc("Inspection", inspection)
 	if doc.inspection_type not in ("EIR-In", "EIR-Out"):
 		frappe.throw(_("{0} is not an EIR.").format(inspection))
-	if doc.docstatus != 1:
-		frappe.throw(_("Hanya EIR yang sudah selesai (submitted) yang bisa diajukan revisi."))
-	_guard_container_branch(doc.container)
-	# Refused here rather than left for Admin Ops: neither way back is open on a billed
-	# visit, so an accepted request would only sit as "Revisi Diminta" with nothing to do.
-	invoice = storage_invoice_lock(doc)
-	if invoice:
-		frappe.throw(_(
-			"Storage kunjungan ini sudah diinvoice ({0}). Revisi baru bisa diajukan setelah "
-			"invoice dibatalkan — hubungi Admin Ops."
-		).format(invoice), title=_("EIR Terkunci"))
-
-	reason = (reason or "").strip()
-	user = frappe.session.user
-	note = _("Permintaan revisi EIR oleh {0}").format(user)
-	if reason:
-		note += ": " + reason
-	# Audit trail on the EIR timeline (visible in Desk). Best-effort — the notification
-	# is what matters, so a comment-permission hiccup must not fail the request.
-	log_doc_note("Inspection", doc.name, note)
-
-	# Mark the EIR so the Desk list shows a "Revisi Diminta" indicator + the reason
-	# (cleared on revert_to_draft). Raw set_value — the doc is submitted; both fields are
-	# allow_on_submit.
-	frappe.db.set_value(
-		"Inspection", doc.name, {"revision_requested": 1, "revision_note": note, "revision_requested_by": user},
-	)
-
-	sent = _notify.notify_eir_revision_requested(doc.name, reason=reason)
-	return {"success": True, "notified": sent, "inspection": doc.name}
+	out = revision.request(doc, reason, _notify.notify_eir_revision_requested)
+	return {**out, "inspection": doc.name}
 
 
 @frappe.whitelist()
@@ -2633,10 +2610,12 @@ def revert_to_draft(name: str) -> dict:
 
 	# Flip back to an editable draft (same record — editable in the PWA + Desk). Clear any
 	# pending revision request now that it has been actioned.
-	frappe.db.set_value(
-		"Inspection", doc.name,
-		{"docstatus": 0, "status": "Draft", "revision_requested": 0, "revision_note": None},
-	)
+	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": "Draft"})
+	# A pending Ajukan Revisi is answered by this — tell whoever asked.
+	if cint(doc.get("revision_requested")):
+		from container_depot.container_depot import revision
+
+		revision.close_request(doc, done=True)
 	# A backwards docstatus flip can never go through doc.save(), so no Version row is
 	# written — put it on the EIR's timeline by hand.
 	log_doc_note("Inspection", doc.name, _(
@@ -2747,14 +2726,14 @@ def _restore_container_on_revert(doc) -> None:
 # ---------------------------------------------------------------------------
 # `revert_to_draft` undoes a submit from the EIR's own snapshot, which is only true while
 # nothing has moved the tank since: revert an EIR-In after its EIR-Out and the tank that left
-# reads In_Depot again. So an OLD EIR is not reverted, it is revised — edited in place, still
-# Submitted, with no effect on the tank, the gate, the bon, the booking or the orders it filed
-# (user, 2026-10-06). An old EIR is never turned back into a draft either: a draft EIR is what
-# the PWA, the provisioning dedup and the worklists all read as the live EIR of the tank's
-# CURRENT visit.
+# reads In_Depot again. So Kembalikan ke Draft is only for the newest EIR; any EIR can instead
+# be corrected in place through Revisi Data (container_depot/revision.py) — still Submitted,
+# with no effect on the tank, the gate, the bon, the booking or the orders it filed (user,
+# 2026-10-06). An old EIR is never turned back into a draft: a draft EIR is what the PWA, the
+# provisioning dedup and the worklists all read as the live EIR of the tank's CURRENT visit.
 #
-# Both ways back stop at the invoice: once the visit's storage is billed, the EIR is frozen
-# until that invoice is cancelled or the visit is taken off it.
+# Both stop at the invoice: once the visit's storage is billed, the EIR is frozen until that
+# invoice is cancelled or the visit is taken off it.
 
 # What a revision may not change: what the EIR is (tank, direction, the paper it answers) and
 # what the system wrote at submit. Everything else is the survey's own record.
@@ -2822,39 +2801,38 @@ def locked_message(invoice) -> str:
 	).format(invoice)
 
 
+def revision_invoice(doc) -> str | None:
+	"""``revision.py`` hook: an EIR is frozen by its visit's storage invoice."""
+	return storage_invoice_lock(doc)
+
+
+def revision_apply(doc, before) -> None:
+	"""``revision.py`` hook: the derived bits ``validate`` would redo on a draft save — a
+	submitted document's update skips validate."""
+	doc.sync_has_damage()
+	doc.drop_empty_photo_rows()
+
+
 def revision_state(doc) -> dict:
-	"""What the Desk and the PWA may offer on a submitted EIR: ``{newer, locked, open}``."""
+	"""What the Desk and the PWA may offer on a submitted EIR: ``revision.state`` plus
+	``newer`` — Kembalikan ke Draft is only for the newest EIR on the tank."""
+	from container_depot.container_depot import revision
+
 	if doc.docstatus != 1:
 		return {}
-	return {
-		"newer": newer_eir(doc),
-		"locked": storage_invoice_lock(doc),
-		"open": cint(doc.get("revision_open")),
-	}
+	return {**revision.state(doc), "newer": newer_eir(doc)}
 
 
 def check_update_after_submit(doc) -> None:
-	"""``Inspection.before_update_after_submit`` — the rules for editing a submitted EIR.
-
-	Read from the database, never from the payload: a client cannot open its own revision.
-	"""
+	"""``Inspection.before_update_after_submit`` — the rules for editing a submitted EIR:
+	a Revisi Data save (``revision.check``), and the date rule every edit answers to."""
 	before = doc.get_doc_before_save()
 	if not before:
 		return
-	if cint(frappe.db.get_value("Inspection", doc.name, "revision_open")):
-		# A revision opened before the bill went out does not outlive it.
-		invoice = storage_invoice_lock(before)
-		if invoice:
-			frappe.throw(locked_message(invoice), title=_("EIR Terkunci"))
-		changed = [f for f in REVISION_LOCKED if (doc.get(f) or None) != (before.get(f) or None)]
-		if changed:
-			frappe.throw(_("Revisi Data tidak boleh mengubah: {0}.").format(
-				", ".join(_(doc.meta.get_label(f)) for f in changed)
-			))
-		# The field rules are ours for the length of a revision — REVISION_LOCKED above.
-		doc.flags.ignore_validate_update_after_submit = True
-		doc.sync_has_damage()
-		doc.drop_empty_photo_rows()
+	if doc.flags.get("revision"):
+		from container_depot.container_depot import revision
+
+		revision.check(doc)
 	if str(doc.get("eir_date") or "") != str(before.get("eir_date") or ""):
 		_check_eir_date_change(before, doc)
 
@@ -2880,86 +2858,17 @@ def _check_eir_date_change(before, doc) -> None:
 
 
 def after_update_after_submit(doc) -> None:
-	"""``Inspection.on_update_after_submit`` — bring the storage ledger along at once.
+	"""``Inspection.on_update_after_submit`` — bring the storage ledger along at once, and
+	close out a Revisi Data.
 
-	It would heal on the next status change or the nightly sweep, but a bill run in between
-	would read the old date while the report already shows the new one.
+	The ledger would heal on the next status change or the nightly sweep, but a bill run in
+	between would read the old date while the report already shows the new one.
 	"""
 	if doc.inspection_type == "EIR-In" and doc.has_value_changed("eir_date"):
 		from container_depot import storage_charge
 
 		storage_charge.sync(doc.container, doc.get("container_no"))
+	if doc.flags.get("revision"):
+		from container_depot.container_depot import revision
 
-
-def _revision_doc(name: str):
-	doc = frappe.get_doc("Inspection", name)
-	# Same right as Kembalikan ke Draft: reopening a finished EIR is an Admin Ops call.
-	doc.check_permission("cancel")
-	if doc.docstatus != 1:
-		frappe.throw(_("Hanya EIR yang sudah disubmit yang bisa direvisi."))
-	return doc
-
-
-@frappe.whitelist(methods=["POST"])
-def open_revision(name: str) -> dict:
-	"""Desk "Revisi Data": open an OLD submitted EIR for correction, in place.
-
-	The newest EIR goes through Kembalikan ke Draft instead. Once open, the Desk form and the
-	PWA form both edit it; "Selesai Revisi" (or the PWA's Simpan Revisi) closes it.
-	"""
-	doc = _revision_doc(name)
-	if not newer_eir(doc):
-		frappe.throw(_("Ini EIR terbaru untuk tank ini — pakai Kembalikan ke Draft."))
-	invoice = storage_invoice_lock(doc)
-	if invoice:
-		frappe.throw(locked_message(invoice), title=_("EIR Terkunci"))
-	frappe.db.set_value("Inspection", doc.name, "revision_open", 1)
-	log_doc_note("Inspection", doc.name, _(
-		"Revisi Data dibuka oleh {0}. Status tank dan dokumen lain tidak ikut berubah."
-	).format(frappe.session.user))
-	_answer_requester(doc, opened=True)
-	return {"name": doc.name, "revision_open": 1}
-
-
-def _close_revision_values() -> dict:
-	return {"revision_open": 0, "revision_requested": 0, "revision_note": None, "revision_requested_by": None}
-
-
-@frappe.whitelist(methods=["POST"])
-def close_revision(name: str) -> dict:
-	"""Desk "Selesai Revisi": the correction is done — lock the EIR again."""
-	doc = _revision_doc(name)
-	if not cint(doc.get("revision_open")):
-		frappe.throw(_("EIR ini tidak sedang direvisi."))
-	frappe.db.set_value("Inspection", doc.name, _close_revision_values())
-	log_doc_note("Inspection", doc.name, _("Revisi Data ditutup oleh {0}.").format(frappe.session.user))
-	return {"name": doc.name, "revision_open": 0}
-
-
-@frappe.whitelist(methods=["POST"])
-def reject_revision(name: str, reason: str | None = None) -> dict:
-	"""Desk "Tolak Revisi": answer a revision request with a no, and say why.
-
-	Without it a request had no ending but a revert — and a request on a billed visit, or one
-	that made no sense, would sit on the list as "Revisi Diminta" for good.
-	"""
-	doc = _revision_doc(name)
-	reason = (reason or "").strip()
-	if not reason:
-		frappe.throw(_("Alasan penolakan wajib diisi."))
-	if not (cint(doc.get("revision_requested")) or cint(doc.get("revision_open"))):
-		frappe.throw(_("Tidak ada permintaan revisi pada EIR ini."))
-	frappe.db.set_value("Inspection", doc.name, _close_revision_values())
-	log_doc_note("Inspection", doc.name, _("Revisi ditolak oleh {0}: {1}").format(frappe.session.user, reason))
-	_answer_requester(doc, opened=False, reason=reason)
-	return {"name": doc.name, "revision_requested": 0, "revision_open": 0}
-
-
-def _answer_requester(doc, opened: bool, reason: str | None = None) -> None:
-	"""Tell whoever pressed Ajukan Revisi what became of it — them only."""
-	user = doc.get("revision_requested_by")
-	if not user:
-		return
-	from container_depot.container_depot.notify import notify_eir_revision_answered
-
-	notify_eir_revision_answered(doc, user, opened=opened, reason=reason)
+		revision.after(doc)

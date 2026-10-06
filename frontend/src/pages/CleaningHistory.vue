@@ -30,7 +30,7 @@
 			</div>
 		</template>
 
-		<template #detail="{ data }">
+		<template #detail="{ data, reload }">
 			<section class="oak-card space-y-3 p-4">
 				<div class="flex items-start justify-between gap-2">
 					<div class="min-w-0">
@@ -118,38 +118,16 @@
 				<p v-if="data.signed_by" class="text-xs text-gray-500">{{ data.signed_by }}</p>
 			</section>
 
-			<!-- A submitted order can't be edited from the PWA, so the operator asks Admin Ops
-			     to reopen it instead — same door the EIR Riwayat gives (eir_request_revision).
-			     One standing request is enough: once raised, the reason is shown instead of the
-			     button. -->
-			<section v-if="data.revision_requested" class="oak-card border-orange-200 bg-orange-50 space-y-1 p-4">
-				<p class="font-semibold text-orange-800">
-					<Icon name="rotate-ccw" :size="15" /> {{ labels.cleaningStatusRevision }}
-				</p>
-				<p v-if="data.revision_note" class="whitespace-pre-line text-sm text-orange-900">{{ data.revision_note }}</p>
-			</section>
-			<button
-				v-else-if="data.docstatus === 1 && revisionFor !== data.name"
-				type="button"
-				class="oak-btn oak-btn-secondary w-full py-2.5"
-				@click="openRevision(data.name)"
-			>
-				<Icon name="rotate-ccw" :size="16" /> {{ labels.cleaningReqRevision }}
-			</button>
-			<section v-else-if="revisionFor === data.name" class="oak-card space-y-2 p-4">
-				<p class="oak-section-title">{{ labels.cleaningReqRevision }}</p>
-				<p class="text-xs text-gray-400">{{ labels.cleaningReqRevisionHint }}</p>
-				<textarea v-model.trim="revisionReason" rows="2" :placeholder="labels.cleaningReqRevisionReason" class="oak-input"></textarea>
-				<div class="flex gap-2">
-					<button type="button" class="oak-btn oak-btn-primary px-3 py-2" :disabled="revisionRes.loading" @click="sendRevision(data.name)">
-						<Icon v-if="!revisionRes.loading" name="send" :size="16" />
-						{{ revisionRes.loading ? "…" : labels.cleaningReqRevisionSend }}
-					</button>
-					<button type="button" class="oak-btn oak-btn-secondary px-3 py-2" :disabled="revisionRes.loading" @click="revisionFor = ''">
-						{{ labels.cleaningBack }}
-					</button>
-				</div>
-			</section>
+			<!-- Ajukan Revisi / Revisi Data / Tolak Revisi — the shared shape (RevisionActions). -->
+			<RevisionActions
+				:state="data.revision"
+				doctype="Cleaning Order"
+				:name="data.name"
+				request-url="container_depot.ess.cleaning.cleaning_request_revision"
+				request-key="cleaning_order"
+				:edit-to="{ path: '/cleaning', query: { o: data.name, revisi: '1' } }"
+				@changed="reload"
+			/>
 
 			<!-- Pulling an order back out of review: the same withdraw the worklist offers on
 			     its review rows, repeated here because this detail is where an operator ends up
@@ -168,12 +146,12 @@
 </template>
 
 <script setup>
-import { ref } from "vue"
 import { createResource } from "frappe-ui"
 import { labels } from "@/utils/labels"
 import { pill, tone } from "@/utils/statusPill"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
+import RevisionActions from "@/components/RevisionActions.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
 import { photoSrc } from "@/data/send"
 import { openLightbox } from "@/utils/lightbox"
@@ -181,28 +159,6 @@ import { openLightbox } from "@/utils/lightbox"
 const fmtDate = (v) => (v ? String(v).slice(0, 10) : "—")
 // Timestamps lose their seconds — the minute is what a reader of the record needs.
 const fmtDateTime = (v) => (v ? String(v).slice(0, 16).replace("T", " ") : "")
-
-// Revision request: which order's reason box is open, its text, and the POST resource.
-// The request only notifies Admin Ops + flags the order — reopening stays their decision.
-const revisionFor = ref("")
-const revisionReason = ref("")
-function openRevision(name) {
-	revisionFor.value = name
-	revisionReason.value = ""
-}
-const revisionRes = createResource({
-	url: "container_depot.ess.cleaning.cleaning_request_revision",
-	method: "POST",
-	onSuccess: () => {
-		toast.success(labels.cleaningReqRevisionSent)
-		revisionFor.value = ""
-		revisionReason.value = ""
-	},
-	onError: (e) => toast.error(e?.messages?.[0] || e?.message || labels.error),
-})
-function sendRevision(name) {
-	revisionRes.submit({ cleaning_order: name, reason: revisionReason.value || undefined })
-}
 
 // Pending Review is reachable here even though the history LIST only carries finished
 // orders: the worklist links its review rows straight to this detail, and a raw

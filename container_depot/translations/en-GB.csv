@@ -448,5 +448,20 @@ Tanggal EIR wajib diisi.,The EIR date is required.
 Tanggal EIR harus di dalam kunjungan tank ini: {0} s/d {1}.,The EIR date must fall inside this tank's visit: {0} to {1}.
 sekarang,now
 Revisi Data tidak boleh mengubah: {0}.,A data revision may not change: {0}.
-Revisi EIR dibuka • {0} • oleh {1},EIR opened for revision • {0} • by {1}
-Revisi EIR ditolak • {0} • oleh {1} — {2},EIR revision rejected • {0} • by {1} — {2}
+Tank {0} sudah keluar depo — survey-nya tidak bisa dibuka lagi.,Tank {0} has already left the depot — its survey cannot be reopened.
+{0} tidak mendukung Revisi Data.,{0} does not support data revision.
+"Order ini sudah diinvoice ({0}). Batalkan invoice-nya dulu, atau keluarkan order ini dari invoice.","This order is already invoiced ({0}). Cancel the invoice first, or take this order off the invoice."
+Hanya order yang sudah selesai yang bisa direvisi.,Only a finished order can be revised.
+Anda tidak berwenang melakukan Revisi Data.,You are not allowed to revise data.
+Order Terkunci,Order Locked
+Revisi Data tidak mengubah status order.,A data revision does not change the order's status.
+Revisi Data oleh {0}.,Data revised by {0}.
+Hanya order yang sudah selesai yang bisa diajukan revisi.,A revision can only be requested on a finished order.
+Order ini sudah diinvoice ({0}). Revisi baru bisa diajukan setelah invoice dibatalkan — hubungi Admin Ops.,This order is already invoiced ({0}). A revision can only be requested once the invoice is cancelled — contact Admin Ops.
+Permintaan revisi oleh {0},Revision requested by {0}
+Anda tidak berwenang menolak revisi.,You are not allowed to reject a revision.
+Alasan penolakan wajib diisi.,A reason for rejecting is required.
+Tidak ada permintaan revisi pada order ini.,There is no revision request on this order.
+Revisi ditolak oleh {0}: {1},Revision rejected by {0}: {1}
+Revisi {0} selesai • {1} • oleh {2},{0} revised • {1} • by {2}
+Revisi {0} ditolak • {1} • oleh {2} — {3},{0} revision rejected • {1} • by {2} — {3}

@@ -65,7 +65,8 @@ function open_leak_photo_carousel(frm, cdn) {
 	const rows = (frm.doc.photos || []).filter((r) => r.photo);
 	if (!rows.length) return;
 	let idx = Math.max(0, rows.findIndex((r) => r.name === cdn));
-	// A submitted check is final — its photos and flags are the record (cancel + amend to redo).
+	// A submitted check is final — its photos and flags are the record. There is no way back
+	// from the Desk: cancel_button.js strips the native Cancel and amend_guard.js the Amend.
 	const editable = frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, "write");
 	// Guards the controls' own onchange while render() writes the next slide into them.
 	let syncing = false;

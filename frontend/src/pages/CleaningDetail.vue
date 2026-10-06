@@ -24,6 +24,11 @@
 		<template v-else-if="order">
 			<!-- Rekan yang menyentuhnya terakhir — di atas kartu, sebelum apa pun diisi. -->
 			<EditedBy :by="order.updated_by" :name="order.updated_by_name" :at="order.updated_on" />
+			<!-- Revisi Data: a finished order corrected in place — the operator must know this is
+			     not a running wash (container_depot/revision.py). -->
+			<p v-if="revising" class="oak-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+				{{ labels.revisionBanner }}
+			</p>
 			<section class="oak-card space-y-3 p-4">
 				<!-- Info yang sama persis dengan barisnya di list — satu komponen. -->
 				<CleaningOrderInfo :o="order" />
@@ -283,9 +288,9 @@
 				     payload, so a slow autosave must never hold the button hostage. -->
 				<button class="oak-btn oak-btn-primary w-full py-3" :disabled="submitting" @click="confirmComplete">
 					<Icon v-if="submitting" name="loader" :size="18" class="animate-spin" />
-					<span v-else>{{ labels.cleaningComplete }}</span>
+					<span v-else>{{ revising ? labels.revisionSave : labels.cleaningComplete }}</span>
 				</button>
-				<p class="text-center text-xs text-gray-400">{{ labels.cleaningCompleteHint }}</p>
+				<p class="text-center text-xs text-gray-400">{{ revising ? labels.revisionHint : labels.cleaningCompleteHint }}</p>
 			</template>
 		</template>
 	</div>
@@ -354,7 +359,16 @@ function withdrawReview(r) {
 
 // Started = the wash is running and the form is open. Before that the same screen shows the
 // same facts with one button instead of three inputs.
-const started = computed(() => order.value?.status === "In_Progress")
+const started = computed(() => order.value?.status === "In_Progress" || revising.value)
+// Revisi Data (?revisi=1 from the Riwayat detail): the same form on a SUBMITTED order, saved
+// once with `revise` — no autosave (scheduleSave already stops at docstatus 1).
+const revising = computed(
+	() =>
+		route.query.revisi === "1" &&
+		order.value?.docstatus === 1 &&
+		!!order.value?.revision?.can_revise &&
+		!order.value?.revision?.locked
+)
 // Only a wash nobody has finished can be started. The server says so too
 // (cleaning.start_cleaning refuses Completed / Pending Review); this keeps the button from
 // being offered in the first place.
@@ -518,9 +532,9 @@ function scheduleSave() {
 // Finalize (Selesaikan) asks for an explicit confirmation first.
 async function confirmComplete() {
 	const ok = await confirm({
-		title: labels.confirmSubmitTitle,
-		message: labels.confirmSubmitMessage,
-		confirmLabel: labels.confirmSubmitYes,
+		title: revising.value ? labels.revisionSave : labels.confirmSubmitTitle,
+		message: revising.value ? labels.revisionConfirm : labels.confirmSubmitMessage,
+		confirmLabel: revising.value ? labels.revisionSave : labels.confirmSubmitYes,
 		cancelLabel: labels.confirmCancel,
 	})
 	if (ok) save(true)
@@ -534,7 +548,8 @@ function payload(submit) {
 		// An array, not a JSON string: `send` has to walk the payload to find the
 		// `local:` photo references and swap them for real file_urls.
 		qc_photos: qcPhotos.value.filter((p) => p.photo),
-		submit: submit ? 1 : 0,
+		submit: submit && !revising.value ? 1 : 0,
+		revise: revising.value ? 1 : undefined,
 	}
 }
 
@@ -578,11 +593,13 @@ async function submitCleaning() {
 			url: "container_depot.ess.cleaning.cleaning_order_save",
 			payload: payload(true),
 		})
-		toast.success(labels.cleaningSubmitted, {
+		toast.success(revising.value ? labels.revisionSaved : labels.cleaningSubmitted, {
 			title: o.order_id || o.name,
 		})
-		// It is now in review — the list, filtered to that pill, is where it went.
-		backToList()
+		// A revision goes back to the record it was opened from; a sign-off is now in review
+		// — the list, filtered to that pill, is where it went.
+		if (revising.value) goFinished(o)
+		else backToList()
 	} catch (e) {
 		toast.error(e?.message || labels.error)
 	} finally {

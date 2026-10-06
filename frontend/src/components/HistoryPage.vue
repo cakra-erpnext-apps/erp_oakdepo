@@ -24,7 +24,7 @@
 				<Icon name="alert-circle" :size="16" /> {{ labels.error }}
 				<button class="oak-link" @click="reloadDetail">{{ labels.retry }}</button>
 			</p>
-			<slot v-else name="detail" :data="detailData" :item="selectedItem" />
+			<slot v-else name="detail" :data="detailData" :item="selectedItem" :reload="reloadDetail" />
 		</template>
 
 		<!-- LIST -->

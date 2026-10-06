@@ -31,6 +31,7 @@ class TestContainerLastOrders(FrappeTestCase):
 			frappe.db.delete("Order Container Item", {"parent": name})
 			frappe.db.delete(doctype, {"name": name})
 		for c in self._containers:
+			frappe.db.delete("Container Activity", {"container": c})
 			frappe.db.delete("Container", {"name": c})
 		# The EMKL / Shipper parties the bon fixtures had to mint (both are Link -> Customer).
 		frappe.db.delete("Customer", {"name": ("like", f"{_PREFIX} %")})
@@ -200,6 +201,32 @@ class TestContainerLastOrders(FrappeTestCase):
 		booking.save(ignore_permissions=True)
 		self.assertEqual(self._cached(kept, "last_booking"), booking.name)
 		self.assertIsNone(self._cached(dropped, "last_booking"))
+
+	def test_voiding_a_draft_bon_drops_its_pointer(self):
+		"""Through the real button: `void_order` used to rebuild the pointer in `on_cancel`,
+		BEFORE the docstatus flip, so the rebuild picked the voided bon straight back up."""
+		from container_depot.container_depot.order_generation import void_order
+
+		c = self._container("0201")
+		bon = self._bon("Order Muat", c, submitted=False)
+		self.assertEqual(self._cached(c, "last_order_muat"), bon.name)
+
+		void_order(bon.name, "Order Muat")
+		self.assertIsNone(self._cached(c, "last_order_muat"))
+
+	def test_voiding_a_draft_booking_drops_its_pointer(self):
+		"""`void_draft` writes docstatus 2 raw — no doc_event ever rebuilt `last_booking`."""
+		from container_depot.container_depot.doctype.container_booking.container_booking import void_draft
+
+		c = self._container("0202")
+		booking = self._order(
+			"Container Booking", direction="Tank In", customer=self.customer,
+			booking_status="Draft", items=[{"container": c}],
+		)
+		self.assertEqual(self._cached(c, "last_booking"), booking.name)
+
+		void_draft(booking.name)
+		self.assertIsNone(self._cached(c, "last_booking"))
 
 	# --- the customer's own document number, per order kind ---------------------
 	def test_each_orders_reff_doc_lands_in_its_own_field(self):

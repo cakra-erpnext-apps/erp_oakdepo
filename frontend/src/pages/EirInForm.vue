@@ -20,7 +20,7 @@
 		<!-- Revisi Data: EIR lama yang dibuka Adm Ops. Isinya dikoreksi di tempat — status tank
 		     dan dokumen lain tidak ikut berubah, jadi operator perlu tahu ini bukan EIR baru. -->
 		<p v-if="revising" class="oak-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-			{{ labels.eirRevisionBanner }}
+			{{ labels.revisionBanner }}
 		</p>
 
 		<p v-if="fetchError" class="oak-card border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ fetchError }}</p>
@@ -454,7 +454,11 @@ import {
 
 // Form-only EIR-In view. The combined worklist lives in Eir.vue, which opens this with
 // the picked draft's name and listens for `back` / `submitted`.
-const props = defineProps({ inspection: { type: String, required: true } })
+const props = defineProps({
+	inspection: { type: String, required: true },
+	// Revisi Data (route ?revisi=1): edit this SUBMITTED EIR in place — one save, no autosave.
+	revise: { type: Boolean, default: false },
+})
 const emit = defineEmits(["back", "submitted"])
 
 const eirType = "EIR-In"
@@ -647,7 +651,7 @@ const batchStatus = computed(() =>
 )
 
 const submitLabel = computed(() => {
-	if (revising.value) return labels.eirRevisionSave
+	if (revising.value) return labels.revisionSave
 	if (!batchMode.value) return labels.eirSendReview
 	const tail = unsentOthers.value.length ? "" : ` ${labels.eirSendClose}`
 	return `${labels.eirSendOne} ${header.value?.container_no || ""}${tail}`
@@ -655,7 +659,7 @@ const submitLabel = computed(() => {
 
 // Apa yang terjadi SETELAH tombol kirim — pertanyaan terakhir sebelum menekannya.
 const submitHint = computed(() => {
-	if (revising.value) return labels.eirRevisionHint
+	if (revising.value) return labels.revisionHint
 	if (!batchMode.value) return ""
 	const parts = []
 	const sent = batch.names.filter((n) => batch.sent[n])
@@ -1141,6 +1145,7 @@ function eirPayload(submit) {
 		// (eir.TANK_MASTER_FIELDS) and writes nothing when none of them changed.
 		tank: JSON.stringify(tank),
 		submit: submit ? 1 : 0,
+		revise: revising.value ? 1 : undefined,
 	}
 }
 
@@ -1180,7 +1185,7 @@ async function submitEir() {
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		toast.success(revising.value ? labels.eirRevisionSaved : labels.eirSentForReview, {
+		toast.success(revising.value ? labels.revisionSaved : labels.eirSentForReview, {
 			title: eirCode.value || inspection.value,
 		})
 		// A revision is no batch member and queues nothing next.
@@ -1203,9 +1208,9 @@ async function confirmSubmit() {
 		return
 	}
 	const ok = await confirm({
-		title: labels.confirmSubmitTitle,
-		message: revising.value ? labels.eirRevisionConfirm : labels.confirmSubmitMessage,
-		confirmLabel: labels.confirmSubmitYes,
+		title: revising.value ? labels.revisionSave : labels.confirmSubmitTitle,
+		message: revising.value ? labels.revisionConfirm : labels.confirmSubmitMessage,
+		confirmLabel: revising.value ? labels.revisionSave : labels.confirmSubmitYes,
 		cancelLabel: labels.confirmCancel,
 	})
 	if (ok) doSave(true)
@@ -1225,6 +1230,8 @@ function flushPendingSave() {
 }
 
 function scheduleSave() {
+	// A revision is one deliberate save (Simpan Revisi), never a stream of autosaves.
+	if (revising.value) return
 	if (!inspection.value || suppressSave.value) return
 	savedOk.value = false
 	if (saveTimer) clearTimeout(saveTimer)
@@ -1248,6 +1255,6 @@ watch(bulkPhotos, scheduleSave, { deep: true })
 watch(photoNotes, scheduleSave, { deep: true })
 
 onMounted(() => {
-	openRes.submit({ inspection: props.inspection })
+	openRes.submit({ inspection: props.inspection, revise: props.revise ? 1 : undefined })
 })
 </script>

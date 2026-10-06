@@ -18,6 +18,7 @@
 				:is="activeType === 'EIR-Out' ? EirOutForm : EirInForm"
 				:key="activeInspection + activeType"
 				:inspection="activeInspection"
+				:revise="route.query.revisi === '1'"
 				@back="onBack"
 				@submitted="onSubmitted"
 			/>
@@ -765,6 +766,11 @@ function finishBatch(pickAnother) {
 }
 
 function onBack() {
+	// A revision was opened from the EIR's Riwayat detail — that is where it goes back to.
+	if (route.query.revisi === "1") {
+		router.push({ path: "/eir/history", query: { open: route.query.e } })
+		return
+	}
 	// After a submit the child emits `submitted` (which queued the next EIR) then `back`.
 	const next = autoAdvanceTo.value
 	autoAdvanceTo.value = null
