@@ -20,6 +20,11 @@ per Principal:
 Tidak pernah lewat NAMA item: nama item milik finance dan bisa berubah kapan saja, dan
 pencocokan nama persis bug yang membuat kolom PP / Methanol / Steam di report KPI selalu
 nol selama berbulan-bulan.
+
+Tanpa ``wash_type`` modul ini jadi Cleaning Register: SEMUA order cleaning, termasuk
+Standard Cleaning / Other yang tidak masuk register jenis mana pun. Register itu baru
+(2026-10-06), jadi tanggal bawaannya tanggal order itu sendiri (``plan_date``, "Tanggal
+Cleaning") — bukan ``order_created`` seperti ketiga register jenis yang lebih tua.
 """
 
 from __future__ import annotations
@@ -30,23 +35,25 @@ from container_depot.container_depot import report_kit
 from container_depot.container_depot.container_status import DONE_CLEANING
 
 
-def execute(filters, *, wash_type: str, item_code: str, date_label: str):
+def execute(filters, *, wash_type: str | None, item_code: str | None, date_label: str):
 	filters = filters or {}
+	default = "order_date" if wash_type else "plan_date"
 	columns, rows = report_kit.finish(
-		_columns(date_label), _rows(filters, wash_type, item_code), filters, default="order_date"
+		_columns(date_label, all_types=not wash_type), _rows(filters, wash_type, item_code, default),
+		filters, default=default,
 	)
 	return columns, rows, None, None, _summary(rows)
 
 
-def _rows(filters, wash_type, item_code) -> list:
-	where = [
-		"co.docstatus < 2",
-		"co.status != 'Cancelled'",
-		"(co.cleaning_type = %(wash_type)s OR EXISTS ("
-		"   SELECT 1 FROM `tabCleaning Order Service` cos"
-		"   WHERE cos.parent = co.name AND cos.cleaning_item = %(item_code)s))",
-	]
+def _rows(filters, wash_type, item_code, default) -> list:
+	where = ["co.docstatus < 2", "co.status != 'Cancelled'"]
 	params = {"wash_type": wash_type, "item_code": item_code}
+	if wash_type:
+		where.append(
+			"(co.cleaning_type = %(wash_type)s OR EXISTS ("
+			"   SELECT 1 FROM `tabCleaning Order Service` cos"
+			"   WHERE cos.parent = co.name AND cos.cleaning_item = %(item_code)s))"
+		)
 
 	# Dipakai dialog riwayat per tank (register_history.tank_history), bukan oleh filter
 	# di layar: register itu sendiri selalu dibaca per depo, bukan per tank.
@@ -61,7 +68,7 @@ def _rows(filters, wash_type, item_code) -> list:
 		params["depot"] = filters["depot"]
 	# Only while the range is on Order Date; on another date column report_kit.finish
 	# filters the rows instead.
-	frm, to = report_kit.native_range(filters, "order_date")
+	frm, to = report_kit.native_range(filters, "order_date", default)
 	if frm:
 		where.append("DATE(co.order_created) >= %(from_date)s")
 		params["from_date"] = frm
@@ -76,6 +83,7 @@ def _rows(filters, wash_type, item_code) -> list:
 		SELECT
 			co.container AS tank_no,
 			COALESCE(NULLIF(co.container_principal, ''), c.principal) AS principal,
+			co.cleaning_type AS cleaning_type,
 			DATE(co.order_created) AS order_date,
 			co.plan_date AS plan_date,
 			DATE(co.cleaning_end) AS wash_date,
@@ -92,16 +100,21 @@ def _rows(filters, wash_type, item_code) -> list:
 	)
 
 
-def _columns(date_label) -> list:
+def _columns(date_label, all_types=False) -> list:
+	# Register semua jenis butuh kolom jenisnya; register per jenis tidak — isinya satu jenis.
+	kind = [{"fieldname": "cleaning_type", "label": "Jenis Cleaning", "fieldtype": "Data",
+		 "width": 140}] if all_types else []
 	return [
 		{"fieldname": "tank_no", "label": "Tank No", "fieldtype": "Link",
 		 "options": "Container", "width": 140},
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 180},
+		*kind,
 		{"fieldname": "order_date", "label": "Order Date", "fieldtype": "Date", "width": 110},
 		# Rencana, di sebelah realisasinya: baris tanpa tanggal cuci tapi punya rencana
 		# adalah pekerjaan yang sudah dijadwalkan; yang tidak punya keduanya belum.
-		{"fieldname": "plan_date", "label": "Plan Date", "fieldtype": "Date", "width": 110},
+		{"fieldname": "plan_date", "label": "Tanggal Cleaning" if all_types else "Plan Date",
+		 "fieldtype": "Date", "width": 110},
 		# Label kolom mengikuti jenisnya ("Steam Wash Date" dst.) supaya halamannya terbaca
 		# sama seperti sheet yang digantikannya.
 		{"fieldname": "wash_date", "label": date_label, "fieldtype": "Date", "width": 130},

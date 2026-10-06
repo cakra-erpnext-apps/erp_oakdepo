@@ -1,4 +1,4 @@
-"""Riwayat satu tank di balik keempat register.
+"""Riwayat satu tank di balik register cuci, M&R, dan uji berkala.
 
 Sebuah baris register menjawab "order ini bagaimana". Yang ditanyakan berikutnya hampir
 selalu "tank ini SEBELUMNYA bagaimana" — sudah berapa kali di-steam bulan ini, uji
@@ -20,6 +20,8 @@ _WASH = {
 	"Steam Wash": ("INT-STEAM", "Steam Wash Date"),
 	"PP Wash": ("INT-PP-WASH", "PP Wash Date"),
 	"Methanol Rinse": ("INT-METHANOL", "Methanol Rinse Date"),
+	# Cleaning Register: semua jenis.
+	"Cleaning": (None, "Cleaning End"),
 }
 
 # Kolom yang tidak berguna di dialog riwayat: nomor tank sudah jadi judulnya, dan
@@ -36,7 +38,7 @@ def tank_history(container: str, register: str) -> dict:
 
 		item_code, date_label = _WASH[register]
 		columns, rows, *_rest = wash_register.execute(
-			{"container": container}, wash_type=register, item_code=item_code,
+			{"container": container}, wash_type=register if item_code else None, item_code=item_code,
 			date_label=date_label,
 		)
 	elif register == "Periodic Test":
@@ -46,6 +48,11 @@ def tank_history(container: str, register: str) -> dict:
 		)
 
 		columns, rows, *_rest = periodic_test_register.execute({"container": container})
+	elif register == "Repair":
+		frappe.has_permission("Repair Order", throw=True)
+		from container_depot.container_depot.report.repair_register import repair_register
+
+		columns, rows, *_rest = repair_register.execute({"container": container})
 	else:
 		frappe.throw(_("Register tidak dikenal: {0}").format(register))
 

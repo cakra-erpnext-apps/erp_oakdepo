@@ -395,7 +395,8 @@ def customer_link_query(doctype, txt, searchfield, start, page_len, filters):
 
 
 def report_query(user=None, doctype=None) -> str:
-	"""Show a customer only the reports in ``CUSTOMER_REPORTS``.
+	"""Show a customer only the reports in ``CUSTOMER_REPORTS``; everyone else only the
+	reports whose menu they can open (:func:`_menu_reports`).
 
 	This is what keeps the report links in the workspace cards and the left sidebar honest.
 	Both menus ask `boot.get_allowed_reports`, which ends by running
@@ -410,9 +411,33 @@ def report_query(user=None, doctype=None) -> str:
 	`boot.patch_query_report_customer_scope`.
 	"""
 	if not get_user_customers(user):
-		return ""
+		return _menu_reports(user)
 	names = ", ".join(frappe.db.escape(n, percent=False) for n in sorted(CUSTOMER_REPORTS))
 	return f"`tabReport`.`name` in ({names})"
+
+
+def _menu_reports(user=None) -> str:
+	"""Hide every report whose ref doctype the account may not read — its menu.
+
+	A Report without a `roles` table is allowed to everyone, so the menus drew Pending Cash
+	Report for accounts that cannot open Pending Cash at all. User's rule (2026-10-06): a
+	report shows when its menu does — read on the ref doctype, not the `report` flag.
+	"""
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return ""
+	denied = []
+	for dt in frappe.get_all("Report", pluck="ref_doctype", distinct=True):
+		try:
+			if not frappe.has_permission(dt, "read", user=user):
+				denied.append(dt)
+		except frappe.DoesNotExistError:
+			# A report left behind by an uninstalled app cannot run either.
+			denied.append(dt)
+	if not denied:
+		return ""
+	names = ", ".join(frappe.db.escape(d, percent=False) for d in sorted(denied))
+	return f"ifnull(`tabReport`.`ref_doctype`, '') not in ({names})"
 
 
 def booking_sql_filter(alias: str) -> str:

@@ -33,11 +33,23 @@
   {
    "child": 0,
    "collapsible": 1,
-   "icon": "clipboard-list",
+   "icon": "file-chart-column",
    "indent": 0,
    "keep_closed": 1,
-   "label": "Register",
+   "label": "Report",
    "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Cleaning",
+   "link_to": "Cleaning Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "sparkles"
   },
   {
    "child": 1,
@@ -80,6 +92,18 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "M&R",
+   "link_to": "Repair Register",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "wrench"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Periodic Test",
    "link_to": "Periodic Test Register",
    "link_type": "Report",
@@ -104,7 +128,7 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
-   "label": "Lift On Register",
+   "label": "Lift On",
    "link_to": "Lift On Register",
    "link_type": "Report",
    "show_arrow": 0,
@@ -140,12 +164,60 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "EIR",
+   "link_to": "EIR Report",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "search-check"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Bon Bongkar / Muat",
+   "link_to": "Bon Report",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "arrow-down-up"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Gate",
+   "link_to": "Gate Report",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "door-open"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Storage Charges",
    "link_to": "Storage Charges",
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link",
    "icon": "timer"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Pending Cash",
+   "link_to": "Pending Cash Report",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link",
+   "icon": "wallet"
   },
   {
    "child": 0,
@@ -864,7 +936,7 @@
    "icon": "shield-user"
   }
  ],
- "modified": "2026-10-05 10:00:00.000000",
+ "modified": "2026-10-06 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Container Depot",
  "name": "Container Depot",
