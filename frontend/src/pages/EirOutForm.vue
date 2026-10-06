@@ -887,7 +887,7 @@ async function uploadSignature() {
 	sigUploading.value = true
 	try {
 		const blob = await new Promise((res) => c.toBlob(res, "image/png"))
-		signatureUrl.value = await uploadFile(new File([blob], "eir-out-signature.png", { type: "image/png" }))
+		signatureUrl.value = await uploadPhoto(new File([blob], "eir-out-signature.png", { type: "image/png" }), { stamp: false })
 		signing.value = false
 	} catch (e) {
 		sigErr.value = labels.signatureError

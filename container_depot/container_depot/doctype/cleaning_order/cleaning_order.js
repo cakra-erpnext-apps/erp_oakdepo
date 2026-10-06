@@ -423,10 +423,7 @@ function open_qc_carousel(frm, slides, start) {
 		}
 		$dl_btn.off('click').on('click', () => {
 			if (slide && slide.src) {
-				const ext = slide.src.split('.').pop().split('?')[0] || 'jpg';
-				const doc_prefix = frm && frm.docname ? frm.docname + '_' : '';
-				const name = `${doc_prefix}qc_${idx + 1}.${ext}`;
-				container_depot.download_photo(slide.src, name);
+				container_depot.download_photo(slide.src, container_depot.photo_filename(frm, idx + 1, slide.src));
 			}
 		});
 		$dl_btn.toggleClass('hide', !slide.src);

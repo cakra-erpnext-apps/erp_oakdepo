@@ -56,9 +56,12 @@ export async function stashPhoto(file) {
  * and returns a `local:` ref, so the operator keeps shooting and `send` carries the backlog
  * when the document is submitted. Only the operator's own picture matters here; losing it to
  * a red error message would be the one unrecoverable outcome.
+ *
+ * Every photo gets its date and time burned in (see utils/photo.js); pass `stamp: false`
+ * for a picture that is not a photo, such as a signature.
  */
-export async function uploadPhoto(file) {
-	const small = await compressPhoto(file)
+export async function uploadPhoto(file, { stamp = true } = {}) {
+	const small = await compressPhoto(file, { stamp })
 	const key = "photo-upload"
 	try {
 		// Held back 400 ms — a photo that lands quickly needs no announcement at all.

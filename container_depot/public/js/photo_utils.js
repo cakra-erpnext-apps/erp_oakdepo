@@ -41,6 +41,21 @@ container_depot.download_photo = function (url, filename) {
 };
 
 /**
+ * Download filename for photo `n` of a document: "<tank no>_<job code>_<n>.<ext>".
+ * Job code = Reff Doc, or the order's own number when it has none. Mirrors
+ * `_photo_basename` in api.py, which names the photos inside the ZIP.
+ */
+container_depot.photo_filename = function (frm, n, src) {
+	const doc = (frm && frm.doc) || {};
+	const ext = ((src || '').split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+	const base = [doc.container_no || doc.container, doc.reff_doc || doc.name, n]
+		.filter(Boolean)
+		.join('_')
+		.replace(/[^\w.-]+/g, '_');
+	return `${base}.${ext}`;
+};
+
+/**
  * Download all photos attached to a document as a ZIP file.
  */
 container_depot.download_doc_photos = function (doctype, name) {

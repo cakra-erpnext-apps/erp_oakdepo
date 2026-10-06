@@ -824,7 +824,7 @@ function install_damage_thumbnails(frm) {
 
 // The evidence at working size, walked with the Next button. Read-only: an EIR photo is a
 // fact of the inspection, and the M&R is not where it gets changed.
-function open_damage_photos(photos, start) {
+function open_damage_photos(frm, photos, start) {
 	if (!photos.length) return;
 	let idx = Math.min(Math.max(start || 0, 0), photos.length - 1);
 	const d = new frappe.ui.Dialog({
@@ -842,8 +842,7 @@ function open_damage_photos(photos, start) {
 	d.set_primary_action(__('Download Foto'), () => {
 		const src = photos[idx];
 		if (src) {
-			const ext = src.split('.').pop().split('?')[0] || 'jpg';
-			container_depot.download_photo(src, `damage_${idx + 1}.${ext}`);
+			container_depot.download_photo(src, container_depot.photo_filename(frm, idx + 1, src));
 		}
 	});
 	if (photos.length > 1) {
@@ -879,7 +878,7 @@ function render_damage_photos(frm, cdt, cdn) {
 			.join('')}</div>`
 	);
 	field.$wrapper.find('img[data-oak-idx]').on('click', (e) => {
-		open_damage_photos(photos, parseInt(e.currentTarget.getAttribute('data-oak-idx'), 10));
+		open_damage_photos(frm, photos, parseInt(e.currentTarget.getAttribute('data-oak-idx'), 10));
 	});
 }
 
@@ -1014,8 +1013,7 @@ function render_work_photo_preview(frm, cdt, cdn) {
 		</div>
 	`);
 	field.$wrapper.find('.oak-preview-dl-btn').on('click', () => {
-		const ext = url.split('.').pop().split('?')[0] || 'jpg';
-		container_depot.download_photo(url, `${frm.docname || 'repair'}_${row.name || 'photo'}.${ext}`);
+		container_depot.download_photo(url, container_depot.photo_filename(frm, row.idx, url));
 	});
 }
 
@@ -1195,10 +1193,7 @@ function open_work_photo_carousel(frm, src, cdn) {
 		}
 		$dl_btn.off('click').on('click', () => {
 			if (slide && slide.src) {
-				const ext = slide.src.split('.').pop().split('?')[0] || 'jpg';
-				const doc_prefix = frm && frm.docname ? frm.docname + '_' : '';
-				const name = `${doc_prefix}work_${idx + 1}.${ext}`;
-				container_depot.download_photo(slide.src, name);
+				container_depot.download_photo(slide.src, container_depot.photo_filename(frm, idx + 1, slide.src));
 			}
 		});
 		$dl_btn.toggleClass('hide', !slide.src);

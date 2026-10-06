@@ -52,7 +52,7 @@ function render_photo_gallery(frm) {
 					</a>
 					<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;">
 						<span style="font-size:var(--text-xs);color:var(--text-muted);">${frappe.utils.escape_html(time_str)}</span>
-						<a href="javascript:void(0)" class="oak-pos-dl" data-url="${url}" data-name="pos_${i + 1}" title="${__('Download Foto')}" style="color:var(--text-muted);font-size:12px;padding:2px;">
+						<a href="javascript:void(0)" class="oak-pos-dl" data-url="${url}" data-name="${i + 1}" title="${__('Download Foto')}" style="color:var(--text-muted);font-size:12px;padding:2px;">
 							<i class="fa fa-download"></i>
 						</a>
 					</div>
@@ -75,7 +75,6 @@ function render_photo_gallery(frm) {
 		e.preventDefault();
 		const u = $(this).attr('data-url');
 		const n = $(this).attr('data-name');
-		const ext = (u || '').split('.').pop().split('?')[0] || 'jpg';
-		container_depot.download_photo(u, `${frm.docname || 'pos'}_${n}.${ext}`);
+		container_depot.download_photo(u, container_depot.photo_filename(frm, n, u));
 	});
 }

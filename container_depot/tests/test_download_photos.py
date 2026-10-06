@@ -67,7 +67,9 @@ class TestDownloadPhotos(FrappeTestCase):
 		with zipfile.ZipFile(io.BytesIO(content)) as zf:
 			names = zf.namelist()
 			self.assertEqual(len(names), 1)
-			self.assertTrue("exterior" in names[0].lower())
+			# "<tank no>_<job code>_<n>": no Reff Doc here, so the job code is the EIR number.
+			self.assertEqual(names[0], f"DLTD2000001_{doc.name}_1.png")
+		self.assertEqual(frappe.response.get("filename"), f"DLTD2000001_{doc.name}.zip")
 
 	def test_cleaning_order_photos_and_timestamp(self):
 		file1 = _create_test_file("qc-test-1.png")

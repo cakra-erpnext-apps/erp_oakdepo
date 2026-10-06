@@ -150,8 +150,7 @@ function open_leak_photo_carousel(frm, cdn) {
 			</button>`).insertBefore($open_tab);
 		}
 		$dl_btn.off("click").on("click", () => {
-			const ext = row.photo.split(".").pop().split("?")[0] || "jpg";
-			container_depot.download_photo(row.photo, `${frm.docname}_leak_${idx + 1}.${ext}`);
+			container_depot.download_photo(row.photo, container_depot.photo_filename(frm, idx + 1, row.photo));
 		});
 
 		syncing = true;
