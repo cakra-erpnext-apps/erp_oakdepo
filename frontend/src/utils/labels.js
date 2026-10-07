@@ -650,7 +650,8 @@ export const labels = {
 	// Review for Adm Ops. The title asks; the dialog carries no body text on purpose —
 	// what happens downstream is Adm Ops' business, not a paragraph the operator has to
 	// read past on every submit.
-	eirOutConfirmReadyTitle: "Kirim EIR-Out untuk review?",
+	eirOutConfirmReadyTitle: "Selesaikan EIR-Out ini?", // EIR-Out is submitted by the field team, no review
+	eirOutSubmit: "Selesaikan EIR-Out", // finish (submit) an EIR-Out from the field
 	eirOutBackToList: "Kembali ke daftar",
 	savingDraft: "Menyimpan…", // Saving…
 	draftSaved: "Tersimpan", // Saved

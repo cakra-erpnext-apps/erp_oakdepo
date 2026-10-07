@@ -359,6 +359,25 @@ class TestEirOut(FrappeTestCase):
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Completed")
 
+	def test_the_field_finishes_an_eir_out_with_no_review(self):
+		"""PWA "Selesaikan EIR-Out" is the real Submit (user, 2026-10-07): no Pending Review,
+		and the gate-out happens on the press."""
+		eo = self._draft_with_seals(f"{PREFIX}0000031", [])
+		res = eir.save_draft(inspection=eo, inspection_type="EIR-Out", submit=1)
+		self.assertEqual((res["docstatus"], res["pending_review"]), (1, False))
+		self.assertNotEqual(frappe.db.get_value("Inspection", eo, "status"), "Pending Review")
+		self.assertTrue(frappe.db.get_value("Inspection", eo, "work_ended_on"))
+		self.assertEqual(frappe.db.get_value("Container", f"{PREFIX}0000031", "status"), "Gate_Out")
+
+	def test_an_eir_in_from_the_field_still_waits_for_review(self):
+		"""Only EIR-Out skips the review: the same press on an EIR-In leaves a draft."""
+		c = _container(f"{PREFIX}0000032", status="Gate_Out")
+		ei = eir.create_eir(inspection_type="EIR-In", container=c, tank_status="Empty Clean",
+				    create_cleaning_order=0, create_repair_order=0)["name"]
+		eir.start_eir(ei)
+		res = eir.save_draft(inspection=ei, inspection_type="EIR-In", submit=1)
+		self.assertEqual((res["docstatus"], res["status"], res["pending_review"]), (0, "Pending Review", True))
+
 	def test_submit_with_a_finding_sets_hold(self):
 		"""A checklist finding is now the only thing that can hold a tank — the separate
 		exterior / seal assessment was dropped at the depot's request."""

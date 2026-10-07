@@ -555,8 +555,9 @@ const batchStatus = computed(() =>
 				container_no,
 				done: true,
 				line: `${labels.eirBatchSentAt} ${clock(sent.at)} · ${sent.damages || 0} ${labels.eirReviewDamage}`,
-				chip: labels.eirStatusPendingReview,
-				tone: pill("review").cls,
+				// EIR-Out is finished from the field — no review step (eir.save_draft).
+				chip: labels.eirStatusSubmitted,
+				tone: pill("done").cls,
 			}
 		if (n === props.inspection)
 			return {
@@ -580,7 +581,7 @@ const batchStatus = computed(() =>
 
 const submitLabel = computed(() => {
 	if (revising.value) return labels.revisionSave
-	if (!batchMode.value) return labels.eirSendReview
+	if (!batchMode.value) return labels.eirOutSubmit
 	const tail = unsentOthers.value.length ? "" : ` ${labels.eirSendClose}`
 	return `${labels.eirSendOne} ${header.value?.container_no || ""}${tail}`
 })
@@ -916,7 +917,7 @@ const saveRes = createResource({
 	method: "POST",
 	onSuccess(data) {
 		// Server has it — the local draft has nothing left to protect (see EirInForm).
-		// Field submit → Pending Review (docstatus 0); Admin Ops finalises on the Desk.
+		// EIR-Out: the field submit IS the Submit (docstatus 1) — no Admin Ops review.
 		if (data.pending_review || (data.docstatus === 1 && !data.revision)) {
 			saveToast.close()
 			toast.success(
@@ -992,7 +993,7 @@ async function submitEir() {
 			url: "container_depot.ess.inspections.eir_save_draft",
 			payload: eirPayload(true),
 		})
-		toast.success(revising.value ? labels.revisionSaved : labels.eirSentForReview, {
+		toast.success(revising.value ? labels.revisionSaved : labels.eirSubmitted, {
 			title: eirCode.value || inspection.value,
 		})
 		// A revision is no batch member and queues nothing next.
@@ -1038,12 +1039,11 @@ function scheduleSave() {
 watch([remarks, cargo, seals, bulkPhotos, photoNotes, fittings], scheduleSave, { deep: true })
 
 async function confirmSubmit() {
-	// Ya / Batal, nothing else: what happens after the hand-off is Adm Ops' business, not
-	// something the field operator has to read past on every submit.
+	// Ya / Batal, nothing else. The press finishes the EIR-Out (the gate-out) — no review.
 	const ok = await confirm(
 		revising.value
 			? { title: labels.revisionSave, message: labels.revisionConfirm, confirmLabel: labels.revisionSave, cancelLabel: labels.confirmCancel }
-			: { title: labels.eirOutConfirmReadyTitle, confirmLabel: labels.eirSendReview, cancelLabel: labels.confirmCancel },
+			: { title: labels.eirOutConfirmReadyTitle, confirmLabel: labels.eirOutSubmit, cancelLabel: labels.confirmCancel },
 	)
 	if (ok) doSave(true)
 }

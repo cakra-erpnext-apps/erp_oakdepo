@@ -1855,11 +1855,20 @@ def save_draft(
 			"tank_updated": False,
 		}
 
-	if submit:
-		# Field operator "submits" from the PWA → this does NOT finalize the EIR. It moves
-		# to Pending Review (still a draft) for Admin Ops to check/classify, then Admin Ops
-		# does the real Submit (docstatus 1) on the Desk — which is what fires on_submit
-		# (container move + follow-up Cleaning/M&R orders + notify).
+	if submit and doc.inspection_type == "EIR-Out":
+		# EIR-Out: the field team finishes it themselves (user, 2026-10-07) — no review.
+		# The real Submit, so its own guards (bon, survey, Leak Check, open work) answer the
+		# operator directly and on_submit is the gate-out. Team EIR holds submit on Inspection.
+		doc.work_ended_on = now_datetime()
+		if doc.work_started_on:
+			doc.work_duration = max(0, int(time_diff_in_seconds(doc.work_ended_on, doc.work_started_on)))
+		doc.save()  # NOT ignore_permissions.
+		doc.submit()
+	elif submit:
+		# EIR-In: the field operator "submits" from the PWA → this does NOT finalize the EIR.
+		# It moves to Pending Review (still a draft) for Admin Ops to check/classify, then
+		# Admin Ops does the real Submit (docstatus 1) on the Desk — which is what fires
+		# on_submit (container move + follow-up Cleaning/M&R orders + notify).
 		doc.work_ended_on = now_datetime()
 		if doc.work_started_on:
 			doc.work_duration = max(0, int(time_diff_in_seconds(doc.work_ended_on, doc.work_started_on)))
@@ -1880,7 +1889,7 @@ def save_draft(
 		"inspection": doc.name,
 		"docstatus": doc.docstatus,
 		"status": doc.status,
-		"pending_review": bool(submit),
+		"pending_review": bool(submit) and doc.docstatus == 0,
 		"has_damage": doc.has_damage,
 		"damage_rows": len(damage_rows),
 		"photo_rows": len(photo_rows),
