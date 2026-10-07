@@ -15,6 +15,8 @@
 //             the server is the rule, this only keeps the form from offering them)
 //   unlock  — optional fn(frm) for a doctype whose finished form is locked by hand (the
 //             non-submittable Repair Order); a submitted doctype needs none.
+//   rowLocked — optional child-table fieldnames to keep read-only in the grids (Survey Order:
+//             the tank on a row is not the revision's to change).
 frappe.provide('container_depot');
 
 container_depot.revision = {
@@ -82,7 +84,7 @@ container_depot.revision = {
 				frm.set_df_property(df.fieldname, 'allow_on_submit', 1);
 				if (df.fieldtype === 'Table') {
 					frappe.meta.get_docfields(df.options, frm.doc.name).forEach((cdf) => {
-						cdf.allow_on_submit = 1;
+						if (!(opts.rowLocked || []).includes(cdf.fieldname)) cdf.allow_on_submit = 1;
 					});
 				}
 			});

@@ -152,6 +152,26 @@ class GateEntry(Document):
 			summary="Gate Entry dibatalkan — kedatangan tank dibatalkan",
 		)
 
+	def onload(self):
+		# Revisi Data / Tolak Revisi on the Desk form (public/js/revision.js).
+		if self.docstatus == 1:
+			from container_depot.container_depot import revision
+
+			self.set_onload("revision_state", revision.state(self))
+
+	def before_update_after_submit(self):
+		# Revisi Data — a finished record corrected in place (revision.py).
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.check(self)
+
+	def on_update_after_submit(self):
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.after(self)
+
 	def generate_codeco_message(self):
 		"""Generate a standard UN/EDIFACT CODECO Gate-In message segment text"""
 		timestamp = (self.gate_in_timestamp or datetime.datetime.now()).strftime("%Y%m%d%H%M")
@@ -194,3 +214,24 @@ class GateEntry(Document):
 		}).insert(ignore_permissions=True)
 
 		return edi_text
+
+# --- Revisi Data hooks (revision.py) ---------------------------------------------------
+# A finished gate record corrects who drove, which truck and which guard. The gate times stay:
+# the visit and its storage are counted from them (storage.visit_for falls back on them) —
+# the day in/out itself is corrected on the bon (Revisi Bon).
+REVISION_LOCKED = (
+	"gate_entry_id", "status", "booking_code", "depot", "order_doctype", "order_ref",
+	"container_no", "gate_in_timestamp", "gate_out_timestamp", "eir_reference",
+	"inspection_status", "in_date", "out_date", "order_muat",
+)
+REVISION_PWA_FIELDS = ("truck_plate", "driver_name")
+
+
+def revision_invoice(doc):
+	return None  # a gate record is not priced
+
+
+def revision_blocker(doc):
+	if doc.status == "Cancelled":
+		return _("Gate record ini sudah dibatalkan.")
+	return None

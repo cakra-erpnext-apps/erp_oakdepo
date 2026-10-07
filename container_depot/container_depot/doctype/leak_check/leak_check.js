@@ -18,8 +18,16 @@ frappe.ui.form.on("Leak Check", {
 		}
 		install_leak_photo_thumbnails(frm);
 		bind_leak_photo_clicks(frm);
+		// Revisi Data / Tolak Revisi on a finished check (container_depot.revision).
+		container_depot.revision.setup(frm, { locked: LEAK_REVISION_LOCKED });
 	},
 });
+
+// Mirrors leak_check.REVISION_LOCKED — what a revision may not change.
+const LEAK_REVISION_LOCKED = [
+	"container", "container_no", "depot", "principal", "status", "order_bongkar", "booking",
+	"recorded_by", "recorded_on", "closed_by_admin",
+];
 
 function leak_photo_thumbnail(value, df, options, doc) {
 	if (!value) return "";
@@ -66,8 +74,11 @@ function open_leak_photo_carousel(frm, cdn) {
 	if (!rows.length) return;
 	let idx = Math.max(0, rows.findIndex((r) => r.name === cdn));
 	// A submitted check is final — its photos and flags are the record. There is no way back
-	// from the Desk: cancel_button.js strips the native Cancel and amend_guard.js the Amend.
-	const editable = frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, "write");
+	// from the Desk: cancel_button.js strips the native Cancel and amend_guard.js the Amend...
+	// ...except in Revisi Data (container_depot.revision), which saves it in place.
+	const editable =
+		(frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, "write")) ||
+		container_depot.revision._editing(frm);
 	// Guards the controls' own onchange while render() writes the next slide into them.
 	let syncing = false;
 

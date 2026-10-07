@@ -50,7 +50,8 @@
 				</div>
 			</template>
 
-			<!-- Sudah selesai: hasilnya, baca saja (koreksi lewat Desk). -->
+			<!-- Sudah selesai: hasilnya, baca saja — remark dikoreksi lewat Revisi Data di bawah,
+			     foto & tanda bocornya lewat Revisi Data di Desk. -->
 			<template v-else>
 				<section class="oak-card space-y-2 p-4">
 					<p class="text-sm font-extrabold text-gray-900">
@@ -74,6 +75,13 @@
 						{{ doc.remarks || labels.leakNoRemarks }}
 					</p>
 				</section>
+				<RevisionActions
+					:state="doc.revision"
+					doctype="Leak Check"
+					:name="doc.name"
+					:fields="[{ key: 'remarks', label: labels.leakRemarks, value: doc.remarks, multiline: true }]"
+					@changed="load"
+				/>
 			</template>
 		</template>
 	</div>
@@ -94,6 +102,7 @@ import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import DetailHeader from "@/components/list/DetailHeader.vue"
 import LeakCheckInfo from "@/components/LeakCheckInfo.vue"
 import LeakPhotoForm from "@/components/LeakPhotoForm.vue"
+import RevisionActions from "@/components/RevisionActions.vue"
 
 const route = useRoute()
 const router = useRouter()

@@ -95,7 +95,14 @@ def get_gate_detail(name) -> dict:
 		"eir_reference": doc.eir_reference,
 		"inspection_status": doc.inspection_status,
 		"docstatus": doc.docstatus,
+		"revision": _revision_state(doc),
 	}
+
+
+def _revision_state(doc) -> dict:
+	from container_depot.container_depot import revision
+
+	return revision.state(doc)
 
 
 # Gate Entry statuses that mean the visit a record covers is finished. Anything else is an

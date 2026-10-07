@@ -25,7 +25,7 @@
 			</div>
 		</template>
 
-		<template #detail="{ data }">
+		<template #detail="{ data, reload }">
 			<section class="oak-card space-y-3 p-4">
 				<div class="flex items-start justify-between gap-2">
 					<div class="min-w-0">
@@ -62,6 +62,20 @@
 				</p>
 				<p v-if="data.survey_notes" class="text-xs text-gray-500">{{ data.survey_notes }}</p>
 			</section>
+
+			<!-- Revisi Data / Ajukan Revisi — on the finished day this tank belongs to; the
+			     notes edited here are this tank's row (revision.save_fields). -->
+			<RevisionActions
+				:state="data.revision"
+				doctype="Survey Order"
+				:name="data.survey_order"
+				:row="data.name"
+				:fields="[
+					{ key: 'lowering_note', label: labels.tankLoweringNote, value: data.lowering_note, multiline: true },
+					{ key: 'survey_notes', label: labels.surveyPosNotes, value: data.survey_notes, multiline: true },
+				]"
+				@changed="reload"
+			/>
 
 			<!-- BUKA LAGI — the undo this workflow has instead of a review step.
 			     Two doors, and they do different amounts of damage: sending the tank back to
@@ -102,6 +116,7 @@ import { send } from "@/data/send"
 import { toast } from "@/utils/toast"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
+import RevisionActions from "@/components/RevisionActions.vue"
 import { chipClass, fmtDate, since, stamp, statusLabel } from "@/utils/surveyStatus"
 
 const shortDate = (v) => (v ? fmtDate(String(v).slice(0, 10)) : "—")

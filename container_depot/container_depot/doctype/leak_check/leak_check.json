@@ -28,7 +28,10 @@
   "spk_column_break",
   "spk_signer_name",
   "spk_signer_title",
-  "closed_by_admin"
+  "closed_by_admin",
+  "revision_requested",
+  "revision_note",
+  "revision_requested_by"
  ],
  "fields": [
   {
@@ -187,10 +190,42 @@
    "no_copy": 1,
    "depends_on": "eval:doc.closed_by_admin",
    "description": "Diselesaikan langsung oleh Administrator lewat Tutup Order (dikerjakan di luar aplikasi). Alasannya ada di timeline."
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "description": "Team PWA meminta order ini direvisi. Diangkat lewat “Ajukan Revisi”, dibersihkan saat revisi disimpan atau ditolak.",
+   "fieldname": "revision_requested",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Revisi Diminta",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Alasan permintaan revisi (dari PWA).",
+   "fieldname": "revision_note",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Catatan Revisi",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Yang menekan Ajukan Revisi — dikabari saat revisi selesai atau ditolak.",
+   "fieldname": "revision_requested_by",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Revisi Diminta Oleh",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-10-06 17:30:00.000000",
+ "modified": "2026-10-07 13:00:00.000000",
  "module": "Container Depot",
  "name": "Leak Check",
  "owner": "Administrator",

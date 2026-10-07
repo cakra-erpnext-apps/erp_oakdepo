@@ -67,6 +67,30 @@ _SPECS = {
 		"label": _lt("Booking"),
 		"answered": "booking_revision_answered",
 	},
+	# Revisi Data on every finished order (user, 2026-10-07). Nothing here is priced, so no
+	# invoice lock; the right is the Admin Ops role, like M&R. The bons have their own Revisi
+	# Bon (bon_revision.py).
+	"Survey Order": {
+		"module": "container_depot.container_depot.doctype.survey_order.survey_order",
+		"right": "admin_ops",
+		"label": _lt("Survey"),
+		"requested": "survey_revision_requested",
+		"answered": "survey_revision_answered",
+	},
+	"Leak Check": {
+		"module": "container_depot.container_depot.doctype.leak_check.leak_check",
+		"right": "admin_ops",
+		"label": _lt("Leak Check"),
+		"requested": "leak_revision_requested",
+		"answered": "leak_revision_answered",
+	},
+	"Gate Entry": {
+		"module": "container_depot.container_depot.doctype.gate_entry.gate_entry",
+		"right": "admin_ops",
+		"label": _lt("Gate"),
+		"requested": "gate_revision_requested",
+		"answered": "gate_revision_answered",
+	},
 }
 ADMIN_OPS_ROLES = {"Admin Ops", "System Manager"}
 
@@ -134,10 +158,10 @@ def state(doc) -> dict:
 
 
 def _guard_branch(doc) -> None:
-	if doc.doctype == "Container Booking":
+	if doc.doctype in ("Container Booking", "Survey Order"):
 		return assert_in_user_branch(branch=doc.get("branch"), depot=doc.get("depot"))
 	depot = frappe.db.get_value("Container", doc.get("container"), "depot") if doc.get("container") else None
-	assert_in_user_branch(depot=depot)
+	assert_in_user_branch(depot=depot or doc.get("depot"))
 
 
 def assert_can_revise(doc) -> None:
@@ -240,6 +264,44 @@ def request(doc, reason: str | None, notify) -> dict:
 		update_modified=False,
 	)
 	return {"success": True, "notified": notify(doc.name, reason=reason), "name": doc.name}
+
+
+def request_generic(doctype: str, name: str, reason: str | None = None) -> dict:
+	"""Ajukan Revisi for a menu whose spec names its own ``requested`` event (Survey Order,
+	Leak Check, Gate Entry) — one bell shape for all of them."""
+	from container_depot.container_depot.notify import notify_revision_requested
+
+	spec = _spec(doctype)
+	if not spec.get("requested"):
+		frappe.throw(_("{0} punya tombol Ajukan Revisi sendiri.").format(doctype))
+	doc = frappe.get_doc(doctype, name)
+	return request(doc, reason, lambda _name, reason=None: notify_revision_requested(doc, spec, reason))
+
+
+def save_fields(doctype: str, name: str, values, row: str | None = None) -> dict:
+	"""The PWA's Revisi Data for menus without an editable form of their own: a few fields,
+	saved in place. Only ``REVISION_PWA_FIELDS`` (or ``REVISION_PWA_ROW_FIELDS`` on the child
+	row ``row`` of ``REVISION_ROW_TABLE``) are taken from ``values``; the save is the same
+	revision save as the Desk's, so ``check`` and the module's ``revision_apply`` still rule."""
+	doc = frappe.get_doc(doctype, name)
+	assert_can_revise(doc)
+	hooks = _hooks(doctype)
+	values = frappe.parse_json(values) if isinstance(values, str) else (values or {})
+	target, allowed = doc, getattr(hooks, "REVISION_PWA_FIELDS", ())
+	if row:
+		target = next((r for r in doc.get(hooks.REVISION_ROW_TABLE) or [] if r.name == row), None)
+		if not target:
+			frappe.throw(_("Baris {0} bukan milik {1}.").format(row, name))
+		allowed = hooks.REVISION_PWA_ROW_FIELDS
+	for f in allowed:
+		if f in values:
+			target.set(f, values[f])
+	doc.flags.revision = True
+	# The right was checked above (assert_can_revise); the field team's own DocPerm is not
+	# what a revision answers to.
+	doc.flags.ignore_permissions = True
+	doc.save()
+	return {"name": doc.name, "revision": state(doc)}
 
 
 @frappe.whitelist(methods=["POST"])

@@ -27,5 +27,14 @@ frappe.ui.form.on('Survey Order', {
 		if (!frm.is_new() && frm.doc.docstatus === 0 && frappe.perm.has_perm(frm.doctype, 0, 'cancel')) {
 			container_depot.cancel_button(frm, () => frm._discard());
 		}
+		// Revisi Data / Tolak Revisi on a finished day (container_depot.revision): notes,
+		// photos, SPK names and the date — never which tanks, nor where each stands.
+		container_depot.revision.setup(frm, { locked: SURVEY_REVISION_LOCKED, rowLocked: ['container'] });
 	},
 });
+
+// Mirrors survey_order.REVISION_LOCKED — what a revision may not change.
+const SURVEY_REVISION_LOCKED = [
+	'booking', 'principal', 'surveyor', 'status', 'plan_date', 'target_urgent_on', 'branch',
+	'depot', 'tank_count', 'lowered_count', 'survey_done_count', 'per_surveyed', 'container_summary',
+];

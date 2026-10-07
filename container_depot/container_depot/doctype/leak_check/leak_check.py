@@ -58,6 +58,45 @@ class LeakCheck(Document):
 
 			notify_leak_check_created(self)
 
+	def onload(self):
+		# Revisi Data / Tolak Revisi on the Desk form (public/js/revision.js).
+		if self.docstatus == 1:
+			from container_depot.container_depot import revision
+
+			self.set_onload("revision_state", revision.state(self))
+
+	def before_update_after_submit(self):
+		# Revisi Data — a finished record corrected in place (revision.py).
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.check(self)
+
+	def on_update_after_submit(self):
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.after(self)
+
+
+# --- Revisi Data hooks (revision.py) ---------------------------------------------------
+# A finished check corrects its photos, their leak flags, the remarks and the SPK names. The
+# tank, the visit it belongs to and when it was done stay.
+REVISION_LOCKED = (
+	"container", "container_no", "depot", "principal", "status", "order_bongkar", "booking",
+	"recorded_by", "recorded_on", "closed_by_admin",
+)
+REVISION_PWA_FIELDS = ("remarks",)
+
+
+def revision_invoice(doc):
+	return None  # a Leak Check is not priced
+
+
+def revision_apply(doc, before) -> None:
+	# validate does not run on a submitted save; the flag follows the photos all the same.
+	doc.has_leak = int(any(row.is_leak for row in doc.photos))
+
 
 def has_leak_check_this_visit(container: str) -> bool:
 	"""A Completed Leak Check filed since the tank's arrival (``Container.eir_in_date``).
@@ -296,4 +335,11 @@ def get_leak_check_detail(name: str) -> dict:
 		"photos": [{"photo": p.photo, "caption": p.caption or "", "is_leak": p.is_leak} for p in doc.photos],
 		"photo_count": len(doc.photos),
 		"can_edit": doc.status == OPEN and frappe.has_permission("Leak Check", "write", doc=doc),
+		"revision": _revision_state(doc),
 	}
+
+
+def _revision_state(doc) -> dict:
+	from container_depot.container_depot import revision
+
+	return revision.state(doc)

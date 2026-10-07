@@ -50,7 +50,7 @@
 			</div>
 		</template>
 
-		<template #detail="{ data }">
+		<template #detail="{ data, reload }">
 			<section class="oak-card space-y-3 p-4">
 				<div class="flex items-start justify-between gap-2">
 					<div class="min-w-0">
@@ -66,6 +66,16 @@
 					</div>
 				</dl>
 			</section>
+			<RevisionActions
+				:state="data.revision"
+				doctype="Gate Entry"
+				:name="data.name"
+				:fields="[
+					{ key: 'truck_plate', label: labels.gateTruck, value: data.truck_plate },
+					{ key: 'driver_name', label: labels.gateDriver, value: data.driver_name },
+				]"
+				@changed="reload"
+			/>
 		</template>
 	</HistoryPage>
 </template>
@@ -77,6 +87,7 @@ import { labels } from "@/utils/labels"
 import { tone } from "@/utils/statusPill"
 import Icon from "@/components/Icon.vue"
 import HistoryPage from "@/components/HistoryPage.vue"
+import RevisionActions from "@/components/RevisionActions.vue"
 import FilterBar from "@/components/list/FilterBar.vue"
 import FilterSheet from "@/components/list/FilterSheet.vue"
 import { useSavedFilters } from "@/utils/listKit"

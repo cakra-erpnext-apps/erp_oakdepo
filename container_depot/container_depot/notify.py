@@ -661,6 +661,22 @@ def notify_revision_answered(doc, user, spec, done, reason=None):
 	)
 
 
+def notify_revision_requested(doc, spec, reason=None):
+	"""Ajukan Revisi on a menu that has no bell of its own (``revision.request_generic``):
+	Survey Order, Leak Check, Gate Entry. Same shape as the cleaning one, keyed per menu by
+	``spec["requested"]``."""
+	label = spec["label"]
+	what = doc.get("container_no") or doc.get("container_summary") or doc.name
+	args = (label, what, frappe.session.user, reason)
+	return notify(
+		doctype=doc.doctype,
+		name=doc.name,
+		subject=lambda: (_("Minta revisi {0} • {1} • oleh {2} — {3}") if reason else _("Minta revisi {0} • {1} • oleh {2}")).format(*args),
+		branch=doc.get("branch") or _depot_branch(doc.get("depot")),
+		event_key=spec["requested"],
+	)
+
+
 def notify_cleaning_revision_requested(cleaning_order, reason=None):
 	"""Fire when the cleaning team asks for a SUBMITTED Cleaning Order to be opened again.
 

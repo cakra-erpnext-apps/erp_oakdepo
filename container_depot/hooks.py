@@ -466,7 +466,7 @@ app_include_js = [
 	"/assets/container_depot/js/cancel_button.js?v=1",
 	# container_depot.revision — Revisi Data / Tolak Revisi on a finished order's form
 	# (container_depot/revision.py; see the file).
-	"/assets/container_depot/js/revision.js?v=2",
+	"/assets/container_depot/js/revision.js?v=3",
 	# container_depot.close_order — "Tutup Order" (Administrator) on every order form
 	# (container_depot/container_depot/closing.py; see the file).
 	"/assets/container_depot/js/close_order.js?v=1",

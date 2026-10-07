@@ -100,7 +100,26 @@ class SurveyOrder(Document):
 			if k != "docstatus":
 				self.set(k, v)
 
-	on_update_after_submit = on_update
+	def onload(self):
+		# Revisi Data / Tolak Revisi on the Desk form (public/js/revision.js).
+		if self.docstatus == 1:
+			from container_depot.container_depot import revision
+
+			self.set_onload("revision_state", revision.state(self))
+
+	def before_update_after_submit(self):
+		# Revisi Data — a finished day corrected in place (revision.py).
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.check(self)
+
+	def on_update_after_submit(self):
+		self.on_update()
+		if self.flags.get("revision"):
+			from container_depot.container_depot import revision
+
+			revision.after(self)
 
 	def before_cancel(self):
 		"""Cancelling the schedule cancels its tanks with it.
@@ -118,6 +137,38 @@ class SurveyOrder(Document):
 
 	def on_discard(self):
 		self.db_set("status", CANCELLED, update_modified=False)
+
+
+# --- Revisi Data hooks (revision.py) ---------------------------------------------------
+# A finished day corrects its notes, photos, SPK names and its own date. Which tanks it holds,
+# where each stands and who pressed what stay: those move only through the tank actions
+# (lowering, survey, Buka Lagi), which is where the EIR-Out and the bells follow them.
+REVISION_LOCKED = (
+	"booking", "principal", "surveyor", "status", "plan_date", "target_urgent_on", "branch",
+	"depot", "tank_count", "lowered_count", "survey_done_count", "per_surveyed",
+	"container_summary",
+)
+REVISION_ROW_TABLE = "tanks"
+REVISION_ROW_FIELDS = ("lowering_note", "survey_notes")
+REVISION_PWA_FIELDS = ()
+REVISION_PWA_ROW_FIELDS = REVISION_ROW_FIELDS
+
+
+def revision_invoice(doc):
+	return None  # nothing on a Survey Order is priced
+
+
+def revision_apply(doc, before) -> None:
+	"""The rows stay the same tanks: none added or dropped, and only their notes move — the
+	rest of each row is put back to what the database says."""
+	old = {r.name: r for r in before.tanks}
+	if {r.name for r in doc.tanks} != set(old):
+		frappe.throw(_("Revisi Data tidak menambah atau menghapus tank. Pakai booking-nya."))
+	for row in doc.tanks:
+		prev = old[row.name]
+		for df in row.meta.fields:
+			if df.fieldtype not in frappe.model.no_value_fields and df.fieldname not in REVISION_ROW_FIELDS:
+				row.set(df.fieldname, prev.get(df.fieldname))
 
 
 def refresh_urgency(name: str) -> None:

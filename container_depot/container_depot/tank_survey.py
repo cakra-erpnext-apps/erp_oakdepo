@@ -929,6 +929,10 @@ def get_tank_detail(name: str) -> dict:
 	out["days_to"] = _days_to(out)
 	out["urgent"] = _is_urgent(out, URGENT_LOWERING_DAYS)
 	out["timeline"] = tank_timeline(out)
+	# Revisi Data / Ajukan Revisi on the day this tank belongs to (revision.state).
+	from container_depot.container_depot import revision
+
+	out["revision"] = revision.state(frappe.get_doc(SCHEDULE, row.parent))
 	return out
 
 
