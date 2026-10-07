@@ -103,7 +103,7 @@ frappe.ui.form.on('Cleaning Order', {
 		const link = container_depot.doc_link;
 		const esc = frappe.utils.escape_html;
 		container_depot.render_system_facts(frm, [
-			[__('Status'), frm.doc.status && esc(frm.doc.status)],
+			[__('Status'), frm.doc.status && container_depot.order_status_html(frm.doctype, frm.doc.status)],
 			[__('Total Tarif Service'), _totals_by_currency(frm, 'amount')],
 			[__('Biaya Manhour'), _totals_by_currency(frm, 'manhour_rate')],
 			[__('Owner (Principal)'), link('Customer', frm.doc.container_principal)],

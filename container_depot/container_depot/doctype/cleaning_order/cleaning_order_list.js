@@ -58,18 +58,10 @@ frappe.listview_settings["Cleaning Order"] = {
 		// Ops belum menentukan metode) is the draft here and takes grey, and Completed
 		// — not the mid-flow stages — is the one that gets blue.
 		if (doc.docstatus === 1 && doc.closed_by_admin) return container_depot.status_pill("closed", "closed_by_admin,=,1");
-		const map = {
-			// Belum diteruskan — Admin Ops masih memilih metode cleaning (ini drafnya).
-			"Service Setup": [__("Belum Diteruskan"), "gray", "status,=,Service Setup"],
-			// Sudah diteruskan ke operator cuci, menunggu dikerjakan.
-			Pending: container_depot.status_pill("ready", "status,=,Pending"),
-			// Operator sedang mengerjakan.
-			In_Progress: container_depot.status_pill("doing", "status,=,In_Progress"),
-			// Selesai di lapangan, menunggu Admin Ops memeriksa lalu Submit.
-			"Pending Review": container_depot.status_pill("review", "status,=,Pending Review"),
-			Completed: container_depot.status_pill("done", "status,=,Completed"),
-			Cancelled: container_depot.status_pill("cancelled", "status,=,Cancelled"),
-		};
-		return map[doc.status] || [__(doc.status), "gray", `status,=,${doc.status}`];
+		// Label + warna per status: container_depot.ORDER_STATUS (public/js/status_pill.js).
+		return (
+			container_depot.order_status_pill("Cleaning Order", doc.status, `status,=,${doc.status}`) ||
+			[__(doc.status), "gray", `status,=,${doc.status}`]
+		);
 	},
 };

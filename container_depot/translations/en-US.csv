@@ -1,0 +1,16 @@
+Service Setup,Draf,Cleaning Order
+Pending,Siap Dikerjakan,Cleaning Order
+In_Progress,Dikerjakan,Cleaning Order
+Pending Review,Menunggu Review,Cleaning Order
+Completed,Selesai,Cleaning Order
+Cancelled,Dibatalkan,Cleaning Order
+Draft,Draf,Repair Order
+Pending Approval,Menunggu Persetujuan,Repair Order
+Approved,Disetujui,Repair Order
+Rejected,Ditolak,Repair Order
+Revision Requested,Revisi Diminta,Repair Order
+Pending,Siap Dikerjakan,Repair Order
+In Progress,Dikerjakan,Repair Order
+Pending Review,Menunggu Review,Repair Order
+Completed,Selesai,Repair Order
+Cancelled,Dibatalkan,Repair Order

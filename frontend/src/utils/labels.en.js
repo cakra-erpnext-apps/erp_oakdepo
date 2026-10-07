@@ -739,7 +739,6 @@ export const labels = {
 	cleaningStartFull: "Start Cleaning",
 	cleaningStartFirst: "Start cleaning first before it can be finished.",
 	cleaningStartGate: "This order has not started. Start it first to fill in the cleaning details.",
-	cleaningNotStarted: "Not Forwarded",
 	cleaningRequested: "Requested services",
 	cleaningStartAuto: "Start time is recorded automatically",
 	cleaningStepMethod: "Method",

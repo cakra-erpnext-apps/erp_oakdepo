@@ -22,8 +22,7 @@ frappe.query_reports["Methanol Rinse Register"] = {
 			return container_depot.tank_history_cell("Methanol Rinse", data.tank_no);
 		}
 		if (column.fieldname === "status" && data && data.status) {
-			const colour = data.status === "Completed" ? "green" : "orange";
-			value = `<span class="indicator-pill ${colour}">${data.status}</span>`;
+			value = container_depot.order_status_html("Cleaning Order", data.status, "orange");
 		}
 		return value;
 	},

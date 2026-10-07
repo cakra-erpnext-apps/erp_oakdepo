@@ -1947,7 +1947,7 @@ function _dossier_line(o) {
 	let kind = o.detail ? `${o.kind} · ${o.detail}` : o.kind;
 	if (o.blocks) kind += ` · ${__('menahan gate-out')}`;
 	return `<div class="d-flex align-items-center" style="gap: .5rem; padding: 2px 0;">
-		<span class="indicator-pill ${tone}">${esc(o.status || '—')}</span>
+		${o.cancelled ? `<span class="indicator-pill red">${esc(o.status || '—')}</span>` : container_depot.order_status_html(o.doctype, o.status, tone)}
 		<span style="min-width: 11rem;">${link}</span>
 		<span class="text-muted">${esc(kind)}</span>
 	</div>`;
@@ -2030,7 +2030,7 @@ function _work_row_html(o) {
 	const link = frappe.utils.get_form_link(o.doctype, o.name, true, esc(o.name));
 	const when = o.date ? frappe.datetime.str_to_user(o.date) : '';
 	return `<div class="d-flex align-items-center" style="gap: .5rem; padding: 2px 0;">
-		<span class="indicator-pill ${_work_indicator(o.status)}">${esc(o.status || '—')}</span>
+		${container_depot.order_status_html(o.doctype, o.status, _work_indicator(o.status))}
 		<span style="min-width: 9rem;">${link}</span>
 		<span class="text-muted">${esc(__(o.label || o.doctype))}</span>
 		<span class="text-muted small ml-auto">${esc(when)}</span>

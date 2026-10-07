@@ -40,19 +40,11 @@ frappe.listview_settings["Repair Order"] = {
 	// name the same status the same way.
 	get_indicator(doc) {
 		if (doc.status === "Completed" && doc.closed_by_admin) return container_depot.status_pill("closed", "closed_by_admin,=,1");
-		const map = {
-			Draft: container_depot.status_pill("draft", "status,=,Draft"),
-			"Pending Approval": [__("Menunggu Persetujuan"), "orange", "status,=,Pending Approval"],
-			Approved: [__("Disetujui"), "green", "status,=,Approved"],
-			Rejected: [__("Ditolak"), "red", "status,=,Rejected"],
-			"Revision Requested": container_depot.status_pill("revision", "status,=,Revision Requested"),
-			Pending: container_depot.status_pill("ready", "status,=,Pending"),
-			"In Progress": container_depot.status_pill("doing", "status,=,In Progress"),
-			"Pending Review": container_depot.status_pill("review", "status,=,Pending Review"),
-			Completed: container_depot.status_pill("done", "status,=,Completed"),
-			Cancelled: container_depot.status_pill("cancelled", "status,=,Cancelled"),
-		};
-		return map[doc.status] || [__(doc.status || "-"), "gray", `status,=,${doc.status || ""}`];
+		// Label + warna per status: container_depot.ORDER_STATUS (public/js/status_pill.js).
+		return (
+			container_depot.order_status_pill("Repair Order", doc.status, `status,=,${doc.status || ""}`) ||
+			[__(doc.status || "-"), "gray", `status,=,${doc.status || ""}`]
+		);
 	},
 
 	// Dua menu sidebar, satu doctype (lihat container_depot/mr_scope.py): judul dan menu yang

@@ -1,5 +1,4 @@
-import { labels } from "@/utils/labels"
-import { pill, tone } from "@/utils/statusPill"
+import { pill } from "@/utils/statusPill"
 
 // Chip satu Cleaning Order, sama dengan cleaning_order_list.js di Desk — teksnya ikut, supaya
 // tetap terbaca walau warnanya pudar di bawah matahari.
@@ -11,7 +10,7 @@ const CHIPS = {
 	Cancelled: pill("cancelled"),
 }
 // Service Setup: Admin Ops belum memilih metode — draf-nya order cuci.
-const NOT_FORWARDED = { label: labels.cleaningNotStarted, cls: tone("gray") }
+const DRAFT = pill("draft")
 export function cleaningChip(o) {
-	return CHIPS[o?.status] || NOT_FORWARDED
+	return CHIPS[o?.status] || DRAFT
 }

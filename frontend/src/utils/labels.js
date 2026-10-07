@@ -840,7 +840,6 @@ export const labels = {
 	cleaningStartFirst: "Mulai cleaning dulu sebelum bisa diselesaikan.", // gate hint
 	cleaningStartGate: "Order ini belum dimulai. Mulai dulu untuk mengisi detail cleaning.", // detail-access gate
 	// --- Cleaning: redesain layar (2026-09-08) --------------------------------
-	cleaningNotStarted: "Belum Diteruskan", // Service Setup: Admin Ops belum memilih metode
 	cleaningRequested: "Layanan diminta", // apa yang diminta Admin Ops (read-only bagi petugas)
 	cleaningStartAuto: "Waktu mulai dicatat otomatis",
 	// Tiga langkah pengisian, ditampilkan sebagai chip centang di puncak form. Bukan alur

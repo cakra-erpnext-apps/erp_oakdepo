@@ -20,8 +20,7 @@ frappe.query_reports["Repair Register"] = {
 			return container_depot.tank_history_cell("Repair", data.tank_no);
 		}
 		if (column.fieldname === "status" && data && data.status) {
-			const colour = { Completed: "green", Rejected: "red" }[data.status] || "orange";
-			value = `<span class="indicator-pill ${colour}">${data.status}</span>`;
+			value = container_depot.order_status_html("Repair Order", data.status, "orange");
 		}
 		return value;
 	},

@@ -39,7 +39,7 @@ const SURVEY = {
 	Cancelled: STAGE.cancelled.label,
 }
 const CLEANING = {
-	"Service Setup": labels.cleaningNotStarted,
+	"Service Setup": STAGE.draft.label,
 	Pending: STAGE.ready.label,
 	In_Progress: STAGE.doing.label,
 	"Pending Review": STAGE.review.label,
