@@ -1854,19 +1854,22 @@ function submit_generation(frm, dialog, codes, vehicle_data) {
 // booking. Same shape as the inbound "Pekerjaan per Container" block — the tank as a link to
 // its master, then one flush row per document, pill first — because two panels answering
 // nearly the same question should not look like two different features.
+// The tank's live status beside its number, on both panels (Tank In and Tank Out). Available
+// is the state a tank leaves from cleanly; everything else is stated plainly rather than
+// dressed up — the booking no longer refuses the others.
+function _tank_status_pill(status) {
+	if (!status) return '';
+	const tone = status === 'Available' ? 'green' : 'gray';
+	return `<span class="indicator-pill ${tone} no-indicator-dot">${frappe.utils.escape_html(__(status))}</span>`;
+}
+
 function _dossier_html(tanks) {
 	const esc = frappe.utils.escape_html;
 	if (!tanks.length) return `<div class="text-muted">${__('Booking ini belum punya baris container.')}</div>`;
 	return tanks
 		.map((t) => {
 			const title = frappe.utils.get_form_link('Container', t.container, true, esc(t.container_no));
-			// Available is the state a tank leaves from cleanly; everything else is stated
-			// plainly rather than dressed up — the booking no longer refuses the others.
-			const status = t.status
-				? `<span class="indicator-pill ${
-						t.status === 'Available' ? 'green' : 'gray'
-				  } no-indicator-dot">${esc(t.status)}</span>`
-				: '';
+			const status = _tank_status_pill(t.status);
 			const target = t.target_lift_on
 				? `<span class="text-muted small">${__('Target')}: ${esc(t.target_lift_on)}</span>`
 				: '';
@@ -2016,7 +2019,7 @@ function _work_group_html(g) {
 	}
 
 	return `<div class="mb-4">
-		<div><b>${title}</b></div>
+		<div class="d-flex align-items-center" style="gap: .5rem;"><b>${title}</b>${_tank_status_pill(g.status)}</div>
 		${body}
 		${hint}
 	</div>`;

@@ -3942,6 +3942,8 @@ def orders_by_container(booking: str):
 		out.append({
 			"container": row.container,
 			"container_no": row.container_no,
+			# The tank's live status, as the Tank Out panel shows it (tank_documents.dossier).
+			"status": frappe.db.get_value("Container", row.container, "status"),
 			"orders": _work_for(booking, row.container),
 			"unlinked": _unlinked_count(row.container),
 		})
