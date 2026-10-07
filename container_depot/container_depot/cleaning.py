@@ -306,6 +306,10 @@ def list_cleaning_orders(status=None, search=None, depot=None, principal=None, c
 	filters = dict(scope)
 	if status in _STATUS_FILTER:
 		filters["status"] = _STATUS_FILTER[status]
+	else:
+		# "Semua" leaves out Menunggu Review: that order is in Admin Ops' hands now, and it has
+		# a pill of its own — same as Selesai is reached through its own pill.
+		filters["status"] = ["!=", "Pending Review"]
 	if depot:
 		# A depot outside the caller's branch matches nothing rather than widening the scope.
 		filters["depot"] = depot if depots is None or depot in depots else ""
@@ -381,7 +385,7 @@ def list_cleaning_orders(status=None, search=None, depot=None, principal=None, c
 	# Pills count WITHOUT the current filter — they are how the filter gets changed.
 	counts = {"all": 0, TODO: 0, "In_Progress": 0, "Pending Review": 0, "Completed": 0, "Cancelled": 0}
 	for s in frappe.get_all("Cleaning Order", filters=scope, pluck="status", limit_page_length=0):
-		counts["all"] += 1
+		counts["all"] += s != "Pending Review"
 		k = TODO if s in ("Pending", "Service Setup") else s
 		counts[k] = counts.get(k, 0) + 1
 

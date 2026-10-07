@@ -292,6 +292,41 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(row.status, "In_Progress")
 		self.assertFalse(row.cleaning_end, "the finish time is re-taken on the next send")
 
+	def test_semua_leaves_out_pending_review(self):
+		c = self._container("CLNSEMUA0001", status="In_Depot", depot="OAK1")
+		todo = self._order(c)
+		review = self._order(c)
+		cleaning.start_cleaning(review)
+		cleaning.save_cleaning_order(cleaning_order=review, submit=True)
+		semua = cleaning.list_cleaning_orders(search="CLNSEMUA0001", page_length=50)
+		self.assertEqual([i["name"] for i in semua["items"]], [todo])
+		pill = cleaning.list_cleaning_orders(status="Pending Review", search="CLNSEMUA0001")
+		self.assertEqual([i["name"] for i in pill["items"]], [review])
+		self.assertEqual(
+			semua["counts"]["all"],
+			frappe.db.count("Cleaning Order", {"status": ["!=", "Pending Review"]}),
+		)
+
+	def test_reject_review_needs_a_reason_and_sends_the_order_back(self):
+		from container_depot.container_depot import revision
+
+		c = self._container("CLNREJ0001", status="In_Depot", depot="OAK1")
+		co = self._order(c)
+		cleaning.start_cleaning(co)
+		cleaning.save_cleaning_order(cleaning_order=co, submit=True)
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				revision.reject_review("Cleaning Order", co, reason="  ")
+			revision.reject_review("Cleaning Order", co, reason="Masih ada residu")
+			row = frappe.db.get_value("Cleaning Order", co, ["status", "assigned_to"], as_dict=True)
+			self.assertEqual(row.status, "In_Progress")
+			self.assertEqual(row.assigned_to, "Administrator", "who opened it keeps the work")
+			self.assertTrue(frappe.db.exists("Comment", {"reference_name": co, "content": ["like", "%Masih ada residu%"]}))
+			with self.assertRaises(frappe.ValidationError):
+				revision.reject_review("Cleaning Order", co, reason="lagi")
+		finally:
+			frappe.db.delete("Comment", {"reference_doctype": "Cleaning Order", "reference_name": co})
+
 	def test_admin_ops_submit_completes_and_stamps_a_missing_start(self):
 		# Submit (Desk, Admin Ops) IS the finish action. An order that never went through the
 		# operator route — work done off-system — completes and has its missing cleaning_start

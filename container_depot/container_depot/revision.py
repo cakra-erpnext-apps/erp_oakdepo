@@ -321,6 +321,38 @@ def reject(doctype: str, name: str, reason: str | None = None) -> dict:
 	return {"name": name, "revision_requested": 0}
 
 
+# "Tolak Review": who opened the work (pressed Mulai) — the one it goes back to.
+_REVIEW_OPENER = {"Cleaning Order": "assigned_to", "Repair Order": "started_by", "Inspection": "work_started_by"}
+
+
+@frappe.whitelist(methods=["POST"])
+def reject_review(doctype: str, name: str, reason: str | None = None) -> dict:
+	""""Tolak Review": Admin Ops turns down work the field sent for review, and says why.
+
+	The order goes back to work exactly as the team's own pull-back does (each module's
+	``withdraw_review``: Cleaning / M&R to Dikerjakan, EIR to Draf) — the reviewer's right
+	instead of the operator's — and whoever opened the work hears the reason."""
+	if doctype not in _REVIEW_OPENER:
+		frappe.throw(_("{0} tidak punya tahap review.").format(doctype))
+	doc = frappe.get_doc(doctype, name)
+	if not has_right(doctype):
+		frappe.throw(_("Anda tidak berwenang menolak review."), frappe.PermissionError)
+	_guard_branch(doc)
+	reason = (reason or "").strip()
+	if not reason:
+		frappe.throw(_("Alasan penolakan wajib diisi."))
+	if doc.docstatus != 0 or doc.get("status") != "Pending Review":
+		frappe.throw(_("Hanya order yang menunggu review yang bisa ditolak."))
+	_hooks(doctype).withdraw_review(name)
+	log_doc_note(doctype, name, _("Review ditolak oleh {0}: {1}").format(frappe.session.user, reason))
+	opener = doc.get(_REVIEW_OPENER[doctype])
+	if opener:
+		from container_depot.container_depot.notify import notify_review_rejected
+
+		notify_review_rejected(doc, opener, _spec(doctype), reason)
+	return {"name": name, "status": frappe.db.get_value(doctype, name, "status")}
+
+
 def close_request(doc, done: bool, reason: str | None = None) -> None:
 	user = frappe.db.get_value(doc.doctype, doc.name, "revision_requested_by")
 	frappe.db.set_value(

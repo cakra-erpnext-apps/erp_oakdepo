@@ -339,7 +339,7 @@ frappe.ui.form.on('Repair Order', {
 			Rejected: [__('Ditolak owner.'), 'red'],
 			Pending: [__('Sudah di worklist PWA team repair, menunggu dikerjakan.'), 'blue'],
 			'In Progress': [__('Sedang dikerjakan di workshop.'), 'yellow'],
-			'Pending Review': [__('Team sudah selesai di lapangan — periksa pekerjaannya, lalu Selesaikan M&R.'), 'orange'],
+			'Pending Review': [__('Team sudah selesai di lapangan — periksa pekerjaannya, lalu Selesaikan M&R atau Tolak Review untuk mengembalikannya.'), 'orange'],
 			Completed: [__('Selesai dan siap ditagih. Tank siap dilayani.'), 'green'],
 			Cancelled: [__('M&R ini dibatalkan.'), 'red'],
 		};
@@ -498,16 +498,9 @@ frappe.ui.form.on('Repair Order', {
 		if (MR_OWNER_APPROVAL && is_admin_ops() && ['Draft', 'Revision Requested'].includes(s)) {
 			mr_bypass_button(frm);
 		}
-		// The team's own correction, before Desk finalises it — nothing has left the
-		// warehouse yet, so this costs nothing to undo.
-		if (s === 'Pending Review') {
-			mr_step_back(frm, {
-				label: 'Kembalikan ke Team',
-				method: 'container_depot.ess.repairs.mr_withdraw_review',
-				confirm: 'Kembalikan M&R ini ke team untuk diperbaiki? Statusnya kembali In Progress.',
-				primary: 'Kembalikan',
-			});
-		}
+		// Back to the team with a reason — nothing has left the warehouse yet, so this costs
+		// nothing to undo. Same button as Cleaning and EIR.
+		container_depot.revision.reject_review_button(frm, is_admin_ops());
 		// "Tarik ulang" — pull it back off the customer web to arrange it again. Only while
 		// the owner has not decided (the server enforces that too).
 		if (is_admin_ops() && s === 'Pending Approval') {

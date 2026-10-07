@@ -3437,6 +3437,8 @@ NOTIFICATION_RULES = [
 		["Admin Ops", "SPV Lapangan"]),
 	("repair_revision_answered", "Revisi M&R dijawab", "Admin Ops merevisi (Revisi Data / Buka Lagi) atau menolak revisi M&R — dikirim ke pengajunya saja.",
 		["Admin Ops", "SPV Lapangan"]),
+	("review_rejected", "Review ditolak", "Admin Ops menolak EIR / Cleaning / M&R yang menunggu review — order kembali dikerjakan; dikirim ke yang membukanya saja, beserta alasannya.",
+		["Admin Ops", "SPV Lapangan"]),
 	# Survey Order, Leak Check, Gate Entry (revision.request_generic) — same pair of bells.
 	("survey_revision_requested", "Team minta survey direvisi", "Team survey mengajukan revisi atas Survey Order yang sudah selesai — Admin Ops yang merevisi atau menolaknya.",
 		["Admin Ops", "SPV Lapangan"]),

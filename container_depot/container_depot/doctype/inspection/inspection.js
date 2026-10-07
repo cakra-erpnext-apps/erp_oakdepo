@@ -28,13 +28,14 @@ frappe.ui.form.on('Inspection', {
 		// reviewer to check + Submit (the native Submit finalizes it).
 		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
 			frm.dashboard.add_comment(
-				__('Menunggu review Adm Ops — periksa lalu tekan Submit untuk finalisasi.'),
+				__('Menunggu review Adm Ops — periksa lalu tekan Submit untuk finalisasi, atau Tolak Review untuk mengembalikannya.'),
 				'blue',
 				true,
 			);
 		}
 		// Ways back into a submitted EIR (the server checks every right again). See setup_revision.
 		setup_revision(frm);
+		container_depot.revision.reject_review_button(frm, frappe.perm.has_perm(frm.doctype, 0, 'cancel'));
 		// A draft EIR ends through the shared red Cancel (Frappe's Discard, same server call),
 		// on the same cancel right as the rollback above. A submitted one never does — it goes
 		// back to Draft first.

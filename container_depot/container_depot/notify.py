@@ -661,6 +661,19 @@ def notify_revision_answered(doc, user, spec, done, reason=None):
 	)
 
 
+def notify_review_rejected(doc, user, spec, reason):
+	"""Tolak Review (``revision.reject_review``): the work is back on the field's plate — tell
+	the one who opened it, them only, with the reason."""
+	args = (spec["label"], doc.get("container_no") or doc.get("container") or doc.name, frappe.session.user, reason)
+	return notify(
+		doctype=doc.doctype,
+		name=doc.name,
+		subject=lambda: _("Review {0} ditolak • {1} • oleh {2} — {3}").format(*args),
+		event_key="review_rejected",
+		users=[user],
+	)
+
+
 def notify_revision_requested(doc, spec, reason=None):
 	"""Ajukan Revisi on a menu that has no bell of its own (``revision.request_generic``):
 	Survey Order, Leak Check, Gate Entry. Same shape as the cleaning one, keyed per menu by

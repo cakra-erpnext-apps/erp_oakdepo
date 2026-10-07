@@ -1980,6 +1980,10 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 		filters["docstatus"] = cint(docstatus)
 	if status and str(status).strip():
 		filters["status"] = str(status).strip()
+	else:
+		# Menunggu Review is not history — it sits under the EIR list's own Review pill (same as
+		# Cleaning / M&R Riwayat). Its detail still opens here by deep link (?open=).
+		filters["status"] = ["!=", "Pending Review"]
 	or_filters = None
 	if search and str(search).strip():
 		s = f"%{str(search).strip()}%"
@@ -2379,6 +2383,10 @@ def list_eirs(status=None, search=None, inspection_type=None, depot=None, princi
 	)
 	if status in (EIR_TODO, EIR_DOING, EIR_REVIEW):
 		rows = [r for r in rows if _eir_state(r) == status]
+	else:
+		# "Semua" leaves out Menunggu Review — in Admin Ops' hands now, reached through its own
+		# pill (same as Cleaning and M&R).
+		rows = [r for r in rows if _eir_state(r) != EIR_REVIEW]
 	for r in rows:
 		r["state"] = _eir_state(r)
 		r["day"] = str(getdate(r.creation))
@@ -2410,7 +2418,7 @@ def list_eirs(status=None, search=None, inspection_type=None, depot=None, princi
 	counts = {"all": 0, EIR_TODO: 0, EIR_DOING: 0, EIR_REVIEW: 0, "EIR-In": 0, "EIR-Out": 0}
 	for r in frappe.get_all("Inspection", filters=scope,
 							fields=["status", "work_started_on", "inspection_type"], limit_page_length=0):
-		counts["all"] += 1
+		counts["all"] += _eir_state(r) != EIR_REVIEW
 		counts[_eir_state(r)] += 1
 		counts[r.inspection_type] += 1
 

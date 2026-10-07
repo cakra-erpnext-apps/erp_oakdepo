@@ -465,3 +465,8 @@ Tidak ada permintaan revisi pada order ini.,There is no revision request on this
 Revisi ditolak oleh {0}: {1},Revision rejected by {0}: {1}
 Revisi {0} selesai • {1} • oleh {2},{0} revised • {1} • by {2}
 Revisi {0} ditolak • {1} • oleh {2} — {3},{0} revision rejected • {1} • by {2} — {3}
+Anda tidak berwenang menolak review.,You are not allowed to reject a review.
+Hanya order yang menunggu review yang bisa ditolak.,Only an order awaiting review can be rejected.
+Review ditolak oleh {0}: {1},Review rejected by {0}: {1}
+Review {0} ditolak • {1} • oleh {2} — {3},{0} review rejected • {1} • by {2} — {3}
+{0} tidak punya tahap review.,{0} has no review step.

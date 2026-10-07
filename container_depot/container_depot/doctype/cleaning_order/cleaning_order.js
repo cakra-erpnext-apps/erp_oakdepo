@@ -52,6 +52,7 @@ frappe.ui.form.on('Cleaning Order', {
 			frm.add_custom_button(__('Kembalikan ke Draft'), () => revert_to_draft(frm));
 		}
 		container_depot.revision.setup(frm, { locked: CLEANING_REVISION_LOCKED });
+		container_depot.revision.reject_review_button(frm, frappe.perm.has_perm(frm.doctype, 0, 'cancel'));
 		// Cancel, the same red button every depot form has — drafts only; a submitted order
 		// goes back to Draft first (before_cancel refuses it). Frappe's "Discard" is refused
 		// by the server too (before_discard), so this is the one way to end a draft.
@@ -75,7 +76,7 @@ frappe.ui.form.on('Cleaning Order', {
 		// Waiting on THIS reviewer: the field is done, Submit is the last step.
 		if (frm.doc.docstatus === 0 && frm.doc.status === 'Pending Review') {
 			frm.dashboard.add_comment(
-				__('Operator sudah selesai di lapangan — periksa lalu Submit untuk menyelesaikan order.'),
+				__('Operator sudah selesai di lapangan — periksa lalu Submit untuk menyelesaikan order, atau Tolak Review untuk mengembalikannya.'),
 				'blue',
 				true,
 			);

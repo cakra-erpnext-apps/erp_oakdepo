@@ -316,6 +316,30 @@ class TestMaintenanceRepairFlow(_MrFixture):
 		mr.finalize_repair(ro)
 		self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "Completed")
 
+	def test_admin_ops_rejects_a_review_back_to_the_team(self):
+		"""Tolak Review: Pending Review -> In Progress, reason required, and Semua no longer
+		lists the order while it waits for review."""
+		from container_depot.container_depot import revision
+
+		self._ensure_service_item()
+		c, _ = self._eir_with_damage("MRREJ000001")
+		ro = frappe.db.get_value("Repair Order", {"container": c}, "name")
+		self._orders.append(ro)
+		self._to_in_progress(ro, [{"item": _SERVICE, "quantity": 1}])
+		mr.save_mr_order(repair_order=ro, submit=True)
+		try:
+			semua = mr.list_mr_orders(search="MRREJ000001")
+			self.assertNotIn(ro, [i["name"] for i in semua["items"]])
+			review = mr.list_mr_orders(status="Pending Review", search="MRREJ000001")
+			self.assertIn(ro, [i["name"] for i in review["items"]])
+
+			with self.assertRaises(frappe.ValidationError):
+				revision.reject_review("Repair Order", ro, reason="")
+			revision.reject_review("Repair Order", ro, reason="Las belum rapi")
+			self.assertEqual(frappe.db.get_value("Repair Order", ro, "status"), "In Progress")
+		finally:
+			frappe.db.delete("Comment", {"reference_doctype": "Repair Order", "reference_name": ro})
+
 	def test_desk_can_close_an_approved_order_without_dispatching_it(self):
 		"""The short road out of Approved: work that is already done never goes to the team.
 

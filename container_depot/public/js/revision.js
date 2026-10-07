@@ -9,6 +9,7 @@
 // the loaded copy of the document (__last_sync_on), not to anything stored.
 //
 // Also "Tolak Revisi" for a pending Ajukan Revisi, and the banner saying where things stand.
+// And "Tolak Review" (reject_review_button) for work the field sent for review.
 //
 // Each doctype's refresh calls container_depot.revision.setup(frm, { locked, unlock }):
 //   locked  — fieldnames the form must keep read-only (mirror of the module's REVISION_LOCKED;
@@ -65,6 +66,30 @@ container_depot.revision = {
 				)
 			);
 		}
+	},
+
+	// "Tolak Review": an order the field sent for review goes back to work, with a reason
+	// (revision.reject_review — Cleaning / M&R to Dikerjakan, EIR to Draf). `allowed` mirrors
+	// the server's right (revision.has_right); the server checks it again.
+	reject_review_button(frm, allowed) {
+		if (!allowed || frm.is_new() || frm.doc.docstatus !== 0 || frm.doc.status !== 'Pending Review') return;
+		frm.add_custom_button(__('Tolak Review'), () =>
+			frappe.prompt(
+				{ fieldname: 'reason', fieldtype: 'Small Text', label: __('Alasan'), reqd: 1 },
+				(v) =>
+					frappe.call({
+						method: 'container_depot.container_depot.revision.reject_review',
+						args: { doctype: frm.doctype, name: frm.doc.name, reason: v.reason },
+						freeze: true,
+						callback() {
+							frappe.show_alert({ message: __('Review ditolak — order kembali dikerjakan'), indicator: 'orange' });
+							frm.reload_doc();
+						},
+					}),
+				__('Tolak Review'),
+				__('Tolak')
+			)
+		);
 	},
 
 	_editing(frm) {
