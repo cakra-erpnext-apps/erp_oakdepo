@@ -63,7 +63,7 @@ def get_tank_documents(container):
 	for r in frappe.get_list(
 		"Inspection",
 		filters={"container": container},
-		fields=["name", "inspection_id", "inspection_type", "status", "creation"],
+		fields=["name", "inspection_id", "inspection_type", "status", "eir_date", "creation"],
 		order_by="creation desc",
 		limit_page_length=0,
 	):
@@ -74,7 +74,7 @@ def get_tank_documents(container):
 				"doctype": "Inspection",
 				"name": r.name,
 				"status": r.status,
-				"date": _date(r.creation),
+				"date": _date(r.eir_date or r.creation),
 				"view_url": _view_url("Inspection", r.name),
 				"pdf_url": _pdf_url("Inspection", r.name),
 			}
@@ -85,7 +85,7 @@ def get_tank_documents(container):
 	for r in frappe.get_list(
 		"Cleaning Order",
 		filters={"container": container, "docstatus": 1},
-		fields=["name", "order_id", "date_of_issue", "cleaning_end", "status"],
+		fields=["name", "order_id", "plan_date", "date_of_issue", "status"],
 		order_by="creation desc",
 		limit_page_length=0,
 	):
@@ -96,7 +96,7 @@ def get_tank_documents(container):
 				"doctype": "Cleaning Order",
 				"name": r.name,
 				"status": r.status,
-				"date": _date(r.date_of_issue or r.cleaning_end),
+				"date": _date(r.plan_date or r.date_of_issue),
 				"view_url": _view_url("Cleaning Order", r.name, CLEANING_ORDER_FORMAT),
 				"pdf_url": _pdf_url("Cleaning Order", r.name, CLEANING_ORDER_FORMAT),
 			}
@@ -105,7 +105,7 @@ def get_tank_documents(container):
 	for r in frappe.get_list(
 		"Repair Order",
 		filters={"container": container},
-		fields=["name", "status", "creation"],
+		fields=["name", "status", "plan_date", "creation"],
 		order_by="creation desc",
 		limit_page_length=0,
 	):
@@ -116,7 +116,7 @@ def get_tank_documents(container):
 				"doctype": "Repair Order",
 				"name": r.name,
 				"status": r.status,
-				"date": _date(r.creation),
+				"date": _date(r.plan_date or r.creation),
 				"view_url": _view_url("Repair Order", r.name, REPAIR_ORDER_FORMAT),
 				"pdf_url": _pdf_url("Repair Order", r.name, REPAIR_ORDER_FORMAT),
 			}
@@ -124,9 +124,9 @@ def get_tank_documents(container):
 
 	# Order Bongkar reuses the booking's Container Booking Item child; Order Muat still
 	# carries its own Order Container Item rows.
-	for doctype, category, child in (
-		("Order Bongkar", _("Bon Bongkar"), "Container Booking Item"),
-		("Order Muat", _("Bon Muat"), "Order Container Item"),
+	for doctype, category, child, day in (
+		("Order Bongkar", _("Bon Bongkar"), "Container Booking Item", "tanggal_bongkar"),
+		("Order Muat", _("Bon Muat"), "Order Container Item", "tanggal_muat"),
 	):
 		# Find the bons that include this container, then load each parent once.
 		parents = frappe.get_all(
@@ -135,7 +135,7 @@ def get_tank_documents(container):
 			pluck="parent",
 		)
 		for name in dict.fromkeys(parents):
-			r = frappe.db.get_value(doctype, name, ["order_status", "creation"], as_dict=True)
+			r = frappe.db.get_value(doctype, name, ["order_status", day, "creation"], as_dict=True)
 			if not r:
 				continue
 			documents.append(
@@ -145,7 +145,7 @@ def get_tank_documents(container):
 					"doctype": doctype,
 					"name": name,
 					"status": r.order_status,
-					"date": _date(r.creation),
+					"date": _date(r.get(day) or r.creation),
 					"view_url": _view_url(doctype, name),
 					"pdf_url": _pdf_url(doctype, name),
 				}

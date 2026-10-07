@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_days, getdate, today
 
 from container_depot.container_depot import eir
 from container_depot.tests._booking_helpers import make_booking_code
@@ -176,9 +177,9 @@ class TestEirCreate(FrappeTestCase):
 		self.assertEqual(doc.docstatus, 1)
 		self.assertEqual(doc.has_damage, 1)
 		self.assertEqual(doc.truck_no, "B-1234-XY")
-		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		cont = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		self.assertEqual(cont.status, "In_Depot")
-		self.assertTrue(cont.eir_in_date)
+		self.assertTrue(cont.in_date)
 
 	def test_acceptable_skipped_and_repair_only_not_damage(self):
 		c = _make_container("EIRC1000003")
@@ -530,7 +531,7 @@ class TestEirDraft(FrappeTestCase):
 		self.assertEqual(res["status"], "Pending Review")
 		self.assertTrue(res["pending_review"])
 		# The container has NOT moved yet — review is still pending.
-		self.assertFalse(frappe.db.get_value("Container", c, "eir_in_date"))
+		self.assertFalse(frappe.db.get_value("Container", c, "in_date"))
 		# Reviewers get a "menunggu review" ping — routed to the Admin Ops / SPV Lapangan
 		# roles by the `eir_pending_review` rule, not broadcast to the crew. This test runs
 		# as Administrator, who holds no depot role, so assert on the routing decision
@@ -547,9 +548,9 @@ class TestEirDraft(FrappeTestCase):
 		frappe.get_doc("Inspection", d["inspection"]).submit()
 		self.assertEqual(frappe.db.get_value("Inspection", d["inspection"], "docstatus"), 1)
 		self.assertEqual(frappe.db.get_value("Inspection", d["inspection"], "status"), "Submitted")
-		cont = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		cont = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		self.assertEqual(cont.status, "In_Depot")
-		self.assertTrue(cont.eir_in_date)
+		self.assertTrue(cont.in_date)
 		d2 = eir.open_draft(container_no="EIRD1000005")
 		self.assertNotEqual(d2["inspection"], d["inspection"])
 
@@ -586,7 +587,7 @@ class TestEirDraft(FrappeTestCase):
 		# Gone from the review list, back on the worklist, still not finalized.
 		self.assertNotIn(d["inspection"], [r["name"] for r in eir.list_review_eirs()["items"]])
 		self.assertIn(d["inspection"], [r["name"] for r in eir.list_pending_eirs()["items"]])
-		self.assertFalse(frappe.db.get_value("Container", c, "eir_in_date"))
+		self.assertFalse(frappe.db.get_value("Container", c, "in_date"))
 
 		# Only valid while Pending Review — a second withdraw now throws.
 		with self.assertRaises(frappe.ValidationError):
@@ -786,40 +787,53 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
 		self.assertEqual(frappe.db.get_value("Container", c, "last_cargo"), "Acetic Acid")
 
-	def test_eir_in_submit_writes_eir_in_date(self):
+	def test_eir_in_submit_leaves_the_day_in_alone(self):
+		# The tank's day in is its bon's Tanggal Bongkar; the EIR's own date stays on the EIR
+		# (user, 2026-10-07).
 		c = _make_container("EIRV2000020", status="In_Depot")
+		came_in = add_days(today(), -4)
+		frappe.db.set_value("Container", c, "in_date", came_in)
 		d = eir.open_draft(container_no="EIRV2000020", inspection_type="EIR-In")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-In",
 					   tank_status="Empty Dirty", lines=[], submit=True)
 		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
-		self.assertIsNotNone(frappe.db.get_value("Container", c, "eir_in_date"))
+		self.assertEqual(getdate(frappe.db.get_value("Container", c, "in_date")), getdate(came_in))
 
-	def test_eir_out_submit_writes_eir_out_date(self):
-		# EIR-Out submit now records the container's gate-out date (was never written).
+	def test_eir_out_submit_dates_the_departure_by_tanggal_muat(self):
+		# The clean EIR-Out lets the tank out, but the day it left is the bon's Tanggal Muat —
+		# not the submit, not the EIR's own date.
 		c = _make_container("EIRV2000021", status="Available")
 		# ...and since 2026-09-03 it cannot be submitted at all until a loading bon carries
 		# the tank (Inspection.before_submit) — a clean EIR-Out sends it through the gate.
-		_make_order_muat(ensure_test_customer("EIR Voucher Cust"), c)
+		left = add_days(today(), -2)
+		muat = _make_order_muat(ensure_test_customer("EIR Voucher Cust"), c)
+		frappe.db.set_value("Order Muat", muat, "tanggal_muat", left)
 		make_leak_check(c)  # gate-out also needs a Leak Check this visit
 		d = eir.open_draft(container_no="EIRV2000021", inspection_type="EIR-Out")
 		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
 		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",
 					   tank_status="Empty Clean", lines=[], submit=True)
 		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
-		self.assertIsNotNone(frappe.db.get_value("Container", c, "eir_out_date"))
+		self.assertEqual(getdate(frappe.db.get_value("Container", c, "out_date")), getdate(left))
+		ge = frappe.db.get_value("Gate Entry", {"container_no": "EIRV2000021"}, ["out_date", "order_muat"], as_dict=True)
+		self.assertEqual((getdate(ge.out_date), ge.order_muat), (getdate(left), muat))
 
 	def test_prefill_returns_container_ex_vessel(self):
 		_make_container("EIRV3000001", ex_vessel="MV NEPTUNE")
 		data = eir.prefill(container_no="EIRV3000001")
 		self.assertEqual(data["ex_vessel"], "MV NEPTUNE")
 
-	def test_prefill_returns_eir_in_date_as_date(self):
-		# The PWA header shows EIR-In Date (from the Container master) — date-only.
+	def test_prefill_returns_the_last_eir_in_date(self):
+		# The PWA header shows the latest EIR-In's own date, read off the EIR (the master's
+		# in_date is the bon's day, which may differ).
 		c = _make_container("EIRV3000010")
-		frappe.db.set_value("Container", c, "eir_in_date", "2026-06-12 09:16:53")
+		frappe.db.set_value("Container", c, "in_date", "2026-06-10")
+		frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In", "container": c, "eir_date": "2026-06-12",
+		}).insert(ignore_permissions=True).db_set("docstatus", 1)
 		data = eir.prefill(container_no="EIRV3000010")
-		self.assertEqual(data["eir_in_date"], "2026-06-12")
+		self.assertEqual(str(data["eir_in_date"]), "2026-06-12")
 
 	# The bon -> master writeback for ex_vessel lives with the other Container-master
 	# mirrors now (``last_orders``), so it is tested there: a stamp that a cancel can undo

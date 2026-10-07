@@ -7,7 +7,7 @@ const MAX_CONTAINERS_PER_ORDER = 2;
 // The bon is a copy of its booking lines (server: order_generation.mirror_booking_lines,
 // same list as LINE_SYNC_FIELDS) — shown, never typed here. Correct them on the booking.
 const LINE_FIELDS = [
-	'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks', 'emkl', 'shipper', 'condition', 'cargo',
+	'truck_plate', 'driver', 'driver_phone', 'ro', 'remarks', 'emkl', 'shipper', 'condition', 'use_eir', 'cargo',
 ];
 
 frappe.ui.form.on('Order Bongkar', {
@@ -123,7 +123,9 @@ function _lock_actions(frm) {
 	// so the operator is not offered a button that answers with a red box. The way back is
 	// to undo the EIR-Out / gate-out: that returns the bon to `Issued` and these buttons
 	// with it.
-	const undoable = frm.doc.order_status !== 'Completed';
+	// A bon whose tanks all came in without an EIR is Completed at issue — no EIR closed it,
+	// so it stays undoable (order_generation.order_undoable).
+	const undoable = (frm.doc.__onload || {}).undoable ?? frm.doc.order_status !== 'Completed';
 	if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 1) {
 		frm.add_custom_button(__('Kembalikan ke Draft'), () => _confirm_revert(frm));
 	} else if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 0) {

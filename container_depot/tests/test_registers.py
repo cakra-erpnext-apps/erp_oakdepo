@@ -157,8 +157,9 @@ class TestPeriodicTestRegister(_RegisterCase):
 			"used_items": [{"line_type": "Jasa", "item": i, "quantity": 1} for i in items],
 		}).insert(ignore_permissions=True)
 		if completed:
+			# The test is dated by the order's own date (plan_date), not the end stamp.
 			frappe.db.set_value("Repair Order", ro.name, {
-				"status": "Completed", "completion_date": completed,
+				"status": "Completed", "completion_date": completed, "plan_date": getdate(completed),
 			}, update_modified=False)
 		return ro.name
 

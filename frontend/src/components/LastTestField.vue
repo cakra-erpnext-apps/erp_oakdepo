@@ -4,14 +4,13 @@
 	     Dua kolom penuh: date picker setengah lebar layar HP tidak terbaca sambil diketik. -->
 	<div class="col-span-2 min-w-0">
 		<label :for="id" class="text-[11px] uppercase tracking-wide text-gray-400">{{ labels.lastTest }}</label>
-		<input
+		<DateInput
 			:id="id"
-			:value="String(modelValue || '').slice(0, 10)"
-			type="date"
+			:model-value="draft"
 			:max="today"
 			:disabled="!container || saving"
-			class="oak-input mt-1 !px-2 !py-1.5 text-sm"
-			@change="save($event.target)"
+			class="mt-1 !px-2 !py-1.5 text-sm"
+			@update:model-value="save"
 		/>
 		<p class="mt-1 text-[11px] leading-snug text-gray-500">{{ labels.lastTestHint }}</p>
 	</div>
@@ -30,7 +29,9 @@
 // selesai (RepairOrder._stamp_last_test_date). Yang diketik di sini adalah uji yang terjadi
 // di luar: di vendor, di depo lain, atau sebelum tank ini pernah masuk ke sini — satu-satunya
 // jalan agar riwayat tank tidak terputus di pagar depo.
-import { ref } from "vue"
+import { ref, watch } from "vue"
+
+import DateInput from "@/components/DateInput.vue"
 
 import { send } from "@/data/send"
 import { labels } from "@/utils/labels"
@@ -46,23 +47,25 @@ const id = `last-test-${Math.random().toString(36).slice(2)}`
 const saving = ref(false)
 const today = new Date().toISOString().slice(0, 10)
 
-async function save(input) {
+// Yang tampil: tanggal yang baru dipilih selama disimpan, kembali ke nilai master kalau gagal.
+const draft = ref(props.modelValue)
+watch(() => props.modelValue, (v) => (draft.value = v))
+
+async function save(value) {
 	// Mengosongkan tidak lewat sini (lihat container.set_last_test_date) — kembalikan saja.
-	if (!input.value) {
-		input.value = String(props.modelValue || "").slice(0, 10)
-		return
-	}
+	if (!value) return
+	draft.value = value
 	saving.value = true
 	try {
 		const r = await send({
 			url: "container_depot.ess.inventory.set_tank_last_test",
-			payload: { container: props.container, last_test_date: input.value },
+			payload: { container: props.container, last_test_date: value },
 		})
 		// Server yang menentukan nilai akhirnya (ia yang menormalkan tanggalnya).
-		emit("update:modelValue", r?.message?.last_test_date || input.value)
+		emit("update:modelValue", r?.message?.last_test_date || value)
 		toast.success(labels.lastTestSaved)
 	} catch (e) {
-		input.value = String(props.modelValue || "").slice(0, 10)
+		draft.value = props.modelValue
 		toast.error(e?.message || String(e))
 	} finally {
 		saving.value = false

@@ -137,15 +137,14 @@ def _booking_lines(customer, lo, hi):
 	the shared splitter, so what counts as already-billed is decided the same way for every
 	category."""
 	pairs = _billed_pairs(customer)
-	rows = frappe.get_all(
-		"Container Booking",
-		filters={
-			"customer": customer,
-			"payment_type": "TOP",
-			"docstatus": 1,
-			"creation": ["between", [lo, hi]],
-		},
-		fields=["name", "currency", "sales_invoice"],
+	# Dated by the booking's own date (plan_date), never when it was keyed in (user,
+	# 2026-10-07); a booking without one (most Tank In) falls back to its creation day.
+	rows = frappe.db.sql(
+		"""SELECT name, currency, sales_invoice FROM `tabContainer Booking`
+		WHERE customer = %s AND payment_type = 'TOP' AND docstatus = 1
+			AND COALESCE(plan_date, DATE(creation)) BETWEEN %s AND %s""",
+		(customer, getdate(lo), getdate(hi)),
+		as_dict=True,
 	)
 	fallback = _fallback_currency(customer)
 	units = []
@@ -1025,7 +1024,7 @@ def _give_back(src, doc):
 # The fields that name an order's tank(s) and its date, for the pick list and the Sumber
 # Tagihan tab. The dates are the ones Order Billing Status shows.
 _ROW_FACTS = {
-	"Container Booking": ("container_summary", "creation"),
+	"Container Booking": ("container_summary", "plan_date"),
 	"Cleaning Order": ("container", "plan_date"),
 	"Repair Order": ("container", "plan_date"),
 }
@@ -1064,7 +1063,8 @@ def _row_facts(u):
 	if "storage" in src:  # pre-ledger storage manifest
 		return "Container", src["storage"], src["storage"], src.get("to")
 	tank_field, date_field = _ROW_FACTS.get(src["dt"], ("container", "modified"))
-	tank, date = frappe.db.get_value(src["dt"], src["name"], [tank_field, date_field]) or (None, None)
+	tank, date, created = frappe.db.get_value(src["dt"], src["name"], [tank_field, date_field, "creation"]) or (None, None, None)
+	date = date or created  # a booking without its own date: the day it was keyed in
 	return src["dt"], src["name"], tank, getdate(date) if date else None
 
 

@@ -360,6 +360,9 @@ export const labels = {
 	gateGenerated: "Bon berhasil dibuat", // bon created
 	gateNoContainers: "Tidak ada container.", // no containers
 	gateBon: "Bon", // bon (short)
+	bonRevise: "Revisi Bon", // correct an issued bon
+	bonReviseSaved: "Bon diperbarui", // revision saved
+	bonReviseNothing: "Tidak ada yang berubah.", // nothing changed
 	// Gate — what the operator is actually doing right now: letting a tank in or out
 	gateSectionBooking: "Data Booking", // booking identity block
 	gateSectionPayment: "Pembayaran", // payment block (hidden when finance is off)
@@ -520,6 +523,7 @@ export const labels = {
 	cargo: "Cargo", // Cargo (sets the container's Last Cargo on submit)
 	cargoSearch: "Cari cargo…", // Search cargo (searchable select)
 	selectPlaceholder: "Pilih…", // Generic searchable-select placeholder
+	datePlaceholder: "hh-bb-tttt", // empty date picker (DateInput: HARI-BULAN-TAHUN)
 	selectSearch: "Cari…", // Generic searchable-select search box
 	cargoHint: "Mengubah Last Cargo container — tersimpan saat EIR disubmit.",
 	checklist: "Checklist Kerusakan", // Inspection damage checklist

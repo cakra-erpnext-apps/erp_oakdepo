@@ -29,8 +29,8 @@
   "status",
   "inventory_stage",
   "gate_history_section",
-  "eir_in_date",
-  "eir_out_date",
+  "in_date",
+  "out_date",
   "last_cargo",
   "column_break_2",
   "ex_vessel",
@@ -227,14 +227,16 @@
    "label": "Riwayat Gate & Kargo (otomatis)"
   },
   {
-   "fieldname": "eir_in_date",
-   "fieldtype": "Datetime",
-   "label": "EIR-In Date"
+   "description": "Tanggal Bongkar bon kunjungan terakhir \u2014 hari tank masuk depo. Dasar storage, inventory & umur tank. Tanggal EIR ada di EIR-nya sendiri.",
+   "fieldname": "in_date",
+   "fieldtype": "Date",
+   "label": "Tanggal Masuk"
   },
   {
-   "fieldname": "eir_out_date",
-   "fieldtype": "Datetime",
-   "label": "EIR-Out Date"
+   "description": "Tanggal Muat bon kunjungan terakhir \u2014 hari tank keluar depo. Dasar akhir storage.",
+   "fieldname": "out_date",
+   "fieldtype": "Date",
+   "label": "Tanggal Keluar"
   },
   {
    "fieldname": "last_cargo",
@@ -469,7 +471,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-05 16:30:00.000000",
+ "modified": "2026-10-07 09:00:00.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",

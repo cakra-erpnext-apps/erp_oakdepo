@@ -411,21 +411,15 @@ class Inspection(Document):
 			container.last_cargo = self.cargo
 
 		if self.inspection_type == "EIR-In":
-			# In Depot = where storage starts: the date set on the EIR, not the submit time
-			# (user, 2026-10-02), and never before the gate let the tank in — see
-			# storage._with_eir for why an earlier EIR date is not an arrival.
-			from container_depot import storage
-
-			visits = storage.stay_periods(container.name, container.container_no)
-			container.eir_in_date = visits[-1]["start"] if visits else (self.eir_date or datetime.datetime.now())
+			# The tank's day in is its bon's Tanggal Bongkar (visit_dates); the EIR's own
+			# date stays on the EIR and never moves it (user, 2026-10-07).
 			# Status is no longer set here — a dirty/damaged tank simply keeps the
 			# container In_Depot via the open Cleaning/Repair order created below, and
 			# recompute_availability (end of on_submit) flips it to Available once every
 			# related order is done.
 			self._save_container(container)
 		elif self.inspection_type == "EIR-Out":
-			# Depot Out = the date set on the EIR, not the submit time (user, 2026-10-02).
-			container.eir_out_date = self.eir_date or datetime.datetime.now()
+			# The day out is the bon's Tanggal Muat, stamped by gate.mark_gate_out.
 			self._save_container(container)
 			# Score readiness + signal Ready To Load / Hold on the Order Muat.
 			self._apply_eir_out_outcome()

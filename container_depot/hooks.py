@@ -470,6 +470,9 @@ app_include_js = [
 	# container_depot.close_order — "Tutup Order" (Administrator) on every order form
 	# (container_depot/container_depot/closing.py; see the file).
 	"/assets/container_depot/js/close_order.js?v=1",
+	# container_depot.revise_bon — "Revisi Bon" on a submitted Order Bongkar / Muat
+	# (container_depot/bon_revision.py; see the file).
+	"/assets/container_depot/js/bon_revision.js?v=2",
 	# Menu profil /desk: buang About / Frappe Support / Reset Desktop Layout (lihat file-nya).
 	"/assets/container_depot/js/desktop_menu_trim.js?v=1",
 	# Akun portal: "Daftarkan ... baru" ikut duduk di dalam picker Customer/Container, bukan

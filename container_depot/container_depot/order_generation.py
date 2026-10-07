@@ -382,9 +382,22 @@ def _order_child_doctype(doc):
 ORDER_TERMINAL_STATUS = ("Completed",)
 
 
+def order_undoable(doc) -> bool:
+	"""False once the bon has closed (ORDER_TERMINAL_STATUS) — unless every tank on it was taken
+	without an EIR. Then no EIR closed it: such an Order Bongkar is Completed at issue, such an
+	Order Muat at its own submit, and Kembalikan ke Draft / Cancel is the only way back
+	(``no_eir.reverse_departures``)."""
+	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
+		return True
+	from container_depot.container_depot.no_eir import bon_no_eir
+
+	tanks = {r.container for r in doc.get("containers") or [] if r.container}
+	return bool(tanks) and tanks <= bon_no_eir(doc)
+
+
 def _assert_order_undoable(doc):
 	"""Refuse Cancel / Kembalikan ke Draft on a bon that has already closed — see ORDER_TERMINAL_STATUS."""
-	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
+	if order_undoable(doc):
 		return
 	frappe.throw(
 		_("Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak "
@@ -470,6 +483,11 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 	if doc.docstatus != 1:
 		frappe.throw(_("Only a submitted order can be returned to draft."))
 	_assert_order_undoable(doc)
+	if doctype == "Order Muat":
+		# Its submit sent the tanks taken without an EIR out; back to draft brings them back.
+		from container_depot.container_depot.no_eir import reverse_departures
+
+		reverse_departures(doc)
 	child = _order_child_doctype(doc)
 	frappe.db.set_value(doctype, doc.name, {"docstatus": 0, "order_status": "Issued"})
 	frappe.db.sql(
@@ -494,6 +512,7 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 # charges stay as they were cut when condition moves.
 LINE_SYNC_FIELDS = (
 	"truck_plate", "driver", "driver_phone", "ro", "remarks", "emkl", "shipper", "condition", "cargo",
+	"use_eir",
 )
 # booking line field -> Order Muat header field
 _MUAT_HEADER = {"truck_plate": "truck_plate", "driver": "driver_name", "driver_phone": "driver_phone", "ro": "ro"}

@@ -63,18 +63,18 @@ def execute(filters=None):
 	for o in orders:
 		pt_type = types.get(o["repair_order"], "")
 		# Hanya order yang benar-benar Completed punya Periodic Date; Rejected tidak
-		# pernah menghasilkan uji, dan Cancelled sudah disaring di query.
+		# pernah menghasilkan uji, dan Cancelled sudah disaring di query. Tanggalnya =
+		# tanggal order (plan_date), bukan jam selesai (user, 2026-10-07).
 		periodic_date = (
-			getdate(o["completion_date"])
-			if o["status"] == "Completed" and o["completion_date"]
+			getdate(o["plan_date"])
+			if o["status"] == "Completed" and o["plan_date"]
 			else None
 		)
 		last_type, last_date = history.get(o["repair_order"], ("", None))
 		rows.append({
 			"tank_no": o["tank_no"],
 			"principal": o["principal"],
-			"order_date": getdate(o["order_created"]) if o["order_created"] else None,
-			"plan_date": o["plan_date"],
+			"order_date": getdate(o["plan_date"]) if o["plan_date"] else None,
 			"type_pt": pt_type,
 			"periodic_date": periodic_date,
 			"last_pt_type": last_type,
@@ -107,10 +107,10 @@ def _orders(filters) -> list:
 	# report_kit.finish filters the rows instead.
 	frm, to = report_kit.native_range(filters, "order_date")
 	if frm:
-		where.append("DATE(ro.order_created) >= %(from_date)s")
+		where.append("ro.plan_date >= %(from_date)s")
 		params["from_date"] = frm
 	if to:
-		where.append("DATE(ro.order_created) <= %(to_date)s")
+		where.append("ro.plan_date <= %(to_date)s")
 		params["to_date"] = to
 	if filters.get("only_outstanding"):
 		where.append("ro.status NOT IN %(done)s")
@@ -122,12 +122,12 @@ def _orders(filters) -> list:
 			ro.name AS repair_order,
 			ro.container AS tank_no,
 			COALESCE(NULLIF(ro.principal, ''), c.principal) AS principal,
-			ro.pt_type, ro.order_created, ro.plan_date, ro.completion_date,
+			ro.pt_type, ro.plan_date,
 			ro.status, ro.billing_status, ro.sales_invoice
 		FROM `tabRepair Order` ro
 		LEFT JOIN `tabContainer` c ON ro.container = c.name
 		WHERE {' AND '.join(where)}
-		ORDER BY ro.order_created ASC
+		ORDER BY ro.plan_date ASC, ro.creation ASC
 		""",
 		params,
 		as_dict=True,
@@ -161,9 +161,9 @@ def _history(orders, types) -> dict:
 	"""
 	by_tank: dict = {}
 	for o in orders:
-		if o["status"] == "Completed" and o["completion_date"]:
+		if o["status"] == "Completed" and o["plan_date"]:
 			by_tank.setdefault(o["tank_no"], []).append(
-				(getdate(o["completion_date"]), types.get(o["repair_order"], ""))
+				(getdate(o["plan_date"]), types.get(o["repair_order"], ""))
 			)
 	for done in by_tank.values():
 		done.sort()
@@ -181,7 +181,7 @@ def _history(orders, types) -> dict:
 
 	out = {}
 	for o in orders:
-		anchor = getdate(o["order_created"]) if o["order_created"] else None
+		anchor = getdate(o["plan_date"]) if o["plan_date"] else None
 		earlier = [
 			(d, t) for d, t in by_tank.get(o["tank_no"], [])
 			if anchor and d < anchor
@@ -207,8 +207,7 @@ def _columns() -> list:
 		 "options": "Container", "width": 140},
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 160},
-		{"fieldname": "order_date", "label": "Order Date", "fieldtype": "Date", "width": 105},
-		{"fieldname": "plan_date", "label": "Plan Date", "fieldtype": "Date", "width": 105},
+		{"fieldname": "order_date", "label": "Tanggal Periodic Test", "fieldtype": "Date", "width": 115},
 		{"fieldname": "type_pt", "label": "Type PT", "fieldtype": "Data", "width": 80},
 		{"fieldname": "periodic_date", "label": "Periodic Date", "fieldtype": "Date", "width": 115},
 		{"fieldname": "last_pt_type", "label": "Last PT Type", "fieldtype": "Data", "width": 105},

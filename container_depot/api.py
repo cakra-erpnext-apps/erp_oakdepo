@@ -1185,6 +1185,39 @@ def _find_active_bookings_for_container(raw) -> list[dict]:
 	return _physically_possible(rows)
 
 
+def _find_bonned_bookings_for_container(raw, limit=5) -> list[dict]:
+	"""Bookings whose code for this tank is ``Used`` on a bon that still stands (submitted,
+	not voided), newest first — for revising that bon (user, 2026-10-07: "seterusnya bisa di
+	revisi"). Exact number only, branch-scoped like the active search."""
+	if not raw:
+		return []
+	allowed = get_user_branches()
+	conds = [
+		"bc.state = 'Used'", "cb.docstatus = 1", "cb.booking_status != 'Cancelled'", "bc.container_no = %(val)s",
+		"""(EXISTS (SELECT 1 FROM `tabContainer Booking Item` r JOIN `tabOrder Bongkar` p ON p.name = r.parent
+				WHERE r.parenttype = 'Order Bongkar' AND r.booking_code = bc.name AND p.docstatus = 1)
+			OR EXISTS (SELECT 1 FROM `tabOrder Container Item` r JOIN `tabOrder Muat` p ON p.name = r.parent
+				WHERE r.parenttype = 'Order Muat' AND r.booking_code = bc.name AND p.docstatus = 1))""",
+	]
+	params = {"val": raw, "limit": limit}
+	if allowed is not None:
+		conds.append("cb.branch IN %(branches)s")
+		params["branches"] = tuple(allowed) or ("",)
+	return frappe.db.sql(
+		"""
+		SELECT DISTINCT cb.name AS booking, cb.customer, cb.direction,
+		       cb.booking_status, cb.branch, bc.container_no, cb.creation
+		FROM `tabBooking Code` bc
+		JOIN `tabContainer Booking` cb ON cb.name = bc.booking
+		WHERE {conds}
+		ORDER BY cb.creation DESC
+		LIMIT %(limit)s
+		""".format(conds=" AND ".join(conds)),
+		params,
+		as_dict=True,
+	)
+
+
 def _physically_possible(rows) -> list[dict]:
 	"""A tank may carry one open Tank In AND one open Tank Out (booked ahead of the other
 	move). Where a scan finds both for the same tank, only one can happen now: a tank that
@@ -1220,7 +1253,11 @@ def gate_lookup(code):
 	booking = _resolve_booking_from_code(raw)
 	if booking:
 		return {"valid": True, **_booking_gate_detail(booking)}
-	matches = _find_active_bookings_for_container(raw)
+	# A tank with nothing left to bon is looked up by the bon it already has — Revisi Bon
+	# (bon_revision.py) starts here. Only as the fallback: a tank that still has an Active code
+	# is at the gate for THAT, and offering its old bons beside it would put a picker in front
+	# of every ordinary arrival.
+	matches = _find_active_bookings_for_container(raw) or _find_bonned_bookings_for_container(raw)
 	if len(matches) == 1:
 		return {"valid": True, **_booking_gate_detail(matches[0]["booking"])}
 	if len(matches) > 1:

@@ -421,7 +421,7 @@ const STATE = {
 }
 function rowLine(r) {
 	if (!r.current_location) {
-		return [labels.tankPosUnlocated, r.eir_in_date ? `${labels.tankPosEnteredAt} ${fmtDateTime(r.eir_in_date)}` : null]
+		return [labels.tankPosUnlocated, r.in_date ? `${labels.tankPosEnteredAt} ${fmtDate(r.in_date)}` : null]
 	}
 	return [r.current_location, `${labels.tankPosDicatat.toLowerCase()} ${since(r.location_updated_on)}`, r.location_updated_by]
 }

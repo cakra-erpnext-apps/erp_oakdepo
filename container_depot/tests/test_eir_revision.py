@@ -138,7 +138,7 @@ class TestEirRevision(FrappeTestCase):
 			doc.save()
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 
-	def test_eir_date_stays_inside_its_visit_and_the_ledger_follows(self):
+	def test_eir_date_stays_inside_its_visit_and_never_moves_storage(self):
 		c, eir_in, _out = _visited_tank(f"{PREFIX}0000005")
 		storage_charge.sync(c)
 
@@ -148,10 +148,13 @@ class TestEirRevision(FrappeTestCase):
 			doc.save()
 
 		doc.reload()
+		before = getdate(frappe.db.get_value("Storage Charge", {"container": c}, "date_in"))
 		doc.eir_date = add_days(today(), -1)
 		doc.save()
+		# Storage runs from the bon's Tanggal Bongkar; the EIR's date stays on the EIR
+		# (user, 2026-10-07).
 		date_in = frappe.db.get_value("Storage Charge", {"container": c}, "date_in")
-		self.assertEqual(getdate(date_in), getdate(add_days(today(), -1)))
+		self.assertEqual(getdate(date_in), before)
 
 	def test_a_request_is_answered_by_tolak_or_by_the_revision(self):
 		c, eir_in, _out = _visited_tank(f"{PREFIX}0000006")

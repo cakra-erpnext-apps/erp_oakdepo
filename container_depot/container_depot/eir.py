@@ -509,7 +509,13 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 		filters={"parent": b.name, "parenttype": "Container Booking"},
 		fields=["container", "depot"], order_by="idx asc",
 	)
-	wanted = {r.container: r.depot for r in items if r.container} if live else {}
+	# A LADEN tank taken without an EIR gets none: its Order Muat is its departure (no_eir.py).
+	# A draft raised before the switch went off is withdrawn below like any other the booking
+	# no longer asks for.
+	from container_depot.container_depot.no_eir import no_eir_containers
+
+	skip = no_eir_containers(b.name)
+	wanted = {r.container: r.depot for r in items if r.container and r.container not in skip} if live else {}
 	out = {"created": [], "withdrawn": []}
 
 	mine = frappe.get_all(
@@ -815,6 +821,9 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 		filters={"parent": order_name, "parenttype": "Order Bongkar"},
 		pluck="container",
 	)
+	from container_depot.container_depot.no_eir import no_eir_containers
+
+	skip = no_eir_containers(order_name, "Order Bongkar")
 	created = []
 	for container in containers:
 		if not container:
@@ -823,6 +832,9 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 		frappe.db.set_value(
 			"Container", container, "last_order_bongkar", order_name, update_modified=False
 		)
+		# A LADEN tank taken without an EIR: no EIR-In, it is Available on arrival (no_eir.py).
+		if container in skip:
+			continue
 		# Dedup: never open a second EIR-In draft for a container (scoped to EIR-In so an
 		# EIR-Out draft from the load-out flow never blocks it).
 		if frappe.db.exists(
@@ -997,7 +1009,7 @@ def prefill(
 		"Container", name,
 		["name", "container_no", "container_type", "equipment_type", "size", "serial_no", "manufacture_date",
 		 "capacity", "tare_weight", "max_gross_weight", "last_test_date", "last_cargo",
-		 "ex_vessel", "depot", "principal", "eir_in_date", "eir_out_date"],
+		 "ex_vessel", "depot", "principal"],
 		as_dict=True,
 	)
 	if not c:
@@ -1026,10 +1038,13 @@ def prefill(
 		"tare_weight": c.tare_weight,
 		"max_gross_weight": c.max_gross_weight,
 		"last_test_date": c.last_test_date,
-		# EIR gate dates from the Container master (date-only for clean display). The PWA
-		# header shows EIR-In Date here since last_test_date is rarely set.
-		"eir_in_date": str(c.eir_in_date)[:10] if c.eir_in_date else None,
-		"eir_out_date": str(c.eir_out_date)[:10] if c.eir_out_date else None,
+		# The latest EIR-In's own date, read off the EIR itself: the master no longer holds
+		# it (its in_date is the bon's day, visit_dates). The PWA header shows it.
+		"eir_in_date": frappe.db.get_value(
+			"Inspection",
+			{"container": c.name, "inspection_type": "EIR-In", "docstatus": 1},
+			"eir_date", order_by="eir_date desc, creation desc",
+		),
 		"last_cargo": c.last_cargo,
 		"depot": c.depot,
 		"principal": principal,
@@ -2671,10 +2686,9 @@ def unwind_submitted_eir(doc, drop_followups: bool = False) -> None:
 	   (``create_cleaning_order_from_eir``) rather than dropped and filed again — which
 	   would re-ring the cleaning team for a wash they were already told about.
 
-	What is deliberately NOT undone is ``eir_in_date`` / ``eir_out_date``: the tank's arrival
-	is a fact about the VISIT, stamped by whichever document got there first (the bon does it
-	too — ``order_bongkar._sync_container_arrival``), so an EIR is not entitled to erase it.
-	The gate dates are cleared by the bon's own cancel, which is the document that owns them.
+	The tank's ``in_date`` is not touched: it is the bon's day (``visit_dates``), and an EIR
+	never wrote it. The gate dates are cleared by the bon's own cancel, which is the document
+	that owns them; an EIR-Out's departure is undone by ``gate.reverse_gate_out``.
 	"""
 	_restore_container_on_revert(doc)
 

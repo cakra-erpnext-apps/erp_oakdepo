@@ -79,7 +79,7 @@ def execute(filters=None):
 		work = open_work.get(c.name, [])
 		if filters.get("with_open_work") and not work:
 			continue
-		since = getdate(c.eir_in_date) if c.eir_in_date else None
+		since = getdate(c.in_date) if c.in_date else None
 		v = visit.get(c.name, {})
 
 		def this_visit(key):
@@ -95,7 +95,7 @@ def execute(filters=None):
 		out_job = jobs.get(c.lift_on_booking) or (
 			newest if newest and (not since or getdate(newest["creation"]) >= since) else {}
 		)
-		out_date = getdate(c.eir_out_date) if c.eir_out_date else None
+		out_date = getdate(c.out_date) if c.out_date else None
 		row = {
 			"principal": c.principal,
 			"container_no": c.name,
@@ -191,9 +191,9 @@ def _age(now, c):
 	"""Days since gate-in, for a tank that is still in the depo. ``None`` otherwise — a
 	tank that has left carries a stale in-date, and counting from it reads as storage that
 	is still running."""
-	if not c.eir_in_date or c.inventory_stage not in IN_DEPO_STAGES:
+	if not c.in_date or c.inventory_stage not in IN_DEPO_STAGES:
 		return None
-	return date_diff(now, getdate(c.eir_in_date))
+	return date_diff(now, getdate(c.in_date))
 
 
 def _containers(filters):
@@ -230,8 +230,8 @@ def _containers(filters):
 		filters=query,
 		fields=[
 			"name", "principal", "container_type", "equipment_type", "size", "status",
-			"inventory_stage", "last_cargo", "eir_in_date", "target_lift_on",
-			"depot", "last_test_date", "eir_out_date", "lift_on_booking",
+			"inventory_stage", "last_cargo", "in_date", "target_lift_on",
+			"depot", "last_test_date", "out_date", "lift_on_booking",
 		],
 		order_by="principal asc, name asc",
 		limit_page_length=0,

@@ -493,7 +493,7 @@ def list_mr_history(start=0, page_length=10, search=None, job_type=None) -> dict
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
-			"principal", "depot", "total_cost", "completion_date", "creation",
+			"principal", "depot", "total_cost", "completion_date", "plan_date", "creation",
 			"start_date", "technician"],
 		order_by="creation desc", limit_start=cint(start), limit_page_length=cint(page_length),
 	)
@@ -1071,13 +1071,13 @@ def revision_apply(ro, before) -> None:
 	"""Inside a Revisi Data save of a closed M&R. Prices are redone by ``before_save`` as on
 	any save. A changed PART line is issued again — the old Material Issue cancelled, a new one
 	for what the order now says, refused (and the whole save with it) when the gudang cannot
-	cover it (user: "boleh ubah apapun asal stoknya tersedia"). A moved completion date on a
-	Periodic Test takes the tank's test date along."""
+	cover it (user: "boleh ubah apapun asal stoknya tersedia"). A moved order date
+	(``plan_date``) on a Periodic Test takes the tank's test date along."""
 	if _parts_key(ro) != _parts_key(before):
 		return_parts_stock(ro)
 		assert_stock_available(ro)
 		ro.stock_entry = _issue_parts_stock(ro)
-	if str(ro.get("completion_date") or "") != str(before.get("completion_date") or ""):
+	if str(ro.get("plan_date") or "") != str(before.get("plan_date") or ""):
 		ro.restore_test_date(before)
 
 

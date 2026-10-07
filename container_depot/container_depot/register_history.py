@@ -21,7 +21,7 @@ _WASH = {
 	"PP Wash": ("INT-PP-WASH", "PP Wash Date"),
 	"Methanol Rinse": ("INT-METHANOL", "Methanol Rinse Date"),
 	# Cleaning Register: semua jenis.
-	"Cleaning": (None, "Cleaning End"),
+	"Cleaning": (None, "Tanggal Selesai"),
 }
 
 # Kolom yang tidak berguna di dialog riwayat: nomor tank sudah jadi judulnya, dan

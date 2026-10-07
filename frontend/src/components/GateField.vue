@@ -34,6 +34,11 @@
 			<option v-for="o in field.options" :key="o" :value="o" />
 		</datalist>
 	</template>
+	<DateInput
+		v-else-if="field.inputType === 'date'"
+		:model-value="modelValue"
+		@update:model-value="emit('update:modelValue', $event)"
+	/>
 	<input
 		v-else
 		:value="modelValue"
@@ -44,6 +49,7 @@
 </template>
 
 <script setup>
+import DateInput from "@/components/DateInput.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import { labels } from "@/utils/labels"
 

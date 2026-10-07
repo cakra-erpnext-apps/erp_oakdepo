@@ -20,8 +20,11 @@
     "truck_plate",
     "driver_name",
     "timestamps",
+    "in_date",
     "gate_in_timestamp",
     "column_break_3",
+    "out_date",
+    "order_muat",
     "gate_out_timestamp",
     "inspection_info",
     "eir_reference",
@@ -126,7 +129,7 @@
     {
       "fieldname": "gate_in_timestamp",
       "fieldtype": "Datetime",
-      "label": "Gate-In Timestamp"
+      "label": "Gate-In Tercatat"
     },
     {
       "fieldname": "column_break_3",
@@ -135,8 +138,7 @@
     {
       "fieldname": "gate_out_timestamp",
       "fieldtype": "Datetime",
-      "in_list_view": 1,
-      "label": "Gate-Out Timestamp"
+      "label": "Gate-Out Tercatat"
     },
     {
       "fieldname": "inspection_info",
@@ -155,6 +157,30 @@
       "fieldtype": "Select",
       "label": "Inspection Status",
       "options": "Pending\nIn_Progress\nCompleted"
+    },
+    {
+      "fieldname": "in_date",
+      "fieldtype": "Date",
+      "label": "Tanggal Masuk",
+      "read_only": 1,
+      "in_list_view": 1,
+      "description": "Tanggal Bongkar bon (atau tanggal gate-in kiosk). Dasar storage kunjungan ini."
+    },
+    {
+      "fieldname": "out_date",
+      "fieldtype": "Date",
+      "label": "Tanggal Keluar",
+      "read_only": 1,
+      "depends_on": "eval:doc.out_date",
+      "description": "Tanggal Muat bon yang membawa tank keluar. Dasar akhir storage."
+    },
+    {
+      "fieldname": "order_muat",
+      "fieldtype": "Link",
+      "label": "Order Muat",
+      "options": "Order Muat",
+      "read_only": 1,
+      "depends_on": "eval:doc.order_muat"
     },
     {
       "allow_on_submit": 1,

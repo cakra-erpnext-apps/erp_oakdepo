@@ -48,7 +48,7 @@ from container_depot.container_depot.doctype.booking_code.booking_code import (
 from container_depot.container_depot.doctype.depot_contract.depot_contract import (
 	get_active_contract,
 )
-from container_depot.container_depot import item_catalog, lift_on, tank_documents
+from container_depot.container_depot import item_catalog, lift_on, no_eir, tank_documents
 from container_depot.container_depot.container_activity import log_container_activity, log_doc_note
 from container_depot.container_depot.container_status import GATE_OUT, PRESENT, assert_rows_active
 
@@ -153,6 +153,7 @@ class ContainerBooking(Document):
 		self._default_row_emkl()
 		self._validate_row_principal()
 		self._validate_unique_containers()
+		no_eir.normalise(self)
 		self._validate_no_open_booking()
 		self._sync_container_summary()
 		self._guard_locked_charges()
@@ -270,13 +271,19 @@ class ContainerBooking(Document):
 			revision.check(self)
 			line_fields, header_fields = LINE_SYNC_FIELDS + REVISION_LINE_FIELDS, REVISION_FIELDS
 		if not self._changed_besides(line_fields, skip_charges=self.flags.charges_changed, skip_header=header_fields):
-			assert_lines_editable(self)
+			if not self.flags.bon_revision:
+				# Revisi Bon (bon_revision.py) may correct a Completed bon's lines too (user,
+				# 2026-10-07); a plain booking edit may not.
+				assert_lines_editable(self)
+			no_eir.normalise(self)
+			no_eir.assert_switch_locked(self)
+			self.flags.use_eir_changed = no_eir.switch_changed(self)
 			return
 		frappe.throw(
 			_(
 				"Booking {0} sudah disubmit — yang masih bisa diubah hanya Charges (selama belum "
-				"ada invoice) dan No. Truk, Driver, No. HP Driver, RO, Remarks, EMKL, Shipper, Condition "
-				"dan Cargo di baris container. Pakai <b>Kembali ke Draft</b> kalau yang lain memang harus "
+				"ada invoice) dan No. Truk, Driver, No. HP Driver, RO, Remarks, EMKL, Shipper, Condition, "
+				"Pakai EIR dan Cargo di baris container. Pakai <b>Kembali ke Draft</b> kalau yang lain memang harus "
 				"dikoreksi, atau muat ulang form kalau booking ini baru berubah di tempat lain."
 			).format(self.name),
 			title=_("Booking terkunci"),
@@ -286,6 +293,9 @@ class ContainerBooking(Document):
 		from container_depot.container_depot.order_generation import sync_lines_to_bons
 
 		sync_lines_to_bons(self)
+		if self.flags.use_eir_changed:
+			# Raise or withdraw the survey row / draft EIR-Out the switch decides about.
+			self._provision_survey_order()
 		if self.flags.revision:
 			self._after_revision()
 		if self.flags.charges_changed:
@@ -634,7 +644,7 @@ class ContainerBooking(Document):
 		"""Give one reserved tank back.
 
 		Only ever touches a tank that is still ``Booked``, has **never gated in**
-		(``eir_in_date`` empty) and is held by no *other* live booking — anything that has
+		(``in_date`` empty) and is held by no *other* live booking — anything that has
 		arrived or moved on in its lifecycle is left exactly as it is.
 
 		* **Phantom** (``created_by_booking == this booking``) — a master that exists only
@@ -649,9 +659,9 @@ class ContainerBooking(Document):
 		if not container or not frappe.db.exists("Container", container):
 			return
 		row = frappe.db.get_value(
-			"Container", container, ["status", "eir_in_date", "created_by_booking"], as_dict=True
+			"Container", container, ["status", "in_date", "created_by_booking"], as_dict=True
 		)
-		if not row or row.status != "Booked" or row.eir_in_date:
+		if not row or row.status != "Booked" or row.in_date:
 			return  # live / already moved on — never touch
 		if self._container_held_by_other_booking(container):
 			return  # another live booking still reserves it
@@ -1459,9 +1469,9 @@ class ContainerBooking(Document):
 		if not item.get("is_new_container"):
 			return
 		row = frappe.db.get_value(
-			"Container", item.container, ["status", "eir_in_date", "created_by_booking"], as_dict=True
+			"Container", item.container, ["status", "in_date", "created_by_booking"], as_dict=True
 		)
-		if not row or row.created_by_booking or row.status != GATE_OUT or row.eir_in_date:
+		if not row or row.created_by_booking or row.status != GATE_OUT or row.in_date:
 			return
 		frappe.db.set_value(
 			"Container", item.container, "created_by_booking", self.name, update_modified=False
@@ -1469,17 +1479,17 @@ class ContainerBooking(Document):
 
 	def _mark_pre_arrival(self, container):
 		"""Flip a never-gated-in container to ``Booked`` without tripping the status
-		guard. Containers that have already gated in (``eir_in_date`` set) are left
+		guard. Containers that have already gated in (``in_date`` set) are left
 		untouched, so this never pulls a live tank out of inventory.
 
-		``Gate_Out`` counts as never-arrived here, guarded by that same ``eir_in_date``:
+		``Gate_Out`` counts as never-arrived here, guarded by that same ``in_date``:
 		a master registered by hand on the Container form, or by the grid's Excel import,
 		is born there and has never been through a gate. A tank that genuinely left keeps
-		its ``eir_in_date`` and is skipped — it comes back in through the gate, not through
+		its ``in_date`` and is skipped — it comes back in through the gate, not through
 		a status flip.
 		"""
-		row = frappe.db.get_value("Container", container, ["status", "eir_in_date"], as_dict=True)
-		if not row or row.eir_in_date or row.status == "Booked":
+		row = frappe.db.get_value("Container", container, ["status", "in_date"], as_dict=True)
+		if not row or row.in_date or row.status == "Booked":
 			return
 		if row.status not in (None, "", "Available", GATE_OUT):
 			return

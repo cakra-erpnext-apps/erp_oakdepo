@@ -333,6 +333,17 @@
 											</ul>
 										</div>
 									</button>
+									<!-- Revisi Bon: an issued bon stays correctable for as long as it exists
+									     (user, 2026-10-07). Beside the card, not in it — a button inside the
+									     card's own button is not a button at all. -->
+									<button
+										v-if="c.order && c.order.docstatus === 1"
+										type="button"
+										class="oak-btn oak-btn-secondary mt-1.5 w-full py-2 text-sm"
+										@click="openRevision(c.order)"
+									>
+										<Icon name="edit-3" :size="15" /> {{ labels.bonRevise }} · {{ c.order.name }}
+									</button>
 								</li>
 							</ul>
 						</template>
@@ -366,7 +377,7 @@
 						<Icon name="arrow-left" :size="18" />
 					</button>
 					<p class="min-w-0 flex-1 truncate font-bold text-gray-900">
-						{{ step === "vehicle" ? labels.gateStepVehicle : labels.gateDoneTitle }}
+						{{ revising ? `${labels.bonRevise} · ${revising.name}` : step === "vehicle" ? labels.gateStepVehicle : labels.gateDoneTitle }}
 					</p>
 					<p class="shrink-0 truncate text-xs font-semibold text-gray-500">{{ selectedLabels }}</p>
 				</div>
@@ -374,7 +385,7 @@
 				<!-- Where the operator is in the flow. Three steps, and the one thing it must never
 				     do is let them think the bon exists before it does — so step 3 only lights up
 				     once the server has answered with a number. -->
-				<ol class="flex items-center gap-2 border-b border-gray-100 px-3 py-2.5 text-[11px] font-semibold">
+				<ol v-if="!revising" class="flex items-center gap-2 border-b border-gray-100 px-3 py-2.5 text-[11px] font-semibold">
 					<li v-for="(s, i) in steps" :key="s.key" class="flex min-w-0 items-center gap-2">
 						<span
 							class="oak-icon-tile h-5 w-5 shrink-0 rounded-full text-[10px]"
@@ -454,10 +465,9 @@
 						</div>
 					</div>
 
-					<!-- Everything the bon can carry but the barrier does not need typed. Collapsed by
-					     default and showing its VALUES while collapsed: most of it arrives from the
-					     booking already, so the operator's job is to notice a wrong one, not to fill
-					     them in. -->
+					<!-- Everything the bon can carry but the barrier does not need typed. Open by
+					     default so the operator sees it is editable (user, 2026-10-07); collapsed it
+					     still shows its VALUES, so a wrong one can be spotted without opening it. -->
 					<div class="rounded-xl border border-gray-200">
 						<button
 							class="flex w-full items-center gap-2 px-3 py-2.5 text-left"
@@ -489,9 +499,9 @@
 						<button class="oak-btn oak-btn-secondary flex-1" @click="closeVehicleForm">
 							{{ labels.backBtn || labels.cancelBtn }}
 						</button>
-						<button class="oak-btn oak-btn-primary flex-[2]" :disabled="generateRes.loading" @click="doGenerate">
-							<Icon v-if="!generateRes.loading" name="file-plus" :size="18" />
-							{{ generateRes.loading ? "…" : labels.gateGenerate }}
+						<button class="oak-btn oak-btn-primary flex-[2]" :disabled="busy" @click="doGenerate">
+							<Icon v-if="!busy" :name="revising ? 'check' : 'file-plus'" :size="18" />
+							{{ busy ? "…" : revising ? labels.bonRevise : labels.gateGenerate }}
 						</button>
 					</div>
 				</div>
@@ -579,7 +589,7 @@ const tankLines = ref({})
 // booking supplied and one the operator typed look identical and need different amounts of
 // checking before a bon is issued.
 const prefilled = ref([])
-const extraOpen = ref(false)
+const extraOpen = ref(true)
 const detailsOpen = ref(false)
 
 // Two per bon is the server's rule (api.gate_generate_order), repeated here only so the
@@ -609,6 +619,13 @@ useDismissOnBack(
 	() => !!detail.value,
 	() => reset()
 )
+
+// Revisi Bon (user, 2026-10-07): the bon being corrected, {name, doctype, lines, start}, or
+// null. A revision IS step 2 of this form, opened on an issued bon with its answers in it —
+// same fields, same required ones, same per-tank cards — and saved instead of generated.
+const revising = ref(null)
+const revisionRes = createResource({ url: "container_depot.container_depot.bon_revision.get_bon_revision", method: "GET" })
+const reviseRes = createResource({ url: "container_depot.container_depot.bon_revision.save_bon_revision", method: "POST" })
 
 const lookupRes = createResource({
 	url: "container_depot.api.gate_lookup",
@@ -703,10 +720,11 @@ const vehicleFields = computed(() => {
 
 // The barrier needs four answers — plate, driver, phone, and (inbound) each tank's
 // condition, which the per-tank cards ask. Everything else the bon can carry is real but not urgent, and most of it
-// arrives from the booking already, so it goes behind one disclosure instead of turning
-// step 2 into a ten-field wall between the driver and the barrier.
-const primaryFields = computed(() => vehicleFields.value.filter((f) => f.required))
-const extraFields = computed(() => vehicleFields.value.filter((f) => !f.required))
+// arrives from the booking already, so it goes in its own group below. The bon's date sits
+// with the four answers (user, 2026-10-07): it is the day the tank counts as in / out.
+const isMain = (f) => f.required || f.inputType === "date"
+const primaryFields = computed(() => vehicleFields.value.filter(isMain))
+const extraFields = computed(() => vehicleFields.value.filter((f) => !isMain(f)))
 
 // What the collapsed disclosure shows: the optional values as they stand, so the operator
 // can spot a wrong one without opening anything. Empty ones read as "—" rather than being
@@ -821,9 +839,11 @@ const panelRows = computed(() => panelGroups.value.flatMap((g) => g.rows))
 const lookupError = computed(
 	() => lookupRes.error?.messages?.[0] || lookupRes.error?.message || labels.error,
 )
-const generateError = computed(
-	() => generateRes.error?.messages?.[0] || generateRes.error?.message || null,
-)
+const generateError = computed(() => {
+	const e = generateRes.error || reviseRes.error
+	return e?.messages?.[0] || e?.message || null
+})
+const busy = computed(() => generateRes.loading || reviseRes.loading || revisionRes.loading)
 
 // Unfinished work still holding this tank — only a gate-OUT concern. On the way in the
 // tank isn't in the yard yet, so anything open belongs to a previous stay.
@@ -866,6 +886,7 @@ function toggle(c) {
 function pickable(c) {
 	return (
 		selectable(c) &&
+		!revising.value &&
 		!detail.value?.block_reason &&
 		(selected.value.includes(c.booking_code) || selected.value.length < MAX_PER_BON)
 	)
@@ -938,12 +959,100 @@ function openGenerate() {
 			Object.keys(l).filter((k) => l[k]).map((k) => `${k}-${code}`),
 		),
 	]
-	extraOpen.value = false
+	extraOpen.value = true
 	step.value = "vehicle"
 }
 
 function closeVehicleForm() {
 	step.value = "container"
+	if (revising.value) {
+		revising.value = null
+		selected.value = []
+	}
+}
+
+// Open step 2 on an issued bon, filled the way openGenerate() fills it — the shared fields
+// from the bon's first tank line, condition / cargo from each tank's own line — except that
+// every value comes from the bon as it stands, and the date and ex-vessel / destination are
+// the bon's own.
+async function openRevision(order) {
+	let data
+	try {
+		data = await revisionRes.submit({ doctype: order.doctype, name: order.name })
+	} catch (err) {
+		toast.error(err?.messages?.[0] || err?.message || labels.error)
+		return
+	}
+	const first = data.lines[0] || {}
+	const h = data.header
+	vehicle.value = {
+		truck_plate: first.truck_plate || "",
+		driver: first.driver || "",
+		driver_name: first.driver || "",
+		driver_phone: first.driver_phone || "",
+		ro: first.ro || "",
+		emkl: first.emkl || "",
+		shipper: first.shipper || "",
+		remarks: first.remarks || "",
+		destination: h.destination || "",
+		ex_vessel: h.ex_vessel || "",
+		tanggal_bongkar_actual: h.tanggal_bongkar || "",
+		tanggal_muat: h.tanggal_muat || "",
+	}
+	tankLines.value = Object.fromEntries(
+		data.lines.map((l) => [l.booking_code, { condition: l.condition || "", cargo: l.cargo || "" }]),
+	)
+	selected.value = data.lines.map((l) => l.booking_code)
+	revising.value = { name: order.name, doctype: order.doctype, lines: data.lines, start: { ...vehicle.value } }
+	prefilled.value = []
+	extraOpen.value = true
+	reviseRes.reset?.()
+	step.value = "vehicle"
+}
+
+// The same answers the form generates a bon from, as a correction: the bon's own fields,
+// and every shared field the operator changed onto every tank line of the bon.
+const REVISION_HEADER = {
+	tanggal_bongkar_actual: "tanggal_bongkar",
+	tanggal_muat: "tanggal_muat",
+	ex_vessel: "ex_vessel",
+	destination: "destination",
+}
+const blank = (v) => (v == null || String(v).trim() === "" ? null : v)
+
+function saveRevision() {
+	const { name, doctype, lines, start } = revising.value
+	const header = {}
+	const shared = {}
+	for (const f of vehicleFields.value) {
+		const v = vehicle.value[f.key]
+		if (blank(v) === blank(start[f.key])) continue
+		if (REVISION_HEADER[f.key]) header[REVISION_HEADER[f.key]] = v || ""
+		else shared[f.key === "driver_name" ? "driver" : f.key] = v || ""
+	}
+	const rows = lines
+		.map((l) => {
+			const row = { name: l.name, ...shared }
+			if (!isOut.value)
+				for (const k of ["condition", "cargo"]) {
+					const v = tankLines.value[l.booking_code]?.[k]
+					if (blank(v) !== blank(l[k])) row[k] = v || ""
+				}
+			return row
+		})
+		.filter((r) => Object.keys(r).length > 1)
+	if (!Object.keys(header).length && !rows.length) {
+		toast.info(labels.bonReviseNothing)
+		return
+	}
+	reviseRes
+		.submit({ doctype, name, header: JSON.stringify(header), lines: JSON.stringify(rows) })
+		.then(() => {
+			toast.success(labels.bonReviseSaved)
+			closeVehicleForm()
+			lookupRes.submit({ code: detail.value.booking })
+		})
+		.catch((err) => toast.error(err?.messages?.[0] || err?.message || labels.error))
 }
 
 function doGenerate() {
@@ -965,6 +1074,7 @@ function doGenerate() {
 		toast.error(`${labels.gateRequiredMissing}: ${missing.join(", ")}`)
 		return
 	}
+	if (revising.value) return saveRevision()
 	generateRes
 		.submit({
 			booking: detail.value.booking,
@@ -1043,6 +1153,7 @@ onBeforeUnmount(stopScan)
 function reset() {
 	stopScan()
 	step.value = "container"
+	revising.value = null
 	lastOrder.value = ""
 	prefilled.value = []
 	code.value = ""

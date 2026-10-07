@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import add_days, getdate, today
 
 from container_depot.container_depot import container_activity as ca
 from container_depot.container_depot import eir
@@ -74,7 +75,7 @@ def _purge():
 	# The CODECO segment a submitted gate entry writes onto its own timeline.
 	frappe.db.delete("Comment", {"reference_doctype": "Gate Entry", "reference_name": ("in", gates)})
 	frappe.db.delete("Gate Entry", {"name": ("in", gates)})
-	for log in ("Container Movement", "Container Activity"):
+	for log in ("Container Movement", "Container Activity", "Storage Charge"):
 		frappe.db.delete(log, {"container": ("in", containers)})
 	frappe.db.delete("Container", {"name": ("like", f"{PREFIX}%")})
 	frappe.db.commit()
@@ -177,6 +178,51 @@ class TestEirInVoid(_Base):
 
 
 # ---------------------------------------------------------------------------
+class TestBonDatesDecideTheVisit(_Base):
+	"""Tanggal Bongkar is the day the tank came in, Tanggal Muat the day it left — on the
+	master and on the visit's Gate Entry, which storage reads (user, 2026-10-07)."""
+
+	def test_tanggal_bongkar_is_the_day_in_and_follows_a_correction(self):
+		from container_depot.container_depot.visit_dates import follow_bongkar
+
+		c = self._container("0000020", status="Booked")
+		doc = frappe.get_doc("Order Bongkar", _make_order_bongkar(self.customer, c))
+		doc.tanggal_bongkar = add_days(today(), -5)
+		ob._sync_container_arrival(doc)
+		ob._record_gate_in(doc)
+		ge = frappe.db.get_value("Gate Entry", {"order_ref": doc.name}, "name")
+		self.assertEqual(frappe.db.get_value("Container", c, "in_date"), getdate(add_days(today(), -5)))
+		self.assertEqual(frappe.db.get_value("Gate Entry", ge, "in_date"), getdate(add_days(today(), -5)))
+
+		# Corrected after submit (Revisi Data): both move, and storage with them.
+		frappe.db.set_value("Container", c, "last_order_bongkar", doc.name)
+		doc.tanggal_bongkar = add_days(today(), -8)
+		follow_bongkar(doc)
+		self.assertEqual(frappe.db.get_value("Container", c, "in_date"), getdate(add_days(today(), -8)))
+		self.assertEqual(frappe.db.get_value("Gate Entry", ge, "in_date"), getdate(add_days(today(), -8)))
+		self.assertEqual(
+			getdate(frappe.db.get_value("Storage Charge", {"gate_entry": ge}, "date_in")),
+			getdate(add_days(today(), -8)),
+		)
+
+	def test_correcting_tanggal_muat_moves_the_day_out(self):
+		from container_depot.container_depot.visit_dates import follow_muat
+
+		c = self._container("0000021", status="Gate_Out")
+		ge = frappe.get_doc({
+			"doctype": "Gate Entry", "container_no": c, "status": "Gate_Out_Completed",
+			"gate_in_timestamp": f"{add_days(today(), -9)} 08:00:00", "gate_out_timestamp": f"{today()} 08:00:00",
+		}).insert(ignore_permissions=True)
+		ge.db_set({"in_date": add_days(today(), -9), "out_date": add_days(today(), -1), "order_muat": "OM-TEST-X"})
+		frappe.db.set_value("Container", c, {"last_order_muat": "OM-TEST-X", "out_date": add_days(today(), -1)})
+
+		follow_muat(frappe._dict(name="OM-TEST-X", tanggal_muat=add_days(today(), -3), containers=[{"container": c}]))
+
+		self.assertEqual(frappe.db.get_value("Container", c, "out_date"), getdate(add_days(today(), -3)))
+		self.assertEqual(frappe.db.get_value("Gate Entry", ge.name, "out_date"), getdate(add_days(today(), -3)))
+
+
+# ---------------------------------------------------------------------------
 class TestBonArrivalUnwind(_Base):
 	"""Submitting a Tank In bon is what puts the tank in the yard. Voiding it used to leave
 	the tank there — counted in the inventory, offered to the next Tank Out booking, and
@@ -188,9 +234,9 @@ class TestBonArrivalUnwind(_Base):
 		bon = _make_order_bongkar(self.customer, c)
 		doc = frappe.get_doc("Order Bongkar", bon)
 		ob._sync_container_arrival(doc)
-		row = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		row = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		self.assertIn(row.status, ("In_Depot", "Available"))
-		self.assertTrue(row.eir_in_date)
+		self.assertTrue(row.in_date)
 		return c, doc
 
 	def test_voiding_the_bon_un_arrives_the_tank(self):
@@ -198,10 +244,10 @@ class TestBonArrivalUnwind(_Base):
 
 		doc.run_method("on_cancel")
 
-		row = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		row = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		# Gate_Out, never Available: a tank that did not arrive is not standing in the yard.
 		self.assertEqual(row.status, "Gate_Out")
-		self.assertIsNone(row.eir_in_date)
+		self.assertIsNone(row.in_date)
 		# ...and the roll-back went through the ORM, so the tank's own status audit records
 		# it. Written raw it would have left the Movement trail ending at In_Depot — a status
 		# the tank no longer has — and the storage visit open on a stay that never happened.
@@ -243,7 +289,7 @@ class TestBonArrivalUnwind(_Base):
 		doc.run_method("on_cancel")
 
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
-		self.assertTrue(frappe.db.get_value("Container", c, "eir_in_date"))
+		self.assertTrue(frappe.db.get_value("Container", c, "in_date"))
 
 	def test_a_real_inspection_keeps_the_arrival(self):
 		"""A submitted EIR-In against this bon means a surveyor stood at the tank — it really
@@ -257,7 +303,7 @@ class TestBonArrivalUnwind(_Base):
 		doc.run_method("on_cancel")
 
 		self.assertIn(frappe.db.get_value("Container", c, "status"), ("In_Depot", "Available"))
-		self.assertTrue(frappe.db.get_value("Container", c, "eir_in_date"))
+		self.assertTrue(frappe.db.get_value("Container", c, "in_date"))
 
 	def test_the_draft_road_unwinds_exactly_the_same(self):
 		"""``revert_order_to_draft`` brings a SUBMITTED bon back to draft with everything its
@@ -278,15 +324,15 @@ class TestBonArrivalUnwind(_Base):
 		self.assertEqual(frappe.db.get_value("Order Bongkar", doc.name, "docstatus"), 2)
 		# The draft EIR only existed because of this bon and was never started.
 		self.assertFalse(frappe.db.exists("Inspection", draft_eir.name))
-		row = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		row = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		self.assertEqual(row.status, "Gate_Out")
-		self.assertIsNone(row.eir_in_date)
+		self.assertIsNone(row.in_date)
 
 
 # ---------------------------------------------------------------------------
 class TestGateEntryCancel(_Base):
 	"""A submitted Gate Entry is itself an arrival — ``on_submit`` puts the tank In_Depot and
-	stamps its ``eir_in_date`` — and it had no cancel hook at all, so voiding one left the
+	stamps its ``in_date`` — and it had no cancel hook at all, so voiding one left the
 	tank inside on a gate record that no longer existed."""
 
 	def test_voiding_a_submitted_gate_entry_takes_the_arrival_back(self):
@@ -301,9 +347,9 @@ class TestGateEntryCancel(_Base):
 
 		ge.cancel()
 
-		row = frappe.db.get_value("Container", c, ["status", "eir_in_date"], as_dict=True)
+		row = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		self.assertEqual(row.status, "Gate_Out")
-		self.assertIsNone(row.eir_in_date)
+		self.assertIsNone(row.in_date)
 		self.assertEqual(frappe.db.get_value("Gate Entry", ge.name, "status"), "Cancelled")
 
 	def test_an_arrival_somebody_else_stamped_is_left_alone(self):
@@ -322,7 +368,7 @@ class TestGateEntryCancel(_Base):
 		frappe.get_doc("Gate Entry", ge.name).cancel()
 
 		self.assertIn(frappe.db.get_value("Container", c, "status"), ("In_Depot", "Available"))
-		self.assertTrue(frappe.db.get_value("Container", c, "eir_in_date"))
+		self.assertTrue(frappe.db.get_value("Container", c, "in_date"))
 
 
 # ---------------------------------------------------------------------------

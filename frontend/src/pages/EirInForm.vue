@@ -133,6 +133,7 @@
 								<option value="">—</option>
 								<option v-for="o in tankOptions[f.options]" :key="o" :value="o">{{ o }}</option>
 							</select>
+							<DateInput v-else-if="f.type === 'date'" v-model="tank[f.key]" />
 							<input
 								v-else
 								v-model="tank[f.key]"
@@ -437,6 +438,7 @@ import { usePhotoQueue } from "@/utils/photoQueue"
 import SkeletonDetail from "@/components/SkeletonDetail.vue"
 import EirFormHeader from "@/components/EirFormHeader.vue"
 import EditedBy from "@/components/EditedBy.vue"
+import DateInput from "@/components/DateInput.vue"
 import SearchSelect from "@/components/SearchSelect.vue"
 import ChecklistDamage from "@/components/ChecklistDamage.vue"
 import TankFittings from "@/components/TankFittings.vue"

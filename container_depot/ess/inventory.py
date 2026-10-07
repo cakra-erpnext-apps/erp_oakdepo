@@ -679,8 +679,8 @@ def get_tank_detail(container):
 		"max_gross_weight": doc.max_gross_weight,
 		"last_test_date": str(doc.last_test_date) if doc.last_test_date else None,
 		"serial_no": doc.serial_no,
-		"eir_in_date": str(doc.eir_in_date) if doc.eir_in_date else None,
-		"eir_out_date": str(doc.eir_out_date) if doc.eir_out_date else None,
+		"in_date": str(doc.in_date) if doc.in_date else None,
+		"out_date": str(doc.out_date) if doc.out_date else None,
 		"status": bucket,
 		"group": _GROUP_OF[bucket],
 		"order": _order_ref(drv) if bucket in ("draft", "pending", "in_progress") else None,
@@ -709,7 +709,7 @@ def _in_depot_days(doc):
 	``None`` kalau keduanya tidak ada: lebih baik kosong daripada "0 hari" untuk tank yang
 	sebenarnya sudah sebulan berdiri di sana tanpa dokumen masuk.
 	"""
-	since = doc.eir_in_date
+	since = doc.in_date
 	if not since:
 		since = frappe.db.get_value(
 			"Container Activity",

@@ -99,7 +99,7 @@ def revision_apply(doc, before) -> None:
 
 
 def has_leak_check_this_visit(container: str) -> bool:
-	"""A Completed Leak Check filed since the tank's arrival (``Container.eir_in_date``).
+	"""A Completed Leak Check filed since the tank's arrival (``Container.in_date``).
 
 	No arrival stamp (an imported tank) = any Completed Leak Check on the tank counts.
 
@@ -109,7 +109,7 @@ def has_leak_check_this_visit(container: str) -> bool:
 	"""
 	from container_depot.container_depot.container_status import last_departure
 
-	arrived = frappe.db.get_value("Container", container, "eir_in_date")
+	arrived = frappe.db.get_value("Container", container, "in_date")
 	filters = {"container": container, "status": COMPLETED}
 	if arrived:
 		filters["recorded_on"] = [">=", get_datetime(arrived)]
@@ -131,12 +131,16 @@ def open_leak_check(container: str) -> str | None:
 # / release_eirs_for_cancelled_order).
 # ---------------------------------------------------------------------------
 def _bon_containers(order_name: str) -> list[str]:
+	"""The bon's tanks that owe a Leak Check — all but those taken without an EIR (no_eir.py)."""
+	from container_depot.container_depot.no_eir import no_eir_containers
+
+	skip = no_eir_containers(order_name, "Order Bongkar")
 	return [
 		c for c in frappe.get_all(
 			"Container Booking Item",
 			filters={"parent": order_name, "parenttype": "Order Bongkar"},
 			pluck="container",
-		) if c
+		) if c and c not in skip
 	]
 
 

@@ -3,7 +3,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import getdate, today
 
-from container_depot.container_depot import last_orders
+from container_depot.container_depot import last_orders, no_eir
 from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
 	_ensure_order_qr,
 	_log_order_activity,
@@ -32,6 +32,9 @@ class OrderMuat(Document):
 	def on_update_after_submit(self):
 		# Tgl. Muat stays editable after submit — see OrderBongkar.on_update_after_submit.
 		refresh_bon_status(self.get("booking"))
+		from container_depot.container_depot.visit_dates import follow_muat
+
+		follow_muat(self)
 
 	def on_update(self):
 		_reconcile_codes(self)
@@ -46,6 +49,9 @@ class OrderMuat(Document):
 		notify_order_gate(self, "out")
 		self._attach_eir_out()
 		notify_order_muat_survey(self)
+		# LAST: a LADEN tank taken without an EIR has no EIR-Out to send it out — this submit
+		# is its gate-out, dated by Tanggal Muat (no_eir.py).
+		no_eir.depart(self)
 
 	def _attach_eir_out(self):
 		"""Point each tank's EIR-Out at this bon and stamp the truck / driver / EMKL / shipper onto it.
@@ -74,7 +80,14 @@ class OrderMuat(Document):
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"attach EIR-Out for {self.name}")
 
+	def onload(self):
+		from container_depot.container_depot.order_generation import order_undoable
+
+		self.set_onload("undoable", order_undoable(self))
+
 	def on_cancel(self):
+		# FIRST: the tanks this bon sent out without an EIR come back (no_eir.py).
+		no_eir.reverse_departures(self)
 		_release_codes(self)
 		# Order Muat provisions EIR-Out drafts on submit, so cancelling must unwind them
 		# for the same reason Order Bongkar unwinds its EIR-In drafts.

@@ -286,7 +286,8 @@ class RepairOrder(Document):
 		dipertahankan sebagai data pelat — tapi itu meninggalkannya tanpa satu pun penulis
 		selain mata orang (surveyor yang membaca pelat saat EIR masuk). Padahal ujinya
 		dikerjakan sendiri di sini, sebagai M&R ber-``job_type = Periodic Test``, jadi
-		jawabannya sudah ada di sistem: tanggal selesai order itu. Inilah "default dari tes
+		jawabannya sudah ada di sistem: tanggal order itu (``plan_date``, "Tanggal Periodic
+		Test") — bukan jam submit/selesai (user, 2026-10-07). Inilah "default dari tes
 		kita" yang dibaca semua form; koreksi manusia atas uji di luar depo lewat
 		``container.set_last_test_date``.
 
@@ -296,13 +297,13 @@ class RepairOrder(Document):
 		"""
 		if self.job_type != "Periodic Test" or self.status != "Completed":
 			return
-		if not (self.container and self.completion_date):
+		if not (self.container and self.plan_date):
 			return
 		from frappe.utils import getdate
 
 		from container_depot.container_depot.container_activity import log_doc_note
 
-		tested = getdate(self.completion_date)
+		tested = getdate(self.plan_date)
 		current = frappe.db.get_value("Container", self.container, "last_test_date")
 		if current and getdate(current) >= tested:
 			return
@@ -321,19 +322,19 @@ class RepairOrder(Document):
 
 	def restore_test_date(self, completed):
 		"""Undo what ``_stamp_last_test_date`` wrote for ``completed`` (this order as it stood
-		when it was Completed) — on Buka Lagi, or when Revisi Data moves the completion date.
+		when it was Completed) — on Buka Lagi, or when Revisi Data moves the order's date.
 
 		Only while the tank still carries exactly that date: a later test, or a hand
 		correction since, is newer news and stays.
 		"""
-		if self.job_type != "Periodic Test" or not (self.container and completed.get("completion_date")):
+		if self.job_type != "Periodic Test" or not (self.container and completed.get("plan_date")):
 			return
 		from frappe.utils import getdate
 
 		from container_depot.container_depot.container_activity import log_doc_note
 
 		current = frappe.db.get_value("Container", self.container, "last_test_date")
-		if not current or getdate(current) != getdate(completed.completion_date):
+		if not current or getdate(current) != getdate(completed.plan_date):
 			return
 		previous = self.get("replaced_test_date") or None
 		frappe.db.set_value("Container", self.container, "last_test_date", previous)

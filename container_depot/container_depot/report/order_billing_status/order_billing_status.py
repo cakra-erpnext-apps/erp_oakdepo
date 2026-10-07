@@ -206,24 +206,31 @@ def _booking_rows(filters, ctx):
 	f = {"docstatus": 1}
 	if filters.get("customer"):
 		f["customer"] = filters["customer"]
-	_apply_date(f, "creation", filters)
+	# The booking's own date (plan_date), else the day it was keyed in — a COALESCE the
+	# filter dict cannot express, so the range is applied below (user, 2026-10-07).
 	recs = frappe.get_all(
 		"Container Booking",
 		filters=f,
 		# ``charges_total`` is the sum of the booking's ``charges`` table — it replaced the
 		# single ``lift_amount`` column, which patch v0_49 (booking_lift_to_charges) dropped.
-		fields=["name", "customer", "creation", "payment_type", "charges_total", "currency", "sales_invoice"],
+		fields=["name", "customer", "plan_date", "creation", "payment_type", "charges_total", "currency", "sales_invoice"],
 		ignore_permissions=True,
+	)
+	frm, to = getdate(filters.get("from_date")) if filters.get("from_date") else None, (
+		getdate(filters.get("to_date")) if filters.get("to_date") else None
 	)
 	rows = []
 	for r in recs:
+		day = getdate(r.plan_date or r.creation)
+		if (frm and day < frm) or (to and day > to):
+			continue
 		fallback = r.currency or ctx["default"]
 		rows += _split_rows(
 			{
 				"order_type": "Container Booking",
 				"order": r.name,
 				"customer": r.customer,
-				"date": getdate(r.creation),
+				"date": day,
 				"payment_type": r.payment_type,
 				"invoice_status": _si_status(r.sales_invoice),
 				"sales_invoice": r.sales_invoice,

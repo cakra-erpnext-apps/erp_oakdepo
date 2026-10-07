@@ -4,6 +4,9 @@ from frappe.model.document import Document
 import datetime
 import hashlib
 
+from frappe.utils import getdate
+
+
 class GateEntry(Document):
 	def before_insert(self):
 		"""Generate gate entry ID"""
@@ -70,7 +73,11 @@ class GateEntry(Document):
 					)
 				)
 			container.status = IN_DEPOT
-			container.eir_in_date = self.gate_in_timestamp or datetime.datetime.now()
+			# A kiosk arrival has no bon: the day it came in is the gate's own day.
+			self.in_date = getdate(self.gate_in_timestamp or datetime.datetime.now())
+			self.db_set("in_date", self.in_date, update_modified=False)
+			container.in_date = self.in_date
+			container.out_date = None
 			container.save(ignore_permissions=True)
 			# In_Depot means "here WITH open work". A tank that arrives with nothing open
 			# — no EIR draft, no cleaning, no M&R — is already free to leave, so the
@@ -94,7 +101,7 @@ class GateEntry(Document):
 	def on_cancel(self):
 		"""Void a gate entry: take back the arrival it stamped, and say so on the record.
 
-		``on_submit`` is what puts a tank inside — ``In_Depot`` plus an ``eir_in_date`` — so
+		``on_submit`` is what puts a tank inside — ``In_Depot`` plus an ``in_date`` — so
 		cancelling has to give both back, or a tank let in on a gate entry that no longer
 		exists stands in the yard for good. Only the arrival THIS record made is undone: a
 		tank that has since gated out, or that is busy with open work, is on a later chapter
@@ -105,8 +112,6 @@ class GateEntry(Document):
 		Gate reads ``status``, not docstatus, so a cancelled record would otherwise keep
 		reading as a live visit.
 		"""
-		from frappe.utils import get_datetime
-
 		from container_depot.container_depot.container_activity import log_container_activity
 		from container_depot.container_depot.container_status import (
 			PRESENT,
@@ -120,17 +125,15 @@ class GateEntry(Document):
 		if not container_ref or not frappe.db.exists("Container", container_ref):
 			return
 		cur = frappe.db.get_value(
-			"Container", container_ref, ["status", "eir_in_date"], as_dict=True
+			"Container", container_ref, ["status", "in_date"], as_dict=True
 		)
 		if not cur or cur.status not in PRESENT or container_open_orders(container_ref):
 			return
 		# ...and the arrival on the tank has to be the one THIS record wrote. A tank arrived
 		# by a bon (`order_bongkar._sync_container_arrival`) carries that document's stamp,
 		# and voiding a gate log beside it is no reason to send the tank back out.
-		if self.gate_in_timestamp and (
-			not cur.eir_in_date
-			or get_datetime(cur.eir_in_date) != get_datetime(self.gate_in_timestamp)
-		):
+		# A record with no Tanggal Masuk, or a different one, did not let this tank in.
+		if not self.in_date or not cur.in_date or getdate(cur.in_date) != getdate(self.in_date):
 			return
 		# Through the ORM under the automation flag, never a raw write: `Container.on_update`
 		# is what logs the Status Movement and re-derives the storage visit, so an arrival
@@ -140,7 +143,7 @@ class GateEntry(Document):
 		try:
 			tank = frappe.get_doc("Container", container_ref)
 			tank.status = "Gate_Out"
-			tank.eir_in_date = None
+			tank.in_date = None
 			tank.save(ignore_permissions=True)
 		finally:
 			frappe.flags.in_status_automation = False
@@ -214,6 +217,7 @@ class GateEntry(Document):
 		}).insert(ignore_permissions=True)
 
 		return edi_text
+
 
 # --- Revisi Data hooks (revision.py) ---------------------------------------------------
 # A finished gate record corrects who drove, which truck and which guard. The gate times stay:

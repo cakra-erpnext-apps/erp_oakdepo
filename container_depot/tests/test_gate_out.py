@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
-from frappe.utils import add_days, now_datetime
+from frappe.utils import add_days, now_datetime, today
 
 from container_depot.ess.inventory import derive_status
 from container_depot.container_depot import eir
@@ -132,7 +132,7 @@ class TestGateOut(FrappeTestCase):
 		"""Leak Check is mandatory at the exit — one filed before the tank's arrival does not
 		count. A flagged leak does NOT hold the tank; it is only recorded."""
 		c = _container(f"{PREFIX}9990009", "Available")
-		frappe.db.set_value("Container", c, "eir_in_date", now_datetime())
+		frappe.db.set_value("Container", c, "in_date", today())
 		stale = make_leak_check(c)
 		frappe.db.set_value("Leak Check", stale, "recorded_on", add_days(now_datetime(), -1))
 

@@ -5,6 +5,7 @@
 		back-to="/eir"
 		:back-label="labels.eirTitle"
 		list-url="container_depot.ess.inspections.eir_history"
+		:date-of="(r) => r.eir_date || r.creation"
 		detail-url="container_depot.ess.inspections.eir_view"
 		detail-param="inspection"
 		:search-placeholder="labels.eirHistorySearch"

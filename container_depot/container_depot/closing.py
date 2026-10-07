@@ -108,7 +108,7 @@ def _close_cleaning(doc, older):
 	when = _own_datetime(doc.plan_date, doc.order_created, doc.creation)
 	doc.cleaning_start = doc.cleaning_start or when
 	doc.cleaning_end = doc.cleaning_end or max(when, get_datetime(doc.cleaning_start))
-	doc.date_of_issue = doc.date_of_issue or getdate(doc.cleaning_end)
+	doc.date_of_issue = doc.date_of_issue or doc.plan_date or getdate(doc.cleaning_end)
 	doc.status = "Completed"  # a re-clean keeps its own status in before_submit
 	doc.closed_by_admin = 1
 	doc.submit()
@@ -149,7 +149,7 @@ def _close_leak_check(doc, older):
 	if not older:
 		# The gate-out only counts a check recorded since the tank arrived
 		# (has_leak_check_this_visit) — and the bon provisions it before the arrival.
-		arrived = frappe.db.get_value("Container", doc.container, "eir_in_date")
+		arrived = frappe.db.get_value("Container", doc.container, "in_date")
 		if arrived and get_datetime(arrived) > get_datetime(stamp):
 			stamp = arrived
 	doc.recorded_on = stamp

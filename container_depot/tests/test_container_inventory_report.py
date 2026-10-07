@@ -83,7 +83,7 @@ class TestContainerInventoryReport(FrappeTestCase):
 		_cleanup()
 
 	# --- fixtures -------------------------------------------------------------
-	def _tank(self, cno, status="In_Depot", eir_in_date=None):
+	def _tank(self, cno, status="In_Depot", in_date=None):
 		return frappe.get_doc({
 			"doctype": "Container",
 			"container_no": cno,
@@ -91,7 +91,7 @@ class TestContainerInventoryReport(FrappeTestCase):
 			"status": status,
 			"principal": self.customer,
 			"depot": DEPOT,
-			"eir_in_date": eir_in_date,
+			"in_date": in_date,
 		}).insert(ignore_permissions=True).name
 
 	def _insert(self, payload, submit=False):
@@ -264,7 +264,7 @@ class TestContainerInventoryReport(FrappeTestCase):
 		self.assertEqual({r["container_no"] for r in rows}, {gone})
 
 	def test_days_in_depo_counts_from_the_gate_in(self):
-		self._tank(f"{PREFIX}0000005", eir_in_date=add_days(today(), -7))
+		self._tank(f"{PREFIX}0000005", in_date=add_days(today(), -7))
 
 		row = self._row(f"{PREFIX}0000005")
 		self.assertEqual(row["days_in_depo"], 7)
@@ -272,7 +272,7 @@ class TestContainerInventoryReport(FrappeTestCase):
 
 	def test_a_departed_tank_has_no_age(self):
 		"""Its in-date is stale — counting from it reads as storage that is still running."""
-		self._tank(f"{PREFIX}0000004", status="Gate_Out", eir_in_date=add_days(today(), -7))
+		self._tank(f"{PREFIX}0000004", status="Gate_Out", in_date=add_days(today(), -7))
 
 		row = self._row(f"{PREFIX}0000004", in_depo_only=0)
 		self.assertEqual(row["in_date"], getdate(add_days(today(), -7)))

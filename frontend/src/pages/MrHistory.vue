@@ -5,6 +5,7 @@
 		:back-to="kind.base"
 		:back-label="kind.backLabel"
 		list-url="container_depot.ess.repairs.mr_history"
+		:date-of="(r) => r.plan_date || r.creation"
 		:list-params="listParams"
 		detail-url="container_depot.ess.repairs.mr_order_detail"
 		detail-param="repair_order"
@@ -23,7 +24,7 @@
 				</div>
 				<div class="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-gray-500">
 					<span class="truncate">{{ rowSubtitle(item) }}</span>
-					<span class="shrink-0">{{ fmtDate(item.completion_date || item.creation) }}</span>
+					<span class="shrink-0">{{ fmtDate(item.plan_date || item.creation) }}</span>
 				</div>
 			</div>
 		</template>

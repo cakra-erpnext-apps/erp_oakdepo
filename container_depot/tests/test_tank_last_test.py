@@ -5,7 +5,8 @@ Dua penulis, satu field, dan itu memang inti rancangannya — layar mana pun yan
 order cuci adalah tanggal yang dicetak EIR berikutnya:
 
 * **Uji di depo sendiri** — M&R ber-``job_type = Periodic Test`` yang ditutup menstempelnya
-  sendiri (``RepairOrder._stamp_last_test_date``). Inilah "default dari tes kita".
+  sendiri (``RepairOrder._stamp_last_test_date``) dengan TANGGAL ORDER-nya (``plan_date``,
+  "Tanggal Periodic Test"), bukan jam selesai (user, 2026-10-07). Inilah "default dari tes kita".
 * **Uji di luar** — vendor atau depo lain, yang tidak akan pernah punya dokumennya di sini,
   diketik lewat ``container.set_last_test_date`` dari form order (PWA maupun Desk).
 
@@ -47,7 +48,7 @@ class TestTankLastTestDate(FrappeTestCase):
 		self._containers.append(name)
 		return name
 
-	def _periodic_test(self, container, *, completion_date, status="Completed"):
+	def _periodic_test(self, container, *, test_date, status="Completed"):
 		"""M&R uji berkala yang langsung lahir dalam status akhirnya.
 
 		Sah: ``_validate_status_transition`` hanya menilai PERPINDAHAN status, dan dokumen
@@ -58,7 +59,9 @@ class TestTankLastTestDate(FrappeTestCase):
 			"container": container,
 			"job_type": "Periodic Test",
 			"status": status,
-			"completion_date": completion_date,
+			"plan_date": test_date,
+			# Finished today whatever the order's date: the stamp must not be what counts.
+			"completion_date": frappe.utils.now_datetime(),
 		}).insert(ignore_permissions=True)
 		self._orders.append(doc.name)
 		return doc
@@ -72,7 +75,7 @@ class TestTankLastTestDate(FrappeTestCase):
 		c = self._container("LTDU1000001")
 		self.assertIsNone(self._last_test(c))
 
-		self._periodic_test(c, completion_date=add_days(today(), -3))
+		self._periodic_test(c, test_date=add_days(today(), -3))
 
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -3)))
 
@@ -80,7 +83,7 @@ class TestTankLastTestDate(FrappeTestCase):
 		"""Antrean uji bukan uji. Order yang belum ditutup tidak menggeser tanggal apa pun."""
 		c = self._container("LTDU1000002")
 
-		self._periodic_test(c, completion_date=add_days(today(), -3), status="In Progress")
+		self._periodic_test(c, test_date=add_days(today(), -3), status="In Progress")
 
 		self.assertIsNone(self._last_test(c))
 
@@ -103,7 +106,7 @@ class TestTankLastTestDate(FrappeTestCase):
 		c = self._container("LTDU1000004")
 		set_last_test_date(c, add_days(today(), -10))
 
-		self._periodic_test(c, completion_date=add_days(today(), -100))
+		self._periodic_test(c, test_date=add_days(today(), -100))
 
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -10)))
 
@@ -111,7 +114,7 @@ class TestTankLastTestDate(FrappeTestCase):
 		c = self._container("LTDU1000005")
 		set_last_test_date(c, add_days(today(), -100))
 
-		self._periodic_test(c, completion_date=add_days(today(), -1))
+		self._periodic_test(c, test_date=add_days(today(), -1))
 
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -1)))
 
@@ -121,19 +124,19 @@ class TestTankLastTestDate(FrappeTestCase):
 
 		c = self._container("LTDU1000020")
 		set_last_test_date(c, add_days(today(), -100))
-		ro = self._periodic_test(c, completion_date=add_days(today(), -1))
+		ro = self._periodic_test(c, test_date=add_days(today(), -1))
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -1)))
 
 		mr.reopen_completed(ro.name)
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -100)))
 
-	def test_revisi_data_moves_the_test_date_with_the_completion(self):
+	def test_revisi_data_moves_the_test_date_with_the_order_date(self):
 		from container_depot.container_depot import revision
 
 		c = self._container("LTDU1000021")
-		ro = self._periodic_test(c, completion_date=add_days(today(), -1))
+		ro = self._periodic_test(c, test_date=add_days(today(), -1))
 		doc = frappe.get_doc("Repair Order", ro.name)
-		doc.completion_date = add_days(today(), -5)
+		doc.plan_date = add_days(today(), -5)
 		revision.save_revision(frappe.as_json(doc.as_dict()))
 		self.assertEqual(self._last_test(c), getdate(add_days(today(), -5)))
 		self.assertEqual(frappe.db.get_value("Repair Order", ro.name, "status"), "Completed")
@@ -180,7 +183,7 @@ class TestTankLastTestDate(FrappeTestCase):
 		disimpan = master ikut berubah."""
 		c = self._container("LTDU1000010")
 		set_last_test_date(c, "2024-03-11")
-		doc = self._periodic_test(c, completion_date=None, status="Pending")
+		doc = self._periodic_test(c, test_date=None, status="Pending")
 
 		doc = frappe.get_doc("Repair Order", doc.name)
 		doc.run_method("onload")

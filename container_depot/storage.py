@@ -22,14 +22,16 @@ whatever was billed before off its front.
 container — never merged, so a tank's history is read from one story rather than stitched
 from three that may disagree:
 
-1. ``Gate Entry`` — one record spans a whole visit (``gate_in_timestamp`` +
-   ``gate_out_timestamp``), written at the gate by security, and there is one per visit.
-   The only source that can describe a tank that came, left, and came back.
+1. ``Gate Entry`` — one record spans a whole visit, and there is one per visit. Its
+   ``in_date`` / ``out_date`` are the bons' Tanggal Bongkar / Tanggal Muat — the day the tank
+   came in and the day it left (``visit_dates``, user 2026-10-07) — never the moment somebody
+   pressed Submit, and never an EIR's date. The only source that can describe a tank that
+   came, left, and came back.
 2. ``Container Movement`` — the status audit trail. Timestamped when the status was
    *saved*, not when the truck actually moved, so it is a fallback: right to the day for
    same-day data entry, wrong for anything entered late.
-3. ``Container.eir_in_date`` / ``eir_out_date`` — last resort, and only ever the LAST
-   visit (both fields are overwritten on re-entry).
+3. ``Container.in_date`` / ``out_date`` — last resort, and only ever the LAST visit (both
+   fields are overwritten on re-entry).
 
 Each row reports which source it used, because a storage bill that cannot be traced to a
 gate record is a bill the customer will argue with.
@@ -71,10 +73,10 @@ DEFAULT_MODE = MODE_ON_EXIT
 # Source labels (also the report's Sumber column).
 SRC_GATE = "Gate Entry"
 SRC_MOVEMENT = "Container Movement"
-SRC_EIR = "EIR (Container)"
+SRC_MASTER = "Container"
 SRC_NONE = "-"
 
-EIR_FIELDS = ["eir_in_date", "eir_out_date", "status"]
+MASTER_FIELDS = ["in_date", "out_date", "status"]
 
 
 # --------------------------------------------------------------------------- #
@@ -137,33 +139,31 @@ def billable_now(period: dict, mode: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Stay periods — one dict per visit: {start, end, eir_in, source, ref}
+# Stay periods — one dict per visit: {start, end, source, ref}
 #
-# ``start`` is when storage starts — the visit's EIR-In, else its arrival (see
-# ``_with_eir``). ``end`` is None while the tank is still inside. ``ref`` is the document the dates were
+# ``start`` is the day the tank came in, ``end`` the day it left (None while it is still
+# inside). ``ref`` is the document the dates were
 # read from (a Gate Entry name), or None for the derived sources.
 # --------------------------------------------------------------------------- #
 def stay_periods(container: str, container_no: str | None = None) -> list[dict]:
 	"""Every recorded depot visit of one tank, oldest first."""
 	container_no = container_no or frappe.db.get_value("Container", container, "container_no")
-	return _with_eir(
+	return _with_master(
 		_raw_periods(container, container_no),
-		frappe.db.get_value("Container", container, EIR_FIELDS, as_dict=True),
-		_eir_ins([container]).get(container, []),
+		frappe.db.get_value("Container", container, MASTER_FIELDS, as_dict=True),
 	)
 
 
 def _raw_periods(container: str, container_no: str | None) -> list[dict]:
-	return _gate_entry_periods(container_no) or _movement_periods(container) or _eir_periods(container)
+	return _gate_entry_periods(container_no) or _movement_periods(container) or _master_periods(container)
 
 
 def visit_for(container: str, day, container_no: str | None = None, *, ref: str | None = None, earlier: bool = False):
 	"""The stay ``day`` belongs to: ``(period, lo, hi)``, or ``(None, None, None)``.
 
 	``period`` is the :func:`stay_periods` row (what the Storage Charge ledger is keyed on);
-	``lo`` / ``hi`` are the dates its EIR-In may carry — the same window :func:`_with_eir`
-	searches, from the gate-in day to the gate-out day (or the next arrival; ``hi`` None while
-	the tank is still inside).
+	``lo`` / ``hi`` are its window, from the day in to the day out (or the next arrival; ``hi``
+	None while the tank is still inside).
 
 	``ref`` (a Gate Entry) wins when it names a visit. A day outside every window falls to the
 	next arrival, or with ``earlier`` to the last one before it: an EIR-In dated before its tank
@@ -171,15 +171,10 @@ def visit_for(container: str, day, container_no: str | None = None, *, ref: str 
 	it closed.
 	"""
 	container_no = container_no or frappe.db.get_value("Container", container, "container_no")
-	raw = _raw_periods(container, container_no)
-	final = _with_eir(
-		raw,
-		frappe.db.get_value("Container", container, EIR_FIELDS, as_dict=True),
-		_eir_ins([container]).get(container, []),
-	)
+	final = stay_periods(container, container_no)
 	windows = [
-		(getdate(p["start"]), getdate(p["end"]) if p["end"] else (getdate(raw[i + 1]["start"]) if i + 1 < len(raw) else None))
-		for i, p in enumerate(raw)
+		(getdate(p["start"]), getdate(p["end"]) if p["end"] else (getdate(final[i + 1]["start"]) if i + 1 < len(final) else None))
+		for i, p in enumerate(final)
 	]
 	day = getdate(day)
 	pick = next((i for i, p in enumerate(final) if ref and p.get("ref") == ref), None)
@@ -214,101 +209,63 @@ def periods_for_many(containers: list[dict]) -> dict[str, list[dict]]:
 				"status": ["!=", "Cancelled"],
 				"gate_in_timestamp": ["is", "set"],
 			},
-			fields=["name", "container_no", "gate_in_timestamp", "gate_out_timestamp"],
+			fields=["name", "container_no", *_GATE_FIELDS],
 			order_by="gate_in_timestamp asc",
 		):
-			by_no.setdefault(r.container_no, []).append({
-				"start": r.gate_in_timestamp,
-				"end": r.gate_out_timestamp,
-				"source": SRC_GATE,
-				"ref": r.name,
-			})
+			by_no.setdefault(r.container_no, []).append(_gate_period(r))
 	names = [c["name"] for c in containers]
-	eir = {r.name: r for r in frappe.get_all(
-		"Container", filters={"name": ["in", names or [""]]}, fields=["name", *EIR_FIELDS],
+	master = {r.name: r for r in frappe.get_all(
+		"Container", filters={"name": ["in", names or [""]]}, fields=["name", *MASTER_FIELDS],
 	)}
-	eir_ins = _eir_ins(names)
 	out = {}
 	for c in containers:
-		out[c["name"]] = _with_eir(
+		out[c["name"]] = _with_master(
 			by_no.get(c.get("container_no"))
 			or _movement_periods(c["name"])
-			or _eir_periods(c["name"]),
-			eir.get(c["name"]),
-			eir_ins.get(c["name"], []),
+			or _master_periods(c["name"]),
+			master.get(c["name"]),
 		)
 	return out
 
 
-def _eir_ins(containers: list[str]) -> dict[str, list]:
-	"""``{container: [submitted EIR-In dates, oldest first]}``.
+def _with_master(periods: list[dict], tank) -> list[dict]:
+	"""A visit with no gate record takes the master's ``in_date`` / ``out_date``.
 
-	The date is the EIR's own ``eir_date`` — the day the operator set on it — never when it
-	happened to be submitted (user, 2026-10-02): an EIR dated yesterday and submitted today
-	starts storage yesterday. Submits run days behind on the floor, and counting from them
-	made a tank's stay shrink the moment its paperwork caught up. ``work_ended_on`` is only
-	the fallback for an EIR saved without a date.
+	That is a tank injected by import: its Container Movement is stamped when the import ran,
+	so the operator-set dates on the master are the better story. Only the LAST visit, since
+	both fields are overwritten on re-entry, and a date that does not fit — before the
+	previous visit's exit, or out before in — is ignored. A gated visit never takes them: its
+	Gate Entry carries the same bon dates itself.
 	"""
-	out: dict[str, list] = {}
-	if not containers:
-		return out
-	for r in frappe.get_all(
-		"Inspection",
-		filters={"container": ["in", containers], "inspection_type": "EIR-In", "docstatus": 1},
-		fields=["container", "work_ended_on", "eir_date"],
-	):
-		when = r.eir_date or r.work_ended_on
-		if when:
-			out.setdefault(r.container, []).append(when)
-	for times in out.values():
-		times.sort(key=get_datetime)
-	return out
-
-
-def _with_eir(periods: list[dict], eir, eir_ins: list) -> list[dict]:
-	"""Storage starts at EIR-In: ``start`` becomes the visit's first submitted EIR-In.
-
-	The gate only says the tank came through the gate. The tank is in storage once its
-	EIR-In inspection is done, so ``start`` — what every day count reads — becomes the first
-	submitted EIR-In inside the visit. A visit with no EIR-In yet keeps the gate date as its
-	start, so its days do not silently vanish; ``eir_in`` stays empty to show it.
-
-	"Inside the visit" starts at the gate stamp, so an EIR dated before it is ignored: a draft
-	EIR-In is born when its bon is issued and carries the bon's day until somebody changes it,
-	and that day is not when the tank arrived.
-
-	A visit with no gate record (a tank injected by import — its Container Movement is
-	stamped when the import ran) has no Inspection either, so it takes the operator-set
-	``Container.eir_in_date`` / ``eir_out_date`` (out only once Gate_Out). Only the LAST
-	visit, since both fields are overwritten on re-entry, and a date that does not fit —
-	before the previous visit's exit, or out before in — is ignored. A gated visit never
-	takes those fields: the gate writes ``eir_in_date`` itself and an EIR-Out survey stamps
-	``eir_out_date`` before the tank has actually left.
-	"""
-	out = []
-	for i, p in enumerate(periods):
-		p = {**p, "eir_in": None}
-		lo = getdate(p["start"])
-		hi = getdate(p["end"]) if p["end"] else (getdate(periods[i + 1]["start"]) if i + 1 < len(periods) else None)
-		found = next((t for t in eir_ins if getdate(t) >= lo and (hi is None or getdate(t) <= hi)), None)
-		if found:
-			p.update(start=found, eir_in=found)
-		out.append(p)
-
-	if not out or not eir or out[-1].get("ref"):
+	out = list(periods)
+	if not out or not tank or out[-1].get("ref"):
 		return out
 	last = dict(out[-1])
 	prev_end = out[-2]["end"] if len(out) > 1 else None
-	if not last["eir_in"] and eir.eir_in_date and not (prev_end and get_datetime(eir.eir_in_date) <= get_datetime(prev_end)):
-		if getdate(eir.eir_in_date) != getdate(last["start"]):
-			last["source"] = SRC_EIR
-		last.update(start=eir.eir_in_date, eir_in=eir.eir_in_date)
-	if eir.status == GATE_OUT and eir.eir_out_date and get_datetime(eir.eir_out_date) >= get_datetime(last["start"]):
-		if not last["end"] or getdate(eir.eir_out_date) != getdate(last["end"]):
-			last.update(end=eir.eir_out_date, source=SRC_EIR)
-	if last["end"] and get_datetime(last["end"]) < get_datetime(last["start"]):
+	if tank.in_date and not (prev_end and getdate(tank.in_date) <= getdate(prev_end)):
+		if getdate(tank.in_date) != getdate(last["start"]):
+			last["source"] = SRC_MASTER
+		last["start"] = tank.in_date
+	if tank.status == GATE_OUT and tank.out_date and getdate(tank.out_date) >= getdate(last["start"]):
+		if not last["end"] or getdate(tank.out_date) != getdate(last["end"]):
+			last.update(end=tank.out_date, source=SRC_MASTER)
+	if last["end"] and getdate(last["end"]) < getdate(last["start"]):
 		return out
 	return out[:-1] + [last]
+
+
+# Gate Entry: the bon dates, and the registration stamps only for a record written before
+# the dates existed (patch v1_19.in_out_dates fills them in).
+_GATE_FIELDS = ["in_date", "out_date", "gate_in_timestamp", "gate_out_timestamp"]
+
+
+def _gate_period(r) -> dict:
+	return {
+		"start": r.in_date or r.gate_in_timestamp,
+		"end": r.out_date or r.gate_out_timestamp,
+		"source": SRC_GATE,
+		"ref": r.name,
+	}
 
 
 def _gate_entry_periods(container_no: str | None) -> list[dict]:
@@ -322,18 +279,10 @@ def _gate_entry_periods(container_no: str | None) -> list[dict]:
 			"status": ["!=", "Cancelled"],
 			"gate_in_timestamp": ["is", "set"],
 		},
-		fields=["name", "gate_in_timestamp", "gate_out_timestamp"],
+		fields=["name", *_GATE_FIELDS],
 		order_by="gate_in_timestamp asc",
 	)
-	return [
-		{
-			"start": r.gate_in_timestamp,
-			"end": r.gate_out_timestamp,
-			"source": SRC_GATE,
-			"ref": r.name,
-		}
-		for r in rows
-	]
+	return [_gate_period(r) for r in rows]
 
 
 def _movement_periods(container: str) -> list[dict]:
@@ -362,14 +311,12 @@ def _movement_periods(container: str) -> list[dict]:
 	return periods
 
 
-def _eir_periods(container: str) -> list[dict]:
-	row = frappe.db.get_value(
-		"Container", container, ["eir_in_date", "eir_out_date", "status"], as_dict=True
-	)
-	if not row or not row.eir_in_date:
+def _master_periods(container: str) -> list[dict]:
+	row = frappe.db.get_value("Container", container, MASTER_FIELDS, as_dict=True)
+	if not row or not row.in_date:
 		return []
-	end = row.eir_out_date if row.status == GATE_OUT else None
-	return [{"start": row.eir_in_date, "end": end, "source": SRC_EIR, "ref": None}]
+	end = row.out_date if row.status == GATE_OUT else None
+	return [{"start": row.in_date, "end": end, "source": SRC_MASTER, "ref": None}]
 
 
 # --------------------------------------------------------------------------- #

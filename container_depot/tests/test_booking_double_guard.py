@@ -121,13 +121,13 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		}).insert(ignore_permissions=True).name
 
 	def _arrived_container(self, cno):
-		"""A tank that really came in through the gate. ``eir_in_date`` is the difference
+		"""A tank that really came in through the gate. ``in_date`` is the difference
 		that matters here: it is what stops ``_mark_pre_arrival`` flipping the tank to
 		``Booked`` when an inbound booking names it, so the status stays the truth about
 		where the tank is."""
 		name = self._available_container(cno)
 		frappe.db.set_value(
-			"Container", name, {"status": "In_Depot", "eir_in_date": today()}, update_modified=False
+			"Container", name, {"status": "In_Depot", "in_date": today()}, update_modified=False
 		)
 		return name
 

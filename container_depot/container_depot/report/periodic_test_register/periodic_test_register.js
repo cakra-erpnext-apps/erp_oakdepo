@@ -1,10 +1,9 @@
-// Tanggal disaring pada ORDER DATE, bukan Periodic Date: order yang belum diuji belum
+// Tanggal disaring pada TANGGAL PERIODIC TEST (plan_date), bukan Periodic Date: order yang belum diuji belum
 // punya Periodic Date, dan justru merekalah antrean yang dicari halaman ini.
 frappe.query_reports["Periodic Test Register"] = {
 	filters: [
 		...container_depot.report_kit.filters([
-			["order_date", "Order Date"],
-			["plan_date", "Plan Date"],
+			["order_date", "Tanggal Periodic Test"],
 			["periodic_date", "Periodic Date"],
 			["last_pt_date", "Last PT Date"],
 			["due_date", "Due Date"],

@@ -7,7 +7,7 @@
 		list-url="container_depot.ess.tank_survey.survey_history"
 		detail-url="container_depot.ess.tank_survey.survey_tank_detail"
 		detail-param="name"
-		:date-of="(r) => r.surveyed_on || r.creation"
+		:date-of="(r) => r.survey_date || r.surveyed_on || r.creation"
 		:search-placeholder="labels.surveyPosSearch"
 		:count-label="labels.surveyPosHistoryCount"
 	>
@@ -20,7 +20,7 @@
 				</div>
 				<div class="mt-0.5 flex items-center justify-between gap-2 text-xs text-gray-500">
 					<span class="truncate">{{ item.location_note || labels.tankPosUnlocated }}</span>
-					<span class="shrink-0">{{ shortDate(item.surveyed_on || item.lowered_on || item.creation) }}</span>
+					<span class="shrink-0">{{ shortDate(item.survey_date || item.surveyed_on || item.lowered_on || item.creation) }}</span>
 				</div>
 			</div>
 		</template>

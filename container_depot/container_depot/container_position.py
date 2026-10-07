@@ -180,7 +180,7 @@ def get_container_position(container, history_length=5) -> dict:
 	tank = frappe.db.get_value(
 		"Container", container,
 		["name", "container_no", "depot", "status", "principal", "container_type", "size",
-		 "eir_in_date",
+		 "in_date",
 		 "current_location", "location_updated_on", "location_updated_by", "target_lift_on",
 		 "target_survey_on", "target_urgent_on"],
 		as_dict=True,
@@ -223,7 +223,7 @@ def get_container_position(container, history_length=5) -> dict:
 		# masuk sebulan lalu tidak perlu dicurigai walau catatannya tua.
 		"moves": frappe.db.count(DOCTYPE, {"container": container}),
 		"in_depot_days": (
-			max(0, date_diff(now_datetime(), tank.eir_in_date)) if tank.eir_in_date else None
+			max(0, date_diff(now_datetime(), tank.in_date)) if tank.in_date else None
 		),
 		"history": history,
 	}
@@ -879,7 +879,7 @@ def position_board(limit=8, group=None, depot=None, principal=None, day=None, ur
 	rows = frappe.db.sql(
 		f"""
 		select c.name, c.container_no, c.principal, c.depot, c.status, c.current_location,
-		       c.location_updated_on, c.location_updated_by, c.eir_in_date,
+		       c.location_updated_on, c.location_updated_by, c.in_date,
 		       c.target_lift_on, c.target_survey_on, c.target_urgent_on,
 		       so.name as survey_order, so.booking,
 		       r.status as survey_status, b.reff_doc, b.customer
@@ -903,7 +903,7 @@ def position_board(limit=8, group=None, depot=None, principal=None, day=None, ur
 	recheck, missing, today_rows, located = [], [], [], []
 	for r in rows:
 		r["location_updated_on"] = str(r.location_updated_on) if r.location_updated_on else None
-		for k in ("eir_in_date", "target_lift_on", "target_survey_on", "target_urgent_on"):
+		for k in ("in_date", "target_lift_on", "target_survey_on", "target_urgent_on"):
 			r[k] = str(r[k]) if r.get(k) else None
 		if not (r.current_location or "").strip():
 			r["pos_state"] = "missing"
@@ -924,7 +924,7 @@ def position_board(limit=8, group=None, depot=None, principal=None, day=None, ur
 	recheck.sort(key=lambda r: r["location_updated_on"] or "")
 	# Yang paling lama di depo duluan di daftar "belum terdata": tank yang baru masuk sepuluh
 	# menit lalu memang belum sempat dicatat, yang masuk tiga hari lalu terlewat.
-	missing.sort(key=lambda r: r["eir_in_date"] or "9999")
+	missing.sort(key=lambda r: r["in_date"] or "9999")
 	today_rows.sort(key=lambda r: r["location_updated_on"] or "", reverse=True)
 	# Daftar "terdata" dibuka dari yang PALING BASI, bukan yang terbaru: yang baru dicatat tidak
 	# butuh dilihat siapa pun, dan daftar yang dibuka pada bacaan tersegar membuka pada baris

@@ -291,6 +291,17 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 			order_by="idx asc",
 		) if r.container
 	]
+	# A LADEN tank taken without an EIR is not surveyed: its bon is its departure (no_eir.py).
+	# Left out here, a row already on the schedule is called off like any tank taken off.
+	from container_depot.container_depot.no_eir import no_eir_containers
+
+	skip = no_eir_containers(booking.name)
+	if skip:
+		containers = [c for c in containers if c not in skip]
+		if not containers:
+			if existing:
+				close_survey_order_with_booking(existing)
+			return {"survey_order": existing, "tanks": []}
 
 	try:
 		doc = frappe.get_doc(SCHEDULE, existing) if existing else frappe.new_doc(SCHEDULE)
@@ -876,6 +887,14 @@ def list_survey_history(start=0, page_length=10, search=None) -> dict:
 		limit_start=cint(start),
 		limit_page_length=cint(page_length),
 	)
+	# The schedule's own date (survey_date) is the day a row is listed under, not the stamp of
+	# when the surveyor closed it (user, 2026-10-07).
+	days = dict(frappe.get_all(
+		SCHEDULE, filters={"name": ["in", list({r.parent for r in rows}) or [""]]},
+		fields=["name", "survey_date"], as_list=True,
+	))
+	for r in rows:
+		r["survey_date"] = days.get(r.parent)
 	return {"items": _attach_positions(rows), "total": frappe.db.count(ROW, filters)}
 
 

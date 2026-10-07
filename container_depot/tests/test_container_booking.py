@@ -1550,13 +1550,13 @@ class TestContainerReservation(FrappeTestCase):
 
 	def _tank(self, no):
 		if frappe.db.exists("Container", no):
-			# Back to a never-arrived tank, ``eir_in_date`` included: that stamp is what
+			# Back to a never-arrived tank, ``in_date`` included: that stamp is what
 			# every release guard reads ("has this tank ever been through a gate"), so a
 			# test that sets it would otherwise leave every later test holding a tank the
 			# booking is not allowed to reserve OR release.
 			frappe.db.set_value(
 				"Container", no,
-				{"status": GATE_OUT, "created_by_booking": None, "eir_in_date": None},
+				{"status": GATE_OUT, "created_by_booking": None, "in_date": None},
 				update_modified=False,
 			)
 			return no
@@ -1843,7 +1843,7 @@ class TestContainerReservation(FrappeTestCase):
 		# It arrived: the gate stamps the date and the tank is in the depot.
 		frappe.db.set_value(
 			"Container", self.TANK,
-			{"status": "In_Depot", "eir_in_date": today()},
+			{"status": "In_Depot", "in_date": today()},
 			update_modified=False,
 		)
 

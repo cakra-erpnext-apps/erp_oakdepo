@@ -12,5 +12,5 @@ from container_depot.container_depot import wash_register
 
 def execute(filters=None):
 	return wash_register.execute(
-		filters, wash_type=None, item_code=None, date_label="Cleaning End"
+		filters, wash_type=None, item_code=None, date_label="Tanggal Selesai"
 	)

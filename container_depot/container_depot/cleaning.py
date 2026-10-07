@@ -271,8 +271,8 @@ def list_review_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "order_id", "container", "container_no", "container_principal", "status",
-			"last_cargo", "depot", "cleaning_end", "order_created"],
-		order_by="cleaning_end desc, creation desc",
+			"last_cargo", "depot", "cleaning_end", "order_created", "plan_date"],
+		order_by="plan_date desc, creation desc",
 		limit_start=cint(start),
 		limit_page_length=cint(page_length),
 	)
@@ -664,7 +664,7 @@ def get_cleaning_order_detail(cleaning_order) -> dict:
 		# looks unsigned and the operator signs a second time.
 		"signature": co.surveyor_signature or "",
 		"signed_by": co.signed_by or user,
-		"date_of_issue": co.date_of_issue or today(),
+		"date_of_issue": co.date_of_issue or co.plan_date or today(),
 		"place_of_issue": co.place_of_issue or _default_place_of_issue(user, c.depot),
 		# Tank spec (read-only, from the Container master).
 		"tank_type": c.container_type,
@@ -782,7 +782,7 @@ def save_cleaning_order(
 	if not co.signed_by:
 		co.signed_by = frappe.session.user
 	if not co.date_of_issue:
-		co.date_of_issue = today()
+		co.date_of_issue = co.plan_date or today()
 	if not co.place_of_issue:
 		co.place_of_issue = _default_place_of_issue(frappe.session.user, co.depot)
 

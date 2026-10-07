@@ -4,8 +4,7 @@ frappe.query_reports["Cleaning Register"] = {
 	filters: [
 		...container_depot.report_kit.filters([
 			["plan_date", "Tanggal Cleaning"],
-			["order_date", "Order Date"],
-			["wash_date", "Cleaning End"],
+			["wash_date", "Tanggal Selesai"],
 		]),
 		{ fieldname: "principal", label: __("Principle"), fieldtype: "Link", options: "Customer" },
 		{ fieldname: "depot", label: __("Depot"), fieldtype: "Link", options: "Depot" },

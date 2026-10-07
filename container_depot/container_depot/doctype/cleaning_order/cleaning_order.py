@@ -316,7 +316,9 @@ class CleaningOrder(Document):
 		if not self.signed_by:
 			self.signed_by = frappe.session.user
 		if not self.date_of_issue:
-			self.date_of_issue = frappe.utils.today()
+			# The certificate is dated by the order's own date, not by the day it was
+			# submitted (user, 2026-10-07).
+			self.date_of_issue = self.plan_date or frappe.utils.today()
 
 	def on_update(self):
 		"""Keep the container's presence status in step from the moment the order exists.

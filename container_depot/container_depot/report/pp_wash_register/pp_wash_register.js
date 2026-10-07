@@ -1,11 +1,10 @@
-// Filter register cuci — sama untuk ketiga jenis. Tanggal bawaan ORDER DATE, bukan
-// tanggal cuci: order yang belum dicuci belum punya tanggal cuci, dan justru merekalah
-// backlog yang dicari halaman ini. Kolom tanggal lain bisa dipilih di "Tanggal".
+// Filter register cuci — sama untuk ketiga jenis. Tanggal bawaan TANGGAL CLEANING
+// (plan_date), bukan tanggal cuci: order yang belum dicuci belum punya tanggal cuci, dan
+// justru merekalah backlog yang dicari halaman ini. Kolom tanggal lain bisa dipilih di "Tanggal".
 frappe.query_reports["PP Wash Register"] = {
 	filters: [
 		...container_depot.report_kit.filters([
-			["order_date", "Order Date"],
-			["plan_date", "Plan Date"],
+			["plan_date", "Tanggal Cleaning"],
 			["wash_date", "PP Wash Date"],
 		]),
 		{ fieldname: "principal", label: __("Principle"), fieldtype: "Link", options: "Customer" },

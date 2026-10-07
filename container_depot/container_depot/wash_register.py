@@ -22,9 +22,11 @@ pencocokan nama persis bug yang membuat kolom PP / Methanol / Steam di report KP
 nol selama berbulan-bulan.
 
 Tanpa ``wash_type`` modul ini jadi Cleaning Register: SEMUA order cleaning, termasuk
-Standard Cleaning / Other yang tidak masuk register jenis mana pun. Register itu baru
-(2026-10-06), jadi tanggal bawaannya tanggal order itu sendiri (``plan_date``, "Tanggal
-Cleaning") — bukan ``order_created`` seperti ketiga register jenis yang lebih tua.
+Standard Cleaning / Other yang tidak masuk register jenis mana pun.
+
+Semua tanggal di sini tanggal order itu sendiri (``plan_date``, "Tanggal Cleaning"), bukan
+jam order dibuat atau jam selesai cuci (user, 2026-10-07). Kolom tanggal cuci = tanggal itu
+juga, tapi HANYA setelah order selesai — kosongnya tetap penanda backlog.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from container_depot.container_depot.container_status import DONE_CLEANING
 
 def execute(filters, *, wash_type: str | None, item_code: str | None, date_label: str):
 	filters = filters or {}
-	default = "order_date" if wash_type else "plan_date"
+	default = "plan_date"
 	columns, rows = report_kit.finish(
 		_columns(date_label, all_types=not wash_type), _rows(filters, wash_type, item_code, default),
 		filters, default=default,
@@ -47,7 +49,7 @@ def execute(filters, *, wash_type: str | None, item_code: str | None, date_label
 
 def _rows(filters, wash_type, item_code, default) -> list:
 	where = ["co.docstatus < 2", "co.status != 'Cancelled'"]
-	params = {"wash_type": wash_type, "item_code": item_code}
+	params = {"wash_type": wash_type, "item_code": item_code, "done": tuple(DONE_CLEANING)}
 	if wash_type:
 		where.append(
 			"(co.cleaning_type = %(wash_type)s OR EXISTS ("
@@ -66,14 +68,14 @@ def _rows(filters, wash_type, item_code, default) -> list:
 	if filters.get("depot"):
 		where.append("COALESCE(NULLIF(co.depot, ''), c.depot) = %(depot)s")
 		params["depot"] = filters["depot"]
-	# Only while the range is on Order Date; on another date column report_kit.finish
+	# Only while the range is on Tanggal Cleaning; on another date column report_kit.finish
 	# filters the rows instead.
-	frm, to = report_kit.native_range(filters, "order_date", default)
+	frm, to = report_kit.native_range(filters, "plan_date", default)
 	if frm:
-		where.append("DATE(co.order_created) >= %(from_date)s")
+		where.append("co.plan_date >= %(from_date)s")
 		params["from_date"] = frm
 	if to:
-		where.append("DATE(co.order_created) <= %(to_date)s")
+		where.append("co.plan_date <= %(to_date)s")
 		params["to_date"] = to
 	if filters.get("only_outstanding"):
 		where.append("co.status != 'Completed'")
@@ -84,16 +86,15 @@ def _rows(filters, wash_type, item_code, default) -> list:
 			co.container AS tank_no,
 			COALESCE(NULLIF(co.container_principal, ''), c.principal) AS principal,
 			co.cleaning_type AS cleaning_type,
-			DATE(co.order_created) AS order_date,
 			co.plan_date AS plan_date,
-			DATE(co.cleaning_end) AS wash_date,
+			IF(co.status IN %(done)s, co.plan_date, NULL) AS wash_date,
 			co.status AS status,
 			co.name AS cleaning_order,
 			co.sales_invoice AS sales_invoice
 		FROM `tabCleaning Order` co
 		LEFT JOIN `tabContainer` c ON co.container = c.name
 		WHERE {' AND '.join(where)}
-		ORDER BY co.order_created ASC
+		ORDER BY co.plan_date ASC, co.creation ASC
 		""",
 		params,
 		as_dict=True,
@@ -110,11 +111,7 @@ def _columns(date_label, all_types=False) -> list:
 		{"fieldname": "principal", "label": "Principle", "fieldtype": "Link",
 		 "options": "Customer", "width": 180},
 		*kind,
-		{"fieldname": "order_date", "label": "Order Date", "fieldtype": "Date", "width": 110},
-		# Rencana, di sebelah realisasinya: baris tanpa tanggal cuci tapi punya rencana
-		# adalah pekerjaan yang sudah dijadwalkan; yang tidak punya keduanya belum.
-		{"fieldname": "plan_date", "label": "Tanggal Cleaning" if all_types else "Plan Date",
-		 "fieldtype": "Date", "width": 110},
+		{"fieldname": "plan_date", "label": "Tanggal Cleaning", "fieldtype": "Date", "width": 110},
 		# Label kolom mengikuti jenisnya ("Steam Wash Date" dst.) supaya halamannya terbaca
 		# sama seperti sheet yang digantikannya.
 		{"fieldname": "wash_date", "label": date_label, "fieldtype": "Date", "width": 130},

@@ -7,7 +7,7 @@
 		list-url="container_depot.ess.cleaning.cleaning_history"
 		detail-url="container_depot.ess.cleaning.cleaning_order_detail"
 		detail-param="cleaning_order"
-		:date-of="(r) => r.order_created"
+		:date-of="(r) => r.plan_date || r.order_created"
 		:search-placeholder="labels.cleaningOrdersSearch"
 		:count-label="labels.cleaningHistoryCount"
 	>
@@ -24,7 +24,7 @@
 					</span>
 					<span class="shrink-0 flex items-center gap-1.5">
 						<span v-if="item.revision_requested" class="oak-chip" :class="pill('revision').cls">{{ labels.cleaningStatusRevision }}</span>
-						{{ fmtDate(item.cleaning_end || item.order_created) }}
+						{{ fmtDate(item.plan_date || item.order_created) }}
 					</span>
 				</div>
 			</div>
