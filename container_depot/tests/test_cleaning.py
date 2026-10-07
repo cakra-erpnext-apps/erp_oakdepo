@@ -292,19 +292,23 @@ class TestCleaningOrderFlow(FrappeTestCase):
 		self.assertEqual(row.status, "In_Progress")
 		self.assertFalse(row.cleaning_end, "the finish time is re-taken on the next send")
 
-	def test_semua_leaves_out_pending_review(self):
+	def test_semua_leaves_out_pending_review_and_completed(self):
 		c = self._container("CLNSEMUA0001", status="In_Depot", depot="OAK1")
 		todo = self._order(c)
 		review = self._order(c)
 		cleaning.start_cleaning(review)
 		cleaning.save_cleaning_order(cleaning_order=review, submit=True)
+		done = self._order(c)
+		frappe.db.set_value("Cleaning Order", done, "status", "Completed")
 		semua = cleaning.list_cleaning_orders(search="CLNSEMUA0001", page_length=50)
 		self.assertEqual([i["name"] for i in semua["items"]], [todo])
+		finished = cleaning.list_cleaning_orders(status="Completed", search="CLNSEMUA0001")
+		self.assertEqual([i["name"] for i in finished["items"]], [done])
 		pill = cleaning.list_cleaning_orders(status="Pending Review", search="CLNSEMUA0001")
 		self.assertEqual([i["name"] for i in pill["items"]], [review])
 		self.assertEqual(
 			semua["counts"]["all"],
-			frappe.db.count("Cleaning Order", {"status": ["!=", "Pending Review"]}),
+			frappe.db.count("Cleaning Order", {"status": ["not in", ["Pending Review", "Completed"]]}),
 		)
 
 	def test_reject_review_needs_a_reason_and_sends_the_order_back(self):

@@ -648,20 +648,16 @@ function tileValue(c) {
 // menyebut tank (antrean berisi satu) dan yang menyebut jumlah — server hanya mengirim
 // `ref` ketika antreannya memang tinggal satu.
 const WAIT = {
-	eirReview: { menu: "eir", icon: MODULES.eir.icon, tone: "bg-amber-50 text-amber-600", to: "/eir?s=review", one: labels.waitEirReviewOne, many: labels.waitEirReviewMany },
 	eirOpen: { menu: "eir", icon: MODULES.eir.icon, tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", one: labels.waitEirOpenOne, many: labels.waitEirOpenMany },
 	eirOut: { menu: "eir", icon: "log-out", tone: "bg-brand-50 text-brand-600", to: "/eir?s=todo", many: labels.waitEirOutMany },
 	cleaningIdle: { menu: "cleaning", icon: MODULES.cleaning.icon, tone: "bg-leaf-50 text-leaf-600", to: "/cleaning?s=todo", one: labels.waitCleaningIdleOne, many: labels.waitCleaningIdleMany },
-	mrApproval: { menu: "mr", icon: MODULES.mr.icon, tone: "bg-amber-50 text-amber-600", to: "/mr", one: labels.waitMrApprovalOne, many: labels.waitMrApprovalMany },
+	mrIdle: { menu: "mr", icon: MODULES.mr.icon, tone: "bg-amber-50 text-amber-600", to: "/mr?s=todo", one: labels.waitMrIdleOne, many: labels.waitMrIdleMany },
+	periodicIdle: { menu: "periodic", icon: MODULES.periodic.icon, tone: "bg-amber-50 text-amber-600", to: "/periodic?s=todo", one: labels.waitPeriodicIdleOne, many: labels.waitPeriodicIdleMany },
 	lowering: { menu: "posFix", icon: MODULES.posFix.icon, tone: "bg-leaf-50 text-leaf-600", to: "/position-fix", many: labels.waitLoweringMany },
 	surveyReady: { menu: "surveyPos", icon: MODULES.surveyList.icon, tone: "bg-leaf-50 text-leaf-600", to: "/survey-orders", many: labels.waitSurveyReadyMany },
 	// Bukan "tank tanpa letak" (itu ratusan dan tidak ada tenggatnya) — hanya yang surveinya
 	// sudah dijadwalkan. Warnanya ikut keluarga yard, bukan abu: ini pekerjaan, bukan catatan.
 	positionOrder: { menu: "tankPos", icon: MODULES.tankPos.icon, tone: "bg-leaf-50 text-leaf-600", to: "/tank-position", many: labels.waitPositionOrderMany },
-	cleaningReview: { menu: "cleaning", icon: MODULES.cleaning.icon, tone: "bg-sky-50 text-sky-600", to: "/cleaning?s=review", one: labels.waitCleaningReviewOne, many: labels.waitCleaningReviewMany },
-	mrReview: { menu: "mr", icon: MODULES.mr.icon, tone: "bg-sky-50 text-sky-600", to: "/mr?s=review", one: labels.waitMrReviewOne, many: labels.waitMrReviewMany },
-	periodicApproval: { menu: "periodic", icon: MODULES.periodic.icon, tone: "bg-amber-50 text-amber-600", to: "/periodic", one: labels.waitPeriodicApprovalOne, many: labels.waitPeriodicApprovalMany },
-	periodicReview: { menu: "periodic", icon: MODULES.periodic.icon, tone: "bg-sky-50 text-sky-600", to: "/periodic?s=review", one: labels.waitPeriodicReviewOne, many: labels.waitPeriodicReviewMany },
 	// Warna amber, bukan biru: yang lain menunggu giliran, yang ini sudah lewat waktunya.
 	scheduleOverdue: { menu: "schedule", icon: MODULES.schedule.icon, tone: "bg-amber-50 text-amber-600", to: "/schedule", many: labels.waitScheduleOverdueMany },
 }

@@ -507,6 +507,8 @@ def list_mr_history(start=0, page_length=10, search=None, job_type=None) -> dict
 MR_LIST_STATUSES = ("Pending", "In Progress", "Pending Review", "Completed", "Rejected", "Cancelled")
 # Menunggu Review is NOT active: the team is done and the order waits on Admin Ops (its own pill).
 MR_ACTIVE_STATUSES = ("Pending", "In Progress")
+# Statuses "Semua" leaves out — each has its own pill.
+_MR_OFF_SEMUA = ("Pending Review", "Completed")
 # Inside one day: the job in hand first, then what is waiting, then what is off our hands.
 _MR_STATUS_ORDER = "field(status, 'In Progress', 'Pending', 'Pending Review', 'Completed', 'Rejected', 'Cancelled')"
 # The day a row is grouped under: its plan date, else the day it was made.
@@ -560,8 +562,10 @@ def list_mr_orders(job_type=None, status=None, search=None, depot=None, principa
 		where.append("status in %(active)s")
 		v["active"] = MR_ACTIVE_STATUSES
 	else:
-		# "Semua" leaves out Menunggu Review — reached through its own pill, like Selesai.
-		where.append("status != 'Pending Review'")
+		# "Semua" = the work still on the team's plate: Menunggu Review and Selesai are each
+		# reached through their own pill.
+		where.append("status not in %(off_semua)s")
+		v["off_semua"] = _MR_OFF_SEMUA
 	if depot:
 		where.append("depot = %(depot)s")
 		v["depot"] = depot
@@ -621,7 +625,7 @@ def list_mr_orders(job_type=None, status=None, search=None, depot=None, principa
 	counts = {"all": 0}
 	for st, n in frappe.db.sql(f"select status, count(*) from `tabRepair Order` where {sw} group by status", v):
 		counts[st] = n
-		counts["all"] += n if st != "Pending Review" else 0
+		counts["all"] += n if st not in _MR_OFF_SEMUA else 0
 
 	def distinct(field):
 		return [r[0] for r in frappe.db.sql(

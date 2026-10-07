@@ -266,12 +266,11 @@ def get_home_summary(tiles=None, waiting=None):
 			today_counts["eir_review_age"] = (
 				_age_minutes(review_oldest[0].creation) if review_oldest else None
 			)
-		for row in (
-			_queue("eirReview", "Inspection", eir_review),
-			_queue("eirOpen", "Inspection", eir_open),
-		):
-			if row:
-				waiting.append(row)
+		# "Menunggu Anda" holds only work nobody has done yet (user, 2026-10-07): a review or
+		# an approval waits on a decision, not on this person's hands, and has its own pill.
+		row = _queue("eirOpen", "Inspection", eir_open)
+		if row:
+			waiting.append(row)
 		# EIR-Out rides on the worklist rather than on a filter of our own: which tanks owe
 		# an out-inspection is a question about their booking, not about the Inspection
 		# table, and that answer lives in one place (``eir.list_pending_eir_out``).
@@ -295,18 +294,8 @@ def get_home_summary(tiles=None, waiting=None):
 		row = _queue("cleaningIdle", "Cleaning Order", clean_idle)
 		if row:
 			waiting.append(row)
-		# Sudah dicuci, dikirim dari lapangan, menunggu Adm Ops menutupnya — antrean yang
-		# sama bentuknya dengan "EIR diajukan review" di atas. Tanpa baris ini Adm Ops yang
-		# memegang ketiga menu melihat EIR-nya di beranda dan dua sisanya tidak.
-		row = _queue(
-			"cleaningReview",
-			"Cleaning Order",
-			_scoped({"status": "Pending Review", "docstatus": 0}, allowed),
-		)
-		if row:
-			waiting.append(row)
 
-	# --- M&R: the queue that is waiting on a human decision, not on a wrench ---------
+	# --- M&R: handed to the team, not started yet -----------------------------------
 	# Periodic Test = Repair Order ber-job_type lain, menu sendiri (container_depot.mr_scope);
 	# angkanya dihitung dengan cara yang sama, dengan kunci berawalan menunya.
 	from container_depot.container_depot.mr_scope import MENU_JOB_TYPE
@@ -321,15 +310,7 @@ def get_home_summary(tiles=None, waiting=None):
 			# lambat laun berselisih.
 			today_counts[f"{key}_open"] = mr.list_open_mr_orders(page_length=1, job_type=job_type)["total"]
 			today_counts[f"{key}_approval"] = frappe.db.count("Repair Order", mr_approval)
-		row = _queue(f"{key}Approval", "Repair Order", mr_approval)
-		if row:
-			waiting.append(row)
-		# Perbaikannya selesai, menunggu diperiksa & ditutup di Desk — lihat catatan di
-		# antrean review Cleaning di atas.
-		row = _queue(
-			f"{key}Review", "Repair Order",
-			_scoped({"status": "Pending Review", "job_type": job_type}, allowed),
-		)
+		row = _queue(f"{key}Idle", "Repair Order", _scoped({"status": "Pending", "job_type": job_type}, allowed))
 		if row:
 			waiting.append(row)
 

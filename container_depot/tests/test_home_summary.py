@@ -235,10 +235,11 @@ class TestHomeSummary(FrappeTestCase):
 		if len(res["waiting"]) >= MAX_WAITING:
 			self.skipTest("daftar 'Menunggu Anda' sudah mentok — baris baru sah terpotong")
 
-	def test_cleaning_review_queue(self):
+	def test_review_is_not_a_waiting_row(self):
+		# "Menunggu Anda" = pekerjaan yang belum dikerjakan saja (user, 2026-10-07): order yang
+		# menunggu review menunggu keputusan Admin Ops, bukan tangan operator.
 		c = self._container("HOME0000030")
 		before = get_home_summary()
-		self._skip_if_capped(before)
 		co = frappe.get_doc(
 			{"doctype": "Cleaning Order", "container": c, "status": "Pending"}
 		).insert(ignore_permissions=True)
@@ -247,11 +248,8 @@ class TestHomeSummary(FrappeTestCase):
 		frappe.db.set_value("Cleaning Order", co.name, "status", "Pending Review", update_modified=False)
 
 		after = get_home_summary()
-		self.assertEqual(
-			self._waiting_count(after, "cleaningReview"),
-			self._waiting_count(before, "cleaningReview") + 1,
-		)
-		# Sudah diajukan review = bukan lagi "belum dimulai".
+		self.assertNotIn("cleaningReview", [r["key"] for r in after["waiting"]])
+		# Sudah diajukan review = bukan lagi "belum dikerjakan".
 		self.assertEqual(
 			self._waiting_count(after, "cleaningIdle"),
 			self._waiting_count(before, "cleaningIdle"),
@@ -264,34 +262,35 @@ class TestHomeSummary(FrappeTestCase):
 		frappe.get_doc({"doctype": "Cleaning Order", "container": idle, "status": "Pending"}).insert(
 			ignore_permissions=True
 		)
-		co = frappe.get_doc(
-			{"doctype": "Cleaning Order", "container": self._container("HOME0000032"), "status": "Pending"}
+		ro = frappe.get_doc(
+			{"doctype": "Repair Order", "container": self._container("HOME0000032"), "status": "Draft",
+			 "billing_status": "Unbilled"}
 		).insert(ignore_permissions=True)
-		frappe.db.set_value("Cleaning Order", co.name, "status", "Pending Review", update_modified=False)
+		frappe.db.set_value("Repair Order", ro.name, "status", "Pending", update_modified=False)
 
-		for order in (["cleaningReview", "cleaningIdle"], ["cleaningIdle", "cleaningReview"]):
+		for order in (["mrIdle", "cleaningIdle"], ["cleaningIdle", "mrIdle"]):
 			res = get_home_summary(waiting=",".join(order))
 			self.assertEqual([r["key"] for r in res["waiting"]], order)
 
-	def test_mr_review_queue(self):
+	def test_mr_idle_queue(self):
+		# M&R yang sudah diteruskan ke team tapi belum dimulai — dan hanya itu: approval dan
+		# review menunggu keputusan orang lain.
 		c = self._container("HOME0000040")
 		before = get_home_summary()
 		self._skip_if_capped(before)
 		ro = frappe.get_doc(
 			{"doctype": "Repair Order", "container": c, "status": "Draft", "billing_status": "Unbilled"}
 		).insert(ignore_permissions=True)
-		frappe.db.set_value("Repair Order", ro.name, "status", "Pending Review", update_modified=False)
-
+		frappe.db.set_value("Repair Order", ro.name, "status", "Pending", update_modified=False)
 		after = get_home_summary()
-		self.assertEqual(
-			self._waiting_count(after, "mrReview"),
-			self._waiting_count(before, "mrReview") + 1,
-		)
-		# Menunggu review bukan menunggu persetujuan — dua antrean, dua orang.
-		self.assertEqual(
-			self._waiting_count(after, "mrApproval"),
-			self._waiting_count(before, "mrApproval"),
-		)
+		self.assertEqual(self._waiting_count(after, "mrIdle"), self._waiting_count(before, "mrIdle") + 1)
+
+		frappe.db.set_value("Repair Order", ro.name, "status", "Pending Review", update_modified=False)
+		later = get_home_summary()
+		self.assertEqual(self._waiting_count(later, "mrIdle"), self._waiting_count(before, "mrIdle"))
+		keys = [r["key"] for r in later["waiting"]]
+		self.assertNotIn("mrReview", keys)
+		self.assertNotIn("mrApproval", keys)
 
 	def test_schedule_overdue_queue(self):
 		# Pekerjaan terencana yang tanggalnya sudah lewat dan belum beres. Cleaning Order
