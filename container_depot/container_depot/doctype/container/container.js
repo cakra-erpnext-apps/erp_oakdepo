@@ -12,6 +12,7 @@ frappe.ui.form.on('Container', {
 	refresh(frm) {
 		render_seal_history(frm);
 		link_last_orders(frm);
+		render_order_history(frm);
 		// A "Gate-In" button used to sit here calling
 		// `container.create_gate_entry`. That method has never existed anywhere in the
 		// app — the only whitelist in container.py is `seal_history` — so the button
@@ -110,4 +111,50 @@ function link_last_orders(frm) {
 			value ? frappe.utils.get_form_link(doctype, value, true, frappe.utils.escape_html(value)) : '';
 	});
 	frm.refresh_fields(Object.keys(LAST_ORDER_DOCTYPES));
+}
+
+// --- Riwayat Order -----------------------------------------------------------------
+// Every order ever raised for this tank, newest first, read live (container.order_history).
+// One table, the order's own date first; voided ones stay, in red, because "it was booked and
+// called off" is history too. Pill colours follow status_pill.js: done blue, cancelled red,
+// draft grey, any open stage orange — Cleaning / M&R use their own shared map.
+function render_order_history(frm) {
+	const field = frm.get_field('order_history_html');
+	if (!field || frm.is_new()) return;
+	field.$wrapper.html(`<div class="text-muted">${__('Memuat…')}</div>`);
+	frappe.call({
+		method: 'container_depot.container_depot.doctype.container.container.order_history',
+		args: { container: frm.doc.name },
+		callback: (r) => field.$wrapper.html(order_history_html(r.message || [])),
+	});
+}
+
+function order_history_html(rows) {
+	const esc = frappe.utils.escape_html;
+	if (!rows.length) return `<div class="text-muted">${__('Belum ada order untuk tank ini.')}</div>`;
+	const pill = (r) => {
+		// A voided bon / EIR keeps the status it was left at; what it IS now is cancelled.
+		if (r.cancelled) return `<span class="indicator-pill red">${esc(__('Dibatalkan'))}</span>`;
+		if (container_depot.order_status_pill && container_depot.order_status_pill(r.doctype, r.status)) {
+			return container_depot.order_status_html(r.doctype, r.status);
+		}
+		if (r.done) return `<span class="indicator-pill blue">${esc(__('Selesai'))}</span>`;
+		const colour = ['Draft', 'Issued'].includes(r.status) ? 'gray' : 'orange';
+		return `<span class="indicator-pill ${colour}">${esc(__(r.status || '—'))}</span>`;
+	};
+	const body = rows
+		.map(
+			(r) => `<tr${r.cancelled ? ' class="text-muted"' : ''}>
+				<td>${r.on ? esc(frappe.datetime.str_to_user(r.on)) : ''}</td>
+				<td>${esc(__(r.kind))}</td>
+				<td>${frappe.utils.get_form_link(r.doctype, r.name, true, esc(r.name))}</td>
+				<td>${pill(r)}</td>
+				<td>${esc(r.reff_doc || '')}</td>
+			</tr>`
+		)
+		.join('');
+	return `<table class="table table-bordered table-sm">
+		<thead><tr><th>${__('Tanggal')}</th><th>${__('Jenis')}</th><th>${__('Nomor')}</th><th>${__('Status')}</th><th>${__('Reff Doc')}</th></tr></thead>
+		<tbody>${body}</tbody>
+	</table>`;
 }

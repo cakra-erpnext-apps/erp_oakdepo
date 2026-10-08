@@ -7,6 +7,24 @@ from container_depot.container_depot.container_status import GATE_OUT, PRESENT, 
 from container_depot.state_machine import assert_transition, stage_for_status
 
 
+# What the system fills in on a tank once it exists: the three "(otomatis)" sections and the
+# yard location (user, 2026-10-08). Typed in freely while the master is being registered; after
+# that only the Administrator account changes them by hand — the form shows them as plain detail
+# (``read_only_depends_on``) and :meth:`Container._guard_locked_fields` holds the same line.
+LOCKED_FIELDS = (
+	# Status Operasional
+	"depot", "emkl", "shipper", "inventory_stage",
+	# Riwayat Gate & Kargo
+	"in_date", "out_date", "last_cargo", "ex_vessel", "storage_billed_until",
+	# Referensi Order Lain
+	"created_by_booking", "last_order_bongkar", "lift_on_booking", "target_lift_on",
+	"target_survey_on", "target_urgent_on",
+	# Letak Tank di Yard
+	"current_location", "location_updated_on", "location_updated_by",
+	"position_check_requested_on", "position_check_requested_by", "row", "bay", "tier", "yard_zone",
+)
+
+
 class Container(Document):
 	def before_insert(self):
 		"""A tank a PERSON registers is registered as ``Gate_Out`` — "known, not in my yard".
@@ -31,6 +49,8 @@ class Container(Document):
 		# Guard manual status transitions against the canonical state machine.
 		# Internal automation (Repair/Cleaning/Inspection controllers) and
 		# migrations bypass via frappe.flags.in_status_automation.
+		if not self.is_new():
+			self._guard_locked_fields()
 		if not self.is_new() and self.has_value_changed("status"):
 			self._guard_manual_status()
 			previous = self.get_doc_before_save()
@@ -54,6 +74,24 @@ class Container(Document):
 			frappe.PermissionError,
 			title=_("Status Terkunci"),
 		)
+
+	def _guard_locked_fields(self):
+		"""By hand, only the Administrator account changes what the system fills in (user,
+		2026-10-08) — REST, list bulk-edit and Data Import included. System code passes
+		``ignore_permissions`` or ``in_status_automation`` and is never refused."""
+		if self.flags.ignore_permissions or frappe.flags.in_status_automation:
+			return
+		if frappe.session.user == "Administrator":
+			return
+		changed = [f for f in LOCKED_FIELDS if self.has_value_changed(f)]
+		if changed:
+			frappe.throw(
+				_("Data otomatis container hanya bisa diubah oleh akun Administrator: {0}.").format(
+					", ".join(_(self.meta.get_label(f)) for f in changed)
+				),
+				frappe.PermissionError,
+				title=_("Data Terkunci"),
+			)
 
 	def _guard_deactivation(self):
 		"""Refuse to retire a tank the depot is still holding or still working on.
@@ -195,6 +233,63 @@ def seal_history(container: str) -> list:
 		for e in eirs
 		if by_eir.get(e.name)
 	]
+
+
+# Riwayat Order tab: (label, doctype, link table, link parenttype, date field, status field).
+# The link table is how the order names this tank — the order itself, or the row it holds it on.
+_HISTORY = (
+	("Booking", "Container Booking", "Container Booking Item", "Container Booking", "plan_date", "booking_status"),
+	("Bon Bongkar", "Order Bongkar", "Container Booking Item", "Order Bongkar", "tanggal_bongkar", "order_status"),
+	("Bon Muat", "Order Muat", "Order Container Item", "Order Muat", "tanggal_muat", "order_status"),
+	("EIR", "Inspection", None, None, "eir_date", "status"),
+	("Leak Check", "Leak Check", None, None, "recorded_on", "status"),
+	("Survey", "Survey Order", "Survey Order Tank", "Survey Order", "survey_date", None),
+	("Cleaning", "Cleaning Order", None, None, "plan_date", "status"),
+	("M&R", "Repair Order", None, None, "plan_date", "status"),
+)
+_DONE = {"Completed", "Submitted", "Survey Done"}
+
+
+@frappe.whitelist()
+def order_history(container: str) -> list:
+	"""Every order ever raised for this tank, newest first, for the master's Riwayat Order tab.
+
+	Dated by the order's own date (``plan_date``, Tanggal Bongkar/Muat, ``eir_date``…), never
+	its creation; voided ones are listed too, marked ``cancelled``. A doctype the reader may
+	not open is left out rather than leaked."""
+	frappe.has_permission("Container", "read", doc=container, throw=True)
+	out = []
+	for kind, doctype, table, parenttype, date_field, status_field in _HISTORY:
+		if not frappe.has_permission(doctype, "read"):
+			continue
+		meta = frappe.get_meta(doctype)
+		if table:
+			names = frappe.get_all(table, filters={"container": container, "parenttype": parenttype}, pluck="parent", distinct=True)
+			filters = {"name": ["in", names or [""]]}
+		else:
+			filters = {"container": container}
+		fields = ["name", "docstatus", "creation", f"{date_field} as on"]
+		for f in (status_field, "reff_doc", "inspection_type", "job_type", "direction"):
+			if f and meta.has_field(f):
+				fields.append(f"{f} as {'status' if f == status_field else f}")
+		for r in frappe.get_all(doctype, filters=filters, fields=fields):
+			status = r.get("status")
+			if doctype == "Survey Order":
+				status = frappe.db.get_value(table, {"parent": r.name, "container": container}, "status")
+			label = {
+				"Inspection": r.get("inspection_type"),
+				"Repair Order": "Periodic Test" if r.get("job_type") == "Periodic Test" else kind,
+				"Container Booking": f"{kind} {r.get('direction') or ''}".strip(),
+			}.get(doctype) or kind
+			out.append({
+				"kind": label, "doctype": doctype, "name": r.name, "status": status,
+				"on": str(r.on or r.creation)[:10], "reff_doc": r.get("reff_doc"),
+				"cancelled": r.docstatus == 2 or status == "Cancelled",
+				"done": status in _DONE,
+				"_sort": str(r.on or r.creation),
+			})
+	out.sort(key=lambda r: r.pop("_sort"), reverse=True)
+	return out
 
 
 @frappe.whitelist(methods=["POST"])

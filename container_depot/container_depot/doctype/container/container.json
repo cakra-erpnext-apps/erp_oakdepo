@@ -62,7 +62,9 @@
   "tier",
   "yard_zone",
   "seals_section",
-  "seal_history_html"
+  "seal_history_html",
+  "order_history_tab",
+  "order_history_html"
  ],
  "fields": [
   {
@@ -163,8 +165,8 @@
    "label": "Tgl. Periodic Test Terakhir"
   },
   {
-   "collapsible": 1,
-   "description": "Depot & Shipper diisi manual. Status dan Inventory Stage dihitung otomatis dari order yang masih terbuka (EIR, Cleaning Order, Repair Order) — lihat container_status.container_open_orders.",
+   "collapsible": 0,
+   "description": "Diisi sistem dari booking, bon, dan order yang masih terbuka. Saat tank didaftarkan boleh diisi; setelah tersimpan hanya akun Administrator yang bisa mengubahnya.",
    "fieldname": "status_section",
    "fieldtype": "Section Break",
    "label": "Status Operasional (otomatis)"
@@ -175,7 +177,9 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Depot",
-   "options": "Depot"
+   "options": "Depot",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.depot"
   },
   {
    "description": "EMKL / angkutan pada bon terakhir tank ini. Distempel otomatis saat bon terbit.",
@@ -184,7 +188,8 @@
    "fieldtype": "Link",
    "label": "EMKL",
    "options": "Customer",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.emkl"
   },
   {
    "description": "Pabrik / pemilik muatan pada bon terakhir tank ini. Distempel otomatis saat bon terbit.",
@@ -193,7 +198,8 @@
    "fieldtype": "Link",
    "label": "Shipper",
    "options": "Customer",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.shipper"
   },
   {
    "fieldname": "column_break_status",
@@ -217,10 +223,11 @@
    "in_standard_filter": 1,
    "label": "Inventory Stage",
    "options": "\nPre-Arrival\nIn Depot\nReady\nDeparted",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.inventory_stage"
   },
   {
-   "collapsible": 1,
+   "collapsible": 0,
    "description": "Distempel otomatis saat EIR-In / EIR-Out disubmit, Order Bongkar disubmit, dan saat penagihan storage dijalankan.",
    "fieldname": "gate_history_section",
    "fieldtype": "Section Break",
@@ -230,19 +237,25 @@
    "description": "Tanggal Bongkar bon kunjungan terakhir \u2014 hari tank masuk depo. Dasar storage, inventory & umur tank. Tanggal EIR ada di EIR-nya sendiri.",
    "fieldname": "in_date",
    "fieldtype": "Date",
-   "label": "Tanggal Masuk"
+   "label": "Tanggal Masuk",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.in_date"
   },
   {
    "description": "Tanggal Muat bon kunjungan terakhir \u2014 hari tank keluar depo. Dasar akhir storage.",
    "fieldname": "out_date",
    "fieldtype": "Date",
-   "label": "Tanggal Keluar"
+   "label": "Tanggal Keluar",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.out_date"
   },
   {
    "fieldname": "last_cargo",
    "fieldtype": "Link",
    "label": "Last Cargo (for ISO Tanks)",
-   "options": "Cargo"
+   "options": "Cargo",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.last_cargo"
   },
   {
    "fieldname": "column_break_2",
@@ -252,17 +265,20 @@
    "description": "Arrival vessel, copied from the most recent Order Bongkar when it is submitted.",
    "fieldname": "ex_vessel",
    "fieldtype": "Data",
-   "label": "Ex Vessel"
+   "label": "Ex Vessel",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.ex_vessel"
   },
   {
    "description": "Watermark: storage already billed up to this date. Advanced by consolidated billing so re-runs never double-charge storage days.",
    "fieldname": "storage_billed_until",
    "fieldtype": "Date",
    "label": "Storage Billed Until",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.storage_billed_until"
   },
   {
-   "collapsible": 1,
+   "collapsible": 0,
    "description": "Jejak dokumen lain yang menyentuh tank ini. Semua read-only.",
    "fieldname": "order_ref_section",
    "fieldtype": "Section Break",
@@ -275,7 +291,8 @@
    "fieldtype": "Link",
    "label": "Created by Booking",
    "options": "Container Booking",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.created_by_booking"
   },
   {
    "description": "Order Bongkar terakhir yang memuat tank ini.",
@@ -283,7 +300,8 @@
    "fieldtype": "Data",
    "label": "Order Bongkar",
    "no_copy": 1,
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.last_order_bongkar"
   },
   {
    "description": "Container Booking (Tank Out) yang menandai target lift-on ini (jejak).",
@@ -292,7 +310,8 @@
    "label": "Booking Lift-On",
    "no_copy": 1,
    "options": "Container Booking",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.lift_on_booking"
   },
   {
    "fieldname": "column_break_ref",
@@ -304,7 +323,8 @@
    "fieldtype": "Date",
    "in_standard_filter": 1,
    "label": "Target Lift-On",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.target_lift_on"
   },
   {
    "description": "Tanggal survey dari booking keluar yang aktif. Inilah tanggal yang mengurutkan prioritas semua worklist; target_lift_on tetap tanggal pickup-nya. Diisi otomatis — bukan isian manual.",
@@ -312,7 +332,8 @@
    "fieldtype": "Date",
    "label": "Tanggal Survey",
    "no_copy": 1,
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.target_survey_on"
   },
   {
    "description": "Tanggal prioritas mendesak dari booking keluar yang aktif. Kalau terisi, tank ini didahulukan di semua worklist — di atas tanggal survey. Diisi otomatis lewat tombol Prioritas Mendesak di booking — bukan isian manual.",
@@ -322,7 +343,8 @@
    "in_standard_filter": 1,
    "label": "Tanggal Mendesak",
    "no_copy": 1,
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.target_urgent_on"
   },
   {
    "collapsible": 0,
@@ -337,21 +359,24 @@
    "label": "Letak Terakhir",
    "read_only": 1,
    "in_standard_filter": 0,
-   "description": "Catatan bebas letak tank (mis. \"blok kanan dekat pos, tumpukan 2\"). Ditulis oleh Container Position; kosong = belum pernah didata."
+   "description": "Catatan bebas letak tank (mis. \"blok kanan dekat pos, tumpukan 2\"). Ditulis oleh Container Position; kosong = belum pernah didata.",
+   "depends_on": "eval:doc.current_location"
   },
   {
    "description": "Kapan letak itu terakhir dicatat. Ini yang dibaca Survey Order untuk bilang seberapa segar posisinya.",
    "fieldname": "location_updated_on",
    "fieldtype": "Datetime",
    "label": "Letak Diperbarui",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.location_updated_on"
   },
   {
    "fieldname": "location_updated_by",
    "fieldtype": "Link",
    "label": "Dicatat Oleh",
    "options": "User",
-   "read_only": 1
+   "read_only": 1,
+   "depends_on": "eval:doc.location_updated_by"
   },
   {
    "depends_on": "eval:doc.position_check_requested_on",
@@ -374,24 +399,32 @@
   {
    "fieldname": "row",
    "fieldtype": "Data",
-   "label": "Row"
+   "label": "Row",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.row"
   },
   {
    "fieldname": "bay",
    "fieldtype": "Data",
-   "label": "Bay"
+   "label": "Bay",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.bay"
   },
   {
    "fieldname": "tier",
    "fieldtype": "Int",
-   "label": "Tier"
+   "label": "Tier",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.tier"
   },
   {
    "description": "Legacy (unused): the depot no longer maps tanks to yard zones.",
    "fieldname": "yard_zone",
    "fieldtype": "Data",
    "in_standard_filter": 1,
-   "label": "Yard Zone"
+   "label": "Yard Zone",
+   "read_only_depends_on": "eval:!doc.__islocal && frappe.session.user !== 'Administrator'",
+   "depends_on": "eval:doc.__islocal || frappe.session.user === 'Administrator' || doc.yard_zone"
   },
   {
    "collapsible": 1,
@@ -468,10 +501,21 @@
    "label": "EIR-Out Terakhir",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "depends_on": "eval:!doc.__islocal",
+   "fieldname": "order_history_tab",
+   "fieldtype": "Tab Break",
+   "label": "Riwayat Order"
+  },
+  {
+   "fieldname": "order_history_html",
+   "fieldtype": "HTML",
+   "label": "Riwayat Order"
   }
  ],
  "links": [],
- "modified": "2026-10-07 09:00:00.000000",
+ "modified": "2026-10-08 14:00:01.000000",
  "module": "Container Depot",
  "name": "Container",
  "search_fields": "container_no, container_type, status, principal",
