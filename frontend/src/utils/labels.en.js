@@ -540,7 +540,6 @@ export const labels = {
 	eirOutPrevClean: "EIR-In: no findings",
 	eirOutPrevPhotos: "EIR-In Photos",
 	eirOutNoBaseline: "No previous EIR-In to compare with",
-	eirOutWillReady: "Once approved by Adm Ops, the tank is recorded as OUT OF DEPOT",
 	// Tank fittings
 	fittingsTitle: "Tank Fittings",
 	fittingsHint: "Fill in as per the boxes on the EIR form. Leave blank if not checked — blank ≠ zero.",
@@ -1030,7 +1029,7 @@ export const labels = {
 	tankPosTitle: "Tank position",
 	tankPosHint: "Search or scan a tank to update its position",
 	tankPosSearch: "Search tank number…",
-	leakHint: "Required before the tank leaves the depot.",
+	leakHint: "Tank condition record — may be filled in before or after the tank leaves.",
 	leakPickTank: "Select tank",
 	leakChange: "Change",
 	leakPhotos: "Photos",

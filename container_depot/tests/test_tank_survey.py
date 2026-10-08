@@ -90,11 +90,12 @@ class _Base(FrappeTestCase):
 			cp.record_position(c, located)
 		return c
 
-	def _booking(self, *containers, survey_date=None, plan_date=None, **extra):
+	def _booking(self, *containers, survey_date=None, plan_date=None, confirmed=True, **extra):
 		"""Minimal outbound (Tank Out) Container Booking — validation + mandatory bypassed.
 
 		``survey_date`` defaults to tomorrow: without one the booking schedules no day at all,
-		which is its own test rather than the setup for every other one.
+		which is its own test rather than the setup for every other one. ``confirmed`` stands in
+		for its Submit: the survey day is raised at Confirm, never from a draft (2026-10-08).
 		"""
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": "Tank Out", "depot": DEPOT,
@@ -106,7 +107,19 @@ class _Base(FrappeTestCase):
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
 		self._bookings.append(doc.name)
+		if confirmed:
+			frappe.db.set_value("Container Booking", doc.name, "docstatus", 1, update_modified=False)
+			frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=1 WHERE parent=%s", doc.name)
+			doc.reload()
+			doc._provision_survey_order()
 		return doc.name
+
+	def _legacy_draft(self, booking):
+		"""A draft that still holds the survey day and EIR-Outs a draft raised before
+		2026-10-08 — the only kind of draft that still has any to call off."""
+		frappe.db.set_value("Container Booking", booking, "docstatus", 0, update_modified=False)
+		frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=0 WHERE parent=%s", booking)
+		return booking
 
 	def _order(self, booking):
 		return frappe.db.get_value(SCHEDULE, {"booking": booking}, "name")
@@ -338,7 +351,7 @@ class TestProvisioning(_Base):
 		)
 
 		c = self._container("TSVPROV00009")
-		bk = self._booking(c)
+		bk = self._legacy_draft(self._booking(c))
 		row = self._row(bk)
 
 		void_draft(bk)
@@ -356,6 +369,7 @@ class TestProvisioning(_Base):
 		# Two tanks, one surveyed: the day stays a draft, so only the EIR-Out can block.
 		bk = self._booking(self._container("TSVPROV00010"), self._container("TSVPROV00011"))
 		row = self._row(bk)
+		self._legacy_draft(bk)
 		ts.mark_lowered(row)
 		ts.finish_survey(row)
 		eir = frappe.db.get_value(ROW, row, "eir_out")
@@ -376,7 +390,7 @@ class TestProvisioning(_Base):
 			void_draft,
 		)
 
-		bk = self._booking(self._container("TSVPROV00012"))
+		bk = self._legacy_draft(self._booking(self._container("TSVPROV00012")))
 		frappe.db.set_value(SCHEDULE, self._order(bk), "docstatus", 1)
 		with self.assertRaisesRegex(frappe.ValidationError, "Survey Order"):
 			void_draft(bk)
@@ -998,6 +1012,10 @@ class TestMenuGates(FrappeTestCase):
 		booking.flags.ignore_validate = True
 		booking.insert(ignore_permissions=True, ignore_mandatory=True)
 		self.booking = booking.name
+		# Confirmed: the survey day is raised at Submit (2026-10-08).
+		frappe.db.set_value("Container Booking", booking.name, "docstatus", 1, update_modified=False)
+		booking.reload()
+		booking._provision_survey_order()
 		self.order = frappe.db.get_value(SCHEDULE, {"booking": self.booking}, "name")
 		self.row = frappe.get_all(ROW, filters={"parent": self.order}, pluck="name")[0]
 
@@ -1253,13 +1271,15 @@ class TestWithoutSurvey(_Base):
 			pluck="container",
 		)
 
-	def _save(self, booking, **values):
-		"""Change the booking the way a correction lands, then re-run what on_update runs."""
-		doc = frappe.get_doc("Container Booking", booking)
-		doc.update(values)
-		doc.flags.ignore_validate = True
-		doc.flags.ignore_mandatory = True
-		doc.save(ignore_permissions=True)
+	def _save(self, booking, items=None, **values):
+		"""Change the confirmed booking the way a correction lands (written straight, as Revisi
+		Data / the switch would), then re-run what its save runs."""
+		if items is not None:
+			keep = [r.name for r in items]
+			frappe.db.delete("Container Booking Item", {"parent": booking, "name": ["not in", keep or [""]]})
+		if values:
+			frappe.db.set_value("Container Booking", booking, values)
+		frappe.get_doc("Container Booking", booking)._provision_survey_order()
 
 	def test_the_booking_raises_the_eir_out_directly(self):
 		a = self._container("TSVNOSV00001")

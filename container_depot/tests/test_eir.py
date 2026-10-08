@@ -800,21 +800,17 @@ class TestEirCargoAndExVessel(FrappeTestCase):
 		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
 		self.assertEqual(getdate(frappe.db.get_value("Container", c, "in_date")), getdate(came_in))
 
-	def test_eir_out_submit_dates_the_departure_by_tanggal_muat(self):
-		# The clean EIR-Out lets the tank out, but the day it left is the bon's Tanggal Muat —
-		# not the submit, not the EIR's own date.
+	def test_the_bon_dates_the_departure_by_tanggal_muat(self):
+		# The bon muat lets the tank out (gate.depart_bon, 2026-10-08), and the day it left is
+		# its Tanggal Muat — not the submit, not the EIR-Out's own date.
+		from container_depot.container_depot.gate import depart_bon
+
 		c = _make_container("EIRV2000021", status="Available")
-		# ...and since 2026-09-03 it cannot be submitted at all until a loading bon carries
-		# the tank (Inspection.before_submit) — a clean EIR-Out sends it through the gate.
 		left = add_days(today(), -2)
 		muat = _make_order_muat(ensure_test_customer("EIR Voucher Cust"), c)
 		frappe.db.set_value("Order Muat", muat, "tanggal_muat", left)
 		make_leak_check(c)  # gate-out also needs a Leak Check this visit
-		d = eir.open_draft(container_no="EIRV2000021", inspection_type="EIR-Out")
-		eir.start_eir(d["inspection"])  # editing requires an explicit Mulai first
-		eir.save_draft(inspection=d["inspection"], inspection_type="EIR-Out",
-					   tank_status="Empty Clean", lines=[], submit=True)
-		frappe.get_doc("Inspection", d["inspection"]).submit()  # Admin Ops finalises
+		depart_bon(frappe.get_doc("Order Muat", muat))
 		self.assertEqual(getdate(frappe.db.get_value("Container", c, "out_date")), getdate(left))
 		ge = frappe.db.get_value("Gate Entry", {"container_no": "EIRV2000021"}, ["out_date", "order_muat"], as_dict=True)
 		self.assertEqual((getdate(ge.out_date), ge.order_muat), (getdate(left), muat))

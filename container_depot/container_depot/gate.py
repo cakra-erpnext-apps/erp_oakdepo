@@ -5,11 +5,10 @@ endpoints add only auth + whitelisting. Lists Gate Entries (the gate-in / gate-o
 records), returns one record's detail, and completes gate-out / load-complete for a tank
 (:func:`mark_gate_out`).
 
-There is no operator-pressed "ACC Keluar" any more: a tank is out the moment its EIR-Out is
-reviewed and submitted clean, so ``Inspection.on_submit`` is the ONLY caller of
-:func:`mark_gate_out` — the approval on the EIR *is* the departure. Undoing a departure is
-therefore undoing that EIR (``eir.revert_to_draft``, which calls
-:func:`reopen_gate_entry_for_eir`).
+A tank is out the moment its Order Muat is submitted (user, 2026-10-08): the bon is the gate
+(:func:`depart_bon`), dated by its Tanggal Muat. The EIR-Out is only the record of the tank's
+condition — it may be finished before or after the bon and never moves the tank. Undoing a
+departure is undoing the bon (Kembalikan ke Draft / void, :func:`reverse_bon_departures`).
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from frappe import _
 from frappe.utils import cint, getdate, now_datetime
 
 from container_depot.container_depot.container_status import PRESENT
-from container_depot.container_depot.order_policy import blocking_orders, enforce_all
+from container_depot.container_depot.order_policy import blocking_orders
 from container_depot.container_depot.user_branch import assert_in_user_branch, get_user_depots
 
 _LIST_FIELDS = [
@@ -206,13 +205,12 @@ def _resolve_or_create_gate_entry(container_no, order_muat, depot, performed_by)
 	return doc
 
 
-def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by=None, no_eir=False, order_muat=None) -> dict:
+def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by=None, order_muat=None) -> dict:
 	"""Complete gate-out / load-complete for a tank — the final OUT step.
 
-	Called from ``Inspection.on_submit`` when a clean EIR-Out is submitted, which passes its
-	own name as ``eir_out``: the reviewed EIR-Out is what declares the tank gone. The one
-	exception is a LADEN tank taken without an EIR (``no_eir.depart``, ``no_eir=True``): it has
-	no EIR-Out and no Leak Check, and its Order Muat (``order_muat``) submit is the departure.
+	Called for every tank on an Order Muat when it is submitted (:func:`depart_bon`) — the bon
+	is the departure. The EIR-Out and the Leak Check do not gate it: finished before the bon or
+	after, they only record the tank's condition.
 
 	Moves the Container to ``Gate_Out`` (through the guarded state machine, so a Container
 	Movement is auto-logged and ``inventory_stage`` becomes ``Departed``), stamps the Gate
@@ -264,54 +262,21 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 			_("Container {0} masih punya order yang belum selesai — {1}.").format(doc.name, listed)
 		)
 
-	# Leak Check wajib sebelum keluar — satu per kunjungan, apa pun hasilnya (foto bocor hanya
-	# ditandai, tidak menahan). Tidak menyentuh order mana pun; ditolak di sini saja. Saklar
-	# "Wajibkan Semua Order" OFF melepasnya (order_policy).
-	from container_depot.container_depot.doctype.leak_check.leak_check import (
-		has_leak_check_this_visit,
-		open_leak_check,
-	)
-
-	if not no_eir and enforce_all() and not has_leak_check_this_visit(doc.name):
-		pending = open_leak_check(doc.name)
-		frappe.throw(
-			_("Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.").format(
-				doc.container_no or doc.name, f" ({pending})" if pending else ""
-			),
-			title=_("Leak Check belum ada"),
-		)
-
-	# EIR-Out gate (Fase G): a tank may only leave once a surveyor's EIR-Out is reviewed and
-	# submitted clean (out_outcome = Ready To Load). Unfinished work is already refused above
-	# (order_muat._validate_no_open_work applies the same rule when the bon is made).
-	# The caller (``Inspection.on_submit``) hands in the EIR it just submitted; the lookup is
-	# the fallback for a back-office/console call. Either way it stays the resolved name, not
-	# a bare exists(): it is the EIR that released this tank, so it is also what belongs in
-	# the Gate Entry's `eir_reference` below.
-	if not no_eir:
-		eir_out = eir_out or frappe.db.get_value(
+	# Neither the EIR-Out nor the Leak Check holds the gate (user, 2026-10-08): both record the
+	# tank's condition, finished whenever the field team gets to them — before the bon or after
+	# the tank has left. An EIR-Out already submitted for this bon is linked on the Gate Entry
+	# below; one finished later links itself (``link_eir_out``).
+	if not eir_out and order_muat:
+		eir_out = frappe.db.get_value(
 			"Inspection",
-			{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "out_outcome": "Ready To Load"},
+			{"container": doc.name, "inspection_type": "EIR-Out", "docstatus": 1, "referred_voucher": order_muat},
 			"name",
 			order_by="modified desc",
-		)
-	if not eir_out and not no_eir:
-		frappe.throw(
-			_("Container {0} belum punya EIR-Out bersih (Ready To Load). Surveyor harus submit EIR-Out dulu.").format(
-				doc.name
-			)
 		)
 
 	prev = doc.status
 	ts = now_datetime()
-	# The bon the EIR-Out was raised against is THE departure voucher; the newest bon naming
-	# the tank is only the fallback for an EIR that carries none.
-	voucher = eir_out and frappe.db.get_value(
-		"Inspection", eir_out, ["voucher_doctype", "referred_voucher"], as_dict=True
-	)
-	order_muat = order_muat or (
-		voucher.referred_voucher if voucher and voucher.voucher_doctype == "Order Muat" else None
-	) or _latest_order_muat(doc.name, doc.container_no)
+	order_muat = order_muat or _latest_order_muat(doc.name, doc.container_no)
 	# The day it left is the bon's Tanggal Muat, not this moment (visit_dates). `ts` stays
 	# the record of when the system registered it.
 	from container_depot.container_depot.visit_dates import bon_day
@@ -319,15 +284,9 @@ def mark_gate_out(container=None, gate_entry=None, *, eir_out=None, performed_by
 	out_day = bon_day(frappe.get_doc("Order Muat", order_muat)) if order_muat else getdate(ts)
 
 	# Payment, last of the readiness checks and deliberately not first: "belum dibayar" is
-	# only useful once the tank is actually here, has no open work and has a clean EIR-Out —
-	# telling a customer to pay for a departure that could not happen anyway is worse than
-	# saying nothing.
-	#
-	# Strictly this is already unreachable by the normal route: the EIR-Out that calls this
-	# cannot be submitted without a bon (``Inspection.before_submit``) and the bon cannot be
-	# issued unpaid. It is here anyway because "unreachable" depends on a chain of three other
-	# guards, and the message it would otherwise produce would name the bon rather than the
-	# money — sending the operator to the wrong desk.
+	# only useful once the tank is actually here and has no open work — telling a customer to
+	# pay for a departure that could not happen anyway is worse than saying nothing. The bon
+	# cannot be issued unpaid either; this names the money rather than the bon.
 	if order_muat:
 		booking = frappe.db.get_value("Order Muat", order_muat, "booking")
 		if booking:
@@ -463,74 +422,73 @@ def _complete_order_muat_if_done(order_muat) -> bool:
 	return True
 
 
-def reverse_gate_out(eir_out, container=None) -> dict:
-	"""Undo a departure — everything :func:`mark_gate_out` set in motion for one tank.
+def depart_bon(bon) -> None:
+	"""Order Muat submit: every tank on it leaves now, dated by its Tanggal Muat. Any refusal
+	(tank not here, open work, payment) rolls the bon submit back — the bon is the gate, so
+	that is the gate saying no."""
+	for container in dict.fromkeys(r.container for r in bon.get("containers") or [] if r.container):
+		mark_gate_out(container=container, order_muat=bon.name)
 
-	Submitting a clean EIR-Out IS the departure, so both ways back from that submit come
-	through here: ``eir.revert_to_draft`` (reopen it for correction) and
-	``Inspection.on_cancel`` (void it outright). The container status itself is NOT touched
-	here — the EIR restores that from its own pre-submit snapshot, and this reverses what the
-	gate-out did to the documents AROUND the tank:
 
-	* the Gate Entry stamp (see :func:`reopen_gate_entry_for_eir`);
-	* the Order Muat that closed because this was its last tank out — a bon whose tank is
-	  standing in the yard again is not a finished load. Back to ``Issued`` rather than
-	  ``Ready To Load``: the EIR-Out that declared it ready is the very document being
-	  undone, so re-asserting readiness here would put back the one fact this is retracting;
-	* the outbound booking's ``% Keluar``, which counted this tank as collected.
-
-	The caller restores the container FIRST — every figure below is recomputed from the live
-	container statuses, so a tank still reading ``Gate_Out`` would simply be counted out
-	again. Best-effort per step: this runs inside a cancel, and a stale percentage must never
-	be what blocks it.
-	"""
-	out = {"gate_entry": None, "order_muat": None, "bookings": []}
-	if not eir_out:
-		return out
-	out["gate_entry"] = reopen_gate_entry_for_eir(eir_out)
-
-	container = container or frappe.db.get_value("Inspection", eir_out, "container")
-	if not container:
-		return out
-	container_no = frappe.db.get_value("Container", container, "container_no")
-	# Back in the yard: it has not left, so it has no day it left.
-	if frappe.db.get_value("Container", container, "status") in PRESENT:
-		frappe.db.set_value("Container", container, "out_date", None)
-		from container_depot import storage_charge
-
-		storage_charge.sync(container, container_no)
-
-	order_muat = _latest_order_muat(container, container_no)
-	if order_muat and frappe.db.get_value("Order Muat", order_muat, "order_status") == "Completed":
-		frappe.db.set_value("Order Muat", order_muat, "order_status", "Issued", update_modified=False)
-		out["order_muat"] = order_muat
-
+def reverse_bon_departures(bon) -> list:
+	"""An Order Muat back to draft, or voided: its submit sent the tanks out, so they come back —
+	Gate Entry reopened, tank in the yard again, Tanggal Keluar cleared, the booking's
+	``% Keluar`` recounted. A tank that has since left on another bon, or come back for a new
+	visit, is not this bon's to move."""
+	from container_depot import storage_charge
 	from container_depot.container_depot import lift_on
+	from container_depot.container_depot.container_activity import log_container_activity
+	from container_depot.container_depot.container_status import AVAILABLE, recompute_availability
 
-	out["bookings"] = lift_on.refresh_bookings_for_container(container)
-	return out
+	back = []
+	for container in dict.fromkeys(r.container for r in bon.get("containers") or [] if r.container):
+		tank = frappe.db.get_value("Container", container, ["status", "container_no", "last_order_muat"], as_dict=True)
+		if not tank or tank.status != "Gate_Out":
+			continue
+		if tank.last_order_muat and tank.last_order_muat != bon.name:
+			continue
+		ge = frappe.db.get_value(
+			"Gate Entry",
+			{"container_no": tank.container_no, "order_muat": bon.name, "status": "Gate_Out_Completed"},
+			["name", "gate_in_timestamp"], as_dict=True,
+		)
+		if not ge:
+			continue
+		reopen_gate_entry(ge)
+		frappe.flags.in_status_automation = True
+		try:
+			doc = frappe.get_doc("Container", container)
+			doc.status = AVAILABLE
+			doc.out_date = None
+			doc.save(ignore_permissions=True)
+		finally:
+			frappe.flags.in_status_automation = False
+		recompute_availability(container)
+		log_container_activity(
+			container, "Status Change",
+			reference_doctype=bon.doctype, reference_name=bon.name,
+			from_status="Gate_Out", to_status=frappe.db.get_value("Container", container, "status"),
+			summary=_("{0} dibatalkan — tank kembali ke depo").format(bon.name),
+		)
+		lift_on.refresh_bookings_for_container(container)
+		storage_charge.sync(container, tank.container_no)
+		back.append(container)
+	return back
 
 
-def reopen_gate_entry_for_eir(eir_out) -> str | None:
-	"""Undo the gate-out stamp an EIR-Out left on its Gate Entry — the inverse of the
-	stamping inside :func:`mark_gate_out`.
-
-	Departure is now declared by submitting the EIR-Out, so *un*-submitting it
-	(``eir.revert_to_draft``) has to put the visit back on the books: without this the
-	record stays ``Gate_Out_Completed``, ``open_gate_entry_for`` stops finding it, and the
-	corrected EIR-Out would file a SECOND Gate Entry for one visit. Returns the reopened
-	record's name, or None when this EIR never stamped one.
-	"""
-	if not eir_out:
-		return None
-	found = frappe.get_all(
+def link_eir_out(eir_out) -> None:
+	"""An EIR-Out finished after its tank already left: point the departure's Gate Entry at it,
+	the same link :func:`mark_gate_out` writes when the EIR-Out came first."""
+	row = frappe.db.get_value("Inspection", eir_out, ["container_no", "referred_voucher"], as_dict=True)
+	if not row or not row.referred_voucher:
+		return
+	ge = frappe.db.get_value(
 		"Gate Entry",
-		filters={"eir_reference": eir_out, "status": "Gate_Out_Completed"},
-		fields=["name", "gate_in_timestamp"], order_by="creation desc", limit=1,
+		{"container_no": row.container_no, "order_muat": row.referred_voucher, "eir_reference": ["is", "not set"]},
+		"name",
 	)
-	if not found:
-		return None
-	return reopen_gate_entry(found[0])
+	if ge:
+		frappe.db.set_value("Gate Entry", ge, "eir_reference", eir_out, update_modified=False)
 
 
 def reopen_gate_entry(row) -> str:

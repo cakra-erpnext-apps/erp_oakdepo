@@ -367,27 +367,20 @@ def _order_child_doctype(doc):
 	return doc.meta.get_field("containers").options
 
 
-# The bon's terminal status. ``Completed`` is not written on the bon's own screen — the
-# GATE writes it: :func:`gate._complete_order_muat_if_done` closes an Order Muat once its
-# LAST tank has physically left the depot. Past that point the bon has stopped being a plan
-# and become the record of a departure that happened, so both undos are withdrawn. Voiding
-# would put the Booking Codes of a tank that is GONE back on the shelf for the next bon to
-# spend; Cancel would reopen for editing the very paper the driver was handed at the gate.
+# The bon's terminal status. An Order Bongkar closes once every tank on it has a submitted
+# EIR-In (``order_bongkar.sync_completion``); past that point Cancel / Kembalikan ke Draft are
+# withdrawn — revert the EIR-In first and the bon reopens with it.
 #
-# Not a dead end, and deliberately so: ``gate.reverse_gate_out`` — reached by reverting or
-# cancelling the EIR-Out that sent the tank out — puts the bon back to ``Issued`` and the
-# buttons come back with it. The way to undo a closed bon is to undo the DEPARTURE first,
-# which is the whole point: that road carries the container / gate-entry / booking rollback
-# this one does not.
+# An Order Muat is different: its own submit IS the gate-out (``gate.depart_bon``), so it is
+# Completed the moment it is issued, and Kembalikan ke Draft / void is the one way back for the
+# departure (``gate.reverse_bon_departures``). It is always undoable.
 ORDER_TERMINAL_STATUS = ("Completed",)
 
 
 def order_undoable(doc) -> bool:
-	"""False once the bon has closed (ORDER_TERMINAL_STATUS) — unless every tank on it was taken
-	without an EIR. Then no EIR closed it: such an Order Bongkar is Completed at issue, such an
-	Order Muat at its own submit, and Kembalikan ke Draft / Cancel is the only way back
-	(``no_eir.reverse_departures``)."""
-	if doc.get("order_status") not in ORDER_TERMINAL_STATUS:
+	"""False once an Order Bongkar has closed (ORDER_TERMINAL_STATUS) — unless every tank on it
+	was taken without an EIR, which makes it Completed at issue. An Order Muat always is."""
+	if doc.doctype == "Order Muat" or doc.get("order_status") not in ORDER_TERMINAL_STATUS:
 		return True
 	from container_depot.container_depot.no_eir import bon_no_eir
 
@@ -400,8 +393,8 @@ def _assert_order_undoable(doc):
 	if order_undoable(doc):
 		return
 	frappe.throw(
-		_("Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak "
-		  "bisa di-Cancel maupun dikembalikan ke Draft.<br><br>Batalkan dulu EIR-Out / gate-out tank-nya: "
+		_("Bon <b>{0}</b> sudah <b>{1}</b> — semua tank-nya sudah di-EIR-In, jadi bon ini tidak "
+		  "bisa di-Cancel maupun dikembalikan ke Draft.<br><br>Kembalikan dulu EIR-In tank-nya ke Draft: "
 		  "bon akan kembali ke <b>Issued</b> dan kedua tombolnya muncul lagi.").format(
 			doc.name, doc.order_status
 		),
@@ -484,10 +477,10 @@ def revert_order_to_draft(name, doctype="Order Bongkar"):
 		frappe.throw(_("Only a submitted order can be returned to draft."))
 	_assert_order_undoable(doc)
 	if doctype == "Order Muat":
-		# Its submit sent the tanks taken without an EIR out; back to draft brings them back.
-		from container_depot.container_depot.no_eir import reverse_departures
+		# Its submit sent the tanks out (gate.depart_bon); back to draft brings them back.
+		from container_depot.container_depot.gate import reverse_bon_departures
 
-		reverse_departures(doc)
+		reverse_bon_departures(doc)
 	child = _order_child_doctype(doc)
 	frappe.db.set_value(doctype, doc.name, {"docstatus": 0, "order_status": "Issued"})
 	frappe.db.sql(
@@ -640,15 +633,16 @@ def _eir_in_follows(row: str, changed: dict) -> None:
 
 
 def assert_lines_editable(booking) -> None:
-	"""A line whose bon has CLOSED is history on both sides: the bon itself can no longer be
-	reopened (:func:`_assert_order_undoable`), so its line may not drift from it either."""
+	"""A line whose bon has CLOSED for good is history on both sides: the bon itself can no
+	longer be reopened (:func:`order_undoable`), so its line may not drift from it either. An
+	Order Muat always can be — its submit is the gate-out — so its lines stay correctable."""
 	before = booking.get_doc_before_save()
 	old = {r.name: r for r in (before.items if before else [])}
 	for line in booking.items or []:
 		if line.name not in old or not _diff(line, old[line.name], LINE_SYNC_FIELDS):
 			continue
 		bon = live_bon_row(line.booking_code)
-		if bon and bon.status in ORDER_TERMINAL_STATUS:
+		if bon and bon.status in ORDER_TERMINAL_STATUS and not order_undoable(frappe.get_doc(bon.doctype, bon.bon)):
 			frappe.throw(
 				_("Tank {0} sudah selesai di bon {1} ({2}) — datanya tidak bisa diubah lagi.").format(
 					line.container_no, bon.bon, bon.status
@@ -658,38 +652,71 @@ def assert_lines_editable(booking) -> None:
 
 
 def refresh_bon_followers(doctype: str, bon: str) -> None:
-	"""What copied the bon's truck / driver / parties and is still open follows it: the draft
-	EIRs (their read-only snapshot), the gate log of a Tank In visit still under way, and the
-	EMKL / Shipper mirrored on the Container master. A submitted EIR and a closed gate record
-	are history and stay as they were. A draft bon is followed at its submit."""
+	"""Everything that copied the bon's truck / driver / parties follows it, finished or not
+	(user, 2026-10-08: "saling sync"): its EIRs — drafts and submitted alike, their read-only
+	snapshot — the visit's Gate Entry, and the EMKL / Shipper mirrored on the Container master.
+	Only a voided EIR or gate record stays as it was. A draft bon is followed at its submit.
+
+	The Gate Entry has one truck slot for the whole visit and the arrival fills it, so a Tank
+	Out bon only writes one its departure created (no gate-in bon behind it)."""
 	if frappe.db.get_value(doctype, bon, "docstatus") != 1:
 		return
 	from container_depot.container_depot import last_orders
-	from container_depot.container_depot.eir import fetch_voucher
-	from container_depot.container_depot.gate import GATE_ENTRY_CLOSED
+	from container_depot.container_depot.eir import _SNAPSHOT_FIELDS, fetch_voucher
 
 	child = "Container Booking Item" if doctype == "Order Bongkar" else "Order Container Item"
 	itype = "EIR-In" if doctype == "Order Bongkar" else "EIR-Out"
 	for e in frappe.get_all(
 		"Inspection",
-		filters={"referred_voucher": bon, "docstatus": 0, "inspection_type": itype},
+		filters={"referred_voucher": bon, "docstatus": ["<", 2], "inspection_type": itype},
 		fields=["name", "container"],
 	):
 		snap = fetch_voucher(bon, itype, container=e.container)
-		frappe.db.set_value("Inspection", e.name, {
-			"truck_no": snap["truck_no"], "driver": snap["driver"], "driver_phone": snap["driver_phone"],
-			"emkl": snap["emkl"], "shipper": snap["shipper"],
-		})
-	fields = ["container", "container_no", "truck_plate", "driver"] if doctype == "Order Bongkar" else ["container"]
-	for row in frappe.get_all(child, filters={"parent": bon, "parenttype": doctype}, fields=fields):
+		frappe.db.set_value("Inspection", e.name, {f: snap[f] for f in _SNAPSHOT_FIELDS})
+	for row in frappe.get_all(child, filters={"parent": bon, "parenttype": doctype}, fields=["container", "container_no"]):
+		live = {"container_no": row.container_no, "docstatus": ["<", 2], "status": ["!=", "Cancelled"]}
 		if doctype == "Order Bongkar":
-			for ge in frappe.get_all(
-				"Gate Entry",
-				filters={
-					"order_doctype": doctype, "order_ref": bon, "container_no": row.container_no,
-					"status": ["not in", GATE_ENTRY_CLOSED], "docstatus": ["<", 2],
-				},
-				pluck="name",
-			):
-				frappe.db.set_value("Gate Entry", ge, {"truck_plate": row.truck_plate, "driver_name": row.driver})
+			ges = frappe.get_all("Gate Entry", filters={**live, "order_doctype": doctype, "order_ref": bon}, pluck="name")
+			truck = frappe.db.get_value(child, {"parent": bon, "parenttype": doctype, "container": row.container},
+				["truck_plate", "driver"], as_dict=True) or {}
+		else:
+			ges = [
+				g.name for g in frappe.get_all(
+					"Gate Entry", filters={**live, "order_muat": bon}, fields=["name", "order_doctype"]
+				) if g.order_doctype != "Order Bongkar"
+			]
+			truck = frappe.db.get_value(doctype, bon, ["truck_plate", "driver_name as driver"], as_dict=True) or {}
+		for ge in ges:
+			frappe.db.set_value("Gate Entry", ge, {"truck_plate": truck.get("truck_plate"), "driver_name": truck.get("driver")})
 		last_orders.refresh_container(row.container, only=doctype)
+
+
+# A follower's field -> the booking line field it copies.
+_FOLLOWER_TO_LINE = {
+	"Inspection": {"truck_no": "truck_plate", "driver": "driver", "driver_phone": "driver_phone", "emkl": "emkl", "shipper": "shipper"},
+	"Gate Entry": {"truck_plate": "truck_plate", "driver_name": "driver"},
+}
+
+
+def push_follower_to_line(doc, before, bon_doctype: str | None, bon: str | None) -> None:
+	"""A follower (EIR, Gate Entry) corrected by Revisi Data: the booking line takes the edit,
+	and the sync every line edit already runs copies it back to the bon and to every other
+	follower (:func:`refresh_bon_followers`) — so one correction reads the same everywhere."""
+	fields = _FOLLOWER_TO_LINE[doc.doctype]
+	changed = {lf: doc.get(f) for f, lf in fields.items() if (doc.get(f) or None) != (before.get(f) or None)}
+	if not changed or not bon or bon_doctype not in ("Order Bongkar", "Order Muat"):
+		return
+	child = "Container Booking Item" if bon_doctype == "Order Bongkar" else "Order Container Item"
+	code = frappe.db.get_value(child, {"parent": bon, "parenttype": bon_doctype, "container": doc.get("container") or
+		frappe.db.get_value("Container", {"container_no": doc.get("container_no")})}, "booking_code")
+	booking = frappe.db.get_value(bon_doctype, bon, "booking")
+	if not code or not booking:
+		return
+	bk = frappe.get_doc("Container Booking", booking)
+	line = next((r for r in bk.items if r.booking_code == code), None)
+	if not line:
+		return
+	line.update(changed)
+	bk.flags.bon_revision = True  # a Completed bon too (assert_lines_editable)
+	bk.flags.ignore_permissions = True
+	bk.save()

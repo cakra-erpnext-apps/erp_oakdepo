@@ -31,7 +31,7 @@ Belum Lunas,Unpaid
 Belum ada depot yang bisa dikelola template-nya.,There is no depot whose templates you can manage yet.
 Biaya Manhour dihapus — Hour diset 0. Isi Hour lagi untuk menagihkannya kembali.,Manhour charge removed — Hour set to 0. Fill in Hour again to bill it again.
 Bill To {0} bukan pihak yang Anda daftarkan.,Bill To {0} is not a party you registered.
-"Bon <b>{0}</b> sudah <b>{1}</b> — tank-nya sudah keluar gate, jadi bon ini tidak bisa di-Cancel maupun dikembalikan ke Draft.<br><br>Batalkan dulu EIR-Out / gate-out tank-nya: bon akan kembali ke <b>Issued</b> dan kedua tombolnya muncul lagi.","Voucher <b>{0}</b> is already <b>{1}</b> — the tank has passed the gate, so this voucher cannot be cancelled or returned to Draft.<br><br>Cancel the tank's EIR-Out / gate-out first: the voucher goes back to <b>Issued</b> and both buttons appear again."
+"Bon <b>{0}</b> sudah <b>{1}</b> — semua tank-nya sudah di-EIR-In, jadi bon ini tidak bisa di-Cancel maupun dikembalikan ke Draft.<br><br>Kembalikan dulu EIR-In tank-nya ke Draft: bon akan kembali ke <b>Issued</b> dan kedua tombolnya muncul lagi.","Voucher <b>{0}</b> is already <b>{1}</b> — every tank on it has its EIR-In, so this voucher cannot be cancelled or returned to Draft.<br><br>Return the tank's EIR-In to Draft first: the voucher goes back to <b>Issued</b> and both buttons appear again."
 "Bon <b>{0}</b> sudah disubmit dan tidak bisa langsung di-Cancel. Kembalikan ke Draft dulu, lalu Cancel.","Voucher <b>{0}</b> is already submitted and cannot be cancelled directly. Return it to Draft first, then Cancel."
 Bon Bongkar,Unloading Voucher
 Bon Bongkar terbit,Unloading Voucher issued
@@ -117,7 +117,6 @@ Container ini tidak ada di Branch {0}:,These containers are not in Branch {0}:
 Container wajib diisi.,Container is required.
 Container {0} belum bisa dinonaktifkan:,Container {0} cannot be deactivated yet:
 Container {0} belum di-Leak Check{1}. Surveyor harus mengisi Leak Check dulu sebelum tank keluar.,Container {0} has not had a Leak Check{1}. The surveyor must fill in the Leak Check before the tank leaves.
-Container {0} belum punya EIR-Out bersih (Ready To Load). Surveyor harus submit EIR-Out dulu.,Container {0} has no clean EIR-Out (Ready To Load) yet. The surveyor must submit the EIR-Out first.
 Container {0} masih punya order yang belum selesai — {1}.,Container {0} still has unfinished orders — {1}.
 Container {0} sudah ada di depo (status {1}) — tidak bisa gate-in lagi.,Container {0} is already in the depot (status {1}) — it cannot gate in again.
 Container {0} sudah non-aktif (keluar dari armada) — tidak bisa dipakai untuk transaksi baru.,Container {0} is inactive (left the fleet) — it cannot be used for new transactions.
@@ -146,7 +145,6 @@ EIR disubmit,EIR submitted
 EIR ditarik dari review untuk diperbaiki oleh {0},EIR withdrawn from review for fixing by {0}
 EIR menunggu review,EIR awaiting review
 EIR-Out jatuh tempo,EIR-Out due
-"EIR-Out {0} belum bisa disubmit: bon muat untuk tank <b>{1}</b> belum terbit.<br>Generate Bon dulu dari booking Tank Out-nya — bon itu yang mengisi truk, sopir, EMKL dan shipper ke EIR ini, sekaligus membuka submit-nya.","EIR-Out {0} cannot be submitted yet: the loading voucher for tank <b>{1}</b> has not been issued.<br>Generate the voucher from its Tank Out booking first — that voucher fills the truck, driver, EMKL and shipper into this EIR and unlocks its submit."
 EIR-Out • {0} — siap survey keluar,EIR-Out • {0} — ready for outbound survey
 Estimasi Perbaikan,Repair Estimate
 File foto fisik tidak ditemukan di server.,The photo file was not found on the server.
@@ -366,7 +364,7 @@ Tank Masih Terpakai,Tank Still in Use
 Tank Non-Aktif,Inactive Tank
 Tank di-HOLD,Tank on HOLD
 Tank ini memang lewat booking {0} — <b>hapus baris tank ini dari booking yang sedang Anda buat</b>.,The tank really goes through booking {0} — <b>remove this tank's row from the booking you are making</b>.
-Tank keluar dulu lewat bon {0} (EIR-Out lalu gate-out); booking keluar baru bisa dibuat sesudahnya.,"The tank leaves on voucher {0} first (EIR-Out, then gate-out); a new outbound booking is possible only after that."
+Tank keluar dulu lewat bon {0} (submit bon itu = gate-out); booking keluar baru bisa dibuat sesudahnya.,"The tank leaves on voucher {0} first (submitting it is the gate-out); a new outbound booking is possible only after that."
 "Tank masih di depo: buat dulu booking keluar-nya, baru booking masuk ini bisa di-submit.","The tank is still in the depot: make its outbound booking first, then this inbound booking can be submitted."
 Tank masuk dulu lewat bon {0} (submit bon itu).,The tank comes in on voucher {0} first (submit that voucher).
 Tank menunggu lowering,Tank awaiting lowering
@@ -438,7 +436,7 @@ EIR-Out {0} belum bisa disubmit: survey tank <b>{1}</b> di jadwal {2} masih <b>{
 Survey belum selesai,Survey not finished
 menahan gate-out,holding the gate-out
 Wajibkan Semua Order,Make Every Order Mandatory
-"Centang = semua order wajib selesai sebelum tank keluar (Survey, Leak Check, Cleaning, M&R). Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In, EIR-Out dan pembayaran.","Ticked = every order must be finished before a tank leaves (Survey, Leak Check, Cleaning, M&R). Unticked = only Booking, Bon, Gate, EIR-In, EIR-Out and payment are mandatory."
+"Centang = Cleaning dan M&R wajib selesai sebelum bon muat, dan EIR-Out menunggu survey tank-nya. Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In dan pembayaran. EIR-Out dan Leak Check tidak pernah menahan tank keluar.","Ticked = Cleaning and M&R must be finished before the loading voucher, and the EIR-Out waits for its tank's survey. Unticked = only Booking, Voucher, Gate, EIR-In and payment are mandatory. The EIR-Out and the Leak Check never hold a tank from leaving."
 Storage kunjungan ini sudah diinvoice ({0}). Revisi baru bisa diajukan setelah invoice dibatalkan — hubungi Admin Ops.,This visit's storage is already invoiced ({0}). A revision can only be requested once the invoice is cancelled — contact Admin Ops.
 "Storage kunjungan ini sudah diinvoice ({0}). Batalkan invoice-nya dulu, atau keluarkan kunjungan ini dari invoice.","This visit's storage is already invoiced ({0}). Cancel the invoice first, or take this visit off the invoice."
 tagihan storage s/d {0},storage billed up to {0}
@@ -470,3 +468,5 @@ Hanya order yang menunggu review yang bisa ditolak.,Only an order awaiting revie
 Review ditolak oleh {0}: {1},Review rejected by {0}: {1}
 Review {0} ditolak • {1} • oleh {2} — {3},{0} review rejected • {1} • by {2} — {3}
 {0} tidak punya tahap review.,{0} has no review step.
+"Kembalikan bon ini ke Draft? Tank yang sudah keluar lewat bon ini kembali ke depo; booking code tetap terpakai.","Return this voucher to Draft? Tanks that left on it come back to the depot; the booking codes stay used."
+{0} dibatalkan — tank kembali ke depo,{0} cancelled — tank back in the depot

@@ -243,12 +243,13 @@ def unfinished_survey_row(booking: str | None, container: str):
 	return rows[0] if rows else None
 
 
-def provision_survey_order_for_booking(booking_name: str) -> dict:
+def provision_survey_order_for_booking(booking_name: str, withdraw_draft: bool = False) -> dict:
 	"""Keep one ``Survey Order`` and one tank row per container in step with a Tank Out booking.
 
-	Runs from the DRAFT, not from submit: getting a tank down out of a full stack is
-	preparation, and preparation that starts at Submit starts too late — an outbound booking is
-	written days ahead precisely so the yard can get ready.
+	Born at Confirm (Submit), not from the draft (user, 2026-10-08): a draft may still be
+	dropped, and a survey day raised off it is work nobody ordered. A draft save leaves the
+	schedule alone — one raised by the old rule stays — and ``withdraw_draft`` (Kembali ke
+	Draft) calls back what Confirm raised.
 
 	Idempotent and re-runnable: the schedule is created once and then UPDATED (a moved
 	``survey_date`` moves the whole day), rows are added for containers that have none and are
@@ -267,11 +268,14 @@ def provision_survey_order_for_booking(booking_name: str) -> dict:
 	if not booking or booking.direction != OUTBOUND:
 		return {"survey_order": None, "tanks": []}
 
-	dead = booking.booking_status == "Cancelled" or int(booking.docstatus or 0) == 2
+	existing = frappe.db.get_value(SCHEDULE, {"booking": booking.name, "docstatus": ["!=", 2]}, "name")
+	draft = int(booking.docstatus or 0) == 0 and booking.booking_status != "Cancelled"
+	if draft and not withdraw_draft:
+		return {"survey_order": existing, "tanks": []}
+	dead = draft or booking.booking_status == "Cancelled" or int(booking.docstatus or 0) == 2
 	# Tanpa survey: jadwal yang mungkin sudah terbit dipanggil pulang, sama seperti void.
 	# EIR-Out-nya lahir langsung dari booking (eir.provision_eir_out_for_booking).
 	dead = dead or not cint(booking.use_survey)
-	existing = frappe.db.get_value(SCHEDULE, {"booking": booking.name, "docstatus": ["!=", 2]}, "name")
 
 	if dead:
 		if existing:

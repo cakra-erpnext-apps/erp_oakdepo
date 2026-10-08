@@ -2,7 +2,7 @@
 before a tank may leave.
 
 ON (default) is the full sequence. OFF keeps only the backbone mandatory — Container Booking,
-bon, gate, EIR-In, EIR-Out and payment — and lets the rest wait (user, 2026-10-02: the first
+bon, gate, EIR-In and payment — and lets the rest wait (user, 2026-10-02: the first
 trial week, field teams skipped orders and the tanks after them stuck behind the system).
 
 Every place the switch decides something reads it from here:
@@ -10,8 +10,10 @@ Every place the switch decides something reads it from here:
 * :func:`blocking_orders` — the open work that holds a tank: the bon muat
   (``OrderMuat._validate_no_open_work``), the gate-out (``gate.mark_gate_out``), the Gate PWA
   panel and the "menahan gate-out" count on the booking. OFF = only a draft EIR-In holds.
-* ``gate.mark_gate_out`` — the Leak Check of this visit, only when ON.
 * ``Inspection.before_submit`` — an EIR-Out waits for its tank's survey, only when ON.
+
+The EIR-Out and the Leak Check never hold the gate, whatever the switch says (2026-10-08):
+the bon muat is the gate-out and they only record the tank's condition.
 
 What OFF never does: change the status of an order. A skipped survey, Leak Check, cleaning or
 M&R stays exactly as it was, open, finishable later, and listed under its own booking.

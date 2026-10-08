@@ -925,23 +925,6 @@ def notify_survey_done(survey, *, eir_out=None):
 	)
 
 
-def notify_eir_out_hold(container_no, order_muat=None, reason=None, *, depot=None):
-	"""Fire when an EIR-Out finds an issue — puts the tank on HOLD and asks the Ops
-	Supervisor (+ admin) to clear it (Fase G.4)."""
-	if not container_no:
-		return
-	notify(
-		doctype="Order Muat" if order_muat else "Container",
-		name=order_muat or container_no,
-		subject=lambda: (
-			_("HOLD • {0} • {1} — perlu clearance Supervisor") if reason
-			else _("HOLD • {0} — perlu clearance Supervisor")
-		).format(container_no, reason),
-		branch=_depot_branch(depot) if depot else None,
-		event_key="eir_out_hold",
-	)
-
-
 def notify_gate_out(container_no, *, gate_entry=None, depot=None, when=None):
 	"""Fire when a tank completes gate-out / load-complete (keluar depo). Reaches the
 	gate/ops roles (same surface as the order-gate notification)."""

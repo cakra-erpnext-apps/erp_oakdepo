@@ -3,7 +3,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import getdate, today
 
-from container_depot.container_depot import last_orders, no_eir
+from container_depot.container_depot import last_orders
 from container_depot.container_depot.doctype.order_bongkar.order_bongkar import (
 	_ensure_order_qr,
 	_log_order_activity,
@@ -49,28 +49,19 @@ class OrderMuat(Document):
 		notify_order_gate(self, "out")
 		self._attach_eir_out()
 		notify_order_muat_survey(self)
-		# LAST: a LADEN tank taken without an EIR has no EIR-Out to send it out — this submit
-		# is its gate-out, dated by Tanggal Muat (no_eir.py).
-		no_eir.depart(self)
+		# LAST: the bon is the gate (user, 2026-10-08) — every tank on it leaves with this
+		# submit, dated by Tanggal Muat. The EIR-Out only records the tank's condition.
+		from container_depot.container_depot.gate import depart_bon
+
+		depart_bon(self)
 
 	def _attach_eir_out(self):
 		"""Point each tank's EIR-Out at this bon and stamp the truck / driver / EMKL / shipper onto it.
 
-		The bon no longer CREATES an EIR-Out. Since 2026-09-03 the EIR-Out is raised when the
-		tank's position survey is closed, days earlier, so everything typed on this screen
-		lands on that document instead of on a second one beside it — and the reference is
-		what finally makes it submittable (``Inspection.before_submit``).
-
-		A tank whose survey has not been closed has nothing to attach to yet, and that passes
-		in silence. It used to raise a popup here, and the popup was wrong twice over: it did
-		not refuse anything (the bon submits either way), and it landed on a screen that
-		already carries the readiness dossier and the open-order refusal — a third notice
-		about a fourth document is what turns a working screen into a wall of text nobody
-		reads. The fact is not lost: the survey is on the calendar, the surveyor is notified
-		an EIR-Out is due (``notify_order_muat_survey``, fired right after this), the bon
-		adopts the EIR on the next pass once the survey closes, and the gate refuses the tank
-		outright without a submitted one (``gate.mark_gate_out``). That last refusal is where
-		"no EIR-Out" actually has to stop somebody.
+		The bon no longer CREATES an EIR-Out: it is raised when the booking is confirmed, so
+		everything typed on this screen lands on that document instead of on a second one beside
+		it, finished or not. A tank with no EIR-Out to attach to passes in silence — the EIR-Out
+		does not hold the gate (user, 2026-10-08); this bon's submit is the departure.
 
 		Best-effort: an EIR hiccup never blocks the bon submit.
 		"""
@@ -86,8 +77,10 @@ class OrderMuat(Document):
 		self.set_onload("undoable", order_undoable(self))
 
 	def on_cancel(self):
-		# FIRST: the tanks this bon sent out without an EIR come back (no_eir.py).
-		no_eir.reverse_departures(self)
+		# FIRST: the tanks this bon sent out come back (gate.reverse_bon_departures).
+		from container_depot.container_depot.gate import reverse_bon_departures
+
+		reverse_bon_departures(self)
 		_release_codes(self)
 		# Order Muat provisions EIR-Out drafts on submit, so cancelling must unwind them
 		# for the same reason Order Bongkar unwinds its EIR-In drafts.

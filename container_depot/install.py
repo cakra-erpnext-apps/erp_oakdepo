@@ -3459,7 +3459,7 @@ NOTIFICATION_RULES = [
 	# Fires on the Order Muat submit itself, which is creation-time by any reading, so no field
 	# team is on it. (Team Survey was removed earlier for a different reason: this is the EIR-Out,
 	# not the position survey, and they hold no Inspection perm at all.)
-	("order_muat_survey", "EIR-Out jatuh tempo", "Order Muat disubmit — EIR-Out wajib sebelum tank boleh dimuat.",
+	("order_muat_survey", "EIR-Out jatuh tempo", "Order Muat disubmit — tank keluar; EIR-Out tank ini perlu diselesaikan.",
 		["SPV Lapangan", "Admin Ops"]),
 	("eir_out_hold", "Tank di-HOLD", "EIR-Out menemukan masalah — perlu clearance supervisor.",
 		["SPV Lapangan", "Admin Ops"]),

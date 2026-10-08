@@ -1,5 +1,5 @@
 import frappe
-from frappe import _, _lt
+from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
@@ -80,7 +80,7 @@ class Inspection(Document):
 		The checkbox and the rows were two sources for one fact and drifted both ways: ticked
 		with an empty log (the form warned about it and left it), or rows added straight in
 		the grid with the box untouched. Downstream that decides real things — the M&R
-		follow-up on submit, and Hold Pending Clearance on an EIR-Out — so it has to read off
+		follow-up on submit — so it has to read off
 		the evidence.
 
 		"Damage" here means what the PWA already means by it (``_build_damage_rows``): a row
@@ -321,50 +321,12 @@ class Inspection(Document):
 		)
 
 	def before_submit(self):
-		"""An EIR-Out may only be submitted once the loading bon for its tank is out.
-
-		This is the second half of moving the EIR-Out's birth forward. It is now raised when
-		the position survey closes (``eir.provision_eir_out_for_survey``), which is days before
-		anybody cuts an Order Muat — so the document exists, and can be filled in, long before
-		it is allowed to become final.
-
-		Submitting is not a filing step here: ``on_submit`` sends a clean EIR-Out straight
-		through ``gate.mark_gate_out`` and the tank is out of the depot. Letting that happen
-		with no bon behind it would release a tank on no loading paperwork at all — no truck,
-		no driver, no booking code surrendered at the gate. The bon is exactly the document
-		that says a real truck has come for this tank, so it is what the submit waits for.
-
-		Checked against ``referred_voucher`` — the link ``attach_order_muat_to_eirs`` stamps
-		when the bon is submitted — and re-verified against the bon's own state, so a link
-		left behind by a since-voided bon does not quietly count. When the link is missing
-		the question is asked directly instead: is there a submitted Order Muat carrying this
-		tank? The link may simply never have been stamped (the EIR was raised by hand, or the
-		attach hook logged an error), and refusing on a missing pointer rather than on the
-		missing BON would block a tank whose paperwork is in perfect order.
-
-		Deliberately a check and nothing else — it does not stamp the link it just looked for.
-		``referred_voucher`` is what ``_apply_eir_out_outcome`` reads to decide whether to
-		write Ready To Load / Hold onto a bon, so quietly filling it in here would give this
-		guard a side effect on a document it was only ever asked about.
-		"""
+		"""An EIR-Out no longer waits for its bon (user, 2026-10-08): the bon is the gate and the
+		EIR-Out only records the tank's condition, so either may come first — the EIR-Out may
+		even be finished after the tank has left. Only the survey switch still holds it."""
 		if self.inspection_type != "EIR-Out":
 			return
 		self._wait_for_survey()
-		voucher = self.get("referred_voucher")
-		if voucher and frappe.db.get_value("Order Muat", voucher, "docstatus") == 1:
-			return
-		from container_depot.container_depot.eir import latest_voucher_for_container
-
-		if latest_voucher_for_container(self.container, "EIR-Out"):
-			return
-		frappe.throw(
-			_(
-				"EIR-Out {0} belum bisa disubmit: bon muat untuk tank <b>{1}</b> belum terbit.<br>"
-				"Generate Bon dulu dari booking Tank Out-nya — bon itu yang mengisi truk, sopir, "
-				"EMKL dan shipper ke EIR ini, sekaligus membuka submit-nya."
-			).format(self.name, self.container_no or self.container),
-			title=_("Bon muat belum ada"),
-		)
 
 	def _wait_for_survey(self):
 		"""With "Wajibkan Semua Order" ON, an EIR-Out waits for its tank's survey.
@@ -419,10 +381,12 @@ class Inspection(Document):
 			# related order is done.
 			self._save_container(container)
 		elif self.inspection_type == "EIR-Out":
-			# The day out is the bon's Tanggal Muat, stamped by gate.mark_gate_out.
+			# Condition record only: the bon is the gate-out (gate.depart_bon), so nothing here
+			# moves the tank, its bon or its gate log — only the cargo above, if it changed.
 			self._save_container(container)
-			# Score readiness + signal Ready To Load / Hold on the Order Muat.
-			self._apply_eir_out_outcome()
+			from container_depot.container_depot.gate import link_eir_out
+
+			link_eir_out(self.name)
 		elif cargo_changed:
 			# Some other type with a cargo change — persist it.
 			self._save_container(container)
@@ -467,20 +431,6 @@ class Inspection(Document):
 
 			recompute_availability(self.container)
 			sync_completion(self)
-
-		# A clean EIR-Out submitted = the tank has LEFT the depot. This approval is the ONLY
-		# thing that declares a departure (the operator-pressed "ACC Keluar" queue is gone),
-		# so the gate-out runs from here: Container -> Gate_Out, the Gate Entry stamped and
-		# closed, the bon completed once its last tank is out, gate/ops notified. Left last
-		# on purpose — everything above describes the inspection, this is its consequence.
-		# It throws (rolling the submit back) when the tank is not actually free to go, which
-		# is the right refusal: the review must not sign a departure that cannot happen.
-		if self.inspection_type == "EIR-Out" and self.get("out_outcome") == "Ready To Load":
-			from container_depot.container_depot.gate import mark_gate_out
-
-			mark_gate_out(
-				container=self.container, eir_out=self.name, performed_by=self.get("inspector")
-			)
 
 	def _ensure_cleaning_order(self, container):
 		"""Create (idempotently) a Pending Cleaning Order for this tank and notify the
@@ -538,43 +488,3 @@ class Inspection(Document):
 			container.save(ignore_permissions=True)
 		finally:
 			frappe.flags.in_status_automation = False
-
-	def _apply_eir_out_outcome(self):
-		"""Score an EIR-Out's readiness and signal it on the referenced Order Muat.
-
-		Clean = no new damage on the checklist. A clean EIR-Out flips the Order Muat to
-		``Ready To Load``; a finding flips it to ``Hold`` and notifies the Ops Supervisor.
-		The container status is NOT touched here — the gate-out at the end of ``on_submit``
-		is what moves it, and it reads the ``out_outcome`` written below to decide. No
-		"ready to load" ping is sent: on a clean EIR-Out the tank leaves in the same submit,
-		so the gate-out notification is the one that tells the truth.
-
-		The separate exterior-cleanliness and seal-integrity checks (PRO-OPS-08 §G.2/G.3)
-		were dropped at the depot's request; the checklist findings are the only input now.
-		"""
-		reasons = []
-		if self.has_damage:
-			# Lazy: the hold notice is phrased in each RECIPIENT's language (notify._in_lang
-			# formats it per language), so the reason must not be translated here.
-			reasons.append(_lt("ada temuan kerusakan"))
-
-		outcome = "Ready To Load" if not reasons else "Hold Pending Clearance"
-		self.db_set("out_outcome", outcome, update_modified=False)
-
-		# Resolve the Order Muat this EIR-Out was raised against (auto-voucher set it).
-		order_muat = self.referred_voucher if self.get("voucher_doctype") == "Order Muat" else None
-		from container_depot.container_depot.notify import notify_eir_out_hold
-
-		if outcome == "Ready To Load":
-			# Intermediate state for a multi-tank bon: gate-out closes it to ``Completed``
-			# once the LAST tank on it is out.
-			if order_muat:
-				frappe.db.set_value("Order Muat", order_muat, "order_status", "Ready To Load", update_modified=False)
-		else:
-			if order_muat:
-				frappe.db.set_value("Order Muat", order_muat, "order_status", "Hold", update_modified=False)
-			notify_eir_out_hold(
-				self.container_no, order_muat,
-				reasons[0] if len(reasons) == 1 else ", ".join(map(str, reasons)),
-				depot=self.depot,
-			)

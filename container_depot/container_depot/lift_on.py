@@ -363,8 +363,8 @@ def refresh_fulfilment(booking: str) -> bool:
 	close = per >= 100 and row.docstatus == 1 and row.booking_status == "Confirmed"
 	if close:
 		updates["booking_status"] = FULFILLED_STATUS
-	# ...and the same door swings both ways. A departure can be TAKEN BACK — the EIR-Out that
-	# declared it is reverted or voided (``gate.reverse_gate_out``) — and the tank is then
+	# ...and the same door swings both ways. A departure can be TAKEN BACK — the bon muat that
+	# declared it is reverted or voided (``gate.reverse_bon_departures``) — and the tank is then
 	# standing in the yard again. Left alone, the booking kept reading Completed at, say, 60%:
 	# closed against tanks that had not gone anywhere, and out of every "still to collect"
 	# list the yard works from. Only a booking that is still SUBMITTED reopens; a cancelled

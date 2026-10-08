@@ -91,7 +91,7 @@ def last_departure(container: str):
     orders and the previous one's. Anything created before it belongs to an earlier stay.
 
     Read off the Gate Entry the gate-out stamped (``gate.mark_gate_out``). Undoing a departure
-    clears that stamp (``gate.reopen_gate_entry_for_eir``), so an undone exit never splits a
+    clears that stamp (``gate.reverse_bon_departures``), so an undone exit never splits a
     visit in two.
 
     ``None`` while the tank is not in the yard, or never left: nothing is drawn, every order

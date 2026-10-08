@@ -6,9 +6,8 @@ tank is handled with no EIR at all, and the bon is the whole visit:
 * **Tank In** — no EIR-In and no Leak Check. Submitting the Order Bongkar puts the tank in
   the yard, ``Available`` straight away; its Tanggal Bongkar is the day it came in
   (``visit_dates``). An Order Bongkar whose every tank is like this is Completed at issue.
-* **Tank Out** — no EIR-Out and no survey row. Submitting the Order Muat IS the gate-out
-  (``gate.mark_gate_out(no_eir=True)``), dated by its Tanggal Muat. Kembalikan ke Draft or a
-  void brings the tank back (:func:`reverse_departures`).
+* **Tank Out** — no EIR-Out, no survey row and no Leak Check. Its Order Muat submit is the
+  gate-out like every other tank's (``gate.depart_bon``), dated by its Tanggal Muat.
 
 Every other tank (EMPTY, or LADEN with the switch on) keeps the normal flow. Decided per tank
 and per direction, so one bon may mix both. The switch is locked once the line is on a bon:
@@ -80,54 +79,3 @@ def switch_changed(booking) -> bool:
 	before = booking.get_doc_before_save()
 	old = {r.name: int(r.get("use_eir") or 0) for r in (before.items if before else [])}
 	return any(old.get(r.name, 1) != int(r.get("use_eir") or 0) for r in booking.get("items") or [])
-
-
-def depart(bon) -> None:
-	"""Order Muat submit: its no-EIR tanks leave now, dated by Tanggal Muat."""
-	from container_depot.container_depot.gate import mark_gate_out
-
-	for container in bon_no_eir(bon):
-		mark_gate_out(container=container, no_eir=True, order_muat=bon.name)
-
-
-def reverse_departures(bon) -> list:
-	"""An Order Muat back to draft, or voided: its submit sent the no-EIR tanks out, so they come
-	back — Gate Entry reopened, tank in the yard again, Tanggal Keluar cleared."""
-	from container_depot import storage_charge
-	from container_depot.container_depot import lift_on
-	from container_depot.container_depot.container_activity import log_container_activity
-	from container_depot.container_depot.container_status import AVAILABLE, recompute_availability
-	from container_depot.container_depot.gate import reopen_gate_entry
-
-	back = []
-	for container in bon_no_eir(bon):
-		tank = frappe.db.get_value("Container", container, ["status", "container_no", "last_order_muat"], as_dict=True)
-		if not tank or tank.status != "Gate_Out":
-			continue
-		ge = frappe.db.get_value(
-			"Gate Entry",
-			{"container_no": tank.container_no, "order_muat": bon.name, "status": "Gate_Out_Completed"},
-			["name", "gate_in_timestamp"], as_dict=True,
-		)
-		if not ge:
-			continue  # it left on another bon since; that departure is not this bon's to undo
-		reopen_gate_entry(ge)
-		frappe.flags.in_status_automation = True
-		try:
-			doc = frappe.get_doc("Container", container)
-			doc.status = AVAILABLE
-			doc.out_date = None
-			doc.save(ignore_permissions=True)
-		finally:
-			frappe.flags.in_status_automation = False
-		recompute_availability(container)
-		log_container_activity(
-			container, "Status Change",
-			reference_doctype=bon.doctype, reference_name=bon.name,
-			from_status="Gate_Out", to_status=frappe.db.get_value("Container", container, "status"),
-			summary=_("{0} dibatalkan — tank tanpa EIR kembali ke depo").format(bon.name),
-		)
-		lift_on.refresh_bookings_for_container(container)
-		storage_charge.sync(container, tank.container_no)
-		back.append(container)
-	return back

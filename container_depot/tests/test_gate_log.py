@@ -106,24 +106,26 @@ def _drop_provisioned_eir_in(container):
 
 
 def _clean_eir_out(container):
-	"""Submit a clean EIR-Out — which IS the departure: ``Inspection.on_submit`` runs the
-	gate-out, so there is nothing else for these tests to press.
-
-	A loading bon is ensured first when the tank has none: since 2026-09-03 an EIR-Out cannot
-	be submitted until one carries its tank (``Inspection.before_submit``). This suite is
-	about the gate LOG, so the bon is setup rather than subject matter.
-	"""
+	"""The tank's Tank Out: its EIR-Out recorded against the bon, then the bon's submit sends
+	it out (``gate.depart_bon`` — the bon is the gate-out since 2026-10-08). This suite is about
+	the gate LOG, so the bon is setup rather than subject matter: the tank's latest one, or a
+	fresh one."""
 	from container_depot.container_depot import eir as _eir
+	from container_depot.container_depot.gate import depart_bon
 
-	if not _eir.latest_voucher_for_container(container, "EIR-Out"):
-		_make_order_muat(ensure_test_customer("Gate Log Shipper"), container)
+	bon = _eir.latest_voucher_for_container(container, "EIR-Out") or _make_order_muat(
+		ensure_test_customer("Gate Log Shipper"), container
+	)
 	make_leak_check(container)
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
 	doc.inspector = frappe.session.user
+	doc.referred_voucher = bon
+	doc.voucher_doctype = "Order Muat"
 	doc.insert(ignore_permissions=True)
 	doc.submit()
+	depart_bon(frappe.get_doc("Order Muat", bon))
 	return doc.name
 
 

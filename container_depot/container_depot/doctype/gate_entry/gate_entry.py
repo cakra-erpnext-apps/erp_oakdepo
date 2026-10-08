@@ -51,6 +51,13 @@ class GateEntry(Document):
 					_("Container {0} does not match Booking Code container {1}.").format(self.container_no, bc.container_no)
 				)
 
+	def on_update(self):
+		# A gate log stays a draft for the whole visit, so a truck / driver corrected on it is an
+		# ordinary save — and it is the booking line's, like a Revisi Data on a submitted one.
+		before = self.get_doc_before_save()
+		if before:
+			revision_apply(self, before)
+
 	def before_submit(self):
 		"""Set status on submit"""
 		self.status = "Gate_In_Completed"
@@ -233,6 +240,18 @@ REVISION_PWA_FIELDS = ("truck_plate", "driver_name")
 
 def revision_invoice(doc):
 	return None  # a gate record is not priced
+
+
+def revision_apply(doc, before) -> None:
+	"""``revision.py`` hook: the truck / driver are the booking line's — the visit's arrival
+	bon's when it has one, else its departure bon's — so a correction goes there and comes
+	back to the bon, its EIR and this record (order_generation.push_follower_to_line)."""
+	from container_depot.container_depot.order_generation import push_follower_to_line
+
+	if doc.get("order_doctype") == "Order Bongkar":
+		push_follower_to_line(doc, before, "Order Bongkar", doc.get("order_ref"))
+	else:
+		push_follower_to_line(doc, before, "Order Muat", doc.get("order_muat") or doc.get("order_ref"))
 
 
 def revision_blocker(doc):

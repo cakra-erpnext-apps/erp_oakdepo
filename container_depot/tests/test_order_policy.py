@@ -103,7 +103,9 @@ class _Base(FrappeTestCase):
 			"doctype": "Cleaning Order", "container": container, "status": "Service Setup",
 		}).insert(ignore_permissions=True).name
 
-	def _booking(self, container, direction="Tank Out", **extra):
+	def _booking(self, container, direction="Tank Out", confirmed=True, **extra):
+		"""A booking for ``container``; ``confirmed`` stands in for its Submit — a Tank Out
+		raises its EIR-Out and survey day only there (user, 2026-10-08)."""
 		doc = frappe.get_doc({
 			"doctype": "Container Booking", "direction": direction, "depot": DEPOT,
 			"plan_date": add_days(today(), 3),
@@ -112,6 +114,11 @@ class _Base(FrappeTestCase):
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		if confirmed:
+			frappe.db.set_value("Container Booking", doc.name, "docstatus", 1, update_modified=False)
+			frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=1 WHERE parent=%s", doc.name)
+			doc.reload()
+			doc._provision_survey_order()
 		return doc.name
 
 	def _left_before(self, container, *, days_ago=1):
@@ -161,11 +168,9 @@ class TestWhatHoldsTheExit(_Base):
 			_eir_out(c)
 		self.assertNotEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 
-	def test_on_wants_the_leak_check_off_does_not(self):
+	def test_the_leak_check_holds_nothing_even_when_on(self):
+		"""Like the EIR-Out (2026-10-08): a condition record, whatever the switch says."""
 		c = self._tank("0000003", status="Available")
-		with self.assertRaisesRegex(frappe.ValidationError, "Leak Check"):
-			_eir_out(c, leak_check=False)
-		self._set(False)
 		_eir_out(c, leak_check=False)
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 
@@ -253,7 +258,8 @@ class TestEirOutBornWithTheBooking(_Base):
 			frappe.get_doc("Inspection", eir).submit()
 		self._set(False)
 		frappe.get_doc("Inspection", eir).submit()
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
+		# The EIR-Out is a record only — the bon is the gate-out (gate.depart_bon).
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
 		order = frappe.db.get_value("Survey Order", {"booking": bk}, "name")
 		self.assertEqual(
 			frappe.db.get_value("Survey Order Tank", {"parent": order, "container": c}, "status"), ts.WAITING
@@ -270,7 +276,13 @@ class TestEirOutBornWithTheBooking(_Base):
 		bk2 = self._booking(gone)
 		self.assertFalse(self._eir_out_of(bk2, gone))
 
-	def test_a_draft_booking_never_takes_a_live_bookings_eir_out(self):
+	def test_a_draft_booking_raises_no_eir_out(self):
+		c = self._tank("0000026")
+		bk = self._booking(c, confirmed=False, survey_date=add_days(today(), 1))
+		self.assertFalse(self._eir_out_of(bk, c))
+		self.assertFalse(frappe.db.exists("Survey Order", {"booking": bk}))
+
+	def test_a_second_booking_never_takes_a_live_bookings_eir_out(self):
 		c = self._tank("0000025")
 		first = self._booking(c)
 		eir = self._eir_out_of(first, c)

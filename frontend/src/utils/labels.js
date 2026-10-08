@@ -619,7 +619,6 @@ export const labels = {
 	eirOutPrevClean: "EIR-In: tidak ada temuan",
 	eirOutPrevPhotos: "Foto EIR-In",
 	eirOutNoBaseline: "Tidak ada EIR-In sebelumnya untuk dibandingkan",
-	eirOutWillReady: "Setelah di-ACC Adm Ops, tank tercatat KELUAR DEPO",
 	// Kelengkapan tank — kotak isian pada form EIR cetak (bukan temuan kerusakan).
 	// Dicatat di EIR-In DAN EIR-Out supaya selisihnya kelihatan.
 	fittingsTitle: "Kelengkapan Tank",
@@ -1171,7 +1170,7 @@ export const labels = {
 	tankPosTitle: "Posisi tank",
 	tankPosHint: "Cari atau scan tank untuk perbarui posisinya",
 	tankPosSearch: "Cari nomor tank…",
-	leakHint: "Wajib diisi sebelum tank keluar depo.",
+	leakHint: "Catatan kondisi tank — boleh diisi sebelum atau sesudah tank keluar.",
 	leakPickTank: "Pilih tank",
 	leakChange: "Ganti",
 	leakPhotos: "Foto",

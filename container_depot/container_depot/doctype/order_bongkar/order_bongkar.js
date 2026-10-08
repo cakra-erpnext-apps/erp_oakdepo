@@ -121,8 +121,7 @@ function _lock_actions(frm) {
 	// for editing the paper the driver was handed. Mirrors
 	// order_generation.ORDER_TERMINAL_STATUS, which refuses both calls anyway — this is only
 	// so the operator is not offered a button that answers with a red box. The way back is
-	// to undo the EIR-Out / gate-out: that returns the bon to `Issued` and these buttons
-	// with it.
+	// to revert the EIR-In: that returns the bon to `Issued` and these buttons with it.
 	// A bon whose tanks all came in without an EIR is Completed at issue — no EIR closed it,
 	// so it stays undoable (order_generation.order_undoable).
 	const undoable = (frm.doc.__onload || {}).undoable ?? frm.doc.order_status !== 'Completed';

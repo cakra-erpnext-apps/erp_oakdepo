@@ -13,19 +13,19 @@
    "fieldname": "enforce_all_orders",
    "fieldtype": "Check",
    "label": "Wajibkan Semua Order",
-   "description": "Centang = semua order wajib selesai sebelum tank keluar (Survey, Leak Check, Cleaning, M&R). Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In, EIR-Out dan pembayaran."
+   "description": "Centang = Cleaning dan M&R wajib selesai sebelum bon muat, dan EIR-Out menunggu survey tank-nya. Tidak dicentang = yang wajib hanya Booking, Bon, Gate, EIR-In dan pembayaran. EIR-Out dan Leak Check tidak pernah menahan tank keluar."
   },
   {
    "depends_on": "eval:!doc.enforce_all_orders",
    "fieldname": "enforce_note",
    "fieldtype": "HTML",
    "label": "Catatan",
-   "options": "<div class=\"alert alert-warning\">Order wajib <b>OFF</b>. Survey, Leak Check, Cleaning dan M&R tetap lahir dan tetap bisa diselesaikan kapan saja, tapi tidak lagi menahan bon muat, EIR-Out maupun gate-out. Statusnya tidak diubah.</div>"
+   "options": "<div class=\"alert alert-warning\">Order wajib <b>OFF</b>. Survey, Cleaning dan M&R tetap lahir dan tetap bisa diselesaikan kapan saja, tapi tidak lagi menahan bon muat maupun EIR-Out. Statusnya tidak diubah.</div>"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-10-02 12:00:00.000000",
+ "modified": "2026-10-08 12:00:00.000000",
  "module": "Container Depot",
  "name": "Depot Operation Settings",
  "permissions": [

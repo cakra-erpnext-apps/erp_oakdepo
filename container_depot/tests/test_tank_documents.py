@@ -24,6 +24,7 @@ class TestTankDossier(FrappeTestCase):
 		frappe.set_user("Administrator")
 		self._containers = []
 		self._bookings = []
+		self._bons = []
 
 	def tearDown(self):
 		if self._bookings:
@@ -37,6 +38,9 @@ class TestTankDossier(FrappeTestCase):
 				frappe.db.delete("Survey Order Tank", {"parent": ["in", _orders]})
 				frappe.db.delete("Survey Order", {"name": ["in", _orders]})
 			frappe.db.delete("Booking Code", {"booking": ["in", self._bookings]})
+		for bon in self._bons:
+			frappe.db.delete("Order Container Item", {"parent": bon})
+			frappe.db.delete("Order Muat", {"name": bon})
 		for b in self._bookings:
 			frappe.db.delete("Container Booking Item", {"parent": b})
 			frappe.db.delete("Container Booking", {"name": b})
@@ -63,6 +67,11 @@ class TestTankDossier(FrappeTestCase):
 		})
 		doc.flags.ignore_validate = True
 		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		# Confirmed: a Tank Out raises its EIR-Out / survey day only at Submit (2026-10-08).
+		frappe.db.set_value("Container Booking", doc.name, "docstatus", 1, update_modified=False)
+		frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=1 WHERE parent=%s", doc.name)
+		doc.reload()
+		doc._provision_survey_order()
 		self._bookings.append(doc.name)
 		return doc.name
 
@@ -115,11 +124,9 @@ class TestTankDossier(FrappeTestCase):
 		self.assertEqual(by_name[svo.name]["kind"], "Survey")
 		self.assertEqual(by_name[svo.name]["status"], "Lowered")
 		self.assertTrue(by_name[svo.name]["open"])
-		# With every order mandatory the EIR-Out waits for this survey (2026-10-02), so it holds
-		# the gate-out; switched off it is listed, open, and holds nothing.
-		from container_depot.container_depot.order_policy import enforce_all
-
-		self.assertEqual(by_name[svo.name]["blocks"], enforce_all())
+		# The EIR-Out may wait for it, but the gate does not (the bon muat is the gate-out,
+		# 2026-10-08): listed, open, and holding nothing.
+		self.assertFalse(by_name[svo.name]["blocks"])
 
 	def _cleaning(self, container, created=None):
 		name = frappe.get_doc({
@@ -129,11 +136,20 @@ class TestTankDossier(FrappeTestCase):
 			frappe.db.set_value("Cleaning Order", name, "creation", created, update_modified=False)
 		return name
 
-	def _gate_out(self, container, at, eir_out=None):
+	def _gate_out(self, container, at, booking=None):
+		"""A departure; with ``booking``, on a bon muat of that booking (``gate.depart_bon``)."""
+		bon = None
+		if booking:
+			from container_depot.tests.test_api import ensure_test_customer
+			from container_depot.tests.test_eir import _make_order_muat
+
+			bon = _make_order_muat(ensure_test_customer("Tank Documents Co"), container)
+			frappe.db.set_value("Order Muat", bon, "booking", booking, update_modified=False)
+			self._bons.append(bon)
 		frappe.get_doc({
 			"doctype": "Gate Entry", "container_no": container, "status": "Gate_Out_Completed",
 			"gate_in_timestamp": add_to_date(at, hours=-1), "gate_out_timestamp": at,
-			"eir_reference": eir_out,
+			"order_muat": bon,
 		}).insert(ignore_permissions=True)
 
 	def _eir_outs(self, booking):
@@ -176,7 +192,7 @@ class TestTankDossier(FrappeTestCase):
 		c = self._container("TDOC000008")
 		bk = self._booking(c)
 		stay = self._cleaning(c, created=add_to_date(now_datetime(), hours=-2))
-		self._gate_out(c, add_to_date(now_datetime(), hours=-1), eir_out=self._eir_outs(bk)[0])
+		self._gate_out(c, add_to_date(now_datetime(), hours=-1), booking=bk)
 		next_visit = self._cleaning(c)
 
 		tank, by_name = self._by_name(bk)

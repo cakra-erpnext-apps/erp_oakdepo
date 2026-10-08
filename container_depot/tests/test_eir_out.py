@@ -96,16 +96,8 @@ def _eir_in(container, *, damage=False, fittings=None):
 
 
 def _submit_eir_out(container, *, has_damage=False, order_muat=None):
-	"""Create + submit an EIR-Out directly (bypasses the worklist) and return its name.
-
-	A bon is ALWAYS ensured, even when the test does not care which one: since 2026-09-03 an
-	EIR-Out cannot be submitted until an Order Muat carries its tank
-	(``Inspection.before_submit``), because a clean submit sends the tank through the gate in
-	the same breath. Tests that are about something else should not have to say so.
-	"""
-	if not order_muat and not eir.latest_voucher_for_container(container, "EIR-Out"):
-		_make_order_muat(ensure_test_customer("EIR-Out Shipper"), container)
-	make_leak_check(container)
+	"""Create + submit an EIR-Out directly (bypasses the worklist) and return its name. It needs
+	no bon (user, 2026-10-08): the bon is the gate-out, the EIR-Out only the condition record."""
 	doc = frappe.new_doc("Inspection")
 	doc.inspection_type = "EIR-Out"
 	doc.container = container
@@ -221,21 +213,17 @@ class TestEirOut(FrappeTestCase):
 		self.assertEqual(eir.attach_order_muat_to_eirs(om), {"attached": [], "missing": []})
 		self.assertEqual(frappe.db.count("Inspection", {"container": c, "inspection_type": "EIR-Out"}), 1)
 
-	def test_an_eir_out_cannot_be_submitted_before_the_bon_is_out(self):
-		"""Submitting is not a filing step here — a clean EIR-Out sends the tank through the
-		gate in the same submit. Doing that with no bon behind it would release a tank on no
-		loading paperwork at all: no truck, no driver, no booking code surrendered."""
+	def test_an_eir_out_is_submitted_without_a_bon_and_moves_nothing(self):
+		"""The bon is the gate-out (user, 2026-10-08): the EIR-Out is finished whenever the
+		field team gets to it, before the bon or after, and the tank stays where it is."""
 		c = _container(f"{PREFIX}0000012")
 		_eir_in(c)
 		_finish_cleaning(c)
+		before = frappe.db.get_value("Container", c, "status")
 		eo = frappe.get_doc("Inspection", _eir_out_draft(c))
-		with self.assertRaises(frappe.ValidationError):
-			eo.submit()
-
-		_make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
-		make_leak_check(c)
-		frappe.get_doc("Inspection", eo.name).submit()
+		eo.submit()
 		self.assertEqual(frappe.db.get_value("Inspection", eo.name, "docstatus"), 1)
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), before)
 
 	def test_open_eir_out_reference(self):
 		c = _container(f"{PREFIX}0000005")
@@ -346,28 +334,28 @@ class TestEirOut(FrappeTestCase):
 		_submit_eir_out(c)
 		self.assertEqual(container.seal_history(c), [])
 
-	def test_submit_clean_releases_the_tank(self):
-		"""A clean submit scores Ready To Load and, in the same submit, takes the tank out —
-		so a single-tank bon goes straight past Ready To Load to Completed."""
-		c = _container(f"{PREFIX}0000006")
-		_eir_in(c)
-		_finish_cleaning(c)
-		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
-
-		name = _submit_eir_out(c, order_muat=om)
-		self.assertEqual(frappe.db.get_value("Inspection", name, "out_outcome"), "Ready To Load")
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
-		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Completed")
+	def test_submit_writes_nothing_on_the_bon(self):
+		"""No Ready To Load / Hold any more: the bon's own submit closed it."""
+		for no, damage in (("0000006", False), ("0000007", True)):
+			c = _container(f"{PREFIX}{no}")
+			_eir_in(c)
+			_finish_cleaning(c)
+			om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
+			status = frappe.db.get_value("Order Muat", om, "order_status")
+			name = _submit_eir_out(c, has_damage=damage, order_muat=om)
+			self.assertFalse(frappe.db.get_value("Inspection", name, "out_outcome"))
+			self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), status)
+			self.assertNotEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
 
 	def test_the_field_finishes_an_eir_out_with_no_review(self):
-		"""PWA "Selesaikan EIR-Out" is the real Submit (user, 2026-10-07): no Pending Review,
-		and the gate-out happens on the press."""
+		"""PWA "Selesaikan EIR-Out" is the real Submit (user, 2026-10-07): no Pending Review —
+		and since 2026-10-08 no gate-out either, that is the bon's."""
 		eo = self._draft_with_seals(f"{PREFIX}0000031", [])
 		res = eir.save_draft(inspection=eo, inspection_type="EIR-Out", submit=1)
 		self.assertEqual((res["docstatus"], res["pending_review"]), (1, False))
 		self.assertNotEqual(frappe.db.get_value("Inspection", eo, "status"), "Pending Review")
 		self.assertTrue(frappe.db.get_value("Inspection", eo, "work_ended_on"))
-		self.assertEqual(frappe.db.get_value("Container", f"{PREFIX}0000031", "status"), "Gate_Out")
+		self.assertNotEqual(frappe.db.get_value("Container", f"{PREFIX}0000031", "status"), "Gate_Out")
 
 	def test_an_eir_in_from_the_field_still_waits_for_review(self):
 		"""Only EIR-Out skips the review: the same press on an EIR-In leaves a draft."""
@@ -377,18 +365,6 @@ class TestEirOut(FrappeTestCase):
 		eir.start_eir(ei)
 		res = eir.save_draft(inspection=ei, inspection_type="EIR-In", submit=1)
 		self.assertEqual((res["docstatus"], res["status"], res["pending_review"]), (0, "Pending Review", True))
-
-	def test_submit_with_a_finding_sets_hold(self):
-		"""A checklist finding is now the only thing that can hold a tank — the separate
-		exterior / seal assessment was dropped at the depot's request."""
-		c = _container(f"{PREFIX}0000007")
-		_eir_in(c)
-		_finish_cleaning(c)
-		om = _make_order_muat(ensure_test_customer("EIR-Out Shipper"), c)
-
-		name = _submit_eir_out(c, has_damage=True, order_muat=om)
-		self.assertEqual(frappe.db.get_value("Inspection", name, "out_outcome"), "Hold Pending Clearance")
-		self.assertEqual(frappe.db.get_value("Order Muat", om, "order_status"), "Hold")
 
 	def test_open_draft_separates_in_and_out(self):
 		c = _container(f"{PREFIX}0000008", status="Available")

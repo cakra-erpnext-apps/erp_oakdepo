@@ -314,6 +314,11 @@ def fetch_voucher(voucher: str | None, inspection_type: str = "EIR-In", containe
 	return snap
 
 
+# The shipment detail an EIR copies off its bon — read-only on the EIR, kept in step with the
+# booking line wherever it is corrected (``order_generation.refresh_bon_followers``).
+_SNAPSHOT_FIELDS = ("truck_no", "driver", "driver_phone", "emkl", "shipper")
+
+
 def _apply_voucher(doc, referred_voucher: str | None) -> None:
 	"""Stamp the read-only shipment snapshot from ``referred_voucher`` onto an Inspection
 	(or clear it when no voucher). The voucher doctype follows the inspection type."""
@@ -472,7 +477,7 @@ def _new_eir_out(container: str, depot: str | None, booking: str | None, **links
 	return eir.name
 
 
-def provision_eir_out_for_booking(booking_name: str) -> dict:
+def provision_eir_out_for_booking(booking_name: str, withdraw_draft: bool = False) -> dict:
 	"""Satu draft EIR-Out per tank, langsung dari booking Tank Out — dengan atau tanpa survey.
 
 	Sejak 2026-10-02 (permintaan user) EIR-Out lahir bersama Survey Order, bukan menunggu
@@ -480,6 +485,10 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 	EIR-Out sama sekali. Survey yang ditutup belakangan memakai EIR-Out ini
 	(:func:`provision_eir_out_for_survey`); kapan ia boleh disubmit diputuskan
 	``Inspection.before_submit`` + saklar "Wajibkan Semua Order".
+
+	Lahir saat booking di-Confirm (submit), bukan dari draft (user, 2026-10-08): draft masih bisa
+	batal. Simpan draft tidak menyentuh apa pun — EIR-Out yang terbit dengan aturan lama tetap —
+	dan ``withdraw_draft`` (Kembali ke Draft) menarik yang diterbitkan Confirm.
 
 	Dipanggil tiap booking disimpan (juga draft, cancel dan void), jadi total dan idempoten:
 
@@ -494,8 +503,8 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 	  (``tank_survey.close_survey_order_with_booking``).
 
 	Penandanya ``Inspection.container_booking``, distempel saat lahir; ``stamp_container_booking``
-	mempertahankannya selama EIR belum punya bon. Draft ini tetap baru bisa disubmit setelah bon
-	muat terbit (``Inspection.before_submit``) — bon itulah yang mengadopsinya.
+	mempertahankannya selama EIR belum punya bon. EIR-Out ini boleh disubmit sebelum atau sesudah
+	bon muat terbit — bon itulah yang mengeluarkan tank (``gate.depart_bon``) dan mengadopsinya.
 	"""
 	b = frappe.db.get_value(
 		"Container Booking", booking_name,
@@ -503,7 +512,10 @@ def provision_eir_out_for_booking(booking_name: str) -> dict:
 	)
 	if not b or b.direction != "Tank Out":
 		return {"created": [], "withdrawn": []}
-	live = b.booking_status != "Cancelled" and cint(b.docstatus) != 2
+	draft = cint(b.docstatus) == 0 and b.booking_status != "Cancelled"
+	if draft and not withdraw_draft:
+		return {"created": [], "withdrawn": []}
+	live = not draft and b.booking_status != "Cancelled" and cint(b.docstatus) != 2
 	items = frappe.get_all(
 		"Container Booking Item",
 		filters={"parent": b.name, "parenttype": "Container Booking"},
@@ -631,9 +643,9 @@ def attach_order_muat_to_eirs(order_name: str) -> dict:
 	The EIR-Out is raised by the position survey now (:func:`provision_eir_out_for_survey`),
 	so by the time a bon is cut the document is already sitting in the surveyor's worklist,
 	half filled in. What the bon adds is the half only it knows — truck, driver, driver phone,
-	EMKL, reff doc — and, crucially, the reference that makes the EIR submittable at all
-	(``Inspection.before_submit``). So everything typed on the Generate Bon screen lands
-	straight on the EIR the survey opened, instead of on a second one raised beside it.
+	EMKL, reff doc — and the reference that ties the EIR to its departure. So everything typed
+	on the Generate Bon screen lands straight on the EIR already raised, instead of on a second
+	one raised beside it. An EIR-Out finished before the bon is adopted the same way.
 
 	A tank with NO open EIR-Out draft is reported back rather than given one. That is the
 	deliberate consequence of a single birthplace: no survey, no EIR-Out, and inventing one
@@ -650,6 +662,7 @@ def attach_order_muat_to_eirs(order_name: str) -> dict:
 		filters={"parent": order_name, "parenttype": "Order Muat"},
 		fields=["container", "container_no"],
 	)
+	booking = frappe.db.get_value("Order Muat", order_name, "booking")
 	out = {"attached": [], "missing": []}
 	for row in rows:
 		container = row.get("container")
@@ -664,11 +677,33 @@ def attach_order_muat_to_eirs(order_name: str) -> dict:
 			# Already submitted against this very bon? Then there is nothing missing — this is
 			# a re-submit of a bon that was reverted to draft (order_generation), and the EIR
 			# it stamped is done.
-			if not frappe.db.exists(
+			if frappe.db.exists(
 				"Inspection",
 				{"container": container, "inspection_type": "EIR-Out", "referred_voucher": order_name},
 			):
+				continue
+			# Finished BEFORE the bon (the bon is the gate, the EIR-Out may come first): it is
+			# this booking's, still with no bon, and takes the bon's detail like a draft would.
+			done = booking and frappe.db.get_value(
+				"Inspection",
+				{
+					"container": container, "inspection_type": "EIR-Out", "docstatus": 1,
+					"container_booking": booking, "referred_voucher": ["is", "not set"],
+				},
+				"name",
+			)
+			if not done:
 				out["missing"].append(row.get("container_no") or container)
+				continue
+			try:
+				snap = fetch_voucher(order_name, "EIR-Out", container=container)
+				update = {k: snap[k] for k in ("voucher_doctype", "referred_voucher", *_SNAPSHOT_FIELDS)}
+				if not frappe.db.get_value("Inspection", done, "reff_doc") and snap.get("reff_doc"):
+					update["reff_doc"] = snap["reff_doc"]
+				frappe.db.set_value("Inspection", done, update)
+				out["attached"].append(done)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(), f"attach EIR-Out for {container} on {order_name}")
 			continue
 		try:
 			doc = frappe.get_doc("Inspection", draft)
@@ -2606,9 +2641,8 @@ def revert_to_draft(name: str) -> dict:
 	applied on submit are undone from the pre-submit snapshot, then the SAME record is
 	flipped back to an editable draft (so it opens again in the PWA and in Desk).
 
-	For an EIR-Out this is also the only way to undo a DEPARTURE: submitting a clean EIR-Out
-	is what gates the tank out, so reverting it brings the tank back into the depot and
-	reopens its Gate Entry.
+	An EIR-Out never moved the tank (the bon is the gate-out), so reverting one leaves the tank,
+	its bon and its gate log where they are.
 	"""
 	doc = frappe.get_doc("Inspection", name)
 	doc.check_permission("cancel")
@@ -2688,35 +2722,29 @@ def unwind_submitted_eir(doc, drop_followups: bool = False) -> None:
 	keeping that in one place is what stops the void half quietly rolling back less than the
 	revert half — which is exactly what it used to do.
 
-	Three things come off, in this order:
+	Two things come off, in this order:
 
 	1. the Container status / last cargo this EIR wrote, from the pre-submit snapshot
-	   ``Inspection.on_submit`` captured;
-	2. for an EIR-Out, the DEPARTURE itself — submitting a clean one gates the tank out, so
-	   the Gate Entry, the bon it closed and the booking's ``% Keluar`` are all put back
-	   (:func:`gate.reverse_gate_out`). The container is restored first on purpose: every
-	   figure there is recomputed from the live status;
-	3. with ``drop_followups``, the Cleaning Order / M&R the submit filed off an EIR-In,
+	   ``Inspection.on_submit`` captured — for an EIR-Out the cargo only: it never moved the
+	   tank (the bon is the gate-out, ``gate.depart_bon``), so undoing it must not either;
+	2. with ``drop_followups``, the Cleaning Order / M&R the submit filed off an EIR-In,
 	   while they are still untouched (:func:`eir_followups.release_followups_for_eir`).
 	   Only the VOID asks for that. A revert is on its way back to a re-submit, and the
 	   order it filed the first time is deliberately kept and re-adopted
 	   (``create_cleaning_order_from_eir``) rather than dropped and filed again — which
 	   would re-ring the cleaning team for a wash they were already told about.
 
-	The tank's ``in_date`` is not touched: it is the bon's day (``visit_dates``), and an EIR
-	never wrote it. The gate dates are cleared by the bon's own cancel, which is the document
-	that owns them; an EIR-Out's departure is undone by ``gate.reverse_gate_out``.
+	The tank's ``in_date`` / ``out_date`` are not touched: they are the bons' days
+	(``visit_dates``), and an EIR never wrote them. The departure is undone by the bon's own
+	Kembalikan ke Draft / void (``gate.reverse_bon_departures``).
 	"""
 	_restore_container_on_revert(doc)
 
-	# An EIR-Out submit IS the departure (Inspection.on_submit -> gate.mark_gate_out), so
-	# undoing it has to un-stamp the Gate Entry too — otherwise the visit reads as finished
-	# while the tank is standing in the yard again, and the corrected EIR-Out would file a
-	# second record for the same visit.
 	if doc.inspection_type == "EIR-Out":
-		from container_depot.container_depot.gate import reverse_gate_out
-
-		reverse_gate_out(doc.name, doc.container)
+		# Off the departure's Gate Entry: the corrected EIR-Out links itself again on re-submit.
+		frappe.db.set_value(
+			"Gate Entry", {"eir_reference": doc.name}, "eir_reference", None, update_modified=False
+		)
 	elif doc.inspection_type == "EIR-In" and drop_followups:
 		from container_depot.container_depot import eir_followups
 
@@ -2730,7 +2758,7 @@ def _restore_container_on_revert(doc) -> None:
 	changed = False
 
 	prev_status = doc.get("container_status_before_submit")
-	if prev_status and container.status != prev_status:
+	if doc.inspection_type != "EIR-Out" and prev_status and container.status != prev_status:
 		container.status = prev_status
 		changed = True
 
@@ -2842,6 +2870,11 @@ def revision_apply(doc, before) -> None:
 	submitted document's update skips validate."""
 	doc.sync_has_damage()
 	doc.drop_empty_photo_rows()
+	# Truck / driver / parties corrected here are the booking line's: written there, they
+	# come back to the bon and every other copy (order_generation.push_follower_to_line).
+	from container_depot.container_depot.order_generation import push_follower_to_line
+
+	push_follower_to_line(doc, before, doc.get("voucher_doctype"), doc.get("referred_voucher"))
 
 
 def revision_state(doc) -> dict:

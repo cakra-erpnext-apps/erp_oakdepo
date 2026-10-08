@@ -12,9 +12,10 @@ mixed in they buried the few lines the operator came for.
 Two different questions are answered side by side and must not be confused:
 
 * ``open``   — unfinished. Everything here is tracked on that basis, statuses as they are.
-* ``blocks`` — unfinished AND standing between the tank and the gate: Cleaning, M&R, survey and
-  Leak Check, only while "Wajibkan Semua Order" is ON (:mod:`order_policy`) and only until the
-  tank has left on this booking. A draft EIR-Out is unfinished paperwork, never a blocker.
+* ``blocks`` — unfinished AND standing between the tank and the gate: Cleaning and M&R, only
+  while "Wajibkan Semua Order" is ON (:mod:`order_policy`) and only until the tank has left on
+  this booking. The EIR-Out, the Leak Check and the survey are the tank's condition records —
+  unfinished paperwork, never a blocker (the bon muat is the gate-out, 2026-10-08).
 
 Read live, never stored: the answer must not be able to age.
 """
@@ -26,11 +27,11 @@ from frappe import _
 
 from container_depot.container_depot.order_policy import enforce_all
 
-# The stay's work, and the statuses at which each is finished with.
+# The stay's work, the statuses at which each is finished with, and whether it holds the gate.
 _VISIT_WORK = (
-	("Cleaning", "Cleaning Order", ("Completed", "Cancelled")),
-	("M&R", "Repair Order", ("Completed", "Cancelled", "Rejected")),
-	("Leak Check", "Leak Check", ("Completed",)),
+	("Cleaning", "Cleaning Order", ("Completed", "Cancelled"), True),
+	("M&R", "Repair Order", ("Completed", "Cancelled", "Rejected"), True),
+	("Leak Check", "Leak Check", ("Completed",), False),
 )
 
 
@@ -38,10 +39,10 @@ def _visit(booking: str, container: str):
 	"""``(since, until, eir_outs)`` — the stay this booking takes the tank out of.
 
 	The same line as the gate's own check (``container_status.last_departure``): work created
-	after the tank last left belongs to this stay. ``until`` is the gate-out stamped with this
-	booking's EIR-Out (``gate.mark_gate_out`` sets ``eir_reference``), so a booking whose tank has
-	already gone keeps showing that stay instead of the next one's work — and ``since`` is then
-	the departure before it.
+	after the tank last left belongs to this stay. ``until`` is the gate-out of this booking's
+	bon muat (``gate.depart_bon`` stamps ``order_muat``; older departures were stamped with the
+	EIR-Out in ``eir_reference``), so a booking whose tank has already gone keeps showing that
+	stay instead of the next one's work — and ``since`` is then the departure before it.
 	"""
 	eir_outs = frappe.get_all(
 		"Inspection",
@@ -55,14 +56,15 @@ def _visit(booking: str, container: str):
 		"status": ["!=", "Cancelled"],
 		"gate_out_timestamp": ["is", "set"],
 	}
+	bons = frappe.get_all("Order Muat", filters={"booking": booking, "docstatus": 1}, pluck="name")
 	until = None
-	if eir_outs:
-		until = frappe.db.get_value(
-			"Gate Entry",
-			{**left, "eir_reference": ["in", [e.name for e in eir_outs]]},
-			"gate_out_timestamp",
-			order_by="gate_out_timestamp desc",
+	for by, names in (("order_muat", bons), ("eir_reference", [e.name for e in eir_outs])):
+		until = names and frappe.db.get_value(
+			"Gate Entry", {**left, by: ["in", names]}, "gate_out_timestamp", order_by="gate_out_timestamp desc",
 		)
+		if until:
+			break
+	until = until or None
 	since = frappe.db.get_value(
 		"Gate Entry",
 		{**left, "gate_out_timestamp": ["<", until]} if until else left,
@@ -99,7 +101,7 @@ def documents_for(booking: str, container: str) -> list:
 		window.append(["creation", "<=", until])
 
 	out = []
-	for kind, doctype, done in _VISIT_WORK:
+	for kind, doctype, done, gates in _VISIT_WORK:
 		if not frappe.has_permission(doctype, "read"):
 			continue
 		for r in frappe.get_all(
@@ -108,7 +110,7 @@ def documents_for(booking: str, container: str) -> list:
 			cancelled = r.docstatus == 2
 			out.append(_line(
 				kind, doctype, r.name, r.status,
-				done=r.status in done, cancelled=cancelled, blocks=holds,
+				done=r.status in done, cancelled=cancelled, blocks=holds and gates,
 			))
 
 	if frappe.has_permission("Inspection", "read"):
@@ -122,7 +124,7 @@ def documents_for(booking: str, container: str) -> list:
 	if frappe.has_permission("Survey Order", "read"):
 		# A Survey Order covers the whole pickup, so the tank's line reads ITS row
 		# (Waiting Lowering → Lowered → Survey Done). ON, the EIR-Out waits for it
-		# (``Inspection.before_submit``), hence ``blocks``.
+		# (``Inspection.before_submit``) — but the gate does not, so it never blocks.
 		for r in frappe.db.sql(
 			"""
 			select p.name, p.docstatus, r.status
@@ -139,7 +141,6 @@ def documents_for(booking: str, container: str) -> list:
 				"Survey", "Survey Order", r.name, r.status,
 				done=r.status == "Survey Done",
 				cancelled=r.docstatus == 2 or r.status == "Cancelled",
-				blocks=holds,
 			))
 	return out
 

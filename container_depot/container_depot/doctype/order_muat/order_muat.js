@@ -58,16 +58,9 @@ function _lock_actions(frm) {
 	// otherwise a read-only account is offered a destructive action. Enforced server-side
 	// in order_generation.void_order / revert_order_to_draft; this is the screen half.
 	const may_cancel = frappe.perm.has_perm(frm.doctype, 0, 'cancel');
-	// ...and on the bon still being undoable at all. `Completed` is written by the GATE once
-	// the bon's last tank has physically left the depot, and neither undo is honest after
-	// that: Cancel would return the Booking Codes of a tank that is gone, the rollback would reopen
-	// for editing the paper the driver was handed. Mirrors
-	// order_generation.ORDER_TERMINAL_STATUS, which refuses both calls anyway — this is only
-	// so the operator is not offered a button that answers with a red box. The way back is
-	// to undo the EIR-Out / gate-out: that returns the bon to `Issued` and these buttons
-	// with it.
-	// A bon whose tanks all left without an EIR closed at its own submit — it stays undoable
-	// (order_generation.order_undoable).
+	// ...and on the bon still being undoable (order_generation.order_undoable). An Order Muat
+	// always is: its submit IS the gate-out, so Kembalikan ke Draft / void is the way back for
+	// the departure too (gate.reverse_bon_departures).
 	const undoable = (frm.doc.__onload || {}).undoable ?? frm.doc.order_status !== 'Completed';
 	if (!frm.is_new() && may_cancel && undoable && frm.doc.docstatus === 1) {
 		frm.add_custom_button(__('Kembalikan ke Draft'), () => _confirm_revert(frm));
@@ -78,7 +71,7 @@ function _lock_actions(frm) {
 
 function _confirm_revert(frm) {
 	frappe.confirm(
-		__('Return this bon to Draft so it can be edited? Its containers stay reserved (codes remain Used).'),
+		__('Kembalikan bon ini ke Draft? Tank yang sudah keluar lewat bon ini kembali ke depo; booking code tetap terpakai.'),
 		() => {
 			frappe.call({
 				method: 'container_depot.container_depot.order_generation.revert_order_to_draft',

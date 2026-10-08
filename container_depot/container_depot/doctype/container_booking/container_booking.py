@@ -220,9 +220,8 @@ class ContainerBooking(Document):
 				update_modified=False,
 			)
 		self._auto_invoice()
-		# The outbound position survey is NOT raised here any more — the draft already did
-		# it (:meth:`_provision_survey_order`). on_update runs on the submit save too, so
-		# a booking that somehow reached Submit without one still gets it.
+		# The outbound position survey and the EIR-Outs are raised by on_update, which runs on
+		# the submit save too (:meth:`_provision_survey_order`) — Confirm is where they are born.
 		from container_depot.container_depot.notify import notify_booking_submitted
 		notify_booking_submitted(self)
 
@@ -409,17 +408,17 @@ class ContainerBooking(Document):
 		lift_on.sync_booking_targets(self)
 		self._provision_survey_order()
 
-	def _provision_survey_order(self):
-		"""Put this outbound booking's field survey on the calendar — also from the draft.
+	def _provision_survey_order(self, withdraw_draft=False):
+		"""Put this outbound booking's field survey on the calendar and raise its EIR-Outs —
+		from Confirm (Submit), never from a draft (user, 2026-10-08): a draft may still be
+		dropped, and work raised off it would be work nobody ordered. A draft save leaves
+		both alone; ``withdraw_draft`` (Kembali ke Draft) calls back what Confirm raised.
 
 		Creates (or updates) one ``Survey Order`` for the booking's ``survey_date``, with one
-		tank row underneath it per container, each starting at Waiting Lowering. Same reason as
-		the lift-on stamp: getting a tank down out of a full stack is preparation, and
-		preparation that starts at Submit starts too late.
-
-		Run on EVERY save, including a cancel, because the schedule has to follow the booking
-		both ways — a moved survey date moves the whole day's job, and a voided booking marks
-		its day called off. Idempotent throughout, and best-effort: a schedule hiccup must
+		tank row underneath it per container, each starting at Waiting Lowering, and one draft
+		EIR-Out per tank. Run on EVERY save, including a cancel, because both have to follow the
+		booking both ways — a moved survey date moves the whole day's job, and a voided booking
+		marks its day called off. Idempotent throughout, and best-effort: a schedule hiccup must
 		never block saving a booking.
 		"""
 		if self.direction != "Tank Out":
@@ -428,15 +427,15 @@ class ContainerBooking(Document):
 			from container_depot.container_depot.tank_survey import (
 				provision_survey_order_for_booking,
 			)
-			provision_survey_order_for_booking(self.name)
+			provision_survey_order_for_booking(self.name, withdraw_draft=withdraw_draft)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"provision survey order for {self.name}")
-		# Tanpa survey (use_survey = 0) EIR-Out lahir di sini, langsung dari booking. Sama
-		# seperti jadwal survey: idempoten, mengikuti baris & void booking dua arah.
+		# EIR-Out lahir di sini, langsung dari booking (dengan atau tanpa survey). Sama seperti
+		# jadwal survey: idempoten, mengikuti baris & void booking dua arah.
 		try:
 			from container_depot.container_depot.eir import provision_eir_out_for_booking
 
-			provision_eir_out_for_booking(self.name)
+			provision_eir_out_for_booking(self.name, withdraw_draft=withdraw_draft)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"provision EIR-Out for booking {self.name}")
 
@@ -2717,6 +2716,9 @@ def revert_booking_to_draft(booking):
 		update_modified=False,
 	)
 	frappe.db.sql("UPDATE `tabContainer Booking Item` SET docstatus=0 WHERE parent=%s", doc.name)
+	# Confirm raised the survey day and the EIR-Outs; a draft owes neither (untouched ones go,
+	# filled-in ones stay with a note — the same withdrawal a removed tank gets).
+	doc._provision_survey_order(withdraw_draft=True)
 	# This IS the answer to a pending Minta Revisi (:func:`request_revision`) — told to
 	# whoever asked, so a banner does not outlive the reopening.
 	if cint(doc.revision_requested):
@@ -3426,7 +3428,7 @@ def _describe_booking_conflict(conflict) -> tuple[str, str, str]:
 			move, booking, bon
 		)
 		finish = (
-			_("Tank keluar dulu lewat bon {0} (EIR-Out lalu gate-out); booking keluar baru bisa dibuat sesudahnya.")
+			_("Tank keluar dulu lewat bon {0} (submit bon itu = gate-out); booking keluar baru bisa dibuat sesudahnya.")
 			if out
 			else _("Tank masuk dulu lewat bon {0} (submit bon itu).")
 		).format(bon)
