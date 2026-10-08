@@ -1081,6 +1081,7 @@ def finish_survey(name, notes=None, photos=None) -> dict:
 		eir_out = provision_eir_out_for_survey(name)
 		if eir_out:
 			frappe.db.set_value(ROW, name, "eir_out", eir_out, update_modified=False)
+			home_interior_photos(name)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), f"provision EIR-Out for survey tank {name}")
 	notify_survey_done(_notify_payload(name), eir_out=eir_out)
@@ -1123,6 +1124,34 @@ def _save_interior_photos(row, photos) -> None:
 			"caption": p["caption"],
 			"taken_on": now,
 		}).db_insert()
+	home_interior_photos(row.name)
+
+
+def home_interior_photos(tank_row: str) -> int:
+	"""Tempelkan foto interior tank ini ke EIR-Out-nya — persis Foto per Item: file tetap privat,
+	dan siapa pun yang boleh membuka EIR-Out-nya boleh melihatnya (container_depot/files.py).
+
+	Ke EIR-Out, bukan ke Survey Order: yang membukanya Team EIR, dan mereka tidak membaca Survey
+	Order. Tanpa EIR-Out (belum terbit) sementara ke Survey Order, lalu dipindah begitu ada —
+	dipanggil lagi saat survey ditutup. Barisnya ditulis db_insert, jadi hook penyimpanan tidak
+	pernah menempelkannya sendiri."""
+	from container_depot.files import attach_urls
+
+	row = frappe.db.get_value(ROW, tank_row, ["name", "parent", "container", "eir_out"], as_dict=True)
+	if not row:
+		return 0
+	urls = frappe.get_all(INTERIOR_PHOTO, filters={"parent": row.parent, "survey_tank": row.name}, pluck="photo")
+	eir_out = row.eir_out or frappe.db.get_value(
+		"Inspection",
+		{
+			"inspection_type": "EIR-Out", "container": row.container, "docstatus": ["<", 2],
+			"container_booking": frappe.db.get_value(SCHEDULE, row.parent, "booking"),
+		},
+		"name",
+	)
+	if eir_out:
+		return attach_urls(urls, "Inspection", eir_out, also_from=(SCHEDULE, row.parent))
+	return attach_urls(urls, SCHEDULE, row.parent)
 
 
 def save_interior_photos(name, photos=None) -> dict:

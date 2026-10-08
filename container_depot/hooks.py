@@ -289,7 +289,9 @@ FILE_BEARING_DOCTYPES = (
 	"Inspection",
 	"Cleaning Order",
 	"Repair Order",
-	"Container Position Survey",
+	"Container Position",
+	"Leak Check",
+	"Survey Order",
 	"Container Booking",
 	"Depot Contract",
 )

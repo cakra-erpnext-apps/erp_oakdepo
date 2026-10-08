@@ -1198,6 +1198,25 @@ class TestLoweringPhotos(_Base):
 		# dilihat orang.
 		self.assertEqual(frappe.db.get_value("Container", c, "current_location"), "blok kanan B9")
 
+	def test_interior_photos_are_attached_to_the_tank_s_eir_out(self):
+		"""Persis Foto per Item: file tetap privat, menempel ke EIR-Out tanknya — jadi Team EIR
+		yang membuka EIR-Out itu bisa melihatnya, bukan cuma yang memotret (403)."""
+		from container_depot.tests.test_files import _orphan_file
+
+		c = self._container("TSVPHOTO0002")
+		row = self._row(self._booking(c))
+		ts.mark_lowered(row)
+		f = _orphan_file("survey-interior.png")
+		try:
+			ts.save_interior_photos(row, [{"photo": f.file_url, "caption": "dalam"}])
+			eir_out = frappe.db.get_value("Inspection", {"container": c, "inspection_type": "EIR-Out"}, "name")
+			self.assertTrue(eir_out)
+			self.assertEqual(
+				frappe.db.get_value("File", f.name, ["attached_to_doctype", "attached_to_name"]), ("Inspection", eir_out)
+			)
+		finally:
+			frappe.delete_doc("File", f.name, force=True, ignore_permissions=True)
+
 
 # ---------------------------------------------------------------------------
 class TestTheTankTimeline(_Base):

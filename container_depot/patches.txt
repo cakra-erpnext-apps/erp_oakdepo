@@ -159,3 +159,4 @@ container_depot.patches.v1_18.storage_from_eir_date
 container_depot.patches.v1_18.order_date_backfill
 container_depot.patches.v1_18.repair_revision_fields
 container_depot.patches.v1_19.in_out_dates
+container_depot.patches.v1_20.attach_orphan_photos

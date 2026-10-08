@@ -41,24 +41,37 @@ def _file_urls(doc) -> set:
 
 def attach_to_document(doc, event=None):
 	"""Tempelkan file yatim yang dirujuk dokumen ini ke dokumen ini (hook on_update)."""
-	urls = _file_urls(doc)
-	if not urls:
-		return
-	orphans = frappe.get_all(
+	attach_urls(_file_urls(doc), doc.doctype, doc.name)
+
+
+def attach_urls(urls, doctype: str, name: str, *, also_from: tuple | None = None) -> int:
+	"""Tempelkan file ``urls`` yang masih yatim ke ``doctype``/``name``. ``also_from`` =
+	``(doctype, name)`` yang tempelannya boleh dipindah ke sini juga. Mengembalikan jumlahnya.
+
+	Untuk jalur yang menulis baris foto tanpa ``save()`` (hook-nya tidak jalan), seperti foto
+	interior survey (``tank_survey._save_interior_photos``)."""
+	urls = sorted(u for u in urls or () if u and u.startswith(FILE_PREFIXES))
+	if not urls or not name:
+		return 0
+	files = frappe.get_all(
 		"File",
-		filters={"file_url": ["in", sorted(urls)], "attached_to_doctype": ["is", "not set"]},
+		filters={"file_url": ["in", urls], "attached_to_doctype": ["is", "not set"]},
 		pluck="name",
 	)
-	for name in orphans:
+	if also_from and also_from[1]:
+		files += frappe.get_all(
+			"File",
+			filters={"file_url": ["in", urls], "attached_to_doctype": also_from[0], "attached_to_name": also_from[1]},
+			pluck="name",
+		)
+	for file in files:
 		# Sengaja db.set_value: menempelkan file bukan perubahan yang perlu tercatat sebagai
 		# edit dokumen File, dan File.validate akan menuntut izin tulis atas dokumen tujuan —
 		# padahal ini justru dijalankan DARI penyimpanan dokumen itu.
 		frappe.db.set_value(
-			"File",
-			name,
-			{"attached_to_doctype": doc.doctype, "attached_to_name": doc.name},
-			update_modified=False,
+			"File", file, {"attached_to_doctype": doctype, "attached_to_name": name}, update_modified=False,
 		)
+	return len(files)
 
 
 def _attach_columns(doctype: str):

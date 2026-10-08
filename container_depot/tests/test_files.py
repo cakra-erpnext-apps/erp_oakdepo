@@ -65,6 +65,14 @@ class TestAttachPwaFiles(FrappeTestCase):
 			self.assertEqual(f.attached_to_doctype, "Inspection")
 			self.assertEqual(f.attached_to_name, doc.name)
 
+	def test_a_leak_check_adopts_its_photos(self):
+		photo = _orphan_file("pwa-leak.png")
+		doc = frappe.get_doc({
+			"doctype": "Leak Check", "container": self.container, "photos": [{"photo": photo.file_url}],
+		}).insert(ignore_permissions=True)
+		photo.reload()
+		self.assertEqual((photo.attached_to_doctype, photo.attached_to_name), ("Leak Check", doc.name))
+
 	def test_an_unreferenced_file_is_left_alone(self):
 		stray = _orphan_file("bukan-milik-eir.png")
 		doc = self._eir()
