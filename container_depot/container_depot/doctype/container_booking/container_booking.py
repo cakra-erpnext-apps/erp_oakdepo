@@ -3315,13 +3315,10 @@ def _code_still_holds(code, status) -> bool:
 	  cannot be used here: a Tank In booking flips its own tanks to ``Booked`` during
 	  ``validate`` (``_mark_pre_arrival``), so by the time this runs the booking has
 	  already overwritten the very fact being tested.
-	* **Tank Out** — submitting the bon does NOT move the tank; it leaves at the gate,
-	  which is what puts it outside ``PRESENT``. Status alone is not enough though: a tank
-	  that left on this code and has since come BACK is PRESENT again, and reading only
-	  the status revived the old code and refused its next outbound booking. So the code
-	  is also spent once the EIR-Out cut against its bon was submitted (that submit IS the
-	  gate-out — ``Inspection.on_submit`` → ``gate.mark_gate_out``). Legacy departures
-	  with no such EIR still fall back to the status alone.
+	* **Tank Out** — spent once the tank left on this code's bon (:func:`_departed_for_code`).
+	  Status alone is not enough: a tank that left and has since come BACK is PRESENT
+	  again, and reading only the status revived the old code and refused its next
+	  outbound booking.
 	"""
 	if code.get("direction") == "Tank Out":
 		return status in PRESENT and not _departed_for_code(code.get("name"))
@@ -3329,21 +3326,40 @@ def _code_still_holds(code, status) -> bool:
 
 
 def _departed_for_code(code: str) -> bool:
-	"""Did the tank on this Tank Out code leave on it — a submitted EIR-Out on its bon?"""
-	row = frappe.db.get_value("Booking Code", code, ["container"], as_dict=True) if code else None
-	if not row or not row.container:
+	"""Did the tank on this Tank Out code leave on it?
+
+	Asked of the departure itself, never of the EIR-Out. The EIR-Out was the gate-out once,
+	but since 2026-10-08 it only records condition (the bon is the gate, ``gate.depart_bon``)
+	and is often linked to the booking rather than the bon — keying off it kept a code that
+	had long left holding the tank after it came back (user, 2026-10-09: OAKU2602203 out on
+	ORD-MT-2026-00055, back in, new Tank Out refused).
+
+	Two records, either is enough:
+
+	* the bon is submitted — that submit IS the gate-out now;
+	* a completed Gate Entry names the bon — every gate-out writes one (``mark_gate_out``),
+	  including the legacy EIR-Out-driven ones from before the bon was the gate.
+
+	ponytail: a pre-2026-10-08 bon submitted while its tank still waits for the EIR-Out reads
+	as gone; that leftover only lets a second outbound booking through, never blocks one.
+	"""
+	container = frappe.db.get_value("Booking Code", code, "container") if code else None
+	if not container:
 		return False
 	bons = frappe.get_all(
 		"Order Container Item",
 		filters={"parenttype": "Order Muat", "booking_code": code},
 		pluck="parent",
 	)
-	return bool(bons) and bool(frappe.db.exists("Inspection", {
-		"inspection_type": "EIR-Out",
-		"docstatus": 1,
-		"container": row.container,
-		"referred_voucher": ["in", bons],
-	}))
+	if not bons:
+		return False
+	return bool(frappe.db.count("Order Muat", {"name": ["in", bons], "docstatus": 1})) or bool(
+		frappe.db.exists("Gate Entry", {
+			"container_no": frappe.db.get_value("Container", container, "container_no"),
+			"order_muat": ["in", bons],
+			"status": "Gate_Out_Completed",
+		})
+	)
 
 
 def _bon_submitted_for_code(code: str) -> bool:

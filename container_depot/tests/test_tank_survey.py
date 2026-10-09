@@ -937,15 +937,42 @@ class TestReopen(_Base):
 						 ("Scheduled", 0, 0, 0))
 
 	def test_a_tank_that_has_left_cannot_be_reopened(self):
-		"""Its EIR-Out is submitted — the tank went out the gate. Reopening would queue a
-		departed tank for lowering and pull the day back to draft."""
-		_c, bk, row, eir = self._closed("TSVREOP00009")
+		"""Its bon muat is submitted — the bon is the gate-out (2026-10-08), so the tank went
+		out. Reopening would queue a departed tank for lowering and pull the day back to draft."""
+		c, bk, row, _eir = self._closed("TSVREOP00009")
+		code = frappe.get_doc({
+			"doctype": "Booking Code", "code": "TSVREOP-CODE-9", "booking": bk, "container": c,
+			"direction": "Tank Out", "state": "Used", "issued_at": frappe.utils.now_datetime(),
+		})
+		code.name = code.code
+		code.db_insert()
+		bon = frappe.get_doc({
+			"doctype": "Order Muat", "booking": bk, "docstatus": 1,
+			"containers": [{"container": c, "booking_code": code.name}],
+		})
+		bon.name = "TSVREOP-BON-9"
+		bon.db_insert()
+		bon.containers[0].update({"parent": bon.name, "parenttype": "Order Muat", "parentfield": "containers"})
+		bon.containers[0].db_insert()
+		try:
+			for fn in (ts.reopen_lowering, ts.reopen_survey):
+				with self.assertRaises(frappe.ValidationError):
+					fn(row, note="salah")
+			self.assertEqual(self._val(row, "status").status, ts.DONE)
+			self.assertEqual(self._progress(bk).docstatus, 1)
+		finally:
+			frappe.db.delete("Order Container Item", {"parent": bon.name})
+			frappe.db.delete("Order Muat", {"name": bon.name})
+			frappe.db.delete("Booking Code", {"name": code.name})
+			frappe.db.commit()
+
+	def test_a_submitted_eir_out_alone_does_not_mean_it_left(self):
+		"""The EIR-Out is only a condition record since 2026-10-08 — finished before the bon,
+		the tank is still standing here and its survey may be reopened."""
+		_c, bk, row, eir = self._closed("TSVREOP00010")
 		frappe.db.set_value("Inspection", eir, {"docstatus": 1, "container_booking": bk})
-		for fn in (ts.reopen_lowering, ts.reopen_survey):
-			with self.assertRaises(frappe.ValidationError):
-				fn(row, note="salah")
-		self.assertEqual(self._val(row, "status").status, ts.DONE)
-		self.assertEqual(self._progress(bk).docstatus, 1)
+		ts.reopen_survey(row, note="salah")
+		self.assertNotEqual(self._val(row, "status").status, ts.DONE)
 
 
 # ---------------------------------------------------------------------------

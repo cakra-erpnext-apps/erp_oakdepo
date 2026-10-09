@@ -45,6 +45,7 @@ def _cleanup():
 		# paperwork (gate log + auto-provisioned EIR) along with it. Raw deletes on
 		# purpose — Order Bongkar refuses ``on_trash`` by design.
 		_purge("Order Bongkar", {"booking": ("in", bookings)}, ("Container Booking Item",))
+		_purge("Order Muat", {"booking": ("in", bookings)}, ("Order Container Item",))
 		# Saving an outbound booking schedules one Survey Order, with a row per tank
 		# (provisioning happens on the draft), so they belong to this purge too.
 		_purge("Survey Order", {"booking": ("in", bookings)}, ("Survey Order Tank",))
@@ -394,6 +395,31 @@ class TestBookingDoubleGuard(FrappeTestCase):
 		self.assertIn(bon, msg)
 		self.assertIn("hapus baris tank ini", msg)
 		self.assertIn("gate-out", msg)  # not "submit bon": that moves nothing on a Tank Out
+
+	def test_a_tank_that_left_on_its_bon_and_came_back_can_be_booked_out_again(self):
+		"""User, 2026-10-09 (OAKU2602203): the tank left on its bon muat, came back, and the
+		next Tank Out was refused by the old, finished booking. The hold read the departure
+		off a submitted EIR-Out on the bon — no EIR-Out was ever cut here, as is normal since
+		the bon became the gate-out."""
+		from container_depot.container_depot.order_generation import make_order
+
+		self._arrived_container(C_OUT)
+		outbound = self._book(C_OUT, "Tank Out")
+		# "Generate Bon" — the user-facing path submits the bon in the same go.
+		make_order(
+			outbound.name, frappe.get_all("Booking Code", {"booking": outbound.name}, pluck="name"), submit=True
+		)
+		self.assertEqual(frappe.db.get_value("Container", C_OUT, "status"), "Gate_Out")
+		self.assertFalse(frappe.db.exists("Inspection", {"container": C_OUT, "inspection_type": "EIR-Out", "docstatus": 1}))
+
+		# ...and it is back in the yard: neither the draft-save warning nor the Confirm objects.
+		frappe.db.set_value("Container", C_OUT, "status", "In_Depot", update_modified=False)
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			open_booking_conflicts,
+		)
+
+		self.assertEqual(open_booking_conflicts(None, [{"container_no": C_OUT}], "Tank Out"), [])
+		self._book(C_OUT, "Tank Out")  # must not raise
 
 	def test_bon_bongkar_waits_for_the_tank_to_leave(self):
 		self._arrived_container(C_OUT)
