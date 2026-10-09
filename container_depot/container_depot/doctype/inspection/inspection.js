@@ -209,7 +209,6 @@ function render_system_facts(frm) {
 		doc.work_ended_on && frappe.datetime.str_to_user(doc.work_ended_on),
 	]);
 	container_depot.render_system_facts(frm, [
-		[__('Kode EIR'), doc.inspection_id && esc(doc.inspection_id)],
 		[__('Status'), doc.status && esc(doc.status)],
 		[__('EIR-Out Outcome'), doc.out_outcome && esc(doc.out_outcome)],
 		// Cermin nomor container: hanya berarti kalau beda dari link Container (data lama).

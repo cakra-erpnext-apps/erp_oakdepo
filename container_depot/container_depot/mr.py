@@ -285,7 +285,7 @@ def list_open_mr_orders(start=0, page_length=20, search=None, job_type=None) -> 
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
-		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		# started_by: who pressed "Mulai" — the job stays on everyone's worklist, and this is
@@ -422,7 +422,7 @@ def list_mr_execution(start=0, page_length=20, search=None, job_type=None) -> di
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
-		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		# See list_open_mr_orders: started_by names who is on the job.
@@ -463,7 +463,7 @@ def list_review_mr_orders(start=0, page_length=20, search=None, job_type=None) -
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
-		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
@@ -489,7 +489,7 @@ def list_mr_history(start=0, page_length=10, search=None, job_type=None) -> dict
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
-		or_filters = {"container_no": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "repair_order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Repair Order", filters=filters, or_filters=or_filters,
 		fields=["name", "repair_order_id", "container", "container_no", "status",
@@ -1591,7 +1591,7 @@ def _issue_parts_stock(ro) -> str | None:
 				_("Baris {0} ({1}) belum punya Gudang. Pilih gudangnya dulu.").format(r.idx, r.item)
 			)
 		lines.append((r.item, flt(r.quantity), item.stock_uom, wh))
-	return issue_material(lines, f"M&R {ro.repair_order_id or ro.name} • {ro.container_no or ro.container}")
+	return issue_material(lines, f"M&R {ro.name} • {ro.container_no or ro.container}")
 
 
 def issue_material(lines, remarks) -> str | None:

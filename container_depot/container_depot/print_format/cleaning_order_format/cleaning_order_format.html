@@ -24,7 +24,7 @@
   {{ oak.head("CLEANLINESS STATEMENT", "ISO Tank Cleaning") }}
 
   {{ oak.strip([
-    {"k": "No. Order", "v": doc.get("order_id") or doc.name, "w": "28%"},
+    {"k": "No. Order", "v": doc.name, "w": "28%"},
     {"k": "Tank No.", "v": doc.get("container_no") or doc.get("container") or "&mdash;", "w": "26%"},
     {"k": "Date of Issue", "v": oak.tanggal(doc.get("date_of_issue")), "w": "24%"},
     {"k": "Status", "v": oak.status_pill(doc.get("status")), "w": "22%"},

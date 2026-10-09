@@ -14,7 +14,7 @@
 			{ k: labels.shipper, v: o.shipper },
 			{ k: labels.svEmkl, v: o.emkl },
 		]"
-		:ids="[o.container_booking, o.referred_voucher, o.inspection_id || o.name]"
+		:ids="[o.container_booking, o.referred_voucher, o.name]"
 	>
 		<slot />
 	</OrderInfo>

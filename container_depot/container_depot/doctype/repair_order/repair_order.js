@@ -376,7 +376,6 @@ frappe.ui.form.on('Repair Order', {
 		const link = container_depot.doc_link;
 		const esc = frappe.utils.escape_html;
 		container_depot.render_system_facts(frm, [
-			[__('Repair Order ID'), frm.doc.repair_order_id && esc(frm.doc.repair_order_id)],
 			[__('Status'), frm.doc.status && container_depot.order_status_html(frm.doctype, frm.doc.status)],
 			[__('Principal (Owner)'), frm.doc.principal && esc(frm.doc.principal)],
 			[__('Container No'), frm.doc.container_no && esc(frm.doc.container_no)],

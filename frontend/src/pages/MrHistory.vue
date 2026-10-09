@@ -47,7 +47,7 @@
 					</div>
 					<div class="flex shrink-0 flex-col items-end gap-1">
 						<span class="oak-chip" :class="chip(data.status).tone">{{ chip(data.status).label }}</span>
-						<p class="font-mono text-[11px] text-gray-400">{{ data.repair_order_id }}</p>
+						<p class="font-mono text-[11px] text-gray-400">{{ data.name }}</p>
 					</div>
 				</div>
 				<dl class="grid grid-cols-3 gap-x-3 border-t border-gray-100 pt-3 text-sm">
@@ -264,7 +264,7 @@ function rowSubtitle(item) {
 		workWindow(item.start_date, item.completion_date),
 		item.technician || "",
 	].filter(Boolean)
-	return parts.length ? parts.join(" · ") : item.repair_order_id || ""
+	return parts.length ? parts.join(" · ") : item.name || ""
 }
 
 // Whose tank, what it is, what it last held, and which EIR it came off.

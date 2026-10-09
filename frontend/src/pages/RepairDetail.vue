@@ -661,7 +661,7 @@ async function submitForReview() {
 			},
 		})
 		toast.success(revising.value ? labels.revisionSaved : labels.mrSubmittedReview, {
-			title: o.repair_order_id || o.name,
+			title: o.name,
 		})
 		goBack()
 	} catch (e) {

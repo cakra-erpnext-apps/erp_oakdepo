@@ -59,6 +59,7 @@ def list_gate_history(start=0, page_length=10, search=None, direction=None, day=
 	if search and search.lower() != "undefined":
 		or_filters = {
 			"container_no": ["like", f"%{search}%"],
+			"name": ["like", f"%{search}%"],
 			"gate_entry_id": ["like", f"%{search}%"],
 			"booking_code": ["like", f"%{search}%"],
 			"truck_plate": ["like", f"%{search}%"],

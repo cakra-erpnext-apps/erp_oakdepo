@@ -43,6 +43,7 @@
       "bold": 1,
       "fieldname": "gate_entry_id",
       "fieldtype": "Data",
+      "hidden": 1,
       "label": "Gate Entry ID",
       "read_only": 1
     },
@@ -217,7 +218,7 @@
   ],
   "is_submittable": 1,
   "links": [],
-  "modified": "2026-10-07 13:00:00.000000",
+  "modified": "2026-10-08 15:00:00.000000",
   "module": "Container Depot",
   "name": "Gate Entry",
   "search_fields": "gate_entry_id, container_no, booking_code, status",

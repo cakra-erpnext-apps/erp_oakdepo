@@ -7,7 +7,7 @@
 		:principal="o.principal"
 		:meta="[o.depot, o.container_no || o.container, jobLabel, fill(labels.mrItemsN, { n: o.item_count || 0 })]"
 		:parties="[{ k: labels.mrPlanDate, v: o.plan_date && fmtDate(o.plan_date) }, { k: labels.mrFlowApproved, v: o.decided_by_name }]"
-		:ids="[o.reff_doc && o.name, o.repair_order_id, o.inspection]"
+		:ids="[o.reff_doc && o.name, o.inspection]"
 	>
 		<slot />
 	</OrderInfo>

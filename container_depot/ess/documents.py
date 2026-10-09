@@ -70,7 +70,7 @@ def get_tank_documents(container):
 		documents.append(
 			{
 				"category": "EIR",
-				"label": f"{r.inspection_type or 'EIR'} · {r.inspection_id or r.name}",
+				"label": f"{r.inspection_type or 'EIR'} · {r.name}",
 				"doctype": "Inspection",
 				"name": r.name,
 				"status": r.status,
@@ -92,7 +92,7 @@ def get_tank_documents(container):
 		documents.append(
 			{
 				"category": _("Laporan Cuci"),
-				"label": r.order_id or r.name,
+				"label": r.name,
 				"doctype": "Cleaning Order",
 				"name": r.name,
 				"status": r.status,

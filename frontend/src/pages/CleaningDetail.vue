@@ -594,7 +594,7 @@ async function submitCleaning() {
 			payload: payload(true),
 		})
 		toast.success(revising.value ? labels.revisionSaved : labels.cleaningSubmitted, {
-			title: o.order_id || o.name,
+			title: o.name,
 		})
 		// A revision goes back to the record it was opened from; a sign-off is now in review
 		// — the list, filtered to that pill, is where it went.

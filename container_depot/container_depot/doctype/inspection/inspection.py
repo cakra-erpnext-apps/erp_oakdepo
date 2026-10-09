@@ -317,7 +317,7 @@ class Inspection(Document):
 			from_status=before_status,
 			to_status=frappe.db.get_value("Container", self.container, "status"),
 			performed_by=self.get("inspector"),
-			summary=_("{0} dibatalkan").format(self.inspection_id or self.name),
+			summary=_("{0} dibatalkan").format(self.name),
 		)
 
 	def before_submit(self):

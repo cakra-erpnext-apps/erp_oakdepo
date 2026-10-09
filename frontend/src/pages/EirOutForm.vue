@@ -79,7 +79,7 @@
 				<div class="p-4">
 					<template v-if="refEirIn">
 						<p class="text-xs text-gray-500">
-							<span class="font-mono">{{ refEirIn.inspection_id || refEirIn.name }}</span>
+							<span class="font-mono">{{ refEirIn.name }}</span>
 							<span v-if="refEirIn.eir_date"> · {{ refEirIn.eir_date }}</span>
 							<span v-if="refEirIn.tank_status"> · {{ refEirIn.tank_status }}</span>
 						</p>
@@ -480,7 +480,7 @@ const revising = computed(() => !!header.value?.revision)
 const inspection = ref(null)
 const workStartedOn = ref("") // set once the operator presses Mulai; gates editing
 const reference = ref(null)
-const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
+const eirCode = computed(() => inspection.value || "")
 const refEirIn = computed(() => reference.value?.eir_in || null)
 // Kelengkapan saat EIR-In, dikelompokkan seperti lembar cetaknya (lihat utils/fittings.js).
 const prevFittings = computed(() => groupByCompartment(refEirIn.value?.fittings))

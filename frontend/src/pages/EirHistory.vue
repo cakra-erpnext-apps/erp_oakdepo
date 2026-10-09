@@ -32,7 +32,7 @@
 				</p>
 				<div class="mt-1.5 flex items-center gap-1.5">
 					<span class="oak-chip shrink-0" :class="statusClass(item)">{{ statusText(item) }}</span>
-					<span class="min-w-0 [overflow-wrap:anywhere] font-mono text-[10px] text-gray-400">{{ item.inspection_id || item.name }}</span>
+					<span class="min-w-0 [overflow-wrap:anywhere] font-mono text-[10px] text-gray-400">{{ item.name }}</span>
 				</div>
 			</div>
 		</template>
@@ -45,7 +45,7 @@
 					</span>
 					<div class="min-w-0 flex-1">
 						<h2 class="truncate text-lg font-extrabold leading-tight text-gray-900">{{ data.container_no }}</h2>
-						<p class="[overflow-wrap:anywhere] font-mono text-[11px] text-gray-400">{{ data.inspection_id || data.name }}</p>
+						<p class="[overflow-wrap:anywhere] font-mono text-[11px] text-gray-400">{{ data.name }}</p>
 						<span class="oak-chip mt-1.5" :class="statusClass(data)">{{ statusText(data) }}</span>
 					</div>
 				</div>

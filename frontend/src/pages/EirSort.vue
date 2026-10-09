@@ -43,7 +43,7 @@
 						<div class="min-w-0 flex-1">
 							<p class="font-semibold text-gray-900 [overflow-wrap:anywhere]">{{ r.container_no || r.container }}</p>
 							<p class="mt-0.5 truncate text-xs text-gray-500">
-								<span class="font-mono">{{ r.inspection_id || r.name }}</span> · {{ r.inspection_type }}
+								<span class="font-mono">{{ r.name }}</span> · {{ r.inspection_type }}
 							</p>
 						</div>
 						<Icon name="chevron-right" :size="16" class="shrink-0 text-gray-300" />

@@ -1502,7 +1502,7 @@ def _draft_payload(doc, header: dict) -> dict:
 	# prefill() only fills booking_code when resolved from a bon; opening by container
 	# leaves it blank, so recover it from the draft's referred bon for the PWA header.
 	header["booking_code"] = _resolve_booking_code_for_eir(doc) or header.get("booking_code")
-	header["inspection_id"] = doc.inspection_id or doc.name
+	header["inspection_id"] = doc.name
 	header["inspection_type"] = doc.inspection_type
 	header["eir_date"] = doc.eir_date
 	header["tank_status"] = doc.tank_status
@@ -1948,7 +1948,7 @@ def unsorted_photos(inspection: str) -> dict:
 	]
 	return {
 		"inspection": doc.name,
-		"inspection_id": doc.inspection_id or doc.name,
+		"inspection_id": doc.name,
 		"container_no": doc.container_no,
 		"docstatus": doc.docstatus,
 		"photos": photos,
@@ -2031,7 +2031,7 @@ def list_my_eirs(user=None, search=None, start=0, page_length=10, docstatus=None
 	or_filters = None
 	if search and str(search).strip():
 		s = f"%{str(search).strip()}%"
-		or_filters = [["container_no", "like", s], ["inspection_id", "like", s]]
+		or_filters = [["container_no", "like", s], ["name", "like", s], ["inspection_id", "like", s]]
 
 	total = len(frappe.get_all(
 		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
@@ -2104,6 +2104,7 @@ def list_pending_eirs(search=None, start=0, page_length=20) -> dict:
 		s = f"%{term}%"
 		or_filters = [
 			["container_no", "like", s],
+			["name", "like", s],
 			["inspection_id", "like", s],
 			["referred_voucher", "like", s],
 		]
@@ -2214,7 +2215,7 @@ def list_review_eirs(search=None, start=0, page_length=20) -> dict:
 	term = str(search).strip() if search is not None else ""
 	if term.lower() in ("undefined", "null", "none"):
 		term = ""
-	or_filters = [["container_no", "like", f"%{term}%"], ["inspection_id", "like", f"%{term}%"]] if term else None
+	or_filters = [["container_no", "like", f"%{term}%"], ["name", "like", f"%{term}%"], ["inspection_id", "like", f"%{term}%"]] if term else None
 
 	items = frappe.get_all(
 		"Inspection",
@@ -2297,7 +2298,7 @@ def list_unsorted_eirs(search=None, start=0, page_length=20) -> dict:
 	or_filters = None
 	if term:
 		s = f"%{term}%"
-		or_filters = [["container_no", "like", s], ["inspection_id", "like", s]]
+		or_filters = [["container_no", "like", s], ["name", "like", s], ["inspection_id", "like", s]]
 
 	total = len(frappe.get_all(
 		"Inspection", filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0
@@ -2345,6 +2346,7 @@ def list_pending_eir_out(search=None, start=0, page_length=20) -> dict:
 		s = f"%{term}%"
 		or_filters = [
 			["container_no", "like", s],
+			["name", "like", s],
 			["inspection_id", "like", s],
 			["referred_voucher", "like", s],
 		]
@@ -2705,7 +2707,7 @@ def revert_to_draft(name: str) -> dict:
 		log_container_activity(
 			doc.container, "Inspection (EIR)",
 			reference_doctype=doc.doctype, reference_name=doc.name,
-			summary=_("{0} dikembalikan ke draft").format(doc.inspection_id or doc.name),
+			summary=_("{0} dikembalikan ke draft").format(doc.name),
 		)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "revert_to_draft activity log")
@@ -2823,7 +2825,7 @@ def newer_eir(doc) -> str | None:
 	for probe in probes:
 		rows = frappe.get_all("Inspection", filters={**base, **probe}, fields=["name", "inspection_id"], limit=1)
 		if rows:
-			return rows[0].inspection_id or rows[0].name
+			return rows[0].name
 	return None
 
 

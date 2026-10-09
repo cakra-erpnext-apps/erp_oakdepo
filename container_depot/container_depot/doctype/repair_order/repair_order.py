@@ -109,7 +109,7 @@ class RepairOrder(Document):
 			frappe._(
 				"M&R {0} sudah {1} — isinya tidak bisa diubah lagi. "
 				"Buka dulu ordernya kalau memang harus dikoreksi."
-			).format(self.repair_order_id or self.name, before.status),
+			).format(self.name, before.status),
 			title=frappe._("M&R terkunci"),
 		)
 

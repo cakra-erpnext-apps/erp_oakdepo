@@ -119,7 +119,7 @@ class CleaningOrder(Document):
 				frappe.throw(_("Baris {0} ({1}) belum punya Gudang. Pilih gudangnya dulu.").format(row.idx, item))
 			lines.append((item, qty, uom, wh))
 		self.stock_entry = mr.issue_material(
-			lines, f"Cleaning {self.order_id or self.name} • {self.container_no or self.container}"
+			lines, f"Cleaning {self.name} • {self.container_no or self.container}"
 		)
 
 	def before_save(self):
@@ -412,7 +412,7 @@ class CleaningOrder(Document):
 				reference_doctype=self.doctype, reference_name=self.name,
 				to_status=frappe.db.get_value("Container", self.container, "status"),
 				performed_by=self.get("completed_by"),
-				summary=_("Cleaning {0} dibatalkan").format(self.order_id or self.name),
+				summary=_("Cleaning {0} dibatalkan").format(self.name),
 			)
 		# A revision request asked for exactly this; it has been actioned, so the flag (and
 		# the "Revisi Diminta" badge it drives) comes off. The amended copy starts clean —

@@ -202,7 +202,7 @@
       is the one thing on the sheet a reader looks up first. -#}
   <table class="hdr">
     <tr>
-      <td style="width:14%;"><div class="k">No. EIR</div><div class="v mono">{{ doc.get("inspection_id") or doc.name }}</div></td>
+      <td style="width:14%;"><div class="k">No. EIR</div><div class="v mono">{{ doc.name }}</div></td>
       <td style="width:12%;"><div class="k">Date of Inspection</div><div class="v">{{ oak.tgl(io_date) }}</div></td>
       <td style="width:15%;"><div class="k">Tank No</div><div class="v mono">{{ cn or "&mdash;" }}</div></td>
       <td style="width:11%;"><div class="k">Tare Weight</div><div class="v">{{ doc.get("tare_weight") or "&mdash;" }}</div></td>

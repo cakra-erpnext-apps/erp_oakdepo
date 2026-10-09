@@ -20,7 +20,7 @@
 				</div>
 				<div class="mt-0.5 flex items-center justify-between gap-2 text-xs text-gray-500">
 					<span class="truncate">
-						{{ item.order_id }}<span v-if="item.service_count"> · {{ item.service_count }} {{ labels.cleaningServicesCount }}</span>
+						{{ item.name }}<span v-if="item.service_count"> · {{ item.service_count }} {{ labels.cleaningServicesCount }}</span>
 					</span>
 					<span class="shrink-0 flex items-center gap-1.5">
 						<span v-if="item.revision_requested" class="oak-chip" :class="pill('revision').cls">{{ labels.cleaningStatusRevision }}</span>
@@ -34,7 +34,7 @@
 			<section class="oak-card space-y-3 p-4">
 				<div class="flex items-start justify-between gap-2">
 					<div class="min-w-0">
-						<p class="font-mono text-xs text-gray-400">{{ data.order_id }}</p>
+						<p class="font-mono text-xs text-gray-400">{{ data.name }}</p>
 						<h2 class="truncate text-lg font-extrabold text-gray-900">{{ data.container_no }}</h2>
 					</div>
 					<span class="oak-chip shrink-0" :class="statusClass(data.status)">{{ statusText(data.status) }}</span>

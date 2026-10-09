@@ -478,7 +478,7 @@ const header = ref(null)
 const revising = computed(() => !!header.value?.revision)
 const inspection = ref(null)
 const workStartedOn = ref("") // set once the operator presses Mulai; gates editing
-const eirCode = computed(() => header.value?.inspection_id || inspection.value || "")
+const eirCode = computed(() => inspection.value || "")
 // The tank's own facts, editable here and written to the Container master on save
 // (eir.TANK_MASTER_FIELDS). Everything the depot fills in by itself stays out.
 const tank = reactive({
@@ -772,7 +772,7 @@ const saveRes = createResource({
 		if (data.pending_review || (data.docstatus === 1 && !data.revision)) {
 			saveToast.close()
 			toast.success(data.pending_review ? labels.eirSentForReview : labels.eirSubmitted, {
-				title: data.inspection_id || data.inspection,
+				title: data.inspection,
 			})
 			noteSent()
 			emit("submitted", data.inspection)

@@ -685,7 +685,6 @@
    "fieldname": "inspection_id",
    "fieldtype": "Data",
    "hidden": 1,
-   "in_list_view": 1,
    "label": "Kode EIR",
    "read_only": 1
   },
@@ -795,7 +794,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-07 16:00:00.000000",
+ "modified": "2026-10-08 15:00:00.000000",
  "module": "Container Depot",
  "name": "Inspection",
  "search_fields": "inspection_id, container_no, inspection_type, status",

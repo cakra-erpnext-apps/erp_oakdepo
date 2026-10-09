@@ -132,7 +132,7 @@ def list_open_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":  # guard the literal "undefined" string
-		or_filters = {"container_no": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Cleaning Order",
 		filters=filters,
@@ -177,7 +177,7 @@ def list_cleaning_history(start=0, page_length=10, search=None) -> dict:
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
-		or_filters = {"container_no": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Cleaning Order",
 		filters=filters,
@@ -265,7 +265,7 @@ def list_review_cleaning_orders(start=0, page_length=20, search=None) -> dict:
 	or_filters = None
 	search = (search or "").strip()
 	if search and search.lower() != "undefined":
-		or_filters = {"container_no": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
+		or_filters = {"container_no": ["like", f"%{search}%"], "name": ["like", f"%{search}%"], "order_id": ["like", f"%{search}%"]}
 	items = frappe.get_all(
 		"Cleaning Order",
 		filters=filters,
@@ -498,7 +498,7 @@ def revert_to_draft(name: str) -> dict:
 			doc.container, "Cleaning",
 			reference_doctype=doc.doctype, reference_name=doc.name,
 			to_status=frappe.db.get_value("Container", doc.container, "status"),
-			summary=_("Cleaning {0} dikembalikan ke draft").format(doc.order_id or doc.name),
+			summary=_("Cleaning {0} dikembalikan ke draft").format(doc.name),
 		)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "cleaning revert_to_draft activity log")

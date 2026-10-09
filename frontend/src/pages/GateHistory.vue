@@ -45,7 +45,7 @@
 					<span class="shrink-0">{{ fmtDate(item.gate_in_timestamp || item.creation) }}</span>
 				</div>
 				<p class="truncate text-[11px] text-gray-400">
-					{{ item.gate_entry_id }}<span v-if="item.booking_code"> · {{ item.booking_code }}</span>
+					{{ item.name }}<span v-if="item.booking_code"> · {{ item.booking_code }}</span>
 				</p>
 			</div>
 		</template>
@@ -54,7 +54,7 @@
 			<section class="oak-card space-y-3 p-4">
 				<div class="flex items-start justify-between gap-2">
 					<div class="min-w-0">
-						<p class="font-mono text-xs text-gray-400">{{ data.gate_entry_id }}</p>
+						<p class="font-mono text-xs text-gray-400">{{ data.name }}</p>
 						<h2 class="truncate text-lg font-extrabold text-gray-900">{{ data.container_no }}</h2>
 					</div>
 					<span class="oak-chip shrink-0" :class="statusClass(data.status)">{{ statusText(data.status) }}</span>
