@@ -123,7 +123,7 @@ function show_preview_dialog(frm, p) {
 						<div style="max-height:360px;overflow:auto;border:1px solid var(--border-color);border-radius:4px;">
 							<table class="table" style="margin:0;">
 								<thead style="position:sticky;top:0;background:var(--control-bg);">
-									<tr><th style="${cell}"></th>${th("Seksi")}${th("Order")}${th("Tank")}${th("Tanggal")}${th("Mata Uang")}${th("Amount", true)}</tr>
+									<tr><th style="${cell}width:34px;"><input type="checkbox" class="oak-bill-head" title="${__("Pilih semua / kosongkan")}"></th>${th("Seksi")}${th("Order")}${th("Tank")}${th("Tanggal")}${th("Mata Uang")}${th("Amount", true)}</tr>
 								</thead>
 								<tbody>${body}</tbody>
 							</table>
@@ -250,6 +250,12 @@ function wire_picker(d, rows, p) {
 
 	function refresh() {
 		const keys = selected_keys(d);
+		// Head checkbox mirrors the rows on screen: all ticked, none, or some (indeterminate).
+		const $shown = $w.find(".oak-bill-tr:not(.oak-bill-off) .oak-bill-row");
+		const ticked = $shown.filter(":checked").length;
+		$w.find(".oak-bill-head")
+			.prop("checked", !!$shown.length && ticked === $shown.length)
+			.prop("indeterminate", ticked > 0 && ticked < $shown.length);
 		const totals = {};
 		for (const k of keys) {
 			const r = by_key[k];
@@ -297,6 +303,10 @@ function wire_picker(d, rows, p) {
 	$w.on("click", ".oak-bill-all", (e) => {
 		e.preventDefault();
 		$w.find(".oak-bill-tr:not(.oak-bill-off) .oak-bill-row").prop("checked", true);
+		refresh();
+	});
+	$w.on("change", ".oak-bill-head", (e) => {
+		$w.find(".oak-bill-tr:not(.oak-bill-off) .oak-bill-row").prop("checked", e.currentTarget.checked);
 		refresh();
 	});
 	$w.on("click", ".oak-bill-none", (e) => {
