@@ -52,6 +52,7 @@ class Inspection(Document):
 		if self.container and self.has_value_changed("container"):
 			assert_container_active(self.container)
 		self.drop_empty_photo_rows()
+		self.sync_work_status()
 		self.stamp_container_booking()
 		self.sync_has_damage()
 		self.sync_followup_flags()
@@ -73,6 +74,13 @@ class Inspection(Document):
 			for p in self.get(table) or []:
 				if not p.get("timestamp"):
 					p.timestamp = p.creation or frappe.utils.now_datetime()
+
+	def sync_work_status(self):
+		"""Draft until Mulai, ``In Progress`` after it (user, 2026-10-09) — the same "belum /
+		dikerjakan" split Cleaning and M&R carry in their status. Derived from
+		``work_started_on`` on every draft save, so no writer has to remember it."""
+		if self.docstatus == 0 and self.status in ("Draft", "In Progress"):
+			self.status = "In Progress" if self.work_started_on else "Draft"
 
 	def sync_has_damage(self):
 		"""Derive Has Damage from the log instead of trusting a second, editable copy of it.
@@ -264,6 +272,15 @@ class Inspection(Document):
 
 		recompute_availability(self.container)
 
+	def on_discard(self):
+		# The red Cancel on a draft / Pending Review EIR is Frappe's discard (docstatus 2
+		# without on_cancel). It skipped all of the below, so a voided EIR kept reading
+		# "Pending Review" and its tank was never recomputed. Same clean-up as a cancel, minus
+		# the submit unwind: a draft has no submit to undo (a reverted one was unwound by its
+		# revert), and its snapshot fields would put a stale status / cargo back on the tank.
+		self.flags.discarding = True
+		self.on_cancel()
+
 	def on_cancel(self):
 		"""Void an EIR: put back everything submitting it set in motion, then close the record.
 
@@ -283,7 +300,8 @@ class Inspection(Document):
 		docstatus/status raw, so it never fires this hook.)"""
 		from container_depot.container_depot.eir import unwind_submitted_eir
 
-		unwind_submitted_eir(self, drop_followups=True)
+		if not self.flags.get("discarding"):
+			unwind_submitted_eir(self, drop_followups=True)
 		self.db_set("status", "Cancelled", update_modified=False)
 		# A revision request asked for this EIR to be reopened; voiding it IS the answer, so
 		# the flag (and the "Revisi Diminta" badge it drives) comes off — same as

@@ -66,10 +66,10 @@ def container_open_orders(container: str) -> list[dict]:
     for row in frappe.get_all(
         "Inspection",
         filters={"container": container, "inspection_type": "EIR-In", "docstatus": 0, **visit},
-        fields=["name", "modified"],
+        fields=["name", "status", "modified"],
         order_by="modified desc",
     ):
-        out.append({"doctype": "Inspection", "name": row.name, "label": "EIR-In", "status": "Draft"})
+        out.append({"doctype": "Inspection", "name": row.name, "label": "EIR-In", "status": row.status})
     for doctype, done, label in (
         ("Cleaning Order", DONE_CLEANING, "Cleaning"),
         ("Repair Order", DONE_REPAIR, "M&R"),

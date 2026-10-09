@@ -76,8 +76,8 @@ class OrderBongkar(Document):
 		_release_eirs(self, "EIR-In")
 		_leak_checks(self, "release_for_cancelled_order")
 		_release_gate_in(self)
-		# LAST: the arrival itself. After the EIRs are released, so a draft EIR this bon
-		# opened no longer counts as work holding the tank here.
+		_cancel_unstarted_work(self)
+		# LAST: the arrival itself.
 		_release_container_arrival(self)
 
 	def on_trash(self):
@@ -314,24 +314,69 @@ def _record_gate_in(order: Document):
 			frappe.log_error(frappe.get_traceback(), f"gate-in log for {order.name}/{container_no}")
 
 
+def _arrived_on(order: Document, container: str):
+	"""``{status, ex_vessel}`` of a tank whose arrival is still THIS bon's to undo, else None.
+
+	Still PRESENT (one that has since gated out is on a later chapter of its life), and this
+	bon is still its latest arrival voucher (``last_order_bongkar``, read before the
+	``last_orders`` cache hook re-points it) — a newer bon owns the visit otherwise.
+	"""
+	from container_depot.container_depot.container_status import PRESENT
+
+	if not container or not frappe.db.exists("Container", container):
+		return None
+	cur = frappe.db.get_value(
+		"Container", container, ["status", "last_order_bongkar", "ex_vessel"], as_dict=True
+	)
+	if not cur or cur.status not in PRESENT:
+		return None
+	if cur.last_order_bongkar and cur.last_order_bongkar != order.name:
+		return None
+	return cur
+
+
+# The work a voided arrival takes down with it: only orders nobody has started (user,
+# 2026-10-09). EIR-In and Leak Check are released by their own hooks above.
+_UNSTARTED_WORK = {"Cleaning Order": ("Service Setup", "Pending"), "Repair Order": ("Draft",)}
+
+
+def _cancel_unstarted_work(order: Document):
+	"""Cancel this visit's Cleaning / M&R that nobody has started. Started or finished work is
+	left for Admin Ops to decide on by hand — and no longer holds the tank in the yard
+	(:func:`_release_container_arrival`). Best-effort per order, like the EIRs."""
+	from container_depot.container_depot.container_status import container_open_orders
+
+	note = _("Dibatalkan otomatis: bon {0} dibatalkan.").format(order.name)
+	for container in dict.fromkeys(r.get("container") for r in _order_rows(order)):
+		if not _arrived_on(order, container):
+			continue
+		for o in container_open_orders(container):
+			if o["status"] not in _UNSTARTED_WORK.get(o["doctype"], ()):
+				continue
+			try:
+				doc = frappe.get_doc(o["doctype"], o["name"])
+				doc.flags.ignore_permissions = True
+				if doc.doctype == "Cleaning Order":
+					doc.flags.oak_cancel = True
+					doc.discard()
+				else:
+					doc.status = "Cancelled"
+					doc.save()
+				doc.add_comment("Info", note)
+			except Exception:
+				frappe.log_error(frappe.get_traceback(), f"cancel {o['name']} with {order.name}")
+
+
 def _release_container_arrival(order: Document):
 	"""Un-arrive the tanks whose arrival THIS bon stamped (:func:`_sync_container_arrival`).
 
-	Submitting a Tank In bon is what puts the tank in the depot: status ``In_Depot``, an
-	``in_date``, and the bon recorded as the tank's latest arrival voucher. Voiding the
-	bon used to leave all three, so a tank nobody had let in stood in the yard for good — it
-	counted in the inventory, it was offered to the next Tank Out booking, and the
-	replacement bon could not re-stamp an arrival that was already there.
+	The bon is what puts the tank in the depot, so voiding it ALWAYS takes it back out (user,
+	2026-10-09) — status, ``in_date``, and the vessel it wrote. Work already done on the tank
+	does not hold it: it used to (a submitted EIR-In, or any open order — including the
+	started EIR-In draft a cancel deliberately keeps), and the bon was voided while the tank
+	silently stayed In_Depot. That work is left for Admin Ops to decide on.
 
-	Narrow, in the same spirit as ``ContainerBooking._release_reserved_container``: only a
-	tank that is still exactly where this bon put it is touched.
-
-	* still PRESENT — one that has since gated out is on a later chapter of its life;
-	* this bon is still its latest arrival voucher (``last_order_bongkar``, read before the
-	  ``last_orders`` cache hook re-points it) — a newer bon owns the visit otherwise;
-	* nothing submitted was raised against this bon (a submitted EIR-In means a surveyor
-	  really did stand at the tank, so it really did arrive);
-	* no open work on it — a cleaning or an M&R is somebody working on a tank that is here.
+	Only a tank still exactly where this bon put it is touched (:func:`_arrived_on`).
 
 	Where it goes back to is decided the same way the booking decides it: ``Booked`` while a
 	live booking is still expecting the tank (its Booking Codes went back to ``Active`` a
@@ -339,59 +384,50 @@ def _release_container_arrival(order: Document):
 	that never arrived is not standing in the yard, and saying so would put a phantom back
 	into the inventory.
 	"""
-	from container_depot.container_depot.container_status import GATE_OUT, PRESENT, container_open_orders
+	for row in _order_rows(order):
+		cur = _arrived_on(order, row.get("container"))
+		if cur:
+			roll_back_arrival(order, row.container, cur)
 
-	if frappe.db.exists("Inspection", {"referred_voucher": order.name, "docstatus": 1}):
-		return  # this visit produced a real inspection — the tank did arrive
-	# The booking this bon was cut from, if it is still standing: its Booking Codes went back
-	# to Active a moment ago, so the tank is expected again and belongs in `Booked`. Asked of
-	# THIS booking only — a tank also listed on some outbound booking is not "expected to
-	# arrive", and reading any live row would say it was.
+
+def roll_back_arrival(order, container: str, cur) -> str:
+	"""Put ``container`` back where it stood before ``order`` (an Order Bongkar) brought it in.
+	``cur``: its ``{status, ex_vessel}`` now. Returns the status it went back to."""
+	from container_depot.container_depot.container_status import GATE_OUT
+
+	# The booking this bon was cut from, if it is still standing. Asked of THIS booking only —
+	# a tank also listed on some outbound booking is not "expected to arrive".
 	booking = frappe.db.get_value(
 		"Container Booking", order.get("booking"), ["docstatus", "booking_status"], as_dict=True
 	) if order.get("booking") else None
 	back_to = "Booked" if (
 		booking and booking.docstatus < 2 and booking.booking_status != "Cancelled"
 	) else GATE_OUT
-	for row in _order_rows(order):
-		container = row.get("container")
-		if not container or not frappe.db.exists("Container", container):
-			continue
-		cur = frappe.db.get_value(
-			"Container", container, ["status", "last_order_bongkar", "ex_vessel"], as_dict=True
-		)
-		if not cur or cur.status not in PRESENT:
-			continue
-		if cur.last_order_bongkar and cur.last_order_bongkar != order.name:
-			continue  # a later bon owns this arrival
-		if container_open_orders(container):
-			continue  # work is under way on a tank that is here
-		# Through the ORM, not a raw write, and this is the whole point of the automation
-		# flag: `Container.on_update` is what logs the Status Container Movement and
-		# re-derives the storage visit, so a roll-back written underneath it would leave the
-		# tank's own audit trail ending at a status it no longer has — and a storage stay
-		# still open on a visit that never happened. `before_save` re-derives
-		# `inventory_stage` for the same reason. The flag only bypasses the MANUAL-transition
-		# guard (`Container.validate`), which is there to stop a human typing this move, not
-		# a controller unwinding its own.
-		frappe.flags.in_status_automation = True
-		try:
-			tank = frappe.get_doc("Container", container)
-			tank.status = back_to
-			tank.in_date = None
-			# Only the vessel THIS bon wrote comes off; a value that was already there (or
-			# that a later document set) is the tank's own history and is left alone.
-			if order.get("ex_vessel") and tank.ex_vessel == order.get("ex_vessel"):
-				tank.ex_vessel = None
-			tank.save(ignore_permissions=True)
-		finally:
-			frappe.flags.in_status_automation = False
-		log_container_activity(
-			container, "Status Change",
-			reference_doctype=order.doctype, reference_name=order.name,
-			from_status=cur.status, to_status=back_to,
-			summary=f"{order.doctype} dibatalkan — kedatangan tank dibatalkan",
-		)
+	# Through the ORM, not a raw write, and this is the whole point of the automation flag:
+	# `Container.on_update` is what logs the Status Container Movement and re-derives the
+	# storage visit, so a roll-back written underneath it would leave the tank's own audit
+	# trail ending at a status it no longer has — and a storage stay still open on a visit
+	# that never happened. `before_save` re-derives `inventory_stage` for the same reason.
+	# The flag only bypasses the MANUAL-transition guard (`Container.validate`).
+	frappe.flags.in_status_automation = True
+	try:
+		tank = frappe.get_doc("Container", container)
+		tank.status = back_to
+		tank.in_date = None
+		# Only the vessel THIS bon wrote comes off; a value that was already there (or that a
+		# later document set) is the tank's own history and is left alone.
+		if order.get("ex_vessel") and tank.ex_vessel == order.get("ex_vessel"):
+			tank.ex_vessel = None
+		tank.save(ignore_permissions=True)
+	finally:
+		frappe.flags.in_status_automation = False
+	log_container_activity(
+		container, "Status Change",
+		reference_doctype=order.doctype, reference_name=order.name,
+		from_status=cur.status, to_status=back_to,
+		summary=f"{order.doctype} dibatalkan — kedatangan tank dibatalkan",
+	)
+	return back_to
 
 
 def _release_gate_in(order: Document):

@@ -2227,6 +2227,54 @@ def remove_tank(booking, line):
 	return item.container_no
 
 
+@frappe.whitelist(methods=["POST"])
+def cancel_related_order(doctype, name, note=None):
+	"""Cancel one order straight from the booking's Dokumen Terkait panel — the Administrator
+	account only (user, 2026-10-09). A submitted / finished one is first taken back the way its
+	own form does it (Kembalikan ke Draft, Buka Lagi), then cancelled; every refusal those roads
+	make (an invoice, a newer EIR) still stands."""
+	if frappe.session.user != "Administrator":
+		frappe.throw(_("Hanya akun Administrator yang bisa membatalkan order dari panel ini."), frappe.PermissionError)
+	note = (note or "").strip()
+	if doctype in ("Order Bongkar", "Order Muat"):
+		from container_depot.container_depot.order_generation import revert_order_to_draft, void_order
+
+		if frappe.db.get_value(doctype, name, "docstatus") == 1:
+			revert_order_to_draft(name, doctype)
+		void_order(name, doctype)
+	elif doctype == "Cleaning Order":
+		from container_depot.container_depot import cleaning
+
+		if frappe.db.get_value(doctype, name, "docstatus") == 1:
+			cleaning.revert_to_draft(name)
+		cleaning.cancel_order(name, note)
+		note = ""  # cancel_order logged it
+	elif doctype == "Repair Order":
+		from container_depot.container_depot import mr
+
+		status = frappe.db.get_value(doctype, name, "status")
+		if status == "Completed":
+			mr.reopen_completed(name, note=note)
+		elif status == "Rejected":
+			mr.reopen_to_draft(name, note=note)
+		doc = frappe.get_doc(doctype, name)
+		doc.status = "Cancelled"
+		doc.save()
+	elif doctype in ("Inspection", "Leak Check", "Survey Order"):
+		doc = frappe.get_doc(doctype, name)
+		if doc.docstatus == 1:
+			doc.cancel()
+		elif doc.docstatus == 0:
+			doc.discard()
+			if doctype == "Leak Check":
+				doc.db_set("status", "Cancelled")
+	else:
+		frappe.throw(_("{0} tidak bisa dibatalkan dari panel ini.").format(_(doctype)))
+	if note:
+		frappe.get_doc(doctype, name).add_comment("Info", _("Dibatalkan oleh Administrator: {0}").format(note))
+	return frappe.db.get_value(doctype, name, "docstatus")
+
+
 def _tank_removal_blocker(item) -> str | None:
 	"""Why ``item`` may not be taken off its booking, or ``None``."""
 	from container_depot.container_depot.order_generation import live_bon_row
@@ -4006,7 +4054,7 @@ def related_orders(booking: str) -> list:
 def _work_for(booking: str, container: str) -> list:
 	orders = []
 	for doctype, date_field, extra_field, link_field in _WORK_SOURCES:
-		fields = ["name", "status", date_field]
+		fields = ["name", "status", "docstatus", date_field]
 		if extra_field:
 			fields.append(extra_field)
 		for doc in frappe.get_all(
@@ -4019,7 +4067,9 @@ def _work_for(booking: str, container: str) -> list:
 				"doctype": doctype,
 				"name": doc.name,
 				"label": doc.get(extra_field) if extra_field else doctype,
-				"status": doc.status,
+				# A voided document is Cancelled whatever its status field was left at.
+				"status": "Cancelled" if doc.docstatus == 2 else doc.status,
+				"cancelled": doc.docstatus == 2 or doc.status == "Cancelled",
 				"date": doc.get(date_field),
 			})
 	# One timeline per tank rather than four per-doctype lists — an EIR followed by the
@@ -4030,7 +4080,8 @@ def _work_for(booking: str, container: str) -> list:
 	# than blowing up the panel.
 	# The bon this booking raised for the tank (Bongkar on this inbound panel).
 	orders += [
-		{"doctype": b["doctype"], "name": b["name"], "label": b["kind"], "status": b["status"], "date": b["date"]}
+		{"doctype": b["doctype"], "name": b["name"], "label": b["kind"], "status": b["status"], "date": b["date"],
+		 "cancelled": b["cancelled"]}
 		for b in tank_documents.booking_bons(booking, container)
 	]
 	orders.sort(key=lambda o: (o["date"] is None, get_datetime(o["date"]) if o["date"] else None))

@@ -461,6 +461,7 @@ frappe.ui.form.on('Container Booking', {
 		}).then((r) => {
 			if (frm.doc.name !== shown_for) return; // reply landed after the form moved on
 			wrapper.html(_dossier_html(r.message || []));
+			_bind_admin_cancel(frm, wrapper);
 			// Delegated once per render, namespaced so re-rendering cannot stack handlers:
 			// the rows are rebuilt on every refresh, so binding them individually would
 			// leave the old ones behind.
@@ -488,6 +489,7 @@ frappe.ui.form.on('Container Booking', {
 			args: { booking: frm.doc.name },
 			callback(r) {
 				wrapper.html(_work_html(r.message || []));
+				_bind_admin_cancel(frm, wrapper);
 			}
 		});
 	},
@@ -1950,6 +1952,7 @@ function _dossier_line(o) {
 		${o.cancelled ? `<span class="indicator-pill red">${esc(o.status || '—')}</span>` : container_depot.order_status_html(o.doctype, o.status, tone)}
 		<span style="min-width: 11rem;">${link}</span>
 		<span class="text-muted">${esc(kind)}</span>
+		${o.cancelled ? '' : _admin_cancel_link(o)}
 	</div>`;
 }
 
@@ -2034,5 +2037,43 @@ function _work_row_html(o) {
 		<span style="min-width: 9rem;">${link}</span>
 		<span class="text-muted">${esc(__(o.label || o.doctype))}</span>
 		<span class="text-muted small ml-auto">${esc(when)}</span>
+		${o.cancelled ? '' : _admin_cancel_link(o)}
 	</div>`;
+}
+
+// --- Administrator: cancel an order straight from the panel ----------------
+// The Administrator account only (user, 2026-10-09) — the server says the same
+// (`cancel_related_order`). A submitted order is taken back and cancelled in one go.
+function _admin_cancel_link(o) {
+	if (frappe.session.user !== 'Administrator') return '';
+	const esc = frappe.utils.escape_html;
+	return `<a href="#" class="admin-cancel-order text-danger small" data-doctype="${esc(o.doctype)}"
+		data-name="${esc(o.name)}">${__('Batalkan')}</a>`;
+}
+
+function _bind_admin_cancel(frm, wrapper) {
+	wrapper.off('click.admincancel').on('click.admincancel', '.admin-cancel-order', function (e) {
+		e.preventDefault();
+		const { doctype, name } = $(this).data();
+		frappe.prompt(
+			[{ fieldname: 'note', fieldtype: 'Small Text', label: __('Alasan'), reqd: 1 }],
+			(v) =>
+				frappe.confirm(
+					__('Batalkan {0}? Order yang sudah submit dikembalikan dulu lalu dibatalkan.', [name]),
+					() =>
+						frappe
+							.call({
+								method: 'container_depot.container_depot.doctype.container_booking.container_booking.cancel_related_order',
+								args: { doctype, name, note: v.note },
+								freeze: true,
+							})
+							.then(() => {
+								frappe.show_alert({ message: __('{0} dibatalkan', [name]), indicator: 'green' });
+								frm.reload_doc();
+							})
+				),
+			__('Batalkan {0}', [name]),
+			__('Batalkan')
+		);
+	});
 }

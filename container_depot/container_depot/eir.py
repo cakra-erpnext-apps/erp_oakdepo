@@ -2256,7 +2256,7 @@ def withdraw_review(inspection: str) -> dict:
 
 	# Back to an editable draft. Clear the review-submit stamps so the next "Kirim untuk
 	# Review" re-times the work; work_started_on stays so the form stays "started" (no need
-	# to press Mulai again to edit).
+	# to press Mulai again to edit) — and so the status reads In Progress (sync_work_status).
 	doc.status = "Draft"
 	doc.work_ended_on = None
 	doc.work_duration = 0
@@ -2678,7 +2678,10 @@ def revert_to_draft(name: str) -> dict:
 
 	# Flip back to an editable draft (same record — editable in the PWA + Desk). Clear any
 	# pending revision request now that it has been actioned.
-	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": "Draft", "closed_by_admin": 0})
+	# Raw write, so the status Inspection.sync_work_status would derive is set by hand: a
+	# submitted EIR was started.
+	status = "In Progress" if doc.work_started_on else "Draft"
+	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": status, "closed_by_admin": 0})
 	# A pending Ajukan Revisi is answered by this — tell whoever asked.
 	if cint(doc.get("revision_requested")):
 		from container_depot.container_depot import revision
@@ -2712,7 +2715,7 @@ def revert_to_draft(name: str) -> dict:
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "revert_to_draft activity log")
 
-	return {"name": doc.name, "docstatus": 0, "status": "Draft"}
+	return {"name": doc.name, "docstatus": 0, "status": status}
 
 
 def unwind_submitted_eir(doc, drop_followups: bool = False) -> None:

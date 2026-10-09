@@ -14,3 +14,8 @@ In Progress,Dikerjakan,Repair Order
 Pending Review,Menunggu Review,Repair Order
 Completed,Selesai,Repair Order
 Cancelled,Dibatalkan,Repair Order
+Draft,Draf,Inspection
+In Progress,Dikerjakan,Inspection
+Pending Review,Menunggu Review,Inspection
+Submitted,Selesai,Inspection
+Cancelled,Dibatalkan,Inspection

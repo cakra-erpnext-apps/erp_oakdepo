@@ -187,10 +187,11 @@ def _release(order_name: str, wanted) -> dict:
 	"""Per Leak Check, in order:
 
 	* a **replacement** submitted bon carries the container → re-point at it;
-	* else still **Open** (no photo = no work in it) → delete;
+	* else still **Open** → gone with the bon (user, 2026-10-09): deleted when it holds no
+	  photo, cancelled (photos kept) when it does;
 	* else (Completed) → keep the evidence, drop the dangling bon link, say so on its timeline.
 	"""
-	out = {"repointed": [], "deleted": [], "detached": []}
+	out = {"repointed": [], "deleted": [], "cancelled": [], "detached": []}
 	for lc in frappe.get_all(
 		"Leak Check", filters={"order_bongkar": order_name}, fields=["name", "container", "status"]
 	):
@@ -212,9 +213,15 @@ def _release(order_name: str, wanted) -> dict:
 					update_modified=False,
 				)
 				out["repointed"].append(lc.name)
-			elif lc.status == OPEN:
+			elif lc.status == OPEN and not frappe.db.exists("Leak Check Photo", {"parent": lc.name}):
 				frappe.delete_doc("Leak Check", lc.name, ignore_permissions=True, force=True)
 				out["deleted"].append(lc.name)
+			elif lc.status == OPEN:
+				frappe.db.set_value("Leak Check", lc.name, {"docstatus": 2, "status": CANCELLED})
+				frappe.get_doc("Leak Check", lc.name).add_comment(
+					"Info", _("Dibatalkan otomatis: bon {0} dibatalkan.").format(order_name)
+				)
+				out["cancelled"].append(lc.name)
 			else:
 				frappe.db.set_value("Leak Check", lc.name, "order_bongkar", None, update_modified=False)
 				frappe.get_doc("Leak Check", lc.name).add_comment(

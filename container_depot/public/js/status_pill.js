@@ -30,7 +30,7 @@ container_depot.status_pill = function (key, filter) {
 	return [__(label), colour, filter];
 };
 
-// Status Cleaning Order & Repair Order — SATU peta untuk list, sidebar form, panel Dokumen
+// Status Cleaning Order, Repair Order & EIR — SATU peta untuk list, sidebar form, panel Dokumen
 // Terkait di booking, dan register. Satu tahap = satu nama di semua menu: status awal kedua
 // order sama-sama "Draf". Opsi Select mentahnya (filter Status, dll.) diterjemahkan ke label
 // yang sama lewat translations/en-US.csv, ber-context doctype — ubah keduanya bersamaan.
@@ -43,6 +43,14 @@ container_depot.ORDER_STATUS = {
 		In_Progress: 'doing',
 		'Pending Review': 'review',
 		Completed: 'done',
+		Cancelled: 'cancelled',
+	},
+	// EIR: Draft sampai Mulai, lalu In Progress (Inspection.sync_work_status).
+	Inspection: {
+		Draft: 'draft',
+		'In Progress': 'doing',
+		'Pending Review': 'review',
+		Submitted: 'done',
 		Cancelled: 'cancelled',
 	},
 	'Repair Order': {

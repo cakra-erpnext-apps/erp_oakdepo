@@ -60,6 +60,12 @@ def _purge():
 		("Order Bongkar", bons), ("Container Booking", bookings),
 	):
 		frappe.db.delete("Notification Log", {"document_type": doctype, "document_name": ("in", names)})
+	leaks = frappe.get_all("Leak Check", filters={"container": ("in", containers)}, pluck="name") or [""]
+	frappe.db.delete("Leak Check Photo", {"parent": ("in", leaks)})
+	frappe.db.delete("Leak Check", {"name": ("in", leaks)})
+	for doctype, names in (("Inspection", inspections), ("Leak Check", leaks), ("Cleaning Order", orders),
+						   ("Repair Order", repairs), ("Order Bongkar", bons)):
+		frappe.db.delete("Comment", {"reference_doctype": doctype, "reference_name": ("in", names)})
 	frappe.db.delete("Repair Damage Entry", {"parent": ("in", repairs)})
 	frappe.db.delete("Cleaning Order Service", {"parent": ("in", orders)})
 	frappe.db.delete("Inspection", {"name": ("in", inspections)})
@@ -278,32 +284,72 @@ class TestBonArrivalUnwind(_Base):
 
 		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Booked")
 
-	def test_work_under_way_keeps_the_arrival(self):
-		"""A cleaning or an M&R is somebody working on a tank that is here — the depot does
-		not get to un-arrive it because a piece of paperwork was voided."""
+	def _assert_un_arrived(self, c):
+		row = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
+		self.assertEqual(row.status, "Gate_Out")
+		self.assertIsNone(row.in_date)
+
+	def test_work_under_way_no_longer_keeps_the_arrival(self):
+		"""The bon is what put the tank in the yard, so voiding it always takes it back out
+		(user, 2026-10-09). A started wash stays for Admin Ops to decide on — it used to hold
+		the tank In_Depot while its bon was already void."""
 		c, doc = self._arrived("0000007")
-		frappe.get_doc({
+		wash = frappe.get_doc({
 			"doctype": "Cleaning Order", "container": c, "status": "In_Progress",
 		}).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		doc.run_method("on_cancel")
 
-		self.assertEqual(frappe.db.get_value("Container", c, "status"), "In_Depot")
-		self.assertTrue(frappe.db.get_value("Container", c, "in_date"))
+		self._assert_un_arrived(c)
+		self.assertEqual(frappe.db.get_value("Cleaning Order", wash.name, ["status", "docstatus"]), ("In_Progress", 0))
 
-	def test_a_real_inspection_keeps_the_arrival(self):
-		"""A submitted EIR-In against this bon means a surveyor stood at the tank — it really
-		did arrive, whatever happens to the bon afterwards."""
+	def test_a_submitted_eir_in_no_longer_keeps_the_arrival(self):
 		c, doc = self._arrived("0000008")
-		eir.create_eir(
+		done = eir.create_eir(
 			inspection_type="EIR-In", container=c, tank_status="Empty Clean",
 			referred_voucher=doc.name, submit=True,
 		)
 
 		doc.run_method("on_cancel")
 
-		self.assertIn(frappe.db.get_value("Container", c, "status"), ("In_Depot", "Available"))
-		self.assertTrue(frappe.db.get_value("Container", c, "in_date"))
+		self._assert_un_arrived(c)
+		self.assertEqual(frappe.db.get_value("Inspection", done["name"], "docstatus"), 1)
+
+	def test_a_started_eir_in_draft_is_kept_and_holds_nothing(self):
+		"""RLTU 3078578: the cancel keeps a started EIR-In (it holds the surveyor's photos), and
+		that very draft then counted as open work and stopped the roll-back."""
+		c, doc = self._arrived("0000010")
+		started = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In",
+			"container": c, "inspector": "Administrator", "work_started_on": frappe.utils.now_datetime(),
+		})
+		eir._apply_voucher(started, doc.name)
+		started.insert(ignore_permissions=True)
+		self.assertEqual(started.status, "In Progress")
+
+		revert_order_to_draft(doc.name)
+		void_order(doc.name)
+
+		self._assert_un_arrived(c)
+		self.assertEqual(frappe.db.get_value("Inspection", started.name, "docstatus"), 0)
+
+	def test_unstarted_work_goes_with_the_bon(self):
+		"""Only what nobody has started is cancelled along: Cleaning at Service Setup / Pending,
+		M&R at Draft. Later stages are left alone."""
+		c, doc = self._arrived("0000011")
+		pending = frappe.get_doc({"doctype": "Cleaning Order", "container": c, "status": "Pending"})
+		pending.insert(ignore_permissions=True, ignore_mandatory=True)
+		draft_mr = frappe.get_doc({"doctype": "Repair Order", "container": c, "status": "Draft"})
+		draft_mr.insert(ignore_permissions=True, ignore_mandatory=True)
+		approved_mr = frappe.get_doc({"doctype": "Repair Order", "container": c, "status": "Pending Approval"})
+		approved_mr.insert(ignore_permissions=True, ignore_mandatory=True)
+
+		doc.run_method("on_cancel")
+
+		self.assertEqual(frappe.db.get_value("Cleaning Order", pending.name, ["status", "docstatus"]), ("Cancelled", 2))
+		self.assertEqual(frappe.db.get_value("Repair Order", draft_mr.name, "status"), "Cancelled")
+		self.assertEqual(frappe.db.get_value("Repair Order", approved_mr.name, "status"), "Pending Approval")
+		self._assert_un_arrived(c)
 
 	def test_the_draft_road_unwinds_exactly_the_same(self):
 		"""``revert_order_to_draft`` brings a SUBMITTED bon back to draft with everything its
@@ -327,6 +373,57 @@ class TestBonArrivalUnwind(_Base):
 		row = frappe.db.get_value("Container", c, ["status", "in_date"], as_dict=True)
 		self.assertEqual(row.status, "Gate_Out")
 		self.assertIsNone(row.in_date)
+
+
+	def test_an_open_leak_check_with_photos_is_cancelled_not_deleted(self):
+		c, doc = self._arrived("0000012")
+		lc = frappe.get_doc({
+			"doctype": "Leak Check", "container": c, "order_bongkar": doc.name,
+			"photos": [{"photo": "/private/files/leak.jpg"}],
+		}).insert(ignore_permissions=True)
+
+		doc.run_method("on_cancel")
+
+		self.assertEqual(frappe.db.get_value("Leak Check", lc.name, ["status", "docstatus"]), ("Cancelled", 2))
+
+	def test_only_the_administrator_cancels_from_the_panel(self):
+		from container_depot.container_depot.doctype.container_booking.container_booking import (
+			cancel_related_order,
+		)
+
+		c, doc = self._arrived("0000013")
+		frappe.set_user("Guest")
+		with self.assertRaises(frappe.PermissionError):
+			cancel_related_order("Order Bongkar", doc.name, "salah")
+		frappe.set_user("Administrator")
+
+		# Submitted: taken back to draft and voided in one go.
+		self.assertEqual(cancel_related_order("Order Bongkar", doc.name, "salah"), 2)
+		self._assert_un_arrived(c)
+
+
+class TestEirWorkStatus(_Base):
+	"""Draft until Mulai, In Progress after it — and a draft voided with the red Cancel
+	(Frappe's discard) reads Cancelled, not the status it was left at."""
+
+	def _draft(self, no):
+		c = self._container(no, status="In_Depot")
+		return frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In", "container": c, "inspector": "Administrator",
+		}).insert(ignore_permissions=True)
+
+	def test_mulai_moves_a_draft_to_in_progress(self):
+		d = self._draft("0000014")
+		self.assertEqual(d.status, "Draft")
+		eir.start_eir(d.name)
+		self.assertEqual(frappe.db.get_value("Inspection", d.name, "status"), "In Progress")
+
+	def test_discarding_a_pending_review_eir_marks_it_cancelled(self):
+		d = self._draft("0000015")
+		frappe.db.set_value("Inspection", d.name, "status", "Pending Review")
+		d.reload()
+		d.discard()
+		self.assertEqual(frappe.db.get_value("Inspection", d.name, ["status", "docstatus"]), ("Cancelled", 2))
 
 
 # ---------------------------------------------------------------------------
