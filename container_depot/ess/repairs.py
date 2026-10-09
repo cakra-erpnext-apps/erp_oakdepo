@@ -103,7 +103,7 @@ def get_tank_repairs(container):
 
 @frappe.whitelist(methods=["POST"])
 def set_repair_status(repair_order, status, note=None):
-	"""Advance a Repair Order to an allowed next status (approval workflow).
+	"""Cancel a Repair Order (the Desk's red Cancel) — the only status it still moves.
 
 	Permission-checked (write on Repair Order). The save triggers the controller,
 	which recomputes totals and updates the container — no logic duplicated here.
@@ -116,6 +116,15 @@ def set_repair_status(repair_order, status, note=None):
 	"""
 	_require_mr(repair_order)
 	frappe.has_permission("Repair Order", doc=repair_order, ptype="write", throw=True)
+	# Cancel only. Every forward step has its own endpoint that does that step's work (issue
+	# the parts at approval, stamp completion, reset the approval round on a rewind); walking
+	# the transition table here only moved the status and skipped all of it (2026-10-09
+	# audit). The Desk Cancel button is the one caller.
+	if status != "Cancelled":
+		frappe.throw(
+			frappe._("Status M&R hanya bisa diubah lewat tombol langkahnya masing-masing."),
+			frappe.ValidationError,
+		)
 
 	doc = frappe.get_doc("Repair Order", repair_order)
 	allowed = REPAIR_TRANSITIONS.get(doc.status, [])

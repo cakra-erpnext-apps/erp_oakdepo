@@ -86,6 +86,12 @@ class OrderMuat(Document):
 		# for the same reason Order Bongkar unwinds its EIR-In drafts.
 		_release_eirs(self, "EIR-Out")
 
+	def before_discard(self):
+		# Frappe's bare Discard (REST / form.save.discard) voids the draft without any of
+		# on_cancel's unwind — codes stay Used, an arrival stays stamped. The one road is
+		# order_generation.void_order (the red Cancel), which does the full unwind.
+		frappe.throw(_("Pakai tombol Cancel untuk membatalkan bon ini."))
+
 	def on_trash(self):
 		# A bon is never deleted — Void it (draft or submitted) to release its
 		# containers and keep the audit trail.

@@ -581,6 +581,28 @@ def parse_smart(raw):
 	return ("pct", _to_number(raw)) if "%" in raw else ("amt", _to_number(raw))
 
 
+def refuse_depot_amend(doc, method=None):
+	"""before_insert: an invoice billed from depot orders is never Amended.
+
+	Its cancel gave every order back (``consolidated_billing.rollback_billed_sources``) and
+	cleared the manifest, so the amended copy carried the old lines with nothing tying the
+	orders to it — the next Ambil Tagihan billed them a second time (2026-10-09 audit). Bill
+	the orders again from Ambil Tagihan instead."""
+	# A booking's own (Cash) invoice the same: its cancel dropped the booking's link, so the
+	# amended copy was paid while the booking stayed Unpaid and the gate stayed shut. That
+	# booking raises its next invoice itself (Regenerate Invoice).
+	if doc.get("amended_from") and (
+		frappe.db.exists("Sales Invoice Item", {"parent": doc.amended_from, "depot_source": ["is", "set"]})
+		or frappe.db.get_value("Sales Invoice", doc.amended_from, "depot_invoice_type") == "Booking"
+	):
+		frappe.throw(
+			_("Invoice {0} adalah tagihan order depo — jangan di-Amend. Tagih ulang lewat Ambil Tagihan / Regenerate Invoice di booking.").format(
+				doc.amended_from
+			),
+			title=_("Tidak Bisa Amend"),
+		)
+
+
 # --------------------------------------------------------------------------- #
 # Invoice number: INV-{branch}-OAK-{yy}-0001
 # --------------------------------------------------------------------------- #

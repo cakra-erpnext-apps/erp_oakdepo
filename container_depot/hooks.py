@@ -203,7 +203,7 @@ doc_events = {
 	#   cancel -> mark the booking Unpaid so it can be regenerated
 	"Sales Invoice": {
 		# Branch before naming: the number is INV-{branch}-OAK-{yy}-####.
-		"before_insert": ["container_depot.invoicing.default_branch"],
+		"before_insert": ["container_depot.invoicing.refuse_depot_amend", "container_depot.invoicing.default_branch"],
 		"autoname": ["container_depot.invoicing.autoname"],
 		# Line rates from their own currency + kurs, labour, discount and the PPN / PPh /
 		# Materai rows — all BEFORE ERPNext totals the document (invoicing.build_charges).
@@ -273,9 +273,13 @@ def _append_event(doctype, event, handler):
 	events[event] = existing + [handler]
 
 
+# on_discard too: Frappe's discard (the red Cancel on a draft EIR / Cleaning / Survey, and the
+# orders a voided bon takes down) fires on_discard, never on_cancel — so without it a discarded
+# draft kept its bell (2026-10-09 audit).
 for _dt in _REVOCABLE_DOCTYPES:
 	_append_event(_dt, "on_cancel", _REVOKE)
-for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Gate Entry"):
+	_append_event(_dt, "on_discard", _REVOKE)
+for _dt in ("Inspection", "Cleaning Order", "Repair Order", "Gate Entry", "Leak Check"):
 	_append_event(_dt, "on_trash", _REVOKE)
 del _dt
 
@@ -316,7 +320,8 @@ _LAST_ORDER_SOURCES = (
 )
 for _dt in _LAST_ORDER_SOURCES:
 	# Repair Order is not submittable, so its submit-side events simply never fire.
-	for _ev in ("on_update", "on_submit", "on_update_after_submit", "on_cancel"):
+	# on_discard: a discarded draft (EIR / Cleaning) is as gone as a cancelled one.
+	for _ev in ("on_update", "on_submit", "on_update_after_submit", "on_cancel", "on_discard"):
 		_append_event(_dt, _ev, _LAST_ORDERS)
 	_append_event(_dt, "on_trash", _LAST_ORDERS_CLEAR)
 del _dt, _ev

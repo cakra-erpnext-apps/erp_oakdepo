@@ -301,6 +301,9 @@ REVOCABLE_DOCTYPES = (
 	"Cleaning Order",
 	"Repair Order",
 	"Gate Entry",
+	# Both ring (siap dicek / survey dijadwalkan) and were never revoked (2026-10-09 audit).
+	"Leak Check",
+	"Survey Order",
 )
 
 

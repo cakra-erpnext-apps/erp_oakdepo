@@ -137,6 +137,23 @@ class SurveyOrder(Document):
 
 	def on_discard(self):
 		self.db_set("status", CANCELLED, update_modified=False)
+		self._release_eir_outs()
+
+	def on_cancel(self):
+		# A submitted (finished) day voided natively kept reading its old status.
+		self.db_set("status", CANCELLED, update_modified=False)
+		self._release_eir_outs()
+
+	def _release_eir_outs(self):
+		"""The EIR-Out drafts this day claimed (provision_eir_out_for_survey) belong to the
+		booking, not the day: they stay, unlinked — a link to a voided schedule made every
+		later save of them throw CancelledLinkError (2026-10-09 audit)."""
+		for name in frappe.get_all(
+			"Inspection", filters={"survey_order": self.name, "docstatus": 0}, pluck="name"
+		):
+			frappe.db.set_value(
+				"Inspection", name, {"survey_order": None, "survey_tank": None}, update_modified=False
+			)
 
 
 # --- Revisi Data hooks (revision.py) ---------------------------------------------------

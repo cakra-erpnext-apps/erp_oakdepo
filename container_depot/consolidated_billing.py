@@ -1008,6 +1008,17 @@ def _give_back(src, doc):
 	"""Return one manifest entry of ``doc`` to un-invoiced."""
 	if "storage_charge" in src:
 		if frappe.db.exists("Storage Charge", src["storage_charge"]):
+			# A newer invoice billed the same visit further on: winding the watermark back to
+			# this one's start would put the newer invoice's days up for billing again
+			# (2026-10-09 audit). The newest goes first.
+			later = frappe.db.get_value("Storage Charge", src["storage_charge"], "sales_invoice")
+			if later and later != doc.name:
+				frappe.throw(
+					_("Storage {0} sudah ditagih lanjut di invoice {1} — batalkan invoice {1} dulu.").format(
+						src["storage_charge"], later
+					),
+					title=_("Ada Invoice Lebih Baru"),
+				)
 			_move_storage_visit(src["storage_charge"], src.get("prev"), None)
 	elif "storage" in src:
 		# Manifests written before storage billed off the per-visit ledger moved the

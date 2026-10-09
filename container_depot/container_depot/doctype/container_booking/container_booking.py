@@ -492,6 +492,11 @@ class ContainerBooking(Document):
 		# instead), so the hook that normally keeps the schedule in step never fires here.
 		self._provision_survey_order()
 
+	def before_discard(self):
+		# Frappe's bare Discard voids a draft booking without void_draft's unwind (phantom
+		# tank left Booked, codes, invoice, survey). The red Cancel (void_draft) is the road.
+		frappe.throw(_("Pakai tombol Cancel untuk membatalkan booking ini."))
+
 	def on_trash(self):
 		# A booking is never permanently deleted — it is voided/cancelled (Cancel) so its
 		# audit trail and cancelled invoice stay. The UI Delete/Discard actions are also
@@ -1918,7 +1923,11 @@ class ContainerBooking(Document):
 	def _issue_booking_codes(self):
 		issued_at = now_datetime()
 		for item in self.items or []:
-			if item.booking_code:
+			# A row keeps its code across Kembali ke Draft — unless that code died with the tank
+			# the row used to name (_void_dropped_booking_codes cancels it when the row is
+			# repointed). Skipping it left the new tank with no live code, never bonnable
+			# (2026-10-09 audit).
+			if item.booking_code and _code_alive_for(item):
 				continue
 			code = frappe.get_doc({
 				"doctype": "Booking Code",
@@ -1942,6 +1951,12 @@ class ContainerBooking(Document):
 				code.name,
 				update_modified=False,
 			)
+
+
+def _code_alive_for(item) -> bool:
+	"""Is the row's Booking Code still live and still this row's tank?"""
+	row = frappe.db.get_value("Booking Code", item.booking_code, ["state", "container"], as_dict=True)
+	return bool(row) and row.state in ("Active", "Used") and (not item.container or row.container == item.container)
 
 
 # ---- Tank In booking link queries / pricing helpers (whitelisted) -----------
@@ -2174,9 +2189,10 @@ def rollback_to_draft(booking):
 				title=_("Invoice Sudah Disubmit"),
 			)
 		if row.docstatus == 0:
-			frappe.db.set_value(
-				"Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
-			)
+			# Discarded, not written docstatus 2 raw: the raw write skipped on_discard, so a
+			# combined (TOP) invoice voided this way left every OTHER order on it marked as
+			# billed against a dead invoice (2026-10-09 audit). The discard gives them back.
+			_discard_invoice(si)
 	doc.db_set("sales_invoice", None, update_modified=False)
 	doc.db_set("payment_status", "Unpaid", update_modified=False)
 	# Back to where it came FROM, not to a literal "Draft". A booking the customer raised is
@@ -2186,6 +2202,15 @@ def rollback_to_draft(booking):
 	target = "Pengajuan" if doc.requested_by_customer else "Draft"
 	doc.db_set("booking_status", target, update_modified=False)
 	return {"booking_status": target, "cancelled_invoice": si}
+
+
+def _discard_invoice(si):
+	"""Void a draft Sales Invoice through Frappe's discard, so its on_discard hooks run (billed
+	orders given back, bell revoked) — a raw docstatus write skipped all of them."""
+	inv = frappe.get_doc("Sales Invoice", si)
+	inv.flags.ignore_permissions = True
+	inv.discard()
+	inv.db_set("status", "Cancelled", update_modified=False)
 
 
 # --- Administrator: a wrongly entered tank off a frozen booking --------------------
@@ -2266,8 +2291,6 @@ def cancel_related_order(doctype, name, note=None):
 			doc.cancel()
 		elif doc.docstatus == 0:
 			doc.discard()
-			if doctype == "Leak Check":
-				doc.db_set("status", "Cancelled")
 	else:
 		frappe.throw(_("{0} tidak bisa dibatalkan dari panel ini.").format(_(doctype)))
 	if note:
@@ -3088,7 +3111,7 @@ def cancel_draft_invoice(booking):
 			title=_("Invoice Sudah Disubmit"),
 		)
 	# Same void as rollback_to_draft: a draft has no ledger impact, it stays for audit.
-	frappe.db.set_value("Sales Invoice", si, {"docstatus": 2, "status": "Cancelled"}, update_modified=False)
+	_discard_invoice(si)
 	doc.db_set({"sales_invoice": None, "payment_status": "Unpaid"}, update_modified=False)
 	log_doc_note(doc.doctype, doc.name, _("Invoice draft {0} dibatalkan — charges bisa diubah lagi.").format(si))
 	return si

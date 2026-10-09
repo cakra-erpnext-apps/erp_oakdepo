@@ -902,7 +902,7 @@ def provision_eirs_for_order_bongkar(order_name: str) -> list:
 	return created
 
 
-def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EIR-In") -> dict:
+def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EIR-In", containers=None) -> dict:
 	"""Cancel-time counterpart of the provisioning above: unwind the draft EIRs that a
 	now-cancelled bon created, so none is left pointing at a voided voucher.
 
@@ -922,19 +922,26 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
       still be relying on.
 
 	Best-effort per draft — mirrors ``provision_eirs_for_order_bongkar``: one failure is
-	logged and never blocks the cancel.
+	logged and never blocks the cancel. ``containers``: only these tanks' drafts (a row taken
+	off a bon that went back to draft).
 	"""
-	drafts = frappe.get_all(
-		"Inspection",
-		filters={"referred_voucher": order_name, "docstatus": 0, "inspection_type": inspection_type},
-		fields=["name", "container", "work_started_on"],
-	)
+	filters = {"referred_voucher": order_name, "docstatus": 0, "inspection_type": inspection_type}
+	if containers is not None:
+		filters["container"] = ["in", list(containers) or [""]]
+	drafts = frappe.get_all("Inspection", filters=filters, fields=["name", "container", "work_started_on"])
 	out = {"repointed": [], "deleted": [], "detached": []}
 	for d in drafts:
 		try:
 			# The bon is already at docstatus 2 by the time on_cancel runs, so this can
-			# never hand back the very bon being cancelled.
+			# never hand back the very bon being cancelled. Only a bon raised AFTER it is a
+			# replacement: the newest submitted one may be the tank's previous visit, and
+			# re-pointing there kept a returning tank's unstarted draft alive on an old bon
+			# (2026-10-09 audit).
 			replacement = latest_voucher_for_container(d.container, inspection_type)
+			if replacement and frappe.db.get_value(
+				_voucher_doctype(inspection_type), replacement, "creation"
+			) < frappe.db.get_value(_voucher_doctype(inspection_type), order_name, "creation"):
+				replacement = None
 			if replacement:
 				doc = frappe.get_doc("Inspection", d.name)
 				_apply_voucher(doc, replacement)
@@ -958,6 +965,19 @@ def release_eirs_for_cancelled_order(order_name: str, inspection_type: str = "EI
 				out["detached"].append(d.name)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"release EIR {d.name} on {order_name}")
+	if inspection_type == "EIR-Out":
+		# A FINISHED EIR-Out the bon adopted (attach_order_muat_to_eirs) kept the voided bon as
+		# its voucher, so the next bon could never adopt it and its Gate Entry got no EIR
+		# (2026-10-09 audit). Detached the same way as a started draft.
+		done = {**filters, "docstatus": 1}
+		for name in frappe.get_all("Inspection", filters=done, pluck="name"):
+			frappe.db.set_value(
+				"Inspection", name, {"referred_voucher": None, "voucher_doctype": None}, update_modified=False
+			)
+			log_doc_note("Inspection", name, _(
+				"Bon {0} dibatalkan — link bon dilepas, EIR-Out menunggu bon berikutnya."
+			).format(order_name))
+			out["detached"].append(name)
 	return out
 
 
@@ -2267,6 +2287,9 @@ def withdraw_review(inspection: str) -> dict:
 		"EIR ditarik dari review untuk diperbaiki oleh {0}"
 	).format(frappe.session.user))
 
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Inspection", doc.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	return {
 		"success": True,
 		"inspection": doc.name,
@@ -2683,6 +2706,9 @@ def revert_to_draft(name: str) -> dict:
 	status = "In Progress" if doc.work_started_on else "Draft"
 	frappe.db.set_value("Inspection", doc.name, {"docstatus": 0, "status": status, "closed_by_admin": 0})
 	# A pending Ajukan Revisi is answered by this — tell whoever asked.
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Inspection", doc.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	if cint(doc.get("revision_requested")):
 		from container_depot.container_depot import revision
 

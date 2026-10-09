@@ -223,6 +223,17 @@ class TestConsolidatedBillingBooking(FrappeTestCase):
 		booking.reload()
 		self.assertEqual(booking.sales_invoice, sis2[0], "booking re-linked to the regenerated invoice")
 
+	def test_a_billed_invoice_is_never_amended(self):
+		"""Its cancel gave the orders back; an amended copy carried the old lines with nothing
+		tying the orders to it, and the next run billed them twice (2026-10-09 audit)."""
+		from container_depot.invoicing import refuse_depot_amend
+
+		_make_booking(self.customer, self.contract, self.item, "TOP", 500000)
+		si = bill_customer(self.customer)[0]
+		with self.assertRaises(frappe.ValidationError):
+			refuse_depot_amend(frappe._dict(amended_from=si))
+		refuse_depot_amend(frappe._dict(amended_from=None))  # a plain invoice is untouched
+
 	def test_generated_invoice_items_cannot_be_deleted(self):
 		doc = frappe.get_doc({
 			"doctype": "Container Booking",

@@ -159,13 +159,20 @@ def save_bon_revision(doctype: str, name: str, header=None, lines=None) -> dict:
 	return out
 
 
-def _assert_storage_not_invoiced(doc) -> None:
-	"""The bon's date is the day in / out its visit's storage was counted from (visit_dates)."""
-	filters = (
-		{"order_doctype": "Order Bongkar", "order_ref": doc.name}
-		if doc.doctype == "Order Bongkar" else {"order_muat": doc.name}
-	)
-	gates = frappe.get_all("Gate Entry", filters={**filters, "status": ["!=", "Cancelled"]}, pluck="name")
+def _assert_storage_not_invoiced(doc, refusal=None) -> None:
+	"""The bon's date is the day in / out its visit's storage was counted from (visit_dates).
+
+	Also asked before an arrival is voided (Order Bongkar / Gate Entry cancel): a billed visit
+	whose arrival is undone kept accruing on its invoice forever (2026-10-09 audit).
+	``refusal``: what may not happen, for the message."""
+	if doc.doctype == "Gate Entry":
+		gates = [doc.name]
+	else:
+		filters = (
+			{"order_doctype": "Order Bongkar", "order_ref": doc.name}
+			if doc.doctype == "Order Bongkar" else {"order_muat": doc.name}
+		)
+		gates = frappe.get_all("Gate Entry", filters={**filters, "status": ["!=", "Cancelled"]}, pluck="name")
 	billed = gates and frappe.db.get_value(
 		"Storage Charge",
 		{"gate_entry": ["in", gates], "sales_invoice": ["is", "set"]},
@@ -173,7 +180,9 @@ def _assert_storage_not_invoiced(doc) -> None:
 	)
 	if billed:
 		frappe.throw(
-			_("Storage tank {0} kunjungan ini sudah masuk invoice {1} — tanggal bon tidak bisa diubah. "
-			  "Batalkan invoice-nya dulu.").format(billed.container, billed.sales_invoice),
+			_("Storage tank {0} kunjungan ini sudah masuk invoice {1} — {2}. "
+			  "Batalkan invoice-nya dulu.").format(
+				billed.container, billed.sales_invoice, refusal or _("tanggal bon tidak bisa diubah")
+			),
 			title=_("Sudah Diinvoice"),
 		)

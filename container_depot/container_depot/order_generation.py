@@ -201,6 +201,14 @@ def make_order(booking, selected_codes, vehicle_data=None, sst=None, submit=Fals
 		frappe.throw(_("The same container was selected more than once."))
 	if not booking or not frappe.db.exists("Container Booking", booking):
 		frappe.throw(_("Booking {0} not found.").format(booking))
+	# Kembali ke Draft keeps the codes Active for the re-confirm, so a printed QR still scans:
+	# a bon issued then froze a booking nobody had confirmed (2026-10-09 audit).
+	bk = frappe.db.get_value("Container Booking", booking, ["docstatus", "booking_status"], as_dict=True)
+	if bk.docstatus != 1 or bk.booking_status == "Cancelled":
+		frappe.throw(
+			_("Booking {0} belum dikonfirmasi ({1}) — bon belum bisa dibuat.").format(booking, bk.booking_status),
+			title=_("Booking Belum Confirmed"),
+		)
 	# Before the row locks and before a single code is spent: a refusal that happens after the
 	# transaction has started is a rollback the operator watches, and one that happens after
 	# the codes are flipped is a bug.

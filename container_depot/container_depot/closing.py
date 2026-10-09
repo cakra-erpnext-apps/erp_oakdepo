@@ -133,7 +133,16 @@ def _close_eir(doc, older):
 		# that is over. It still goes on the tank's history.
 		from container_depot.container_depot.container_activity import log_container_activity
 
-		doc.db_set({"docstatus": 1, "status": "Submitted", "closed_by_admin": 1})
+		# The snapshot a real submit takes is written too, as the tank stands now: Kembalikan
+		# ke Draft restores from it, and an empty (or stale, from an earlier submit) one set
+		# the tank's last_cargo to None or to an old cargo (2026-10-09 audit). A paper close
+		# changed nothing on the tank, so "as it stands" is exactly what undoing it restores.
+		tank = frappe.db.get_value("Container", doc.container, ["status", "last_cargo"], as_dict=True) or {}
+		doc.db_set({
+			"docstatus": 1, "status": "Submitted", "closed_by_admin": 1,
+			"container_status_before_submit": tank.get("status"),
+			"container_last_cargo_before_submit": tank.get("last_cargo"),
+		})
 		log_container_activity(
 			doc.container, "Inspection (EIR)", reference_doctype=doc.doctype,
 			reference_name=doc.name, performed_by=doc.get("inspector"),

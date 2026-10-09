@@ -814,6 +814,9 @@ def withdraw_from_owner(repair_order, note=None):
 	if note:
 		ro.owner_note = _clean(note)
 	ro.save()
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Repair Order", ro.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 
@@ -853,6 +856,9 @@ def reopen_to_draft(repair_order, note=None):
 	if note:
 		msg += ": " + _clean(note)
 	log_doc_note("Repair Order", ro.name, msg)
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Repair Order", ro.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 
@@ -1228,6 +1234,9 @@ def withdraw_review(repair_order):
 		)
 	ro.status = "In Progress"
 	ro.save()
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Repair Order", ro.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	return {"success": True, "name": ro.name, "status": ro.status}
 
 

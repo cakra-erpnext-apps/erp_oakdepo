@@ -50,11 +50,11 @@ def _purge():
 		filters={"container": ("in", containers), "parenttype": "Order Bongkar"},
 		pluck="parent", distinct=True,
 	) or [""]
-	bookings = frappe.get_all(
+	bookings = list({*frappe.get_all(
 		"Container Booking Item",
 		filters={"container": ("in", containers), "parenttype": "Container Booking"},
 		pluck="parent", distinct=True,
-	) or [""]
+	), *frappe.get_all("Container Booking", filters={"customer": CUSTOMER}, pluck="name")}) or [""]
 	for doctype, names in (
 		("Inspection", inspections), ("Cleaning Order", orders), ("Repair Order", repairs),
 		("Order Bongkar", bons), ("Container Booking", bookings),
@@ -466,6 +466,197 @@ class TestGateEntryCancel(_Base):
 
 		self.assertIn(frappe.db.get_value("Container", c, "status"), ("In_Depot", "Available"))
 		self.assertTrue(frappe.db.get_value("Container", c, "in_date"))
+
+
+class TestRollbackAudit(_Base):
+	"""Gaps found by the 2026-10-09 rollback audit: each test is one road that used to void a
+	document while leaving part of the world it changed behind."""
+
+	def _arrived(self, no):
+		c = self._container(no, status="Booked")
+		doc = frappe.get_doc("Order Bongkar", _make_order_bongkar(self.customer, c))
+		ob._sync_container_arrival(doc)
+		return c, doc
+
+	def test_a_gate_entry_cancel_is_not_held_by_open_work(self):
+		c = self._container("0000020", status="Booked")
+		ge = frappe.get_doc({
+			"doctype": "Gate Entry", "container": c, "container_no": c,
+			"gate_in_timestamp": frappe.utils.now_datetime(),
+		})
+		ge.insert(ignore_permissions=True, ignore_mandatory=True)
+		ge.submit()
+		frappe.get_doc({"doctype": "Cleaning Order", "container": c, "status": "In_Progress"}).insert(
+			ignore_permissions=True, ignore_mandatory=True
+		)
+
+		ge.cancel()
+
+		self.assertEqual(frappe.db.get_value("Container", c, "status"), "Gate_Out")
+
+	def test_bare_discard_of_a_bon_is_refused(self):
+		_c, doc = self._arrived("0000021")
+		frappe.db.set_value("Order Bongkar", doc.name, "docstatus", 0, update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.get_doc("Order Bongkar", doc.name).discard()
+
+	def test_a_returning_tank_s_unstarted_eir_is_not_handed_to_its_old_bon(self):
+		"""The newest submitted bon carrying the tank was its PREVIOUS visit's: re-pointing the
+		void's unstarted EIR-In there kept it alive, and the next bon raised no EIR-In."""
+		c = self._container("0000022", status="Booked")
+		old = _make_order_bongkar(self.customer, c)  # last visit's bon, submitted
+		doc = frappe.get_doc("Order Bongkar", _make_order_bongkar(self.customer, c))
+		ob._sync_container_arrival(doc)
+		draft = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In", "container": c, "inspector": "Administrator",
+		})
+		eir._apply_voucher(draft, doc.name)
+		draft.insert(ignore_permissions=True)
+
+		frappe.db.set_value("Order Bongkar", doc.name, "docstatus", 2, update_modified=False)
+		doc.run_method("on_cancel")
+
+		self.assertFalse(frappe.db.exists("Inspection", draft.name))
+		self.assertNotEqual(old, doc.name)
+
+	def test_a_row_taken_off_a_reverted_bon_takes_its_arrival_with_it(self):
+		c1 = self._container("0000023", status="Booked")
+		c2 = self._container("0000024", status="Booked")
+		doc = frappe.get_doc({
+			"doctype": "Order Bongkar", "emkl": self.customer,
+			"containers": [{"container": c, "container_no": c} for c in (c1, c2)],
+		})
+		doc.flags.ignore_validate = True
+		doc.insert(ignore_permissions=True, ignore_mandatory=True)
+		ob._sync_container_arrival(doc)
+		self.assertIn(frappe.db.get_value("Container", c2, "status"), ("In_Depot", "Available"))
+
+		doc.reload()
+		doc.remove(doc.containers[1])
+		doc.flags.ignore_validate = True
+		doc.save(ignore_permissions=True)
+
+		self.assertEqual(frappe.db.get_value("Container", c2, "status"), "Gate_Out")
+		self.assertIn(frappe.db.get_value("Container", c1, "status"), ("In_Depot", "Available"))
+
+	def test_discarding_a_reverted_eir_in_drops_the_wash_it_filed(self):
+		c = self._container("0000025", status="In_Depot")
+		d = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-In", "container": c, "inspector": "Administrator",
+		}).insert(ignore_permissions=True)
+		wash = frappe.get_doc({
+			"doctype": "Cleaning Order", "container": c, "status": "Service Setup", "inspection": d.name,
+		}).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		d.discard()
+
+		self.assertEqual(frappe.db.get_value("Cleaning Order", wash.name, "status"), "Cancelled")
+
+	def test_a_billed_m_r_cannot_be_deleted(self):
+		c = self._container("0000026", status="In_Depot")
+		ro = frappe.get_doc({"doctype": "Repair Order", "container": c, "status": "Draft"}).insert(
+			ignore_permissions=True, ignore_mandatory=True
+		)
+		frappe.db.set_value("Repair Order", ro.name, "sales_invoice", "SINV-NOT-REAL", update_modified=False)
+		with self.assertRaises(frappe.ValidationError):
+			frappe.delete_doc("Repair Order", ro.name, ignore_permissions=True)
+
+	def test_no_bon_from_a_booking_back_in_draft(self):
+		from container_depot.container_depot.order_generation import make_order
+
+		booking = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank In", "customer": self.customer,
+			"items": [{"container_no": f"{PREFIX}0000027"}],
+		})
+		booking.flags.ignore_validate = True
+		booking.insert(ignore_permissions=True, ignore_mandatory=True)
+		with self.assertRaises(frappe.ValidationError):
+			make_order(booking.name, ["ANY"])
+
+	def test_bare_discard_of_a_booking_is_refused(self):
+		booking = frappe.get_doc({
+			"doctype": "Container Booking", "direction": "Tank In", "customer": self.customer,
+			"items": [{"container_no": f"{PREFIX}0000028"}],
+		})
+		booking.flags.ignore_validate = True
+		booking.insert(ignore_permissions=True, ignore_mandatory=True)
+		with self.assertRaises(frappe.ValidationError):
+			booking.discard()
+
+
+class TestRollbackAuditMedium(_Base):
+	"""The medium findings of the same audit."""
+
+	def test_a_voided_arrival_gives_back_the_day_the_tank_last_left(self):
+		c = self._container("0000030", status="Gate_Out")
+		frappe.get_doc({
+			"doctype": "Gate Entry", "container": c, "container_no": c, "status": "Gate_Out_Completed",
+			"gate_in_timestamp": "2026-09-01 08:00:00", "gate_out_timestamp": "2026-09-05 08:00:00",
+			"out_date": "2026-09-05",
+		}).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("Container", c, "out_date", "2026-09-05", update_modified=False)
+		doc = frappe.get_doc("Order Bongkar", _make_order_bongkar(self.customer, c))
+		ob._sync_container_arrival(doc)
+		self.assertIsNone(frappe.db.get_value("Container", c, "out_date"))
+
+		doc.run_method("on_cancel")
+
+		self.assertEqual(str(frappe.db.get_value("Container", c, "out_date")), "2026-09-05")
+
+	def test_a_finished_eir_out_lets_go_of_a_voided_muat(self):
+		c = self._container("0000031", status="In_Depot")
+		done = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-Out", "container": c, "inspector": "Administrator",
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Inspection", done.name, {
+			"docstatus": 1, "voucher_doctype": "Order Muat", "referred_voucher": "OM-VOIDED-TEST",
+		}, update_modified=False)
+
+		eir.release_eirs_for_cancelled_order("OM-VOIDED-TEST", "EIR-Out")
+
+		self.assertIsNone(frappe.db.get_value("Inspection", done.name, "referred_voucher"))
+
+	def test_a_discarded_survey_day_unlinks_its_eir_out_drafts(self):
+		c = self._container("0000032", status="In_Depot")
+		day = frappe.get_doc({"doctype": "Survey Order"})
+		day.flags.ignore_validate = True
+		day.insert(ignore_permissions=True, ignore_mandatory=True)
+		draft = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-Out", "container": c, "inspector": "Administrator",
+		}).insert(ignore_permissions=True)
+		frappe.db.set_value("Inspection", draft.name, "survey_order", day.name, update_modified=False)
+		try:
+			day.discard()
+			self.assertIsNone(frappe.db.get_value("Inspection", draft.name, "survey_order"))
+		finally:
+			frappe.db.delete("Survey Order", {"name": day.name})
+			frappe.db.commit()
+
+	def test_a_paper_close_keeps_the_tank_s_cargo_on_undo(self):
+		from container_depot.container_depot import closing
+
+		c = self._container("0000033", status="In_Depot")
+		frappe.db.set_value("Container", c, "last_cargo", "OLEIN", update_modified=False)
+		d = frappe.get_doc({
+			"doctype": "Inspection", "inspection_type": "EIR-Out", "container": c,
+			"inspector": "Administrator", "cargo": "OLEIN",
+		}).insert(ignore_permissions=True)
+
+		closing._close_eir(d, older=True)
+
+		self.assertEqual(frappe.db.get_value("Inspection", d.name, "container_last_cargo_before_submit"), "OLEIN")
+
+	def test_moving_an_order_to_another_tank_frees_the_first(self):
+		a = self._container("0000034", status="In_Depot")
+		b = self._container("0000035", status="In_Depot")
+		wash = frappe.get_doc({"doctype": "Cleaning Order", "container": a, "status": "Pending"})
+		wash.insert(ignore_permissions=True, ignore_mandatory=True)
+		self.assertEqual(frappe.db.get_value("Container", a, "status"), "In_Depot")
+
+		wash.container = b
+		wash.save(ignore_permissions=True)
+
+		self.assertEqual(frappe.db.get_value("Container", a, "status"), "Available")
 
 
 # ---------------------------------------------------------------------------

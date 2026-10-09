@@ -474,6 +474,10 @@ def reverse_bon_departures(bon) -> list:
 		lift_on.refresh_bookings_for_container(container)
 		storage_charge.sync(container, tank.container_no)
 		back.append(container)
+	# The gate-out dropped the tanks' lift-on stamp (release_on_gate_out); they are waiting
+	# for this booking's pickup again, so it is put back (2026-10-09 audit).
+	if back and bon.get("booking") and frappe.db.exists("Container Booking", bon.booking):
+		lift_on.sync_booking_targets(frappe.get_doc("Container Booking", bon.booking))
 	return back
 
 

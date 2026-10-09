@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 from container_depot.container_depot.container_status import assert_container_active
@@ -272,6 +273,10 @@ class RepairOrder(Document):
 		from container_depot.container_depot.container_status import recompute_availability
 
 		recompute_availability(self.container)
+		# Moved to another tank: the one it left may have nothing open any more.
+		before = self.get_doc_before_save()
+		if before and before.container and before.container != self.container:
+			recompute_availability(before.container)
 		self._revoke_notifications_if_cancelled()
 		self._stamp_last_test_date()
 		if self.flags.get("revision"):
@@ -358,6 +363,22 @@ class RepairOrder(Document):
 			from container_depot.container_depot.notify import revoke
 
 			revoke(self.doctype, self.name)
+
+	def on_trash(self):
+		"""Deleting an M&R (System Manager only) undoes what its life did, like a Cancel: the
+		parts go back to stock, a Periodic Test's date comes off the tank. A billed one is
+		refused — the invoice is undone first (2026-10-09 audit: the parts stayed out)."""
+		if self.get("sales_invoice"):
+			frappe.throw(
+				_("M&R {0} sudah masuk invoice {1} — batalkan invoice-nya dulu.").format(
+					self.name, self.sales_invoice
+				)
+			)
+		from container_depot.container_depot.mr import cancel_stock_entry
+
+		cancel_stock_entry(self.get("stock_entry"))
+		if self.status == "Completed":
+			self.restore_test_date(self)
 
 	def after_delete(self):
 		# A deleted draft order is work that no longer exists — the tank it was holding

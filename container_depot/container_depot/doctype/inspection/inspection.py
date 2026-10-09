@@ -276,8 +276,9 @@ class Inspection(Document):
 		# The red Cancel on a draft / Pending Review EIR is Frappe's discard (docstatus 2
 		# without on_cancel). It skipped all of the below, so a voided EIR kept reading
 		# "Pending Review" and its tank was never recomputed. Same clean-up as a cancel, minus
-		# the submit unwind: a draft has no submit to undo (a reverted one was unwound by its
-		# revert), and its snapshot fields would put a stale status / cargo back on the tank.
+		# the status/cargo unwind: a draft has no submit to undo (a reverted one was unwound by
+		# its revert), and its snapshot fields would put a stale status / cargo back on the
+		# tank. The follow-up orders a reverted EIR-In kept are still released (on_cancel).
 		self.flags.discarding = True
 		self.on_cancel()
 
@@ -302,6 +303,13 @@ class Inspection(Document):
 
 		if not self.flags.get("discarding"):
 			unwind_submitted_eir(self, drop_followups=True)
+		elif self.inspection_type == "EIR-In":
+			# A discarded draft may be one Kembalikan ke Draft brought back: its revert kept the
+			# Cleaning / M&R it filed for the re-submit (unwind without drop_followups), and the
+			# void is what says no re-submit is coming. Untouched ones go (2026-10-09 audit).
+			from container_depot.container_depot import eir_followups
+
+			eir_followups.release_followups_for_eir(self.name)
 		self.db_set("status", "Cancelled", update_modified=False)
 		# A revision request asked for this EIR to be reopened; voiding it IS the answer, so
 		# the flag (and the "Revisi Diminta" badge it drives) comes off — same as

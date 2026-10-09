@@ -49,6 +49,9 @@ class LeakCheck(Document):
 	def on_cancel(self):
 		self.db_set("status", CANCELLED)
 
+	def on_discard(self):
+		self.db_set("status", CANCELLED)
+
 	def _has_photo(self) -> bool:
 		return any(row.photo for row in self.photos)
 
@@ -186,7 +189,8 @@ def release_for_cancelled_order(order_name: str) -> dict:
 def _release(order_name: str, wanted) -> dict:
 	"""Per Leak Check, in order:
 
-	* a **replacement** submitted bon carries the container → re-point at it;
+	* a **replacement** submitted bon — raised after this one — carries the container →
+	  re-point at it (an older one is the tank's previous visit, not a replacement);
 	* else still **Open** → gone with the bon (user, 2026-10-09): deleted when it holds no
 	  photo, cancelled (photos kept) when it does;
 	* else (Completed) → keep the evidence, drop the dangling bon link, say so on its timeline.
@@ -202,8 +206,9 @@ def _release(order_name: str, wanted) -> dict:
 				"""SELECT o.name, o.booking FROM `tabOrder Bongkar` o
 				JOIN `tabContainer Booking Item` i ON i.parent = o.name AND i.parenttype = 'Order Bongkar'
 				WHERE i.container = %s AND o.docstatus = 1 AND o.name != %s
+				  AND o.creation > (SELECT creation FROM `tabOrder Bongkar` WHERE name = %s)
 				ORDER BY o.creation DESC LIMIT 1""",
-				(lc.container, order_name),
+				(lc.container, order_name, order_name),
 				as_dict=True,
 			)
 			if replacement:
@@ -218,6 +223,9 @@ def _release(order_name: str, wanted) -> dict:
 				out["deleted"].append(lc.name)
 			elif lc.status == OPEN:
 				frappe.db.set_value("Leak Check", lc.name, {"docstatus": 2, "status": CANCELLED})
+				from container_depot.container_depot.notify import revoke
+
+				revoke("Leak Check", lc.name)
 				frappe.get_doc("Leak Check", lc.name).add_comment(
 					"Info", _("Dibatalkan otomatis: bon {0} dibatalkan.").format(order_name)
 				)

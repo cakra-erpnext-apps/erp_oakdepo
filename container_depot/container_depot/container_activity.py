@@ -95,12 +95,30 @@ def count_gate_movements(filters: dict, types=("Gate In", "Gate Out")) -> dict:
 		if refs
 		else set()
 	)
+	# Keberangkatan yang sudah dibalik (bon muat Kembalikan ke Draft / void) membuka lagi Gate
+	# Entry-nya alih-alih membatalkannya, jadi baris "Gate Out"-nya hanya sah selama Gate Entry
+	# itu masih tertutup; dan submit ulang menulis baris kedua untuk Gate Entry yang sama —
+	# satu Gate Entry dihitung sekali per jenis (audit 2026-10-09).
+	still_out = set(
+		frappe.get_all(
+			"Gate Entry",
+			filters={"name": ["in", list(refs)], "status": "Gate_Out_Completed"},
+			pluck="name",
+		)
+	) if refs and "Gate Out" in types else set()
 	counts = {t: 0 for t in types}
+	seen = set()
 	for r in rows:
 		# Baris tanpa rujukan Gate Entry (data lama) tetap dihitung: tidak ada yang bisa
 		# membantahnya, dan menganggapnya batal akan menghilangkan kedatangan yang nyata.
 		if r.reference_name in voided:
 			continue
+		if r.reference_doctype == "Gate Entry" and r.reference_name:
+			if r.activity_type == "Gate Out" and r.reference_name not in still_out:
+				continue
+			if (r.activity_type, r.reference_name) in seen:
+				continue
+			seen.add((r.activity_type, r.reference_name))
 		counts[r.activity_type] = counts.get(r.activity_type, 0) + 1
 	return counts
 

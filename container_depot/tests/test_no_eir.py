@@ -10,6 +10,7 @@ import frappe
 from frappe.utils import getdate
 
 from container_depot import storage
+from container_depot.container_depot.container_activity import count_gate_movements
 from container_depot.container_depot.order_generation import (
 	make_order,
 	order_undoable,
@@ -121,6 +122,12 @@ class TestNoEirOut(_Base):
 		self.assertIsNone(frappe.db.get_value("Container", tank, "out_date"))
 		ge = self._gate()
 		self.assertEqual((ge.status, ge.gate_out_timestamp, ge.out_date), ("Gate_In_Completed", None, None))
+		# Waiting for the booking's pickup again: its lift-on stamp is back, and the undone
+		# departure no longer counts as a tank out (2026-10-09 audit).
+		self.assertTrue(frappe.db.get_value("Container", tank, "target_lift_on"))
+		gone = lambda: count_gate_movements({"container": tank})["Gate Out"]  # noqa: E731
+		self.assertEqual(gone(), 0)
 
 		frappe.get_doc("Order Muat", bon).submit()  # out again on re-submit
 		self.assertEqual(frappe.db.get_value("Container", tank, "status"), "Gate_Out")
+		self.assertEqual(gone(), 1)  # one departure, though two Gate Out rows were written

@@ -221,6 +221,10 @@ def close_survey_order_with_booking(name: str) -> None:
 			"Inspection", eir, {"docstatus": 2, "status": "Cancelled"}, update_modified=False
 		)
 		revoke("Inspection", eir)
+		# Raw write: the last_orders hook never saw it, so the tank's last EIR-Out is re-cached.
+		from container_depot.container_depot.last_orders import refresh_container
+
+		refresh_container(frappe.db.get_value("Inspection", eir, "container"))
 
 
 def unfinished_survey_row(booking: str | None, container: str):

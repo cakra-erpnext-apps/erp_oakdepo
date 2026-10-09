@@ -422,6 +422,9 @@ def withdraw_review(cleaning_order) -> dict:
 	co.status = "In_Progress"
 	co.cleaning_end = None
 	co.save()  # NOT ignore_permissions — the operator holds Cleaning Order write.
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Cleaning Order", co.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	return {"success": True, "name": co.name, "status": co.status}
 
 
@@ -476,6 +479,9 @@ def revert_to_draft(name: str) -> dict:
 			"closed_by_admin": 0,  # Tutup Order (closing.py) finished it; open again now
 		},
 	)
+	from container_depot.container_depot.notify import revoke
+
+	revoke("Cleaning Order", doc.name)  # the step it undoes rang a "siap review/print" call that is stale now
 	# A pending Ajukan Revisi is answered by this — tell whoever asked.
 	if doc.get("revision_requested"):
 		from container_depot.container_depot import revision

@@ -340,4 +340,9 @@ def release_followups_for_eir(inspection) -> dict:
 		revoke("Repair Order", name)
 		out["repair"].append(name)
 
+	# Raw writes skip the last_orders hook too: re-cache the tank's last Cleaning / M&R.
+	if out["cleaning"] or out["repair"]:
+		from container_depot.container_depot.last_orders import refresh_container
+
+		refresh_container(frappe.db.get_value("Inspection", inspection, "container"))
 	return out

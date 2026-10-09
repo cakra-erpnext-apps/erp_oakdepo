@@ -331,6 +331,10 @@ class CleaningOrder(Document):
 		from container_depot.container_depot.container_status import recompute_availability
 
 		recompute_availability(self.container)
+		# Moved to another tank: the one it left may have nothing open any more.
+		before = self.get_doc_before_save()
+		if before and before.container and before.container != self.container:
+			recompute_availability(before.container)
 		self._notify_if_forwarded_to_team()
 
 	def _notify_if_forwarded_to_team(self):

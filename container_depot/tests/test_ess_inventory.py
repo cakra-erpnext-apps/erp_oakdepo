@@ -445,18 +445,14 @@ class TestEssInventory(FrappeTestCase):
 			}
 		).insert(ignore_permissions=True)
 		try:
-			# Invalid jump rejected.
-			with self.assertRaises(frappe.ValidationError):
-				set_repair_status(ro.name, "Completed")
+			# Only Cancel: a forward step here skipped that step's own work (parts issued at
+			# approval, the approval round reset on a rewind).
+			for status in ("Completed", "Pending Approval", "Approved"):
+				with self.assertRaises(frappe.ValidationError):
+					set_repair_status(ro.name, status)
 
-			# Draft -> Pending Approval (customer web).
-			r1 = set_repair_status(ro.name, "Pending Approval")
-			self.assertEqual(r1["status"], "Pending Approval")
-
-			r2 = set_repair_status(ro.name, "Approved")
-			self.assertEqual(r2["status"], "Approved")
-			# Controller propagated the container status (reuse, not reimplement).
-			self.assertEqual(frappe.db.get_value("Container", c.name, "status"), "In_Depot")
+			r1 = set_repair_status(ro.name, "Cancelled")
+			self.assertEqual(r1["status"], "Cancelled")
 		finally:
 			for dt in ["Container Movement"]:
 				frappe.db.delete(dt, {"container": c.name})

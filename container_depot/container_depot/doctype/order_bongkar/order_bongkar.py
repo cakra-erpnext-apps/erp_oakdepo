@@ -44,6 +44,7 @@ class OrderBongkar(Document):
 		# order goes with it now, not at the next submit.
 		if self.docstatus == 0:
 			_leak_checks(self, "release_removed_rows")
+			_release_removed_tanks(self)
 
 	def on_submit(self):
 		# Sync depot/status first so the activity log + ex_vessel see the arrived tank.
@@ -72,6 +73,10 @@ class OrderBongkar(Document):
 		refresh_bon_followers(self.doctype, self.name)
 
 	def on_cancel(self):
+		from container_depot.container_depot.bon_revision import _assert_storage_not_invoiced
+
+		# First, before anything moves: a billed visit cannot lose its arrival.
+		_assert_storage_not_invoiced(self, _("bon tidak bisa dibatalkan"))
 		_release_codes(self)
 		_release_eirs(self, "EIR-In")
 		_leak_checks(self, "release_for_cancelled_order")
@@ -79,6 +84,12 @@ class OrderBongkar(Document):
 		_cancel_unstarted_work(self)
 		# LAST: the arrival itself.
 		_release_container_arrival(self)
+
+	def before_discard(self):
+		# Frappe's bare Discard (REST / form.save.discard) voids the draft without any of
+		# on_cancel's unwind — codes stay Used, an arrival stays stamped. The one road is
+		# order_generation.void_order (the red Cancel), which does the full unwind.
+		frappe.throw(_("Pakai tombol Cancel untuk membatalkan bon ini."))
 
 	def on_trash(self):
 		# A bon is never deleted — Cancel it (draft or submitted) to release its
@@ -114,14 +125,14 @@ def _leak_checks(order: Document, fn: str):
 		frappe.log_error(frappe.get_traceback(), f"Leak Check {fn} for {order.name}")
 
 
-def _release_eirs(order: Document, inspection_type: str):
+def _release_eirs(order: Document, inspection_type: str, containers=None):
 	"""Unwind the draft EIRs this bon provisioned (see
 	``container_depot.eir.release_eirs_for_cancelled_order``). Shared by Order Bongkar
 	(EIR-In) and Order Muat (EIR-Out). Best-effort — an EIR hiccup never blocks a cancel.
 	"""
 	try:
 		from container_depot.container_depot.eir import release_eirs_for_cancelled_order
-		release_eirs_for_cancelled_order(order.name, inspection_type)
+		release_eirs_for_cancelled_order(order.name, inspection_type, containers)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), f"release EIRs for {order.name}")
 
@@ -340,14 +351,31 @@ def _arrived_on(order: Document, container: str):
 _UNSTARTED_WORK = {"Cleaning Order": ("Service Setup", "Pending"), "Repair Order": ("Draft",)}
 
 
-def _cancel_unstarted_work(order: Document):
+def _release_removed_tanks(order: Document):
+	"""A row taken off a bon that went back to draft: that tank's arrival is undone exactly as
+	a void undoes it — gate-in, EIR-In draft, unstarted work, status. It used to keep only the
+	code release, and the tank stood In_Depot for good (2026-10-09 audit)."""
+	before = order.get_doc_before_save()
+	if not before:
+		return
+	keep = {r.container for r in _order_rows(order) if r.get("container")}
+	gone = [r.container for r in _order_rows(before) if r.get("container") and r.container not in keep]
+	if not gone:
+		return
+	_release_eirs(order, "EIR-In", gone)
+	_release_gate_in(order, gone)
+	_cancel_unstarted_work(order, gone)
+	_release_container_arrival(order, gone)
+
+
+def _cancel_unstarted_work(order: Document, containers=None):
 	"""Cancel this visit's Cleaning / M&R that nobody has started. Started or finished work is
 	left for Admin Ops to decide on by hand — and no longer holds the tank in the yard
 	(:func:`_release_container_arrival`). Best-effort per order, like the EIRs."""
 	from container_depot.container_depot.container_status import container_open_orders
 
 	note = _("Dibatalkan otomatis: bon {0} dibatalkan.").format(order.name)
-	for container in dict.fromkeys(r.get("container") for r in _order_rows(order)):
+	for container in containers or dict.fromkeys(r.get("container") for r in _order_rows(order)):
 		if not _arrived_on(order, container):
 			continue
 		for o in container_open_orders(container):
@@ -367,7 +395,7 @@ def _cancel_unstarted_work(order: Document):
 				frappe.log_error(frappe.get_traceback(), f"cancel {o['name']} with {order.name}")
 
 
-def _release_container_arrival(order: Document):
+def _release_container_arrival(order: Document, containers=None):
 	"""Un-arrive the tanks whose arrival THIS bon stamped (:func:`_sync_container_arrival`).
 
 	The bon is what puts the tank in the depot, so voiding it ALWAYS takes it back out (user,
@@ -384,10 +412,20 @@ def _release_container_arrival(order: Document):
 	that never arrived is not standing in the yard, and saying so would put a phantom back
 	into the inventory.
 	"""
-	for row in _order_rows(order):
-		cur = _arrived_on(order, row.get("container"))
+	for container in containers or [r.get("container") for r in _order_rows(order)]:
+		cur = _arrived_on(order, container)
 		if cur:
-			roll_back_arrival(order, row.container, cur)
+			roll_back_arrival(order, container, cur)
+
+
+def _last_out_date(container_no: str):
+	"""The day the tank last left, from the newest closed gate record — None if it never did."""
+	return frappe.db.get_value(
+		"Gate Entry",
+		{"container_no": container_no, "status": "Gate_Out_Completed", "docstatus": ["<", 2]},
+		"out_date",
+		order_by="gate_out_timestamp desc",
+	)
 
 
 def roll_back_arrival(order, container: str, cur) -> str:
@@ -414,6 +452,9 @@ def roll_back_arrival(order, container: str, cur) -> str:
 		tank = frappe.get_doc("Container", container)
 		tank.status = back_to
 		tank.in_date = None
+		# The arrival cleared the previous visit's day out; a tank that never came back in is
+		# still out since that day (2026-10-09 audit).
+		tank.out_date = _last_out_date(tank.container_no or container)
 		# Only the vessel THIS bon wrote comes off; a value that was already there (or that a
 		# later document set) is the tank's own history and is left alone.
 		if order.get("ex_vessel") and tank.ex_vessel == order.get("ex_vessel"):
@@ -430,7 +471,7 @@ def roll_back_arrival(order, container: str, cur) -> str:
 	return back_to
 
 
-def _release_gate_in(order: Document):
+def _release_gate_in(order: Document, containers=None):
 	"""Void the gate-in records this bon opened when the bon itself is cancelled.
 
 	Only records still covering an open visit are touched: a tank that has already gated out
@@ -439,16 +480,16 @@ def _release_gate_in(order: Document):
 	"""
 	from container_depot.container_depot.gate import GATE_ENTRY_CLOSED
 
-	for name in frappe.get_all(
-		"Gate Entry",
-		filters={
-			"order_doctype": "Order Bongkar",
-			"order_ref": order.name,
-			"status": ["not in", GATE_ENTRY_CLOSED],
-			"docstatus": ["<", 2],
-		},
-		pluck="name",
-	):
+	filters = {
+		"order_doctype": "Order Bongkar",
+		"order_ref": order.name,
+		"status": ["not in", GATE_ENTRY_CLOSED],
+		"docstatus": ["<", 2],
+	}
+	if containers is not None:
+		nos = [frappe.db.get_value("Container", c, "container_no") or c for c in containers]
+		filters["container_no"] = ["in", nos or [""]]
+	for name in frappe.get_all("Gate Entry", filters=filters, pluck="name"):
 		frappe.db.set_value("Gate Entry", name, "status", "Cancelled")
 
 
